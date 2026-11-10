@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """No Blender/provider access: Studio tools, billing gates and async receipts."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import json
 import sys
@@ -216,7 +218,9 @@ class MediaToolsTests(unittest.TestCase):
         call = next(iter(self.controller.pending.values()))
         self.binding = GenerationBinding(ACCOUNT, 'gemini_images_api', (MODEL,), True, 'different-private-key')
         self.controller.execute_tool(call, self.executor, self.controller.document)
-        self.assertIn('target changed', answers[0]['error'])
+        self.assertEqual(answers[0]['error_code'], 'STALE_REVISION')   # Its connection's binding moved (stale_binding).
+        self.assertIn('changed before it ran', answers[0]['error'])
+        self.assertIs(answers[0]['scene_changed'], False)
         self.assertEqual(self.requests, [])
 
     def test_enhancement_suggests_without_applying_or_generating(self):

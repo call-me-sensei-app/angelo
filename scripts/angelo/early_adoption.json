@@ -1,4 +1,19 @@
 {
   "$comment": "Newer-Blender features Angelo adopted before its base ships them (AGENTS.md, 'Newer Blender first'; scripts/angelo/upstream_early.py documents the fields). At each base move, upstream_overlap.py early lists every item against the new base and the merge records keep ours, take theirs or merge, judged on quality, latency and cost.",
-  "items": []
+  "items": [
+    {
+      "id": "wm-jobs-has-running",
+      "title": "WM_jobs_has_running(wm, owner, type, exclude_flags): running or suspended jobs of a type, any owner (only this function of the commit)",
+      "upstream_version": "5.3",
+      "upstream_commits": [
+        "16859984917cebd2174484a9105bb48609475d09"
+      ],
+      "angelo": "Restart to Update work guard (_angelo_jobs.running_work, 1.0.10)",
+      "paths": [
+        "source/blender/windowmanager/WM_api.hh",
+        "source/blender/windowmanager/intern/wm_jobs.cc",
+        "source/blender/python/intern/bpy_angelo_jobs_work.cc"
+      ]
+    }
+  ]
 }

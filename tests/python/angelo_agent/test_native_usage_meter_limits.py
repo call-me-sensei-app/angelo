@@ -10,6 +10,8 @@ is unaffected. Developed on ASCII buckets and EACCES; multi-byte names, EIO/EPER
 the merge after a failed read are held out.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import errno
 import json
 import os
@@ -79,7 +81,7 @@ class Limits(unittest.TestCase):
         saved = {"version": 1, "chats": chats(count=3)}
         self.path.write_text(json.dumps(saved), encoding="utf-8")
         before = self.path.read_bytes()
-        real = os.open
+        real = usage_meter.shared_replace.open_shared
         for number in (errno.EACCES, errno.EIO, errno.EPERM, errno.ESTALE):
             with self.subTest(errno=errno.errorcode[number]):
                 failing = [True]
@@ -88,9 +90,10 @@ class Limits(unittest.TestCase):
                     if failing[0] and os.fspath(path) == os.fspath(self.path):
                         raise OSError(number, os.strerror(number))
                     return real(path, flags, *args, **kwargs)
-                with mock.patch("angelo_agent.usage_meter.os.open", opener):
+                with mock.patch.object(usage_meter.shared_replace, "open_shared", side_effect=opener) as opened:
                     ledger = self.ledger()
                     self.assertEqual(ledger.chats, {})
+                    opened.assert_called()
                     ledger.chats["new-chat"] = {"modes": {"claude_api": bucket()}, "updated": 6000.0}
                     self.assertFalse(ledger.flush(), "not written while the file can't be read")
                     self.assertEqual(self.path.read_bytes(), before)
@@ -104,11 +107,12 @@ class Limits(unittest.TestCase):
         saved = chats(count=1)
         chat_id = next(iter(saved))
         self.path.write_text(json.dumps({"version": 1, "chats": saved}), encoding="utf-8")
-        real = os.open
-        with mock.patch("angelo_agent.usage_meter.os.open",
-                        lambda path, flags, *a, **k: (_ for _ in ()).throw(OSError(errno.EIO, "I/O error"))
-                        if os.fspath(path) == os.fspath(self.path) else real(path, flags, *a, **k)):
+        real = usage_meter.shared_replace.open_shared
+        with mock.patch("angelo_agent.usage_meter.shared_replace.open_shared",
+                        side_effect=lambda path, flags, *a, **k: (_ for _ in ()).throw(OSError(errno.EIO, "I/O error"))
+                        if os.fspath(path) == os.fspath(self.path) else real(path, flags, *a, **k)) as opened:
             ledger = self.ledger()
+            opened.assert_called()
         ledger.chats[chat_id] = {"modes": {"claude_api": dict(bucket(), input=1)}, "updated": 7000.0}
         self.assertTrue(ledger.flush())
         merged = self.ledger().chats[chat_id]

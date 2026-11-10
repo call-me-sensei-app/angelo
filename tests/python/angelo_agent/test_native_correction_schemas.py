@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Exact correction feedback without expanding static schemas or admitting invalid edits."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import sys

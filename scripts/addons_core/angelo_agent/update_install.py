@@ -4,7 +4,8 @@
 
 Contract: doc/angelo/updates_and_reports.rst, "Installing updates". The
 installers are two small scripts shipped with the add-on
-(``update_helpers/install_update_macos.sh`` and ``install_update_windows.cmd``).
+(``update_helpers/install_update_macos.sh`` and ``install_update_windows.cmd``, with its
+``other_copies_windows.ps1``).
 Angelo copies the platform's script into the update's own folder, so it never
 runs from the app it replaces, and starts it detached with every input in an
 ``ANGELO_UPDATE_*`` environment variable (paths in any language arrive intact;
@@ -26,6 +27,7 @@ Standard library only; no bpy.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -35,6 +37,8 @@ from pathlib import Path
 from . import product_env
 
 HELPERS = {"macos": "install_update_macos.sh", "windows": "install_update_windows.cmd"}
+# Files a script runs beside it, copied out with it: the Windows script's check for another copy of this install.
+COMPANIONS = {"windows": ("other_copies_windows.ps1",)}
 HELPER_FOLDER = Path(__file__).resolve().parent / "update_helpers"
 READY_FILE, RESULT_FILE, LOCK_DIR = "helper.ready", "result.txt", "helper.lock"
 CARRIED_PREFIXES = ("ANGELO_", "BLENDER_") + product_env.LEGACY_PREFIXES
@@ -75,6 +79,7 @@ class Request:
     launcher: str = ""    # Windows: the program the shortcuts start.
     requirement: str = ""  # macOS: the code requirement the new bundle must meet, checked again before the swap.
     sha256: str = ""       # Windows: the installer's digest from the signed feed, checked again before msiexec.
+    invocation: str = ""   # Exact private committed-quit channel identity (32 lowercase hex characters).
     gatekeeper: bool = False   # macOS: Gatekeeper approves the running app, so it must approve the new one too.
 
 
@@ -119,7 +124,7 @@ def carried_environment(environ, install_root):
 def inputs(request, environ):
     """The ``ANGELO_UPDATE_*`` variables of ``request``."""
     values = {"PID": str(request.pid), "VERSION": request.version, "DIR": str(request.work),
-              "EXECUTABLE": request.executable, "OPEN": request.open_file}
+              "EXECUTABLE": request.executable, "OPEN": request.open_file, "INVOCATION": request.invocation}
     if request.family == "macos":
         carried = carried_environment(environ, request.app)
         values.update(APP=request.app, NEW=request.new, RELAUNCH="1" if request.relaunch else "0",
@@ -146,7 +151,8 @@ def helper_environment(request, environ):
 
 
 def prepare_folder(request):
-    """Copy the script into the update's folder (clearing an earlier attempt's marker and result); its path."""
+    """Copy the script and its companions into the update's folder (clearing an earlier attempt's marker and result);
+    the script's path."""
     work = Path(request.work)
     work.mkdir(parents=True, exist_ok=True)
     for name in (READY_FILE, RESULT_FILE):
@@ -155,6 +161,8 @@ def prepare_folder(request):
         except FileNotFoundError:
             pass
     shutil.rmtree(work / LOCK_DIR, ignore_errors=True)   # Angelo starts one installer at a time (and stops a late one).
+    for name in COMPANIONS.get(request.family, ()):
+        shutil.copyfile(HELPER_FOLDER / name, work / name)
     target = work / HELPERS[request.family]
     shutil.copyfile(HELPER_FOLDER / HELPERS[request.family], target)
     return target
@@ -162,12 +170,14 @@ def prepare_folder(request):
 
 def start(request, environ=None, popen=subprocess.Popen):
     """Start the installer detached; returns its process. Raises ``OSError`` when it cannot start."""
+    if not re.fullmatch(r"[0-9a-f]{32}", request.invocation):
+        raise ValueError("Missing updater invocation")
     environ = dict(os.environ if environ is None else environ)
     script = prepare_folder(request)
     env = helper_environment(request, environ)
-    quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(request.work))
+    quiet = dict(stdin=subprocess.PIPE, bufsize=0, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(request.work))
     if request.family == "macos":
-        return popen(["/bin/sh", str(script)], env=env, start_new_session=True, close_fds=True, **quiet)
+        return popen(["/bin/bash", "--noprofile", "--norc", str(script)], env=env, start_new_session=True, close_fds=True, **quiet)
     flags = CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
     command = [os.path.join(environ.get("SystemRoot", r"C:\Windows"), "System32", "cmd.exe"), "/d", "/c", str(script)]
     try:
@@ -176,13 +186,19 @@ def start(request, environ=None, popen=subprocess.Popen):
         return popen(command, env=env, creationflags=flags, close_fds=True, **quiet)
 
 
-def ready(work):
-    """True once the installer has started and waits for Angelo to quit."""
-    return (Path(work) / READY_FILE).exists()
+def ready(work, invocation):
+    """Only this invocation's helper can acknowledge readiness; absence/unknown refuses."""
+    if not isinstance(invocation, str) or not re.fullmatch(r"[0-9a-f]{32}", invocation):
+        return False
+    try:
+        with (Path(work) / READY_FILE).open("rb") as stream:
+            return stream.read(34) == (invocation + "\n").encode("ascii")
+    except OSError:
+        return False
 
 
 def read_result(work):
-    """``{"status", "step", "version", "code"}`` the installer wrote, or None (none yet, or unreadable)."""
+    """``{"status", "step", "version", "code"[, "reboot"]}`` the installer wrote, or None (none yet, or unreadable)."""
     try:
         text = (Path(work) / RESULT_FILE).read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -190,9 +206,17 @@ def read_result(work):
     result = {}
     for line in text.splitlines()[:8]:
         key, _, value = line.strip().partition("=")
-        if key in {"status", "step", "version", "code"}:
+        if key in {"status", "step", "version", "code", "reboot"}:
             result[key] = value.strip()[:80]
     return result if result.get("status") in {"installed", "failed", "aborted"} else None
+
+
+def needs_reboot(result):
+    """Installed, but Windows replaces a file that was in use only when it restarts (msiexec's 3010,
+    ERROR_SUCCESS_REBOOT_REQUIRED). The script records ``reboot=required``; the one that installs an update is the
+    running version's copy, and one older than that line records only the code."""
+    return result.get("status") == "installed" and (
+        result.get("reboot") == "required" or (result.get("step") == "msiexec" and result.get("code") == "3010"))
 
 
 def family(platform_key=None):

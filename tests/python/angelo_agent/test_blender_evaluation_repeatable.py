@@ -18,6 +18,10 @@ failed too, on the 1.0.9 cut 4's T4 round (Windows, GPU VM): the Fast Boolean (`
 a pointer-keyed GHash's order (bmesh_intersect.cc), 2 distinct results in 12 rounds; build4 and macOS had repeated.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import os

@@ -30,7 +30,7 @@ import tempfile
 import threading
 import uuid
 
-from . import state_paths, storage
+from . import change_clock, shared_replace, state_paths, storage
 
 
 # Every family of folders Angelo's own processes keep private state in (prefix, parent or None for the temporary
@@ -39,14 +39,16 @@ from . import state_paths, storage
 # worker_process: a parallel-edit worker Blender's state, accounts and log; short, as its deepest path counts on
 # Windows (``worker_paths``). Folders of earlier builds keep their name's family: a crash left them private.
 WORKER_PREFIX, LEGACY_WORKER_PREFIX = "angw-", "angelo-worker-"
+FAB_BROWSER_PREFIX = "angelo-fab-browser-"  # Own browser credential profiles, including crashed leftovers.
 HEADLESS_PREFIX = "angelo-headless-"   # headless_session: a headless session's state, accounts and preferences.
 # Every other temporary or scratch folder Angelo makes (round 7 M-4: a converter's batch holds private prompts), by
 # its creator. ``allocate`` refuses a prefix that is not here, so the table is complete by construction.
 SCRATCH_PREFIXES = ("angelo-assets-", "angelo-flow-drop-", "angelo-split-", "angelo-save-", "angelo-native-preview-",
                     "angelo-kept-", "angelo-team-", "angelo-web-preview-", "angelo-world-light-",
                     "angelo-observations-", "angelo-engine-link-", "angelo-library-", "angelo-preflight-",
-                    "angelo-web-world-")
-FAMILIES = ((WORKER_PREFIX, None), (LEGACY_WORKER_PREFIX, None), (HEADLESS_PREFIX, None)) + tuple(
+                    "angelo-web-world-", "angelo-merge-check-")
+FAMILIES = ((WORKER_PREFIX, None), (LEGACY_WORKER_PREFIX, None), (HEADLESS_PREFIX, None),
+            (FAB_BROWSER_PREFIX, None)) + tuple(
     (prefix, None) for prefix in SCRATCH_PREFIXES)
 # Native CLI homes an inherited environment can point anywhere (a reused sign-in: round 7 M-1), as runtime_launch and
 # codex_runtime read them.
@@ -100,7 +102,7 @@ def retained_profiles(connection_directory, name=None):
     """The native profile folders recorded in the account store (``remember_profiles``): [] when there is no list yet;
     ``RetainedUnknown`` when it exists but cannot be read, or is not a list of absolute folder paths (fail closed)."""
     try:
-        text = (Path(connection_directory) / (name or RETAINED_PROFILES)).read_text(encoding="utf-8")
+        text = shared_replace.read_text(Path(connection_directory) / (name or RETAINED_PROFILES))   # Shares delete.
     except FileNotFoundError:
         return []
     except OSError as error:
@@ -157,7 +159,7 @@ def _write_list(folder, name, entries):
             json.dump(entries, handle)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, Path(folder) / name)
+        shared_replace.replace(temporary, Path(folder) / name)   # Every Angelo reads it: retried, else raised.
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
@@ -198,7 +200,7 @@ def _registry_signature(connection_directory, environ):
     for path in files:
         try:
             info = os.stat(path)
-            signature.append((info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size))
+            signature.append(change_clock.cache_key(info, (info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size)))
         except FileNotFoundError:
             signature.append(None)
         except OSError:
@@ -234,7 +236,7 @@ def _retained_now(connection_directory, name=RETAINED_PROFILES):
     key = (folder, name)
     try:
         info = os.stat(Path(folder) / name)
-        signature = (info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size)
+        signature = change_clock.cache_key(info, (info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size))
     except FileNotFoundError:
         if (Path(folder) / _last_name(name)).exists():
             return _fallback(folder, name), False   # Lost, not first use: its last good copy stands (R9-M-5).
@@ -468,8 +470,7 @@ def registered():
 
 
 def families():
-    """[(parent folder, prefix)]: each declared family; its members are matched by name where a file tool meets them
-    (``files.FileWorkspace``), never by listing a temporary folder that may hold a great many entries."""
+    """Declared (parent, prefix) families: FileWorkspace matches names without listing temporary folders."""
     with _lock:
         declared = list(_families)
     found = []
@@ -486,12 +487,11 @@ def mkdtemp(prefix, dir=None):
 
 
 class TemporaryDirectory(tempfile.TemporaryDirectory):
-    """``tempfile.TemporaryDirectory`` for Angelo's own folders: registered (``allocate``), removed as usual."""
-
-    def __init__(self, prefix, dir=None):
+    """Registered TemporaryDirectory; ordinary cleanup also prunes its retained directory handle."""
+    def __init__(self, prefix, dir=None, **options):   # options: tempfile's, e.g. ignore_cleanup_errors.
         if prefix not in {name for name, _ in FAMILIES}:
             raise ValueError("Add the private folder's prefix to private_roots.FAMILIES")
-        super().__init__(prefix=prefix, dir=dir if dir is not None else scratch_root())
+        super().__init__(prefix=prefix, dir=dir if dir is not None else scratch_root(), **options)
         declare(prefix, dir)
         _own(self.name)
 

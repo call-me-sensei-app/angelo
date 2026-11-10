@@ -15,7 +15,11 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_string.h"
+
 #include "BKE_report.hh"
+
+#include "BLT_translation.hh"
 
 #include "../generic/py_capi_utils.hh"
 
@@ -107,21 +111,24 @@ bool BPy_errors_to_report_ex(ReportList *reports,
     reports->storelevel = reports_orig->storelevel;
   }
 
+  /* Exception text and prefixes can already be translated by Python. Translating the wrapper
+   * cannot recover their source text, so do not advertise a mixed-language untranslated report. */
+  char *message;
   if (location_filepath) {
-    BKE_reportf(reports,
-                RPT_ERROR,
-                "%s: %.*s\n"
-                /* Location (when available). */
-                "Location: %s:%d",
-                error_prefix,
-                int(err_str_len),
-                err_str,
-                location_filepath,
-                location_line_number);
+    message = BLI_sprintfN(RPT_("%s: %.*s\n"
+                              /* Location (when available). */
+                              "Location: %s:%d"),
+                          error_prefix,
+                          int(err_str_len),
+                          err_str,
+                          location_filepath,
+                          location_line_number);
   }
   else {
-    BKE_reportf(reports, RPT_ERROR, "%s: %.*s", error_prefix, int(err_str_len), err_str);
+    message = BLI_sprintfN(RPT_("%s: %.*s"), error_prefix, int(err_str_len), err_str);
   }
+  BKE_report_translated(reports, RPT_ERROR, message, nullptr);
+  MEM_delete(message);
 
   if (reports != reports_orig) {
     BKE_reports_move_to_reports(reports_orig, reports);

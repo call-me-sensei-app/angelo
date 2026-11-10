@@ -1,7 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The script precondition's objects as one fingerprint (``script_precondition``): it matches exactly when the facts the
-per-object tuple held compare equal, over stand-ins for ``scene.objects`` and its bulk reads."""
+per-object tuple held compare equal, a NaN equal to a NaN in its place, over stand-ins for ``scene.objects`` and its
+bulk reads."""
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import math
 import sys
@@ -54,10 +57,18 @@ class FingerprintTests(unittest.TestCase):
         negative[1] = -0.0
         self.assertEqual(of(thing(1, negative)), of(thing(1)))
 
-    def test_nan_never_matches_as_it_never_compared_equal(self):
+    def test_nan_matches_nan_in_its_place_and_never_a_number(self):
+        # It never matched (NaN never compared equal), so every script of such a scene was refused stale at its run,
+        # however often it was asked again (C7b, break-it M-4); the binding's revision still moves with any edit.
         nan = list(IDENTITY)
         nan[0] = math.nan
-        self.assertNotEqual(of(thing(1, nan)), of(thing(1, nan)))
+        self.assertEqual(of(thing(1, nan)), of(thing(1, nan)))
+        elsewhere = list(IDENTITY)
+        elsewhere[5] = math.nan
+        zero = list(IDENTITY)
+        zero[0] = 0.0
+        self.assertNotEqual(of(thing(1, nan)), of(thing(1, elsewhere)))
+        self.assertNotEqual(of(thing(1, nan)), of(thing(1, zero)))
 
     def test_it_is_small(self):
         self.assertLessEqual(len(of(*(thing(i) for i in range(2000)))), 64)

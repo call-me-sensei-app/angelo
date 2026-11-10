@@ -9,6 +9,8 @@ as passed, because they read the slots only. Now, where an object's base faces d
 itself is pinned by the Blender suite test_blender_material_sharing.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

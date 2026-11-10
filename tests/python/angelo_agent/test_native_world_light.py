@@ -9,6 +9,8 @@ display reading uses. ``test_blender_world_light.py`` checks the convention and 
 Blender's own render and save in the compiled app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import math
 import struct
 import sys

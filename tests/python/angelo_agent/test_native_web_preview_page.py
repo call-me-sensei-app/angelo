@@ -10,6 +10,8 @@ hidden column is out of the way at any width: invisible, unclickable and out of 
 still covers the scene. A browser check of the same behaviour is in the document's validation section.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import http.client
 import re

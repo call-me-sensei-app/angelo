@@ -201,7 +201,7 @@ Tool                           What it does                                     
 =============================  ==========================================================================  ==========
 ``angelo_library_search``      Searches the local catalog: ``query`` (up to 200 characters; empty lists    none
                                the most popular), optional ``kind`` (``model``, ``texture``, ``hdri``,
-                               ``vfx``), ``limit`` 1-20 (default 8), optional ``preview``
+                               ``vfx``), ``limit`` 1-20 (default 8), ``offset`` and optional ``preview``
 ``angelo_library_import``      Downloads, checks and imports one item (``item_id``) into the bound         always
                                scene as one Undo step: a model or sprite stands with its base centre at
                                ``location`` (default the 3D cursor); a texture set becomes one material
@@ -209,7 +209,7 @@ Tool                           What it does                                     
                                scene's world. ``resolution`` picks a texture set's or HDRI's size
 =============================  ==========================================================================  ==========
 
-* **Results.** A search returns ``query``, ``total`` and ``items``, each with ``id``, ``kind``, ``title``,
+* **Results.** A search returns ``query``, ``total``, ``next_offset`` (null at the end) and ``items``, each with ``id``, ``kind``, ``title``,
   ``source``, ``license``, ``attribution_required``, ``mb`` (its default files' download size), ``downloaded``
   (already in the cache) and, for texture sets and HDRIs, ``resolutions`` and ``default_resolution``: never a link
   or a path. ``preview`` adds the thumbnails of the first six results that have one as images (``views``, with
@@ -233,9 +233,10 @@ Tool                           What it does                                     
 * **Deferral.** The family is in ``plan_kinds.DEFERRED_TOOLS``: a Claude plan names the two tools and reads their
   schemas and ``LIBRARY_GUIDANCE`` with ``angelo_agent_capabilities``; Codex threads on OpenAI connections declare
   them in the ``deferLoading`` namespace (``more__``) and their instructions name the Angelo Library among the
-  deferred families. Voice threads (``tool_specs.dynamic_tools``), collaborators, the external CLI and connected
-  apps' tasks (``external_clients.NEVER_FOR_APPS``) never get them. Unlike the team family the tools need no
-  sign-in, so every request declares them: ``TOOLSET_VERSION`` 45.
+  deferred families. Voice threads (``tool_specs.dynamic_tools``), collaborators and unkeyed phase-1 CLI clients
+  do not get them. Connected MCP apps and their tasks can use the public library and Blender Essentials with the
+  existing approval policy. Unlike the team family these sources need no sign-in. Toolset 52 adds source-aware
+  discovery and pagination.
 * **Refusals** (closed codes, ``scene_changed: false``): an unknown id, an argument the item's kind doesn't take
   (``resolution`` on a model or sprite, ``location`` on a texture set or HDRI, ``objects`` on anything but a texture
   set), an unavailable resolution, a texture set with neither ``objects`` nor selected meshes, or a non-mesh or
@@ -248,3 +249,22 @@ Tool                           What it does                                     
 * **Tests.** ``test_native_library_tools.py``: validation, compact results, placement (deferred, Codex namespace,
   never voice, collaborators, apps or Auto), the approval and checkpoint classes against the Studio import, the
   catalog wait and its bound, previews, closed refusal codes and the card, over a small in-memory catalog.
+
+Blender Essentials
+------------------
+
+The same agent tools also support ``source="blender"`` in search and the resulting native asset ids in import.
+See :doc:`blender_assets` for bundled/online discovery, native downloads, supported uses and validation boundaries.
+Omitting ``source`` preserves the public catalog behavior above. The feature guide describes both sources and
+the Asset Browser entry point. Connected MCP apps can search with read permission and import with edit permission;
+imports always require their card in Angelo's window. Legacy phase-1 CLI clients remain read-only and unchanged.
+
+Fab implementation
+------------------
+
+The implemented toolset 53 source adds ``source="fab"`` to these same two tools and
+connects them to the person's shared account-scoped facade. Fab remains separate from
+the public catalog. Agent search requires an already connected Session; it cannot sign
+in, change paid-suggestion preferences or acquire rights. Import requires the exact
+observed variant, individual approval and checked native GLB support. Actual account,
+download and native/combined-application acceptance remain open; see :doc:`fab`.

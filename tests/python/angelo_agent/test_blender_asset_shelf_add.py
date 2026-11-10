@@ -17,6 +17,10 @@ Run through ``run_native_suites.py --gui --include test_blender_asset_shelf_add`
 for ``success`` and ``phase == "complete"``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import tempfile
@@ -138,15 +142,18 @@ def studio_state(target):
 
 def tab_colours(path, target):
     """Mean distance from the teal of each tab button, from the Studio window's capture: the selected tab is
-    the one filled teal. Hit rectangles are region pixels; the capture is window pixels."""
+    the one filled teal. Hit rectangles are region pixels in layout order; a right-to-left draw mirrors them about
+    ``view["mirror"]`` (canvas_rtl.drawn), as Studio's input does. The capture is window pixels."""
     import numpy
     view, area = studio_state(target)
     region = next(r for r in area.regions if r.type == 'WINDOW')
     px = pixels(path)
     found = {}
+    mirror = view.get("mirror")
     for rect, action, value in view.get("hits", []):
         if action == "tab":
             x, y, w, h = rect
+            x = x if mirror is None else mirror - x - w
             inner = (region.x + x + w * .1, region.y + y + h * .15, w * .25, h * .25)   # Fill, not the label.
             block = box(px, inner).reshape(-1, 3)
             found[value] = float(numpy.abs(block - numpy.array(TEAL)).sum(axis=1).mean()) if block.size else 999.0

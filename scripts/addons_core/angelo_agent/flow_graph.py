@@ -416,7 +416,8 @@ def select(run_plan, flow, *, excluded=(), stops=None):
 def check_selection(selection):
     if selection["count"] > MAX_PAID_PER_RUN:
         raise FlowError(f"This run has {selection['count']} paid generations; the limit is {MAX_PAID_PER_RUN}. "
-                        "Run part of the flow (scope NODE, DOWNSTREAM or UPSTREAM) or add a review stop")
+                        "Run part of the flow (scope NODE, DOWNSTREAM or UPSTREAM) or add a review stop",
+                        code="LIMIT_EXCEEDED")
     if not selection["now"]:
         raise FlowError("Nothing in this run needs generating: every selected step is reused, blocked or left out")
 

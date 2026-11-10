@@ -169,7 +169,9 @@ static void window_manager_blend_read_data(BlendDataReader *reader, ID *id)
       win.workspace_hook->temp_layout_store = nullptr;
     }
 
-    BKE_screen_area_map_blend_read_data(reader, &win.global_areas);
+    if (!BKE_screen_area_map_blend_read_data(reader, &win.global_areas)) {
+      BLO_read_data_invalidate(reader, "Corrupt .blend file, failed to read window areas.");
+    }
 
     win.active = 0;
 
@@ -270,6 +272,9 @@ void WM_operator_free(wmOperator *op)
     IDP_FreeProperty(op->properties);
   }
 
+  /* Angelo: no job reads this list at its end once its operator is gone, whoever frees the list
+   * (#WM_jobs_reports_attach). */
+  wm_jobs_angelo_reports_detach(op->reports);
   if (op->reports && (op->reports->flag & RPT_FREE)) {
     BKE_reports_free(op->reports);
     MEM_delete(op->reports);
@@ -577,8 +582,11 @@ void wm_close_and_free(bContext *C, wmWindowManager *wm)
   wm_xr_data_free(wm);
 
   while (wmWindow *win = static_cast<wmWindow *>(BLI_pophead(&wm->windows))) {
-    /* Prevent draw clear to use screen. */
-    BKE_workspace_active_set(win->workspace_hook, nullptr);
+    /* Prevent draw clear to use screen. `workspace_hook` may be null for a window that was not
+     * completely read from an invalid file. */
+    if (win->workspace_hook != nullptr) {
+      BKE_workspace_active_set(win->workspace_hook, nullptr);
+    }
     wm_window_free(C, wm, win);
   }
 

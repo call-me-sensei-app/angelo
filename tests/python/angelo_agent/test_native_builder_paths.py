@@ -4,6 +4,8 @@
 """No builder path and no credential in what ships (scripts/angelo/builder_paths.py, doc/angelo/releasing.rst,
 "No builder paths"): the scan, its allowlist and receipts, and the build steps that keep paths out."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib.util
 import json
 import marshal
@@ -16,6 +18,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/angelo"))
@@ -104,12 +107,9 @@ class ScanTests(Bundle):
         self.assertIn("builder folder", report["hits"]["Contents/Resources/a.exe"])
 
     def test_a_ci_accounts_home_is_no_builder_folder(self):
-        old = os.environ.get("HOME")
-        os.environ["HOME"] = "/Users/runner"
-        try:
-            self.assertNotIn("/Users/runner", builder_paths.builder_folders())
-        finally:
-            os.environ["HOME"] = old
+        home = os.path.abspath(os.path.join(os.sep, "Users", "runner"))   # A full path of this host, as it reads one.
+        with mock.patch.dict(os.environ, {"HOME": home, "USERPROFILE": home}):   # Windows' home is USERPROFILE.
+            self.assertNotIn(home, builder_paths.builder_folders())
 
     def test_the_systems_own_profile_folders_name_no_one_and_only_they_pass(self):
         """pip 26.2.2's vendored platformdirs names C:\\Users\\Public; Windows' shared and template profiles and macOS'
@@ -225,7 +225,9 @@ class WindowsFirstRunTests(Bundle):
         manifest = self.root.parent / "install_manifest.txt"
         manifest.write_text("%s\n%s\n" % (self.root / "Contents/Resources/installed.dll", self.root / "Contents/MacOS/Angelo"))
         only = builder_paths.listed_files(self.root, manifest)
-        self.assertEqual(only, {"Contents/Resources/installed.dll", "Contents/MacOS/Angelo"})
+        # Folder-relative POSIX names, compared case-insensitively on Windows (so listed there in normcase's lower case).
+        self.assertEqual(only, {os.path.normcase(name).replace(os.sep, "/")
+                                for name in ("Contents/Resources/installed.dll", "Contents/MacOS/Angelo")})
         report = builder_paths.scan(self.root, IDENTITY, [], folders=[r"C:\angelo\src"], only=only)
         self.assertEqual((report["files"], report["hits"]), (2, {}))
         self.assertIn("makesrna.pdb", builder_paths.scan(self.root, IDENTITY, [], folders=[r"C:\angelo\src"])["hits"])

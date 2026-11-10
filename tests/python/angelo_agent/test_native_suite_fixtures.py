@@ -8,6 +8,8 @@ test one) and a worktree that skips LFS. test_blender_studio read the brand artw
 written, exported); this pins that for every path joined to the repository root in a suite or helper.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import fnmatch
 import unittest

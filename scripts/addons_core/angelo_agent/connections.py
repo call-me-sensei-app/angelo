@@ -17,7 +17,7 @@ import copy
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from . import kept_state, managed_policy
+from . import kept_state, managed_policy, shared_replace
 from .provider_registry import CODING, MODE_BY_CONNECTION, TEAM, spec_for
 from .storage import valid_profile_directory
 
@@ -25,6 +25,8 @@ MODES = {("OPENAI", "SUBSCRIPTION"): "codex_subscription", ("OPENAI", "API_KEY")
          ("ANTHROPIC", "SUBSCRIPTION"): "claude_subscription", ("ANTHROPIC", "API_KEY"): "claude_api"}
 FIELDS = ("id", "name", "provider", "method", "mode", "model", "reuse_native")
 FIELDS += ("group", "native_profile")
+READ_ATTEMPTS = 3          # Reads of the file while its signature keeps moving under them (``reload``).
+_UNSTABLE = ("unstable",)  # The signature of a read the file kept changing under: no stat's signature equals it.
 
 
 @contextmanager
@@ -35,10 +37,8 @@ def metadata_lock(directory, name="connections.lock"):
     with open(Path(directory) / name, "a+b") as handle:
         if os.name == "nt":
             import msvcrt
-            handle.seek(0)
-            if handle.read(1) == b"":
-                handle.write(b"\0")
-                handle.flush()
+            # Byte 0 is locked, never read or written: a locked byte cannot be read through another handle, so a
+            # read there failed the second writer at once instead of letting it wait. Locking past the end is allowed.
             handle.seek(0)
             msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
         else:
@@ -96,8 +96,24 @@ class ConnectionStore:
 
     def reload(self):
         """The saved connections, and those of copies an earlier save kept beside the file because it couldn't read
-        it (kept_state): they come back here and the copy goes once a save holds them."""
-        raw, self.state = kept_state.read(self.path)  # Never written over as if empty (save).
+        it (kept_state): they come back here and the copy goes once a save holds them.
+
+        The file's signature is taken before it is read and again after: one taken only after the read could be the
+        signature of a version another window saved during the read, held over the older content, and
+        ``reload_if_changed`` would then see no change until the next save. A read during which the signature moved
+        is read again, at most ``READ_ATTEMPTS`` times in all. If the file keeps changing, the store takes its last
+        read, first load or not, under a signature no stat equals (``_UNSTABLE``), so the next ``reload_if_changed``
+        reads again. Never the state it held before: every writer replaces the file whole, so the last read is a
+        version some window saved, while an older state (its baseline from before this store's own save) would let
+        the next save bring back an account another window removed since. Nothing waits or loops beyond these reads."""
+        for _attempt in range(READ_ATTEMPTS):
+            before = self.signature()
+            raw, state = kept_state.read(self.path)  # Never written over as if empty (save).
+            if self.signature() == before:
+                break
+        else:
+            before = _UNSTABLE   # The last read stands; the next check reads again.
+        self.state = state
         self.records, self.active, self.ignored_native_modes = {}, None, set()
         if self.state == kept_state.OK:
             try:
@@ -119,7 +135,7 @@ class ConnectionStore:
         self._baseline = copy.deepcopy(self.records)
         self._baseline_ignored = set(self.ignored_native_modes)
         self._baseline_active = self.active
-        self._signature = self.signature()
+        self._signature = before
 
     def signature(self):
         try:
@@ -235,7 +251,14 @@ class ConnectionStore:
                                "ignored_native_modes": sorted(latest.ignored_native_modes)}, handle, allow_nan=False)
                     handle.flush()
                     os.fsync(handle.fileno())
-                os.replace(temporary, self.path)
+                shared_replace.replace(temporary, self.path)
+            except OSError as error:
+                # Refused (its file held open, shared_replace): nothing changed, so this window goes back to what it
+                # last read, never to a re-read, which the holder may refuse too.
+                print("Angelo: the connections could not be saved; nothing was changed:", error)
+                self.records = copy.deepcopy(self._baseline)
+                self.ignored_native_modes, self.active = set(self._baseline_ignored), self._baseline_active
+                raise
             finally:
                 if os.path.exists(temporary):
                     os.unlink(temporary)

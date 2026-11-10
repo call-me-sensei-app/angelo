@@ -270,6 +270,7 @@ void rna_AttributeGroup_iterator_begin(CollectionPropertyIterator *iter,
                                        eCustomDataMask cd_type_mask,
                                        bool include_anonymous);
 void rna_AttributeGroup_iterator_begin(CollectionPropertyIterator *iter, PointerRNA *ptr);
+void *rna_AttributeGroup_iterator_item(CollectionPropertyIterator *iter);
 PointerRNA rna_AttributeGroup_iterator_get(CollectionPropertyIterator *iter);
 int rna_AttributeGroup_length(PointerRNA *ptr);
 PointerRNA rna_AttributeGroup_lookup_string(const PointerRNA &ptr,

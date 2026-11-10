@@ -7,24 +7,19 @@ other) starts this with Angelo's bundled Python in isolated mode::
 
     <Angelo Python> -I <Angelo scripts>/angelo/angelo_mcp.py --client claude-code
 
-It speaks MCP's stdio transport (newline-delimited JSON-RPC 2.0 on stdin and
-stdout; nothing else is ever written to stdout) and forwards each tool call to
-the running Angelo over the existing private socket (``cli_client``), proving
-both the launch token and the app's own key (``external_clients``). There is no
-TCP, UDP or HTTP listener, so it can never take a port Blender MCP or anything
-else uses. Every effect happens inside Angelo, under the person's approvals.
+It speaks MCP's stdio transport (newline-delimited JSON-RPC 2.0 on stdin and stdout; nothing else is ever written to
+stdout) and forwards each tool call to the running Angelo over the existing private socket (``cli_client``), proving
+both the launch token and the app's own key (``external_clients``). There is no TCP, UDP or HTTP listener, so it can
+never take a port Blender MCP or anything else uses. Every effect happens inside Angelo, under the person's approvals.
 
-* ``tools/list``: computed here from the app's allowed levels, so a client that
-  starts before Angelo still sees its tools (``external_mcp_tools``); Angelo
-  checks the same levels again on every call.
-* ``tools/call``: an Angelo tool goes to Angelo as an app call (``external_work``);
-  a task tool becomes a ``task`` command (``external_apps``). A call that waits
-  (for the person's approval, a render) is asked for again under the same call
-  ID, which never runs it twice, sending ``notifications/progress`` meanwhile
-  when the client gave a progress token, until ``CALL_DEADLINE``.
-* ``notifications/cancelled`` stops waiting and sends nothing more, as MCP
-  requires; work already in Angelo is not cancelled (only the person's Stop
-  or ``angelo_task_stop`` stops it).
+* ``tools/list``: computed here from the app's allowed levels, so a client that starts before Angelo still sees its
+  tools (``external_mcp_tools``); Angelo checks the same levels again on every call.
+* ``tools/call``: an Angelo tool goes to Angelo as an app call (``external_work``); a task tool becomes a ``task``
+  command (``external_apps``). A call that waits (for the person's approval, a render) is asked for again under the
+  same call ID, which never runs it twice, sending ``notifications/progress`` meanwhile when the client gave a
+  progress token, until ``CALL_DEADLINE``.
+* ``notifications/cancelled`` stops waiting and sends nothing more, as MCP requires; work already in Angelo is not
+  cancelled (only the person's Stop or ``angelo_task_stop`` stops it).
 
 Pure standard library and no ``bpy``; doc/angelo/external_mcp.rst.
 """
@@ -130,7 +125,11 @@ class Server:
         if identity is None:
             return   # notifications/initialized and the like.
         if method == "tools/call":
-            threading.Thread(target=self._call, args=(identity, params), daemon=True, name="AngeloMcpCall").start()
+            try:
+                threading.Thread(target=self._call, args=(identity, params), daemon=True, name="AngeloMcpCall").start()
+            except RuntimeError as error:   # No thread to run it: answered as not run; the bridge keeps serving.
+                self.send({"jsonrpc": "2.0", "id": identity,
+                           "result": _text_error("Angelo's MCP launcher could not run this call: %s" % error)})
             return
         try:
             result = self.answer(method, params)

@@ -11,6 +11,8 @@ agent's tool validates its actions; the engine group of the + menu offers every 
 adapter and a bundled plugin.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import re
 import sys
@@ -27,7 +29,8 @@ from test_native_chat_destinations import registrations  # noqa: E402
 
 # + menu entries that are no feature of their own: attaching a picture or file to the message, and the two built-in
 # groups (Video, Render) whose members are the features.
-NOT_FEATURES = {"attach", "video_tools", "render_tools"}
+# Apps & settings is also a navigation group; its connections/settings are not one agent action.
+NOT_FEATURES = {"attach", "video_tools", "render_tools", "apps_settings"}
 
 
 def defined_operators():
@@ -194,6 +197,9 @@ class EngineMenuTests(unittest.TestCase):
             self.assertEqual(set(self._dict(table)), set(adapters), table)
         for engine, module in adapters.items():
             source = (ADDON / (module + ".py")).read_text(encoding="utf-8")
+            if re.search(r'^PLUGIN_SOURCE = None\b', source, re.M):   # An npm package (web_link_assets).
+                self.assertIn("def install_hint(", source, module)
+                continue
             folder = re.search(r'PLUGIN_SOURCE = Path\(__file__\)\.with_name\("([^"]+)"\) / "([^"]+)"', source)
             self.assertIsNotNone(folder, module)
             self.assertTrue((ADDON / folder.group(1) / folder.group(2)).is_dir(), engine)

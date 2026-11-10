@@ -6,6 +6,8 @@ Dependency-free, with RNA stand-ins. Staging, commit to the bound view layer,
 Undo and staleness are covered by test_blender_visibility.py in the compiled app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

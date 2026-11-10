@@ -11,6 +11,8 @@ shortcut on its label, and the chat following the person across workspace tabs u
 ``test_blender_chat_toggle`` and ``test_blender_mode_basics`` prove it in the running app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import types
@@ -170,6 +172,10 @@ class FollowTests(unittest.TestCase):
         self.assertIn("SETTLE", later)
         self.assertIn("ui.request_chat_dock(", later)
         self.assertIn("!= workspace or not wanted[0]", later, "dropped when it no longer applies")
+        covered = later.index("if live_windows.covered(bpy.context.window_manager):")
+        self.assertLess(covered, later.index("tab_drawn(window, since)"),
+                        "Under the start-up cover no 3D view draws: the wait for its draw starts at the lift")
+        self.assertIn("_pending[window.as_pointer()] = (workspace, time.monotonic(), session)", later[covered:])
         watch = source.split("\ndef _watch(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("ui._layout_timer is not None or _pending", watch, "no hidden hint for the moment between")
         launcher = (ADDON / "chat_launcher.py").read_text()

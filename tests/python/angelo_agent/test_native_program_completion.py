@@ -6,6 +6,8 @@ The completed job fixture models the native proof API; no Blender/native executi
 or provider inference is claimed. Controller durability and provider dispatch run.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 from dataclasses import replace
 import json
@@ -466,7 +468,7 @@ class ProgramCompletionTests(unittest.TestCase):
         raw = copy.deepcopy(self.request)
         raw["operations"][0]["target"] = "o1"
         raw["write_set"][0]["handle"] = "o1"
-        def resolve(_name, arguments):
+        def resolve(_name, arguments, *, step=None):  # Controller.resolve_call's interface.
             value = copy.deepcopy(arguments)
             if value["operations"][0]["target"] == "o1":
                 value["operations"][0]["target"] = A

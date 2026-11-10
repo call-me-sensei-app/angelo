@@ -40,6 +40,10 @@ Run through ``run_native_suites.py --gui --include test_blender_turn_recovery``;
 check ``turn-recovery.json`` for ``success`` and ``phase == "complete"``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -585,7 +589,7 @@ def tick():
                 return .2
             checks["a_decline_still_ends_the_turn"] = controller.status == "Interrupted" and played() == 14
             from angelo_agent import chat_view
-            chat_view._scroll[controller.state["id"]] = 10 ** 6  # The top of the transcript: its first work group.
+            chat_view._scroll[(chat()[0].as_pointer(), controller.state["id"])] = 10 ** 6  # The top of the transcript: its first work group.
             chat()[0].tag_redraw()
             state["phase"] = "progress_rows"
             return .5

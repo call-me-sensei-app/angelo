@@ -12,7 +12,7 @@ marker, so at commit an unmarked staged copy is an edited or new one:
 
 * each written object's live system takes that copy, as staged mesh data
   replaces live data, and the copy takes the old settings' name when nothing
-  uses them any more (they stay in the file as orphan data until it is saved);
+  uses them any more (commit frees them once no rollback can need them, commit_orphans);
   rollback gives the system its old settings back. Settings another system
   also uses are refused (``PARTICLE_SETTINGS_SHARED``) rather than edited for
   objects outside the program;

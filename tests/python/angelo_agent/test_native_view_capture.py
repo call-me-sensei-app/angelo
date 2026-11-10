@@ -7,6 +7,8 @@ cleanup. They do not prove GPU pixels or Blender's RNA update side effects;
 test_blender_view_observation.py runs those checks in the compiled GUI.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import importlib
 from pathlib import Path

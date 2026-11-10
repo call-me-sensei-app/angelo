@@ -62,7 +62,8 @@ def _check_revision(tree, expected):
     current = revision(flow_tree.tree_flow(tree)) if tree else None
     if expected != current:
         raise FlowError(f"The flow changed (current revision {current}); inspect it again before editing"
-                        if tree else "This flow doesn't exist yet; create it with expected_revision null")
+                        if tree else "This flow doesn't exist yet; create it with expected_revision null",
+                        code="STALE_REVISION")
     return current
 
 

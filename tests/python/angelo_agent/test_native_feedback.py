@@ -11,6 +11,8 @@ no ``FUND`` type, and no Angelo-drawn UI (startup menus, the add-on, the identit
 Donate, Support Blender or Development Fund link, while Blender's credits, licence and website stay in About.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import os
 import re

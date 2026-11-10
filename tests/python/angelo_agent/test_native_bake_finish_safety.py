@@ -6,6 +6,8 @@ The runner, evidence and restoration code are real; no bake job or renderer runs
 ``test_blender_bake_output_safety.py`` repeats the core cases with native images.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from array import array
 import importlib
 from pathlib import Path

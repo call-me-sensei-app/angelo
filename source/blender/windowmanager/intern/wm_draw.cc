@@ -41,6 +41,8 @@
 #include "GHOST_Rect.hh"
 #include "GHOST_Types.hh"
 
+#include "DRW_engine.hh"
+
 #include "ED_node.hh"
 #include "ED_screen.hh"
 #include "ED_view3d.hh"
@@ -1015,6 +1017,33 @@ static void wm_draw_area_offscreen(bContext *C, wmWindow *win, ScrArea *area, bo
 
     CTX_wm_region_set(C, &region);
     bool use_viewport = WM_region_use_viewport(area, &region);
+
+    if (use_viewport && WM_angelo_startup_cover_hides(area)) {
+      /* Angelo: the startup cover hides this viewport (wm_angelo_cover.cc). Rendering it would only
+       * compile shaders and build draw caches for hidden pixels; it is drawn when the cover lifts.
+       * Its overlay and Workbench shaders start compiling in the shader workers now, while the
+       * layout settles. */
+      if (area->spacetype == SPACE_VIEW3D && region.regiontype == RGN_TYPE_WINDOW) {
+        View3D *v3d = static_cast<View3D *>(area->spacedata.first);
+        DRW_overlay_shaders_compile_async();
+        DRW_workbench_shaders_compile_async(v3d,
+                                            static_cast<const RegionView3D *>(region.regiondata));
+        /* As after its draw (view3d_main_region_draw): a depth override rendered under the cover is
+         * for the view as it was then, so the next depth read or selection renders it afresh. */
+        v3d->runtime.flag &= ~V3D_RUNTIME_DEPTHBUF_OVERRIDDEN;
+      }
+      /* Its buffers exist, as after a draw, so depth reads, blits and window captures of it never
+       * find a missing viewport. A new buffer is cleared (no colour; depth at the near plane, which
+       * depth picking reads as no hit); a kept one holds its last frame, as between any file load
+       * and a view's next draw. */
+      Scene *scene = WM_window_get_active_scene(win);
+      wm_draw_region_buffer_create(scene, &region, false, use_viewport);
+      wm_draw_region_bind(&region, 0);
+      wm_draw_region_unbind(&region);
+      region.runtime->do_draw = 0;
+      CTX_wm_region_set(C, nullptr);
+      continue;
+    }
 
     GPU_debug_group_begin(use_viewport ? "Viewport" : "ARegion");
 

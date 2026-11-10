@@ -111,6 +111,7 @@ void EssentialsAssetLibrary::refresh_catalogs()
   }
 
   std::lock_guard lock{catalog_service_mutex_};
+  const CatalogEditScope edit_scope;
   catalog_service_ = std::move(new_catalog_service);
 }
 

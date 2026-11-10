@@ -15,6 +15,10 @@ and ``phase == "complete"``. The 1.0.5 "before" captures are ``test_blender_stud
 stock dropdown) and the flow window's stock Add menu.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys

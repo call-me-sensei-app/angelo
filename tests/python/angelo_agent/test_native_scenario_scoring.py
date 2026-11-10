@@ -8,6 +8,8 @@ the ground truth's. These tests pin the metrics on hand-made maps, the capture
 archive format and the ray layout of a fixed camera.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import struct
 import sys

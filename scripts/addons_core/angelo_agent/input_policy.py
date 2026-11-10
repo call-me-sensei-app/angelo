@@ -119,18 +119,47 @@ def moves_focus(event_type, value):
     return (event_type in FOCUS_GESTURES and value != "RELEASE") or event_type.startswith("NDOF_")
 
 
+SENT_AWAY_PX = 24   # A deliberate move of the pointer, not the jitter of a hand resting on the mouse while typing.
+
+
+def sent_away(operator, event, areas, is_chat):
+    """After a send left the message box empty, the first deliberate pointer move outside the chat ends editing
+    (``operator.release_keyboard``): the person has gone back to the 3D view, so G, Tab or Z there while Angelo
+    works are the view's, never typed into the empty draft. Keys typed without moving the pointer (the next
+    message, a steer) stay the chat's, so no word's first letter becomes a hotkey; a draft typed since the send
+    keeps the focus, as before any send. ``operator.just_sent``: where the pointer was at the send.
+    True when the chat lets go."""
+    sent = getattr(operator, "just_sent", None)
+    if not sent or event.type != "MOUSEMOVE":
+        return False
+    if abs(event.mouse_x - sent[0]) + abs(event.mouse_y - sent[1]) < SENT_AWAY_PX:
+        return False
+    operator.just_sent = None
+    chat = next((a for a in areas if a.as_pointer() == operator.focused_area and is_chat(a)), None)
+    history = chat.spaces.active.history if chat is not None else None
+    if history and history[-1].body:
+        return False
+    operator.release_keyboard()
+    return True
+
+
 # Keys the chat's message field takes whatever the modifiers (chat_view): editing, the caret, sending and Esc.
 FIELD_KEYS = frozenset({"RET", "NUMPAD_ENTER", "BACK_SPACE", "DEL", "LEFT_ARROW", "RIGHT_ARROW", "UP_ARROW",
                         "DOWN_ARROW", "HOME", "END", "ESC"})
 
 
 def edits_field(event):
-    """Whether a key press would edit the chat's message field: its own keys, select all, copy, cut, paste, or a
-    character (with Alt too: the Console keymap under the chat inserts a typed character whatever the modifiers)."""
+    """Whether a key press would edit the chat's message field: its own keys, select all, copy, cut, paste, or what
+    the Console keymap under the chat would type: a character with any modifier but Cmd (``console.insert`` takes
+    TEXTINPUT whatever is held, and Ctrl+1 keeps its "1"; a Ctrl+letter's control character is no text), and Ctrl+Tab
+    (``console.insert`` of a tab). Break-it R5-2: Ctrl+Tab and Ctrl+digit typed past the composer's selection."""
     if event.type in FIELD_KEYS:
         return True
-    if event.ctrl or event.oskey:
+    if event.oskey:
         return event.type in {"A", "C", "X", "V"}
+    if event.ctrl:
+        text = event.unicode or ""
+        return event.type in {"A", "C", "X", "V", "TAB"} or (bool(text) and text.isprintable())
     return bool(event.unicode)
 
 

@@ -425,6 +425,13 @@ static PyMethodDef methods[] = {
      "draw(target, offscreen, view3d, view_matrix, projection_matrix, *, view_layer=None, grid=False): draw a "
      "live part (or a scene of the document with its view_layer) into offscreen with a view of its own, always in "
      "Solid with view3d's Solid settings; view3d is only read."},
+    {"camera_draw",
+     reinterpret_cast<PyCFunction>(reinterpret_cast<void *>(live_camera_draw)),
+     METH_VARARGS | METH_KEYWORDS,
+     "camera_draw(scene, view_layer, camera, offscreen, *, look='LIT', shadow_pool=0): one more progressive sample "
+     "of camera's view of the scene into offscreen (LIT: EEVEE with the scene's lights and world; SOLID: the scene's "
+     "Workbench settings); the engine starts again by itself when the depsgraph changed. Returns the depsgraph's "
+     "update count. Writes no 3D view, region or scene setting."},
     {"hold",
      reinterpret_cast<PyCFunction>(live_hold),
      METH_VARARGS,
@@ -485,6 +492,11 @@ static PyMethodDef methods[] = {
      METH_O,
      "window_pixels(window): (width, height, RGBA bytes bottom row first) of window drawn again now into an "
      "offscreen, never read from the front buffer."},
+    {"region_tabs",
+     reinterpret_cast<PyCFunction>(live_region_tabs),
+     METH_O,
+     "region_tabs(area): [(x, y, width, height)] in window pixels of the tabs Blender placed on area for its hidden "
+     "regions and its full-screen corner (its own action zones)."},
     {"text_info_end",
      reinterpret_cast<PyCFunction>(live_text_info_end),
      METH_O,

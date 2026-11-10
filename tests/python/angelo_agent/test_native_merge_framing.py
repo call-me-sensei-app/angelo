@@ -4,6 +4,8 @@
 with the lead's scene shown, only a view the person left alone since the lead's turn began, never during their
 navigation, with the selection kept and no undo step. A stand-in ``bpy`` records the view operator and the timers."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import types
 import unittest

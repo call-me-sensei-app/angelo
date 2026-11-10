@@ -6,6 +6,8 @@ test_blender_studio_tabs lost its "strip" phase this way (1.0.5): an inserted ph
 another phase's return, unreachable, so the suite looped until its 300 s cap and the strip was never checked.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import unittest
 from pathlib import Path

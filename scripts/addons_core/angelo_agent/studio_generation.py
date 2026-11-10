@@ -21,7 +21,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import thread_start
+from . import shared_replace, thread_start
 from .references import image_type, MIME
 from .generative import GenerationBinding
 from .provider_errors import error_detail
@@ -58,7 +58,7 @@ def load_references(references, transport=request_bytes):
             path = Path(reference["path"])
             if not path.is_file() or path.is_symlink():
                 raise GenerationError(n_("An image reference is missing; attach it again"))
-            with path.open("rb") as handle:
+            with shared_replace.open_file(path) as handle:   # A Studio result Studio may be saving.
                 data = handle.read(20 * 1024 * 1024 + 1)
         loaded.append(checked_reference(data))
         if sum(len(data) for data, _ in loaded) > 20 * 1024 * 1024:
@@ -446,9 +446,10 @@ class StudioJobs:
 
         def emit(data):
             persisted.update({k: v for k, v in data.items() if k != "_finished"})
-            # Survives a closed editor/app even when no main-thread pump is left
-            # to consume the final event. Never persist credentials or reference URLs.
-            atomic_json(directory / "job-state.json", persisted)
+            try:   # Survives a closed editor/app with no pump left for the event. Never credentials or reference URLs.
+                atomic_json(directory / "job-state.json", persisted)
+            except OSError as error:   # A save refused (its file in use) never keeps the event from the pump.
+                print("Angelo: a generation's state could not be saved; it goes on:", type(error).__name__)
             self.events.put((identity, data))
 
         def run():

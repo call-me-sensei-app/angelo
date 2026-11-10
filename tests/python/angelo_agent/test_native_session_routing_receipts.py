@@ -6,6 +6,8 @@ Dependency-free: no runtime process, account or network. Claude launches use
 the stdio fixture; consultations use a scripted stand-in provider.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile
@@ -22,7 +24,8 @@ sys.path.insert(0, str(HERE))
 from claude_protocol_fixtures import ClaudeAdapterFixture, NativeInitializeFixture, completed  # noqa: E402
 from test_native_provider_usage import RecordingRPC, codex_breakdown, token_update  # noqa: E402
 from test_native_routing import CLAUDE, GPT, Executor  # noqa: E402
-from angelo_agent import provider_registry, runtime_environment  # noqa: E402
+from angelo_agent import provider_registry, runtime_environment, team_network  # noqa: E402
+from angelo_agent.provider_registry import TEAM_MODES  # noqa: E402
 from angelo_agent.controller import Controller, ToolDispatchBudget  # noqa: E402
 from angelo_agent.providers import CodexProvider, child_environment, profile_environment  # noqa: E402
 from angelo_agent.sessions import clean_runtime_sessions  # noqa: E402
@@ -67,6 +70,12 @@ class EnvironmentTests(unittest.TestCase):
                     self.assertFalse(set(ROUTING) & set(env), set(ROUTING) & set(env))
                     # Windows has one case-insensitive variable (os.environ spells it upper case) per name.
                     network = NETWORK if os.name != "nt" else {key.upper(): value for key, value in NETWORK.items()}
+                    if mode in TEAM_MODES:
+                        # A team child's proxies are replaced: only its gateway is reached (team_network).
+                        fenced = {key for key in network if key.upper() in {"HTTPS_PROXY", "NO_PROXY"}}
+                        self.assertEqual({env[key] for key in fenced if key.upper() == "HTTPS_PROXY"},
+                                         {team_network.REFUSING_PROXY})
+                        network = {key: value for key, value in network.items() if key not in fenced}
                     self.assertEqual({key: env[key] for key in network}, network)
 
     def test_matching_is_case_insensitive_as_on_windows(self):

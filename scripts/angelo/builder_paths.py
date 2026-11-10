@@ -233,9 +233,14 @@ def _views(data, anchors):
             yield text.encode("utf-8", "replace")
 
 
+def _listed_name(relative):
+    """A folder-relative POSIX path as ``only`` holds it: in ``os.path.normcase``'s case (lower case on Windows)."""
+    return os.path.normcase(relative).replace(os.sep, "/")
+
+
 def listed_files(folder, manifest):
     """The files of ``manifest`` (one path per line, absolute or relative to ``folder``, as CMake's
-    install_manifest.txt) that lie inside ``folder``, as folder-relative POSIX paths."""
+    install_manifest.txt) that lie inside ``folder``, as folder-relative POSIX paths (``_listed_name``)."""
     root = os.path.normcase(os.path.realpath(folder))
     chosen = set()
     for line in Path(manifest).read_text(encoding="utf-8", errors="replace").splitlines():
@@ -259,6 +264,7 @@ def scan(folder, identity=None, allow=None, folders=None, only=None):
     folders = builder_folders() if folders is None else folders
     allow = load_allow() if allow is None else allow
     rules = _rules(identity, folders)
+    only = None if only is None else {_listed_name(name) for name in only}
     wide_anchors = sorted({anchor for _kind, _pattern, rule_class, anchor in rules if rule_class != "secret"})
     report = {"files": 0, "bytes": 0, "identity": list(identity), "folders": list(folders), "hits": {}, "examples": {}, "allowed": {}}
     for root, dirs, files in os.walk(folder):
@@ -268,7 +274,7 @@ def scan(folder, identity=None, allow=None, folders=None, only=None):
             if path.is_symlink() or not path.is_file():
                 continue
             relative = path.relative_to(folder).as_posix()
-            if only is not None and os.path.normcase(relative) not in only and relative not in only:
+            if only is not None and _listed_name(relative) not in only:
                 continue
             data = path.read_bytes()
             if name.endswith(".pyc"):

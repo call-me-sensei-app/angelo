@@ -15,6 +15,7 @@
 #include "BLI_math_vector.h"
 #include "BLI_memarena.h"
 #include "BLI_mempool.h"
+#include "BLI_set.hh"
 #include "BLI_string.h"
 #include "BLI_utildefines.h"
 
@@ -83,6 +84,65 @@ void BMO_pop(BMesh *bm)
   bm->toolflag_index--;
 }
 
+/* -------------------------------------------------------------------- */
+/** \name Mapping Slot Order (Angelo)
+ *
+ * A mapping slot keeps its keys in insertion order (#BMOpSlot::map_order) beside the hash, and
+ * every iteration follows that order, so operators that create elements while iterating a
+ * mapping (extrude's side faces, duplicate's boundary) create them in the same order in every
+ * process. Inserting an existing key replaces its value and keeps its place (stock Blender's
+ * #BLI_ghash_insert asserted in debug builds and added a second entry in release ones).
+ * \{ */
+
+static void bmo_slot_map_insert_ordered(BMOpSlot *slot, const void *element, const void *data)
+{
+  void **value_p;
+  if (!BLI_ghash_ensure_p(slot->data.ghash, const_cast<void *>(element), &value_p)) {
+    slot->map_order->append(const_cast<void *>(element));
+  }
+  *value_p = const_cast<void *>(data);
+}
+
+/**
+ * Keys written straight into the hash (#BMO_SLOT_AS_GHASH: the weld target map auto-merge fills)
+ * or removed from it leave the order out of step; keep the ordered keys still present and append
+ * the others in the hash's order.
+ */
+static void bmo_slot_map_order_sync(BMOpSlot *slot)
+{
+  Vector<void *> &order = *slot->map_order;
+  GHash *ghash = slot->data.ghash;
+  if (int64_t(BLI_ghash_len(ghash)) == order.size()) {
+    /* Keys are only removed from a slot's hash by writing to it directly, which only the weld
+     * target map does (and only by adding); equal sizes then mean the same keys. */
+#ifndef NDEBUG
+    for (void *key : order) {
+      BLI_assert_msg(BLI_ghash_haskey(ghash, key),
+                     "a mapping slot key was removed directly from its hash");
+    }
+#endif
+    return;
+  }
+  Set<void *> ordered;
+  order.remove_if([&](void *key) { return !BLI_ghash_haskey(ghash, key) || !ordered.add(key); });
+  GHashIterator gh_iter;
+  GHASH_ITER (gh_iter, ghash) {
+    void *key = BLI_ghashIterator_getKey(&gh_iter);
+    if (ordered.add(key)) {
+      order.append(key);
+    }
+  }
+}
+
+Span<void *> BMO_slot_map_keys_ordered(BMOpSlot *slot)
+{
+  BLI_assert(slot->slot_type == BMO_OP_SLOT_MAPPING);
+  bmo_slot_map_order_sync(slot);
+  return *slot->map_order;
+}
+
+/** \} */
+
 /* use for both slot_types_in and slot_types_out */
 static void bmo_op_slots_init(const BMOSlotType *slot_types, BMOpSlot *slot_args)
 {
@@ -98,6 +158,7 @@ static void bmo_op_slots_init(const BMOSlotType *slot_types, BMOpSlot *slot_args
     switch (slot->slot_type) {
       case BMO_OP_SLOT_MAPPING:
         slot->data.ghash = BLI_ghash_ptr_new("bmesh slot map hash");
+        slot->map_order = MEM_new<Vector<void *>>(__func__);
         break;
       case BMO_OP_SLOT_INT:
         if (ELEM(slot->slot_subtype.intg,
@@ -123,6 +184,8 @@ static void bmo_op_slots_free(const BMOSlotType *slot_types, BMOpSlot *slot_args
     switch (slot->slot_type) {
       case BMO_OP_SLOT_MAPPING:
         BLI_ghash_free(slot->data.ghash, nullptr, nullptr);
+        MEM_delete(slot->map_order);
+        slot->map_order = nullptr;
         break;
       default:
         break;
@@ -291,11 +354,8 @@ void _bmo_slot_copy(BMOpSlot slot_args_src[BMO_OP_MAX_SLOTS],
     }
   }
   else if (slot_dst->slot_type == BMO_OP_SLOT_MAPPING) {
-    GHashIterator gh_iter;
-    GHASH_ITER (gh_iter, slot_src->data.ghash) {
-      void *key = BLI_ghashIterator_getKey(&gh_iter);
-      void *val = BLI_ghashIterator_getValue(&gh_iter);
-      BLI_ghash_insert(slot_dst->data.ghash, key, val);
+    for (void *key : BMO_slot_map_keys_ordered(slot_src)) {
+      bmo_slot_map_insert_ordered(slot_dst, key, BLI_ghash_lookup(slot_src->data.ghash, key));
     }
   }
   else {
@@ -650,7 +710,7 @@ void BMO_slot_map_insert(BMOperator *op, BMOpSlot *slot, const void *element, co
   BLI_assert(slot->slot_type == BMO_OP_SLOT_MAPPING);
   BMO_ASSERT_SLOT_IN_OP(slot, op);
 
-  BLI_ghash_insert(slot->data.ghash, const_cast<void *>(element), const_cast<void *>(data));
+  bmo_slot_map_insert_ordered(slot, element, data);
 }
 
 #if 0
@@ -1380,7 +1440,8 @@ void *BMO_iter_new(BMOIter *iter,
   iter->restrictmask = restrictmask;
 
   if (iter->slot->slot_type == BMO_OP_SLOT_MAPPING) {
-    BLI_ghashIterator_init(&iter->giter, slot->data.ghash);
+    /* Angelo: iterate in insertion order (see "Mapping Slot Order"). */
+    bmo_slot_map_order_sync(slot);
   }
   else if (iter->slot->slot_type == BMO_OP_SLOT_ELEMENT_BUF) {
     BLI_assert(restrictmask & slot->slot_subtype.elem);
@@ -1417,20 +1478,17 @@ void *BMO_iter_step(BMOIter *iter)
     return ele;
   }
   if (slot->slot_type == BMO_OP_SLOT_MAPPING) {
-    void *ret;
-
-    if (BLI_ghashIterator_done(&iter->giter) == false) {
-      ret = BLI_ghashIterator_getKey(&iter->giter);
-      iter->val = BLI_ghashIterator_getValue_p(&iter->giter);
-
-      BLI_ghashIterator_step(&iter->giter);
+    const Vector<void *> &order = *slot->map_order;
+    while (iter->cur < order.size()) {
+      void *key = order[iter->cur++];
+      /* A key removed from the hash during the iteration is skipped. */
+      if (void **value_p = BLI_ghash_lookup_p(slot->data.ghash, key)) {
+        iter->val = value_p;
+        return key;
+      }
     }
-    else {
-      ret = nullptr;
-      iter->val = nullptr;
-    }
-
-    return ret;
+    iter->val = nullptr;
+    return nullptr;
   }
   BLI_assert(0);
 

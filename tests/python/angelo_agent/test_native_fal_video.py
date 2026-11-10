@@ -7,6 +7,8 @@ reduced from fal's queue OpenAPI documents (read 2026-10-30). Every body ``fal_m
 every model, mode and offered value, must satisfy its endpoint's schema.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import unittest

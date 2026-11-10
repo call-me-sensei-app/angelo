@@ -29,7 +29,7 @@ import stat
 import subprocess
 from pathlib import Path
 
-from . import child_process
+from . import change_clock, child_process
 
 GIT_TIMEOUT_SECONDS = 10
 LFS_POINTER_MAX_BYTES = 1024
@@ -67,13 +67,14 @@ def _hash_file(path, algorithm, prefix=b""):
         before = os.lstat(path)
         if not stat.S_ISREG(before.st_mode):
             return None
+        change_clock.settle(before, change=False)   # A write during the read changes ``after`` (Windows' tick).
         hasher = hashlib.new(algorithm)
         hasher.update(prefix % before.st_size if prefix else b"")
         with open(path, "rb", buffering=0) as handle:
             while data := handle.read(HASH_BUFFER_BYTES):
                 hasher.update(data)
         after = os.lstat(path)
-    except OSError:
+    except (OSError, change_clock.Unsettled):
         return None
     if (before.st_size, before.st_mtime_ns, before.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ino):
         return None
@@ -132,6 +133,8 @@ def project_commit_time(path, *, git, timeout=GIT_TIMEOUT_SECONDS, cache=None):
     key = (str(path), info.st_size, info.st_mtime_ns, info.st_ino, head)
     if cache is not None and key in cache:
         return cache[key]
+    # Kept only under a settled stat (change_clock): a same-size write in its tick (Windows) would share the key.
+    cache = cache if cache is not None and change_clock.settled(info, change=False) else None
     result = None
     if _matches_head(git, top, relative, path, info.st_size, timeout):
         when = _text(_run(git, top, ["log", "-1", "--format=%ct", "HEAD", "--", relative], timeout))

@@ -12,6 +12,8 @@ that rests on, for every start-up gate:
 - and the digest follows every other harness module but not it.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import functools
 import shutil

@@ -11,7 +11,8 @@ triangles, a UV sphere): those were used while building the check, the asset fil
 
 For each case: ``REPS`` repetitions in ABAB order (A = meshopt weld and reduce, B = Decimate, alternating which runs
 first), timing each reduction at each ratio, then one full ``angelo_game_ready_check`` call whose facts and
-per-phase times are recorded. Nothing here is a threshold: the report lists every case, its facts and the spread.
+per-phase times are recorded, with the main thread's share of it (the call reads the objects; the rest runs on the
+check's thread). Nothing here is a threshold: the report lists every case, its facts and the spread.
 """
 
 import json
@@ -79,7 +80,7 @@ def spread(values):
 
 def time_reductions(obj):
     depsgraph = bpy.context.evaluated_depsgraph_get()
-    read = M.read(obj, depsgraph, 1.0, R)
+    read = M.read(obj, depsgraph, 1.0, R, snapshot=True).finish()
     times = {"meshopt_weld": [], "decimate": {r: [] for r in RATIOS}, "meshopt": {r: [] for r in RATIOS}}
     started_case = time.perf_counter()
     completed = 0
@@ -121,7 +122,7 @@ def modifier_against_native(obj, ratio=0.1):
     modifier_ms = (time.perf_counter() - started) * 1000.0
     obj.modifiers.remove(modifier)
     depsgraph.update()
-    read = M.read(obj, depsgraph, 1.0, R)
+    read = M.read(obj, depsgraph, 1.0, R, snapshot=True).finish()
     try:
         native = M.decimate(read, ratio, R, 1.0)
     finally:
@@ -131,12 +132,21 @@ def modifier_against_native(obj, ratio=0.1):
 
 
 def facts(obj):
+    """One check through the host route, polled as the controller polls it: its result, the time to the result,
+    and the main thread's share (the call, which reads the objects, plus every poll)."""
     window = bpy.context.window_manager.windows[0]
     args = validate_game_ready(CHECK, {"object": scene_queries.object_handle(obj),
                                        "simplify": {"ratios": list(RATIOS)}})
     started = time.perf_counter()
-    result = game_ready_host.execute(window, CHECK, args)
-    return result, (time.perf_counter() - started) * 1000.0
+    pending = game_ready_host.execute(window, CHECK, args)
+    main = time.perf_counter() - started
+    result = None
+    while result is None:
+        time.sleep(0.005)
+        polled = time.perf_counter()
+        result = pending.poll()
+        main += time.perf_counter() - polled
+    return result, (time.perf_counter() - started) * 1000.0, main * 1000.0
 
 
 def summarize(result):
@@ -183,8 +193,9 @@ def main(argv):
             try:
                 case["decimate_modifier_vs_native"] = modifier_against_native(obj)
                 case["timings"] = time_reductions(obj)
-                result, ms = facts(obj)
+                result, ms, main_ms = facts(obj)
                 case["tool_ms"] = round(ms, 1)
+                case["main_thread_ms"] = round(main_ms, 1)
                 case["native_ms"] = result["native_ms"]
                 case["source"] = {k: result["source"][k] for k in ("tris", "vertices", "geometry")}
                 case["source_uv"] = result["source"]["uv"] if isinstance(result["source"]["uv"], dict) else None

@@ -8,6 +8,8 @@ executor, and the test thread acting as Blender's main-thread pump. Never the
 real ``$TMPDIR/angelo-<uid>`` directory or a real profile.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import itertools
 import shutil
 import sys
@@ -26,6 +28,7 @@ from angelo_agent.controller import Controller, ToolDispatchBudget
 from angelo_agent.external_host import ClientRegistry, ExternalHost, external_label
 from angelo_agent.invocations import document_digest
 from angelo_agent.sessions import SessionCollection
+from host_test_policy import environment_skip
 
 
 class Executor:
@@ -96,8 +99,8 @@ class DrainPacingTests(unittest.TestCase):
         self.assertEqual(len(served), 3)
 
 
-@unittest.skipIf(sys.platform == "win32", "Needs the Unix-socket listener, which Windows does not open yet "
-                                         "(doc/angelo/external_cli.rst)")
+@unittest.skipIf(sys.platform == "win32", environment_skip("Needs the Unix-socket listener, which Windows does not "
+                                                           "open yet (doc/angelo/external_cli.rst)"))
 class ExternalHostTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="scli-", dir="/tmp"))

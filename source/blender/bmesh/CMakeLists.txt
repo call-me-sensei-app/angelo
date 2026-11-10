@@ -211,6 +211,7 @@ if(WITH_GTESTS)
   set(TEST_SRC
     tests/bmesh_core_test.cc
     tests/bmesh_log_test.cc
+    tests/bmesh_operator_map_order_test.cc
     tests/bmesh_snapshot_test.cc
     tests/bmesh_snapshot_io_test.cc
   )

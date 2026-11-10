@@ -15,6 +15,8 @@ each test failed while its defect was present. No Blender.
 * N1: one host per chat: a refused open never overwrites the worker that still hosts the chat.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import os
 import sys

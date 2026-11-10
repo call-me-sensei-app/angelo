@@ -200,8 +200,15 @@ is covered without a change: every node's settings and the data it owns (a Color
 Ramp's elements, a curve's points, an image user, a texture mapping), every
 socket's value (outputs too, where RGB and Value nodes keep theirs), the links,
 node groups (each read once), the World's own settings, the engine, each image's
-file (time and size), a digest of its packed bytes and its colour space, and a
-Script node's text. What only the node editor shows (location, size, colour,
+files (time and size), a digest of its packed bytes and its colour space, and a
+Script node's text. An image's files are the ones the picture's maker opens:
+the stored file for a picture read from the image itself, and for a bake (a
+background Blender rendering the World) each file Blender names for the node's
+image user at the person's frame (``blend_file_paths.image_files``: a
+sequence's frame, each tile), since a file saved over by another program
+updates no depsgraph (1.0.10 audit: a sequence's frame saved over kept a bake's
+key). Neither reads pixels this Blender holds: an image saved over and not yet
+reloaded is made from its file, so reloading it keeps the key (measured). What only the node editor shows (location, size, colour,
 selection, labels, collapsed panels, frame nodes) is left out, so moving a node
 never bakes again; ``test_blender_web_world_key`` holds this to Blender's own
 rule for every setting and value of every shader node type: a change that
@@ -226,11 +233,29 @@ runs as a modal operator, with the time in the status bar and Esc to cancel;
 the agent's call is pending, polled by the chat, and a stopped turn discards its
 staged file. When the picture lands the export runs, reading the scene again: an
 edit meanwhile that changes the World waits for its own picture. A picture not
-made in 130 s (a stalled worker) is left out, and a ``world_failed`` finding
-says so. A cancelled wait leaves the picture to land for the next export. The
-live preview never waits: it exports at once with the World marked pending,
-the page keeps the World it shows, and the preview exports again when the
-picture lands.
+made in 130 s (a stalled worker), or a bake stopped at its 120 s limit, is left
+out: the file's World is none (never "pending", which is the live preview's), the
+report's environment status is ``failed``, a ``world_failed`` finding says why,
+and the File menu's export ends with that finding as a warning in the status bar
+(``web_export_wait.left_out``, also for ``world_missing``), so the World is never
+dropped quietly. A bake that ran out of time is made again by the next explicit
+export (never by the live preview, which would bake a slow World over and over).
+Real bakes are far from the limit: on 2026-11-05 (Mac 2, M5 Max, CPU Cycles as
+the bake always uses, Angelo niced while the machine ran a load average of 90 to
+120, so contended), the whole background process took 2.0-4.6 s for each Sky
+type, 4.2-12.1 s for an 8K HDRI turned by a tilt (so baked) and 5.9-29.3 s for a
+detailed noise-and-Voronoi World, from all threads down to one; an 8K HDRI read
+directly took 0.7 s. A cancelled wait leaves the picture to land for the next
+export. The live preview never waits: it exports at once with the World marked
+pending and exports again when the picture lands. Meanwhile the export carries
+the World the page shows (the last picture or colour that preview published),
+marked pending, so a page opened or reloaded during the bake lights the scene as
+the open page does, for every form of World; with nothing shown yet (the preview
+started on a World still being made, or after one with no light) the page
+lights the scene with the neutral studio until the picture lands, never with
+nothing. The report column says the picture is being made either way. The
+World's picture is the only lighting the page waits for: lights and baked
+materials are in every export.
 
 **The extras** (``web_look.extras``). The glTF scene's ``extras`` hold
 ``angelo_look``, written in three.js's own names so a page can assign them::
@@ -249,7 +274,9 @@ picture lands.
 
 ``environment`` is ``{"type": "color", "color": [r, g, b], "intensity": s}``
 for a plain colour (linear Rec.709), ``null`` for none, and, in the live
-preview only, ``{"type": "pending"}``. GLTFLoader puts the extras in
+preview only, while the World's picture is being made, the World the page
+shows with ``"pending": true`` added, or ``{"type": "pending"}`` before it has
+shown one. GLTFLoader puts the extras in
 ``gltf.scene.userData``; a developer's page applies them like this::
 
     const look = gltf.scene.userData.angelo_look;
@@ -298,7 +325,10 @@ with a severity (error, warn, info), a subject, a message and its fix:
 * baked materials: an object exporting with its baked material (``baked_used``,
   info), one whose bake inputs changed since its bake and so exports with its
   own (``baked_stale``; ``baked_stale_nearby`` when only something within its
-  baked ambient occlusion's reach changed, which that AO really saw), and one
+  baked ambient occlusion's reach changed, which that AO really saw;
+  ``baked_stale_update``, one line for every object bound before the
+  digest's current scheme, which reads as stale once after an update that
+  changed what the digest checks), and one
   baked with a packing glTF can't carry
   (``baked_packing``: Unity's mask map, Unreal's DirectX normal). An object that
   exports with its baked material is checked as that material, not its own.
@@ -343,6 +373,16 @@ Angelo again; Done or Esc ends it. The two renderers light, shade and shadow
 differently, so the difference never reaches zero. Only the person starts it,
 so no agent approval applies.
 
+**Every drag is the page's** (``web_preview/drag.js``): the Wipe divider and
+the scene's orbit, pan and dolly follow pointer events (mouse, touch and pen
+alike) captured on their surface, and the press's default is prevented, so the
+browser never drags a picture out as a file, selects text, autoscrolls or
+pans the page instead. Pictures and canvases are never draggable, the stage
+selects no text and every drag surface has ``touch-action:none``. In 1.0.9 the
+divider barely moved on Windows: Chrome dragged Angelo's picture out (a ghost
+image) and cancelled the page's pointer. Page modules never listen to pointer,
+mouse, touch or drag events themselves; a new drag uses ``followDrag``.
+
 **The report column** (``web_preview/panel.js``) sits over the scene, on the
 right or, in a window 760 px wide or less, as a sheet along the bottom. Its
 chevron folds it to its title; the button beside it (Hide the report, or the
@@ -366,7 +406,18 @@ to the followed scene, whoever made them (the person, the agent, an MCP app).
 An update counts when it touches data other than the scene, or an object's
 geometry, transform or shading; an update without those (a selection click)
 counts only when something the export reads moved: the frame, frame range,
-world or camera, or which objects show (hiding, renaming). A timer re-exports once the
+world or camera, which objects show (hiding, renaming), or a setting of the scene
+itself that the export reads (``web_preview.scene_key``, from
+``web_facts.scene_settings``): the look (``web_look.settings``: view transform,
+look, exposure, gamma, curves, white balance, display), how the World travels
+(``web_world.settings``: the World, the film's transparency, the engine, the
+frame), the render effects (compositor, motion blur) and what Blender's glTF
+exporter reads with the export's options (``gltf_scene_reads``: frame rate, the
+cameras' aspect, the scene's name, the NLA tweak state, the physics format). ``web_look.facts`` and ``web_world.plan`` read the
+scene only through their ``settings``, so a value they come to read is followed
+too (``test_native_web_preview_key``; ``test_blender_web_preview_key`` changes
+every writable scene, render and colour-management setting and holds that each
+one that changes the export schedules one). A timer re-exports once the
 scene has been still for the debounce delay, and never during a modal
 interaction (``input_policy.interaction_active``: a drag, a brush stroke),
 animation playback, a background job or Edit Mode (``scene_changes``): Edit
@@ -386,7 +437,15 @@ has ``Cache-Control: no-store``, ``nosniff``, no referrer and a strict
 Content-Security-Policy (``default-src 'none'``; scripts from the page and its
 import map's hash; ``wasm-unsafe-eval`` for the decoders; ``blob:`` workers and
 images for the loaders). Its threads never touch Blender: the main thread
-publishes each export.
+publishes each export. It keeps listening for as long as the preview runs (an
+export or a bake never restarts it), with a backlog of 128 connections: its
+accept thread needs Python's lock, which the main thread keeps through an
+export's long C calls while a bake loads every core, and a browser opens a
+page's files over several connections at once; past socketserver's default
+backlog of 5, Windows refused them (a blank page) and macOS and Linux dropped
+them for a second or more. A browser that reloads or leaves mid-reply (WinError
+10053, a broken pipe, a reset) ends that request quietly; any other error of a
+request is still printed.
 
 **It stops** on Stop Web Preview or ``angelo_web_preview`` ``STOP``, when the add-on unloads, at
 Blender's ``exit_pre`` and, for its socket and threads only, at ``atexit``.
@@ -468,7 +527,8 @@ Validation
 
 * Host: ``test_native_web_export`` (arguments, findings, budget parsing, the
   tools' families, the pinned Three.js build), ``test_native_web_preview``
-  (server isolation, the event stream, merging), ``test_native_web_preview_page``
+  (server isolation, the event stream, a page load while the accept thread is
+  held, a browser aborting a reply, merging), ``test_native_web_preview_page``
   (the report column: its hide control and the corner button back, a hidden
   column out of the way at every width, guarded storage, live updates keeping
   the choice, the key's guards, translated labels) and ``test_native_web_shader``
@@ -479,13 +539,35 @@ Validation
   route) and ``test_native_web_export_wait`` (an explicit export's wait for
   the World's picture, on a deliberately stalled worker thread: steps that
   return at once, nothing written until it lands, an edit meanwhile, the
-  timeout's finding, cancelling, and the agent's pending call).
+  timeout's finding, the file and the call's result without the World, a bake
+  that ran out made again for an explicit export only, cancelling, and the
+  agent's pending call) and ``test_native_web_preview_bake`` (a page loaded over
+  a fresh connection while the World's picture is being made gets the World the
+  page shows, for a baked World, an HDRI and a colour, and the studio before
+  any; the page's side).
 * Background: ``test_blender_web_world_key`` (the picture's key against every
   shader node type, above) and ``test_blender_web_export_gltfpack`` (the KTX2
   route end to end through ``gltfpack_stand_in.py``, which keeps no extras and
   rewrites the buffer as gltfpack does: the flags, the look and the World's
-  picture put back, the budget, the WebP fallback). The KTX2 encoding itself is
+  picture put back, the budget, the WebP fallback) and
+  ``test_blender_web_preview_bake`` (the live preview's exports through a real
+  Sky bake and HDRI read: pending before any picture, the picture shown carried
+  while a new one is made, the new one once it lands). The KTX2 encoding itself is
   gltfpack's; no suite runs a real gltfpack, which Angelo doesn't bundle.
+* Drags: ``test_native_web_preview_drag`` (host) pins the contract above in
+  the page's source; ``tests/python/angelo_agent/browser_web_preview_drag.py``
+  serves the page with ``PreviewServer`` and a stand-in for Angelo's Compare
+  picture, then in Chromium, Firefox and WebKit (Playwright) drags the Wipe
+  divider with the mouse (from the picture and from a label over it, ending
+  over the report column), with touch and with a pen, and orbits the camera;
+  each lands exactly where the pointer went (the divider within 2 px, the
+  orbit within 0.03 rad of OrbitControls' own amount) with no native
+  ``dragstart``, cancelled pointer or selection. Chromium gets real touch and
+  pen input; Firefox and WebKit get touch and pen pointer events. On
+  2026-11-05 (Ubuntu 24.04 VM, Playwright 1.64.1) it failed on the 1.0.9 page
+  in all three engines and passed on the fixed one. Firefox needs a window
+  (``ANGELO_QA_HEADED=1`` under ``xvfb-run``) for WebGL on a machine without a
+  GPU.
 * Browser, for a change to the page: ``PreviewServer`` needs no Blender, so a
   short script can serve this checkout's page, publish a small .glb and report,
   and publish again on demand. Check the column at a wide (1280 x 800) and a

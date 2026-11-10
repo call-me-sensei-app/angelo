@@ -12,6 +12,8 @@ scenes without blur keep reusing one, and the facts the results state.
 ``test_blender_view_motion_blur.py`` measures the pixels in the compiled app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import unittest
 from types import SimpleNamespace
 

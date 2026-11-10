@@ -15,8 +15,9 @@ or a later one about to start; a later build held back by something the suite it
 not waited for, since the suite is what lets it go. ``started`` also waits until Angelo's start-up cover is off the
 window: ``_cover_watch`` removed it on a 0.25 s poll after the layout settled (every frame since 1.0.8), and a frame
 captured in between showed the cover's flat grey over every editor (test_blender_canvas_states on the 1.0.7 cut
-744f498d0a6: the "rows at rest" frame was the cover, so the hovered row read darker than it). test_native_qa_boot
-keeps every suite on this gate.
+744f498d0a6: the "rows at rest" frame was the cover, so the hovered row read darker than it), and until the frame after
+it lifted has drawn: the native cover does not render the viewports it hides (1.0.10), so a capture in the timer pass
+of the lift would read them unrendered. test_native_qa_boot keeps every suite on this gate.
 
 A suite that enables Angelo itself (``addon_utils.enable("angelo_agent")``, with the default chat opted out) still gets
 the session's first tab build: the add-on schedules it as soon as the layout is idle (``studio_workspaces.ensure``).
@@ -46,6 +47,8 @@ def waiting_on(window=None):
         reasons.append("Angelo's start-up layout timer")
     if getattr(layout, "_cover", {}).get("since") is not None:   # Still painted: set by start_cover, cleared on removal.
         reasons.append("Angelo's start-up cover")
+    elif getattr(layout, "_cover", {}).get("frame_owed"):   # Lifted, but the views it hid are not drawn yet.
+        reasons.append("the frame after Angelo's start-up cover")
     if director._timer is not None:
         reasons.append("Director's layout timer")
     if ui._layout_timer is not None:

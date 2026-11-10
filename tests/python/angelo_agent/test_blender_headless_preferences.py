@@ -33,6 +33,10 @@ Writes ``headless-preferences.json`` with the cold open times with the person's 
 with a corrupt file (two starts). Contract: doc/angelo/external_mcp.rst, "Preferences".
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import argparse
 import json
 import os

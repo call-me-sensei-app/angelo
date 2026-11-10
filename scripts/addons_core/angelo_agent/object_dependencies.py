@@ -37,6 +37,8 @@ prediction that refuses early; the guarantee is commit reading the camera again
 
 from .program_frames import (FRAME_INDEPENDENT_MODIFIERS, MAX_FRAME_SCAN_NODES, PLACEMENT_CONSTRAINTS, _animated,
                              _graph_frame_independent)
+from .rna_schema import (STRUCT_DEPTH, descends as _descends, object_properties as _object_properties,
+                         pointer_properties as _pointer_properties, properties as _properties)
 from .dependency_paths import (INCOMPLETE, overlaps, path_root, read_ids, reads_matrix,  # noqa: F401 (path_root)
                                time_setting, variable_roles)
 
@@ -66,26 +68,21 @@ def _is_object(value):
     return getattr(getattr(value, "bl_rna", None), "identifier", None) == "Object"
 
 
-def _properties(struct):
-    return getattr(getattr(struct, "bl_rna", None), "properties", ())
-
-
-def _structs(struct, collections=True, depth=4):
+def _structs(struct, collections=True, depth=STRUCT_DEPTH):
     """``struct`` and the structs nested in it that are not IDs: its pointer properties' values (a Geometry Nodes
     modifier's inputs sit three levels down) and, with ``collections``, its collections' items (an Armature
     constraint's targets). A data block's collections are its geometry, so it is read without them."""
     yield struct
     if depth <= 0:
         return
-    for prop in _properties(struct):
-        if prop.identifier == "rna_type" or prop.type not in ("POINTER", "COLLECTION"):
-            continue
+    for prop in _pointer_properties(struct, walked=True):  # rna_schema: only pointers that can lead to an Object.
         if prop.type == "COLLECTION" and not collections:
             continue
         value = getattr(struct, prop.identifier, None)
         items = list(value or ()) if prop.type == "COLLECTION" else [value]
         for item in items:
-            if item is not None and getattr(item, "id_data", None) is not item:  # IDs are walked as objects.
+            # IDs are walked as objects. A value's own type decides whether it is read (rna_schema.descends).
+            if item is not None and getattr(item, "id_data", None) is not item and _descends(item, depth - 1):
                 yield from _structs(item, collections, depth - 1)
 
 
@@ -94,9 +91,8 @@ def object_pointers(struct, collections=True):
     Collection by its objects) in it or in a struct nested in it (``_structs``)."""
     found = []
     for item in _structs(struct, collections):
-        for prop in _properties(item):
-            kind = getattr(getattr(prop, "fixed_type", None), "identifier", None) if prop.type == "POINTER" else None
-            value = getattr(item, prop.identifier, None) if kind in ("Object", "Collection") else None
+        for identifier, kind in _object_properties(item):
+            value = getattr(item, identifier, None)
             if value is not None:
                 found.extend(list(getattr(value, "all_objects", ())) if kind == "Collection" else [value])
     return found
@@ -143,8 +139,8 @@ def _kind(block):
 
 def _scene_root(scene, block):
     """The scene setting that points at ``block`` (``world``), else ``*``."""
-    for prop in _properties(scene):
-        if prop.type == "POINTER" and prop.identifier != "rna_type":
+    for prop in _pointer_properties(scene):
+        if prop.type == "POINTER":
             value = getattr(scene, prop.identifier, None)
             if value is not None and _key(value) == _key(block):
                 return prop.identifier
@@ -154,7 +150,7 @@ def _scene_root(scene, block):
 def _direct_pointers(struct):
     """The Objects ``struct``'s own pointer properties name (a Collection by its objects), nothing nested."""
     found = []
-    for prop in _properties(struct):
+    for prop in _pointer_properties(struct):
         kind = getattr(getattr(prop, "fixed_type", None), "identifier", None) if prop.type == "POINTER" else None
         value = getattr(struct, prop.identifier, None) if kind in ("Object", "Collection") else None
         if value is not None:

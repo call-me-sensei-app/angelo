@@ -6,6 +6,8 @@ Noise: on 45 recorded cottage builds without open joints (Opus 5.5 and MCP, both
 all its variants, 0 of about 110,000 rays crossed, so ``NOISE`` is 0.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

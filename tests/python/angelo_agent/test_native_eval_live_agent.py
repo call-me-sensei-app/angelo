@@ -6,6 +6,8 @@ Nothing here launches Angelo or a provider. Every connection directory is a new
 temporary one; the app's real connection directory is never read.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import copy
 import io
@@ -21,8 +23,10 @@ from unittest.mock import patch
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[2] / "scripts/addons_core"))
+import account_fixtures  # noqa: E402  (made-up sign-ins, provider_accounts)
 import eval_live_agent  # noqa: E402
 import eval_live_tasks as live  # noqa: E402
+import provider_isolation as isolation  # noqa: E402
 from angelo_agent.connections import ConnectionStore  # noqa: E402
 from angelo_agent.sculpt_spec import SCULPT_MUTATIONS  # noqa: E402
 from angelo_agent.studio_spec import STUDIO_NAMES  # noqa: E402
@@ -30,6 +34,13 @@ from angelo_agent.tool_specs import BOUNDED_MUTATIONS, FILE_TOOLS, TOOL_MAP  # n
 from angelo_agent.validation_spec import validate_checks  # noqa: E402
 
 CONNECTION = "6f9619ff-8b86-4011-b42d-00c04fc964ff"
+
+
+def signed_in(source, identity):
+    """The connection's dedicated Codex profile, signed in (a fixture file): what a billed run opts in with."""
+    profile = Path(source) / "codex-profile" / identity
+    account_fixtures.codex_sign_in(profile)   # The evaluation account's made-up claims (provider_accounts).
+    return profile
 
 
 def must_not_run(*_args, **_kwargs):
@@ -109,7 +120,8 @@ class IsolationTests(unittest.TestCase):
             self.assertEqual(copied.records[codex["id"]]["native_profile"],
                              str(source.absolute() / "codex-profile" / codex["id"]))
             self.assertEqual(summary, {"id": codex["id"], "name": "Selected", "mode": "codex_subscription",
-                                       "reuse_native": False})
+                                       "reuse_native": False,
+                                       "profile": str(source.absolute() / "codex-profile" / codex["id"])})
             # Metadata only, no credentials: the connection record, its lock, and the account store's list of native
             # profile folders it keeps private (private_roots.RETAINED_PROFILES and its last-good copy, LAST_GOOD:
             # folder paths, never their contents).
@@ -531,6 +543,7 @@ class AggregateTests(unittest.TestCase):
             folder = Path(directory)
             source = folder / "source"
             identity = ConnectionStore(source).add("OPENAI", "SUBSCRIPTION")["id"]
+            signed_in(source, identity)
             binary = folder / "Angelo"
             binary.write_text("#!/bin/sh\nexit 0\n")
             os.chmod(binary, 0o755)
@@ -551,6 +564,21 @@ class AggregateTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertEqual(len(launched), 1, "an aborted trial stops further billed trials")
             self.assertEqual(launched[0]["ANGELO_CONNECTIONS_DIR"], str(output.resolve() / "accounts"))
+            # The trial opts in with the connection's dedicated profile only (provider_isolation.connection_opt_in).
+            profile = source.absolute() / "codex-profile" / identity
+            self.assertEqual(launched[0]["ANGELO_TEST_REAL_PROVIDERS"], "eval-profile:%s" % profile)
+            self.assertEqual(launched[0]["CODEX_HOME"], str(profile))
+            self.assertTrue(isolation.satisfied(launched[0]), "the trial's driver never relaunches")
+            native = ConnectionStore(source).records[identity]
+            store = ConnectionStore(source)
+            store.records[identity] = dict(native, reuse_native=True)
+            store.save()
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as errors:
+                code = eval_live_agent.main(["--authorize-billed-runs", "--connection-id", identity,
+                                             "--blender", str(binary), "--output", str(folder / "native"),
+                                             "--source-connections-dir", str(source)])
+            self.assertEqual(code, 2, "a connection reusing ~/.codex or ~/.claude is refused")
+            self.assertIn("native sign-in", errors.getvalue())
             report = json.loads((output / "eval-live-agent.json").read_text())
             self.assertEqual(report["messages_sent"], 1)
             self.assertEqual(report["connection"]["id"], identity)

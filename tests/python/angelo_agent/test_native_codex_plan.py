@@ -8,6 +8,8 @@ schema rejects, the streamed reply, and a scripted app-server showing that a
 pure edit completes in one model round while tool calls still run in-turn.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import sys
@@ -602,6 +604,17 @@ class ParsePlanTests(unittest.TestCase):
         turns.message_completed("a", edit)
         turns.message_completed("b", '{"reply": "Done.", "operations": []}')
         self.assertEqual(turns.final_plan(), ("b", None, SUPERSEDED))
+
+    def test_a_plan_answered_before_a_steer_the_model_read_never_supersedes_the_next(self):
+        turns = codex_plan.PlanTurns()
+        edit = json.dumps(encode(plan_of(NAMED["generic REMESH add"]), ordinary_schema()))
+        turns.message_completed("a", edit)
+        turns.steered = len(turns.messages)   # The person's steer was read here (steering_delivery.codex_event).
+        turns.message_completed("b", '{"reply": "Done.", "operations": []}')
+        item, plan, problem = turns.final_plan()
+        self.assertEqual((item, problem), ("b", None), "Its answer to the steer runs; no wasted correction turn")
+        turns.begin_turn()
+        self.assertEqual(turns.steered, 0, "Each turn starts unmarked")
         turns.begin_turn()
         turns.message_completed("a", '{"reply": "Looking.", "operations": []}')
         turns.message_completed("b", edit)

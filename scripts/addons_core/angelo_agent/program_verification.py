@@ -358,7 +358,9 @@ class ProgramVerificationMixin:
         if stage.binding["program"]["mode"] == "PREVIEW":
             if self.controller is not None:
                 from .program_preview import capture
-                pixels = capture(self.window, stage.scene, getattr(self.controller, "references", None))
+                from . import stage_routes
+                pixels = stage_routes.guarded(stage, lambda: capture(  # The capture evaluates the stage too.
+                    self.window, stage.scene, getattr(self.controller, "references", None)))
                 data.update(pixels)
             if any(obj.type in {"CAMERA", "LIGHT"} for obj in stage.scene.objects):
                 note = ("Cameras and lights are not drawn, and scene lights do not shade this solid studio-lit preview; "

@@ -8,6 +8,8 @@ request fence, the host summary of a reply-less edit and the exact schemas a
 rejected deferred call gets back.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import unittest
@@ -227,13 +229,15 @@ class ProgramReferenceTests(unittest.TestCase):
         (+22 B, codex_text._FAMILIES; toolset 48, game_ready_check.rst). MODEL-FACING: a coordinator's gate decides it.
         26,010 -> 26,037: and the game-engine preflight (+27 B; toolset 49, engine_preflight.rst).
         26,037 -> 26,059: and the engine live link (+22 B; toolset 50, engine_link.rst, "The agent").
+        26,059 -> 26,111: and angelo_goal (+13 B), named after the native goal tools too (+39 B; toolset 51,
+        goal_mode.rst). MODEL-FACING: a coordinator's gate decides it.
         """
         self.assertLessEqual(len(program_reference().encode()), 15298)
         self.assertLessEqual(len(codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True).encode()),
-                             26059)
+                             26111)
         # A runtime that shows tools' pictures without image() reads that sentence instead (+29 B, image_proof).
         self.assertLessEqual(len(codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True,
-                                                    forwarded=True).encode()), 26088)
+                                                    forwarded=True).encode()), 26140)
 
     def test_a_correction_repeats_no_schema_the_reference_states(self):
         operations = [{"tool": "angelo_scene_program", "arguments": {"mode": "APPLY", "operations": [

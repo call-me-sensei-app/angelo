@@ -7,6 +7,8 @@ The fake children never signal a real process or group (``test_native_runtime_bi
 ``group=False``, a ``kill`` that sends no signal).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import textwrap

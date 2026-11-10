@@ -89,7 +89,15 @@ def handle(event, state, area, x, y, session, scrolls, scale=1.0):
             return False
     if event.type in scroll_input.SCROLL_EVENTS:
         # Measured up from the newest row: the view moving up (earlier rows) is a larger scroll.
-        _set(scrolls, session, state, scrolls.get(session, 0) + scroll_input.view_up(event, 66, scale))
+        delta = scroll_input.view_up(event, 66, scale)
+        current = scrolls.get(session, 0)
+        start, end, count = state.get("history_range", (0, 0, 0))
+        if ((delta > 0 and current >= state.get("max_scroll", 0) and start > 0)
+                or (delta < 0 and current <= 0 and end < count)):
+            from . import chat_history
+            chat_history.move(state, "earlier" if delta > 0 else "later")
+        else:
+            _set(scrolls, session, state, current + delta)
         area.tag_redraw()
         return True
     drag = state.get("scroll_drag")
@@ -111,6 +119,12 @@ def handle(event, state, area, x, y, session, scrolls, scale=1.0):
         return hover == "bar"
     if event.type == 'LEFTMOUSE' and event.value == 'RELEASE' and drag:
         state.pop("scroll_drag", None)
+        start, end, count = state.get("history_range", (0, 0, 0))
+        current = scrolls.get(session, 0)
+        if ((current >= state.get("max_scroll", 0) and start > 0)
+                or (current <= 0 and end < count)):
+            from . import chat_history
+            chat_history.move(state, "first" if current > 0 else "latest")
         state["scroll_time"] = time.monotonic()
         _fade_later()
         area.tag_redraw()

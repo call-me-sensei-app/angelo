@@ -322,7 +322,13 @@ def has_pending_cleanup():
 
 
 def require_cleanup_complete():
-    """Main-thread admission gate; retry cleanup, but never build over residue."""
+    """Main-thread admission gate; retry cleanup, but never build over residue.
+
+    Every caller asks before any live write of its call (bind, a stage's creation, a suspended stage's resume, an
+    inspection or preview of a stage), so the refusal says that nothing of this call reached the scene and that the
+    residue is an earlier stage's (another call's, or this call's own before a restage): beside its
+    ``scene_changed: false`` it reads as what it is, never as this edit's own failed cleanup (C7b review L-4).
+    """
     if has_pending_cleanup() and cleanup_pending():
         protected = any(getattr(record, "native_proof_required", False) for record in _pending_cleanup.values())
         recovery = ("A native cleanup refusal retained exact IDs; automatic public removal is disabled. "
@@ -332,8 +338,8 @@ def require_cleanup_complete():
             recovery += (" Native membership is unresolved; retained counts are last-native-observed identities, "
                          "not current membership proof. Python inventory scans cannot clear it. "
                          "Recovery must successfully replace the document and native Main; missing Main identity retains uncertainty.")
-        failure = ProgramError("Temporary native program data could not be cleaned. New staging and checkpoints "
-                               "are blocked. " + recovery,
+        failure = ProgramError("Nothing of this call was applied to the scene: temporary data an earlier staged program "
+                               "left could not be cleaned, so new staging and checkpoints are blocked. " + recovery,
                                code='CLEANUP_FAILED')
         failure.cleanup_pending = True
         failure.temporary_ids_remaining = sum(len(record) for record in _pending_cleanup.values())
@@ -426,6 +432,9 @@ class ProgramStorageMixin(ProgramStageBundleMixin):
     def _remove_stage_ids(self, stage, keep):
         from .exact_fence import end
         end()  # Deleting IDs changes Main.
+        from . import stage_routes
+        # Its last check's allowance never outlives its IDs; a pending refusal is kept for discard to report.
+        stage._pending_violation = stage_routes.forget(stage) or getattr(stage, "_pending_violation", None)
         ids = list(stage.owned_ids) + (list(stage.context.created_ids) if stage.context else [])
         stage._cleanup_identities = cleanup_identities(ids, getattr(stage, "_cleanup_identities", None))
         identities = {pointer: identity for pointer, identity in stage._cleanup_identities.items() if pointer not in keep}
@@ -456,3 +465,9 @@ class ProgramStorageMixin(ProgramStageBundleMixin):
             finally:
                 if stage.bundle:
                     self._remove_bundle(stage.bundle)
+            pending = getattr(stage, "_pending_violation", None)
+            stage._pending_violation = None
+            if pending is not None and pending[2]:
+                # A tripwire: an evaluation built the person's data, so it may have changed (callers report a cleanup
+                # error with partial changes possible). A stopped evaluation changed nothing: the job's own error stands.
+                raise ProgramError(pending[0], code=pending[1])

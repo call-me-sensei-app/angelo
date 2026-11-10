@@ -6,6 +6,8 @@ Pure tables and compositions over host fakes. The real revision, staging and
 commit are covered by test_blender_world.py and test_blender_turn_context.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import unittest

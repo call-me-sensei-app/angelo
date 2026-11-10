@@ -16,7 +16,7 @@ import weakref
 import contextlib
 
 from . import camera_guards, exact_fence, live_target, live_windows
-from .program_refusals import check_deletions, check_frame_move
+from .program_refusals import check_deletions, check_frame_move, check_dependency_limit
 from .program_jobs import ProgramError, ProgramJob, PREVIEWS, WRITER
 from .program_job_state import bound_revision
 from .refusal_codes import RefusalError, refusal_code
@@ -32,7 +32,7 @@ from .program_dependencies import (
 )
 from .program_objects import ProgramObjectsMixin
 from .legacy_names import PROGRAM_STAGE, read_property
-from .program_admission import (admit_input, assert_supported_custom_links, observed_binding, read_revision,
+from .program_admission import (admit_input, assert_still_admitted, assert_supported_custom_links, declared_handles, observed_binding, read_revision,
                                 undeclared_dependencies)
 from .program_storage import ProgramStorageMixin, cleanup_pending, has_pending_cleanup, require_cleanup_complete
 from .stage_borrowing import borrows_any
@@ -139,21 +139,21 @@ class BlenderProgramBackend(ProgramObjectsMixin, ProgramVerificationMixin, Progr
             obj = self._resolve(handle)
             if obj is None or obj not in list(self.scene.objects):
                 raise ProgramError("A declared input is no longer in the bound scene", code="STALE_REVISION", details={"handles": [handle]})
-            vertices += admit_input(obj, (MAX_VERTICES, MAX_EDGES, MAX_FACES))
+            vertices += admit_input(obj, (MAX_VERTICES, MAX_EDGES, MAX_FACES), handle=handle)
             actual = self._revision(obj, handle)
             if actual != expected:
                 raise ProgramError("An exact object revision changed; inspect the target before retrying", code="STALE_REVISION", details={"handles": [handle]})
             originals[handle], revisions[handle], fingerprints[handle] = obj, actual, _fingerprint(obj, fingerprint_budget)
-        # Undeclared dependencies (a parent the program clears, a modifier's object): bound like an inferred
-        # binding to the revision the context last observed, never to the live one.
+        # Inferred dependencies bind to the last observed revision, never the live one.
         dependencies, inferred = undeclared_dependencies(list(originals.values())), []
         while dependencies:
             obj = dependencies.pop(0)
+            check_dependency_limit(len(originals), len(entries) - int(scene_binding is not None), self.controller)
             handle, expected = observed_binding(self.controller, obj, self.scene)
-            vertices += admit_input(obj, (MAX_VERTICES, MAX_EDGES, MAX_FACES))
-            if len(originals) >= 64 or self._revision(obj, handle) != expected:
-                raise ProgramError("A dependency (%s) changed since your latest observation, or there are more than 64 "
-                                   "inputs; observe it again and declare it in the read set" % handle, code="STALE_DEPENDENCY", details={"handles": [handle]})
+            vertices += admit_input(obj, (MAX_VERTICES, MAX_EDGES, MAX_FACES), dependency=True, handle=handle)
+            if self._revision(obj, handle) != expected:
+                raise ProgramError("A dependency (%s) changed since your latest observation; observe it again "
+                                   "and declare it in the read set" % handle, code="STALE_DEPENDENCY", details={"handles": [handle]})
             originals[handle], revisions[handle], fingerprints[handle] = obj, expected, _fingerprint(obj, fingerprint_budget)
             inferred.append(handle)
             dependencies = undeclared_dependencies(list(originals.values()))
@@ -191,9 +191,9 @@ class BlenderProgramBackend(ProgramObjectsMixin, ProgramVerificationMixin, Progr
             obj = self._resolve(handle)
             if obj != binding["originals"][handle]:
                 raise ProgramError("The exact target changed; the staged program was discarded, not applied", code="STALE_REVISION", details={"handles": [handle]})
-            # A new unsupported link in a readonly serialized dependency must
-            # also invalidate a preview, not escape the original fingerprint's
-            # closed mutable families or be silently replaced by the bundle.
+            assert_still_admitted(obj, handle, handle not in declared_handles(binding))
+            # A new unsupported link in a readonly serialized dependency must also invalidate a preview, not escape
+            # the original fingerprint's closed mutable families or be silently replaced by the bundle.
             assert_supported_custom_links(obj)
             if bound_revision(lambda: self._revision(obj, handle), handle) != binding["revisions"][handle]:
                 raise ProgramError("The exact target or a mutable dependency changed; the staged program was discarded, not applied",
@@ -234,8 +234,9 @@ class BlenderProgramBackend(ProgramObjectsMixin, ProgramVerificationMixin, Progr
                 return self.assert_staged(objects[reference])
 
         bounds = ReadOnlyBounds()
-        for obj in objects.values():
-            assert_evaluation_budget(bounds, obj)  # No depsgraph/evaluated geometry.
+        for index, obj in enumerate(objects.values()):
+            # No depsgraph/evaluated geometry; the driver scan reads every owned ID, so once for all of them.
+            assert_evaluation_budget(bounds, obj, drivers=not index)
 
     def _apply_settings(self, value, settings, mapping):
         """Explicit commit callback; the facade retains its diagnostic test hook."""
@@ -473,15 +474,18 @@ def _before_save(*_args):
             except Exception:
                 job.cancel()
 
+def _handlers():
+    from .commit_orphans import history_changed   # Undo/Redo: observed handles expire (commit_orphans).
+    return (("load_pre", cleanup_all), ("undo_pre", cleanup_all), ("redo_pre", cleanup_all), ("save_pre", _before_save),
+            ("undo_post", history_changed), ("redo_post", history_changed))
+
 def register():
     global _registered
     if _registered:
         return
-    bpy = _bpy()
-    for name, callback in (("load_pre", cleanup_all), ("undo_pre", cleanup_all), ("redo_pre", cleanup_all),
-                           ("save_pre", _before_save)):
-        bpy.app.handlers.persistent(callback)
-        handlers = getattr(bpy.app.handlers, name)
+    for name, callback in _handlers():
+        _bpy().app.handlers.persistent(callback)
+        handlers = getattr(_bpy().app.handlers, name)
         if callback not in handlers:
             handlers.append(callback)
     _registered = True
@@ -489,10 +493,8 @@ def register():
 def unregister():
     global _registered
     cleanup_all()
-    bpy = _bpy()
-    for name, callback in (("load_pre", cleanup_all), ("undo_pre", cleanup_all), ("redo_pre", cleanup_all),
-                           ("save_pre", _before_save)):
-        handlers = getattr(bpy.app.handlers, name)
+    for name, callback in _handlers():
+        handlers = getattr(_bpy().app.handlers, name)
         if callback in handlers:
             handlers.remove(callback)
     _registered = False

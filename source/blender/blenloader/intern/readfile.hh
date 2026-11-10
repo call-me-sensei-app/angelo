@@ -18,12 +18,14 @@
 
 #include "BLI_enum_flags.hh"
 #include "BLI_fileops.h"
+#include "BLI_fileops.hh"
 #include "BLI_filereader.h"
 #include "BLI_map.hh"
 
 #include "DNA_sdna_types.h"
 #include "DNA_space_types.h"
 
+#include "BLO_asset_source_paths.hh"
 #include "BLO_core_bhead.hh"
 #include "BLO_core_blend_header.hh"
 #include "BLO_readfile.hh"
@@ -88,6 +90,11 @@ struct FileData {
 
   FileReader *file = nullptr;
   std::optional<BLI_stat_t> file_stat;
+  /** Angelo: the file read, identified on its descriptor as it was opened (#BLO_angelo_last_read). */
+  std::optional<FileIdentity> file_identity;
+  /** Only file-backed asset inputs and their packed descendants retain this route.
+   * Memory Undo readers deliberately have no asset source route. */
+  std::shared_ptr<const BLOAssetSourcePaths> asset_source_paths;
 
   /**
    * Whether we are undoing (< 0) or redoing (> 0), used to choose which 'unchanged' flag to use
@@ -240,7 +247,10 @@ BlendFileData *blo_read_file_internal(FileData *fd, const char *filepath) ATTR_N
  *
  * cannot be called with relative paths anymore!
  */
-FileData *blo_filedata_from_file(const char *filepath, BlendFileReadReport *reports);
+FileData *blo_filedata_from_file(
+    const char *filepath,
+    BlendFileReadReport *reports,
+    std::shared_ptr<const BLOAssetSourcePaths> source_paths = BLO_asset_source_paths_current());
 FileData *blo_filedata_from_memory(const void *mem, int memsize, BlendFileReadReport *reports,
                                   BLOCheckpointReadTokens *checkpoint_budget = nullptr);
 FileData *blo_filedata_from_memfile(MemFile *memfile,
@@ -270,7 +280,8 @@ BHead *blo_bhead_prev(FileData *fd, BHead *thisblock) ATTR_NONNULL(1, 2);
  * Warning! Caller's responsibility to ensure given bhead **is** an ID one!
  *
  * Will return `nullptr` if the name is not valid (e.g. because it has no null-char terminator, if
- * it was saved in a version of Blender with higher MAX_ID_NAME value).
+ * it was saved in a version of Blender with higher MAX_ID_NAME value, or if the data block is too
+ * small to contain it).
  */
 const char *blo_bhead_id_name(FileData *fd, const BHead *bhead);
 /**
@@ -286,7 +297,8 @@ short blo_bhead_id_flag(const FileData *fd, const BHead *bhead);
 AssetMetaData *blo_bhead_id_asset_data_address(const FileData *fd, const BHead *bhead);
 
 /**
- * Return the stored filepath (may be relative) of a library ID.
+ * Return the stored filepath (may be relative) of a library ID, or `nullptr` if the data block
+ * does not contain a valid one.
  *
  * Warning! Caller's responsibility to ensure that the given bhead **is** a Library ID one!
  */

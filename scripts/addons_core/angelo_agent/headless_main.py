@@ -67,12 +67,18 @@ def parse(argv):
 
 
 def _identity(text):
-    """``--source-identity`` as ``headless_files.identity`` returns it, or None."""
+    """``--source-identity`` as ``headless_files.identity`` returns it; None only when none was sent. Anything else
+    (``change_clock.unique()`` from a launcher that could not vouch for the file) equals no identity: stale."""
+    if not text:
+        return None
     try:
-        value = json.loads(text) if text else None
+        value = json.loads(text)
     except ValueError:
         value = None
-    return tuple(value) if isinstance(value, list) and all(isinstance(part, int) for part in value) else None
+    if isinstance(value, list) and value and all(type(part) is int for part in value):
+        return tuple(value)
+    from . import change_clock
+    return change_clock.unique()
 
 
 def organization_policy(text):
@@ -211,14 +217,13 @@ def _serve(bpy, options, server_type):
         else:
             preferences = headless_preferences.describe(options.preferences)
         _register(bpy, ui)
+        # The identity of what Blender read, taken around the open (headless_working_copy.open_read), never after it.
         if resume is not None:   # This session's own output: Blender keeps it open and saves go there.
-            result = bpy.ops.wm.open_mainfile(filepath=str(resume), load_ui=False, use_scripts=False)
-            if "FINISHED" not in result:
-                raise RuntimeError("Blender could not open the file")
-            working = resume
+            from .headless_working_copy import open_read
+            working, opened = resume, open_read(bpy, resume)
         else:   # Never the source itself: a copy next to it (headless_working_copy).
             from .headless_working_copy import open_copy
-            working = open_copy(bpy, source, options.working)
+            working, opened = open_copy(bpy, source, options.working)
         if options.source_identity is not None and headless_files.identity(source) != options.source_identity:
             raise HeadlessFailure("stale", SOURCE_CHANGED_AT_OPEN.format(name=source.name))
         from . import live_windows
@@ -234,17 +239,18 @@ def _serve(bpy, options, server_type):
             script_files.attach(options.approvals, read_only=True)
         environment = HeadlessEnvironment(ui, options.approval, source=source, levels=options.levels)
         host = HeadlessHost(environment, source=source, label=options.client, app=options.app, levels=options.levels,
-                            bpy=bpy, source_identity=options.source_identity, working=working)
+                            bpy=bpy, source_identity=options.source_identity, working=working,
+                            working_identity=opened)
         environment.host = host
 
         @bpy.app.handlers.persistent
-        def after_save(_):   # Angelo's own: an in-process save of the open copy is the session's own state.
-            host.track_in_process_save()
+        def after_save(filepath, *_args):   # Angelo's own: an in-process save of the open copy is the session's.
+            host.track_in_process_save(filepath)
         bpy.app.handlers.save_post.append(after_save)
         from . import blend_file   # Reads name the file the app opened, never the working copy (review L3).
         blend_file.shown_path = lambda path: str(source) if host.session_file_open() else path
         if resume is not None:   # Edits so far are in this session's output; it keeps saving there.
-            host.output, host.output_identity = resume, headless_files.identity(resume)
+            host.output, host.output_identity = resume, opened
         direct = working == source   # A read-only folder: Blender has the source itself open.
         from .headless_session import WORKING_ON_SOURCE
         host.file_note = " ".join((WORKING_ON_SOURCE if direct else WORKING_COPY.format(name=source.name, copy=Path(

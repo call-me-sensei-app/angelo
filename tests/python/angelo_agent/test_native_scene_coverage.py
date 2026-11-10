@@ -6,6 +6,8 @@ Capture counts come from the module's own exact_checks counter, so these tests
 pin how much of the scene each query fingerprints, not only what it returns.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import sys
 import unittest

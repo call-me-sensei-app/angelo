@@ -14,6 +14,8 @@ the image opens offline; and the disk image's stored window layout. The real too
 run on the compiled app (doc/angelo/releasing.rst), which is what proves the signatures and the launch.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import io
 import json
 import os
@@ -210,7 +212,7 @@ class StageAndCheckTests(ToolCase):
         staged, removed = tool.stage(self.app, self.folder / "out", FakeTools())
         kept = staged / cache.relative_to(self.app)
         self.assertEqual(sorted(p.name for p in kept.iterdir()), ["utf_8.cpython-313.pyc"])
-        self.assertIn(str((cache / "aliases.cpython-313.pyc").relative_to(self.app)), removed)
+        self.assertIn((cache / "aliases.cpython-313.pyc").relative_to(self.app).as_posix(), removed)
 
     def test_what_cannot_be_signed_is_refused(self):
         lib = self.app / "Contents/Resources/lib"
@@ -250,7 +252,7 @@ class SigningTests(ToolCase):
         staged, _ = tool.stage(self.app, self.folder / "out", FakeTools())
         code, _links = tool.inventory(staged)
         plan = tool.signing_plan(staged, code)
-        names = [(str(path.relative_to(staged.parent)), kind) for path, kind in plan]
+        names = [(path.relative_to(staged.parent).as_posix(), kind) for path, kind in plan]
         self.assertEqual(names[-2:], [("Angelo.app/Contents/PlugIns/blender-thumbnailer.appex", "appex"),
                                       ("Angelo.app", "app")])
         loose = dict(names[:-2])
@@ -300,7 +302,7 @@ class SigningTests(ToolCase):
         staged, _ = tool.stage(self.app, self.folder / "out", FakeTools())
         (staged / "Contents/Resources/lib/codex").write_bytes(mach_o(2))  # The same name elsewhere is no runtime.
         plan = dict(tool.signing_plan(staged, tool.inventory(staged)[0]))
-        runtime = sorted(str(path.relative_to(staged)) for path, kind in plan.items() if kind == "agent_runtime")
+        runtime = sorted(path.relative_to(staged).as_posix() for path, kind in plan.items() if kind == "agent_runtime")
         self.assertEqual(runtime, ["Contents/Helpers/codex", "Contents/Helpers/codex-code-mode-host"])
         self.assertEqual(plan[staged / "Contents/Resources/lib/codex"], "executable")
 
@@ -339,9 +341,9 @@ class FlowTests(ToolCase):
         signs = [argv for argv in runner.log if argv[:2] == ["codesign", "--force"]]
         self.assertEqual(len(signs), 7)
         for argv in signs:
-            if "/Contents/Helpers/" in argv[-1]:
+            if Path(argv[-1]).parent.name == "Helpers":   # the signer passes native paths
                 self.assertEqual(argv[argv.index("--entitlements") + 1], str(tool.AGENT_RUNTIME_ENTITLEMENTS))
-        self.assertTrue(signs[-1][-1].endswith("/Angelo.app"))
+        self.assertEqual(Path(signs[-1][-1]).name, "Angelo.app")
         self.assertIn(["codesign", "--verify", "--deep", "--strict", "--verbose=2", signs[-1][-1]], runner.log)
         arguments = {argument for argv in runner.log for argument in argv}
         for secret_flag in ("--password", "--apple-id", "--key", "--key-id", "--issuer"):
@@ -443,7 +445,9 @@ class NotarizationTests(ToolCase):
         runner = AcceptingTools()
         argv = ["--app", str(self.app), "--out", str(self.folder / "out"), "--identity", DEVELOPER_ID,
                 "--notary-profile", "angelo-notary", "--unstyled-dmg"]
+        # The image is built here, not in the release machine's /tmp (pinned by test_native_builder_paths).
         with mock.patch.object(tool.dmg_macos, "build", build), \
+                mock.patch.object(tool.dmg_macos, "WORK_ROOT", str(self.folder)), \
                 mock.patch.object(tool.dmg_macos, "check_contents", return_value=["accepted"]) as contents, \
                 redirect_stdout(io.StringIO()):
             self.assertEqual(tool.main(argv, runner=runner, platform="darwin"), 0)

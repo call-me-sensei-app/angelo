@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Attached PDFs: text extracted once per file, failures included, and never on Blender's main thread.
 
-A stand-in ``pdftotext`` (patched ``child_process.run``) records each call and
+Stand-in child output (patched ``pdf_process_output.run``) records each call and
 the thread it ran on; no real PDF tool or provider is used.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
+import json
 import subprocess
 import sys
 import tempfile
@@ -26,7 +29,7 @@ PDF = b"%PDF-1.4\n% fixture bytes, never parsed: the extractor is a stand-in\n"
 
 
 class FakeExtractor:
-    """``child_process.run`` for pdftotext: an outcome per call, recording the arguments and the thread."""
+    """The child-output boundary: real pdf_text.extract still supplies limits and decodes answers."""
 
     def __init__(self, outcome="text", text="Extracted PDF text", gate=None):
         self.outcome, self.text, self.calls, self.lock, self.gate = outcome, text, [], threading.Lock(), gate
@@ -37,10 +40,11 @@ class FakeExtractor:
         if self.gate is not None:
             self.gate.wait(10)   # Still extracting until the test releases it.
         if self.outcome == "timeout":
-            raise subprocess.TimeoutExpired(arguments, options.get("timeout"))
+            raise subprocess.TimeoutExpired(arguments, options["timeout"])
         if self.outcome == "failed":
-            return subprocess.CompletedProcess(arguments, 1, b"", b"Syntax Error")
-        return subprocess.CompletedProcess(arguments, 0, self.text.encode(), b"")
+            return subprocess.CompletedProcess(arguments, 0, b'{"ok": false, "code": "open"}', b"")
+        answer = {"ok": True, "text": self.text, "read": 1, "pages": 1}
+        return subprocess.CompletedProcess(arguments, 0, json.dumps(answer).encode(), b"")
 
 
 class ReferencePdfTests(unittest.TestCase):
@@ -48,13 +52,13 @@ class ReferencePdfTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
-        which = patch.object(references_module.shutil, "which", return_value="/usr/bin/pdftotext")
-        which.start()
-        self.addCleanup(which.stop)
+        available = patch.object(references_module.pdf_text, "available", return_value=True)
+        available.start()
+        self.addCleanup(available.stop)
 
     def extractor(self, outcome="text"):
         fake = FakeExtractor(outcome)
-        context = patch.object(references_module.child_process, "run", fake)
+        context = patch.object(references_module.pdf_text.pdf_process_output, "run", fake)
         context.start()
         self.addCleanup(context.stop)
         return fake
@@ -112,19 +116,22 @@ class ReferencePdfTests(unittest.TestCase):
         self.assertEqual(store.read(record, 0, 9)["text"], "Extracted")
         self.assertEqual(store.read(record, 10, 3)["text"], "PDF")
         self.assertEqual(len(fake.calls), 1)
+        self.assertEqual(fake.calls[0]["options"]["memory_bytes"], 1024 * 1024 * 1024)
+        self.assertEqual(fake.calls[0]["options"]["output_bytes"], 6 * references_module.pdf_text.MAX_CHARS + 4096)
 
     def test_a_missing_extractor_is_not_cached_as_the_files_failure(self):
         fake, store = self.extractor(), self.store()
-        record = self.attach(store)
-        with patch.object(references_module.shutil, "which", return_value=None):
-            with self.assertRaisesRegex(ValueError, "requires installed pdftotext"):
+        with patch.object(references_module.pdf_text, "available", return_value=False):
+            record = self.attach(store)
+            with self.assertRaisesRegex(ValueError, "no PDF reader"):
                 store.content(record)
-        self.assertEqual(store.content(record), "Extracted PDF text", "Installing pdftotext takes effect")
+        self.assertEqual(fake.calls, [], "Unavailable reader never starts extraction")
+        self.assertEqual(store.content(record), "Extracted PDF text", "Restoring the bundled reader takes effect")
         self.assertEqual(len(fake.calls), 1)
 
 
 class ToolReadThreadTests(unittest.TestCase):
-    """``angelo_read_reference`` runs in the UI pump on Blender's main thread: it must never run pdftotext."""
+    """``angelo_read_reference`` runs in the UI pump on Blender's main thread: it must never run the bundled reader."""
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -136,11 +143,11 @@ class ToolReadThreadTests(unittest.TestCase):
         self.controller.busy = True
         self.release = threading.Event()
         self.addCleanup(self.release.set)
-        for context in (patch.object(references_module.shutil, "which", return_value="/usr/bin/pdftotext"),
-                        patch.object(references_module.child_process, "run", FakeExtractor(gate=self.release))):
+        for context in (patch.object(references_module.pdf_text, "available", return_value=True),
+                        patch.object(references_module.pdf_text.pdf_process_output, "run", FakeExtractor(gate=self.release))):
             context.start()
             self.addCleanup(context.stop)
-        self.fake = references_module.child_process.run
+        self.fake = references_module.pdf_text.pdf_process_output.run
         source = self.directory / "old-brief.pdf"
         source.write_bytes(PDF)
         self.record = self.controller.references.import_images([str(source)])[0]
@@ -170,7 +177,7 @@ class ToolReadThreadTests(unittest.TestCase):
         self.assertEqual(second["text"], "Extracted")
         self.assertEqual(len(self.fake.calls), 1)
         self.assertTrue(all(call["thread"] is not threading.main_thread() for call in self.fake.calls),
-                        "pdftotext ran on Blender's main thread")
+                        "PDF extraction ran on Blender's main thread")
 
 
 if __name__ == "__main__":

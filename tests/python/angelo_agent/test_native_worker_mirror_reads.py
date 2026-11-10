@@ -14,6 +14,8 @@ Regression tests for the break-it reviews of 086452d1bdb (``release-1.0.6.noinde
   prepared on the lead from the pending summary (program arguments, precondition, recovery fields).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import os
 import sys

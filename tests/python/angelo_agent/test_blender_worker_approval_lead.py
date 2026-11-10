@@ -23,6 +23,10 @@ A failed run exits 1 after writing its report and stopping its worker. GUI ``--f
 --enable-event-simulate`` only, disposable profile, no provider or paid call. Only with ``ANGELO_WORKER_CHAT_HOST``
 unset or ``1`` (the hosted variant); the lanes variant records ``skipped``."""
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys

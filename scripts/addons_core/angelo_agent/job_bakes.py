@@ -88,7 +88,7 @@ class TextureBakeRunner(Runner):
                         check_resolution(image.size[0], image.size[1], "the image " + image.name)
                         sizes.append(tuple(image.size))
         except ReferenceError:
-            raise JobRequestError("The image to bake into was removed") from None
+            raise JobRequestError("The image to bake into was removed", code="STALE_REVISION") from None
         if self.new_size is not None:
             check_resolution(self.new_size[0], self.new_size[1], "the image " + self.names[0])
         self.samples = request.get("samples", scene_value(self.scene, "cycles.samples"))
@@ -114,7 +114,7 @@ class TextureBakeRunner(Runner):
         baked = targets.covered_tiles(self.target, image, explicit=self.image is not None)
         if not baked:
             raise JobRequestError("None of %s's faces lie in a tile of the image %s (its active UV map); move the UVs "
-                                  "into a tile or add that tile" % (self.target.name, image.name))
+                                  "into a tile or add that tile" % (self.target.name, image.name), code="VALIDATION")
         self.tiles[image.name] = {"baked": baked, "count": len(image.tiles)}
         return [tuple(tile.size) for tile in image.tiles]
 
@@ -318,13 +318,15 @@ class PhysicsBakeRunner(Runner):
             domains = [obj.name for obj in self.scene.objects if is_domain(obj)]
             raise JobRequestError("The scene has no physics or particle caches to bake" + (
                 "; a fluid domain (%s) bakes with BAKE_SIMULATION, its target the domain and output a new folder"
-                % ", ".join(domains[:4]) if domains else ""))
+                % ", ".join(domains[:4]) if domains else ""), code="VALIDATION")
         self.caches = [cache for cache in caches if not cache.is_baked]
         self.kept = len(caches) - len(self.caches)
         if not self.caches:
-            raise JobRequestError("Every physics cache is already baked; delete a bake to bake it again")
+            raise JobRequestError("Every physics cache is already baked; delete a bake to bake it again",
+                                  code="VALIDATION")
         if not bpy.data.filepath and any(cache.use_disk_cache for cache in self.caches):
-            raise JobRequestError("A disk cache needs a saved file; save it first or turn off Disk Cache")
+            raise JobRequestError("A disk cache needs a saved file; save it first or turn off Disk Cache",
+                                  code="VALIDATION")
         # Bake All steps every frame from the earliest cache start to the latest end.
         frames = check_frames(min(cache.frame_start for cache in self.caches),
                               max(cache.frame_end for cache in self.caches), "the physics caches")
@@ -387,17 +389,18 @@ class SimulationBakeRunner(Runner):
         try:
             simulations = _simulations(target)
             if target.library is not None or target.override_library is not None:
-                raise JobRequestError("%s is linked from another file; a bake needs an object of this file" % target.name)
+                raise JobRequestError("%s is linked from another file; a bake needs an object of this file" % target.name,
+                                      code="UNSUPPORTED")
         except ReferenceError:
-            raise JobRequestError("The object to bake was removed") from None
+            raise JobRequestError("The object to bake was removed", code="STALE_REVISION") from None
         if not simulations:
-            raise JobRequestError("%s has no geometry-nodes simulation to bake" % target.name)
+            raise JobRequestError("%s has no geometry-nodes simulation to bake" % target.name, code="VALIDATION")
         ranges = {}
         for modifier, bake in simulations:
             where = bake.bake_target if bake.bake_target != 'INHERIT' else modifier.bake_target
             if where != 'PACKED' and not self.disk:
                 raise JobRequestError("%s bakes to disk. Pass output (a workspace folder) to bake its cache there "
-                                      "as a job, or set its bake to Pack" % target.name)
+                                      "as a job, or set its bake to Pack" % target.name, code="VALIDATION")
             custom = bake.use_custom_simulation_frame_range
             start, end = (bake.frame_start, bake.frame_end) if custom else (scene.frame_start, scene.frame_end)
             frames = check_frames(start, end, "the simulation bake" if custom else "the scene")

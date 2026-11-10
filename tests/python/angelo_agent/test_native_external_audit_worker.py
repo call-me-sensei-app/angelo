@@ -7,6 +7,8 @@ failed and no chat said so, #7 a scene signature that read every object's matrix
 Each class is one finding's reproduction and failed while the finding stood.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import queue
 import socket
@@ -26,6 +28,7 @@ from angelo_agent import (scene_signature, worker_channel, worker_chat_lifecycle
                           worker_chat_wiring as wiring, worker_consent_lead as lead, worker_merge_gate,
                           worker_part_counts as counts, worker_process)
 from angelo_agent.headless_pipe import Writer  # noqa: E402
+from channel_endpoints import endpoint  # noqa: E402
 
 
 class RevocationCountsGrantsInFlight(unittest.TestCase):
@@ -88,9 +91,9 @@ class Pair:
         ours, theirs = socket.socketpair()
         case.addCleanup(ours.close)
         case.addCleanup(theirs.close)
-        self.client = worker_channel.Client(worker_channel.socket_endpoint(ours, 1 << 20, 1 << 20))
+        self.client = worker_channel.Client(endpoint(ours))
         case.addCleanup(self.client.close)
-        self.end = worker_channel.socket_endpoint(theirs, 1 << 20, 1 << 20)
+        self.end = endpoint(theirs)
         self.writer = Writer(theirs.makefile("wb", buffering=0), 1 << 20)
         self.worker = object.__new__(worker_process.WorkerProcess)
         self.worker.client, self.worker.process = self.client, NS(poll=lambda: None, pid=-31)

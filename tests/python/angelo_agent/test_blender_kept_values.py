@@ -11,6 +11,8 @@
 * A constraint's own ``track_axis`` is a setting, not the object's transform (``rna_rules.screen_path``).
 * ``keyframe_insert`` without a frame keys the current one; a UV kind without a map uses the active one.
 * An object an Average driver drives binds and commits; a scripted driver's still refuses.
+* A copy a program makes of an object with animated data shows what Blender's own copy (Shift+D) shows, at commit
+  and after an Undo and Redo (``created_copies``).
 * Adversarial cases: an indexed Python-getter driver refuses, a failed commit's rollback keeps unkeyed edits,
   a muted link drives nothing, a joined or animated material is refused before approval, a node's place is no
   writable setting.
@@ -18,6 +20,10 @@
 Run in a disposable instance with the exact Angelo binary: ``--background --factory-startup --disable-autoexec
 --python-exit-code 1``. No provider or paid call.
 """
+
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 
 import json
 import os
@@ -336,7 +342,78 @@ def review_round():
 
     finding_nine()
     from angelo_agent.node_graph_check import writable_paths
-    check("a_nodes_place_is_no_writable_setting", "location" not in writable_paths(tree.nodes["Principled BSDF"]))
+    live = muted.material_slots[0].material.node_tree   # The commit freed the tree it replaced (commit_orphans).
+    check("a_nodes_place_is_no_writable_setting", "location" not in writable_paths(live.nodes["Principled BSDF"]))
+
+
+def keyed_cameras(*names):
+    """Cameras whose lens is keyed (20 mm at frame 1, 100 mm at 21) on their data, shown at frame 11 (60 mm) with
+    the artist's unkeyed 80 mm (set after the frame change, which would replace it)."""
+    cameras = []
+    for name in names:
+        data = bpy.data.cameras.new(name)
+        cameras.append(bpy.data.objects.new(name, data))
+        window.scene.collection.objects.link(cameras[-1])
+        for value, frame in ((20.0, 1), (100.0, 21)):
+            data.lens = value
+            data.keyframe_insert("lens", frame=frame)
+    window.scene.frame_set(11)
+    for obj in cameras:
+        obj.data.lens = 80.0
+    bpy.context.view_layer.update()
+    return cameras
+
+
+def created_copies():
+    """A program's copy of an object with animated data shows what Blender's own copy (Shift+D) shows.
+
+    Blender evaluates a new ID's animation only on a visible update with time (a new depsgraph, a file load, Undo
+    and Redo: ``graph_tag_ids_for_visible_update``), not when the ID joins a depsgraph that is already evaluated.
+    So a copy keeps the stored values it was made with until the next frame change, its source's unkeyed edit
+    included, and an Undo and Redo back over both treat them alike. Kinds that make copies:
+    ``object_duplicate`` and ``batch`` (both refuse an object-level Action; data, shape-key and material
+    animation remain); ``operator_run`` admits no operator that adds an object."""
+    window.scene = bpy.data.scenes.new("Copies")
+    blender_source, program_source = keyed_cameras("Blender Source", "Program Source")
+    settle()
+    with bpy.context.temp_override(window=window, selected_objects=[blender_source], active_object=blender_source,
+                                   object=blender_source):
+        bpy.ops.object.duplicate("EXEC_DEFAULT", True)
+    blender_copy = bpy.data.objects["Blender Source.001"]
+    status, error, result = commit("duplicate_animated_data", lambda: [
+        op("object_duplicate", None, source=queries.object_handle(program_source), alias="twin",
+           location=[0.0, 5.0, 0.0])], [], [program_source])
+    twin = bpy.data.objects.get("Program Source.001")
+    stated = [row["path"] for row in (result.get("unkeyed_writes") or {}).get("channels", [])]
+    report["cases"]["copies"] = {"status": status, "error": error[:200], "blender_copy": blender_copy.data.lens,
+                                 "twin": twin and (twin.data.lens, tuple(twin.location)),
+                                 "source": program_source.data.lens, "stated": stated}
+    check("a_duplicate_shows_what_blenders_copy_shows", status == "committed" and twin is not None
+          and abs(twin.data.lens - blender_copy.data.lens) < 1e-4 and abs(twin.data.lens - 80.0) < 1e-4
+          and tuple(twin.location) == (0.0, 5.0, 0.0) and abs(program_source.data.lens - 80.0) < 1e-4)
+    check("a_duplicate_states_no_write_it_did_not_make", "data.lens" not in stated and "lens" not in stated)
+    status, error, _ = commit("batch_animated_data", lambda: [
+        op("batch", None, sources=[queries.object_handle(program_source)], array=[{"step": [0, 0, 2], "count": 2}])],
+        [], [program_source])
+    copy = bpy.data.objects.get("Program Source.002")
+    check("a_batch_copy_shows_what_blenders_copy_shows", status == "committed" and copy is not None
+          and abs(copy.data.lens - blender_copy.data.lens) < 1e-4)
+    for _ in range(12):   # Back to before both copies, then forward again: each copy is read back by its Redo.
+        if "Blender Source.001" not in bpy.data.objects:
+            break
+        bpy.ops.ed.undo()
+    for _ in range(12):
+        if "Program Source.002" in bpy.data.objects:
+            break
+        bpy.ops.ed.redo()
+    queries.invalidate()
+    blender_copy, twin = bpy.data.objects["Blender Source.001"], bpy.data.objects["Program Source.001"]
+    report["cases"]["copies_after_undo_redo"] = {name: bpy.data.objects[name].data.lens for name in (
+        "Blender Source", "Blender Source.001", "Program Source", "Program Source.001", "Program Source.002")}
+    check("after_undo_and_redo_the_copies_still_agree",
+          abs(twin.data.lens - blender_copy.data.lens) < 1e-4
+          and abs(bpy.data.objects["Program Source.002"].data.lens - blender_copy.data.lens) < 1e-4
+          and abs(bpy.data.objects["Program Source"].data.lens - bpy.data.objects["Blender Source"].data.lens) < 1e-4)
 
 
 try:
@@ -344,7 +421,7 @@ try:
     bpy.context.preferences.edit.use_global_undo = True
     native.register()
     bpy.utils.register_class(commit_operator(report))
-    for part in (materials, unkeyed, defaults_and_paths, review_round):
+    for part in (materials, unkeyed, defaults_and_paths, review_round, created_copies):
         try:
             part()
         except AssertionError:

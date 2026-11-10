@@ -380,6 +380,8 @@ int ctx_data_list_count(const bContext *C, bool (*func)(const bContext *, Vector
 /* Data Context Members */
 
 Main *CTX_data_main(const bContext *C);
+/** The native Main, without resolving Python overrides or context callbacks. */
+Main *CTX_data_main_unoverridden(const bContext *C);
 Scene *CTX_data_scene(const bContext *C);
 Scene *CTX_data_sequencer_scene(const bContext *C);
 /**

@@ -9,6 +9,8 @@ slices of its work. ``timer_resolution``: Windows' fine timer is held while a wo
 pump stalls (``test_blender_parallel_workers``, ``a_pump_never_waits_for_the_worker``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import threading
@@ -21,9 +23,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_cor
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import (session_validation, sessions, task_memory, timer_resolution,  # noqa: E402
                           worker_mirror_journal, worker_mirror_reader)
+import thread_work  # noqa: E402
 from test_native_worker_mirror_reads import Reads  # noqa: E402
 
 SETTLE_SECONDS = 10.0
+ROWS = 2000   # A large record's rows (a long tool result's are fewer, each longer).
 
 
 class OnThreads:
@@ -183,54 +187,70 @@ class OffThreadReadTests(ThreadedReads):
         self.assertIsNot(second[0], first[0])
         self.assertIs(second[1], first[1])   # Any other row keeps the copy shown.
 
-    def test_a_pumps_ui_thread_time_does_not_follow_the_records_size(self):
-        """Timed, with a wide margin: the UI thread's pumps of a record of 2,000 rows against one of a single row."""
+    def test_a_pumps_ui_thread_work_does_not_follow_the_records_size(self):
+        """Counted, never timed (``thread_work``): the UI thread's pumps of a record of 2,000 rows against one of a
+        single row, and against the same record read inline. The pumps make no Python call per row (a row's decode,
+        check and clean are several each) and run less than half the inline read's work. Their one pass over the
+        chat's rows (the shown rows kept, the activity index) follows the chat, not the record.
+
+        A wall-clock bound here (4 ms) failed on a Windows runner at 3.1 s while the whole read inline took 33 ms
+        (CI 41883033718): the runner stalled the process; no pump does 100 times the read's work."""
         self.frame_journal({"role": "user", "text": "first"}, compact=True)
         self.settle()
-        spent = {}
-        for rows in (1, 2000):
-            pumps = []
+        work = {}
+        for rows in (1, ROWS):
             self.frame_journal(*({"role": "assistant", "text": "row %d %s" % (i, "x" * 80)} for i in range(rows)))
-            deadline = time.monotonic() + SETTLE_SECONDS
-            while True:
-                started = time.perf_counter()
-                self.mirror.pump_events()
-                pumps.append(time.perf_counter() - started)
-                if not worker_mirror_reader.waiting(self.mirror) or time.monotonic() > deadline:
-                    break
-                time.sleep(0.001)
-            spent[rows] = max(pumps)
+            work[rows] = self.pumped()
             self.assert_equals_load()
-        inline = self.inline_pump(2000)
-        self.assertLess(spent[2000], max(4 * spent[1], 0.004), (spent, inline))
-        self.assertLess(spent[2000], inline / 2, (spent, inline))   # What the same record costs read inline.
+        inline = self.inline_pump(ROWS)
+        self.assertLess(work[ROWS].calls - work[1].calls, ROWS // 10, (work, inline))   # Not one per ten rows.
+        self.assertLess(work[ROWS].steps, inline.steps / 2, (work, inline))   # What the same record costs inline.
+
+    def pumped(self):
+        """Pump as the UI timer does until the read asked for is put in: the most work any one pump did here."""
+        most = thread_work.Work()
+        deadline = time.monotonic() + SETTLE_SECONDS
+        while True:
+            _changed, work = thread_work.count(self.mirror.pump_events)
+            for field in thread_work.Work.__slots__:
+                setattr(most, field, max(getattr(most, field), getattr(work, field)))
+            if not worker_mirror_reader.waiting(self.mirror):
+                return most
+            self.assertLess(time.monotonic(), deadline, "the reader never answered")
+            time.sleep(0.001)
 
     def inline_pump(self, rows):
         worker_mirror_reader.bind(inline=True)
         try:
             self.frame_journal(*({"role": "assistant", "text": "more %d %s" % (i, "y" * 80)} for i in range(rows)))
-            started = time.perf_counter()
-            self.mirror.pump_events()
-            return time.perf_counter() - started
+            return thread_work.count(self.mirror.pump_events)[1]
         finally:
             worker_mirror_reader.bind(inline=False)
 
 
 class SliceTests(unittest.TestCase):
     def test_the_reader_gives_the_gil_back_between_slices_and_the_ui_thread_never_sleeps(self):
-        slices = worker_mirror_reader.Slices()
-        with mock.patch.object(worker_mirror_reader.time, "sleep") as sleep:
-            slices._since -= 1
-            slices.pause()   # The main thread: never.
-            self.assertEqual(sleep.call_count, 0)
+        """On a clock this test moves: a real one let a slow thread start pass a whole slice (CI 41880387069)."""
+        now = [100.0]
+        clock = mock.Mock(perf_counter=lambda: now[0])
+
+        def on_a_thread():
             thread = threading.Thread(target=slices.pause)
             thread.start()
             thread.join()
-            self.assertEqual(sleep.call_count, 1)
-            thread = threading.Thread(target=slices.pause)   # Within its slice: no pause.
-            thread.start()
-            thread.join()
-            self.assertEqual(sleep.call_count, 1)
+        with mock.patch.object(worker_mirror_reader, "time", clock):
+            slices = worker_mirror_reader.Slices()
+            now[0] += slices.SLICE
+            slices.pause()   # The main thread: never.
+            self.assertEqual(clock.sleep.call_count, 0)
+            on_a_thread()
+            self.assertEqual(clock.sleep.call_args_list, [mock.call(slices.PAUSE)])
+            now[0] += slices.SLICE / 2
+            on_a_thread()   # Within its slice: no pause.
+            self.assertEqual(clock.sleep.call_count, 1)
+            now[0] += slices.SLICE / 2
+            on_a_thread()   # A slice since the last pause.
+            self.assertEqual(clock.sleep.call_count, 2)
 
     def test_an_idle_reader_ends_and_the_next_read_starts_another(self):
         store = mock.Mock()
@@ -294,10 +314,12 @@ class TimerResolutionTests(unittest.TestCase):
         api = mock.Mock()
         api.timeBeginPeriod.side_effect = lambda ms: self.calls.append(("begin", ms)) or 0
         api.timeEndPeriod.side_effect = lambda ms: self.calls.append(("end", ms)) or 0
-        patch = mock.patch.object(timer_resolution, "_api", return_value=api)
-        patch.start()
-        self.addCleanup(patch.stop)
-        self.addCleanup(timer_resolution._holders.clear)
+        # A holder set of its own: on Windows a chat another test hosted (sys.platform is win32 there) may still hold
+        # the real timer, and the first hold here would then ask nothing.
+        for patch in (mock.patch.object(timer_resolution, "_api", return_value=api),
+                      mock.patch.object(timer_resolution, "_holders", set())):
+            patch.start()
+            self.addCleanup(patch.stop)
 
     def test_windows_asks_once_while_any_worker_holds_it_and_gives_it_back_after_the_last(self):
         first, second = object(), object()

@@ -23,7 +23,7 @@ TITLE = n_("Welcome back")
 SUBTITLE = n_("Pick up a scene where you left it, or start something new.")
 RECENT = n_("Continue where you left off")
 NO_RECENT = n_("Scenes you save appear here.")
-NEW, OPEN, WHATS_NEW = n_("New scene"), n_("Open…"), n_("What's new")
+NEW, OPEN, WHATS_NEW = n_("New scene"), n_("Open…"), n_("What's New", "Operator")   # The About card's msgid and context.
 
 
 def recent_scenes(history_path, exists=os.path.isfile, limit=MAX_TILES):
@@ -126,7 +126,8 @@ class StartCard(kit.BaseCard):
             b.paragraph(iface_(NO_RECENT), tokens.TYPE_BODY, kit.TEXT, leading=1.5)
         b.gap(24)
         b.buttons([("open", None, iface_(OPEN), "secondary", True), ("new", None, iface_(NEW), "primary", True)],
-                  left=[("whats_new", None, iface_(WHATS_NEW), "ghost", True)], size=14, height=40)
+                  # Outlined like Open…: a borderless label read as stray, indented text (maintainer, 2026-11-09).
+                  left=[("whats_new", None, iface_(WHATS_NEW, "Operator"), "secondary", True)], size=14, height=40)
         b.close_button("new")
         return b
 

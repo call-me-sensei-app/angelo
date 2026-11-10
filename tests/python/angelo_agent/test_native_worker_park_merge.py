@@ -13,6 +13,8 @@ answer for a chat Angelo still counts as hosted, or a close that never ends, sti
 close joins the one under way; the worker marks its refusal by details, never words.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import io
 import os
 import sys
@@ -45,7 +47,8 @@ class ParkThenMerge(unittest.TestCase):
         self.worker, self.closed = Worker(PART), threading.Event()
         self.addCleanup(self.closed.set)
         self.addCleanup(self.worker.unwedge)
-        self.worker.answers["chat.close"] = lambda fields: (self.closed.wait(10), {"ok": True, "closed": True})[1]
+        # The close answers once released (the cleanups release it): no clock of the test's own ends it first.
+        self.worker.answers["chat.close"] = lambda fields: (self.closed.wait(), {"ok": True, "closed": True})[1]
         for patcher in (mock.patch.dict(os.environ, {"ANGELO_WORKER_CHAT_HOST": "1"}),
                         mock.patch.object(lifecycle, "host_available", lambda: True),
                         mock.patch.object(lifecycle, "_hosted", {"w1": self.worker}),

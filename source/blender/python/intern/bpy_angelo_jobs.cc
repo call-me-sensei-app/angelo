@@ -40,11 +40,24 @@
  * `desktop_*` post the operating system's own notification when a long job ends, and bounce
  * the Dock icon (`bpy_angelo_desktop.hh`).
  *
+ * `quit_activity_set` and `quit_activities` name running work (a live motion capture with a phone,
+ * an upload) that quitting, or reading another file, would end: the quit and close-file
+ * confirmation lists it (`WM_quit_activity_set`, `wm_quit_activities.cc`), whatever the Save Prompt
+ * preference says. `close_dialog_open`, `close_dialog_texts` and `quit_request_simulate` are test
+ * seams that exist only with `--enable-event-simulate`.
+ *
  * `msgbus_subscribers` lists the `bpy.msgbus` subscribers that writing given settings
  * would notify. A look's or strip's own temporary writes publish to the message bus, and
  * Python can subscribe to a setting but never list who did. Only subscribers made by
  * `bpy.msgbus.subscribe_rna` are listed (Blender's own C++ ones are not Python), with the
  * function they call, so the add-on decides which code ships with the application.
+ *
+ * `job_reports` returns a job's own ERROR and WARNING reports once it has ended
+ * (`WM_angelo_job_reports.hh`): the Info log also holds what the person or another script
+ * reported meanwhile, and a fluid bake clears it as it starts.
+ *
+ * `running_work` (every job type that is someone's work, whoever owns it) and the asset catalog
+ * checks Restart to Update makes are in `bpy_angelo_jobs_work.cc`.
  */
 
 #include <Python.h>
@@ -58,6 +71,7 @@
 
 #include "BKE_angelo_job_deadline.hh"
 #include "BKE_angelo_job_progress.hh"
+#include "BKE_context.hh"
 #include "BKE_fluid.h"
 #include "BKE_global.hh"
 #include "BKE_modifier.hh"
@@ -79,12 +93,19 @@
 
 #include "RNA_access.hh"
 
+#include "UI_interface_c.hh"
+
+#include "WM_angelo_job_reports.hh"
 #include "WM_api.hh"
 #include "WM_message.hh"
 #include "WM_types.hh"
 
 #include "bpy_angelo_desktop.hh"
 #include "bpy_angelo_jobs.hh"
+#include "bpy_angelo_jobs_caches.hh"
+#include "bpy_angelo_jobs_work.hh"
+#include "bpy_angelo_update_quit.hh"
+#include "bpy_capi_utils.hh"
 #include "bpy_msgbus.hh"
 #include "bpy_rna.hh"
 
@@ -266,6 +287,43 @@ static PyObject *jobs_last_progress(PyObject * /*self*/, PyObject *args)
   return Py_BuildValue("(dd)", progress, since);
 }
 
+static PyObject *jobs_job_reports(PyObject * /*self*/, PyObject *args)
+{
+  Scene *scene;
+  const AngeloJobType *type;
+  wmWindowManager *wm;
+  if (!require_main_thread() || !parse_job(args, "job_reports", &scene, &type, &wm)) {
+    return nullptr;
+  }
+  const Vector<wm::angelo::JobReport> reports = wm::angelo::job_reports_take(
+      int(type->type), scene->id.session_uid);
+  PyObject *list = PyList_New(reports.size());
+  if (list == nullptr) {
+    return nullptr;
+  }
+  for (const int64_t i : reports.index_range()) {
+    /* A report may carry bytes that are not UTF-8 (a path): replaced, never an exception. */
+    PyObject *text = PyUnicode_DecodeUTF8(
+        reports[i].text.data(), Py_ssize_t(reports[i].text.size()), "replace");
+    /* A sequence Blender's decoder counts as one character may decode to several. */
+    if (text && PyUnicode_GET_LENGTH(text) > wm::angelo::job_report_max_chars) {
+      PyObject *clipped = PyUnicode_Substring(text, 0, wm::angelo::job_report_max_chars);
+      Py_DECREF(text);
+      text = clipped;
+    }
+    PyObject *item = text ? Py_BuildValue("(sN)",
+                                          reports[i].type == RPT_ERROR ? "ERROR" : "WARNING",
+                                          text) :
+                            nullptr;
+    if (item == nullptr) {
+      Py_DECREF(list);
+      return nullptr;
+    }
+    PyList_SET_ITEM(list, i, item);
+  }
+  return list;
+}
+
 static PyObject *jobs_render_stats(PyObject * /*self*/, PyObject *arg)
 {
   if (!require_main_thread()) {
@@ -296,6 +354,22 @@ static PyObject *jobs_notify(PyObject * /*self*/, PyObject * /*args*/)
   /* The notifier Blender's own jobs send on progress: the status bar (a global area that
    * `Screen.areas` does not list) redraws its job item from it. */
   WM_main_add_notifier(NC_WM | ND_JOB, nullptr);
+  Py_RETURN_NONE;
+}
+
+static PyObject *jobs_tag_file_modified(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!BLI_thread_is_main()) {
+    PyErr_SetString(PyExc_RuntimeError, "tag_file_modified requires Blender's main thread");
+    return nullptr;
+  }
+  if (G_MAIN == nullptr || G_MAIN->wm.first == nullptr) {
+    PyErr_SetString(PyExc_RuntimeError, "tag_file_modified requires a window manager");
+    return nullptr;
+  }
+  /* Marks the open file changed (the title, and quitting asks to save) with no Undo step: an Undo
+   * push from a timer waits while any modal operator runs, which may be never. */
+  WM_file_tag_modified();
   Py_RETURN_NONE;
 }
 
@@ -331,6 +405,135 @@ static PyObject *jobs_desktop_notify(PyObject * /*self*/, PyObject *args)
     return nullptr;
   }
   return PyUnicode_FromString(angelo_desktop_notify(identifier, title, body));
+}
+
+static PyObject *jobs_quit_activity_set(PyObject * /*self*/, PyObject *args)
+{
+  const char *key = nullptr;
+  PyObject *message_object = nullptr;
+  if (!require_main_thread() || !PyArg_ParseTuple(args, "sO:quit_activity_set", &key, &message_object)) {
+    return nullptr;
+  }
+  const char *message = "";   /* None or "": the activity ended. */
+  Py_ssize_t message_size = 0;
+  if (message_object != Py_None) {
+    if (!PyUnicode_Check(message_object)) {
+      PyErr_SetString(PyExc_TypeError, "quit_activity_set: the message is a str or None");
+      return nullptr;
+    }
+    message = PyUnicode_AsUTF8AndSize(message_object, &message_size);
+    if (message == nullptr) {
+      return nullptr;
+    }
+  }
+  if (!WM_quit_activity_set(key, StringRef(message, message_size))) {
+    PyErr_Format(PyExc_ValueError,
+                 "quit_activity_set: a key of 1-%d characters [a-z0-9._-], a message of at most %d "
+                 "bytes, at most %d activities",
+                 WM_QUIT_ACTIVITY_KEY_MAX,
+                 WM_QUIT_ACTIVITY_MESSAGE_MAX,
+                 WM_QUIT_ACTIVITIES_MAX);
+    return nullptr;
+  }
+  Py_RETURN_NONE;
+}
+
+static PyObject *jobs_quit_activities(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!require_main_thread()) {
+    return nullptr;
+  }
+  PyObject *list = PyList_New(0);
+  if (list == nullptr) {
+    return nullptr;
+  }
+  bool failed = false;
+  WM_quit_activities_foreach([&](const StringRef key, const StringRef message) {
+    if (failed) {
+      return;
+    }
+    PyObject *item = Py_BuildValue(
+        "(s#s#)", key.data(), Py_ssize_t(key.size()), message.data(), Py_ssize_t(message.size()));
+    failed = item == nullptr || PyList_Append(list, item) == -1;
+    Py_XDECREF(item);
+  });
+  if (failed) {
+    Py_DECREF(list);
+    return nullptr;
+  }
+  PyObject *result = PyList_AsTuple(list);
+  Py_DECREF(list);
+  return result;
+}
+
+/** The test seams below exist only with `--enable-event-simulate` (GUI tests). */
+static bool require_event_simulate(const char *function)
+{
+  if ((G.f & G_FLAG_EVENT_SIMULATE) == 0) {
+    PyErr_Format(PyExc_RuntimeError, "%s needs --enable-event-simulate", function);
+    return false;
+  }
+  return true;
+}
+
+static PyObject *jobs_close_dialog_open(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!require_main_thread() || !require_event_simulate("close_dialog_open")) {
+    return nullptr;
+  }
+  bContext *C = BPY_context_get();
+  wmWindowManager *wm = CTX_wm_manager(C);
+  for (wmWindow &win : wm->windows) {
+    const bScreen *screen = WM_window_get_active_screen(&win);
+    if (screen && ui::popup_block_name_exists(screen, "file_close_popup")) {
+      Py_RETURN_TRUE;
+    }
+  }
+  Py_RETURN_FALSE;
+}
+
+static PyObject *jobs_close_dialog_texts(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!require_main_thread() || !require_event_simulate("close_dialog_texts")) {
+    return nullptr;
+  }
+  bContext *C = BPY_context_get();
+  wmWindowManager *wm = CTX_wm_manager(C);
+  PyObject *list = PyList_New(0);
+  if (list == nullptr) {
+    return nullptr;
+  }
+  for (wmWindow &win : wm->windows) {
+    const bScreen *screen = WM_window_get_active_screen(&win);
+    if (screen == nullptr) {
+      continue;
+    }
+    /* The close-file confirmation, and an operator's own confirmation (Revert, Load Factory
+     * Settings), which lists the activities in its message. */
+    Vector<std::string> texts = ui::popup_block_name_texts(screen, "file_close_popup");
+    texts.extend(ui::popup_block_name_texts(screen, "wm_block_dialog_create"));
+    for (const std::string &text : texts) {
+      PyObject *item = PyUnicode_FromStringAndSize(text.data(), Py_ssize_t(text.size()));
+      if (item == nullptr || PyList_Append(list, item) == -1) {
+        Py_XDECREF(item);
+        Py_DECREF(list);
+        return nullptr;
+      }
+      Py_DECREF(item);
+    }
+  }
+  PyObject *result = PyList_AsTuple(list);
+  Py_DECREF(list);
+  return result;
+}
+
+static PyObject *jobs_quit_request_simulate(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!require_main_thread() || !require_event_simulate("quit_request_simulate")) {
+    return nullptr;
+  }
+  WM_quit_request_simulate(BPY_context_get());
+  Py_RETURN_NONE;
 }
 
 static PyObject *jobs_desktop_attention(PyObject * /*self*/, PyObject * /*args*/)
@@ -544,6 +747,16 @@ static PyObject *jobs_msgbus_subscribers(PyObject * /*self*/, PyObject *keys)
 }
 
 static PyMethodDef methods[] = {
+    {"_update_quit_catalog_generation", BPY_angelo_update_quit_catalog_generation, METH_NOARGS,
+     "Private supported catalog edit generation, or zero when unavailable."},
+    {"_update_quit_protocol", BPY_angelo_update_quit_protocol, METH_NOARGS,
+     "Private updater native hand-over protocol version."},
+    {"_update_quit_request", BPY_angelo_update_quit_request, METH_VARARGS,
+     "Private updater: one owned delayed quit, no caller-supplied callback."},
+    {"_update_quit_revoke", BPY_angelo_update_quit_revoke, METH_O,
+     "Private updater: revoke only this opaque pending quit owner."},
+    {"_update_quit_status", BPY_angelo_update_quit_status, METH_O,
+     "Private updater: read this exact quit owner without replay."},
     {"progress",
      jobs_progress,
      METH_VARARGS,
@@ -572,6 +785,15 @@ static PyMethodDef methods[] = {
      "last_progress(scene, 'RENDER'): (progress, seconds since its first sample or None) of that scene's "
      "latest render job, as its thread last reported them, also once the job has ended; None when the "
      "latest render job was another scene's or there was none."},
+    {"job_reports",
+     jobs_job_reports,
+     METH_VARARGS,
+     "job_reports(scene, job_type): that scene's job's own ERROR and WARNING reports from its last "
+     "run, once it has ended, as (type, text): 'ERROR' or 'WARNING', Blender's English where it "
+     "translated the report, else the stored message; oldest first, at most 8 (a WARNING never "
+     "displaces an ERROR), each at most 500 characters. Reading them removes them: a second call "
+     "returns []. [] when the run reported none, or another run of that scene and type was asked "
+     "for since."},
     {"render_stats",
      jobs_render_stats,
      METH_O,
@@ -581,6 +803,11 @@ static PyMethodDef methods[] = {
      jobs_notify,
      METH_NOARGS,
      "notify(): tell job listeners (the status bar) that a job's state changed, so they redraw."},
+    {"tag_file_modified",
+     jobs_tag_file_modified,
+     METH_NOARGS,
+     "tag_file_modified(): mark the open file as changed (bpy.data.is_dirty becomes True; quitting "
+     "asks to save) without an Undo step. Main thread only (RuntimeError elsewhere). Returns None."},
     {"scripts_auto_execute",
      jobs_scripts_auto_execute,
      METH_NOARGS,
@@ -619,6 +846,35 @@ static PyMethodDef methods[] = {
      METH_NOARGS,
      "desktop_attention(): bounce the Dock icon once when Angelo is not in front. Returns "
      "'bounced', 'foreground', 'unavailable' or 'unsupported'."},
+    {"quit_activity_set",
+     jobs_quit_activity_set,
+     METH_VARARGS,
+     "quit_activity_set(key, message): name running work that quitting, or reading another file, "
+     "would end; the quit and close-file confirmation list each message (an English msgid, "
+     "translated where drawn). None or '' removes the key. Raises ValueError for a key that is not "
+     "1-64 characters of [a-z0-9._-] starting with a letter or digit, a message over 200 bytes, "
+     "one with control or bidirectional-control characters or only spaces, or a 17th key."},
+    {"quit_activities",
+     jobs_quit_activities,
+     METH_NOARGS,
+     "quit_activities(): every registered activity as (key, message), in the order first "
+     "registered."},
+    {"close_dialog_open",
+     jobs_close_dialog_open,
+     METH_NOARGS,
+     "close_dialog_open(): (tests, --enable-event-simulate only) whether the quit or close-file "
+     "confirmation is open in any window."},
+    {"close_dialog_texts",
+     jobs_close_dialog_texts,
+     METH_NOARGS,
+     "close_dialog_texts(): (tests, --enable-event-simulate only) every text the open quit or "
+     "close-file confirmation, or an operator's own confirmation, shows (labels and buttons, as "
+     "drawn), in every window."},
+    {"quit_request_simulate",
+     jobs_quit_request_simulate,
+     METH_NOARGS,
+     "quit_request_simulate(): (tests, --enable-event-simulate only) what the operating system's "
+     "quit request does (the macOS application menu or Dock)."},
     {"msgbus_subscribers",
      jobs_msgbus_subscribers,
      METH_O,
@@ -644,6 +900,12 @@ PyObject *BPY_angelo_jobs_module()
 {
   PyObject *mod = PyModule_Create(&module);
   if (mod == nullptr) {
+    return nullptr;
+  }
+  if (PyModule_AddFunctions(mod, BPY_angelo_jobs_work_methods()) < 0 ||
+      PyModule_AddFunctions(mod, BPY_angelo_jobs_caches_methods()) < 0)
+  {
+    Py_DECREF(mod);
     return nullptr;
   }
   PyObject *names = PyTuple_New(ARRAY_SIZE(job_types));

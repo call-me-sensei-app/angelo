@@ -7,6 +7,8 @@ own requests; the Codex list here is its app-server protocol's ``ServerRequest``
 requests Claude Code sends its SDK client.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import threading

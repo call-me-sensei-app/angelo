@@ -10,6 +10,8 @@ last, video, name)`` opens the tab with the shot and returns its state for ``cho
 in the tab with its aspect, or goes to the library without one; a tab that refuses the shot is said in the chat.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path
@@ -50,7 +52,7 @@ class CameraSource(unittest.TestCase):
         def start(window, controller, **kwargs):
             asked.update(kwargs)
             kwargs["on_done"](shot(files={"first": Path("/w/f.png")}))
-        self.assertEqual(self.source("first", "9:16", start), [("/w/f.png",)])
+        self.assertEqual(self.source("first", "9:16", start), [(str(Path("/w/f.png")),)])   # A native file path.
         self.assertEqual((asked["parts"], asked["aspect"], asked["broadcast"]), (("first",), "9:16", False))
 
     def test_a_last_frame_takes_the_first_frames_shape(self):
@@ -86,7 +88,8 @@ class ShotReady(unittest.TestCase):
     def test_frames_open_in_the_video_tab_with_the_shots_aspect(self):
         tab = SimpleNamespace(show_shot=MagicMock(return_value="state"), choose_options=MagicMock())
         posted, library = self.ready(shot(files={"first": Path("/w/f.png"), "last": Path("/w/l.png")}), tab)
-        tab.show_shot.assert_called_once_with("window", first="/w/f.png", last="/w/l.png", video=None, name="Cam")
+        tab.show_shot.assert_called_once_with("window", first=str(Path("/w/f.png")), last=str(Path("/w/l.png")),
+                                              video=None, name="Cam")
         tab.choose_options.assert_called_once_with("state", aspect="9:16")
         library.assert_not_called()
         self.assertEqual([row["i18n"][0] for row in posted], [shot_capture_ui.READY])
@@ -105,7 +108,7 @@ class ShotReady(unittest.TestCase):
     def test_a_camera_move_opens_as_the_reference_video(self):
         tab = SimpleNamespace(show_shot=MagicMock(return_value="state"), choose_options=MagicMock())
         self.ready(shot(files={"motion": Path("/w/m.mp4")}), tab)
-        tab.show_shot.assert_called_once_with("window", first=None, last=None, video="/w/m.mp4", name="Cam")
+        tab.show_shot.assert_called_once_with("window", first=None, last=None, video=str(Path("/w/m.mp4")), name="Cam")
 
     def test_a_tab_that_refuses_is_said_in_the_chat(self):
         tab = SimpleNamespace(show_shot=MagicMock(side_effect=ValueError("not a PNG")))

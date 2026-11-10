@@ -5,6 +5,8 @@ round-3 concurrency review's N3. Each class failed while its finding stood. No c
 children have negative pids, ``RuntimeChild`` runs with ``group=False`` and their ``kill`` sends no signal.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import base64
 import json
@@ -233,10 +235,13 @@ class LocalImages(unittest.TestCase):
 
     def test_only_a_bounded_regular_image_passes(self):
         fifo, text, large = self.root / "pipe.png", self.root / "notes.png", self.root / "large.png"
-        os.mkfifo(fifo)   # Opened without blocking, and refused.
         text.write_bytes(b"not an image")
         large.write_bytes(PNG[:8] + b"0" * runtime_bindings.IMAGE_BYTES)
-        for path in (fifo, text, large, self.root):
+        refused = [text, large, self.root]
+        if os.name != "nt":   # Windows has no FIFO files.
+            os.mkfifo(fifo)   # Opened without blocking, and refused.
+            refused.insert(0, fifo)
+        for path in refused:
             with self.subTest(path.name):
                 self.assertFalse(self.turn(path).passed)
 

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Host-only checks of the fixture waits that honour the native runner's --timeout-scale."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import sys
 import unittest

@@ -10,6 +10,8 @@ of its model). Developed on EACCES (a real ``chmod 000``) and EIO; EPERM, ESTALE
 and the listing alone are held out.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import errno
 import os
 import sys
@@ -20,6 +22,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_native_studio_assets import MODULES, Library  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 with mock.patch.dict(sys.modules, MODULES):
     from angelo_agent import studio_assets  # noqa: E402
@@ -52,7 +55,9 @@ class UnknownRecords(unittest.TestCase):
         (self.records / (self.gone["id"] + ".json")).unlink()
         self.assertEqual(self.removable(), ["not-an-id", self.gone["id"]])
 
-    @unittest.skipIf(os.name == "nt" or os.geteuid() == 0, "POSIX permissions as an ordinary user")
+    @unittest.skipIf(os.name == "nt", environment_skip("POSIX permissions: Windows ignores a folder's mode bits"))
+    @unittest.skipIf(os.name != "nt" and os.geteuid() == 0,
+                     environment_skip("running as a user who can write anywhere"))
     def test_a_records_folder_that_cant_be_read_deletes_no_copy(self):
         self.records.chmod(0)
         try:

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Mutable job startup cannot borrow no-change authority from a refusal code."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import tempfile

@@ -10,6 +10,8 @@ the budget's soundness against real evaluation) are in
 ``test_blender_survey_fixes.py``. Every test here failed before its fix.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import sys
 import unittest

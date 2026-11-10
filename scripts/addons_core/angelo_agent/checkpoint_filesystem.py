@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import anchored_windows
+from . import anchored_windows, change_clock, shared_replace
 
 MAX_METADATA_BYTES = 512 * 1024
 
@@ -286,13 +286,13 @@ def _open_file(folder, name, flags, mode=0o600):
 
 def _replace_file(folder, source, destination):
     if isinstance(folder, anchored_windows.WindowsDirectory):
-        folder.replace(source, destination)
+        shared_replace.retried(folder.replace, source, destination)   # A handle not sharing delete: tried again.
     elif isinstance(folder, Path):
         if folder.resolve() != folder:
             raise ValueError("Snapshot storage changed during access")
-        os.replace(folder / source, folder / destination)
+        shared_replace.replace(folder / source, folder / destination)
     else:
-        os.replace(source, destination, src_dir_fd=folder, dst_dir_fd=folder)
+        os.replace(source, destination, src_dir_fd=folder, dst_dir_fd=folder)   # POSIX: an open reader never refuses.
 
 
 def _unlink_file(folder, name):
@@ -481,6 +481,7 @@ def copy_stable_file(folder, name, destination, maximum=None):
         opened = os.fstat(source.fileno())
         if not same_file(info, opened) or opened.st_nlink != 1:
             raise ValueError("The snapshot changed while opening it")
+        change_clock.settle(opened)   # A write from the first read on carries another change time (Windows' tick).
         copied = 0
         while chunk := source.read(min(1024 * 1024, info.st_size - copied + 1)):
             copied += len(chunk)

@@ -27,6 +27,7 @@ import hashlib
 import os
 import time
 
+from . import change_clock
 from .checkpoint_filesystem import _file_info, _open_file, _private_directory, _unlink_file, same_file, sync_directory
 from .checkpoint_capture_state import require_capture_idle
 from .checkpoint_policy import checkpoint_ref
@@ -125,6 +126,10 @@ def _ingest(checkpoints, identity, store, cancelled, compress):
                 descriptor = _open_file(folder, SCENE, os.O_RDONLY)
         if not _stable(info, os.fstat(descriptor)) or info.st_size != record["scene_bytes"]:
             raise IngestError("The snapshot file changed after capture; it was kept as a full copy")
+        try:   # A write while it is stored then changes the stat, in the tick of its last stamp too (Windows).
+            change_clock.settle(info)
+        except change_clock.Unsettled as error:
+            raise IngestError("The snapshot's times cannot vouch for it yet; it stays a full copy") from error
         with os.fdopen(descriptor, "rb", buffering=READ_BUFFER_BYTES, closefd=False) as handle, store.writer() as writer:
             ordered, file_digest, stats = _write_segments(writer, handle, info.st_size, cancelled, compress)
             if stats["read_bytes"] != info.st_size or not _stable(info, os.fstat(descriptor)):

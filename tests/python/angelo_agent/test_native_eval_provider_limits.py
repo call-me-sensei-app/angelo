@@ -8,6 +8,8 @@ the MCP side's runner over a scripted stream, and both harnesses' stop and
 pass-rate paths with mocked trials. No process, network or account.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import json
@@ -135,7 +137,8 @@ class LiveEvalTests(unittest.TestCase):
             binary.write_text("")
             binary.chmod(0o755)
             with mock.patch.object(eval_live_agent, "run_trial", return_value=limited) as run, \
-                    mock.patch.object(eval_live_agent, "isolated_connection", return_value={"id": CONNECTION}), \
+                    mock.patch.object(eval_live_agent, "isolated_connection",   # A dedicated profile (opt-in).
+                                      return_value={"id": CONNECTION, "reuse_native": False, "profile": folder}), \
                     contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as errors:
                 code = eval_live_agent.main(["--authorize-billed-runs", "--connection-id", CONNECTION,
                                              "--blender", str(binary), "--trials", "3",

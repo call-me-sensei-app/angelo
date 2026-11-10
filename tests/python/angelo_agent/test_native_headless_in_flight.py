@@ -13,6 +13,8 @@ The launcher, its session and a headless child in one process (test_native_headl
 and a main thread an executor keeps busy, as a long script does.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import time
 import unittest
@@ -28,6 +30,7 @@ from angelo_agent.headless_session import (APPLY_AFTER_RUNNING, IN_FLIGHT_ENDED,
                                            POLICY_RESTARTED, only_more_access)
 import test_native_headless_mcp as headless_harness  # noqa: E402  (a module: its tests are not collected again here)
 from test_native_external_cli_host import Executor  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 CUBE = headless_harness.CUBE
 ROUND = 0.3        # One launcher round (ROUND_WAIT) and the child's main-thread pickup time, shortened.
@@ -48,7 +51,7 @@ class SlowExecutor(Executor):
         return super().execute(name, arguments)
 
 
-@unittest.skipIf(sys.platform == "win32", "Headless sessions are macOS and Linux for now")
+@unittest.skipIf(sys.platform == "win32", environment_skip("Headless sessions are macOS and Linux for now"))
 class InFlightTests(unittest.TestCase):
     tick, call, open = headless_harness.HeadlessTests.tick, headless_harness.HeadlessTests.call, headless_harness.HeadlessTests.open
     text = headless_harness.HeadlessTests.text

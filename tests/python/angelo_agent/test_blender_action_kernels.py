@@ -6,6 +6,10 @@ Run Blender --background --factory-startup --python this_file. Tests inspect
 actual private meshes/modifiers/node graphs/Actions/weights, not just readbacks.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import math
 import time
@@ -47,7 +51,22 @@ def stage():
     scene = bpy.data.scenes.new('Kernel Regression Stage')
     collection = bpy.data.collections.new('Kernel Regression Collection')
     scene.collection.children.link(collection)
+    mark_stage(scene)
     return StagedActionContext(scene, collection)
+
+
+def mark_stage(scene):
+    """As program_objects marks a stage it makes: stage_routes.check evaluates only a marked stage scene, and this
+    suite's own evaluations go through ``evaluate``, as the add-on's do."""
+    import uuid
+    from angelo_agent.legacy_names import PROGRAM_STAGE
+    scene[PROGRAM_STAGE[0]] = uuid.uuid4().hex
+
+
+def evaluate(context):
+    """Evaluate a stage as the add-on does (stage_guard.guarded: routes checked, released for this call, held again)."""
+    from angelo_agent.stage_guard import guarded
+    guarded(context, context.view_layer.update)
 
 
 def cube(context, alias='cube'):
@@ -180,14 +199,14 @@ def main():
         subdivision = stage(); subdiv_obj = cube(subdivision)
         apply_operation(subdivision, action('modifier_add', {'type': 'SUBSURF', 'name': 'Positive Subdivision',
                                                             'settings': {'levels': 1, 'render_levels': 1}}))
-        subdivision.view_layer.update()
+        evaluate(subdivision)
         evaluated_subdiv = subdiv_obj.evaluated_get(subdivision.view_layer.depsgraph)
         check('nonzero_SUBSURF_actual_geometry', len(evaluated_subdiv.data.vertices) == 26 and
               len(evaluated_subdiv.data.polygons) == 24 and len(subdiv_obj.data.vertices) == 8)
         apply_operation(subdivision, action('modifier_configure', {'type': 'SUBSURF', 'modifier': 'Positive Subdivision',
                                                                   'settings': {'levels': 2, 'render_levels': 2,
                                                                                'subdivision_type': 'SIMPLE'}}))
-        subdivision.view_layer.update()
+        evaluate(subdivision)
         evaluated_subdiv = subdiv_obj.evaluated_get(subdivision.view_layer.depsgraph)
         check('nonzero_SUBSURF_configure_actual_geometry', len(evaluated_subdiv.data.vertices) == 98 and
               len(evaluated_subdiv.data.polygons) == 96 and len(subdiv_obj.data.vertices) == 8)
@@ -234,19 +253,19 @@ def main():
         {'from_node': 'grid', 'from_socket': 'Mesh', 'to_node': 'transform', 'to_socket': 'Geometry'},
         {'from_node': 'transform', 'from_socket': 'Geometry', 'to_node': 'output', 'to_socket': 'Geometry'}]}
     apply_operation(geometry, action('geometry_nodes', primitive_graph))
-    geometry.view_layer.update()
+    evaluate(geometry)
     evaluated = geo_obj.evaluated_get(geometry.view_layer.depsgraph)
     check('geometry_nodes_actual_evaluation', len(evaluated.data.vertices) == 100 and
           all(abs(vertex.co.z - 2) < 1e-6 for vertex in evaluated.data.vertices))
     if bpy.app.build_options.opensubdiv:
         subdiv_nodes = stage(); subdiv_node_obj = cube(subdiv_nodes)
         apply_operation(subdiv_nodes, action('geometry_nodes', dict(graph((1,)), name='Positive Node Subdivision One')))
-        subdiv_nodes.view_layer.update()
+        evaluate(subdiv_nodes)
         evaluated_nodes = subdiv_node_obj.evaluated_get(subdiv_nodes.view_layer.depsgraph)
         check('nonzero_GN_subdivision_actual_geometry', len(evaluated_nodes.data.vertices) == 26 and
               len(evaluated_nodes.data.polygons) == 24 and len(subdiv_node_obj.data.vertices) == 8)
         apply_operation(subdiv_nodes, action('geometry_nodes', dict(graph((1,)), name='Positive Node Subdivision Two')))
-        subdiv_nodes.view_layer.update()
+        evaluate(subdiv_nodes)
         evaluated_nodes = subdiv_node_obj.evaluated_get(subdiv_nodes.view_layer.depsgraph)
         check('stacked_nonzero_GN_subdivision_actual_geometry', len(evaluated_nodes.data.vertices) == 98 and
               len(evaluated_nodes.data.polygons) == 96 and len(subdiv_node_obj.data.vertices) == 8)

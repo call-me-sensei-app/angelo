@@ -5,6 +5,8 @@
 Pins of verified behaviour.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import shutil
 import sys
@@ -17,6 +19,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import pycache_retention as retention  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 DAY = 86400
 POSIX = os.name != "nt"
@@ -108,7 +111,9 @@ class BuildKeyTests(Fixture):
     def test_build_key_edges(self):
         removable = ["abcdef1", "0123456789abcdef0123456789abcdef01234567", "dev-5.2", "dev-10.12", "20261016"]
         kept = ["abcdef", "ABCDEF9", "abcdef1g", "a" * 41, "dev-5", "dev-5.2.1", "dev-5.2-x", ".abcdef1",
-                "abcdef1 ", "١٢٣٤٥٦٧", "dev-٥.٢", "abcdef1.bak"]
+                "١٢٣٤٥٦٧", "dev-٥.٢", "abcdef1.bak"]
+        if POSIX:  # Windows drops a trailing space from a name, so no folder there can be called this.
+            kept.append("abcdef1 ")
         for name in removable + kept:
             self.old_build(name)
         removed = retention.prune(self.root, self.current)
@@ -118,7 +123,7 @@ class BuildKeyTests(Fixture):
 
     def test_a_newline_after_the_key_does_not_match(self):
         if not POSIX:
-            self.skipTest("a newline in a file name")
+            self.skipTest(environment_skip("a newline in a file name: Windows names cannot hold one"))
         self.old_build("abcdef1\n")
         self.assertEqual(retention.prune(self.root, self.current), [])
 
@@ -138,8 +143,10 @@ class ContentRuleTests(Fixture):
         self.assertEqual(retention.prune(self.root, self.current), [])
 
     def test_an_unreadable_subfolder_is_kept_with_what_it_holds(self):
-        if not POSIX or os.geteuid() == 0:
-            self.skipTest("POSIX permissions as a normal user")
+        if not POSIX:
+            self.skipTest(environment_skip("POSIX permissions: Windows ignores a folder's mode bits"))
+        if os.geteuid() == 0:
+            self.skipTest(environment_skip("running as a user who can write anywhere"))
         folder = self.old_build("abcdef1")
         hidden = folder / "Applications" / "locked"
         hidden.mkdir()
@@ -152,7 +159,7 @@ class ContentRuleTests(Fixture):
         self.assertTrue((hidden / "user-file.txt").exists())
 
 
-@unittest.skipUnless(POSIX, "mirror cleanup is POSIX only")
+@unittest.skipUnless(POSIX, environment_skip("mirror cleanup is POSIX only: Windows mirrors drop the drive letter"))
 class MirrorTests(Fixture):
     def mirror(self, source, name="m"):
         folder = self.current / str(source).lstrip(os.sep)
@@ -208,7 +215,7 @@ class MirrorTests(Fixture):
         """Known cost, not a hazard: a source folder that exists but cannot be looked up (an unsearchable parent,
         an unmounted volume) is treated as gone, so its bytecode is compiled again when it is next imported."""
         if os.geteuid() == 0:
-            self.skipTest("root ignores permissions")
+            self.skipTest(environment_skip("running as a user who can write anywhere"))
         parent = self.base / "private-parent"
         source = parent / "addons"
         source.mkdir(parents=True)

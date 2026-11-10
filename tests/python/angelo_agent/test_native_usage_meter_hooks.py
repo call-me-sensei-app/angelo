@@ -6,6 +6,8 @@ Offline fixtures: a Controller with a Codex provider over a recording RPC, and t
 fake stream-json process. They prove the hooks, not a provider's reporting.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

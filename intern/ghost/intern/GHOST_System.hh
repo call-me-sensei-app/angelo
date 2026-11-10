@@ -180,6 +180,10 @@ class GHOST_System : public GHOST_ISystem {
   GHOST_TSuccess hasClipboardImage() const override;
   /** \copydoc #GHOST_ISystem::getClipboardImage */
   uint *getClipboardImage(int *r_width, int *r_height) const override;
+  /** \copydoc #GHOST_ISystem::getClipboardImageSize */
+  GHOST_TSuccess getClipboardImageSize(int *r_width, int *r_height) const override;
+  /** \copydoc #GHOST_ISystem::getClipboardImageBuffer */
+  blender::ImBuf *getClipboardImageBuffer() const override;
   /** \copydoc #GHOST_ISystem::putClipboardImage */
   GHOST_TSuccess putClipboardImage(uint *rgba, int width, int height) const override;
 

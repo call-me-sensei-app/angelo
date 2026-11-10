@@ -8,8 +8,12 @@ pictures; a test that substituted the child's result hid it. Here every module-l
 checked for names it uses but never binds, and the PROBE itself runs in a child interpreter with stand-in bpy/gpu.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import builtins
+import json
+import os
 from pathlib import Path
 import subprocess
 import symtable
@@ -74,6 +78,10 @@ exec(compile(open(probe, encoding="utf-8").read(), "<PROBE>", "exec"), {"__name_
 BLENDER_MODULES = {"bpy", "_bpy", "gpu", "gpu_extras", "mathutils", "bmesh", "bpy_extras", "blf", "bl_math", "imbuf",
                    "aud", "idprop", "freestyle", "addon_utils", "bpy_types", "bl_ui", "bl_operators", "rna_info",
                    "_angelo_checkpoint", "numpy", "OpenImageIO"}   # numpy and OpenImageIO ship in Blender's Python.
+# Packages Angelo itself installs into the bundled interpreter's site-packages (certifi, the root store its TLS uses):
+# a launched script reaches them from the bundled interpreter, whatever this test's interpreter has installed.
+ANGELO_PACKAGES = frozenset(package["name"] for package in json.loads(
+    (ROOT / "build_files/cmake/angelo_python_packages.json").read_text(encoding="utf-8"))["packages"])
 DUNDERS = {"__file__", "__name__", "__doc__", "__spec__", "__builtins__", "__loader__", "__package__", "__path__"}
 SEARCH = [ROOT / "scripts/addons_core", ROOT / "scripts/modules", ROOT / "scripts/startup", ROOT / "scripts/angelo"]
 
@@ -90,12 +98,39 @@ def launched_files():
     return sorted(found)
 
 
-def resolves(module, script):
-    """Whether ``module`` imports in the script's real context: the script's folder, Angelo's script folders, the
-    standard library, or Blender's own modules."""
+def launched_command(script):
+    """The real producer's argv, including isolated flags and its explicit reader argument."""
+    from angelo_agent import pdf_text
+    command = pdf_text.command("unused-import-check.pdf")
+    return command if Path(command[3]).resolve() == script.resolve() else None
+
+
+def archive_resolves(module, archives):
+    """Find the full module through actual archive package paths without importing its code."""
+    from importlib.machinery import PathFinder
+    paths = archives
+    for index in range(1, len(module.split(".")) + 1):
+        name = ".".join(module.split(".")[:index])
+        spec = PathFinder.find_spec(name, paths)
+        if spec is None:
+            return False
+        paths = spec.submodule_search_locations
+        if index < len(module.split(".")) and paths is None:
+            return False
+    return True
+
+
+def resolves(module, script, command=None):
+    """Resolve in actual launch context; -I -S cannot borrow this host's installed packages."""
     import importlib.util
+    import zipfile
     top = module.split(".")[0]
-    if top in BLENDER_MODULES or top in sys.stdlib_module_names:
+    command = launched_command(script) if command is None else command
+    if command is not None and "-I" in command and "-S" in command:
+        archives = [str(Path(value)) for value in command[4:]
+                    if Path(value).is_file() and zipfile.is_zipfile(value)]
+        return top in sys.stdlib_module_names or archive_resolves(module, archives)
+    if top in BLENDER_MODULES or top in ANGELO_PACKAGES or top in sys.stdlib_module_names:
         return True
     for folder in [script.parent] + SEARCH:
         parts = module.split(".")
@@ -105,14 +140,14 @@ def resolves(module, script):
     return importlib.util.find_spec(top) is not None
 
 
-def import_problems(script):
+def import_problems(script, command=None):
     tree = ast.parse(script.read_text(encoding="utf-8"))
     problems = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            problems += [alias.name for alias in node.names if not resolves(alias.name, script)]
+            problems += [alias.name for alias in node.names if not resolves(alias.name, script, command)]
         elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            if not resolves(node.module, script):
+            if not resolves(node.module, script, command):
                 problems.append(node.module)
             elif node.module.split(".")[0] == "angelo_agent":
                 package = ROOT / "scripts/addons_core" / Path(*node.module.split("."))
@@ -136,6 +171,43 @@ class LaunchedScriptTests(unittest.TestCase):
                               "folder = private_roots.mkdtemp('x')\n", encoding="utf-8")
             self.assertEqual(import_problems(script), ["angelo_agent.no_such_module"])
             self.assertEqual(unbound(script.read_text(encoding="utf-8")), ["private_roots"])
+
+    def test_isolated_archive_resolution_checks_members_and_rejects_host_only_packages(self):
+        import tempfile
+        import zipfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory(prefix="angelo-archive-check-") as folder:
+            script = Path(folder) / "launched.py"
+            archive = Path(folder) / "reader.pyz"
+            script.write_text("import heldout_reader.errors\nimport heldout_reader.missing\nimport host_only\n")
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr("heldout_reader/__init__.py", "")
+                bundle.writestr("heldout_reader/errors.py", "")
+            command = [sys.executable, "-I", "-S", str(script), str(archive)]
+            with patch("importlib.util.find_spec", return_value=object()):
+                self.assertEqual(import_problems(script, command),
+                                 ["heldout_reader.missing", "host_only"])
+
+    def test_pdf_worker_loads_actual_bundled_reader_under_its_isolated_flags(self):
+        from unittest.mock import patch
+        from angelo_agent import pdf_text
+        # Blender's bundled Python is <prefix>/bin/python.exe on Windows; a host CPython keeps python.exe in the prefix
+        # itself, where interpreter() finds none. This case checks the worker and reader, so any Python of this
+        # version stands in for the bundled one there.
+        with patch.object(pdf_text, "PYTHON", pdf_text.interpreter() or sys.executable):
+            command = pdf_text.command("unused-import-check.pdf")
+        self.assertEqual(command[1:3], ["-I", "-S"])
+        self.assertEqual(Path(command[3]), pdf_text.WORKER)
+        self.assertEqual(Path(command[4]), pdf_text.READER)
+        # Execute the real worker loader, not a substitute import implementation. No PDF is parsed.
+        code = ("import runpy, sys; worker=runpy.run_path(sys.argv[1], run_name='import_check'); "
+                "reader=worker['_load'](sys.argv[2]); assert reader is not None; "
+                "from pypdf.errors import DependencyError, FileNotDecryptedError, LimitReachedError; "
+                "print('BUNDLED-READER-OK')")
+        result = subprocess.run([command[0], *command[1:3], "-c", code, command[3], command[4]],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+        self.assertEqual(result.stdout.strip(), "BUNDLED-READER-OK")
 
     def test_the_launched_scripts_are_found(self):
         names = {path.name for path in launched_files()}
@@ -164,7 +236,12 @@ class EmbeddedScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="angelo-probe-test-") as folder:
             probe = Path(folder) / "probe.py"
             probe.write_text(code, encoding="utf-8")
-            environment = {"HOME": folder, "XDG_STATE_HOME": folder, "TMPDIR": folder, "PATH": "/usr/bin:/bin"}
+            if os.name == "nt":   # The same folders as Windows names them; Winsock (asyncio) needs SYSTEMROOT.
+                system = os.environ["SYSTEMROOT"]
+                environment = {"USERPROFILE": folder, "LOCALAPPDATA": folder, "APPDATA": folder, "TEMP": folder,
+                               "TMP": folder, "SYSTEMROOT": system, "PATH": os.path.join(system, "System32")}
+            else:
+                environment = {"HOME": folder, "XDG_STATE_HOME": folder, "TMPDIR": folder, "PATH": "/usr/bin:/bin"}
             result = subprocess.run([sys.executable, "-c", CHILD, str(probe), str(ROOT / "scripts/addons_core")],
                                     capture_output=True, text=True, timeout=120, env=environment)
         self.assertEqual(result.returncode, 0, result.stderr[-2000:])

@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Real v4 working-pair/file-journal joins; native scene fidelity tested separately."""
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import json
 from contextlib import contextmanager
 import os
@@ -15,6 +17,7 @@ from angelo_agent.checkpoints import CheckpointStore
 from angelo_agent import checkpoints as stores, checkpoint_filesystem as filesystem
 from angelo_agent import checkpoint_capture as capture
 from fake_nt_files import FakeNtApi
+from host_test_policy import environment_skip
 import test_native_checkpoint_recovery_resources as recovery_fixtures
 import test_native_checkpoint_capture_publication as publication_fixtures
 SESSION = recovery_fixtures.SESSION
@@ -271,7 +274,7 @@ class BundleConsumerTests(unittest.TestCase):
             self.assertTrue((store.folder(identity) / 'sculpt.runtime').exists())
 
 
-@unittest.skipIf(os.name == 'nt', 'POSIX stand-in; native Windows uses base tests')
+@unittest.skipIf(os.name == 'nt', environment_skip('POSIX stand-in; native Windows uses base tests'))
 class BundleConsumerFakeNtTests(BundleConsumerTests):
     def setUp(self):
         self.api = FakeNtApi()

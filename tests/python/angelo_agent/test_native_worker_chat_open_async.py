@@ -10,6 +10,8 @@ answered ``ok``; a refusal, a timeout or a lost worker ends the start on the mai
 nothing is deferred and the brief goes at once, as before.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import threading

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Agent progress text in the chat: friendly titles, kinds, chips, groups and notices; no bpy."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import sys
 import unittest

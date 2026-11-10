@@ -90,10 +90,16 @@ def dispatch_dynamic_call(provider, request_id, params, context, rpc, owner, tok
     if stale:
         refuse_stale_call(provider, request_id, rpc, params)  # Outside the scope lock: a pipe write.
         return
+    # The lead's own model step that wrote the call, when the runtime names it (a yielded exec cell's later call
+    # keeps its cell's step): the recovery hold judges the call by it (model_steps.record_call_step).
+    record_step = getattr(context, "record_call_step", None)
+    step = record_step(params) if callable(record_step) else None
+    written = {} if step is None else {"step": step}
     resolve = getattr(context, "resolve_call", None)
     try:
         # The summary describes the call as the host ran it (identifiers.expand_call).
-        resolved = resolve(tool, arguments) if callable(resolve) and isinstance(arguments, dict) else arguments
+        resolved = (resolve(tool, arguments, **written) if callable(resolve) and isinstance(arguments, dict)
+                    else arguments)
     except Exception:  # The host's own validation reports it.
         resolved = None
 
@@ -159,9 +165,12 @@ def dispatch_dynamic_call(provider, request_id, params, context, rpc, owner, tok
         finally:
             worker_news.withheld()   # Not delivered: it stays news.
             provider._scope.retire_response(ticket)
+            from .steering_delivery import codex_offer
+            codex_offer(provider)   # The last outstanding call answered: the person's waiting steers go in now.
     try:
         context.request_tool(params.get("callId", str(request_id)), params.get("tool", ""),
-                             params.get("arguments", {}), respond, delivery_owner=owner)
+                             params.get("arguments", {}), respond, delivery_owner=owner,
+                             **({} if step is None else {"model_step": step}))
     except Exception:
         provider._scope.retire_response(ticket)
         raise

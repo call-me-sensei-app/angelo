@@ -1105,7 +1105,12 @@ static void write_result(TaskPool *__restrict pool, WriteTaskData *task_data)
     for (Report *report = static_cast<Report *>(reports.list.first); report != nullptr;
          report = report->next)
     {
-      BKE_report(oglrender->reports, static_cast<eReportType>(report->type), report->message);
+      /* Angelo: keep its English (#Report::message_untranslated); the message as before. */
+      BKE_report_translated(oglrender->reports,
+                            static_cast<eReportType>(report->type),
+                            RPT_(report->message),
+                            report->message_untranslated ? report->message_untranslated :
+                                                           report->message);
     }
   }
   BKE_reports_free(&reports);
@@ -1361,6 +1366,8 @@ static wmOperatorStatus screen_opengl_render_invoke(bContext *C,
     oglrender->wm_job = wm_job;
 
     WM_jobs_customdata_set(wm_job, oglrender, opengl_render_freejob);
+    /* Angelo: the job writes the operator's reports; they are its own (#WM_jobs_reports_attach). */
+    WM_jobs_reports_attach(wm_job, oglrender->reports);
     WM_jobs_timer(wm_job, 0.01f, NC_SCENE | ND_RENDER_RESULT, 0);
     WM_jobs_callbacks(wm_job, opengl_render_startjob, nullptr, nullptr, nullptr);
     WM_jobs_start(CTX_wm_manager(C), wm_job);

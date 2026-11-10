@@ -62,6 +62,18 @@ UNEXPECTED = n_("The team account hit an unexpected error; try again.")
 DROPPED = n_("The connection dropped while renewing your Angelo sign-in. "
              "Sign in to your Angelo team again in Preferences > AI Providers.")
 LOCKED = n_("Another Angelo window is renewing your team sign-in; trying again shortly.")
+# A rotated token the OS store refused (team_refresh_marks; doc/angelo/ai_providers.rst).
+HELD_ELSEWHERE = n_("Another Angelo window renewed your team sign-in but couldn't save it yet. This window waits "
+                    "for it and tries again every minute; if you closed that window, sign in again in "
+                    "Preferences > AI Providers.")
+LOST = n_("Your team sign-in is no longer saved on this computer: it was signed out in another Angelo window, or "
+          "the window that renewed it closed before saving it. Sign in again in Preferences > AI Providers.")
+READ_LATER = n_("Angelo couldn't read your saved team sign-in ({problem}), so it won't renew it yet; it tries "
+                "again every minute.")
+NO_RECORD = n_("Angelo couldn't read or write its sign-in record in its settings folder, so it won't renew your "
+               "team sign-in yet; it tries again every minute. If your disk is full, free some space.")
+BAD_RECORD = n_("Angelo's sign-in record in its settings folder is damaged or from another Angelo version, so it "
+                "won't renew your team sign-in. Sign out, then sign in again in Preferences > AI Providers.")
 NOT_ACCEPTED = n_("The console didn't accept this sign-in (it may have taken longer than a minute). "
                   "Choose Sign in to try again.")
 REFUSED_BROWSER = n_("The console refused the sign-in; choose Sign in to try again.")

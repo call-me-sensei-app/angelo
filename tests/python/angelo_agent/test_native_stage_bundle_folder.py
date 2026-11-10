@@ -8,6 +8,8 @@ one allocation for any number of bundles, fresh names, removal of exactly one bu
 it goes, and a new folder when the old one is gone or moved.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 from pathlib import Path
 import shutil

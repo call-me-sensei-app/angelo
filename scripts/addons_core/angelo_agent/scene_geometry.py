@@ -5,6 +5,7 @@
 from array import array
 import hashlib
 from itertools import islice
+from .refusal_codes import coded
 from .scene_read_values import BudgetExceeded, SceneQueryError, all_finite, count_nonzero, dump, label
 
 
@@ -94,7 +95,8 @@ class GeometryReader:
             except (AttributeError, TypeError, RuntimeError):
                 raise BudgetExceeded("Native attribute API is unsupported by this bounded reader") from None
         if code == "f" and not all_finite(values):
-            raise SceneQueryError("Non-finite original geometry cannot provide a trustworthy revision")
+            raise coded(SceneQueryError("Non-finite original geometry cannot provide a trustworthy revision"),
+                        "UNSUPPORTED")
         if digest is not None:
             digest.update(prop.encode("ascii"))
             digest.update(values)
@@ -112,7 +114,8 @@ class GeometryReader:
         if planned and not packed:
             work.take(elements=count)  # An unexpected accessor fell back to elements.
         if code == "f" and not all_finite(values):
-            raise SceneQueryError("Non-finite original geometry cannot provide a trustworthy revision")
+            raise coded(SceneQueryError("Non-finite original geometry cannot provide a trustworthy revision"),
+                        "UNSUPPORTED")
         if digest is not None:
             digest.update(prop.encode("ascii"))
             digest.update(values)
@@ -248,15 +251,13 @@ class GeometryReader:
                     self.read(attribute.data, *spec, work, digest, packed=True)
                 else:
                     limitations.append("unread_mesh_attribute_type:" + attribute.data_type)
-            if mesh.shape_keys:
-                for key in mesh.shape_keys.key_blocks:
-                    work.take(items=1)
-                    digest.update(dump(self.metadata.settings(key, ("name", "value", "mute", "slider_min", "slider_max", "vertex_group", "interpolation"))).encode("utf-8"))
-                    digest.update(label(key.relative_key.name).encode("utf-8") if key.relative_key else b"")
-                    self.read(key.data, "co", "f", 3, work, digest)
+            if mesh.shape_keys:  # Every Key setting, key setting and point (shape_key_state, as for lattices and curves).
+                from .shape_key_state import key_digest
+                digest.update(key_digest(mesh.shape_keys, "MESH", work).encode("ascii"))
         # Also covers live Edit Mode positions, which come from BMesh, not read().
         if not all_finite(positions):
-            raise SceneQueryError("Non-finite original geometry cannot provide a trustworthy revision")
+            raise coded(SceneQueryError("Non-finite original geometry cannot provide a trustworthy revision"),
+                        "UNSUPPORTED")
         digest.update(positions); digest.update(edge_vertices); digest.update(polygon_sizes)
         digest.update(str(count).encode("ascii")); digest.update(weights.digest())
         digest.update(dump(uv_layers).encode("utf-8"))

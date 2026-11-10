@@ -2198,6 +2198,8 @@ static wmOperatorStatus bake_invoke(bContext *C, wmOperator *op, const wmEvent *
                        WM_JOB_EXCL_RENDER | WM_JOB_PRIORITY | WM_JOB_PROGRESS,
                        WM_JOB_TYPE_OBJECT_BAKE);
   WM_jobs_customdata_set(wm_job, bkr, bake_freejob);
+  /* Angelo: the job writes the operator's reports; they are its own (#WM_jobs_reports_attach). */
+  WM_jobs_reports_attach(wm_job, bkr->reports);
   /* TODO: only draw bake image, can we enforce this. */
   WM_jobs_timer(
       wm_job, 0.5, (bkr->target == R_BAKE_TARGET_VERTEX_COLORS) ? NC_GEOM | ND_DATA : NC_IMAGE, 0);

@@ -8,6 +8,8 @@ app (with the kernel's refusals: unknown bone, animated channel, parent cycle,
 degenerate bone), and commit/Undo/Redo equality by test_blender_program_commit_effects.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

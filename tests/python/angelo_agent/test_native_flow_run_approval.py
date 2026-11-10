@@ -9,6 +9,8 @@ steps the person had unticked included. The real ``flow_ui`` and ``flow_graph`` 
 ``start_run`` are stand-ins. Reproduction: notes flow-chrome-105/repro_repeat_last_run.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import types
 import unittest

@@ -9,6 +9,8 @@ root is exactly what a pre-rename build produced), then migrated. Synthetic
 The pre-rename folder name is a deliberate legacy fixture.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import os
@@ -23,6 +25,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[2] / "scripts/addons_core"))
 sys.path.insert(0, str(HERE))
 from snapshot_fixtures import blend_v1, scene_blocks  # noqa: E402
+from platform_env import essential_environ  # noqa: E402
 from angelo_agent.checkpoint_filesystem import anchored_files_supported  # noqa: E402
 from angelo_agent import folder_moves, state_migration, state_paths, storage  # noqa: E402
 from angelo_agent.checkpoints import CheckpointStore  # noqa: E402
@@ -85,7 +88,7 @@ class StateFolderMigrationTests(unittest.TestCase):
         self.assertIn("1 snapshot records updated", result.message)
         self.assertEqual(sorted(p.name for p in self.legacy.iterdir()), ["README-Angelo.txt", "codex-profile"])
         self.assertFalse((self.current / state_migration.MARKER).exists())
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, essential_environ(), clear=True):
             # Chat, brief and attachment: the brief is re-scoped, never dropped.
             state = SessionStore(self.current, self.session).load()
             self.assertEqual(state["task_memory"]["brief"]["objective"], "Keep the pre-rename brief")
@@ -120,11 +123,11 @@ class StateFolderMigrationTests(unittest.TestCase):
         state = read_transcript(sessions.path)
         state["task_memory"]["scope"]["profile"] = scope_token("/some/other/profile")
         sessions.path.write_text(json.dumps(state))
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, essential_environ(), clear=True):
             self.assertEqual(sessions.load()["task_memory"]["brief"]["objective"], "")
         state["task_memory"]["scope"]["profile"] = scope_token(str(self.legacy))
         sessions.path.write_text(json.dumps(state))
-        with patch.dict(os.environ, {"ANGELO_STATE_DIR": str(self.current)}, clear=True):
+        with patch.dict(os.environ, essential_environ(ANGELO_STATE_DIR=str(self.current)), clear=True):
             self.assertEqual(sessions.load()["task_memory"]["brief"]["objective"], "",
                              "an explicit state folder has no pre-rename sibling")
 

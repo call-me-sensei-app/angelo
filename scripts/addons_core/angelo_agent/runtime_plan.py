@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 from . import runtime_environment
 from .protocol import RpcError
+from .provider_registry import TEAM_MODES
 
 CODEX_MODEL_PROVIDER = "openai"
 
@@ -62,6 +63,8 @@ class Plans:
                 type(options.get(name, False)) is bool for name in ("claude_direct_tools", "single_model")):
             raise RpcError("The Claude session options are not ones Angelo sets")
         values = launch_values(arguments)
+        values["gateway"] = chat.mode in TEAM_MODES   # A team chat's WebFetch goes through the gateway, whatever was asked.
+        values.pop("hooks_blocked", None)   # And the administrator's hook policy as this host reads it (claude_managed).
         if values["resume"] and values["resume"] not in self._recorded(request.get("session")):
             values["resume"] = str(uuid.uuid4())   # Not one Angelo saw this chat open: a session that cannot exist.
         command = claude_arguments(executable, values)

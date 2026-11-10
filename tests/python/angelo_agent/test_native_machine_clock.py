@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """machine_clock: a wall-clock bound fails for slow code, never for a slow machine, and no fixed bound comes back."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 from pathlib import Path
 import threading
@@ -16,6 +18,8 @@ from machine_clock import NOMINAL_REFERENCE_SECONDS as NOMINAL
 HERE = Path(__file__).resolve().parent
 CLOCKS = {"monotonic", "perf_counter", "time"}
 UPPER_BOUNDS = {"assertLess", "assertLessEqual"}
+LOWER_BOUNDS = {"assertGreater", "assertGreaterEqual"}   # ``assertGreater(limit, took)`` bounds ``took`` above.
+KEEPS = {"append", "extend", "insert", "add"}   # A container that keeps a timed value is timed.
 # These fall as time passes, so a slow machine can only help them: a deadline's remaining time.
 NOT_A_SPEED_BOUND = {("test_native_codex_opening_guards.py", "until"),
                      ("test_native_view_wait_delivery.py", "remaining")}
@@ -30,26 +34,75 @@ def is_clock_difference(node):
                for part in ast.walk(node))
 
 
+def holder(node):
+    """The name a timed value is kept under: ``took``, ``self.took``, or the container of ``took[key]``."""
+    if isinstance(node, ast.Subscript):
+        return holder(node.value)
+    if isinstance(node, (ast.Name, ast.Attribute)):
+        return ast.unparse(node)
+    return None
+
+
+def called(call):
+    return getattr(call.func, "attr", getattr(call.func, "id", ""))
+
+
+def functions(tree):
+    return [node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+
+
+def timed_holders(function, timed_calls):
+    """What in ``function`` holds a clock's difference: assigned one (or a value made from one: a sum, a ratio, the
+    ``max`` of a list), a call of a function that returns one, or a container one was appended to."""
+    timed = set()
+
+    def is_timed(node):
+        return any(is_clock_difference(part) if isinstance(part, ast.BinOp) else
+                   holder(part) in timed if isinstance(part, (ast.Name, ast.Attribute, ast.Subscript)) else
+                   isinstance(part, ast.Call) and called(part) in timed_calls
+                   for part in ast.walk(node))
+    for _ in range(3):   # A value made from a value made from a difference.
+        for node in ast.walk(function):
+            if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)) and node.value is not None \
+                    and is_timed(node.value):
+                for target in node.targets if isinstance(node, ast.Assign) else [node.target]:
+                    for part in target.elts if isinstance(target, ast.Tuple) else [target]:
+                        timed.add(holder(part))
+            elif isinstance(node, ast.Call) and called(node) in KEEPS and any(map(is_timed, node.args)):
+                timed.add(holder(node.func.value))
+    timed.discard(None)
+    return timed, is_timed
+
+
+def timed_functions(tree):
+    """The file's functions that return a clock's difference (``return time.perf_counter() - started``)."""
+    found = set()
+    for function in functions(tree):
+        _timed, is_timed = timed_holders(function, set())
+        if any(isinstance(node, ast.Return) and node.value is not None and is_timed(node.value)
+               for node in ast.walk(function)):
+            found.add(function.name)
+    return found
+
+
 def fixed_bounds(source):
-    """Each upper bound that compares a real clock's difference with something, as ``(name or text, line)``."""
+    """Each upper bound on a real clock's difference, as ``(text, line)``: the difference itself, a name or container
+    it was kept in, a value made from it, or what a function of the file that returns one returned."""
     found = []
     tree = ast.parse(source)
-    for function in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):
-        timed = {target.id for node in ast.walk(function) if isinstance(node, ast.Assign)
-                 and is_clock_difference(node.value) for target in node.targets if isinstance(target, ast.Name)}
+    timed_calls = timed_functions(tree)
+    for function in functions(tree):
+        _timed, is_timed = timed_holders(function, timed_calls)
         for node in ast.walk(function):
             if not isinstance(node, ast.Call):
                 continue
             method = getattr(node.func, "attr", "")
-            if method in UPPER_BOUNDS and node.args:
-                first = node.args[0]
-                if is_clock_difference(first):
-                    found.append((ast.unparse(first), node.lineno))
-                elif isinstance(first, ast.Name) and first.id in timed:
-                    found.append((first.id, node.lineno))
+            if method in UPPER_BOUNDS and node.args and is_timed(node.args[0]) \
+                    or method in LOWER_BOUNDS and len(node.args) > 1 and is_timed(node.args[1]):
+                found.append((ast.unparse(node.args[0]), node.lineno))
             elif method in {"assertTrue", "assertFalse"} and node.args:
                 for compare in ast.walk(node.args[0]):
-                    if isinstance(compare, ast.Compare) and is_clock_difference(compare.left) \
+                    if isinstance(compare, ast.Compare) and is_timed(compare.left) \
                             and any(isinstance(op, (ast.Lt, ast.LtE)) for op in compare.ops):
                         found.append((ast.unparse(compare), node.lineno))
     return sorted(set(found), key=lambda row: row[1])
@@ -176,11 +229,36 @@ class NoFixedBoundTests(unittest.TestCase):
             "    self.assertTrue(time.time() - started < 5)\n")
         self.assertEqual([line for _text, line in fixed_bounds(source)], [3, 4, 6, 7])
 
+    def test_the_scan_follows_a_difference_into_what_keeps_it(self):
+        """test_native_worker_mirror_reader's 4 ms bound kept its readings in a list's ``max`` and a helper's return,
+        which the scan above never saw: a Windows runner stall failed it at 3.1 s (CI 41883033718)."""
+        source = (
+            "def t(self):\n"
+            "    pumps, spent = [], {}\n"
+            "    started = time.perf_counter()\n"
+            "    pumps.append(time.perf_counter() - started)\n"
+            "    spent[1] = max(pumps)\n"
+            "    self.assertLess(spent[1], 0.004)\n"
+            "    self.assertLess(self.timed() / 2, 0.1)\n"
+            "    self.assertGreater(0.1, spent[1])\n"
+            "    self.took = time.monotonic() - started\n"
+            "    self.assertLessEqual(self.took, 5)\n"
+            "def timed(self):\n"
+            "    begun = time.perf_counter()\n"
+            "    work()\n"
+            "    took = time.perf_counter() - begun\n"
+            "    return took\n")
+        self.assertEqual([line for _text, line in fixed_bounds(source)], [6, 7, 8, 10])
+
     def test_it_leaves_lower_bounds_and_simulated_clocks(self):
         source = (
             "def t(self):\n"
             "    self.assertGreater(time.monotonic() - started, 1)\n"
-            "    self.assertLess(scene.now - started, 5)\n")
+            "    self.assertLess(scene.now - started, 5)\n"
+            "    took = time.monotonic() - started\n"
+            "    self.assertGreater(took, 1)\n"
+            "    self.assertLess(1, took)\n"
+            "    self.assertLess(len(rows), 5)\n")
         self.assertEqual(fixed_bounds(source), [])
 
     def test_no_host_test_holds_a_fixed_wall_clock_bound(self):
@@ -195,7 +273,8 @@ class NoFixedBoundTests(unittest.TestCase):
             for text, line in bounds:
                 if not any(path.name == name and word in text for name, word in NOT_A_SPEED_BOUND):
                     left.append("%s:%d %s" % (path.name, line, text))
-        self.assertEqual(left, [], "use machine_clock.start(self) and assert_within, or assert_cost")
+        self.assertEqual(left, [], "count the work (thread_work), or use machine_clock.start(self) and "
+                                   "assert_within, or assert_cost")
 
 
 if __name__ == "__main__":

@@ -9,6 +9,8 @@ loopback stand-in for R2 of test_native_publish_installers). A feed with deltas 
 predates them: it ignores keys it does not know inside a download.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import shutil

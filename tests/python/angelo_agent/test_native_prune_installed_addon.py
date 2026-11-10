@@ -7,6 +7,8 @@ Dependency-free. ``prune_installed_addon.prune`` runs on a fake checkout and a f
 bytecode, and leaves every other difference for the guard to refuse. The release stage calls it before the suites.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import shutil
 import sys
 import tempfile

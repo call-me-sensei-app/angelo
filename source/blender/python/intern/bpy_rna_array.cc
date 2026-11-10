@@ -9,6 +9,7 @@
  */
 
 #include <Python.h>
+#include <memory>
 
 #include "CLG_log.h"
 
@@ -35,6 +36,30 @@
 #define MAX_ARRAY_DIMENSION 10
 
 namespace blender {
+
+PyObject *pyrna_array_snapshot(PyObject *seq, const int dimensions)
+{
+  PyObject *tuple = PySequence_Tuple(seq);
+  if (!tuple || dimensions <= 1) {
+    return tuple;
+  }
+  PyObject *result = PyTuple_New(PyTuple_GET_SIZE(tuple));
+  if (!result) {
+    Py_DECREF(tuple);
+    return nullptr;
+  }
+  for (Py_ssize_t i = 0; i < PyTuple_GET_SIZE(tuple); i++) {
+    PyObject *child = pyrna_array_snapshot(PyTuple_GET_ITEM(tuple, i), dimensions - 1);
+    if (!child) {
+      Py_DECREF(tuple);
+      Py_DECREF(result);
+      return nullptr;
+    }
+    PyTuple_SET_ITEM(result, i, child);
+  }
+  Py_DECREF(tuple);
+  return result;
+}
 
 struct ItemConvertArgData;
 
@@ -403,6 +428,11 @@ static char *copy_value_single(PyObject *item,
                                RNA_SetIndexFunc rna_set_index)
 {
   if (!data) {
+    BPyRNA_ConversionGuard guard(
+        *ptr,
+        prop,
+        RNA_property_is_runtime(prop) ||
+            !(PyFloat_CheckExact(item) || PyLong_CheckExact(item) || PyBool_Check(item)));
     union {
       float fl;
       int i;
@@ -410,7 +440,13 @@ static char *copy_value_single(PyObject *item,
     char *value = static_cast<char *>(static_cast<void *>(&value_buf));
 
     convert_item->func(&convert_item->arg, item, value);
+    if (!guard.check() || PyErr_Occurred()) {
+      return nullptr;
+    }
     rna_set_index(ptr, prop, *index, value);
+    if (!guard.check()) {
+      return nullptr;
+    }
     (*index) += 1;
   }
   else {
@@ -455,12 +491,20 @@ static char *copy_values_fast(PyObject *seq,
                               index,
                               convert_item,
                               rna_set_index);
+      if (PyErr_Occurred()) {
+        Py_DECREF(seq_fast);
+        return nullptr;
+      }
     }
   }
   else {
     for (Py_ssize_t i = 0; i < seq_size; i++) {
       data = copy_value_single(
           seq_items[i], ptr, prop, data, item_size, index, convert_item, rna_set_index);
+      if (PyErr_Occurred()) {
+        Py_DECREF(seq_fast);
+        return nullptr;
+      }
     }
   }
 
@@ -516,6 +560,29 @@ static int py_to_array(PyObject *seq,
   // int totdim, dim_size[MAX_ARRAY_DIMENSION];
   int totitem;
   char *data = nullptr;
+  BPyRNA_ConversionGuard guard(*ptr, prop);
+  const int dimensions = RNA_property_array_dimension(ptr, prop, nullptr);
+  std::unique_ptr<PyObject, decltype(&Py_DecRef)> snapshot(nullptr, Py_DecRef);
+#ifdef USE_MATHUTILS
+  if (MatrixObject_Check(seq)) {
+    MatrixObject *matrix = reinterpret_cast<MatrixObject *>(seq);
+    if (BaseMath_ReadCallback(matrix) == -1) {
+      return -1;
+    }
+    /* Whole-property Matrix assignment copies native columns, while array slice
+     * assignment uses the ordinary row sequences returned by Python iteration. */
+    snapshot.reset(
+        Matrix_CreatePyObject(matrix->matrix, matrix->col_num, matrix->row_num, nullptr));
+  }
+  else
+#endif
+  {
+    snapshot.reset(pyrna_array_snapshot(seq, dimensions));
+  }
+  if (!guard.check() || !snapshot) {
+    return -1;
+  }
+  seq = snapshot.get();
 
   // totdim = RNA_property_array_dimension(ptr, prop, dim_size); /* UNUSED */
   const int flag = RNA_property_flag(prop);
@@ -537,6 +604,9 @@ static int py_to_array(PyObject *seq,
   }
 
   if (totitem) {
+    if (!guard.check()) {
+      return -1;
+    }
     /* NOTE: this code is confusing. */
     if (prop_is_param_dyn_alloc) {
       /* not freeing allocated mem, RNA_parameter_list_free() will do this */
@@ -559,6 +629,12 @@ static int py_to_array(PyObject *seq,
      * python data, the check here is mainly for completeness. */
     if (copy_values(seq, ptr, prop, 0, data, item_size, nullptr, convert_item, nullptr) != nullptr)
     {
+      if (!guard.check() || PyErr_Occurred()) {
+        if (!param_data) {
+          PyMem_FREE(data);
+        }
+        return -1;
+      }
       if (param_data == nullptr) {
         /* nullptr can only pass through in case RNA property array-length is 0 (impossible?) */
         rna_set_array(ptr, prop, data);
@@ -570,6 +646,9 @@ static int py_to_array(PyObject *seq,
         PyMem_FREE(data);
       }
 
+      if (!guard.check() || PyErr_Occurred()) {
+        return -1;
+      }
       PyErr_Format(PyExc_TypeError,
                    "%s internal error parsing sequence of type '%s' after successful validation",
                    error_prefix,
@@ -595,6 +674,7 @@ static int py_to_array_index(PyObject *py,
 {
   int totdim, dimsize[MAX_ARRAY_DIMENSION];
   int totitem, i;
+  BPyRNA_ConversionGuard guard(*ptr, prop);
 
   totdim = RNA_property_array_dimension(ptr, prop, dimsize);
 
@@ -609,6 +689,14 @@ static int py_to_array_index(PyObject *py,
    *    lvalue_dim = 1, index = 40 + 3 * 5 */
 
   lvalue_dim++;
+  std::unique_ptr<PyObject, decltype(&Py_DecRef)> snapshot(nullptr, Py_DecRef);
+  if (lvalue_dim != totdim) {
+    snapshot.reset(pyrna_array_snapshot(py, totdim - lvalue_dim));
+    if (!guard.check() || !snapshot) {
+      return -1;
+    }
+    py = snapshot.get();
+  }
 
   for (i = lvalue_dim; i < totdim; i++) {
     index *= dimsize[i];
@@ -628,6 +716,9 @@ static int py_to_array_index(PyObject *py,
       return -1;
     }
     copy_value_single(py, ptr, prop, nullptr, 0, &index, convert_item, rna_set_index);
+    if (!guard.check() || PyErr_Occurred()) {
+      return -1;
+    }
   }
   else {
     const bool prop_is_param_dyn_alloc = false;
@@ -645,7 +736,13 @@ static int py_to_array_index(PyObject *py,
     }
 
     if (totitem) {
+      if (!guard.check()) {
+        return -1;
+      }
       copy_values(py, ptr, prop, lvalue_dim, nullptr, 0, &index, convert_item, rna_set_index);
+      if (!guard.check() || PyErr_Occurred()) {
+        return -1;
+      }
     }
   }
   return 0;

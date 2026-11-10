@@ -7,6 +7,8 @@ are tested in ``test_native_grading_live.py``, and in the real application by
 ``test_blender_survey_tasks.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 from pathlib import Path
 import sys
@@ -100,7 +102,8 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(grading.unguarded(live.tasks_for("long", 120)), [])
         self.assertEqual(set(every_set()),
                          {"default", "long", "delegation", "coverage", "survey", "survey-questions", "rig",
-                          "engine-link-compare"}   # Each brief's closed check (engine_link_compare.check_*).
+                          "engine-link-compare",   # Each brief's closed check (engine_link_compare.check_*).
+                          "steering"}   # Closed checks over the named objects (eval_steer).
                          | set(scenario_specs.TASK_SETS)
                          | set(scenario_specs.ONESHOT_TASK_SETS))   # One-shot tests: each brief's own closed checks.
 

@@ -10,6 +10,8 @@ Never one side's estimate against the other's list price. Synthetic records
 in the drivers' shapes; no process, account or model is involved.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import os

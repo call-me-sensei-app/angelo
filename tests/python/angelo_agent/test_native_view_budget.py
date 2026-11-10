@@ -10,6 +10,8 @@ as any other plan problem is; it does not end the turn. RENDERED looks and
 finished pictures are delivered once and are not counted.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import tempfile

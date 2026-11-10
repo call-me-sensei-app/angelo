@@ -32,6 +32,12 @@ PROGRESS_SAVE_SECONDS = 2.0
 NOTHING_RAN = n_("Nothing ran, and the job's settings were restored.")
 NOT_STARTED = n_("Cancelled before it started; nothing ran.")
 NOT_PUBLISHED = n_("Nothing was published.")
+KEPT_UNPUBLISHED = n_("Publishing its output failed, so nothing was published; the files it wrote are kept in its "
+                      "hidden staging folder, which Open shows.")
+KEPT_PARTLY = n_("Publishing its output failed partway: the files named as left published couldn't be moved back "
+                 "and stay there; the rest it wrote is kept in its hidden staging folder, which Open shows.")
+LEFT_PARTLY = n_("Publishing its output failed partway: the files named as left published couldn't be moved back "
+                 "and stay there.")
 FILE_CLOSED = n_("The document was closed or reloaded, which stops Angelo's jobs. Nothing was published.")
 # ETA only once it means something: some progress after a few seconds.
 ETA_MIN_PROGRESS, ETA_MIN_SECONDS = 0.02, 3.0
@@ -243,6 +249,16 @@ class JobManager:
                         release(staging)
                         receipt["note"] = n_("Finishing the job failed; its finished frames are kept for the next "
                                              "start.")
+                        if getattr(staging, "left_published", None):   # Moved, and never moved back: named.
+                            receipt["left_published"] = staging.left_published[:20]
+                    elif (kept := kept_outputs(staging)) is not None or getattr(staging, "left_published", None):
+                        # What it wrote is never lost to a failed publication (FAT and exFAT: job_output_links): its
+                        # staging folder stays, named, and Open shows it; what stayed published is named.
+                        if kept is not None:
+                            runner.published = staging.path
+                        else:
+                            runner.abandon()   # Empty: nothing in it to keep.
+                        receipt.update(unpublished_receipt(staging, kept))
                     else:
                         runner.abandon()  # Never leave a hidden staging folder behind.
                 except Exception:
@@ -293,6 +309,33 @@ class JobManager:
         self.store.save()
         self.on_change(record)
         self.on_finish(record)
+
+
+def kept_outputs(staging):
+    """A staging folder that holds files, let go of and kept (``job_recovery.release``): its path relative to the
+    workspace; None when there is nothing in it to keep (or it can't be read: then it is removed as before)."""
+    from . import checkpoint_filesystem as cf, job_outputs, job_recovery
+    folder = getattr(staging, "folder", None)
+    try:
+        if folder is None or not any(name != job_outputs.MARKER for name in cf.list_names(folder)):
+            return None
+        relative = staging.path.relative_to(staging.root).as_posix()
+    except (ValueError, OSError):
+        return None
+    job_recovery.release(staging)
+    return relative
+
+
+def unpublished_receipt(staging, kept):
+    """The receipt of a publication that failed: the staging folder kept (``kept``, ``kept_outputs``) and the files
+    that stayed published because they couldn't be moved back (``Staging.left_published``)."""
+    left = list(getattr(staging, "left_published", None) or [])
+    receipt = {"note": (KEPT_PARTLY if kept else LEFT_PARTLY) if left else KEPT_UNPUBLISHED if kept else NOT_PUBLISHED}
+    if kept:
+        receipt["kept_folder"] = kept
+    if left:
+        receipt["left_published"] = left[:20]
+    return receipt
 
 
 def _device_used(record, runner):

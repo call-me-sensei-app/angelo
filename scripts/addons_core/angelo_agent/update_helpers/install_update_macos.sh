@@ -1,10 +1,10 @@
-#!/bin/sh
+#!/bin/bash
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
 # Angelo's update installer for macOS (doc/angelo/updates_and_reports.rst, "Installing updates").
 #
-# Angelo copies this file out of its bundle into the update's own folder and starts it with /bin/sh just
+# Angelo copies this file out of its bundle into the update's own folder and starts it with /bin/bash --noprofile --norc just
 # before it quits; it never runs from inside the bundle it replaces. Every input is an environment variable:
 #
 #   ANGELO_UPDATE_PID         Angelo's process: nothing changes until it has exited
@@ -43,8 +43,10 @@ result() {
 }
 if /usr/bin/stat -f %d / >/dev/null 2>&1; then   # BSD stat (macOS); GNU stat only for the host tests.
     device() { /usr/bin/stat -f %d "$1"; }
+    identity() { /usr/bin/stat -L -f %d:%i "$1" 2>/dev/null; }   # The file itself, links followed.
 else
     device() { /usr/bin/stat -c %d "$1"; }
+    identity() { /usr/bin/stat -L -c %d:%i "$1" 2>/dev/null; }
 fi
 checked=""
 launchable() {   # launchable <bundle>: a sealed signature, and Gatekeeper's approval when the running app has it.
@@ -79,7 +81,21 @@ finish() {   # finish <status> <step>: record, relaunch, end
 }
 
 /bin/mkdir "$dir/helper.lock" 2>/dev/null || exit 0   # Another installer runs for this update.
-: > "$dir/helper.ready"   # Angelo waits for this before it quits.
+# Readiness is not authorization. Only a complete native committed-exit frame
+# followed by EOF authorizes the existing parent-exit/install path below.
+nonce=${ANGELO_UPDATE_INVOCATION:-}
+case "$nonce" in *[!0-9a-f]*|'') exit 1 ;; esac
+[ "${#nonce}" = 32 ] || exit 1
+printf '%s\n' "$nonce" > "$dir/helper.ready" || exit 1
+grant=''
+IFS= read -r -t 600 -n 96 grant || { result aborted authorization; exit 1; }
+[ "$grant" = "ANGELO_UPDATE_COMMIT:$nonce" ] || { result aborted authorization; exit 1; }
+# Native owns the sole writer before commit. A live/extra writer is not EOF.
+extra=''
+IFS= read -r -t 2 -n 1 extra
+read_status=$?
+[ "$read_status" = 1 ] && [ -z "$extra" ] || { result aborted authorization; exit 1; }
+exec 0<&-
 say "waiting for process $ANGELO_UPDATE_PID to quit"
 alive() {   # An exited process its parent has not reaped yet (a zombie) counts as gone.
     /bin/kill -0 "$1" 2>/dev/null || return 1
@@ -98,14 +114,34 @@ while alive "$ANGELO_UPDATE_PID"; do
 done
 
 # Another copy of this same app still running would have its files replaced under it.
-running_from() {   # Is any process executing the file $1? (/proc only where it exists: the host tests on Linux.)
+running_from() {   # Is any process executing the file $1, however it was started? (/proc where it exists: Linux.)
+    wanted=$(identity "$1") || return 1
     if [ -L /proc/self/exe ]; then
         for exe in /proc/[0-9]*/exe; do
-            [ "$(/usr/bin/readlink "$exe" 2>/dev/null)" = "$1" ] && return 0
+            [ "$(identity "$exe")" = "$wanted" ] && return 0
         done
         return 1
     fi
-    /bin/ps -axo comm= | /usr/bin/grep -Fqx -- "$1"
+    # ps names a process by the path it was started as: a link is followed here, and a relative path is asked of
+    # lsof (the file the kernel runs). An absolute path of another file name that is no link is another file. A
+    # relative path lsof cannot answer for (another user's process) counts by its file name: fail closed.
+    name=${1##*/}
+    while read -r pid started; do
+        case $started in
+            /*) [ "${started##*/}" = "$name" ] || [ -L "$started" ] || continue ;;
+            *) resolved=$(/usr/sbin/lsof -a -p "$pid" -d txt -Fn 2>/dev/null | /usr/bin/sed -n 's/^n//p' |
+                          /usr/bin/head -n 1)
+               if [ -z "$resolved" ]; then
+                   [ "${started##*/}" = "$name" ] && return 0
+                   continue
+               fi
+               started=$resolved ;;
+        esac
+        [ "$(identity "$started")" = "$wanted" ] && return 0
+    done <<PROCESSES
+$(/bin/ps -axo pid=,comm=)
+PROCESSES
+    return 1
 }
 if running_from "$app/Contents/MacOS/$ANGELO_UPDATE_EXECUTABLE"; then
     finish aborted another_instance

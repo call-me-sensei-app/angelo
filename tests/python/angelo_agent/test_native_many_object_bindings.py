@@ -14,6 +14,8 @@ The scene here is a held-out one (a bookshop): none of the recorded names, sizes
 Blender, model or provider.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import copy
 import sys

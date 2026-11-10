@@ -207,6 +207,13 @@ def start_cover():
 def _remove_cover():
     native = _native_cover()
     if native is not None:
+        if native.angelo_startup_cover[3] > 0.0:
+            _before_lift()
+            try:
+                _owe_lifted_frame()
+            except Exception as error:   # noqa: BLE001 - the cover always lifts.
+                _cover["frame_owed"] = bool(_cover.get("frame_handlers"))   # Owed only while a handler can clear it.
+                print("Angelo: after the start-up cover lifts:", error)
         native.angelo_startup_cover = (0.0, 0.0, 0.0, 0.0)
     for space, region, handle in _cover["handlers"]:
         try:
@@ -215,6 +222,53 @@ def _remove_cover():
             pass
     _cover["handlers"] = []
     _cover["since"] = None
+
+
+def _before_lift():
+    """The add-on's last step under the native cover (``media_shelf_cover.before_lift``: the remembered Object-mode
+    shelf, which the views' draws would otherwise apply in view). A failure there never keeps the cover up."""
+    shelf = sys.modules.get("angelo_agent.media_shelf_cover")
+    if shelf is not None:
+        try:
+            shelf.before_lift()
+        except Exception as error:   # noqa: BLE001 - the cover always lifts.
+            print("Angelo: before the start-up cover lifts:", error)
+
+
+def _owe_lifted_frame():
+    """The native cover does not render the viewports it hides (``wm_angelo_cover.cc``): they draw in the frame after
+    it lifts, which redraws every area. Until a region has drawn in that frame, ``_cover["frame_owed"]`` says so
+    (``qa_boot`` waits on it: a capture in the same timer pass as the lift would read viewports not yet rendered)."""
+    _cover["frame_owed"] = True
+    if _cover.get("frame_handlers"):
+        return
+    handlers = _cover["frame_handlers"] = []   # Recorded as added: a failure part-way leaks none.
+    for name in ("SpaceTopBar", "SpaceStatusBar") + COVER_SPACES:
+        space = getattr(bpy.types, name, None)
+        for region in ("HEADER", "WINDOW") if space is not None else ():
+            try:
+                handlers.append((space, region, space.draw_handler_add(_lifted_frame_drawn, (), region,
+                                                                       'POST_PIXEL')))
+            except (TypeError, ValueError, AttributeError):   # A region type this editor does not have.
+                pass
+
+
+def _lifted_frame_drawn():
+    """A region drew after the lift: in that same frame every area the lift tagged draws."""
+    _cover["frame_owed"] = False
+    if not bpy.app.timers.is_registered(_forget_lifted_frame):
+        bpy.app.timers.register(_forget_lifted_frame, first_interval=0.0)   # Never removed inside its own call.
+
+
+def _forget_lifted_frame():
+    if _cover.get("frame_owed"):
+        return None   # Owed again (a later lift): the handlers stay until that frame draws, which schedules this again.
+    for space, region, handle in _cover.pop("frame_handlers", None) or ():
+        try:
+            space.draw_handler_remove(handle, region)
+        except (ValueError, RuntimeError):
+            pass
+    return None
 
 
 def _cover_watch():

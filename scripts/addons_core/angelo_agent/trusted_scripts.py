@@ -40,6 +40,8 @@ def consent_excluded(call):
 
 class TrustedScripts:
     """Consent policy mixed into the existing Controller, never a separate executor."""
+    explains_auto = True   # Its Auto decision is the base rule, so a card may say why it asks (approval_wait).
+
     @property
     def trusted_scripts(self):
         """Whether Trust scripts for this chat covers this chat's scripts now: its own, or a worker chat's lead's."""
@@ -262,7 +264,10 @@ class TrustedScripts:
 
     def require_script_authorized(self, call):
         if call.name == "angelo_execute_python" and not self.script_authorized(call):
-            raise RuntimeError("Script identity or consent changed; review the exact script before dispatch. No script ran")
+            # Classified (C7b review L-2): raised only before the run starts, so it holds nothing of the request.
+            from .refusal_codes import RefusalError
+            raise RefusalError("Script identity or consent changed; review the exact script before dispatch. No script ran",
+                               code="CANCELLED")
 
     def script_result(self, call, result):
         """The host's facts on an executed call's result: a script's authority and consent; in a worker chat, recovery

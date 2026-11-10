@@ -27,6 +27,7 @@ import bpy
 
 sys.path.insert(0, str(Path(bpy.utils.system_resource("SCRIPTS")) / "addons_core"))
 from angelo_agent import game_physics  # noqa: E402  (the add-on needn't be enabled: its findings are plain Python)
+from io_scene_gltf2.blender.com.blender_default import BLENDER_GLTF_SPECIAL_COLLECTION  # noqa: E402
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 ASSETS, PROJECT = Path(argv[0]), Path(argv[1])
@@ -42,10 +43,17 @@ def clear():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
+def exported(obj):
+    """Whether a glTF export writes ``obj``: the importer's own helpers (the bone-shape sphere it makes for every
+    armature) live in a collection the exporter skips, and are no part of the model."""
+    helpers = bpy.data.collections.get(BLENDER_GLTF_SPECIAL_COLLECTION)
+    return obj.name in bpy.context.scene.objects and (helpers is None or obj.name not in helpers.all_objects)
+
+
 def import_model(path, offset):
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=str(path))
-    new = [obj for obj in bpy.data.objects if obj not in before]
+    new = [obj for obj in bpy.data.objects if obj not in before and exported(obj)]
     roots = [obj for obj in new if obj.parent is None]
     for root in roots:
         root.location.x += offset

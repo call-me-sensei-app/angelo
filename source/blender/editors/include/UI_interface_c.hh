@@ -1055,6 +1055,9 @@ void uiPupBlockOperator(bContext *C,
 void popup_block_close(bContext *C, wmWindow *win, Block *block);
 
 bool popup_block_name_exists(const bScreen *screen, StringRef name);
+/** The texts of every button (labels included) of the open popup blocks named `name` in `screen`,
+ * in drawing order (Angelo: read by test seams that assert what a confirmation says). */
+Vector<std::string> popup_block_name_texts(const bScreen *screen, StringRef name);
 
 /* Blocks
  *

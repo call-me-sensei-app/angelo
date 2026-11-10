@@ -12,6 +12,8 @@ the file. The timing itself is ``bench_worker_mirror_pump``. The task memory's c
 UI pump past its 10 ms bound (``test_blender_parallel_workers``, ``a_pump_never_waits_for_the_worker``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

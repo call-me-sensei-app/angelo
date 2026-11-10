@@ -118,16 +118,22 @@ static int ptcache_extra_datasize[] = {
 };
 
 /* forward declarations */
-static int ptcache_file_compressed_read(PTCacheFile *pf,
-                                        uchar *result,
-                                        uint items_num,
-                                        uint item_size);
-static void ptcache_file_compressed_write(PTCacheFile *pf,
-                                          const void *data,
-                                          uint items_num,
-                                          uint item_size);
-static int ptcache_file_write(PTCacheFile *pf, const void *data, uint items_num, uint item_size);
-static bool ptcache_file_read(PTCacheFile *pf, void *f, uint items_num, uint item_size);
+[[nodiscard]] static bool ptcache_file_compressed_read(PTCacheFile *pf,
+                                                       uchar *result,
+                                                       size_t items_num,
+                                                       size_t item_size);
+[[nodiscard]] static bool ptcache_file_compressed_write(PTCacheFile *pf,
+                                                        const void *data,
+                                                        size_t items_num,
+                                                        size_t item_size);
+[[nodiscard]] static bool ptcache_file_write(PTCacheFile *pf,
+                                             const void *data,
+                                             size_t items_num,
+                                             size_t item_size);
+[[nodiscard]] static bool ptcache_file_read(PTCacheFile *pf,
+                                            void *f,
+                                            size_t items_num,
+                                            size_t item_size);
 
 /* Common functions */
 static int ptcache_basic_header_read(PTCacheFile *pf)
@@ -325,7 +331,7 @@ static void ptcache_particle_read(
   BoidParticle *boid;
   float timestep = 0.04f * psys->part->timetweak;
 
-  if (index >= psys->totpart) {
+  if (index < 0 || index >= psys->totpart) {
     return;
   }
 
@@ -398,7 +404,7 @@ static void ptcache_particle_interpolate(int index,
   ParticleKey keys[4];
   float dfra, timestep = 0.04f * psys->part->timetweak;
 
-  if (index >= psys->totpart) {
+  if (index < 0 || index >= psys->totpart) {
     return;
   }
 
@@ -532,7 +538,18 @@ static void ptcache_particle_extra_read(void *psys_v, PTCacheMem *pm, float /*cf
         }
 
         psys->fluid_springs = MEM_dupalloc(static_cast<ParticleSpring *>(extra->data));
-        psys->tot_fluidsprings = psys->alloc_fluidsprings = extra->totdata;
+        psys->alloc_fluidsprings = extra->totdata;
+
+        /* Drop springs with invalid particle indices from corrupt files. */
+        const uint totpart = uint(std::max(psys->totpart, 0));
+        int springs_num = 0;
+        for (uint i = 0; i < extra->totdata; i++) {
+          const ParticleSpring &spring = psys->fluid_springs[i];
+          if (spring.particle_index[0] < totpart && spring.particle_index[1] < totpart) {
+            psys->fluid_springs[springs_num++] = spring;
+          }
+        }
+        psys->tot_fluidsprings = springs_num;
         break;
       }
       case BPHYS_EXTRA_CLOTH_ACCELERATION:
@@ -636,6 +653,9 @@ static void ptcache_cloth_extra_read(void *cloth_v, PTCacheMem *pm, float /*cfra
   for (; extra; extra = extra->next) {
     switch (extra->type) {
       case BPHYS_EXTRA_CLOTH_ACCELERATION: {
+        if (extra->totdata < 1) {
+          break; /* Guard against corrupt file. */
+        }
         copy_v3_v3(cloth->average_acceleration, static_cast<const float *>(extra->data));
         break;
       }
@@ -685,16 +705,17 @@ static void ptcache_dynamicpaint_error(const ID * /*owner_id*/,
 static int ptcache_dynamicpaint_write(PTCacheFile *pf, void *dp_v)
 {
   DynamicPaintSurface *surface = static_cast<DynamicPaintSurface *>(dp_v);
+  bool ok = true;
 
   /* version header */
-  ptcache_file_write(pf, DPAINT_CACHE_VERSION, 1, sizeof(char[4]));
+  ok &= ptcache_file_write(pf, DPAINT_CACHE_VERSION, 1, sizeof(char[4]));
 
   if (surface->format != MOD_DPAINT_SURFACE_F_IMAGESEQ && surface->data) {
     const int total_points = surface->data->total_points;
 
     /* cache type */
     const int surface_type = int(surface->type);
-    ptcache_file_write(pf, &surface_type, 1, sizeof(int));
+    ok &= ptcache_file_write(pf, &surface_type, 1, sizeof(int));
 
     uint in_stride;
     if (surface->type == MOD_DPAINT_SURFACE_T_PAINT) {
@@ -707,12 +728,12 @@ static int ptcache_dynamicpaint_write(PTCacheFile *pf, void *dp_v)
       in_stride = sizeof(PaintWavePoint);
     }
     else {
-      return 0;
+      return false;
     }
 
-    ptcache_file_compressed_write(pf, surface->data->type_data, total_points, in_stride);
+    ok &= ptcache_file_compressed_write(pf, surface->data->type_data, total_points, in_stride);
   }
-  return 1;
+  return ok;
 }
 static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
 {
@@ -720,7 +741,9 @@ static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
   char version[4];
 
   /* version header */
-  ptcache_file_read(pf, version, 1, sizeof(char[4]));
+  if (!ptcache_file_read(pf, version, 1, sizeof(char[4]))) {
+    return 0;
+  }
   if (!STREQLEN(version, DPAINT_CACHE_VERSION, 4)) {
     CLOG_ERROR(&LOG, "Dynamic Paint: Invalid cache version: '%c%c%c%c'!", UNPACK4(version));
     return 0;
@@ -731,7 +754,9 @@ static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
     int surface_type;
 
     /* cache type */
-    ptcache_file_read(pf, &surface_type, 1, sizeof(int));
+    if (!ptcache_file_read(pf, &surface_type, 1, sizeof(int))) {
+      return 0;
+    }
 
     if (surface_type != surface->type) {
       return 0;
@@ -751,9 +776,11 @@ static int ptcache_dynamicpaint_read(PTCacheFile *pf, void *dp_v)
       return 0;
     }
 
-    int ret = ptcache_file_compressed_read(
-        pf, static_cast<uchar *>(surface->data->type_data), surface->data->total_points, data_len);
-    if (ret) {
+    if (!ptcache_file_compressed_read(pf,
+                                      static_cast<uchar *>(surface->data->type_data),
+                                      surface->data->total_points,
+                                      data_len))
+    {
       CLOG_ERROR(&LOG, "Dynamic Paint: Unable to read the compressed cache data");
       return 0;
     }
@@ -1314,10 +1341,48 @@ static int ptcache_frame_from_filename(const char *filename, const char *ext)
 #define MAX_PTCACHE_PATH FILE_MAX
 #define MAX_PTCACHE_FILE (FILE_MAX * 2)
 
+/**
+ * The ID whose name and cache-index list name this cache's own disk files
+ * (`<hex of the ID name or the cache name>_<frame>_<index>.bphys`), or null when it has none.
+ *
+ * A rigid body world's cache has none: the world is not an ID, so its #PTCacheID has no owner
+ * when it comes from the world (the simulation, the scene's cache list, `scene.rigidbody_world`)
+ * and the rigid body object it was reached through when it comes from an object, a different one
+ * for each object. Naming files after either would crash (no owner) or give one cache many
+ * names, so such a cache is never written to, read from or cleared on disk as a cache of its
+ * own: it stays in memory (Blender's UI never offers its disk cache either). An external cache
+ * (#PTCACHE_EXTERNAL) is different: its files are named after the cache's own name and path, so
+ * any cache can read one.
+ */
+static ID *ptcache_file_owner(const PTCacheID *pid)
+{
+  if (pid->type == PTCACHE_TYPE_RIGIDBODY) {
+    return nullptr;
+  }
+  return pid->owner_id;
+}
+
+/** Whether #ptcache_filepath can name this cache's files on disk. */
+static bool ptcache_id_has_filepath(const PTCacheID *pid)
+{
+  return (pid->cache->flag & PTCACHE_EXTERNAL) || ptcache_file_owner(pid) != nullptr;
+}
+
+/**
+ * Whether the cache's frames live on disk: #PTCACHE_DISK_CACHE and files to keep them in. A cache
+ * with no files of its own keeps its frames in memory even when the flag is set (a file from
+ * elsewhere, an external cache switched back off, an animated or overridden flag).
+ */
+static bool ptcache_uses_disk(const PTCacheID *pid)
+{
+  return (pid->cache->flag & PTCACHE_DISK_CACHE) && ptcache_id_has_filepath(pid);
+}
+
 int BKE_ptcache_path(PTCacheID *pid, char dirname[MAX_PTCACHE_PATH])
 {
   const char *blendfile_path = BKE_main_blendfile_path_from_global();
-  Library *lib = (pid->owner_id) ? pid->owner_id->lib : nullptr;
+  const ID *file_owner = ptcache_file_owner(pid);
+  Library *lib = file_owner ? file_owner->lib : nullptr;
   const char *blendfile_path_lib = (lib && (pid->cache->flag & PTCACHE_IGNORE_LIBPATH) == 0) ?
                                        lib->runtime->filepath_abs :
                                        blendfile_path;
@@ -1363,11 +1428,13 @@ static size_t ptcache_filepath_ext_append(PTCacheID *pid,
   filename_ext = filepath + filepath_len;
   *filename_ext = '\0';
 
-  /* PointCaches are inserted in object's list on demand, we need a valid index now. */
-  if (pid->cache->index < 0) {
-    BLI_assert(GS(pid->owner_id->name) == ID_OB);
+  /* PointCaches are inserted in object's list on demand, we need a valid index now. A cache with
+   * no owning object has no such list: it keeps index -1, which only an external cache's file name
+   * can use (`<name>_<frame>.bphys`), see #ptcache_file_owner. */
+  ID *file_owner = ptcache_file_owner(pid);
+  if (pid->cache->index < 0 && file_owner != nullptr && GS(file_owner->name) == ID_OB) {
     pid->cache->index = pid->stack_index = BKE_object_insert_ptcache(
-        id_cast<Object *>(pid->owner_id));
+        id_cast<Object *>(file_owner));
   }
 
   const char *ext = ptcache_file_extension(pid);
@@ -1417,6 +1484,10 @@ static int ptcache_filepath(PTCacheID *pid,
   filepath[0] = '\0';
   newname = filepath;
 
+  if (!ptcache_id_has_filepath(pid)) {
+    return 0; /* No ID to name the files after: the cache stays in memory. */
+  }
+
   if ((pid->cache->flag & PTCACHE_EXTERNAL) == 0) {
     const char *blendfile_path = BKE_main_blendfile_path_from_global();
     if (blendfile_path[0] == '\0') {
@@ -1430,7 +1501,7 @@ static int ptcache_filepath(PTCacheID *pid,
     newname += len;
   }
   if (pid->cache->name[0] == '\0' && (pid->cache->flag & PTCACHE_EXTERNAL) == 0) {
-    idname = (pid->owner_id->name + 2);
+    idname = (ptcache_file_owner(pid)->name + 2);
     /* convert chars to hex so they are always a valid filename */
     while ('\0' != *idname) {
       /* Always 2 unless there isn't enough room in the string. */
@@ -1462,9 +1533,12 @@ static PTCacheFile *ptcache_file_open(PTCacheID *pid, int mode, int cfra)
   FILE *fp = nullptr;
   char filepath[MAX_PTCACHE_FILE];
 
+  if (!ptcache_id_has_filepath(pid)) {
+    return nullptr;
+  }
 #ifndef DURIAN_POINTCACHE_LIB_OK
   /* don't allow writing for linked objects */
-  if (pid->owner_id->lib && mode == PTCACHE_FILE_WRITE) {
+  if (pid->owner_id && pid->owner_id->lib && mode == PTCACHE_FILE_WRITE) {
     return nullptr;
   }
 #endif
@@ -1508,69 +1582,76 @@ static void ptcache_file_close(PTCacheFile *pf)
   }
 }
 
-static int ptcache_file_compressed_read(PTCacheFile *pf,
-                                        uchar *result,
-                                        uint items_num,
-                                        uint item_size)
+static bool ptcache_file_compressed_read(PTCacheFile *pf,
+                                         uchar *result,
+                                         const size_t items_num,
+                                         const size_t item_size)
 {
-  int r = 0;
-  size_t in_len;
+  const size_t out_len = items_num * item_size;
 
   uchar compressed_val = 0;
-  ptcache_file_read(pf, &compressed_val, 1, sizeof(uchar));
+  if (!ptcache_file_read(pf, &compressed_val, 1, sizeof(uchar))) {
+    return false;
+  }
   const PointCacheCompression compressed = PointCacheCompression(compressed_val);
-  if (compressed != PTCACHE_COMPRESS_NO) {
-    uint size;
-    ptcache_file_read(pf, &size, 1, sizeof(uint));
-    in_len = size_t(size);
-    if (in_len == 0) {
-      /* do nothing */
-    }
-    else {
-      uchar *in = MEM_new_array_zeroed<uchar>(in_len, "pointcache_compressed_buffer");
-      ptcache_file_read(pf, in, in_len, sizeof(uchar));
 
-      uchar *decomp_result = result;
-      if (compressed == PTCACHE_COMPRESS_ZSTD_FILTERED) {
-        decomp_result = MEM_new_array_uninitialized<uchar>(items_num * item_size,
-                                                           "pointcache_unfilter_buffer");
-      }
-      if (ELEM(compressed,
-               PTCACHE_COMPRESS_ZSTD_FILTERED,
-               PTCACHE_COMPRESS_ZSTD_FAST_DEPRECATED,
-               PTCACHE_COMPRESS_ZSTD_SLOW_DEPRECATED))
-      {
-        const size_t err = ZSTD_decompress(decomp_result, items_num * item_size, in, in_len);
-        r = ZSTD_isError(err);
-      }
-      else {
-        /* We are trying to read an unsupported compression format. */
-        r = 1;
-      }
-      MEM_delete(in);
-
-      /* Un-filter the decompressed data, if needed. */
-      if (compressed == PTCACHE_COMPRESS_ZSTD_FILTERED) {
-        unfilter_transpose_delta(decomp_result, result, items_num, item_size);
-        MEM_delete(decomp_result);
-      }
-    }
-  }
-  else {
-    ptcache_file_read(pf, result, items_num * item_size, sizeof(uchar));
+  if (compressed == PTCACHE_COMPRESS_NO) {
+    return ptcache_file_read(pf, result, out_len, sizeof(uchar));
   }
 
-  return r;
+  if (!ELEM(compressed,
+            PTCACHE_COMPRESS_ZSTD_FILTERED,
+            PTCACHE_COMPRESS_ZSTD_FAST_DEPRECATED,
+            PTCACHE_COMPRESS_ZSTD_SLOW_DEPRECATED))
+  {
+    /* We are trying to read an unsupported compression format. */
+    return false;
+  }
+
+  uint in_len;
+  if (!ptcache_file_read(pf, &in_len, 1, sizeof(uint))) {
+    return false;
+  }
+  if (in_len == 0) {
+    return out_len == 0;
+  }
+  uchar *in = MEM_new_array_uninitialized<uchar>(in_len, "pointcache_compressed_buffer");
+  if (in == nullptr) {
+    return false;
+  }
+  if (!ptcache_file_read(pf, in, in_len, sizeof(uchar))) {
+    MEM_delete(in);
+    return false;
+  }
+
+  /* Require the decompressed size to match, so no part of the result is left unwritten. */
+  if (compressed != PTCACHE_COMPRESS_ZSTD_FILTERED) {
+    const bool decompressed = ZSTD_decompress(result, out_len, in, in_len) == out_len;
+    MEM_delete(in);
+    return decompressed;
+  }
+
+  /* Un-filter the decompressed data. */
+  uchar *decomp_result = MEM_new_array_uninitialized<uchar>(out_len, "pointcache_unfilter_buffer");
+  const bool decompressed = decomp_result &&
+                            ZSTD_decompress(decomp_result, out_len, in, in_len) == out_len;
+  if (decompressed) {
+    unfilter_transpose_delta(decomp_result, result, items_num, item_size);
+  }
+  MEM_SAFE_DELETE(decomp_result);
+  MEM_delete(in);
+
+  return decompressed;
 }
 
-static void ptcache_file_compressed_write(PTCacheFile *pf,
-                                          const void *data,
-                                          uint items_num,
-                                          uint item_size)
+[[nodiscard]] static bool ptcache_file_compressed_write(PTCacheFile *pf,
+                                                        const void *data,
+                                                        size_t items_num,
+                                                        size_t item_size)
 {
   /* Allocate space for compressed data. */
   const PointCacheCompression compression = PTCACHE_COMPRESS_ZSTD_FILTERED;
-  const uint data_size = items_num * item_size;
+  const size_t data_size = items_num * item_size;
   size_t out_len = ZSTD_compressBound(data_size);
   Array<uchar> out(out_len);
 
@@ -1585,33 +1666,25 @@ static void ptcache_file_compressed_write(PTCacheFile *pf,
   out_len = res;
 
   /* Write to file. */
+  bool ok = true;
   const uchar compression_val = compression;
-  ptcache_file_write(pf, &compression_val, 1, sizeof(uchar));
+  ok &= ptcache_file_write(pf, &compression_val, 1, sizeof(uchar));
   uint size = out_len;
-  ptcache_file_write(pf, &size, 1, sizeof(uint));
-  ptcache_file_write(pf, out.data(), out_len, sizeof(uchar));
+  ok &= ptcache_file_write(pf, &size, 1, sizeof(uint));
+  ok &= ptcache_file_write(pf, out.data(), out_len, sizeof(uchar));
+  return ok;
 }
 
-static bool ptcache_file_read(PTCacheFile *pf, void *f, uint items_num, uint item_size)
+static bool ptcache_file_read(PTCacheFile *pf, void *f, size_t items_num, size_t item_size)
 {
   return (fread(f, item_size, items_num, pf->fp) == items_num);
 }
-static int ptcache_file_write(PTCacheFile *pf, const void *data, uint items_num, uint item_size)
+static bool ptcache_file_write(PTCacheFile *pf,
+                               const void *data,
+                               size_t items_num,
+                               size_t item_size)
 {
   return (fwrite(data, item_size, items_num, pf->fp) == items_num);
-}
-static bool ptcache_file_data_read(PTCacheFile *pf)
-{
-  int i;
-
-  for (i = 0; i < BPHYS_TOT_DATA; i++) {
-    if ((pf->data_types & (1 << i)) && !ptcache_file_read(pf, pf->cur[i], 1, ptcache_data_size[i]))
-    {
-      return false;
-    }
-  }
-
-  return true;
 }
 static int ptcache_file_header_begin_read(PTCacheFile *pf)
 {
@@ -1759,17 +1832,23 @@ int BKE_ptcache_mem_pointers_seek(int point_index, PTCacheMem *pm, void *cur[BPH
 
   return 1;
 }
-static void ptcache_data_alloc(PTCacheMem *pm)
+static bool ptcache_data_alloc(PTCacheMem *pm, const bool zero_init)
 {
-  int data_types = pm->data_types;
-  int totpoint = pm->totpoint;
-  int i;
+  const uint data_types = pm->data_types;
 
-  for (i = 0; i < BPHYS_TOT_DATA; i++) {
+  for (int i = 0; i < BPHYS_TOT_DATA; i++) {
     if (data_types & (1 << i)) {
-      pm->data[i] = MEM_new_zeroed(totpoint * ptcache_data_size[i], "PTCache Data");
+      pm->data[i] = zero_init ?
+                        MEM_new_array_zeroed(pm->totpoint, ptcache_data_size[i], "PTCache Data") :
+                        MEM_new_array_uninitialized(
+                            pm->totpoint, ptcache_data_size[i], "PTCache Data");
+      if (pm->data[i] == nullptr) {
+        return false;
+      }
     }
   }
+
+  return true;
 }
 static void ptcache_data_free(PTCacheMem *pm)
 {
@@ -1779,17 +1858,6 @@ static void ptcache_data_free(PTCacheMem *pm)
   for (i = 0; i < BPHYS_TOT_DATA; i++) {
     if (data[i]) {
       MEM_delete_void(data[i]);
-    }
-  }
-}
-static void ptcache_data_copy(void *from[], void *to[])
-{
-  int i;
-  for (i = 0; i < BPHYS_TOT_DATA; i++) {
-    /* NOTE: Durian file `03.4b_comp` crashes if `to[i]` is not tested
-     * its null, not sure if this should be fixed elsewhere but for now its needed. */
-    if (from[i] && to[i]) {
-      memcpy(to[i], from[i], ptcache_data_size[i]);
     }
   }
 }
@@ -1832,7 +1900,7 @@ static int ptcache_old_elemsize(PTCacheID *pid)
 
 static void ptcache_find_frames_around(PTCacheID *pid, uint frame, int *r_fra1, int *r_fra2)
 {
-  if (pid->cache->flag & PTCACHE_DISK_CACHE) {
+  if (ptcache_uses_disk(pid)) {
     int cfra1 = frame, cfra2 = frame + 1;
 
     while (cfra1 >= pid->cache->startframe && !BKE_ptcache_id_exist(pid, cfra1)) {
@@ -1888,6 +1956,24 @@ static void ptcache_find_frames_around(PTCacheID *pid, uint frame, int *r_fra1, 
   }
 }
 
+/* Read uncompressed point data, which is stored point by point. */
+static bool ptcache_file_points_read(PTCacheFile *pf, PTCacheMem *pm)
+{
+  void *cur[BPHYS_TOT_DATA];
+  BKE_ptcache_mem_pointers_init(pm, cur);
+
+  for (uint i = 0; i < pm->totpoint; i++) {
+    for (int j = 0; j < BPHYS_TOT_DATA; j++) {
+      if ((pm->data_types & (1 << j)) && !ptcache_file_read(pf, cur[j], 1, ptcache_data_size[j])) {
+        return false;
+      }
+    }
+    BKE_ptcache_mem_pointers_incr(cur);
+  }
+
+  return true;
+}
+
 static PTCacheMem *ptcache_disk_frame_to_mem(PTCacheID *pid, int cfra)
 {
   PTCacheFile *pf = ptcache_file_open(pid, PTCACHE_FILE_READ, cfra);
@@ -1913,29 +1999,19 @@ static PTCacheMem *ptcache_disk_frame_to_mem(PTCacheID *pid, int cfra)
     pm->data_types = pf->data_types;
     pm->frame = pf->frame;
 
-    ptcache_data_alloc(pm);
-
-    if (pf->flag & PTCACHE_TYPEFLAG_COMPRESS) {
+    if (!ptcache_data_alloc(pm, false)) {
+      error = 1;
+    }
+    else if (pf->flag & PTCACHE_TYPEFLAG_COMPRESS) {
       for (i = 0; !error && i < BPHYS_TOT_DATA; i++) {
         if (pf->data_types & (1 << i)) {
-          error = ptcache_file_compressed_read(
+          error = !ptcache_file_compressed_read(
               pf, static_cast<uchar *>(pm->data[i]), pm->totpoint, ptcache_data_size[i]);
         }
       }
     }
     else {
-      void *cur[BPHYS_TOT_DATA];
-      BKE_ptcache_mem_pointers_init(pm, cur);
-      ptcache_file_pointers_init(pf);
-
-      for (i = 0; i < pm->totpoint; i++) {
-        if (!ptcache_file_data_read(pf)) {
-          error = 1;
-          break;
-        }
-        ptcache_data_copy(pf->cur, cur);
-        BKE_ptcache_mem_pointers_incr(cur);
-      }
+      error = !ptcache_file_points_read(pf, pm);
     }
   }
 
@@ -1948,23 +2024,33 @@ static PTCacheMem *ptcache_disk_frame_to_mem(PTCacheID *pid, int cfra)
         break;
       }
 
+      const size_t item_size = ptcache_extra_datasize[extratype];
+
+      uint totdata;
+      /* Extra data is used with int counts, reject larger counts from corrupt files. */
+      if (!ptcache_file_read(pf, &totdata, 1, sizeof(uint)) || totdata > INT_MAX) {
+        error = 1;
+        break;
+      }
+
+      void *data = MEM_new_array_uninitialized(totdata, item_size, "Pointcache extradata->data");
+      if (data == nullptr) {
+        error = 1;
+        break;
+      }
+
       PTCacheExtra *extra = MEM_new<PTCacheExtra>("Pointcache extradata");
 
       extra->type = ePointCache_ExtraDataType(extratype);
-
-      ptcache_file_read(pf, &extra->totdata, 1, sizeof(uint));
-
-      extra->data = MEM_new_zeroed(extra->totdata * ptcache_extra_datasize[extra->type],
-                                   "Pointcache extradata->data");
+      extra->totdata = totdata;
+      extra->data = data;
 
       if (pf->flag & PTCACHE_TYPEFLAG_COMPRESS) {
-        error = ptcache_file_compressed_read(pf,
-                                             static_cast<uchar *>(extra->data),
-                                             extra->totdata,
-                                             ptcache_extra_datasize[extra->type]);
+        error = !ptcache_file_compressed_read(
+            pf, static_cast<uchar *>(extra->data), extra->totdata, item_size);
       }
       else {
-        ptcache_file_read(pf, extra->data, extra->totdata, ptcache_extra_datasize[extra->type]);
+        error = !ptcache_file_read(pf, extra->data, extra->totdata, item_size);
       }
 
       BLI_addtail(&pm->extradata, extra);
@@ -1988,7 +2074,8 @@ static PTCacheMem *ptcache_disk_frame_to_mem(PTCacheID *pid, int cfra)
 static int ptcache_mem_frame_to_disk(PTCacheID *pid, PTCacheMem *pm)
 {
   PTCacheFile *pf = nullptr;
-  uint i, error = 0;
+  bool ok = true;
+  uint i;
 
   BKE_ptcache_id_clear(pid, PTCACHE_CLEAR_FRAME, pm->frame);
 
@@ -2013,18 +2100,18 @@ static int ptcache_mem_frame_to_disk(PTCacheID *pid, PTCacheMem *pm)
   pf->flag |= PTCACHE_TYPEFLAG_COMPRESS;
 
   if (!ptcache_file_header_begin_write(pf) || !pid->write_header(pf)) {
-    error = 1;
+    ok = false;
   }
 
-  if (!error) {
+  if (ok) {
     for (i = 0; i < BPHYS_TOT_DATA; i++) {
       if (pm->data[i]) {
-        ptcache_file_compressed_write(pf, pm->data[i], pm->totpoint, ptcache_data_size[i]);
+        ok &= ptcache_file_compressed_write(pf, pm->data[i], pm->totpoint, ptcache_data_size[i]);
       }
     }
   }
 
-  if (!error && pm->extradata.first) {
+  if (ok && pm->extradata.first) {
     PTCacheExtra *extra = static_cast<PTCacheExtra *>(pm->extradata.first);
 
     for (; extra; extra = extra->next) {
@@ -2033,21 +2120,21 @@ static int ptcache_mem_frame_to_disk(PTCacheID *pid, PTCacheMem *pm)
       }
 
       const uint extratype = uint(extra->type);
-      ptcache_file_write(pf, &extratype, 1, sizeof(uint));
-      ptcache_file_write(pf, &extra->totdata, 1, sizeof(uint));
+      ok &= ptcache_file_write(pf, &extratype, 1, sizeof(uint));
+      ok &= ptcache_file_write(pf, &extra->totdata, 1, sizeof(uint));
 
-      ptcache_file_compressed_write(
+      ok &= ptcache_file_compressed_write(
           pf, extra->data, extra->totdata, ptcache_extra_datasize[extra->type]);
     }
   }
 
   ptcache_file_close(pf);
 
-  if (error && G.debug & G_DEBUG) {
-    printf("Error writing to disk cache\n");
+  if (!ok && G.debug & G_DEBUG) {
+    CLOG_ERROR(&LOG, "Error writing to disk cache");
   }
 
-  return error == 0;
+  return ok;
 }
 
 static int ptcache_read_stream(PTCacheID *pid, int cfra)
@@ -2105,7 +2192,7 @@ static int ptcache_read(PTCacheID *pid, int cfra)
   int *index = &i;
 
   /* get a memory cache to read from */
-  if (pid->cache->flag & PTCACHE_DISK_CACHE) {
+  if (ptcache_uses_disk(pid)) {
     pm = ptcache_disk_frame_to_mem(pid, cfra);
   }
   else {
@@ -2129,11 +2216,16 @@ static int ptcache_read(PTCacheID *pid, int cfra)
       }
     }
 
+    /* Ignore stored indices if this cache type does not use them, to
+     * guard against unchecked use of them for corrupt files. */
+    const bool use_index = (pm->data_types & (1 << BPHYS_DATA_INDEX)) &&
+                           (pid->data_types & (1 << BPHYS_DATA_INDEX));
+
     void *cur[BPHYS_TOT_DATA];
     BKE_ptcache_mem_pointers_init(pm, cur);
 
     for (i = 0; i < totpoint; i++) {
-      if (pm->data_types & (1 << BPHYS_DATA_INDEX)) {
+      if (use_index) {
         index = static_cast<int *>(cur[BPHYS_DATA_INDEX]);
       }
 
@@ -2147,7 +2239,7 @@ static int ptcache_read(PTCacheID *pid, int cfra)
     }
 
     /* clean up temporary memory cache */
-    if (pid->cache->flag & PTCACHE_DISK_CACHE) {
+    if (ptcache_uses_disk(pid)) {
       ptcache_mem_clear(pm);
       MEM_delete(pm);
     }
@@ -2162,7 +2254,7 @@ static int ptcache_interpolate(PTCacheID *pid, float cfra, int cfra1, int cfra2)
   int *index = &i;
 
   /* get a memory cache to read from */
-  if (pid->cache->flag & PTCACHE_DISK_CACHE) {
+  if (ptcache_uses_disk(pid)) {
     pm = ptcache_disk_frame_to_mem(pid, cfra2);
   }
   else {
@@ -2186,11 +2278,16 @@ static int ptcache_interpolate(PTCacheID *pid, float cfra, int cfra1, int cfra2)
       }
     }
 
+    /* Ignore stored indices if this cache type does not use them, to
+     * guard against unchecked use of them for corrupt files. */
+    const bool use_index = (pm->data_types & (1 << BPHYS_DATA_INDEX)) &&
+                           (pid->data_types & (1 << BPHYS_DATA_INDEX));
+
     void *cur[BPHYS_TOT_DATA];
     BKE_ptcache_mem_pointers_init(pm, cur);
 
     for (i = 0; i < totpoint; i++) {
-      if (pm->data_types & (1 << BPHYS_DATA_INDEX)) {
+      if (use_index) {
         index = static_cast<int *>(cur[BPHYS_DATA_INDEX]);
       }
 
@@ -2204,7 +2301,7 @@ static int ptcache_interpolate(PTCacheID *pid, float cfra, int cfra1, int cfra2)
     }
 
     /* clean up temporary memory cache */
-    if (pid->cache->flag & PTCACHE_DISK_CACHE) {
+    if (ptcache_uses_disk(pid)) {
       ptcache_mem_clear(pm);
       MEM_delete(pm);
     }
@@ -2358,12 +2455,16 @@ static int ptcache_write(PTCacheID *pid, int cfra, int overwrite)
   pm->totpoint = pid->totwrite(pid->calldata, cfra);
   pm->data_types = cfra ? pid->data_types : pid->info_types;
 
-  ptcache_data_alloc(pm);
+  if (!ptcache_data_alloc(pm, true)) {
+    ptcache_mem_clear(pm);
+    MEM_delete(pm);
+    return 1;
+  }
   void *cur[BPHYS_TOT_DATA];
   BKE_ptcache_mem_pointers_init(pm, cur);
 
   if (overwrite) {
-    if (cache->flag & PTCACHE_DISK_CACHE) {
+    if (ptcache_uses_disk(pid)) {
       int fra = cfra - 1;
 
       while (fra >= cache->startframe && !BKE_ptcache_id_exist(pid, fra)) {
@@ -2398,7 +2499,7 @@ static int ptcache_write(PTCacheID *pid, int cfra, int overwrite)
 
   pm->frame = cfra;
 
-  if (cache->flag & PTCACHE_DISK_CACHE) {
+  if (ptcache_uses_disk(pid)) {
     error += !ptcache_mem_frame_to_disk(pid, pm);
 
     // if (pm) /* pm is always set */
@@ -2431,7 +2532,7 @@ static int ptcache_write_needed(PTCacheID *pid, int cfra, int *overwrite)
     return 1;
   }
 
-  if (pid->cache->flag & PTCACHE_DISK_CACHE) {
+  if (ptcache_uses_disk(pid)) {
     if (cfra == 0 && cache->startframe > 0) {
       return 1;
     }
@@ -2551,7 +2652,7 @@ void BKE_ptcache_id_clear(PTCacheID *pid, int mode, uint cfra)
 
 #ifndef DURIAN_POINTCACHE_LIB_OK
   /* don't allow clearing for linked objects */
-  if (pid->owner_id->lib) {
+  if (pid->owner_id && pid->owner_id->lib) {
     return;
   }
 #endif
@@ -2561,7 +2662,7 @@ void BKE_ptcache_id_clear(PTCacheID *pid, int mode, uint cfra)
     case PTCACHE_CLEAR_ALL:
     case PTCACHE_CLEAR_BEFORE:
     case PTCACHE_CLEAR_AFTER:
-      if (pid->cache->flag & PTCACHE_DISK_CACHE) {
+      if (ptcache_uses_disk(pid)) {
         BKE_ptcache_path(pid, path);
 
         dir = opendir(path);
@@ -2651,7 +2752,7 @@ void BKE_ptcache_id_clear(PTCacheID *pid, int mode, uint cfra)
       break;
 
     case PTCACHE_CLEAR_FRAME:
-      if (pid->cache->flag & PTCACHE_DISK_CACHE) {
+      if (ptcache_uses_disk(pid)) {
         if (BKE_ptcache_id_exist(pid, cfra)) {
           ptcache_filepath(pid, filepath, cfra, true, true); /* no path */
           BLI_delete(filepath, false, false);
@@ -2691,10 +2792,12 @@ bool BKE_ptcache_id_exist(PTCacheID *pid, int cfra)
     return false;
   }
 
-  if (pid->cache->flag & PTCACHE_DISK_CACHE) {
+  if (ptcache_uses_disk(pid)) {
     char filepath[MAX_PTCACHE_FILE];
 
-    ptcache_filepath(pid, filepath, cfra, true, true);
+    if (ptcache_filepath(pid, filepath, cfra, true, true) == 0) {
+      return false;
+    }
 
     return BLI_exists(filepath);
   }
@@ -2759,7 +2862,7 @@ void BKE_ptcache_id_time(
     cache->cached_frames = MEM_new_array_zeroed<char>(cache->cached_frames_len,
                                                       "cached frames array");
 
-    if (pid->cache->flag & PTCACHE_DISK_CACHE) {
+    if (ptcache_uses_disk(pid)) {
       /* mode is same as fopen's modes */
       DIR *dir;
       dirent *de;
@@ -3287,7 +3390,7 @@ void BKE_ptcache_bake(PTCacheBaker *baker)
     if (bake) {
       cache->flag |= PTCACHE_BAKED;
       /* write info file */
-      if (cache->flag & PTCACHE_DISK_CACHE) {
+      if (ptcache_uses_disk(pid)) {
         if (pid->type == PTCACHE_TYPE_PARTICLES) {
           /* Since writing this from outside the bake job, make sure the ParticleSystem and
            * PTCacheID is in a fully evaluated state. */
@@ -3330,7 +3433,7 @@ void BKE_ptcache_bake(PTCacheBaker *baker)
 
         if (bake) {
           cache->flag |= PTCACHE_BAKED;
-          if (cache->flag & PTCACHE_DISK_CACHE) {
+          if (ptcache_uses_disk(&pid)) {
             if (pid.type == PTCACHE_TYPE_PARTICLES) {
               /* Since writing this from outside the bake job, make sure the ParticleSystem and
                * PTCacheID is in a fully evaluated state. */
@@ -3429,6 +3532,14 @@ void BKE_ptcache_toggle_disk_cache(PTCacheID *pid)
     return;
   }
 
+  if (ptcache_file_owner(pid) == nullptr) {
+    /* No ID to name its files after (a rigid body world's cache, see #ptcache_file_owner): it
+     * stays in memory, as an unsaved file's caches do. The memory cache is left as it was. */
+    cache->flag &= ~PTCACHE_DISK_CACHE;
+    CLOG_WARN(&LOG, "This point cache cannot be stored on disk, it stays in memory");
+    return;
+  }
+
   if (cache->cached_frames) {
     MEM_delete(cache->cached_frames);
     cache->cached_frames = nullptr;
@@ -3453,8 +3564,9 @@ void BKE_ptcache_toggle_disk_cache(PTCacheID *pid)
   cache->flag |= PTCACHE_FLAG_INFO_DIRTY;
 
   if ((cache->flag & PTCACHE_DISK_CACHE) == 0) {
-    if (cache->index) {
-      BKE_object_delete_ptcache(id_cast<Object *>(pid->owner_id), cache->index);
+    ID *file_owner = ptcache_file_owner(pid);
+    if (cache->index && GS(file_owner->name) == ID_OB) {
+      BKE_object_delete_ptcache(id_cast<Object *>(file_owner), cache->index);
       cache->index = -1;
     }
   }
@@ -3475,6 +3587,10 @@ void BKE_ptcache_disk_cache_rename(PTCacheID *pid, const char *name_src, const c
 
   /* If both names are the same, there is nothing to do. */
   if (STREQ(name_src, name_dst)) {
+    return;
+  }
+  /* A cache with no ID to name its files after has no files of its own to rename. */
+  if (ptcache_file_owner(pid) == nullptr) {
     return;
   }
 
@@ -3535,6 +3651,9 @@ void BKE_ptcache_load_external(PTCacheID *pid)
 
   if (!cache) {
     return;
+  }
+  if (!ptcache_id_has_filepath(pid)) {
+    return; /* Not external and no files of its own: an empty prefix would match others' files. */
   }
 
   BKE_ptcache_path(pid, path);
@@ -3660,7 +3779,7 @@ void BKE_ptcache_update_info(PTCacheID *pid)
     return;
   }
 
-  if (cache->flag & PTCACHE_DISK_CACHE) {
+  if (ptcache_uses_disk(pid)) {
     if (pid->type == PTCACHE_TYPE_SMOKE_DOMAIN) {
       int totpoint = pid->totpoint(pid->calldata, 0);
 
@@ -3738,12 +3857,20 @@ void BKE_ptcache_invalidate(PointCache *cache)
   }
 }
 
-void BKE_ptcache_blend_write(BlendWriter *writer, ListBaseT<PointCache> *ptcaches)
+void BKE_ptcache_blend_write(BlendWriter *writer,
+                           ListBaseT<PointCache> *ptcaches,
+                           const bool force_memory)
 {
   for (PointCache &cache : *ptcaches) {
-    writer->write_struct(&cache);
+    /* Original and evaluated rigid-body worlds share this cache. Save and Undo must use the
+     * effective storage policy without mutating that shared state from evaluation or writing. */
+    PointCache cache_for_write = cache;
+    if (force_memory && !(cache.flag & PTCACHE_EXTERNAL)) {
+      cache_for_write.flag &= ~PTCACHE_DISK_CACHE;
+    }
+    writer->write_struct_at_address(&cache, &cache_for_write);
 
-    if ((cache.flag & PTCACHE_DISK_CACHE) == 0) {
+    if ((cache_for_write.flag & PTCACHE_DISK_CACHE) == 0) {
       for (PTCacheMem &pm : cache.mem_cache) {
         writer->write_struct(&pm);
 
@@ -3785,6 +3912,10 @@ static void direct_link_pointcache_mem(BlendDataReader *reader, PTCacheMem *pm)
   bool ok = true;
   for (int i = 0; i < BPHYS_TOT_DATA; i++) {
     if (pm->data[i] == nullptr) {
+      /* Corrupt file missing the array for a stored data type. */
+      if (pm->data_types & (1 << i)) {
+        ok = false;
+      }
       continue;
     }
 
@@ -3846,12 +3977,18 @@ static void direct_link_pointcache(BlendDataReader *reader, PointCache *cache)
 void BKE_ptcache_blend_read_data(BlendDataReader *reader,
                                  ListBaseT<PointCache> *ptcaches,
                                  PointCache **ocache,
-                                 int force_disk)
+                                 int force_disk,
+                                 const bool force_memory)
 {
   if (ptcaches->first) {
     BLO_read_struct_list(reader, PointCache, ptcaches);
     for (PointCache &cache : *ptcaches) {
       direct_link_pointcache(reader, &cache);
+      /* Loading owns this newly allocated cache exclusively. Old disk-only files have no memory
+       * frames to recover; normalize after linking so their unsaved pointers are never followed. */
+      if (force_memory && !(cache.flag & PTCACHE_EXTERNAL)) {
+        cache.flag &= ~PTCACHE_DISK_CACHE;
+      }
       if (force_disk) {
         cache.flag |= PTCACHE_DISK_CACHE;
         cache.step = 1;
@@ -3864,6 +4001,9 @@ void BKE_ptcache_blend_read_data(BlendDataReader *reader,
     /* old "single" caches need to be linked too */
     if (BLO_read_struct_nonnull(reader, PointCache, ocache)) {
       direct_link_pointcache(reader, *ocache);
+      if (force_memory && !((*ocache)->flag & PTCACHE_EXTERNAL)) {
+        (*ocache)->flag &= ~PTCACHE_DISK_CACHE;
+      }
       if (force_disk) {
         (*ocache)->flag |= PTCACHE_DISK_CACHE;
         (*ocache)->step = 1;

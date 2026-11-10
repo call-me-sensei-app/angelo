@@ -16,7 +16,7 @@
        certificate; -ExpectSigned: it must be validly signed);
     3. codex.exe --version reports the pinned version, run from that folder;
     4. codex.exe app-server generate-json-schema offers each pinned feature on thread/start, thread/resume and
-       thread/fork;
+       thread/fork, each pinned request field (request_fields) and each pinned notification;
     5. codex.exe app-server answers initialize over stdio with a user agent naming the pinned version, exactly what
        the app's agent_runtime.verify requires of every runtime process.
   Offline: no provider, account or network request; CODEX_HOME is a temporary folder, removed afterwards. Writes a
@@ -152,6 +152,19 @@ try {
                 throw "codex.exe's $request has no ${feature}: not the patched build"
             }
             $result.schema += "$request.$feature"
+        }
+    }
+    # A pinned request field: a property of the parameters of a server request Angelo answers (request_fields).
+    if ($pin.request_fields) {
+        foreach ($entry in $pin.request_fields.PSObject.Properties | Where-Object { -not $_.Name.StartsWith("_") }) {
+            $file = Join-Path $schema "$($entry.Name).json"
+            $properties = if (Test-Path $file) { (Get-Content $file -Raw | ConvertFrom-Json).properties } else { $null }
+            foreach ($field in @($entry.Value)) {
+                if (-not $properties -or -not ($properties.PSObject.Properties.Name -contains $field)) {
+                    throw "codex.exe's $($entry.Name) has no ${field}: not the patched build"
+                }
+                $result.schema += "$($entry.Name).$field"
+            }
         }
     }
     # A pinned notification is named, quoted, somewhere in the schema (its ServerNotification method).

@@ -12,6 +12,8 @@ nothing run, and its file tools are sealed as a lane chat's are. Evidence: FE's 
 the document and ended the chat).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

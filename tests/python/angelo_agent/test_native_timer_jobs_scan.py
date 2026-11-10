@@ -12,6 +12,8 @@ closure or module variable. The review found the first scans saw only ``next(<na
 asked after a read; ``test_the_scans_find_what_they_look_for`` pins each case.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import builtins
 import functools
@@ -69,6 +71,9 @@ def tracked(value):
             and isinstance(value.func.value, ast.Name) and value.func.value.id == "timer_jobs")
 
 
+BUILTINS = frozenset(dir(builtins))
+
+
 def generator_functions(sources, known=frozenset()):
     """The names of every function in ``sources`` (and ``known``) a call to which makes a job: a generator function,
     or one that returns a call to one (``studio_workspaces.build`` returns ``_build(...)``)."""
@@ -78,8 +83,9 @@ def generator_functions(sources, known=frozenset()):
             nodes = list(own_nodes(function))
             if any(isinstance(n, YIELDS) for n in nodes):
                 names.add(function.name)
-            returns += [(function.name, callee(n.value)) for n in nodes
-                        if isinstance(n, ast.Return) and isinstance(n.value, ast.Call)]
+            returns += [(function.name, callee(n.value)) for n in nodes   # A builtin (``list(...)``) never makes a
+                        if isinstance(n, ast.Return) and isinstance(n.value, ast.Call)   # job, whatever add-on method
+                        and not (isinstance(n.value.func, ast.Name) and n.value.func.id in BUILTINS)]   # shares its name.
     while True:
         more = {name for name, called in returns if called in names} - names
         if not more:
@@ -115,6 +121,17 @@ def guards(call, parents):
     return False
 
 
+def job_calls(value, generators):
+    """Calls leaving a generator alive; builtin materializers exhaust their arguments now."""
+    eager = {"tuple", "list", "dict", "set", "frozenset", "sorted"}
+    if isinstance(value, ast.Call):
+        if isinstance(value.func, ast.Name) and value.func.id in eager:
+            return False
+        if callee(value) in generators:
+            return True
+    return any(job_calls(child, generators) for child in ast.iter_child_nodes(value))
+
+
 def resumed(source, generators=frozenset()):
     """``(function, resumed, tracked, asked)`` for each job a function resumes that it did not make itself (a timer
     step's closure variable, or a module variable): ``tracked`` if every value assigned to it is made with
@@ -141,8 +158,7 @@ def resumed(source, generators=frozenset()):
             values = list(assigned[outer].get(ast.unparse(expression), []))
             if not isinstance(expression, ast.Name):   # An item or attribute: whatever its container was made with.
                 values += assigned[outer].get(name, [])
-            jobs = [v for v in values if tracked(v) or any(isinstance(c, ast.Call) and callee(c) in generators
-                                                           for c in ast.walk(v))]
+            jobs = [v for v in values if tracked(v) or job_calls(v, generators)]
             is_next = isinstance(node, ast.Call) and getattr(node.func, "id", None) == "next"
             if not jobs and not (is_next and values and outer is not None):   # A step's ``next`` of its closure.
                 continue
@@ -235,6 +251,19 @@ class SourceTests(unittest.TestCase):
         for name, source in sources.items():
             for function, job, ok, asked in resumed(source, generators):
                 jobs.add((name, function))
+                if (name, function, job) == ("blender_assets_agent.py", "poll", "state['files']"):
+                    # A worker's completed list of metadata, not a generator holding Blender state.
+                    tree = parse(source)
+                    files = [n.value for n in ast.walk(tree) if isinstance(n, ast.Assign)
+                             and any(ast.unparse(t) == "state['files']" for t in n.targets)]
+                    self.assertEqual([ast.unparse(v) for v in files], ["iter(scan.value)"])
+                    self.assertIn("assets.bundled_files(bundled_root, stop)", source)
+                    producer = next(n for n in parse(sources["blender_assets.py"]).body
+                                    if isinstance(n, ast.FunctionDef) and n.name == "bundled_files")
+                    self.assertFalse(any(isinstance(n, YIELDS) for n in own_nodes(producer)))
+                    self.assertIn("found = []", ast.unparse(producer))
+                    self.assertIn("return found", ast.unparse(producer))
+                    continue
                 if not ok:
                     untracked.append("%s: %s resumes %s" % (name, function, job))
                 elif not asked:
@@ -255,6 +284,13 @@ class SourceTests(unittest.TestCase):
             if "bpy" in {n.id for n in ast.walk(parse(source)) if isinstance(n, ast.Name)}:
                 found += ["%s:%d" % (name, line) for line in unguarded_cleanups(source)]
         self.assertEqual(found, [], "ask timer_jobs.leaving() before touching Blender's data; no with across a yield")
+
+    def test_eager_sequences_do_not_leave_a_timer_job_alive(self):
+        for name in ("tuple", "list", "dict", "set", "frozenset", "sorted"):
+            with self.subTest(container=name):
+                self.assertFalse(job_calls(ast.parse(name + "(values.items())", mode="eval").body, {"items"}))
+        self.assertTrue(job_calls(ast.parse("iter(work())", mode="eval").body, {"work"}))
+        self.assertTrue(job_calls(ast.parse("work()", mode="eval").body, {"work"}))
 
     def test_the_scans_find_what_they_look_for(self):
         gens = {"steps"}

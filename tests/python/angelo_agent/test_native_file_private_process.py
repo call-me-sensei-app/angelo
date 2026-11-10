@@ -10,6 +10,8 @@
 Synthetic folders only.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 from pathlib import Path
 import sys
@@ -20,6 +22,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import files as files_module  # noqa: E402
 from angelo_agent.files import FileWorkspace  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -205,6 +208,10 @@ class ReusedIdentityTests(Fixture):
             private_roots._identities.add(identity)
             shutil.rmtree(allocated)
 
+    # Windows holds no handles (private_roots.HANDLES): an NTFS file ID carries a reuse sequence, so a removed
+    # folder's identity does not name a new folder there.
+    @unittest.skipIf(os.name == "nt", environment_skip("a removed folder's identity is reused by POSIX file systems "
+                                                       "(ext4 inode numbers); NTFS file IDs carry a reuse sequence"))
     def test_an_ordinary_folder_given_a_removed_folders_identity_stays_ordinary(self):
         project = self.base / "project"
         self.synthetic(project / "public")
@@ -229,7 +236,9 @@ class ReusedIdentityTests(Fixture):
             self.refused(read, files, worker.name + "/worker.log")
 
 
-@unittest.skipIf(os.name == "nt", "the POSIX stand-in for the Windows backend; windows_ntfs_checks.py runs NTFS")
+@unittest.skipIf(os.name == "nt", environment_skip("the POSIX stand-in for the Windows backend; on Windows the "
+                                                   "other classes here run the real one, and windows_ntfs_checks.py "
+                                                   "NTFS"))
 class WindowsWalkTests(Fixture):
     """Round 4 M-3, through the Windows backend's handles (``fake_nt_files.FakeNtApi``, as
     test_native_windows_anchoring): every opened folder is checked, and the workspace must be the one set up."""

@@ -11,6 +11,8 @@ corner, nowhere when it does not fit); its input is a passive canvas input. The 
 ``test_blender_asset_shelf_add``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import types
 import unittest
@@ -325,6 +327,7 @@ class SpecTests(unittest.TestCase):
 
     def test_media_studio_wears_the_shared_tokens(self):
         """Section 4: studio.py's palette is card_kit/ui_tokens, one for one; no literal colour in its window."""
+        import ast
         import re
         core = (ADDON / "studio.py").read_text(encoding="utf-8")
         for line in ("BG = kit.CARD", "PANEL = kit.PANEL", "FIELD = kit.CARD", "LINE = kit.LINE",
@@ -333,14 +336,18 @@ class SpecTests(unittest.TestCase):
                      "ACCENT_TEXT = kit.INK", "FOCUS = kit.FOCUS", "SELECTED = kit.TEAL_SOFT", "TEXT = kit.TEXT",
                      "MUTED = kit.MUTED", "GREEN = tokens.SUCCESS", "ERROR = tokens.DANGER", "SCRIM = kit.SCRIM"):
             name, value = line.split(" = ")
-            self.assertRegex(core, r"(?m)^" + name + r" = " + re.escape(value) + r"\b", line)
+            tree = ast.parse(core)
+            mapping = next(node.value for node in tree.body if isinstance(node, ast.Assign)
+                           and any(isinstance(target, ast.Name) and target.id == "TOKEN_NAMES" for target in node.targets))
+            self.assertEqual(ast.literal_eval(mapping)[name], value.split(".")[1], line)
+            self.assertIn("__getattr__ = tokens.forward(TOKEN_NAMES, __name__)", core)
         literal = re.compile(r"\(\s*(?:0|1)?\.\d+\s*,\s*(?:0|1)?\.?\d*\s*,\s*(?:0|1)?\.?\d*\s*(?:,\s*[\d.]+\s*)?\)")
         for name in ("studio.py", "studio_draw.py", "studio_input.py", "studio_ops.py", "studio_asset_ops.py"):
             text = (ADDON / name).read_text(encoding="utf-8")
             self.assertEqual(literal.findall(text), [], name)
             self.assertNotIn("PURPLE", text, name)
         draw = (ADDON / "studio_draw.py").read_text(encoding="utf-8")
-        self.assertIn('FOCUS if state["focus"] == key else LINE', draw, "The focus outline is FOCUS, not the fill")
+        self.assertIn('tk.FOCUS if state.get("field_focus") == key else tk.LINE', draw, "The focus outline is FOCUS, not the fill")
 
     def test_the_operator_is_searchable_as_media_studio(self):
         op = studio_toggle.ANGELO_OT_open_media_studio
@@ -413,6 +420,27 @@ class ObjectShelfTests(unittest.TestCase):
                 mock.patch.object(angelo_agent, "studio_state", state, create=True):
             self.assertEqual(media_shelf.studio_catalogs(), {}, "Before the library exists: nothing to offer")
 
+    def test_a_catalogue_file_with_the_persons_non_utf8_lines_still_names_the_tabs(self):
+        """The sync keeps a person's non-UTF-8 bytes (studio_files); the shelf must still read Angelo's lines."""
+        import tempfile
+        folder = Path(tempfile.mkdtemp())
+        (folder / "blender_assets.cats.txt").write_bytes(
+            b"VERSION 1\n5c0e3e1a-7d0b-4c8e-9a51-0f6a2d3b7e11:Modelle:Modelle\n"
+            b"9b2f6c47-1e83-4d5a-b7c2-3a8e4f1d6c22:Bilder:Bilder\nabc:Caf\xe9:Caf\xe9\n")
+        assets = types.ModuleType("angelo_agent.studio_assets")
+        assets.CATALOGS = {"3D": ("5c0e3e1a-7d0b-4c8e-9a51-0f6a2d3b7e11", "Models", "models"),
+                           "IMAGE": ("9b2f6c47-1e83-4d5a-b7c2-3a8e4f1d6c22", "Images", "images")}
+        assets.CATS_FILE = "blender_assets.cats.txt"
+        assets.asset_directory = lambda root: folder
+        state = types.ModuleType("angelo_agent.studio_state")
+        state.library_directory = lambda: folder
+        import angelo_agent
+        media_shelf._catalogs.clear()
+        with mock.patch.dict(sys.modules, {"angelo_agent.studio_assets": assets, "angelo_agent.studio_state": state}), \
+                mock.patch.object(angelo_agent, "studio_assets", assets, create=True), \
+                mock.patch.object(angelo_agent, "studio_state", state, create=True):
+            self.assertEqual(media_shelf.studio_catalogs(), {"3d": "Modelle", "image": "Bilder"})
+
     def test_the_angelo_media_studio_parent_is_the_one_tab_when_the_library_has_it(self):
         with mock.patch.object(media_shelf, "studio_tab_path", lambda: "Angelo Media Studio"), \
                 mock.patch.object(media_shelf, "studio_catalogs", lambda: dict(self.CATALOGS)):
@@ -438,6 +466,19 @@ class ObjectShelfTests(unittest.TestCase):
             self.assertEqual(media_shelf.shelf_kind(None, None), "image")
             shelf.active_catalog_path = parent or ""
             self.assertIsNone(media_shelf.shelf_kind(None, None), "the parent (or All) tab: the mode decides")
+
+    def test_a_catalog_another_angelo_named_in_its_language_is_still_found(self):
+        """The catalogue file is shared: another Angelo in another interface language may have named them (studio_assets
+        keeps its names); the file's own names, read by id, still say which tab is which."""
+        from angelo_agent import studio_assets
+        parent = studio_assets.TAB_PATH
+        named = {"3d": f"{parent}/\u30e2\u30c7\u30eb", "image": f"{parent}/\u753b\u50cf"}
+        with mock.patch.object(media_shelf, "studio_catalogs", lambda: dict(named)):
+            self.assertEqual(media_shelf.catalog_kind(f"{parent}/\u30e2\u30c7\u30eb"), "3d")
+            self.assertEqual(media_shelf.catalog_kind(f"{parent}/\u753b\u50cf/Skies"), "image")
+            self.assertIsNone(media_shelf.catalog_kind(parent))
+        with mock.patch.object(media_shelf, "studio_catalogs", lambda: {"3d": "Props", "image": f"{parent}/Bilder"}):
+            self.assertIsNone(media_shelf.catalog_kind("Props"), "moved out of Angelo's parent: another library's too")
 
     def test_each_catalog_is_offered_once_and_a_renamed_one_moves(self):
         tabs = media_shelf.tabs_to_offer

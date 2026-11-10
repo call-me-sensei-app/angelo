@@ -18,6 +18,7 @@
 
 #include "BLI_listbase.h"
 
+#include "BKE_angelo_stage_links.hh"
 #include "BKE_layer.hh"
 #include "BKE_main.hh"
 #include "BKE_node.hh"
@@ -119,17 +120,21 @@ void DepsgraphRelationBuilder::build_view_layer(Scene *scene,
   if (scene->world != nullptr) {
     build_world(scene->world);
   }
-  /* Cache file. */
-  for (CacheFile &cachefile : bmain_->cachefiles) {
-    build_cachefile(&cachefile);
-  }
-  /* Masks. */
-  for (Mask &mask : bmain_->masks) {
-    build_mask(&mask);
-  }
-  /* Movie clips. */
-  for (MovieClip &clip : bmain_->movieclips) {
-    build_movieclip(&clip);
+  /* Every cache file, mask and movie clip of Main, as the node builder (Angelo: not for an agent's
+   * private stage scene, BKE_angelo_is_stage_scene). */
+  if (!BKE_angelo_is_stage_scene(*scene)) {
+    /* Cache file. */
+    for (CacheFile &cachefile : bmain_->cachefiles) {
+      build_cachefile(&cachefile);
+    }
+    /* Masks. */
+    for (Mask &mask : bmain_->masks) {
+      build_mask(&mask);
+    }
+    /* Movie clips. */
+    for (MovieClip &clip : bmain_->movieclips) {
+      build_movieclip(&clip);
+    }
   }
   /* Material override. */
   if (view_layer->mat_override != nullptr) {

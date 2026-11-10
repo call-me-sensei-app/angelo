@@ -14,6 +14,10 @@ disposable instance with the exact Angelo binary: ``--background
 paid call.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import statistics
@@ -352,6 +356,12 @@ def _scratch():
     scene = bpy.data.scenes.new("QA Operator Stage")
     collection = bpy.data.collections.new("QA Operator Stage Objects")
     scene.collection.children.link(collection)
+    # As program_objects marks a stage it makes: stage_routes.check evaluates only a marked, held stage scene.
+    import uuid
+    from angelo_agent.legacy_names import PROGRAM_STAGE
+    from angelo_agent.stage_guard import hold
+    scene[PROGRAM_STAGE[0]] = uuid.uuid4().hex
+    hold(scene)
     context = StagedActionContext(scene, collection)
     operation = lambda kind, params: {"kind": kind, "target": None, "parameters": params}
     apply_operation(context, operation("create_primitive", {"primitive": "CUBE", "alias": "mesh"}))

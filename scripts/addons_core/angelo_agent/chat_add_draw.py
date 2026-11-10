@@ -16,9 +16,7 @@ from . import canvas_rtl, chat_add_layout as layout, chat_add_menu as menu, chat
 from . import chat_destinations, ui_tokens
 from .ui_text import iface_
 
-FIELD = (0.125, 0.125, 0.125, 1)
 CHOOSING = ("popup_add_pick", "popup_add_choose", "popup_add_fit")   # Rows that choose a tool Angelo adds at Send.
-BUTTON = (0.227, 0.227, 0.227, 1)
 
 
 @functools.lru_cache(maxsize=4096)
@@ -59,7 +57,7 @@ def _focused(popup, action, value):
 def _highlight(view, popup, rect, action, value, radius=9):
     x, y, w, h = rect
     if popup.get("hover") == (action, value) or _focused(popup, action, value):
-        view.shape(x, y, w, h, view.LINE, radius)
+        view.shape(x, y, w, h, ui_tokens.HIGHLIGHT, radius)
     if _focused(popup, action, value):   # The keyboard's place: the shared ring, so it reads without colour.
         from . import ui_kit
         ui_kit.focus_ring(view, rect, radius, 1.0)
@@ -75,11 +73,11 @@ def _magnifier(view, x, y, color):
 def _bar(view, state, popup, geometry, items, width, height):
     sx, sy, sw, sh = geometry["search"]
     query = popup.get("query", "")
-    view.shape(sx, sy, sw, sh, ui_tokens.TEAL if query else view.LINE, 9)
-    view.shape(sx + 1, sy + 1, sw - 2, sh - 2, FIELD, 8)
-    _magnifier(view, sx + 16, sy + sh / 2 + 1, view.MUTED)
+    view.shape(sx, sy, sw, sh, ui_tokens.TEAL if query else ui_tokens.HIGHLIGHT, 9)
+    view.shape(sx + 1, sy + 1, sw - 2, sh - 2, ui_tokens.WELL, 8)
+    _magnifier(view, sx + 16, sy + sh / 2 + 1, ui_tokens.MUTED)
     shown = query or iface_(nav.SEARCH)
-    view.text(view.elide(shown, sw - 44, 12.5), sx + 30, sy + 12, 12.5, view.TEXT if query else view.MUTED)
+    view.text(view.elide(shown, sw - 44, 12.5), sx + 30, sy + 12, 12.5, ui_tokens.TEXT if query else ui_tokens.MUTED)
     if query:   # The caret after the typed text: typing always goes here.
         cx = sx + 30 + min(view.measure(shown, 12.5), sw - 44) + 2
         if canvas_rtl.mirrored() and not canvas_rtl.has_rtl(shown):   # Latin typed in a mirrored field reads
@@ -91,9 +89,17 @@ def _bar(view, state, popup, geometry, items, width, height):
         item = items[index]
         _highlight(view, popup, rect, item["action"], item["value"])
         if popup.get("hover") != (item["action"], item["value"]) and not _focused(popup, item["action"], item["value"]):
-            view.shape(*rect, BUTTON, 9)
-        view.icon("plus", rect[0] + 17, rect[1] + rect[3] / 2, view.TEXT)
-        view.text(item["title"], rect[0] + 30, rect[1] + 12, layout.TITLE)
+            view.shape(*rect, ui_tokens.HIGHLIGHT, 9)
+        compact = geometry.get("attach_compact")
+        if item.get("glyph") == "goal":
+            cx, cy = rect[0] + (rect[2] / 2 if compact else 17), rect[1] + rect[3] / 2
+            view.shape(cx - 7, cy - 7, 14, 14, ui_tokens.TEAL, 7)
+            view.shape(cx - 5.4, cy - 5.4, 10.8, 10.8, ui_tokens.HIGHLIGHT, 5.4)
+            view.shape(cx - 2.5, cy - 2.5, 5, 5, ui_tokens.TEAL, 2.5)
+        else:
+            view.icon("plus", rect[0] + (rect[2] / 2 if compact else 17), rect[1] + rect[3] / 2, ui_tokens.TEXT)
+        if not compact:   # Icon-only when the field needs the room; the hover strip still names the button.
+            view.text(item["title"], rect[0] + 30, rect[1] + 12, layout.TITLE)
         _hit(view, state, rect, item["action"], item["value"], None, width, height)
         stops.append((item["action"], item["value"], -1, 1 + len(stops)))
     return stops
@@ -105,7 +111,7 @@ def _cells(view, state, popup, geometry, items, chosen, width, height):
     old = gpu.state.scissor_get()
     gpu.state.scissor_set(*view._scissor(lx, ly, lw, lh))
     for heading, (hx, hy, hw, hh) in geometry["headings"]:
-        view.text(heading.upper(), hx + 6, hy + 5, 11, view.MUTED)
+        view.text(heading, hx + 6, hy + 5, 11, ui_tokens.MUTED)   # As translated: never upper-cased
     picked = {choice["tool"] for choice in chosen}
     rows, stops = sorted({round(cell["rect"][1], 1) for cell in geometry["cells"]}, reverse=True), []
     for cell in geometry["cells"]:
@@ -118,7 +124,7 @@ def _cells(view, state, popup, geometry, items, chosen, width, height):
         for n, line in enumerate(lines):
             view.text(line, x + layout.TITLE_X, top - (n + 1) * layout.TITLE_LINE + 3.5, layout.TITLE)
         if item["kind"] == "group":
-            view.icon("next", x + w - 10, y + h / 2, view.MUTED)
+            view.icon("next", x + w - 10, y + h / 2, ui_tokens.MUTED)
         if item["feature"] in picked:   # A chosen tool (a base mesh, the hands): a teal check on its tile.
             from . import ui_kit
             ui_kit.check(view, x + w - (24 if item["kind"] == "group" else 12), y + h / 2, 1.0, ui_tokens.TEAL, 1.6)
@@ -133,25 +139,26 @@ def _footer(view, state, popup, geometry, items, text, width, height, name=""):
     """The strip (``text``; its leading ``name``, the pointed-at tile's title, in the brighter text colour) and the
     footer's text buttons."""
     x, _, w, _ = geometry["rect"]
-    view.shape(x + 1, geometry["footer_top"], w - 2, 1, view.LINE)
+    view.shape(x + 1, geometry["footer_top"], w - 2, 1, ui_tokens.HIGHLIGHT)
     sx, sy, sw, sh = geometry["strip"]
     for n, line in enumerate(_lines(view, text, sw - 28, layout.WHY)[:max(1, geometry["strip_lines"])]):
         baseline = sy + sh - layout.STRIP_PAD / 2 - (n + 1) * layout.WHY_LINE + 3.5
-        view.text(line, sx + 14, baseline, layout.WHY, view.MUTED)
+        view.text(line, sx + 14, baseline, layout.WHY, ui_tokens.MUTED)
         if not n and name and line.startswith(name) and not canvas_rtl.mirrored() and not canvas_rtl.has_rtl(line):
-            view.text(name, sx + 14, baseline, layout.WHY, view.TEXT)
+            view.text(name, sx + 14, baseline, layout.WHY, ui_tokens.TEXT)
     stops = []
     if geometry["links"]:
-        view.shape(x + 1, sy, w - 2, 1, view.LINE)
+        view.shape(x + 1, sy, w - 2, 1, ui_tokens.HIGHLIGHT)
     for index, (lx, ly, lw, lh) in geometry["links"]:
         item = items[index]
         lit = popup.get("hover") == (item["action"], item["value"]) or _focused(popup, item["action"], item["value"])
         _highlight(view, popup, (lx - 4, ly + 3, lw + 8, lh - 6), item["action"], item["value"], 7)
         view.shape(lx, ly + 10, 14, 10, ui_tokens.TEAL, 3.5)   # A speech bubble: a teal rim, the popover inside,
-        view.shape(lx + 1.5, ly + 11.5, 11, 7, view.POPOVER, 2.2)   # and its tail at the lower left.
+        view.shape(lx + 1.5, ly + 11.5, 11, 7, ui_tokens.MENU, 2.2)   # and its tail at the lower left.
         view.stroke(lx + 3, ly + 10.5, lx + 1.5, ly + 6.5, ui_tokens.TEAL, 1.4)
         view.stroke(lx + 1.5, ly + 6.5, lx + 6.5, ly + 10.5, ui_tokens.TEAL, 1.4)
-        view.text(item["title"], lx + layout.LINK_ICON + 6, ly + 10, layout.WHY, view.TEXT if lit else view.MUTED)
+        view.text(item["title"], lx + layout.LINK_ICON + 6, ly + 10, layout.WHY,
+                  ui_tokens.TEXT if lit else ui_tokens.MUTED)
         _hit(view, state, (lx - 4, ly, lw + 8, lh), item["action"], item["value"], None, width, height)
         stops.append((item["action"], item["value"], 10 ** 6, len(stops)))
     return stops
@@ -183,9 +190,9 @@ def _list(view, state, popup, geometry, rows, header, width, height):
         target = ("popup_add_back", popup["page"])
         _highlight(view, popup, back, *target, 7)
         if popup.get("hover") != target and not _focused(popup, *target):
-            view.shape(*back, BUTTON, 7)
-        view.stroke(hx + 15, hy + 23, hx + 10, hy + 18, view.TEXT, 1.6)
-        view.stroke(hx + 10, hy + 18, hx + 15, hy + 13, view.TEXT, 1.6)
+            view.shape(*back, ui_tokens.HIGHLIGHT, 7)
+        view.stroke(hx + 15, hy + 23, hx + 10, hy + 18, ui_tokens.TEXT, 1.6)
+        view.stroke(hx + 10, hy + 18, hx + 15, hy + 13, ui_tokens.TEXT, 1.6)
         title = menu._label(group.title) if group else ""
         view.text(view.elide(title, hw - 44, 13), hx + 36, hy + 13, 13)
         _hit(view, state, back, "popup_add_back", popup["page"], None, width, height)
@@ -201,7 +208,7 @@ def _list(view, state, popup, geometry, rows, header, width, height):
                             first=pinned)
     if header:   # The list scrolls under this line: a row cut at the top is cut by a rule, not by the header.
         ax, ay, aw, ah = placed["area"]
-        view.shape(ax, ay + ah, aw, 1, view.LINE)
+        view.shape(ax, ay + ah, aw, 1, ui_tokens.HIGHLIGHT)
     return placed, stops
 
 
@@ -214,7 +221,8 @@ def top_level(view, width, height, bottom, worker=False, scroll=0):
                   section=menu._label(entry["section"])) for entry in entries]
     from . import chosen_tools
     geometry = layout.place(items, _measure(view), lambda text, w, size: _lines(view, text, w, size), width, height,
-                            bottom, iface_(nav.HINT), scroll, notes=(iface_(chosen_tools.FOOTER),))
+                            bottom, iface_(nav.HINT), scroll, notes=(iface_(chosen_tools.FOOTER),),
+                            search_label=iface_(nav.SEARCH))
     return entries, items, geometry
 
 
@@ -250,8 +258,8 @@ def _draw(view, state, controller, width, height, fit_target):
     x, y, w, h = geometry["rect"]
     state["popup_rect"] = geometry["rect"]
     gpu.state.scissor_set(*view._scissor(x, y, w, h))   # The chrome: the popup; each list sets its own area.
-    view.shape(x, y, w, h, view.LINE, 15)
-    view.shape(x + 1, y + 1, w - 2, h - 2, view.POPOVER, 14)
+    view.shape(x, y, w, h, ui_tokens.HIGHLIGHT, 15)
+    view.shape(x + 1, y + 1, w - 2, h - 2, ui_tokens.MENU, 14)
     stops = _bar(view, state, popup, geometry, items, width, height)
     describe = None
     if current == "top":

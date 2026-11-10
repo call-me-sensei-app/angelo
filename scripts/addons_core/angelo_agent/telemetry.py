@@ -28,7 +28,7 @@ from .provider_registry import CODING_MODES
 from .provider_usage import MAX_COST_USD, MAX_SERVED_MODELS, MAX_TOKENS, TOKENS as USAGE_TOKENS
 from .request_path import PathFacts, clean_path, running_usage
 from .runtime_environment import PROMPT_CACHE_TTLS
-from . import write_turn
+from . import shared_replace, write_turn
 from .state_file_writes import write_receipts
 from .write_turn import WriteTurn
 
@@ -45,13 +45,13 @@ COUNTS = COUNTS | {"model_rounds", "provider_turn_requests"} | FALLBACK_COUNTS
 # Host recoveries of a program whose bound frame moved (program_context), content-free classes of failed tool
 # results (failure_codes) and turns resent after a transient provider failure (codex_retry).
 COUNTS = COUNTS | {"frame_rebinds", "staging_restarts", "playback_waits", "provider_retries_rate", "provider_retries_busy", "provider_retries_runaway", "runtime_lost_retries"}
-COUNTS = COUNTS | {"failure_" + code for code in FAILURE_CODES} | {"runtime_prewarmed"}  # Adopted a prewarm (runtime_prewarm).
+COUNTS = COUNTS | {"failure_" + code for code in FAILURE_CODES} | {"runtime_prewarmed", "steers_delivered", "pending_sent"}  # A prewarm; steering.
 USAGE_TIMES = ("turn_ms", "api_ms")
 USAGE_FIELDS = USAGE_TOKENS + USAGE_TIMES + ("cost_usd",)
 # Receipt-only: model requests a provider turn reported (provider_usage), scripts that raised, resends, prewarms.
 # None is in report(), which a model reads with angelo_agent_metrics: its bytes stay as they were.
 USAGE_SUMS = USAGE_FIELDS + ("requests",)
-RECEIPT_ONLY_COUNTS = frozenset({"failure_script", "provider_retries_rate", "provider_retries_busy", "provider_retries_runaway", "runtime_prewarmed", "runtime_lost_retries"})
+RECEIPT_ONLY_COUNTS = frozenset({"failure_script", "provider_retries_rate", "provider_retries_busy", "provider_retries_runaway", "runtime_prewarmed", "runtime_lost_retries", "steers_delivered", "pending_sent"})
 # "escalated": Auto routing handed the request to a stronger model before anything ran.
 STATUSES = frozenset({"completed", "failed", "interrupted", "cancelled", "escalated"})
 RUNTIMES = frozenset({"codex", "claude", "unknown"})
@@ -453,7 +453,7 @@ class TelemetryStore:
             if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > MAX_FILE_BYTES:
                 return
             flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-            fd = os.open(self.path, flags)
+            fd = shared_replace.open_shared(self.path, flags)   # Sharing delete: another Angelo's save lands.
             with os.fdopen(fd, "r", encoding="utf-8") as handle:
                 raw = json.loads(handle.read(MAX_FILE_BYTES + 1))
             if not isinstance(raw, dict) or raw.get("version") != 1:

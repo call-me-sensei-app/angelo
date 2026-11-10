@@ -8,6 +8,8 @@ Cross-thread pin transfer is tested only after prior use has finished; concurren
 release/abandon of one owner is outside this contract.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import errno
 import json
 import os

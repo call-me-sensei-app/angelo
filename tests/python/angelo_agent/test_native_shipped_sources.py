@@ -7,6 +7,8 @@ extraction, a scratch file, a deleted module's leftover) would ship. These check
 particular file name.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import subprocess
 import sys

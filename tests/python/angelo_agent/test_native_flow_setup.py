@@ -8,6 +8,8 @@ red before anything was typed or linked. ``flow_graph`` marks such a BLOCKED sta
 the interface's words for every mark; blocks the person's own choices caused carry none and stay red. Pure.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import sys
 import unittest

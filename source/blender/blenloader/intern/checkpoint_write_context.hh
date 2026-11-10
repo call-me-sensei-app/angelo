@@ -18,6 +18,10 @@ struct ReportList;
 struct Scene;
 struct ViewLayer;
 struct WriteData;
+class XXH3_128Stream;
+#ifdef WITH_GTESTS
+struct BlendFileDescriptorTestHooks;
+#endif
 
 /** Borrowed only for the synchronous checkpoint hook. Never retain this lookup or its ID span.
  * Queries only already-created serializer tokens, without modifying the stable-address map.
@@ -67,6 +71,12 @@ struct CheckpointWriteContext {
    * Must be read-only/deterministic while source is unchanged; before_local_ids validates the
    * final snapshot relations. Linked/runtime/non-Main/other ID types are never eligible. */
   bool (*include_id)(Main &main, const ID &id, void *user_data) = nullptr;
+  /** Optional content binding, an output of the writer: every buffer the descriptor accepted in
+   * full is appended, in stream order, as it is accepted. On success it therefore holds exactly
+   * the bytes this call wrote (``bytes()`` is the BASE size); on failure it is meaningless.
+   * The caller chooses before the call whether to bind (it costs one XXH3 pass over the bytes
+   * already in memory, nothing on the descriptor), and owns the stream. */
+  XXH3_128Stream *content = nullptr;
 };
 
 /** Same admission/borrowed-descriptor/no-remap contract as BLO_write_file_to_descriptor.
@@ -80,5 +90,19 @@ bool BLO_write_checkpoint_to_descriptor(Main *main,
                                         const BlendFileWriteParams *params,
                                         ReportList *reports,
                                         const CheckpointWriteContext &context);
+
+#ifdef WITH_GTESTS
+/** The checkpoint writer with BLO_write_file_to_descriptor_for_test's per-call write injection,
+ * so tests can observe what a binding covers when the descriptor alters, shortens or refuses
+ * writes. Same admission and serializer as BLO_write_checkpoint_to_descriptor. */
+bool BLO_write_checkpoint_to_descriptor_for_test(Main *main,
+                                                 const char *logical_filepath,
+                                                 int descriptor,
+                                                 int write_flags,
+                                                 const BlendFileWriteParams *params,
+                                                 ReportList *reports,
+                                                 const CheckpointWriteContext &context,
+                                                 const BlendFileDescriptorTestHooks &hooks);
+#endif
 
 }  // namespace blender

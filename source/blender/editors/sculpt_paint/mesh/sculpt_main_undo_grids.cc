@@ -17,6 +17,7 @@
 #include <climits>
 #include <limits>
 #include <memory>
+#include <type_traits>
 
 #include "MEM_guardedalloc.h"
 
@@ -57,8 +58,22 @@ namespace blender::ed::sculpt_paint::undo {
 
 namespace {
 
+/* memcmp is exact equality only for a type whose every byte is a value byte. A padding byte is
+ * indeterminate: constructing a record writes its members only, so the padding keeps whatever
+ * the destination memory held, and two captures of identical values can compare unequal (a
+ * Restore callback witness then reports a callback edit that never happened). Floats are compared
+ * bitwise on purpose: no tolerance may excuse a changed artist state. A padded record is compared
+ * member by member instead (profiles_equal). */
+template<typename T>
+constexpr bool bitwise_comparable_v = std::has_unique_object_representations_v<T> ||
+                                      std::is_floating_point_v<T>;
+template<typename T, int Size>
+constexpr bool bitwise_comparable_v<VecBase<T, Size>> = bitwise_comparable_v<T> &&
+                                                        sizeof(VecBase<T, Size>) == sizeof(T) * Size;
+
 template<typename T> bool values_equal(const Span<T> a, const Span<T> b)
 {
+  static_assert(bitwise_comparable_v<T>, "A padded type compared by memcmp has indeterminate bytes");
   return a.size() == b.size() &&
          (a.is_empty() || std::memcmp(a.data(), b.data(), a.size_in_bytes()) == 0);
 }
@@ -426,6 +441,20 @@ bool profile_equal(const ModifierProfile &a, const ModifierProfile &b)
          a.sculpt_level == b.sculpt_level && a.render_level == b.render_level &&
          a.total_level == b.total_level && a.flags == b.flags && a.quality == b.quality &&
          a.uv_smooth == b.uv_smooth && a.boundary_smooth == b.boundary_smooth;
+}
+
+/** ModifierProfile has a padding byte after ``flags``, so arrays of it are never memcmp'd. */
+bool profiles_equal(const Span<ModifierProfile> a, const Span<ModifierProfile> b)
+{
+  if (a.size() != b.size()) {
+    return false;
+  }
+  for (const int64_t i : a.index_range()) {
+    if (!profile_equal(a[i], b[i])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 struct GridOwner : MainUndoGridOwnerKey {
@@ -994,8 +1023,8 @@ bool main_undo_grids_equals(const MainUndoGridState &a, const MainUndoGridState 
         x.observed_original_mesh_uid != y.observed_original_mesh_uid || !profile_equal(x.graph, y.graph) ||
         !profile_equal(x.modifier, y.modifier) ||
         !values_equal(x.modifier_order.as_span(), y.modifier_order.as_span()) ||
-        !values_equal(x.observed_modifiers.as_span(), y.observed_modifiers.as_span()) ||
-        !values_equal(x.observed_evaluated_modifiers.as_span(), y.observed_evaluated_modifiers.as_span()) ||
+        !profiles_equal(x.observed_modifiers.as_span(), y.observed_modifiers.as_span()) ||
+        !profiles_equal(x.observed_evaluated_modifiers.as_span(), y.observed_evaluated_modifiers.as_span()) ||
         !profile_equal(x.evaluated_modifier, y.evaluated_modifier) ||
         !values_equal(x.evaluated_modifier_order.as_span(), y.evaluated_modifier_order.as_span()) ||
         !subdivision_equal(x.subdivision, y.subdivision) || x.total_level != y.total_level ||

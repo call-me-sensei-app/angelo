@@ -22,7 +22,7 @@ STRETCH_STEPS = (0.05, 0.1, 0.25, 0.5, 1.0)
 COMPRESS_STEPS = (0.05, 0.1, 0.25, 0.5)
 OPACITY_STEPS = (0.4, 0.7, 0.85, 1.0)
 
-REST_SOURCES = (("ORIGINAL", n_("Original")), ("SHAPE_KEY", n_("Shape key")), ("ATTRIBUTE", n_("Captured")))
+REST_SOURCES = (("ORIGINAL", n_("Original")), ("SHAPE_KEY", n_("Shape Key")), ("ATTRIBUTE", n_("Captured")))
 REST_HELP = {
     "ORIGINAL": n_("Measured against the mesh before shape keys and modifiers: posing, cloth and deformers show."),
     "SHAPE_KEY": n_("Measured against the shape key below: animate the other keys to see them stretch."),

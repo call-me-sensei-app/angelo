@@ -23,7 +23,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import library_catalog, library_fetch
+from . import fab_host, library_catalog, library_fetch
 from .team_library_files import Refused
 
 REFRESH_SECONDS = 6 * 3600
@@ -133,7 +133,9 @@ class Library:
         return None
 
     def _thumb_job(self, url):
-        self._results.put(("thumb", (url, library_fetch.thumbnail(self.root, url))))
+        from .fab_catalog import THUMB_HOST, thumb_url
+        hosts = frozenset({THUMB_HOST}) if thumb_url(url) else library_fetch.catalog.FILE_HOSTS
+        self._results.put(("thumb", (url, library_fetch.thumbnail(self.root, url, hosts))))
 
     def _load_thumbnails(self, deadline):
         import bpy
@@ -425,18 +427,74 @@ def _wake():
         bpy.app.timers.register(_tick, first_interval=TICK, persistent=True)
 
 
+_spun = [None]
+
+
+def _spin_step():   # True once per tenth of a second: the spinner's next dot.
+    changed, _spun[0] = int(time.monotonic() * 10) != _spun[0], int(time.monotonic() * 10)
+    return changed
+
+
 def _tick():
-    if _library is None:
-        return None
-    _library.pump()
-    return TICK if _library.busy() else None
+    from . import fab_ui
+    # The spinner's next dot at 10 Hz, only while Fab works (no snapshot copy on an idle tick).
+    spin = (fab_host.busy() or bool(fab_ui._PENDING) or bool(fab_ui._AUTO)) and _spin_step()
+    if fab_host.pump() | fab_ui.resume_pending() | spin:
+        from . import library_overlay, preferences_ui
+        library_overlay.redraw_all()
+        preferences_ui.redraw()
+    if _library is not None:
+        _library.pump()
+    return TICK if fab_host.needs_pump() or (_library is not None and _library.busy()) else None
 
 
 def unregister():
     global _library
     import bpy
+    from . import blender_assets
+    try:
+        fab_host.unregister()  # Exact browser/Session owner must finish before its module can be discarded.
+    except RuntimeError as error:   # Its owner record stays for the next launch's recovery; the rest still unregisters.
+        print("Angelo: Fab cleanup at shutdown:", error)
+    blender_assets.reset()
     if bpy.app.timers.is_registered(_tick):
         bpy.app.timers.unregister(_tick)
     if _library is not None:
         _library.shutdown()
     _library = None
+
+
+def fab_snapshot():
+    return fab_host.snapshot()
+
+
+def _fab(method, *args, **kwargs):
+    result = fab_host.human(method, *args, **kwargs)
+    _wake()
+    return result
+
+
+def fab_connect(window):
+    return _fab('connect')
+
+
+def fab_disconnect(window):
+    return _fab('disconnect')
+
+
+def fab_search(window, query, *, limit=8):
+    return _fab('search', query, limit)
+
+
+def fab_lookup(window, item_id, show=False):
+    return _fab('lookup', item_id, show)
+
+
+def fab_select(window, item_id, variant_id, *, expected_generation, expected_request_id):
+    return _fab('select', item_id, variant_id, expected_generation=expected_generation,
+                expected_request_id=expected_request_id) is True
+
+
+def fab_use(window, area, region, item_id, variant_id, *, expected_generation, expected_request_id, at=None):
+    return _fab('use', window, area, region, item_id, variant_id, expected_generation=expected_generation,
+                expected_request_id=expected_request_id, at=at)

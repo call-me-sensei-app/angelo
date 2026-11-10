@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Offline checks for the billed Blender MCP vs Angelo benchmark: no process, network or account."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import contextlib
 import io
@@ -116,8 +118,6 @@ class GuardTests(unittest.TestCase):
                 environment = trial.clean_environment()
             self.assertEqual(environment.get("ANGELO_QA_PROCESS_OWNER"), owner if owner == "a" * 32 else None)
 
-    @unittest.skipIf(sys.platform == "win32", "The comparison bench runs Blender MCP from a POSIX virtual "
-                     "environment (.venv/bin); it is a macOS benchmark")
     def test_claude_command_preallows_only_the_blender_server(self):
         command = trial.claude_command({"claude": "claude", "model": "m", "effort": "low"}, "/tmp/mcp.json")
         joined = " ".join(command)
@@ -127,7 +127,10 @@ class GuardTests(unittest.TestCase):
         self.assertNotIn("--dangerously-skip-permissions", joined)
         server = trial.mcp_config({"mcp_server_dir": "/ext", "stock_blender": "/b"}, 39001)["mcpServers"]["blender"]
         self.assertEqual(server["env"]["BLENDER_MCP_PORT"], "39001")
-        self.assertTrue(server["command"].endswith(".venv/bin/blender-mcp"))
+        self.assertEqual(server["command"], trial.server_executable("/ext"))   # This host's virtualenv layout.
+        for platform, layout in (("darwin", (".venv", "bin", "blender-mcp")),
+                                 ("win32", (".venv", "Scripts", "blender-mcp.exe"))):
+            self.assertEqual(Path(trial.server_executable("/ext", platform)).parts[-3:], layout, platform)
 
 
 class GradingTests(unittest.TestCase):

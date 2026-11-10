@@ -4,6 +4,8 @@
 chevrons are drawn only with chat_view's primitives in the colours given, stay inside their squares at any size and
 centre, and mirror exactly; the count badge and the approval dot sit inside the minimized circle's square, apart."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import sys
 import types

@@ -6,6 +6,8 @@ The compiled-app suite (test_blender_read_tools.py) proves the same contract on
 Blender's own RNA; these run without Blender, so CI covers the reader's logic.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import unittest

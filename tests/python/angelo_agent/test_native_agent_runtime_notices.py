@@ -10,6 +10,8 @@ bundled, the modification, the fork's branch and commit, and the return to stock
 running it needs the fork and Cargo (doc/angelo/releasing.rst, "Agent runtime").
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import unittest
@@ -36,11 +38,16 @@ class ShippedNoticeTests(unittest.TestCase):
         # Verbatim from the pinned commit (its spaces include no-break spaces).
         self.assertTrue(" ".join(read("NOTICE.txt").split()).startswith("OpenAI Codex Copyright 2025 OpenAI"))
         readme = " ".join(read("README.txt").split())
+        # The published branch's head and tag are named once the maintainer has published it (the pin lists them).
+        published = tuple(PIN["fork"][key] for key in ("public_commit", "public_tag") if key in PIN["fork"])
         for fact in (PIN["version"], PIN["upstream"]["tag"], PIN["upstream"]["repository"], PIN["fork"]["branch"],
-                     PIN["fork"]["commit"], PIN["fork"]["repository"], PIN["fork"]["public_commit"], PIN["fork"]["public_tag"], PIN["upstream"]["feature_request"], "Apache License, Version 2.0",
-                     "cacheAffinityKey", "was modified", "unchanged", "Contents/Helpers/codex",
-                     "OpenAI's own signature"):
+                     PIN["fork"]["commit"], PIN["fork"]["repository"], *published, PIN["upstream"]["feature_request"],
+                     "Apache License, Version 2.0", "cacheAffinityKey", "was modified", "unchanged",
+                     "Contents/Helpers/codex", "OpenAI's own signature"):
             self.assertIn(fact, readme)
+        for name in PIN["config_keys"] + sum((list(fields) for name, fields in PIN.get("request_fields", {}).items()
+                                              if not name.startswith("_")), []):
+            self.assertIn(name, readme, "every setting and request field the modification adds is described")
         for name in PIN["platforms"]["windows"]["required"] + PIN["platforms"]["windows"]["upstream_signed"]:
             self.assertIn(name, readme, "every Windows file, and which of them stay OpenAI's")
 

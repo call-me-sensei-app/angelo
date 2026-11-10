@@ -24,6 +24,7 @@ import math
 import os
 
 from . import web_world_key, world_surface
+from .blend_file_paths import located
 
 
 def _mapping_angle(node, feeds):
@@ -71,21 +72,30 @@ def _missing(image):
     if image.packed_file or image.source != "FILE":
         return False
     import bpy
-    path = bpy.path.abspath(image.filepath, library=image.library)
+    path = located(image.filepath, image.library, bpy.path.abspath)
     return not path or not os.path.isfile(path)
 
 
+def settings(scene):
+    """What ``plan`` reads from the scene itself: its World, whether the film shows it, the engine (which World
+    output renders) and the frame. The World's own edits are updates of the World; these are the scene's, so the
+    live preview keys on them (``web_facts.scene_settings``)."""
+    return {"world": scene.world, "background": not scene.render.film_transparent, "engine": scene.render.engine,
+            "frame": (getattr(scene, "frame_current", 0), getattr(scene, "frame_subframe", 0.0))}
+
+
 def plan(scene):
-    """How a web export of ``scene`` carries its World (module docstring)."""
-    world = scene.world
-    background = not scene.render.film_transparent
+    """How a web export of ``scene`` carries its World (module docstring). Reads the scene only through
+    ``settings``."""
+    read = settings(scene)
+    world, background, engine, frame = read["world"], read["background"], read["engine"], read["frame"]
     if world is None:
         return {"kind": "NONE", "name": None, "background": background}
     base = {"name": world.name, "background": background, "volume": False, "light_path": False}
     tree = world.node_tree
     if tree is None:
         return dict(base, kind="COLOR", color=[float(v) for v in world.color[:3]], intensity=1.0)
-    output = world_surface.active_output(tree, scene.render.engine)
+    output = world_surface.active_output(tree, engine)
     if output is None:
         return dict(base, kind="NONE")
     feeds = world_surface._feeds(tree)
@@ -113,9 +123,6 @@ def plan(scene):
                 return dict(base, kind="NONE", missing=image.name)
             turn = (angle / (2.0 * math.pi)) % 1.0
             return dict(base, kind="IMAGE", image=image.name, intensity=strength, turn=round(turn, 6),
-                        key=web_world_key.image_key(image, round(turn, 6), _frame(scene)))
-    return dict(base, kind="BAKE", intensity=1.0, key=web_world_key.key(world, scene.render.engine, _frame(scene)))
+                        key=web_world_key.image_key(image, round(turn, 6), frame))
+    return dict(base, kind="BAKE", intensity=1.0, key=web_world_key.key(world, engine, frame))
 
-
-def _frame(scene):
-    return (getattr(scene, "frame_current", 0), getattr(scene, "frame_subframe", 0.0))

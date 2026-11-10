@@ -11,6 +11,10 @@ off by default with their defaults on files saved without them; the agent's gene
 Report: ``results.json`` (with observed per-evaluation times, not checked: timing is the benchmark's).
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import math
 import os

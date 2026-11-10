@@ -100,7 +100,16 @@ never access ``bpy``. The UI timer admits bounded work and yields between phases
 this is not a hard real-time latency guarantee for every supported kernel.
 
 Programs contain 1–32 canonical actions, up to 64 distinct existing input objects
-and up to 32 expected checks. Missing checks do not invent task success: stage
+and up to 32 expected checks. A scene-settings binding also counts against the
+shared read/write binding cap; declaring one handle in both sets counts once.
+Cap refusals name the actual count and bound and explain splitting the edit
+into several programs. Malformed lists are reported separately from overflow.
+An inferred object dependency beyond the object cap is ``LIMIT_EXCEEDED``,
+not a stale revision: another observation cannot reduce that count. Actual
+dependency revision changes keep ``STALE_DEPENDENCY`` and their handle evidence.
+The single-input case does not suggest fewer inputs. A reviewed-script remedy
+is shown only for the same live request whose actual tool declaration offers it.
+Missing checks do not invent task success: stage
 validity is still checked, but only explicitly supplied predicates certify an
 intended result. New objects use local ``$alias`` references. Existing targets
 use document-epoch handles plus observed revisions, not names or copied UUID
@@ -228,11 +237,18 @@ call's item as failed (``dynamicToolCall``, ``status: "failed"``,
 Angelo writes no reply for the call (``test_native_codex_turn_errors.py``,
 ``Codex163TurnEndTests``).
 
-**Concurrent calls (codex-cli 0.164, not handled yet).** Up to 0.163 Codex runs
+**Concurrent calls (codex-cli 0.164 and later).** Up to 0.163 Codex runs
 one dynamic call at a time. 0.164 lets a code-mode cell's ``Promise.all`` send
 several ``item/tool/call`` requests of one turn before any is answered
-(openai/codex#54654). Before Angelo bundles a runtime with that change, these
-places need a concurrency review and tests with overlapping calls:
+(openai/codex#54654). The bundled runtime (0.166) keeps Angelo's tools serial:
+the fork's ``serial_dynamic_tools`` setting, which Angelo launches it with
+naming every tool (``runtime_launch.SERIAL_TOOLS_KEY``), makes a listed tool's
+call take the runtime's write lock as in 0.163, so the host still sees one
+call at a time (``serial_dynamic_tools.rs`` in the fork,
+``test_native_turn_waits.py``). The person's own Codex 0.164 or later, which
+ignores the setting, can still send overlapping calls. Before Angelo takes
+overlapping calls on purpose, these places need a concurrency review and tests
+with overlapping calls:
 
 * ``codex_delivery.dispatch_dynamic_call`` and ``CodexTurnScope``
   (``claim_response``, ``begin_response``, ``retire_response``): one response
@@ -380,7 +396,55 @@ is full and correct visibility, and a hold only where an edit may have run:
   or rollback failure, ``request_recovery.unchanged``), or one refused at
   commit preflight whose typed edit was never applied although Blender's
   preparation callbacks ran (``not_applied``; its note stays), holds nothing: other
-  edits, scripts and jobs run as usual. Its ``recovery`` names the targets that
+  edits, scripts and jobs run as usual. Every classified refusal the host raises
+  before a call's edit starts says ``scene_changed: false``: at dispatch, in
+  native staging, and at the run, when the call's binding no longer matches
+  what its approval request saw (``stale_binding``: a script's scene, a merge's
+  part files, a typed edit's target). That refusal names the part of the
+  binding that changed (a script's revision, frame, mode or objects; a
+  program's kind) and asks for a look before the call is asked again; the
+  binding guards the approval, so it holds nothing. When the person's own
+  Approve on the card meets a changed binding (``review_again``: selecting the
+  object to look at it moves a script's scene revision), the call is not
+  refused: the same card is presented again from the binding as it is now
+  (its paid account and price rebuilt, an *Asked again* chip, a line naming
+  what changed), and only a click on that card runs it, against that binding.
+  The click's mark comes only from the chat canvas (``chat_view``) for the card
+  generation the press was made on; every other approval (Auto, standing
+  consent, a worker's own controller, a lane shadow, headless runs, connected
+  apps, harnesses) carries none and is refused as above. Each renewal raises
+  the card's generation: a press made on an earlier one approves nothing, and
+  for ``approval_wait.SHIELD_SECONDS`` after the renewed card is drawn its
+  Approve takes no click (an inert hit). There is no count; the call's
+  deadline, unchanged, bounds the re-asks. A run after a renewal states
+  ``approval_renewed`` (``binding_changed`` and a note). Typed programs keep
+  their own path (a changed declared input fails their binding first). On
+  Claude a stale script refusal that ran nothing is a correction like a stale
+  program (``claude_outcomes._STALE_WHEN_REFUSED``); any other script refusal
+  still ends the request. Pinned by ``test_native_review_again``. Recorded (C3 early town-centre diagnostic): the lead's script was
+  refused there after a merge, the refusal did not say nothing ran, and the
+  hold that followed refused every later merge of the request. A headless
+  host's ``NEEDS_GUI`` refusal of a call that reached a card, a refusal while
+  Global Undo is off (``UNSUPPORTED``), a call whose delivery ended before
+  it started and a script whose identity or consent changed before its run
+  (``CANCELLED``) are classified the same way. So is every deliberate
+  refusal a tool's precondition raises, wherever it is reached (a flow run with
+  nothing to generate, a sculpt edit with no 3D Viewport, a bake of an object
+  without a material, a worker that lost the chat's handles): it carries its
+  closed code at the raise (``RefusalError(code=...)``, or
+  ``refusal_codes.coded`` to keep the exception's type; ``FlowError`` is
+  ``VALIDATION`` unless it names another), so it holds nothing; a fault there
+  stays unclassified and holds. Recorded (audit-1010 Re-check 3): uncoded, such
+  refusals held every later scene edit and offered the pre-request checkpoint,
+  which would have undone the request's good work. Pinned by a static walk from
+  every ``precondition`` (``test_native_precondition_refusal_codes``). A script binding
+  whose objects hold a NaN matrix compares by the NaN's place
+  (``script_precondition``), every binding check compares a NaN equal to a
+  NaN in its place (``stale_binding.same``), and a worker's binding carries
+  NaN and infinities across its connection (``worker_values``), so such a
+  scene no longer refuses every script, transform or worker edit. The
+  cleanup gate's refusal says nothing of its call reached the scene and that
+  the residue is an earlier stage's. Its ``recovery`` names the targets that
   changed under the edit (``read``) and the tools that read them; a second
   such refusal adds its own. A Claude or Codex plan gets a corrected plan for
   it (``claude_outcomes.correctable_failure``), and a corrected edit binds what
@@ -406,9 +470,23 @@ is full and correct visibility, and a hold only where an edit may have run:
   Codex exec cell that reads and then edits). A step ends with each usage
   report of the lead's Codex turn and with its turn's end (``provider_usage``;
   Codex sends the report only after every tool call of that response, an exec
-  cell's included, has resolved), and with each Claude round, submitted after
-  the previous round's plan ran (``Controller.record_model_round``); a
-  collaborator's never ends one. The completing read fixes the step: later
+  cell's included, has resolved or yielded), with each Claude round, submitted
+  after the previous round's plan ran (``Controller.record_model_round``), and
+  with the lead's next Codex request: the bundled runtime names, in each
+  ``item/tool/call``'s ``modelStep``, the model request of its turn that wrote
+  the call (``writtenIn``; for a call an exec cell made, the request that wrote
+  the cell, even after the cell yielded), the turn's latest (``current``) and
+  the cell (``execCellId``). The host judges such a call by the step that
+  wrote it (``model_steps.record_call_step``, ``RecoveryBarrier.call_step``:
+  request ``n`` of a turn is step ``start + n`` from where the barrier first
+  heard of the turn). The runtime also announces each request before building
+  its input (``turn/modelRequestStarted``, ``RecoveryBarrier.request_started``):
+  that ends every earlier step, with or without a usage report, and from then
+  on the turn's usage reports end none (Codex reports usage for a compaction
+  too, which would make holds wait longer). A call naming a later request ends
+  the earlier steps as well. A call the runtime names no step for counts in the
+  step it is checked in. A collaborator's or a voice thread's call or
+  announcement never ends one. The completing read fixes the step: later
   reads never push the wait back. The check has no side effect a refused call
   could use up, and its text names the targets still to read (a plan's
   rejection quotes only the text), with the tools that read them, and never an
@@ -445,18 +523,52 @@ exact preconditions at bind and immediately before live writes, so a stale
 binding is refused again. The correction is approved under the chat's own
 approval mode. The ``recovery_observation`` field stays in the schemas so
 saved chats and toolsets validate; it grants and requires nothing.
-``test_native_recovery_hold_paths.py`` pins the hold's paths. Known limits: a Codex exec
-cell that yields (``yield_control``, its yield pragma or the default 30 s) keeps
-running into the next step, so its later edit is admitted; and a provider that
-reports no usage ends a step only at the turn's end. Both need the bundled
-runtime to name a call's exec cell, or to report every usage count, in its
-tool-call parameters. Also: an exec cell whose code drops a result the model
-never prints (no host can show it more), a call admitted before the hold that
+``test_native_recovery_hold_paths.py`` pins the hold's paths. A Codex exec cell
+that yields (``yield_control``, its yield pragma or the default 30 s) keeps
+running into the next step; its later edit keeps its cell's step, so it is
+refused as written before the model saw what changed, and so is one that
+arrives after the model's own informed edit closed the hold
+(``RecoveryBarrier.closed_hold``). With a provider that reports no usage, the
+next request's announcement ends the step (``test_native_recovery_call_steps.py``).
+Known limits: a read whose answer is still on its way to the runtime when the
+next request is announced counts from the earlier request (a race of the
+answer's write and the announcement on one pipe); a read in a cell that has
+yielded counts as seen by the next request, although the model sees it only
+when it waits on the cell. Also: an exec cell whose code drops a
+result the model never prints (no host can show it more), a call admitted before the hold that
 waits across steps, objects the edit created (the hold says a search lists
 them), and add-on handlers a render runs. A failed or missing Undo publication reports failure, unverified
 recovery and ``undoable: false``; it does not erase applied edits or claim a
 rollback. Verified frame-only rebinds and bindings advanced by the request's
 own committed operations keep their existing paths.
+
+Irreversible recovery observation foundation
+-------------------------------------------
+
+``editors/undo/angelo_recovery_observation`` owns a private native lifecycle
+foundation, separate from the request's read-satisfiable ``RecoveryBarrier``.
+It retains an armed observation after its capture or request handle closes;
+detachment or history pruning never certifies recovery or discards that owner.
+Its native session identities are not filenames, raw addresses or Python
+document serials. The identity-to-live-capture and history producer is still
+unready, so these lifecycle records alone prove neither an exact preimage nor
+successful restoration.
+
+The registry admits at most 16 observations, with one unresolved observation
+per document. This is an explicit conservative resource policy, not a measured
+performance claim. It never evicts an unresolved owner: exhaustion refuses
+before effects and names the associated owned recovery needed to make progress.
+Only a preparation that has not entered effects can be cancelled. Detached and
+pruned unresolved owners continue to count toward the limit.
+
+``_angelo_undo.recovery_capabilities`` reports separate readiness for actual
+native identity binding, an admitted exact preimage, checked restoration and
+terminal effect sealing. All four are currently false. ``native_recovery``
+refuses missing, older or incomplete capabilities before irreversible work;
+it enables no production consumer. Native preconsume capture, successful
+checked recovery-only Undo, bounded post-handler noninterference proof, exact
+checkpoint association and a fresh terminal effect verifier remain required.
+Private-stage cleanup and delivery success never substitute for those proofs.
 
 How long a turn may run
 -----------------------
@@ -823,7 +935,12 @@ format and its recovery are in ``session_journal``.
   (``TranscriptRows._redacted_text``). A restore's badges on old rows invalidate
   as well.
 * **One writer.** A save appends only to the file it last wrote: the same
-  device, inode, size, modification and change time and one link. Anything
+  device, inode, size, modification and change time and one link. On Windows
+  both times tick (15.6 ms by default), so a load settles its witness before it
+  reads (``change_clock``, ``checkpoint_policy.rst`` "Differences and limits")
+  and a write during the read is seen; another writer's same-size write in the
+  tick of this writer's own last stamp is, like a restored modification time,
+  not (saves do not wait: no wait orders a concurrent writer). Anything
   else makes the save rewrite the file, and every store (a lead chat's or a
   worker's) rewrites only over the file as it last read or wrote it
   (``session_guard``): the identity it recorded, or the same file with the
@@ -934,6 +1051,54 @@ format and its recovery are in ``session_journal``.
   ``sessions/`` (``session_kept.recovered_index``; a title comes back when the
   chat is opened or the list reads again), and a chat whose file can't be
   stated stays listed: only one known to be gone is dropped.
+* **Every replace lands while the file is read** (1.0.10). Windows refuses
+  ``os.replace`` onto a name any handle holds open (``[WinError 5]``), and the
+  add-on's files are often open: the library's reload reads a job's state while
+  its worker saves it, another window or another Angelo reads the shared state
+  files, an engine re-imports the asset just written. A finished Studio job
+  stayed "generating" for good that way (CI 41887060350). Every replace in the
+  add-on goes through ``shared_replace.replace``: ``os.replace`` on POSIX; on
+  Windows the journal's POSIX-semantics rename (``win32_replace``, which lands
+  while a reader that shares delete holds the file), retried with pauses of 10
+  to 40 ms, five tries in all, while a handle that does not share delete holds a
+  name (the person's editor, a scan). A folder is moved classically under the
+  same retries, onto a free name only; a folder in a file's place, or a folder
+  onto a name in use, is raised at once. Every reader of such a file opens it
+  through ``shared_replace`` (``open_shared``, ``read_bytes``, ``read_text``;
+  ``kept_state.read`` and ``read_regular`` do), so a reader of ours never
+  refuses a writer. A save still refused after the retries raises
+  ``shared_replace.Refused``; the person is told on a card naming the file
+  (``refused_saves``, once per file every ten minutes, at most three waiting; a
+  caller that tells the person itself passes ``told=False``), and the caller
+  keeps what it was saving or reports its own failure. Every save gets its
+  retries; a caller that tries again from a timer or a UI tick waits
+  ``RETRY_SECONDS`` (5 s) after a refusal first, so a file held for good never
+  costs a tick the retries' 100 ms: the job records (a job's progress save
+  waits; a save that must land, a job's end, is tried at once), the chat list,
+  the organization's policy, an "off" for Always allow scripts and the
+  launcher's records (a changed value is tried at once). A chat list or an "off"
+  still owed at quit leaves a marker beside its file (a name nobody holds), so
+  the next launch lists every chat on disk and keeps the choice off; an
+  organization policy still owed is kept in ``team-org-policy.json.pending``,
+  stamped, and the newer of it and the file applies at the next launch, so the
+  policy never comes back looser offline; a launcher record being written, or
+  still owed, has its writer's marker beside it (``launcher_records``): the
+  launcher fails closed while one is there, and a window takes over a marker its
+  writer stopped refreshing (it quit), writing the newest change but never
+  looser than its own value. The connections go back to what the window last
+  read and keep a removed connection's key, chats and sign-in; an engine plugin
+  install (staged in the project's ``.angelo`` folder, which no engine imports,
+  or hidden beside the plugin when that is on another volume) puts the older
+  plugin back; a paid video download pauses its job on Windows, which resumes
+  later. A failed save leaves no temporary file.
+  ``test_native_shared_replace_sites`` fails on any other replace in the add-on
+  unless it is listed with its reason (a rename that never replaces, a
+  POSIX-only anchored rename, a script run inside Unreal), on a listed reader of
+  a replaced file that opens it plainly, and on any plain open, in a module that
+  replaces files or in a function naming a file such a module names, that is
+  neither such a reader nor listed with why it is safe. Cost on success: POSIX,
+  one Python call over ``os.replace``; Windows, the rename the chat journal
+  already uses.
 * **What stays on disk.** Data removed or replaced in memory (an evicted
   result, an earlier version of a row or of the task memory) stays in earlier
   records, inside the profile's private folder, until the next rewrite.
@@ -1624,19 +1789,161 @@ not crash (stock Blender crashes on growth).
 ``test_blender_removed_id_python_api.py`` covers every helper, with live IDs
 and non-ID values unchanged.
 
-The check only sees wrappers Blender invalidated: the one passed to
-``remove()``, and an ID's current shared wrapper whenever the ID is freed
-(``remove()``, ``batch_remove``, ``orphans_purge``;
-``BKE_libblock_free_data_py``). Two kinds of wrapper are never invalidated
-and still behave as in stock Blender, crashes included. One is kept from
-before its type changed (a light's or texture's ``type``, ``type_recast()``):
-the next access that wraps the ID (iterating ``bpy.data.lights`` does)
-detaches it (``pyrna_struct_CreatePyObject``). The other is made by a Python
-subclass constructor (``Sub(obj)``). So after ``light.type = "AREA"`` and a
-loop over ``bpy.data.lights`` that removes the light, the ``light`` a script
-still holds reads and writes freed memory, and ``batch_remove([light])``
-crashes. Closing this needs the refined wrapper retyped in place or every
-wrapper tracked; it is not done.
+A custom-property assignment that fails raises its error and leaves the
+property as it was (``idprop_py_api.cc``). Stock Blender skipped an array item
+that does not convert (``obj["v"] = [1, 2**40, 3]`` over an int array, a
+statically typed ``bpy.props`` vector too) and reported success with the error
+still set, so the next unrelated call raised ``SystemError``; copied a longer
+buffer (``array.array``, NumPy) past the end of an existing array; stored an
+unencodable string (a lone surrogate) empty or crashed on an existing one; and
+crashed on a mapping whose ``len()`` disagreed with its keys. Angelo converts
+every item before writing, copies a buffer only with the array's item count
+(another length replaces the property, as a sequence does), stops on the
+string's ``UnicodeEncodeError`` and walks what ``keys()`` and ``values()``
+returned. ``test_blender_idprop_assignment_errors.py`` covers each.
+
+Blender invalidates two wrappers when it frees an ID: the one passed to
+``remove()``, and the ID's shared wrapper (``ID::py_instance``, invalidated in
+``BKE_libblock_free_data_py`` for ``remove()``, ``batch_remove`` and
+``orphans_purge``). Stock Blender leaves every other wrapper and iterator over
+that memory pointing at it. Angelo links these dependents after the shared
+wrapper and invalidates them with it (``bpy_rna.cc``, "Dependent Wrappers"); a
+dependent unlinks itself when it is deallocated. They are:
+
+* Aliases, other wrappers of the same ID. A type change that refines to another
+  RNA type (a light's or texture's ``type``) makes the next access that wraps the
+  ID (``bpy.data.lights[name]``, iterating ``bpy.data.lights``) replace the
+  shared wrapper, and the one the script holds becomes an alias
+  (``pyrna_struct_CreatePyObject``); ``type_recast()`` goes the same way; and a
+  Python subclass or base-class constructor (``Sub(obj)``, ``bpy.types.ID(obj)``)
+  makes one (``pyrna_struct_init``).
+* Every other wrapper of the data: each ``bpy_struct``, ``bpy_prop``,
+  ``bpy_prop_array`` and ``bpy_func`` is linked when it is made to the shared
+  wrapper of its root, the struct's own instance slot, else its owner ID, else
+  its nearest ancestor with one. That covers views of the ID (``mesh.attributes``,
+  ``object.display``, a ``depsgraph.updates`` item, owned by the evaluated ID it
+  reports, with that ID as its only ancestor), sub-structs (``obj.modifiers[0]``,
+  ``mesh.vertices[0]``), collections and arrays (``obj.modifiers``,
+  ``obj.location``) and the mathutils values that read through them, and bound
+  functions (``obj.modifiers.new``). Custom properties (``IDPropertyGroup``,
+  ``IDPropertyArray``, their key, value and item views and iterators) and
+  ``id_properties_ui()`` managers are linked to their owner ID
+  (``idprop_py_api.cc``). A wrapper is made from a valid one, whose accessors
+  check validity first, so linking reads only live memory.
+* Collection iterators (``iter(obj.modifiers)``, ``iter(mesh.vertices)``,
+  ``iter(depsgraph.object_instances)``), linked to the same root as their
+  collection. The dependency graph has one shared wrapper of its own, whatever
+  path made it first (``view_layer.depsgraph`` names the scene as owner; the
+  wrapper keeps no owner or ancestors), released when the graph is freed
+  (``depsgraph.cc``: removing a view layer, a file load). An invalidated iterator
+  is ended while its memory is still valid, and its next step raises.
+* A depsgraph iteration step: the ``DepsgraphObjectInstance`` is released when
+  its step is over (the slot is reused two steps later), and an instance's
+  ``object``, a temporary copy in the iterator, is released before a later step
+  overwrites it or the end frees it (``rna_depsgraph.cc``). A temporary's wrapper
+  nothing else holds is reused for the slot's next copy, so a loop that only
+  reads ``instance.object`` makes no new wrapper per instance. The copy no longer
+  borrows the instanced object's own wrapper, so ``instance.object`` is always the
+  instance's object; keep ``instance.instance_object`` or ``.original``, which
+  are real IDs. ``instance.parent`` and ``instance.instance_object`` are evaluated
+  objects that live as long as the graph.
+
+Every path that frees an ID's data releases its wrappers
+(``BKE_libblock_free_data`` calls ``BKE_libblock_free_data_py``), so owned
+evaluated data (a point cloud, curves, volume or grease pencil an object's
+evaluation made) is covered too. An evaluated ID whose contents a re-evaluation
+replaces in place keeps its own wrappers, its views and properties of it; its
+iterators, custom-property wrappers and sub-data wrappers are invalidated
+(``deg_eval_runtime_backup.cc``). Undo re-reads a changed ID: as for the ID
+wrapper itself in stock Blender, every wrapper of its data raises afterwards
+(``mesh.attributes`` kept across an undo raises, where stock read the old
+memory). Re-initializing a shared wrapper from another struct
+(``a.__init__(b)``) raises ``TypeError``.
+
+A dependent is rooted only on an owner that frees the data with itself
+(``pyrna_id_data_is_transferred``). Blender moves two owners' data to another ID
+instance, so their wrappers have no owner-dependent link: the window
+manager (a file read keeps the running one's address and moves the key
+configurations, key-maps and items an add-on keeps from register to unregister
+into it, then frees the other; window runtime moves to the file's windows) and
+screens (maximize and full screen move an area's space data and regions to a
+temporary screen and back, then free it). Work-spaces and UI kept by a load
+without UI move between mains as whole IDs, which keeps their wrappers valid.
+An ID swap that moves the contents but leaves each ID its header and shared
+wrapper (``BKE_lib_id_swap``: an override reset or library reload re-applying an
+override into a temporary ID it then frees, palette undo) first invalidates the
+iterators, custom-property and sub-data wrappers of both IDs, as an in-place
+re-evaluation does; a full swap (``BKE_lib_id_swap_full``) moves the shared
+wrapper, and so its dependents, with the contents. Sub-data memory watches still
+observe actual frees, including data whose owner-dependent link is omitted.
+
+So after ``light.type = "AREA"`` and a loop over ``bpy.data.lights`` that
+removes the light, the ``light`` a script still holds raises ``ReferenceError``
+on every read and write, on ``dir()`` and in ``batch_remove([light])``, where
+stock Blender read freed memory or crashed (a 1.0.8 build crashed in
+``pyrna_struct_dir``). While the data lives every dependent works as before and
+lookups return one shared wrapper.
+``test_blender_instance_alias_wrappers.py`` covers each kind, in a child process
+per case.
+
+An ID can also outlive data a script holds. For example, removing a modifier
+through an operator or growing a mesh array can retire the storage behind a
+wrapper. The allocator marks watches of addresses inside the retired range;
+the binding consumes the mark through its dependent node on the next access
+and raises ``ReferenceError``. Geometry attributes also notify watches when
+their owner detaches from a shared array. Deleting a sibling attribute leaves
+a wrapper of an unaffected attribute usable.
+
+The watch registry uses an occupied-bucket bitmap and a short lock per bucket;
+large frees inspect occupied buckets rather than every page in their range.
+A cursor rearmed in the same bucket keeps its list position. Internal built-in
+wrapper construction avoids temporary Python capsules and type calls; custom
+metaclasses, allocators and constructors retain Python's construction path.
+Custom construction uses a capsule-owned pointer copy and conversion guard;
+the base initializer arms the installed wrapper before Python resumes. Lazy
+RNA subtype creation uses the same guard around ``__init_subclass__`` callbacks. The
+factory validates again before publication and after releasing former shared
+wrappers, so unregistering a class inside its constructor raises safely.
+Collection iteration also rejects a cursor retired or advanced reentrantly by
+a custom element constructor before advancing native storage.
+Freed built-in IDProperty wrappers reuse at most 64 objects per type, after
+their dependent links and watches are cleared. Live views never enter that
+cache, and module teardown disables and drains it.
+``StructRNA``, ``FunctionRNA`` and object-mode attribute descriptors use C++
+ownership and explicit retirement notifications. Edit-mode attributes retain
+their guarded-allocation source. Attribute wrappers and iterator cursors also
+remember which native layout they captured: crossing an edit-mode transition
+retires that view while fresh lookup through the live collection still works.
+Scope-presence counters skip attribute detachment work when that storage has
+no watched views; collisions only cause an unnecessary scan. Their registrations use a separate source in the same watch
+registry, so guarded-allocation frees scan only allocation-backed targets.
+The source tag uses existing watch padding; the dependent node and invalidation
+path are unchanged. Logical descriptor retirement still reaches every source.
+
+A writable ``memoryview`` of a numeric ``IDPropertyArray`` writes through while
+the property uses the exported storage. If the property is resized, replaced,
+or deleted, the view retains its original length and storage. Its writes then
+affect only views of that detached allocation, until the last export releases
+it. ``test_blender_sub_data_wrappers.py`` exercises these contracts in separate
+background processes.
+
+Conversions that can execute Python snapshot their inputs and revalidate their
+destination before writing. Removing a target from ``__float__``, ``__index__``
+or a mapping callback therefore raises instead of committing through retired
+storage. A file load deliberately retargets the persistent ``bpy.data`` and
+``bpy.context`` wrappers and rearms their watches; collections held from the
+old document remain invalid. ``test_blender_sub_data_soak.py`` holds live and
+retired wrappers across background CPU renders, a bake, drivers and file load.
+
+An area transfer marks only the association between a UI wrapper and its
+Screen. On the next access, a surviving allocation resolves its current owner
+from native Screen/Area/Space/Region membership; actual allocation retirement
+still invalidates it. This also repairs collection iterator pointers and
+conversion destinations, without calling RNA getters. Attribute detachment
+watches use the storage runtime identity, which survives a raw ID contents
+swap. ``test_blender_sub_data_ui_lifetime.py`` covers live UI transfers,
+conversion callbacks, drivers while a render worker runs, and file load and
+quit during active renders; its runner also requires a clean process exit.
 
 Scripts by id
 -------------
@@ -2335,10 +2642,18 @@ channels it follows). Measured against the same build without
 ``kept_values``: unchanged for unkeyed
 objects and for 2,000 untouched keyed ones, about 0.3 ms on one keyed object
 (13 ms), 11 ms on a program that moves 30 keyed objects (290 ms), and 2% on a
-batch of 1,000 copies (1 s). A known limit: an object a program duplicates or
-copies keeps the stored values it was copied with, while Blender's first
-evaluation of a new copy shows its animated values instead; the next frame
-change gives it those.
+batch of 1,000 copies (1 s). An object a program duplicates or copies
+(``object_duplicate``, ``batch``; ``operator_run`` admits no operator that adds
+an object) keeps the stored values it was copied with, its source's unkeyed
+edits included, until the next frame change, exactly as Blender's own copy
+does: Blender evaluates a new ID's animation only on a visible update with time
+(a new depsgraph, a file load: ``graph_tag_ids_for_visible_update`` in
+``depsgraph_tag.cc``), not when the ID joins a depsgraph that is already
+evaluated, so Shift+D's copy, ``Object.copy()`` and a duplicate of a keyed
+camera all keep the copied lens (measured on Blender 5.2.2). Only a copy into a
+scene whose depsgraph is built for it shows the animated values at once.
+``test_blender_kept_values.py`` (``created_copies``) compares a program's
+duplicate and batch copy with Shift+D's at commit and after Undo and Redo.
 
 Other host choices follow Blender too. ``keyframe_insert`` without ``frame``
 keys the current frame, and a UV kind without ``uv_map`` uses the mesh's active
@@ -2371,8 +2686,24 @@ natively (Average, Sum, Minimum or Maximum over transforms, distances, rotation
 differences or stored properties; ``driver_rules``) binds and commits like a
 constrained one, its drivers part of its revision and their targets declared
 dependencies; a scripted driver, a context variable or a Python-defined property
-anywhere on a variable's path (an index into one too) still makes it
-unbindable.
+anywhere on a variable's path (an index into one too), a path that continues past
+a stored custom property with anything but stored keys (``["grp"]["ptr"].location``:
+nothing proves what lies past the stored value), or a destination that is
+a Python-defined property (its getter and setter would run) or that lies in
+another datablock (Blender writes it on the person's original), still makes it
+unbindable. Before a stage is evaluated, a staged driver that reaches an ID the
+stage does not own (its target, or any ID its path crosses: the scene, a World,
+an object through the scene's custom property) refuses (``a driver reading data
+outside the stage``): the stage's depsgraph is active and would write the
+evaluated animation of that live ID back to the person's data. The refusal names the ID reached (or the
+datablock a destination writes). Where the stage-links routes are present
+(``stage_links.available()``), every link of a staged ID names its staged or
+reference copy and ``stage_routes.check`` makes this decision before every
+evaluation, so a shape key driven by its own mesh or by another mesh's key
+binds and commits; without them this check refuses it, fail-closed. Stated limit: an add-on getter a driver
+reaches still runs when Blender evaluates the person's own scene, as it does
+when the interface draws; the add-on's checks read no getter (a step is checked
+before it is read), and no stage evaluates one.
 
 Referring to objects, data and values
 =====================================
@@ -2807,7 +3138,15 @@ that window's status bar and Blender's global transform state, so the program
 waits: ``ProgramJob`` polls report ``waiting`` without hydrating the stage or
 running the operation (``BlenderProgramBackend.operation_waits``) until the
 tool ends or the call expires. The stage scene pins Auto Keying off (a new
-scene takes the artist's preference), so no staged operator keys. Mode switches
+scene takes the artist's preference), so no staged operator keys. Every setting
+staging copies onto the stage scene (the vertex group settings, the frame, the
+bound scene's settings) is written with the stage scene and its view layer as
+the context's (``program_objects.stage_scene_context``): Blender runs a scene
+setting's update on the context's scene, and Auto Normalize, Multi-Paint and
+the vertex group subset tag the context's active object for a geometry update,
+so written from the artist's context they re-evaluated the artist's active
+object before any approval (a sculpted Multires object lost its fine-grid
+hiding, and with its grids in two windows the commit refused). Mode switches
 use the Edit and Pose toggles (``object.mode_set`` also writes a pending
 autosave of the whole file, stage included), each in an override of its own
 with no window and the view layer resolved from the stage scene; the work after
@@ -2932,7 +3271,8 @@ scene and view layer, ``program_objects._override``) and unmarks it. Commit
 gives the written object's live system an edited or new copy with
 ``ID.user_remap``, journaled so a failed commit gives the old settings back;
 the copy takes the old settings' name when nothing else uses them, and the
-replaced settings stay in the file as orphan data until it is saved. Settings another system or a fake
+replaced settings are freed once no rollback can need them ("Data a commit
+replaced"). Settings another system or a fake
 user also keeps are refused (``PARTICLE_SETTINGS_SHARED``) rather than edited
 for objects outside the program; a duplicate the program creates gets the live
 settings back unless the program edited them. ``ParticleSystem.settings`` is
@@ -3021,8 +3361,8 @@ commit), replaces every use of it with the edited copy (``ID.user_remap``)
 and journals a remap back; ``ASSIGN`` points the target's references at the
 copy, journaled. Then nested group clones nobody edited go back to their live
 groups, images are assigned from their markers, the markers are removed and a
-single-user tree's copy takes the original's name. The replaced tree stays in
-the file as orphan data until it is saved. Nothing edits a live tree in
+single-user tree's copy takes the original's name. The replaced tree is freed
+once no rollback can need it ("Data a commit replaced"). Nothing edits a live tree in
 place, so the preview is what commit makes.
 
 Validity and bounds. After each operation a tree keeps its output nodes, a
@@ -3633,11 +3973,76 @@ object into exactly those memberships (``program_memberships``), so the
 collections a check reads are the ones the object commits into. An Action the
 object keeps unedited reads under its live name even when other objects share
 it.
-The replaced World, like replaced mesh data and a deleted object's data, stays
-in the session with no users and is never written when the file is saved;
-commit never deletes such artist data. The committed result lists it under
+**Data a commit replaced.** Blender edits data in place; a commit swaps in
+edited copies instead, so the replaced World, mesh data, Action, material, node
+group or particle settings is data only the swap left without users. Commit
+keeps it while its rollback can still give it back (a failure restores
+``journal["data"]``), then frees it (``commit_orphans.free_replaced``): after
+the last check and the stage cleanup, before the post-commit revisions are
+read. It frees only what it replaced, with what Blender's deletion takes with
+it (a mesh's Key, embedded data): a replaced block that is not the one it was
+replaced with, is local, has no fake user, asset mark or library override, is
+not embedded, has no users and that no other ID points at (a driver variable's
+target counts as no user). Passes repeat while a replaced block's last user
+was another freed replaced block (a replaced material only the replaced mesh
+used). What the replaced blocks merely used stays, unlisted, as after the same
+edit in place (Blender lists nothing either): a data-linked material the swap
+released, a node group taken out of a replaced graph. Nothing is freed while a render, bake or other job evaluates
+the scene on its own thread (``program_context._jobs_run``).
+
+* **Production** (``program_undo.commit`` with the native bridge, the
+  ``angelo.commit_native_job`` path of the chat and of the headless host): the
+  commit scope protects Main, so ``bpy.data`` removal refuses there. The
+  native right ``_angelo_undo.delete_replaced_data``
+  (``ED_angelo_commit_free_replaced``) frees the blocks. Its authority is
+  sealed before the first write of a commit that swaps (``seal_replaceable``;
+  a commit that swaps nothing seals nothing): what the written Objects and
+  Scene hold through counted links, in the families a commit swaps, read from
+  them alone, never a walk of the file. Each pass builds one inventory of Main
+  for the deletion proof every commit right uses (authority, Key cascade,
+  never-null users, no surviving ID pointing into the closure), checks the
+  filters natively, stops every preview job (``ED_preview_kill_jobs``, as
+  memfile Undo does; every commit deletion right does, before it reads its
+  scope and inventory, since stopping a job can release the GIL) and frees. A
+  links-by-target index of that inventory serves every proof of the pass. A
+  refused batch is proved again root by root, the roots refused alone are tried
+  together once (roots that only point at each other), and a refused root is
+  tried again in the next pass. The right is called only when a replaced block
+  has no users after the commit (a later pass can free only after a first one
+  did). Every refusal, a pass limit, and anything the kernel freed outside
+  the proof come back; the last is a ``cleanup_error`` of the commit.
+* **Without a native scope** (fixtures that commit through
+  ``native.commit_job``): ``bpy.data.batch_remove``, the same rules, never
+  while a preview renders.
+
+A replaced block nothing uses that stays (refused, an asset, a running job, a
+missing right, a pass limit, a changed scope) is counted and listed, with why
+(``orphan_data.not_freed`` and ``not_freed_reasons``); every reason is logged. Undo reads the
+freed blocks back from the step saved before the commit, and the step after it
+is saved without them; a block read back that way has a new address, so the
+observations of the earlier document expire after every Undo and Redo
+(``commit_orphans.history_changed``, registered by ``native_programs``).
+``test_blender_commit_orphans_production.py`` commits on the production path
+(Undo and Redo after each case, a native refusal, shape keys, a released
+material that stays); it fails on a binary without the right.
+``test_blender_commit_orphans.py`` covers the fixtures' path and
+``bench_commit_orphans.py`` measures the cost per commit on the production path
+at about 30,000 IDs. Measured on Mac 2 (M5 Max, Angelo 1.0.9's binary with
+this add-on, the fixtures' path, five 2,000-vertex spheres, 500 edits: material
+edits, normal recalculations, transform applies and two transform-only kinds):
+before, 300 meshes and 100 materials stayed without users and resident memory
+grew from 251 to 391 MB; after, none stayed and it grew from 246 to 282 MB. The
+production path's numbers need a build with the native right (not yet
+measured).
+
+A deleted object's data stays in the session with no users and is never
+written when the file is saved, as after Blender's own delete, and so does
+anything else the person or Blender left without users: commit frees only what
+it replaced. The committed result lists such data under
 ``orphan_data`` (count, at most eight names, and a note saying a save does not
-write it, so a model need not spend reviewed scripts deleting it). Data that
+write it, so a model need not spend reviewed scripts deleting it), and data a
+commit replaced or released but could not free (another ID still points at it,
+or the freeing was refused: ``not_freed``). Data that
 only those blocks use, a deleted cube's material, still has a user, so the
 next save writes it and it reopens unused (measured in Blender 5.2,
 ``scenario_hygiene.saved_orphans``). Such materials
@@ -3767,6 +4172,38 @@ clones at once, and an oversized stage is refused while it is created.
 On a cube with 32 Principled materials a move copies two IDs into its stage
 rather than 66 (object, mesh, 32 materials and their 32 trees), which every
 stage validation would walk.
+
+Input admission
+---------------
+
+Before bind compares an input's revision, ``program_admission.admit_input``
+admits it: a linked object is refused first (no mode change can fix it), then
+``mode_refusal``: an input that is not in Object Mode, or whose **data**
+another object has open in a mode, naming that object. Edit Mode holds the
+data through any object sharing it (``is_editmode`` of a Mesh, Curve, Lattice,
+MetaBall or Armature: Blender evaluates every user from the editing object's
+buffer). A Sculpt, paint or other session of another object on shared data is
+the person working on it, in a dynamic-topology sculpt in a BMesh that reaches
+the mesh only when the object leaves the mode, a save or an Undo push; a
+revision, a stage copy and a commit read the original data, so none of them is
+isolated from it. Data with one user is never scanned for others; shared data
+is scanned once per fence (2 to 6 ms for 10,000 objects, measured by the suite
+below on a loaded machine). An undeclared dependency is named as one.
+
+It is one refusal wherever it is found: at bind, at the fresh precondition a
+commit runs first, and at verify, which repeats it (``assert_still_admitted``)
+for every bound handle before reading any revision. The code is
+``UNSUPPORTED`` with ``handles`` and ``held_by`` (the object the person
+returns to Object Mode; none when no editing object is found), and the text
+ends "so nothing was applied. Ask the person to return 'B' to Object Mode when
+they are ready, then observe again". It never suggests a script: a script
+reads the same original data, and an edit buffer written back later overwrites
+what it wrote. ``test_native_shared_data_mode_holders.py`` holds the rules;
+``test_blender_program_read_inputs.py`` refuses programs reading and writing a
+mesh shared with an object in Edit Mode or a dynamic-topology Sculpt session,
+at bind, at the precondition and at commit, refuses shared Lattice data in
+Edit Mode and a shared mesh in Weight Paint, and commits beside two Object
+Mode users and beside a rig posing a shared armature.
 
 Exact fences
 ------------
@@ -4161,13 +4598,14 @@ Visual observation
 ``angelo_view`` is a read-only collaborator tool for appearance that structured
 data cannot prove: silhouettes, proportions, toon shading, material look,
 lighting and the rendered picture. ``view_spec`` owns the contract,
-``view_capture`` the main-thread capture, ``view_framing`` the camera math,
-``view_cache`` the bounded stores and ``view_png`` the encoder;
-``view_render``, ``view_finished``, ``view_job_output`` and ``view_picture``
-own the rendered pictures (`Rendered looks`_). Arguments are up to 16 observed
-object handles (none means all visible geometry), 1–3 views (or up to six
-reference pairs, `Free cameras and reference pictures`_), ``SOLID``,
-``WIREFRAME``, ``MATCAP``, ``CURVATURE``, ``MATERIAL``, ``ATTRIBUTE``,
+``view_capture`` the main-thread capture, ``view_viewport`` the artist's
+viewport it draws through, ``view_framing`` the camera math, ``view_cache`` the
+bounded stores and ``view_png`` the encoder; ``view_render`` (its render job in
+``view_render_runner``), ``view_finished``, ``view_job_output`` and
+``view_picture`` own the rendered pictures (`Rendered looks`_). Arguments are
+up to 16 observed object handles (none means all visible geometry), 1–3 views
+(or up to six reference pairs, `Free cameras and reference pictures`_),
+``SOLID``, ``WIREFRAME``, ``MATCAP``, ``CURVATURE``, ``MATERIAL``, ``ATTRIBUTE``,
 ``UV_CHECKER`` (``uv_checker.rst``), ``WEIGHT``, ``LIT`` or ``RENDERED`` shading (`Sculpt looks`_), a 256–1024
 pixel resolution and, with RENDERED only, ``region``, ``image``, ``frame`` and
 ``file``. Pictures beyond the viewport (an Image
@@ -4690,7 +5128,7 @@ on, depth does not. ``test_blender_view_outline_shapes`` checks its nearest
 distance against Blender's own ray cast. Without them, a model would see a
 sculpt only in the studio-lit ``SOLID`` look or in materials; changing the person's
 viewport shading to see it otherwise is an edit of their display. Both are
-drawn and put back like ``SOLID`` (``view_capture.DisplayOverrides``); a
+drawn and put back like ``SOLID`` (``view_viewport.DisplayOverrides``); a
 missing matcap keeps the person's light and is stated
 (``studio_light_unavailable``).
 
@@ -4707,7 +5145,7 @@ it an agent could describe its settings but not the picture. ``views`` is
 scene's own pixel ratio with ``resolution`` as its longer side.
 
 **A job, not a draw.** ``view_render.begin`` admits the request and starts a
-``LookRunner`` (a ``job_runners.RenderRunner``) through the shared
+``view_render_runner.LookRunner`` (a ``job_runners.RenderRunner``) through the shared
 ``JobManager`` under the internal kind ``job_spec.PREVIEW``, which is not a
 kind of ``angelo_job_start``. It therefore follows the background-job contract
 (``long_jobs.rst``): one job at a time, progress, a time budget, Cancel on its
@@ -5311,9 +5749,14 @@ Host tests run without provider access::
   <bundled-python> tests/python/angelo_agent/run_host_tests.py [TEST_FILE ...]
 
 It runs every ``test_native_*.py`` file, or only the files named, and lists
-every skip. The ``Host tests`` GitHub workflow runs it on each pull request and
-push to ``main`` with NumPy and jsonschema installed and ``--max-skips 0``, so a
-new skip fails the build. Host CI does not replace the native or GUI suites.
+every skip; ``--shard K/N`` runs the Kth of N slices of the sorted files. The
+``Host tests`` GitHub workflow runs it on each pull request and push to
+``main`` with NumPy and jsonschema installed and ``--max-skips 0``, so a new
+skip fails the build: the whole suite in one process on Linux, and in four
+parallel shards on Windows. Platform skips (a POSIX-only feature, a tool only
+the macOS workstation has) carry ``host_test_policy.environment_skip`` and are
+listed and counted apart; every other skip fails. Host CI does not replace the
+native or GUI suites.
 
 **Shared benchmark machines.** A machine that runs timed benchmark trials holds
 ``/tmp/angelo-billed.lock`` for each run: a directory whose ``owner`` file holds
@@ -5417,7 +5860,66 @@ user resources, Angelo state/accounts/library and QA directories (state,
 accounts and user resources nest inside QA for a suite that requires it), and
 inherits only a small environment allowlist (on Windows also the system,
 program-folder and processor variables), so neither real profiles nor
-provider keys reach it. HOME and TMP sit in the suite's profile folder,
+provider keys reach it.
+
+No test sees a real provider login unless it opts in, however it is started.
+Every Blender suite (``test_blender_*``, ``benchmark_blender_*``,
+``stress_blender_*``), every host test (``test_native_*``), ``run_host_tests.py``
+and the billed harness's in-app drivers import ``suite_isolation`` first
+(``provider_isolation.py``; ``test_native_suite_isolation`` pins every file and
+starts some by hand). Unless the environment is already a marked isolated
+profile (the runner's, above), the process gets a fresh HOME (Cocoa's
+``CFFIXED_USER_HOME``, Windows' profile folders and XDG folders too) with
+``CODEX_HOME`` and ``CLAUDE_CONFIG_DIR`` inside it, so neither CLI finds a
+sign-in, nor a Keychain item keyed to the person's profile;
+``ANGELO_DISABLE_KEYCHAIN=1``, ``ANGELO_AGENT_RUNTIME=off``, and no provider key
+variable. Inside Blender, where Angelo registered under the caller's
+environment before the suite's first line, the suite runs its own command line
+again with that profile and exits with its status; a host process changes its
+environment in place. The profile goes inside ``ANGELO_QA_DIR`` when the
+suite has one, else a temporary folder removed afterwards. The only opt-in to a
+real provider is ``ANGELO_TEST_REAL_PROVIDERS=eval-profile:<path>``: the
+billed eval harness derives it from its connection's dedicated profile
+(``provider_isolation.connection_opt_in``, which refuses a connection that
+reuses the native ``~/.codex`` or ``~/.claude``; ``--preflight-only`` is its dry
+check), and the LIVE suites that bill take it from the caller. The path must be
+a dedicated, existing profile (``codex-profile/<uuid>``, ``claude-profile/<uuid>``,
+or the dedicated store an API-key or team run uses in place), never the
+person's ``~/.codex`` or ``~/.claude`` or a folder holding the home; anything
+else stops the process. A folder's name never proves its account (a browser
+sign-in signs in whatever account the browser holds), so before the process
+runs every account it can bill is read, locally and without a signature check
+or network (``provider_accounts.py``): a Codex profile's ``auth.json``
+id_token claims must name the dedicated evaluation account
+(``chatgpt_account_id`` prefix, else the email; its ``config.toml`` keeps the
+sign-in in that file, and it holds no API
+key); a Claude profile's ``.claude.json`` ``oauthAccount`` must match the
+account the opt-in names (``<path>|account=<email or account UUID>``, required,
+since nothing records which Claude account is right); and so must every
+subscription connection in the process's connection store
+(``ANGELO_CONNECTIONS_DIR``, an empty one when the caller names none, and the
+copies the store reads back). API-key and team connections have no account to
+read: they bill their own key or the team gateway, never a personal plan.
+Missing, unreadable or malformed claims refuse, and only an account id's first
+8 characters and an email's domain are ever shown. The MCP-side benchmarks and
+probes outside the opt-in run the same check (``provider_isolation.check_billed``,
+the Claude one against ``ANGELO_TEST_CLAUDE_ACCOUNT``) at the very folder each
+launch uses, and their CLI children inherit no provider credential;
+``test_native_provider_accounts`` classifies every file under
+``tests/python`` and ``scripts/angelo`` with a billing marker (a CLI profile
+variable, a copied connection, ``--authorize-billed-runs``, "BILLED", the
+pilot runner) by the check it calls, the checked harness it launches, the
+opt-in entry it bills through, or why it bills no personal plan; a new one
+fails there until it is classified. The final runs' pilot steps check the
+pilot config's Codex profile at ``init`` and before each billed entry. A Claude profile that could bill a credential of its own (an
+``apiKeyHelper`` or a credential in its settings' ``env``, a ``primaryApiKey``)
+is refused, and a Codex token without an account id refuses (one email can
+sign in to several ChatGPT accounts). The opted-in
+process keeps its home (the login Keychain), its runtime's profile is pinned to
+the path and the other's to an empty folder. ``ANGELO_QA_LIVE_KEYCHAIN=1`` (the Keychain suite)
+keeps the home only.
+
+HOME and TMP sit in the suite's profile folder,
 ``<run>/p/<8 hex of its name>``, beside its own folder, so their depth never
 grows with its name: Angelo.exe is not long-path aware, and a parallel worker's
 files sit up to 131 characters below ``%LOCALAPPDATA%``

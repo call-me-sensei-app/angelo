@@ -27,6 +27,7 @@ TITLE, TITLE_LINE = 12.5, 14.5
 WHY, WHY_LINE, STRIP_PAD = 11.5, 14, 16
 LINK, LINK_ICON, LINK_GAP = 28, 18, 18
 ATTACH_PAD = 42            # The Attach button: its + and padding beside its label.
+SEARCH_SIZE, SEARCH_PAD = 12.5, 44   # The search field's text size and its icon and padding (chat_add_draw).
 PAGE_HEADER, RESULT, PAGE_ROW = 36, 38, 46   # PAGE_ROW: a page's row (chat_add_menu.HEIGHTS["row"]).
 MIN_HEIGHT = 160
 
@@ -58,7 +59,7 @@ def describe(item):
     return joined(item["title"], item["why"]) if item["why"] else item["title"]
 
 
-def place(items, measure, wrap, width, height, bottom, hint="", scroll=0, notes=()):
+def place(items, measure, wrap, width, height, bottom, hint="", scroll=0, notes=(), search_label=""):
     """The top level's geometry. ``items``: the menu's entries in order, each with ``title``, ``why``, ``section``
     (text as shown), ``placement`` and ``kind``. Returns the popup ``rect``, the ``search`` field, ``attach`` buttons,
     section ``headings``, grid ``cells`` (each with its title ``lines``), the footer ``strip`` and ``links``, the grid's
@@ -115,14 +116,18 @@ def place(items, measure, wrap, width, height, bottom, hint="", scroll=0, notes=
     list_rect = (x + PAD, y + PAD + footer, full, h - 2 * PAD - BAR - BAR_GAP - footer)
     max_scroll = max(0, grid_height - list_rect[3])
     scroll = max(0, min(max_scroll, scroll))
-    # The bar: Attach buttons at its end, the search field taking the rest.
-    bar_y, end, attach = y + h - PAD - BAR, x + w - PAD, []
-    for index, item in enumerate(items):
-        if item.get("placement") == "bar":
-            bw = measure(item["title"], TITLE) + ATTACH_PAD
-            end -= bw
-            attach.append((index, (end, bar_y, bw, BAR)))
-            end -= 6
+    # The bar: Attach buttons at its end, the search field taking the rest. When their labels would leave the field
+    # too narrow for its own placeholder (a one-column chat, a large interface scale, a long translation), the buttons
+    # are their icons alone (``attach_compact``), so the field's label is never cut.
+    bar_y, bar = y + h - PAD - BAR, [index for index, item in enumerate(items) if item.get("placement") == "bar"]
+    labelled = sum(measure(items[index]["title"], TITLE) + ATTACH_PAD + 6 for index in bar)
+    compact = bool(search_label) and full - labelled < measure(search_label, SEARCH_SIZE) + SEARCH_PAD
+    end, attach = x + w - PAD, []
+    for index in bar:
+        bw = BAR if compact else measure(items[index]["title"], TITLE) + ATTACH_PAD
+        end -= bw
+        attach.append((index, (end, bar_y, bw, BAR)))
+        end -= 6
     search = (x + PAD, bar_y, max(60, end - x - PAD), BAR)
     headings, cells, top = [], [], list_rect[1] + list_rect[3] + scroll
     for heading, row_cells, rh in rows:
@@ -139,7 +144,8 @@ def place(items, measure, wrap, width, height, bottom, hint="", scroll=0, notes=
         for index, lw in line:
             links.append((index, (lx, ly, lw, LINK)))
             lx += lw + LINK_GAP
-    return {"rect": (x, y, w, h), "columns": cols, "search": search, "attach": attach, "headings": headings,
+    return {"rect": (x, y, w, h), "columns": cols, "search": search, "attach": attach, "attach_compact": compact,
+            "headings": headings,
             "cells": cells, "list_rect": list_rect, "scroll": scroll, "max_scroll": max_scroll,
             "content_height": grid_height, "strip": (x, y + PAD + links_height, w, strip_height),
             "strip_lines": strip_lines, "links": links, "footer_top": y + PAD + footer, "fits": content <= available}

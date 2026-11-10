@@ -10,6 +10,8 @@ the upload sends. Consent and "already dealt with" survive restarts and damage;
 the upload is classified against a loopback server.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import re

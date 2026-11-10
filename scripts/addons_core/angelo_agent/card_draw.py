@@ -16,13 +16,27 @@ import gpu
 
 from . import canvas_rtl, card_kit as kit, ui_tokens as tk
 
-BUTTON_FILL = {
-    "primary": (kit.TEAL, kit.TEAL_HOVER, kit.TEAL_PRESSED),
-    "secondary": (kit.LINE, kit.LINE_HOVER, kit.LINE_PRESSED),
-    "ghost": ((0, 0, 0, 0), (1, 1, 1, 0.08), (1, 1, 1, 0.14)),
-    "destructive": (tk.CORAL, tk.CORAL_HOVER, tk.CORAL_PRESSED),
-}
-BUTTON_TEXT = {"primary": kit.INK, "secondary": kit.TEXT, "ghost": kit.MUTED, "destructive": kit.INK}
+GHOST_HOVER, GHOST_PRESSED = 0.08, 0.14
+
+
+def button_fill():
+    """Each style's (rest, hover, pressed) fill in the variant being drawn (ui_tokens.themed)."""
+    return {"primary": (tk.TEAL, tk.TEAL_HOVER, tk.TEAL_PRESSED),
+            "secondary": (tk.LINE, tk.LINE_HOVER, tk.LINE_PRESSED),
+            "ghost": (tk.alpha(tk.VEIL, 0), tk.veil(GHOST_HOVER), tk.veil(GHOST_PRESSED)),
+            "destructive": (tk.CORAL, tk.CORAL_HOVER, tk.CORAL_PRESSED)}
+
+
+def button_text():
+    """Each style's label colour in the variant being drawn."""
+    return {"primary": tk.INK, "secondary": tk.TEXT, "ghost": tk.MUTED, "destructive": tk.INK}
+
+
+def __getattr__(name):
+    """``BUTTON_FILL`` and ``BUTTON_TEXT`` by their old names (providers_page_draw reads them), as drawn."""
+    if name in ("BUTTON_FILL", "BUTTON_TEXT"):
+        return button_fill() if name == "BUTTON_FILL" else button_text()
+    raise AttributeError("module %r has no attribute %r" % (__name__, name))
 
 
 def draw(view, plan):
@@ -96,17 +110,17 @@ def _button(view, rect, label, style, state, size):
     radius = h / 2
     if focus:
         _ring(view, rect, radius, max(0.6, scale))
-    normal, over, down = BUTTON_FILL[style]
+    normal, over, down = button_fill()[style]
     fill = down if pressed else over if hover else normal
     if not enabled:
         fill = (fill[0], fill[1], fill[2], fill[3] * 0.35)
     if fill[3]:
         view.shape(x, y, w, h, fill, radius)
-    color = BUTTON_TEXT[style]
+    color = button_text()[style]
     if style == "ghost" and (hover or pressed or focus):
         color = kit.TEXT
-    if not enabled:   # Light text at reduced strength on every style: the dark primary label vanished on dim teal.
-        color = (kit.TEXT[0], kit.TEXT[1], kit.TEXT[2], 0.42)
+    if not enabled:   # MUTED on every style's dimmed fill: 3.4:1 or more in both variants (the dark primary label
+        color = kit.MUTED   # vanished on dim teal; light text at 42% fell to 2.3:1 on the light variant's).
     tw = view.measure(label, size, view._font)  # As drawn.
     view.text(label, x + (w - tw) / 2, y + (h - size * 0.72) / 2 - (1 if pressed else 0), size, color)
 
@@ -206,7 +220,7 @@ def _close_button(view, rect, state):
     s = w / 28
     if focus:
         _ring(view, rect, w / 2, s)
-    view.shape(x, y, w, h, (1, 1, 1, 0.22 if pressed else 0.14 if hover else 0.0), w / 2)
+    view.shape(x, y, w, h, tk.veil(0.22 if pressed else 0.14 if hover else 0.0), w / 2)
     m, color = w * 0.33, kit.TEXT if hover or pressed or focus else kit.MUTED
     view.stroke(x + m, y + m, x + w - m, y + h - m, color, 1.7 * s)
     view.stroke(x + m, y + h - m, x + w - m, y + m, color, 1.7 * s)

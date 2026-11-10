@@ -19,6 +19,8 @@ function returns after putting it there, and a parameter such a row is passed to
 Host tests also check at run time (``session_writer.CHECK_TOUCHES``) what this source audit cannot see.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import unittest
 from pathlib import Path

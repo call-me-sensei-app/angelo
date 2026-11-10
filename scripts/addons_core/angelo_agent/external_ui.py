@@ -176,31 +176,42 @@ class ANGELO_OT_external_app_copy_setup(Operator):
 WAITING = n_("{app} is waiting for your approval")
 
 
-_shown = {"key": (), "app": "", "session": ""}   # What the status bar shows; ``refresh`` keeps it current.
+_shown = {"key": (), "app": "", "session": "", "local": ()}   # What the status bar shows; ``refresh`` keeps it current.
 
 
 def refresh(ui):
     """Main thread, each tick (ui.pump): track the waiting apps and redraw the status bars when they change."""
-    now = tuple(waiting(list(ui._controllers.values()), ui._sessions.active if ui._sessions else None))
-    if now == _shown["key"]:
+    from . import approval_wait, chat_toggle, launcher_waiting
+    controllers = tuple(ui._controllers.values())
+    active = ui._sessions.active if ui._sessions else None
+    visible = chat_toggle.chat_shown()
+    now = tuple(waiting(controllers, active, chat_shown=visible))
+    unseen = approval_wait.unseen(controllers, active, visible)
+    local = next((c for c in unseen if not getattr(c, "external_client", "")), None)
+    local = (local.state["id"], approval_wait.awaiting(local).id, launcher_waiting.label(local, active)) if local else ()
+    if now == _shown["key"] and local == _shown["local"]:
         return
     app, session = "", ""
     if now:
         label, session = now[0]
         record = AppRegistry(ui.state_directory()).load().get(label)
         app = APP_NAMES.get((record or {}).get("app"), label)
-    _shown.update(key=now, app=app, session=session)
+    _shown.update(key=now, app=app, session=session, local=local)
     from .team_account_ui import redraw_status_bars
     redraw_status_bars()
 
 
 def draw_status(self, context):
-    if not _shown["session"]:
-        return
-    row = self.layout.row(align=True)
-    row.alert = True
-    row.operator("angelo.external_app_open", text=iface_(WAITING, app=iface_(_shown["app"])), icon='ERROR',
-                 translate=False).session_id = _shown["session"]
+    if _shown["session"]:
+        row = self.layout.row(align=True)
+        row.alert = True
+        row.operator("angelo.external_app_open", text=iface_(WAITING, app=iface_(_shown["app"])), icon='ERROR',
+                     translate=False).session_id = _shown["session"]
+    if _shown["local"]:
+        row = self.layout.row(align=True)
+        row.alert = True
+        row.operator("angelo.waiting_chat_open", text=_shown["local"][2], icon='ERROR',
+                     translate=False).session_id = _shown["local"][0]
 
 
 class ANGELO_OT_external_app_open(Operator):
@@ -216,10 +227,25 @@ class ANGELO_OT_external_app_open(Operator):
             bpy.ops.angelo.open_chat()
         try:
             ui.show_session(self.session_id)
+            from . import approval_wait
+            controller = ui._controllers.get(self.session_id)
+            if controller is not None:
+                approval_wait.request_reveal(self.session_id, approval_wait.awaiting(controller), shield=True, controller=controller)
         except (RuntimeError, ValueError) as error:
             self.report({'ERROR'}, str(error))
             return {'CANCELLED'}
         return {'FINISHED'}
+
+
+class ANGELO_OT_waiting_chat_open(Operator):
+    bl_idname = "angelo.waiting_chat_open"
+    bl_label = "Show the Angelo chat"
+    bl_description = "Show the Angelo chat"
+    bl_options = {'INTERNAL'}
+    session_id: StringProperty(options={'SKIP_SAVE'})
+
+    def execute(self, context):
+        return ANGELO_OT_external_app_open.execute(self, context)
 
 
 def register_status():
@@ -230,5 +256,5 @@ def unregister_status():
     bpy.types.STATUSBAR_HT_header.remove(draw_status)
 
 
-CLASSES = (ANGELO_OT_external_app_open, ANGELO_OT_external_app_connect, ANGELO_OT_external_app_disconnect,
+CLASSES = (ANGELO_OT_waiting_chat_open, ANGELO_OT_external_app_open, ANGELO_OT_external_app_connect, ANGELO_OT_external_app_disconnect,
            ANGELO_OT_external_app_copy_setup, ANGELO_OT_external_app_forget_scripts)

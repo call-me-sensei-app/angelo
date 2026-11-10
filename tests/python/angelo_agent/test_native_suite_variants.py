@@ -12,6 +12,8 @@ here: a suite written for the lanes with a single run drives the hosted default 
 worker refuses its chat, ``NotMirrored``, or the mirror its tool request, ``LocalWork``: live_view at e837, R7).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import sys
 import tempfile

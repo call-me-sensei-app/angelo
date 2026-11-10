@@ -20,6 +20,10 @@ Run through ``run_native_suites.py --gui --include test_blender_translation``; c
 ``success`` and ``phase == "complete"``. Screenshots are named ``<locale>-<screen>.png``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys

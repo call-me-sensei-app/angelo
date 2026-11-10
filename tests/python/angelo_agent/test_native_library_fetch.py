@@ -4,12 +4,15 @@
 item files (size, checksum, redirects, names), the cache and its trim. Host tests only; nothing leaves this
 computer (``ANGELO_LIBRARY_URL`` points the client at the loopback server)."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import gzip
 import hashlib
 import json
 import os
 import tempfile
 import threading
+import time
 import unittest
 import unittest.mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -233,9 +236,11 @@ class FileTests(FetchCase):
         folder = self.root / "files"
         folder.mkdir()
         (folder / "linked").symlink_to(victim, target_is_directory=True)
-        os.utime(folder / "linked", (1, 1), follow_symlinks=False)
         (folder / "real").mkdir()
         (folder / "real" / "data").write_bytes(b"y" * 100)
+        # The link is the least recently used entry. Dated through the folder beside it: Windows sets no link's own time
+        # (os.utime has no follow_symlinks=False there).
+        os.utime(folder / "real", (time.time() + 3600,) * 2)
         fetch.trim(folder, 0)
         self.assertTrue((victim / "precious").exists())
         self.assertFalse((folder / "linked").exists())

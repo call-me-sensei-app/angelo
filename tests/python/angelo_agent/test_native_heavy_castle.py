@@ -8,6 +8,8 @@ Blender by the reference jobs (fail before, pass after) and by
 and wrong builds); this pins what can be pinned without it.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import json
 import math
@@ -124,10 +126,11 @@ class HeavyScenarioTests(unittest.TestCase):
         client = mock.Mock()
         client.execute.side_effect = [{"setup_s": 2.0, "objects": 1969}, {"digest": "d", "orphans": {}}]
         output = {}
-        with mock.patch.object(specs, "start_file", return_value=(Path("/refs/start.blend"), "ab" * 32)):
+        start = Path("/refs/start.blend")
+        with mock.patch.object(specs, "start_file", return_value=(start, "ab" * 32)):
             mcp_scenario.begin(client, {"task_set": "scenario-heavy"}, output)
         first = client.execute.call_args_list[0]
-        self.assertIn("/refs/start.blend", first.args[0])
+        self.assertIn(repr(str(start)), first.args[0])   # The setup script names this machine's own path.
         self.assertEqual(first.kwargs["timeout"], heavy.SETUP_TIMEOUT_S)
         self.assertEqual(output["scenario"]["setup"]["objects"], 1969)
         ast.parse(grading.scenario_setup_code("scenario-heavy", "/refs/start.blend", "ab" * 32))

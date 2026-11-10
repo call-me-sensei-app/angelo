@@ -123,9 +123,10 @@ def select_console(window, area, coding=False, generative=False):
     if view:
         view.pop("popover", None)
         view["focused"] = False
+        chat_view.composer_input.rejoin(view)   # Shown again later, the chat's composer is the chat's as last drawn.
     from . import studio
     if area.as_pointer() in studio._views:
-        studio._views[area.as_pointer()]["focus"] = None
+        studio._views[area.as_pointer()]["field_focus"] = None
     console._versions.pop(area.as_pointer(), None)
     console._states.pop(area.as_pointer(), None)
     area.tag_redraw()

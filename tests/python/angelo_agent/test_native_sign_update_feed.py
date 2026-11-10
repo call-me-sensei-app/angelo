@@ -12,6 +12,8 @@ a reused id and a duplicate key); and a rehearsal trusts a throwaway key, signs 
 crash endpoint, and the app's own parser refuses every tampered, re-keyed, truncated or replayed copy.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import hashlib
 import importlib.util

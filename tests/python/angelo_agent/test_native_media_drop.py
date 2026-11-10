@@ -11,6 +11,8 @@ the menus recognizing Media Studio assets. The real drops are ``test_blender_med
 ``test_blender_media_drop_gui`` (real drags).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import re
 import sys
@@ -127,7 +129,7 @@ class IdentifierTests(unittest.TestCase):
                          [("IMAGE", "x", "Material", "A poster 2"), ("IMAGE", "x", "Material", "A poster"),
                           ("3D", "y", "Object", "A column")])
         self.assertEqual([items[0].picture, items[1].picture], entry["files"][::-1])
-        self.assertTrue(items[2].blend.endswith("blender-assets/models/y.blend"))
+        self.assertEqual(Path(items[2].blend).parts[-3:], ("blender-assets", "models", "y.blend"))   # A native path.
 
 
 class GridTests(unittest.TestCase):

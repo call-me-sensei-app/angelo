@@ -22,41 +22,82 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import headless_files
+from . import change_clock, headless_files
 
 
 def claim(source):
-    """A new working copy of ``source`` next to it, or None where its folder is read-only. The launcher makes the one
-    a child starts on, so a start that fails in any way (no ready, a crash, a kill) removes it again."""
+    """``(a new working copy of source next to it, the identity of the bytes written there)`` (``place``), or
+    ``(None, None)`` where its folder is read-only. The launcher makes the one a child starts on, so a start that fails
+    in any way (no ready, a crash, a kill) removes it again."""
     source = Path(source)
     if not headless_files.folder_writable(source):
-        return None
+        return None, None
     target = headless_files.claim_output(source)
     try:
-        headless_files.place(source, target)
+        written = headless_files.place(source, target)
     except BaseException:
         _unlink(target)
         raise
-    return target
+    return target, written
 
 
 def open_copy(bpy, source, copy=None):
     """Open the working copy ``copy`` the launcher made (one of this source's own, else a fresh one), or ``source``
-    itself where its folder is read-only; returns the path Blender has open."""
+    itself where its folder is read-only; returns ``(the path Blender has open, the identity of what it read)``
+    (``open_read``)."""
     source = Path(source)
     if copy is not None:
         target = headless_files.check_resume(source, str(copy))   # Only a .blend next to it named as outputs are.
     else:
-        target = claim(source) or source
+        target = claim(source)[0] or source
     try:
-        result = bpy.ops.wm.open_mainfile(filepath=str(target), load_ui=False, use_scripts=False)
+        identity = open_read(bpy, target)
     except RuntimeError:
-        result = {"CANCELLED"}
-    if "FINISHED" not in result:
         if target != source:
             _unlink(target)
+        raise
+    return target, identity
+
+
+def open_read(bpy, path):
+    """Open ``path`` in Blender; returns the identity (``headless_files.identity``) of the version it read, which
+    the session's later saves and its removal of an unedited copy compare with. ``RuntimeError`` when Blender could
+    not open it.
+
+    The identity of the file the load read, on the descriptor Blender read it through
+    (``document_file_identity.loaded``); never a stat after the open alone, which could be of a version another
+    program wrote once Blender had read the file, held over the older document, so the session's next save would
+    replace that version unnoticed. Where the process gives none, a stat before the open and again after, which must
+    agree. A save in this process during the open (a person's add-on's ``load_post`` handler; the module docstring)
+    writes the document Blender holds, so the identity that save gave stands for it. Otherwise the identity returned
+    equals no other (``change_clock.unique``): the file reads as changed on disk, so the session claims a new output
+    and never removes the copy."""
+    before, saved = headless_files.identity(path), []
+    handlers = getattr(getattr(bpy, "app", None), "handlers", None)
+
+    def note(filepath=None, *_args):   # A save of this file only, as that save identified the file it wrote.
+        if isinstance(filepath, str) and os.path.realpath(filepath) == os.path.realpath(path):
+            saved.append(headless_files.saved_identity(filepath))
+    if handlers is not None:   # Persistent: a load drops the others before its load_post handlers run.
+        note = handlers.persistent(note)
+        handlers.save_post.append(note)
+    try:
+        result = bpy.ops.wm.open_mainfile(filepath=str(path), load_ui=False, use_scripts=False)
+    except RuntimeError:
+        result = {"CANCELLED"}
+    finally:
+        if handlers is not None and note in handlers.save_post:
+            handlers.save_post.remove(note)
+    if "FINISHED" not in result:
         raise RuntimeError("Blender could not open the file")
-    return target
+    if saved:   # The document Blender holds, as that save wrote it (whatever is at the path by now).
+        return saved[-1]
+    from . import document_file_identity
+    found = document_file_identity.loaded(str(path))   # The file the load read, on its own descriptor.
+    if found is not None:
+        return headless_files.settled_identity(found)
+    after = headless_files.identity(path)
+    return after if after == before else change_clock.unique()
 
 
 def discard(path, source, identity):
@@ -85,15 +126,36 @@ def _unlink(path):
         pass
 
 
+LEGACY_SWEPT = ".headless-temp-swept"   # In the scratch root: the temporary folder's leftovers were swept once.
+
+
 def sweep(temporary, prefix):
-    """Remove private folders (named ``prefix``...) of children that died without removing their own (a hard kill)."""
+    """Remove private folders (named ``prefix``...) of children that died without removing their own (a hard kill).
+
+    Only Angelo's own scratch root is listed (or ``temporary``, a test's): the system temporary folder can hold a great
+    many unrelated entries (573,000 on a working Mac, 83 s to list), so it is listed for an earlier build's leftovers
+    once per install (``LEGACY_SWEPT``), and never when it is the scratch root's fallback. ``sweep_in_background``
+    runs this off the session's open."""
     from .private_roots import scratch_root   # Where they are made; an earlier build made them in the temporary folder.
+    roots = [Path(temporary)] if temporary else [scratch_root()]
+    system = Path(tempfile.gettempdir())
+    if not temporary and roots[0] == system:
+        return   # The scratch root fell back to the temporary folder: listing it is the cost this avoids.
+    marker = roots[0] / LEGACY_SWEPT
+    legacy = not temporary and not marker.exists()
+    if legacy:
+        roots.append(system)
     candidates = []
-    for root in ([Path(temporary)] if temporary else [scratch_root(), Path(tempfile.gettempdir())]):
+    for root in roots:
         try:
             candidates += [path for path in root.iterdir() if path.name.startswith(prefix)]
         except OSError:
             continue
+    if legacy:
+        try:
+            marker.touch()
+        except OSError:
+            pass   # Tried again at the next sweep.
     for folder in candidates:
         info = None
         try:
@@ -111,6 +173,15 @@ def sweep(temporary, prefix):
             shutil.rmtree(folder, ignore_errors=True)
         except OSError:
             pass
+
+
+def sweep_in_background(temporary, prefix):
+    """``sweep`` on a thread of its own: never on the path that opens a session. No bpy."""
+    from . import thread_start
+    try:
+        thread_start.daemon("Angelo headless sweep", sweep, temporary, prefix)
+    except RuntimeError:
+        pass   # No thread to give: the leftovers wait for the next open.
 
 
 def _read_pid(path):

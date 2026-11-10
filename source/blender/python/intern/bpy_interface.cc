@@ -32,6 +32,7 @@
 
 #include "BLT_translation.hh"
 
+#include "RNA_prototypes.hh"
 #include "RNA_types.hh"
 
 #include "bpy.hh"
@@ -45,6 +46,9 @@
 
 #include "bpy_app_translations.hh"
 
+#include "DNA_freestyle_types.h"
+#include "DNA_layer_types.h"
+#include "DNA_scene_types.h"
 #include "DNA_text_types.h"
 
 #include "BKE_appdir.hh"
@@ -317,7 +321,7 @@ bContext *BPY_context_get()
 
 void BPY_context_set(bContext *C)
 {
-  bpy_context_module->ptr->data = static_cast<void *>(C);
+  pyrna_struct_pointer_retarget(bpy_context_module, PointerRNA(nullptr, RNA_Context, C));
 }
 
 #ifdef WITH_FLUID
@@ -828,10 +832,37 @@ void BPY_DECREF(void *pyob_ptr)
 void BPY_DECREF_RNA_INVALIDATE(void *pyob_ptr)
 {
   const PyGILState_STATE gilstate = PyGILState_Ensure();
+  /* Angelo: the wrappers that must not outlive the struct go with it ("Dependent Wrappers"). */
+  if (BPy_StructRNA_Check(static_cast<PyObject *>(pyob_ptr))) {
+    pyrna_struct_dependents_invalidate(static_cast<BPy_StructRNA *>(pyob_ptr));
+  }
   const bool do_invalidate = (Py_REFCNT((PyObject *)pyob_ptr) > 1);
   Py_DECREF((PyObject *)pyob_ptr);
   if (do_invalidate) {
     pyrna_invalidate(static_cast<BPy_DummyPointerRNA *>(pyob_ptr));
+  }
+  PyGILState_Release(gilstate);
+}
+
+bool BPY_rna_instance_is_unshared(void *pyob_ptr)
+{
+  const PyGILState_STATE gilstate = PyGILState_Ensure();
+  const bool unshared = Py_REFCNT(static_cast<PyObject *>(pyob_ptr)) == 1;
+  PyGILState_Release(gilstate);
+  return unshared;
+}
+
+void BPY_rna_instance_dependents_invalidate(void *pyob_ptr, const bool sub_data_only)
+{
+  const PyGILState_STATE gilstate = PyGILState_Ensure();
+  if (BPy_StructRNA_Check(static_cast<PyObject *>(pyob_ptr))) {
+    BPy_StructRNA *shared = static_cast<BPy_StructRNA *>(pyob_ptr);
+    if (sub_data_only) {
+      pyrna_struct_sub_data_dependents_invalidate(shared);
+    }
+    else {
+      pyrna_struct_dependents_invalidate(shared);
+    }
   }
   PyGILState_Release(gilstate);
 }
@@ -853,6 +884,23 @@ void BPY_modules_load_user(bContext *C)
   }
 
   bpy_context_set(C, &gilstate);
+
+  if (!(G.f & (G_FLAG_SCRIPT_AUTOEXEC | G_FLAG_SCRIPT_AUTOEXEC_FAIL |
+               G_FLAG_SCRIPT_AUTOEXEC_FAIL_QUIET)))
+  {
+    for (Scene &scene : bmain->scenes) {
+      for (ViewLayer &view_layer : scene.view_layers) {
+        for (const FreestyleModuleConfig &module_conf : view_layer.freestyle_config.modules) {
+          if (module_conf.script) {
+            G.f |= G_FLAG_SCRIPT_AUTOEXEC_FAIL;
+            SNPRINTF_UTF8(G.autoexec_fail,
+                          RPT_("Freestyle style module '%s'"),
+                          module_conf.script->id.name + 2);
+          }
+        }
+      }
+    }
+  }
 
   for (text = static_cast<Text *>(bmain->texts.first); text;
        text = static_cast<Text *>(text->id.next))
@@ -878,6 +926,7 @@ void BPY_modules_load_user(bContext *C)
       }
     }
   }
+
   bpy_context_clear(C, &gilstate);
 }
 

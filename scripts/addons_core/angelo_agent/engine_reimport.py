@@ -120,7 +120,8 @@ def with_baked(source, baked):
     """``source`` (``snapshot``) with each ``[object, material]`` of ``baked`` the object's one material: an export
     writes every slot with it, and an importer merges identical slots."""
     out = dict(source)
-    for name, material in baked:
+    for item in baked:   # [object, material] or engine_link_assets.baked_for_save's [..., libraries].
+        name, material = item[0], item[1]
         if name in out:
             out[name] = dict(out[name], materials=[material])
     return out

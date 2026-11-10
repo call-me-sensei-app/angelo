@@ -6,6 +6,10 @@ One factory GUI process per ANGELO_SCULPT_CHECKPOINT_VARIANT: shared (default),
 dyntopo, corrupt, post-failure. No provider; no manual checkpoint factory or
 snapshot installation. Actual native proof requires the integrated build.
 """
+
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 import array
 import contextlib
 import ctypes
@@ -689,7 +693,7 @@ def continuation(name, reference=None, complete_baseline=None):
             rows = baseline['history']
             check(name + '_' + label + '_complete_undo_target_before_edit', len(rows) == 1 and
                   rows[0]['index'] == 0 and rows[0]['type'] == 'Global Undo' and
-                  rows[0]['name'] == 'Checkpoint Restored' and rows[0]['active'] and not rows[0]['skip'])
+                  rows[0]['name'] == 'Snapshot Restored' and rows[0]['active'] and not rows[0]['skip'])
             undo_target = {key: rows[0][key] for key in ('index', 'address', 'type', 'name', 'skip')}
             undo_expected = complete_baseline
             restored_equal(name + '_' + label + '_complete_baseline_before_edit', complete_baseline, baseline)
@@ -947,7 +951,7 @@ def tick():
             restored_equal('second_cold_restore', captured, cold)
             check('cold_history_rebased_to_complete_checkpoint', len(cold['history']) == 1 and
                   cold['history'][0]['type'] == 'Global Undo' and
-                  cold['history'][0]['name'] == 'Checkpoint Restored' and
+                  cold['history'][0]['name'] == 'Snapshot Restored' and
                   cold['history'][0]['active'] and not cold['history'][0]['skip'])
             continuation('cold', reference, captured)
             return finish()

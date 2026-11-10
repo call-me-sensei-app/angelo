@@ -8,6 +8,8 @@ still holds for deduplicated points. Synthetic bytes; Blender never opens them
 (test_blender_snapshot_dedup.py restores real documents).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import os

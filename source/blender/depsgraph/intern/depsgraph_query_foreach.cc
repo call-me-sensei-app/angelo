@@ -10,13 +10,23 @@
 
 #include <deque>
 
+#include "BLI_map.hh"
 #include "BLI_threads.h"
+#include "BLI_vector.hh"
 
 #include "BKE_main.hh"
+#include "BKE_scene.hh"
+#include "BKE_wm_runtime.hh"
+
+#include "WM_api.hh"
+
+#include "RNA_path.hh"
 
 #include "DNA_layer_types.h"
 #include "DNA_scene_types.h"
+#include "DNA_windowmanager_types.h"
 
+#include "DEG_angelo_upstream.hh"
 #include "DEG_depsgraph.hh"
 #include "DEG_depsgraph_query.hh"
 
@@ -240,6 +250,120 @@ void deg_foreach_ancestor_ID(const Depsgraph *graph, const ID *id, DEGForeachIDC
   }
 }
 
+/* Angelo: whether every RNA path the operation's driver variables resolved when the relations
+ * were built still names the same owner ID and struct type. A write that re-points data the path
+ * passes through without tagging the relations leaves the relation built from the old answer.
+ * Resolution calls the same RNA pointer and collection-lookup getters on the same original data
+ * the relation builder called on these paths; it reads no property value. The root's ID has a
+ * node, whose original pointer the graph keeps valid while its relations are current. */
+static bool angelo_path_reads_current(const Depsgraph &graph, const OperationNode &op_node)
+{
+  if (!op_node.angelo_path_reads) {
+    return true;
+  }
+  for (const AngeloPathRead &read : *op_node.angelo_path_reads) {
+    const IDNode *root_node = read.root.owner_id ? graph.find_id_node(read.root.owner_id) :
+                                                   nullptr;
+    if (root_node == nullptr || root_node->id_orig_session_uid != read.root.owner_id->session_uid)
+    {
+      return false;
+    }
+    PointerRNA resolved;
+    PropertyRNA *prop = nullptr;
+    int index = -1;
+    if (!RNA_path_resolve_full(&read.root, read.path.c_str(), &resolved, &prop, &index) ||
+        resolved.owner_id != read.owner || resolved.type != read.type)
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+/* Angelo (DEG_angelo_upstream.hh). Not built on #deg_foreach_ancestor_ID: its single-inlink
+ * shortcut has no exit when that inlink is the time source, which in stock graphs is masked only
+ * by the copy relation every such operation also gets, and this walk does not follow copies. */
+DEGUpstreamStatus deg_foreach_ancestor_component(
+    const Depsgraph &graph,
+    const ID *id,
+    FunctionRef<void(const DEGUpstreamRecord &)> callback,
+    const int64_t max_operations)
+{
+  const IDNode *root = graph.find_id_node(id);
+  if (root == nullptr) {
+    return DEGUpstreamStatus::NotInGraph;
+  }
+  static_assert(int(NodeType::NUM_TYPES) <= 64, "Reported component types are a 64-bit mask");
+  Map<const IDNode *, uint64_t> reported;
+  uint64_t reported_sources = 0;
+  auto report = [&](const IDNode &node, const NodeType type) {
+    uint64_t &mask = reported.lookup_or_add(&node, 0);
+    const uint64_t bit = uint64_t(1) << int(type);
+    if ((mask & bit) == 0) {
+      mask |= bit;
+      callback({node.id_orig_session_uid, int(node.id_type), uint8_t(type)});
+    }
+  };
+  auto is_followed = [](const NodeType type) {
+    return !ELEM(type, NodeType::VISIBILITY, NodeType::COPY_ON_EVAL);
+  };
+  Vector<const OperationNode *> worklist;
+  Set<const OperationNode *> visited;
+  auto schedule = [&](const OperationNode *op_node) {
+    if (visited.add(op_node)) {
+      worklist.append(op_node);
+    }
+  };
+  for (const ComponentNode *comp_node : root->components.values()) {
+    if (is_followed(comp_node->type)) {
+      for (const OperationNode *op_node : comp_node->operations) {
+        schedule(op_node);
+      }
+    }
+  }
+  while (!worklist.is_empty()) {
+    if (visited.size() > max_operations) {
+      return DEGUpstreamStatus::TooLarge;
+    }
+    const OperationNode *op_node = worklist.pop_last();
+    if (op_node->flag & DEPSOP_FLAG_ANGELO_UNDECLARED_READS) {
+      return DEGUpstreamStatus::UndeclaredReads;
+    }
+    if (!angelo_path_reads_current(graph, *op_node)) {
+      return DEGUpstreamStatus::RelationsStale;
+    }
+    const ComponentNode &comp_node = *op_node->owner;
+    report(*comp_node.owner, comp_node.type);
+    if (op_node->flag & DEPSOP_FLAG_ANGELO_READS_OWNER_TRANSFORM) {
+      if (const ComponentNode *transform = comp_node.owner->find_component(NodeType::TRANSFORM)) {
+        for (const OperationNode *transform_op : transform->operations) {
+          schedule(transform_op);
+        }
+      }
+    }
+    for (const Relation *rel : op_node->inlinks) {
+      if (rel->from->get_class() != NodeClass::OPERATION) {
+        /* The time source is the only one Blender builds; any other is reported too. */
+        const uint64_t bit = uint64_t(1) << int(rel->from->type);
+        if ((reported_sources & bit) == 0) {
+          reported_sources |= bit;
+          callback({0, 0, uint8_t(rel->from->type)});
+        }
+        continue;
+      }
+      const OperationNode *from = static_cast<const OperationNode *>(rel->from);
+      const ComponentNode &from_comp = *from->owner;
+      if (from_comp.type == NodeType::COPY_ON_EVAL && from_comp.owner != comp_node.owner) {
+        report(*from_comp.owner, NodeType::COPY_ON_EVAL);
+      }
+      if (is_followed(from_comp.type)) {
+        schedule(from);
+      }
+    }
+  }
+  return DEGUpstreamStatus::Ok;
+}
+
 void deg_foreach_id(const Depsgraph *depsgraph, DEGForeachIDCallback callback)
 {
   for (const IDNode *id_node : depsgraph->id_nodes) {
@@ -275,6 +399,64 @@ void DEG_foreach_ancestor_ID(const Depsgraph *depsgraph,
                              DEGForeachIDCallback callback)
 {
   deg::deg_foreach_ancestor_ID(reinterpret_cast<const deg::Depsgraph *>(depsgraph), id, callback);
+}
+
+DEGUpstreamStatus DEG_foreach_ancestor_component(
+    const Depsgraph *depsgraph,
+    const ID *id,
+    FunctionRef<void(const DEGUpstreamRecord &)> callback,
+    const int64_t max_operations)
+{
+  return deg::deg_foreach_ancestor_component(
+      *reinterpret_cast<const deg::Depsgraph *>(depsgraph), id, callback, max_operations);
+}
+
+DEGUpstreamStatus DEG_angelo_foreach_upstream(
+    const Main *bmain,
+    const Scene *scene,
+    const ViewLayer *view_layer,
+    const ID *id,
+    FunctionRef<void(const DEGUpstreamRecord &)> callback)
+{
+  if (!BLI_thread_is_main()) {
+    return DEGUpstreamStatus::NotMainThread;
+  }
+  if (bmain == nullptr || scene == nullptr || view_layer == nullptr) {
+    return DEGUpstreamStatus::NoGraph;
+  }
+  /* Bakes evaluate this graph on a job thread. Their jobs are owned by the scene and registered
+   * on the main thread when they start (one sets its interface lock only from the job thread),
+   * and most also lock the interface; while either holds, reading the graph would race the job. */
+  for (const wmWindowManager &wm : bmain->wm) {
+    if (wm.runtime == nullptr) {
+      continue; /* A window manager read from a file and not yet initialized has no jobs. */
+    }
+    if (wm.runtime->is_interface_locked || WM_jobs_test(&wm, scene, WM_JOB_TYPE_ANY)) {
+      return DEGUpstreamStatus::Evaluating;
+    }
+  }
+  /* Look-up only: #BKE_scene_ensure_depsgraph would create and register a graph. */
+  const auto *graph = reinterpret_cast<const deg::Depsgraph *>(
+      BKE_scene_get_depsgraph(scene, view_layer));
+  if (graph == nullptr) {
+    return DEGUpstreamStatus::NoGraph;
+  }
+  if (graph->is_evaluating) {
+    return DEGUpstreamStatus::Evaluating;
+  }
+  /* Inside a checkpoint materialize scope the relations are rebuilt with hidden bases admitted.
+   * The scope ends without a rebuild, which leaves a superset of nodes with the same edges (base
+   * admission is the only choice the visibility profile makes when building): still exact. */
+  if (graph->need_update_relations || graph->checkpoint_materialize_cookie != 0) {
+    return DEGUpstreamStatus::RelationsStale;
+  }
+  /* Nodes are keyed by address. A node whose cached identity is not the live ID's was built for
+   * an earlier ID at that address, so the relations do not describe this one. */
+  const deg::IDNode *root = graph->find_id_node(id);
+  if (root != nullptr && root->id_orig_session_uid != id->session_uid) {
+    return DEGUpstreamStatus::RelationsStale;
+  }
+  return deg::deg_foreach_ancestor_component(*graph, id, callback, DEG_UPSTREAM_MAX_OPERATIONS);
 }
 
 void DEG_foreach_ID(const Depsgraph *depsgraph, DEGForeachIDCallback callback)

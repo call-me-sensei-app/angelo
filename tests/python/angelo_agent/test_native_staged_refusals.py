@@ -6,6 +6,8 @@ Production functions run against small stand-ins; these tests do not validate
 Blender's operators, isolation, Undo, or native shape-key clamping.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib.util
 import sys
 import unittest

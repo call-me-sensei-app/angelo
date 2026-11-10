@@ -376,7 +376,7 @@ def automatic_send_and_policy(fx):
     capture("auto-2-review.png")
     c["the_sent_notice_does_not_come_back_behind_the_review"] = not gui.host().queued("notice")
     c["the_review_is_exactly_what_was_sent"] = card().flow.text == crash_report.render(fx.reports[-1])
-    c["the_review_offers_to_ask_again"] = labels() == ["Copy report", "Ask me each time", "Close"]
+    c["the_review_offers_to_ask_again"] = labels() == ["Copy report", "Stop sending automatically", "Close"]
     click("stop")
     yield from until("the review to close", lambda: not gui.host().is_active("crash"))
     c["ask_me_each_time_restores_the_question"] = crash_state.load(state_directory()).consent == "ask"

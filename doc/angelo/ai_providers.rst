@@ -1111,16 +1111,30 @@ in the process and ``team_lock`` across processes: an OS file lock on
 ``team-account.lock`` in the connections folder (``fcntl.flock`` on macOS and
 Linux, ``msvcrt.locking`` on Windows, both taken without blocking and retried
 for up to 60 seconds, because ``msvcrt.LK_LOCK`` gives up after about 10; the
-OS releases it when a process dies). Under the lock the stored token is read
-again: a stored token different from this process's and from the one it last
-saw means another window rotated it, and that one is presented. A lock
-timeout never presents the token (*Another Angelo window is renewing your
-team sign-in*). At exit, ``TeamAccount.drain`` waits up to 10 seconds for a
-refresh in flight to store its rotated token, because the worker threads are
-daemons: a quit between the console's answer and the store write would leave a
-used token for the next launch. ``test_native_team_account`` races four real
-processes restoring one stored sign-in (all rotate in turn, nothing revoked)
-and a control without the lock (reuse detection trips).
+OS releases it when a process dies). Under the lock the stored token and the
+sign-in record are read again and the token to present is chosen by the rules
+of *A rotated token the store refuses* below (in short: the stored token,
+unless this process holds the only live one; never a token marked presented).
+A lock timeout never presents the token (*Another Angelo window is renewing
+your team sign-in*). At quit, ``TeamAccount.close`` (the add-on's unregister,
+which also unregisters the ``atexit`` hook ``drain``; ``drain`` covers a
+process that never unregisters; it can only wait, since the interpreter
+starts no new threads at exit, so its store calls fail safely) waits while a
+token is being presented (from
+its mark until its answer is stored), up to 50 seconds (twice the transport's
+20-second timeout, which is per socket operation, then one 10-second store
+call), so the rotated token is stored, or kept for a last save, before the
+process ends; it doesn't wait when nothing is being presented. An answer slower
+than that is lost at quit; at an add-on reload it is still stored, or handed
+to the next account. The worker threads are daemons: a quit
+between presenting a token and storing the answer would lose the token, and
+the next process would present the used one (1.0.9: ``close`` unregistered
+``drain`` and waited for nothing, so reuse detection signed every process out;
+host-tests run 41904229192). An answer slower than that is lost; its token
+stays marked, so the others end the sign-in without presenting it.
+``test_native_team_account`` races four real processes restoring one stored
+sign-in with the shared record (all rotate in turn, nothing revoked) and a
+control without the lock (reuse detection trips).
 
 **Refresh cadence.** A new process holds no access token, so without sharing
 every start would rotate the sign-in (a test profile whose trials each start a
@@ -1166,9 +1180,132 @@ reason this build doesn't know, *This computer was signed out of your Angelo
 team*. A console without ``error_reason`` is read from its descriptions: a
 removed member by name, everything else as signed out. At the code exchange,
 ``member_removed`` says so on the result page; every other refusal shows
-*This sign-in expired*. If saving a rotated token
-fails, the stored one is deleted so a used token is never presented at the
-next launch.
+*This sign-in expired*.
+
+**A rotated token the store refuses** (``team_refresh_marks.py``). Saving a
+rotated token can fail after the console has already rotated it (a locked
+Keychain, a Credential Manager error, a full disk), while other Angelo
+processes still hold the used token in memory and the store may still hold
+it too. Deleting the stored token (1.0.9) did not help: another process then
+presented its own copy of the used token, reuse detection ended the grant,
+and every window was signed out. The rules:
+
+* *Only the OS store holds a refresh token.* A token that can't be saved
+  stays in the memory of the process that received it, never in a file,
+  setting or log.
+* *The sign-in record.* ``team-refresh.json`` in the connections folder holds,
+  per console, a **generation** (bumped by every sign-in and sign-out) and
+  **spent marks**: the fingerprints of presented refresh tokens (the SHA-256
+  prefix the shared access item already uses, never a token) with the time
+  each was presented. It is read and written only under ``team_lock``,
+  written durably (temporary file, ``fsync``, ``shared_replace.replace``, retried briefly
+  on Windows sharing violations; the folder sync after the rename is best
+  effort, so a written mark never reads as unwritten). A mark is added *before* a token is
+  presented; if that write fails, nothing is presented. A record that can't be
+  read or written fails closed (nothing is presented; *Angelo couldn't read or
+  write its sign-in record*, retried every minute); one whose content this
+  build can't use (damaged, or a format version it doesn't know) fails closed
+  with *sign out, then sign in again*: a sign-in or sign-out replaces this
+  console's entry (other consoles' entries are kept). The format version
+  changes only when older builds must stop using the record; additions keep
+  it, and readers ignore keys and other consoles' entries they don't read. A mark is removed only when the console certainly didn't
+  use the token (every outcome that keeps it: ``NotSent``, 429, 503, a
+  non-grant OAuth error); marks are pruned after 60 days.
+* *Serialized, re-read first.* Refreshes stay under ``_refresh_lock`` and
+  ``team_lock``. Under them a process re-reads the store and the record, and
+  never presents a marked token. It presents its own token when no other
+  process can hold it (its unsaved token, below; memory only; a store unusable
+  for the session; a saved item this build can't read back), else the stored
+  token, else its own when the store holds none or a used one. Its own token
+  counts only while the generation is the one it belongs to: after a sign-in
+  or sign-out elsewhere it is given up (and revoked). A new sign-in records its
+  generation under the lock before its token is stored, and ``close`` waits
+  for that commit as for a refresh's answer (whichever thread commits it; after
+  ``close`` only close's own last try does). Nothing else of the older sign-in
+  changes: windows on it keep its stored token, still valid (adopting it under
+  the new generation), until the new one is stored, so a failure to store the
+  new one, or a quit before it is stored, ends nothing of theirs. When the
+  commit can't run (the record can't be written, or the lock timed out) the
+  sign-in is its own and current, and neither it nor a renewal's answer is
+  stored (another window would adopt it under the older generation and later
+  revoke it) until the minute's retry records and saves it. Known limit: while
+  the new sign-in is unsaved, an older-sign-in window whose own renewal save
+  also failed (or timed out and lands late) can store its token over the new
+  one once its store recovers; every window, the one that just signed in
+  included, then continues on the older sign-in (possibly another organization
+  or account), and the newer sign-in's grant stays listed under the console's
+  Your devices until it lapses. Nothing is presented twice and no window is
+  signed out by it. Likewise a renewal whose store write timed out and lands
+  after a sign-out in another window brings that sign-in back for the windows
+  still open, as on 1.0.9 (its window gives it up without revoking it, since it
+  can't tell the late write from a live stored sign-in); sign out again. A sign-in the store is unusable
+  for from the start (no key store this session) is this window's alone and
+  works as before, without the holder; its sign-in and sign-out don't change
+  the generation. A closing account presents nothing.
+* *The holder.* A process that holds a token the others can't use (its save
+  failed, or removing a mark failed) holds the OS file lock
+  ``team-unsaved.lock`` until it is saved or given up, so the others can tell
+  a live holder from a closed or crashed one.
+* *Back off, and say so.* With a marked or unreadable stored token and a live
+  holder, a process presents nothing: it keeps its access token while it
+  lasts, says *Another Angelo window renewed your team sign-in but couldn't
+  save it yet*, and retries every minute. If it can't read the store or the
+  record it says that instead. With no live holder (that window quit, or a
+  process crashed after presenting, or the answer was lost) the token is gone
+  for good: the sign-in ends with *sign in again*, without presenting
+  anything, so reuse detection never fires. A restore that finds no stored
+  token waits the same way while a holder is live.
+* *The failed write is kept and retried.* The holder keeps the new token,
+  and its AI Providers section says it couldn't save the sign-in, why, and
+  what to do (unlock the store or free disk space, and keep the window open).
+  It retries on the worker under ``team_lock`` before each refresh and once a
+  minute, until the token is saved, a sign-in or sign-out in another window
+  wins, or Angelo quits; each attempt is bounded by the store's timeout, and
+  ``close`` (which runs at quit, and unregisters ``drain``) waits for a refresh
+  in flight, stores its answer even though the account is closing, and makes
+  one last save attempt (at most three seconds for the lock, then one store
+  write; a token kept after a failed unmark has its mark taken back once more,
+  since the console never used it). A token still unsaved after that is
+  handed, with the holder lock, to
+  the next team account in the same process (an add-on reload), in memory
+  only, and so is a refresh's answer that arrives after ``close`` stopped
+  waiting and can't be stored; at quit it ends with the process, and the other
+  windows then end the sign-in without presenting anything. With no next
+  account (the add-on disabled rather than reloaded) the holder stays held, and
+  the others wait, until the process quits. A retry writes only while the generation is the one its token
+  belongs to: after a sign-in or sign-out elsewhere it revokes its token and
+  gives it up, then adopts the new stored sign-in, or signs out at its next
+  renewal (when its token is in the store after all, a timed-out write that
+  landed, or the store can't be read to tell, it is given up without revoking,
+  since the others may renew it). Rotating again while unsaved marks the token presented, as every
+  presentation does. A store timeout may still write later: the marks, not
+  the store, decide what may be presented; a retry that finds its own token
+  stored counts it as saved, and one whose token was marked meanwhile (another
+  process adopted the late write and presented it) gives it up unwritten.
+* *No single failure signs everyone out.* A write failure ends nothing; the
+  other windows wait and take the saved token from the store as soon as a
+  retry succeeds. After a failed write (not a timed-out one, which may still
+  land) the holder also deletes the stored token if it is a used (marked) one (best effort; never another sign-in's live
+  token; a sign-in that ends while its own token is unsaved leaves the store
+  alone for the same reason), so an older build (1.0.9 and earlier, which doesn't read
+  the record) launched meanwhile finds no token instead of presenting the used
+  one. An older build's own rotations and sign-outs don't touch the record,
+  and a 1.0.9 process *already running* still presents the used token it holds
+  in memory: that can't be prevented from a newer one.
+
+``test_native_team_token_rotation`` runs this with three real processes
+sharing the file vault (``FileVault``) and the record, with injected store
+failures: the write fails (and a process restoring meanwhile waits); the write
+and the delete fail; the holder quits unsaved; a sign-out elsewhere; a quit
+while the console answers a refresh; a quit while the store is still writing
+the rotated token. On 1.0.9 code all but the sign-out end the grant by reuse
+detection. ``test_native_team_token_edges`` covers one process: a store
+unusable from the start, a sign-in whose generation or save must wait (lock
+timeout, unwritable record), an add-on reload while unsaved, a sign-in
+elsewhere while unsaved, and damaged or newer records;
+``test_native_team_token_late`` a new sign-in that ends unsaved, a store that
+can't say what it holds, a kept token still stored, and refresh answers that
+arrive after ``close`` stopped waiting (also for a sign-in not recorded yet).
 
 **Grant keys** (``POST /api/oauth/grant-key``, 12 hours; the console keeps at
 most 8 unexpired per grant and revokes the oldest beyond that). A key is
@@ -1290,7 +1427,10 @@ form never offers ``TEAM``.
   (``generative.bind_team_generation``, transport ``studio_http.py``). The
   binding asks the account for a current token for every request, so a long 3D
   job outlives the 10-minute token; asset and CDN downloads stay direct and
-  unauthenticated, as for personal connections.
+  unauthenticated, as for personal connections. With the organization's
+  re-hosting on, the gateway's status answer already points them at Angelo's
+  R2 storage instead of the provider's CDN (``enterprise_policy.rst``,
+  "Network").
 * **Gateway errors** (``team_errors.py``): ``UNAUTHENTICATED`` renews the
   access token once and resends that request (the gateway refused it before it
   reached the provider, so nothing was submitted or billed; the only automatic
@@ -1491,6 +1631,97 @@ How to continue (usage reports)
 * Not run yet: a live check against a real console. Sign in a dedicated test
   profile to a test organization, finish one team task, quit, and look for it
   on the console's Usage page.
+
+Team connections reach only the gateway
+---------------------------------------
+
+A coding agent on a team connection (Claude Code on ``claude_team``, Codex on
+every team Codex mode) connects to its gateway and nothing else
+(``team_network.py``). Organizations put the gateway in front of their
+providers so that one host carries all AI traffic, and networks that allow
+only that host must work.
+
+* **The fence.** Claude Code and Codex honour the standard proxy variables.
+  ``team_runtime.apply_environment`` replaces every spelling of
+  ``HTTPS_PROXY``, ``HTTP_PROXY`` and ``ALL_PROXY`` with
+  ``REFUSING_PROXY``, a closed loopback port, and sets ``NO_PROXY`` to the
+  gateway's host alone. The gateway route is reached directly, as Angelo's own
+  team requests are (``enterprise_policy.rst``, "Network"). Every other
+  connection fails at once instead of leaving the network: telemetry, update
+  checks, Claude Code's direct WebFetch, and any host a newer runtime adds.
+  The gRPC names (``GRPC_PROXY``) get the same refusing proxy. Settings that
+  open connections of their own or name another proxy are dropped:
+  OpenTelemetry (``OTEL_*``, ``CLAUDE_CODE_ENABLE_TELEMETRY``), which
+  ``CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`` leaves on; ``no_grpc_proxy``; and
+  npm's proxy settings, which common Node proxy libraries read first. A
+  personal connection keeps the person's own settings.
+* **Optional traffic is off.** Claude Code also gets
+  ``CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1``, so it doesn't try and fail.
+  Measured on 2.1.301 through a recording, refusing proxy, a launch without it
+  opened two connections to ``api.anthropic.com``; with it, none. Codex
+  (0.165, the Angelo provider shape) opened none, and its model requests do
+  follow the proxy variables when the gateway is not exempt.
+* **WebFetch through the gateway.** Claude Code's WebFetch checks each domain
+  with ``https://api.anthropic.com/api/web/domain_info``, a hard-coded call
+  that ignores ``ANTHROPIC_BASE_URL``, then fetches the page from the
+  computer. A team session skips that check (``skipWebFetchPreflight`` in its
+  ``--settings``) and runs ``web_fetch_hook.py`` as a ``PreToolUse`` hook on
+  WebFetch. The hook asks the gateway for a ticket
+  (``POST /v1/web/tickets`` with the grant key). The gateway runs Anthropic's
+  domain check itself and answers with a two-minute ticket path. The hook
+  then hands WebFetch the ticket URL on the gateway origin
+  (``updatedInput``, the prompt unchanged). The gateway fetches the page,
+  following redirects and refusing private addresses. Claude Code converts and
+  summarizes it as usual, and the summary is a model call through the gateway
+  route. A blocked domain, an unreachable gateway or any other failure denies
+  the call, with a reason the model reads. Nothing falls back to a direct
+  fetch, and the fence refuses one anyway. The hook command names
+  ``ANGELO_HOOK_PYTHON`` and ``ANGELO_WEB_FETCH_HOOK`` (Angelo's interpreter,
+  run with ``-I -S -B``, and the script), so the arguments are the same on every
+  machine. The hook loads only the standard library and the distrust list, so
+  a call costs little. On 1.0.9's interpreter on a Windows T4 it took 148 ms
+  (median of 25 calls to a loopback ticket endpoint) against 271 ms with
+  Angelo's HTTP client; on an M4 Pro Mac, 32 ms against 48 ms. A worker chat
+  cannot add or drop the hook: ``runtime_plan`` sets it from the chat's mode. The hook always answers. Any failure inside it denies
+  the call, because Claude Code would run the original call after a hook that
+  exits with an error. Server side: the gateway's "Web fetch" handling,
+  in the hosted service.
+* **An administrator's Claude Code policy.** Claude Code applies its managed
+  settings (the ``managed-settings.json`` files, the macOS
+  ``com.anthropic.claudecode`` managed preferences, the Windows
+  ``Policies\ClaudeCode`` registry keys) whatever ``--setting-sources`` says.
+  When that policy stops hooks (``disableAllHooks`` or
+  ``allowManagedHooksOnly``, read by ``claude_managed.py`` at each launch), a
+  team session keeps Claude Code's own preflight. The fence refuses it, so
+  WebFetch fails closed instead of fetching unchecked. That policy's ``env``
+  block also wins over the child's environment. If it names a proxy, the
+  agent's traffic follows it: the administrator's choice, which Angelo cannot
+  override. While a team account is signed in, the AI Providers page says so
+  and names the variables (``claude_managed.env_overrides``), so IT can see
+  why that traffic follows their proxy. The same holds for Codex's managed configuration.
+* **Checked by** ``test_native_team_network.py`` (the fence, the settings, the
+  hook's answers, the hook run as Claude Code runs it), and by
+  ``team_network_probe.py``, which runs the real Claude Code and Codex against
+  a local gateway and a recording proxy. A run passes only when the proxy saw
+  no connection and WebFetch came through a ticket.
+
+Web search turned off by the organization
+-----------------------------------------
+
+An Anthropic organization's Console can turn web search off for its API keys,
+including the key a team's gateway uses. Claude Code still offers WebSearch:
+its ``system/init`` lists it, and each search fails with ``API Error: 400 web
+search is not enabled for this organization``. Angelo's instructions tell the
+model to search, so it would keep trying, and every attempt is a side call.
+When a WebSearch call fails with that answer (``web_search_access.ORG_OFF``,
+read only from the error result of a WebSearch call, so a page or a search hit
+that quotes it never counts), Angelo remembers it for the connection for six
+hours, in this process. The session's
+native tools then drop WebSearch, so the next turn relaunches the session
+(resumed) without it, and its instructions say native web search is
+unavailable (``claude_text.NO_WEB_SEARCH``). After six hours one search is
+tried again, so a Console that turns web search back on is heeded. This
+applies to every Claude connection, personal API keys included.
 
 Gateway compatibility
 ---------------------
@@ -1804,3 +2035,26 @@ Primary sources
 * `Kimi K3 in Codex <https://platform.kimi.ai/docs/guide/codex-kimi>`__
 * `Kimi Responses <https://platform.kimi.ai/docs/api/responses>`__
 * `Codex configuration <https://learn.chatgpt.com/docs/config-file/config-reference>`__
+
+Expired sign-in in the chat
+---------------------------
+
+The latest ``Sign-in expired`` notice offers ``Sign in again`` for the chat's exact saved subscription
+connection. It dispatches the same ``angelo.connection_signin`` operator as AI Providers: login is requested
+even when an earlier cached status still says connected, and an isolated profile stays isolated. The welcome
+card's ordinary ``Use`` action only selects an already connected account and is not a reconnect action.
+The authentication owner keeps the browser flow, completion/status recheck and runtime invalidation; the notice
+never reads credentials, creates another connection or resends the failed request. Managed team-only policy
+still suppresses personal subscription choices. Host regression coverage is ``test_native_signin_reconnect.py``;
+registered native UI/click and visual acceptance are separate GUI checks.
+The reconnect operator's accepted login is watched through the existing quick-connect phases: the notice shows
+progress and Cancel, then an actionable retry on failure. The watcher cannot choose or create a connection;
+it fences the exact chat controller/session, selected record and captured native/private auth identity.
+Changing chat or connection prevents completion from rebinding it. Cancel stops only the captured sign-in.
+Reconnect watchers are separate from ordinary mode-keyed welcome flows. Each Cancel hit carries its own
+opaque token; the callback checks the exact chat, record and captured profile. Two private profiles on the
+same provider can progress independently, and a stale Cancel token cannot stop a later retry or another chat.
+The native authentication owner issues a logical attempt token. A completion status recheck keeps that token;
+a fresh login replaces it. Pending cancellation prevents launch, late results/finalizers cannot affect a later
+attempt, and unresolved process drain retains ownership instead of reporting success. Ordinary welcome Cancel
+hits also carry their flow token and cancel/remove unfinished setup only while its original attempt still owns it.

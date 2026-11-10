@@ -8,6 +8,8 @@ the strict schema admits; the host's own validator judges that a short form,
 the padded form and the ordinary plan are one and the same call.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import sys

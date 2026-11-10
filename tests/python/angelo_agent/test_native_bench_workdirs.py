@@ -10,6 +10,8 @@ a trial is refused before anything starts when its folder would see context.
 No Blender, client, account or model is started.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile

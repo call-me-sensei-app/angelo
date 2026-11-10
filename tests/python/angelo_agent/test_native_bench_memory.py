@@ -13,6 +13,8 @@ most workers at once, and the verdict never reads them (E3); and, on macOS, a re
 by the kernel.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import subprocess
 import sys
@@ -156,7 +158,8 @@ class FromSendTests(unittest.TestCase):
             worker.start()
             hows.append(worker.how)
         self.assertEqual(hows, ["ready", "switched"])
-        self.assertEqual(module._ready[4242], [{"part": "/parts/scratch/part.blend", "how": "launched", "at": t0 + 3},
+        self.assertEqual(module._ready[4242], [{"part": str(Path("/parts/scratch/part.blend")), "how": "launched",
+                                                "at": t0 + 3},
                                                {"part": str(sofa), "how": "switched", "at": t0 + 8.4},
                                                {"part": str(table), "how": "switched", "at": t0 + 68.8}])
         lead = mock.Mock(state={"id": "lead", "messages": []}, pending={}, busy=False, _worker=None,

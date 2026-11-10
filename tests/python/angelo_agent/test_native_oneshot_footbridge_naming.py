@@ -10,6 +10,8 @@ the footbridge's checks and byte-identical pictures: a regression check that
 an agent still resolves the collision as the more specific rule says.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import shutil
 import sys

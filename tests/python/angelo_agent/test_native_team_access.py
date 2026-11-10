@@ -6,6 +6,8 @@ Two cases it must get right: keys held in another organization (not "Ask your
 admin for access"), and a ready team (no personal Connect options in the chat). The window suite ``test_blender_team_chat`` shows each case.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import json
 import sys
@@ -100,7 +102,8 @@ class ChatSourceTests(unittest.TestCase):
         chat = (ADDON / "team_chat.py").read_text()
         self.assertIn("refresh_providers(older_than=RECHECK_AFTER)", chat)
         self.assertIn("ui.team_account_ui.note_window_event(event.type)", (ADDON / "chat_view.py").read_text())
-        self.assertIn('self._enqueue("providers")  # Each token refresh', (ADDON / "team_account.py").read_text())
+        refresh = (ADDON / "team_account.py").read_text() + (ADDON / "team_account_refresh.py").read_text()
+        self.assertIn('self._enqueue("providers")  # Each token refresh', refresh)
         self.assertIn("team_chat.recheck()", (ADDON / "team_account_ui.py").read_text())
 
     def test_personal_options_on_a_team_chat_follow_the_policy(self):

@@ -21,6 +21,7 @@ import math
 from .action_properties import PROPERTY_PATHS, SCENE, holder_and_name, plain, value_kind
 from .rna_rules import PROVEN_RUNTIME
 from .scene_read_values import label
+from .refusal_codes import coded
 
 SCENE_PATHS = tuple(path for path, spec in PROPERTY_PATHS.items() if spec[0] == SCENE)
 # 3: view-layer collection visibility joined the digest; 4: timeline markers; 5: every admitted Cycles setting;
@@ -138,7 +139,8 @@ def _whole(holder):
     try:
         return _rna_values(holder, budget=[MAX_WORLD_ITEMS, MAX_WORLD_ITEMS * 8])
     except ProgramError as error:
-        raise SceneQueryError("Scene settings revision unavailable: a settings struct exceeds its bounded read") from error
+        raise coded(SceneQueryError("Scene settings revision unavailable: a settings struct exceeds its bounded read"),
+                    "UNSUPPORTED") from error
 
 
 def _finite(value):
@@ -159,7 +161,8 @@ def world_state(world):
         return {"uid": int(world.session_uid), "rna": _rna_values(world, budget=budget),
                 "tree": _rna_values(world.node_tree, budget=budget) if world.node_tree is not None else None}
     except ProgramError as error:
-        raise SceneQueryError("Scene settings revision unavailable: the World exceeds its bounded read") from error
+        raise coded(SceneQueryError("Scene settings revision unavailable: the World exceeds its bounded read"),
+                    "UNSUPPORTED") from error
 
 
 def settings_revision(scene):

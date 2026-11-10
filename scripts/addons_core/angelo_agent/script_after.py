@@ -134,8 +134,9 @@ class Observing:
     A script that replaced the document ends in ``script_document.Replaced`` instead, with ``output``'s text."""
 
     def __init__(self, bpy, prior=None, output=None):
-        from . import script_operator_time, script_rename_watch
+        from . import file_trust, script_operator_time, script_rename_watch
         self.applied, self.clock = script_booleans.Applied(bpy), script_operator_time.Clock(bpy)
+        self.trust = file_trust.Scripts(bpy)   # A file the script opens runs its scripts only as Blender would open it.
         self._watch = script_rename_watch.watching(bpy, getattr(prior, "names", None))
         self._stack, self._output, self._document = None, output, script_document.Watch(bpy)
 
@@ -145,6 +146,7 @@ class Observing:
             stack = contextlib.ExitStack()
             with stack:
                 stack.enter_context(self._watch)
+                stack.enter_context(self.trust)
                 stack.enter_context(self.applied)
                 stack.enter_context(self.clock)   # Outermost: a Boolean's own measuring is in its call's time.
                 self._stack = stack.pop_all()

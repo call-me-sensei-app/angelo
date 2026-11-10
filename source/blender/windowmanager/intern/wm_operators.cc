@@ -2428,12 +2428,21 @@ static wmOperatorStatus wm_exit_blender_invoke(bContext *C,
                                                wmOperator * /*op*/,
                                                const wmEvent * /*event*/)
 {
-  if (U.uiflag & USER_SAVE_PROMPT) {
-    wm_quit_with_optional_confirmation_prompt(C, CTX_wm_window(C));
+  /* The prompt applies the Save Prompt preference itself, and also asks while an activity runs
+   * that quitting would end (#WM_quit_activity_set), whatever that preference says: the same rule
+   * for the key, the menu and the operating system's own quit. The context window is expected
+   * (Python refuses an INVOKE without one, and timers run with the first window in context); the
+   * fallbacks are defensive only: the active window, as for the system's quit request, else quit,
+   * as upstream does with no window. */
+  wmWindow *win = CTX_wm_window(C);
+  if (win == nullptr) {
+    win = CTX_wm_manager(C)->runtime->winactive;
   }
-  else {
+  if (win == nullptr) {
     wm_exit_schedule_delayed(C);
+    return OPERATOR_FINISHED;
   }
+  wm_quit_with_optional_confirmation_prompt(C, win);
   return OPERATOR_FINISHED;
 }
 

@@ -25,7 +25,7 @@ import os
 import re
 import stat
 
-from . import blend_file_paths as paths
+from . import blend_file_paths as paths, change_clock
 from .data_read_access import NATIVE_MESSAGE, NATIVE_REQUIRED, native_api
 from .checkpoint_filesystem import (_open_file, _private_directory, assert_directory_identity, entry_info,
                                     require_anchored_files, same_file)
@@ -104,6 +104,11 @@ def read(_bpy, args, workspace, *, api=None, token=None, diagnostics=None):
                 if opened.st_size > MAX_BLEND_BYTES:
                     return _refused("TOO_LARGE", "This file is larger than the %d GiB that are listed without "
                                     "opening it." % (MAX_BLEND_BYTES // 1024 ** 3), file=relative, bytes=opened.st_size)
+                try:   # A write during the scan then changes the stat, in the tick of its last stamp too (Windows).
+                    change_clock.settle(opened)
+                except change_clock.Unsettled:
+                    return _refused("CHANGED", "The file was written too recently to read safely; read it again.",
+                                    file=relative)
                 if not os.read(descriptor, 8).startswith(MAGICS):
                     return _refused("NOT_BLEND", "This file does not start as a .blend does.", file=relative,
                                     bytes=opened.st_size)

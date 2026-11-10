@@ -11,6 +11,8 @@ New, the templates and the person's flows (``flow_open.menu_rows``); a click on 
 group opens its page; a worker's chat lists no chosen tool.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest
@@ -115,7 +117,7 @@ class RegistryTests(unittest.TestCase):
         """Chosen tools act on Angelo's own scene at Send (console.execute skips them in a worker's chat), so a
         worker's chat lists none of them; the rest of the menu is unchanged."""
         lead_only = {item.id for item in cd.features() if item.lead_only}
-        self.assertEqual(lead_only, {"base_mesh", "hands"})
+        self.assertEqual(lead_only, {"base_mesh", "goal", "hands"})
         lead, worker = cd.menu_rows(open_groups={"base_mesh"}), cd.menu_rows(open_groups={"base_mesh"}, worker=True)
         self.assertFalse(any(row.get("feature") in lead_only or row.get("value") in lead_only for row in worker))
         self.assertEqual([row for row in lead if row.get("feature") not in lead_only and row.get("value") not in lead_only
@@ -179,6 +181,97 @@ class MenuSourceTests(unittest.TestCase):
         group = dispatch.split('if action == "popup_add_group":', 1)[1].split("elif ", 1)[0]
         self.assertIn("open_page(popup, value)", group)
         self.assertNotIn('state.pop("popover"', group)
+
+
+class AppStateCacheTests(unittest.TestCase):
+    """Real bounded registry reads; the launcher cache is presentation, never connection authority."""
+
+    def setUp(self):
+        import contextlib
+        import json
+        import os
+        import tempfile
+        from types import SimpleNamespace
+        from unittest import mock
+        import angelo_agent
+        from angelo_agent import change_clock, external_clients, external_setup
+        self.json, self.os, self.clock, self.registry_type = json, os, change_clock, external_clients.AppRegistry
+        self.default = external_clients.DEFAULT_CLIENT
+        self.stack = contextlib.ExitStack()
+        self.addCleanup(self.stack.close)
+        self.root = Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
+        self.registry = self.registry_type(self.root)
+        self.registry.root.mkdir()
+        modules = {"ui": SimpleNamespace(state_directory=lambda: self.root),
+                   "external_ui": SimpleNamespace(results={})}
+        self.stack.enter_context(mock.patch.dict(sys.modules, {"angelo_agent." + k: v for k, v in modules.items()}))
+        for name, module in modules.items():
+            self.stack.enter_context(mock.patch.object(angelo_agent, name, module, create=True))
+        self.stack.enter_context(mock.patch.object(cd, "_registry_seen", {}))
+        self.installed = self.stack.enter_context(mock.patch.object(external_setup, "installed", return_value=True))
+        original = self.registry_type.load
+        self.load = self.stack.enter_context(mock.patch.object(
+            self.registry_type, "load", autospec=True, side_effect=lambda registry: original(registry)))
+        self.stack.enter_context(mock.patch.object(change_clock, "settle", side_effect=AssertionError("UI may not wait")))
+
+    def write(self, app, path=None):
+        data = self.json.dumps({"apps": {self.default[app]: {"app": app, "levels": ["READ"]}}})
+        (path or self.registry.path).write_text(data.ljust(1024), encoding="utf-8")
+
+    def test_coarse_same_signature_rewrite_is_reloaded_without_waiting(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        self.write("codex")
+        witness = self.os.stat(self.registry.path)
+        original_stat = self.os.stat
+        def stat(path, *args, **kwargs):
+            return witness if str(path) == str(self.registry.path) else original_stat(path, *args, **kwargs)
+        coarse = SimpleNamespace(fine=False, step=10_000_000, below=10_000_000, changes=True)
+        with mock.patch.object(self.os, "stat", side_effect=stat), \
+                mock.patch.object(self.clock, "volume", return_value=coarse), \
+                mock.patch.object(self.clock, "system_time", return_value=self.clock._filetime(
+                    max(witness.st_mtime_ns, witness.st_ctime_ns))):
+            self.assertEqual(cd._app_states(now=10)["codex"][0], "connected")
+            self.write("claude_code")  # Actual bytes change, but every stat field is the same coarse witness.
+            states = cd._app_states(now=10.1)
+            self.write("codex")
+            cd._app_states(now=10.2)
+            self.assertEqual(self.installed.call_count, 2, "Each app lookup is reused within the install poll")
+            cd._app_states(now=12)
+            self.assertEqual(self.installed.call_count, 3, "A racy registry refresh must not postpone the poll")
+        self.assertEqual(states["codex"][0], "found")
+        self.assertEqual(states["claude_code"][0], "connected")
+        self.assertEqual(self.load.call_count, 4)
+
+    def test_settled_cache_still_rereads_real_content_at_the_poll_boundary(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        self.write("codex")
+        with mock.patch.object(self.clock, "volume", return_value=SimpleNamespace(fine=True)):
+            first = cd._app_states(now=20)
+            self.assertEqual(cd._app_states(now=20.1), first)
+            self.assertEqual(self.load.call_count, 1)
+            cd._app_states(now=22)
+        self.assertEqual(self.load.call_count, 2)
+
+    def test_atomic_replacement_with_same_size_and_mtime_invalidates_the_cache(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        self.write("codex")
+        stamp = self.os.stat(self.registry.path).st_mtime_ns // 1_000_000 * 1_000_000
+        self.os.utime(self.registry.path, ns=(stamp, stamp))
+        before = self.os.stat(self.registry.path)
+        with mock.patch.object(self.clock, "volume", return_value=SimpleNamespace(fine=True)):
+            cd._app_states(now=30)
+            replacement = self.registry.path.with_suffix(".replacement")
+            self.write("claude_code", replacement)
+            self.os.utime(replacement, ns=(before.st_atime_ns, before.st_mtime_ns))
+            self.os.replace(replacement, self.registry.path)
+            after = self.os.stat(self.registry.path)
+            self.assertEqual((before.st_size, before.st_mtime_ns), (after.st_size, after.st_mtime_ns))
+            self.assertNotEqual(before.st_ino, after.st_ino)
+            self.assertEqual(cd._app_states(now=30.1)["claude_code"][0], "connected")
+        self.assertEqual(self.load.call_count, 2)
 
 
 if __name__ == "__main__":

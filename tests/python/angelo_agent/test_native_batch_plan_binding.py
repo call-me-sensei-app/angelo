@@ -18,6 +18,8 @@ message when the search was never delivered, accepted with every binding taken
 from the delivered rows when it was.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 from pathlib import Path

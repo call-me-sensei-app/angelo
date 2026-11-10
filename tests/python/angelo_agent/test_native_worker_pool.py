@@ -13,6 +13,8 @@ worker's process takes a waiting part only when its chat is finished, leaving th
 The in-Blender proof is ``test_blender_worker_pool.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import shutil
 import sys
@@ -46,7 +48,7 @@ def a_fake_worker(answer, gate=None):
 
     def serve():
         if gate is not None:
-            gate.wait(5)
+            gate.wait()   # Until its test sets it (or its cleanup does): no clock of the fake's own ends a launch.
         theirs.send({"seq": 0, "ready": {"ok": True, "pid": 4321, "layout": {"revision": 0, "first": True}}})
         while True:
             try:
@@ -94,6 +96,8 @@ class SwitchTests(unittest.TestCase):
     def worker(self, answer, launched, gate=None):
         temporary = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, temporary, True)
+        if gate is not None:
+            self.addCleanup(gate.set)   # A launch held at the gate never outlives a failed test.
         listeners = []
 
         def listener():
@@ -160,6 +164,9 @@ class SwitchTests(unittest.TestCase):
 
 
 class HostSwitchTests(unittest.TestCase):
+    # Full paths on this platform: a switch takes only an absolute part path. Nothing is written there.
+    A, B = (str(Path(tempfile.gettempdir()) / "w" / name / "part.blend") for name in "ab")
+
     def host(self):
         calls = []
         ops = SimpleNamespace(wm=SimpleNamespace(
@@ -168,7 +175,7 @@ class HostSwitchTests(unittest.TestCase):
         bpy = SimpleNamespace(ops=ops, data=SimpleNamespace(is_dirty=True))
         controllers = {"old-chat": object(), "other": object()}
         ui = SimpleNamespace(_controllers=controllers, document_key=lambda: (1, 2), Controller=object)
-        host = worker_host.WorkerHost(ui, bpy, endpoint=None, part="/w/a/part.blend")
+        host = worker_host.WorkerHost(ui, bpy, endpoint=None, part=self.A)
         host.shadows = {"old-chat": SimpleNamespace(pending={})}
         host.tables, host.turns, host.revision = {"old-chat": ("d", "t")}, {"token": object()}, 7
         host.layout = lambda: {"revision": host.revision}
@@ -181,10 +188,10 @@ class HostSwitchTests(unittest.TestCase):
                 mock.patch("angelo_agent.native_programs.has_active_programs", return_value=False, create=True), \
                 mock.patch("angelo_agent.native_programs.runtime_is_staging", return_value=False, create=True), \
                 mock.patch("angelo_agent.view_cache.clear") as cleared:
-            answer = host.handle({"op": "switch_part", "part": "/w/b/part.blend"})
+            answer = host.handle({"op": "switch_part", "part": self.B})
         self.assertEqual(calls, [("read_homefile", {"use_factory_startup": True, "load_ui": False})])   # No save.
-        self.assertEqual(opened, ["/w/b/part.blend"])
-        self.assertEqual((host.part, host.revision, answer["layout"]), ("/w/b/part.blend", 0, {"revision": 0}))
+        self.assertEqual(opened, [self.B])
+        self.assertEqual((host.part, host.revision, answer["layout"]), (self.B, 0, {"revision": 0}))
         self.assertEqual((host.shadows, host.tables, host.turns), ({}, {}, {}))
         self.assertEqual(set(host.ui._controllers), {"other"})
         cleared.assert_called_once_with()
@@ -196,11 +203,11 @@ class HostSwitchTests(unittest.TestCase):
                 host.shadows["old-chat"].pending = pending
                 with mock.patch("angelo_agent.native_programs.runtime_is_staging", return_value=staging,
                                 create=True), self.assertRaises(RefusalError):
-                    worker_switch.switch_part(host, "/w/b/part.blend")
-                self.assertEqual((calls, host.part, host.revision), ([], "/w/a/part.blend", 7))
+                    worker_switch.switch_part(host, self.B)
+                self.assertEqual((calls, host.part, host.revision), ([], self.A, 7))
                 self.assertIn("old-chat", host.shadows)
         host, calls = self.host()
-        for part in ("relative/part.blend", "/w/b/part.txt", None):
+        for part in ("relative/part.blend", str(Path(self.B).with_suffix(".txt")), None):
             with self.subTest(part=part), self.assertRaises(RefusalError):
                 worker_switch.switch_part(host, part)
 
@@ -317,8 +324,10 @@ class PoolTests(unittest.TestCase):
         worker_pool.prelaunch(self.lead)
         self.settle()
         gate = threading.Event()
+        self.addCleanup(gate.set)
         newest = worker_pool._pool[-1]   # Launched at one lookup: the last launched is the newest.
-        newest["worker"].stop = lambda: (gate.wait(5), FakeWorker.stop(newest["worker"]))
+        # Until set (by this test or its cleanup): no clock ends "still stopping" before the checks look.
+        newest["worker"].stop = lambda: (gate.wait(), FakeWorker.stop(newest["worker"]))
         worker_pool.yield_place()
         worker_pool.yield_place()   # Asked again while that one still stops: nothing more stops.
         self.assertEqual(len(worker_pool._pool), 3)

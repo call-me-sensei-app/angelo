@@ -159,7 +159,10 @@ def approval_block(call_, width, size, line_height, error):
     note("An approval card", error)   # i18n: a log line, never drawn
     try:
         from . import approval_review, chat_view
-        rows = chat_view.wrap(approval_review.preview_text(call_), max(40, width - 64), size, chat_view._font)
+        from .approval_wait import until_text   # Every card says until when it waits (agent_chat.rst).
+        from .review_again import note as review_note
+        rows = chat_view.wrap("\n".join(filter(None, (review_note(call_), approval_review.preview_text(call_), until_text(call_)))),
+                              max(40, width - 64), size, chat_view._font)
         approvable = _approvable(call_)
     except Exception:   # noqa: BLE001 - its words could not be built either: its tool's name, and Decline only.
         rows, approvable = [(_title(call_), 0)], False
@@ -194,11 +197,14 @@ def shown_approvals(controller, hits):
     """``hits`` as drawn, after every transcript row drew (each card's own way, its plain card, or ``draw_plain`` after
     it raised): each Approve the person can click records the call it shows (``worker_consent_lead.drew``), so a
     worker-hosted chat's Approve sends the digest of the card that was on screen, whichever path drew it (A′, C6)."""
+    from . import review_again
     from .worker_consent_lead import drew
-    for _rect, action, value in hits:
-        if action == "approve":
-            call("An Approve's drawn card", drew, controller, value)
-    return hits
+    approves = [(rect, value) for rect, action, value in hits if action == "approve"]
+    for _rect, value in approves:
+        call("An Approve's drawn card", drew, controller, value)
+        call("An Approve's drawn card", review_again.drew, controller, value)   # Its generation (asked again).
+    # A card asked again takes no click for a moment after it is drawn (review_again).
+    return call("A renewed card's shield", review_again.shield_hits, approves, default=[]) + hits
 
 
 def saved_state():

@@ -7,6 +7,8 @@ mode. native_coverage.rst ("operator_run work bounds") holds the measurements be
 Blender receipt is ``benchmark_blender_uv_unwrap_work.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import sys
 import unittest

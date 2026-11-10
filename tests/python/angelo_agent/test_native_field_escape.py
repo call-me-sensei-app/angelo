@@ -5,7 +5,10 @@
 The focus contract (``input_policy``): a field that is being edited keeps the keyboard even while the pointer drifts
 over another editor, so a long message never loses keystrokes, until Escape, a click elsewhere or pointer use
 elsewhere. Escape ends editing like a Blender text field or a chat app's composer, but keeps the draft (Blender's own
-fields revert theirs; Angelo's never throw typing away).
+fields revert theirs; Angelo's never throw typing away). A send that leaves the chat's message box empty ends editing
+too, at the first deliberate pointer move outside the chat (``input_policy.sent_away``): while Angelo works, G or Tab
+over the 3D view are the view's, never typed into the emptied draft. Keys typed without moving the pointer (the next
+message, a steer) stay the chat's, so no word's first letter becomes a hotkey.
 
 Evidence for the class (C11, 1.0.6 dogfood, Director mode on macOS): after typing in the chat's composer the person
 moved the pointer over the 3D view and pressed Backspace, Escape and Z; Escape only cleared the selection, so Z typed
@@ -15,9 +18,13 @@ key handler on stand-ins: the chat's composer (``chat_view.ANGELO_OT_chat_input`
 text fields are Blender's own widgets and keep Blender's Escape. The running app is ``test_blender_input_capture``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
+import contextlib
 import functools
 import sys
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -29,7 +36,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ADDON.parent))
 import angelo_agent  # noqa: E402
 import qa_operator  # noqa: E402
-from angelo_agent import canvas_controls, canvas_rtl, chat_composer, ui_kit_field  # noqa: E402
+from angelo_agent import canvas_controls, canvas_focus, canvas_rtl, chat_key_arming, chat_composer, composer_input, composer_scroll, ui_kit_field  # noqa: E402,E501
 
 WINDOW = 1
 FIELD_AREA, VIEW_AREA = 21, 22   # The field's editor on the left half of the window, the 3D view on the right.
@@ -97,14 +104,15 @@ class ChatComposerTests(unittest.TestCase):
             self.addCleanup(attribute.stop)
         areas = [self.chat, self.view3d]
         controls = SimpleNamespace(key=canvas_controls.key, leave_areas=lambda *a: None, pointer=lambda *a: False,
-                                   press=lambda *a: None, release=lambda *a: None, DISABLED="disabled")
+                                   press=lambda *a: None, release=lambda *a: None, releases=canvas_controls.releases, DISABLED="disabled")
         namespace = load("chat_view.py", {"inside", "_kept_alive", "ANGELO_OT_chat_input"}, {
             "functools": functools, "traceback": SimpleNamespace(print_exc=_reraise),
             "bpy": SimpleNamespace(types=SimpleNamespace(Operator=object), context=None),
             "modal_options": lambda identity: set(), "_enabled": True, "_input_generation": 0, "_views": self.views,
             "_modals": set(), "_scroll": {}, "live_windows": SimpleNamespace(areas=lambda window: areas),
-            "canvas_controls": controls, "canvas_rtl": canvas_rtl, "chat_composer": chat_composer,
+            "canvas_controls": controls, "chat_key_arming": chat_key_arming, "canvas_rtl": canvas_rtl, "chat_composer": chat_composer,
             "chat_scrollbar": SimpleNamespace(handle=lambda *a: False), "ui_scale": lambda: 1.0,
+            "composer_input": composer_input, "composer_scroll": composer_scroll, "time": time,
             "cursor_position": chat_composer.cursor_position, "set_draft": chat_composer.set_draft,
             "over_overlay": lambda window, event: False, "clear_blocked_notice": lambda window: None,
             "note_blocked_click": lambda *a: None, "release_active": lambda *a: False})
@@ -162,6 +170,45 @@ class ChatComposerTests(unittest.TestCase):
         self.assertFalse(self.state["focused"])
         self.assertEqual(self.send(key('TAB')), [{'PASS_THROUGH'}], "Tab is the 3D view's again")
 
+    def enter_sends(self, accepted=True):
+        """Enter as console.execute does it: a sent (or held) message empties the message box."""
+        def execute(context):
+            if accepted:
+                self.line.body, self.line.current_character = "", 0
+            return {'FINISHED'} if accepted else {'CANCELLED'}
+        sys.modules["angelo_agent.console"].execute = execute
+        self.context.temp_override = lambda **areas: contextlib.nullcontext()
+        return self.send(key('RET'))   # Typed with the pointer resting over the 3D view.
+
+    def move(self, x):
+        return self.send(SimpleNamespace(type='MOUSEMOVE', value='NOTHING', unicode="", mouse_x=x, mouse_y=400,
+                                         mouse_prev_x=x - 1, mouse_prev_y=400, shift=False, ctrl=False, alt=False,
+                                         oskey=False))
+
+    def test_after_a_send_moving_to_the_3d_view_gives_it_the_keys(self):
+        self.type_text("make a cube")
+        self.assertEqual(self.enter_sends(), [{'RUNNING_MODAL'}])
+        self.move(905)   # A hand resting on the mouse: not a move away.
+        self.assertTrue(self.state["focused"])
+        self.move(980)
+        self.assertEqual(self.send(key('G', "g"), key('TAB'), key('Z', "z")), [{'PASS_THROUGH'}] * 3,
+                         "Move, edit mode and the shading pie reach the 3D view while Angelo works")
+        self.assertEqual((self.line.body, self.state["focused"], self.operator.focused_area), ("", False, None))
+
+    def test_the_next_message_typed_right_after_a_send_stays_in_the_chat(self):
+        self.enter_sends()
+        self.assertEqual(self.type_text("add a lamp"), [{'RUNNING_MODAL'}] * 10,
+                         "No word's first letter becomes a hotkey (break-it S6)")
+        self.move(980)
+        self.assertEqual(self.send(key('S', "s")), [{'RUNNING_MODAL'}], "A draft being typed keeps the focus")
+        self.assertEqual(self.line.body, "add a lamps")
+
+    def test_a_refused_send_keeps_its_draft_and_the_focus(self):
+        self.type_text("abc")
+        self.assertEqual(self.enter_sends(accepted=False), [{'RUNNING_MODAL'}])
+        self.assertEqual(self.send(key('D', "d")), [{'RUNNING_MODAL'}])
+        self.assertEqual(self.line.body, "abcd")
+
     def test_a_click_in_the_composer_takes_the_keyboard_back(self):
         self.type_text("abc")
         self.send(key('ESC'))
@@ -178,7 +225,7 @@ class StudioFieldTests(unittest.TestCase):
 
     def setUp(self):
         self.studio, self.view3d = Area(FIELD_AREA, 0), Area(VIEW_AREA, 600)
-        self.state = {"focus": "prompt", "prompt": "a cat", "caret": 5, "selection": None}
+        self.state = {"field_focus": "prompt", "prompt": "a cat", "caret": 5, "selection": None}
         areas = [self.studio, self.view3d]
         core = SimpleNamespace(_enabled=True, _input_generation=0)
         drag = SimpleNamespace(forget=lambda states: None, moved=lambda *a: False)
@@ -187,7 +234,8 @@ class StudioFieldTests(unittest.TestCase):
             "core": core, "_modals": set(), "_views": {FIELD_AREA: self.state},
             "live_windows": SimpleNamespace(areas=lambda window: areas),
             "is_studio": lambda area: area.as_pointer() == FIELD_AREA, "view": lambda area: self.state,
-            "studio_drag": drag, "MULTILINE_FIELDS": frozenset({"prompt"}), "POPUP_ROW": 24})
+            "studio_drag": drag, "MULTILINE_FIELDS": frozenset({"prompt"}), "POPUP_ROW": 24,
+            "canvas_focus": canvas_focus})
         self.operator = qa_operator.stand_in(namespace["ANGELO_OT_studio_input"], window_pointer=WINDOW,
                                              input_generation=0, focus_area=FIELD_AREA, dragging=False)
         window = SimpleNamespace(as_pointer=lambda: WINDOW, modal_operators=[])
@@ -200,7 +248,7 @@ class StudioFieldTests(unittest.TestCase):
         self.assertEqual(self.send(key('S', "s")), [{'RUNNING_MODAL'}], "typing stays while the pointer drifts")
         self.assertEqual(self.state["prompt"], "a cats")
         self.assertEqual(self.send(key('ESC')), [{'RUNNING_MODAL'}])
-        self.assertEqual((self.state["focus"], self.state["prompt"]), (None, "a cats"))
+        self.assertEqual((self.state["field_focus"], self.state["prompt"]), (None, "a cats"))
         self.assertEqual(self.send(key('Z', "z"), key('BACK_SPACE')), [{'PASS_THROUGH'}] * 2)
         self.assertEqual(self.state["prompt"], "a cats")
 
@@ -272,8 +320,9 @@ class EveryFieldTests(unittest.TestCase):
         typing = sorted(path.name for path in ADDON.glob("*.py")
                         if "event.unicode" in path.read_text(encoding="utf-8") and path.name != "input_policy.py")
         # chat_view: the composer and the model search (whose Escape clears the query, then closes the picker);
+        # composer_input: the composer's keys, which chat_view's handler calls (ChatComposerTests);
         # library_overlay: the Angelo Library's search field (LibraryFieldTests).
-        self.assertEqual(typing, ["chat_view.py", "library_overlay.py", "studio_input.py"])
+        self.assertEqual(typing, ["chat_view.py", "composer_input.py", "library_overlay.py", "studio_input.py"])
 
 
 if __name__ == "__main__":

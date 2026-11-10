@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """AI Enhance's one-shot requests (enhance, the parts check, Fit to My Image) wait out a busy provider, without Blender."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import threading
 import unittest

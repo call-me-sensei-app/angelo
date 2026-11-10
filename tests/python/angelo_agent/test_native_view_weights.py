@@ -8,6 +8,8 @@ over the stand-ins of ``test_native_view_capture`` with the GPU draw replaced.
 GPU pixels are proven by ``test_blender_view_sources`` in the compiled app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import sys
 import tempfile

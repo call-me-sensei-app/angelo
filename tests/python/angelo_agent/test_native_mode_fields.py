@@ -16,6 +16,8 @@ only list what the host accepts; a sweep over every action kind fails on a mode-
 kind. No Blender, no model.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import re
 import sys

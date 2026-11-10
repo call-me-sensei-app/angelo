@@ -52,7 +52,7 @@ namespace blender {
  * (#BKE_object_visibility after #DEG_iterator_temp_object_from_dupli: an instanced object that itself makes instances
  * or particles draws its own geometry only with Show Instancer on; with its data replaced it has no geometry-set
  * instances, #BKE_object_replace_data_on_shallow_copy). REVIEW-INSTANCES-LATENCY L4. */
-static bool dupli_shows_self(const DupliObject &dob, const eEvaluationMode mode)
+bool live_dupli_shows_self(const DupliObject &dob, const eEvaluationMode mode)
 {
   const Object &ob = *dob.ob;
   const bool replaced = dob.ob_data != nullptr && dob.ob_data != ob.data;
@@ -189,7 +189,7 @@ PyObject *live_instance_bounds(PyObject * /*self*/, PyObject *args)
         continue;
       }
       hair = hair || dupli_draws_hair(dob);
-      if (!dupli_shows_self(dob, mode)) {
+      if (!live_dupli_shows_self(dob, mode)) {
         continue;
       }
       const std::optional<Bounds<float3>> bounds = dupli_bounds(dob);

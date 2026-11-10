@@ -23,7 +23,7 @@ import bpy
 from bpy.app.handlers import persistent
 from bpy.types import Operator
 
-from . import input_policy, library_actions as actions, library_overlay_draw as look, live_windows
+from . import fab_overlay, input_policy, library_actions as actions, library_overlay_draw as look, live_windows
 
 IDENTITY = "angelo.library_input"
 NOTICE_SECONDS = 4.0
@@ -44,7 +44,7 @@ def state_for(area):
     state = _views.get(area.as_pointer())
     if state is None:
         state = _views[area.as_pointer()] = {"mode": None, "query": "", "caret": 0, "kind": None, "scroll": 0.0,
-                                             "selected": None, "resolution": {}, "hits": [], "focused": False}
+                                             "source": "all", "selected": None, "resolution": {}, "hits": [], "focused": False}
     return state
 
 
@@ -73,6 +73,13 @@ def results(state):
     from . import library_host
     library = library_host.library()
     found, total = library.search(state["query"], look.active_kind(state), limit=400, category=state.get("category"))
+    if state.get("source") == "all" and look.active_kind(state) in (None, "model"):
+        # All: the Angelo Library's matches at once, then this query's Fab results (Enter searches Fab) as tiles.
+        fab = fab_overlay.all_rows(state["query"])
+        mixed, angelo = [], list(found)
+        for index in range(max(len(angelo), len(fab))):   # Interleaved, so Fab's results show in the first rows.
+            mixed += angelo[index:index + 1] + fab[index:index + 1]
+        found, total = mixed, total + len(fab)
     return library, found, total
 
 
@@ -97,6 +104,7 @@ def _draw():
         dragging = bool(_drag) and _drag.get("window") == window.as_pointer()
         mode = None if dragging and state["mode"] == "search" else state["mode"]
         rects = look.layout(region.width, region.height, top, left, right, mode, scale)
+        rects = fab_overlay.adjust(rects, state, scale) if rects else rects
         state["rects"] = rects
         if rects is None:
             return
@@ -108,10 +116,18 @@ def _draw():
         status = pending if pending else (1.0, notice[0]) \
             if notice and time.monotonic() - notice[1] < NOTICE_SECONDS else None
         if mode is not None:
-            library, found, total = results(state)
-            state["shown"] = [item["id"] for item in found]
-            count = total
-            look.draw_panel(paint, state, rects, library, found, total, status)
+            if state.get("source") == "fab":
+                fab_overlay.draw_panel(paint, state, rects)
+            else:
+                library, found, total = results(state)
+                state["shown"] = [item["id"] for item in found]
+                count = total
+                if state.get("source") == "all" and status is None:
+                    status = fab_overlay.all_status()
+                look.draw_panel(paint, state, rects, library, found, total, status)
+                if state.get("source") == "all" and not found and status is not None and rects.get("grid"):
+                    fab_overlay.cover_with_spinner(paint, rects["grid"], status[1])   # Not "No matches" while Fab works.
+            fab_overlay.sources(paint, state, rects)
         look.draw_pill(paint, state, rects["pill"], state["focused"], count)
         if status and "footer" not in rects:
             look.draw_progress(paint, look.progress_rect(rects["pill"], scale), *status)
@@ -193,8 +209,11 @@ def open_overlay(area, mode="search", lock=None):
     """Open the search (or the docked browser) in ``area`` with the field focused; loads the catalog. ``lock``: the
     one kind a surface shows (Material properties: materials; World properties: HDRIs), None in the 3D view."""
     from . import library_host
-    library_host.library().ensure_catalog()
     state = state_for(area)
+    if lock is not None:
+        state["source"] = "angelo"
+    if state.get("source") != "fab":
+        library_host.library().ensure_catalog()
     if lock != state.get("lock"):
         state.update(category=None, scroll=0.0)
     state.update(mode=mode, focused=True, caret=len(state["query"]), lock=lock)
@@ -206,6 +225,13 @@ def close(state):
 
 
 def click(window, area, region, state, action, value, double=False):
+    if action == "source" or action.startswith("fab_"):
+        fab_overlay.click(window, area, region, state, action, value)
+        area.tag_redraw()
+        return
+    if state.get("source") == "fab":
+        fab_overlay.pill(area, state, action)
+        return
     from . import library_host
     library = library_host.library()
     if action == "pill":
@@ -226,6 +252,8 @@ def click(window, area, region, state, action, value, double=False):
             state["resolution"][state["selected"]] = value
     elif action == "credits":
         bpy.ops.angelo.library_credits('INVOKE_DEFAULT')
+    elif action == "tile" and isinstance(value, str) and value.startswith("fab:"):
+        fab_overlay.open_from_all(window, state, value)   # A Fab result: its details, with Add to scene.
     elif action == "tile":
         state["selected"] = value
         item = library.get(value)
@@ -277,7 +305,8 @@ class ANGELO_OT_library_input(Operator):
                 redraw_all()
                 return {'PASS_THROUGH'}
             target = _hit(state, x, y)
-            if target and target[0] == "tile":
+            if (target and target[0] == "tile" and state.get("source") != "fab"
+                    and not str(target[1]).startswith("fab:")):
                 self.press = (area.as_pointer(), target[1], event.mouse_x, event.mouse_y)
             if target:
                 click(window, area, region, state, target[0], target[1], double=event.value == 'DOUBLE_CLICK')
@@ -299,6 +328,9 @@ class ANGELO_OT_library_input(Operator):
     def moved(self, context, window, area, region, state, x, y, event):
         if self.press is not None:
             pointer, identity, px, py = self.press
+            if (_views.get(pointer) or {}).get("source") == "fab":
+                self.press = None
+                return {'RUNNING_MODAL'}
             threshold = context.preferences.inputs.drag_threshold_mouse * context.preferences.system.ui_scale
             if max(abs(event.mouse_x - px), abs(event.mouse_y - py)) >= threshold:
                 from . import library_host
@@ -324,6 +356,10 @@ class ANGELO_OT_library_input(Operator):
         if not grid:
             return
         from . import chat_view
+        if state.get("source") == "fab":
+            key = "fab_scroll" if state.get("fab_detail") else "scroll"
+            state[key] = max(0.0, state.get(key, 0.0) + step)
+            return
         _library, found, _total = results(state)
         limit = max(0.0, look.content_height(grid[2], len(found), chat_view.ui_scale()) - grid[3])
         state["scroll"] = max(0.0, min(limit, state.get("scroll", 0.0) + step))
@@ -337,8 +373,14 @@ class ANGELO_OT_library_input(Operator):
                 close(state)
             state["focused"] = False
         elif kind in {'RET', 'NUMPAD_ENTER'}:
-            self.add_selected(window, state)
+            if state.get("source") == "fab" or (state.get("source") == "all" and not state.get("selected")):
+                from . import fab_ui
+                fab_overlay.click(window, context.area, context.region, state, "fab_search", fab_ui.epoch(fab_ui.snapshot()))
+            else:
+                self.add_selected(window, state)
         elif kind in {'UP_ARROW', 'DOWN_ARROW'}:
+            if state.get("source") == "fab":
+                return {'RUNNING_MODAL'}  # Choosing metadata/version is an explicit review action.
             shown = state.get("shown") or []
             if shown:
                 index = shown.index(state["selected"]) if state.get("selected") in shown else -1
@@ -362,14 +404,21 @@ class ANGELO_OT_library_input(Operator):
             return {'PASS_THROUGH'}
         if query != state["query"]:
             state.update(query=query[:200], scroll=0.0, selected=None)
+            if state.get("source") == "fab":
+                state.update(fab_detail=False, fab_requested_item=None, fab_scroll=0.0)
         state["caret"] = max(0, min(len(state["query"]), caret))
         redraw_all()
         return {'RUNNING_MODAL'}   # Never a shortcut behind a focused search field.
 
     def add_selected(self, window, state):
+        if state.get("source") == "fab":
+            return  # Fab requires its explicit current version and visible review facts.
         from . import library_host
         shown = state.get("shown") or []
         identity = state.get("selected") or (shown[0] if shown else None)
+        if isinstance(identity, str) and identity.startswith("fab:"):
+            fab_overlay.open_from_all(window, state, identity)   # As its click: Fab's details, with Add to scene.
+            return
         item = library_host.library().get(identity) if identity else None
         live = actions._live(window.as_pointer(), next((p for p, s in _views.items() if s is state), 0))
         if item is None or live is None:
@@ -405,6 +454,8 @@ class ANGELO_OT_library_input(Operator):
 def begin_drag(window, area_pointer, item):
     from . import library_host
     state = _views.get(area_pointer) or {}
+    if state.get("source") == "fab":
+        return False
     library_host.library().prefetch(item, state.get("resolution", {}).get(item["id"]))
     _drag.update(item=item, window=window.as_pointer(), area=area_pointer, x=0, y=0, started=time.monotonic())
     try:

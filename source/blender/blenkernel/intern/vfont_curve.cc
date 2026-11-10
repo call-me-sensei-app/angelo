@@ -1461,10 +1461,14 @@ static bool vfont_to_curve(Object *ob,
         ctime = timeofs + distfac * (ct->offset.x - minx);
         CLAMP(ctime, 0.0f, 1.0f);
 
-        /* Calculate the right loc AND the right rot separately. */
-        BKE_where_on_path(cu.textoncurve, ctime, vec, nullptr, nullptr, nullptr, nullptr);
-        BKE_where_on_path(
-            cu.textoncurve, ctime + dtime, nullptr, rotvec, nullptr, nullptr, nullptr);
+        /* Calculate the right loc AND the right rot separately. A path with no segment (its points
+         * at one place) places nothing: the character keeps its straight layout. */
+        if (!BKE_where_on_path(cu.textoncurve, ctime, vec, nullptr, nullptr, nullptr, nullptr) ||
+            !BKE_where_on_path(
+                cu.textoncurve, ctime + dtime, nullptr, rotvec, nullptr, nullptr, nullptr))
+        {
+          continue;
+        }
 
         mul_v3_fl(vec, sizefac);
 

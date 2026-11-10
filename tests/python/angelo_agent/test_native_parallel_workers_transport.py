@@ -8,6 +8,8 @@ worker with exactly its documented command and environment. The in-Blender proof
 ``test_blender_parallel_workers.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import shutil
 import socket
@@ -26,6 +28,7 @@ from angelo_agent.program_checks import resolve_obligations  # noqa: E402
 from angelo_agent.program_context import ProgramBinding  # noqa: E402
 from angelo_agent.refusal_codes import RefusalError  # noqa: E402
 from angelo_agent.tool_specs import validate_call  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 
 def a_program(name="Seat"):
@@ -59,8 +62,18 @@ class ValueTests(unittest.TestCase):
         self.assertNotEqual(self.round_trip((1, 2)), [1, 2])
         self.assertEqual(repr(self.round_trip(0.1 + 0.2)), repr(0.1 + 0.2))
 
-    def test_unknown_or_unfinite_values_never_cross(self):
-        for value in (object(), {1, 2}, float("nan"), float("inf"), {1: "key not text"}, SimpleNamespace()):
+    def test_nan_and_infinities_cross_and_match_in_their_place(self):
+        # An object holding NaN bound a value that could not cross, so its worker edit failed unclassified before it
+        # started and held the lead's request (C7b); bindings now compare NaN in its place (stale_binding.same).
+        from angelo_agent.stale_binding import same
+        binding = (7, (float("nan"), float("inf"), float("-inf"), 0.5))
+        again = self.round_trip(binding)
+        self.assertTrue(same(again, binding))
+        self.assertFalse(same(again, (7, (0.0, float("inf"), float("-inf"), 0.5))))
+        self.assertEqual(again[1][1:], binding[1][1:])
+
+    def test_unknown_values_never_cross(self):
+        for value in (object(), {1, 2}, {1: "key not text"}, SimpleNamespace()):
             with self.subTest(value=value), self.assertRaises(TypeError):
                 values.encode(value)
         for record in ({"t": 1}, {"x": []}, {"f": 1.5}, {"t": [], "f": "1"}, {"fo": {"encoded": {"b": "AA=="}}}):
@@ -102,7 +115,8 @@ class ValueTests(unittest.TestCase):
         self.assertIsNone(values.encode_capture(None))
 
 
-POSIX_ONLY = unittest.skipIf(sys.platform == "win32", "Workers use a Unix socket pair only on macOS and Linux")
+POSIX_ONLY = unittest.skipIf(sys.platform == "win32", environment_skip(
+    "Workers use a Unix socket pair only on macOS and Linux; Windows uses named pipes (PipeListener)"))
 
 
 class ChannelTests(unittest.TestCase):

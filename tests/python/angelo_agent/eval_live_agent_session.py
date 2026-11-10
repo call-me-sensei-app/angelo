@@ -2,32 +2,32 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """In-app driver for one trial of ``eval_live_agent.py``. BILLED: never run it directly.
 
-The launcher starts a disposable ``--factory-startup`` GUI Angelo process with isolated config, state and a
-connection store holding only the one selected connection, then runs this script. It refuses to start without the
-launcher's authorization environment. It drives the real application: ``ui`` controller, UI pump timer, approval and
-commit operators and checkpoint policy.
+The launcher starts a disposable ``--factory-startup`` GUI Angelo process (isolated config and state, a connection
+store holding only the selected connection) and runs this script, which refuses to start without its authorization.
+It drives the real application: ``ui`` controller, UI pump timer, approval and commit operators, checkpoint policy.
 
-Per task it sends one prompt as the chat editor does: with the chat editor's own turn context when the launcher
-passes ``--observation turn-context``, otherwise (the default, for comparison with earlier runs) with the
-observation those runs sent, ``angelo_inspect_scene``'s first 32 objects. It answers what still asks
-(``eval_approval``) as a test-only tester (approve only ``eval_live_tasks.HARNESS_APPROVABLE`` through the
-``angelo.approve`` operator, decline everything else), waits for the turn to end, accepts a staged preview through
-the human UI continuation when the task asks for one, then grades the scene with the closed host checks.
-``eval_grading_live`` completes the grading contract (``eval_grading``): a question's answer check against ground
-truth the harness holds, an edit's result checks, and ``grade``, which is ``passed`` only when a check read the
-result (an unchecked answer or an edit no check can read is ``ungraded``, never passed). Timings come from the
-request's own local performance receipt; no result is taken from the model's claims. Each record also keeps the
-turn's activity counts (``survey_report.turn_activity``): tool names, capability lookups and rejected plans, never
-arguments or text. Scenario task sets (``scenario_specs``) add reference attachments, their own checks and approval
-rule, and an end-of-session save and Undo probe (``scenario_session``). Diagnostic runs (``eval_diagnostics``) turn
-on debug thinking and may ask one question after the last grade (``eval_ask_why``).
+Per task it sends one prompt as the chat editor does: with the chat editor's own turn context when the launcher passes
+``--observation turn-context``, otherwise (the default, for comparison with earlier runs) with the observation those
+runs sent, ``angelo_inspect_scene``'s first 32 objects. It answers what still asks (``eval_approval``) as a test-only
+tester (approve only ``eval_live_tasks.HARNESS_APPROVABLE`` through the ``angelo.approve`` operator, decline everything
+else), waits for the turn to end, accepts a staged preview through the human UI continuation when the task asks for one,
+then grades the scene with the closed host checks. ``eval_grading_live`` completes the grading contract
+(``eval_grading``): a question's answer check against ground truth the harness holds, an edit's result checks, and
+``grade``, which is ``passed`` only when a check read the result (an unchecked answer or an edit no check can read is
+``ungraded``, never passed). Timings come from the request's own local performance receipt; no result is taken from the
+model's claims. Each record also keeps the turn's activity counts (``survey_report.turn_activity``): tool names,
+capability lookups and rejected plans, never arguments or text. Scenario task sets (``scenario_specs``) add reference
+attachments, own checks and approval rule, and a closing save and Undo probe (``scenario_session``); diagnostic runs
+(``eval_diagnostics``) debug thinking and one question after the last grade (``eval_ask_why``).
 """
+
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 
 import copy
 import json
-import os
 from pathlib import Path
-import sys
 import time
 import traceback
 

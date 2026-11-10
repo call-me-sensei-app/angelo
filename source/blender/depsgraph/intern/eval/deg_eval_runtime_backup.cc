@@ -8,6 +8,10 @@
 
 #include "intern/eval/deg_eval_runtime_backup.h"
 
+#ifdef WITH_PYTHON
+#  include "BPY_extern.hh"
+#endif
+
 #include "intern/eval/deg_eval_copy_on_write.h"
 
 #include "DRW_engine.hh"
@@ -33,6 +37,14 @@ void RuntimeBackup::init_from_id(ID *id)
   }
   have_backup = true;
 
+#ifdef WITH_PYTHON
+  /* Angelo: the contents are freed and copied again in place; the wrappers of the ID itself stay
+   * valid, but iterators, custom-property wrappers and wrappers of its sub-data (an evaluated
+   * object's modifiers, a point cloud's points) would read the freed contents. */
+  if (id->py_instance) {
+    BPY_rna_instance_dependents_invalidate(id->py_instance, true);
+  }
+#endif
   /* Clear, so freeing the expanded data doesn't touch this Python reference. */
   id_data.py_instance = id->py_instance;
   id->py_instance = nullptr;

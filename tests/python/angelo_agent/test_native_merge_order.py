@@ -10,6 +10,8 @@ a card, until the merge has run or been refused, then binds against the merged s
 asked before it, also one that itself waits behind an earlier merge; the lanes keep their order. No Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import unittest
 from unittest.mock import patch
 

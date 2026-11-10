@@ -57,16 +57,13 @@ Model-facing text is English and never translated.
 """
 
 import datetime
-import time
 from pathlib import Path
 
 import bpy
 
-from . import job_deadline, job_render_samples, render_extensions, scene_queries, view_cache, view_picture, view_scene_check
+from . import job_render_samples, scene_queries, view_cache, view_picture, view_scene_check
 from .input_policy import tool_running
-from .job_manager import JobStartError
-from .job_runners import SAMPLES as SAMPLE_PATHS, RenderRunner, native
-from .job_settings import DisplayNone
+from .job_runners import SAMPLES as SAMPLE_PATHS, native
 from .job_spec import PREVIEW, JobRequestError, native_jobs_available
 from .job_store import TERMINAL
 from .studio_agent import StudioPending
@@ -74,9 +71,10 @@ from .view_blur import rendered_blur
 from .world_surface import lighting
 from .view_framing import output_size
 from .view_picture import MIN_REGION_PIXELS
-from .view_render_restore import SLOT, LookSettings, ResultSlot, picture_values  # noqa: F401  (SLOT: the suites read it here)
-from .view_render_restore import written_keys
+from .view_render_restore import SLOT  # noqa: F401  (the suites read it here)
+from .view_render_runner import NO_IMAGE, LookRunner
 from .view_spec import RENDER_REQUEST_SECONDS, RENDER_SAMPLES, RENDER_SECONDS, RENDERED, SCENE_CAMERA
+from .refusal_codes import coded, refusal_code
 
 MINIMUM_SECONDS = 15   # A look does not start with less of its request's budget left.
 HEAVY_PREPARATION = 10  # Seconds of preparation from which a result says that LIT is the way to iterate.
@@ -84,121 +82,11 @@ SAMPLE_SECONDS = 20    # A look whose first sample came late still renders sampl
 GRACE_SECONDS = 45     # The pending call outlives the budget by the stop latency and the finish.
 NO_CAMERA = ("The scene has no active camera, and a RENDERED look renders the scene camera. Add or choose a "
              "camera, or use an axis or FIT view with LIT shading (the scene's lights and world)")
-NO_IMAGE = "Blender ended the render without writing an image; see its Info log"
 # Other window-manager jobs of the person's that starting a render would stop (Blender stops them itself).
 OTHER_JOBS = ("POINTCACHE", "BAKE_GEOMETRY_NODES", "USD_EXPORT", "ALEMBIC_EXPORT")
-# Settings a look writes besides its render settings (ResultSlot, job_settings.DisplayNone): message-bus keys.
-OTHER_WRITES = frozenset({("RenderSlots", "active_index"), ("PreferencesView", "render_display_type"),
-                          ("Preferences", "is_dirty")})
 
 _spent = {}    # conversation id -> (request, seconds of looks that request has rendered)
 _pending = {}  # job id -> RenderPending, until its job ends
-
-
-class LookRunner(RenderRunner):
-    """One still of the scene camera on Blender's render job, written to a private PNG."""
-
-    def __init__(self, window, request, path, limit, mode="ASK"):
-        self.path, self.limit = Path(path), limit  # ``limit``: seconds after which a first sample ends the look.
-        self.progress, self.began, self.first_sample, self.seconds = 0.0, None, None, 0.0
-        self.unrestored, self.slot, self.over, self.exact_colour = [], None, False, True
-        self.mode, self.check, self.scene_check, self.handlers_ran = mode, None, None, []  # Approval mode; check.
-        self.unknown = False  # Whether this build could not list message-bus subscribers.
-        super().__init__(window, request, None)  # Admission: camera, stereoscopy, File Output nodes, bounds.
-
-    def admit(self):
-        super().admit()
-        # Add-on or script Python runs only after a render approval; the Auto modes let depsgraph handlers and
-        # message-bus subscribers to the look's own settings run.
-        written = written_keys(self.scene, self._values()) | OTHER_WRITES
-        self.extensions = render_extensions.refuse_look(self.scene, self.mode, written)
-
-    def _values(self):
-        """The job's settings, in the order they are written (the image format last, its type first)."""
-        scene, render, request = self.scene, self.scene.render, self.request
-        frame = request.get("frame_size") or request["resolution"]
-        values = {"render.resolution_x": frame[0], "render.resolution_y": frame[1],
-                  "render.resolution_percentage": 100, "render.filepath": str(self.path),
-                  "render.use_file_extension": False}
-        if "border" in request:  # A region: Blender renders that part of the frame only and crops to it.
-            values.update({"render.use_border": True, "render.use_crop_to_border": True})
-            values.update(zip(("render.border_min_x", "render.border_min_y", "render.border_max_x",
-                               "render.border_max_y"), request["border"]))
-        values.update({"render." + name: False for name in ("use_render_cache", "use_auto_generate_texture_cache")
-                       if hasattr(render, name)})
-        if "samples" in request:  # With every rendered layer's count: held for the render (job_render_samples).
-            values[SAMPLE_PATHS[render.engine]] = request["samples"]
-            values.update(job_render_samples.settings(self.window, request["samples"], look=True))
-        picture, self.exact_colour = picture_values(scene)
-        values.update(picture)
-        return values
-
-    def start(self):
-        native()
-        if self.window.scene != self.scene:
-            raise JobStartError("The look's scene is no longer shown in its window")
-        self.admit()
-        self.handlers_ran = self.extensions.view_python  # Run by the writes below (Auto modes only).
-        self.unknown = self.extensions.subscribers is None
-        self.check = view_scene_check.SceneCheck(self.window, deep=bool(self.handlers_ran))
-        self.overrides, self.slot = LookSettings(self.scene, self.identity), ResultSlot()
-        try:
-            self.overrides.apply(self._values())
-            self.slot.enter()
-            with DisplayNone():
-                self._invoke(bpy.ops.render.render, write_still=True, use_viewport=False)
-        except Exception:
-            self._restore()
-            raise
-        self.began = time.monotonic()
-
-    def _restore(self):
-        try:
-            if self.overrides is not None:
-                self.unrestored = self.overrides.restore() or self.unrestored
-        finally:   # The person's render slot comes back whatever the settings did (break-it SW-M-1).
-            if self.slot is not None:
-                self.slot.leave()
-
-    def poll(self):
-        progress = native().progress(self.scene, self.job_type)
-        if progress is None:
-            return None
-        elapsed = time.monotonic() - self.began
-        if progress > 0 and self.first_sample is None:
-            self.first_sample = elapsed
-        self.progress = max(self.progress, min(1.0, progress))
-        if self.progress > 0 and not self.over and elapsed > max(self.limit, self.first_sample + SAMPLE_SECONDS):
-            self.over = True  # Past its budget with something to show: stop here (finish reports a partial look).
-            self.stop()
-        return {"progress": min(self.progress, 0.999)}
-
-    def written(self):
-        try:
-            with self.path.open("rb") as handle:
-                return handle.read(8) == b"\x89PNG\r\n\x1a\n"
-        except OSError:
-            return False
-
-    def finish(self, stopped):
-        """Restore the person's settings and slot, then say whether an image exists: ``(status, reason, receipt)``."""
-        own = list(self.overrides.originals) if self.overrides is not None else []
-        self._restore()
-        if self.check is not None:  # Did anything else change the document meanwhile?
-            self.scene_check = self.check.finish(own)
-        self.seconds = time.monotonic() - self.began if self.began is not None else 0.0
-        job_deadline.catch_up(self)   # Samples its render reported after the last poll.
-        # A stopped render still writes the samples that finished; one stopped before its first has none.
-        image = self.written() and (not (stopped or self.over) or self.progress > 0)
-        checked = {"scene_check": self.scene_check} if self.scene_check is not None else {}
-        if stopped:
-            return "cancelled", "", dict(checked, image=image)  # The manager's reason stands.
-        if self.over:
-            return "cancelled", "time_budget", dict(checked, image=image)
-        return ("done", "", dict(checked, image=True)) if image else ("failed", NO_IMAGE, dict(checked, image=False))
-
-    def abandon(self):
-        self._restore()
 
 
 def _blender_busy(scene):
@@ -219,9 +107,10 @@ def _allowance(controller):
     request, spent = _spent.get(controller.state["id"], (None, 0.0))
     left = RENDER_REQUEST_SECONDS - (spent if request == _request(controller) else 0.0)
     if left < MINIMUM_SECONDS:
-        raise RuntimeError(
+        raise coded(RuntimeError(
             "This request has used its %d s of RENDERED looks. Work from what you have seen and tell the person; "
-            "a full render is a job they approve (angelo_job_start RENDER_STILL)" % RENDER_REQUEST_SECONDS)
+            "a full render is a job they approve (angelo_job_start RENDER_STILL)" % RENDER_REQUEST_SECONDS),
+            "LIMIT_EXCEEDED")
     return float(left)
 
 
@@ -248,36 +137,37 @@ def _size(scene, resolution, region=None):
     frame = [max(4, round(full[0] * scale)), max(4, round(full[1] * scale))]
     size = [round((right - left) * frame[0]), round((bottom - top) * frame[1])]
     if min(size) < MIN_REGION_PIXELS:
-        raise RuntimeError("That region is only %dx%d pixels of this scene's %dx%d render; choose a larger one"
-                           % (size[0], size[1], full[0], full[1]))
+        raise coded(RuntimeError("That region is only %dx%d pixels of this scene's %dx%d render; choose a larger one"
+                                 % (size[0], size[1], full[0], full[1])), "VALIDATION")
     return size, frame, [left, 1.0 - bottom, right, 1.0 - top]
 
 
 def begin(window, checked, references, controller):
     """Start one RENDERED look and return its pending result. Raises RuntimeError when nothing was started."""
     if controller is None or not isinstance(getattr(controller, "state", None), dict):
-        raise RuntimeError("Bind a conversation before rendering a look")
+        raise coded(RuntimeError("Bind a conversation before rendering a look"), "OWNERSHIP")
     if "image" in checked:
         from .view_finished import finished_image
         return finished_image(window, checked, references, controller)
     if not native_jobs_available():
-        raise RuntimeError("This build of Angelo cannot render looks; update the application")
+        raise coded(RuntimeError("This build of Angelo cannot render looks; update the application"), "UNSUPPORTED")
     scene = window.scene
     if scene.camera is None:
-        raise RuntimeError(NO_CAMERA)
+        raise coded(RuntimeError(NO_CAMERA), "VALIDATION")
     from . import job_ui, native_programs, view_capture
     if getattr(native_programs, "runtime_is_staging", native_programs.has_active_programs)():
-        raise RuntimeError("A staged change is still in progress; finish or stop it before rendering a look")
+        raise coded(RuntimeError("A staged change is still in progress; finish or stop it before rendering a look"),
+                    "WRITER_BUSY")
     manager = job_ui.manager()
     active = manager.active()
     if active is not None:
-        raise RuntimeError("Job %s (%s) is running, and one render runs at a time: a RENDERED look has to wait "
-                           "until it ends" % (active["id"], active["kind"]))
+        raise coded(RuntimeError("Job %s (%s) is running, and one render runs at a time: a RENDERED look has to wait "
+                                 "until it ends" % (active["id"], active["kind"])), "WRITER_BUSY")
     busy = _blender_busy(scene)
     if busy:
-        raise RuntimeError(busy)
+        raise coded(RuntimeError(busy), "WRITER_BUSY")
     if tool_running(window):
-        raise RuntimeError("Finish the current Blender interaction before rendering a look")
+        raise coded(RuntimeError("Finish the current Blender interaction before rendering a look"), "WRITER_BUSY")
     left = _allowance(controller)
     region = checked.get("region")
     size, frame, border = _size(scene, checked["resolution"], region)
@@ -303,15 +193,16 @@ def begin(window, checked, references, controller):
     from .chat_settings import clean_options
     mode = clean_options(controller.state.get("options"))["approval"]
     try:
-        runner = LookRunner(window, request, reference["path"], min(float(RENDER_SECONDS), left), mode)
+        runner = LookRunner(window, request, reference["path"], min(float(RENDER_SECONDS), left), SAMPLE_SECONDS, mode)
         call = getattr(controller, "executing_call", None)
         record = manager.submit(controller.state["id"], getattr(call, "id", ""), request, runner)
     except Exception as error:
         references.discard_observation(reference)
-        raise RuntimeError(str(error)) from None
+        raise coded(RuntimeError(str(error)), refusal_code(error)) from None   # Its own code (a busy queue's).
     if record["status"] in TERMINAL:  # Blender refused to start the render; the runner left nothing behind.
         references.discard_observation(reference)
-        raise RuntimeError(record["reason"] or "Blender did not start the render")
+        receipt = record.get("receipt") or {}   # Its own code, UNKNOWN without one.
+        raise coded(RuntimeError(record["reason"] or "Blender did not start the render"), refusal_code(receipt))
     context = {"epoch": epoch, "scene": scene.name[:128], "frame": scene.frame_current, "targets": targets,
                "resolution": checked["resolution"], "camera": camera, "reference": reference,
                "scene_samples": scene_samples, "region": region, "frame_size": frame,
@@ -482,7 +373,7 @@ def _outcome(pending):
         rendered["samples_finished"] = finished
         detail = ("Stopped at its %d s budget" % budget if runner.seconds < budget + 15 else
                   "Stopped after %d s, %d s into its samples (preparing the scene took %d s of its %d s budget)"
-                  % (round(runner.seconds), SAMPLE_SECONDS, round(runner.first_sample or 0), budget))
+                  % (round(runner.seconds), runner.sampling, round(runner.first_sample or 0), budget))
         detail += (" after about %d of %d samples" % (finished, samples) if finished else "") + (
             ": the image is partial%s and noisier than a finished look" % (", may not be denoised," if engine == "CYCLES" else ""))
         uncertainty.append({"code": "render_partial", "detail": detail})

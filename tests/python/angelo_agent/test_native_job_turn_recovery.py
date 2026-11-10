@@ -23,6 +23,8 @@ scripted Codex app-server of ``test_native_codex_plan`` around a real
 ``test_blender_long_jobs`` and the ``test_blender_production_*`` suites.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import contextlib
 import copy

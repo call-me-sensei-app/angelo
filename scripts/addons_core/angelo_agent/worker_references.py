@@ -24,12 +24,13 @@ THIS, EARLIER = "this", "earlier"
 def taken(lead):
     """[(reference record, ``THIS`` or ``EARLIER``)] of ``lead``'s attached files now: this request's, then earlier
     ones'."""
-    from .request_rows import own_words, person_request
+    from .request_rows import own_words, person_request_start
     messages = lead.state.get("messages") or ()
-    rows = [row for row in messages if own_words(row)]   # Never Angelo's (EVENT M-3).
+    rows = [row for row in messages if own_words(row) and not row.get("steer")]   # Never Angelo's (EVENT M-3), nor a
+    # steer: it belongs to its request (``steering``) and carries no files, so the request's own row stays its last.
     # The request a part continues is the newest that isn't Angelo's own: a worker-done event or an accepted preview goes
     # on with the person's request, while a connected app's task is another requester's, whose files these aren't.
-    latest = next((row for row in reversed(messages) if person_request(row)), None)
+    latest = next((row for row in reversed(messages) if person_request_start(row)), None)
     own = rows[-1] if rows and rows[-1] is latest else None
     current = list(getattr(lead, "turn_attachments", None) or (own.get("references") if own else None) or ())
     earlier = [reference for row in reversed(rows[:-1] if own else rows) for reference in (row.get("references") or ())
@@ -45,7 +46,8 @@ def taken(lead):
 
 def attach(controller, lead, references):
     """``references`` (``taken``) copied into ``controller``'s own store and attached to its next message; the
-    sentence its brief ends with ("" when none could be sent: a file that is gone is simply not sent)."""
+    sentence its brief ends with: which came with what, and any that could not be copied, by name ("" when none
+    was taken: a file that is gone is simply not sent)."""
     paths, kept = [], []
     for reference, origin in references:
         try:
@@ -55,12 +57,41 @@ def attach(controller, lead, references):
         kept.append((reference.get("name"), origin))
     if not paths:
         return ""
-    try:
-        copies = controller.references.import_images(paths)
-    except (ValueError, OSError) as error:   # A full disk, a file changed under it: the brief goes without them.
-        print("Angelo: worker references:", error)
-        return ""
+    # One at a time: a file that can't be copied (a full disk, a file changed under it) leaves the others attached,
+    # and the brief names it, so the worker never acts as if the person had sent nothing (release-1.0.9 review).
+    copies, sent, failed = [], [], []
+    for path, (name, origin) in zip(paths, kept):
+        try:
+            copy, = controller.references.import_images([path])
+        except (ValueError, OSError) as error:
+            print("Angelo: worker references:", error)
+            failed.append((name or "a file", _why(error)))
+            continue
+        copies.append(copy)
+        sent.append((name, origin))
+    kept = sent
     controller.attachments = [dict(copy, name=name or copy["name"]) for copy, (name, _o) in zip(copies, kept)]
+    return _attached(copies, kept) + _not_sent(failed)
+
+
+def _why(error):
+    """What the person and the worker may read of a copy's failure: never a path (an OSError's text has one)."""
+    if isinstance(error, OSError):
+        return (error.strerror or "it could not be copied").rstrip(".")
+    return str(error).rstrip(".")
+
+
+def _not_sent(failed):
+    if not failed:
+        return ""
+    names = "; ".join('"%s" (%s)' % (name, why) for name, why in failed)
+    return "\n\n%s the person attached could not be sent with this part: %s." % (
+        "A file" if len(failed) == 1 else "%d files" % len(failed), names)
+
+
+def _attached(copies, kept):
+    if not copies:
+        return ""
     kinds = [copy.get("kind") for copy in copies]
     # By count and order (this request's first), never by name: names can repeat (break-it E2E-17 L-3).
     this = sum(1 for _name, origin in kept if origin == THIS)

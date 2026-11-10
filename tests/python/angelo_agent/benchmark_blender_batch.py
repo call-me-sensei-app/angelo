@@ -34,6 +34,10 @@ also report CPU time and retired instructions (``perf_counters``): wall time
 moves with everything else the machine is doing, instructions count the work.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import argparse
 import json
 import os

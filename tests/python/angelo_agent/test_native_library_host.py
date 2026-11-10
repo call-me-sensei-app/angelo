@@ -3,6 +3,8 @@
 """The Angelo Library's process state (library_host.py) without Blender: a failing or malformed index never leaves
 the library stuck loading, workers never hold the interpreter at exit, and shutdown stops running downloads."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import tempfile
 import threading
 import time

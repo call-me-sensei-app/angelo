@@ -17,6 +17,8 @@ in-Blender proofs are ``test_blender_parallel_lead.py`` and ``test_blender_worke
 after a save).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import tempfile

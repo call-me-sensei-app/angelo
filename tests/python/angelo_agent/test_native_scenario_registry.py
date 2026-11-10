@@ -8,6 +8,8 @@ command are what they were, and the default approval rule still declines
 reviewed Python.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import base64
 import contextlib

@@ -935,65 +935,105 @@ static void rna_AttributeGroupID_remove(ID *id, ReportList *reports, PointerRNA 
   WM_main_add_notifier(NC_GEOM | ND_DATA, id);
 }
 
+/* An iterator may be suspended while its owner removes a future attribute. Snapshot
+ * names and resolve each one when advancing; never dereference a saved item pointer.
+ * The first member is shared with the mesh UV and vertex-color iterator getters. */
+struct AttributeIterItem {
+  void *data;
+  int64_t name_offset;
+  int edit_domain; /* -1 for object-mode attributes. */
+};
+
+void *rna_AttributeGroup_iterator_item(CollectionPropertyIterator *iter)
+{
+  return static_cast<AttributeIterItem *>(rna_iterator_array_get(iter))->data;
+}
+
+static bool rna_attribute_iter_skip(CollectionPropertyIterator *iter, void *item_ptr)
+{
+  auto &item = *static_cast<AttributeIterItem *>(item_ptr);
+  const char *name = static_cast<char *>(iter->internal.array.free_ptr) + item.name_offset;
+  AttributeOwner owner = owner_from_pointer_rna(&iter->parent);
+  BMEditMesh *em = owner.type() == AttributeOwnerType::Mesh ?
+                       owner.get_mesh()->runtime->edit_mesh.get() :
+                       nullptr;
+  if (item.edit_domain >= 0) {
+    if (!em) {
+      return true;
+    }
+    CustomData *domains[] = {&em->bm->vdata, &em->bm->edata, &em->bm->pdata, &em->bm->ldata};
+    CustomData *domain = domains[item.edit_domain];
+    const int index = CustomData_get_named_layer_index_notype(domain, name);
+    return index < 0 || &domain->layers[index] != item.data;
+  }
+  return em || owner.get_storage()->lookup(name) != item.data;
+}
+
 void rna_AttributeGroup_iterator_begin(CollectionPropertyIterator *iter,
                                        PointerRNA *ptr,
                                        const AttrDomainMask domain_mask,
                                        const eCustomDataMask cd_type_mask,
                                        const bool include_anonymous)
 {
-  memset(&iter->internal.array, 0, sizeof(iter->internal.array));
   AttributeOwner owner = owner_from_pointer_rna(ptr);
-  if (owner.type() == AttributeOwnerType::Mesh) {
-    Mesh *mesh = owner.get_mesh();
-    if (BMEditMesh *em = mesh->runtime->edit_mesh.get()) {
-      Vector<CustomDataLayer *, 16> layers;
-      const auto add_layers = [&](CustomData &data) {
-        for (CustomDataLayer &layer : MutableSpan(data.layers, data.totlayer)) {
-          if (!(CD_TYPE_AS_MASK(eCustomDataType(layer.type)) & cd_type_mask)) {
-            continue;
-          }
-          if (!include_anonymous && bke::attribute_name_is_anonymous(layer.name)) {
-            continue;
-          }
-          layers.append(&layer);
-        }
-      };
-      if (domain_mask & ATTR_DOMAIN_MASK_POINT) {
-        add_layers(em->bm->vdata);
-      }
-      if (domain_mask & ATTR_DOMAIN_MASK_EDGE) {
-        add_layers(em->bm->edata);
-      }
-      if (domain_mask & ATTR_DOMAIN_MASK_FACE) {
-        add_layers(em->bm->pdata);
-      }
-      if (domain_mask & ATTR_DOMAIN_MASK_CORNER) {
-        add_layers(em->bm->ldata);
-      }
-      VectorData data = layers.release();
-      rna_iterator_array_begin(
-          iter, ptr, data.data, sizeof(CustomDataLayer *), data.size, true, nullptr);
-      return;
-    }
-  }
+  Vector<AttributeIterItem, 16> items;
+  Vector<char> names;
+  const auto append = [&](void *data, StringRef name, int edit_domain) {
+    items.append({data, names.size(), edit_domain});
+    names.extend(Span<char>(name.data(), name.size()));
+    names.append(0);
+  };
 
-  bke::AttributeStorage &storage = *owner.get_storage();
-  Vector<bke::Attribute *, 16> attributes;
-  for (bke::Attribute &attr : storage) {
-    if (!(ATTR_DOMAIN_AS_MASK(attr.domain()) & domain_mask)) {
-      continue;
+  BMEditMesh *em = owner.type() == AttributeOwnerType::Mesh ?
+                       owner.get_mesh()->runtime->edit_mesh.get() :
+                       nullptr;
+  if (em) {
+    const auto add_layers = [&](CustomData &data, int edit_domain) {
+      for (CustomDataLayer &layer : MutableSpan(data.layers, data.totlayer)) {
+        if ((CD_TYPE_AS_MASK(eCustomDataType(layer.type)) & cd_type_mask) &&
+            (include_anonymous || !bke::attribute_name_is_anonymous(layer.name)))
+        {
+          append(&layer, layer.name, edit_domain);
+        }
+      }
+    };
+    if (domain_mask & ATTR_DOMAIN_MASK_POINT) {
+      add_layers(em->bm->vdata, 0);
     }
-    if (!(CD_TYPE_AS_MASK(*bke::attr_type_to_custom_data_type(attr.data_type())) & cd_type_mask)) {
-      continue;
+    if (domain_mask & ATTR_DOMAIN_MASK_EDGE) {
+      add_layers(em->bm->edata, 1);
     }
-    if (!include_anonymous && bke::attribute_name_is_anonymous(attr.name())) {
-      continue;
+    if (domain_mask & ATTR_DOMAIN_MASK_FACE) {
+      add_layers(em->bm->pdata, 2);
     }
-    attributes.append(&attr);
+    if (domain_mask & ATTR_DOMAIN_MASK_CORNER) {
+      add_layers(em->bm->ldata, 3);
+    }
   }
-  VectorData data = attributes.release();
+  else {
+    for (bke::Attribute &attr : *owner.get_storage()) {
+      if ((ATTR_DOMAIN_AS_MASK(attr.domain()) & domain_mask) &&
+          (CD_TYPE_AS_MASK(*bke::attr_type_to_custom_data_type(attr.data_type())) &
+           cd_type_mask) &&
+          (include_anonymous || !bke::attribute_name_is_anonymous(attr.name())))
+      {
+        append(&attr, attr.name(), -1);
+      }
+    }
+  }
+  /* rna_iterator_array_end owns a single trivially destructible allocation. */
+  const size_t bytes = sizeof(AttributeIterItem) * items.size();
+  void *snapshot = nullptr;
+  if (!items.is_empty()) {
+    for (AttributeIterItem &item : items) {
+      item.name_offset += bytes;
+    }
+    snapshot = MEM_new_uninitialized(bytes + names.size(), __func__);
+    memcpy(snapshot, items.data(), bytes);
+    memcpy(static_cast<char *>(snapshot) + bytes, names.data(), names.size());
+  }
   rna_iterator_array_begin(
-      iter, ptr, data.data, sizeof(bke::Attribute *), data.size, true, nullptr);
+      iter, ptr, snapshot, sizeof(AttributeIterItem), items.size(), true, rna_attribute_iter_skip);
 }
 
 void rna_AttributeGroup_iterator_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
@@ -1007,7 +1047,8 @@ PointerRNA rna_AttributeGroup_iterator_get(CollectionPropertyIterator *iter)
   if (owner.type() == AttributeOwnerType::Mesh) {
     Mesh *mesh = owner.get_mesh();
     if (mesh->runtime->edit_mesh) {
-      CustomDataLayer *layer = *static_cast<CustomDataLayer **>(rna_iterator_array_get(iter));
+      CustomDataLayer *layer = static_cast<CustomDataLayer *>(
+          rna_AttributeGroup_iterator_item(iter));
       StructRNA *type = srna_by_custom_data_layer_type(eCustomDataType(layer->type));
       if (type == nullptr) {
         return PointerRNA_NULL;
@@ -1016,7 +1057,7 @@ PointerRNA rna_AttributeGroup_iterator_get(CollectionPropertyIterator *iter)
     }
   }
 
-  bke::Attribute *attr = *static_cast<bke::Attribute **>(rna_iterator_array_get(iter));
+  bke::Attribute *attr = static_cast<bke::Attribute *>(rna_AttributeGroup_iterator_item(iter));
   const eCustomDataType data_type = *bke::attr_type_to_custom_data_type(attr->data_type());
   StructRNA *type = srna_by_custom_data_layer_type(data_type);
   return RNA_pointer_create_with_parent(iter->parent, type, attr);
@@ -1341,7 +1382,9 @@ static PointerRNA rna_AttributeGroupGreasePencilDrawing_new(ID *grease_pencil_id
   DEG_id_tag_update(grease_pencil_id, ID_RECALC_GEOMETRY);
   WM_main_add_notifier(NC_GEOM | ND_DATA, grease_pencil_id);
 
-  return RNA_pointer_create_discrete(grease_pencil_id, RNA_Attribute, &attr);
+  PointerRNA parent = RNA_pointer_create_discrete(
+      grease_pencil_id, RNA_GreasePencilDrawing, drawing);
+  return RNA_pointer_create_with_parent(parent, RNA_Attribute, &attr);
 }
 
 static void rna_AttributeGroupGreasePencilDrawing_remove(ID *grease_pencil_id,
@@ -1374,7 +1417,8 @@ static PointerRNA rna_AttributeGroupGreasePencilDrawing_active_get(PointerRNA *p
   }
   bke::AttributeStorage &storage = *owner.get_storage();
   bke::Attribute *attr = storage.lookup(*name);
-  return RNA_pointer_create_discrete(ptr->owner_id, RNA_Attribute, attr);
+  PointerRNA parent = RNA_pointer_create_discrete(ptr->owner_id, RNA_GreasePencilDrawing, drawing);
+  return RNA_pointer_create_with_parent(parent, RNA_Attribute, attr);
 }
 
 static void rna_AttributeGroupGreasePencilDrawing_active_set(PointerRNA *ptr,

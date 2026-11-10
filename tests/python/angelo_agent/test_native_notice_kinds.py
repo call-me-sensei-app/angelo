@@ -5,6 +5,8 @@
 Dependency-free: the classifier only; the cards are captured by test_blender_chat_replies.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

@@ -7,6 +7,8 @@ controls overlap, Restart to Update is disabled with the reason while work runs,
 Save and Restart, Don't Save and Cancel. Real pixels: the end-to-end update (updates_and_reports.rst).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path
@@ -161,6 +163,19 @@ class SaveCardTests(unittest.TestCase, PlanChecks):
         host = Host()
         card.act("save", None, host)
         self.assertEqual((chosen, host.closed), (["save"], ["save"]))
+
+    def test_unsaved_asset_catalogs_have_their_own_line(self):
+        card = self.restart.SaveCard("castle.blend", 0, lambda choice: None, catalogs=True, file_changed=False)
+        plan = self.plan(card)
+        self.assertIn("Your asset catalogs have unsaved changes.", flat(plan))
+        self.assertNotIn("castle.blend", flat(plan), "a saved file is not said to have changes")
+        for region in SIZES:
+            self.check_plan(self.plan(card, region), region)
+        both = flat(self.plan(self.restart.SaveCard("castle.blend", 1, lambda choice: None, catalogs=True)))
+        for line in ("castle.blend", "1 image has unsaved changes too.", "Your asset catalogs have unsaved changes."):
+            self.assertIn(line, both)
+        untitled = flat(self.plan(self.restart.SaveCard("", 0, lambda choice: None, catalogs=True, file_changed=False)))
+        self.assertIn("This file has not been saved yet.", untitled, "its save asks for a name first")
 
     def test_an_untitled_file_and_escape(self):
         card = self.restart.SaveCard("", 0, lambda choice: None)

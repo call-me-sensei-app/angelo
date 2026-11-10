@@ -31,6 +31,8 @@ file, no data-block, Undo step or viewport change is made, and the GPU depth
 state is put back as it was.
 """
 
+from .refusal_codes import coded
+
 MAX_TRIANGLES = 6_000_000
 MAX_SEGMENTS = 3_000_000
 MAX_HAIR_POINTS = 200_000
@@ -137,12 +139,12 @@ def geometry(window, objects):
     def counted(triangles):
         totals["triangles"] += triangles
         if totals["triangles"] > MAX_TRIANGLES:
-            raise RuntimeError("the targets draw more than %d triangles" % MAX_TRIANGLES)
+            raise coded(RuntimeError("the targets draw more than %d triangles" % MAX_TRIANGLES), "LIMIT_EXCEEDED")
 
     def lines(positions, pairs, radius, owner):
         totals["segments"] += len(pairs)
         if totals["segments"] > MAX_SEGMENTS:
-            raise RuntimeError("the targets draw more than %d curve segments" % MAX_SEGMENTS)
+            raise coded(RuntimeError("the targets draw more than %d curve segments" % MAX_SEGMENTS), "LIMIT_EXCEEDED")
         items.append(("LINES", positions, pairs, radius))
         drawn.add(owner)
 

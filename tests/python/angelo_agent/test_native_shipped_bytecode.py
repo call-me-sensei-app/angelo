@@ -11,6 +11,8 @@ compiled every module again. Each case runs in its own isolated interpreter (``-
 version folder, so the test process's own import system is never changed.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import importlib.util
 import json

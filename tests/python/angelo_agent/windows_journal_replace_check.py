@@ -112,14 +112,14 @@ def main():
             return {"during_read": during, "after": store.last_write, "path": win32_replace.last}
 
         def replace_while_read():
-            """The journal's own replace (``session_journal._replace``) lands while a reader holds the target open
+            """The journal's own replace (``session_journal.replace``) lands while a reader holds the target open
             sharing delete, and the reader goes on reading the file it opened: POSIX semantics (``win32_replace``)."""
             target, source = root / "held.json", root / "held.json.new.tmp"
             target.write_bytes(b"old\n")
             source.write_bytes(b"new\n")
             reader = session_journal.open_shared(target)
             try:
-                session_journal._replace(source, target, attempts=1)
+                session_journal.replace(source, target, attempts=1)
                 kept = os.read(reader, 16)
             finally:
                 os.close(reader)
@@ -177,7 +177,7 @@ def main():
             target, source = folder / "held \U0001F600.json", folder / "held \U0001F600.json.new.tmp"
             target.write_bytes(b"old\n")
             source.write_bytes(b"new\n")
-            session_journal._replace(source, target, attempts=1)
+            session_journal.replace(source, target, attempts=1)
             if win32_replace.last != win32_replace.POSIX:
                 raise AssertionError("the replace ran %s: POSIX semantics are unsupported here" % win32_replace.last)
             if target.read_bytes() != b"new\n" or source.exists():

@@ -13,6 +13,8 @@ paid generation at the shown price, a new take when nothing changed, and refuses
 proof is ``test_blender_render_engines``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import json
 import sys
@@ -311,8 +313,8 @@ class InstalledEngineTests(unittest.TestCase):
         for engine in ("CYCLES", "BLENDER_EEVEE", "BLENDER_WORKBENCH", "NOT_INSTALLED"):
             self.assertEqual(render_extensions.engine_edits(program(engine)), {}, engine)
         self.assertEqual(render_extensions.engine_edits({"operations": []}), {})
-        self.assertIn('return call.name != "angelo_scene_program" or not render_extensions.engine_edits(call.arguments)',
-                      source("controller.py"), "only a scene program carries property_set")
+        self.assertIn('if call.name == "angelo_scene_program" and render_extensions.engine_edits(call.arguments):',
+                      source("auto_reasons.py"), "only a scene program carries property_set")   # Auto's rule.
 
     def test_the_engine_check_reads_a_programs_operations_once_never_a_strokes_points(self):
         with loaded():

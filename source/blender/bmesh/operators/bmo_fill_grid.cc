@@ -13,6 +13,7 @@
 #include "BLI_listbase.h"
 #include "BLI_math_geom.h"
 #include "BLI_math_vector.h"
+#include "BLI_vector_set.hh"
 
 #include "BKE_customdata.hh"
 
@@ -600,7 +601,9 @@ void bmo_grid_fill_exec(BMesh *bm, BMOperator *op)
   const short mat_nr = short(BMO_slot_int_get(op->slots_in, "mat_nr"));
   const bool use_smooth = BMO_slot_bool_get(op->slots_in, "use_smooth");
   const bool use_interp_simple = BMO_slot_bool_get(op->slots_in, "use_interp_simple");
-  std::unique_ptr<Set<BMEdge *>> split_edges;
+  /* Angelo: ordered, so the split edges collapse in the order they were made (the collapse order
+   * decides where later elements are allocated); a pointer-hashed set followed heap addresses. */
+  std::unique_ptr<VectorSet<BMEdge *>> split_edges;
 
   int count;
   bool changed = false;
@@ -697,7 +700,7 @@ void bmo_grid_fill_exec(BMesh *bm, BMOperator *op)
       const int len_b = BM_edgeloop_length_get(estore_pairs[i][1]);
       if (len_a != len_b) {
         if (split_edges == nullptr) {
-          split_edges = std::make_unique<Set<BMEdge *>>();
+          split_edges = std::make_unique<VectorSet<BMEdge *>>();
         }
 
         if (len_a < len_b) {

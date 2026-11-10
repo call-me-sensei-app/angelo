@@ -37,7 +37,7 @@ from bpy.app.handlers import persistent
 from bpy.types import Operator
 
 from .input_policy import modal_options
-from . import canvas_rtl, card_draw, card_kit as kit, font_watch, input_policy, live_windows, scroll_input
+from . import canvas_rtl, card_draw, card_kit as kit, font_watch, input_policy, live_windows, scroll_input, ui_tokens
 from .card_view import View as _View   # Other canvases draw cards with it too (card_host._View).
 
 _handlers = {}            # Space type (bpy.types.Space subclass) -> its POST_PIXEL draw handler.
@@ -315,25 +315,27 @@ def _draw():
         return   # Quad View: only the region ``modal`` hit-tests (the first), never four copies with one live.
     if _view is None:
         _view = _View()
-    ui, card = state.ui, state.card
-    ui.focus = ui.focus if state.keyboard else None
-    scale = bpy.context.preferences.system.ui_scale
-    # A font reload can hand back the same ID: its count lays the card out again (text measured meanwhile was 0 wide).
-    # Card text is translated as the card is laid out, so the interface language is part of the key: a cached plan
-    # kept a card in the language it opened in after a switch (1.0.5 screenshot review: an English start panel in
-    # an Arabic interface, mirrored at draw time but never translated).
-    key = (region.width, region.height, scale, ui.hover, ui.pressed, ui.focus, tuple(sorted(ui.scroll.items())),
-           card.version(), int(ui.time * 12) if card.animated else 0, _view._font, font_watch.checks["reloads"],
-           _language())
-    if state.plan is None or key != state.plan_key:
-        state.plan, state.plan_key = card.layout(_view, region.width, region.height, scale, ui), key
-    from . import connect_hero
-    connect_hero.paint_beneath(area, region)   # The showcase, if it covers this view, sits under the card.
-    canvas_rtl.begin(region.width)  # Mirrored in a right-to-left language, like the chat; ``end`` in ``finally``.
-    try:
-        card_draw.draw(_view, state.plan)
-    finally:
-        canvas_rtl.end()
+    with ui_tokens.themed() as variant:   # Laid out and drawn in the theme's variant (ui_kit.rst).
+        ui, card = state.ui, state.card
+        ui.focus = ui.focus if state.keyboard else None
+        scale = bpy.context.preferences.system.ui_scale
+        # A font reload can hand back the same ID: its count lays the card out again (text measured meanwhile was 0
+        # wide). Card text is translated as the card is laid out, so the interface language is part of the key: a
+        # cached plan kept a card in the language it opened in after a switch (1.0.5 screenshot review: an English
+        # start panel in an Arabic interface, mirrored at draw time but never translated). Its colours make the
+        # theme's variant one too.
+        key = (region.width, region.height, scale, ui.hover, ui.pressed, ui.focus, tuple(sorted(ui.scroll.items())),
+               card.version(), int(ui.time * 12) if card.animated else 0, _view._font, font_watch.checks["reloads"],
+               _language(), variant)
+        if state.plan is None or key != state.plan_key:
+            state.plan, state.plan_key = card.layout(_view, region.width, region.height, scale, ui), key
+        from . import connect_hero
+        connect_hero.paint_beneath(area, region)   # The showcase, if it covers this view, sits under the card.
+        canvas_rtl.begin(region.width)  # Mirrored in a right-to-left language, like the chat; ended in ``finally``.
+        try:
+            card_draw.draw(_view, state.plan)
+        finally:
+            canvas_rtl.end()
     gpu.state.blend_set('NONE')
 
 

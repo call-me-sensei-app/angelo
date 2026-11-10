@@ -16,8 +16,10 @@ So before anything runs, ``check`` compares, file by file (content digests; ``__
 * every Python module of ``scripts/startup`` one way (each must be in the app, the same): the app's startup folder
   also holds what the build adds.
 
-A Git LFS pointer (a checkout made with ``GIT_LFS_SKIP_SMUDGE=1``, as every Angelo checkout is) counts as the
-file it points to: its ``oid`` is that file's SHA-256, the digest the app's real file gets.
+A Git LFS pointer in the checkout (one made with ``GIT_LFS_SKIP_SMUDGE=1``, as every Angelo checkout is) counts as
+the file it points to: its ``oid`` is that file's SHA-256, the digest the app's real file gets. In the app a pointer
+is only its text: an app overlaid from such a checkout cannot load those images and .blend files, so it differs
+("a Git LFS pointer in the app, not the file").
 
 Standard library only.
 """
@@ -52,9 +54,18 @@ def bundled_scripts(binary):
 LFS_POINTER = b"version https://git-lfs.github.com/spec/v1\n"
 
 
-def _digest(path):
-    """The file's SHA-256, or for a Git LFS pointer the SHA-256 (``oid``) of the file it stands for."""
-    if path.stat().st_size < 1024:
+def _pointer(path):
+    """Whether ``path`` holds a Git LFS pointer's text."""
+    if path.stat().st_size >= 1024:
+        return False
+    with open(path, "rb") as stream:
+        return stream.read(len(LFS_POINTER)) == LFS_POINTER
+
+
+def _digest(path, pointers=True):
+    """The file's SHA-256, or with ``pointers`` (the checkout's side) for a Git LFS pointer the SHA-256 (``oid``) of
+    the file it stands for. The app's side reads its own bytes: a pointer there is never the file."""
+    if pointers and path.stat().st_size < 1024:
         head = path.read_bytes()
         if head.startswith(LFS_POINTER):
             for line in head.decode("ascii", "replace").splitlines():
@@ -67,11 +78,11 @@ def _digest(path):
     return digest.hexdigest()
 
 
-def _files(root, pattern="*"):
+def _files(root, pattern="*", pointers=True):
     """``{relative path: content digest}`` of the files under ``root`` matching ``pattern``, ignored ones left out."""
     if not root.is_dir():
         return {}
-    return {path.relative_to(root).as_posix(): _digest(path) for path in sorted(root.rglob(pattern))
+    return {path.relative_to(root).as_posix(): _digest(path, pointers) for path in sorted(root.rglob(pattern))
             if path.is_file() and path.name not in IGNORED_NAMES and path.suffix != ".pyc"
             and not IGNORED_DIRS.intersection(path.relative_to(root).parts)}
 
@@ -106,9 +117,10 @@ def check(binary, source_root):
               "app": {"folder": str(scripts) if scripts else None, "binary": str(binary)}}
     if scripts is None:
         return dict(result, matches=False, differing=["no Angelo add-on bundled with this binary"])
-    app = {"addon/" + key: value for key, value in _files(scripts / "addons_core" / "angelo_agent").items()}
+    app = {"addon/" + key: value for key, value in _files(scripts / "addons_core" / "angelo_agent", pointers=False).items()}
     # A startup key is its path under scripts: "startup/<module>".
-    app.update({key: _digest(scripts / key) for key in source if key.startswith("startup/") and (scripts / key).is_file()})
+    app.update({key: _digest(scripts / key, pointers=False) for key in source
+                if key.startswith("startup/") and (scripts / key).is_file()})
     differing = []
     for key in sorted(set(source) | {key for key in app if key.startswith("addon/")}):
         if key not in app:
@@ -116,7 +128,8 @@ def check(binary, source_root):
         elif key not in source:
             differing.append("%s: only in the app" % key)
         elif app[key] != source[key]:
-            differing.append("%s: differs" % key)
+            path = scripts / ("addons_core/angelo_agent/" + key[len("addon/"):] if key.startswith("addon/") else key)
+            differing.append("%s: %s" % (key, "a Git LFS pointer in the app, not the file" if _pointer(path) else "differs"))
     result["app"].update(digest=_combined(app), files=len(app))
     return dict(result, matches=not differing, differing=differing)
 

@@ -13,6 +13,8 @@ once left them in the Codex text only, and Opus, never told the version, wrote B
 below keep any split from dropping one.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import itertools
 from pathlib import Path
@@ -46,8 +48,10 @@ class PerModelTextTests(unittest.TestCase):
         # and its workers, which lack those tools, share the rest byte for byte: the same 14,246 B, reordered. The
         # sculpting and Studio sentence there too (a worker has neither family): the same 14,246 B.
         from angelo_agent.claude_text import claude_tail
+        # Plus "angelo_goal holds a goal across turns" after the native goal tools (toolset 51, goal_mode.rst): +39 B,
+        # 14,285. Accepted goal-scope correction 0b81c98224d moves that 39B clause to an 82B capability tail: +43B.
         self.assertEqual(digest(providers.CLAUDE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS + claude_tail(None)),
-                         ("d5f702ddc9c8", 14246))
+                         ("5e658d2c4420", 14328))
 
     def test_both_runtimes_state_the_job_start_arguments_in_one_form(self):
         from angelo_agent.codex_reference import job_arguments
@@ -80,12 +84,53 @@ class PerModelTextTests(unittest.TestCase):
         # The game-ready check too (toolset 48, game_ready_check.rst): +22 B, 26,010.
         # The game-engine preflight among them too (toolset 49, engine_preflight.rst): +27 B, 26,037.
         # The engine live link among them too (toolset 50, engine_link.rst, "The agent"): +22 B, 26,059.
-        self.assertEqual(digest(text), ("bae00ed344fd", 26059))
+        # angelo_goal among them (+13 B) and named after the native goal tools (+39 B) (toolset 51, goal_mode.rst):
+        # 26,111. Accepted goal-scope correction 0b81c98224d replaces 39B universal wording with 82B scoped wording: +43B.
+        # The same deferred lookup meaning is phrased47B shorter; all tool names remain.
+        # This offsets the43B scope clarification without raising the existing byte budget.
+        # Native Sculpt orientation now arrives before lookup (+84B); equivalent delegation prose saves83B.
+        # The team plan is26,108B; the existing26,111/26,140B limits are unchanged.
+        self.assertEqual(digest(text), ("3bb8664e435b", 26108))
+        self.assertLessEqual(len(text.encode()), 26111)
         # On a runtime that shows tools' pictures without image() (image_proof.codex_guidance): that sentence only,
         # +29 B. Every other runtime keeps the text above.
         forwarded = providers.codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True,
                                                  forwarded=True)
-        self.assertEqual(digest(forwarded), ("33b100a26753", 26088))
+        goal = "angelo_goal holds a goal across turns when the person asks for that continuation.\n"
+        self.assertEqual(text.count(goal), 1)
+        self.assertEqual(forwarded.count(goal), 1)
+        manual = "adds one data:image URL per further line, which image(url) shows you (its second\nargument"
+        automatic = ("adds one data:image URL per further line, each shown to you automatically;\n"
+                     "image(url) is optional (its second argument")
+        self.assertEqual(forwarded, text.replace(manual, automatic))
+        self.assertEqual(len(forwarded.encode()), 26137)  # Same native policy, plus only the29B picture fact.
+        self.assertLessEqual(len(forwarded.encode()), 26140)
+
+    def test_deferred_sculpt_policy_arrives_before_any_family_lookup(self):
+        from itertools import product
+        from angelo_agent.agent_guidance import SCULPT_SENTENCE, SCULPT_GUIDANCE
+        from angelo_agent.sculpt_spec import SCULPT_NAMES
+        from angelo_agent.codex_text import codex_tail
+        from angelo_agent.tool_specs import COLLABORATOR_TOOLS
+        for short, plan, team, forwarded in product((False, True), repeat=4):
+            with self.subTest(short=short, plan=plan, team=team, forwarded=forwarded):
+                text = providers.codex_instructions(short_identifiers=short, deferred=True,
+                                                     plan=plan, team=team, forwarded=forwarded)
+                print("SCULPT_BUDGET", short, plan, team, forwarded, digest(text))
+                self.assertEqual(text.count(SCULPT_SENTENCE), 1)
+                self.assertNotIn(SCULPT_GUIDANCE.strip(), text)
+                self.assertNotIn("mesh_revision", codex_tail(None, deferred=True, team=team))
+                # A non-sculpt lookup receives the same initial policy; no family request is required.
+                if plan:
+                    self.assertLessEqual(len(text.encode()), 26140 if forwarded else 26111)
+        restricted = set(COLLABORATOR_TOOLS) - set(SCULPT_NAMES)
+        self.assertNotIn(SCULPT_SENTENCE, codex_tail(restricted, deferred=True, team=False))
+        for name in SCULPT_NAMES:
+            self.assertIn(SCULPT_SENTENCE, codex_tail({name}, deferred=True, team=False))
+        self.assertIn(SCULPT_GUIDANCE, codex_tail(None, deferred=False, team=False))
+        from angelo_agent.plan_schema import lookup
+        self.assertEqual(lookup("TOOLS", ["angelo_inspect_sculpt"])["guidance"]["SCULPT"], SCULPT_GUIDANCE)
+        self.assertNotIn("SCULPT", lookup("TOOLS", ["angelo_inspect_scene"]).get("guidance", {}))
 
     def test_the_codex_shared_base_keeps_its_bytes(self):
         # Unchanged when the API facts moved into the shared constant: the Codex text includes it in the same place.
@@ -94,7 +139,10 @@ class PerModelTextTests(unittest.TestCase):
         # "3D supports one", which contradicted the tools (audit 2026-11-01, features.rst): +177 B, 15,857. Plan
         # threads defer this guidance, so their text is unchanged.
         # Each family's guidance after the shared text (codex_text.codex_tail): the same 15,857 B, reordered.
-        self.assertEqual(digest(providers.INSTRUCTIONS), ("f15522a46dcc", 15857))
+        # "angelo_goal holds a goal across turns" after the native goal tools (toolset 51, goal_mode.rst): +39 B, 15,896.
+        # 0b81c98224d removes the 39B universal goal clause from the no-goal shared base; scoped tails keep it.
+        # The equivalent concise delegation policy saves83B; full Sculpt guidance is unchanged.
+        self.assertEqual(digest(providers.INSTRUCTIONS), ("4ad508ae5946", 15774))
 
     def test_every_runtime_text_states_each_shared_fact_once(self):
         from angelo_agent.agent_guidance import BLENDER_API_FACTS

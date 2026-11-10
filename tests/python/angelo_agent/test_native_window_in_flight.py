@@ -18,6 +18,8 @@ than the launcher's round plus the main thread's pickup time, as a long script d
 Contract: doc/angelo/external_mcp.rst, "Tool level", "One call, one run".
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import unittest
@@ -30,11 +32,13 @@ from angelo_agent import external_mcp  # noqa: E402
 from angelo_agent.external_clients import READ, AppRegistry  # noqa: E402
 import test_native_external_mcp as mcp_harness  # noqa: E402  (a module: its tests are not collected again here)
 from test_native_headless_in_flight import ROUND, SlowExecutor  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 CUBE = {"name": "Box", "size": 1, "location": [0, 0, 0]}
 
 
-@unittest.skipIf(sys.platform == "win32", "Needs the Unix-socket listener (Windows named pipe: a later phase)")
+@unittest.skipIf(sys.platform == "win32",
+                 environment_skip("Needs the Unix-socket listener (Windows named pipe: a later phase)"))
 class WindowInFlightTests(unittest.TestCase):
     tick, server, rpc, call = (mcp_harness.AppTests.tick, mcp_harness.AppTests.server, mcp_harness.AppTests.rpc,
                                mcp_harness.AppTests.call)

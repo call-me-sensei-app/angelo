@@ -13,6 +13,10 @@ render with stamping on, so Cycles generates them on its loading threads at once
 byte with a grid generated alone on the main thread. Run with ``--background --factory-startup``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 from pathlib import Path

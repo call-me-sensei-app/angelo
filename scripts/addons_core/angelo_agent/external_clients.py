@@ -28,6 +28,7 @@ import time
 import uuid
 from pathlib import Path
 
+from . import launcher_records, shared_replace
 from .external_cli_protocol import read_key, valid_label
 from .team_org_policy import STRICTEST, read_regular
 from .team_view import org_policy
@@ -55,6 +56,7 @@ READ_TOOLS = frozenset({
     "angelo_game_ready_check",
     # An engine link the person turned on: what it holds and what the editors acknowledged (never turns it on).
     "angelo_engine_link_status",
+    "angelo_library_search",
 })
 # Typed, bounded scene edits (each one Undo step), background jobs (renders, bakes, exports; always a card), the
 # web export (a .glb in the workspace, never over a file; the loopback preview), the engine preflight's typed fixes
@@ -65,7 +67,7 @@ READ_TOOLS = frozenset({
 EDIT_TOOLS = frozenset(BOUNDED_MUTATIONS - {"angelo_flow_build", "angelo_flow_choose", "angelo_workers_start",
                                             "angelo_workers_merge"}) | {"angelo_job_start", "angelo_web_export",
                                                                         "angelo_web_preview", "angelo_engine_fix",
-                                                                        "angelo_engine_link"}
+                                                                        "angelo_engine_link", "angelo_library_import"}
 PYTHON_TOOLS = frozenset({"angelo_execute_python"})
 # A connected app's script file (external_work, script_files): offered with the python level, never an Angelo tool.
 SCRIPT_FILE_TOOL = "angelo_run_script_file"
@@ -79,15 +81,17 @@ if not (READ_TOOLS | EDIT_TOOLS | PYTHON_TOOLS) <= set(TOOL_MAP) | WITHHELD_TOOL
 
 
 # Families an app never reaches, also in the tasks it starts (Angelo's agent in its External conversation):
-# workspace files, task-memory updates, Media Studio, the team library and the Angelo Library, Generation Flows,
+# workspace files, task-memory updates, Media Studio, the team library, Generation Flows,
 # delegation and the person's workspace mode.
-NEVER_FOR_APPS = frozenset(name for name in TOOL_MAP if name.startswith(("angelo_studio_", "angelo_team_", "angelo_library_",
+NEVER_FOR_APPS = frozenset(name for name in TOOL_MAP if name.startswith(("angelo_studio_", "angelo_team_",
                                                                          "angelo_flow_", "angelo_workers_"))
                            or name in {"angelo_write_file", "angelo_delete_file", "angelo_read_file", "angelo_list_files",
                                        "angelo_memory_update", "angelo_delegate", "angelo_set_workspace_mode",
                                        "angelo_read_reference",
                                        # Turning on the engine link lets an engine connect: the person's call only.
-                                       "angelo_app_feature"})
+                                       "angelo_app_feature",
+                                       # A goal makes Angelo send requests itself: only the person's own chat holds one.
+                                       "angelo_goal"})
 
 
 # Headless (no Angelo window, doc/angelo/external_mcp.rst "Headless"): nothing may wait for a person there, so only
@@ -96,7 +100,7 @@ NEVER_FOR_APPS = frozenset(name for name in TOOL_MAP if name.startswith(("angelo
 # project; Python and accepting a preview need a person's review (an app's preview acceptance always opens the human
 # review in the window).
 WINDOW_ONLY_EDITS = frozenset({"angelo_job_start", "angelo_web_export", "angelo_web_preview", "angelo_engine_fix",
-                               "angelo_engine_link"})
+                               "angelo_engine_link", "angelo_library_import"})
 HEADLESS_TOOLS = frozenset((READ_TOOLS | EDIT_TOOLS) - WINDOW_ONLY_EDITS - {"angelo_job_cancel", "angelo_accept_preview"})
 if not EDIT_TOOLS - WINDOW_ONLY_EDITS <= BOUNDED_MUTATIONS:
     raise RuntimeError("Headless edits may contain only the Auto lane's bounded typed edits")
@@ -120,18 +124,21 @@ def clean_levels(levels):
 ACCESS_FILE = "access.json"   # <state>/mcp/access.json: the window's "Allow apps on this computer" switch
 # <state>/mcp/organization.json: the signed-in organization's app policy as the window applies it, or "none".
 ORGANIZATION_FILE = "organization.json"
+# Beside a record while a window writes it, and left when the write failed (``launcher_records``): the launcher fails
+# closed while one is there.
+OWED = launcher_records.OWED
 
 
-def _write_record(state_directory, name, record):
-    """One owner-only record the window keeps for the launcher, replaced atomically."""
-    root = Path(state_directory) / "mcp"
-    root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    temporary = root / (".%s.%s.tmp" % (name, uuid.uuid4().hex))
-    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+def _write_new(temporary, encoding, write, target):
+    """Fill the new owner-only file ``temporary`` with ``write(handle)``, then replace ``target`` with it (readers
+    share delete, ``shared_replace``); on any failure the temporary file is removed and the error raised."""
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(record, handle)
-        os.replace(temporary, root / name)
+        with os.fdopen(descriptor, "w", encoding=encoding) as handle:
+            write(handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        shared_replace.replace(temporary, target)
     except BaseException:
         try:
             os.remove(temporary)
@@ -143,17 +150,26 @@ def _write_record(state_directory, name, record):
 def _read_record(state_directory, name):
     """A record the window wrote, or None when it is missing or can't be read: only a regular file of at most
     ``team_org_policy.MAX_FILE`` bytes, never through a link at its name or by waiting on a FIFO (break-it M2)."""
+    root = Path(state_directory) / "mcp"
+    if launcher_records.markers(root, name) and not launcher_records.settled(root, name):
+        return None   # A write did not land: what the file says may be older and looser (fails closed).
     try:
-        saved = json.loads(read_regular(Path(state_directory) / "mcp" / name))
+        saved = json.loads(read_regular(root / name))
     except (OSError, ValueError):
         return None
     return saved if isinstance(saved, dict) and saved.get("version") == 1 else None
 
 
-def write_access(state_directory, allowed):
+def write_access(state_directory, allowed, claimed=(), intent=0.0):
     """Record the person's "Allow apps on this computer to reach Angelo" switch where the launcher reads it
-    (owner-only, atomic). Angelo's window writes it whenever the switch differs from what is recorded."""
-    _write_record(state_directory, ACCESS_FILE, {"version": 1, "allow_local_cli": bool(allowed)})
+    (owner-only, atomic), changed at ``intent`` (``time.time``; 0: as the window started). Angelo's window writes it
+    whenever the switch differs from what is recorded, weighed by ``launcher_records.weigh`` at a takeover of
+    ``claimed`` markers."""
+    root = Path(state_directory) / "mcp"
+    record = dict({"version": 1, "allow_local_cli": bool(allowed)}, **({"intent": intent} if intent else {}))
+    strictest = {"version": 1, "allow_local_cli": False, "intent": intent}
+    record = launcher_records.weigh(root, ACCESS_FILE, record, claimed, launcher_records.stricter_access, strictest)
+    launcher_records.write(root, ACCESS_FILE, record, [path for path, _other in claimed])
 
 
 def read_access(state_directory):
@@ -162,11 +178,16 @@ def read_access(state_directory):
     return value if isinstance(value, bool) else None
 
 
-def write_organization(state_directory, policy):
+def write_organization(state_directory, policy, claimed=(), intent=0.0):
     """Record the organization's app policy Angelo's window applies now (``team_view.org_policy``), or None for no
     organization (signed out, or no team sign-in in this build), where the launcher reads it (owner-only, atomic).
     The window writes it whenever it differs from what is recorded (``ExternalHost.record_organization``)."""
-    _write_record(state_directory, ORGANIZATION_FILE, {"version": 1, "organization": policy})
+    root = Path(state_directory) / "mcp"
+    record = dict({"version": 1, "organization": policy}, **({"intent": intent} if intent else {}))
+    strictest = {"version": 1, "organization": STRICTEST, "intent": intent}
+    stricter = lambda first, second: launcher_records.stricter_policy(first, second, org_policy, STRICTEST)
+    record = launcher_records.weigh(root, ORGANIZATION_FILE, record, claimed, stricter, strictest)   # As access.
+    launcher_records.write(root, ORGANIZATION_FILE, record, [path for path, _other in claimed])
 
 
 def read_organization(state_directory):
@@ -188,6 +209,8 @@ def read_organization(state_directory):
 def organization_recorded(state_directory):
     """Whether the window has recorded this computer's organization policy (none or a policy) in a form
     ``read_organization`` uses; False is what it reads as the strictest policy for want of a record."""
+    if launcher_records.markers(Path(state_directory) / "mcp", ORGANIZATION_FILE):
+        return True   # The window is writing it again: the strictest policy for now, never "open Angelo once".
     saved = _read_record(state_directory, ORGANIZATION_FILE)
     return saved is not None and "organization" in saved and (
         saved["organization"] is None or org_policy(saved["organization"]) is not None)
@@ -221,14 +244,10 @@ class AppRegistry:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(self.root, 0o700)
         temporary = self.path.with_name("clients." + uuid.uuid4().hex + ".tmp")
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            json.dump({"version": 1, "apps": {name: {"app": record["app"], "levels": list(record["levels"]),
-                                                     "connected_at": record.get("connected_at")}
-                                              for name, record in apps.items()}}, handle)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, self.path)
+        _write_new(temporary, "utf-8", lambda handle: json.dump(
+            {"version": 1, "apps": {name: {"app": record["app"], "levels": list(record["levels"]),
+                                           "connected_at": record.get("connected_at")}
+                                    for name, record in apps.items()}}, handle), self.path)
 
     def connect(self, app, name=None, levels=DEFAULT_LEVELS):
         """Record an app and write a fresh key; returns its client name. A reconnect replaces the key."""
@@ -241,12 +260,7 @@ class AppRegistry:
         os.chmod(self.keys, 0o700)
         key = self.keys / name
         temporary = key.with_name("." + name + "." + uuid.uuid4().hex + ".tmp")
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        with os.fdopen(descriptor, "w", encoding="ascii") as handle:
-            handle.write(secrets.token_hex(32))
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, key)
+        _write_new(temporary, "ascii", lambda handle: handle.write(secrets.token_hex(32)), key)
         apps = self.load()
         new = name not in apps
         apps[name] = {"app": app, "levels": clean_levels(levels), "connected_at": round(time.time())}

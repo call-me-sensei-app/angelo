@@ -7,6 +7,8 @@ what the host does with summarized thinking, not that a live runtime sends it (t
 Claude Code is in the document).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import tempfile

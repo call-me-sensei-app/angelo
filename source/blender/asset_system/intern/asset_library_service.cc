@@ -328,6 +328,7 @@ AssetLibrary *AssetLibraryService::move_runtime_current_file_into_on_disk_librar
 
     std::lock_guard lock_on_disk{on_disk_library->catalog_service_mutex_};
     std::lock_guard lock_runtime{library_service.current_file_library_->catalog_service_mutex_};
+    const CatalogEditScope edit_scope;
     on_disk_library->catalog_service_.swap(
         library_service.current_file_library_->catalog_service_);
   }

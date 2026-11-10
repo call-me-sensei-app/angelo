@@ -14,7 +14,7 @@ import tomllib
 import uuid
 from pathlib import Path
 
-from . import product_env, runtime_environment, team_runtime
+from . import product_env, runtime_environment, shared_replace, team_runtime
 from .cli_runtime import with_runtime_path
 from .protocol import RpcError
 from .provider_registry import CUSTOM_PROVIDER_MODES, TEAM_MODES, spec_for
@@ -90,6 +90,11 @@ def _hold_dynamic_tools():
 
 HOLD_DYNAMIC_TOOLS = _hold_dynamic_tools()
 HOLD_CEILING_SECONDS = 35 * 60   # The runtime's own bound on one hold (host_call_hold.rs HOLD_CEILING).
+# The fork's top-level setting listing dynamic tools that run one call at a time (its ANGELO.md). Codex 0.164 and later
+# let a code-mode cell's Promise.all send several calls at once (openai/codex#54654); the host was written for one at a
+# time (any call may wait for an approval, and overlapping edits would run in arrival order: agent_execution.rst,
+# "Concurrent calls"), so every Angelo tool is listed, which keeps 0.163's order. A Codex without the key ignores it.
+SERIAL_TOOLS_KEY = "serial_dynamic_tools"
 # The setting that lists the dynamic tools whose pictures a code-mode cell forwards to the model without image()
 # (image_proof: once per turn per picture): the fork's top-level key (its ANGELO.md). The pin's config_keys names it
 # once the pinned build reads it, which is what turns it on; the release checks confirm the build reads it.
@@ -109,7 +114,7 @@ def codex_command(executable, mode, state_dir, reuse_login=True, connection_id=N
     env = profile_environment(child_environment(mode, api_key), mode, state_dir, reuse_login, connection_id, native_profile)
     home = Path(env.get("CODEX_HOME", str(Path.home() / ".codex")))
     try:
-        configuration = tomllib.loads((home / "config.toml").read_text())
+        configuration = tomllib.loads(shared_replace.read_text(home / "config.toml"))   # The MCP setup replaces it.
     except (OSError, ValueError):
         configuration = {}
     command = [executable, "app-server", "--listen", "stdio://"]
@@ -139,10 +144,14 @@ def codex_command(executable, mode, state_dir, reuse_login=True, connection_id=N
         # tools and a mode note ("do not spawn sub-agents unless ... asked for ... parallel agent work") went into every
         # request, about 8.3 KB of the first (gpt_launch.rst).
         "agents.enabled": "false",
+        # A person's steer must never cancel a model request or a code-mode wait (steering_delivery): it is read at
+        # the next one. Off by default; set so a person's own config.toml can't turn it on for Angelo's threads.
+        "features.instant_interrupt": "false",
     }
     if HOLD_DYNAMIC_TOOLS:
         # Top level on purpose: a Codex without the key (the person's own) ignores it.
         overrides["code_mode_hold_dynamic_tools"] = json.dumps(list(HOLD_DYNAMIC_TOOLS))
+        overrides[SERIAL_TOOLS_KEY] = json.dumps(list(HOLD_DYNAMIC_TOOLS))
     forwarded = forward_image_tools(executable)
     if forwarded:  # Only to a build that reads it (forward_image_tools): every other Codex launches as before.
         overrides[FORWARD_IMAGES_KEY] = json.dumps(list(forwarded))

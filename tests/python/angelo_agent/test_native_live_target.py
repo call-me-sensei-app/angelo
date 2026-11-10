@@ -12,6 +12,8 @@ windows, scenes and view layers in attributes of any name, dictionaries and defe
 _scene_switch S14 frees real ones (a deleted scene and view layer, a load that may reuse the window's address).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest
@@ -168,7 +170,7 @@ class HeldWindowTests(unittest.TestCase):
         """Break-it SW-M-1: a look's (and any job's) settings restore with its scene gone, and its slot comes back."""
         source = (ADDON / "view_render_restore.py").read_text(encoding="utf-8")
         self.assertIn("if self.scene is None:   # Deleted (live_target)", source)
-        render = (ADDON / "view_render.py").read_text(encoding="utf-8")
+        render = (ADDON / "view_render_runner.py").read_text(encoding="utf-8")
         self.assertIn("finally:   # The person's render slot comes back whatever the settings did", render)
 
 

@@ -7,6 +7,8 @@ these tests pin that the builder hands out exactly the production revision.
 test_blender_turn_context.py proves the same contracts in the compiled binary.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import json
 import os
@@ -527,7 +529,8 @@ class ConsoleSendTests(unittest.TestCase):
 
     def run_execute(self, send_error=None, external=False):
         events = []
-        controller = SimpleNamespace(voice=None, state={"id": "chat-x"}, emit=lambda *a: events.append(("emit",) + a))
+        controller = SimpleNamespace(voice=None, state={"id": "chat-x"}, emit=lambda *a: events.append(("emit",) + a),
+                                     turn_running=lambda: False)   # Idle: Enter starts a request (console.submit).
 
         def require_model_chat():
             events.append(("require_model_chat",))
@@ -535,7 +538,7 @@ class ConsoleSendTests(unittest.TestCase):
                 raise RuntimeError("External client conversation: approvals and Stop only.")
         controller.require_model_chat = require_model_chat
 
-        def send(text, observation=None, *, recovery_evidence=None):
+        def send(text, observation=None, *, recovery_evidence=None, references=None, pending=()):
             events.append(("send", text, observation))
             if send_error:
                 raise send_error
@@ -543,7 +546,7 @@ class ConsoleSendTests(unittest.TestCase):
         turn = SimpleNamespace(observation={"context_version": 2}, recovery_evidence={}, commit=lambda: events.append(("commit",)))
         fake_ui = ModuleType("angelo_agent.ui")
         fake_ui.get_controller = lambda: controller
-        fake_ui.prepare_controller = lambda: events.append(("prepare_controller",))
+        fake_ui.prepare_controller = lambda chat=None: events.append(("prepare_controller",))
         fake_ui.main_window = lambda: "window"
         fake_bpy = ModuleType("bpy")
         fake_bpy.ops = SimpleNamespace(console=SimpleNamespace(history_append=lambda **_: events.append(("history",))))

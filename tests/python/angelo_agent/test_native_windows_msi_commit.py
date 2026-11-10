@@ -11,6 +11,8 @@ The PowerShell runs only on the Windows VM, so it is checked by contract and by 
 other Windows tests use; ``msi_commit.py`` and ``wait_off`` run here.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import os
@@ -29,6 +31,7 @@ for folder in (HERE, SCRIPTS):
     if str(folder) not in sys.path:
         sys.path.insert(0, str(folder))
 import msi_commit  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 from ps_stderr_lint import stderr_hazards  # noqa: E402
 from test_native_sign_windows import ps_structure_problems  # noqa: E402
 
@@ -122,6 +125,8 @@ class MsiCommitTests(unittest.TestCase):
         self.assertEqual(msi_commit.candidates([], [self.root], "*.msi"), [shallow])
 
 
+@unittest.skipIf(os.name == "nt", environment_skip(
+    "gcp_windows_validate.sh is a bash launcher run from the macOS workstation, not on Windows"))
 @unittest.skipUnless(shutil.which("bash") and shutil.which("python3"), "the launcher is bash, run from the workstation")
 class ReleaseFailureWaitTests(unittest.TestCase):
     FAKE = r"""#!/usr/bin/env bash

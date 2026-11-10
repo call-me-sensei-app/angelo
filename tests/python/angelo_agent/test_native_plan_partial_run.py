@@ -12,6 +12,8 @@ The loop is driven with mocked rounds and native calls: no model, process or
 Blender (doc/angelo/agent_integration.rst, "Operations the host refused alone").
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import itertools
 import json

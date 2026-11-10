@@ -59,9 +59,10 @@ def known_failure(config_directory):
     return _failed.get(key) if key else None
 
 
-def remember_failure(config_directory, code):
-    from .headless_files import identity
-    key = identity(Path(config_directory) / USERPREF)
+def remember_failure(key, code):
+    """Remember why a start with the preferences file ``key`` names failed: the identity ``stage`` took before it
+    read the file, never a stat taken after the start, which could be of a version the person saved since (a fix of
+    the add-on that broke the start) and would keep that version from ever being tried."""
     if key:
         _failed[key] = code
 
@@ -102,8 +103,9 @@ def person_config_directory(environ, platform, home=None):
     return home / ".config" / names["user_dir_name_unix"] / BLENDER_SERIES / CONFIG
 
 
-def stage(source_directory, private):
-    """Copy the person's preferences into ``private``; returns ``YOURS`` or a ``FACTORY`` code.
+def stage(source_directory, private, staged=None):
+    """Copy the person's preferences into ``private``; returns ``YOURS`` or a ``FACTORY`` code. ``staged`` (a dict),
+    when given, gets the copied file's ``identity``, taken before it is read (``remember_failure``).
 
     Opens the person's file for reading only (a link to it is followed, as Blender follows it) and writes a new
     owner-only file in the private folder; anything but a regular file of a sane size counts as unreadable."""
@@ -118,6 +120,9 @@ def stage(source_directory, private):
         info = os.fstat(descriptor)
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_BYTES:
             return "unreadable"
+        if staged is not None:
+            from .headless_files import settled_identity
+            staged["identity"] = settled_identity(info)   # Before the read: a later save changes what it names.
         data = b""
         while len(data) <= MAX_BYTES:
             chunk = os.read(descriptor, 1 << 20)

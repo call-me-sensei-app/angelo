@@ -12,6 +12,10 @@ only in a disposable instance with the exact Angelo binary: ``--background
 paid call.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -30,7 +34,7 @@ os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_CONNECTIONS_DIR=str(OU
                   ANGELO_STATE_DIR=str(OUT / "state"))
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from angelo_agent import native_programs as native, program_commit, scene_queries as queries  # noqa: E402
+from angelo_agent import commit_orphans, native_programs as native, program_commit, scene_queries as queries  # noqa: E402
 from angelo_agent.action_animation import channelbag  # noqa: E402
 from angelo_agent.tool_specs import validate_call  # noqa: E402
 from program_qa_helpers import no_stages, commit_operator, spent_budget  # noqa: E402
@@ -109,19 +113,32 @@ def animate():
 def key_edits():
     obj = cube()
     artist_action = obj.animation_data.action
+    artist_uid, artist_name = artist_action.session_uid, artist_action.name
     job, staged = run(program([op("keyframe_configure", obj, property="location", frames=[1, 10], interpolation="LINEAR",
                                   easing="EASE_IN"),
                                op("keyframe_delete", obj, property="location", frame=20)], obj))
     check("key_edit_ready_without_live_edit", staged.get("ready_to_commit") and len(keys(obj)) == 3)
-    check("key_edit_commits", commit(job) and passed(job))
+    before_free = {}
+    free = commit_orphans.free_replaced
+
+    def read_then_free(replaced, scope=None):   # The artist's Action as the commit leaves it, read before it is freed.
+        for pair in replaced:
+            if pair[0] is not None and pair[0].session_uid == artist_uid:
+                bag = pair[0].layers[0].strips[0].channelbags[0]
+                before_free["keys"] = len(bag.fcurves.find("location", index=0).keyframe_points)
+        return free(replaced, scope)
+    with patch.object(commit_orphans, "free_replaced", read_then_free):
+        check("key_edit_commits", commit(job) and passed(job))
     check("key_edit_live", keys(cube()) == [(1, "LINEAR", "EASE_IN"), (10, "LINEAR", "EASE_IN")]
           and len(keys(cube(), 2)) == 2)
-    original = artist_action.layers[0].strips[0].channelbags[0]
-    check("artist_action_untouched", len(original.fcurves.find("location", index=0).keyframe_points) == 3
-          and cube().animation_data.action != artist_action and cube().animation_data.action.name == artist_action.name.rsplit(".", 1)[0])
+    # The commit edits a copy, never the artist's Action: it still has its three keys when the commit frees it
+    # (commit_orphans); Undo gives it back.
+    check("artist_action_untouched", before_free.get("keys") == 3 and cube().animation_data.action.session_uid != artist_uid
+          and cube().animation_data.action.name == artist_name)
+    check("artist_action_freed", artist_uid not in {action.session_uid for action in bpy.data.actions})
     undo()
     check("key_edit_one_undo", keys(cube()) == [(1, "BEZIER", "AUTO"), (10, "BEZIER", "AUTO"), (20, "BEZIER", "AUTO")]
-          and no_stages())
+          and cube().animation_data.action.name == artist_name and no_stages())
     job, result = run(program([op("keyframe_delete", cube(), property="location", frame=15)], cube()))
     check("missing_key_refused", result.get("status") == "failed" and "KEY_NOT_FOUND" in result["error"] and no_stages())
 

@@ -4,6 +4,8 @@
 break-it review's findings on the change's first version (``test_native_runtime_unsent_loss`` has the lead and the
 Controller). Each case injects the dead runtime deterministically."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import subprocess
 import sys
 import tempfile

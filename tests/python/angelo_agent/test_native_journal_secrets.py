@@ -9,6 +9,8 @@ bound after it was saved in any row or result record (``activity_rows.bind_key``
 rewrites), and a thinking summary whose key arrives split across fragments (redacted over the joined text).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import unittest

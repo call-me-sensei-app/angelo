@@ -13,6 +13,8 @@ library reads the files Blender wrote in ``test_blender_exr_codecs`` and
 ``test_blender_view_sources``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import tempfile
@@ -292,18 +294,21 @@ class CodecTests(ExrCase):
 
     def test_nothing_the_child_does_escapes_as_anything_but_a_refusal(self):
         self.pizzed()
-        view_exr_codecs.TIMEOUT = 1
         cases = {"crash": "decoder stopped while reading it", "hang": "took over 1 s", "garbage": "no usable answer",
                  "no_newline": "no usable answer", "error": "could not be read: the library could not open the file",
                  "wrong_size": "wrong size", "short": "wrong size"}
         for mode, text in cases.items():
             with self.subTest(mode=mode):
                 self.worker(mode)
+                # Only the hang meets a 1 s deadline: the others keep the real one, since a cold start of the
+                # stand-in (Python, then numpy) can take over a second on a loaded or Windows host.
+                view_exr_codecs.TIMEOUT = 1 if mode == "hang" else self.saved[2]
                 with self.assertRaises(view_exr.ExrError) as caught:
                     view_exr.read_channels(self.path, 0, ["ViewLayer.Depth.Z"] if mode != "short" else ["ViewLayer.Depth.Z"])
                 self.assertIn(text, str(caught.exception))
                 self.assertNotIn("private", str(caught.exception), "the library's own text, which can hold paths, is not passed on")
         self.worker("short")
+        view_exr_codecs.TIMEOUT = self.saved[2]
         with self.assertRaisesRegex(view_exr.ExrError, "wrong size"):
             view_exr.read_channels(self.path, 1, ["ViewLayer.Normal.X", "ViewLayer.Normal.Y"])
 

@@ -30,6 +30,7 @@ What goes:
 """
 
 import json
+from . import request_rows
 
 CAPABILITIES = "angelo_agent_capabilities"
 START = "angelo_workers_start"
@@ -62,10 +63,10 @@ def job_rows(lead, part):
     the newest row) to their next message."""
     rows = list(lead.state.get("messages") or ())
     anchor = next((index for index in range(len(rows) - 1, -1, -1) if _starts(rows[index], part)), len(rows) - 1)
-    begin = next((index for index in range(anchor, -1, -1) if rows[index].get("role") == "user"), None)
+    begin = next((index for index in range(anchor, -1, -1) if request_rows.starts_request(rows[index])), None)
     if begin is None:
         return []
-    end = next((index for index in range(anchor + 1, len(rows)) if rows[index].get("role") == "user"), len(rows))
+    end = next((index for index in range(anchor + 1, len(rows)) if request_rows.starts_request(rows[index])), len(rows))
     return rows[begin + 1:end]
 
 

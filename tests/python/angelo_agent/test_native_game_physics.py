@@ -6,6 +6,8 @@ name suffixes, the findings, and the contracts that keep the settings writable b
 test_blender_godot_physics_e2e.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import math
 import sys
@@ -19,6 +21,7 @@ sys.path.insert(0, str(PHYSICS))
 sys.path.insert(0, str(ADDONS))
 import shapes  # noqa: E402
 import godot_suffixes  # noqa: E402
+import fitting  # noqa: E402
 from angelo_agent import action_properties, game_physics, rna_rules  # noqa: E402
 
 
@@ -104,6 +107,156 @@ class Transforms(unittest.TestCase):
         self.assertTrue(close(rotation, shapes.IDENTITY_ROTATION))
 
 
+class WrittenBounds(unittest.TestCase):
+    def test_gltf_bounds_come_back_in_blender_axes(self):
+        # glTF (x, y, z) is Blender (x, -z, y) under +Y up: the -Z side of glTF is Blender's +Y side.
+        low, high = shapes.bounds_from_gltf((-1, 0, -3), (1, 2, 0.5), True)
+        self.assertTrue(close(low, (-1, -0.5, 0)) and close(high, (1, 3, 2)))
+        self.assertEqual(shapes.bounds_from_gltf((-1, 0, -3), (1, 2, 0.5), False), ((-1, 0, -3), (1, 2, 0.5)))
+
+    def test_a_skinned_shape_is_placed_where_its_skin_draws(self):
+        source = (PHYSICS / "export.py").read_text(encoding="utf-8")
+        self.assertIn("written = _skin_frame(record.skin, tree)", source)
+
+
+class _Prop:
+    def __init__(self, identifier, kind="FLOAT"):
+        self.identifier, self.type = identifier, kind
+
+
+class _Modifier:
+    def __init__(self, kind, show=True, target=None, **values):
+        self.type, self.show_viewport, self.object = kind, show, target
+        self.__dict__.update(values)
+        self.bl_rna = type("RNA", (), {"properties": [_Prop("show_viewport", "BOOLEAN"), _Prop("object", "POINTER")]
+                                       + [_Prop(name) for name in values]})()
+
+
+class _Id:
+    def __init__(self, pointer):
+        self.pointer = pointer
+
+    def as_pointer(self):
+        return self.pointer
+
+    @property
+    def original(self):   # A depsgraph update's id is the evaluated copy; ``original`` is the data's own.
+        return self
+
+
+class Mesh(_Id):   # Updates are told apart by the id's type name, as Blender's are.
+    pass
+
+
+class _Vertices(list):
+    def foreach_get(self, _attribute, values):
+        values[:] = [value for point in self for value in point]
+
+
+class Object(_Id):
+    def __init__(self, uid, modifiers=(), kind="MESH", vertices=8, mesh=100):
+        super().__init__(uid)
+        self.session_uid, self.type, self.modifiers, self.name = uid, kind, list(modifiers), "Object%d" % uid
+        self.data = Mesh(mesh)
+        self.data.vertices = _Vertices([(float(index), 0.0, 0.0) for index in range(vertices)])
+
+
+class _Update:
+    def __init__(self, item, geometry=True):
+        self.id, self.is_updated_geometry = item, geometry
+
+
+class SharedFit(unittest.TestCase):
+    """``fitting``: one measurement for the export, the panel and Edit Fitted Size."""
+
+    def setUp(self):
+        fitting.clear()
+        self.scheduled = []
+        self._schedule, fitting._schedule = fitting._schedule, self.scheduled.append   # No bpy timers here.
+
+    def tearDown(self):
+        fitting._schedule = self._schedule
+        fitting.clear()
+
+    def test_what_each_object_costs(self):
+        rig = _Id(1)
+        self.assertEqual(fitting.kind(Object(1)), "evaluated")
+        self.assertEqual(fitting.kind(Object(1, [_Modifier("ARMATURE", target=rig)])), "vertices")
+        self.assertEqual(fitting.kind(Object(1, [_Modifier("ARMATURE", target=rig), _Modifier("ARRAY")])), "rest")
+        self.assertEqual(fitting.kind(Object(1, [_Modifier("ARMATURE", target=rig), _Modifier("ARRAY", show=False)])),
+                         "vertices")
+        self.assertEqual(fitting.kind(Object(1, [_Modifier("ARMATURE", target=rig)], kind="CURVE")), "rest")
+        # An Armature modifier that is off, or has no armature, deforms nothing.
+        self.assertEqual(fitting.kind(Object(1, [_Modifier("ARMATURE", show=False, target=rig)])), "evaluated")
+        self.assertEqual(fitting.kind(Object(1, [_Modifier("ARMATURE")])), "evaluated")
+
+    def test_points_bounds(self):
+        import numpy as np
+        self.assertEqual(fitting.points_bounds(np.array([[0, 1, 2], [-1, 3, 0.5]])), ((-1, 1, 0.5), (0, 3, 2)))
+        self.assertIsNone(fitting.points_bounds(np.empty((0, 3))))
+
+    def test_signature_tracks_modifiers_and_mesh_not_pose(self):
+        rig = _Id(7)
+        obj = Object(1, [_Modifier("ARMATURE", target=rig), _Modifier("ARRAY", count=2.0)])
+        before = fitting.signature(obj)
+        self.assertEqual(fitting.signature(obj), before)
+        obj.modifiers[1].count = 3.0
+        self.assertNotEqual(fitting.signature(obj), before)
+        obj.modifiers[1].count = 2.0
+        self.assertEqual(fitting.signature(obj), before)
+        obj.data.vertices[0] = (5.0, 0.0, 0.0)   # A vertex moved.
+        self.assertNotEqual(fitting.signature(obj), before)
+        self.assertEqual(fitting.signature(obj, vertices=False)[:3], before[:3])
+
+    def test_live_values_are_copied(self):
+        values = [1.0, 2.0]
+        self.assertEqual(fitting._plain(values), (1.0, 2.0))
+        self.assertEqual(fitting._plain([[1, 2], [3, 4]]), ((1, 2), (3, 4)))
+        self.assertEqual(fitting._plain(_Id(9)), 9)
+
+    def test_invalidation(self):
+        rig = _Id(7)
+        posed = Object(1, [_Modifier("ARMATURE", target=rig)], mesh=100)
+        other = Object(2, [_Modifier("ARMATURE", target=rig)], mesh=200)
+        for obj in (posed, other):
+            fitting.store(obj, ((0, 0, 0), (1, 1, 1)))
+        fitting.invalidate([_Update(posed)])   # A new pose: the object's geometry, the same modifiers.
+        self.assertEqual(self.scheduled, [fitting.settle])
+        fitting.settle()
+        self.assertEqual(set(fitting._cache), {1, 2})
+        posed.modifiers[0].show_viewport = False   # Switched off and back before the timer (an export does that).
+        fitting.invalidate([_Update(posed)])
+        posed.modifiers[0].show_viewport = True
+        fitting.settle()
+        self.assertEqual(set(fitting._cache), {1, 2})
+        fitting.invalidate([_Update(posed, geometry=False)])
+        self.assertEqual(fitting._suspect, {})
+        posed.modifiers.append(_Modifier("ARRAY", count=2.0))   # A real change: dropped and measured again.
+        fitting.invalidate([_Update(posed)])
+        fitting.settle()
+        self.assertEqual(set(fitting._cache), {2})
+        self.assertEqual(fitting._pending, {1: "Object1"})
+        fitting.invalidate([_Update(Mesh(200))])   # The other object's mesh updated, its vertices unchanged.
+        fitting.settle()
+        self.assertEqual(set(fitting._cache), {2})
+        other.data.vertices[3] = (0.0, 9.0, 0.0)   # Now edited.
+        fitting.invalidate([_Update(other.data)])
+        fitting.settle()
+        self.assertEqual(fitting._cache, {})
+        self.assertEqual(fitting._pending, {1: "Object1", 2: "Object2"})
+
+    def test_export_panel_and_edit_share_it(self):
+        export = (PHYSICS / "export.py").read_text(encoding="utf-8")
+        panel = (ADDONS / "angelo_agent/game_physics_ui.py").read_text(encoding="utf-8")
+        found = (ADDONS / "angelo_agent/game_physics.py").read_text(encoding="utf-8")
+        self.assertIn("fitting.rest_bounds(record.obj)", export)
+        self.assertIn("_fitting().cached_bounds(obj)", panel)          # The draw: cached, never measured.
+        self.assertIn("_fitting().fitted(obj, settings)", panel)       # Edit Fitted Size: measured now.
+        self.assertIn("fitting.cached_bounds(obj)", found)
+        for source in (export, panel, found):
+            self.assertNotIn("bound_box)\n    return shapes.fit_bounds", source)
+
+
 class OmiDictionaries(unittest.TestCase):
     def test_capsule_is_written_as_godot_reads_it(self):
         entry = shapes.omi_shape(shapes.Fit("CAPSULE", radius=0.4, height=3, axis=1))
@@ -183,6 +336,16 @@ class Findings(unittest.TestCase):
         self.assertEqual(codes(rows), {("shape_indirect", "Hand")})
         rows[1]["animated"] = False   # Still: the exporter moves it below the body.
         self.assertEqual(codes(rows), set())
+
+    def test_what_moves_inside_a_body(self):
+        self.assertTrue(game_physics.moves({"location"}, "OBJECT", False))
+        self.assertTrue(game_physics.moves({"delta_rotation_euler"}, "OBJECT", False))
+        # A posed armature moves its bones, not itself: a mesh it deforms keeps a still node, a bone's child moves.
+        self.assertFalse(game_physics.moves({'pose.bones["Arm"].rotation_euler'}, "OBJECT", False))
+        self.assertFalse(game_physics.moves(set(), "OBJECT", True))
+        self.assertTrue(game_physics.moves(set(), "BONE", True))
+        self.assertFalse(game_physics.moves(set(), "BONE", False))
+        self.assertFalse(game_physics.moves({'["custom"]', "color"}, "OBJECT", False))
 
     def test_an_animated_empty_directly_below_its_body_keeps_its_shape(self):
         rows = [record("Body", "EMPTY", body="RIGID"),
@@ -271,6 +434,49 @@ class Contracts(unittest.TestCase):
         self.assertIn("user_extensions = [angelo_physics.export_extension()]", source)
         self.assertIn("user_extensions = [angelo_physics.import_extension()]", source)
         self.assertIn("angelo_physics.register()", source)
+
+
+class HeldOutAssets(unittest.TestCase):
+    """The e2e's held-out manifest is the rule's output: pinned sources, a licence each, one row per file."""
+
+    E2E = Path(__file__).resolve().parent / "godot_physics_e2e"
+
+    def setUp(self):
+        import json
+        sys.path.insert(0, str(self.E2E))
+        import fetch_heldout_assets
+        self.fetch = fetch_heldout_assets
+        self.manifest = json.loads((self.E2E / "heldout_assets.json").read_text(encoding="utf-8"))
+
+    def test_sources_are_pinned_and_licensed(self):
+        for source in self.manifest["sources"]:
+            self.assertRegex(source["commit"], r"^[0-9a-f]{40}$", source["kit"])
+            self.assertIn("CC0-1.0", source["licence"])
+            self.assertEqual(source["licence_url"], self.fetch.raw_url(source["repo"], source["commit"],
+                                                                       source["licence_file"]))
+            self.assertRegex(source["licence_sha256"], r"^[0-9a-f]{64}$")
+            self.assertTrue(source["licence_statement"])
+
+    def test_every_model_follows_its_source(self):
+        import fnmatch
+        sources = {source["kit"]: source for source in self.manifest["sources"]}
+        models = self.manifest["models"]
+        self.assertGreaterEqual(len(models), 15)
+        self.assertEqual(len({item["file"] for item in models}), len(models))
+        for item in models:
+            source = sources[item["kit"]]
+            self.assertTrue(fnmatch.fnmatchcase(item["path"], source["glob"]), item["path"])
+            self.assertEqual(item["file"], source["prefix"] + item["path"].rsplit("/", 1)[-1])
+            self.assertEqual(item["url"], self.fetch.raw_url(source["repo"], source["commit"], item["path"]))
+            self.assertRegex(item["sha256"], r"^[0-9a-f]{64}$")
+        for kit, source in sources.items():
+            self.assertEqual(source["models"], sum(1 for item in models if item["kit"] == kit), kit)
+
+    def test_only_glb_bytes_are_accepted(self):
+        self.assertEqual(self.fetch.checked(b"glTF\x02\x00\x00\x00", "a.glb"), b"glTF\x02\x00\x00\x00")
+        for data in (b"version https://git-lfs.github.com/spec/v1\n", b"<!DOCTYPE html>"):
+            with self.assertRaises(SystemExit):
+                self.fetch.checked(data, "a.glb")
 
 
 if __name__ == "__main__":

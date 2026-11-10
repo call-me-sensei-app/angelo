@@ -47,16 +47,22 @@ OPEN_FAILED = n_("Angelo couldn't open {asset}: {reason}")
 INSTALLED = {"GODOT": n_("Angelo Link added to {project}. In Godot, enable it in Project Settings > Plugins"),
              "UNITY": n_("Angelo Link added to {project}. Unity loads it when you return to the editor"),
              "UNREAL": n_("Angelo Link added to {project}. In Unreal Engine, enable it in Edit > Plugins and restart "
-                          "the editor")}
+                          "the editor"),
+             "WEB": n_("The live link is on for {project}, and the npm install command is on the clipboard. Then add "
+                       "angeloLive() from @call-me-sensei/angelo/vite to the plugins in its Vite config")}
 NOT_PROJECT = {"GODOT": n_("Choose the folder that holds project.godot"),
                "UNITY": n_("Choose the Unity project's folder, the one that holds Assets and ProjectSettings"),
-               "UNREAL": n_("Choose the Unreal Engine project's folder, the one that holds its .uproject file")}
+               "UNREAL": n_("Choose the Unreal Engine project's folder, the one that holds its .uproject file"),
+               "WEB": n_("Choose the web project's folder, the one that holds package.json")}
 INSTALL_ROW = {"GODOT": n_("Add Angelo Link to a Godot project…"), "UNITY": n_("Add Angelo Link to a Unity project…"),
-               "UNREAL": n_("Add Angelo Link to an Unreal Engine project…")}
+               "UNREAL": n_("Add Angelo Link to an Unreal Engine project…"),
+               "WEB": n_("Add Angelo Link to a Three.js project…")}
 INSTALL_WHY = n_("Copies the plugin into the project and turns the live link on")
+INSTALL_WHY_NPM = n_("Puts the npm install command on the clipboard and turns the live link on")   # Nothing copied.
 PHYSICS_ROW = n_("Game physics for the selected object…")
 PHYSICS_WHY = n_("Colliders and bodies that engines import from glTF")
-ENGINE_ADAPTERS = {"GODOT": "godot_link_assets", "UNITY": "unity_link_assets", "UNREAL": "unreal_link_assets"}
+ENGINE_ADAPTERS = {"GODOT": "godot_link_assets", "UNITY": "unity_link_assets", "UNREAL": "unreal_link_assets",
+                   "WEB": "web_link_assets"}
 SETTINGS_FILE = "engine-link-settings.json"
 STATUS_ON, STATUS_LIVE = n_("Engine live link on"), n_("Live in {engine}: {asset}")
 STATUS_LINKED = n_("Linked to {engine}: {asset}")   # Saves update it; its editors show no live scenes.
@@ -75,20 +81,26 @@ def _settings_path():
 def remember(on):
     """Keep the person's choice: a link they turned on starts again with Angelo until they turn it off."""
     import json
+    import uuid
+    from . import shared_replace
+    temporary = None
     try:
         path = _settings_path()
-        with open(path + ".tmp", "w", encoding="utf-8") as handle:
+        temporary = "%s.%s.tmp" % (path, uuid.uuid4().hex)   # Its own: another window may save at once.
+        with open(temporary, "x", encoding="utf-8") as handle:
             json.dump({"on": bool(on)}, handle)
-        os.replace(path + ".tmp", path)
-    except Exception:
-        pass   # Remembered for this session only.
+        shared_replace.replace(temporary, path)
+    except Exception as error:   # Remembered for this session only, and said.
+        print("Angelo: the engine live link setting could not be saved:", error)
+        if temporary is not None and os.path.exists(temporary):
+            os.remove(temporary)
 
 
 def remembered():
     import json
-    try:
-        with open(_settings_path(), encoding="utf-8") as handle:
-            return json.load(handle).get("on") is True
+    from . import shared_replace
+    try:   # Sharing delete: another window's save lands while this reads.
+        return json.loads(shared_replace.read_text(_settings_path())).get("on") is True
     except Exception:
         return False
 
@@ -214,7 +226,10 @@ def install(engine, project):
     module = adapter(engine)
     if not module.is_project(project):
         raise ValueError(iface_(NOT_PROJECT[engine]))
-    assets.install_plugin(module, project)
+    if module.PLUGIN_SOURCE is None:   # The web's plugin is an npm package: the developer installs it.
+        bpy.context.window_manager.clipboard = module.install_hint()[0]
+    else:
+        assets.install_plugin(module, project)
     if not engine_link.running():
         turn_on()   # The plugin is in place either way; the link says why when it is turned on again.
     return iface_(INSTALLED[engine], project=os.path.basename(project))
@@ -258,7 +273,7 @@ class ANGELO_OT_godot_link_install(bpy.types.Operator):
                       "engine live link")
 
     engine: bpy.props.EnumProperty(items=(("GODOT", "Godot", ""), ("UNITY", "Unity", ""),
-                                          ("UNREAL", "Unreal Engine", "")),
+                                          ("UNREAL", "Unreal Engine", ""), ("WEB", "Three.js", "")),
                                    default="GODOT", options={'SKIP_SAVE', 'HIDDEN'})
     directory: bpy.props.StringProperty(subtype='DIR_PATH', options={'SKIP_SAVE'})
     filter_folder: bpy.props.BoolProperty(default=True, options={'HIDDEN', 'SKIP_SAVE'})
@@ -300,7 +315,8 @@ def _group_rows(chosen, fit_target):
     rows.append(cd.leaf("godot_link", "game_physics", PHYSICS_ROW, PHYSICS_WHY, glyph="link",
                         operator="angelo.game_physics"))   # Colliders and bodies (game_physics_ui).
     for engine in ENGINE_ADAPTERS:   # Row ids keep Godot's from 1.0.7 (godot_link_install).
-        rows.append(cd.leaf("godot_link", engine.lower() + "_link_install", INSTALL_ROW[engine], INSTALL_WHY,
+        why = INSTALL_WHY if adapter(engine).PLUGIN_SOURCE is not None else INSTALL_WHY_NPM
+        rows.append(cd.leaf("godot_link", engine.lower() + "_link_install", INSTALL_ROW[engine], why,
                             glyph="link", operator=ANGELO_OT_godot_link_install.bl_idname,
                             properties=(("engine", engine),)))
     return rows

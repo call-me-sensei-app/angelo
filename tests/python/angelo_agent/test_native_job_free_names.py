@@ -12,6 +12,8 @@ published; and "already exists" never reaches the model as a refusal. Every test
 backend through ``fake_nt_files.FakeNtApi``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import json
 import os
@@ -154,23 +156,32 @@ class PosixFreeNames(unittest.TestCase):
         self.assertEqual(len(os.listdir(self.root)), MAX_NAMES)
         self.assertTrue(all(path.read_bytes() == b"taken" for path in self.root.iterdir()))
 
-    # Same names to the file system (APFS) -------------------------------------------------------------------------
+    # Same names to the file system (APFS: case and normalisation; NTFS: case only) -------------------------------
 
-    def test_names_the_file_system_folds_together_count_as_taken(self):
-        probe = self.root / "Probe"
+    def folds(self, written, asked, why):
+        """Skip unless this file system treats ``written`` and ``asked`` as one name (the stand-in never does)."""
+        probe = self.root / written
         probe.write_bytes(b"")
-        folds = os.path.exists(self.root / "probe")
+        folds = os.path.exists(self.root / asked)
         probe.unlink()
         if self.windows or not folds:
-            self.skipTest(environment_skip("a case-sensitive file system"))
+            self.skipTest(environment_skip(why))
+
+    def test_names_the_file_system_folds_together_count_as_taken(self):
+        self.folds("Probe", "probe", "a case-sensitive file system")
         (self.root / "CASTLE-FINAL.png").write_bytes(b"theirs")
+        self.assertEqual(self.publish("castle-final.png", "j9")[1], "castle-final-j9.png", "the spelling asked for")
+        self.assertEqual((self.root / "CASTLE-FINAL.png").read_bytes(), b"theirs")
+
+    def test_names_the_file_system_normalises_together_count_as_taken(self):
+        self.folds(unicodedata.normalize("NFD", "é"), unicodedata.normalize("NFC", "é"),
+                   "a file system that keeps Unicode normalisations apart (NTFS, ext4)")
         (self.root / unicodedata.normalize("NFD", "café-j9.png")).write_bytes(b"theirs too")
-        self.assertEqual(self.publish("castle-final.png", "j9")[1], "castle-final-j9.png")
         (self.root / unicodedata.normalize("NFD", "café.png")).write_bytes(b"theirs")
         relative = self.publish(unicodedata.normalize("NFC", "café.png"), "j9")[1]
         self.assertEqual(unicodedata.normalize("NFC", relative), unicodedata.normalize("NFC", "café-j9-2.png"))
         self.assertEqual(sorted(path.read_bytes() for path in self.root.iterdir() if b"theirs" in path.read_bytes()),
-                         [b"theirs", b"theirs", b"theirs too"])
+                         [b"theirs", b"theirs too"])
 
     # What the approval, the start result and the model read ------------------------------------------------------
 
@@ -321,7 +332,12 @@ class PosixFreeNames(unittest.TestCase):
     def test_names_are_never_longer_than_file_systems_allow(self):
         # Review finding 6: a taken name near NAME_MAX made a fallback too long, which failed the finished job.
         name = "a" * 251 + ".png"
-        (self.root / name).write_bytes(b"theirs")
+        try:
+            (self.root / name).write_bytes(b"theirs")
+        except FileNotFoundError:   # Windows without long paths: the folder and the name exceed 260 characters.
+            if os.name != "nt":
+                raise
+            self.skipTest(environment_skip("this Windows host limits a path to 260 characters (LongPathsEnabled off)"))
         self.assertTrue(all(len(entry.encode()) <= 255 for entry in candidates(name, "j23", False, False)[1:]))
         self.assertEqual(self.publish(name, "j23")[1], "a" * 247 + "-j23.png")
 

@@ -11,6 +11,7 @@
 #include <type_traits>
 #include <climits>
 
+#include "BLI_checkpoint_budget.hh"
 #include "BLI_map.hh"
 #include "BLI_set.hh"
 #include "BLI_string.h"
@@ -46,9 +47,13 @@ bool product(const uint64_t a, const uint64_t b, uint64_t &result)
   result = a * b;
   return true;
 }
+/** Charges ``bytes`` against a budget; a refusal is a budget refusal (BLI_checkpoint_budget.hh). */
 bool charge(size_t &value, const uint64_t bytes, const size_t limit)
 {
-  if (bytes > limit || value > limit - size_t(bytes)) { return false; }
+  if (bytes > limit || value > limit - size_t(bytes)) {
+    checkpoint_budget_refused();
+    return false;
+  }
   value += size_t(bytes);
   return true;
 }
@@ -73,7 +78,12 @@ struct Writer {
   }
   void bytes(const void *data, const size_t length)
   {
-    if (!valid || length > limit || position > limit - length) { valid = false; return; }
+    if (!valid) { return; }
+    if (length > limit || position > limit - length) {
+      checkpoint_budget_refused();   /* The companion's file budget. */
+      valid = false;
+      return;
+    }
     const std::byte *source = static_cast<const std::byte *>(data);
     for (size_t done = 0; done < length;) {
       const size_t size = std::min(length - done, buffer.size() - used);
@@ -231,7 +241,8 @@ struct Reader {
     if (group_size < 64) { while (aligned < group_size) { aligned *= 2; } }
     else { aligned = group_size > uint64_t(INT64_MAX - 63) ? 0 : ((group_size + 63) & ~uint64_t(63)); }
     if ((group_size && !aligned) || !product(groups, aligned, storage) || storage > INT_MAX ||
-        !charge(retained, ((storage + 63) / 64) * 8, backing_limit) || (count + 7) / 8 > end - position)
+        (count + 7) / 8 > end - position ||   /* Structural first: a truncated section is not a budget refusal. */
+        !charge(retained, ((storage + 63) / 64) * 8, backing_limit))
     { valid = false; return; }
     const uint64_t bytes = (count + 7) / 8;
     if (scan) {
@@ -257,8 +268,8 @@ struct Reader {
     const uint64_t groups = u64(), size = u64();
     if (!valid || groups > 1 || (groups == 0 && size != 0) ||
         (groups == 1 && size == 0) || size != expected_size || size > INT_MAX ||
-        !charge(retained, ((size + 63) / 64) * 8, backing_limit) ||
-        (size + 7) / 8 > end - position) { valid = false; return; }
+        (size + 7) / 8 > end - position ||   /* Structural first. */
+        !charge(retained, ((size + 63) / 64) * 8, backing_limit)) { valid = false; return; }
     if (scan) {
       const uint64_t length = (size + 7) / 8;
       if (length && size % 8) {
@@ -513,7 +524,7 @@ static bool encode_views(const Span<undo::SnapshotObjectView> objects,
   if (!account(objects.size(), sizeof(undo::SnapshotObjectView) + sizeof(ObjectBinding)) ||
       !account(grids.size(), sizeof(undo::SnapshotGridView) + sizeof(GridBinding) + sizeof(int)) ||
       !account(sections, sizeof(Entry)) ||
-      (geometry_sections && limits.max_scratch_bytes - metadata < buffer_size)) {
+      (geometry_sections && !checkpoint_budget_fits(buffer_size, limits.max_scratch_bytes - metadata))) {
     return fail(r_error, "Aggregate Sculpt encode metadata/staging exceeds the scratch policy");
   }
   for (const GridBinding &binding : grid_bindings) {
@@ -691,8 +702,9 @@ std::unique_ptr<DecodePlan> companion_decode_prepare(
   const auto refusal=[&](const char *message)->std::unique_ptr<DecodePlan> {
     fail(r_error,message); return nullptr;
   };
-  if (file_bytes<header_size+footer_size || file_bytes>limits.max_file_bytes ||
-      !capture_valid(expected_capture) || limits.max_scratch_bytes<buffer_size) {
+  if (file_bytes<header_size+footer_size || !capture_valid(expected_capture) ||
+      !checkpoint_budget_fits(file_bytes, limits.max_file_bytes) ||
+      !checkpoint_budget_fits(buffer_size, limits.max_scratch_bytes)) {
     return refusal("The Sculpt companion input extent or capture policy is invalid");
   }
   size_t retained=sizeof(DecodePlan);
@@ -716,7 +728,7 @@ std::unique_ptr<DecodePlan> companion_decode_prepare(
       count < uint64_t(objects_num) + grids_num || count>uint64_t(objects_num)*2+grids_num ||
       !product(count,entry_size,directory_bytes) || directory_offset>file_bytes-footer_size ||
       directory_bytes!=file_bytes-footer_size-directory_offset ||
-      directory_bytes>limits.max_scratch_bytes-buffer_size) {
+      !checkpoint_budget_fits(directory_bytes, limits.max_scratch_bytes-buffer_size)) {
     return refusal("The Sculpt companion footer directory is truncated, unbounded or inconsistent");
   }
   uint64_t minimum_payload = uint64_t(objects_num) * 136;
@@ -729,7 +741,8 @@ std::unique_ptr<DecodePlan> companion_decode_prepare(
   if (!product(objects_num, sizeof(bool) * 3 + sizeof(int) * 2 + sizeof(uint64_t) * 3 + sizeof(ObjectBinding), part) ||
       !add(metadata_bytes, part) ||
       !product(grids_num, sizeof(bool) + sizeof(uint64_t) * 9, part) ||
-      !add(metadata_bytes, part) || metadata_bytes > limits.max_scratch_bytes - buffer_size) {
+      !add(metadata_bytes, part) ||
+      !checkpoint_budget_fits(metadata_bytes, limits.max_scratch_bytes - buffer_size)) {
     return refusal("Aggregate Sculpt directory/token scratch is not admissible");
   }
   const size_t metadata_scratch = size_t(metadata_bytes) + buffer_size;
@@ -857,12 +870,13 @@ std::unique_ptr<DecodePlan> companion_decode_prepare(
   for (const Entry &entry:entries) {
     if (entry.type!=Section::Geometry) { continue; }
     if (entry.length>INT64_MAX || !charge(plan->info.retained_bytes,entry.length,limits.max_backing_bytes) ||
-        plan->info.decoded_geometry_bound > limits.max_backing_bytes - plan->info.retained_bytes) {
+        !checkpoint_budget_fits(plan->info.decoded_geometry_bound,
+                                limits.max_backing_bytes - plan->info.retained_bytes)) {
       return refusal("Aggregate Sculpt BMesh input exceeds backing admission"); }
     Array<std::byte,0> bytes{int64_t(entry.length)};
     if (!read(entry.offset,bytes.as_mutable_span())) { return refusal("Failed to read exact owned Sculpt BMesh section"); }
     const size_t prior_retained = plan->info.retained_bytes - size_t(entry.length);
-    if (plan->info.decoded_geometry_bound > limits.max_backing_bytes - prior_retained) {
+    if (!checkpoint_budget_fits(plan->info.decoded_geometry_bound, limits.max_backing_bytes - prior_retained)) {
       return refusal("Aggregate Sculpt prior decode backing is not admissible");
     }
     const BMGeometryCodecLimits bm_limits{entry.length,
@@ -875,7 +889,8 @@ std::unique_ptr<DecodePlan> companion_decode_prepare(
     plan->info.retained_bytes-=size_t(entry.length);
     if (!charge(plan->info.retained_bytes,info.owned_input_and_plan_bytes,limits.max_backing_bytes) ||
         !charge(plan->info.decoded_geometry_bound,info.decoded_backing_bytes_bound,limits.max_backing_bytes) ||
-        plan->info.retained_bytes>limits.max_backing_bytes-plan->info.decoded_geometry_bound) {
+        !checkpoint_budget_fits(plan->info.retained_bytes,
+                                limits.max_backing_bytes-plan->info.decoded_geometry_bound)) {
       return refusal("Aggregate Sculpt retained/decode backing exceeds admission"); }
     plan->info.scratch_bound=std::max(plan->info.scratch_bound,
         metadata_scratch + info.decode_scratch_bytes_bound);

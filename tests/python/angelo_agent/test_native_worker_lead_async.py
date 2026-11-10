@@ -11,6 +11,8 @@ as failed, until the worker confirms it or ends (then it comes back unsent, with
 Send left its lane returns it at once and the worker never gets it; merge holds share one deadline.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import threading

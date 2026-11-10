@@ -30,6 +30,17 @@ SAVE_KINDS = frozenset({"part_saved", "part_save_failed"})   # The save step's o
 SAVE_RETRY_SECONDS = 1.0   # After a failed save of the part, the next attempt (the lead is told each time).
 
 
+def checkpoint(chats, chat):
+    """Capture the hosted chat's request snapshot from its actual worker part."""
+    from .checkpoint_policy import clean_policy
+    policy = clean_policy(getattr(chat, "_turn_checkpoint_policy", None))
+    record = chats.host.checkpoint({"root": str(chat.checkpoints.root), "session": chat.checkpoints.session_id,
+                                   "capture_mode": policy["capture_mode"], "purpose": "request"})
+    from . import snapshot_service
+    snapshot_service.after_capture(chat, record)
+    return record
+
+
 def ended(chats):
     """Whether the worker ends after its part was lost (``worker_script.contain``): it saves nothing."""
     return getattr(chats.host, "ended", False) is True

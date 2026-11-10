@@ -25,6 +25,8 @@ then replaced. The chat list is rebuilt from the chats on disk. EIO and EACCES a
 cases; ESTALE, ETIMEDOUT, a later version's file, a real ``chmod 000`` and a copy that can't be made are held out.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import errno
 import json
@@ -36,26 +38,30 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from angelo_agent import kept_state, session_kept  # noqa: E402
-from angelo_agent import job_store, team_usage_buffer  # noqa: E402
+from angelo_agent import job_store, kept_state, session_kept, shared_replace, team_usage_buffer  # noqa: E402
 from angelo_agent.connections import ConnectionStore  # noqa: E402
 from angelo_agent.external_requests import ClientRegistry  # noqa: E402
 from angelo_agent.job_store import JobStore, new_record  # noqa: E402
 from angelo_agent.sessions import SessionCollection, SessionStore  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 NUMBERS = (errno.EIO, errno.EACCES, errno.ESTALE, errno.ETIMEDOUT)
-REAL_READ = Path.read_bytes
 
 
+@contextlib.contextmanager
 def unreadable(target, number):
-    """``Path.read_bytes`` failing with ``number`` for the file at ``target`` now (a file written there later reads)."""
+    """``target``'s file failing to open with ``number`` (shared reader or ``Path.read_bytes``) until rewritten."""
     inode = os.stat(target).st_ino
 
-    def read_bytes(path):
-        if os.fspath(path) == os.fspath(target) and os.stat(path).st_ino == inode:
-            raise OSError(number, os.strerror(number))
-        return REAL_READ(path)
-    return mock.patch.object(Path, "read_bytes", read_bytes)
+    def guarded(real):
+        def read(path, *args):
+            if os.fspath(path) == os.fspath(target) and os.stat(path).st_ino == inode:
+                raise OSError(number, os.strerror(number))
+            return real(path, *args)
+        return read
+    with mock.patch.object(Path, "read_bytes", guarded(Path.read_bytes)), \
+            mock.patch.object(shared_replace, "open_shared", guarded(shared_replace.open_shared)):
+        yield
 
 
 def kept(path):
@@ -160,7 +166,8 @@ class Jobs(Folder):
         self.assertEqual(kept(self.directory / "jobs.json"), [])
         self.assertLess(int(JobStore(self.directory).peek()[1:]), job_store.UNREAD_IDS)
 
-    @unittest.skipIf(os.name == "nt" or os.geteuid() == 0, "POSIX permissions as an ordinary user")
+    @unittest.skipIf(os.name == "nt" or os.geteuid() == 0, environment_skip(
+        "POSIX permissions as an ordinary user (Windows keeps only a read-only bit; root reads any file)"))
     def test_a_real_unreadable_file(self):
         before = self.saved()
         path = self.directory / "jobs.json"
@@ -364,7 +371,7 @@ class TeamUsage(Folder):
         path = Path(buffer.path)
         before = path.read_bytes()
         for number in NUMBERS:
-            failing = mock.patch.object(team_usage_buffer, "open", create=True,
+            failing = mock.patch.object(shared_replace, "open_file",   # Its reader (team_usage_buffer._read).
                                         side_effect=OSError(number, os.strerror(number)))
             with self.subTest(errno=errno.errorcode[number]), failing:
                 with self.assertRaises(OSError):   # The caller keeps the count in memory and tries again.

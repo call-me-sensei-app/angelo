@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Real temporary-file publication with a fake native witness; no Sculpt fidelity claim."""
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import hashlib
 import json
 import os
@@ -16,7 +18,9 @@ from angelo_agent import checkpoint_capture as capture
 from angelo_agent import checkpoint_filesystem as filesystem
 from angelo_agent.checkpoints import CheckpointStore
 from fake_nt_files import FakeNtApi
+from fake_native_binding import FakeContentBinding
 import file_times  # noqa: E402
+from host_test_policy import environment_skip
 
 SESSION = "00000000-0000-4000-8000-000000000001"
 
@@ -29,7 +33,9 @@ class CapturePublicationTests(unittest.TestCase):
         self.owner = capture.CaptureOwner.reserve(self.store)
         self.capability = object()
         self.facts = None
-        self.native = types.SimpleNamespace(capture_facts=self.native_facts)
+        # Native's content binding: what the stand-in writer below wrote, compared once (capture_bind).
+        self.binding = FakeContentBinding()
+        self.native = self.binding.install(types.SimpleNamespace(capture_facts=self.native_facts))
         self.module = patch.dict(sys.modules, {"_bpy": types.SimpleNamespace(_angelo_checkpoint=self.native)})
         self.module.start()
 
@@ -54,10 +60,15 @@ class CapturePublicationTests(unittest.TestCase):
         self.base = b"BASE storage fixture, not a native blend"
         self.runtime = b"RUNTIME storage fixture, not a native companion" if runtime else b""
         self.base_fd = self.owner._native_output("BASE")
+        # As native does: ask before writing BASE, and bind it when asked or when the capture is a pair.
+        bind = self.owner._native_binding()
         os.write(self.base_fd, self.base)
+        if runtime or bind:
+            self.binding.wrote(self.capability, "BASE", self.base)
         if runtime:
             self.runtime_fd = self.owner._native_output("RUNTIME")
             os.write(self.runtime_fd, self.runtime)
+            self.binding.wrote(self.capability, "RUNTIME", self.runtime)
         self.facts = {"capture_id": identity, "scene_bytes": len(self.base),
             "runtime_bytes": len(self.runtime), "owner_count": 2 if runtime else 0,
             "format_version": 1 if runtime else 0, "post_state": "pending"}
@@ -100,23 +111,24 @@ class CapturePublicationTests(unittest.TestCase):
         os.write(fd, b"X" * before.st_size)
         file_times.set_times(fd, ns=(before.st_atime_ns, before.st_mtime_ns))
 
-    def publication_ack_change(self, role):
+    def change_after_publication(self, role):
+        # The real boundary: the native owner learns of the publication only once publish returns, and a write by
+        # any writer from then on (here same-size, times restored) is caught by the next check; the seal is never
+        # adopted over changed bytes. On real files this host's fine change times show the write whether or not
+        # publish waited; test_native_checkpoint_publication_boundary pins the wait on a coarse clock.
         self.prepare()
-        original = capture.CaptureOwner._publish_output
-        def after_ack(owner, resource, current_role):
-            original(owner, resource, current_role)
-            if current_role == role:
-                self.mutate_component(role)
-        with patch.object(capture.CaptureOwner, "_publish_output", after_ack), self.assertRaises(ValueError):
-            self.owner.publish(self.capability)
-        self.assertEqual(self.record()["state"], "RESERVED")
-        self.assertIsNone(self.owner._native_terminal())
+        self.owner.publish(self.capability)
+        self.mutate_component(role)
+        self.facts["post_state"] = "complete"
+        with self.assertRaisesRegex(ValueError, "published capture component changed during POST"):
+            self.owner.finish(self.capability)
+        self.assertEqual(self.record()["capture_validation"], "PENDING", "never VALIDATED over changed bytes")
 
-    def test_base_ack_change_cannot_be_adopted_by_later_pair_seal(self):
-        self.publication_ack_change("BASE")
+    def test_base_change_after_publication_is_never_sealed_validated(self):
+        self.change_after_publication("BASE")
 
-    def test_runtime_ack_change_cannot_be_adopted_by_later_pair_seal(self):
-        self.publication_ack_change("RUNTIME")
+    def test_runtime_change_after_publication_is_never_sealed_validated(self):
+        self.change_after_publication("RUNTIME")
 
     def test_directory_sync_change_preserves_original_component_seal(self):
         self.prepare()
@@ -173,6 +185,8 @@ class CapturePublicationTests(unittest.TestCase):
             self.owner._native_begin()
         self.assertEqual(os.fstat(self.base_fd).st_size, len(self.base))
 
+    # Identity sealing requires a fine volume; Linux's ticking volumes must bind content.
+    @patch.object(capture.change_clock, "volume", lambda _witness: capture.change_clock._posix.FINE)
     def test_no_runtime_pays_no_hash_and_discharges_only_base(self):
         self.prepare(runtime=False)
         with patch.object(capture, "_hash_descriptor", side_effect=AssertionError("extra BASE hash")):
@@ -192,20 +206,21 @@ class CapturePublicationTests(unittest.TestCase):
                 checkpoint_seal.verify(self.root, record, identity=changed)
 
     def test_coarse_timestamps_bind_content_at_publication(self):
-        self.prepare(runtime=False)
         hashed = []
         original = capture._hash_descriptor
-        def counted(descriptor, size):
+        def counted(descriptor, size, bind=None):
             hashed.append(size)
-            return original(descriptor, size)
-        base = self.store.folder(self.owner.capture_id) / "scene.blend@"
+            return original(descriptor, size, bind=bind)
         from angelo_agent import checkpoint_seal
         with patch.object(checkpoint_seal, "coarse_timestamps", return_value=True), \
              patch.object(capture, "_hash_descriptor", side_effect=counted):
+            self.prepare(runtime=False)   # The prediction, from the empty BASE, sees the coarse volume.
             self.owner.publish(self.capability)
+            self.assertEqual(hashed, [len(self.base)], "one BASE hash, in publish, only where timestamps are coarse")
+            self.assertTrue(self.binding.bound, "bound in native before POST")
             self.facts["post_state"] = "complete"
             record = self.owner.finish(self.capability)
-        self.assertEqual(hashed, [len(self.base)], "one BASE hash, only where timestamps are coarse")
+        self.assertEqual(hashed, [len(self.base)], "finish reads nothing back")
         self.assertEqual(checkpoint_seal.binding(record), "content")
         checkpoint_seal.verify(self.root, record, hashlib.blake2b(self.base, digest_size=32).hexdigest())
         self.assertTrue(checkpoint_seal.coarse_timestamps(1_700_000_000 * 10**9))
@@ -421,9 +436,9 @@ class CapturePublicationTests(unittest.TestCase):
         descriptor = self.base_fd if role == "BASE" else self.runtime_fd
         original = capture._hash_descriptor
         changed = False
-        def changed_after_hash(fd, size):
+        def changed_after_hash(fd, size, bind=None):
             nonlocal changed
-            digest = original(fd, size)
+            digest = original(fd, size, bind=bind)
             if fd == descriptor and not changed:
                 changed = True
                 info = os.fstat(fd)
@@ -483,6 +498,7 @@ class NativeCaptureLifecycleTests(unittest.TestCase):
         self.native = types.SimpleNamespace(capture=self.begin, capture_facts=self.facts,
             capture_post=self.post, capture_abort=self.abort, capture_close=self.close,
             capture_release=self.release)
+        self.binding, self.bind_required = None, None
         self.module = patch.dict(sys.modules, {"_bpy": types.SimpleNamespace(_angelo_checkpoint=self.native)})
         self.module.start()
 
@@ -498,9 +514,14 @@ class NativeCaptureLifecycleTests(unittest.TestCase):
         self.owner = owner
         self.events.append("capture")
         owner._native_begin()
+        self.binding = FakeContentBinding()   # A new capture: native's binding of what it writes now.
+        self.binding.install(self.native)
         for role in ("BASE", "RUNTIME"):
             fd = owner._native_output(role)
+            if role == "BASE":
+                self.bind_required = owner._native_binding()   # Native asks before writing BASE.
             os.write(fd, b"fixture bytes")
+            self.binding.wrote(self.token, role, b"fixture bytes")   # A pair: native binds both components.
         return self.token
 
     def facts(self, token, owner):
@@ -510,6 +531,11 @@ class NativeCaptureLifecycleTests(unittest.TestCase):
                 "owner_count":2, "format_version":1, "post_state":self.post_state}
 
     def post(self, token, owner):
+        try:
+            self.binding.requires_bind(2, self.bind_required)   # Native refuses POST before the content is bound,
+        except ValueError:
+            self.post_state = "failed"   # and records it as a failed POST (SAVE_POST_FAIL), as post_call does.
+            raise
         owner._native_publication()
         self.events.append("post")
         self.post_state = "complete"
@@ -712,7 +738,7 @@ class NativeCaptureLifecycleTests(unittest.TestCase):
         self.assertEqual(evidence, [None])
 
 
-@unittest.skipIf(os.name == "nt", "POSIX stand-in; native Windows uses base tests")
+@unittest.skipIf(os.name == "nt", environment_skip("POSIX stand-in; native Windows uses base tests"))
 class CapturePublicationFakeNtTests(CapturePublicationTests):
     def setUp(self):
         self.api = FakeNtApi()

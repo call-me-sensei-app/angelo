@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The real headless fixture must witness one owned directory, then that same directory disappearing."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import sys
 import tempfile

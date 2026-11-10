@@ -12,6 +12,8 @@ freed text ("Code marked as unreachable" in IMB_thumb_path_unlock), then the job
 freed preview and crashed (1.0.4, Object-mode asset shelf with a library added at startup).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import re
 import unittest

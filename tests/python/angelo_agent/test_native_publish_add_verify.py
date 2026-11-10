@@ -11,6 +11,8 @@ checksum file lists, so its cache never keeps a 404 for a file a later addition 
 must be the one written; and a 404 on a file the run wrote is named as a cached one.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import sys
 import unittest

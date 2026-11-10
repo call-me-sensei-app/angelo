@@ -10,6 +10,8 @@ the exporter options match what Godot 4.7.2's Blender importer sent for the same
 requests to Blender, the table in the contract).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile
@@ -19,10 +21,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import engine_link_assets as assets, godot_link_assets as godot  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from host_test_policy import environment_skip  # noqa: E402
 
 
 def resolve(project, res):
     return godot.resolve({"project": project, "asset": res})
+
+
+def symlink(target, name, directory=False):
+    """``os.symlink``; on Windows, which makes one only with a privilege (or Developer Mode), an environment skip
+    when this user lacks it. The checks hold there too: ``is_symlink`` and ``resolve`` see Windows symlinks."""
+    try:
+        os.symlink(target, name, target_is_directory=directory)
+    except OSError:
+        if os.name != "nt":
+            raise
+        raise unittest.SkipTest(environment_skip("Windows makes a symlink only with a privilege this user lacks"))
 
 
 class ResolveTests(unittest.TestCase):
@@ -58,11 +73,10 @@ class ResolveTests(unittest.TestCase):
             resolve(str(self.project), "res://props/lamp.fbx")
         self.assertIn("lamp.fbx", caught.exception.english())
 
-    @unittest.skipIf(sys.platform == "win32", "symbolic links")
     def test_a_link_out_of_the_project_is_outside(self):
         outside = Path(tempfile.mkdtemp()) / "secret.glb"
         outside.write_bytes(b"x")
-        os.symlink(outside, self.project / "props/link.glb")
+        symlink(outside, self.project / "props/link.glb")
         self.assertEqual(self.code("res://props/link.glb"), "outside")
 
     def test_angelos_working_files_are_never_assets(self):
@@ -75,10 +89,9 @@ class ResolveTests(unittest.TestCase):
             os.symlink(working / "chair.glb.blend", self.project / "props/sneaky.blend")
             self.assertEqual(self.code("res://props/sneaky.blend"), "outside", "any link")
 
-    @unittest.skipIf(sys.platform == "win32", "symbolic links")
     def test_a_cloned_projects_links_never_lead_angelo_out(self):
         elsewhere = Path(tempfile.mkdtemp())
-        os.symlink(elsewhere, self.project / ".angelo")
+        symlink(elsewhere, self.project / ".angelo", directory=True)
         asset = resolve(str(self.project), "res://props/chair.glb")
         with self.assertRaises(OSError):
             assets.ensure_working_folder(asset)
@@ -87,7 +100,7 @@ class ResolveTests(unittest.TestCase):
         assets.ensure_working_folder(asset)
         victim = elsewhere / "victim.txt"
         victim.write_text("keep")
-        os.symlink(victim, assets.stamp_path(asset))
+        symlink(victim, assets.stamp_path(asset))
         with self.assertRaises(OSError):
             assets.ensure_working_folder(asset)
         self.assertEqual(victim.read_text(), "keep")
@@ -98,7 +111,7 @@ class ResolveTests(unittest.TestCase):
         self.assertTrue((self.project / ".angelo/.gdignore").is_file(), "Godot never imports the working files")
         self.assertFalse(assets.working_is_current(asset))
         Path(asset.editable).write_bytes(b"blend")
-        assets.write_stamp(asset)
+        assets.write_stamp(asset, assets.digest(asset.path))
         self.assertTrue(assets.working_is_current(asset))
         (self.project / "props/chair.glb").write_bytes(b"changed in Godot")
         self.assertFalse(assets.working_is_current(asset), "a .glb changed elsewhere is imported again")

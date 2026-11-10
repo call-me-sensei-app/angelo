@@ -10,6 +10,8 @@ lands after finds it started (it runs and reports it). Deterministic: the turn's
 exact step, joined before the main thread goes on. No Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import inspect
 import sys

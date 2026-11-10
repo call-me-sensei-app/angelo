@@ -52,6 +52,7 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_fileops.h"
+#include "BLI_fileops.hh"
 #include "BLI_linklist.h"
 #include "BLI_path_utils.hh"
 #include "BLI_string.h"
@@ -649,6 +650,169 @@ bool BLI_file_older(const char *file1, const char *file2)
     return false;
   }
   return (st1.st_mtime < st2.st_mtime);
+}
+
+#ifdef WIN32
+using FileIdentityHeld = HANDLE;
+#else
+using FileIdentityHeld = int;
+#endif
+
+void *BLI_file_identity_hold(const char *filepath)
+{
+#ifdef WIN32
+  wchar_t *path_16 = alloc_utf16_from_8(filepath, 0);
+  if (path_16 == nullptr) {
+    return nullptr;
+  }
+  /* Delete sharing: the file can still be renamed (or replaced) while this handle is open. */
+  HANDLE handle = CreateFileW(path_16,
+                              FILE_READ_ATTRIBUTES,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              nullptr,
+                              OPEN_EXISTING,
+                              FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                              nullptr);
+  free(path_16);
+  if (handle == INVALID_HANDLE_VALUE) {
+    return nullptr;
+  }
+  return new FileIdentityHeld(handle);
+#else
+  const int file = open(filepath, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+  if (file == -1) {
+    return nullptr;
+  }
+  return new FileIdentityHeld(file);
+#endif
+}
+
+static bool file_identity_of(const FileIdentityHeld file, FileIdentity *r_identity)
+{
+  *r_identity = {};
+#ifdef WIN32
+  const HANDLE handle = file;
+  BY_HANDLE_FILE_INFORMATION info;
+  FILE_ID_INFO id;
+  if (!GetFileInformationByHandle(handle, &info)) {
+    return false;
+  }
+  /* As CPython 3.13 (`_Py_attribute_data_to_stat`): the 64-bit volume serial wherever
+   * `FILE_ID_INFO` is answered, its 128-bit ID where that is nonzero, else the 64-bit file index;
+   * without it, the 32-bit serial and the file index. */
+  const bool has_info = GetFileInformationByHandleEx(handle, FileIdInfo, &id, sizeof(id)) != 0;
+  bool has_id = has_info;
+  if (has_id) {
+    uint64_t parts[2];
+    memcpy(parts, id.FileId.Identifier, sizeof(parts));
+    has_id = (parts[0] | parts[1]) != 0;
+  }
+  /* 1970-01-01 in 100 ns steps. */
+  constexpr int64_t epoch_as_filetime = 116444736000000000LL;
+  auto nanoseconds = [](const FILETIME &time) {
+    const int64_t value = (int64_t(time.dwHighDateTime) << 32) | int64_t(time.dwLowDateTime);
+    return (value - epoch_as_filetime) * 100;
+  };
+  r_identity->device = has_info ? uint64_t(id.VolumeSerialNumber) :
+                                  uint64_t(info.dwVolumeSerialNumber);
+  if (has_id) {
+    memcpy(&r_identity->index_low, id.FileId.Identifier, sizeof(uint64_t));
+    memcpy(&r_identity->index_high, id.FileId.Identifier + sizeof(uint64_t), sizeof(uint64_t));
+  }
+  else {
+    r_identity->index_low = (uint64_t(info.nFileIndexHigh) << 32) | uint64_t(info.nFileIndexLow);
+  }
+  r_identity->size = (int64_t(info.nFileSizeHigh) << 32) | int64_t(info.nFileSizeLow);
+  r_identity->modified_ns = nanoseconds(info.ftLastWriteTime);
+  /* No creation time: NTFS name tunnelling can give a renamed file an earlier one's. */
+  return true;
+#else
+  struct stat st;
+  if (fstat(file, &st) != 0) {
+    return false;
+  }
+  /* As CPython 3.13 (`_PyLong_FromDev`): unsigned, but `NODEV` (-1) as -1. */
+  r_identity->device = uint64_t(int64_t(st.st_dev));
+  r_identity->device_signed = st.st_dev == dev_t(-1);
+  r_identity->index_low = uint64_t(st.st_ino);
+  r_identity->size = int64_t(st.st_size);
+#  ifdef __APPLE__
+  r_identity->modified_ns = int64_t(st.st_mtimespec.tv_sec) * 1000000000 +
+                            st.st_mtimespec.tv_nsec;
+  r_identity->created_ns = int64_t(st.st_birthtimespec.tv_sec) * 1000000000 +
+                           st.st_birthtimespec.tv_nsec;
+#  else
+  r_identity->modified_ns = int64_t(st.st_mtim.tv_sec) * 1000000000 + st.st_mtim.tv_nsec;
+#  endif
+  return true;
+#endif
+}
+
+bool BLI_file_identity_held(const void *held, FileIdentity *r_identity)
+{
+  *r_identity = {};
+  return held != nullptr &&
+         file_identity_of(*static_cast<const FileIdentityHeld *>(held), r_identity);
+}
+
+bool BLI_file_identity_held_unlinked(const void *held)
+{
+  if (held == nullptr) {
+    return false;
+  }
+  const FileIdentityHeld file = *static_cast<const FileIdentityHeld *>(held);
+#ifdef WIN32
+  FILE_STANDARD_INFO info;
+  if (!GetFileInformationByHandleEx(file, FileStandardInfo, &info, sizeof(info))) {
+    return false;
+  }
+  return info.DeletePending || info.NumberOfLinks == 0;
+#else
+  struct stat st;
+  return fstat(file, &st) == 0 && st.st_nlink == 0;
+#endif
+}
+
+bool BLI_file_identity_descriptor(const int file, FileIdentity *r_identity)
+{
+  *r_identity = {};
+  if (file < 0) {
+    return false;
+  }
+#ifdef WIN32
+  const HANDLE handle = HANDLE(_get_osfhandle(file));
+  return handle != INVALID_HANDLE_VALUE && file_identity_of(handle, r_identity);
+#else
+  return file_identity_of(file, r_identity);
+#endif
+}
+
+bool BLI_file_identity_same_file(const FileIdentity &a, const FileIdentity &b)
+{
+  return a.device == b.device && a.device_signed == b.device_signed &&
+         a.index_low == b.index_low && a.index_high == b.index_high;
+}
+
+void BLI_file_identity_release(void *held)
+{
+  if (held == nullptr) {
+    return;
+  }
+  FileIdentityHeld *file = static_cast<FileIdentityHeld *>(held);
+#ifdef WIN32
+  CloseHandle(*file);
+#else
+  close(*file);
+#endif
+  delete file;
+}
+
+bool BLI_file_identity(const char *filepath, FileIdentity *r_identity)
+{
+  void *held = BLI_file_identity_hold(filepath);
+  const bool found = BLI_file_identity_held(held, r_identity);
+  BLI_file_identity_release(held);
+  return found;
 }
 
 }  // namespace blender

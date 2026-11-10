@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import json
 import math
@@ -160,7 +161,8 @@ class NativeRuntimeTests(unittest.TestCase):
                                                      # The deferred game-ready check (game_ready_spec).
                                                      "angelo_game_ready_check",
                                                      # The deferred engine link tools (engine_link_tool_spec).
-                                                     "angelo_engine_link_status", "angelo_engine_link"} | FLOW_NAMES | TEAM_NAMES | JOB_NAMES
+                                                     "angelo_engine_link_status", "angelo_engine_link",
+                                                 "angelo_goal"} | FLOW_NAMES | TEAM_NAMES | JOB_NAMES
                             | RIG_NAMES | LIBRARY_NAMES)
 
     def test_read_only_policy_rejects_all_mutations(self):

@@ -22,6 +22,11 @@ WORKERS_LEFT = n_("Angelo couldn't stop all of this chat's workers after its fil
 _reloaded = set()   # Lead chat ids whose document's content changed (``reloaded``), until ``document_replaced`` ends them.
 _reasons = {}       # Their reasons (``REOPENED`` unless the load replaced it with another file: ``REPLACED``).
 _unstopped = {}     # Lead chat id -> its worker sessions a failed ``end_after_change`` left running (``unstopped``).
+_predating = {}     # Lead chat id -> the part files its workers had when its content changed (``predates``), in memory.
+# Model-facing (English): a part built before the lead's content changed, refused (``worker_merge.part_refusal``).
+PREDATES = ("Worker %d's part was built before this chat's file changed (a Restore, an Undo restore or the file opened "
+            "again) and this scene holds no merge of it, so it is not merged. A fresh part can be started with "
+            "angelo_workers_start against this chat's current file")
 # Model-facing (English): a merge of such a worker's part, refused (``worker_merge.precondition``).
 UNSTOPPED = ("Worker %d was not stopped when this chat's file changed, so its part was built before that change; such a "
              "part is not merged while that worker remains this chat's")
@@ -136,8 +141,11 @@ def reloaded(lead_id, why=None):
     Open Recent: ``document_identity``), a Restore or an Undo restore (``controller_recovery.rebind_after_restore``).
     Its batch fires no event and everything of its workers ends as for a load of another file, so no part built
     before the change merges; the person starts again (the maintainer, 2026-10-29)."""
-    from . import worker_resume
+    from . import worker_resume, worker_sessions
     worker_resume.cancel(lead_id)
+    # Every part file it has, held by anything or not (a finished, released worker is held by nothing): ``predates``.
+    _predating.setdefault(lead_id, set()).update(str(worker_sessions._parts[session][2]) for session in list(
+        worker_sessions._started.get(lead_id, ())) if session in worker_sessions._parts)
     if any(_lead_id(lead) == lead_id for lead in _holding()):
         _reloaded.add(lead_id)
         _reasons[lead_id] = why or REOPENED
@@ -147,6 +155,22 @@ def reloaded(lead_id, why=None):
             _reloaded.discard(lead_id)
             _reasons.pop(lead_id, None)
 
+
+
+def predates(lead, path):
+    """Whether part file ``path`` was built before ``lead``'s document content last changed (``reloaded``): such a part
+    is not merged, unless the scene the person chose holds a merge of it (``worker_merge.part_refusal``)."""
+    return str(path) in _predating.get(_lead_id(lead), ()) if lead is not None else False
+
+
+def refuse_predating(number, path, lead):
+    """Raise ``RefusalError`` for worker ``number``'s part when ``predates`` marks it and the scene the person chose
+    (``lead``'s own) holds no merge of it; a part whose merge record is there stays placeable with ``again``."""
+    if predates(lead, path):
+        from . import parallel_sessions
+        if not parallel_sessions.part_in_file(path, lead):
+            from .refusal_codes import RefusalError
+            raise RefusalError(PREDATES % number, code="VALIDATION")
 
 def end_after_change(controller, why=None):
     """``reloaded`` for ``controller`` (its document's content just changed: a reload, a Restore, an Undo restore, or

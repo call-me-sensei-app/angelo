@@ -19,6 +19,10 @@ bound) must give a key that changes after a real edit of what it reads and keeps
 unrelated object moved, a selection, an export's own updates). Writes ``results.json`` in ``ANGELO_QA_DIR``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -311,6 +315,44 @@ try:
     image.pack()
     check("repacked_bytes_of_the_same_size_change_the_key", image.packed_file.size == size and key() != before,
           (size, image.packed_file.size))
+
+    # The files the picture's maker opens: a bake renders the World in another Blender, which reads an image
+    # sequence's file of the frame its image user reads, not the stored one (1.0.10 audit, stat-before-read sweep).
+    # A file saved over by another program updates no depsgraph, so the change count cannot stand in for it.
+    sequence = [os.path.join(folder, "sky.%04d.bmp" % number) for number in (1, 2, 3)]
+    for number, frame_path in enumerate(sequence, 1):
+        write_image(frame_path, 0.1 * number)
+    frames = bpy.data.images.load(sequence[0])
+    frames.source = "SEQUENCE"
+    texture.image = frames
+    texture.image_user.frame_duration, texture.image_user.frame_start = 3, 1
+    scene.frame_set(2)
+    settle()
+    before = key()
+    time.sleep(0.01)
+    write_image(sequence[2], 0.9)   # Frame 3: not the one read at scene frame 2.
+    check("another_frames_file_keeps_a_bakes_key", key() == before)
+    write_image(sequence[1], 0.9)   # Frame 2, the one the bake reads.
+    check("the_read_frames_file_saved_over_changes_a_bakes_key", key() != before)
+    scene.frame_set(1)
+    texture.image = image
+    # Pixels Blender holds are never what either picture reads: an image saved over while held is made from its
+    # file, so reloading it (the held pixels catching up) keeps the key (measured: the same picture both ways).
+    image.unpack(method="REMOVE")
+    image.reload()
+    image.pixels[0]
+    settle()
+    write_image(path, 0.3)
+    before = key()
+    image.reload()
+    settle()
+    check("reloading_pixels_held_from_before_a_save_keeps_the_key", key() == before)
+    # A stored path's spelling is no input: Make Paths Relative rewrites it, the file read stays the same.
+    saved_blend = os.path.join(folder, "world.blend")
+    bpy.ops.wm.save_as_mainfile(filepath=saved_blend, relative_remap=False)
+    before = key()
+    bpy.ops.file.make_paths_relative()
+    check("making_paths_relative_keeps_the_key", key() == before and image.filepath.startswith("//"), image.filepath)
 
     # What can't be read: changed by a real edit of what it reads, kept otherwise.
     bystander = bpy.data.objects.new("Bystander", None)

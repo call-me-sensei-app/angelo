@@ -6,6 +6,8 @@ The saved policy is enforced automatically, oldest first,
 with a 2 GiB default storage budget; every existing protection still applies.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -224,7 +226,7 @@ class RetentionNoticeTests(unittest.TestCase):
         removed = {"kind": "maintained", "notify": "chat",
                    "summary": self.summary(removed=["a/b"], released_bytes=3 * MIB)}
         text = snapshot_service.notice_text(removed)
-        self.assertIn("removed 1 oldest restore point (3.0 MiB)", text)
+        self.assertIn("removed the oldest snapshot (3.0 MiB)", text)
         self.assertIn("unavailable", text)
         unmet = {"kind": "maintained", "notify": "chat",
                  "summary": self.summary(budget_met=False, protected=[{"ref": "a/c", "reason": "safety/protected snapshot"}])}
@@ -239,7 +241,7 @@ class RetentionNoticeTests(unittest.TestCase):
     def test_quiet_success_and_failure_wording(self):
         self.assertIsNone(snapshot_service.notice_text({"kind": "maintained", "summary": self.summary()}))
         failed = snapshot_service.notice_text({"kind": "failed", "task": "ingest", "error": "disk full"})
-        self.assertIn("deduplicating a snapshot: disk full", failed)
+        self.assertIn("packing a new snapshot: disk full", failed)
         self.assertIn("stay available", failed)
 
 

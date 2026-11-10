@@ -9,6 +9,10 @@ copy of the baseline's Python package; C++ always comes from the tested binary.
 No test removes verification, changes limits or accesses a provider.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import argparse
 import importlib.util
 import itertools

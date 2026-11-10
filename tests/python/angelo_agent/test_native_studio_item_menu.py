@@ -10,6 +10,8 @@ Blender's own drops; the Outliner takes any material asset on an object (Media S
 new interface string is in the catalogue. The running app's proof is ``test_blender_studio_item_menu``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import types
 import unittest

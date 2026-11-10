@@ -12,6 +12,8 @@ domain) is wired; and no translated byte can reach a model.
 The refresh procedure after strings move is in ``locale/angelo/README.md``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import re
 import sys

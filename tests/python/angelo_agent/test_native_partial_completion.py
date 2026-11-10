@@ -6,6 +6,8 @@ Real pure compilation, ProgramJob lifecycle, controller delivery and presentatio
 recording backends do not prove Blender RNA semantics or authorize callbacks.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 from pathlib import Path
@@ -183,9 +185,20 @@ class PartialCompletionTests(unittest.TestCase):
         self.host.pump_events()
         self.assertFalse(any(row.get("host_summary") for row in self.host.state["messages"]))
         text, _ = handoff(self.host.state["messages"])
-        self.assertIn("partial", text)
-        self.assertIn("opaque_node_settings", text)
+        rows = [json.loads(line) for line in text.split(":\n", 1)[1].splitlines()]
+        self.assertTrue(any(row.get("role") == "handoff_omission" for row in rows))
         self.assertNotIn('"receipt"', text)
+        # The actual private bundle above remains intact even when a history
+        # presentation cannot inspect it within its work budget.
+        self.assertEqual(result["verification"]["unknowns"], original_unknowns)
+        short = {"status": "partial", "success": True, "verification": {
+            "status": "partial", "unknown_count": 1, "unknowns": [{"reason": "opaque_node_settings"}]}}
+        concise, ids = handoff([{"role": "activity", "status": "completed", "tool": operation["tool"],
+                                 "call_id": "short-partial", "result": short}])
+        self.assertIn("partial", concise)
+        self.assertIn("opaque_node_settings", concise)
+        self.assertIn("short-partial", ids)
+        self.assertNotIn('"receipt"', concise)
 
     def test_cancelled_and_stale_partial_outcomes_never_supply_complete_authority(self):
         job, result = self.stage()
@@ -236,7 +249,7 @@ class PartialCompletionTests(unittest.TestCase):
         self.assertEqual(request, before)
         self.assertTrue(bundle.unknowns())
 
-    def test_large_partial_history_prefix_preserves_status_count_and_first_reason(self):
+    def test_large_partial_history_reports_bounded_omission_without_changing_result(self):
         job, result = self.stage()
         operation, result, completion = self.deliver(job, result)
         # Historical evidence may be longer than the established 5,000-character excerpt.
@@ -249,11 +262,9 @@ class PartialCompletionTests(unittest.TestCase):
                      "result": result}]
         text, _ = handoff(messages)
         entry = json.loads(text.split(":\n", 1)[1])
-        excerpt = entry["result"]
-        self.assertEqual(len(excerpt), 5000)
-        for text in ('"status": "partial"', '"unknown_count": 3', '"excerpt": true',
-                     '"operation": 11', '"modifier": "Geometry"', '"reason": "opaque_node_settings"'):
-            self.assertIn(text, excerpt)
+        self.assertEqual(entry["role"], "handoff_omission")
+        self.assertTrue(entry["work_exhausted"])
+        self.assertLessEqual(len(text), 24000)
         self.assertEqual(result, before)
         self.assertEqual(len(result["verification"]["unknowns"]), 3)
         failing = {"tool": "angelo_scene_program", "arguments": job.program}

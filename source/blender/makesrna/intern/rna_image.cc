@@ -55,6 +55,7 @@ static const EnumPropertyItem image_source_items[] = {
 #  include "BLI_math_base.h"
 #  include "BLI_math_vector.h"
 
+#  include "BKE_angelo_image_source.hh"
 #  include "BKE_global.hh"
 #  include "BKE_image.hh"
 #  include "BKE_image_format.hh"
@@ -695,6 +696,25 @@ static void rna_Image_pixels_set(PointerRNA *ptr, const float *values)
   BKE_image_release_ibuf(ima, ibuf, lock);
 }
 
+static int rna_Image_angelo_pixel_revision_get(PointerRNA *ptr)
+{
+  /* Angelo: a change count, so only its changes matter; kept within an int's positive range. */
+  const Image *image = static_cast<const Image *>(ptr->data);
+  return int(image->runtime->angelo_pixel_revision.load(std::memory_order_relaxed) & 0x7fffffff);
+}
+
+static int rna_Image_angelo_source_revision_get(PointerRNA *ptr)
+{
+  /* Angelo: compared for equality only; kept within an int's positive range. */
+  const Image *image = static_cast<const Image *>(ptr->data);
+  return int(image->runtime->angelo_source_revision.load(std::memory_order_relaxed) & 0x7fffffff);
+}
+
+static bool rna_Image_angelo_source_loads_supported_get(PointerRNA *ptr)
+{
+  return bke::angelo_image_source_loads_supported(*static_cast<const Image *>(ptr->data));
+}
+
 static int rna_Image_channels_get(PointerRNA *ptr)
 {
   Image *im = static_cast<Image *>(ptr->data);
@@ -767,7 +787,7 @@ static void rna_render_slots_active_set(PointerRNA *ptr,
     int index = BLI_findindex(&image->renderslots, slot);
     if (index != -1) {
       image->render_slot = index;
-      BKE_image_partial_update_mark_full_update(image);
+      BKE_image_partial_update_mark_gpu_stale(image); /* Angelo: another slot, not new pixels. */
     }
   }
 }
@@ -783,7 +803,7 @@ static void rna_render_slots_active_index_set(PointerRNA *ptr, int value)
   Image *image = id_cast<Image *>(ptr->owner_id);
   int num_slots = image->renderslots.count();
   image->render_slot = value;
-  BKE_image_partial_update_mark_full_update(image);
+  BKE_image_partial_update_mark_gpu_stale(image); /* Angelo: another slot, not new pixels. */
   CLAMP(image->render_slot, 0, num_slots - 1);
 }
 
@@ -1378,6 +1398,32 @@ static void rna_def_image(BlenderRNA *brna)
   RNA_def_property_int_funcs(prop, "rna_Image_channels_get", nullptr, nullptr);
   RNA_def_property_ui_text(prop, "Channels", "Number of channels in pixels buffer");
   RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+
+  prop = RNA_def_property(srna, "angelo_pixel_revision", PROP_INT, PROP_UNSIGNED);
+  RNA_def_property_int_funcs(prop, "rna_Image_angelo_pixel_revision_get", nullptr, nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE | PROP_ANIMATABLE);
+  RNA_def_property_ui_text(prop,
+                           "Pixel Revision",
+                           "Changes whenever the image's pixels change (painting, pixels written through "
+                           "Python, bakes), saved or not");
+
+  prop = RNA_def_property(srna, "angelo_source_revision", PROP_INT, PROP_UNSIGNED);
+  RNA_def_property_int_funcs(prop, "rna_Image_angelo_source_revision_get", nullptr, nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE | PROP_ANIMATABLE);
+  RNA_def_property_ui_text(prop,
+                           "Source Revision",
+                           "Changes on reload, source type, packing, or a load observing changed "
+                           "descriptor metadata, packed bytes or load settings. Never on re-loading an unchanged source or freeing "
+                           "buffers");
+
+  prop = RNA_def_property(srna, "angelo_source_loads_supported", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_funcs(prop, "rna_Image_angelo_source_loads_supported_get", nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE | PROP_ANIMATABLE);
+  RNA_def_property_ui_text(prop,
+                           "Source Loads Supported",
+                           "Recorded loads have descriptor or packed witnesses; false for movies, "
+                           "unloaded sources and failed stats. Does not certify exact bytes or "
+                           "complete frame/tile coverage");
 
   prop = RNA_def_property(srna, "is_float", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_funcs(prop, "rna_Image_is_float_get", nullptr);

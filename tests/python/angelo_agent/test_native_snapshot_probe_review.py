@@ -17,6 +17,8 @@ Companion of ``test_native_snapshot_probe_cache.py``. Each states what it attack
   again.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import itertools
 import os
 import sqlite3
@@ -32,6 +34,8 @@ ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core"
 sys.path.insert(0, str(ADDON))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from snapshot_fixtures import build_history  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
+from angelo_agent import checkpoint_filesystem  # noqa: E402
 from angelo_agent import checkpoint_inventory, checkpoint_inventory_cache, checkpoint_transactions  # noqa: E402
 from angelo_agent import snapshot_accounting, snapshot_maintenance, snapshot_retention  # noqa: E402
 from angelo_agent import snapshot_store_writer  # noqa: E402
@@ -40,6 +44,10 @@ from angelo_agent.checkpoints import CheckpointStore  # noqa: E402
 from angelo_agent.snapshot_ingest import ingest_snapshot  # noqa: E402
 from angelo_agent.snapshot_store import SnapshotStore  # noqa: E402
 from angelo_agent.snapshot_worker import SnapshotWorker  # noqa: E402
+
+
+# POSIX descriptors, or on Windows its verified handles (checkpoint_filesystem): maintenance removes through either.
+ANCHORED = environment_skip("anchored storage required (POSIX descriptors or Windows handles)")
 
 
 def history(test, count=14, ingested=7, distinct=False):
@@ -67,7 +75,7 @@ def index_file(root):
     return next(path for path in SnapshotStore(root).directory.iterdir() if path.suffix in {".sqlite3", ".sqlite", ".db"})
 
 
-@unittest.skipUnless(os.open in os.supports_dir_fd, "descriptor-relative storage required")
+@unittest.skipUnless(checkpoint_filesystem.anchored_files_supported(), ANCHORED)
 class LockedScanTests(unittest.TestCase):
     def test_no_scan_under_the_transaction_reuses_a_measurement_in_a_run_that_removes(self):
         root, store, records = history(self)
@@ -94,7 +102,7 @@ class LockedScanTests(unittest.TestCase):
         self.assertEqual(len(remaining), 4)
 
 
-@unittest.skipUnless(os.open in os.supports_dir_fd, "descriptor-relative storage required")
+@unittest.skipUnless(checkpoint_filesystem.anchored_files_supported(), ANCHORED)
 class StoreBoundTests(unittest.TestCase):
     def setUp(self):
         self.root, self.store, self.records = history(self)
@@ -149,7 +157,7 @@ class StoreBoundTests(unittest.TestCase):
         self.assertEqual((summaries["bound"]["removed"], summaries["exact"]["removed"]), ([], []))
 
 
-@unittest.skipUnless(os.open in os.supports_dir_fd, "descriptor-relative storage required")
+@unittest.skipUnless(checkpoint_filesystem.anchored_files_supported(), ANCHORED)
 class CollectionSkipTests(unittest.TestCase):
     def setUp(self):
         self.root, self.store, self.records = history(self, distinct=True)

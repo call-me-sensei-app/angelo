@@ -8,6 +8,8 @@ executor; the test thread acts as Blender's main-thread pump. Contract:
 doc/angelo/external_mcp.rst.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import io
 import json
 import os
@@ -19,6 +21,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -30,9 +33,14 @@ from angelo_agent.external_host import ClientRegistry, ExternalHost
 from angelo_agent.external_mcp import Server
 from angelo_agent.managed_policy import Policy
 from test_native_external_cli_host import Environment, Executor
+from host_test_policy import environment_skip
 
 CUBE = {"name": "Box", "size": 1, "location": [0, 0, 0]}
 SCRIPT = {"description": "Set a value", "code": "result = 1"}
+# On Windows connecting an app is refused (external_ui) until its named pipe, a later phase.
+LISTENER = environment_skip("Unix-socket listener; Windows refuses to connect an app until its named pipe")
+APP_KEYS = environment_skip("App keys are owner-only POSIX files; Windows refuses to connect an app until its "
+                            "named pipe")
 
 
 class TaskProvider:
@@ -77,10 +85,11 @@ class AppEnvironment(Environment):
 
 class RegistryTests(unittest.TestCase):
     def setUp(self):
-        self.root = Path(tempfile.mkdtemp(prefix="smcp-reg-", dir="/tmp"))
+        self.root = Path(tempfile.mkdtemp(prefix="smcp-reg-"))   # No socket here: the platform's temporary folder.
         self.addCleanup(shutil.rmtree, self.root, True)
         self.registry = AppRegistry(self.root / "state")
 
+    @unittest.skipIf(sys.platform == "win32", APP_KEYS)
     def test_connect_writes_an_owner_only_key_that_never_leaves_angelo(self):
         name = self.registry.connect("claude_code")
         self.assertEqual(name, "claude-code")
@@ -92,6 +101,7 @@ class RegistryTests(unittest.TestCase):
         self.assertNotIn(key_file.read_text().strip(), json.dumps(record), "the registry never holds a key")
         self.assertEqual(self.registry.load()[name]["levels"], (READ, EDIT, PYTHON, TASKS))
 
+    @unittest.skipIf(sys.platform == "win32", APP_KEYS)
     def test_reconnect_rotates_the_key_and_disconnect_deletes_it(self):
         name = self.registry.connect("codex")
         first = self.registry.key(name)
@@ -102,6 +112,7 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(self.registry.snapshot(), {})
         self.assertFalse(self.registry.disconnect(name))
 
+    @unittest.skipIf(sys.platform == "win32", APP_KEYS)
     def test_reading_is_always_allowed_and_unsafe_keys_are_ignored(self):
         name = self.registry.connect("cursor", levels=())
         self.assertEqual(self.registry.load()[name]["levels"], (READ,))
@@ -125,7 +136,7 @@ class RegistryTests(unittest.TestCase):
             self.assertNotIn(never, everything)
 
 
-@unittest.skipIf(sys.platform == "win32", "Needs the Unix-socket listener (Windows named pipe: a later phase)")
+@unittest.skipIf(sys.platform == "win32", LISTENER)
 class AppTests(unittest.TestCase):
     def setUp(self):
         managed_policy.reset(Policy())
@@ -228,6 +239,43 @@ class AppTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             controller.set_trusted_scripts(True)
 
+    def test_library_search_is_exposed_and_import_runs_in_auto(self):
+        from angelo_agent.external_clients import NEVER_FOR_APPS
+        self.assertNotIn('angelo_library_search', NEVER_FOR_APPS)
+        self.assertNotIn('angelo_library_import', NEVER_FOR_APPS)
+        self.assertIn('angelo_library_search', tools_for((READ,)))
+        self.assertNotIn('angelo_library_import', tools_for((READ,)))
+        self.assertNotIn('angelo_library_import', tools_for((READ, EDIT), headless=True))
+        listed = self.rpc('tools/list')['result']['tools']
+        self.assertTrue({'angelo_library_search', 'angelo_library_import'} <= {t['name'] for t in listed})
+        result = self.call('angelo_library_search', {'query': '', 'source': 'blender', 'offset': 20})
+        self.assertFalse(result['isError'], result)
+        seen = []
+
+        def person(controller, call):
+            seen.append(call.name)
+            controller.execute_tool(call, self.executor, controller.document)
+        self.approve = person
+        result = self.call('angelo_library_import', {'item_id': 'blender:fixture'})
+        self.assertFalse(result['isError'], result)
+        # An app in Approve for me adds a library asset without a card (the maintainer, 2026-11-09: only a paid
+        # asset, or the person's Ask setting, stops for them).
+        self.assertEqual(seen, [])
+        self.assertEqual(self.executor.calls.count('angelo_library_import'), 1)
+
+    def test_library_import_decline_and_read_level_never_execute(self):
+        # The person's Ask setting: every import waits for them, and a decline never runs it.
+        self.call('angelo_library_search', {'query': '', 'source': 'blender', 'offset': 20})
+        self.conversation().state["options"]["approval"] = "ASK"
+        self.approve = lambda controller, call: controller.decline_tool(call.id)
+        result = self.call('angelo_library_import', {'item_id': 'blender:fixture'})
+        self.assertTrue(result['isError'])
+        self.assertNotIn('angelo_library_import', self.executor.calls)
+        AppRegistry(self.state).set_levels(self.name, (READ,))
+        result = self.call('angelo_library_import', {'item_id': 'blender:fixture'})
+        self.assertTrue(result['isError'])
+        self.assertNotIn('angelo_library_import', self.executor.calls)
+
     def test_a_declined_call_says_so_and_ends_the_request(self):
         def person(controller, call):
             controller.decline_tool(call.id)
@@ -305,9 +353,15 @@ class AppTests(unittest.TestCase):
         self.assertTrue(any(row.get("request_kind") == "external_task" and row.get("text") == "Make a cube" for row in rows))
         busy = self.call("angelo_inspect_scene")
         self.assertTrue(busy["isError"], "tool calls wait while the app's task runs")
-        for _ in range(20):
+        # The provider and review preparation run on threads. A fixed number of
+        # pump calls can finish before either thread is scheduled under CI load.
+        deadline = time.monotonic() + 5.0
+        while True:
             self.tick()
-        waiting = self.call("angelo_task_status", {"task_id": state["task_id"], "wait_seconds": 0})
+            waiting = self.call("angelo_task_status", {"task_id": state["task_id"], "wait_seconds": 0})
+            if waiting["structuredContent"]["state"] != "running" or time.monotonic() >= deadline:
+                break
+            time.sleep(0.005)
         self.assertEqual(waiting["structuredContent"]["state"], "waiting_for_approval_in_angelo")
         self.approve = person
         release.set()
@@ -380,6 +434,19 @@ class AppTests(unittest.TestCase):
         self.assertFalse(result["isError"], result)
         self.assertNotEqual(self.conversation().state["id"], old.state["id"])
 
+    def test_a_call_with_no_thread_to_run_it_is_answered_and_the_launcher_keeps_serving(self):
+        """``Thread.start`` raises when the process has no thread to give: the call is answered as not run, and the
+        launcher reads on (before, the error ended it, and the app lost Angelo)."""
+        server, out = self.server()
+        with mock.patch.object(threading.Thread, "start", side_effect=RuntimeError("can't start new thread")):
+            server.serve(io.StringIO('{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"x"}}\n'
+                                     '{"jsonrpc":"2.0","id":2,"method":"ping"}\n'))
+        lines = [json.loads(line) for line in out.getvalue().splitlines()]
+        self.assertEqual(lines[0]["id"], 1)
+        self.assertTrue(lines[0]["result"]["isError"])
+        self.assertIn("could not run this call", lines[0]["result"]["content"][0]["text"])
+        self.assertEqual(lines[1], {"jsonrpc": "2.0", "id": 2, "result": {}})
+
     def test_no_network_listener_and_the_launcher_writes_only_json_rpc(self):
         server, out = self.server()
         server.serve(io.StringIO('{"jsonrpc":"2.0","id":1,"method":"ping"}\nnot json\n'
@@ -420,7 +487,7 @@ class Harness(unittest.TestCase):
                                                      "presentation": "mcp", "wait": wait}}, **kw)
 
 
-@unittest.skipIf(sys.platform == "win32", "Unix-socket listener")
+@unittest.skipIf(sys.platform == "win32", LISTENER)
 class RedeliveryTests(Harness):
     def test_a_call_delivered_again_after_stop_never_runs_twice(self):
         """Property 4: a call delivered again under its ID never runs twice."""
@@ -466,7 +533,7 @@ class RedeliveryTests(Harness):
                          "a call queued before Stop ran after it, without the person")
 
 
-@unittest.skipIf(sys.platform == "win32", "Unix-socket listener")
+@unittest.skipIf(sys.platform == "win32", LISTENER)
 class LabelRaceTests(Harness):
     def test_levels_come_from_the_hello_that_proved_the_key(self):
         """Property 2: a connected app's name can't be used without its key."""
@@ -493,7 +560,7 @@ class LabelRaceTests(Harness):
         self.assertNotIn("angelo_create_cube", self.executor.calls)
 
 
-@unittest.skipIf(sys.platform == "win32", "Unix-socket listener")
+@unittest.skipIf(sys.platform == "win32", LISTENER)
 class AccessOffTests(Harness):
     def test_access_off_mid_call_never_strands_the_conversation(self):
         """Property 8: close() vs in-flight calls must not strand the conversation."""
@@ -522,7 +589,7 @@ class AccessOffTests(Harness):
         self.assertFalse(result["isError"], result)
 
 
-@unittest.skipIf(sys.platform == "win32", "Unix-socket listener")
+@unittest.skipIf(sys.platform == "win32", LISTENER)
 class TaskReachTests(Harness):
     def test_a_task_never_reaches_the_families_apps_cannot_use(self):
         """Property 3: no path reaches file read/list or the team library. A task is Angelo's agent with the full

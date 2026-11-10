@@ -8,6 +8,8 @@ listed whole or not at all, and the frame measurement is the update a frame chan
 ``test_blender_camera_guards`` measures both through Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

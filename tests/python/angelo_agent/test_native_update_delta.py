@@ -7,6 +7,8 @@ removed one, a symbolic link, file modes) are enough to exercise every rule; the
 releases is in doc/angelo/updates_and_reports.rst, "Deltas".
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import io
 import json
 import os
@@ -18,6 +20,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from host_test_policy import environment_skip
+
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(ROOT / "scripts/angelo"))
@@ -26,6 +30,15 @@ from angelo_agent.update_delta import DeltaError  # noqa: E402
 import make_update_delta  # noqa: E402
 
 LIBRARY = os.urandom(5 * update_delta.BLOCK + 777)   # Above make_update_delta.PATCH_MIN_SIZE.
+# Deltas rebuild macOS bundles only: update_flow prepares a delta in _prepare_mac, and Windows always installs the full
+# MSI. The modes a test sets (0o600, 0o755) are not privacy: they differ from the default so the test shows that the
+# rebuilt bundle carries the new bundle's modes exactly, as its code signature needs. Windows keeps no POSIX
+# permission bits (os.chmod sets only the read-only flag, so every file reads 0o666 or 0o444) and has no delta to
+# protect, so the mode checks skip there; it also creates symbolic links only with Developer Mode or an
+# administrator's rights.
+POSIX_MODES = unittest.skipIf(os.name == "nt", environment_skip(
+    "deltas are macOS-only and Windows keeps no POSIX permission bits"))
+NO_LINK_RIGHT = 1314   # ERROR_PRIVILEGE_NOT_HELD
 
 
 def make_app(root, version, extra=None):
@@ -47,7 +60,12 @@ def make_app(root, version, extra=None):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
     os.chmod(app / "Contents/MacOS/Angelo", 0o755)
-    os.symlink("lib/libbig.dylib", app / "Contents/Resources/libbig-link.dylib")
+    try:
+        os.symlink("lib/libbig.dylib", app / "Contents/Resources/libbig-link.dylib")
+    except OSError as error:
+        if getattr(error, "winerror", None) == NO_LINK_RIGHT:
+            raise unittest.SkipTest(environment_skip("this Windows account may not create symbolic links")) from None
+        raise
     return app
 
 
@@ -82,9 +100,15 @@ class RoundTripTests(DeltaCase):
         out = update_delta.apply(path, self.old, self.folder / "built" / "Angelo.app", "1.0.0", "1.0.1")
         self.assertEqual(update_delta.compare(out, update_delta.tree(self.new)), "")
         self.assertEqual(os.readlink(out / "Contents/Resources/libbig-link.dylib"), "lib/libbig.dylib")
-        self.assertEqual(os.stat(out / "Contents/Resources/scripts/added.py").st_mode & 0o777, 0o600)
         self.assertFalse((out / "Contents/Resources/scripts/gone.py").exists())
         self.assertLess(report["size"], len(LIBRARY) // 2, "a block patch, not the whole library")
+
+    @POSIX_MODES
+    def test_file_modes_survive_the_delta(self):
+        path, _ = self.make()
+        out = update_delta.apply(path, self.old, self.folder / "built" / "Angelo.app", "1.0.0", "1.0.1")
+        self.assertEqual(os.stat(out / "Contents/Resources/scripts/added.py").st_mode & 0o777, 0o600)
+        self.assertEqual(os.stat(out / "Contents/MacOS/Angelo").st_mode & 0o777, 0o755)
 
     def test_the_wrong_pair_of_versions_is_refused(self):
         path, _ = self.make()

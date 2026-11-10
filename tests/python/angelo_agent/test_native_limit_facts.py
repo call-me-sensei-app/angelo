@@ -9,6 +9,8 @@ pin what a failed program's result adds (``failure_facts``) on the host's real P
 backend. No Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

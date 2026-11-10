@@ -8,8 +8,9 @@ Registered from the add-on's ``register()``. Everything here is quiet by design:
   suite runner sets for every suite, or ``ANGELO_DISABLE_DEFAULT_CHAT=1``, which the live-evaluation harness
   sets) or before the person has seen the welcome screen; the notices wait for the window to settle
   (no layout change, intro or interaction in progress) like the welcome screen itself.
-* Order on a normal launch: the crash dialog (a crash always comes first), then What's New after an update,
-  then an update notice found by the network check. Only one card shows at a time (``card_host``).
+* Order on a normal launch: the crash dialog (a crash always comes first), then, once, where a newer Angelo
+  moved the chats (``moved_state_notice``), then What's New after an update, then an update notice found by the
+  network check. Only one card shows at a time (``card_host``).
 * The network check (``update_ui``) starts 20 seconds after launch on its own thread; the crash scan and What's
   New read two small files.
 
@@ -21,8 +22,8 @@ import time
 import bpy
 from bpy.types import Operator
 
-from . import (app_version, card_host, crash_ui, live_windows, product_env, release_notes, update_card, update_ui,
-               updates_prefs, whatsnew_card)
+from . import (app_version, card_host, crash_ui, live_windows, moved_state_notice, product_env, release_notes,
+               update_card, update_ui, updates_prefs, whatsnew_card)
 from .ui_text import rpt_
 
 STARTUP_DELAY = 4.0
@@ -31,6 +32,7 @@ _started = None
 _scan_started = False
 _scan_done = False
 _whats_new_done = False
+_moved_done = False
 steps = []   # What the startup sequence did, in order; fixtures read it.
 
 
@@ -65,7 +67,7 @@ def open_whats_new(notes):
 
 
 def tick():
-    global _scan_started, _scan_done, _whats_new_done
+    global _scan_started, _scan_done, _whats_new_done, _moved_done
     if bpy.app.background or automation_off():
         return 30.0
     delay = float(product_env.get(DELAY_VARIABLE, default=STARTUP_DELAY))
@@ -81,6 +83,12 @@ def tick():
             return 0.3
         _scan_done = True
         steps.append("scanned")
+    if not _moved_done:   # Behind a crash dialog by order, ahead of What's New: the chats matter more.
+        _moved_done = True
+        notice = moved_state_notice.card(bpy.utils.user_resource('CONFIG'))
+        if notice is not None:
+            card_host.request(notice)
+            steps.append("moved_chats")
     if not _whats_new_done:   # Queued behind a crash dialog by priority, ahead of an update notice.
         _whats_new_done = True
         checker = update_ui.checker()
@@ -110,8 +118,8 @@ class ANGELO_OT_whats_new(Operator):
 
 
 def register():
-    global _started, _scan_started, _scan_done, _whats_new_done
-    _started, _scan_started, _scan_done, _whats_new_done = time.monotonic(), False, False, False
+    global _started, _scan_started, _scan_done, _whats_new_done, _moved_done
+    _started, _scan_started, _scan_done, _whats_new_done, _moved_done = time.monotonic(), False, False, False, False
     steps.clear()
     bpy.utils.register_class(ANGELO_OT_whats_new)
     card_host.register()

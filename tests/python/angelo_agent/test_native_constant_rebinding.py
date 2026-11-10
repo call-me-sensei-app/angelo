@@ -8,6 +8,8 @@ the kinds list kept "failed" (the live trial on e2e 45e28c579dc: a worker's stat
 module-level UPPER_CASE name bound again by a value that does not read it is that slip, in any module. No Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest

@@ -76,3 +76,69 @@ jobs:
 
       - name: Run host tests (no unexpected skips)
         run: python tests/python/angelo_agent/run_host_tests.py --max-skips 0
+
+  host-tests-windows:
+    # The same suite on Windows, where Angelo also ships: path spelling, file modes, POSIX-only APIs and process
+    # handling differ there, and nothing else runs these tests on Windows. Four shards (run_host_tests.py --shard)
+    # run in parallel; each is one process, as the whole suite is on the other job. Platform skips carry
+    # host_test_policy.environment_skip and are listed with their reasons; any other skip fails the shard.
+    name: Host tests (Windows ${{ matrix.shard }}/4)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    defaults:
+      run:
+        shell: bash
+    env:
+      LFS_ASSETS: release/branding/angelo/**,release/windows/msix/Assets/**,scripts/addons_core/angelo_agent/assets/base_mesh_thumbs/**
+      # The add-on runs in Blender's Python, which is always in UTF-8 mode (bpy_interface.cc sets
+      # preconfig.utf8_mode); without it Windows' default text encoding is the ANSI code page, which no shipped
+      # interpreter uses.
+      PYTHONUTF8: "1"
+    steps:
+      - name: Keep line endings as committed
+        # Git for Windows defaults to core.autocrlf=true; the tests digest and compare source files byte for byte, and
+        # Angelo's Windows build checks its sources out unconverted.
+        run: git config --global core.autocrlf false
+
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          lfs: false
+
+      - name: Identify required LFS objects
+        run: |
+          git lfs install --local
+          git lfs ls-files --long --include="$LFS_ASSETS" | cut -d ' ' -f1 | sort > .lfs-asset-ids
+
+      - name: Restore cached LFS objects
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs/objects
+          key: lfs-assets-${{ hashFiles('.lfs-asset-ids') }}
+
+      - name: Fetch LFS assets
+        run: git lfs pull --include="$LFS_ASSETS"
+
+      - name: Set up Python (bundled runtime version)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Upgrade pip (hash-pinned; pip vendors its own root store)
+        run: python -m pip install --require-hashes --no-deps -r .github/pip-bootstrap.txt
+
+      - name: Fetch the pinned trust-store wheels
+        run: |
+          python scripts/angelo/trust_store.py fetch-wheels --dest "$RUNNER_TEMP/angelo-wheels"
+          echo "ANGELO_PYTHON_WHEELS_DIR=$RUNNER_TEMP/angelo-wheels" >> "$GITHUB_ENV"
+
+      - name: Install optional test dependencies
+        run: python -m pip install numpy==2.3.4 jsonschema==4.23.0
+
+      - name: Run host tests (no unexpected skips)
+        run: python tests/python/angelo_agent/run_host_tests.py --max-skips 0 --shard ${{ matrix.shard }}/4

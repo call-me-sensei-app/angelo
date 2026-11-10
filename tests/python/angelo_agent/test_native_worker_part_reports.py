@@ -10,6 +10,8 @@ is announced (``worker_part_counts.saved_facts`` / ``note``, A′). No Blender: 
 * The worker counts what its save wrote: its own objects with a user, never a linked one or one with no user.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import queue
 import sys

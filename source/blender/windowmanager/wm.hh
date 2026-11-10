@@ -20,7 +20,10 @@
 
 namespace blender {
 
+struct Report;
+struct ReportList;
 struct wmDrag;
+struct wmJob;
 struct wmOperator;
 struct wmTimer;
 struct wmWindow;
@@ -112,6 +115,21 @@ void wm_jobs_handle_finished(const bContext *C);
  * Kill job entirely, also removes timer itself.
  */
 void wm_jobs_timer_end(wmWindowManager *wm, wmTimer *wt);
+/**
+ * Angelo: the job (of a type that keeps its reports, #WM_angelo_job_reports.hh) whose own reports
+ * `reports` are: its worker list, the operator list it writes (#WM_jobs_reports_attach), or any
+ * list moved while its end callbacks run. Null otherwise, and off the main thread.
+ */
+wmJob *wm_jobs_angelo_reports_owner(const wmWindowManager *wm, const ReportList *reports);
+/** Angelo: copy `report` into that job's run (an ERROR or WARNING only); `wm_job` is a #wmJob. */
+void wm_jobs_angelo_report_moved(const Report &report, void *wm_job);
+/** Angelo: forget `reports` as any job's attached list (its operator is being freed). */
+void wm_jobs_angelo_reports_detach(const ReportList *reports);
+/**
+ * The worker report list of the job whose `startjob` runs on the calling thread, or null (the
+ * main thread, another thread, or a task the job handed to a pool).
+ */
+ReportList *wm_jobs_thread_reports();
 
 /* `wm_files.cc`. */
 
@@ -148,9 +166,5 @@ void wm_stereo3d_set_cancel(bContext *C, wmOperator *op);
  * Initialize operator properties.
  */
 void wm_open_init_load_ui(wmOperator *op, bool use_prefs);
-/**
- * Return true if the script auto-execution should be cleared based on #WM_file_autoexec_init.
- */
-bool wm_open_init_use_scripts(wmOperator *op, bool use_prefs) ATTR_WARN_UNUSED_RESULT;
 
 }  // namespace blender

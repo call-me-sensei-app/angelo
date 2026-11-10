@@ -8,10 +8,17 @@ small requests (``open``, ``close``, ``status``, ``ping``) that the main thread 
 whatever the main thread ``send``s. Each client has its own writer thread, so a large scene never blocks Blender's
 main thread, and only the newest scene waits to be sent (other frames keep their order): a slow editor skips
 versions instead of falling behind. Threads never touch Blender.
+
+**Captures** are the one payload a client may send: when Angelo's agent asks to see a page through the web link
+(``capture``), the editor answers that request, and only it, with one PNG of at most ``MAX_CAPTURE`` bytes. The
+reader allows the payload while that request is outstanding, from a client that said it can capture; any other
+payload still ends the connection (doc/angelo/engine_link.rst, "Transport").
 """
 
 import collections
 import itertools
+import os
+import secrets
 import select
 import socket
 import threading
@@ -27,15 +34,32 @@ SEND_SECONDS = 120.0       # A frame not taken by the editor in this long ends t
 FLUSH_SECONDS = 1.0        # How long close() waits for queued frames (Godot's "ended") to leave.
 CLIENT_TYPES = frozenset({"open", "close", "status", "ping"})
 MAX_CAPABILITIES = 8
+MAX_CAPTURE = 8 * 1024 * 1024   # Bytes of the one PNG a client may send in reply to a capture request.
+MAX_DELTAS = 8   # Delta scenes waiting for one editor; past it they go and the editor gets a full scene (``lagging``).
+PNG = b"\x89PNG\r\n\x1a\n"
+CAPTURE_CODES = frozenset({"captured", "capture_failed"})
+
+
+def project_key(project):
+    """``project`` as ``engine_link_assets.serves`` compares it with an asset's project: resolved and case-folded as
+    the platform does. It reads the folder's path, which a slow or network drive can stall, so it runs on the
+    client's own thread when the editor authenticates, never on the main thread."""
+    try:
+        return os.path.normcase(os.path.realpath(project))
+    except (OSError, ValueError):   # Unresolvable (an embedded NUL): as said, so it matches no resolved project.
+        return os.path.normcase(project)
 
 
 def client_info(info):
     """What an editor said about itself when it authenticated, bounded: ``engine`` (default "godot", the first
-    plugin, which names itself too), ``project``, ``project_name``, ``plugin``, ``version`` (the engine's version,
-    sent under the engine's own name: ``"godot": "4.7.2"``) and ``capabilities`` (what it can show: "durable",
-    "live"; absent when it didn't say, so the engine's adapter decides)."""
+    plugin, which names itself too), ``project`` (and ``project_key``, its ``project_key``), ``project_name``,
+    ``plugin``, ``version`` (the engine's version, sent under the engine's own name: ``"godot": "4.7.2"``) and
+    ``capabilities`` (what it can show: "durable", "live"; absent when it didn't say, so the engine's adapter
+    decides)."""
     info = info if isinstance(info, dict) else {}
     kept = {key: str(info[key])[:400] for key in ("project", "project_name", "plugin") if key in info}
+    if "project" in kept:
+        kept["project_key"] = project_key(kept["project"])
     engine = str(info.get("engine") or "godot")[:40]
     kept["engine"] = engine
     if engine in info:
@@ -57,6 +81,8 @@ class _Client:
         self.sending = False                 # A frame taken from the queue is still being written.
         self.wake = threading.Condition()
         self.sent_scenes = 0
+        self.capture = None                  # The outstanding capture request: {"id", "deadline", "png", "report"}.
+        self.lagging = False                 # Delta scenes were dropped: the editor needs a full scene.
 
 
 class LinkServer:
@@ -111,23 +137,81 @@ class LinkServer:
             return {ident: dict(client.info) for ident, client in self._clients.items() if client.authenticated}
 
     def send(self, client_id, header, payload=b""):
-        """Queue a frame for one client; a ``scene`` frame replaces any scene still waiting. False when it is gone."""
+        """Queue a frame for one client; a whole ``scene`` frame replaces any scene still waiting. A delta scene
+        (``kind`` "delta": it applies to the one before) never replaces one: past ``MAX_DELTAS`` waiting, every
+        waiting scene goes and the editor is ``lagging``, owed a full scene. False when the client is gone or the
+        frame was dropped so."""
         frame = (dict(header), bytes(payload))
         with self._lock:
             client = self._clients.get(client_id)
         if client is None or client.closed or not client.authenticated:
             return False
         with client.wake:
-            if header.get("type") == "scene":   # An unsent older scene is dropped; order is otherwise kept.
-                client.queue = collections.deque(item for item in client.queue if item[0].get("type") != "scene")
+            if header.get("type") == "scene":
+                scenes = sum(1 for item in client.queue if item[0].get("type") == "scene")
+                delta = header.get("kind") == "delta"
+                if not delta or scenes >= MAX_DELTAS:   # An unsent older scene goes; order is otherwise kept.
+                    client.queue = collections.deque(item for item in client.queue
+                                                     if item[0].get("type") != "scene")
+                if delta and scenes >= MAX_DELTAS:
+                    client.lagging = True
+                    client.wake.notify_all()
+                    return False
             client.queue.append(frame)
             client.wake.notify_all()
         return True
+
+    def lagging(self, client_id):
+        """Whether a client lost delta scenes it was behind on (cleared as read): its next scene must be whole."""
+        with self._lock:
+            client = self._clients.get(client_id)
+        if client is None:
+            return False
+        with client.wake:
+            found, client.lagging = client.lagging, False
+        return found
+
+    def lagging_any(self):
+        """Whether any client is owed a full scene (``lagging``), without clearing it."""
+        with self._lock:
+            clients = list(self._clients.values())
+        return any(client.lagging for client in clients)
 
     def broadcast(self, header, payload=b"", only=None):
         """``send`` to every authenticated client, or those ``only(info)`` accepts; returns how many."""
         return sum(self.send(ident, header, payload) for ident, info in self.clients().items()
                    if only is None or only(info))
+
+    def capture(self, client_id, header, timeout):
+        """Ask one client for a picture (``header``: the ``capture`` frame's fields, without ``id``) and wait up to
+        ``timeout`` seconds: ``(png, report)``. ``png`` is the PNG it sent, or None; ``report`` is its answer's header
+        (``code`` ``captured`` or ``capture_failed`` with a ``message``), or None when it didn't answer or left. One
+        capture per client at a time; waits on the calling thread, never on the client's."""
+        with self._lock:
+            client = self._clients.get(client_id)
+        if (client is None or client.closed or not client.authenticated
+                or "capture" not in client.info.get("capabilities", ())):
+            return None, None
+        ident = secrets.token_hex(8)
+        with client.wake:
+            if client.capture is not None:
+                return None, {"code": "capture_failed", "message": "Another capture is waiting"}
+            client.capture = {"id": ident, "deadline": time.monotonic() + timeout, "png": None, "report": None,
+                              "claimed": False}
+        try:
+            if not self.send(client_id, dict(header, type="capture", id=ident)):
+                return None, None
+            with client.wake:
+                client.wake.wait_for(lambda: client.capture["report"] is not None or client.closed, timeout)
+                found = dict(client.capture)
+        finally:
+            with client.wake:
+                unfinished = client.capture is not None and client.capture["claimed"] and \
+                    client.capture["report"] is None
+                client.capture = None
+            if unfinished:   # Its answer's payload was still arriving: nothing waits for it now (break-it F2).
+                self._close(client)
+        return found["png"], found["report"]
 
     def disconnect(self, client_id):
         with self._lock:
@@ -256,10 +340,50 @@ class LinkServer:
                                     "message": "Angelo didn't accept this connection"})
             return False
         client.info = client_info(header.get("client"))
+        reader.limit(lambda found: self._capture_allowance(client, found))   # Still 0 but for a capture reply.
         client.reader = reader
         self._send_now(client, {"type": "welcome", "proof": protocol.server_proof(self._token, server_nonce,
                                                                                   client_nonce)})
         client.authenticated = True
+        return True
+
+    @staticmethod
+    def _outstanding(client, header):
+        """The client's outstanding capture when ``header`` answers it and it has no answer yet, else None."""
+        found = client.capture
+        if (found is None or found["report"] is not None or header.get("type") != "status"
+                or header.get("code") not in CAPTURE_CODES or header.get("id") != found["id"]):
+            return None
+        return found
+
+    def _capture_allowance(self, client, header):
+        """How many payload bytes ``header`` may announce (the reader asks before buffering any): ``MAX_CAPTURE``
+        for the first answer to the outstanding capture, when it is ``captured`` and before its deadline; else 0.
+        The first answer's header claims the request whatever it says, so a second answer read in the same chunk,
+        before the first is handled, is allowed nothing (break-it F1)."""
+        with client.wake:
+            found = self._outstanding(client, header)
+            if found is None or found["claimed"]:
+                return 0
+            found["claimed"] = True
+            if header.get("code") != "captured" or time.monotonic() > found["deadline"]:
+                return 0
+            return MAX_CAPTURE
+
+    def _take_capture(self, client, header, payload):
+        """Keep a client's answer to its outstanding capture; True when ``header`` was one. A PNG payload with
+        anything but a PNG in it ends the connection."""
+        if header.get("type") != "status" or header.get("code") not in CAPTURE_CODES:
+            return False
+        if payload and not payload.startswith(PNG):
+            raise protocol.FrameError("A capture is a PNG")
+        with client.wake:
+            found = self._outstanding(client, header)
+            if found is not None:   # An answer after the wait ended, or to another id, is dropped.
+                found["png"] = payload if header.get("code") == "captured" and payload else None
+                found["report"] = {"code": header.get("code"),
+                                   "message": str(header.get("message") or "")[:200]}
+                client.wake.notify_all()
         return True
 
     def _read(self, client):
@@ -270,7 +394,11 @@ class LinkServer:
             if frame is None:
                 return
             for header, payload in [frame] + rest:
-                if payload or header["type"] not in CLIENT_TYPES:
+                if header["type"] not in CLIENT_TYPES:
+                    raise protocol.FrameError("Clients send only small requests")
+                if self._take_capture(client, header, payload):
+                    continue
+                if payload:   # Only a capture reply carries one (``_capture_allowance``).
                     raise protocol.FrameError("Clients send only small requests")
                 if header["type"] == "ping":
                     self.send(client.id, {"type": "pong"})

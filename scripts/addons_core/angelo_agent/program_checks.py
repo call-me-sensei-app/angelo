@@ -18,6 +18,7 @@ from .validation_spec import MAX_CHECKS, validate_check
 from .program_material_obligations import GUARD, NeedsMaterialBinding, needs_material_binding
 from .node_link_obligations import LINK_GUARD
 from .check_defaults import proves_per_value
+from .refusal_codes import coded
 
 # A material operation has two target checks and at most 31 additional targets.
 # A node operation has 32 edits of at most 32 members, packed 32 per check.
@@ -30,8 +31,8 @@ MAX_CHECK_BYTES = 1024 * 1024
 
 
 def _refuse(detail):
-    raise ValueError("PROGRAM_CHECK_BUDGET: " + detail + "; split the operations and their expected checks "
-                     "across smaller programs")
+    raise coded(ValueError("PROGRAM_CHECK_BUDGET: " + detail + "; split the operations and their expected checks "
+                           "across smaller programs"), "VALIDATION")
 
 
 def _chunks(values, size):
@@ -184,7 +185,7 @@ def _combine(program, implied):
     """
     authored = program.get("expected_checks", [])
     if not isinstance(authored, list) or len(authored) > MAX_CHECKS:
-        raise ValueError("A program may request at most 32 authored expected checks")
+        raise coded(ValueError("A program may request at most 32 authored expected checks"), "VALIDATION")
     result = copy.deepcopy(authored)
     seen = {key for check in result for key in _keys(check)}
     for check in implied:

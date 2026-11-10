@@ -42,7 +42,7 @@ ship with the application:
 Uses: ``engine_edits`` (``controller._auto_bounded``) makes Auto ask before an edit sets the scene's engine to
 an add-on's, and ``addon_engines`` names them for the engine switcher and ``angelo_scene_settings``
 (doc/angelo/render_engines.rst, "Installed engines"); ``refuse_headless`` keeps an add-on's engine out of a
-background Angelo ("Background processes" there). ``refuse_look`` (``view_render.LookRunner.admit``) refuses a look that
+background Angelo ("Background processes" there). ``refuse_look`` (``view_render_runner.LookRunner.admit``) refuses a look that
 would run any of it and names the approved route, a ``RENDER_STILL`` job and
 ``angelo_view`` with its job ID. Depsgraph-update handlers and message-bus
 subscribers are mode-aware: a look or strip
@@ -72,8 +72,10 @@ model-facing English. ``bpy`` is imported where used, so host tests can stand
 it in.
 """
 
+import functools
 import hashlib
 import json
+import os
 import sys
 import weakref
 from pathlib import Path
@@ -115,24 +117,44 @@ def host_handler(function):
 def _shipped_roots():
     """Where code shipped with the application lives: Blender's scripts, and the folder holding this add-on."""
     import bpy
-    roots = [Path(__file__).resolve().parent.parent]
     try:
         system = bpy.utils.system_resource("SCRIPTS")
     except (AttributeError, TypeError, ValueError):
         system = ""
-    if system:
-        roots.append(Path(system).resolve())
-    return roots
+    return list(_resolved_roots(__file__, system or ""))
+
+
+@functools.lru_cache(maxsize=8)
+def _resolved_roots(module_file, system):
+    """The folder holding the add-on that ``module_file`` is in, and ``system``, resolved. Every view's policy check
+    asks (view_report) and resolving walks the filesystem, so each pair is resolved once (both are fixed for the
+    process)."""
+    return tuple([Path(module_file).resolve().parent.parent] + ([Path(system).resolve()] if system else []))
+
+
+@functools.lru_cache(maxsize=512)
+def _resolved_file(filename):
+    """``filename`` resolved and case-folded as the platform folds it, or None. A code object's file name is fixed
+    once its code is loaded, so it is resolved at its first check, not walked again by every view's check."""
+    try:
+        return os.path.normcase(str(Path(filename).resolve()))
+    except (OSError, RuntimeError, ValueError):
+        return None
 
 
 def _shipped(filename, roots):
     if not isinstance(filename, str) or not filename or filename.startswith("<"):
         return False  # Exec'd code, a text block, a builtin: nothing shipped vouches for it.
-    try:
-        resolved = Path(filename).resolve()
-    except (OSError, RuntimeError, ValueError):
+    resolved = _resolved_file(filename)
+    if resolved is None:
         return False
-    return any(resolved.is_relative_to(root) for root in roots)
+    # Path.is_relative_to's own lexical rule (case-folded where the platform folds case), on strings: it walked every
+    # parent as a new path object, the larger part of each view's policy check.
+    for root in roots:
+        folder = os.path.normcase(str(root))
+        if resolved == folder or resolved.startswith(folder.rstrip(os.sep) + os.sep):
+            return True
+    return False
 
 
 def _code_file(function):
@@ -345,6 +367,7 @@ def inspect(scene, kind, written=None):
 
 class ViewRefused(RuntimeError):
     """A view refused for the add-on Python its own writes would run; callers re-raise it as it is."""
+    refusal_code = "UNSUPPORTED"   # Raised before any of the view's writes (refuse_view): nothing was made.
 
 
 def view_report(written, dirties):

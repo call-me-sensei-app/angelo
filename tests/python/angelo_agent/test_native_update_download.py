@@ -6,6 +6,8 @@ Against a loopback server that answers ``Range``/``If-Range`` as the download ho
 nothing leaves the computer. Contract: doc/angelo/updates_and_reports.rst, "Installing updates".
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import os
 import socket

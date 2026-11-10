@@ -6,6 +6,10 @@ Run in a disposable graphical --factory-startup instance. No provider calls.
 The tests compare actual live base/CCG arrays and exercise the native bpy API,
 independently of host validation and result summaries.
 """
+
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 import copy
 import json
 import math

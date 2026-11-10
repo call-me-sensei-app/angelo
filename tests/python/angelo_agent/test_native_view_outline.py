@@ -9,6 +9,8 @@ and not advice). test_blender_view_outline.py proves the targets' silhouettes an
 against Blender's own drawing and projection.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib.util
 import json
 import struct

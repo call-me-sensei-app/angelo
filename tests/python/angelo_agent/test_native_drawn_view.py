@@ -11,6 +11,8 @@ it), at most ``drawn_view.WAIT``. Without Blender: stub views; the window's own 
 test_blender_rail_view_drawn.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import unittest
 from types import SimpleNamespace
@@ -150,6 +152,32 @@ class DrawnViewTests(unittest.TestCase):
             self.assertFalse(drawn_view.ready("lead", area, found, scene, 20.0 + tick * drawn_view.WAIT / 8))
         self.assertTrue(drawn_view.ready("lead", area, found, scene, 20.0 + drawn_view.WAIT))
         self.assertEqual(drawn_view.gave_up[0], given_up + 1)
+
+    def test_time_under_the_start_up_cover_is_never_counted_against_wait(self):
+        """The native start-up cover does not render the views it hides (1.0.10): a picture asked for under it waits
+        for the view's frame after the lift, never deciding through stale matrices after ``WAIT`` of covered time."""
+        view, space, region, _header, area, scene = setup()
+        found = (view, region.width, region.height)
+        given_up = drawn_view.gave_up[0]
+        self.assertFalse(drawn_view.ready("lead", area, found, scene, 30.0, covered=True))
+        for tick in range(1, 17):   # Twice WAIT under the cover, asked about every poll.
+            self.assertFalse(drawn_view.ready("lead", area, found, scene, 30.0 + tick * drawn_view.WAIT / 8, True))
+        lifted = 30.0 + 2 * drawn_view.WAIT
+        self.assertFalse(drawn_view.ready("lead", area, found, scene, lifted + drawn_view.WAIT / 2))
+        frame(view, space, region, scene)   # Its first frame after the lift.
+        self.assertTrue(drawn_view.ready("lead", area, found, scene, lifted + drawn_view.WAIT / 2 + 0.05))
+        self.assertEqual(drawn_view.gave_up[0], given_up, "Waited for the frame: never gave up")
+
+    def test_a_wait_left_off_under_the_cover_starts_afresh_never_later(self):
+        """Third review N3: a covered ask after a wait left off moved its start past now by the whole gap."""
+        view, space, region, _header, area, scene = setup()
+        found = (view, region.width, region.height)
+        self.assertFalse(drawn_view.ready("lead", area, found, scene, 40.0, covered=True))
+        resumed = 40.0 + drawn_view.RESUMED + 5.0   # Left off, then asked again, still covered.
+        self.assertFalse(drawn_view.ready("lead", area, found, scene, resumed, covered=True))
+        for tick in range(1, 8):   # The lift, then asked about every poll.
+            self.assertFalse(drawn_view.ready("lead", area, found, scene, resumed + tick * drawn_view.WAIT / 8))
+        self.assertTrue(drawn_view.ready("lead", area, found, scene, resumed + drawn_view.WAIT), "WAIT, not more")
 
     def test_a_wait_left_off_never_lets_a_later_change_through_at_once(self):
         """Break-it review: a wait left off (a hold, hidden panels) kept its old clock, so the next change, long

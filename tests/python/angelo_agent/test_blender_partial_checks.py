@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Actual typed edits retain mandatory known checks and honest partial results."""
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import copy
 import json
 import os
@@ -267,8 +271,21 @@ def unlink_case(name, *, geometry=False):
         materials = {slot.material for slot in obj.material_slots if slot.material}
         groups.update(mod.node_group for mod in obj.modifiers if mod.type == "NODES" and mod.node_group)
         bpy.data.scenes.remove(scene)
-        bpy.data.batch_remove(ids={obj, mesh, *materials, *groups})
+        # The commit frees the group it replaced with its edited copy (commit_orphans): only blocks still in the file.
+        bpy.data.batch_remove(ids=[block for block in {obj, mesh, *materials} | live(groups)])
         queries.invalidate()
+
+
+def live(blocks):
+    """The blocks still in the file: a wrapper of one a commit freed raises ReferenceError on every read."""
+    found = set()
+    for block in blocks:
+        try:
+            block.name
+        except ReferenceError:
+            continue
+        found.add(block)
+    return found
 
 
 def certify(job, arguments):

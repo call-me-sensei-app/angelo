@@ -13,6 +13,8 @@ the agent no engine ran, which a person with Godot open is never told. The sessi
 after Godot starts, before any brief, in both arms alike.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import types

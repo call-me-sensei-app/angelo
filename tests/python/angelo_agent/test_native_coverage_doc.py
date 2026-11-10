@@ -7,6 +7,8 @@ action, modifier and check registries and the measured always-sent prefix. It
 does not prove that a listed capability works; the named suites do that.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 from pathlib import Path
 import re

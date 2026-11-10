@@ -6,6 +6,8 @@ test_blender_stage_id_hazards.py proves the same on real data: a name only a sta
 datablock takes the number Blender gives, and no private name reaches the file.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path
@@ -16,9 +18,14 @@ from angelo_agent import stage_names  # noqa: E402
 
 
 class Block:
-    def __init__(self, name, id_type="MATERIAL", slots=(), hint=None):
+    def __init__(self, name, id_type="MATERIAL", slots=(), hint=None, kept_name=False):
         self.name, self.id_type, self.slots = name, id_type, list(slots)
         self.animation_data = SimpleNamespace(last_slot_identifier=hint) if hint is not None else None
+        self.kept_name = kept_name
+
+    def is_property_readonly(self, prop):
+        """As RNA's: Blender keeps some IDs' names (the builtin font and its copies)."""
+        return prop == "name" and self.kept_name
 
 
 class Slot:
@@ -41,6 +48,16 @@ class StageNames(unittest.TestCase):
         self.assertEqual(stage_names.public(self.extras, copy.name + ".001"), "Wood")  # A kernel's copy of the copy.
         self.assertEqual(stage_names.public({}, copy.name + ".002"), "Wood.002")  # Without the record: the stage id goes.
         self.assertEqual(stage_names.public(self.extras, "Wood.001"), "Wood.001")  # An artist's name is never touched.
+
+    def test_a_copy_whose_name_blender_keeps_keeps_it_and_maps_to_the_public_name(self):
+        # Regression: a text object's stand-in is a copy of the builtin font, whose name RNA refuses to change; 1.0.10's
+        # yield stand-ins (stage_links.stand_in) failed every staged text edit with "VectorFont name is read-only".
+        font = stage_names.hide(self.extras, Block("Bfont Regular.001", "VFONT", kept_name=True), "Bfont Regular")
+        self.assertEqual(font.name, "Bfont Regular.001")
+        self.assertEqual(stage_names.public(self.extras, font.name), "Bfont Regular.001")
+        journal = []
+        stage_names.publish(self.extras, [font], journal)
+        self.assertEqual((font.name, journal), ("Bfont Regular.001", []))
 
     def test_results_and_slot_identifiers_show_public_names(self):
         stage_names.hide(self.extras, Block("Camera.001"), "Camera")

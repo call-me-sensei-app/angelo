@@ -14,6 +14,8 @@ account-store changes, registry loss, and never outlives the folder.
 Synthetic folders only.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 from pathlib import Path
 import shutil
@@ -25,6 +27,9 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import private_roots, storage  # noqa: E402
 from angelo_agent.files import FileWorkspace  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from host_test_policy import environment_skip  # noqa: E402
+from platform_env import home_environ  # noqa: E402
 
 
 def read(files, relative):
@@ -43,8 +48,10 @@ class Fixture(unittest.TestCase):
         (self.base / "tmp").mkdir()
         self.project = self.base / "Documents" / "Project"
         self.project.mkdir(parents=True)
-        for patcher in (patch.dict(os.environ, {"HOME": str(self.base), "XDG_STATE_HOME": str(self.base / "state-home")}),
-                        patch.object(tempfile, "tempdir", str(self.base / "tmp"))):
+        # The synthetic home as each platform reads it (Path.home(), the per-user data folder); never the real
+        # %LOCALAPPDATA%, which holds the real %TEMP% this folder is in while the temporary folder is moved aside.
+        home = dict(home_environ(self.base), XDG_STATE_HOME=str(self.base / "state-home"))
+        for patcher in (patch.dict(os.environ, home), patch.object(tempfile, "tempdir", str(self.base / "tmp"))):
             patcher.start()
             self.addCleanup(patcher.stop)
         getattr(private_roots, "_retained_cache", {}).clear()
@@ -132,6 +139,9 @@ class RegistryTests(Fixture):
             self.assertTrue(written.is_file(), written)
             self.assertTrue(written.is_relative_to(self.base / "state-home"))
 
+    # A held handle tells a removed folder (POSIX); Windows holds none (private_roots.HANDLES): its file IDs are not
+    # reused soon, so a removed root's identity names no other folder there.
+    @unittest.skipIf(os.name == "nt", environment_skip("POSIX handles: Windows holds none"))
     def test_a_removed_roots_identity_stops_counting(self):
         root = self.project / "custom-root"
         root.mkdir()

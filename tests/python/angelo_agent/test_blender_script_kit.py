@@ -11,6 +11,10 @@ results.json under ANGELO_QA_DIR. The second review's cases follow: targets the 
 alone; a cut reaches only the parts it touches; checks reach the host whole and stay small.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import math
 import os

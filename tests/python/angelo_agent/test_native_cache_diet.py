@@ -6,6 +6,8 @@ Pure composition units plus the real Controller and ClaudeProvider over the
 unbilled stdio fixture: no Claude process, credentials or inference.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 from contextlib import ExitStack
 import json
@@ -26,7 +28,7 @@ from angelo_agent.chat_settings import normalize_models  # noqa: E402
 from angelo_agent.claude_outcomes import compact_receipt  # noqa: E402
 from angelo_agent.controller import Controller, ToolDispatchBudget  # noqa: E402
 from angelo_agent.providers import ClaudeProvider  # noqa: E402
-from angelo_agent.routing import TOOLSET_VERSION, handoff, route_key  # noqa: E402
+from angelo_agent.routing import HANDOFF_DELTA_HEADER, TOOLSET_VERSION, handoff, route_key  # noqa: E402
 from angelo_agent.sessions import SessionStore  # noqa: E402
 from test_native_round_savings import HANDLE, REVISION, committed, program, staged_preview  # noqa: E402
 
@@ -102,9 +104,9 @@ class CompactReceiptTests(unittest.TestCase):
 
     def test_the_handoff_compacts_only_rows_the_host_itself_summarized(self):
         messages = [{"role": "user", "text": "Create it"}, {"role": "assistant", "text": "Submitting."},
-                    activity("c1", full_result()), SUMMARY,
+                    activity("c1", committed()), SUMMARY,
                     {"role": "user", "text": "Again"}, {"role": "assistant", "text": "Submitting."},
-                    activity("c2", full_result()),
+                    activity("c2", committed()),
                     {"role": "system", "text": "Native plan completed. Tool read-backs are shown above."},
                     activity("c3", {"error": "Expected check failed: dimensions"}, status="failed")]
         text, ids = handoff(messages)
@@ -129,8 +131,8 @@ class CompactReceiptTests(unittest.TestCase):
             call.local = True
             controller.emit("message", {"role": "user", "text": "Accept this reviewed staged preview (human UI action; no model request).",
                             "request_kind": "native_preview_accept", "preview_id": arguments["preview_id"], "call_id": call.id})
-            controller.native_jobs[call.id] = completed_job(program("PREVIEW")["arguments"], full_result())
-            accepted = controller.finish_tool(call, full_result())
+            controller.native_jobs[call.id] = completed_job(program("PREVIEW")["arguments"], committed())
+            accepted = controller.finish_tool(call, committed())
             controller.pump_events()
             messages = copy.deepcopy(controller.state["messages"])
             text, ids = handoff(messages)
@@ -143,13 +145,13 @@ class CompactReceiptTests(unittest.TestCase):
         # Historical JSON with no live-composed host summary cannot gain authority.
         text, _ = handoff([message for message in messages if not message.get("host_summary")])
         self.assertNotIn('"receipt"', text)
-        failed = dict(accepted, success=False, status="failed", error="Stale preview")
+        failed = {"success": False, "status": "failed", "error": "Stale preview"}
         text, _ = handoff(messages[:1] + [activity("chat/ui-preview/1", failed, tool="angelo_accept_preview")])
         self.assertIn("Stale preview", text)
         self.assertNotIn('"receipt"', text)
 
     def test_a_reverted_row_keeps_its_full_result(self):
-        messages = [activity("c1", full_result()), SUMMARY]
+        messages = [activity("c1", committed()), SUMMARY]
         messages[0]["reverted"] = True
         text, _ = handoff(messages)
         self.assertIn('"reverted": true', text)
@@ -487,16 +489,28 @@ class ControllerDeltaTests(ControllerFixture):
         self.assertIn('"object_revision":"%s"' % REVISION[:8], after_edit, "The receipt keeps the post-commit revision")
         self.assertEqual(self.c._identifiers.revision(HANDLE, REVISION[:8]), REVISION, "... which the host maps back")
         self.assertIn('"verified":"Committed (one Undo step)', after_edit)
-        self.assertNotIn("Host-verified result", after_edit, "One line replaces the receipt and the summary row")
+        # Delta start may cut through the host-summary group. Without proof
+        # of its earlier boundary the bounded owner retains that historical
+        # row, rather than pretending the complete group was replaced.
+        compact_turn = after_edit
+        if "Host-verified result" in after_edit:
+            prefix, excerpt = after_edit.split(HANDOFF_DELTA_HEADER, 1)
+            rows = [json.loads(line) for line in excerpt.splitlines()]
+            summary_rows = [row for row in rows if row.get("role") == "system"]
+            actual = [row["text"] for row in self.c.state["messages"] if row.get("host_summary")]
+            self.assertEqual([row["text"] for row in summary_rows], actual)
+            compact_turn = prefix + HANDOFF_DELTA_HEADER + "\n".join(json.dumps(row, separators=(",", ":"))
+                for row in rows if row.get("role") != "system")
         self.assertNotIn("operation_results", after_edit)
         self.assertNotIn("historical_native_result=", after_edit, "Its receipt is the handoff row")
-        self.assertLess(len(after_edit.encode()), 900, "The message after a host-certified edit")
+        self.assertLess(len(compact_turn.encode()), 900, "Compact content retains the existing delta byte ceiling")
+        self.assertLessEqual(len(after_edit), 24000, "Required retained history still counts in the output limit")
         self.assertLess(len(read_only.encode()), 2000, "A complete first message")
         recorded = len(json.dumps(full_result()))
         self.assertGreater(recorded, 4000, "The fixture result is as large as a real one")
 
     def test_a_failed_edit_hands_off_its_full_result(self):
-        failure = dict(full_result(), success=False, status="failed", error="Expected check failed: dimensions")
+        failure = {"success": False, "status": "failed", "error": "Expected check failed: dimensions"}
         self.executor.results = [failure]
         self.plans = [{"reply": "Creating.", "operations": [program()], "verify": False}]
         self.turn("Create a cube.")

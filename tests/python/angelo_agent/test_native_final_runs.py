@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The final-runs campaign driver: order, commands, quiet-machine checks, checkpoints. Nothing is launched."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import json
@@ -19,11 +21,17 @@ for _path in (str(HERE.parents[2] / "scripts/addons_core"), str(HERE)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+import account_fixtures  # noqa: E402  (made-up sign-ins, provider_accounts)
 import bench_mcp_vs_angelo as bench  # noqa: E402
 import final_runs as runs  # noqa: E402
 import final_runs_load as quiet  # noqa: E402
 import final_runs_mcp  # noqa: E402
 import final_runs_plan as plan  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
+
+# The Windows VM launcher (scripts/angelo/gcp_windows_validate.sh) runs from the workstation, which drives the VM.
+WORKSTATION_BASH = unittest.skipIf(os.name == "nt" or not shutil.which("bash"), environment_skip(
+    "The launcher is a bash script run from the macOS workstation (or Linux CI), not the Windows VM"))
 
 
 CONNECTIONS = {"claude": "11111111-1111-4111-8111-111111111111", "chatgpt": "22222222-2222-4222-8222-222222222222"}
@@ -219,7 +227,11 @@ class CommandTests(unittest.TestCase):
         (folder / "stock").write_text("stock")
         self.config["stock_blender"] = str(folder / "stock")
         receipt = json.loads((Path(self.config["candidate"]) / runs.RECEIPT).read_text())
-        good = {"angelo_binary": receipt["executable"], "stock_blender": str(folder / "stock")}
+        profile = folder / "codex-profile" / "477256f3-ae52-456f-bbd3-429db527d2ef"
+        # The evaluation account's made-up claims: the pilot's Codex profile is billed.
+        account_fixtures.codex_sign_in(profile)
+        good = {"angelo_binary": receipt["executable"], "stock_blender": str(folder / "stock"),
+                "codex_home": str(profile)}
         (folder / "other").write_text("another build")
         configs = {"sol": dict(good), "astra": dict(good, angelo_binary=str(folder / "other"), runtime_rehearsal=True)}
         for model, value in configs.items():
@@ -435,10 +447,16 @@ class RerunAndStopTests(unittest.TestCase):
     def test_a_start_refused_because_the_machine_got_busy_waits_rather_than_fails(self):
         step = self.steps["pilot-sol-batch_edits"]
         states = iter([{"quiet": False}, {"quiet": True}])
+        profile = self.folder / "codex-profile" / "477256f3-ae52-456f-bbd3-429db527d2ef"
+        account_fixtures.codex_sign_in(profile)   # The pilot config's Codex profile, checked at each billed entry.
+        (self.folder / "sol.json").write_text(json.dumps({"codex_home": str(profile)}))
+        self.config["pilot"]["configs"]["sol"] = str(self.folder / "sol.json")
         with mock.patch.object(runs, "run_unit", return_value=(1, [], {"contended": False})) as unit, \
+                mock.patch.object(runs.isolation, "check_billed", wraps=runs.isolation.check_billed) as account, \
                 mock.patch.object(runs.quiet, "check", side_effect=lambda threshold: next(states)):
             self.assertEqual(runs.run_step(step, self.config, self.folder, {"steps": {}}), "failed")
         self.assertEqual(unit.call_count, 2, "Once more after the busy refusal, then given up")
+        self.assertEqual(account.call_count, 2, "the pilot's Codex profile, checked before each billed entry")
 
     def test_an_indicative_run_starts_on_a_busy_machine_and_records_the_load(self):
         step = self.steps["smoke-sol-gate7"]
@@ -704,7 +722,7 @@ class WindowsStageTests(unittest.TestCase):
         return subprocess.run(["bash", str(self.scripts / "gcp_windows_validate.sh"), *argv], capture_output=True,
                               text=True, env=environment, timeout=120)
 
-    @unittest.skipUnless(shutil.which("bash"), "The launcher is a bash script run from the workstation, not the VM")
+    @WORKSTATION_BASH
     def test_the_project_zone_and_vm_name_are_required_settings(self):
         for name in ("ANGELO_GCP_PROJECT", "ANGELO_GCP_ZONE", "ANGELO_GCP_NAME"):
             with self.subTest(setting=name):
@@ -712,7 +730,7 @@ class WindowsStageTests(unittest.TestCase):
                 self.assertNotEqual(refused.returncode, 0)
                 self.assertIn("set " + name, refused.stderr)
 
-    @unittest.skipUnless(shutil.which("bash"), "The launcher is a bash script run from the workstation, not the VM")
+    @WORKSTATION_BASH
     def test_a_billed_session_needs_its_flag_and_a_dry_run_changes_nothing(self):
         refused = self.gcp("bench", "run")
         self.assertEqual(refused.returncode, 2)
@@ -806,7 +824,7 @@ class WindowsBenchSetupTests(unittest.TestCase):
         self.assertIn('"checkout-index", "--all"', install, "files no archive created come from the commit")
         self.assertIn('{"GIT_LFS_SKIP_SMUDGE": "1"}', install)
 
-    @unittest.skipUnless(shutil.which("bash"), "The launcher is a bash script run from the workstation, not the VM")
+    @WORKSTATION_BASH
     def test_a_clone_gets_its_own_bucket_and_a_bench_send_carries_its_commit(self):
         shown = WindowsStageTests().gcp("clone", "bench-vm-2", ANGELO_GCP_NAME="bench-vm", ANGELO_GCP_DRY_RUN="1")
         self.assertEqual(shown.returncode, 0, shown.stderr)

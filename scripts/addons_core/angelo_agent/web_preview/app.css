@@ -17,7 +17,10 @@
 html,body{height:100%;margin:0}
 body{background:radial-gradient(60% 55% at 42% 38%,var(--spot),transparent 75%),var(--bg);color:var(--text);
 font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow:hidden}
-.stage{position:fixed;inset:0}
+/* Every drag on the stage is the page's (drag.js): no text selection or touch callout while one passes, and no picture or
+   canvas the browser would drag out as a file instead. */
+.stage{position:fixed;inset:0;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.stage img,.stage canvas{-webkit-user-drag:none}
 #view{display:block;width:100%;height:100%;outline:none;touch-action:none}
 .hint[hidden]{display:none}
 .hint{position:absolute;inset:0;display:grid;place-content:center;padding:24px;text-align:center;

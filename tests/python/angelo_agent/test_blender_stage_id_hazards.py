@@ -9,12 +9,17 @@
 * H3: staged copies held the suffixed names ("Material.001") the live file leaves free: a material asked for by
   that name was refused NAME_TAKEN, a duplicate's mesh became "Cube.002" where Blender gives "Cube.001", and a
   data-path key named its Action slot after the copy. No private name may reach the file.
-* H4: the commit result says that replaced data left without users is normal until the file is saved, and every
-  datablock left without users after a commit existed before it (staging leaves none of its own).
+* H4: the World a commit replaced is freed (commit_orphans); a deleted object's data stays without users and the
+  result says a save does not write it; every datablock left without users after a commit existed before it
+  (staging leaves none of its own).
 
 Disposable headless instance with the exact Angelo binary: ``--background --factory-startup --disable-autoexec
 --python-exit-code 1``. No provider or paid call. Writes stage-id-hazards.json in ANGELO_QA_DIR.
 """
+
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 
 import json
 import os
@@ -179,14 +184,22 @@ def h3_staged_copies_never_hold_artist_names():
 
 
 def h4_leftovers():
-    before = uids()
-    result = run("h4_world", [op("world_configure", scene_settings.execute(window, {})["handle"], strength=0.4)],
-                 scene=True)
+    """The World a commit replaced is freed (commit_orphans); a deleted object's data is left without users, as
+    Blender's delete leaves it, and the result says so and that a save does not write it."""
+    mesh = bpy.data.meshes.new("QA Leftover Mesh")
+    window.scene.collection.objects.link(bpy.data.objects.new("QA Leftover", mesh))
+    baseline("leftover")
+    before, world_uid = uids(), window.scene.world.session_uid
+    result = run("h4_world", [op("world_configure", scene_settings.execute(window, {})["handle"], strength=0.4),
+                              op("object_delete", handle("QA Leftover"))], writes=["QA Leftover"], scene=True)
     note = result.get("orphan_data") or {}
     report["orphan_note"] = note
     check("h4_world_commits", committed(result) and window.scene.world.name == "World")
-    check("h4_the_result_says_leftover_data_is_normal", note.get("names") == ["World.001"]
-          and "saved" in note.get("note", ""))
+    check("h4_the_replaced_world_is_freed", world_uid not in {block.session_uid for block in bpy.data.worlds}
+          and not [block.name for block in bpy.data.worlds if block.users == 0])
+    check("h4_the_result_names_only_what_stays_without_users", note.get("names") == ["QA Leftover Mesh"]
+          and "saved" in note.get("note", "") and "deleted object" in note.get("note", "")
+          and "earlier World" not in note.get("note", ""))
     created = [block.name for block in orphans() if block.session_uid not in before]
     report["h4_created_orphans"] = created
     check("h4_staging_leaves_no_datablock_of_its_own", not created)

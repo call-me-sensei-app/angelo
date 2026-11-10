@@ -7,8 +7,7 @@ from collections.abc import Mapping
 from importlib import import_module
 
 from .ui_text import iface_, plural_
-from .recovery_review import (_recovery_text, _changed_values, _review_json_default,
-                              _evidence_value, _with_recovery)
+from .recovery_review import _recovery_text, _with_recovery
 
 
 def _number(value):
@@ -254,6 +253,9 @@ def _review_arguments(call, obligations=None):
     Recovery evidence is a detached host snapshot, never a submitted argument.
     The display copy does not change the program or its execution authority.
     """
+    if call.name == 'angelo_library_import' and call.arguments.get('item_id', '').startswith('fab:'):
+        from .fab_approval import review
+        return dict(call.arguments, _fab_review=review(call.precondition))
     if call.name == "angelo_flow_run":
         return dict(call.arguments, _review=call.precondition, _choices=getattr(call, "flow_selection", None))
     if call.name == "angelo_job_start" and isinstance(call.precondition, tuple) and len(call.precondition) == 3:

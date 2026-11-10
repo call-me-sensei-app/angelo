@@ -3,6 +3,8 @@
 """Seedance on a BytePlus ModelArk key: the task body, one billable create, Stop vs closing, resume, prices, and the
 model pickers offering the same model on fal and BytePlus side by side with their provider and price per second."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import json
 import sys

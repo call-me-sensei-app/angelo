@@ -6,6 +6,8 @@ No model, process or Blender: the scripts run in this interpreter under the
 executor's file name. What the host undoes is in test_native_script_rollback.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import unittest

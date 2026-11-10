@@ -10,6 +10,8 @@ import json
 import os
 import uuid
 
+from . import shared_replace
+
 
 def write_receipts(path, records, limit):
     """``performance.json``: the newest receipts that fit in ``limit`` bytes, fsynced, then replaced at once.
@@ -28,9 +30,10 @@ def write_receipts(path, records, limit):
             handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, path)
+        shared_replace.replace(temporary, path)   # Another Angelo's read shares delete; a foreign handle: retried.
         return True
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError) as error:   # Kept in memory: written with the next receipt or the flush.
+        print("Angelo: the performance receipts could not be saved yet; they are kept and saved again:", error)
         try:
             temporary.unlink(missing_ok=True)
         except OSError:

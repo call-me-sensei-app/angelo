@@ -352,7 +352,7 @@ def turn_end(messages, working=False, outcome=None, reply=True):
     building the text (the rail's draw) (pure)."""
     rows = list(messages or ())
     brief = next((index for index in range(len(rows) - 1, -1, -1) if rows[index].get("role") == "user"
-                  and rows[index].get("request_kind") != "native_preview_accept"), None)
+                  and not rows[index].get("steer") and rows[index].get("request_kind") != "native_preview_accept"), None)
     if working or brief is None or outcome is None or outcome[3] <= brief:   # Not ended since this brief.
         return "", ""
     status, stopped, not_sent, finished = outcome
@@ -443,7 +443,7 @@ def status_parts(kind, live_label="", clock="", step="", progress=None):
         # The step it is on first, as it starts ("Carving the mane"), then how far its plan is and for how long.
         return (step or live_label or iface_("Working", "Angelo"),
                 join([part for part in (progress_text(progress), clock) if part]))
-    return _state_words(kind), ""
+    return (live_label if kind == APPROVAL and live_label else _state_words(kind)), ""   # Its card's title.
 
 
 def _state_words(kind):

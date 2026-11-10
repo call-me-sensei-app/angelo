@@ -12,6 +12,8 @@ unless the newest lease grants it. No credential source is read anywhere in the 
 through the worker's one runtime transport. ``ANGELO_WORKER_CHAT_HOST=0`` leaves the worker as it was.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import queue
 import sys
@@ -202,9 +204,30 @@ class Fixture(unittest.TestCase):
 
 
 class HostedTurnTests(Fixture):
+    def test_wire_classification_reaches_the_real_controller_goal_accounting(self):
+        self.assertTrue(self.open()["ok"])
+        for kind in (None, "angelo_event", "worker_brief"):
+            with self.subTest(kind=kind), patch("angelo_agent.goal_loop.request_started") as started:
+                host_request = None if kind is None else []
+                reply = self.ask("chat.send", text="a cube", attachments=[],
+                                 host_request=host_request, host_kind=kind)
+                self.assertIs(reply["ok"], True)
+                self.assertIs(type(reply["_epoch"]), int)
+                self.assertIs(type(reply["_generation"]), int)
+                chat = self.run_turn()
+                started.assert_called_once_with(chat, "a cube", host_kind=kind, person=kind is None,
+                                                use_composer_choices=True)
+        # A hosted worker cannot manufacture a lead's held-goal continuation,
+        # and the removed legacy kind must refuse before starting another turn.
+        for kind in ("angelo_goal", "angelo_continue"):
+            with self.subTest(refused_kind=kind), self.assertRaises(ValueError):
+                self.ask("chat.send", text="invalid continuation", attachments=[],
+                         host_request=[], host_kind=kind)
+
     def test_a_hosted_chat_runs_a_whole_turn_in_the_worker_and_the_lead_hears_all_of_it(self):
         self.assertEqual(self.open()["ok"], True)
-        self.assertEqual(self.ask("chat.send", text="a cube", attachments=[]), {"ok": True})
+        reply = self.ask("chat.send", text="a cube", attachments=[])
+        self.assertEqual(reply, {"ok": True, "_epoch": 0, "_generation": 1})
         chat = self.run_turn()
         self.assertEqual(self.executor.calls, [("angelo_inspect_scene", {})])   # Run here, by the local executor.
         self.assertEqual(FakeProvider.turned()[0].results[0]["success"], True)   # Its result reached the provider.

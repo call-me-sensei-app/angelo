@@ -16,6 +16,8 @@ exhaust both budgets. The real turn-context builder and scene queries over the
 shared fakes, the real identifier table and post-commit read-back; no Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import threading
 import time

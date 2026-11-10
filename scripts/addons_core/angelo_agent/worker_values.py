@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Exact host values across the worker connection: preconditions, errors and program evidence.
 
-A precondition is compared with ``==`` (``Controller._precondition`` and the commit fences), and a scene program's is
-read as a ``ProgramBinding`` by the approval review. ``encode``/``decode`` keep each value's exact type through JSON,
-so a value decoded in Angelo equals another decoded from the same worker exactly when the worker's own values are
-equal: tuples stay tuples, a ``ProgramBinding`` stays one, ``FrozenObligations`` keep their bytes, floats round-trip
-(JSON writes ``repr``). Anything else is refused (``TypeError``), so an unknown host value never compares as equal.
+A precondition is compared with ``stale_binding.same`` (``Controller._execute_tool``, native staging, the commit
+fences and a worker's approved check), ``==`` with a NaN equal to a NaN in its place, and a scene program's is read as
+a ``ProgramBinding`` by the approval review. ``encode``/``decode`` keep each value's exact type through JSON, so a
+value decoded in Angelo matches another decoded from the same worker exactly when the worker's own values do: tuples
+stay tuples, a ``ProgramBinding`` stays one, ``FrozenObligations`` keep their bytes, floats round-trip (JSON writes
+``repr``, NaN and infinities included: an object holding one used to bind a value that could not cross, so its edit
+failed unclassified before it started and held its request, C7b). Anything else is refused (``TypeError``), so an
+unknown host value never compares as equal.
 Pointers and session ids inside a value are the worker's own and are compared only with that worker's.
 Standard library only.
 """
@@ -24,9 +27,7 @@ def encode(value, depth=0):
     if value is None or type(value) in (bool, int, str):
         return value
     if type(value) is float:
-        if value != value or value in (float("inf"), float("-inf")):
-            raise TypeError("A host value is not finite")
-        return {"f": repr(value)}
+        return {"f": repr(value)}   # 'nan', 'inf' and '-inf' too: float() reads each back.
     if type(value) is bytes:
         return {"b": base64.b64encode(value).decode("ascii")}
     from .program_checks import FrozenObligations

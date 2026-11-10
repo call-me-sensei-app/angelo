@@ -50,6 +50,10 @@
   Zstandard decoder under a BSD license) under the MIT license. Their licenses and notices, and the
   list of the bundled files, are in license/web-preview/.
 
+  To read the text of a PDF attached to the agent chat, @ANGELO_PRODUCT_NAME@ bundles pypdf, unmodified,
+  under the BSD 3-Clause license. Its license, the bundled file's checksum and how it is used are in
+  license/pdf-reader/.
+
   Stichting Blender Foundation
   Amsterdam
   the Netherlands

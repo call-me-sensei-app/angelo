@@ -40,6 +40,7 @@ import zipfile
 from pathlib import Path
 
 ENV = "ANGELO_HOSTED_STAND_IN"
+RUNTIME = "ANGELO_AGENT_RUNTIME"   # ``agent_runtime``: ``off`` runs the codex found on PATH, never the bundled one.
 # The Codex version it reports: the app's pinned agent-runtime version when the suite gives it. A worker verifies the
 # version against the runtime it resolves itself, not against what the lead launched (FE report, defect D1).
 VERSION = os.environ.get(ENV + "_VERSION") or "0.162.0"
@@ -268,6 +269,19 @@ def main(arguments):
         return 0
     print("hosted stand-in codex: unsupported arguments", file=sys.stderr)
     return 2
+
+
+def take_over(environ, folder, windows=None):
+    """Make this stand-in the ``codex`` that an Angelo started with ``environ`` launches, however the suite was started:
+    its wrapper first on PATH (``install``), its folder in ``ENV``, and the app's own agent runtime off (``RUNTIME``).
+    An app that bundles its runtime runs it before anything on PATH (``cli_runtime.find_executable``), so without the
+    switch a suite started outside ``run_native_suites`` (which sets it) ran the bundled Codex under the caller's own
+    sign-in: a real model's turns, none of the scripted calls. Returns ``folder``."""
+    folder = Path(folder)
+    environ[ENV] = str(folder)
+    environ[RUNTIME] = "off"
+    environ["PATH"] = str(install(folder / "bin", windows=windows)) + os.pathsep + environ.get("PATH", "")
+    return folder
 
 
 def install(directory, python=None, windows=None):

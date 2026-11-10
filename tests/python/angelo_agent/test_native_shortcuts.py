@@ -13,6 +13,8 @@ The contract: Ctrl+Option+M shown everywhere; 1.0's Ctrl+Option+D kept only over
 (``shortcuts.DIRECTOR_VIEWPORT``), which takes nothing that acts there.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import importlib.util
 import sys

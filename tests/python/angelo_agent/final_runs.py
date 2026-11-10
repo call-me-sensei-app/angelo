@@ -58,6 +58,7 @@ for _path in (str(ROOT / "scripts/addons_core"), str(HERE)):
 
 import cache_floor, eval_send_record as send_record  # noqa: E402,E401  (send_record: the trial's record)
 import final_runs_load as quiet  # noqa: E402
+import provider_isolation as isolation  # noqa: E402  (the pilot's Codex profile: the evaluation account only)
 import final_runs_plan as campaign  # noqa: E402
 from final_runs_freeze import RECEIPT, digest, executable, freeze, inventory, verify_candidate  # noqa: E402,F401
 from final_runs_report import (chatgpt_window, check_sign_in, discover_connections, headroom,  # noqa: E402,F401
@@ -236,6 +237,11 @@ def run_step(step, config, campaign_dir, state, deadline=None):
             target = folder / entry
             if target.exists():   # Cut short or rate-limited: kept, then run again.
                 set_aside(step, target, campaign_dir, [entry], "interrupted")
+            try:   # Its config's Codex profile, read at each billed entry: a folder can be re-signed mid-campaign.
+                isolation.check_billed([("codex-profile", json.loads(Path(config["pilot"]["configs"][
+                    step["model_key"]]).read_text())["codex_home"])])
+            except isolation.Refusal as refusal:
+                raise SystemExit("run: %s's pilot profile: %s" % (step["id"], refusal)) from None
             line = command(step, config, target) + ["--only-entry", entry]
         else:
             if step["tool"] == "eval" and folder.exists() and not completed(step, folder):
@@ -509,6 +515,10 @@ def pilot_mismatches(config, receipt):
             problems.append("%s: its stock Blender differs from --stock-blender" % model)
         if pilot.get("runtime_rehearsal") and not config.get("rehearsal"):
             problems.append("%s: a rehearsal freeze (measure refuses it)" % model)
+        try:   # Its Codex profile is billed: signed in to the evaluation account only (provider_accounts).
+            isolation.check_billed([("codex-profile", pilot["codex_home"])])
+        except (isolation.Refusal, KeyError) as refusal:
+            problems.append("%s: its Codex profile: %s" % (model, refusal))
     return problems
 
 

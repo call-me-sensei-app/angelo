@@ -25,6 +25,7 @@
 #include "BLI_vector.hh"
 
 #include "DNA_object_types.h"
+#include "DNA_layer_types.h"
 #include "DNA_scene_types.h"
 
 #include "BKE_blender_undo.hh"
@@ -44,18 +45,22 @@
 #include "BLO_undofile.hh"
 #include "BLO_writefile.hh"
 
+#include "BLT_translation.hh"
+
 #include "../sculpt_paint/mesh/sculpt_main_undo_grids.hh"
 #include "../sculpt_paint/mesh/sculpt_main_undo_snapshot_access.hh"
 #include "../../windowmanager/intern/wm_checkpoint.hh"
 
 #include "ED_sculpt.hh"
 #include "ED_undo.hh"
+#include "angelo_asset_noundo_delta.hh"
 
 #include "RNA_access.hh"
 #include "WM_api.hh"
 #include "WM_types.hh"
 
 #include "undo_intern.hh"
+#include "BLI_memory_utils.hh"
 
 namespace blender {
 
@@ -67,11 +72,21 @@ struct AngeloUndoCapture {
   UndoStack *stack = nullptr;
   UndoStep *active = nullptr;
   MemFileUndoStep *before = nullptr;
+  MemFileUndoStep *pending_after = nullptr;
   UndoCaptureScope *guard = nullptr;
   uint scene_uid = 0;
   Set<uint> artist_scene_uids;
   bool operation_active = false;
   bool finished = false;
+  bool stock_asset = false;
+  const Scene *asset_scene = nullptr;
+  const ViewLayer *asset_view_layer = nullptr;
+  ed::undo::asset::AssetNoUndoDelta *asset_noundo = nullptr;
+  bool asset_publication_attempted = false;
+  bool asset_history_published = false;
+  bool asset_restore_dispatched = false;
+  bool asset_undo_depth_released = false;
+  AngeloAssetTransactionResult asset_result;
 };
 
 /** Restore writer bookkeeping on original and embedded IDs after detached capture. */
@@ -127,8 +142,12 @@ class RecalcRestore {
 static void detached_free(MemFileUndoStep *step)
 {
   if (step) {
-    ed::sculpt_paint::undo::main_undo_state_free(step->angelo_sculpt_state);
-    BKE_memfile_undo_free(step->data);
+    BLI_assert(!step->step.prev && !step->step.next);
+    if (step->data) { step->step.type->step_free(&step->step); }
+    else {
+      ed::sculpt_paint::undo::main_undo_state_free(step->angelo_sculpt_state);
+      ed::undo::asset::asset_noundo_delta_free(step->angelo_asset_noundo_delta);
+    }
     MEM_delete(step);
   }
 }
@@ -186,13 +205,17 @@ static bool captured_states_equal(const MemFileUndoStep &a, const MemFileUndoSte
 static MemFileUndoStep *capture_memfile(Main *bmain,
                                         MemFileUndoStep *previous,
                                         const bool keep_bookkeeping,
-                                        const char **r_error)
+                                        const char **r_error,
+                                        MemFileUndoStep **r_pending = nullptr)
 {
   ed::sculpt_paint::undo::MainUndoState *sculpt_state =
       ed::sculpt_paint::undo::main_undo_state_capture(*bmain, r_error);
   if (*r_error) {
     return nullptr;
   }
+  BLI_SCOPED_DEFER([&]() {
+    ed::sculpt_paint::undo::main_undo_state_free(sculpt_state);
+  });
   /* Artist geometry and pending flush flags remain untouched. Each runtime adjunct owns the
    * state absent from Main; only the serializer's bookkeeping is restored on abandon/failure. */
   RecalcRestore recalc_restore(bmain);
@@ -201,20 +224,33 @@ static MemFileUndoStep *capture_memfile(Main *bmain,
   if (reference) {
     for (MemFileChunk &chunk : reference->chunks) {
       future.append(chunk.is_identical_future);
-      chunk.is_identical_future = false;
     }
+  }
+  bool encoded = false;
+  BLI_SCOPED_DEFER([&]() {
+    if (reference && !encoded) {
+      int i = 0;
+      for (MemFileChunk &chunk : reference->chunks) {
+        chunk.is_identical_future = future[i++];
+      }
+    }
+  });
+  if (reference) {
+    for (MemFileChunk &chunk : reference->chunks) { chunk.is_identical_future = false; }
   }
 
   MemFileUndoStep *step = MEM_new_zeroed<MemFileUndoStep>(__func__);
+  if (r_pending) { *r_pending = step; }
   step->angelo_sculpt_state = sculpt_state;
+  sculpt_state = nullptr;
   step->step.type = BKE_UNDOSYS_TYPE_MEMFILE;
   step->step.use_old_bmain_data = !bmain->use_memfile_full_barrier;
-  STRNCPY(step->step.name, "Commit Validated Native Program");
+  STRNCPY(step->step.name, CTX_N_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Apply Checked Program"));
   step->data = MEM_new_zeroed<MemFileUndoData>(__func__);
   const bool ok = BLO_write_file_mem(
       bmain, reference, &step->data->memfile, G.fileflags | G_FILE_RECOVER_WRITE);
-  const size_t sculpt_bytes = sculpt_state ? ed::sculpt_paint::undo::main_undo_state_memory_size(
-                                                 *sculpt_state) :
+  const size_t sculpt_bytes = step->angelo_sculpt_state ? ed::sculpt_paint::undo::main_undo_state_memory_size(
+                                                 *step->angelo_sculpt_state) :
                                              0;
   if (!ok || sculpt_bytes == std::numeric_limits<size_t>::max() ||
       sculpt_bytes > std::numeric_limits<size_t>::max() - step->data->memfile.size)
@@ -225,6 +261,7 @@ static MemFileUndoStep *capture_memfile(Main *bmain,
         chunk.is_identical_future = future[i++];
       }
     }
+    if (r_pending) { *r_pending = nullptr; }
     detached_free(step);
     *r_error = "Could not encode the native commit Undo snapshot";
     return nullptr;
@@ -234,6 +271,7 @@ static MemFileUndoStep *capture_memfile(Main *bmain,
   if (keep_bookkeeping) {
     recalc_restore.keep();
   }
+  encoded = true;
   return step;
 }
 
@@ -363,7 +401,7 @@ bool ED_angelo_undo_checkpoint_initial(bContext *C,
    * Angelo encoder instead: it retains all graph owners, BMLog provenance and flush flags. */
   MemFileUndoStep *initial = capture_checkpoint_initial(*main, error);
   if (!initial) { return false; }
-  STRNCPY(initial->step.name, "Checkpoint Restored");
+  STRNCPY(initial->step.name, CTX_N_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Snapshot Restored"));
   initial->step.use_old_bmain_data = false;
   if (!BKE_undosys_checkpoint_capture_validate(owner) ||
       CTX_data_main(C) != main || CTX_wm_manager(C) != wm ||
@@ -551,7 +589,8 @@ static bool grids_in_several_graphs(Main &bmain)
   return false;
 }
 
-AngeloUndoCapture *ED_angelo_undo_begin(bContext *C, const char **r_error, const bool synchronize)
+static AngeloUndoCapture *undo_begin_impl(bContext *C, const char **r_error,
+                                          const bool synchronize, AngeloUndoCapture **r_pending)
 {
   if (BKE_undosys_restore_phase() != UndoRestorePhase::Inactive) {
     *r_error = BKE_undosys_restore_refusal_message();
@@ -607,6 +646,7 @@ AngeloUndoCapture *ED_angelo_undo_begin(bContext *C, const char **r_error, const
     return nullptr;
   }
   AngeloUndoCapture *capture = MEM_new<AngeloUndoCapture>(__func__);
+  if (r_pending) { *r_pending = capture; }
   capture->context = C;
   capture->main = bmain;
   capture->wm = wm;
@@ -627,6 +667,7 @@ AngeloUndoCapture *ED_angelo_undo_begin(bContext *C, const char **r_error, const
   capture->guard = BKE_undosys_capture_begin(bmain, stack);
   if (!capture->guard) {
     MEM_delete(capture);
+    if (r_pending) { *r_pending = nullptr; }
     *r_error = "Could not protect the native commit owners";
     return nullptr;
   }
@@ -634,16 +675,18 @@ AngeloUndoCapture *ED_angelo_undo_begin(bContext *C, const char **r_error, const
   if (synchronize && has_sculpt_state && !synchronize_grid_owners(*capture, r_error)) {
     BKE_undosys_capture_finalize(capture->guard, C);
     ED_angelo_undo_discard(capture);
+    if (r_pending) { *r_pending = nullptr; }
     return nullptr;
   }
 
   /* An ordinary Object Mode commit still writes just its usual post snapshot. Any live Sculpt
    * state needs an exact boundary independent of the active history type or pruned strokes. */
   if (has_sculpt_state) {
-    capture->before = capture_memfile(bmain, nullptr, false, r_error);
+    capture->before = capture_memfile(bmain, nullptr, false, r_error, &capture->before);
     if (!capture->before) {
       BKE_undosys_capture_finalize(capture->guard, C);
       ED_angelo_undo_discard(capture);
+    if (r_pending) { *r_pending = nullptr; }
       return nullptr;
     }
     if (capture->active->type == BKE_UNDOSYS_TYPE_MEMFILE &&
@@ -681,11 +724,16 @@ AngeloUndoCapture *ED_angelo_undo_begin(bContext *C, const char **r_error, const
         STRNCPY(capture->before->step.name, capture->active->name);
       }
       else {
-        STRNCPY(capture->before->step.name, "Before Validated Native Program");
+        STRNCPY(capture->before->step.name, CTX_N_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Before Checked Program"));
       }
     }
   }
   return capture;
+}
+
+AngeloUndoCapture *ED_angelo_undo_begin(bContext *C, const char **error, const bool synchronize)
+{
+  return undo_begin_impl(C, error, synchronize, nullptr);
 }
 
 void ED_angelo_undo_discard(AngeloUndoCapture *capture)
@@ -699,7 +747,9 @@ void ED_angelo_undo_discard(AngeloUndoCapture *capture)
   }
   detached_free(capture->before);
   capture->before = nullptr;
-  if (BKE_undosys_restore_protects_main(capture->main) &&
+  detached_free(capture->pending_after);
+  capture->pending_after = nullptr;
+  if (!capture->asset_undo_depth_released && BKE_undosys_restore_protects_main(capture->main) &&
       CTX_data_main(capture->context) == capture->main &&
       CTX_wm_manager(capture->context) == capture->wm)
   {
@@ -709,7 +759,192 @@ void ED_angelo_undo_discard(AngeloUndoCapture *capture)
     }
   }
   BKE_undosys_capture_end(capture->guard);
+  ed::undo::asset::asset_noundo_delta_free(capture->asset_noundo);
   MEM_delete(capture);
+}
+
+static void stock_asset_recovery_required(bContext *C, AngeloUndoCapture &capture, const char *error)
+{
+  capture.asset_result.state = AngeloAssetTransactionState::RecoveryRequired;
+  capture.asset_result.publication_known = capture.asset_history_published || !capture.asset_publication_attempted;
+  capture.asset_result.published = capture.asset_history_published;
+  capture.asset_result.error = error;
+  capture.asset_result.recoverable = !capture.asset_publication_attempted &&
+      !capture.asset_restore_dispatched && capture.before && BKE_undosys_capture_validate(capture.guard);
+  if (Main *main = C ? CTX_data_main(C) : G_MAIN) {
+    main->is_undo_recovery_required = true;
+    wmWindowManager *wm = C ? CTX_wm_manager(C) : nullptr;
+    if (wm && wm->runtime && wm->runtime->undo_stack == capture.stack) {
+      capture.stack->recovery_required = true;
+    }
+  }
+}
+
+AngeloUndoCapture *ED_angelo_undo_stock_asset_begin(
+    bContext *C,
+    const std::shared_ptr<const BLOAssetSourcePaths> &source_paths,
+    const char **error,
+    AngeloUndoCapture **pending_owner)
+{
+  if (!C || CTX_data_mode_enum(C) != CTX_MODE_OBJECT) {
+    *error = "Leave editing or sculpt mode before importing an asset"; return nullptr;
+  }
+  AngeloUndoCapture *local = nullptr;
+  AngeloUndoCapture **slot = pending_owner ? pending_owner : &local;
+  *slot = nullptr;
+  AngeloUndoCapture *capture = nullptr;
+  try {
+    if (!undo_begin_impl(C, error, false, slot)) { return nullptr; }
+    capture = *slot;
+    capture->stock_asset = true;
+    capture->asset_scene = CTX_data_scene(C);
+    capture->asset_view_layer = CTX_data_view_layer(C);
+    capture->asset_noundo = ed::undo::asset::asset_noundo_delta_prepare(*capture->main, error);
+    if (!capture->asset_noundo) { ED_angelo_undo_discard(capture); *slot = nullptr; return nullptr; }
+    if (!capture->before) {
+      capture_memfile(capture->main, nullptr, false, error, &capture->before);
+    }
+    if (!capture->before) { ED_angelo_undo_discard(capture); *slot = nullptr; return nullptr; }
+    capture->before->step.skip = false;
+    capture->before->angelo_asset_noundo_delta =
+        ed::undo::asset::asset_noundo_delta_retain(capture->asset_noundo);
+    capture->before->angelo_asset_noundo_side = ed::undo::asset::AssetNoUndoSide::Before;
+    capture->before->step.use_old_bmain_data = false;
+    STRNCPY(capture->before->step.name,
+            CTX_N_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Before Asset Import"));
+    BKE_undosys_capture_stock_import_enable(
+        capture->guard, C, capture->wm, capture->window, capture->wm->op_undo_depth, source_paths);
+    capture->asset_result.recoverable = true;
+    return capture;
+  }
+  catch (...) {
+    /* Before the importer, every completed native allocation is still privately owned here. */
+    if (*slot) {
+      try { ED_angelo_undo_discard(*slot); *slot = nullptr; }
+      catch (...) {
+        *error = "Native asset preparation cleanup is uncertain; its owner remains retained";
+        return nullptr;
+      }
+    }
+    *error = "Could not prepare the fresh native asset Undo boundary";
+    return nullptr;
+  }
+}
+
+AngeloAssetTransactionResult ED_angelo_undo_stock_asset_status(const AngeloUndoCapture *capture)
+{
+  if (!capture || !capture->stock_asset) {
+    AngeloAssetTransactionResult result;
+    result.state = AngeloAssetTransactionState::RecoveryRequired;
+    result.publication_known = false; result.error = "Unknown native asset scope";
+    return result;
+  }
+  return capture->asset_result;
+}
+
+AngeloAssetTransactionResult ED_angelo_undo_stock_asset_recover(bContext *C, AngeloUndoCapture *capture)
+{
+  if (!capture || !capture->stock_asset) { return ED_angelo_undo_stock_asset_status(capture); }
+  if (ELEM(capture->asset_result.state, AngeloAssetTransactionState::Restored,
+           AngeloAssetTransactionState::Committed)) { return capture->asset_result; }
+  BKE_undosys_capture_stock_import_disable(capture->guard);
+  if (!C || CTX_data_main(C) != capture->main || CTX_wm_manager(C) != capture->wm ||
+      capture->asset_publication_attempted || capture->asset_restore_dispatched ||
+      !capture->before || !BKE_undosys_capture_validate(capture->guard)) {
+    stock_asset_recovery_required(C, *capture, "Native restore is unavailable in this context");
+    return capture->asset_result;
+  }
+  /* No failed-import comparator exists: force Before's encoded IDs, retaining stock image-cache carry. */
+  BLO_memfile_clear_future(&capture->before->data->memfile);
+  capture->before->step.use_old_bmain_data = false;
+  bool history_owns_before = false;
+  /* A read barrier, not an encoded failed After. The stock UNDO decoder reads its *next*
+   * step's reuse flag; setting Before's flag alone would not force its recorded bytes. */
+  MemFileUndoStep read_barrier{};
+  read_barrier.step.type = BKE_UNDOSYS_TYPE_MEMFILE;
+  read_barrier.step.use_old_bmain_data = false;
+  bool restored = false;
+  try {
+    restored = BKE_undosys_capture_restore_before(
+        capture->guard, C, &capture->before->step, &read_barrier.step, &history_owns_before);
+  }
+  catch (...) {
+    if (history_owns_before) { capture->before = nullptr; }
+    capture->asset_restore_dispatched = true;
+    stock_asset_recovery_required(C, *capture, "Native asset restore threw; recovery is required");
+    return capture->asset_result;
+  }
+  capture->asset_restore_dispatched = history_owns_before || restored;
+  if (history_owns_before) { capture->before = nullptr; }
+  wmWindowManager *wm = CTX_wm_manager(C);
+  if (wm && wm == capture->wm && wm->op_undo_depth > 0) {
+    --wm->op_undo_depth; capture->asset_undo_depth_released = true;
+  }
+  capture->finished = true;
+  if (!restored) {
+    stock_asset_recovery_required(C, *capture, "Native asset restore did not complete; recovery is required");
+    return capture->asset_result;
+  }
+  capture->asset_result = {};
+  capture->asset_result.state = AngeloAssetTransactionState::Restored;
+  capture->asset_result.restored = true;
+  return capture->asset_result;
+}
+
+AngeloAssetTransactionResult ED_angelo_undo_stock_asset_finish(bContext *C, AngeloUndoCapture *capture,
+                                                              const bool keep)
+{
+  if (!capture || !capture->stock_asset) { return ED_angelo_undo_stock_asset_status(capture); }
+  if (capture->asset_result.state != AngeloAssetTransactionState::Active) { return capture->asset_result; }
+  if (!keep) { return ED_angelo_undo_stock_asset_recover(C, capture); }
+  BKE_undosys_capture_stock_import_disable(capture->guard);
+  const char *error = nullptr;
+  try {
+    bool context_matches = false;
+    if (C && CTX_data_main(C) == capture->main && CTX_data_scene(C) == capture->asset_scene &&
+        CTX_data_view_layer(C) == capture->asset_view_layer) {
+      for (const Scene &scene : capture->main->scenes) {
+        if (&scene != capture->asset_scene || scene.id.session_uid != capture->scene_uid) { continue; }
+        for (const ViewLayer &layer : scene.view_layers) {
+          if (&layer == capture->asset_view_layer) { context_matches = true; break; }
+        }
+        break;
+      }
+    }
+    if (!context_matches) { return ED_angelo_undo_stock_asset_recover(C, capture); }
+    if (!ed::undo::asset::asset_noundo_delta_capture_after(
+            *capture->asset_noundo, *capture->main, &error)) {
+      return ED_angelo_undo_stock_asset_recover(C, capture);
+    }
+    const bool published = ED_angelo_undo_finish_prepare(C, capture, true, false, &error);
+    if (!published) {
+      if (!capture->asset_publication_attempted) {
+        return ED_angelo_undo_stock_asset_recover(C, capture);
+      }
+      stock_asset_recovery_required(C, *capture, error ? error : "Native asset publication failed");
+      return capture->asset_result;
+    }
+    if (error) {
+      stock_asset_recovery_required(C, *capture, error);
+      return capture->asset_result;
+    }
+    capture->asset_result = {};
+    capture->asset_result.state = AngeloAssetTransactionState::Committed;
+    capture->asset_result.published = true; capture->asset_result.error = error;
+    return capture->asset_result;
+  }
+  catch (...) {
+    stock_asset_recovery_required(C, *capture, "Native publication is uncertain; recovery is required");
+    return capture->asset_result;
+  }
+}
+
+bool ED_angelo_undo_stock_asset_close(AngeloUndoCapture *&capture)
+{
+  if (!capture || !capture->stock_asset ||
+      !ELEM(capture->asset_result.state, AngeloAssetTransactionState::Committed,
+            AngeloAssetTransactionState::Restored) || capture->operation_active) { return false; }
+  ED_angelo_undo_discard(capture); capture = nullptr; return true;
 }
 
 bool ED_angelo_undo_finish_prepare(bContext *C,
@@ -734,7 +969,7 @@ bool ED_angelo_undo_finish_prepare(bContext *C,
     return false;
   }
   if (synchronize && !synchronize_grid_owners(*capture, r_error)) {
-    BKE_undosys_capture_finalize(capture->guard, C);
+    if (!capture->stock_asset) { BKE_undosys_capture_finalize(capture->guard, C); }
     return false;
   }
   Main *bmain = capture->main;
@@ -744,24 +979,36 @@ bool ED_angelo_undo_finish_prepare(bContext *C,
   auto *previous = reinterpret_cast<MemFileUndoStep *>(
       BKE_undosys_stack_active_with_type(capture->stack, BKE_UNDOSYS_TYPE_MEMFILE));
   MemFileUndoStep *after = capture_memfile(
-      bmain, capture->before ? capture->before : previous, true, r_error);
+      bmain, capture->before ? capture->before : previous, true, r_error,
+      capture->stock_asset ? &capture->pending_after : nullptr);
   if (!after) {
-    BKE_undosys_capture_finalize(capture->guard, C);
+    if (!capture->stock_asset) { BKE_undosys_capture_finalize(capture->guard, C); }
     return false;
   }
   if (capture->before && previous) {
     /* The independent baseline shares no serialized chunks with the older memfile. */
     BLO_memfile_clear_future(&previous->data->memfile);
   }
+  if (capture->stock_asset) {
+    after->angelo_asset_noundo_delta =
+        ed::undo::asset::asset_noundo_delta_retain(capture->asset_noundo);
+    after->angelo_asset_noundo_side = ed::undo::asset::AssetNoUndoSide::After;
+    after->step.use_old_bmain_data = false;
+    STRNCPY(after->step.name, CTX_N_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Import Asset"));
+  }
+  if (capture->stock_asset) { capture->asset_publication_attempted = true; }
   if (!BKE_undosys_capture_publish(
           capture->guard, capture->before ? &capture->before->step : nullptr, &after->step))
   {
+    if (capture->stock_asset) { capture->pending_after = nullptr; }
     detached_free(after);
     *r_error = "The protected native Undo publication was refused";
-    BKE_undosys_capture_finalize(capture->guard, C);
+    if (!capture->stock_asset) { BKE_undosys_capture_finalize(capture->guard, C); }
     return false;
   }
+  if (capture->stock_asset) { capture->asset_history_published = true; }
   capture->before = nullptr; /* Stack owns both snapshots now. */
+  capture->pending_after = nullptr;
   bmain->is_memfile_undo_written = true;
   bmain->use_memfile_full_barrier = false;
   WM_file_tag_modified();

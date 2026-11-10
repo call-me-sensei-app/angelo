@@ -17,6 +17,10 @@ from pathlib import Path, PurePosixPath
 from . import checkpoint_filesystem as cf
 from . import job_frame_check, job_outputs
 
+# In a render's staging folder: the relative path of each file its publication moved out (a volume without hard links),
+# written before the move. Only these count as moved by an earlier attempt (``moved_earlier``).
+MOVED_NOTE = ".angelo-job-moved"
+
 
 def current_path(staging):
     """Where the held staging folder is now (it may have moved with a folder above it), or None."""
@@ -107,15 +111,100 @@ def _regular(folder, name, published=None, relative=""):
         return False   # Its other name is not in ``published`` (or a link is on the way): another file has it.
 
 
-def staged_whole(staging, relative):
-    """``job_frame_check``'s answer for one staged file (False when it can't be reached without a link). A file or
-    folder that can't be read now raises ``OSError``: unknown is never torn."""
+def staged_whole(staging, relative, root=None):
+    """``job_frame_check``'s answer for one staged file (False when it can't be reached without a link); ``root``:
+    the held folder to look in instead of staging (an earlier attempt's, ``moved_earlier``). A file or folder that
+    can't be read now raises ``OSError``: unknown is never torn."""
     *folders, name = PurePosixPath(relative).parts
     with ExitStack() as stack:
-        folder = staging.folder
+        folder = staging.folder if root is None else root
         try:
             for part in folders:
                 folder = stack.enter_context(cf._private_child(folder, part))
         except ValueError:
             return False
         return job_frame_check.check_entry(folder, name)
+
+
+def moved_earlier(staging, plan, published, present, start, end, step=1):
+    """The planned files an earlier attempt published by moving them (a volume without hard links: FAT, exFAT, SMB):
+    gone from staging, a regular file at the same relative path in ``published`` (the folder that attempt reserved,
+    ``recover_into``). They count as finished files, so the rest of their frames is never dropped as unfinished nor
+    thrown away with staging. Only files the note says this job moved (``MOVED_NOTE``): another program's file at
+    a planned name is never counted. Relative posix paths; a folder that can't be read raises ``OSError``."""
+    from . import job_render_outputs as render_outputs
+    noted = moved_names(staging)
+    if published is None or not noted:
+        return set()
+    expected = {render_outputs.file_name(output, frame) for output in plan
+                for frame in render_outputs.frame_numbers(start, end, step)}
+    found = set()
+    for relative in sorted({output["prefix"].rpartition("/")[0] for output in plan}):
+        with ExitStack() as stack:
+            folder, there = published, staging.folder
+            try:
+                for part in PurePosixPath(relative).parts:
+                    folder = stack.enter_context(cf._private_child(folder, part))
+            except (FileNotFoundError, ValueError):
+                continue
+            try:
+                for part in PurePosixPath(relative).parts:
+                    there = stack.enter_context(cf._private_child(there, part))
+            except FileNotFoundError:
+                there = None
+            except ValueError:
+                continue   # A link on staging's way: nothing of it is counted.
+            for name in cf.list_names(folder):
+                path = relative + "/" + name if relative else name
+                if path in present or path not in expected or path not in noted:
+                    continue
+                if there is not None and _exists(there, name):
+                    continue   # Still in staging (another file, or one that isn't whole): never this one.
+                try:
+                    info = cf.entry_info(folder, name)
+                except FileNotFoundError:
+                    continue
+                if stat.S_ISREG(info.st_mode) and info.st_nlink == 1:
+                    found.add(path)
+    return found
+
+
+def moved_names(staging):
+    """The relative paths ``MOVED_NOTE`` names (none when there is no note)."""
+    try:
+        descriptor = cf._open_file(staging.folder, MOVED_NOTE, os.O_RDONLY)
+    except FileNotFoundError:
+        return set()
+    try:
+        data = b""
+        while chunk := os.read(descriptor, 1 << 20):
+            data += chunk
+    finally:
+        os.close(descriptor)
+    return {line for line in data.decode("utf-8", "replace").split("\n") if line}
+
+
+class MoveNote:
+    """Appends to ``MOVED_NOTE`` before each move a publication makes (opened at its first)."""
+
+    def __init__(self, staging):
+        self.staging, self.descriptor = staging, None
+
+    def __call__(self, relative):
+        if self.descriptor is None:
+            self.descriptor = cf._open_file(self.staging.folder, MOVED_NOTE, os.O_WRONLY | os.O_CREAT)
+            os.lseek(self.descriptor, 0, os.SEEK_END)
+        os.write(self.descriptor, (relative + "\n").encode("utf-8"))   # Written through before the move.
+
+    def close(self):
+        if self.descriptor is not None:
+            os.close(self.descriptor)
+            self.descriptor = None
+
+
+def _exists(folder, name):
+    try:
+        cf.entry_info(folder, name)
+        return True
+    except FileNotFoundError:
+        return False

@@ -7,6 +7,8 @@ The real providers and controller run over scripted stand-ins
 suite (test_blender_read_tools.py) repeats the delivery with Blender's own answers.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import tempfile
@@ -114,8 +116,11 @@ class PlacementTests(unittest.TestCase):
         # angelo_blend_file's sentence follows the shared text (claude_text.CLAUDE_TAIL): a worker has no such tool.
         self.assertIn("angelo_blend_file reports", providers.claude_session("claude", SimpleNamespace(
             turn_options=None, state={"provider": "claude_api", "options": {}}))[1]["request"]["systemPrompt"][0])
-        self.assertIn("angelo_expand_recipe, angelo_blend_file) are deferred",
-                      providers.codex_instructions(short_identifiers=True, deferred=True))
+        deferred = providers.codex_instructions(short_identifiers=True, deferred=True)
+        self.assertIn("Deferred more__* (", deferred)
+        self.assertIn("angelo_expand_recipe, angelo_blend_file):", deferred)
+        self.assertIn("exact schemas and guidance via angelo_agent_capabilities, "
+                      "family TOOLS, name without more__.", deferred)
 
 
 class ControllerTests(unittest.TestCase):

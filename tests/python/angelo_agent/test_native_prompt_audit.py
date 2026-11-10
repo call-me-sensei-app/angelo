@@ -7,6 +7,8 @@ transcripts, Codex rollouts, launch records) with invented content: one per rout
 builds with and without a fact, runtime text with a personal value in it, and a session that is not Angelo's.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import io
 import itertools
@@ -52,7 +54,7 @@ def fixture_rows(registry=None):
 
 
 def by_path(rows):
-    return {str(Path(row["recording"]["path"]).relative_to(FIXTURES)): row for row in rows}
+    return {Path(row["recording"]["path"]).relative_to(FIXTURES).as_posix(): row for row in rows}
 
 
 class Registry(unittest.TestCase):
@@ -132,7 +134,8 @@ class Facts(unittest.TestCase):
                 code = prompt_audit.main(["check", str(FIXTURES), "--registry", str(registry)])
         self.assertEqual(code, 1)
         self.assertIn("claude-plan @ 1111111aaaa lacks test.sky in 1 recordings (1 trials), e.g. ", err.getvalue())
-        self.assertIn("claude-plan/angelo-trial-01-transcript.jsonl#0", err.getvalue())
+        # The recording's own file path, as this machine spells it, for the person to open.
+        self.assertIn(str(Path("claude-plan", "angelo-trial-01-transcript.jsonl")) + "#0", err.getvalue())
 
     def test_a_build_filter_audits_only_that_build(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -202,6 +205,27 @@ class SourceAndRelease(unittest.TestCase):
         # Per route, not "some text states it": a Codex-only fact fails every Claude route.
         problems = prompt_audit.audit_sources(prompt_audit.load_registry())
         self.assertEqual(["%s (%s) %s %s" % problem for problem in problems], [])
+
+    def test_initial_codex_surface_does_not_borrow_deferred_descriptions(self):
+        import prompt_sources
+        from angelo_agent import tool_specs
+        from angelo_agent.agent_guidance import SCULPT_SENTENCE
+        from angelo_agent.codex_text import codex_tail
+        from angelo_agent.tool_specs import SCULPT_NAMES
+        for short in (False, True):
+            tools = prompt_sources._initial_codex_tools(tool_specs, short_identifiers=short, deferred=True)
+            self.assertTrue(any(tool.get("type") == "namespace" for tool in tools))
+            self.assertTrue(all("tools" not in tool and not tool.get("deferLoading") for tool in tools))
+            self.assertNotIn("mesh_revision", json.dumps(tools))
+            actual = tool_specs.codex_tools(short_identifiers=short, defer=True)
+            loaded = [member for tool in actual if tool.get("type") == "namespace" for member in tool["tools"]]
+            self.assertTrue(any(tool["name"] in SCULPT_NAMES and "mesh_revision" in tool["description"]
+                                for tool in loaded))
+            # Removing the upfront sentence cannot be rescued by unloaded Sculpt descriptions.
+            tail = codex_tail(None, deferred=True, team=False)
+            visible = prompt_sources.recording(tail.replace(SCULPT_SENTENCE, ""), tools)
+            self.assertIn("angelo.sculpt_native", prompt_audit.check_text(
+                "codex-deferred-plan", prompt_audit.received(visible), prompt_audit.load_registry())["missing"])
 
     def test_runtime_text_angelo_turns_off_fails_where_it_still_arrives(self):
         registry = fixture_registry()

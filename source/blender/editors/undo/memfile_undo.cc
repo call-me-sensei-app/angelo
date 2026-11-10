@@ -174,7 +174,8 @@ static UndoDecodeResult memfile_undosys_step_decode(
   std::unique_ptr<SculptState, decltype(&ed::sculpt_paint::undo::main_undo_state_free)> state_pin(
       ed::sculpt_paint::undo::main_undo_state_retain(us->angelo_sculpt_state),
       ed::sculpt_paint::undo::main_undo_state_free);
-  if (ed::sculpt_paint::undo::main_undo_state_has_grids(state_pin.get()) &&
+  if ((ed::sculpt_paint::undo::main_undo_state_has_grids(state_pin.get()) ||
+       us->angelo_asset_noundo_delta) &&
       !BKE_undosys_restore_activate(stack, bmain, memfile_cancel_intermediate_previews))
   {
     BKE_report(CTX_wm_reports(C), RPT_WARNING, BKE_undosys_restore_refusal_message());
@@ -233,6 +234,13 @@ static UndoDecodeResult memfile_undosys_step_decode(
     }
   }
 
+  /* The adjunct can remove/recreate IDs outside the memfile. Do not carry extracted dependency
+   * graphs across that change: their cached relations may still borrow a removed dependency.
+   * Blender's normal image/cache transfer remains part of the checked memfile read. */
+  if (us->angelo_asset_noundo_delta) {
+    use_old_bmain_data = false;
+  }
+
   if (BKE_undosys_restore_protects_stack(stack)) {
     BKE_undosys_restore_before_memfile_read(stack);
     memfile_cancel_intermediate_previews(bmain);
@@ -259,7 +267,13 @@ static UndoDecodeResult memfile_undosys_step_decode(
    * via #PRV_TAG_RESTART_RENDERING in BKE_previewimg_blend_read. */
   ED_preview_kill_jobs(CTX_wm_manager(C), bmain);
 
-  const bool read_ok = BKE_memfile_undo_decode(us->data, undo_direction, use_old_bmain_data, C);
+  const bool brush_before_ok = !us->angelo_asset_noundo_delta ||
+      ed::undo::asset::asset_noundo_delta_before_decode(
+          *us->angelo_asset_noundo_delta, *bmain, us->angelo_asset_noundo_side, &admission_error);
+  /* A Brush hook can have changed Main before refusing. Use the same checked failure cleanup
+   * as a failed decoder; never report this as an unchanged refusal. */
+  const bool read_ok = brush_before_ok &&
+      BKE_memfile_undo_decode(us->data, undo_direction, use_old_bmain_data, C);
   const char *bmesh_error = nullptr;
   const bool bmesh_ok = !bmesh_read || ed::sculpt_paint::undo::main_undo_bmesh_read_end(
                                          *CTX_data_main(C), bmesh_read, &bmesh_error);
@@ -286,7 +300,7 @@ static UndoDecodeResult memfile_undosys_step_decode(
     BKE_report(
         CTX_wm_reports(C),
         RPT_ERROR,
-        bmesh_error ? bmesh_error :
+        admission_error ? admission_error : bmesh_error ? bmesh_error :
                       "Undo could not read the document; recover a known-valid saved file before "
                       "continuing");
     return read_ok ? UndoDecodeResult::FailedStateInstalled : UndoDecodeResult::FailedNoMainInstalled;
@@ -309,6 +323,16 @@ static UndoDecodeResult memfile_undosys_step_decode(
   bmain = CTX_data_main(C);
   if (BKE_undosys_restore_protects_stack(stack)) {
     BKE_undosys_restore_rebind_main(stack, bmain);
+  }
+  if (us->angelo_asset_noundo_delta &&
+      !ed::undo::asset::asset_noundo_delta_after_decode(
+          *us->angelo_asset_noundo_delta, *bmain, us->angelo_asset_noundo_side, &admission_error))
+  {
+    if (depsgraphs) {
+      BKE_scene_undo_depsgraphs_restore(bmain, depsgraphs);
+    }
+    BKE_report(CTX_wm_reports(C), RPT_ERROR, admission_error);
+    return UndoDecodeResult::FailedStateInstalled;
   }
   ED_editors_init_for_undo(bmain);
 
@@ -457,6 +481,8 @@ static void memfile_undosys_step_free(UndoStep *us_p)
    * (so we don't need to merge when clearing all). */
   MemFileUndoStep *us = reinterpret_cast<MemFileUndoStep *>(us_p);
   ed::sculpt_paint::undo::main_undo_state_free(us->angelo_sculpt_state);
+  ed::undo::asset::asset_noundo_delta_free(us->angelo_asset_noundo_delta);
+  us->angelo_asset_noundo_delta = nullptr;
   if (us_p->next != nullptr) {
     UndoStep *us_next_p = BKE_undosys_step_same_type_next(us_p);
     if (us_next_p != nullptr) {

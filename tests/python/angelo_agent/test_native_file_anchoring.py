@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Deterministic private-fixture races at actual file-effect boundaries."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile
@@ -13,6 +15,8 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import checkpoint_filesystem
 from angelo_agent.checkpoint_filesystem import anchored_files_supported
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from host_test_policy import environment_skip  # noqa: E402
 from angelo_agent import files, checkpoints
 from angelo_agent.checkpoints import CheckpointStore
 from angelo_agent.files import FileWorkspace
@@ -189,7 +193,9 @@ class FileAnchoringTests(unittest.TestCase):
         self.assert_empty_journal()
 
 
-@unittest.skipUnless(os.name != "nt" and anchored_files_supported(), "POSIX descriptor-relative anchoring required")
+@unittest.skipUnless(os.name != "nt" and anchored_files_supported(), environment_skip(
+    "POSIX descriptor-relative anchoring required; Windows' handle route (anchored_windows) runs through "
+    "fake_nt_files here and for real in windows_ntfs_checks.py"))
 class PrivateDirectoryAnchoringTests(unittest.TestCase):
     """The one-open macOS lookup (O_NOFOLLOW_ANY) and the per-component walk give the same outcomes."""
 

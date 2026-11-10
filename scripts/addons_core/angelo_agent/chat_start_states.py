@@ -105,7 +105,7 @@ def model_card(problem, error="", expanded=False):
 def default_label(own):
     """The model button's text when nothing is chosen: Default while the chat's connection has models (its default
     runs, as the model list's checked Default row says), else Choose model."""
-    return iface_("Default") if own else iface_("Choose model")
+    return iface_("Default") if own else iface_("Choose a model")
 
 
 def blocked_card(tools):
@@ -124,3 +124,19 @@ def blocked_shown(blocked, now):
         return None
     tools, at = blocked
     return tools if 0 <= now - at <= BLOCKED_SECONDS else None
+
+
+def draw_blocked(view, state, width, bottom):
+    """The notice for a click another tool held (``blocked_card``), resting on ``bottom`` (``view``: chat_view)."""
+    import time
+    import bpy
+    from . import ui_kit_status
+    tools = blocked_shown(state.get("blocked"), time.monotonic())
+    state["drawn_blocked"] = tools  # For window fixtures.
+    if not tools:
+        return
+    names = [bpy.app.translations.pgettext_iface(tool, "Operator") for tool in tools]  # Blender's own names.
+    card = blocked_card(names)
+    inner = max(120, width - 32)
+    height, _ = ui_kit_status.notice(view, 16, 0, inner, 1.0, None, False, **card)
+    ui_kit_status.notice(view, 16, bottom + height, inner, 1.0, None, True, **card)

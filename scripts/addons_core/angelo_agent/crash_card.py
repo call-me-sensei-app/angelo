@@ -44,7 +44,7 @@ REVIEW_TITLE = n_("The last crash report Angelo sent")
 REVIEW_BODY = n_("This is exactly what was sent.")
 SEND, DONT_SEND, SAVE, PROBLEM, CLOSE, TRY_AGAIN, COPY, STOP_AUTO = (
     n_("Send report"), n_("Don't send"), n_("Save report…"), n_("Report on the website"), n_("Close", "Angelo"),
-    n_("Try again"), n_("Copy report"), n_("Ask me each time"))
+    n_("Try again"), n_("Copy report"), n_("Stop sending automatically"))
 WIDTH = 610
 BOX_HEIGHT = 218
 

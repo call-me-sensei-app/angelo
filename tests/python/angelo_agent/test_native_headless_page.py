@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """``headless_page``: the browser GUI scenarios open a page in never shows a window or touches the person's profile."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import unittest

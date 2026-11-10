@@ -10,6 +10,8 @@ shows another scene than the lead's own, the lead's tile keeps its last picture,
 (break-it E2E-20 R5-M-1).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import sys
 import unittest

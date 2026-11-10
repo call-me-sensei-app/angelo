@@ -8,6 +8,8 @@ environment from a whitelist; in design A' the worker is the single writer of a 
 the changes-only owed saves, so a whitelist that dropped the switches left exactly those saves unchecked.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import os
 import sys

@@ -21,11 +21,16 @@ write them. Angelo's guard has two halves, both checked here:
   first, then the scene and view layer in a nested override, keeps working:
   Angelo's own staged programs rely on it.
 
-With ``--gui`` it adds the case only a second window reproduces: entering
-Edit mode refreshes the other windows' tool systems, which drops the scene
-override mid-operator, and Blender's view-layer update after the call used to
-crash. No add-on, provider, account or paid call.
+With ``--gui`` it also checks that ``blend_data=None`` can unwind with a live
+window, including nested overrides, and that unavailable screen switches fail
+before changing the workspace. A second window covers the case where entering
+Edit mode refreshes the other windows' tool systems, dropping the scene
+override mid-operator. No add-on, provider, account or paid call.
 """
+
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 
 import json
 import os
@@ -184,6 +189,68 @@ def run_background_cases():
     return other
 
 
+def window_context_state():
+    ctx = bpy.context
+    return (ctx.blend_data, ctx.window, ctx.workspace, ctx.screen, ctx.area, ctx.region)
+
+
+def unavailable_main_with_window(other):
+    win = window()
+    screen = win.screen
+    area = next(area for area in screen.areas if any(region.type == "WINDOW" for region in area.regions))
+    region = next(region for region in area.regions if region.type == "WINDOW")
+    used_screens = {item.screen for item in bpy.context.window_manager.windows}
+    other_screen = next(candidate for workspace in bpy.data.workspaces if workspace != win.workspace
+                        for candidate in workspace.screens
+                        if candidate not in used_screens and not candidate.show_fullscreen)
+    before = window_context_state()
+    with bpy.context.temp_override(window=win, screen=screen, area=area, region=region):
+        pinned = window_context_state()
+        check("override_has_live_window_context", pinned == (bpy.data, win, win.workspace, screen, area, region))
+        without_main = (None, *pinned[1:])
+        with bpy.context.temp_override(blend_data=None):
+            check("null_main_visible_with_live_window", window_context_state() == without_main)
+        check("null_main_exit_restores_live_window", window_context_state() == pinned)
+
+        with bpy.context.temp_override(blend_data=None, screen=screen, area=area, region=region):
+            check("null_main_allows_same_screen", window_context_state() == without_main and win.screen == screen)
+        check("same_screen_exit_restores_main", window_context_state() == pinned)
+
+        refused("null_main_different_screen", lambda: bpy.context.temp_override(screen=other_screen, blend_data=None),
+                lambda: None, "Cannot switch screens", "blend_data is None")
+        check("null_main_different_screen_keeps_workspace", window_context_state() == pinned and win.screen == screen)
+
+        with bpy.context.temp_override(blend_data=None):
+            refused("inherited_null_main_window", lambda: bpy.context.temp_override(window=win),
+                    lambda: None, "Cannot override the window or screen", "blend_data is None")
+            refused("inherited_null_main_screen", lambda: bpy.context.temp_override(screen=screen),
+                    lambda: None, "Cannot override the window or screen", "blend_data is None")
+            refused("inherited_null_main_invalid_layer",
+                    lambda: bpy.context.temp_override(view_layer=other.view_layers[0]), lambda: None,
+                    "not a view layer of the context scene")
+            check("refusals_keep_outer_null_main", window_context_state() == without_main)
+        check("inherited_null_main_exit_restores_window", window_context_state() == pinned)
+
+        clear_ui = dict(window=None, screen=None, area=None, region=None)
+        with bpy.context.temp_override(**clear_ui):
+            check("window_and_screen_can_be_none", window_context_state() == (bpy.data, None, None, None, None, None))
+        check("window_and_screen_none_restore", window_context_state() == pinned)
+
+        layer = other.view_layers["Second"]
+        with bpy.context.temp_override(scene=other, view_layer=layer):
+            failure = RuntimeError("sentinel")
+            try:
+                with bpy.context.temp_override(blend_data=None, **clear_ui):
+                    check("null_main_with_cleared_window",
+                          window_context_state() == (None, None, None, None, None, None))
+                    raise failure
+            except RuntimeError as error:
+                check("null_main_exit_preserves_exception", error is failure)
+            check("null_main_exit_restores_outer_scene_pair", context_state() == (win, other, layer))
+            check("nested_null_main_exit_restores_window", window_context_state() == pinned)
+    check("null_main_cases_restore_caller_context", window_context_state() == before)
+
+
 def open_second_window():
     """A second main window on another workspace: an Edit-mode switch then refreshes its tool system."""
     with bpy.context.temp_override(window=window()):
@@ -238,7 +305,9 @@ def gui_start():
     """The workspace of a new window changes on the next event-loop pass, so the window case runs later."""
     other = guarded(run_background_cases)
     if other is not None:
-        guarded(open_second_window)
+        guarded(lambda: unavailable_main_with_window(other))
+        if "error" not in REPORT:
+            guarded(open_second_window)
     if "error" in REPORT:
         finish()
         return None

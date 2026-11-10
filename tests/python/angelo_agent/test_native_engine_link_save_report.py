@@ -11,6 +11,8 @@ times on FAT, HFS+ or network shares). A report is now a save's only when it ech
 (``target_sha256``); otherwise the answer says no check of the save has reported.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import unittest
@@ -39,7 +41,9 @@ class SaveReportTests(unittest.TestCase):
             temporary.write_bytes(b"blend %d" % self.writes)
             os.utime(temporary, ns=(10 ** 18 + self.writes * 10 ** 6,) * 2)
             os.replace(temporary, self.blend)
-            engine_link._save_post(filepath)
+            from save_identity_stand_in import saving
+            with saving(self.blend):   # As Blender's save names the file it wrote to its handlers.
+                engine_link._save_post(filepath)
             return {"FINISHED"}
         base.BPY.ops.wm.save_mainfile = save_mainfile
         base.BPY.data.filepath = asset.editable
@@ -58,7 +62,7 @@ class SaveReportTests(unittest.TestCase):
 
     def finish(self, pending, number, sha256="a" * 64, write_error=None):
         self.writeback.done.append((self.writeback.requests[-1][0], write_error))
-        with mock.patch.object(assets, "write_stamp", return_value=sha256):
+        with mock.patch.object(assets, "written_stamp", return_value=sha256):
             engine_link._written()
         if write_error is None:
             self.ack(1, code="reimported", save=number)
@@ -127,7 +131,9 @@ class SaveReportTests(unittest.TestCase):
             self.writes += 1
             self.blend.write_bytes(b"same size")
             os.utime(self.blend, ns=(2 * 10 ** 18, 2 * 10 ** 18))
-            engine_link._save_post(filepath)
+            from save_identity_stand_in import saving
+            with saving(self.blend):
+                engine_link._save_post(filepath)
             return {"FINISHED"}
         base.BPY.ops.wm.save_mainfile = in_place
         first, number = self.start()
@@ -160,7 +166,7 @@ class SaveReportTests(unittest.TestCase):
         with mock.patch.object(engine_link_saves.engine_preflight_link, "after_writeback") as started:
             self.writeback.done.append((self.writeback.requests[0][0], None))
             self.writeback.done.append((self.writeback.requests[1][0], None))
-            with mock.patch.object(assets, "write_stamp", return_value="a" * 64):
+            with mock.patch.object(assets, "written_stamp", return_value="a" * 64):
                 engine_link._written()
         self.assertEqual([call.kwargs["save_key"] for call in started.call_args_list],
                          [facts.save_key(known, first), facts.save_key(known, second)])

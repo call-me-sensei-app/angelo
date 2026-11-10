@@ -29,17 +29,19 @@ import bpy
 from bpy.app.handlers import persistent
 
 from . import private_roots
-from . import live_windows, pump_guard, studio_assets
+from . import change_clock, live_windows, pump_guard, studio_assets
 from .ui_text import iface_, language
 
 TICK = 5.0
 FIRST = 2.0          # The registration check: after the window is up, never during add-on registration.
 SYNC_DELAY = 20.0    # The first scan: well after startup work, so it never competes with it.
 RESCAN = 600.0       # A full scan now and then, for changes that did not touch a folder's time.
+RETRY = 60.0         # A registration record that can't be read now is read again (main thread: never every tick).
 REFRESH_TRIES = 24   # Ticks a refresh waits for a drag to end (two minutes).
 
 _state = {"registered": None, "since": 0.0, "session": uuid.uuid4().hex, "worker": None, "changed": False,
-          "reread": False, "active": False, "names": {}, "binary": "", "busy": False, "waits": 0, "previews": True}
+          "reread": False, "active": False, "names": {}, "binary": "", "busy": False, "waits": 0, "previews": True,
+          "catalog_names": None, "asked": -RETRY}   # The catalogue names this Angelo last synced (studio_assets.write_catalogs).
 _stop = threading.Event()   # Replaced at each registration: a worker of an earlier one never runs on.
 _process = None
 
@@ -55,10 +57,23 @@ def _libraries():
 
 
 def ensure_registered():
-    """Add the entry if it is missing and was not removed; return whether the library is active."""
+    """Add the entry if it is missing and was not removed; return whether the library is active, or None while that
+    can't be known yet (``_tick`` asks again after ``RETRY``).
+
+    A record that can't be read now or holds no record Angelo writes may have held the person's Turn off, so the
+    Preferences entry decides: present, the library is on and the record is written again as on (as for an entry
+    that is back); absent, it is never added. Unreadable, it is asked again later; damaged, it is written as off."""
     _library, directory = directories()
     libraries = _libraries()
     record = studio_assets.read_registration(directory)
+    if not studio_assets.registration_known(record):
+        if studio_assets.find_library(libraries, directory) is not None:
+            record = {"removed": True}   # On in Preferences: written again as on, below.
+        elif record is None:
+            return None
+        else:
+            studio_assets.write_registration(directory, removed=True)
+            return False
     decision = studio_assets.registration_decision(libraries, directory, record)
     if decision == "removed":
         return False
@@ -125,8 +140,9 @@ def redraw_studio():
 
 def _signature(library):
     def stamp(path):
-        try:
-            return path.stat().st_mtime_ns
+        try:   # A folder changed in the clock's current tick (Windows) reads as changed again next tick.
+            info = path.stat()
+            return change_clock.cache_key(info, info.st_mtime_ns)
         except OSError:
             return None
     return stamp(library / "assets"), stamp(library / "folders")
@@ -169,7 +185,10 @@ def _catalog_names():
 def _tick():
     """Main thread: Preferences, the interface language and the refresh; every file access is the worker's."""
     if _state["registered"] is None:
-        _state["registered"] = ensure_registered()
+        if time.monotonic() - _state["asked"] < RETRY:
+            return TICK
+        _state["asked"] = time.monotonic()
+        _state["registered"] = ensure_registered()   # None: its record can't be read now; asked again after RETRY.
         _state["since"] = time.monotonic()
         return TICK
     _state["registered"] = observe()
@@ -235,7 +254,7 @@ def _watch(stop):
 
 def sync(library, directory, names, binary, session, stop, run=None, yield_to=lambda: False):
     """Bring the asset folder up to date with the Studio library; True when any file was written or removed."""
-    if studio_assets.read_registration(directory).get("removed"):
+    if halted(directory):
         return False   # Removed in Preferences (here or in another Angelo): nothing more is written.
     with studio_assets.sync_lock(directory) as held:
         if not held:
@@ -247,17 +266,25 @@ def sync(library, directory, names, binary, session, stop, run=None, yield_to=la
 
 def halted(directory):
     """Whether the library was turned off (here or in another Angelo): nothing more is written. Read under the lock and
-    between batches, so a Turn off from another Angelo stops this writer before its next batch."""
-    return bool(studio_assets.read_registration(directory).get("removed"))
+    between batches, so a Turn off from another Angelo stops this writer before its next batch. A record that is there
+    but cannot be read now, or is damaged, halts it too: the Turn off may have been in it."""
+    record = studio_assets.read_registration(directory)
+    return not studio_assets.registration_known(record) or bool(record.get("removed"))
 
 
 def _sync_locked(library, directory, names, binary, session, stop, run, yield_to):
     from .studio_state import StudioLibrary
-    changed = studio_assets.write_catalogs(directory, names)
+    # Renamed only for this Angelo's own language change (or its first sync): never back over another Angelo's.
+    written = studio_assets.write_catalogs(directory, names, renamed=names != _state.get("catalog_names"))
+    if written is not None:   # Decided: else the file or its record can't be read now and this language waits.
+        _state["catalog_names"] = dict(names)
+    changed = bool(written)
     studio_assets.remove_stale_temporaries(library)
     # The manifest before the records: an item in the manifest had its record written first, so it is never taken
     # for a removed one (another Angelo may add both between two reads).
     manifest = studio_assets.read_manifest(directory)
+    if manifest is None:
+        return changed   # There but not read now: written from nothing it would forget every item. Next scan.
     studio = StudioLibrary(library)
     convert, remove = studio_assets.plan(library, studio.assets.values(), studio.folders, manifest, session)
     if remove:
@@ -427,11 +454,12 @@ def register():
         return   # A background Blender (a test, a render, this library's own writer) lists nothing.
     global _stop
     _stop = threading.Event()
-    _state.update(registered=None, worker=None, changed=False, reread=False, active=False)
+    _state.update(registered=None, worker=None, changed=False, reread=False, active=False, asked=-RETRY)
     try:
         # Now, before any Asset Shelf or Browser draws: adding a library rebuilds Blender's asset lists, and doing that
         # while a shelf's preview job runs crashed Blender (PreviewLoadJob, part D's isolation runs). A path check.
         _state["registered"], _state["since"] = ensure_registered(), time.monotonic()
+        _state["asked"] = _state["since"]
     except Exception as error:  # noqa: BLE001 - the timer tries again; registering the add-on never fails on it.
         pump_guard.report("studio_assets_host.register", error)
     add_landing_handlers()

@@ -7,6 +7,8 @@ controller's overlay and the live block; no Claude process, Blender or model. Di
 code is stored, and a plan's script is still reviewed and run from the complete call.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import tempfile

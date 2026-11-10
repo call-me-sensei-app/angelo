@@ -192,7 +192,15 @@ class WindowsDirectory:
             attributes, tag = self.api.attributes(fd)
             if _is_link(attributes, tag) and not allow_link:
                 raise OSError(errno.ELOOP, NOT_FOLLOWED, name)
-            _same_name(self.api.long_name(fd), name)
+            try:
+                _same_name(self.api.long_name(fd), name)
+            except ValueError:
+                if os.fstat(fd).st_nlink == 0:
+                    # Deleted since the open (Windows deletes with POSIX semantics while a handle is open): the
+                    # handle's path is now the volume's deleted-file area, so its name says nothing. The name is
+                    # gone, as an unlinked one is on POSIX.
+                    raise FileNotFoundError(errno.ENOENT, "The file was deleted", name) from None
+                raise
             return fd, attributes, tag
         except BaseException:
             os.close(fd)
@@ -288,8 +296,13 @@ class WindowsDirectory:
             os.close(fd)
 
     def make_directory(self, name):
-        """``mkdirat``: a new child directory; an existing name of any kind raises FileExistsError."""
-        os.close(self.api.open_at(self.fd, check_name(name), DIRECTORY_ACCESS, FILE_CREATE, FILE_DIRECTORY_FILE))
+        """``mkdirat``: a new child directory; an existing name of any kind raises FileExistsError. Returns the
+        ``fstat`` of the handle that created it: the directory made, never a later lookup of its name."""
+        fd = self.api.open_at(self.fd, check_name(name), DIRECTORY_ACCESS, FILE_CREATE, FILE_DIRECTORY_FILE)
+        try:
+            return os.fstat(fd)
+        finally:
+            os.close(fd)
 
     def link_into(self, source, target, destination):
         """``linkat`` into another verified directory: never overwrites (FileExistsError)."""
@@ -298,6 +311,24 @@ class WindowsDirectory:
                               FILE_NON_DIRECTORY_FILE)
         try:
             self.api.link_at(fd, target.fd, destination)
+        finally:
+            os.close(fd)
+
+    def move_into(self, source, target, destination, done=None):
+        """Move the file ``source`` into another verified directory as ``destination``, never over an existing name
+        (FileExistsError): a rename between two held folders (job publication where a volume has no links); ``done()``
+        runs once it moved. Returns the ``fstat`` of the moved file through the handle that moved it, after the move
+        (FAT numbers a file by its directory entry, so a move gives it another file ID); None when that can't be
+        asked (it moved, unidentified)."""
+        check_name(destination)
+        fd, _, _ = self._open(source, DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, FILE_OPEN, FILE_NON_DIRECTORY_FILE)
+        try:
+            self.api.rename_at(fd, target.fd, destination, replace=False)
+            done and done()
+            try:
+                return os.fstat(fd)
+            except OSError:
+                return None
         finally:
             os.close(fd)
 

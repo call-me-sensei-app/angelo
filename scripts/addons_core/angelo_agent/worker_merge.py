@@ -32,8 +32,8 @@ import os
 from contextlib import suppress
 from math import isfinite
 
-from . import parallel_sessions, worker_chat_lifecycle, worker_material_check, worker_materials
-from . import worker_placement as placement_check
+from . import change_clock, parallel_sessions, worker_chat_lifecycle, worker_ending, worker_material_check
+from . import worker_materials, worker_merge_privacy, worker_placement as placement_check
 
 MAX_PLACEMENTS = 64
 MAX_OBJECTS = 4000          # Objects one merge may add, copies included.
@@ -141,8 +141,8 @@ def part_refusal(number, chat, path, lead, blocker=None, again=False):
         return RefusalError("Worker %d's part is not ready to merge: %s; angelo_workers_status says when its turn has "
                             "ended" % (number, why), code="WRITER_BUSY")
     try:
-        if not again:
-            parallel_sessions.refuse_merged_again(number, path, lead)
+        worker_ending.refuse_predating(number, path, lead)   # Built before a Restore, not in the chosen scene: first.
+        parallel_sessions.refuse_merged_again(number, path, lead) if not again else None
     except RefusalError as refused:
         return refused
     if not os.path.isfile(path):
@@ -219,8 +219,8 @@ def precondition(controller, arguments, parts, blocker=None):
         refused = part_refusal(number, chat, path, controller, blocker, part["again"])
         if refused is not None:
             raise refused
-        try:
-            stat = os.stat(path)
+        try:   # Settled (change_clock): a later save changes what this binds, in the tick of its last stamp too.
+            stat = change_clock.settle(os.stat(path), change=False)
         except OSError:
             raise RefusalError("Worker %d has no saved part yet" % number, code="VALIDATION") from None
         bound.append((number, stat.st_size, stat.st_mtime_ns))
@@ -335,15 +335,17 @@ def _hide(view_layer, hidden):
                     setattr(item, field, True)
 
 
-def _append(part, path, scene, collection_name, layout):
+def _append(part, path, scene, collection_name, layout, private):
     """A part appended into a new collection and linked as built once per placement (every further one a copy of
     the part whose objects share its data). Nothing is placed yet: the first evaluation is the oracle."""
     import bpy
+    before = worker_material_check.ids()   # Right after the append, its scrub takes the worker's own out (F-L-2).
     with bpy.data.libraries.load(str(path), link=False) as (source, target):
         object_names, material_names = list(source.objects), list(source.materials)
         collection_names = list(source.collections)
         target.objects, target.materials = list(source.objects), list(source.materials)
         target.collections = list(source.collections)
+    brought = worker_merge_privacy.scrub(scene, before, target.objects + target.materials + target.collections, private)
     by_name = {name: obj for name, obj in zip(object_names, target.objects) if obj is not None}
     groups = {name: c for name, c in zip(collection_names, target.collections) if c is not None}
     objects = list(by_name.values())
@@ -375,7 +377,7 @@ def _append(part, path, scene, collection_name, layout):
             "built": {obj: obj.matrix_basis.copy() for obj in free},   # Stored data, not the world matrix (H-1).
             "as_built": {obj: placement_check.as_built(obj) for obj in free},   # Kept by a placed basis (E2E-15 H-1).
             "instances": instances, "mirrors": every_mirror, "collection": collection,
-            "view": clean_view((layout or {}).get("view")),
+            "view": clean_view((layout or {}).get("view")), "brought": brought,
             "renamed": {old: obj.name for old, obj in zip(object_names, target.objects)
                         if obj is not None and obj.name != old}}
 
@@ -408,9 +410,10 @@ def merge(lead, window, arguments, parts, name_of, layouts=None):
         raise RefusalError("One merge adds at most %d objects (this one %d); nothing was merged" % (MAX_OBJECTS, total),
                            code="LIMIT_EXCEEDED")
     before, unrecord = worker_material_check.ids(), None   # What a failure after the first append leaves.
+    private = worker_merge_privacy.paths.PrivateFolders([parts[part["worker"]][1] for part in arguments["parts"]])
     try:
         appended = [_append(part, parts[part["worker"]][1], scene, name_of(part["worker"]),
-                            (layouts or {}).get(part["worker"])) for part in arguments["parts"]]
+                            (layouts or {}).get(part["worker"]), private) for part in arguments["parts"]]
         unrecord = parallel_sessions.parts_merged([parts[part["worker"]][1] for part in arguments["parts"]], scene)
         result = _place(window, arguments, appended, before, unrecord)
     except BaseException as error:
@@ -493,4 +496,5 @@ def _place(window, arguments, appended, before, unrecord):
     return {"success": True, "scene_changed": True, "merged": merged,
             "changes": {"added": added[:SHOWN], "removed": [], "modified": [], "truncated": len(added) > SHOWN,
                         "scope": "Parts merged from their workers' files"},
+            "also_added": worker_merge_privacy.answer([item["brought"] for item in appended]),
             "note": "The parts are now ordinary objects of this scene; their workers stopped."}

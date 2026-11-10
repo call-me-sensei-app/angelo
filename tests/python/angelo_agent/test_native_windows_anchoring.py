@@ -9,6 +9,8 @@ run proves NTFS' own semantics (doc/angelo/checkpoint_policy.rst, "Windows file
 anchoring").
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import errno
 import os
 import stat
@@ -28,12 +30,13 @@ from angelo_agent.files import FileWorkspace
 from angelo_agent.snapshot_retention import enforce_retention
 import fake_nt_files
 from fake_nt_files import FakeNtApi
+from host_test_policy import environment_skip
 
 CREATE = os.O_WRONLY | os.O_CREAT | os.O_EXCL
 
 
-@unittest.skipIf(os.name == "nt", "The POSIX stand-in opens links with O_PATH or O_SYMLINK; on Windows "
-                                   "windows_ntfs_checks.py runs the real backend")
+@unittest.skipIf(os.name == "nt", environment_skip("The POSIX stand-in opens links with O_PATH or O_SYMLINK; on "
+                                                   "Windows windows_ntfs_checks.py runs the real backend"))
 class WindowsBackendTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(prefix="angelo-windows-anchoring-")
@@ -125,6 +128,22 @@ class WindowsBackendTests(unittest.TestCase):
                     operation()
         self.assertTrue((self.root / ".env").exists())
 
+    def test_a_name_deleted_just_after_its_open_is_gone_not_an_alias(self):
+        # Windows deletes with POSIX semantics while a handle is open: the handle then names a file in the volume's
+        # deleted-file area (SQLite removing its -shm as a connection closes, while a reader opens it).
+        (self.root / "index.sqlite-shm").write_bytes(b"x")
+
+        def deleted_meanwhile(fd):
+            os.unlink(self.root / "index.sqlite-shm")
+            return "$Deleted-0001"
+        with cf._private_directory(self.root) as folder, patch.object(self.api, "long_name", deleted_meanwhile):
+            with self.assertRaises(FileNotFoundError):
+                cf.entry_info(folder, "index.sqlite-shm")
+        self.api.aliases[(str(self.root), "ENV~1")] = ".env"
+        (self.root / ".env").write_text("TOKEN=secret")
+        with cf._private_directory(self.root) as folder, self.assertRaisesRegex(ValueError, "Short"):
+            cf.entry_info(folder, "ENV~1")   # A name that is still there and differs stays an alias.
+
     def test_names_windows_cannot_hold_exactly_are_refused(self):
         with cf._private_directory(self.root) as folder:
             for name in ("notes.md:hidden", "notes.md::$DATA", "NUL", "con.txt", "COM1.log", "lpt\u00b9", "dot.",
@@ -198,8 +217,8 @@ class WindowsBackendTests(unittest.TestCase):
                 pass
 
 
-@unittest.skipIf(os.name == "nt", "The POSIX stand-in opens links with O_PATH or O_SYMLINK; on Windows "
-                                   "windows_ntfs_checks.py runs the real backend")
+@unittest.skipIf(os.name == "nt", environment_skip("The POSIX stand-in opens links with O_PATH or O_SYMLINK; on "
+                                                   "Windows windows_ntfs_checks.py runs the real backend"))
 class WindowsFileToolTests(unittest.TestCase):
     """The agent's file tools, journals and restore through the Windows backend."""
 

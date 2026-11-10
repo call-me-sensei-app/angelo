@@ -10,6 +10,8 @@ guarded by a headless refusal before it can be reached. Dependency-free (source-
 real child runs in test_blender_headless_mcp.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest

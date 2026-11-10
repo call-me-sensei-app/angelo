@@ -268,6 +268,37 @@ class CommitScope:
     def delete_approved_objects(self, roots):
         return self._delete("delete_approved_objects", roots)
 
+    def frees_replaced_data(self):
+        """Whether this binary's native owner can free the data a commit replaced (commit_orphans)."""
+        return all(callable(getattr(self.bridge, name, None)) for name in ("seal_replaceable", "delete_replaced_data"))
+
+    def seal_replaceable(self, holders):
+        """Before the first write: the native owner reads what the written Objects and Scene hold (its authority
+        to free replaced data later). False on a binary without the right."""
+        self.check()
+        if not self.frees_replaced_data():
+            return False
+        self.bridge.seal_replaceable(self.native_scope, tuple(holders))
+        return True
+
+    def delete_replaced(self, roots, max_passes=16):
+        """Free replaced data nothing uses through the native right: ``{"removed", "refused": [(identity, reason)],
+        "passes", "unfinished", "unexpected", "error"}``. Raises only for a receipt that is not one."""
+        self.check()
+        result = self.bridge.delete_replaced_data(self.native_scope, tuple(roots), int(max_passes))
+        if (type(result) is not dict or type(result.get("reasons")) is not list or type(result.get("success")) is not bool
+                or any(type(reason) is not str for reason in result["reasons"])
+                or type(result.get("unexpected")) is not int or type(result.get("unfinished")) is not bool
+                or any(type(result.get(key)) is not str for key in ("error", "callback_error"))):
+            raise ValueError("Invalid native replaced-data receipt")
+        removed = _identity_rows(result.get("removed"), limit=MAX_DELETE_RECEIPT_IDS)
+        refused = _identity_rows(result.get("refused"), limit=MAX_DELETE_RECEIPT_IDS)
+        if len(refused) != len(result["reasons"]):
+            raise ValueError("Invalid native replaced-data receipt")
+        return {"success": result["success"], "removed": removed, "refused": list(zip(refused, result["reasons"])),
+                "passes": result.get("passes"), "unfinished": result["unfinished"], "unexpected": result["unexpected"],
+                "error": result["error"] or result["callback_error"]}
+
     def new_collection(self, name):
         self.check()
         collection = self.bridge.new_collection(self.native_scope, name)

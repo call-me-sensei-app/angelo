@@ -9,6 +9,8 @@ phase, and the dialog's actions do what they say (sending, declining, rememberin
 checked by the GUI suite (``test_blender_update_crash``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import re
 import sys
@@ -519,7 +521,7 @@ class CrashCardTests(unittest.TestCase, PlanChecks):
         review = crash_flow.CrashFlow.review(self.folder.name, crash_flow.last_sent(self.folder.name))
         card = self.card(review)
         plan = self.plan(card)
-        self.assertEqual(labels(plan), ["Copy report", "Ask me each time", "Close"])
+        self.assertEqual(labels(plan), ["Copy report", "Stop sending automatically", "Close"])
         self.assertIn("report", plan.scroll)
         self.assertIn("This is exactly what was sent", flat(plan))
         host = self.host()

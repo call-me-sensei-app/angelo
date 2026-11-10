@@ -9,6 +9,8 @@ briefs, the numbers the stand-ins are made from against the numbers the
 checks ask for, and the counting kinds on stand-in meshes.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import math
 import sys
 import unittest

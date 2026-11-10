@@ -12,6 +12,8 @@ inventory and verdicts. The retention of old builds' caches is test_native_pycac
 itself runs on a built app (``release_launch_checks.py seal``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import contextlib
 import importlib.util
@@ -34,6 +36,8 @@ sys.path.insert(0, str(ROOT / "scripts/angelo"))
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 import release_checks  # noqa: E402
 import release_launch_checks as launch  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from host_test_policy import environment_skip  # noqa: E402
 
 INTERN = ROOT / "source/blender/python/intern"
 SITE = ROOT / "scripts/site/sitecustomize.py"
@@ -202,12 +206,13 @@ class SiteCustomizeTests(unittest.TestCase):
                 self.assert_writes_none(environ, self.run_rule(environ, dont_write=dont_write))
 
     def test_a_folder_that_lands_inside_the_app_writes_none(self):
-        """Inside the bundle (any part of it, through a link or in another case), or "/" whose mirror of the app's
-        sources is the app itself."""
+        """Inside the bundle (any part of it, through a link or in another case), or the root of the app's own drive
+        ("/", "C:\\") whose mirror of the app's sources is the app itself. Python drops the drive, so another drive's
+        root mirrors outside (D:\\ in the substituted-drive test below)."""
         link = self.folder / "link"
         link.symlink_to(self.app / "Contents")
         inside = [self.version / "cache", self.app / "Contents/MacOS/cache", self.app, link / "new/cache",
-                  self.folder / "Angelo.app/../Angelo.app/Contents/x", Path(os.path.abspath(os.sep))]
+                  self.folder / "Angelo.app/../Angelo.app/Contents/x", Path(self.app.anchor)]
         if sys.platform in ("darwin", "win32"):
             inside.append(Path(str(self.app).upper()) / "Contents/x")
         for prefix in inside:
@@ -239,7 +244,7 @@ class SiteCustomizeTests(unittest.TestCase):
                     self.assert_writes_none(environ, result)
 
     def test_a_drive_root_mirroring_into_an_install_on_a_substituted_drive_writes_none(self):
-        """Windows: S: substituted for C:\work. Python mirrors the path as written (S:\Angelo\...), so the prefix S:\
+        r"""Windows: S: substituted for C:\work. Python mirrors the path as written (S:\Angelo\...), so the prefix S:\
         lands inside the install although the resolved install is C:\work\Angelo."""
         import ntpath
 
@@ -263,7 +268,7 @@ class SiteCustomizeTests(unittest.TestCase):
                 self.assertEqual(fake_sys.pycache_prefix, prefix if writes else None)
 
     @unittest.skipIf(sys.platform == "win32" or not hasattr(os, "geteuid") or os.geteuid() == 0,
-                     "needs POSIX permissions and a user they apply to")
+                     environment_skip("needs POSIX permissions and a user they apply to"))
     def test_an_unwritable_folder_writes_none(self):
         os.chmod(self.cache, 0o500)
         self.addCleanup(os.chmod, self.cache, 0o700)
@@ -362,8 +367,8 @@ class PrecompileTests(unittest.TestCase):
         report = precompile.precompile(str(self.lib))
         self.assertEqual(report["compiled"], [str(self.lib / "plain.py")])
         self.assertEqual(report["current"], 2)
-        self.assertEqual(self.header(self.lib / "plain.py")[8:16],
-                         importlib.util.source_hash(b"value = 3\n"))
+        self.assertEqual(self.header(self.lib / "plain.py")[8:16],   # The file's bytes (CRLF on Windows).
+                         importlib.util.source_hash((self.lib / "plain.py").read_bytes()))
 
     def test_the_default_folders_are_the_library_and_blender_s_scripts(self):
         stdlib = os.path.join("x", "5.2", "python", "lib", "python3.13")

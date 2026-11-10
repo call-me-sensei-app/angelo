@@ -95,6 +95,6 @@ def action_digest(action):
     import json
     from .program_dependencies import _rna_values
     values = _rna_values(action)
-    for key in ("name", "name_full", "custom_properties"):
+    for key in ("name", "name_full", "#custom"):   # program_dependencies._CUSTOM
         values.pop(key, None)
     return hashlib.blake2b(json.dumps(values, sort_keys=True, separators=(",", ":")).encode(), digest_size=32).hexdigest()

@@ -7,6 +7,8 @@ scenario sets' time cap, launch commands and Claude Code command are what
 they were, and nothing of a one-shot test reaches them.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import json

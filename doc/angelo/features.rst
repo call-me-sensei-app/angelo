@@ -41,7 +41,14 @@ small card once per engine offering to link it: **Link a project…** sets it up
 Nothing connects unless you click. Angelo only checks which of these three editors is running; it never sends
 your list of programs or any file path anywhere.
 
-Contracts: :doc:`engine_link`, :doc:`godot_link`, :doc:`unity_link`, :doc:`unreal_link`.
+**Your own Three.js page.** The same link shows Angelo's edits in a web page you build with Three.js and Vite,
+with your lights, shaders and game state left alone. **+** > **Game engine live link** > **Add Angelo Link to a
+Three.js project…**, choose the folder with ``package.json``: Angelo puts ``npm i -D @call-me-sensei/angelo`` on the
+clipboard. Run it, add ``angeloLive()`` from ``@call-me-sensei/angelo/vite`` to the Vite config's plugins, and call
+``live.track(gltf, url)`` on the models your page loads. Alt-click a model in the page to edit it here; saving
+writes the ``.glb`` your page loads.
+
+Contracts: :doc:`engine_link`, :doc:`godot_link`, :doc:`unity_link`, :doc:`unreal_link`, :doc:`web_link`.
 
 Game physics for game engines
 =============================
@@ -88,6 +95,18 @@ Chain generation steps (an image, a 3D model, an upscale...) into a node-tree wo
 and reuse it: chat bar **+** > **Create** > **Generation Flows** offers New, the templates and your saved flows.
 
 Contract: :doc:`generation_flows`.
+
+Goal mode
+=========
+
+Ask Angelo to keep going until the work is done: chat bar **+** > **Goal** (beside **Attach**) adds a goal chip to
+your message, or just say so ("don't stop until it matches the picture"). After every turn Angelo measures the goal
+(how closely the outline matches an attached picture from one camera, a set of scene checks, or the agent's own
+judgment) and continues on its own until it passes, stops improving, or its working time or spend runs out. The chip
+shows the score, the round and the time used; click it to set the threshold and budget or to see every round. Stop
+goal on the chip, or the chat's Stop, ends it; sending your own message pauses it until you press Resume.
+
+Contract: :doc:`goal_mode`.
 
 Base meshes and hands
 =====================

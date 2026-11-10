@@ -9,6 +9,8 @@ URI a path it opens. Every import path uses them: Media Studio's provider result
 (``engine_link_import``). Host tests only.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import base64
 import json
@@ -110,6 +112,7 @@ class CallSiteTests(unittest.TestCase):
     def test_every_import_path_checks_first(self):
         for name, owner, function, check, mode in (
                 ("studio_assets_mesh.py", None, "import_glb", "check_file", "self_contained=True"),
+                ("asset_stock_import.py", None, "apply_glb", "check_file", "self_contained=True"),
                 ("engine_link_import.py", None, "working_file", "check_file", "self_contained=False"),
                 ("studio_host.py", None, "import_glb", "checked_glb", None),
                 ("studio_asset_ops.py", "ANGELO_OT_studio_import_3d", "execute", "checked_glb", None)):
@@ -133,7 +136,7 @@ class CallSiteTests(unittest.TestCase):
     def test_no_other_module_imports_gltf_unchecked(self):
         """A new import_scene.gltf call joins one of the checked paths (or this list, with its check)."""
         known = {"studio_assets_mesh.py", "engine_link_import.py", "studio_host.py", "studio_asset_ops.py",
-                 "team_library_import.py", "library_import.py",
+                 "team_library_import.py", "library_import.py", "asset_stock_import.py",
                  "engine_reimport.py"}   # The preflight's read-back: gltf_checks.check_file before the importer.
         found = {p.name for p in ADDON.glob("*.py") if "import_scene.gltf(" in p.read_text(encoding="utf-8")}
         self.assertEqual(found - known, set())
@@ -159,7 +162,9 @@ class PlatformTests(unittest.TestCase):
         """Every admitted URI resolves inside the folder by the importer's own expression, on both platforms."""
         parts = ["a", "..", ".", "%2E%2E", "%5C", "\\", "/", "b.bin", "%2F"]
         import itertools
-        for pathmod, model in ((ntpath, "C:\\p\\q\\model.glb"), (os.path, "/p/q/model.glb")):
+        # The host's own rules on a full path of the host (a drive on Windows, where os.path is ntpath).
+        host_model = os.path.abspath(os.path.join(os.sep, "p", "q", "model.glb"))
+        for pathmod, model in ((ntpath, "C:\\p\\q\\model.glb"), (os.path, host_model)):
             folder = pathmod.dirname(model)
             for combo in itertools.product(parts, repeat=4):
                 uri = "".join(combo)

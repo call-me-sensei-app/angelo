@@ -146,7 +146,7 @@ class _Scan:
                     row["status"] = paths.UNKNOWN
                 else:
                     checks += 1
-                    row["status"] = paths.state(raw, self.blend_folder)
+                    row["status"] = paths.state(raw, self.blend_folder, tile=paths.first_tile(block))
                 rows.append(row)
                 reported.add((kind, block.name))
         # Blender's path walk leaves out what is packed into the file; those are reported from the datablocks.

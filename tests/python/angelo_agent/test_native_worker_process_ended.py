@@ -12,6 +12,8 @@ Angelo's stop); a stop of Angelo's never counts as ending on its own; and ``hand
 binding on the main thread only then.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import subprocess
 import sys
@@ -28,13 +30,17 @@ ADDONS = Path(__file__).resolve().parents[3] / "scripts/addons_core"
 sys.path.insert(0, str(ADDONS))
 from angelo_agent import (worker_chat_lifecycle as lifecycle, worker_chat_wiring, worker_journal_owner,  # noqa: E402
                           worker_mirror_events, worker_process)
+from host_test_policy import environment_skip  # noqa: E402
 
 FAKE = Path(__file__).resolve().parent / "worker_process_fake_worker.py"
 # A stop's grace for a stand-in killed by its own signal: long enough for the kernel to finish its core dump (Linux CI
 # piped one for over 1 s, so the grace kill landed first: -9, ``dying``), free once the process is reaped. A test that
 # pins the kill on a crash under way passes a short grace instead.
 DEATH_GRACE = 30.0
-POSIX_ONLY = unittest.skipIf(sys.platform == "win32", "The stand-in worker connects by an inherited descriptor")
+# The stand-in dies and is killed the POSIX way: signals, its process group (os.killpg) and, lingering, an inherited
+# descriptor. A Windows worker ends through its Job Object, which these tests do not model.
+POSIX_ONLY = unittest.skipIf(sys.platform == "win32", environment_skip(
+    "the stand-in worker dies by POSIX signals in its own process group (os.killpg, an inherited descriptor)"))
 
 
 def wait_for(predicate, timeout=10.0):
@@ -255,12 +261,17 @@ class HandedBack(unittest.TestCase):
 class CrashEvidence(unittest.TestCase):
     """The rules a kill of Angelo's is judged by (``worker_crash_evidence``), on every platform's codes."""
 
-    def test_only_a_crash_status_counts_never_angelos_own_kill(self):
+    @unittest.skipIf(sys.platform == "win32", environment_skip("a POSIX code is judged against this host's "
+                                                               "signal.SIGKILL, which Windows does not have"))
+    def test_only_a_posix_crash_status_counts_never_angelos_own_kill(self):
         from angelo_agent.worker_crash_evidence import crash_status
         self.assertTrue(crash_status(-11, "darwin", killed=True))      # A signal the process was already dying of.
         self.assertFalse(crash_status(-9, "darwin", killed=True))      # Angelo's SIGKILL.
         self.assertTrue(crash_status(-9, "linux", killed=False))       # A SIGKILL Angelo never sent.
         self.assertFalse(crash_status(0, "linux", killed=False))
+
+    def test_only_a_windows_crash_status_counts_never_angelos_own_kill(self):
+        from angelo_agent.worker_crash_evidence import crash_status
         self.assertTrue(crash_status(0xC0000005, "win32", killed=True))   # An access violation.
         self.assertTrue(crash_status(11, "win32", killed=True))           # Blender's crash exit.
         self.assertFalse(crash_status(1, "win32", killed=True))           # The Job Object's termination.

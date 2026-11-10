@@ -184,14 +184,19 @@ def draw_pill(paint, state, rect, focused, count):
     hit(state, rect, "pill")
 
 
+def draw_frame(paint, panel):
+    s = paint.s
+    paint.shape((panel[0], panel[1] - 3 * s, panel[2], panel[3]), SHADOW, 14 * s)
+    paint.shape(panel, kit.LINE, 14 * s)
+    paint.shape((panel[0] + s, panel[1] + s, panel[2] - 2 * s, panel[3] - 2 * s), kit.CARD, 13 * s)
+
+
 def draw_panel(paint, state, rects, library, results, total, status=None):
     from gpu_extras.presets import draw_texture_2d
     import gpu
     s = paint.s
     panel = rects["panel"]
-    paint.shape((panel[0], panel[1] - 3 * s, panel[2], panel[3]), SHADOW, 14 * s)
-    paint.shape(panel, kit.LINE, 14 * s)
-    paint.shape((panel[0] + s, panel[1] + s, panel[2] - 2 * s, panel[3] - 2 * s), kit.CARD, 13 * s)
+    draw_frame(paint, rects["panel"])
     _chips(paint, state, rects["chips"])
     grid = rects["grid"]
     if active_kind(state) and library.catalog is not None:
@@ -231,7 +236,8 @@ def draw_panel(paint, state, rects, library, results, total, status=None):
                 w, h = tw * fit, th * fit
                 gpu.state.blend_set('ALPHA')
                 draw_texture_2d(texture, (inner[0] + (inner[2] - w) / 2, inner[1] + (inner[3] - h) / 2), w, h)
-            badge = iface_(KIND_NAMES[item["kind"]])
+            badge = ("Fab · " + (iface_("Free") if item.get("price") == "Free" else item["price"]) if item.get("price")
+                     else "Fab") if item.get("source") == "fab" else iface_(KIND_NAMES[item["kind"]])   # i18n: Fab is a name.
             bw = paint.measure(badge, 9) + 10 * s
             paint.shape((inner[0] + 5 * s, inner[1] + inner[3] - 21 * s, bw, 16 * s), kit.SCRIM, 5 * s)
             paint.text(badge, inner[0] + 10 * s, inner[1] + inner[3] - 17 * s, 9, kit.TEXT)

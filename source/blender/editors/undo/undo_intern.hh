@@ -10,6 +10,8 @@
 
 #include "BKE_undo_system.hh"
 
+#include "angelo_asset_noundo_delta.hh"
+
 namespace blender {
 
 /* internal exports only */
@@ -24,6 +26,8 @@ struct MemFileUndoStep {
   UndoStep step;
   MemFileUndoData *data;
   ed::sculpt_paint::undo::MainUndoState *angelo_sculpt_state;
+  ed::undo::asset::AssetNoUndoDelta *angelo_asset_noundo_delta;
+  ed::undo::asset::AssetNoUndoSide angelo_asset_noundo_side;
 };
 
 /* memfile_undo.cc */

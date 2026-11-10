@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Same-dispatch ownership before native begin; no Blender or provider needed."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch

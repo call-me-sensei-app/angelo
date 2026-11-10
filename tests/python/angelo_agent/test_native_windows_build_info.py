@@ -9,6 +9,8 @@ These tests run that hand-off with real git repositories (the same pipeline the 
 git calls buildinfo makes, and read the scripts that refuse a release MSI without build info.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import re
 import shutil
@@ -17,6 +19,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+from host_test_policy import environment_skip
 
 SCRIPTS = Path(__file__).resolve().parents[3] / "scripts/angelo"
 LAUNCHER = (SCRIPTS / "gcp_windows_validate.sh").read_text(encoding="utf-8")
@@ -33,6 +37,9 @@ def git(folder, *args, **kwargs):
     return subprocess.run(["git", "-C", str(folder), *args], env=ENV, check=True, capture_output=True, **kwargs).stdout
 
 
+@unittest.skipIf(os.name == "nt", environment_skip(
+    "pack_commit is the launcher's bash (gcp_windows_source.sh), run from the macOS workstation; the machine's "
+    "source_tree.py commit runs on Windows in test_native_windows_source_tree.py"))
 @unittest.skipUnless(shutil.which("git") and shutil.which("bash"), "needs git and bash")
 class CommitHandOffTests(unittest.TestCase):
     def test_a_one_commit_pack_gives_buildinfo_the_true_hash_branch_and_date(self):

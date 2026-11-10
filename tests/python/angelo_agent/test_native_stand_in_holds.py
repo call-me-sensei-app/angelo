@@ -9,10 +9,12 @@ longer: the event pump then applied both sides in one pass. test_blender_turn_re
 (a 2.5 s sleep), test_blender_first_run's sign-in in progress (a 1 s login), test_blender_reply_stream's and
 test_blender_plan_progress's streamed moments, test_blender_chat_waiting's 22 s measurement window and
 test_blender_chat_start_states' models file written before a slow app-server read it are this one class.
-Covered: the stand-in's holds (a round item, a login, a model listing) wait until released and say when they wait,
+Covered: the stand-in's holds (a round item, a login, a model listing, a codex turn) wait until released and say when they wait,
 and two lints over the window suites and the helper modules they import: no scripted round pauses by time, and a
 suite that waits for a sign-in in progress holds the stand-in's login.
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import ast
 import json
@@ -108,7 +110,13 @@ class HoldTests(unittest.TestCase):
         folder = fake_provider_cli.fresh(self.root / "hold")
         item = fake_provider_cli.hold(folder)
         self.assertFalse(fake_provider_cli.held(folder))
-        thread = threading.Thread(target=fake_provider_cli.wait_for_gate, kwargs=item["gate"])
+        # Only a release ends it, so no clock decides "still held" (a main thread stalled past a hold's limit found it
+        # over: test_native_held_preparation, CI 41896025168). The test's cleanup releases it whatever happens.
+        hold = mock.patch.object(fake_provider_cli, "HOLD_SECONDS", float("inf"))
+        hold.start()
+        self.addCleanup(hold.stop)
+        self.addCleanup(fake_provider_cli.release, folder)
+        thread = threading.Thread(target=fake_provider_cli.wait_for_gate, kwargs=item["gate"], daemon=True)
         thread.start()
         deadline = time.monotonic() + 5
         while not fake_provider_cli.held(folder) and time.monotonic() < deadline:
@@ -126,11 +134,13 @@ class HoldTests(unittest.TestCase):
         gate = fake_provider_cli.fresh(self.root / "login")
         home = self.root / "home"
         environ = dict(os.environ, HOME=str(home), ANGELO_FAKE_CLI_STATE=str(self.root / "state"),
-                       ANGELO_FAKE_CLI_LOGIN_SECONDS="600", **{fake_provider_cli.LOGIN_GATE: str(gate)})
+                       ANGELO_FAKE_CLI_LOGIN_SECONDS="600", ANGELO_FAKE_CLI_HOLD_SECONDS="inf",   # Released only.
+                       **{fake_provider_cli.LOGIN_GATE: str(gate)})
         environ.pop("CLAUDE_CONFIG_DIR", None)
         for number in range(2):
             process = subprocess.Popen([sys.executable, str(HERE / "fake_provider_cli.py"), "claude", "auth", "login",
                                         "--claudeai"], env=environ, stdout=subprocess.PIPE, text=True)
+            self.addCleanup(process.kill)   # A hold only a release ends never outlives a failed test.
             deadline = time.monotonic() + 10
             while not fake_provider_cli.held(gate) and time.monotonic() < deadline:
                 time.sleep(0.02)
@@ -157,6 +167,43 @@ class HoldTests(unittest.TestCase):
             thread.join(5)
             self.assertFalse(thread.is_alive())
             self.assertIsNone(fake_provider_cli._hold_listing("claude_hold"), "no hold named: no wait")
+
+    def test_a_held_codex_turn_runs_until_released(self):
+        """test_blender_goal_gui types a draft while a turn runs: an "ok" turn ends ~40 ms after it starts."""
+        state = self.root / "state"
+        fake_provider_cli.script_codex_turns(["held", "ok"], state)
+        gate = fake_provider_cli.fresh(fake_provider_cli.codex_turn_hold(state))
+        environ = dict(os.environ, HOME=str(self.root / "home"), ANGELO_FAKE_CLI_STATE=str(state))
+        process = subprocess.Popen([sys.executable, str(HERE / "fake_provider_cli.py"), "codex", "app-server",
+                                    "--listen", "stdio://"], env=environ, stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, text=True)
+        self.addCleanup(process.kill)
+        seen = []
+        reader = threading.Thread(target=lambda: seen.extend(json.loads(line).get("method") for line in process.stdout))
+        reader.start()
+
+        def start(number):
+            process.stdin.write(json.dumps({"id": number, "method": "turn/start", "params": {"threadId": "t"}}) + "\n")
+            process.stdin.flush()
+
+        def until(condition):
+            deadline = time.monotonic() + 10
+            while not condition() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            return condition()
+
+        start(1)
+        self.assertTrue(until(lambda: fake_provider_cli.held(gate) and "turn/started" in seen))
+        self.assertNotIn("turn/completed", seen, "held: the turn runs until the suite releases it")
+        fake_provider_cli.release(gate)
+        self.assertTrue(until(lambda: seen.count("turn/completed") == 1))
+        start(2)   # The next scripted outcome, "ok": no hold.
+        self.assertTrue(until(lambda: seen.count("turn/completed") == 2))
+        self.assertFalse(fake_provider_cli.held(gate))
+        process.stdin.close()
+        self.assertEqual(process.wait(10), 0)
+        reader.join(5)
+        process.stdout.close()
 
 
 if __name__ == "__main__":

@@ -291,29 +291,33 @@ CHECKS.update(head_checks.CHECKS)
 
 # ---------------------------------------------------------------- the still the brief asks for
 
-PATH_RUN = re.compile(r"[^\s\"'`<>|*?\\]+")   # A stretch of text a stated path can lie in.
+WINDOWS = os.name == "nt"
+# A stretch of text a stated path can lie in, and where in it the path starts: a root, ``~/``, and on Windows also a
+# drive (``C:\`` or ``C:/``), with ``\`` a separator there (doubled in a JSON-escaped stream or script).
+PATH_RUN = re.compile(r"[^\s\"'`<>|*?]+" if WINDOWS else r"[^\s\"'`<>|*?\\]+")
+PATH_START = re.compile(r"[A-Za-z]:[\\/]|~?[\\/]" if WINDOWS else r"~?/")
 
 
 def mentioned_paths(text, name):
-    """Absolute or home-relative paths ending in ``name`` that a text states (a reply, a script), in order.
+    """Absolute or home-relative paths ending in ``name`` that a text states (a reply, a script), in order, as this
+    machine spells them.
 
-    In each stretch without spaces, quotes or shell characters: from its first ``/`` (with a ``~`` just before
-    it) to the end of the last ``name`` after it, case-insensitively, as the pattern ``~?/[^...]*name`` finds it.
-    It runs in linear time: a client's stream holds base64 images, megabytes without a space, where that
-    pattern took minutes.
+    In each stretch without spaces, quotes or shell characters: from its first root (``PATH_START``) to the end of
+    the last ``name`` after it, case-insensitively, as the pattern ``~?/[^...]*name`` finds it. It runs in linear
+    time: a client's stream holds base64 images, megabytes without a space, where that pattern took minutes.
     """
     found, wanted = [], re.compile(re.escape(name), re.IGNORECASE)
     for match in PATH_RUN.finditer(str(text)):
         run = match.group(0)
-        slash = run.find("/")
+        root = PATH_START.search(run)
         last = None
-        if slash >= 0:
-            for last in wanted.finditer(run, slash + 1):
+        if root is not None:
+            for last in wanted.finditer(run, root.end()):
                 pass
         if last is None:
             continue
-        start = slash - 1 if slash and run[slash - 1] == "~" else slash
-        path = os.path.expanduser(run[start:last.end()])
+        path = os.path.expanduser(run[root.start():last.end()])
+        path = os.path.normpath(path) if WINDOWS else path   # One separator, as Windows itself reads the path.
         if path not in found:
             found.append(path)
     return found[:50]

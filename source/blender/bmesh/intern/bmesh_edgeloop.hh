@@ -13,6 +13,7 @@
 #include "DNA_listBase.h"
 
 #include "BLI_set.hh"
+#include "BLI_vector_set.hh"
 
 namespace blender {
 
@@ -75,7 +76,7 @@ void BM_edgeloop_expand(BMesh *bm,
                         BMEdgeLoopStore *el_store,
                         int el_store_len,
                         bool split,
-                        Set<BMEdge *> *split_edges);
+                        VectorSet<BMEdge *> *split_edges);
 
 bool BM_edgeloop_overlap_check(BMEdgeLoopStore *el_store_a, BMEdgeLoopStore *el_store_b);
 

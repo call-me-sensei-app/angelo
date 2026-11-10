@@ -59,6 +59,7 @@ path = [
   "scripts/addons_core/angelo_agent/assets/release_notes.json",
   "tests/python/angelo_agent/scenario_bridge_plans.json",
   "tests/python/angelo_agent/plan_runaway_corpus.json",
+  "tests/python/angelo_agent/godot_physics_e2e/heldout_assets.json",
   "scripts/angelo/prompt_registry.json",
   "scripts/angelo/route_parity.json",
   "tests/python/angelo_agent/prompt_audit_fixtures/**",
@@ -119,6 +120,20 @@ path = ["scripts/addons_core/angelo_agent/human_base_meshes/*.blend",
 precedence = "closest"
 SPDX-FileCopyrightText = "Blender Foundation and the Blender community"
 SPDX-License-Identifier = "CC0-1.0"
+
+# pypdf 6.21.2, PyPI's wheel unmodified (renamed .pyz: .whl is Git LFS), the attached-PDF text reader; its license,
+# README and SHA-256 are in release/license/pdf-reader (test_native_pdf_reader_notices.py).
+[[annotations]]
+path = "scripts/addons_core/angelo_agent/vendor/pypdf-6.21.2-py3-none-any.pyz"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2006-2008 Mathieu Fenniak", "2007 Ashish Kulkarni", "2014 Steve Witham", "pypdf contributors"]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = ["release/license/pdf-reader/README.txt", "release/license/pdf-reader/MANIFEST"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "GPL-2.0-or-later"
 
 [[annotations]]
 path = "scripts/addons_core/angelo_agent/human_base_meshes.json"

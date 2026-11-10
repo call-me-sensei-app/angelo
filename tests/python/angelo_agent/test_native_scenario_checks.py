@@ -9,6 +9,8 @@ reference job's self-check (every turn's checks fail before it and pass after
 it), which ``scenario_references.py`` runs in stock Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import math
 import os

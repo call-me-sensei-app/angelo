@@ -7,6 +7,8 @@ while it runs or no answer comes, and left to the crash path when the worker is 
 mirror is real (``test_native_worker_mirror.Fixture``); the clock and the question's thread are seams. No Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

@@ -63,14 +63,14 @@ Version
 
 Angelo has its own product version, ``version.label`` (``major.minor.patch``,
 starting at ``1.0.0``), independent of the Blender release it is based on, so
-Angelo keeps shipping while Blender stays at 5.2.2. The label drives every
+Angelo keeps shipping while Blender stays at a 5.2 LTS release. The label drives every
 package and file name (``Angelo-1.0.0-macos-arm64.dmg``,
 ``Angelo-1.0.0-windows-x64.msi``), the bundle's short and build versions, the
 Windows version resource and MSI version, and the About, splash, window-title
 and status-bar text, shown as "Angelo 1.0" (the patch is shown only when it is
 not zero). The Blender base is read from the build (``BLENDER_VERSION``) and
-noted wherever it fits: "Angelo 1.0 · Blender 5.2.2 LTS" on the splash,
-"Based on Blender 5.2.2 LTS" in About, "(based on Blender 5.2.2)" in the bundle
+noted wherever it fits: "Angelo 1.0 · Blender 5.2.3 LTS" on the splash,
+"Based on Blender 5.2.3 LTS" in About, "(based on Blender 5.2.3)" in the bundle
 info string, a ``Comments`` entry in the Windows version resource, and the
 readme and notices.
 
@@ -180,6 +180,40 @@ Blender's folders:
 * **Windows and Linux** use the same command with their folder layout
   (``--platform``/``--home`` select it for tests). A user who had set
   ``BLENDER_USER_CONFIG`` or ``BLENDER_USER_RESOURCES`` has nothing to migrate.
+
+Going back to an earlier version
+--------------------------------
+
+Blender keeps one user folder per version, so Angelo 1.1 (Blender 5.3) moves the
+agent state (chats, snapshots, workspace) out of 1.0's folder into its own at its
+first launch (angelo-studio #137, its ``version_carry_over``). Someone who opens
+1.0.x again then finds no chats. From 1.0.10, the earlier version says once, in
+a corner notice translated like the rest of the interface, that the newer Angelo
+moved them and that nothing was deleted, and how to get them back: open the
+newer Angelo, or install it again ("Your chats are in your newer Angelo",
+``moved_state_notice.py``, shown by ``app_notices`` after a crash dialog and
+before What's New; it stays until closed).
+
+* **What it reads.** Only what the newer version leaves, never its code: the
+  note in this version's state folder (``README-Angelo.txt``), or a newer
+  version's carry-over record (``<product>/<newer>/config/angelo-carry-over.json``)
+  whose ``from`` names this version's state folder, through any link and whatever
+  the record's ``version`` or ``status`` (a move that stopped part-way moved
+  chats too). The record covers a move that could not leave the note. A damaged,
+  unreadable or oversized record, or an unreadable folder, tells nothing.
+* **What it writes.** Nothing of the newer version: its state, record and note
+  stay byte for byte. When the notice shows, the marker the newer version reads
+  goes beside the note (``.angelo-moved-notice-shown``, #137's ``NOTE_SEEN``); the
+  newer Angelo ignores both files when it looks for state to bring over, and
+  removes the marker after its next move, so a later move is told again.
+* **No per-version folders, nothing to tell.** An explicit ``ANGELO_STATE_DIR``,
+  ``BLENDER_USER_CONFIG`` or ``BLENDER_USER_RESOURCES`` is never moved.
+* **Not covered.** 1.0.9 and earlier have no notice (the note in the old folder
+  says where the state went). The record does not name the newer Angelo's
+  release, so the text says "your newer Angelo", not "Angelo 1.1".
+
+``tests/python/angelo_agent/test_native_moved_state_notice.py`` lays the folders
+out as #137 leaves them.
 
 Bringing Blender settings over
 ------------------------------

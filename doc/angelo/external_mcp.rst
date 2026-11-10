@@ -216,9 +216,51 @@ first answer, or "did not run", from that request.
   edit that may have changed the scene: the direct route's rules) or on a file
   change. Its transcript then gets the host's verified account of its edits.
   The next call opens a new request.
-* After a file is opened, the app's next call moves it to a fresh External
-  conversation automatically (a model has no ``angelo session new``); a call that
-  was running when the file changed says so.
+* After a file is opened, or the window shows another scene, the app's next
+  call moves it to a fresh External conversation automatically (a model has no
+  ``angelo session new``), and says so until the app has read there: a read
+  runs, its answer starting with "Angelo's window now shows another scene or file, so this call
+  went to a fresh External conversation on what it shows now. Observe the scene
+  before relying on names or handles from earlier calls." Anything else does not
+  run, so no edit runs before the model has been told: "Angelo's window now
+  shows another scene or file; this app moved to a fresh External conversation
+  on what it shows now, and this call did not run. Observe the scene, then
+  retry." (``stale``). That holds for every call admitted before a read's
+  answer has gone out there, calls an app sends together included (none of them
+  saw it); the conversation has moved already, so a read runs at once. A task
+  started in the new document moves the conversation too, and the app's tool
+  calls are told the same way. A call that was running when the file changed
+  says so too.
+  Without the window, every reload (a failed script, a failed save, a script
+  that opened another file) is such a change: the load renews the document key
+  and tells no conversation. The call that caused it already says the file was
+  reloaded, so the call that moves the conversation adds nothing.
+* Answered work never counts as running. An answer goes out before Angelo's
+  next main-thread sweep closes the request it ended (``pump_apps``,
+  ``close_finished``), and the client's next call (or ``angelo session new``)
+  can be admitted ahead of that sweep, so admission first closes what is over
+  and has nothing in flight, exactly as the sweep would
+  (``ExternalApps.settle``). When the conversation is about to move on (the
+  window shows another file or scene, or ``session new``), its request is over
+  whether or not it could have taken another call. Only work still in flight
+  (a call's worker, a pending tool, a task's turn) makes the app wait with
+  ``stale`` ("earlier work is still finishing"); before, the order within one
+  tick decided it, and a request that could still take calls was refused until
+  it idled out (120 s). (Found by the 1.0.10 stat-before-read helper in
+  ``test_blender_headless_native_commits``, 1 of 7 runs;
+  ``test_native_external_settle.py`` holds the sweeps to force that order.)
+  A call whose answer has not gone out still counts as in flight
+  (``ExternalWork.finishable``), even after its worker has left the request.
+  Without the window an answer also waits for the save or reload after its
+  edit (``HeadlessHost.finish_answers``, which counts it out just before it
+  sends it): those held answers go out before the next request is handled
+  (``ExternalHost.drain`` runs ``finish_answers`` first), so no request is
+  admitted or rotated while an earlier request's answer and its reload are
+  still to come, and a failed edit reloads only when it ended its own request
+  (``closed_by_call``), never because the host closed that request since.
+  Known gap (it predates this): calls an app sends together into one request
+  run as each ticket frees, so a later call's edit can run before an earlier
+  call's held answer reloads, and that reload then undoes it.
 
 While a call waits for the person (an approval card) or a job, the launcher asks
 Angelo again under the same call ID every 25 s, sending
@@ -577,14 +619,28 @@ Lifecycle
   are the launcher's, read before the child started (``--source-identity``),
   never the child's after its open: a change during the open stops the session
   as ``stale``; every call compares the source (and, after an edit, the output)
-  before it runs, and every result says when the source changed during the call
+  before it runs. The working copy's and a continued output's identity is
+  the file Blender's open read, identified on the descriptor it read through
+  (``headless_working_copy.open_read``; where a process has none, a stat before
+  the open and after it that must agree): a write by anything else leaves an
+  identity no stat equals, so the file reads as changed (a new output is
+  claimed, the copy is never removed); a save by this child's own add-ons
+  during the open, or later, is its own, as that save identified the file it
+  wrote (``headless_files.saved_identity``), never a stat after its rename. A
+  save's output identity is of the bytes it placed, on the handle it wrote them
+  through, before the rename (``headless_files.place``), never a stat of the
+  output afterwards. Every result says when the source changed
+  during the call
   ("changed on disk during this call: an approved script or one of your add-ons
   wrote it"), never "unchanged". A difference answers ``stale`` at the next
   call; ``angelo_open_file`` again reloads. Known limit: the comparison is of
   stat fields, so an in-place write of the same size that restores the
   modification time to the nanosecond is not seen (the change time is left out
   on purpose: a metadata-only change such as a Finder tag or a quarantine
-  attribute would make every session falsely stale).
+  attribute would make every session falsely stale). On Windows the times tick
+  (15.6 ms by default): an identity is taken once the clock has passed the
+  file's stamp (``change_clock``, ``checkpoint_policy.rst`` "Differences and
+  limits"), so a later write in that tick still changes it.
 * **Nothing left behind:** a session that saved no edit removes its working
   copy (and a ``.blend1`` beside it) when it ends, while it is still the file
   the session had; after a crash the launcher does (``headless_working_copy``).

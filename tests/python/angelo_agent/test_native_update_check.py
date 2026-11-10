@@ -10,6 +10,8 @@ every refusal leaving the stored state untouched, skip / later, restart with a
 tampered cache, and a state write racing a check.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import ssl
 import sys

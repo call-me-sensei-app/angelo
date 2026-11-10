@@ -410,7 +410,13 @@ def where(obj, owned=None):
 def ids():
     """Every datablock's pointer now: what a merge refused after appending removes is what is not in this."""
     import bpy
-    return {item.as_pointer() for name in _kinds(bpy) for item in getattr(bpy.data, name)}
+    return {item.as_pointer() for name in added_kinds(bpy) for item in getattr(bpy.data, name)}
+
+
+def added_kinds(bpy):
+    """What an append can add: ``_kinds``, and a WorkSpace with its Screens, which a part's ID property or driver can
+    name (BREAKIT-C7A-2 M1). Never the window manager."""
+    return _kinds(bpy) + ["workspaces", "screens"]
 
 
 def _kinds(bpy):
@@ -422,6 +428,7 @@ def _kinds(bpy):
 def remove_added(before):
     """Remove every datablock not in ``before`` (``ids``): a refused merge leaves nothing of itself."""
     import bpy
-    added = [item for name in _kinds(bpy) for item in getattr(bpy.data, name) if item.as_pointer() not in before]
+    added = [item for name in added_kinds(bpy) for item in getattr(bpy.data, name)
+             if item.as_pointer() not in before]
     if added:
         bpy.data.batch_remove(added)

@@ -22,6 +22,8 @@ alongside.
    key a chat held leaves it whole in the copy, which nothing ever removes.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import glob
 import os
 import sys
@@ -38,7 +40,7 @@ from angelo_agent.controller import Controller  # noqa: E402
 from angelo_agent.invocations import reserve_invocation  # noqa: E402
 from angelo_agent.sessions import SessionStore  # noqa: E402
 
-KEY = "sk-test-fake-0123456789abcdef"  # Not a credential: a made-up key; no credential is read.
+KEY = "sk-test-fake-Qz!7nP#4vL@9rT^2"  # Not a credential: a made-up key; no credential is read.
 
 
 def pieces(data):

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """fal video jobs: one billable submit, credentials only to fal, Stop vs closing, resume after a restart, the agent."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import json
 import sys

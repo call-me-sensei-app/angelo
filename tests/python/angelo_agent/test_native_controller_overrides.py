@@ -8,6 +8,8 @@ rebind raised TypeError (and said its state could not be saved). Any caller of a
 parameters to whichever chat it holds. Read from the sources (no bpy needed); ``*args``/``**kwargs`` accept anything.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import unittest
 from pathlib import Path

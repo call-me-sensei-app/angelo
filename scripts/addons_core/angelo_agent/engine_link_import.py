@@ -9,7 +9,7 @@ import os
 
 import bpy
 
-from . import engine_link_assets as assets
+from . import engine_link_assets as assets, shared_replace
 
 
 def working_file(asset, writing):
@@ -23,9 +23,18 @@ def working_file(asset, writing):
         except Refused as error:
             print("Angelo engine link:", error)
             return {'CANCELLED'}
+    # The stamp names the bytes the import reads, so it is taken before the import, never after: a digest taken
+    # after it could name a version the engine wrote meanwhile, and the next link would open this working .blend as
+    # current for it (and its next save write the older import over it). A write after this digest makes the stamp
+    # differ from the file, so the next link imports again.
+    try:
+        imported = assets.digest(asset.path)
+    except OSError as error:   # Unreadable now: nothing changed, and the import could not read it either.
+        print("Angelo engine link:", error)
+        return {'CANCELLED'}
     assets.ensure_working_folder(asset)
     if os.path.isfile(asset.editable):
-        os.replace(asset.editable, assets.previous_path(asset))
+        shared_replace.replace(asset.editable, assets.previous_path(asset), shown=asset.editable)   # Refused: raised.
     result = bpy.ops.wm.read_homefile(use_empty=True)
     if "FINISHED" not in result:
         return result
@@ -38,7 +47,10 @@ def working_file(asset, writing):
     finally:
         writing(False)
     if "FINISHED" in result:
-        assets.write_stamp(asset)
+        try:
+            assets.write_stamp(asset, imported)
+        except OSError as error:   # The open goes on; the next save stamps it (engine_link_saves.written).
+            print("Angelo engine link: the working file's stamp could not be written:", error)
     return result
 
 

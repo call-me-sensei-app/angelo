@@ -9,6 +9,10 @@ buttons at every width, the Sessions panel's accessors and click, and the wiring
 tool's launch count. The in-app proof is the GUI suite's Settings check on Mac 1.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
+import ast
+
 import ast
 import os
 import sys
@@ -391,7 +395,11 @@ class WiringTests(unittest.TestCase):
         self.assertIn('elif action in ("toggle", "pref") and prefs is not None:', host)
         self.assertIn('if action == "toggle" else value', host)
         ui = (ADDON / "ui.py").read_text(encoding="utf-8")
-        self.assertIn("parallel_setting.ParallelPreferences, AddonPreferences", ui)
+        tree = ast.parse(ui)
+        preferences = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "ANGELO_Preferences")
+        bases = [ast.unparse(base) for base in preferences.bases]
+        self.assertIn("parallel_setting.ParallelPreferences", bases)
+        self.assertIn("AddonPreferences", bases)
         init = (ADDON / "__init__.py").read_text(encoding="utf-8")
         self.assertLess(init.index("ui.register()"), init.index("tool_specs.refresh_worker_count()"))
         self.assertLess(init.index("tool_specs.refresh_worker_count()"), init.index("session_rail_input.register()"))

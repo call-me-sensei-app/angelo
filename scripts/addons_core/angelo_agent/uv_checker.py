@@ -22,7 +22,7 @@ from bpy.types import Operator
 
 from .ui_text import n_, rpt_
 
-TITLE = n_("UV checker")
+TITLE = n_("UV Checker")   # The feature's name, as its operator spells it.
 MENU_WHY = n_("See how textures land on every mesh: grid, texel density or stretch. Materials stay as they are")
 GLYPH = "uv_checker"
 drawn = {}   # window pointer -> on, at its last Director top-bar draw; GUI suites read it.

@@ -40,7 +40,8 @@ _KLING_ASPECTS = ("16:9", "9:16", "1:1")
 def _refusal(template, **fields):
     """A ``StudioValueError`` (imported here: ``provider_registry`` reads this table, and ``studio_state`` imports it)."""
     from .studio_state import StudioValueError
-    return StudioValueError(template, **fields)
+    from .refusal_codes import coded
+    return coded(StudioValueError(template, **fields), "VALIDATION")   # A model's option refused: nothing ran.
 
 
 def _seconds(low, high):

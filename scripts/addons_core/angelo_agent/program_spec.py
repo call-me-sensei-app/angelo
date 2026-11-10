@@ -207,8 +207,12 @@ def validate_program(name, arguments=None, *, derive_checks=False):
         # A write_set entry is bound and revision-checked exactly like a read_set
         # one (native_programs.bind), so an object is declared once, in either.
         entries = arguments.get(key, [])
-        if not isinstance(entries, list) or len(entries) > MAX_INPUT_OBJECTS:
-            raise ValueError("Program object sets are limited to 64 exact revision preconditions")
+        if not isinstance(entries, list):
+            raise ValueError("read_set and write_set are lists of {handle, revision} objects")
+        if len(entries) > MAX_INPUT_OBJECTS:
+            raise ValueError("%s lists %s bindings; at most %s existing objects and scene settings may be bound "
+                             "in read_set and write_set together: split the edit into several programs" %
+                             (key, len(entries), MAX_INPUT_OBJECTS))
         seen, result = set(), []
         for entry in entries:
             if not isinstance(entry, dict) or set(entry) != {"handle", "revision"}:
@@ -224,10 +228,14 @@ def validate_program(name, arguments=None, *, derive_checks=False):
             result.append({"handle": handle, "revision": revision})
         normalized[key] = result
     if len(revisions) > MAX_INPUT_OBJECTS:
-        raise ValueError("A program may bind at most 64 existing objects in total")
+        raise ValueError("This program binds %s existing objects and scene settings; at most %s in read_set and "
+                         "write_set together: split the edit into several programs" % (len(revisions), MAX_INPUT_OBJECTS))
     operations = arguments["operations"]
-    if not isinstance(operations, list) or not 1 <= len(operations) <= MAX_OPERATIONS:
+    if not isinstance(operations, list) or len(operations) < 1:
         raise ValueError("A native program requires 1-32 bounded operations")
+    if len(operations) > MAX_OPERATIONS:
+        raise ValueError("A native program requires 1-%s bounded operations; this one has %s: split it into several "
+                         "programs (they can follow one another in one plan)" % (MAX_OPERATIONS, len(operations)))
     from .action_catalog import OPERATION_SCHEMAS, validate_operation, affected_references, written_references
     from .batch_spec import program_aliases as batch_aliases
     write_handles = {entry["handle"] for entry in normalized["write_set"]}

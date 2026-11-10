@@ -39,7 +39,9 @@ barrier it captures distinct live Sculpt owners and binds their Object, Mesh,
 nullable Key and canonical Scene/ViewLayer identities to actual BASE writer
 tokens. A version4 point contains both ``scene.blend`` and ``sculpt.runtime``.
 Ordinary captures with no runtime owners complete as version3 and do not pay a
-companion write or extra whole-BASE capture hash.
+companion write; an ordinary request capture on a fine-clock volume pays no
+whole-BASE hash either (safety and coarse-clock captures do: "Content
+binding").
 
 Version4 metadata validation is structural and never authorizes scene loading.
 Restore uses ``CheckpointRecovery`` to verify private working copies of both
@@ -69,6 +71,102 @@ partial recovery with the durable safety link. The ``WITH_GTESTS`` seam
 A restored document is never its private BASE file's content (that file lacks
 the installed Sculpt state), so the read leaves it modified: quit prompts and
 auto-save writes it.
+
+Content binding
+~~~~~~~~~~~~~~~
+
+Native's stamps are the only bridge between the bytes Blender writes and the
+bytes Python hashes, and a stamp misses a same-size rewrite that keeps the
+modification time: on APFS one that puts the time back (``futimens``), on NTFS
+one inside the 15.6 ms tick. Native therefore binds a capture to its own write,
+and Python's hash is compared with it inside native before anything is
+published:
+
+* **What native records.** The XXH3-128 (``BLI_hash_xxh3.hh``) of exactly the
+  bytes it wrote, updated as each write is accepted, with no extra pass, copy
+  or seek: the BASE writer's descriptor sink appends every buffer the
+  descriptor accepted in full (``CheckpointWriteContext::content``), and the
+  RUNTIME companion's sink every byte count a write accepted
+  (``WM_checkpoint_write_all``). The binding never leaves native code:
+  ``capture_facts`` is unchanged and no call returns it.
+* **When.** Decided once, before the BASE writer runs: the owner's
+  ``_native_binding()`` answers yes for a safety capture, and for an ordinary one
+  whose fresh, empty BASE carries a timestamp two captures could share
+  (``coarse_timestamps`` with its volume); native also binds whenever an Object
+  is in Sculpt mode with a Sculpt session, the one state from which a capture
+  can select Sculpt owners. RUNTIME is always bound. An ordinary request
+  capture on a fine-clock volume binds nothing and costs nothing more.
+* **The comparison.** ``publish`` feeds every 8 MiB chunk of its single
+  BLAKE2b read to native hashers (``capture_hasher(capsule, owner, role)``:
+  objects Python cannot construct, fixed to one capture and role, whose only
+  method is ``update``) and calls ``capture_bind`` before the facts re-read and
+  before any name is published: Sculpt pairs, every safety capture, and
+  coarse-clock ordinary captures (whose hash moved from ``finish`` into
+  ``publish``, before POST). Native checks each hasher's capture, role and exact
+  byte count, finalises it once and compares; a capture is bound once.
+* **Refusals, all fail closed.** A difference, a missing hasher or binding, or
+  an older native without these calls refuses the capture ("The retained
+  native checkpoint output changed"): the attempt fails, ``capture_abort``
+  dispatches SAVE_POST_FAIL, and nothing is READY. Native refuses POST for a
+  pair or a capture whose owner asked for binding until it is bound, Restore
+  refuses an unbound safety capture, a capture whose Sculpt owners have no BASE
+  binding is refused before their snapshot, and so is a safety capture whose
+  owner did not ask for binding or an owner without ``_native_binding``. An
+  ordinary BASE predicted fine whose stamp then reads as coarse (about one in a
+  million on a fine-clock volume) is refused, and the next request captures
+  again.
+  The owner keeps its own flag too, set only when ``capture_bind`` returned:
+  ``publish`` refuses a capture that needed binding without it, before any name
+  or record is published, and ``finish`` records such a pair ``INVALID`` (never
+  ``VALIDATED`` or ``INTERRUPTED_VALID``, which Restore accepts) whatever POST
+  said, so a Python regression that skips the bind leaves nothing restorable
+  even though native's POST refusal is all it would otherwise meet. Restore's
+  own refusal of an unbound safety capture is a second layer no test reaches by
+  design: Restore needs that capture's successful POST, which already required
+  the bind.
+* **No format change.** A pair is sealed as before; a bound ordinary capture
+  gets the existing version 3 content seal over the digest ``publish``
+  compared, where it had an identity seal before. Released 1.0.9 and 1.0.10
+  verify content seals (``copy_sealed``'s content branch, ingestion), so a
+  downgrade reads what this build writes ("Downgrade" below).
+
+XXH3 is not cryptographic, which is within the seal's threat model: it catches
+accidental and foreign rewrites, not a same-user attacker who can re-seal.
+The binding proves the published bytes are the ones written, not that they
+are durable (``publish`` still synchronizes them). Between the bind and a
+Restore, the safety files are checked by their stamps
+(``safety_content_valid``); a rewrite that keeps them there is seen only if
+the Restore fails after replacing the document, when the reload re-hashes the
+safety files against their record and refuses: the safety capture is lost,
+but wrong bytes are never loaded.
+
+The one residual in 1.0.10: an ordinary request capture on a fine-clock volume
+stays bound by its stamps alone. Its BASE is identity-sealed (size,
+modification time in microseconds, inode) and never read back on a request,
+so a foreign same-size rewrite that puts the modification time back, between
+native's last write and the publication, is sealed. Binding it would need a
+new record or seal field, which the downgrade contract forbids: released
+builds refuse an unknown record field (see "Downgrade"), or a BLAKE2b pass on
+the request path. The snapshot worker's ingestion has the same reach: it
+verifies an identity seal by the stat of the bytes it read and re-seals those
+bytes as content (``snapshot_ingest._adopt``), so such a rewrite ingestion
+cannot see becomes content-sealed. 1.1 closes both, chosen by measurement:
+either a binding kept beside the record (as the ``checkpoint-scenes`` maps are)
+and verified by ingestion and ``copy_sealed`` on bytes they already read, or a
+BLAKE2b computed at write time on a worker thread that emits the standard
+content seal; either hasher runs off the main thread with the GIL released.
+
+Tests: ``BLI_hash_xxh3_test``, ``writefile_checkpoint_binding_test`` and
+``wm_checkpoint_write_test`` (GTests: the binding equals the final file's XXH3,
+a same-size rewrite with the times put back keeps the stamp but not the
+binding, short, interrupted and zero writes hash exactly the accepted bytes);
+``test_native_checkpoint_content_binding`` and
+``test_native_checkpoint_publication_boundary`` (host, a stand-in native:
+refusals with real files and on a coarse change clock, the chunks fed,
+fail-closed older builds); ``test_blender_checkpoint_content_binding`` (built
+app: the rewrite refused for an Object-mode safety capture, a Sculpt pair and
+Restore to version 3 and version 4 targets, POST and hasher admission, no API
+returning the binding).
 
 The document after a Restore
 ----------------------------
@@ -171,6 +269,11 @@ during a capture (``save_pre``, ``save_post``) or during Restore, the safety
 reload or Undo restore (``load_pre``, ``load_post``) is printed and, for Restore,
 reported as an operator warning; it never fails the capture or the Restore. The
 native callback observer still validates every effect a handler had on the data.
+Its before and after witnesses compare exactly: arrays of plain values byte for
+byte, records with padding (a Multires modifier's profile) member by member,
+because a padding byte holds whatever memory it was built in and two witnesses of
+unchanged data would otherwise differ (``values_equal`` refuses a padded type at
+compile time).
 
 Recovery is never less available than File > Open and never claims exactness it
 does not have. A load handler that edits a selected Sculpt object (its owners,
@@ -210,19 +313,22 @@ capture identity, version, storage, capture boundary, scene size and a binding
 of the BASE, plus the companion declaration of a version 4 pair
 (``checkpoint_seal.py``). Two bindings keep the request path free of any read:
 
-* identity (``:``): an ordinary version 3 capture is sealed at publication, in
+* identity (``:``): an ordinary version 3 request capture is sealed at publication, in
   the same atomic record write, over its BASE's size, modification time in
   microseconds (the precision time-preserving tools keep) and inode (the NTFS
   file index on Windows). Nothing is pending, so a crash or quit never leaves a
   capture unsealed. Restore checks the stable stat of the very file it copied.
   Where the BASE's timestamp has no sub-millisecond part (HFS+, FAT, exFAT, SMB:
-  two captures can share one) publication binds content instead; only there
-  does a request pay for a hash. A profile copied to another volume keeps no
+  two captures can share one) publication binds content instead, compared with
+  native's own write ("Content binding"); only there does a request pay for a
+  hash. A profile copied to another volume keeps no
   inodes, so its full copies that deduplication has not yet bound by content are
   refused; the snapshot service binds every full copy at start-up, but a
   session without it (a headless script) keeps identity seals.
 * content (``.``): the BLAKE2b-256 of the BASE. A version 4 pair binds the
-  digests its publication already computed. The snapshot worker's
+  digests its publication already computed, and so does every safety capture
+  (version 3 when nothing is in Sculpt mode), after native compared them with
+  what it wrote. The snapshot worker's
   deduplication, which reads every full copy off the request path anyway,
   verifies the identity seal over the bytes it stores and re-seals the stored
   record with their digest; a full copy whose seal does not verify is kept as a
@@ -606,7 +712,11 @@ since 1.0.5, which already reads version 4 (``checkpoint_capture_state``). A
 two-build probe, this build producing and the released app consuming the same
 profile, asserts exactly that
 (``tests/python/angelo_agent/probe_downgrade_two_builds.py``; recorded
-2026-10-25 on macOS: inventory issues none, both Restores FINISHED). 1.0.5
+2026-10-25 on macOS: inventory issues none, both Restores FINISHED). Content
+binding changes no record or seal format: a safety capture and a coarse-clock
+ordinary capture carry the version 3 content seal released builds already
+verify, and the probe also produces an Object-mode safety capture and a
+content-sealed ordinary one for the released app to list and Restore. 1.0.5
 ignores the scene maps, so it rebinds chats by name as it always did. The map
 is kept only when no add-on's save handler (``save_pre``/``save_post``) is
 registered at any point of the capture (``handler_owner.bundled``: Blender's
@@ -841,7 +951,14 @@ Automatic removal never touches:
   yet;
 * checkpoints owning write versions at or after the earliest retained capture
   boundary (the file-restore dependency rule below), and legacy points whose
-  journal order cannot be proved.
+  journal order cannot be proved. A READY capture, and any version 4 capture,
+  sets that boundary only while Restore can select it or its capture is still
+  pinned: one no Restore admits (a late settle that failed, a crash or failed
+  POST between publish and finish, an INVALID pair, a version 4 reservation
+  whose owner is gone) can never become a restore point and nothing sweeps it,
+  so it holds no later write version. A legacy reservation keeps the
+  conservative rule (its journal or protection anchors), since legacy captures
+  write no pins and a live owner may still complete one.
 
 When protection prevents meeting a limit, the run says so: a concise chat notice
 names the usage, the limit and how many points are protected (active requests,
@@ -1135,6 +1252,189 @@ kernel filter drivers are trusted.
   storage relies on the per-user profile folder's access list (``%LOCALAPPDATA%``).
 * NTFS journals directory metadata itself; Angelo does not flush directories
   (FlushFileBuffers would need write access to them).
+* NTFS stamps change and modification times from the system clock, which
+  advances in ticks (15.625 ms by default, down to 0.5 ms while a program raises
+  the timer resolution), so a stat cannot tell a same-size write made in the
+  tick of the file's last stamp from no write. Measured on Windows Server 2022
+  with CPython 3.13 (``tests/python/angelo_agent/probe_volume_stamps.py``, 200
+  writes per file system): on NTFS, ChangeTime equals LastWriteTime, both the
+  clock's reading at the write and never ahead of it, and closing the handle
+  moves neither; on FAT32 and exFAT, ChangeTime is 0, LastWriteTime is kept in
+  2 s steps rounded up (ahead of the clock by up to 2 s when seen), and closing
+  a handle stamps it again (exFAT at every close, FAT32 at some); everywhere
+  ``st_ctime_ns`` is the ChangeTime and ``st_dev``'s low 32 bits the volume
+  serial. One helper, ``angelo_change_clock`` (``scripts/modules``;
+  ``angelo_agent.change_clock``), judges each time a stat carries on its own,
+  against the step of its volume, decided by the volume's file system (on
+  Windows 2 s on FAT and exFAT, none on NTFS and ReFS). The volumes are listed on a thread of
+  their own, once per process and when a device is first seen: every volume is
+  asked at once within one 2 s bound (a slow one is left out and asked again
+  later), a listing whose volume names are unchanged asks none, and a device no
+  volume has is looked for again a minute later. A thread that cannot start
+  leaves nothing recorded. Nothing waits for the listing: until a device is
+  known, and for a share, a time with no sub-millisecond part counts as kept in
+  the coarsest step its trailing zeros allow, rounded either way. On a known
+  volume a write now carries a value from the clock's reading to a step, or 16
+  ms, after it (a share's server may run that far ahead); elsewhere from a step
+  before it too. A time in that window is not past yet. Off Windows the mount
+  table decides (``angelo_change_clock_volumes``: macOS ``getfsstat`` without
+  waiting, whose ``f_fsid`` is a file's ``st_dev``, and Linux's mountinfo),
+  in the caller's thread at a device's first sight (about 80 us; a known device
+  costs a dict lookup, about 0.4 us). Measured on macOS 26.6 with disk images:
+  APFS stamps nanosecond times, so nothing waits or reads a clock there; HFS+
+  keeps 1 s steps, FAT 2 s and exFAT 10 ms, each rounded down (a write now
+  stamps from a step before the clock's reading up to it), closing restamps
+  none, and FAT and exFAT report the modification time as the change time, so
+  there it is judged as one a program can set. Before this, every settle
+  returned at once off Windows, and a same-size rewrite in the second of a
+  file's last stamp kept every stat field on 30 of 30 tries on HFS+ and FAT
+  and 18 of 30 on exFAT. A share (SMB, NFS, AFP, WebDAV), a FUSE or any other
+  type, and APFS that is not local count as the coarsest: 2 s either side of
+  the clock; whether closing a writer restamps there is not measured, so, as
+  on Windows, a writer's stat is judged by its own time (one kept in 2 s steps
+  may be FAT's and is refused; any other restamp at close only makes a later
+  check see a change, which fails closed). The checkpoint store is in Angelo's
+  data folder inside the home folder (or the state override), never beside the
+  project, so this matters only for a home folder on a share. Where a Sculpt
+  snapshot or its Restore is refused so (on a share whose stamps are whole
+  seconds, about every other one), the person reads why and what to do
+  (``checkpoint_store_text``, translated, at both of publication's writer
+  settles and the Restore's). A device number passes to the
+  next volume mounted, so a watch on a thread of its own counts mounts and
+  unmounts (macOS: a kqueue ``EVFILT_FS`` filter; Linux: mountinfo polled), and
+  a kept answer stands only while that count holds (an int compare); a
+  witness's change time whose trailing zeros do not fit its answer lists the
+  mounts again, once per stamp shape and count. Without a watch (its thread
+  could not start or ended) that stamp check decides alone and every answer
+  expires a minute after its listing, when a watch is started again. Linux's
+  disk and memory file systems stamp from the kernel's tick clock (before
+  6.13), so they are judged 16 ms either side of the clock, a wait short
+  enough for a UI, or by a stamp's own whole-second step (ext2 to ext4 with
+  small inodes keep seconds); Angelo ships no Linux build, its test runs use
+  Linux. A wait for a step
+  longer than a tick is made everywhere except where it would freeze a UI, the
+  main thread of a Blender with windows: there the file fails closed as changed,
+  with a message that says to read it again in about 2 s (a file tool runs
+  there: a just-written file on a FAT stick, an HFS+ disk or a share costs
+  the agent a retry; macOS exFAT's 10 ms step is waited out even there,
+  never a frozen interface), while a thread, a background or headless Blender
+  and the MCP server wait the step out. A snapshot capture and a Restore are
+  steps the person already waits for, so their copies run inside
+  ``change_clock.awaited()`` and wait the step out on the main thread too
+  (``capture_checkpoint``, safety captures included; ``CheckpointRecovery.prepare``;
+  and in the Restore operator its ordinary working copy, the safety reload's
+  copy, each project file's before-image and each backup it puts back
+  (``restore_since``)); refusing there refused every
+  request and every Restore where the home folder was on such a volume
+  (break-it, share follow-up). The Restore's chat-journal reads stay outside
+  it and degrade as before rather than wait. It is a plain
+  freeze of the interface, as the capture's own save already is: no busy
+  surface shows during it. Each settle waits at most until its newest time is
+  past (on a share up to 2 s after the write, plus up to 2 s more if the
+  server's clock runs ahead; 1 s on HFS+; 2 s on FAT; nothing on APFS, NTFS or
+  exFAT's 10 ms), and fails closed past that plus ``LIMIT_S``, or at once for a
+  change time beyond the window (``ClockAhead``: this computer's clock, or a
+  share's server's, set wrong), which a capture or a Restore refuses in the
+  person's words before its scene opens: what happened, that the scene is
+  unchanged, and to let both clocks update automatically
+  (``checkpoint_store_text.awaited``, translated in the Restore's error
+  report and in its chat row once one exists). After the scene opened, the backups put back keep the clock's own
+  wait, so a failure keeps how many files were put back, and the safety
+  reload's stored English diagnostic gives the clock's own reason, never the
+  sentence that says the scene is unchanged. An ordinary capture on such a
+  volume settles once (before its hash), a Sculpt capture twice (its pair,
+  then the pair's links), a Restore's working pair once (a refused preparation removes both
+  working copies, keeping any removal error with its own), and a Restore also
+  waits for its safety capture's settles, once per freshly written project file
+  it keeps a before-image of and once per fresh backup it puts back; the
+  profile's snapshot lock is held
+  meanwhile, so another app updating snapshots there gives up after its 2 s
+  wait and tries later. A stat taken on a handle Angelo still
+  writes through (the capture's outputs, a Restore's working copies) is never
+  trusted on a volume that stamps at close (or, where the volume is not known
+  yet, whose modification time is kept in 2 s steps); the
+  checkpoint store needs hard links, which FAT and exFAT lack, so this refuses
+  only what publication would refuse anyway. The chat journal's append, whose
+  identity is taken on its open handle, needs no such rule: an identity a close
+  moved fails the next append's check, and the rewrite then writes over the file
+  only when its bytes are the ones last written (CRC-32, ``session_guard``).
+  Beyond the window, a modification
+  time (always judged; a program can set it) is past, and a change time (judged
+  for a witness that compares it) means the clock was set back. A change time of
+  0 (none kept) is no time. A witness that binds bytes read after it, or an
+  approval, a persisted key or a later check to the file as it is, first waits
+  for that (``settle``/``settle_all``/``settled_key``: capture and Restore
+  hashing, a published Sculpt pair's two components together as ``publish``'s
+  last step, so that from the moment it returns any write to either, by any
+  writer, is caught by the next check (``finish``, Restore), before-image
+  and job-output copies, file-tool reads, listings and write preconditions, the
+  chat journal's load, snapshot ingestion, ``.blend`` listings, saved-project
+  receipts, memory evidence, Studio export and approval fingerprints, worker
+  merges, headless and export identities and add-on engine verdicts), and a
+  cache keeps nothing read under a time still in its window
+  (``settled``/``cache_key``: the render-device listing, script approvals,
+  retained profiles, the MCP app registry, the bake digest's decode cache
+  and the other stat-keyed caches). A change detector, which acts on a key that
+  differs from the last (the web link's image files, web shader files, bake
+  digests and World picture keys), keys a file through ``change_keys``: by its
+  stat when first seen settled, else by the SHA-256 of its bytes, kept for that
+  stat once settled, so the clock's tick and its passing never read as a change
+  (``cache_key``'s fresh key per call would act at every call and once more).
+  A file whose times are past costs one clock read;
+  one in the window waits at most a tick (a coarse step off the main thread),
+  and on APFS nothing is read. A change time
+  beyond the window fails closed at once as a change, and stands for a key no
+  other ever equals (a random UUID, so a persisted or sent key never matches); a
+  cache keeps a key whose change time is beyond it, since every write until the
+  clock gets there stamps an earlier time. A worker chat's mirror reads a hosted
+  chat without waiting (nothing in Angelo writes it then, and its tail rests on
+  the file's identity and bytes); its loads after a hand-off or a recovery, and
+  any read after a failed one, settle, since a save writes over what they read.
+  Limits:
+  Sculpt pairs, every safety capture and ordinary BASEs on coarse-clock volumes
+  are bound to native's own write ("Content binding"), so a foreign rewrite
+  before ``publish`` hashes them is refused there. One after the hash is
+  refused where the bytes are next read against the record: a pair's working
+  copies are re-hashed before its Restore, and a content-sealed version 3 BASE
+  is hashed as it is copied. A safety capture held for a Restore is checked by
+  its stamps until the Restore consumes it; its bytes are re-hashed only by the
+  reload after a Restore that failed, which refuses them. The one residual of 1.0.10 is an ordinary request
+  BASE on a fine-clock volume: identity-sealed and never waiting, to keep the
+  request path free of reads and waits, so a same-size rewrite in the tick of
+  its last write, or one that puts its modification time back, is outside what
+  its identity seal sees and is sealed. It stays because binding it needs a new
+  record or seal field, which the downgrade contract forbids ("Downgrade"), or a
+  hash on the request path; ingestion re-seals such an identity-sealed file's
+  bytes as content (``snapshot_ingest._adopt``); 1.1 closes both with a binding
+  kept beside the record or a write-time BLAKE2b ("Content binding"). Beyond the
+  bound bytes, a write, by any writer, inside the tick of a file's own last
+  stamp, made before the settle that follows it (a file Angelo itself just
+  wrote), carries that same stamp, and no wait can order a writer whose timing
+  is independent of Angelo's. The
+  native owner learns of a publication only once ``publish`` returns, which is
+  the boundary the checks hold. The pair's settle waits for the tick boundary
+  after the links' stamps, so placing it last, after the READY record and its
+  checks, only overlaps that record's work with the wait; the writes no stat
+  sees are the same, or fewer when the clock is set back meanwhile (the late
+  settle then refuses the attempt). The READY record can be durable before that tick passes,
+  which is safe: only ``finish``, after ``publish`` returns, records
+  ``VALIDATED``; a settle that raises fails the attempt, which refuses native
+  POST admission and ``finish``; and a writer's stat on FAT or exFAT, where
+  closing restamps, is refused by the settle before hashing, before any name is
+  published. ``test_native_change_clock`` pins the helper's side of this limit
+  (it waits for exactly that tick); ``test_native_checkpoint_publication_boundary``
+  pins the boundary on a fake coarse clock (both seals settled when ``publish``
+  returns, a write right after it refused by ``finish``, a failed settle never
+  ``VALIDATED``, a write inside native's own tick before ``publish`` refused by
+  the binding); so is a
+  write through a memory mapping (stamped when
+  the system flushes it), another program's write on FAT or exFAT that it has
+  not closed yet (its time is stamped at the close), a
+  modification time set ahead on purpose that a later write reaches, a clock
+  stepped back after a settle, and a network share (SMB): its server stamps with
+  its own clock, so a change time up to 16 ms ahead of this one waits and one
+  further ahead is refused until this clock catches up (a transient refusal),
+  and its client may answer a stat from its metadata cache.
 * A file system without hard links (FAT, exFAT) refuses new-file publication, as
   on POSIX: the file tools and Studio export say so and change nothing.
 * Handles are opened sharing read, write and delete (POSIX behaviour), so another

@@ -15,6 +15,7 @@
 #include "BLI_memarena.h"
 #include "BLI_stack.h"
 #include "BLI_vector.hh"
+#include "BLI_vector_set.hh"
 
 #include "BKE_context.hh"
 #include "BKE_editmesh.hh"
@@ -578,17 +579,29 @@ struct LinkBase {
   uint list_len;
 };
 
-static void ghash_insert_face_edge_link(Map<BMFace *, LinkBase *> &gh,
+/**
+ * Angelo: the faces' edge lists, in the order the faces were first added. Faces are split in this
+ * order: a pointer-keyed map's order followed heap addresses, which differ between processes, and
+ * with it the order of the elements the split makes.
+ */
+struct FaceEdgeLists {
+  VectorSet<BMFace *> faces;
+  Vector<LinkBase *> edges;
+};
+
+static void ghash_insert_face_edge_link(FaceEdgeLists &gh,
                                         BMFace *f_key,
                                         BMEdge *e_val,
                                         MemArena *mem_arena)
 {
-  LinkBase *ls_base = gh.lookup_or_add_cb(f_key, [&]() {
+  const int64_t index = gh.faces.index_of_or_add(f_key);
+  if (index == gh.edges.size()) {
     LinkBase *ls_base = static_cast<LinkBase *>(BLI_memarena_alloc(mem_arena, sizeof(*ls_base)));
     ls_base->list = nullptr;
     ls_base->list_len = 0;
-    return ls_base;
-  });
+    gh.edges.append(ls_base);
+  }
+  LinkBase *ls_base = gh.edges[index];
 
   LinkNode *ls = static_cast<LinkNode *>(BLI_memarena_alloc(mem_arena, sizeof(*ls)));
   ls->next = ls_base->list;
@@ -954,7 +967,7 @@ static wmOperatorStatus edbm_face_split_by_edges_exec(bContext *C, wmOperator * 
     /* we may have remaining isolated regions remaining,
      * these will need to have connecting edges created */
     if (!BLI_stack_is_empty(edges_loose)) {
-      Map<BMFace *, LinkBase *> face_edge_map;
+      FaceEdgeLists face_edge_map;
 
       MemArena *mem_arena = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, __func__);
 
@@ -990,9 +1003,9 @@ static wmOperatorStatus edbm_face_split_by_edges_exec(bContext *C, wmOperator * 
        * and splice vertices into the closest edges */
       {
 
-        for (const auto &item : face_edge_map.items()) {
-          BMFace *f = item.key;
-          LinkBase *e_ls_base = item.value;
+        for (const int64_t index : face_edge_map.faces.index_range()) {
+          BMFace *f = face_edge_map.faces[index];
+          LinkBase *e_ls_base = face_edge_map.edges[index];
           LinkNode *e_link = e_ls_base->list;
 
           do {
@@ -1031,9 +1044,9 @@ static wmOperatorStatus edbm_face_split_by_edges_exec(bContext *C, wmOperator * 
       {
         MemArena *mem_arena_edgenet = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, __func__);
 
-        for (const auto &item : face_edge_map.items()) {
-          BMFace *f = item.key;
-          LinkBase *e_ls_base = item.value;
+        for (const int64_t index : face_edge_map.faces.index_range()) {
+          BMFace *f = face_edge_map.faces[index];
+          LinkBase *e_ls_base = face_edge_map.edges[index];
 
           bm_face_split_by_edges_island_connect(
               bm, f, e_ls_base->list, e_ls_base->list_len, mem_arena_edgenet);

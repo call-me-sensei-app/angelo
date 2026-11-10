@@ -9,6 +9,8 @@ with the shared glTF profile; the package admits the same kinds and names assets
 installs as an embedded package with its .meta files.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import re
 import sys
@@ -19,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import engine_link_assets as assets, unity_link_assets as unity  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 RULES = unity.PLUGIN_SOURCE / "Editor/AssetRules.cs"
 
@@ -62,11 +65,15 @@ class ResolveTests(unittest.TestCase):
         (self.project / "ProjectSettings/ProjectVersion.txt").unlink()
         self.assertEqual(self.code("Assets/Props/crate.fbx"), "not_project")
 
-    @unittest.skipIf(sys.platform == "win32", "symbolic links")
     def test_a_link_out_of_the_project_is_outside(self):
         outside = Path(tempfile.mkdtemp()) / "secret.fbx"
         outside.write_bytes(b"x")
-        os.symlink(outside, self.project / "Assets/link.fbx")
+        try:
+            os.symlink(outside, self.project / "Assets/link.fbx")
+        except OSError:
+            if os.name != "nt":
+                raise
+            self.skipTest(environment_skip("Windows makes a symlink only with a privilege this user lacks"))
         self.assertEqual(self.code("Assets/link.fbx"), "outside")
 
 

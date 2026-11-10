@@ -35,6 +35,7 @@
 #include "BLI_math_vector.h"
 #include "BLI_string.h"
 #include "BLI_string_utf8.h"
+#include "BLI_threads.h"
 #include "BLI_timer.h"
 
 #include "BKE_context.hh"
@@ -1061,19 +1062,38 @@ void WM_reports_from_reports_move(wmWindowManager *wm, ReportList *reports)
     wm = static_cast<wmWindowManager *>(G_MAIN->wm.first);
   }
 
-  /* Add reports to the global list, otherwise they are not seen. */
-  BKE_reports_move_to_reports(&wm->runtime->reports, reports);
+  /* Add reports to the global list, otherwise they are not seen. Angelo: a job's own reports
+   * (#WM_angelo_job_reports.hh) are copied as they move, under the same locks. */
+  wmJob *job = wm_jobs_angelo_reports_owner(wm, reports);
+  BKE_reports_move_to_reports_ex(
+      &wm->runtime->reports, reports, job ? wm_jobs_angelo_report_moved : nullptr, job);
 
   WM_report_banner_show(wm, nullptr);
 }
 
 void WM_global_report(eReportType type, const char *message)
 {
+  WM_global_report_translated(type, RPT_(message), message);
+}
+
+void WM_global_report_translated(eReportType type,
+                                 const char *message,
+                                 const char *message_untranslated)
+{
   /* WARNING: in most cases #BKE_report should be used instead, see docstring for details. */
+  if (!BLI_thread_is_main()) {
+    /* On a job's thread the report goes to that job's own list, which the main thread moves into
+     * the Info log at its next tick (and keeps as the job's, #WM_angelo_job_reports.hh): moving it
+     * from here would add the banner's timer off the main thread. */
+    if (ReportList *job_reports = wm_jobs_thread_reports()) {
+      BKE_report_translated(job_reports, type, message, message_untranslated);
+      return;
+    }
+  }
   ReportList reports;
   BKE_reports_init(&reports, RPT_STORE | RPT_PRINT);
   BKE_report_print_level_set(&reports, RPT_WARNING);
-  BKE_report(&reports, type, message);
+  BKE_report_translated(&reports, type, message, message_untranslated);
 
   WM_reports_from_reports_move(nullptr, &reports);
 
@@ -1086,13 +1106,25 @@ void WM_global_reportf(eReportType type, const char *format, ...)
 
   va_list args;
 
-  format = RPT_(format);
+  const char *format_translated = RPT_(format);
 
   va_start(args, format);
-  char *str = BLI_vsprintfN(format, args);
+  char *str = BLI_vsprintfN(format_translated, args);
   va_end(args);
 
-  WM_global_report(type, str);
+  /* Angelo: the untranslated format filled with the same arguments beside the message
+   * (#Report::message_untranslated), formatted only when `RPT_` changed the format. Otherwise the
+   * message goes as before (#WM_global_report translates it whole). */
+  if (format_translated == format || STREQ(format_translated, format)) {
+    WM_global_report(type, str);
+  }
+  else {
+    va_start(args, format);
+    char *untranslated = BLI_vsprintfN(format, args);
+    va_end(args);
+    WM_global_report_translated(type, RPT_(str), untranslated);
+    MEM_delete(untranslated);
+  }
   MEM_delete(str);
 }
 
@@ -1128,7 +1160,10 @@ static bool wm_operator_restore_admit(bContext *C, const wmOperatorType *ot, Rep
     return true;
   }
 
-  bool refused = (ot->flag & (OPTYPE_UNDO | OPTYPE_UNDO_GROUPED)) != 0;
+  const wmWindowManager *wm = CTX_wm_manager(C);
+  const bool asset_import = BKE_undosys_capture_stock_import_admit(
+      C, wm, CTX_wm_window(C), wm ? wm->op_undo_depth : 0, ot->idname);
+  bool refused = (ot->flag & (OPTYPE_UNDO | OPTYPE_UNDO_GROUPED)) != 0 && !asset_import;
   /* These public dispatchers change history or borrowed document/UI owners without an Undo
    * flag. Keep the list explicit: unrelated operators and plain RNA edits remain available. */
   static constexpr const char *owner_operators[] = {
@@ -4354,7 +4389,9 @@ static void wm_event_handle_xrevent(wmWindowManager *wm,
   }
 
   /* The undo operator may have re-allocated the XR context Scene and Main data pointers.
-   * Prevent dangling pointers in the main Blender context by re-assigning them as needed. */
+   * Prevent dangling pointers in the main Blender context by re-assigning them as needed.
+   *
+   * This is the inverse of the re-anchoring in #WM_xr_session_context_ensure(). */
   CTX_data_main_set(main_context, CTX_data_main(xr_context));
   if (ctx_xr_main_scene_match) {
     CTX_data_scene_set(main_context, CTX_data_scene(xr_context));

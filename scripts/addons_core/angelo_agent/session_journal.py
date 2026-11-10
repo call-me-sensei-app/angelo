@@ -58,20 +58,16 @@ the state it was given is on disk and synced.
   as it was left (``journal_left``), so a writer's own I/O error never reads
   as another writer's change.
 
-Windows (not exercised on this host): ``O_BINARY`` keeps the separator one
-byte; there is no ``flock`` (another app on the same profile is unsupported
-there, as on POSIX); ``st_ino`` is the NTFS file index; ``st_ctime`` is the
-creation time on Python 3.13 (Python's documented deprecation), so the writer's
-check rests on device, index, size and modification time there. Every reader
-here opens the file sharing read, write and delete (``open_shared``:
-``CreateFileW`` with ``FILE_SHARE_DELETE``), so a reader never fails a writer
-with a sharing violation, and a replace uses POSIX semantics
-(``win32_replace``), so it lands while such a reader holds the file. Where
-those are unsupported, ``os.replace`` (``MoveFileExW``) refuses a name any
-handle has open, so no writer here holds one on its target across the replace:
-the guard's check closes its own and re-checks the file by ``stat`` just before
-it (``rewrite``'s ``before_replace``). A refused replace is retried briefly; one
-that still fails leaves the writer appending to the file as it was.
+Windows (not exercised on this host): ``O_BINARY`` keeps the separator one byte; there is no ``flock`` (another app on
+the same profile is unsupported there, as on POSIX); ``st_ino`` is the NTFS file index; a descriptor's ``st_ctime`` is
+the change time on Python 3.13. Both tick (15.6 ms): ``read`` settles its witness first (``change_clock``), so a write
+during the read is seen; one in the tick of a writer's own last stamp is not. Every reader here opens the file sharing
+read, write and delete (``open_shared``: ``CreateFileW`` with ``FILE_SHARE_DELETE``), so a reader never fails a writer
+with a sharing violation, and a replace uses POSIX semantics (``win32_replace``), so it lands while such a reader
+holds the file. Where those are unsupported, ``os.replace`` (``MoveFileExW``) refuses a name any handle has open, so
+no writer here holds one on its target across the replace: the guard's check closes its own and re-checks the file by
+``stat`` just before it (``rewrite``'s ``before_replace``). A refused replace is retried briefly; one that still fails
+leaves the writer appending to the file as it was.
 """
 
 import errno
@@ -82,6 +78,8 @@ import threading
 import time
 import uuid
 import zlib
+
+from . import shared_replace
 
 try:
     import fcntl
@@ -122,19 +120,23 @@ class JournalInfo:
         self.identity = self.crc = None
 
 
-def read(path):
+def read(path, settle=None):
     """The conversation as one raw document (base plus records), and its ``JournalInfo``.
 
-    Raises ``FileNotFoundError`` for a missing file and ``ValueError`` for a
-    corrupt one. A file without records (every earlier build's, or a
-    compacted one) is parsed exactly as before, whatever its formatting.
+    Raises ``FileNotFoundError`` for a missing file and ``ValueError`` for a corrupt one. A file without records
+    (every earlier build's, or a compacted one) is parsed exactly as before, whatever its formatting. ``settle``: what
+    waits for the clock (``change_clock.settle``); a reader that never writes on its identity passes one that does not.
     """
+    from . import change_clock
     with open(open_shared(path), "rb") as handle:
-        before = os.fstat(handle.fileno())
+        try:   # A write during the read then changes the identity, in the tick of the last stamp too.
+            before = (settle or change_clock.settle)(os.fstat(handle.fileno()))
+        except change_clock.Unsettled:
+            before = None   # The clock went back: never trusted.
         data = handle.read()
         after = os.fstat(handle.fileno())
     raw, info = _parse(data)
-    info.identity = full_identity(after) if _identity(before) == _identity(after) else None
+    info.identity = full_identity(after) if before is not None and _identity(before) == _identity(after) else None
     info.crc = zlib.crc32(data)
     if getattr(capture, "path", None) == path:
         capture.info = info
@@ -290,7 +292,7 @@ def rewrite(path, data, before_replace=None):
             os.close(fd)
         if before_replace is not None:
             before_replace()
-        _replace(temporary, path)
+        replace(temporary, path)
     except BaseException:
         try:
             os.unlink(temporary)
@@ -306,17 +308,10 @@ def rewrite(path, data, before_replace=None):
     return _identity(status) if same else None
 
 
-def _replace(source, target, attempts=5):
-    """``os.replace``; on Windows a POSIX-semantics rename (``win32_replace``), retried a few times while a handle
-    that does not share delete holds ``target`` (an indexer, an antivirus scan) (module docstring)."""
-    from . import win32_replace
-    for attempt in range(attempts):
-        try:
-            return win32_replace.replace(source, target) if _WINDOWS else os.replace(source, target)
-        except PermissionError:
-            if not _WINDOWS or attempt == attempts - 1:
-                raise
-            time.sleep(0.01 * (attempt + 1))
+def replace(source, target, attempts=shared_replace.ATTEMPTS):
+    """``shared_replace.replace``: on Windows a POSIX-semantics rename retried while a handle not sharing delete holds
+    ``target`` (an indexer, a scan; module docstring). Every add-on replace is that one (the site test lists them)."""
+    return shared_replace.replace(source, target, attempts)
 
 
 def discard_stale(path, older_than=60.0):

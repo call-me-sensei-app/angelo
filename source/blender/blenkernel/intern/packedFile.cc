@@ -35,6 +35,7 @@
 #include "BLI_string.h"
 #include "BLI_utildefines.h"
 
+#include "BKE_angelo_image_source.hh"
 #include "BKE_bake_geometry_nodes_modifier.hh"
 #include "BKE_bake_geometry_nodes_modifier_pack.hh"
 #include "BKE_image.hh"
@@ -695,6 +696,7 @@ int BKE_packedfile_unpack_image(Main *bmain,
   int ret_value = RET_ERROR;
 
   if (ima != nullptr) {
+    const bool had_packed_files = ima->packedfiles.last != nullptr;
     while (ima->packedfiles.last) {
       ImagePackedFile *imapf = static_cast<ImagePackedFile *>(ima->packedfiles.last);
       char *new_file_path = BKE_packedfile_unpack(
@@ -730,6 +732,11 @@ int BKE_packedfile_unpack_image(Main *bmain,
 
       BLI_remlink(&ima->packedfiles, imapf);
       MEM_delete(imapf);
+    }
+    if (had_packed_files) {
+      /* This path removes the packed records directly, even when extraction reports an error.
+       * Invalidate their source evidence independently of the optional reload below. */
+      bke::angelo_image_source_changed(*ima);
     }
   }
 

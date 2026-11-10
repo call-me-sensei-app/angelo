@@ -16,6 +16,7 @@
 #include "BLI_set.hh"
 #include "BLI_stack.h"
 #include "BLI_utildefines_iter.h"
+#include "BLI_vector_set.hh"
 
 #include "bmesh.hh"
 
@@ -687,8 +688,11 @@ void BM_edgeloop_flip(BMesh * /*bm*/, BMEdgeLoopStore *el_store)
   BLI_listbase_reverse(&el_store->verts);
 }
 
-void BM_edgeloop_expand(
-    BMesh *bm, BMEdgeLoopStore *el_store, int el_store_len, bool split, Set<BMEdge *> *split_edges)
+void BM_edgeloop_expand(BMesh *bm,
+                        BMEdgeLoopStore *el_store,
+                        int el_store_len,
+                        bool split,
+                        VectorSet<BMEdge *> *split_edges)
 {
   bool split_swap = true;
 

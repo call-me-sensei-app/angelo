@@ -6,6 +6,8 @@ Process tests use a tiny fake "binary" (a host Python script) to exercise real
 launch, isolation, timeout and signal handling.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import dataclasses
 import io
@@ -21,6 +23,7 @@ from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import account_fixtures  # (made-up sign-ins, provider_accounts)
 import native_suite_checks as checks
 import native_suite_manifest as manifest
 import native_suite_paths
@@ -197,14 +200,17 @@ class ManifestTests(unittest.TestCase):
                       "test_blender_headless_native_commits", "test_blender_keychain_live",
                           "test_blender_perf_ratchet", "test_blender_undo_unlinked_pointers",
                           "test_blender_godot_link_e2e", "test_blender_godot_link_gui", "test_blender_engine_suggest_gui",
-                          "test_blender_godot_physics_e2e"})
+                          "test_blender_godot_physics_e2e", "test_blender_change_chip_details",
+                          "test_blender_signin_reconnect"})
         self.assertEqual({s.name for s in manifest.SUITES if not s.runs_on("win32")} - {
             s.name for s in manifest.SUITES if s.platforms == ("darwin",)},
             {"test_blender_canvas_states", "test_blender_chat_cards", "test_blender_engine_fix_gui", "test_blender_crash_handler", "test_blender_chat_start_states", "test_blender_chat_waiting",
-             "test_blender_codex_turn_errors",
+             "test_blender_codex_turn_errors", "test_blender_approval_wait",
              "test_blender_connect_hero", "test_blender_connect_surfaces", "test_blender_director_navigation", "test_blender_everyday_turns", "test_blender_first_run",
+             "test_blender_goal_gui",
              "test_blender_plan_progress", "test_blender_prefs_and_quit", "test_blender_reply_stream",
              "test_blender_script_stream", "test_blender_select_through_director_gui", "test_blender_settings_import",
+             "test_blender_steering", "test_blender_steering_codex",
              "test_blender_uv_checker_director_gui", "test_blender_engine_skeleton_gui",
              "test_blender_team_chat", "test_blender_translation",
              "test_blender_turn_recovery"})
@@ -344,7 +350,7 @@ class PlanTests(unittest.TestCase):
                     self.assertEqual(env, baseline)
                 self.assertNotIn("ANTHROPIC_API_KEY", env)
                 self.assertNotIn("ANTHROPIC_API_KEY", child)
-                self.assertNotIn("CODEX_HOME", env)
+                self.assertEqual(env["CODEX_HOME"], str(Path(env["HOME"]) / ".codex"))   # Never the caller's.
                 self.assertEqual(env["ANGELO_AGENT_RUNTIME"], "off")
         self.base["ANGELO_QA_PROCESS_OWNER"] = "a" * 32
         self.assertEqual(self.plan(suite)["env"]["ANGELO_QA_PROCESS_OWNER"], "a" * 32)
@@ -352,6 +358,7 @@ class PlanTests(unittest.TestCase):
     def test_only_a_suites_own_options_come_from_the_caller(self):
         with_options = [suite for suite in manifest.SUITES if suite.options_env]
         expected = {
+            "test_blender_ptcache_ownerless": ("ANGELO_PTCACHE_CASE",),
             "test_blender_concurrent_edit": ("ANGELO_CONCURRENT_EDIT_MODE",),
             "test_blender_complete_checks": ("ANGELO_COMPLETE_PHASE", "ANGELO_QA_CONCURRENT_NATIVE_JOBS",
                                              "ANGELO_CAPTURE_LARGE_RESULT", "ANGELO_COMPLETE_TRIALS",
@@ -367,6 +374,7 @@ class PlanTests(unittest.TestCase):
             "test_blender_studio_workflows": ("ANGELO_QA_CHARACTER", "ANGELO_QA_SHEET", "ANGELO_QA_PARTS",
                                               "ANGELO_QA_GROUNDING"),
             "test_blender_route_parity": ("ANGELO_ROUTE_PARITY_RECORD",),
+            "test_blender_essentials": ("ANGELO_QA_ESSENTIALS_ONLINE",),
             "test_blender_godot_link_e2e": ("ANGELO_QA_GODOT",),
             "test_blender_render_region_perf": ("ANGELO_RR_BENCH_VARIANT", "ANGELO_RR_BENCH_REPS"),
             "test_blender_godot_link_gui": ("ANGELO_QA_GODOT",),
@@ -376,13 +384,15 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(expected, {suite.name: suite.options_env for suite in with_options})
         for suite in with_options:
             values = dict(self.base, ANGELO_SCULPT_CHECKPOINT_VARIANT="dyntopo", ANGELO_L10N_LOCALES="en_US",
-                          ANGELO_COMPLETE_PHASE="capture", ANGELO_UNDECLARED_OPTION="must not reach a child")
+                          ANGELO_COMPLETE_PHASE="capture", ANGELO_PTCACHE_CASE="external",
+                          ANGELO_UNDECLARED_OPTION="must not reach a child")
             env = runner.plan_suite(suite, self.run_dir, self.binary, values)["env"]
             self.assertNotIn("ANGELO_UNDECLARED_OPTION", env)
             self.assertEqual("ANGELO_SCULPT_CHECKPOINT_VARIANT" in env,
                              suite.name == "test_blender_sculpt_checkpoint_bundle")
             self.assertEqual("ANGELO_L10N_LOCALES" in env, suite.name == "test_blender_translation")
             self.assertEqual("ANGELO_COMPLETE_PHASE" in env, suite.name == "test_blender_complete_checks")
+            self.assertEqual("ANGELO_PTCACHE_CASE" in env, suite.name == "test_blender_ptcache_ownerless")
 
     def test_every_suite_environment_is_isolated(self):
         allowed = set(runner.INHERITED_ENV)
@@ -411,6 +421,12 @@ class PlanTests(unittest.TestCase):
                             "ANGELO_CONNECTIONS_DIR", "ANGELO_LIBRARY_DIR", "ANGELO_QA_DIR"):
                     self.assertTrue(Path(env[key]).is_dir(), key)
                 self.assertEqual(env["CFFIXED_USER_HOME"], env["HOME"])  # Cocoa's home too (crash prompts).
+                # Both runtimes' profiles in the private home, marked so the suite's own entry keeps it.
+                self.assertEqual((env["CODEX_HOME"], env["CLAUDE_CONFIG_DIR"]),
+                                 (str(Path(env["HOME"]) / ".codex"), str(Path(env["HOME"]) / ".claude")))
+                self.assertEqual(env[runner.isolation.MARKER], env["HOME"])
+                with mock.patch.object(runner.isolation, "homes", return_value={Path(REAL_HOME)}):
+                    self.assertTrue(runner.isolation.satisfied(env), "suite_isolation relaunches no runner suite")
                 self.assertEqual(env["ANGELO_QA_LOG"], str(plan["log"]))
                 self.assertEqual(env.get("ANGELO_DISABLE_DEFAULT_CHAT"), None if suite.default_chat else "1")
                 self.assertEqual(env.get("ANGELO_DISABLE_KEYCHAIN"), "1")
@@ -452,12 +468,26 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(plan["env"]["ANGELO_ORDERED_RECOVERY_REPORT"], str(plan["qa"] / "ordered-recovery.json"))
         self.assertEqual(plan["env"]["ANGELO_RUNTIME_QA_DIR"], str(plan["qa"]))
 
+    def eval_account(self):
+        """The caller's evaluation-account Codex profile (a fixture sign-in with the evaluation account's made-up
+        claims), opted in."""
+        profile = (Path(self.temp.name) / "bench" / "eval-account" / "codex-profile"
+                   / "477256f3-ae52-456f-bbd3-429db527d2ef")
+        account_fixtures.codex_sign_in(profile)
+        self.base["ANGELO_TEST_REAL_PROVIDERS"] = "eval-profile:" + str(profile)
+        return profile
+
     def test_live_suites_use_caller_profile_and_opt_in_only(self):
         self.base.update(ANGELO_QA_LIVE_BOTH="1", ANGELO_QA_CLAUDE_STATE_DIR="/real/claude",
                          ANGELO_QA_CLAUDE_CONNECTION_ID="00000000-0000-0000-0000-000000000001",
                          ANGELO_DISABLE_KEYCHAIN="0", SENSEI_DISABLE_KEYCHAIN="0", TOONLAB_DISABLE_KEYCHAIN="0")
+        profile = self.eval_account()
         plan = self.plan("test_blender_cross_provider_live")
         self.assertEqual(plan["env"]["HOME"], REAL_HOME)
+        # Its Codex sign-in is the evaluation-account profile only; Claude's default profile is an empty private folder.
+        self.assertEqual(plan["env"]["CODEX_HOME"], str(profile))
+        self.assertTrue(Path(plan["env"]["CLAUDE_CONFIG_DIR"]).is_relative_to(plan["profile"]))
+        self.assertEqual(plan["env"]["ANGELO_TEST_REAL_PROVIDERS"], self.base["ANGELO_TEST_REAL_PROVIDERS"])
         self.assertNotIn("CFFIXED_USER_HOME", plan["env"])
         for key in ("USERPROFILE", "APPDATA", "LOCALAPPDATA", "HOMEDRIVE", "HOMEPATH"):
             self.assertEqual(plan["env"][key], WINDOWS_ENV[key], key)  # Windows CLI logins live there.
@@ -478,9 +508,48 @@ class PlanTests(unittest.TestCase):
         self.run_dir = self.run_dir / "second"
         self.assertIn("ANGELO_QA_LIVE_CODEX", self.plan("test_blender_shared_sessions")["preconditions"][0])
 
+    def test_a_billing_live_suite_needs_the_eval_account_opt_in_never_the_callers_own_login(self):
+        self.base["ANGELO_QA_LIVE_CODEX"] = "1"
+        plan = self.plan("test_blender_shared_sessions")
+        self.assertIn("ANGELO_TEST_REAL_PROVIDERS", " ".join(plan["preconditions"]))
+        self.assertNotEqual(plan["env"]["HOME"], REAL_HOME, "no opt-in: the private home")
+        self.assertEqual(plan["env"]["ANGELO_AGENT_RUNTIME"], "off")
+        person = Path(self.temp.name) / "person"
+        (person / ".codex").mkdir(parents=True)
+        (person / ".codex" / "auth.json").write_text("{}")
+        self.base.update(HOME=str(person), ANGELO_TEST_REAL_PROVIDERS="eval-profile:" + str(person / ".codex"))
+        for name in ("test_blender_shared_sessions", "test_blender_cross_provider_live", "test_blender_chat_usage_live"):
+            with self.subTest(name=name):
+                self.run_dir = self.run_dir / ("refused-" + name)
+                plan = self.plan(name)
+                self.assertTrue(any("never the person's own" in reason for reason in plan["preconditions"]),
+                                plan["preconditions"])
+                self.assertNotIn("ANGELO_TEST_REAL_PROVIDERS", plan["env"])
+                self.assertFalse(Path(plan["env"]["CODEX_HOME"]).is_relative_to(person))
+        self.base["SENSEI_TEST_REAL_PROVIDERS"] = self.base.pop("ANGELO_TEST_REAL_PROVIDERS")
+        self.run_dir = self.run_dir / "deprecated"
+        self.assertIn("ANGELO_TEST_REAL_PROVIDERS", " ".join(self.plan("test_blender_shared_sessions")["preconditions"]),
+                      "only the exact name opts in")
+
+    def test_live_suites_without_a_home_opt_in_are_isolated_and_the_keychain_suite_keeps_only_its_home(self):
+        self.base["ANGELO_QA_LIVE_KEYCHAIN"] = "1"
+        tls = self.plan("test_blender_api_tls")["env"]
+        self.assertNotEqual(tls["HOME"], REAL_HOME)
+        self.assertEqual(tls["ANGELO_AGENT_RUNTIME"], "off")
+        self.run_dir = self.run_dir / "keychain"
+        keychain = self.plan("test_blender_keychain_live")
+        env = keychain["env"]
+        self.assertEqual(env["HOME"], REAL_HOME)
+        self.assertTrue(Path(env["CODEX_HOME"]).is_relative_to(keychain["profile"]))
+        self.assertTrue(Path(env["CLAUDE_CONFIG_DIR"]).is_relative_to(keychain["profile"]))
+        self.assertEqual((env["ANGELO_AGENT_RUNTIME"], env["ANGELO_DISABLE_KEYCHAIN"]), ("off", "1"))
+        with mock.patch.object(runner.isolation, "homes", return_value={Path(REAL_HOME)}):
+            self.assertTrue(runner.isolation.satisfied(env))
+
     def test_live_suites_run_the_bundled_agent_runtime_or_the_callers(self):
         self.base.update(ANGELO_QA_LIVE_BOTH="1", ANGELO_QA_CLAUDE_STATE_DIR="/real/claude",
                          ANGELO_QA_CLAUDE_CONNECTION_ID="00000000-0000-0000-0000-000000000001")
+        self.eval_account()
         self.assertNotIn("ANGELO_AGENT_RUNTIME", self.plan("test_blender_cross_provider_live")["env"])
         self.base["SENSEI_AGENT_RUNTIME"] = "/opt/sensei/codex"  # Never a spelling of this newer variable.
         self.run_dir = self.run_dir / "legacy"
@@ -495,6 +564,7 @@ class PlanTests(unittest.TestCase):
     def test_live_opt_in_accepts_a_deprecated_spelling_under_its_angelo_name(self):
         self.base.update(TOONLAB_QA_LIVE_BOTH="1", TOONLAB_QA_CLAUDE_STATE_DIR="/real/claude",
                          ANGELO_QA_CLAUDE_CONNECTION_ID="00000000-0000-0000-0000-000000000001")
+        self.eval_account()
         plan = self.plan("test_blender_cross_provider_live")
         self.assertEqual(plan["preconditions"], [])
         self.assertEqual(plan["env"]["ANGELO_QA_LIVE_BOTH"], "1")
@@ -692,7 +762,7 @@ class LogScannerTests(unittest.TestCase):
             tails = {}
             reasons = checks.crash_logs(directory, log, 0, tails)
             written = log.read_text()
-        shown = "~/tmp/angelo.crash.txt"
+        shown = os.path.join("~", "tmp", "angelo.crash.txt")   # The found path, home scrubbed: native separators.
         tail = tails[shown].splitlines()
         self.assertEqual(len(tail), checks.CRASH_TAIL)
         self.assertEqual((tail[0], tail[-1]), ("line 41", "at ~/build/blender.exe"))
@@ -767,7 +837,10 @@ class ReportTests(unittest.TestCase):
 
 class ProcessTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="native-process-test-")
+        # As shallow as the runner's default output (the temp folder itself): a suite's %LOCALAPPDATA% sits four
+        # folders below it, and below a person's AppData\Local\Temp a deeper fixture is refused as too deep for
+        # Windows paths (native_suite_paths.windows_depth_refusal) before any suite starts.
+        self.temp = tempfile.TemporaryDirectory(prefix="nst-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
         self.binary = self.root / "Angelo"
@@ -785,9 +858,9 @@ class ProcessTests(unittest.TestCase):
         output = io.StringIO()
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
             # A fixture executable bundles no add-on; the guard has its own tests (test_native_addon_guard).
-            code = runner.main(["--binary", str(self.binary), "--output", str(self.root / "out")] + list(extra),
+            code = runner.main(["--binary", str(self.binary), "--output", str(self.root)] + list(extra),
                                suites=suites, base_env=self.base, addon_check=lambda binary, root: {"matches": True})
-        runs = list((self.root / "out").glob("angelo-native-suites-*"))
+        runs = list(self.root.glob("angelo-native-suites-*"))
         summary = json.loads((runs[0] / "summary.json").read_text()) if runs else None
         return code, summary, output.getvalue()
 
@@ -799,7 +872,7 @@ class ProcessTests(unittest.TestCase):
         status = {item["name"]: item for item in summary["suites"]}
         self.assertEqual(code, 1)
         self.assertFalse(summary["success"])
-        self.assertEqual(status["fake_pass"]["status"], "passed")
+        self.assertEqual(status["fake_pass"]["status"], "passed", status["fake_pass"]["reasons"])
         self.assertIn("native_assertion", status["fake_assert"]["reasons"][0])
         self.assertEqual(status["fake_quit_failed"]["status"], "failed")
         self.assertEqual(status["fake_signal"]["status"], "crashed")
@@ -812,8 +885,8 @@ class ProcessTests(unittest.TestCase):
         self.assertTrue((Path(summary["output"]) / "summary.txt").is_file())
 
     def test_child_receives_only_isolated_environment(self):
-        code, summary, _ = self.main((fake_suite("fake_pass"),))
-        self.assertEqual(code, 0)
+        code, summary, output = self.main((fake_suite("fake_pass"),))
+        self.assertEqual(code, 0, output)
         self.assertTrue(summary["success"])
         child = json.loads((Path(summary["suites"][0]["qa_dir"]) / "env.json").read_text())
         directory = Path(summary["output"]) / "fake_pass"

@@ -21,6 +21,8 @@ SYSTEM):
   the server exited before its first line. The runtime now brings its own interpreter (``final_runs_mcp``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import re
 import shutil
@@ -35,10 +37,15 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+from host_test_policy import environment_skip  # noqa: E402
 from ps_stderr_lint import stderr_hazards  # noqa: E402
 
 SCRIPTS = HERE.parents[2] / "scripts/angelo"
 VM_SCRIPTS = ("windows_final_runs.ps1", "windows_bench_tools.ps1", "windows_cloud_bootstrap.ps1")
+# gcp_windows_validate.sh drives the VM from the macOS workstation; its runs against a stand-in gcloud are checked
+# there and in the Linux host suite, never on Windows.
+WORKSTATION_ONLY = unittest.skipIf(os.name == "nt", environment_skip(
+    "gcp_windows_validate.sh is a bash launcher run from the macOS workstation, not on Windows"))
 
 
 def text(name):
@@ -109,7 +116,8 @@ class KeptSignInTests(unittest.TestCase):
             self.assertNotIn(name, stage, "existence is check-sign-in's; the stage names no credential file")
 
 
-@unittest.skipUnless(shutil.which("bash"), "The launcher is a bash script run from the workstation, not the VM")
+@WORKSTATION_ONLY
+@unittest.skipUnless(shutil.which("bash"), "needs bash")
 class WaitOffTests(unittest.TestCase):
     """``gcp_windows_validate.sh wait-off`` against a stand-in gcloud: each observation is one (VM status, result
     objects) step, read by a describe and a listing; ``DONE`` holds the bootstrap's text."""
@@ -187,6 +195,10 @@ esac
         early = self.wait_off([("RUNNING", ""), ("TERMINATED", "")])
         self.assertNotEqual(early.returncode, 0)
         self.assertIn("stopped before the run ended", early.stdout)
+
+
+class BenchVerdictTests(unittest.TestCase):
+    """Read from the launcher's source, so it holds on every host."""
 
     def test_bench_returns_wait_offs_verdict(self):
         gcp = text("gcp_windows_validate.sh")
@@ -283,7 +295,8 @@ esac
             calls = (fake / "calls").read_text() if (fake / "calls").is_file() else ""
         return ran, calls
 
-    @unittest.skipUnless(shutil.which("bash") and shutil.which("python3"), "The upload runs on the workstation")
+    @WORKSTATION_ONLY
+    @unittest.skipUnless(shutil.which("bash") and shutil.which("python3"), "needs bash and python3")
     def test_a_bucket_that_could_be_public_gets_nothing(self):
         public = {"bindings": self.POLICY["bindings"] + [{"role": "roles/storage.objectViewer", "members": ["allUsers"]}]}
         for bucket, policy, reason in ((self.PRIVATE, public, "allUsers or allAuthenticatedUsers"),
@@ -297,7 +310,8 @@ esac
                 self.assertIn(reason, ran.stderr)
                 self.assertNotIn("storage cp", calls, "nothing is uploaded")
 
-    @unittest.skipUnless(shutil.which("bash") and shutil.which("python3"), "The upload runs on the workstation")
+    @WORKSTATION_ONLY
+    @unittest.skipUnless(shutil.which("bash") and shutil.which("python3"), "needs bash and python3")
     def test_a_picture_other_than_the_pinned_one_is_never_uploaded(self):
         ran, calls = self.upload(self.PRIVATE, self.POLICY, {"maintainer-reference-2026-10-11.png": b"not it"})
         self.assertNotEqual(ran.returncode, 0)

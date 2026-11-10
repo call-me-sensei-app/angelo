@@ -584,9 +584,16 @@ void BKE_image_partial_update_mark_region(Image *image,
   PartialUpdateRegisterImpl *partial_updater = unwrap(image_partial_update_register_ensure(image));
   partial_updater->update_resolution(image_tile, image_buffer);
   partial_updater->mark_region(image_tile, updated_region);
+  image->runtime->angelo_pixel_revision.fetch_add(1, std::memory_order_relaxed);
 }
 
 void BKE_image_partial_update_mark_full_update(Image *image)
+{
+  BKE_image_partial_update_mark_gpu_stale(image);
+  image->runtime->angelo_pixel_revision.fetch_add(1, std::memory_order_relaxed);
+}
+
+void BKE_image_partial_update_mark_gpu_stale(Image *image)
 {
   PartialUpdateRegisterImpl *partial_updater = unwrap(image_partial_update_register_ensure(image));
   partial_updater->mark_full_update();

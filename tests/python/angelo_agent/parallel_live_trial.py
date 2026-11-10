@@ -8,7 +8,9 @@
 Each trial gets its own config, state, user folders and an isolated connection store holding only the one
 subscription connection (``eval_live_agent.isolated_connection``: metadata only, never credentials), with
 ``ANGELO_ENABLE_PARALLEL_AGENTS=1``. The in-app driver is ``parallel_live_session.py``; cases and their closed checks
-are ``parallel_live_cases.py``. Run only under Mac 1's billed lock (the caller's slot holds it). Prints one JSON line
+are ``parallel_live_cases.py``. The trial opts in to real providers with the connection's dedicated profile only
+(``provider_isolation.connection_opt_in``: never the person's own ~/.codex or ~/.claude). Run only under Mac 1's
+billed lock (the caller's slot holds it). Prints one JSON line
 per trial and writes ``parallel-live-summary.json``.
 """
 
@@ -26,6 +28,7 @@ sys.path[:0] = [str(ROOT / "scripts/addons_core"), str(HERE)]
 import gui_launch  # noqa: E402
 import parallel_live_cases as cases  # noqa: E402
 import eval_diagnostics as diagnostics  # noqa: E402
+import provider_isolation as isolation  # noqa: E402
 from eval_live_agent import USER_FOLDERS, isolated_connection  # noqa: E402
 
 
@@ -54,7 +57,10 @@ def main(argv=None):
         for name in ("config", "state", "qa", *("blender-user/" + n.lower() for n in USER_FOLDERS)):
             (folder / name).mkdir(parents=True)
         accounts = folder / "accounts"
-        isolated_connection(args.source_connections_dir, args.connection_id, accounts, codex_home=args.codex_home)
+        connection = isolated_connection(args.source_connections_dir, args.connection_id, accounts,
+                                         codex_home=args.codex_home)
+        # The evaluation-account profile, never the person's own sign-in.
+        opt_in = isolation.connection_opt_in(connection)
         env = dict(os.environ, BLENDER_USER_CONFIG=str(folder / "config"), ANGELO_STATE_DIR=str(folder / "state"),
                    ANGELO_CONNECTIONS_DIR=str(accounts), ANGELO_QA_DIR=str(folder / "qa"),
                    ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_DISABLE_KEYCHAIN="1", ANGELO_EVAL_AUTHORIZED="1",
@@ -64,6 +70,7 @@ def main(argv=None):
                    CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK="1", **diagnostics.environment(args))
         for name in USER_FOLDERS:
             env["BLENDER_USER_" + name] = str(folder / "blender-user" / name.lower())
+        env = isolation.opt_in_environment(env, opt_in, folder / "no-login")   # parallel_live_session's entry.
         command = [args.binary, "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
                    *gui_launch.window_flags("behind", True), "--window-geometry", "60", "60", "1400", "900",
                    "--python", str(HERE / "parallel_live_session.py")]

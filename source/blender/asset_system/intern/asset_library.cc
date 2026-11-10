@@ -284,6 +284,7 @@ void AssetLibrary::load_or_reload_catalogs()
   if (catalog_service_ == nullptr) {
     auto catalog_service = std::make_unique<AssetCatalogService>(*root_path_);
     catalog_service->load_from_disk();
+    const CatalogEditScope edit_scope;
     catalog_service_ = std::move(catalog_service);
     return;
   }

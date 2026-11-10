@@ -19,6 +19,9 @@
 #include "GHOST_Types.hh"
 
 class GHOST_IEventConsumer;
+namespace blender {
+struct ImBuf;
+}
 
 /**
  * \page GHOSTPage GHOST
@@ -465,6 +468,25 @@ class GHOST_ISystem {
    * \return pointer uint array in RGBA byte order. Caller must free.
    */
   virtual uint *getClipboardImage(int *r_width, int *r_height) const = 0;
+
+  /**
+   * Get the clipboard's image as an #ImBuf with byte pixels (RGBA, straight alpha, bottom row
+   * first): the platform decodes into it, so the caller gets the only copy of the pixels, where
+   * #getClipboardImage copies them once more into a buffer of its own.
+   * \return the image, or null when there is none. Caller must free (#IMB_freeImBuf).
+   */
+  virtual blender::ImBuf *getClipboardImageBuffer() const = 0;
+
+  /**
+   * Get the size of the clipboard's image without reading its pixels: from a bitmap's header or
+   * an image file's, so a caller can refuse an image too large to use before
+   * #getClipboardImage decodes it (and holds every pixel in memory).
+   * \param r_width: the returned image width in pixels.
+   * \param r_height: the returned image height in pixels.
+   * \return GHOST_kFailure when there is no image, or when the platform cannot tell the size
+   * without decoding it (then only #getClipboardImage can).
+   */
+  virtual GHOST_TSuccess getClipboardImageSize(int *r_width, int *r_height) const = 0;
 
   /**
    * Put image data to the Clipboard

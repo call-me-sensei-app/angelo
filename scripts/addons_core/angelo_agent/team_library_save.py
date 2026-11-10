@@ -22,14 +22,16 @@ path is ever opened. The upload itself runs on a worker (``team_library_host``).
 bpy is imported by this module; it runs only on the main thread.
 """
 
+import os
 from pathlib import Path
 
 import bpy
 
-from . import live_windows
+from . import change_clock, live_windows
 from .provider_registry import SPECS
 from .team_library_files import IMAGE_FORMATS, image_size, sniff
 from .team_library_spec import ITEM_PROPERTY
+from .refusal_codes import coded
 
 MIME = {"png": "image/png", "jpeg": "image/jpeg", "webp": "image/webp"}
 MAX_UPLOAD = {"image": 64 * 1024 * 1024, "model": 1024 * 1024 * 1024}  # The console's own caps.
@@ -38,14 +40,34 @@ EXPORTABLE = frozenset({"MESH", "CURVE", "SURFACE", "FONT", "META", "EMPTY", "AR
                         "CURVES", "POINTCLOUD"})
 
 
-def _image(path, name):
-    with open(path, "rb") as handle:
-        head = handle.read(4 * 1024 * 1024)
-    fmt = sniff(head[:65536]) if head else ""
-    if fmt not in IMAGE_FORMATS:
-        raise ValueError("%s isn't a PNG, JPEG or WebP image." % name)
+def _image(path, name, folder):
+    """An image to upload, read once: its bytes are copied into the private ``folder`` through one handle, and its
+    format, size, digest and upload all come from that copy. Never the file at ``path`` again: read once to check it
+    and again for its size, its digest and the upload, it could be another version by then (two windows of time a
+    write can land in), uploaded under the first one's format and dimensions (stat before read, release-1010)."""
+    with open(path, "rb") as source:   # Streamed through one handle: the head checks it, the rest is copied after it.
+        opened = os.fstat(source.fileno())
+        try:   # A write from the first read on then changes the stat, in the tick of its last stamp too (Windows).
+            change_clock.settle(opened, change=False)
+        except change_clock.Unsettled:
+            raise ValueError("%s was written a moment ago; save it to the team library again." % name) from None
+        head = source.read(4 * 1024 * 1024)
+        fmt = sniff(head[:65536]) if head else ""
+        if fmt not in IMAGE_FORMATS:
+            raise ValueError("%s isn't a PNG, JPEG or WebP image." % name)
+        copy, size = Path(folder) / ("image" + IMAGE_FORMATS[fmt]), len(head)
+        with open(copy, "xb") as target:
+            target.write(head)
+            while size <= MAX_UPLOAD["image"] and (chunk := source.read(1024 * 1024)):
+                target.write(chunk)
+                size += len(chunk)
+        finished = os.fstat(source.fileno())
+    if (finished.st_size, finished.st_mtime_ns) != (opened.st_size, opened.st_mtime_ns):   # Rewritten in place.
+        raise ValueError("%s changed while Angelo read it; save it again." % name)
+    if size > MAX_UPLOAD["image"]:
+        raise ValueError("The team library takes image files up to %d MB." % (MAX_UPLOAD["image"] // 1048576))
     width, height = image_size(head) or (None, None)
-    return {"path": Path(path), "mime": MIME[fmt], "kind": "image", "extension": IMAGE_FORMATS[fmt],
+    return {"path": copy, "mime": MIME[fmt], "kind": "image", "extension": IMAGE_FORMATS[fmt],
             "width": width, "height": height}
 
 
@@ -77,9 +99,12 @@ def _studio_asset(controller, window, asset_id, folder):
     if isinstance(asset.get("options"), dict) and asset["options"]:
         provenance["params"] = dict(list(asset["options"].items())[:30])
     if asset["kind"] == "IMAGE":
-        return dict(_image(path, "This Studio output"), provenance=provenance)
+        return dict(_image(path, "This Studio output", folder), provenance=provenance)
     if path.suffix.lower() != ".glb":
         raise ValueError("Only GLB Media Studio models can be saved to the team library.")
+    # Uploaded from where it is (up to 1 GB, never copied): a ready Studio output is write-once (a new uuid folder,
+    # written whole before its record reads ready: studio_generation, studio_state), so its size, digest and upload
+    # read one version.
     prepared = {"path": path, "mime": "model/gltf-binary", "kind": "model", "extension": ".glb",
                 "provenance": provenance}
     if asset.get("thumbnail"):
@@ -97,7 +122,8 @@ def resolve_objects(window, handles):
     for handle in handles:
         obj = resolve_object(window, handle)
         if obj.type not in EXPORTABLE:
-            raise ValueError("“%s” is a %s, which can't be saved as a model." % (obj.name[:64], obj.type.lower()))
+            raise coded(ValueError("“%s” is a %s, which can't be saved as a model." % (obj.name[:64], obj.type.lower())),
+                        "VALIDATION")
         objects.append(obj)
     return objects
 
@@ -159,7 +185,7 @@ def _attachment(controller, identity):
     records = controller.turn_attachments + [r for m in controller.state["messages"] for r in m.get("references", [])]
     reference = next((r for r in records if Path(r["path"]).stem == identity), None)
     if not reference or reference.get("kind") != "image":
-        raise ValueError("Choose an image attached to THIS conversation.")
+        raise coded(ValueError("Choose an image attached to THIS conversation."), "VALIDATION")
     return controller.references.checked_path(reference)
 
 
@@ -169,7 +195,8 @@ def _view(controller, view_id):
     try:
         return references.checked_path(record)
     except (ValueError, OSError):
-        raise ValueError("That view is no longer available; take a new angelo_view and save that.") from None
+        raise coded(ValueError("That view is no longer available; take a new angelo_view and save that."),
+                    "EXPIRED") from None
 
 
 def check_source(controller, window, args):
@@ -183,9 +210,11 @@ def check_source(controller, window, args):
         service = service_for(controller, window)
         asset = service.asset(args["asset_id"], ready=True)
         path = service.library.checked_file(asset, asset["files"][0])
-        return (asset["id"], str(path), path.stat().st_size, path.stat().st_mtime_ns)
+        info = change_clock.settle(path.stat(), change=False)   # A later write changes it, in its last tick too.
+        return (asset["id"], str(path), info.st_size, info.st_mtime_ns)
     path = _view(controller, args["view_id"]) if source == "VIEW" else _attachment(controller, args["reference_id"])
-    return (str(path), path.stat().st_size, path.stat().st_mtime_ns)
+    info = change_clock.settle(path.stat(), change=False)
+    return (str(path), info.st_size, info.st_mtime_ns)
 
 
 def prepare(controller, window, args, folder):
@@ -197,9 +226,10 @@ def prepare(controller, window, args, folder):
     elif source == "OBJECTS":
         prepared = _objects(controller, window, args["objects"], folder)
     elif source == "VIEW":
-        prepared = dict(_image(_view(controller, args["view_id"]), "This view"), provenance={"source": "upload"})
+        prepared = dict(_image(_view(controller, args["view_id"]), "This view", folder),
+                        provenance={"source": "upload"})
     else:
-        prepared = dict(_image(_attachment(controller, args["reference_id"]), "This attachment"),
+        prepared = dict(_image(_attachment(controller, args["reference_id"]), "This attachment", folder),
                         provenance={"source": "upload"})
     size = prepared["path"].stat().st_size
     if not 0 < size <= MAX_UPLOAD[prepared["kind"]]:

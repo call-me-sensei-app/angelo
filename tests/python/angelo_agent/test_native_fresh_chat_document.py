@@ -8,6 +8,8 @@ on first launch when a file opened after startup (Finder), and its connect cards
 The in-app check is ``test_blender_fresh_chat_document``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import unittest

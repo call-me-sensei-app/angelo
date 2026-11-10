@@ -35,7 +35,7 @@ last_error = None
 def states(now=None):
     """Every tile's ``session_rail.Tile`` from the chats as they are now, the lead first; then each part not yet bound
     to a chat, queued or starting (``worker_queue``)."""
-    from . import live_progress, parallel_sessions, ui, worker_queue
+    from . import approval_wait, live_progress, parallel_sessions, ui, worker_queue
     from .chat_titles import session_title
     from .ui_text import iface_, join
     now = time.monotonic() if now is None else now
@@ -48,7 +48,7 @@ def states(now=None):
         record = (ui._sessions.records.get(session_id) if ui._sessions is not None else None) or {
             "title": "", "id": session_id}
         worker = parallel_sessions.is_worker(session_id)
-        approval = bool(controller and any(getattr(call, "approval", None) for call in controller.pending.values()))
+        approval = bool(controller and approval_wait.awaiting(controller))   # The chat's card waits (its words, below).
         busy = bool(controller and working(controller))
         end = turn_end(controller, reply=False)[0] if controller is not None else ""
         failed = bool(controller and not busy and (_last_failed(controller) or end in {"failed", "not_sent"}))
@@ -66,6 +66,8 @@ def states(now=None):
         if kind == rail.WORKING:
             live = live_progress.live(live_progress.facts(controller), now)
             label, clock = live.label, live.clock
+        elif kind == rail.APPROVAL:   # Names the card it waits on; a click opens the chat at it (switch).
+            label = approval_wait.label(controller)
         # The chip says which session it is; the title what it is about: the part a worker builds (its chat's own
         # title is its brief's first words), the lead's chat title. The number is the one status and merge use.
         number = _worker_number(session_id, index) if worker else None

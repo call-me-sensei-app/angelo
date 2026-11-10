@@ -23,6 +23,7 @@ from pathlib import Path
 from . import external_cli_protocol as protocol
 from . import headless_files, journal_checks, private_roots
 from . import headless_preferences as preferences
+from .headless_working_copy import sweep_in_background
 from .headless_pipe import ChildProcess
 
 # The child's environment: what Blender and the OS need, nothing that redirects scripts, state or add-ons.
@@ -285,12 +286,13 @@ class HeadlessSession:
     def _start(self, resume):
         self.generation += 1
         binary = self.binary or angelo_binary(platform=self.platform)
-        if not self._swept:
+        if not self._swept:   # Off this open: listing folders never holds it up (headless_working_copy.sweep).
             self._swept = True
-            sweep_leftovers()
+            sweep_in_background(None, PRIVATE_PREFIX)
         config = self.config_directory or preferences.person_config_directory(self.environ, self.platform)
         self._private = private_roots.allocate(PRIVATE_PREFIX)
-        code = preferences.known_failure(config) or preferences.stage(config, self._private)
+        staged = {}   # What stage read: the identity a failure is remembered under.
+        code = preferences.known_failure(config) or preferences.stage(config, self._private, staged)
         child, ready = self._launch(binary, resume, code)
         if code == preferences.YOURS and preferences.failed(ready):
             # The person's preferences crashed, hung or broke the start, or Blender could not read them: once more
@@ -299,7 +301,7 @@ class HeadlessSession:
             self._remove_private()
             self._private = private_roots.allocate(PRIVATE_PREFIX)
             code = "not_blend" if (ready or {}).get("code") == preferences.NOT_READABLE else "start_failed"
-            preferences.remember_failure(config, code)
+            preferences.remember_failure(staged.get("identity"), code)
             child, ready = self._launch(binary, resume, code)
         if not ready or not ready.get("ok"):
             child.close()
@@ -327,8 +329,7 @@ class HeadlessSession:
         """Start one child with preferences ``code`` on a working copy the launcher made, which it removes again
         when the start fails; ``(child, ready record or None)``."""
         from . import headless_working_copy as working_copy
-        copy = working_copy.claim(self.source) if resume is None else None
-        identity = headless_files.identity(copy) if copy else None
+        copy, identity = working_copy.claim(self.source) if resume is None else (None, None)   # What it wrote.
         self._copy = (copy, identity)
         command = child_command(binary, self.script, self.source, self.client, self.app, self.levels,
                                 resume=resume, idle=self.idle, approval=self.approval, private=self._private,

@@ -26,7 +26,7 @@ _hooks = []      # what else a file load must stop first (Studio's requests in f
 def defaults():
     return {"kind": "IMAGE", "collapsed": None, "folder": "ALL", "query": "", "prompt": "", "references": [],
             "models": {}, "aspect": "1:1", "resolution": "2K", "quality": "auto", "background": "auto", "size": "",
-            "polycount": "10000", "texture": True, "focus": None, "caret": 0, "selection": None, "create_scroll": 0,
+            "polycount": "10000", "texture": True, "field_focus": None, "caret": 0, "selection": None, "create_scroll": 0,
             "grid_scroll": 0, "folder_scroll": 0, "notice": "", "enhanced": None, "expanded_prompt": "",
             # The Video tab (studio_video_ui): its frames and settings.
             "video_first": None, "video_last": None, "video_reference_video": None, "video_duration": None,

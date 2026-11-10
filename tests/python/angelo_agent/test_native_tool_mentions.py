@@ -15,6 +15,8 @@ Every text is composed by ``tool_guidance`` (a block naming a tool the chat lack
 a tool a worker lacks follow what a lead and its workers share, so a worker's prefix is the lead's byte for byte.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import fnmatch
 import json
 import os

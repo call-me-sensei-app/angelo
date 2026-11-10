@@ -59,7 +59,7 @@ def visible():
 
 def key(area, region, controller, state, wait, now):
     """What a frame with no new input could show differently, or None when it may not be reused at all."""
-    from . import chat_scrollbar, chat_view, job_ui, live_progress, ui_text
+    from . import chat_scrollbar, chat_view, composer_scroll, job_ui, live_progress, ui_text
     if state.get("popover") or any(call.approval for call in tuple(controller.pending.values())):
         return None
     space = area.spaces.active
@@ -68,9 +68,10 @@ def key(area, region, controller, state, wait, now):
                         or now - state.get("scroll_time", 0) < chat_scrollbar.LINGER)
     return (region.width, region.height, chat_view.ui_scale(), chat_view._font, ui_text.is_rtl(),
             controller.state["id"], controller.version, str(controller.status), len(controller.attachments),
-            chat_view._scroll.get(controller.state["id"]), history[-1].body if history else "", space.font_size,
+            chat_view._scroll.get((area.as_pointer(), controller.state["id"])), state.get("history_start"), history[-1].body if history else "", space.font_size,
             state.get("input_serial"), state.get("hover"), state.get("pressed"), state.get("focus"),
-            state.get("focused"), state.get("selection"), scroll_shown, tuple(job_ui._shown.values()),
+            state.get("focused"), state.get("selection"), scroll_shown, composer_scroll.frame_key(state, now),
+            tuple(job_ui._shown.values()),
             round(wait.hero_size(now) * 2),
             live_progress.lead(controller, now))  # Last: reuse() counts a change of it alone as the clock's refresh.
 

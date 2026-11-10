@@ -13,6 +13,8 @@ from. Evidence: the 2026-10-25 dev check, where both workers spent their first r
 up ``shader_nodes``, which its lead had looked up in the same job.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import sys

@@ -8,6 +8,8 @@ model, process or Blender. ``test_native_request_path`` runs the same marks
 through a whole turn.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import time

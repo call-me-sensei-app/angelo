@@ -6,6 +6,8 @@ Actual RNA assignment, private/live remapping, rollback, frames and Undo are
 covered separately by test_blender_mirror_object.py; these tests do not prove them.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 from pathlib import Path

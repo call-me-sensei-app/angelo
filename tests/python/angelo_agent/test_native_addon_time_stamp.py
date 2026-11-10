@@ -9,6 +9,8 @@ enables the add-on, so every start-up printed "module changed on disk ... reload
 ``enable`` does after its own import and as ``addon_utils`` does for ``bl_pkg``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib.util
 import os
 import sys

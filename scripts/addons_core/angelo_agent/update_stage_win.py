@@ -206,29 +206,59 @@ def check_installer(msi, running_exe, signature=authenticode):
         raise InstallerError("signature", "The installer is not signed by Angelo's publisher")
 
 
-def other_instances(executable_path, own_pid):
-    """Process ids of other copies of this install's ``Angelo.exe`` (Windows only; [] when it cannot tell)."""
+def _image_paths():
+    """``[(pid, path)]`` of the processes this user may query, each named by the file Windows runs for it
+    (``QueryFullProcessImageNameW``); None when the process list cannot be read (not Windows)."""
     try:
         kernel = ctypes.WinDLL("kernel32", use_last_error=True)
         psapi_ids = (ctypes.c_ulong * 4096)()
         needed = ctypes.c_ulong()
         if not ctypes.WinDLL("psapi").EnumProcesses(psapi_ids, ctypes.sizeof(psapi_ids), ctypes.byref(needed)):
-            return []
+            return None
     except (OSError, AttributeError):
-        return []
+        return None
     found = []
     for pid in psapi_ids[:needed.value // ctypes.sizeof(ctypes.c_ulong)]:
-        if pid in (0, own_pid):
-            continue
-        handle = kernel.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+        handle = kernel.OpenProcess(0x1000, False, pid) if pid else None   # PROCESS_QUERY_LIMITED_INFORMATION
         if not handle:
             continue
         try:
             size = ctypes.c_ulong(1024)
             buffer = ctypes.create_unicode_buffer(size.value)
-            if kernel.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)) and _same_folder(
-                    buffer.value, executable_path):
-                found.append(pid)
+            if kernel.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+                found.append((pid, buffer.value))
         finally:
             kernel.CloseHandle(handle)
+    return found
+
+
+def _identity(path):
+    try:
+        status = os.stat(path)   # The volume and file index, links and junctions followed.
+    except (OSError, ValueError):
+        return None
+    return status.st_dev, status.st_ino
+
+
+def other_instances(executable_path, own_pid, processes=_image_paths):
+    """Process ids of other copies of this install's ``Angelo.exe`` (Windows only; [] when it cannot tell).
+
+    Compared as files, not as spellings: the path Angelo was started from may be a short (8.3) name, a junction or
+    symbolic link to the install folder, a substituted drive or another letter case, and Windows names the other
+    process by the path it opened. Every process is looked at, whatever its file is called (one ``stat`` each, a
+    few tens of milliseconds once per Restart to Update): a link of another name to Angelo.exe is still Angelo."""
+    listed = processes()
+    if not listed:
+        return []
+    wanted, real = _identity(executable_path), os.path.realpath(str(executable_path))
+    found = []
+    for pid, path in listed:
+        if pid == own_pid or not path:
+            continue
+        if wanted is not None:
+            same = _identity(path) == wanted
+        else:   # The running file cannot be read: its final spelling.
+            same = _same_folder(os.path.realpath(path), real)
+        if same:
+            found.append(pid)
     return found

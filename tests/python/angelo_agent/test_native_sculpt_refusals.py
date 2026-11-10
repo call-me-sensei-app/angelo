@@ -7,6 +7,8 @@ it meets into one that says nothing ran: a stale surface STALE_REVISION, anythin
 its own code (a stale or deleted handle) kept. test_blender_sculpt_handles proves the same in the app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

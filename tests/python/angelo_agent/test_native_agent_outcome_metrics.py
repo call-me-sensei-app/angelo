@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Observed live scene/read-back latency, not dispatch intent or historical replay."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import unittest
 from unittest.mock import Mock, patch
 

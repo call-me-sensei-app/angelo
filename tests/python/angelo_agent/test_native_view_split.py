@@ -10,6 +10,8 @@ delivery. A plan still splits it into two calls, so the view budget counts its L
 render, the LIT capture and the window are stand-ins.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

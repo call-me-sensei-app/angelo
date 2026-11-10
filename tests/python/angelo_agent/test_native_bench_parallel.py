@@ -12,6 +12,8 @@ is a blocker), a trial stopped at the cap counts as the cap, and only when a wor
 names and keys: its fixtures are records made by ``bench_mcp_report.angelo_records`` (was: hand-written records in a
 ``results.json`` the bench never writes, read for a scorecard key that file never has).
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import struct
 import zlib
 
@@ -26,6 +28,7 @@ from unittest import mock
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(1, str(HERE.parents[2] / "scripts/addons_core"))   # The driver's hooks read angelo_agent's names.
+import account_fixtures  # noqa: E402  (made-up sign-ins, provider_accounts)
 import bench_mcp_report  # noqa: E402
 import bench_parallel_grade as grade  # noqa: E402
 import oneshot_report  # noqa: E402
@@ -46,11 +49,23 @@ def jpeg(text):
             + app1 + b"\xff\xda" + struct.pack(">H", 2) + b"scan" + b"\xff\xd9")
 
 
+def grader(run):
+    """The grader's Claude profile: a fixture signed in to the account the test names (``GRADER_ACCOUNT``)."""
+    profile = Path(run) / "claude-profile" / "5ca1ab1e-3333-4333-8333-333333333333"
+    account_fixtures.claude_sign_in(profile)
+    return str(profile)
+
+
+GRADER_ACCOUNT = {"ANGELO_TEST_CLAUDE_ACCOUNT": account_fixtures.CLAUDE_EMAIL}
+
+
 class GraderTests(unittest.TestCase):
     def test_grader_keeps_only_the_bounded_qa_owner_beside_its_fixed_environment(self):
         for owner in ("a" * 32, "", "a" * 31, "A" * 32, "g" * 32, "a" * 31 + "\n"):
             inherited = {"ANGELO_QA_PROCESS_OWNER": owner, "ANTHROPIC_BASE_URL": "unused", "ANTHROPIC_API_KEY": "unused"}
+            # Path.home() reads USERPROFILE on Windows, which the cleared environment no longer has: the home is faked.
             with self.subTest(owner=owner), mock.patch.dict(os.environ, inherited, clear=True), \
+                    mock.patch.object(grade.Path, "home", return_value=Path("/home/grader")), \
                     mock.patch.object(grade.subprocess, "run") as run:
                 run.return_value.stdout = '{"result": "ok"}'
                 self.assertEqual(grade.ask("claude", "pinned-model", "/profile", "unchanged prompt", "/images"), "ok")
@@ -82,6 +97,7 @@ class GraderTests(unittest.TestCase):
         self.assertIn("built-1.png", prompt)
         self.assertEqual(keys, ["recognisable", "proportions", "materials"])
 
+    @mock.patch.dict(os.environ, GRADER_ACCOUNT)
     def test_an_unreadable_render_leaves_only_that_item_unscored(self):
         with tempfile.TemporaryDirectory() as run:
             good = Path(run) / "good.png"
@@ -94,7 +110,7 @@ class GraderTests(unittest.TestCase):
             answer = '{"recognisable": 3, "proportions": 3, "materials": 3}'
             with mock.patch.object(grade, "items", lambda run_folder, test: queue), \
                     mock.patch.object(grade, "ask", lambda *args: answer):
-                code = grade.main(["--authorize-billed-runs", "--run", run, "--claude-config-dir", run])
+                code = grade.main(["--authorize-billed-runs", "--run", run, "--claude-config-dir", grader(run)])
             grades = {g["arm"]: g for g in json.loads((Path(run) / "grades.json").read_text())["grades"]}
         self.assertEqual(code, 1)   # Not every item scored: said so.
         with tempfile.TemporaryDirectory() as run:   # Any failure of one item, not only an unreadable file.
@@ -111,7 +127,7 @@ class GraderTests(unittest.TestCase):
                     raise AttributeError("'list' object has no attribute 'get'")
                 return '{"recognisable": 2, "proportions": 2, "materials": 2}'
             with mock.patch.object(grade, "items", lambda run_folder, test: queue), mock.patch.object(grade, "ask", ask):
-                grade.main(["--authorize-billed-runs", "--run", run, "--claude-config-dir", run])
+                grade.main(["--authorize-billed-runs", "--run", run, "--claude-config-dir", grader(run)])
             scored = [g["score"] for g in json.loads((Path(run) / "grades.json").read_text())["grades"]]
         self.assertEqual(sorted(scored, key=lambda v: v is None), [2.0, None])
         self.assertEqual(grades["single"]["score"], 3.0)

@@ -4,6 +4,8 @@
 gives the same answers as the whole mesh's, and one budget bounds a whole solve. No Blender: Blender's evaluated
 pose is compared in ``test_blender_hand_inherit``."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import math
 import sys
 import unittest

@@ -7,6 +7,8 @@ a check measures, the checks verify each key piece's own sizes (so the pieces ca
 no check target admits another piece by its name.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import collections
 import math
 import re

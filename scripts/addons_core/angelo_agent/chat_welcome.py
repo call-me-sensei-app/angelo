@@ -31,16 +31,15 @@ import time
 import bpy
 import gpu
 
-from . import canvas_controls, first_run, quick_connect
+from . import canvas_controls, first_run, quick_connect, ui_tokens as tk
 from .display_text import shown
-from .ui_text import iface_
+from .ui_text import iface_, n_
 
-FAILED = (0.937, 0.533, 0.412, 1)  # --coral-500
-GHOST_FILL = (0.902, 1.0, 0.957, 0.04)  # .btn--ghost
-GHOST_LINE = (0.953, 0.925, 0.886, 0.14)  # --line-2
-TEAL = (0.153, 0.741, 0.749, 1)  # --teal-500
-WORKING_FILL = (0.153, 0.741, 0.749, 0.10)
-WORKING_LINE = (0.153, 0.741, 0.749, 0.55)
+# Colours are ui_tokens roles read where they are drawn: a ghost row is veil(0.04) with a HAIRLINE rim, a row at
+# work TEAL at these alphas, a failure CORAL.
+GHOST_ALPHA = 0.04
+WORKING_ALPHA = 0.10
+WORKING_LINE_ALPHA = 0.55
 PAD = 14
 
 
@@ -70,11 +69,11 @@ def _option_lines(view, option, column, size):
     cancel = ("welcome_cancel" if item else option.get("cancel")) if working else None
     label = iface_(first_run.phase_text(item["phase"], option["value"])) if working and item else shown(option["label"])
     if item and item["phase"] == "failed":
-        note, colour = iface_(item["reason"], **item["fields"]), FAILED
+        note, colour = iface_(item["reason"], **item["fields"]), tk.CORAL
     elif working and item:
-        note, colour = "", view.MUTED  # The label already says what is happening.
+        note, colour = "", tk.MUTED  # The label already says what is happening.
     else:
-        note, colour = shown(option["note"]), view.MUTED
+        note, colour = shown(option["note"]), tk.MUTED
     inner = column - 2 * PAD
     return _lines(view, label, inner, size), _lines(view, note, inner, size - 3), colour, working, cancel
 
@@ -87,8 +86,8 @@ def _option_height(lines, size):
 def ghost(view, rect, radius, working=False):
     """The console's ghost button: a faint fill and a hairline; teal while something runs."""
     gpu.state.blend_set('ALPHA')  # Text drawing resets blending; the fill is translucent.
-    view.shape(*rect, WORKING_FILL if working else GHOST_FILL, radius)
-    canvas_controls.ring(*rect, radius, 1, WORKING_LINE if working else GHOST_LINE)
+    view.shape(*rect, tk.alpha(tk.TEAL, WORKING_ALPHA) if working else tk.veil(GHOST_ALPHA), radius)
+    canvas_controls.ring(*rect, radius, 1, tk.alpha(tk.TEAL, WORKING_LINE_ALPHA) if working else tk.HAIRLINE)
 
 
 def spinner(view, cx, cy, radius=7):
@@ -100,7 +99,7 @@ def spinner(view, cx, cy, radius=7):
         angle = math.radians(90 - index * 45)
         alpha = 1 - ((head - index) % 8) * 0.11
         view.shape(cx + radius * math.cos(angle) - 1.6, cy + radius * math.sin(angle) - 1.6, 3.2, 3.2,
-                   TEAL[:3] + (alpha,), 1.6)
+                   tk.alpha(tk.TEAL, alpha), 1.6)
 
 
 def pill_button(view, hits, label, x, y, size, action, value):
@@ -164,12 +163,12 @@ def draw_empty(state, ui, width, height, floor, size, connected):
     if team_lines:  # Teal like a running row, with a check: the team is ready.
         rect = (left, y - banner + size + 2, column, banner - 6)
         ghost(view, rect, 12, working=True)
-        view.icon("check", left + 20, rect[1] + rect[3] / 2, TEAL)
+        view.icon("check", left + 20, rect[1] + rect[3] / 2, tk.TEAL)
         for index, line in enumerate(team_lines):
             view.text(line, left + 36, rect[1] + rect[3] - 10 - size + 2 - index * (size + 4), size - 1)
         y -= banner + 4
     for line in subtitle:
-        view.text(line, left, y, size - 1, view.MUTED)
+        view.text(line, left, y, size - 1, tk.MUTED)
         y -= size + 6
     y -= 14
     if card:
@@ -184,7 +183,7 @@ def draw_empty(state, ui, width, height, floor, size, connected):
             hits.append((rect, "welcome_example", value))
         elif kind == "text":
             for index, line in enumerate(lines):
-                view.text(line, left, y - 14 - index * (size + 4), size - 2, view.MUTED)
+                view.text(line, left, y - 14 - index * (size + 4), size - 2, tk.MUTED)
         else:
             _draw_option(view, hits, value, lines, (left, y - block_height, column, block_height), size)
         y -= block_height + 10
@@ -238,7 +237,7 @@ def _draw_link(view, state, lines, y, size, action, value, left=24):
     height used.
     """
     lit = canvas_controls.state_of(state, action, value) in {"hover", "pressed"}
-    colour = canvas_controls.LINK_HOVER if lit else canvas_controls.LINK
+    colour = tk.LINK_HOVER if lit else tk.LINK
     widest = 0
     for index, line in enumerate(lines):
         width = _width(view, line, size - 3)
@@ -266,7 +265,8 @@ def _draw_option(view, hits, option, lines, rect, size):
         view.text(line, x + PAD, y + 2, size - 3, colour)
         y -= size + 2
     if cancel:
-        pill_button(view, hits, iface_("Cancel"), x + PAD, y - 12, size - 3, cancel, option["value"])
+        value = (option["value"], quick_connect.flow(option["value"])["token"]) if cancel == "welcome_cancel" else option["value"]
+        pill_button(view, hits, iface_("Cancel"), x + PAD, y - 12, size - 3, cancel, value)
     elif not working:
         hits.append((rect, option["action"], option["value"]))
 
@@ -301,14 +301,14 @@ def draw_reconnect_row(state, ui, width, y, size):
     if working:
         mode, item = working
         cancel = iface_("Cancel")
-        view.shape(0, y - 4, width, 40, view.BG)
+        view.shape(0, y - 4, width, 40, tk.CANVAS)
         spinner(view, 32, y + 16)
-        view.text(view.elide(iface_(first_run.phase_text(item["phase"], mode)), width - 160, size - 1), 48, y + 12, size - 1, view.MUTED)
-        pill_button(view, hits, cancel, width - 24 - _width(view, cancel, size - 3) - 24, y + 4, size - 3, "welcome_cancel", mode)
+        view.text(view.elide(iface_(first_run.phase_text(item["phase"], mode)), width - 160, size - 1), 48, y + 12, size - 1, tk.MUTED)
+        pill_button(view, hits, cancel, width - 24 - _width(view, cancel, size - 3) - 24, y + 4, size - 3, "welcome_cancel", (mode, item["token"]))
         return
     items = [(shown(option["label"]), option["action"], option["value"]) for option in _options(ui)]
     placed, flow_height = _flow(view, items, width, size, x0=24)
-    view.shape(0, y - 4, width, flow_height + 4, view.BG)
+    view.shape(0, y - 4, width, flow_height + 4, tk.CANVAS)
     _draw_flow(view, hits, placed, y + flow_height, size)
 
 
@@ -348,11 +348,39 @@ def _notice_items(ui, controller):
 notice_items = _notice_items  # The transcript's notice cards (chat_notices) draw these as kit buttons.
 
 
+def _sign_in_flow(controller):
+    return quick_connect.reconnect_flow(controller)
+
+
+def sign_in_body(ui, controller, body):
+    """The existing flow's visible progress or retry reason, only for this notice's chat and connection."""
+    item = _sign_in_flow(controller)
+    if item and item["phase"] == "failed":
+        return iface_(item["reason"], **item["fields"])
+    if item and item["phase"] in first_run.CONNECT[controller.selection_provider]["phases"]:
+        return iface_(first_run.phase_text(item["phase"], controller.selection_provider))
+    return body
+
+
 def sign_in_items(ui, controller):
-    """An expired sign-in's actions: the team's sign-in row and this chat's own Connect row, as on the welcome card."""
+    """Reconnect this chat's exact subscription, even if the last status check still says connected."""
     current = controller.selection_provider
-    return [(shown(option["label"]), option["action"], option["value"]) for option in _options(ui)
-            if option["action"] == "welcome_team" or (option["action"] == "welcome_connect" and option["value"] == current)]
+    record = ui.connections().records.get(controller.selection_connection_id)
+    items = []
+    item = _sign_in_flow(controller)
+    for option in _options(ui):
+        if option["action"] == "welcome_team":
+            items.append((shown(option["label"]), option["action"], option["value"]))
+        elif (option["action"] == "welcome_connect" and option["value"] == current
+              and record and record["mode"] == current and record["method"] == "SUBSCRIPTION"):
+            # A request can expose an expired token before the cached status does. "Use" only rebinds;
+            # AI Providers' reconnect operator starts login for this record's actual native/private profile.
+            if item and item["phase"] not in {"failed", "done"}:
+                items.append((iface_("Cancel"), "welcome_reconnect_cancel", item["token"]))
+            else:
+                label = first_run.CONNECT[current]["connect"] if item and item["phase"] == "failed" else n_("Sign in again")
+                items.append((iface_(label), "welcome_reconnect", record["id"]))
+    return items
 
 
 def actions_height(notice, ui, controller, width, size):
@@ -373,8 +401,16 @@ def dispatch(context, controller, state, action, value):
     from . import ui
     if action == "welcome_connect":
         bpy.ops.angelo.quick_connect(mode=value)
+    elif action == "welcome_reconnect":
+        if controller.selection_connection_id != value:
+            return  # The chat changed since these notice hits were drawn.
+        if 'FINISHED' in bpy.ops.angelo.connection_signin('EXEC_DEFAULT', connection_id=value):
+            quick_connect.watch_reconnect(ui, controller, value)
+    elif action == "welcome_reconnect_cancel":
+        quick_connect.cancel_reconnect(ui, controller, value)
     elif action == "welcome_cancel":
-        bpy.ops.angelo.quick_connect_cancel(mode=value)
+        if isinstance(value, tuple) and len(value) == 2:
+            bpy.ops.angelo.quick_connect_cancel(mode=value[0], flow_token=value[1])
     elif action == "welcome_team":
         from . import team_account_ui
         team_account_ui.welcome_action(value)

@@ -11,6 +11,10 @@ The checkpoint companion remains a separate blocker. Mesh strokes use the
 compiled native brush operator.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import array
 import contextlib
 import ctypes
@@ -41,7 +45,7 @@ from program_qa_helpers import args_for, move, no_stages
 
 OUT = Path(os.environ.get('ANGELO_QA_DIR') or Path(tempfile.gettempdir(), 'angelo-program-sculpt-undo'))
 OUT.mkdir(parents=True, exist_ok=True)
-REPORT = {'checks': {}, 'paid_requests': 0, 'measurements': {}, 'cases': {},
+REPORT = {'success': False, 'checks': {}, 'paid_requests': 0, 'measurements': {}, 'cases': {},
           'fixture_scope': 'Actual Controller/ToolCall/BlenderExecutor/ProgramJob and production commit UI; no provider or checkpoint factory',
           'checkpoint_companion': 'Separate blocker; pre-request checkpoint capture is not exercised here'}
 ACTOR, TARGET = 'Artist Sphere', 'Agent Target'
@@ -601,7 +605,8 @@ def active_target_admission_cases():
                     after_refusal = artist_state(prefix, 'after-admission')
                 check(prefix + '_baseline_mode_refusal', len(answers) == 1
                       and answers[0].get('error_code') == 'UNSUPPORTED'
-                      and 'Switch all declared program inputs to Object Mode before staging' in answers[0].get('error', ''))
+                      and 'typed programs bind objects only in Object Mode, so nothing was applied'
+                      in answers[0].get('error', ''))
                 check(prefix + '_no_approval_stage_or_mutation', not call.approved and not call.authorized
                       and not call.mutation_started and not controller.native_jobs and native.WRITER.owner is None)
             finally:

@@ -7,6 +7,8 @@ on): it also counted unrequested and cold draws, so a lower decorative cadence f
 checks gate reuse and refresh per frame instead; the absolute CPU, pixel, orbit, clock and shutdown limits remain.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import math
 
 FIELDS = ("full", "reused", "clock", "full_seconds", "reused_seconds")

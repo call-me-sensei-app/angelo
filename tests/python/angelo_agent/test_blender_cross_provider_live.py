@@ -7,6 +7,14 @@ or scene/file mutation. The existing Claude native profile is used in place,
 never copied or read by this test. All host transcripts use a NEW QA directory.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+# Real provider turns only on the evaluation-account profile the caller opts in with
+# (run_native_suites pins CODEX_HOME to it).
+assert os.environ.get("ANGELO_TEST_REAL_PROVIDERS"), \
+    "Bills a real provider: set ANGELO_TEST_REAL_PROVIDERS=eval-profile:<evaluation-account profile> (--allow-live)"
+
 import json
 import os
 import sys
@@ -30,6 +38,14 @@ from angelo_agent.blender_tools import BlenderExecutor
 
 NATIVE_CLAUDE_DIR = Path(os.environ["ANGELO_QA_CLAUDE_STATE_DIR"])
 CLAUDE_CONNECTION = str(uuid.UUID(os.environ["ANGELO_QA_CLAUDE_CONNECTION_ID"]))
+# The Claude store is a second one the app does not name. Before any turn is billed, its subscriptions are checked as
+# the opt-in's are, and so is the very profile ExistingProfileClaude binds (the store's own claude-profile/<id>,
+# whatever its records say), against the Claude account the opt-in's |account= field names (provider_isolation).
+import provider_isolation  # noqa: E402
+from angelo_agent.storage import native_profile_directory  # noqa: E402
+provider_isolation.verify_store(NATIVE_CLAUDE_DIR, os.environ)
+provider_isolation.check_billed([("claude-profile", native_profile_directory(NATIVE_CLAUDE_DIR, "claude-profile",
+                                                                             CLAUDE_CONNECTION))])
 
 
 class ExistingProfileClaude(ClaudeProvider):

@@ -226,6 +226,9 @@ def import_item(context, item, facts, *, point=None, targets=(), set_view=None):
                         obj.data.materials.clear()
                         obj.data.materials.append(material)
             _stand(objects, point)
+            if (point - scene.cursor.location).length < 1e-6:   # Added at the cursor, not dropped: beside, not inside.
+                from . import scene_fit
+                scene_fit.beside(objects, scene)
             made = objects
         elif kind == "vfx":
             made = [sprite_plane(item, facts["image"], collection, point)]

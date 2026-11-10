@@ -10,6 +10,8 @@ written, recovery after a crash, rendering the rest, and the outputs the agent
 reads back.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile

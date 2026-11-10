@@ -8,6 +8,8 @@ only its kinds, exports live scenes that never change the frame, says how a save
 plugin it installs; the plugin installs into one of its projects only, without the files the engine regenerates.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import shutil
 import sys
@@ -80,7 +82,11 @@ class AdapterContractTests(unittest.TestCase):
                     self.assertIsInstance(options, dict)
 
     def test_each_ships_its_plugin(self):
-        for _engine, adapter in self.each():
+        for engine, adapter in self.each():
+            if adapter.PLUGIN_SOURCE is None:   # The web's plugin is an npm package the developer installs.
+                self.assertEqual(engine, "web")
+                self.assertTrue(adapter.install_hint())
+                continue
             self.assertTrue(adapter.PLUGIN_SOURCE.is_dir(), adapter.PLUGIN_SOURCE)
             self.assertTrue(adapter.PLUGIN_FOLDER)
 
@@ -88,7 +94,7 @@ class AdapterContractTests(unittest.TestCase):
 class WorkingPathTests(unittest.TestCase):
     def test_the_working_file_mirrors_the_assets_project_path(self):
         asset = assets.Asset("any", "/p", "id", "/p/Art/crate.fbx", ".fbx", "Art/crate.fbx")
-        self.assertEqual(asset.editable, os.path.join("/p", ".angelo", "Art", "crate.fbx.blend"))
+        self.assertEqual(asset.editable, str(Path("/p", ".angelo", "Art", "crate.fbx.blend")))   # A native path.
         self.assertTrue(assets.previous_path(asset).endswith("crate.fbx.previous.blend"))
 
 
@@ -96,6 +102,8 @@ class InstallTests(unittest.TestCase):
     def test_a_plugin_installs_only_into_its_engines_projects(self):
         for engine in sorted(assets.ADAPTERS):
             adapter = assets.adapter(engine)
+            if adapter.PLUGIN_SOURCE is None:
+                continue   # Nothing to install (test_each_ships_its_plugin).
             with self.subTest(engine=engine):
                 with self.assertRaises(assets.AssetError) as caught:
                     assets.install_plugin(adapter, tempfile.mkdtemp())
@@ -108,6 +116,8 @@ class InstallTests(unittest.TestCase):
             self.skipTest("[environment] root ignores permissions")
         for engine in sorted(assets.ADAPTERS):
             adapter = assets.adapter(engine)
+            if adapter.PLUGIN_SOURCE is None:
+                continue   # Nothing to install (test_each_ships_its_plugin).
             with self.subTest(engine=engine), tempfile.TemporaryDirectory() as root:
                 bundle = Path(root) / "bundle" / Path(adapter.PLUGIN_SOURCE).name
                 shutil.copytree(adapter.PLUGIN_SOURCE, bundle, ignore=shutil.ignore_patterns(*adapter.PLUGIN_IGNORE))

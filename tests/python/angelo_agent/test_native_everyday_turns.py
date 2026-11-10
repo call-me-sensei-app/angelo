@@ -15,6 +15,8 @@ commit, Undo and the stand-in ``claude`` CLI playing these plans in the
 compiled app are in test_blender_everyday_turns.py. No provider or paid call.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import sys

@@ -7,6 +7,8 @@ capture (2026-10-25), and translations run longer than English. Here a fixed-wid
 test_blender_session_rail draws the longest hint in the real composer at 1x and 2x.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path
@@ -14,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 
-from angelo_agent import chat_composer, document_scene  # noqa: E402
+from angelo_agent import chat_composer, composer_scroll, document_scene  # noqa: E402
 
 CHARS = 10   # The stand-in wrap's row: this many characters per 100 units of width (any font would do).
 
@@ -48,6 +50,12 @@ def measured_wrap(text, width, size, font, ordered=True):
     return rows or [("", 0)]
 
 
+def chat(text_width):
+    """The chat width whose composer wraps its text to ``text_width`` (``chat_composer.hint_width``: the card's text
+    area less the scrollbar's inset)."""
+    return text_width + chat_composer.TEXT_RECT + composer_scroll.BAR_CLEARANCE + chat_composer.DRAFT_LEFT
+
+
 def rows(text, width):
     return chat_composer.hint_rows(text, width, 12, wrap, None)
 
@@ -65,7 +73,7 @@ class HintTests(unittest.TestCase):
 
     def test_a_chat_too_narrow_shows_whole_sentences_then_an_ellipsis(self):
         text = "This chat works on scene 'Kitchen'. " + "Switch to that scene to continue right now please. " * 3
-        drawn = rows(text.strip(), 196)   # 14 characters a row: the whole text needs more than the cap.
+        drawn = rows(text.strip(), chat(140))   # 14 characters a row: the whole text needs more than the cap.
         self.assertLessEqual(len(drawn), chat_composer.HINT_ROWS)
         shown = " ".join(drawn)
         self.assertTrue(shown.endswith(".…"), shown)   # Ends after a whole sentence.
@@ -88,12 +96,12 @@ class HintTests(unittest.TestCase):
 
     def test_an_early_cjk_sentence_that_fits_is_shown_whole(self):
         text = "甲" * 20 + "。" + "乙" * 200 + "。"   # No space after the first sentence's end, as Chinese is written.
-        drawn = chat_composer.hint_rows(text, 156, 12, measured_wrap, None)
+        drawn = chat_composer.hint_rows(text, chat(100), 12, measured_wrap, None)
         self.assertEqual("".join(drawn), "甲" * 20 + "。…", drawn)   # Not eight rows cut mid-sentence.
 
     def test_the_ellipsis_is_measured_on_its_row(self):
         for text in ("乙" * 300, "wordy " * 200, "x" * 500):   # No sentence fits: as much as fits, then the ellipsis.
-            drawn = chat_composer.hint_rows(text, 156, 12, measured_wrap, None)
+            drawn = chat_composer.hint_rows(text, chat(100), 12, measured_wrap, None)
             self.assertEqual(len(drawn), chat_composer.HINT_ROWS, text[:8])
             self.assertTrue(drawn[-1].endswith("…"), drawn)
             self.assertTrue(all(10 * len(row) <= 100 for row in drawn), drawn)   # Every row within the width.
@@ -101,18 +109,18 @@ class HintTests(unittest.TestCase):
     def test_the_fallback_cuts_near_its_fitted_end_in_mixed_scripts(self):
         """Break-it R4M1-R2-L-1: a space far back (a Latin word before a long Chinese run) is no place to cut."""
         for text in ("Blender " + "甲" * 200, "シーン 'Kitchen' " + "乙" * 300, "abc " + "x" * 500):
-            drawn = chat_composer.hint_rows(text, 156, 12, measured_wrap, None)
+            drawn = chat_composer.hint_rows(text, chat(100), 12, measured_wrap, None)
             self.assertEqual(len(drawn), chat_composer.HINT_ROWS, drawn)   # Every row the composer has, used.
             self.assertTrue(all(10 * len(row) <= 100 for row in drawn), drawn)
             self.assertGreaterEqual(len("".join(drawn)), 7 * 9, drawn)   # The fitting text, not one word of it.
-        drawn = chat_composer.hint_rows("word " * 200, 156, 12, measured_wrap, None)
+        drawn = chat_composer.hint_rows("word " * 200, chat(100), 12, measured_wrap, None)
         self.assertTrue(all(row.rstrip("…").split(" ")[-1] == "word" for row in drawn), drawn)   # Whole words.
 
     def test_an_arabic_hint_reads_from_its_first_row(self):
         from angelo_agent import rtl_text
         logical = ("هذا نص عربي يوضح المشهد الحالي وطريقة العودة إليه. " * 3).strip()
         visual = rtl_text.to_visual(logical)   # As the shipped catalogue holds it (pre-shaped, visual order).
-        drawn = chat_composer.hint_rows(visual, 356, 12, measured_wrap, None)
+        drawn = chat_composer.hint_rows(visual, chat(300), 12, measured_wrap, None)
         expected = [row.rstrip() for row in rtl_text.iter_rows_to_visual(visual, lambda part: 10 * len(part), 300)]
         self.assertGreater(len(drawn), 1)
         self.assertEqual(drawn, expected)
@@ -122,7 +130,7 @@ class HintTests(unittest.TestCase):
         from angelo_agent import rtl_text
         first = "هذا المحادثة تعمل على مشهد المطبخ."
         logical = first + " " + " ".join(["انتقل إلى ذلك المشهد للمتابعة الآن من فضلك."] * 12)
-        drawn = chat_composer.hint_rows(rtl_text.to_visual(logical), 196, 12, measured_wrap, None)
+        drawn = chat_composer.hint_rows(rtl_text.to_visual(logical), chat(140), 12, measured_wrap, None)
         self.assertLessEqual(len(drawn), chat_composer.HINT_ROWS)
         read = " ".join(rtl_text.to_logical(row) for row in drawn)
         self.assertTrue(read.startswith(first) and read.endswith(".…"), read)   # The fact first; whole sentences.
@@ -130,8 +138,8 @@ class HintTests(unittest.TestCase):
     def test_the_composer_holds_the_hints_rows_while_the_draft_is_empty(self):
         from unittest import mock
         with mock.patch.object(chat_composer, "hint", lambda controller: "one two three four five six"):
-            self.assertEqual(chat_composer.composer_rows("", [("", 0)], None, 156, 12, wrap, None), 3)
-            self.assertEqual(chat_composer.composer_rows("typed", [("typed", 0)], None, 156, 12, wrap, None), 1)
+            self.assertEqual(chat_composer.composer_rows("", [("", 0)], None, chat(100), 12, wrap, None), 3)
+            self.assertEqual(chat_composer.composer_rows("typed", [("typed", 0)], None, chat(100), 12, wrap, None), 1)
         source = (ROOT / "scripts/addons_core/angelo_agent/chat_view.py").read_text(encoding="utf-8")
         self.assertIn("shown_rows := chat_composer.composer_rows(draft, draft_lines, controller", source)
         self.assertIn("min(8, shown_rows)", source)

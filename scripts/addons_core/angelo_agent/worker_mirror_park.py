@@ -78,7 +78,8 @@ def _failed(mirror, request, error):
     ``Text`` error (``RESTART_FAILED``) is shown as it is; any other says why with its support code."""
     if getattr(mirror, "_sending", None) is not request or not mirror.__dict__["_op_lane"].withdraw(request):
         return
-    ops.return_unsent(mirror, request)
+    if ops.return_unsent(mirror, request, error=error):
+        return   # The exact retry notice owns this refusal; never claim it restored the composer.
     from .display_text import Text, error_notice
     if error.args and isinstance(error.args[0], Text):
         ops.add_row(mirror, "error", error_notice(error))

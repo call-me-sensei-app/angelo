@@ -13,6 +13,8 @@ rebuilt two dictionaries and a set per call to read a look's shading type and ov
 stored tuple, which it reads without building a list (it was handed a freshly sorted list).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import inspect
 import sys

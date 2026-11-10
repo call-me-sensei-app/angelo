@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Break-it r2m4c round 8 M-1: the chat's default workspace keeps its exception through journaling and recovery.
 
-The default workspace lives in Angelo's state folder, which the OS convention makes private (macOS ~/Library, a hidden
-folder in the home folder elsewhere). A journaled write, a delete, the store's inventory and Restore all go through the
-checkpoint store's own workspace check, which takes the store's default workspace as the exception (from the store's
-own folder, never from a journal's recorded root). A real controller, store and file tools; synthetic files only.
+The default workspace lives in Angelo's state folder, which the OS convention makes private (macOS ~/Library, Windows
+%APPDATA%, a hidden folder in the home folder on Linux). A journaled write, a delete, the store's inventory and
+Restore all go through the checkpoint store's own workspace check, which takes the store's default workspace as the
+exception (from the store's own folder, never from a journal's recorded root). A real controller, store and file
+tools; synthetic files only.
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import os
 from pathlib import Path
@@ -27,11 +30,14 @@ class DefaultWorkspaceJournalTests(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         self.home = Path(temp.name).resolve()
         (self.home / "tmp").mkdir()
-        for patcher in (patch.dict(os.environ, {"HOME": str(self.home)}),
-                        patch.object(tempfile, "tempdir", str(self.home / "tmp"))):
+        roaming = self.home / "AppData" / "Roaming"   # Windows: %APPDATA% is private by convention.
+        # Path.home() reads HOME on macOS and Linux, USERPROFILE on Windows.
+        home = {"HOME": str(self.home), "USERPROFILE": str(self.home), "APPDATA": str(roaming)}
+        for patcher in (patch.dict(os.environ, home), patch.object(tempfile, "tempdir", str(self.home / "tmp"))):
             patcher.start()
             self.addCleanup(patcher.stop)
-        convention = ("Library", "Application Support", "Angelo") if sys.platform == "darwin" else (".config", "angelo")
+        convention = {"darwin": ("Library", "Application Support", "Angelo"),
+                      "win32": ("AppData", "Roaming", "Angelo")}.get(sys.platform, (".config", "angelo"))
         self.state = self.home.joinpath(*convention, "5.2", "config", "angelo-agent")
         self.state.mkdir(parents=True)
         self.controller = Controller(self.state)

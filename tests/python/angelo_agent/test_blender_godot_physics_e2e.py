@@ -4,7 +4,7 @@
 
     python3 tests/python/angelo_agent/test_blender_godot_physics_e2e.py \\
         --binary /abs/Angelo.app/Contents/MacOS/Angelo \\
-        --out DIR [--godot GODOT ...] [--assets FOLDER_OF_GLB]
+        --out DIR [--godot GODOT ...] [--assets FOLDER_OF_GLB] [--timeout SECONDS]
 
 ``godot_physics_e2e/angelo_side.py`` marks every model in ``--assets`` (``ANGELO_QA_PHYSICS_ASSETS``: held-out
 models this feature was not developed on, such as a free CC0 kit) with each body and shape by one rule, and exports
@@ -17,12 +17,18 @@ compare that with what each variant asked for, independently of Angelo's own ari
   StaticBody3D), every mesh survived, every shape is a CollisionShape3D directly below the body and is the chosen
   type, and Godot made a separate body for exactly the shapes Angelo's ``shape_indirect`` finding flagged (a mesh
   that moves inside its body, such as one on an animated bone);
-* each fitted primitive matches the bounds Godot itself measures of the mesh it was fitted to, in the shape's frame
-  (a box is the bounds, a sphere's radius half the longest side, a capsule or cylinder runs along the longest side);
+* each fitted primitive matches the bounds Godot itself measures of the mesh it was fitted to at rest, in the shape's
+  frame (a box is the bounds, a sphere's radius half the longest side, a capsule or cylinder runs along the longest
+  side; a skinned mesh is measured where its skin draws it, bone rest times bind pose, not at its own node);
+* a convex or mesh shape's own points span its mesh where Godot draws it (a skinned mesh through its skin);
 * a Mesh shape without a body is a StaticBody3D below its mesh; Godot's import log has no glTF physics error.
 
 HOME and Godot's settings are private to the run. Standard library only.
 """
+
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 
 import argparse
 import json
@@ -67,12 +73,20 @@ def shape_problems(shape, row):
     problems = []
     if row["class"] != SHAPE_CLASSES[shape]:
         return ["%s is %s, not %s" % (row["name"], row["class"], SHAPE_CLASSES[shape])]
-    if shape in ("CONVEX", "TRIMESH"):
-        return [] if row.get("points", row.get("faces", 0)) > 0 else ["%s is empty" % row["name"]]
+    if shape in ("CONVEX", "TRIMESH"):   # Its own points must lie where Godot draws the mesh.
+        if row.get("points", row.get("faces", 0)) <= 0:
+            return ["%s is empty" % row["name"]]
+        if "mesh_size" not in row:
+            return ["%s: %s" % (row["name"], row.get("mesh_unmeasured", "no mesh to compare with"))]
+        if not (all(near(a, b) for a, b in zip(row["shape_size"], row["mesh_size"]))
+                and all(near(a, b) for a, b in zip(row["shape_center"], row["mesh_center"]))):
+            return ["%s spans %s at %s, its mesh %s at %s" % (row["name"], row["shape_size"], row["shape_center"],
+                                                                row["mesh_size"], row["mesh_center"])]
+        return []
     if not all(near(value, 1.0) for value in row["scale"]):
         problems.append("%s is scaled %s" % (row["name"], row["scale"]))
     if "mesh_size" not in row:
-        return problems + ["%s has no mesh to compare with" % row["name"]]
+        return problems + ["%s: %s" % (row["name"], row.get("mesh_unmeasured", "no mesh to compare with"))]
     size, center = row["mesh_size"], row["mesh_center"]
     if not all(near(value, 0.0) for value in center):
         problems.append("%s is off its mesh's centre by %s" % (row["name"], center))
@@ -106,6 +120,9 @@ def check_scene(name, dumped, expected):
                 if not rows or not all(row["class"] == SHAPE_CLASSES[want["shape"]] for item in rows
                                        for row in item["shapes"]) or not rows[0]["shapes"]:
                     problems.append("%s: %s has no static %s collider" % (name, mesh, want["shape"].lower()))
+                    continue
+                problems += ["%s: %s" % (name, problem) for item in rows for row in item["shapes"]
+                             for problem in shape_problems(want["shape"], row)]
             continue
         got = dumped.get(want["root"])
         if got is None:
@@ -128,7 +145,7 @@ def check_scene(name, dumped, expected):
     return problems
 
 
-def run_godot(godot, angelo, out, made):
+def run_godot(godot, angelo, out, made, timeout=TIMEOUT):
     home = out / "home"
     home.mkdir(parents=True, exist_ok=True)
     env = environment(home)
@@ -137,12 +154,12 @@ def run_godot(godot, angelo, out, made):
     shutil.copytree(made, project)
     (project / "project.godot").write_text("config_version=5\n\n" + PROJECT, encoding="utf-8")
     with (out / "godot-import.log").open("w") as log:
-        subprocess.run([godot, "--headless", "--path", str(project), "--import"], env=env, timeout=TIMEOUT,
+        subprocess.run([godot, "--headless", "--path", str(project), "--import"], env=env, timeout=timeout,
                        stdout=log, stderr=subprocess.STDOUT)
     expected = json.loads((project / "expected.json").read_text(encoding="utf-8"))
     paths = ["res://" + name for name in expected]
     dump = subprocess.run([godot, "--headless", "--path", str(project), "--script", str(HERE / "dump_physics.gd"),
-                           "--"] + paths, env=env, capture_output=True, text=True, timeout=TIMEOUT)
+                           "--"] + paths, env=env, capture_output=True, text=True, timeout=timeout)
     (out / "godot-dump.log").write_text(dump.stdout + dump.stderr, encoding="utf-8")
     line = next((item for item in dump.stdout.splitlines() if item.startswith("ANGELO_PHYSICS_DUMP ")), None)
     dumped = json.loads(line.split(" ", 1)[1]) if line else {}
@@ -166,6 +183,8 @@ def main(argv=None):
     parser.add_argument("--assets", default=os.environ.get("ANGELO_QA_PHYSICS_ASSETS"),
                         help="a folder of held-out .glb models (default: ANGELO_QA_PHYSICS_ASSETS)")
     parser.add_argument("--blends", type=int, default=2, help="models also imported as .blend through Angelo")
+    parser.add_argument("--timeout", type=int, default=TIMEOUT, help="seconds each Angelo or Godot step may take "
+                        "(default %(default)s; a large asset set or a loaded machine needs more)")
     args = parser.parse_args(argv)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -183,11 +202,11 @@ def main(argv=None):
             code = subprocess.run([args.binary, "--background", "--factory-startup", "--python-exit-code", "1",
                                    "--python", str(HERE / "angelo_side.py"), "--", str(Path(args.assets).resolve()),
                                    str(made), str(args.blends)], env=environment(home), stdout=log,
-                                  stderr=subprocess.STDOUT, timeout=TIMEOUT).returncode
+                                  stderr=subprocess.STDOUT, timeout=args.timeout).returncode
         if code != 0 or not (made / "expected.json").exists():
             report = {"success": False, "error": "Angelo's side failed (angelo.log)", "exit": code}
         else:
-            runs = [run_godot(godot, args.binary, out / ("godot-%d" % index), made)
+            runs = [run_godot(godot, args.binary, out / ("godot-%d" % index), made, args.timeout)
                     for index, godot in enumerate(godots)]
             report = {"success": all(run["ok"] for run in runs), "runs": runs,
                       "assets": sorted(path.name for path in Path(args.assets).glob("*.glb"))}

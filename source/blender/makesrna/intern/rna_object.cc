@@ -1106,13 +1106,43 @@ static void rna_Object_active_material_index_range(
   *max = max_ii(ob->totcol - 1, 0);
 }
 
-/* returns active base material */
+/* Match the original material view without BKE_object_material_get_p's reconciliation write.
+ * A read must preserve trailing object storage when linked data has fewer slots; operators
+ * remain responsible for any explicit repair. These helpers only select stored field addresses. */
+static Material *rna_Object_material_get_readonly(const Object *ob, const short act)
+{
+  if (ob == nullptr || ob->data == nullptr) {
+    return nullptr;
+  }
+  Object *borrowed = const_cast<Object *>(ob);
+  const short *data_count = BKE_object_material_len_p(borrowed);
+  if (data_count == nullptr || *data_count <= 0) {
+    return nullptr;
+  }
+  const int slot = clamp_i(int(act) - 1, 0, int(*data_count) - 1);
+  const int own_count = std::min(int(*data_count), ob->totcol);
+  Material *material = nullptr;
+  if (slot < own_count && ob->matbits && ob->matbits[slot]) {
+    /* An OBJECT-linked null stays null, unlike the evaluated view's DATA fallback. */
+    material = ob->mat ? ob->mat[slot] : nullptr;
+  }
+  else {
+    Material ***data_materials = BKE_object_material_array_p(borrowed);
+    material = data_materials && *data_materials ? (*data_materials)[slot] : nullptr;
+  }
+  if (material && ob->type == OB_GREASE_PENCIL && material->gp_style == nullptr) {
+    return nullptr;
+  }
+  return material;
+}
+
+/* Returns active base material. */
 static PointerRNA rna_Object_active_material_get(PointerRNA *ptr)
 {
   Object *ob = reinterpret_cast<Object *>(ptr->owner_id);
   Material *ma;
 
-  ma = (ob->totcol) ? BKE_object_material_get(ob, ob->actcol) : nullptr;
+  ma = (ob->totcol) ? rna_Object_material_get_readonly(ob, ob->actcol) : nullptr;
   return RNA_id_pointer_create(reinterpret_cast<ID *>(ma));
 }
 
@@ -1324,7 +1354,7 @@ static int rna_MaterialSlot_material_editable(const PointerRNA *ptr, const char 
   const int index = rna_MaterialSlot_index(ptr);
   bool is_editable;
 
-  if ((ob->matbits == nullptr) || ob->matbits[index]) {
+  if (!ob->matbits || index < 0 || index >= ob->totcol || ob->matbits[index]) {
     is_editable = ID_IS_EDITABLE(ob);
   }
   else {
@@ -1344,9 +1374,24 @@ static PointerRNA rna_MaterialSlot_material_get(PointerRNA *ptr)
     ma = BKE_object_material_get_eval(ob, index + 1);
   }
   else {
-    ma = BKE_object_material_get(ob, index + 1);
+    ma = rna_Object_material_get_readonly(ob, index + 1);
   }
   return RNA_id_pointer_create(reinterpret_cast<ID *>(ma));
+}
+
+static PointerRNA rna_MaterialSlot_angelo_object_material_get(PointerRNA *ptr)
+{
+  if (ptr->owner_id == nullptr || GS(ptr->owner_id->name) != ID_OB) {
+    return PointerRNA_NULL;
+  }
+  const Object *ob = reinterpret_cast<const Object *>(ptr->owner_id);
+  const int index = rna_MaterialSlot_index(ptr);
+  if (index < 0 || index >= ob->totcol || ob->mat == nullptr) {
+    return PointerRNA_NULL;
+  }
+  /* This is persistent object storage, independent of matbits and the effective data view.
+   * Borrow only during the getter; do not assign, repair counts, or adjust ID users. */
+  return RNA_id_pointer_create(reinterpret_cast<ID *>(ob->mat[index]));
 }
 
 static void rna_MaterialSlot_material_set(PointerRNA *ptr,
@@ -1381,7 +1426,7 @@ static int rna_MaterialSlot_link_get(PointerRNA *ptr)
 {
   Object *ob = reinterpret_cast<Object *>(ptr->owner_id);
   int index = rna_MaterialSlot_index(ptr);
-  if (index < ob->totcol) {
+  if (index >= 0 && index < ob->totcol && ob->matbits != nullptr) {
     return ob->matbits[index] != 0;
   }
   return false;
@@ -1392,6 +1437,9 @@ static void rna_MaterialSlot_link_set(PointerRNA *ptr, int value)
   Object *ob = reinterpret_cast<Object *>(ptr->owner_id);
   int index = rna_MaterialSlot_index(ptr);
 
+  if (!ob->matbits || index < 0 || index >= ob->totcol) {
+    return;
+  }
   if (value) {
     ob->matbits[index] = 1;
     /* DEPRECATED */
@@ -1410,7 +1458,7 @@ static int rna_MaterialSlot_name_length(PointerRNA *ptr)
   Material *ma;
   int index = rna_MaterialSlot_index(ptr);
 
-  ma = BKE_object_material_get(ob, index + 1);
+  ma = rna_Object_material_get_readonly(ob, index + 1);
 
   if (ma) {
     return strlen(ma->id.name + 2);
@@ -1425,7 +1473,7 @@ static void rna_MaterialSlot_name_get(PointerRNA *ptr, char *value)
   Material *ma;
   int index = rna_MaterialSlot_index(ptr);
 
-  ma = BKE_object_material_get(ob, index + 1);
+  ma = rna_Object_material_get_readonly(ob, index + 1);
 
   if (ma) {
     strcpy(value, ma->id.name + 2);
@@ -2424,6 +2472,18 @@ static void rna_def_material_slot(BlenderRNA *brna)
                                  "rna_MaterialSlot_material_poll");
   RNA_def_property_ui_text(prop, "Material", "Material data-block used by this material slot");
   RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_MaterialSlot_update");
+
+  prop = RNA_def_property(srna, "angelo_object_material", PROP_POINTER, PROP_NONE);
+  RNA_def_property_struct_type(prop, "Material");
+  RNA_def_property_pointer_funcs(
+      prop, "rna_MaterialSlot_angelo_object_material_get", nullptr, nullptr, nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_override_flag(prop, PROPOVERRIDE_IGNORE);
+  RNA_def_property_override_clear_flag(prop, PROPOVERRIDE_OVERRIDABLE_LIBRARY);
+  RNA_def_property_ui_text(
+      prop,
+      "Stored Object Material",
+      "Material stored on the object, including a dormant value while this slot is linked to data");
 
   prop = RNA_def_property(srna, "slot_index", PROP_INT, PROP_NONE);
   RNA_def_property_clear_flag(prop, PROP_EDITABLE);

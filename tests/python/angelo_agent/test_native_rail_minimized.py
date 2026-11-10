@@ -11,6 +11,8 @@ layout, the hit test and input protocol, the tooltip, and a draw in card_kit col
 disc (``round_button``, shared with corner Angelo, never copied).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import itertools
 import sys
 import types

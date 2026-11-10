@@ -132,14 +132,17 @@ static bool rna_Main_remove_restore_admit(Main *bmain, const ID *id, ReportList 
   return false;
 }
 
-static void rna_Main_ID_remove(Main *bmain,
+static void rna_Main_ID_remove_impl(Main *bmain,
                                ReportList *reports,
                                PointerRNA *id_ptr,
                                bool do_unlink,
                                bool do_id_user,
-                               bool do_ui_user)
+                               bool do_ui_user,
+                               const bContext *retirement_context)
 {
-  if (!rna_Main_remove_restore_admit(bmain, static_cast<ID *>(id_ptr->data), reports)) {
+  if (!BKE_undosys_capture_stock_id_remove_admit(
+          retirement_context, bmain, static_cast<ID *>(id_ptr->data)) &&
+      !rna_Main_remove_restore_admit(bmain, static_cast<ID *>(id_ptr->data), reports)) {
     /* Unlinking may delete additional never-null users, including graph/UI owners. */
     return;
   }
@@ -193,6 +196,35 @@ static void rna_Main_ID_remove(Main *bmain,
         id->name + 2,
         ID_REAL_USERS(id));
   }
+}
+
+/* Keep the exact callback signature emitted by makesrna. A defaulted context
+ * parameter would create a second overload beside its generated forward declaration. */
+static void rna_Main_ID_remove(Main *bmain,
+                               ReportList *reports,
+                               PointerRNA *id_ptr,
+                               bool do_unlink,
+                               bool do_id_user,
+                               bool do_ui_user)
+{
+  rna_Main_ID_remove_impl(bmain, reports, id_ptr, do_unlink, do_id_user, do_ui_user, nullptr);
+}
+
+/* Context-bearing generated callbacks share native new-orphan admission. The
+ * original six-argument callback stays exact for internal/document-owner calls. */
+static void rna_Main_ID_remove_with_context(Main *bmain,
+                                      bContext *C,
+                                      ReportList *reports,
+                                      PointerRNA *id_ptr,
+                                      bool do_unlink,
+                                      bool do_id_user,
+                                      bool do_ui_user)
+{
+  /* The admitted cleanup uses the complete Core unlink/user/UI path. Non-default
+   * safety options cannot turn this into a protected raw-free or counter bypass. */
+  const bContext *retirement_context = do_unlink && do_id_user && do_ui_user ? C : nullptr;
+  rna_Main_ID_remove_impl(
+      bmain, reports, id_ptr, do_unlink, do_id_user, do_ui_user, retirement_context);
 }
 
 static ID *rna_Main_pack_linked_ids_hierarchy(struct BlendData *blenddata,
@@ -970,8 +1002,8 @@ void RNA_def_main_cameras(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "camera", "Camera", "", "New camera data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a camera from the current blendfile");
   parm = RNA_def_pointer(func, "camera", "Camera", "", "Camera to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1051,9 +1083,9 @@ void RNA_def_main_objects(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "object", "Object", "", "New object data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
   RNA_def_function_ui_description(func, "Remove an object from the current blendfile");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   parm = RNA_def_pointer(func, "object", "Object", "", "Object to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
   RNA_def_parameter_clear_flags(parm, PROP_THICK_WRAP, ParameterFlag(0));
@@ -1101,8 +1133,8 @@ void RNA_def_main_materials(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "material", "Material", "", "Material");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a material from the current blendfile");
   parm = RNA_def_pointer(func, "material", "Material", "", "Material to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1144,8 +1176,8 @@ void RNA_def_main_node_groups(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "tree", "NodeTree", "", "New node tree data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a node tree from the current blendfile");
   parm = RNA_def_pointer(func, "tree", "NodeTree", "", "Node tree to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1211,8 +1243,8 @@ void RNA_def_main_meshes(BlenderRNA *brna, PropertyRNA *cprop)
                          "Mesh created from object, remove it if it is only used for export");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a mesh from the current blendfile");
   parm = RNA_def_pointer(func, "mesh", "Mesh", "", "Mesh to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1258,8 +1290,8 @@ void RNA_def_main_lights(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "light", "Light", "", "New light data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a light from the current blendfile");
   parm = RNA_def_pointer(func, "light", "Light", "", "Light to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1298,8 +1330,8 @@ void RNA_def_main_libraries(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_boolean(func, "value", false, "Value", "");
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a library from the current blendfile");
   parm = RNA_def_pointer(func, "library", "Library", "", "Library to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1391,8 +1423,8 @@ void RNA_def_main_images(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "image", "Image", "", "New image data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove an image from the current blendfile");
   parm = RNA_def_pointer(func, "image", "Image", "", "Image to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1431,8 +1463,8 @@ void RNA_def_main_lattices(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "lattice", "Lattice", "", "New lattice data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a lattice from the current blendfile");
   parm = RNA_def_pointer(func, "lattice", "Lattice", "", "Lattice to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1477,8 +1509,8 @@ void RNA_def_main_curves(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "curve", "Curve", "", "New curve data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a curve from the current blendfile");
   parm = RNA_def_pointer(func, "curve", "Curve", "", "Curve to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1520,8 +1552,8 @@ void RNA_def_main_metaballs(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "metaball", "MetaBall", "", "New metaball data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a metaball from the current blendfile");
   parm = RNA_def_pointer(func, "metaball", "MetaBall", "", "Metaball to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1570,8 +1602,8 @@ void RNA_def_main_fonts(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "vfont", "VectorFont", "", "New font data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a font from the current blendfile");
   parm = RNA_def_pointer(func, "vfont", "VectorFont", "", "Font to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1609,8 +1641,8 @@ void RNA_def_main_textures(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "texture", "Texture", "", "New texture data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a texture from the current blendfile");
   parm = RNA_def_pointer(func, "texture", "Texture", "", "Texture to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1654,8 +1686,8 @@ void RNA_def_main_brushes(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "brush", "Brush", "", "New brush data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a brush from the current blendfile");
   parm = RNA_def_pointer(func, "brush", "Brush", "", "Brush to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1699,8 +1731,8 @@ void RNA_def_main_worlds(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "world", "World", "", "New world data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a world from the current blendfile");
   parm = RNA_def_pointer(func, "world", "World", "", "World to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1739,9 +1771,9 @@ void RNA_def_main_collections(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "collection", "Collection", "", "New collection data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
   RNA_def_function_ui_description(func, "Remove a collection from the current blendfile");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   parm = RNA_def_pointer(func, "collection", "Collection", "", "Collection to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
   RNA_def_parameter_clear_flags(parm, PROP_THICK_WRAP, ParameterFlag(0));
@@ -1779,8 +1811,8 @@ void RNA_def_main_speakers(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "speaker", "Speaker", "", "New speaker data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a speaker from the current blendfile");
   parm = RNA_def_pointer(func, "speaker", "Speaker", "", "Speaker to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1823,9 +1855,9 @@ void RNA_def_main_texts(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "text", "Text", "", "New text data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
   RNA_def_function_ui_description(func, "Remove a text from the current blendfile");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   parm = RNA_def_pointer(func, "text", "Text", "", "Text to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
   RNA_def_parameter_clear_flags(parm, PROP_THICK_WRAP, ParameterFlag(0));
@@ -1880,8 +1912,8 @@ void RNA_def_main_sounds(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "sound", "Sound", "", "New text data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a sound from the current blendfile");
   parm = RNA_def_pointer(func, "sound", "Sound", "", "Sound to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1920,8 +1952,8 @@ void RNA_def_main_armatures(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "armature", "Armature", "", "New armature data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove an armature from the current blendfile");
   parm = RNA_def_pointer(func, "armature", "Armature", "", "Armature to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -1963,8 +1995,8 @@ void RNA_def_main_actions(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "action", "Action", "", "New action data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove an action from the current blendfile");
   parm = RNA_def_pointer(func, "action", "Action", "", "Action to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -2005,8 +2037,8 @@ void RNA_def_main_particles(BlenderRNA *brna, PropertyRNA *cprop)
       func, "particle", "ParticleSettings", "", "New particle settings data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(
       func, "Remove a particle settings instance from the current blendfile");
   parm = RNA_def_pointer(func, "particle", "ParticleSettings", "", "Particle Settings to remove");
@@ -2052,8 +2084,8 @@ void RNA_def_main_palettes(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "palette", "Palette", "", "New palette data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a palette from the current blendfile");
   parm = RNA_def_pointer(func, "palette", "Palette", "", "Palette to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -2125,8 +2157,8 @@ void RNA_def_main_annotations(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "annotation", "Annotation", "", "New annotation data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove annotation instance from the current blendfile");
   parm = RNA_def_pointer(func, "annotation", "Annotation", "", "Grease Pencil to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -2166,8 +2198,8 @@ void RNA_def_main_grease_pencil(BlenderRNA *brna, PropertyRNA *cprop)
       func, "grease_pencil", "GreasePencil", "", "New Grease Pencil data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func,
                                   "Remove a Grease Pencil instance from the current blendfile");
   parm = RNA_def_pointer(func, "grease_pencil", "GreasePencil", "", "Grease Pencil to remove");
@@ -2199,8 +2231,8 @@ void RNA_def_main_movieclips(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_boolean(func, "value", false, "Value", "");
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a movie clip from the current blendfile.");
   parm = RNA_def_pointer(func, "clip", "MovieClip", "", "Movie clip to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -2262,8 +2294,8 @@ void RNA_def_main_masks(BlenderRNA *brna, PropertyRNA *cprop)
   RNA_def_function_return(func, parm);
 
   /* remove func */
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a mask from the current blendfile");
   parm = RNA_def_pointer(func, "mask", "Mask", "", "Mask to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -2299,8 +2331,8 @@ void RNA_def_main_linestyles(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "linestyle", "FreestyleLineStyle", "", "New line style data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a line style instance from the current blendfile");
   parm = RNA_def_pointer(func, "linestyle", "FreestyleLineStyle", "", "Line style to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -2354,8 +2386,8 @@ void RNA_def_main_lightprobes(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "lightprobe", "LightProbe", "", "New light probe data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a light probe from the current blendfile");
   parm = RNA_def_pointer(func, "lightprobe", "LightProbe", "", "Light probe to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -2398,8 +2430,8 @@ void RNA_def_main_hair_curves(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "curves", "Curves", "", "New curves data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a curves data-block from the current blendfile");
   parm = RNA_def_pointer(func, "curves", "Curves", "", "Curves data-block to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -2442,8 +2474,8 @@ void RNA_def_main_pointclouds(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "pointcloud", "PointCloud", "", "New point cloud data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a point cloud from the current blendfile");
   parm = RNA_def_pointer(func, "pointcloud", "PointCloud", "", "Point cloud to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
@@ -2489,8 +2521,8 @@ void RNA_def_main_volumes(BlenderRNA *brna, PropertyRNA *cprop)
   parm = RNA_def_pointer(func, "volume", "Volume", "", "New volume data-block");
   RNA_def_function_return(func, parm);
 
-  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove");
-  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  func = RNA_def_function(srna, "remove", "rna_Main_ID_remove_with_context");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   RNA_def_function_ui_description(func, "Remove a volume from the current blendfile");
   parm = RNA_def_pointer(func, "volume", "Volume", "", "Volume to remove");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);

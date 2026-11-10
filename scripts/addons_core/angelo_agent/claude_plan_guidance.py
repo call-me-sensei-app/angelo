@@ -7,11 +7,11 @@ initialization; Codex threads read codex_plan.PLAN_GUIDANCE instead. Their size 
 instructions (tests/python/angelo_agent/plan_budgets.py, CLAUDE_INSTRUCTION_BUDGET_BYTES).
 """
 
+from .agent_guidance import SCULPT_SENTENCE
 from .tool_guidance import split, told
 
 # Sculpting and Media Studio, which a worker's chat lacks: claude_text.CLAUDE_TAIL states them after the text a lead
 # and its workers share, each only where the chat has a tool of its family (tool_guidance).
-SCULPT_SENTENCE = "Sculpt with native angelo_*sculpt* tools, never Python vertex loops or UI gestures."
 STUDIO_SENTENCE = ("For Media Studio use angelo_studio_*; never use Python to bypass Studio approvals, read keys, "
                    "launch generation or mutate its private storage.")
 

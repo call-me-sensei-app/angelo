@@ -10,6 +10,8 @@ role, CHARACTER_NOT_READY with per-entity fields) in the person's terms with the
 request's token redacted. No real console or storage is used.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import os
 import tempfile

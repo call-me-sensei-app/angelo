@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Real Blender settings/forms/picker with synthetic API health, never billed."""
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -161,7 +165,7 @@ def tick():
             state["checks"]["coding_and_genai_groups_are_separate"] = len([r for r in store.records.values() if r["group"] == CODING]) == 5 and len(ui.generation_connections()) == genai
             layout = Layout()
             ui.draw_ai_providers(layout, bpy.context)
-            state["checks"]["both_groups_draw_in_native_preferences"] = "Coding Agents" in layout.labels and "Media generation" in layout.labels
+            state["checks"]["both_groups_draw_in_native_preferences"] = "Coding agents" in layout.labels and "Media generation" in layout.labels   # provider_registry titles
             state["checks"]["no_exclusive_provider_buttons"] = not any(name == "angelo.connection_use" for name,_ in layout.operators)
             probes = len([m for m in HTTP_MODES if SPECS[m]["probe"]])   # One free check per mode that has one.
             state["checks"]["nonbillable_checks_only"] = len(requests) == probes and all("generations" not in u for u in requests)

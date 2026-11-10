@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Host tests for the robust ratchet statistics: paired repeat captures (the three-write sum, 2026-10-27) and ABAB."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 from pathlib import Path
 import sys

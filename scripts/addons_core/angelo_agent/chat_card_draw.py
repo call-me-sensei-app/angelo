@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""The chat's decision cards: approvals, a native preview, a native job on a copy, and the changes pill.
+"""The chat's decision cards: approvals, a native preview, a native job on a copy, the changes pill and the pointer
+to an approval card out of view.
 
 ``chat_view`` builds a transcript block for each card with ``approval_block``,
 ``preview_block`` and ``job_block`` and hands drawing back to ``draw``. The
@@ -21,11 +22,9 @@ closed until asked for. Right-to-left languages mirror the canvas
 mono font has no Arabic forms.
 """
 
-from .card_kit import AMBER, LINE, PANEL, PANEL_HOVER, TEAL, TEXT, MUTED, INK
+from . import ui_tokens as tk
 from .ui_text import iface_, n_, plural_
 
-CODE_FILL = (0.071, 0.078, 0.094, 1)    # The framed detail block: one step below PANEL (private token).
-CORAL = (0.941, 0.541, 0.424, 1)         # ui_tokens.CORAL: a removal.
 BUTTON_Y, BUTTON_H, ALWAYS_GAP = 26, 30, 40
 CHIP_H = 20
 PAID_TOOLS = frozenset({"angelo_studio_generate"})  # Approvals that spend API credits get the kit's paid chip.
@@ -74,7 +73,7 @@ def _footer(always):
 
 def approval_block(controller, pending, area, width, size, line_height, expanded, state):
     """The transcript block for a pending approval (or None while its rows are being prepared)."""
-    from . import chat_cards
+    from . import approval_wait, chat_cards
     from .approval_review import details_preparing, review_rows, review_token
     view = _view()
     opened = ("approval", pending.id) in expanded
@@ -87,7 +86,13 @@ def approval_block(controller, pending, area, width, size, line_height, expanded
         return None
     state["approval_review"] = review_token(pending)
     preparing = opened and not detail_rows and details_preparing(pending, area.as_pointer())
-    always = chat_cards.always_allow_rows(controller, pending, view.wrap, max(40, width - REVIEW_INSET), size - 1, view._font)
+    # Its muted notes: why it asks although the chat is in Auto (approval_wait), then a script's standing consent.
+    note_width = max(40, width - REVIEW_INSET)
+    from .review_again import note_rows
+    always = (note_rows(pending, view.wrap, note_width, size - 1, view._font)   # Asked again: what changed.
+              + approval_wait.reason_rows(controller, pending, view.wrap, note_width, size - 1, view._font)
+              + approval_wait.until_rows(pending, view.wrap, note_width, size - 1, view._font)
+              + tuple(chat_cards.always_allow_rows(controller, pending, view.wrap, note_width, size - 1, view._font)))
     button = chat_cards.always_allow_button(controller, pending)
     script = pending.name == "angelo_execute_python"
     paid = pending.name in PAID_TOOLS
@@ -95,6 +100,7 @@ def approval_block(controller, pending, area, width, size, line_height, expanded
     kind = (iface_("Script") if script else iface_("Background job") if pending.name.startswith("angelo_job_")
             else iface_("Scene changes"))
     card = {"detail_rows": detail_rows, "script": script, "preparing": preparing, "always_rows": always, "mono": mono,
+            "asked_again": bool(vars(pending).get("review_generation")),
             "paid": paid, "kind": kind, "always_button": button}
     return ("approval", card, rows, height, pending.id, 0)
 
@@ -169,8 +175,9 @@ def job_block(descriptor, width, size, line_height):
 
 # Drawing.
 
-def _over(color, base=PANEL):
+def _over(color, base=None):
     """A translucent token composited over the card: the canvas draws its shapes without blending."""
+    base = tk.PANEL if base is None else base
     alpha = color[3]
     return tuple(color[i] * alpha + base[i] * (1 - alpha) for i in range(3)) + (1,)
 
@@ -185,13 +192,14 @@ def _chip(x, y, label, fill, color):
 
 def _card(bottom, top, width, rail):
     view = _view()
-    view.shape(16, bottom + 12, width - 32, top - bottom - 24, LINE, 13)
-    view.shape(17, bottom + 13, width - 34, top - bottom - 26, PANEL, 12)
+    view.shape(16, bottom + 12, width - 32, top - bottom - 24, tk.LINE, 13)
+    view.shape(17, bottom + 13, width - 34, top - bottom - 26, tk.PANEL, 12)
     if rail:  # "Needs you": the amber rail on the reading-start edge (mirrored with the canvas).
         view.shape(17, bottom + 13, 4, top - bottom - 26, rail, 2)
 
 
-def _rows(rows, x, y, size, line_height, band, color=TEXT, font=None):
+def _rows(rows, x, y, size, line_height, band, color=None, font=None):
+    color = tk.TEXT if color is None else color
     for value, _ in rows:
         if band[0] - line_height <= y <= band[1]:
             _view().text(value.rstrip(), x, y, size, color, font)
@@ -203,11 +211,11 @@ def _code(rows, y, width, size, line_height, band, font):
     """Detail rows in a framed block; ``y`` is the block's top. Returns the cursor below it."""
     view = _view()
     height = 16 + len(rows) * line_height
-    view.shape(24, y - height, width - 48, height, LINE, 9)
-    view.shape(25, y - height + 1, width - 50, height - 2, CODE_FILL, 8)
+    view.shape(24, y - height, width - 48, height, tk.LINE, 9)
+    view.shape(25, y - height + 1, width - 50, height - 2, tk.DETAIL_FILL, 8)
     first = max(0, int((y - 8 - band[1]) // line_height))  # Rows above the viewport are skipped, not drawn.
     _rows(rows[first:first + int(band[1] / line_height) + 2], 32, y - 8 - line_height + 6 - first * line_height,
-          size - 1, line_height, band, MUTED, font)
+          size - 1, line_height, band, tk.MUTED, font)
     return y - height
 
 
@@ -217,17 +225,17 @@ def _button(state, x, y, label, action, value, kind, size=13):
     w = max(92 if kind != "ghost" else 0, _measure(label, size) + 28)
     rect = (x, y, w, BUTTON_H)
     if kind == "primary":
-        view.shape(*rect, TEAL, 8)
-        view.text(label, x + 14, y + 10, size, INK)
+        view.shape(*rect, tk.TEAL, 8)
+        view.text(label, x + 14, y + 10, size, tk.INK)
     elif kind == "secondary":
-        view.shape(*rect, LINE, 8)
-        view.shape(x + 1, y + 1, w - 2, BUTTON_H - 2, PANEL_HOVER, 7)
-        view.text(label, x + 14, y + 10, size, TEXT)
+        view.shape(*rect, tk.LINE, 8)
+        view.shape(x + 1, y + 1, w - 2, BUTTON_H - 2, tk.PANEL_HOVER, 7)
+        view.text(label, x + 14, y + 10, size, tk.TEXT)
     elif kind == "disabled":
-        view.shape(*rect, PANEL_HOVER, 8)
-        view.text(label, x + 14, y + 10, size, (0.45, 0.47, 0.5, 1))
+        view.shape(*rect, tk.PANEL_HOVER, 8)
+        view.text(label, x + 14, y + 10, size, tk.DISABLED_TEXT)
     else:
-        view.text(label, x + 14, y + 10, size - 1, MUTED)
+        view.text(label, x + 14, y + 10, size - 1, tk.MUTED)
     state["hits"].append((rect, action, value))
     return x + w + 10
 
@@ -255,7 +263,7 @@ def _header(top, chips, title, width, size):
         x = _status(x, top - 26 - CHIP_H, *chip) if len(chip) == 2 else _chip(x, top - 26 - CHIP_H, *chip)
     title_size = size + 3
     baseline = top - 26 - CHIP_H - 12 - round(size * 1.9) + (round(size * 1.9) - title_size) / 2 + 3
-    view.text(view.elide(title, width - 72, title_size), 32, baseline, title_size, TEXT)
+    view.text(view.elide(title, width - 72, title_size), 32, baseline, title_size, tk.TEXT)
     return top - 26 - CHIP_H - 12 - round(size * 1.9)
 
 
@@ -268,19 +276,20 @@ def _draw_approval(message, rows, key, top, bottom, ctx):
     from . import chat_cards
     state, controller, width, size, line_height = ctx["state"], ctx["controller"], ctx["width"], ctx["size"], ctx["line_height"]
     band = ctx["band"]
-    _card(bottom, top, width, AMBER)
+    _card(bottom, top, width, tk.AMBER)
     kind = (("paid", iface_("Uses API credits")) if message.get("paid") else
-            (message["kind"], PANEL_HOVER, MUTED))
-    y = _header(top, (("needs_you", iface_("Needs your approval")), kind),
+            (message["kind"], tk.PANEL_HOVER, tk.MUTED))
+    asked = iface_("Asked again") if message.get("asked_again") else iface_("Needs your approval")
+    y = _header(top, (("needs_you", asked), kind),
                 rows[0][0].rstrip(), width, size)
-    y = _rows(rows[1:], 32, y - line_height + 6, size, line_height, band, (0.859, 0.890, 0.910, 1)) + line_height - 6
+    y = _rows(rows[1:], 32, y - line_height + 6, size, line_height, band, tk.SUBTITLE) + line_height - 6
     # What the card shows, for QA state asserts (the rows' text and the font they are drawn in).
     state["last_detail_rows"] = tuple(row[0] for row in message["detail_rows"])
     state["last_detail_font"] = message["mono"]
     if message["detail_rows"]:
         y = _code(message["detail_rows"], y - 12, width, size, line_height, band, message["mono"])
     if message["always_rows"]:
-        y = _rows(message["always_rows"], 32, y - 10 - line_height + 6, size - 1, line_height, band, MUTED)
+        y = _rows(message["always_rows"], 32, y - 10 - line_height + 6, size - 1, line_height, band, tk.MUTED)
     if message.get("always_button"):
         chat_cards.draw_always_allow(key, state, 32, bottom + BUTTON_Y + ALWAYS_GAP, message["always_button"])
     # One primary Approve that never looks disabled; an unreviewed script's first click reveals its code.
@@ -298,8 +307,8 @@ def _draw_approval(message, rows, key, top, bottom, ctx):
 
 def _count_chips(counts):
     chips = []
-    for group, label, color in (("added", n_("+{count} added"), TEAL), ("modified", n_("~{count} changed"), AMBER),
-                                ("removed", n_("−{count} removed"), CORAL)):
+    for group, label, color in (("added", n_("+{count} added"), tk.TEAL), ("modified", n_("~{count} changed"), tk.AMBER),
+                                ("removed", n_("−{count} removed"), tk.CORAL)):
         if counts.get(group):
             chips.append((iface_(label, count=counts[group]), (*color[:3], 0.16), color))
     return chips
@@ -315,13 +324,13 @@ def _draw_preview(message, rows, key, top, bottom, ctx):
     if message["image_height"]:
         h = message["image_height"] - 34
         rect = (32, y - 10 - h, width - 64, h)
-        view.shape(*rect, CODE_FILL, 10)
+        view.shape(*rect, tk.DETAIL_FILL, 10)
         if not ctx["draw_image"](message, rect, controller):
             view.text(iface_("The picture of this preview is not available. Open Details for the result."),
-                      44, y - 10 - h / 2, 11, MUTED)
-        view.text(iface_("Solid shading · final materials may look different"), 32, y - h - 26, 10, MUTED)
+                      44, y - 10 - h / 2, 11, tk.MUTED)
+        view.text(iface_("Solid shading · final materials may look different"), 32, y - h - 26, 10, tk.MUTED)
         y -= message["image_height"]
-    y = _rows(rows, 32, y - line_height + 6, size, line_height, band, (0.859, 0.890, 0.910, 1)) + line_height - 6
+    y = _rows(rows, 32, y - line_height + 6, size, line_height, band, tk.SUBTITLE) + line_height - 6
     if message["detail_rows"]:
         _code(message["detail_rows"], y - 12, width, size, line_height, band, message["mono"])
     value = (controller.state["id"], message["preview_id"])
@@ -343,11 +352,20 @@ def _draw_job(message, rows, key, top, bottom, ctx):
     _card(bottom, top, width, None)
     y = _header(top, (("running", iface_("Working on a copy")),), iface_("Building your change"), width, size)
     track = (32, y - 8, width - 64, 4)
-    view.shape(*track, LINE, 2)
+    view.shape(*track, tk.LINE, 2)
     if message["fraction"] is not None and message["fraction"] > 0:
-        view.shape(track[0], track[1], max(4, track[2] * message["fraction"]), 4, TEAL, 2)
-    _rows(rows, 32, y - 18 - line_height + 6, size, line_height, ctx["band"], (0.859, 0.890, 0.910, 1))
+        view.shape(track[0], track[1], max(4, track[2] * message["fraction"]), 4, tk.TEAL, 2)
+    _rows(rows, 32, y - 18 - line_height + 6, size, line_height, ctx["band"], tk.SUBTITLE)
     _button(state, 32, bottom + BUTTON_Y, iface_("Stop"), "stop_native_job", controller.state["id"], "secondary")
+
+
+def draw_pills(state, width, y, transcript_top, changed, changed_files, added, removed):
+    """The chat's pills: the changes pill over the composer at ``y`` when anything changed, and the pointer to an
+    approval card scrolled out of view under ``transcript_top`` (``approval_wait.draw_pointer``)."""
+    from . import approval_wait
+    if changed or changed_files:
+        draw_changes_pill(state, width, y, changed, changed_files, added, removed)
+    approval_wait.draw_pointer(state, width, transcript_top)
 
 
 def draw_changes_pill(state, width, y, changed, changed_files, added, removed):
@@ -361,10 +379,10 @@ def draw_changes_pill(state, width, y, changed, changed_files, added, removed):
     label_width, plus_width, minus_width = _measure(label, 14), _measure(plus, 13), _measure(minus, 13)
     pill_width = min(width - 32, 12 + label_width + 10 + plus_width + 8 + minus_width + 14)
     x = (width - pill_width) / 2
-    view.shape(x, y, pill_width, 35, LINE, 14)
-    view.shape(x + 1, y + 1, pill_width - 2, 33, PANEL, 13)
-    view.text(view.elide(label, max(20, pill_width - plus_width - minus_width - 44), 14), x + 12, y + 12, 14, MUTED)
+    view.shape(x, y, pill_width, 35, tk.LINE, 14)
+    view.shape(x + 1, y + 1, pill_width - 2, 33, tk.PANEL, 13)
+    view.text(view.elide(label, max(20, pill_width - plus_width - minus_width - 44), 14), x + 12, y + 12, 14, tk.MUTED)
     right = x + pill_width - 14
-    view.text(minus, right - minus_width, y + 12, 13, CORAL)
-    view.text(plus, right - minus_width - 8 - plus_width, y + 12, 13, TEAL)
+    view.text(minus, right - minus_width, y + 12, 13, tk.CORAL)
+    view.text(plus, right - minus_width - 8 - plus_width, y + 12, 13, tk.TEAL)
     state["hits"].append(((x, y, pill_width, 35), "changes", None))

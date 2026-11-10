@@ -11,6 +11,8 @@ Approve, an Approve after Stop or close, a card drawn before Stop, a worker that
 a card the lead never drew (the mirror's digest) next to one drawn once (never the mirror's).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile

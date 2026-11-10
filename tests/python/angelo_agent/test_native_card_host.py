@@ -11,6 +11,8 @@ motionless hover refresh and the quit key that always pass through, and a closed
 area went) that is woken and ends at once, passing its event on. Pixels are ``test_blender_update_crash``'s.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

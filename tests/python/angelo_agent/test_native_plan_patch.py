@@ -7,6 +7,8 @@ whole (2.1-8.3k output tokens, about 20 s each) to change one operation, a name 
 with mocked rounds and native calls: no model, process or Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import re
 import sys

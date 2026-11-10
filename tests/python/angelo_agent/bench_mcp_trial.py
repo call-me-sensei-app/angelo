@@ -46,6 +46,7 @@ import bench_workdirs as workdirs
 import eval_diagnostics
 import eval_gate
 import eval_grading
+import provider_isolation as isolation
 import eval_live_tasks as live
 import gui_launch
 import eval_provider_limits as limits
@@ -391,8 +392,9 @@ def run_trial(config, trial, folder):
             claude_command(config, config_path, output["mcp_server"]["tools"]), config, folder)
         # ``fake_model_environment``: the unbilled dry run's local Messages endpoint (scenario_fake_models).
         stream = ClaudeStream(output["claude_command"], clean_environment(
-            CLAUDE_CONFIG_DIR=config["claude_config_dir"], TMPDIR=folder / "tmp",
-            **config.get("fake_model_environment", {})), cwd, folder)
+            CLAUDE_CONFIG_DIR=isolation.checked("claude-profile", config["claude_config_dir"],   # Each trial's
+                                                fake=config.get("fake_model_environment", {}).get("ANTHROPIC_BASE_URL")),
+            TMPDIR=folder / "tmp", **config.get("fake_model_environment", {})), cwd, folder)
         scenario.guard(stream, config, folder, output)
         usage = ClaudeProcessUsage()
         if scenario.is_scenario(config):

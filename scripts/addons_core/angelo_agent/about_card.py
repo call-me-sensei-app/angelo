@@ -5,7 +5,7 @@
 Its header is Angelo's brand art, the welcome screen's raven banner (``welcome_screen.prepare_banner``), with the
 product name over the banner's dark side; without the art (an undownloaded asset) a plain mark stands in. It names the
 product and version in the title bar's convention ("Angelo 1.0", ``APP_VERSION_DISPLAY``), says
-what it is based on ("Based on Blender 5.2.2"), the licence and the build (date and hash; never the source
+what it is based on ("Based on Blender 5.2.3"), the licence and the build (date and hash; never the source
 branch). Angelo's links come first (What's New, Credits, License, angelo.studio); Blender's own site sits in a
 quieter row below a rule. No donation link (``_decided.donations`` in ``angelo_identity.json``). Return, Escape, Close and a click outside close it. Blender's
 ``WM_MT_splash_about`` popup stays as the fallback when the add-on is not loaded.

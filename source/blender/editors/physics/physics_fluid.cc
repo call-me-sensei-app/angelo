@@ -256,6 +256,33 @@ static FluidJob *fluid_job_create(bContext *C, wmOperator *op)
   return job;
 }
 
+/**
+ * Angelo: a fluid job's end report, as #WM_global_reportf showed it (the format and the job's name
+ * translated for the person), with Blender's English beside it (#Report::message_untranslated):
+ * the name is translated in the operator context, which the report code cannot undo. Takes and
+ * frees both texts.
+ */
+static void fluid_job_report_texts(const eReportType type,
+                                   char *message,
+                                   char *message_untranslated)
+{
+  WM_global_report_translated(type, RPT_(message), message_untranslated);
+  MEM_delete(message_untranslated);
+  MEM_delete(message);
+}
+
+/**
+ * `format` is an `N_` message ID literal whose first conversion is the job's name; the English
+ * text is formatted from the literal, so the compiler checks the arguments against it. The
+ * arguments are evaluated twice: pass values, never calls (both texts must say the same).
+ */
+#define FLUID_JOB_REPORT(job, type, format, ...) \
+  fluid_job_report_texts((type), \
+                         BLI_sprintfN(RPT_(format), \
+                                      CTX_RPT_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, (job)->name), \
+                                      __VA_ARGS__), \
+                         BLI_sprintfN(format, (job)->name, __VA_ARGS__))
+
 static void fluid_bake_sequence(FluidJob *job)
 {
   FluidDomainSettings *fds = job->fmd->domain;
@@ -364,24 +391,20 @@ static void fluid_bake_endjob(void *customdata)
    * Report for ended bake and how long it took. */
   if (job->success) {
     /* Show bake info. */
-    WM_global_reportf(RPT_INFO,
-                      "Fluid: %s complete (%.2fs)",
-                      CTX_RPT_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, job->name),
-                      BLI_time_now_seconds() - job->start);
+    const double seconds = BLI_time_now_seconds() - job->start;
+    FLUID_JOB_REPORT(job, RPT_INFO, N_("Fluid: %s complete (%.2fs)"), seconds);
   }
   else {
     if (fds->error[0] != '\0') {
-      WM_global_reportf(RPT_ERROR,
-                        "Fluid: %s failed at frame %d: %s",
-                        CTX_RPT_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, job->name),
-                        *job->pause_frame,
-                        fds->error);
+      FLUID_JOB_REPORT(job,
+                       RPT_ERROR,
+                       N_("Fluid: %s failed at frame %d: %s"),
+                       *job->pause_frame,
+                       static_cast<const char *>(fds->error));
     }
     else { /* User canceled the bake. */
-      WM_global_reportf(RPT_WARNING,
-                        "Fluid: %s canceled at frame %d!",
-                        CTX_RPT_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, job->name),
-                        *job->pause_frame);
+      FLUID_JOB_REPORT(
+          job, RPT_WARNING, N_("Fluid: %s canceled at frame %d!"), *job->pause_frame);
     }
   }
 }
@@ -480,24 +503,20 @@ static void fluid_free_endjob(void *customdata)
    *  Report for ended free job and how long it took */
   if (job->success) {
     /* Show free job info */
-    WM_global_reportf(RPT_INFO,
-                      "Fluid: %s complete (%.2fs)",
-                      CTX_RPT_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, job->name),
-                      BLI_time_now_seconds() - job->start);
+    const double seconds = BLI_time_now_seconds() - job->start;
+    FLUID_JOB_REPORT(job, RPT_INFO, N_("Fluid: %s complete (%.2fs)"), seconds);
   }
   else {
     if (fds->error[0] != '\0') {
-      WM_global_reportf(RPT_ERROR,
-                        "Fluid: %s failed at frame %d: %s",
-                        CTX_RPT_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, job->name),
-                        *job->pause_frame,
-                        fds->error);
+      FLUID_JOB_REPORT(job,
+                       RPT_ERROR,
+                       N_("Fluid: %s failed at frame %d: %s"),
+                       *job->pause_frame,
+                       static_cast<const char *>(fds->error));
     }
     else { /* User canceled the free job */
-      WM_global_reportf(RPT_WARNING,
-                        "Fluid: %s canceled at frame %d!",
-                        CTX_RPT_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, job->name),
-                        *job->pause_frame);
+      FLUID_JOB_REPORT(
+          job, RPT_WARNING, N_("Fluid: %s canceled at frame %d!"), *job->pause_frame);
     }
   }
 }

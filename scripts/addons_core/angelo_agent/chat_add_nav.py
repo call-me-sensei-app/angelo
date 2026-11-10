@@ -204,6 +204,16 @@ def dispatch(context, controller, state, action, value):
             # undo=True: called from Python, an operator pushes no undo step otherwise (WM_operator_call_py), so what a
             # row creates (New Flow, a template) would be lost to the next Undo. Operators without UNDO push nothing.
             getattr(getattr(bpy.ops, group), name)('INVOKE_DEFAULT', True, **dict(properties))
+    elif action == "popup_add_goal":   # A goal chip in the composer (goal_controls.choose); one per document.
+        from . import goal_controls
+        state.pop("popover", None)
+        try:
+            goal_controls.choose(controller)
+        except goal_controls.NoGoalHere:   # A worker's chat or a connected app's: the row is never offered there.
+            pass
+        except goal_controls.HeldElsewhere:
+            from .goal_text import held_elsewhere_notice
+            controller.emit("message", {"role": "system", **held_elsewhere_notice()})
     elif action == "popup_add_choose":   # A tool with one option (Work on hands): one click chooses it.
         controller.chosen_tools = chosen_tools.choose(getattr(controller, "chosen_tools", []) or [], value,
                                                       chosen_tools.tool(value).options[0][0])

@@ -9,6 +9,8 @@ calls: no model, process or Blender. The Codex cases use the scripted
 app-server of ``test_native_codex_plan``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import sys

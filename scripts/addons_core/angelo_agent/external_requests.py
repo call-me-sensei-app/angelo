@@ -23,7 +23,7 @@ import uuid
 from collections import deque
 from pathlib import Path
 
-from . import kept_state
+from . import kept_state, shared_replace
 from .routing import TOOLSET_VERSION
 from .studio_spec import STUDIO_NAMES
 from .tool_specs import BOUNDED_MUTATIONS, FILE_TOOLS, TOOL_MAP, dynamic_tools
@@ -298,14 +298,11 @@ class AuditLog:
                 pass  # Audit is best-effort; transcripts and the invocation journal stay authoritative.
 
     def _trim(self):
-        data = self.path.read_bytes()
+        data = shared_replace.read_bytes(self.path)
         kept = data[-(self.limit // 2):]
         kept = kept[kept.find(b"\n") + 1:]
         temporary = self.path.with_name(self.path.name + "." + uuid.uuid4().hex + ".tmp")
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(kept)
-        os.replace(temporary, self.path)
+        _replace_with(temporary, lambda handle: handle.write(kept), self.path, "wb")   # Another appender: retried.
 
 
 def _digest(value):
@@ -351,13 +348,26 @@ class ClientRegistry:
         mapping = {**(self._clients(fresh) if state == kept_state.OK else {}), **changes}
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         temporary = self.path.with_name("clients." + uuid.uuid4().hex + ".tmp")
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+
+        def write(handle):
             json.dump({"version": 1, "clients": {label: {"session_id": identity}
                                                  for label, identity in mapping.items()}}, handle)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, self.path)
+        _replace_with(temporary, write, self.path)
+
+
+def _replace_with(temporary, write, target, mode="w"):
+    """Write the new owner-only ``temporary`` (``write(handle)``) and replace ``target`` with it (``shared_replace``:
+    a refusal outlasting its retries is raised); the temporary file never outlives a failure."""
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        with os.fdopen(descriptor, mode, **({} if "b" in mode else {"encoding": "utf-8"})) as handle:
+            write(handle)
+        shared_replace.replace(temporary, target)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
 
 
 def external_label(state_directory, session_id):

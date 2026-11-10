@@ -29,6 +29,10 @@ at 1280 x 720. Every measure has one untimed warm-up, then ``--reps`` timed runs
 Writes ``render-region-bench.json`` under ANGELO_QA_DIR (the variant inside), then quits.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import statistics

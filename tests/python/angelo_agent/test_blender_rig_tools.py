@@ -11,6 +11,10 @@ rest pose.
 Run only in a disposable instance with the exact Angelo binary (``--factory-startup``). No provider or paid call.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -131,8 +135,10 @@ def weight_cut():
         weights = {g.group: g.weight for g in v.groups}
         if middle2.index in weights or middle1.index in weights:
             ahead = (np.array(v.co) - head) @ axis > 0.002
-            for g in list(v.groups):
-                groups[g.group].remove([v.index])
+            # Indices first: each remove frees an element of v.groups, so a kept wrapper would read freed memory
+            # (RNA sub-data lifetime tracking, #185, now raises ReferenceError instead).
+            for index in [g.group for g in v.groups]:
+                groups[index].remove([v.index])
             (middle2 if ahead else middle1).add([v.index], 0.55 if ahead else 1.0, "REPLACE")
             if ahead:
                 groups["LeftHandMiddle3"].add([v.index], 0.45, "REPLACE")

@@ -9,6 +9,8 @@ a held slot, a "checking" entry, a registered worker), report the failure where 
 the next job on a real thread. The web read-back exposed the class (the maintainer's audit of #131/#148); the other
 runners here were fixed by the same sweep and are checked the same way."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import subprocess
 import sys

@@ -14,6 +14,7 @@ from .program_spec import PROGRAM_TOOLS, PROGRAM_NAMES, validate_program
 from .validation_spec import VALIDATION_TOOLS, VALIDATION_NAMES, validate_validation
 from .action_recipes import RECIPE_TOOLS, RECIPE_NAMES, validate_recipe
 from .view_spec import VIEW_TOOLS, VIEW_NAMES, validate_view
+from .goal_spec import GOAL_TOOLS, GOAL_NAMES, validate_goal
 from .team_library_spec import TEAM_TOOLS, TEAM_NAMES, validate_team
 from .library_spec import LIBRARY_TOOLS, LIBRARY_NAMES, validate_library
 from .worker_spec import FAMILY_NAMES, PART_NAMES, PART_TOOLS, WORKER_TOOLS, WORKER_NAMES, cube_batch, note_reports, validate_worker  # noqa: F401
@@ -153,6 +154,7 @@ TOOLS.extend(APP_FEATURE_TOOLS)   # Never declared to voice threads (dynamic_too
 TOOLS.extend(ENGINE_LINK_TOOLS)   # Deferred; voice threads leave them out too (dynamic_tools).
 TOOLS.extend(SKELETON_TOOLS)   # The rig check: never declared to voice threads either (dynamic_tools).
 TOOLS.extend(GAME_READY_TOOLS)   # Nor this one.
+TOOLS.extend(GOAL_TOOLS)   # Deferred on both runtimes (plan_kinds); the instructions name it; never by voice (goal_mode.rst).
 if parallel_access_enabled():   # Parallel edit: on a capable machine, unless launched without it (parallel_access).
     TOOLS.extend(worker_tools_for_launch(parallel_worker_limit(), parallel_limit_where()) + PART_TOOLS)   # Its own.
 elif parallel_in_worker():   # A worker Blender hosting its chats (A′): only a worker's own tool, never the lead's.
@@ -166,7 +168,7 @@ WITHHELD_TOOLS = frozenset(name.strip() for name in (product_env.current("WITHHO
 TOOLS[:] = [tool for tool in TOOLS if tool["name"] not in WITHHELD_TOOLS]
 TOOL_MAP = {tool["name"]: tool for tool in TOOLS}
 # A collaborator reads the scene, references and scoped files, never this conversation's scripts.
-COLLABORATOR_TOOLS = frozenset(tool["name"] for tool in TOOLS if tool["annotations"]["readOnlyHint"] and tool["name"] not in ({"angelo_delegate", SCRIPT_SOURCE_TOOL} | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | LIBRARY_NAMES | JOB_NAMES | FAMILY_NAMES | RIG_NAMES | SKELETON_NAMES | GAME_READY_NAMES | ENGINE_LINK_NAMES))
+COLLABORATOR_TOOLS = frozenset(tool["name"] for tool in TOOLS if tool["annotations"]["readOnlyHint"] and tool["name"] not in ({"angelo_delegate", SCRIPT_SOURCE_TOOL} | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | LIBRARY_NAMES | JOB_NAMES | FAMILY_NAMES | RIG_NAMES | SKELETON_NAMES | GAME_READY_NAMES | ENGINE_LINK_NAMES | GOAL_NAMES))
 # angelo_apply_recipe stages exactly an angelo_scene_program from the closed catalog.
 BOUNDED_MUTATIONS = frozenset({"angelo_create_cube", "angelo_set_transform", "angelo_apply_batch", "angelo_prepare_sculpt", "angelo_sculpt_batch", "angelo_scene_program", "angelo_apply_recipe", "angelo_accept_preview", "angelo_discard_preview", "angelo_workers_start", "angelo_workers_merge"}) | SCULPT_MUTATIONS | FLOW_EDITS
 FILE_TOOLS = frozenset({"angelo_list_files", "angelo_read_file", "angelo_write_file", "angelo_delete_file"})
@@ -234,6 +236,8 @@ def _validate_call(name, args, *, host=False):
         return validate_program(name, args, derive_checks=True)
     if name in VALIDATION_NAMES:
         return validate_validation(name, args)
+    if name in GOAL_NAMES:
+        return validate_goal(name, args)
     if name in RECIPE_NAMES:
         return validate_recipe(name, args)
     if name in VIEW_NAMES:
@@ -352,12 +356,17 @@ def dynamic_tools(allowed=None):
     from .plan_schema import codex_arguments
     from .tool_guidance import described
     return [{"type": "function", "name": t["name"], "description": described(t["description"], allowed),
-             "inputSchema": compact_schema(codex_arguments(t))} for t in map(declared_form, TOOLS)
+             "inputSchema": compact_schema(codex_arguments(t))} for t in declared_dynamic(allowed)]
+
+
+def declared_dynamic(allowed=None):
+    """The actual voice/dynamic tool rows, before schema rendering; one filter owns hints and declarations."""
+    return [t for t in map(declared_form, TOOLS)
             # Voice: never parallel edit, hand rigging, the library, turning an app feature on, a rig report, the
             # game-ready check or the engine link.
             if t["name"] not in FAMILY_NAMES
             and t["name"] not in (RIG_NAMES | LIBRARY_NAMES | APP_FEATURE_NAMES | SKELETON_NAMES | GAME_READY_NAMES
-                                  | ENGINE_LINK_NAMES)
+                                  | ENGINE_LINK_NAMES | GOAL_NAMES)   # A voice turn holds no goal (goal_loop).
             and (t["name"] in allowed if allowed is not None else t["name"] not in TEAM_NAMES)]
 
 

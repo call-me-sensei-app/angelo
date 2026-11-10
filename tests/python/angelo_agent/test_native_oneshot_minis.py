@@ -7,6 +7,8 @@ compiled-app proof is each mini's reference job (its checks fail on the
 factory scene and pass on the ground truth) in stock Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import json

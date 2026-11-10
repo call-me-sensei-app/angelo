@@ -12,6 +12,8 @@ copy (M1); every reader opens only a small regular file without following a link
 Contract: doc/angelo/external_mcp.rst, "Organization policy".
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import io
 import json
 import os
@@ -33,17 +35,24 @@ from angelo_agent.external_host import ExternalHost, UiEnvironment  # noqa: E402
 from angelo_agent.managed_policy import Policy  # noqa: E402
 from angelo_agent.team_view import OFFLINE, RESTORING, SIGNED_IN, SIGNED_OUT, AccountView, org_policy  # noqa: E402
 import test_native_headless_mcp as harness  # noqa: E402  (a module: its tests are not collected again here)
+from host_test_policy import environment_skip  # noqa: E402
 from test_native_external_cli_host import Environment  # noqa: E402
 
 STRICTEST = org_policy(team_org_policy.STRICTEST)
 TEAM = {"allowLocalCliAccess": True, "requireAskForEdits": True, "adminContact": "it@example.com"}
+SHORT_ROOT = "/tmp" if os.name != "nt" else None   # macOS sun_path is short; Windows uses its temp folder.
+# The window records on every platform; the launcher and headless child that read the record are macOS and Linux
+# only (doc/angelo/external_mcp.rst), and FIFOs, /dev/zero and O_NOFOLLOW are POSIX.
+HEADLESS_ONLY = environment_skip("Headless sessions are macOS and Linux for now")
+POSIX_READER = environment_skip("FIFOs, /dev/zero and O_NOFOLLOW are POSIX; the launcher that reads this record is "
+                                "macOS and Linux only (doc/angelo/external_mcp.rst)")
 
 
 class Case(unittest.TestCase):
     def setUp(self):
         managed_policy.reset(Policy())
         self.addCleanup(managed_policy.reset)
-        self.root = Path(tempfile.mkdtemp(prefix="orgrec-", dir="/tmp"))
+        self.root = Path(tempfile.mkdtemp(prefix="orgrec-", dir=SHORT_ROOT))
         self.addCleanup(shutil.rmtree, self.root, True)
         self.state = str(self.root / "state")
         self.record = Path(self.state) / "mcp" / ORGANIZATION_FILE
@@ -63,18 +72,21 @@ class WindowRecordTests(Case):
         with patch.object(host, "wanted", lambda: (False, "Off")):
             host.pump()
         self.assertEqual(read_organization(self.state), org_policy(TEAM), "pump's own step, also with access off")
-        self.assertEqual(stat.S_IMODE(self.record.stat().st_mode), 0o600)
+        if os.name != "nt":   # Windows keeps only the read-only bit; the per-user profile folder is private.
+            self.assertEqual(stat.S_IMODE(self.record.stat().st_mode), 0o600)
         applied[0] = None
         with patch.object(host, "wanted", lambda: (False, "Off")):
             host.pump()
         self.assertIsNone(read_organization(self.state), "no organization is written, not left as a missing file")
-        self.assertEqual(json.loads(self.record.read_text()), {"version": 1, "organization": None})
+        written = json.loads(self.record.read_text())
+        written.pop("intent", None)   # When the window's value changed (launcher_records): weighed at a takeover.
+        self.assertEqual(written, {"version": 1, "organization": None})
 
     def test_a_failed_write_is_retried_and_headless_fails_closed_meanwhile(self):
         host = self.host(lambda: None)
         real, attempts = external_clients.write_organization, []
 
-        def failing(state, policy):
+        def failing(state, policy, **_options):   # ``claimed``, ``intent``: a takeover's (launcher_records).
             attempts.append(policy)
             raise PermissionError("read-only state folder")
         with patch.object(external_clients, "write_organization", failing):
@@ -82,8 +94,8 @@ class WindowRecordTests(Case):
         self.assertEqual(attempts, [None])
         self.assertFalse(self.record.exists())
         self.assertEqual(read_organization(self.state), STRICTEST, "never written: the strictest policy, not none")
-        with patch.object(external_clients, "write_organization", lambda state, policy: (attempts.append(policy),
-                                                                                         real(state, policy))):
+        with patch.object(external_clients, "write_organization", lambda state, policy, **options: (
+                attempts.append(policy), real(state, policy, **options))):
             host.record_organization()
         self.assertEqual(attempts, [None, None], "the next tick writes it")
         self.assertIsNone(read_organization(self.state))
@@ -93,7 +105,7 @@ class WindowRecordTests(Case):
         host = self.host(lambda: applied[0])
         real, writes = external_clients.write_organization, []
         with patch.object(external_clients, "write_organization",
-                          lambda state, policy: (writes.append(policy), real(state, policy))):
+                          lambda state, policy, **options: (writes.append(policy), real(state, policy, **options))):
             for _ in range(3):
                 host.record_organization()
             applied[0] = dict(TEAM)   # An equal policy in a new dict is no change.
@@ -155,18 +167,22 @@ class LauncherReaderTests(Case):
                 self.write_raw(data)
                 self.assertEqual(read_organization(self.state), STRICTEST)
 
-    def test_an_unreadable_name_counts_as_the_strictest_policy_and_never_blocks(self):
+    def test_an_unreadable_name_counts_as_the_strictest_policy(self):
         write_organization(self.state, None)
         os.chmod(self.record, 0)
-        if not os.access(self.record, os.R_OK):   # Root reads it anyway.
+        if not os.access(self.record, os.R_OK):   # Root reads it anyway; Windows has no unreadable mode bit.
             self.assertEqual(read_organization(self.state), STRICTEST, "unreadable")
-        self.record.unlink()
-        os.mkfifo(self.record)
-        self.assertEqual(read_organization(self.state), STRICTEST, "a FIFO: neither none nor a hang")
+        os.chmod(self.record, 0o600)   # Windows refuses to delete a read-only file.
         self.record.unlink()
         self.record.mkdir()
         self.assertEqual(read_organization(self.state), STRICTEST, "a directory")
-        self.record.rmdir()
+
+    @unittest.skipIf(os.name == "nt", POSIX_READER)
+    def test_a_fifo_or_a_link_at_the_name_counts_as_the_strictest_policy_and_never_blocks(self):
+        self.record.parent.mkdir(parents=True, exist_ok=True)
+        os.mkfifo(self.record)
+        self.assertEqual(read_organization(self.state), STRICTEST, "a FIFO: neither none nor a hang")
+        self.record.unlink()
         allowed = self.root / "elsewhere.json"
         allowed.write_text(json.dumps({"version": 1, "organization": None}))
         self.record.symlink_to(allowed)
@@ -179,9 +195,16 @@ class LauncherReaderTests(Case):
         self.assertEqual(read_organization(self.state), STRICTEST, "a dangling link")
 
     def test_the_access_switch_reader_is_as_careful(self):
-        """Break-it M2: access.json is read the same way (not a regular file, a link or oversized: never recorded)."""
+        """Break-it M2: access.json is read the same way (oversized: never recorded; links and FIFOs below)."""
         write_access(self.state, True)
         self.assertIs(read_access(self.state), True)
+        path = Path(self.state) / "mcp" / external_clients.ACCESS_FILE
+        path.write_text(json.dumps({"version": 1, "allow_local_cli": True, "pad": "x" * team_org_policy.MAX_FILE}))
+        self.assertIsNone(read_access(self.state), "oversized")
+
+    @unittest.skipIf(os.name == "nt", POSIX_READER)
+    def test_the_access_switch_reader_never_follows_a_link_or_waits_on_a_fifo(self):
+        write_access(self.state, True)
         path = Path(self.state) / "mcp" / external_clients.ACCESS_FILE
         target = self.root / "on.json"
         path.replace(target)
@@ -190,10 +213,8 @@ class LauncherReaderTests(Case):
         path.unlink()
         os.mkfifo(path)
         self.assertIsNone(read_access(self.state), "a FIFO")
-        path.unlink()
-        path.write_text(json.dumps({"version": 1, "allow_local_cli": True, "pad": "x" * team_org_policy.MAX_FILE}))
-        self.assertIsNone(read_access(self.state), "oversized")
 
+    @unittest.skipIf(os.name == "nt", environment_skip("/dev/zero and O_NOFOLLOW are POSIX"))
     def test_the_saved_window_copy_uses_the_same_bounded_reader(self):
         folder = self.root / "connections"
         folder.mkdir()
@@ -252,6 +273,7 @@ class SignOutTests(Case):
         self.assertFalse((connections / team_org_policy.FILE).exists())
 
 
+@unittest.skipIf(os.name == "nt", HEADLESS_ONLY)
 class ChildWiringTests(Case):
     """M5: the real ``headless_main.main`` parses ``--organization`` and installs it as the organization source."""
 
@@ -289,7 +311,7 @@ class ChildWiringTests(Case):
         self.assertEqual(policy, Policy())
 
 
-@unittest.skipIf(sys.platform == "win32", "Headless sessions are macOS and Linux for now")
+@unittest.skipIf(sys.platform == "win32", HEADLESS_ONLY)
 class EndToEndTests(unittest.TestCase):
     """The real launcher's reader (as ``external_mcp.main`` builds it) over the harness's in-process child."""
 

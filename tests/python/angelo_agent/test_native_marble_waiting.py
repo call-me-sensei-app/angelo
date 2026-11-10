@@ -8,6 +8,8 @@ Dependency-free: ``marble_mark`` (the raven from its SVG), ``marble_carving`` (c
 here and run for real in ``test_blender_chat_waiting``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import math
 import re
@@ -385,11 +387,11 @@ class HygieneTests(unittest.TestCase):
         view = (ADDON / "chat_view.py").read_text(encoding="utf-8")
         rows = (ADDON / "chat_rows.py").read_text(encoding="utf-8")
         host = (ADDON / "marble_host.py").read_text(encoding="utf-8")
-        self.assertIn("marble_draw.with_hero(chat_rows.group_blocks(", view)
+        self.assertIn("marble_draw.with_hero(chat_history.group_blocks(", view)
         self.assertIn("marble_host.poll()", view)
         self.assertIn("marble_host.stop()", view)
         self.assertIn('"marble_hero"', rows)
-        self.assertLess(rows.index("marble_draw.draw_icon("), rows.index("_spinner(x + 7, centre, TEAL, 5)"))
+        self.assertLess(rows.index("marble_draw.draw_icon("), rows.index("_spinner(x + 7, centre, tk.TEAL, 5)"))
         self.assertIn("console.is_chat(area)", host)
         self.assertIn("region.type == 'WINDOW'", host)
         self.assertEqual(host.count("tag_redraw()"), 1, "One redraw site: the chat's region")

@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """A recovery hold's hints: never an empty list, and every tool named as the chat's model calls it (``recovery_reads``).
 
-Recorded (C3 early town-centre diagnostic, Sol on Codex): a stale script left a hold that named no target, and its
-refusal read "Read again: ." with nothing after it; the hint's ``angelo_scene_settings`` was
+Recorded (C3 early town-centre diagnostic, Sol on Codex): a stale script left a hold that named no target (it no
+longer holds at all: test_native_recovery_hold_start), and its refusal read "Read again: ." with nothing after it; the hint's ``angelo_scene_settings`` was
 ``tools.more__angelo_scene_settings`` in code mode. Pinned here for every hold kind and runtime, not that one. The
 hold's semantics are C3's own: a hold that names no target waits for the next request, which clears it, Angelo's
 own continuation included (a send with ``host_request``, as ``worker_resume`` makes when workers end). No Blender.
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import json
 import sys
@@ -159,13 +161,28 @@ class ControllerPathTests(unittest.TestCase):
                           apply_mutation=lambda call: self.c.execute_tool(call, self.executor, self.c.document))
         return replies, self.c.pending.get(self.c.state["id"] + "/" + identity)
 
-    def test_a_stale_script_leaves_a_hold_whose_hint_is_never_empty(self):
+    def test_a_stale_script_holds_nothing_and_its_retry_binds_again(self):
+        # The recorded path: refused before it ran, so nothing waits (test_native_recovery_hold_start, C7b); the
+        # never-empty hint of a hold that names no target is pinned by EmptyListTests.
         replies, script = self.request("script", "angelo_execute_python", SCRIPT)
         self.revision += 1   # Something else changed the scene while the card waited.
         self.c.review_script(script)
         self.c.execute_tool(script, self.executor, self.c.document)
-        self.assertEqual(replies[0]["error_code"], "STALE_REVISION")
-        self.assertEqual(replies[0]["recovery"]["read_tools"], ["angelo_scene_object", "more__angelo_scene_settings"])
+        self.assertEqual((replies[0]["error_code"], replies[0]["scene_changed"]), ("STALE_REVISION", False))
+        self.assertNotIn("recovery", replies[0])
+        retry, call = self.request("retry", "angelo_execute_python", SCRIPT)
+        self.assertEqual(retry, [], "the retry waits for its own approval, never for a hold")
+        self.assertTrue(call.approval and call.precondition == self.revision)
+
+    def test_a_held_requests_refusal_names_tools_as_the_codex_model_calls_them(self):
+        # Through a real reply (the Controller's own namer): an edit that failed after it started holds.
+        self.executor.execute = lambda name, arguments: (_ for _ in ()).throw(RuntimeError("half done"))
+        replies, script = self.request("script", "angelo_execute_python", SCRIPT)
+        self.c.review_script(script)
+        self.c.execute_tool(script, self.executor, self.c.document)
+        self.assertTrue(replies[0].get("recovery_required"), replies)
+        self.assertEqual(replies[0]["recovery_requirements"]["read_tools"],   # Beside the execution's own advice.
+                         ["angelo_scene_object", "more__angelo_scene_settings"])
         retry, _ = self.request("retry", "angelo_execute_python", SCRIPT)
         self.assertEqual(retry[0]["error_code"], "RECOVERY_REQUIRED")
         self.assertNotIn("Read again: .", retry[0]["error"])

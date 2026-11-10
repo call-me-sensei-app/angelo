@@ -18,15 +18,22 @@ set(INC_SYS
 
 set(SRC
   bpy.cc
+  bpy_angelo_clipboard.cc
   bpy_angelo_desktop.cc
   bpy_angelo_jobs.cc
+  bpy_angelo_jobs_caches.cc
+  bpy_angelo_jobs_work.cc
+  bpy_angelo_update_quit.cc
   bpy_angelo_live.cc
   bpy_angelo_live_bounds.cc
+  bpy_angelo_live_camera.cc
   bpy_angelo_live_draw.cc
   bpy_angelo_live_hold.cc
   bpy_angelo_live_instances.cc
   bpy_angelo_meshopt.cc
   bpy_angelo_metadata.cc
+  bpy_angelo_digest.cc
+  bpy_angelo_saved.cc
   bpy_angelo_picture.cc
   bpy_angelo_read.cc
   bpy_angelo_read_geometry_const.cc
@@ -39,8 +46,10 @@ set(SRC
   bpy_angelo_renamed_api.cc
   bpy_angelo_stage.cc
   bpy_angelo_stage_layers.cc
+  bpy_angelo_stage_relink.cc
   bpy_angelo_undo.cc
   bpy_angelo_checkpoint.cc
+  bpy_angelo_checkpoint_binding.cc
   bpy_app.cc
   bpy_app_alembic.cc
   bpy_app_build_options.cc
@@ -95,12 +104,18 @@ set(SRC
   bpy_utils_units.cc
 
   bpy.hh
+  bpy_angelo_clipboard.hh
   bpy_angelo_desktop.hh
   bpy_angelo_jobs.hh
+  bpy_angelo_jobs_caches.hh
+  bpy_angelo_jobs_work.hh
+  bpy_angelo_update_quit.hh
   bpy_angelo_live.hh
   bpy_angelo_live_part.hh
   bpy_angelo_meshopt.hh
   bpy_angelo_metadata.hh
+  bpy_angelo_digest.hh
+  bpy_angelo_saved.hh
   bpy_angelo_picture.hh
   bpy_angelo_read.hh
   bpy_angelo_read_geometry_const.hh
@@ -113,8 +128,10 @@ set(SRC
   bpy_angelo_renamed_api.hh
   bpy_angelo_stage.hh
   bpy_angelo_stage_layers.hh
+  bpy_angelo_stage_relink.hh
   bpy_angelo_undo.hh
   bpy_angelo_checkpoint.hh
+  bpy_angelo_checkpoint_binding.hh
   bpy_app.hh
   bpy_app_alembic.hh
   bpy_app_build_options.hh
@@ -169,6 +186,7 @@ set(SRC
 )
 
 set(LIB
+  PRIVATE bf::asset_system
   PRIVATE bf::blenkernel
   PRIVATE bf::blenlib
   PRIVATE bf::blenloader
@@ -176,6 +194,7 @@ set(LIB
   PRIVATE bf::bmesh
   PRIVATE bf::depsgraph
   PRIVATE bf::dna
+  PRIVATE bf::extern::xxhash
   bf_editor_animation
   bf_editor_interface
   bf_editor_object
@@ -429,7 +448,8 @@ endif()
 
 # Keep the existing Sculpt recovery fixture hooks in native test builds.
 if(WITH_GTESTS)
-  set_source_files_properties(bpy_angelo_undo.cc PROPERTIES COMPILE_DEFINITIONS WITH_GTESTS)
+  set_source_files_properties(bpy_angelo_undo.cc bpy_angelo_checkpoint.cc
+                              PROPERTIES COMPILE_DEFINITIONS WITH_GTESTS)
 endif()
 
 blender_add_lib(bf_python "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
@@ -439,6 +459,9 @@ add_dependencies(bf_python bf_rna)
 
 if(WITH_GTESTS)
   set(TEST_SRC
+    bpy_angelo_checkpoint_binding_test.cc
+    bpy_angelo_clipboard_test.cc
+    bpy_angelo_jobs_caches_test.cc
     bpy_angelo_read_scalar_const_test.cc
   )
   set(TEST_INC

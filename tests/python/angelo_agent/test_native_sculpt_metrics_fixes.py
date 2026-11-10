@@ -5,6 +5,8 @@
 NumPy cases also run with Angelo's bundled standalone Python when the host
 Python has no NumPy. Blender-facing imports are isolated to this test module.
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import copy
 import importlib.util
 import json

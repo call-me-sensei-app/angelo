@@ -11,6 +11,8 @@ everything; the host's loop releases after its save step and after each chat app
 lead sees from a save step is over in the worker too).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import threading
 import time

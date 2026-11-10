@@ -15,6 +15,8 @@ relaxes parallel's bar (E2E-11 M-4, L-4, E2E-12 H-2). A lost trial (no task reco
 of that arm, every class 0 and its wall clock the cap, compared with the other arm's trial of the same number,
 whatever its rerun did, and never INCOMPLETE (BENCH-PREREG Amendment C6).
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import json
 import sys
 import tempfile
@@ -75,7 +77,7 @@ class RunnerTests(unittest.TestCase):
                                    "--output", "/r", "--", "--model", "m", "--effort", "medium"])
         single, parallel = runner.command(args, rest, "single"), runner.command(args, rest, "parallel")
         self.assertEqual([part for part in parallel if part != "--angelo-parallel-agents"],
-                         [part.replace("/r/single", "/r/parallel") for part in single])
+                         [part.replace(str(Path("/r", "single")), str(Path("/r", "parallel"))) for part in single])
         self.assertEqual([runner.order(n, "single") for n in (1, 2, 3)],
                          [("single", "parallel"), ("parallel", "single"), ("single", "parallel")])
         self.assertIn("--warm-up-only", runner.command(args, rest, "single", warm_up=True))

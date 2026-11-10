@@ -10,6 +10,8 @@ matrix it had, and an object Blender does not evaluate, or a parenting loop, is 
 test_blender_script_kit.py runs the same scenario on real objects in stock Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import sys
 import unittest

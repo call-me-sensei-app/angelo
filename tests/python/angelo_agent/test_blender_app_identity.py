@@ -23,6 +23,10 @@ No provider, account or real user folder is used; stock Blender's folders are no
 never looks outside ``--out``). Inspect ``app-identity.json`` and the PNGs beside it.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import argparse
 import json
 import os
@@ -112,7 +116,13 @@ def run_host():
 
     def macos_sequence():
         phase("folders", window=False)
-        user, cache, forbidden = expected_roots(home, sys.platform)
+        # suite_isolation relaunches the child with its own isolated profile home (test-profile-*/home, inside this
+        # fixture): the folders to check are the ones the child resolved there, never this host's home variable.
+        config = Path(reports[-1]["paths"]["CONFIG"])
+        child_home = config.parents[4]   # <home>/Library/Application Support/Angelo/<version>/config
+        if out.resolve() not in child_home.resolve().parents:
+            raise AssertionError("The child's home %s is outside the fixture %s" % (child_home, out))
+        user, cache, forbidden = expected_roots(child_home, sys.platform)
         host = {}
         host["config_folder_exists"] = (user / "config").is_dir()
         host["preferences_saved_in_angelo_folder"] = (user / "config/userpref.blend").is_file()

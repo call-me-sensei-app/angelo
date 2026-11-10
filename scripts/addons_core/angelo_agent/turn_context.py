@@ -60,7 +60,7 @@ from itertools import islice
 import json
 import time
 
-from . import change_feed, object_bounds, visibility_facts, worker_facts
+from . import change_feed, goal_controls, object_bounds, visibility_facts, worker_facts
 from .legacy_names import WORKSPACE_DIRECTOR, read_property
 from .scene_read_values import label, revision_omission
 from .revision_budget import left_out
@@ -145,7 +145,7 @@ def _prepare(window, chat_id=None, clock=None, message=""):
         return TurnContext(_bounded(observation, stats), stats)
     report, through = change_feed.report(chat_id, current)
     observation["changes_since_last_turn"] = report
-    observation.update(worker_facts.observed(chat_id))   # A state field: a delta sends it when it changes.
+    observation.update(worker_facts.observed(chat_id), **goal_controls.observed_id(chat_id))   # State fields; held goal.
     return TurnContext(_bounded(observation, stats), stats, chat_id, current, through)
 
 

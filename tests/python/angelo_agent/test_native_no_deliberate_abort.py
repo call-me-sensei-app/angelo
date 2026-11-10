@@ -22,6 +22,8 @@ another file loading it, the host suite's own fake ``bpy``, another background c
 abort logging is proven outside this scan (doc/angelo/updates_and_reports.rst, "The crash handler").
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import io
 import re

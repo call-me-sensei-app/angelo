@@ -45,6 +45,7 @@ _UNSAFE_IN_FOLDER = re.compile(r"[^A-Za-z0-9._-]+")
 
 class PlanError(ValueError):
     """A scene whose outputs a job cannot name in advance; the message says what to change."""
+    refusal_code = "VALIDATION"   # Raised at a job's admission, before it starts (refusal_codes).
 
 
 def safe_part(text):

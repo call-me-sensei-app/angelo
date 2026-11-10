@@ -26,6 +26,7 @@
 #include "BKE_global.hh" /* XXX, G_MAIN only */
 
 #include "RNA_access.hh"
+#include "RNA_define.hh"
 #include "RNA_enum_types.hh"
 #include "RNA_prototypes.hh"
 
@@ -34,12 +35,15 @@
 #include "WM_api.hh" /* For #WM_ghost_backend */
 
 #include "bpy.hh"
+#include "bpy_angelo_clipboard.hh"
 #include "bpy_angelo_jobs.hh"
 #include "bpy_angelo_reduce.hh"
 #include "bpy_angelo_live.hh"
+#include "bpy_angelo_digest.hh"
 #include "bpy_angelo_picture.hh"
 #include "bpy_angelo_read.hh"
 #include "bpy_angelo_stage.hh"
+#include "bpy_angelo_saved.hh"
 #include "bpy_angelo_undo.hh"
 #include "bpy_angelo_checkpoint.hh"
 #include "bpy_app.hh"
@@ -684,7 +688,21 @@ static PyObject *bpy_wm_capabilities(PyObject *self)
 #  endif
 #endif
 
+static PyObject *bpy_rna_declaration_generation(PyObject * /*self*/, PyObject * /*args*/)
+{
+  const uint64_t generation = RNA_runtime_declaration_generation();
+  if (generation == UINT64_MAX) {
+    PyErr_SetString(PyExc_RuntimeError, "RNA declaration generation exhausted; restart Angelo");
+    return nullptr;
+  }
+  return PyLong_FromUnsignedLongLong(generation);
+}
+
 static PyMethodDef bpy_methods[] = {
+    {"_rna_declaration_generation",
+     bpy_rna_declaration_generation,
+     METH_NOARGS,
+     "Read the process-wide runtime RNA declaration epoch; no RNA object is retained."},
     {"script_paths",
      reinterpret_cast<PyCFunction>(bpy_script_paths),
      METH_NOARGS,
@@ -835,8 +853,11 @@ void BPy_init_modules(bContext *C)
   PyModule_AddObject(mod, "_angelo_reduce", BPY_angelo_reduce_module());
   PyModule_AddObject(mod, "_angelo_live", BPY_angelo_live_module());
   PyModule_AddObject(mod, "_angelo_picture", BPY_angelo_picture_module());
+  PyModule_AddObject(mod, "_angelo_digest", BPY_angelo_digest_module());
+  PyModule_AddObject(mod, "_angelo_clipboard", BPY_angelo_clipboard_module());
   PyModule_AddObject(mod, "_angelo_read", BPY_angelo_read_module());
   PyModule_AddObject(mod, "_angelo_undo", BPY_angelo_undo_module());
+  PyModule_AddObject(mod, "_angelo_saved", BPY_angelo_saved_module());
   PyObject *checkpoint_module = BPY_angelo_checkpoint_module();
   PyModule_AddObject(mod, "_angelo_checkpoint", checkpoint_module);
   /* The application-owned storage route uses these private, exact-capability entry points. */

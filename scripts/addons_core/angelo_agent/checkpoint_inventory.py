@@ -132,6 +132,7 @@ def inventory(owner, *, validate_targets=True, probe=False):
             except (OSError, ValueError, TypeError) as error:
                 issues.append({"session_id": record["session_id"], "id": record["id"], "error": str(error)})
     result = {"checkpoints": records, "issues": issues, "total_bytes": sum(item["bytes"] for item in records)}
-    # A probe never backs a removal (that plans again under the transaction): it needs no token of the whole result.
-    result["token"] = None if probed else _digest(result)
+    # A probe never backs a removal (that plans again under the transaction): it needs no token of the whole result,
+    # whichever backend scanned it (Windows handles and the path backend scan every record: ``probed`` is False there).
+    result["token"] = None if probe and not locked else _digest(result)
     return result

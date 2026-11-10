@@ -165,6 +165,136 @@ OpenSSL was built. Revisions and observation tokens are opaque and
 document-epoch scoped, and scene-query revisions are not persisted in task
 memory, so a value produced by an earlier build is only ever stale.
 
+Upstream relations
+------------------
+
+``ViewLayer.angelo_upstream(id)`` returns ``(status, records)``: every component
+whose operations the evaluation of ``id`` depends on, read from the relations
+Blender has already built for that view layer (``DEG_angelo_upstream.hh``,
+``depsgraph_query_foreach.cc``). It is the oracle a revision is checked against:
+whatever it lists that a revision does not account for is a limitation, so a
+caller refuses on every status but ``OK``. Records come only with ``OK``, as flat
+integer triples: the ID's session UID (the value ``ID.session_uid`` returns), its
+type code (``ID.id_type``'s enum value, ``GS()`` in C) and the depsgraph node type
+(the order of ``enum class NodeType`` in ``deg_node.hh``, pinned by
+``test_native_upstream_relations_source``). A triple with type code zero is not
+an ID: ``TIMESOURCE`` means something upstream depends on the frame.
+
+What is listed:
+
+- the root's own components and, transitively, every operation they wait for;
+  a driver whose variable reads its own ID's transform channel has no relation
+  for it (Blender would build a cycle), so the builder flags it
+  (``DEPSOP_FLAG_ANGELO_READS_OWNER_TRANSFORM``) and the walk adds that ID's
+  transform component when it reaches the driver. Then
+  except through ``VISIBILITY`` (custom bone shapes are linked only that way) and
+  ``COPY_ON_EVAL`` (copy relations carry pointers, not content). A copy of
+  another ID that an operation waits for (a driver or IK target) is listed one
+  hop deep as ``COPY_ON_EVAL`` and never followed;
+- every object's collections' ``HIERARCHY``, up through parent collections to
+  the Scene's: that is how Blender orders an object after its collections.
+
+What it never does: create, build, rebuild, tag, flush, evaluate or activate a
+graph, write anything, or read an evaluated ID. Identity comes from what the
+graph's nodes cache; the only original data it reads is what the driver paths
+it re-resolves pass through (below), on the main thread while no job or
+evaluation runs. Rebuilding relations inside a read would free evaluated copies
+that callers may hold, expose unfilled copies of newly added IDs to
+``evaluated_get`` before the next evaluation, and let relation builders write
+original data (the Mask modifier sets ``ARM_HAS_VIZ_DEPS``), so it reports
+instead:
+
+- ``NO_GRAPH``: the view layer has no dependency graph yet (a headless file
+  before its first evaluation);
+- ``RELATIONS_STALE``: the relations are tagged for rebuild or are being
+  rebuilt inside a checkpoint materialize scope, the node for ``id`` was built
+  for an earlier ID at its address, or a driver variable path upstream no longer
+  names what it named when they were built (below). A materialize scope ends without a rebuild,
+  leaving nodes for hidden bases it admitted; base admission is the only choice
+  the visibility profile makes when relations are built, so that graph is a
+  superset of nodes with the same edges and is still read (such an object gets
+  ``OK`` rather than ``NOT_IN_GRAPH``). A structural edit leaves this until the next event-loop update; the
+  graph of a view layer no window shows is never rebuilt by the event loop, so
+  it stays stale until something evaluates it;
+- ``EVALUATING``: the call comes from inside the graph's evaluation, a job owned
+  by the scene is running, or a window manager's interface is locked. Bakes
+  (point cache, fluid, dynamic paint, geometry nodes, simulation to frame)
+  evaluate the view layer's own graph on a job thread. Their jobs are registered
+  on the main thread when they start, and most also lock the interface (the
+  simulation-to-frame bake sets its lock only from the job thread), so reading
+  the graph while either holds would race the job. Any scene-owned job that
+  reports progress counts (``WM_jobs_test``; the bakes, renders and compositor
+  jobs do), so a final render or a compositor job also reads as ``EVALUATING``
+  for as long as it runs: retry after it ends;
+- ``NOT_IN_GRAPH``: this view layer does not evaluate ``id`` (for example an
+  object only in an excluded collection);
+- ``TOO_LARGE``: more than ``DEG_UPSTREAM_MAX_OPERATIONS`` operations are
+  upstream, so the walk stopped rather than return a partial set;
+- ``NOT_MAIN_THREAD``;
+- ``UNDECLARED_READS``: something upstream reads data no relation names: a
+  Python driver expression beyond the simple-expression subset (it can read any
+  data), or a driver variable whose path did not resolve when the relations were
+  built, or that resolves to nothing the graph has a node for (evaluation
+  resolves it again). The relation builder flags such driver
+  operations (``DEPSOP_FLAG_ANGELO_UNDECLARED_READS``) and the walk stops at the
+  first one. ``NO_GRAPH`` also covers a view layer reached through an evaluated
+  Scene, which has no graphs of its own.
+
+It sees only relations Blender builds, and trusts the graph's flag that they are
+current, with one check of its own. Relations exist for disabled modifiers and
+muted constraints too. A driver variable's relation follows what its RNA path
+named when the relations were built, and Blender does not tag them for every
+write that re-points data such a path passes through: a data-block custom
+property written through Python's mapping access (Blender #74000), a registered
+collection's ``move``, ``remove`` or ``clear`` and ``property_unset``, any write
+from C (Angelo's typed operations, library overrides) or from another thread.
+So the relation builder records each driver variable's path with the owner ID
+and struct type it resolved to (``AngeloPathRead`` on the driver operation), and
+the walk resolves every recorded path it reaches again: a path that no longer
+resolves, or names another owner or struct type, makes the answer
+``RELATIONS_STALE``. Resolution calls the RNA pointer and collection-lookup
+getters the builder already called on the same paths and reads no property
+value. That check refuses until something rebuilds the relations, so the common
+Python writes also tag them, as an RNA pointer property's update does
+(``idprop_py_api.cc``, ``bpy_rna.cc``): ``obj["target"] = other``, ``del``,
+``pop`` and ``update`` on the mapping, ``clear``, the struct's own ``pop`` and
+``id_properties_clear()``, and renaming a member group, whenever they change the
+data-block at some path inside the property (moving one between members does)
+or remove one. Writing the same data-block to the same path again, or a value
+without one, tags nothing. A registered collection's ``move`` or ``remove`` is
+not tagged: the query refuses until the next relations rebuild (any structural
+edit). The walk is a plain worklist with a visited set,
+written for this query: ``DEG_foreach_ancestor_ID``'s single-inlink shortcut has
+no exit when that inlink is the time source, which a stock graph hides only
+because such operations also wait for their copy, and this walk never follows
+copies.
+
+Update kinds
+------------
+
+``DepsgraphUpdate.angelo_recalc`` is the set of an update's recalc bits, as
+tagged and as flushed, read from the same evaluated ``recalc`` bits its three
+``is_updated_*`` siblings read, so it is meaningful inside
+``depsgraph_update_post`` (Blender clears the bits after the handler). Each item
+is exactly one bit (``rna_depsgraph.cc`` checks this at compile time). The bits
+include those the update flush adds for the components it reaches (a batch-cache
+update adds ``SHADING``, a copy adds ``SYNC_TO_EVAL``), the same bits the
+siblings read. An object-mode click reports the Scene with ``SELECT`` and the
+copy tag ``SYNC_TO_EVAL`` (a selection tag also tags the Scene's copy), pinned by
+``test_blender_depsgraph_update_recalc``; by the same flush an edit-mode
+selection should report its mesh with ``SELECT`` and ``SHADING`` (read from the
+code, not yet pinned by a suite), so it is not a selection-only update. Blender's
+aliases (``ANIMATION_NO_FLUSH``) and composites (``ALL``, ``PSYS_ALL``,
+``GEOMETRY_ALL_MODES``) have no item, because a multi-bit item would make the
+Python set report members that were not set. ``OTHER`` is computed: it is in
+the set whenever a bit without an item of its own is on, and when no bit is, so
+the set is never empty. An embedded node tree's bits are folded into its owner,
+because Blender reports the owner when only its tree's output changed; an
+Object's data is a separate update and is not folded in, unlike
+``is_updated_geometry``. Read-only, never animated, no DNA. A selection-only
+update is one whose set contains ``SELECT`` and nothing outside the selection
+kinds, never one that is merely a subset (an empty set would be).
+
 Observation coverage
 --------------------
 
@@ -306,8 +436,11 @@ layer, so selecting other objects after a turn context makes the affected
 revisions stale and their program fails closed. It covers the current frame
 only for an object that can change with time (``revision_time.still`` is
 false: animation or drivers, constraints, physics or particles, a modifier
-outside the time-independent set, a time-reading geometry node, or a parent,
-Mirror or Array object or focus object that can itself change with time): a
+outside the time-independent set, a time-reading geometry node, or a parent or
+any Object a modifier or the object's data points at that can itself change with
+time; those Objects come from Blender's RNA, never a list of attribute names, so
+every deformer's object is followed, and a followed armature, lattice or curve
+is judged by the same rules, pose-bone constraints included): a
 frame change stales those revisions and no others
 (``scene_fingerprints.context_hash``). Stillness is judged only for a capture
 that gives a revision, once per object and once per node group a pass
@@ -315,7 +448,20 @@ that gives a revision, once per object and once per node group a pass
 item each); a capture with no exact revision keeps the frame. A time-dependent
 revision also carries a subframe that is not 0, as a program's binding does,
 so every revision of a whole frame keeps its earlier value. Judging stillness
-costs at most about 3 µs an object (1.6% of a revision on 400 objects). The
+costs at most about 3 µs an object (1.6% of a revision on 400 objects). Following
+RNA pointers reads each compiled struct type's RNA once and skips nested values
+that cannot lead to an Object (``rna_schema``: the type facts come from every type
+``bpy.types`` names, a value's own type decides, and structs Blender defines at run
+time, such as Geometry Nodes modifier inputs, are always read whole); without the
+cache it cost 88 µs a plain mesh. ``test_blender_revision_deformers`` pins the
+pointer set against bpy, compares the walk with an unpruned one over every modifier,
+constraint and data type, and checks every still answer against frame-invariant
+evaluation. A geometry node with an Object, Collection or Image input reads
+another datablock and is time-dependent. One shape-key account
+(``shape_key_state``: the Key's and every key's writable settings, select and lock
+included, and its points) is part of a mesh's, lattice's and curve's revision, and
+of every mesh a lattice or curve deforms, with the owner's key pin and active key
+and the Key's animation, read once per Key a pass. The
 per-pass memory matters where objects share a node group: 2,000 objects
 sharing one 300-node group take 0.133 s a pass against 0.104 s without the
 stillness check; judging the group again for each object instead makes the
@@ -685,7 +831,12 @@ file workspace or to the .blend's own folder when it lies inside one of them,
 and otherwise by its base name alone, marked ``outside``. No answer carries an
 absolute path, ``..`` never appears, and a path the workspace refused is not
 echoed. Blender's own message for a file it cannot read names the absolute
-path, so the answer carries a code instead.
+path, so the answer carries a code instead. A file's status is decided as
+Blender's own missing-file check decides it: a tiled image's path names its
+tiles with a token (``<UDIM>``, ``<UVTILE>``), and the file asked about is its
+first tile's, whatever that tile's number (a set of 1002 to 1005 is
+``present`` when tile 1002's file is there); any other path is asked about as
+written.
 
 Every failure is an answer (``readable`` false with ``OUTSIDE_WORKSPACE``,
 ``NOT_FOUND``, ``NOT_BLEND``, ``UNREADABLE``, ``TOO_LARGE``, ``CHANGED`` ...).
@@ -739,7 +890,10 @@ counted so a withheld value is proven unfetched), ``test_native_read_access.py``
 ``test_native_blend_file_pending.py`` (worker admission, cancellation and cleanup),
 ``test_native_blend_file.py``
 (path naming, the open-file summary, the workspace gates on real files with a
-stand-in for Blender's reader), ``test_native_read_tools_delivery.py`` (where
+stand-in for Blender's reader), ``test_native_image_read_files.py`` (each
+file Blender reads for a tile, frame or view, and a tile set's status from its
+first tile; ``test_blender_image_read_files.py`` checks the names against
+Blender's own in the built app), ``test_native_read_tools_delivery.py`` (where
 each tool sits for each runtime, the real controller in a read-only chat, and
 the real Claude and Codex providers over scripted stand-ins) and
 ``test_native_read_tools_recovery.py`` (in a turn: an answer with a code does

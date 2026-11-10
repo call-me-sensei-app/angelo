@@ -12,6 +12,8 @@ it correct facts and full visibility (doc/angelo/agent_integration.rst,
 Claude's text, so its code is still checked.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import inspect
 from pathlib import Path

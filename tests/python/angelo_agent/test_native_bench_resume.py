@@ -5,6 +5,8 @@
 No process, network or account: every runner is replaced.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import json

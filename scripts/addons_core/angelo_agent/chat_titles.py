@@ -10,8 +10,10 @@ named-placeholder templates and translated here, at display time
 """
 
 from .canvas_rtl import visual
+from .flow_tool_spec import FLOW_USAGE
 from .legacy_names import current_tool_name
 from .sessions import UNTITLED
+from .studio_spec import STUDIO_USAGE
 from .ui_text import iface_, n_
 
 # Every tool title has three forms: (done, in progress, not done). A row whose step happened reads in the past
@@ -130,23 +132,39 @@ LIVE = {"Connecting": n_("Connecting"), "Sending": n_("Sending"),
         "Rendering a look": n_("Rendering a look"),
         "Making the World's picture for the web export": n_("Making the World's picture…"), "Waiting for workers": n_("Waiting for the worker agents"),
         "Compiling shaders for a view": n_("Compiling shaders for a view"),
-        "Approval required": n_("Waiting for your approval"),
-        "Approve collaborator usage": n_("Waiting for your approval"),
         "External work": n_("Working for a connected app"), "External read": n_("Reading for a connected app"),
         "Searching the Angelo Library": n_("Searching the Angelo Library"),
+        "Checking a mesh for games": n_("Checking a mesh for games"),   # game_ready_host.STATUS
         "Importing from the Angelo Library": n_("Adding from the Angelo Library"),
         "Event queue full; reconnect required": n_("Reconnect required")}
 # Statuses that never label a running turn's live row: the turn is over, not started, or a voice turn (its own text).
 NOT_LIVE = frozenset({"New chat", "Interrupted", "Failed", "Completed", "Idle", "Disconnected", "Off", "Voice active",
                       "Voice · agent working", "Starting voice"})
-STATES = {"queued": n_("queued"), "running": n_("running"), "working": n_("working"),
-          "approval": n_("needs your approval"), "usage": n_("needs usage approval"), "failed": n_("failed"),
-          "declined": n_("declined"), "stopped": n_("stopped"),
-          "reverted": n_("reverted"), "preview": n_("preview, not applied yet"), "committed": n_("applied, Undo available")}
+STATES = {"queued": n_("{action} · queued"), "running": n_("{action} · running"), "working": n_("{action} · working"),
+          "approval": n_("{action} · needs your approval"), "usage": n_("{action} · needs usage approval"),
+          "failed": n_("{action} · failed"), "declined": n_("{action} · declined"), "stopped": n_("{action} · stopped"),
+          "stopped_watching": n_("{action} · stopped watching"), "reverted": n_("{action} · reverted"),
+          "expired": n_("{action} · expired, nothing ran"),
+          "preview": n_("{action} · preview, not applied yet"), "committed": n_("{action} · applied, Undo available")}
 
 
 # A step that never ran by the person's choice or a stop (its card declined, its turn stopped): not a failure.
 NOT_RUN = {"DECLINED": "declined", "CANCELLED": "stopped"}
+# Submitted paid work may continue at its provider after local monitoring ends.
+BILLED_TOOLS = STUDIO_USAGE | FLOW_USAGE
+STOPPED_WATCHING = "stopped_watching"
+NOT_RUN_STATES = frozenset(NOT_RUN.values()) | {STOPPED_WATCHING}
+
+
+def not_run(message):
+    """How a step that did not run to its end by the person's choice or a stop ended (a ``NOT_RUN_STATES`` name),
+    else None. A billed tool's stopped step whose work was submitted (its stopped result carries the watched job's
+    ``asset_id``, ``Controller.cancel_tools``; one stopped before it was sent has none) is ``STOPPED_WATCHING``."""
+    result = message.get("result") if isinstance(message.get("result"), dict) else {}
+    state = NOT_RUN.get(result.get("error_code"))
+    if state == "stopped" and "asset_id" in result and current_tool_name(message.get("tool", "")) in BILLED_TOOLS:
+        return STOPPED_WATCHING
+    return state
 
 
 def happened(message):
@@ -179,14 +197,12 @@ def _running_state(forms, message, state):
 
 def _state(message, states):
     """The suffix state of a row that did not happen, by its status (``states``) or how it ended."""
-    result = message.get("result") if isinstance(message.get("result"), dict) else {}
-    if result.get("error_code") in NOT_RUN:
-        return NOT_RUN[result["error_code"]]
-    return states.get(message.get("status"))
+    from .call_ended import status
+    return status(message) or not_run(message) or states.get(message.get("status"))
 
 
 def _with_state(action, state):
-    return iface_("{action} · {state}", action=action, state=iface_(STATES[state])) if state else action
+    return iface_(STATES[state], action=action) if state else action
 
 
 def live_label(status):

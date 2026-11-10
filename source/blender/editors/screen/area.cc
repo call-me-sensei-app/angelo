@@ -62,6 +62,10 @@
 
 #include "screen_intern.hh"
 
+#ifdef WITH_PYTHON
+#  include "BPY_extern.hh"
+#endif
+
 namespace blender {
 
 /* general area and region code */
@@ -2531,6 +2535,9 @@ void ED_area_data_swap(ScrArea *area_dst, ScrArea *area_src)
 
   std::swap(area_dst->spacedata, area_src->spacedata);
   std::swap(area_dst->regionbase, area_src->regionbase);
+#ifdef WITH_PYTHON
+  BPY_rna_ui_owners_changed(area_dst, area_src);
+#endif
 }
 
 /* -------------------------------------------------------------------- */

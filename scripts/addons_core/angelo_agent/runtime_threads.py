@@ -26,6 +26,8 @@ import threading
 import uuid
 from pathlib import Path
 
+from . import shared_replace
+
 FILE = "worker-threads.json"
 MAX_THREADS = 64     # A chat's threads kept (its own, resumed and forked: a few per context).
 MAX_CHATS = 512      # Chats kept; the least recently updated is dropped first.
@@ -104,7 +106,7 @@ def _read(path):
     if path is None:
         return empty
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(shared_replace.read_text(path))   # Sharing delete: another Angelo's save lands.
     except (OSError, ValueError, UnicodeDecodeError):
         return empty
     if not isinstance(value, dict):
@@ -125,9 +127,10 @@ def _write(path, data):
         descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(data, handle, separators=(",", ":"))
-        os.replace(temporary, path)
+        shared_replace.replace(temporary, path)
         return True
-    except OSError:
+    except OSError as error:   # Known in this process only: a later chat start writes it again.
+        print("Angelo: a chat's runtime threads could not be saved yet:", error)
         try:
             temporary.unlink()
         except OSError:

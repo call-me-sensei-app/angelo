@@ -7,6 +7,8 @@ compare OUTLINE's numbers; its side profile stayed about 5 mm off. The host now 
 every pair that names targets, so the numbers reach the model whichever compare it asks for. A pair without targets is unchanged.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import unittest
 
 from test_native_view_outline import FRONT, disc, numpy, png_rows

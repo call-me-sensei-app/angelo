@@ -12,6 +12,8 @@ folders, Angelo's add-on is never unloaded while preferences are read, and the c
 modes) and the result notice say what they must. The running app is ``test_blender_settings_import``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import os
@@ -25,10 +27,12 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
+from platform_env import link_text  # noqa: E402
 from test_native_notice_cards import FakeView  # noqa: E402
 from angelo_agent import blender_folders, card_kit as kit, settings_import as si, settings_import_card as card  # noqa: E402
 
 PLATFORMS = ("darwin", "win32", "linux")
+OUTSIDE = os.path.abspath("/opt/dev/addon")   # A full path on this host (Windows adds the drive).
 
 
 def tree_digest(root, folder_times=True):
@@ -191,7 +195,7 @@ class CopyTests(unittest.TestCase):
         write(root / "extensions/.user/user_default/mcp/server.json")
         write(root / "extensions/.local/lib/python3.13/site-packages/wheel.py")
         os.symlink("../addons/switcher_tool", root / "scripts/presets/linked_addon")   # Inside the copied folder.
-        os.symlink("/opt/dev/addon", root / "scripts/addons/dev_addon")                # Outside it: kept.
+        os.symlink(OUTSIDE, root / "scripts/addons/dev_addon")                         # Outside it: kept.
         self.angelo, self.places = self.box.angelo()
         write(self.angelo / "config/userpref.blend", "angelo's own")
         write(self.angelo / "config/recent-files.txt", "/a/mine.blend\n/b/shared.blend\n")
@@ -229,9 +233,9 @@ class CopyTests(unittest.TestCase):
         self.assertFalse((a / "config/startup.blend").exists(), "Blender's start-up file is left out")
         self.assertFalse((a / "config/angelo-agent/sessions/early.json").exists(), "So is an early Angelo's state")
         self.assertTrue((a / "config/angelo-agent/sessions/chat.json").is_file(), "Angelo's own state is untouched")
-        self.assertEqual(os.readlink(a / "scripts/presets/linked_addon"), str(a / "scripts/addons/switcher_tool"),
+        self.assertEqual(link_text(a / "scripts/presets/linked_addon"), str(a / "scripts/addons/switcher_tool"),
                          "A link into Blender's folder points at Angelo's copy")
-        self.assertEqual(os.readlink(a / "scripts/addons/dev_addon"), "/opt/dev/addon")
+        self.assertEqual(link_text(a / "scripts/addons/dev_addon"), OUTSIDE)
         summary = si.summary(items, self.places)
         self.assertEqual({key: summary[key] for key in ("preferences", "addons", "extensions", "presets", "templates",
                                                         "startup_scripts", "lights", "restart")},
@@ -410,7 +414,7 @@ class CardTests(unittest.TestCase):
         plan = self.make("import", []).layout(FakeView(), 1300, 1200, 1.0, kit.UiState())
         drawn = " ".join(op[1].strip() for op in plan.ops if op[0] in {"text", "mono"})
         self.assertIn("From Blender 5.2", drawn)
-        self.assertIn("~/Library/Application Support/Blender/5.2", drawn)
+        self.assertIn(str(Path("~/Library/Application Support/Blender/5.2")), drawn)   # This host's spelling.
         for words in ("Replaces", "Quick Favorites", "Keeps", "Angelo only reads it"):
             self.assertIn(words, drawn)
         notice = next(op for op in plan.ops if op[0] == "kit" and op[1] == "notice")
@@ -436,7 +440,8 @@ class CardTests(unittest.TestCase):
         self.assertIn("Did not load: Broken Tool.", body)
         self.assertIn("next time you open Angelo", body)
         self.assertEqual(card.notice_text(dict(outcome, exception="boom"))[1], "Your settings could not be brought over")
-        self.assertEqual(card.short_path("/h/x/Blender/5.2", "/h"), "~/x/Blender/5.2")
+        home = str(Path("/h"))
+        self.assertEqual(card.short_path(Path(home, "x/Blender/5.2"), home), str(Path("~/x/Blender/5.2")))
         self.assertEqual(card.short_path("/other/5.2", "/h"), "/other/5.2")
 
 

@@ -14,9 +14,10 @@ import os
 from pathlib import Path
 import uuid
 
+from . import change_clock, checkpoint_store_text
 from .checkpoint_capture import _OutputResource, _close_output, _hash_descriptor, _raise_cleanup, _stable_file
 from .checkpoint_capture_state import decode_record, require_capture_idle
-from .checkpoint_filesystem import (_open_file, _private_directory, _read_json,
+from .checkpoint_filesystem import (_open_file, _private_directory, _read_json, _unlink_file,
     assert_directory_identity, directory_info, require_anchored_files, descriptor_witness, file_witness, same_file, sync_directory)
 from .checkpoint_policy import _identity
 from .checkpoint_seal import verify as verify_seal
@@ -81,6 +82,7 @@ class CheckpointRecovery:
         raise TypeError("Recovery resources are created only by prepare")
 
     @classmethod
+    @checkpoint_store_text.awaited()   # The person waits for a Restore: a coarse step is waited out, not refused.
     def prepare(cls, store, identity):
         from .checkpoints import CheckpointStore
         if cls is not CheckpointRecovery or type(store) is not CheckpointStore:
@@ -110,10 +112,10 @@ class CheckpointRecovery:
                     info = directory_info(resource.folder)
                     owner._binding = _RecoveryBinding(identity, path, runtime_name,
                         json.dumps(record, ensure_ascii=False, allow_nan=False), (info.st_dev, info.st_ino))
-                    for role, original, name, size, digest in (
-                        ("BASE", "scene.blend", path.name, record["scene_bytes"], record["scene_hash"]),
-                        ("RUNTIME", "sculpt.runtime", runtime_name, record["sculpt"]["bytes"], record["sculpt"]["hash"]),
-                    ):
+                    sculpt = record["sculpt"]
+                    pair = (("BASE", "scene.blend", path.name, record["scene_bytes"], record["scene_hash"]),
+                            ("RUNTIME", "sculpt.runtime", runtime_name, sculpt["bytes"], sculpt["hash"]))
+                    for role, original, name, size, digest in pair:
                         output = resource.outputs[role] = _OutputResource()
                         output.descriptor = _open_file(resource.folder, name, os.O_RDWR | os.O_CREAT | os.O_EXCL)
                         output.opened = os.fstat(output.descriptor)
@@ -121,7 +123,13 @@ class CheckpointRecovery:
                         owner._matching(role)
                         _copy_verified(source, original, output.descriptor, size, digest)
                         os.fsync(output.descriptor)
-                        verified = descriptor_witness(output.descriptor)
+                    # Our own writers, still open: never trusted where closing restamps (FAT, exFAT, measured). One
+                    # wait for both copies, before either is hashed (a coarse step is waited out once, not twice).
+                    from .checkpoint_store_text import settle_writers
+                    settled = dict(zip((role for role, *_rest in pair), settle_writers(change_clock, (
+                        descriptor_witness(resource.outputs[role].descriptor) for role, *_rest in pair))))
+                    for role, _original, name, size, digest in pair:
+                        output, verified = resource.outputs[role], settled[role]
                         if _hash_descriptor(output.descriptor, size) != digest:
                             raise ValueError("The actual recovery working copy failed verification")
                         os.lseek(output.descriptor, 0, os.SEEK_SET)
@@ -135,10 +143,33 @@ class CheckpointRecovery:
             return owner
         except BaseException as error:
             try:
+                cleanup = owner._discard()
+            except BaseException as discarding:   # An interrupt mid-removal: still closed, still kept.
+                cleanup = [discarding]
+            try:
                 owner.close()
-            except BaseException as cleanup:
-                raise BaseExceptionGroup("Recovery preparation and cleanup failed", [error, cleanup]) from None
+            except BaseException as closing:
+                cleanup.append(closing)
+            if cleanup:
+                raise BaseExceptionGroup("Recovery preparation and cleanup failed", [error, *cleanup]) from None
             raise
+
+    def _discard(self):
+        """A preparation that failed (a refused volume, a cap, a hash) leaves no working copy behind: each name it made
+        is removed while it still names the file this preparation opened. Returns the errors (``close`` still runs)."""
+        resource, binding, errors = self._resource, self._binding, []
+        if resource is None or binding is None or resource.folder is None:
+            return errors
+        for role, output in resource.outputs.items():
+            name = binding.path.name if role == "BASE" else binding.runtime_name
+            try:
+                if output.opened is not None and same_file(output.opened, file_witness(resource.folder, name)):
+                    _unlink_file(resource.folder, name)
+            except FileNotFoundError:
+                pass
+            except Exception as error:   # noqa: BLE001 - kept with the preparation's own error, never instead of it.
+                errors.append(error)
+        return errors
 
     @property
     def path(self):

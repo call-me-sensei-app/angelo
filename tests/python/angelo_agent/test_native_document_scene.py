@@ -6,6 +6,8 @@ Another scene of the same file shown in the window never invalidates a chat that
 a new serial) does, as before; a chat with nothing follows the shown key quietly, as in 1.0.5.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

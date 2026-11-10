@@ -6,6 +6,8 @@ Apple's and Microsoft's tools (hdiutil, ditto, codesign, msi.dll, PowerShell) ar
 fakes, so every rule runs on any system; the real tools run in the end-to-end updates (releasing.rst).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ctypes
 import os
 import plistlib
@@ -16,6 +18,8 @@ import tempfile
 import unittest
 from pathlib import Path, PureWindowsPath
 from unittest import mock
+
+from host_test_policy import environment_skip
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import update_stage_mac as mac, update_stage_win as win  # noqa: E402
@@ -67,6 +71,8 @@ class MacCase(unittest.TestCase):
         self.work = self.root / "updates" / "1.0.1"
 
 
+# support() asks the macOS volume (os.statvfs) and reads POSIX path text; it never runs on Windows (update_flow).
+@unittest.skipIf(os.name == "nt", environment_skip("support() reads POSIX paths and os.statvfs, which Windows lacks"))
 class MacSupportTests(MacCase):
     def test_an_app_the_person_can_replace_can_update_itself(self):
         self.assertEqual(mac.support(self.binary), ("", self.app))
@@ -160,13 +166,17 @@ class MacCheckTests(MacCase):
         (staged / "Contents/Info.plist").unlink()
         self.assertNotEqual(after, mac.fingerprint(staged))
 
+    # other_instances compares what ps reports as macOS files (device and inode); Windows reads "/Applications/..."
+    # against its current drive, and the updater that asks runs on macOS only (update_flow).
+    @unittest.skipIf(os.name == "nt", environment_skip("macOS process paths compared as files; the macOS updater only"))
     def test_other_running_copies_of_this_bundle(self):
         target = str(self.app / "Contents/MacOS/Angelo")
         listing = " 10 %s\n 11 /Applications/Other.app/Contents/MacOS/Angelo\n 12 %s\n" % (target, target)
 
         def runner(args, timeout, background=True):
             return subprocess.CompletedProcess(args, 0, listing, "")
-        self.assertEqual(mac.other_instances(self.app, "Angelo", 12, runner), [10])
+        # Without libproc (test_native_update_other_copies has the rest): the paths ps reports.
+        self.assertEqual(mac.other_instances(self.app, "Angelo", 12, runner, processes=lambda: None), [10])
 
 
 class WindowsSupportTests(unittest.TestCase):

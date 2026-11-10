@@ -6,16 +6,20 @@
  * \ingroup pythonintern
  *
  * A live part as `_bpy._angelo_live` holds it (`bpy_angelo_live.cc` reads and queries it, `bpy_angelo_live_draw.cc`
- * draws it; `bpy_angelo_live_hold.cc` holds the 3D view it covers). Private to those files.
+ * draws it; `bpy_angelo_live_hold.cc` holds the 3D view it covers). Private to those files, and to
+ * `bpy_angelo_digest.cc`, which shares the visibility rules below.
  */
 
 #pragma once
 
 #include <Python.h>
 
+#include "DEG_depsgraph.hh" /* #eEvaluationMode. */
+
 namespace blender {
 
 struct Depsgraph;
+struct DupliObject;
 struct Main;
 struct Object;
 struct Scene;
@@ -37,6 +41,8 @@ LivePart *live_evaluated_part(PyObject *capsule);
 bool live_is_part(PyObject *object);
 /** `draw(...)`: see the module's method table. */
 PyObject *live_draw(PyObject *self, PyObject *args, PyObject *kwds);
+PyObject *live_camera_draw(PyObject *self, PyObject *args, PyObject *kwds);
+PyObject *live_region_tabs(PyObject *self, PyObject *area);
 PyObject *live_shader_state(PyObject *self, PyObject *args);
 PyObject *live_shown_state(PyObject *self, PyObject *args);
 /** The input hold and the window capture (`bpy_angelo_live_hold.cc`): see the module's method table. */
@@ -64,6 +70,9 @@ bool live_is_geometry(const Object *ob);
 bool live_merge_owned_bounds(const Object *ob, float r_min[3], float r_max[3]);
 /** Whether \a view_layer shows \a original: a base enabled for \a mode as the depsgraph's builder pulls it in. */
 bool live_shown_here(ViewLayer *view_layer, Object *original, int mode);
+/** Whether an instance draws the geometry it shows of its object, as #DEG_iterator_temp_object_from_dupli decides
+ * for #DEG_iterator_objects_next in evaluation \a mode. */
+bool live_dupli_shows_self(const DupliObject &dob, eEvaluationMode mode);
 /** `instance_bounds(...)`: see the module's method table. */
 PyObject *live_instance_bounds(PyObject *self, PyObject *args);
 /** `update_count(...)`: see the module's method table. */

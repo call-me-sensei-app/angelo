@@ -19,6 +19,8 @@ the draw count over; a file load that dropped Angelo's startup card hands the st
 are ``test_blender_first_launch_frames``'s.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import importlib.util
 import sys
@@ -352,6 +354,63 @@ class NativeCoverSourceTests(unittest.TestCase):
         self.assertIn("rna_WindowManager_angelo_startup_cover_get", definition)
         self.assertNotIn("sdna", definition, "Runtime only: never written to a file")
         self.assertIn("intern/wm_angelo_cover.cc", (ROOT / "source/blender/windowmanager/CMakeLists.txt").read_text())
+
+    def test_what_the_cover_hides_is_not_rendered_and_draws_when_it_lifts(self):
+        """A viewport under the cover is skipped before its draw (on a first launch, rendering the stock layout's 3D
+        view there compiled the draw engines' shaders for hidden pixels and held the first frame for seconds); its
+        layout still runs, the global top and status bars are never hidden, and lifting the cover redraws every
+        area (doc/angelo/releasing.rst, "First launch")."""
+        source = (ROOT / "source/blender/windowmanager/intern/wm_draw.cc").read_text()
+        area = source.split("static void wm_draw_area_offscreen(", 1)[1].split("\nstatic void ", 1)[0]
+        skip = area.index("if (use_viewport && WM_angelo_startup_cover_hides(area)) {")
+        self.assertLess(area.index("ED_region_do_layout(C, &region);"), skip, "Layouts are computed while covered")
+        self.assertLess(skip, area.index("ED_region_do_draw(C, &region);"), "Skipped before any region draw")
+        skipped = area[skip:].split("continue;", 1)[0]
+        self.assertIn("DRW_overlay_shaders_compile_async();", skipped,
+                      "Skipping only defers the work unless the shaders start compiling while the layout settles")
+        self.assertIn("DRW_workbench_shaders_compile_async(", skipped)
+        view3d_draw = (ROOT / "source/blender/editors/space_view3d/view3d_draw.cc").read_text()
+        drawn = view3d_draw.split("void view3d_main_region_draw(", 1)[1].split("\n}", 1)[0]
+        for cleared in (drawn, skipped):   # Review of 0390899dd19 (L2): a depth override from under the cover is stale.
+            self.assertIn("v3d->runtime.flag &= ~V3D_RUNTIME_DEPTHBUF_OVERRIDDEN;", cleared,
+                          "A skipped draw clears the view's depth override, as its draw does")
+        for created in ("wm_draw_region_buffer_create(scene, &region, false, use_viewport);",
+                        "wm_draw_region_bind(&region, 0);", "wm_draw_region_unbind(&region);"):
+            self.assertIn(created, skipped, "A skipped viewport still has its (cleared) buffers: a depth read, blit or "
+                                            "capture of it never finds a missing GPUViewport (break-it P0)")
+        view3d = (ROOT / "source/blender/editors/space_view3d/view3d_draw.cc").read_text()
+        depths = view3d.split("void view3d_depths_rect_create(", 1)[1].split("\n}", 1)[0]
+        guard = depths.index("viewport == nullptr")
+        self.assertLess(guard, depths.index("r_d->depths = nullptr;"), "No viewport: no depths, as the override checks")
+        self.assertLess(guard, depths.index("view3d_gpu_read_Z_pixels(viewport"))
+        workbench = (ROOT / "source/blender/draw/engines/workbench/workbench_shader_cache.cc").read_text()
+        entry = workbench.split("void DRW_workbench_shaders_compile_async(", 1)[1].split("\n}", 1)[0]
+        self.assertIn("v3d->shading.type != OB_SOLID", entry, "Workbench draws Solid views only")
+        state = (ROOT / "source/blender/draw/engines/workbench/workbench_state.cc").read_text()
+        for derived in ("lighting_type_from_v3d_lighting(shading.light)", "SHADING_XRAY_ENABLED(shading)",
+                        "V3D_SHADING_CAVITY_SSAO, V3D_SHADING_CAVITY_BOTH", "V3D_SHADING_CAVITY_CURVATURE,"):
+            self.assertIn(derived, state, "The engine's own derivation moved: " + derived)
+            self.assertIn(derived, workbench, "The precompile no longer derives as the engine does: " + derived)
+        # X-ray at alpha 1.0 draws opaque, cavity and shadow kept: the engine's ``xray_mode`` is an alpha below 1,
+        # which ``SHADING_XRAY_ENABLED`` (the precompile's test) already requires.
+        self.assertIn("else if (SHADING_XRAY_ENABLED(shading)) {\n    shading.xray_alpha = SHADING_XRAY_ALPHA(shading);\n"
+                      "  }\n  else {\n    shading.xray_alpha = 1.0f;\n  }\n  xray_mode = shading.xray_alpha != 1.0f;",
+                      state, "A Solid view's X-ray mode is no longer exactly SHADING_XRAY_ENABLED (review Low 4)")
+        macros = (ROOT / "source/blender/editors/include/ED_view3d.hh").read_text()
+        self.assertIn("(SHADING_XRAY_FLAG_ENABLED(shading) && (SHADING_XRAY_ALPHA(shading) < 1.0f))", macros,
+                      "SHADING_XRAY_ENABLED no longer requires an alpha below 1: the precompile must test it itself")
+        overlay = (ROOT / "source/blender/draw/engines/overlay/overlay_private.hh").read_text()
+        init = overlay.split("  void init(bool clipping_enabled)", 1)[1].split("\n  }", 1)[0]
+        self.assertIn("shaders->compile_async();", init, "One list: the engine's own first draw and the early start")
+        cover = (ROOT / "source/blender/windowmanager/intern/wm_angelo_cover.cc").read_text()
+        hides = cover.split("bool WM_angelo_startup_cover_hides(", 1)[1].split("\n}", 1)[0]
+        self.assertIn("g_startup_cover[3] > 0.0f", hides)
+        self.assertIn("!ED_area_is_global(area)", hides, "The top and status bars always draw")
+        setter = cover.split("void WM_angelo_startup_cover_set(", 1)[1].split("\n}", 1)[0]
+        self.assertIn("if (was_shown && g_startup_cover[3] <= 0.0f) {", setter)
+        self.assertIn("startup_cover_redraw_hidden();", setter)
+        redraw = cover.split("static void startup_cover_redraw_hidden()", 1)[1].split("\n}", 1)[0]
+        self.assertIn("ED_area_tag_redraw(&area);", redraw)
 
 
 class CoverTests(StartupSplashCase):

@@ -44,6 +44,7 @@ import eval_grading
 import eval_live_tasks as live
 import eval_provider_limits as limits
 import mcp_request_parameters
+import provider_isolation as isolation
 from angelo_agent.cli_runtime import CODEX_BUNDLE  # (standard library only)
 
 SERVER = trial_base.SERVER_NAME
@@ -110,7 +111,9 @@ def codex_command(config, port, fake_base_url=None):
 
 
 def environment(config, folder, fake_base_url=None):
-    extra = {"CODEX_HOME": config["codex_home"], "CODEX_SQLITE_HOME": folder / "codex-sqlite",
+    # Every billed launch checks the very folder it uses (a profile can be re-signed mid-campaign); a dry run's is fresh.
+    extra = {"CODEX_HOME": isolation.checked("codex-profile", config["codex_home"], fake=fake_base_url),
+             "CODEX_SQLITE_HOME": folder / "codex-sqlite",
              "TMPDIR": folder / "tmp"}
     if fake_base_url:
         extra["ANGELO_FAKE_KEY"] = "fake-not-a-secret"
@@ -416,9 +419,14 @@ def preflight(config):
         problems.append("--codex: no executable at %s" % config["codex"])
     home = Path(config.get("codex_home") or "/nonexistent").resolve()
     if home == (Path.home() / ".codex").resolve():
-        return problems + ["--codex-home must be a dedicated profile, never ~/.codex"]  # Nothing in it is read.
-    if not (home / "auth.json").is_file():   # Existence only: the file is never read.
+        return problems + ["--codex-home must be a dedicated profile, never ~/.codex"]  # Refused before any read.
+    if not (home / "auth.json").is_file():
         problems.append("--codex-home is not signed in (run: CODEX_HOME=%s codex login)" % home)
+    else:
+        try:   # Its id_token's claims: the evaluation account only (provider_accounts); never a token.
+            isolation.check_billed([("codex-profile", config["codex_home"])])
+        except isolation.Refusal as refusal:
+            problems.append("--codex-home: %s" % refusal)
     try:
         import tomllib
         declared = tomllib.loads((home / "config.toml").read_text()).get("mcp_servers") if (home / "config.toml").is_file() else None

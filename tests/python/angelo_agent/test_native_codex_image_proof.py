@@ -15,6 +15,8 @@ replays two real view cells of a recorded Codex run (fixtures/
 codex_recorded_view_cells.json). No model, process or Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import hashlib
 import json
@@ -27,7 +29,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from angelo_agent import agent_runtime, image_proof, job_manager, request_path  # noqa: E402
+from angelo_agent import agent_runtime, image_proof, job_manager, request_path, runtime_launch  # noqa: E402
 from angelo_agent.job_manager import JobManager  # noqa: E402
 from angelo_agent.job_store import JobStore  # noqa: E402
 from angelo_agent.request_path import PathFacts, clean_path  # noqa: E402
@@ -177,9 +179,10 @@ class GateTests(unittest.TestCase):
                 self.assertIs(image_proof.supported(SimpleNamespace(rpc=None, _runtime_kind=kind)), expected)
 
     def test_the_shipped_pin_lists_only_notifications_the_build_emits(self):
-        # The pinned build (agent_runtime.json, the hold-images fork) emits the report, so Codex pictures are
-        # graded by content on it; the release checks confirm the build's schema has it.
-        self.assertEqual(agent_runtime.PIN["notifications"], [image_proof.METHOD])
+        # The pinned build (agent_runtime.json, the fork since 1.0.8) emits the report, so Codex pictures are
+        # graded by content on it; the release checks confirm the build's schema has it. Since 1.0.10 it also
+        # announces each model request (model_steps.record_request_started).
+        self.assertEqual(agent_runtime.PIN["notifications"], [image_proof.METHOD, "turn/modelRequestStarted"])
 
 
 class ForwardingTests(unittest.TestCase):
@@ -214,8 +217,8 @@ class ForwardingTests(unittest.TestCase):
                 off = self.overrides(kind, keys)
                 self.assertNotIn(FORWARD_IMAGES_KEY, off)
                 self.assertIn("code_mode_hold_dynamic_tools", off, "Everything else is launched as before")
-        self.assertEqual(agent_runtime.PIN["config_keys"], [FORWARD_IMAGES_KEY],
-                         "The pinned build (the hold-images fork) reads the setting, and only that one")
+        self.assertEqual(agent_runtime.PIN["config_keys"], [FORWARD_IMAGES_KEY, runtime_launch.SERIAL_TOOLS_KEY],
+                         "The pinned build reads the forward setting and, since 1.0.10, the serial one")
 
     def test_the_guidance_is_true_of_each_runtime(self):
         from angelo_agent import providers

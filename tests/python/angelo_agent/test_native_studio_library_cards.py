@@ -9,6 +9,8 @@ nothing; the card is centred over the editor where the person asked, the Prefere
 removing the library there. The running app's proof is ``test_blender_studio_library_cards``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import types
 import unittest

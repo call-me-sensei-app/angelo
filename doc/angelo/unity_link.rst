@@ -37,7 +37,8 @@ What is shared and what is per engine:
   only the plugin's client (``LinkClient.cs`` here).
 * **Requests and the person's card**: shared (``engine_link``, which routes each request to the engine the editor
   named when it authenticated); per engine, the adapter that resolves the asset path.
-* **Following the scene**: shared (``scene_changes`` and the stillness rule); nothing per engine.
+* **Following the scene**: shared (``scene_changes``, the stillness rule, and ``engine_link.scene_key``: what the
+  glTF exporter reads from the scene with the engine's live options); nothing per engine.
 * **Asset rules**: per engine (project marker, kinds, path syntax); the working folder is shared.
 * **Export profile**: the glTF exporter is shared; the options (live and durable) and the write-back kind are per
   engine.

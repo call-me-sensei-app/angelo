@@ -9,6 +9,8 @@ hosting worker only) decides it instead. Without Blender: the tool list is check
 built when the add-on is imported.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import subprocess

@@ -11,6 +11,8 @@ label exactly as the app shows it in that language (``locale/angelo/release_labe
 ``scripts/angelo/i18n/release_labels.py`` against Blender's and Angelo's catalogues).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib.util
 import json
 import re

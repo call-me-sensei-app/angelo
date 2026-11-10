@@ -16,6 +16,8 @@ recognisable. With it active for every lookup kind (interface, tooltip, report):
   contain no marked byte.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import subprocess
 import sys

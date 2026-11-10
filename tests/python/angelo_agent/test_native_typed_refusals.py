@@ -19,6 +19,8 @@ The staged, committed and undone forms are in test_blender_object_management.py,
 test_blender_camera_light_programs.py and test_blender_property_set.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import math

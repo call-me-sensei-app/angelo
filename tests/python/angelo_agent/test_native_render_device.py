@@ -8,8 +8,11 @@ backend, no GPU, a child that crashed or hung, the person's own choice (None inc
 facts a scene reports and the duration estimate.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -136,7 +139,7 @@ class RenderDeviceTests(unittest.TestCase):
         preferences, result = self.run_setup(Prefs(), Child(running=True))
         self.assertEqual(result["state"], "listing")
         command = self.commands[0]
-        self.assertEqual(command[:4], ["/Applications/Angelo.app/Contents/MacOS/Angelo", "--background",
+        self.assertEqual(command[:4], [os.path.realpath(self.app.binary_path), "--background",   # The resolved path.
                                        "--factory-startup", "--disable-autoexec"])
         self.assertIn("available_devices", command[-1])
         self.assertEqual(self.timers, [render_device._poll])

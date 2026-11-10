@@ -17,9 +17,12 @@ Mach-O executables on macOS; on Windows x64 PE executables, with OpenAI's own si
 unchanged release files (the pin's ``upstream_signed``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import io
 import json
+import os
 import re
 import shutil
 import struct
@@ -233,8 +236,12 @@ class AgentRuntimeCheckTests(unittest.TestCase):
         self.addCleanup(folder.cleanup)
         self.root = Path(folder.name)
 
-    def runner(self, version=PIN["version"], features=tuple(PIN["features"]), notifications=tuple(PIN["notifications"])):
+    def runner(self, version=PIN["version"], features=tuple(PIN["features"]), notifications=tuple(PIN["notifications"]),
+               request_fields=None):
         calls = []
+        if request_fields is None:
+            request_fields = {name: fields for name, fields in PIN.get("request_fields", {}).items()
+                              if not name.startswith("_")}
 
         def run(argv, check=False, timeout=None, env=None):
             calls.append((argv, env))
@@ -246,6 +253,8 @@ class AgentRuntimeCheckTests(unittest.TestCase):
                 (out / "v2" / (name + ".json")).write_text(json.dumps({"properties": {f: {} for f in features}}))
             (out / "ServerNotification.json").write_text(json.dumps({"oneOf": [
                 {"properties": {"method": {"enum": [method]}}} for method in ("turn/completed",) + tuple(notifications)]}))
+            for name, fields in request_fields.items():
+                (out / (name + ".json")).write_text(json.dumps({"properties": {f: {} for f in fields}}))
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         run.calls = calls
         return run
@@ -289,11 +298,12 @@ class AgentRuntimeCheckTests(unittest.TestCase):
         self.assertEqual(release_checks.agent_runtime_problems(folder, "windows"), [])
 
     def test_openais_unchanged_windows_files_keep_openais_signature(self):
-        """Angelo signs codex.exe only: the helpers ship as OpenAI released and signed them (doc/angelo/releasing.rst)."""
+        """The upstream command runner retains OpenAI's signature; Angelo signs the three fork-built executables."""
         files = PIN["platforms"]["windows"]
         self.assertEqual(files["upstream_signer"], "OpenAI OpCo, LLC")
-        self.assertEqual(sorted(files["upstream_signed"]),
-                         ["codex-code-mode-host.exe", "codex-command-runner.exe", "codex-windows-sandbox-setup.exe"])
+        self.assertEqual(files["upstream_signed"], ["codex-command-runner.exe"])
+        own = [name for name in files["required"] + files["optional"] if name not in files["upstream_signed"]]
+        self.assertEqual(own, ["codex.exe", "codex-code-mode-host.exe", "codex-windows-sandbox-setup.exe"])
         self.assertNotIn(files["required"][0], files["upstream_signed"], "codex.exe is Angelo's build")
         self.assertLessEqual(set(files["upstream_signed"]), set(files["required"]) | set(files["optional"]))
         everything = files["required"] + files["optional"]
@@ -326,6 +336,16 @@ class AgentRuntimeCheckTests(unittest.TestCase):
                 folder, "macos", self.runner(notifications=("turn/modelInputImages",))), [])
             (problem,) = release_checks.agent_runtime_problems(folder, "macos", self.runner(notifications=()))
         self.assertIn("has no turn/modelInputImages notification", problem)
+
+    def test_a_pinned_request_field_must_be_in_the_builds_schema(self):
+        """``request_fields`` (request_recovery: item/tool/call's modelStep), checked offline by schema."""
+        folder = runtime_folder(self.root, "macos")
+        pin = dict(PIN, request_fields={"DynamicToolCallParams": ["modelStep"], "_about": "ignored"})
+        with unittest.mock.patch.object(release_checks, "agent_runtime_pin", lambda: pin):
+            self.assertEqual(release_checks.agent_runtime_problems(
+                folder, "macos", self.runner(request_fields={"DynamicToolCallParams": ["modelStep"]})), [])
+            (problem,) = release_checks.agent_runtime_problems(folder, "macos", self.runner(request_fields={}))
+        self.assertIn("DynamicToolCallParams has no modelStep", problem)
 
     def test_a_pinned_setting_must_be_one_the_build_reads(self):
         """``config_keys`` (image_proof: the forward setting): Codex ignores an unknown top-level key, so the check
@@ -391,7 +411,8 @@ class AgentRuntimeInstallTests(unittest.TestCase):
         installed = self.install(build)
         helpers = installed / "Angelo.app/Contents/Helpers"
         self.assertEqual(sorted(p.name for p in helpers.iterdir()), ["codex", "codex-code-mode-host"])
-        self.assertTrue(all(p.stat().st_mode & 0o111 for p in helpers.iterdir()), "installed as programs")
+        if os.name != "nt":   # Windows keeps no execute bits; there a program is one by its name.
+            self.assertTrue(all(p.stat().st_mode & 0o111 for p in helpers.iterdir()), "installed as programs")
         self.assertTrue(release_checks.release_marker_problems(installed / "Angelo.app", "macos"),
                         "A development build carries no release marker: it keeps path overrides")
         done, build = self.configure("macos", "Angelo.app", "-DANGELO_AGENT_RUNTIME_DIR=" + str(source),

@@ -8,6 +8,8 @@ record what each trial imported. No process, billed message or credential: the r
 trial.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import inspect
 import io

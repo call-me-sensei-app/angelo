@@ -13,8 +13,14 @@ Methods resolve those named dependencies at call time; this base owns no resourc
 # unused (measured in Blender 5.2, scenario_hygiene.saved_orphans): the note said "needs no cleanup" of it too, and a
 # brief asking for no unused data then failed. ``held_only_by_them`` names it; typed programs have no purge, so the
 # note names the one call that removes both.
-LEFTOVER_NOTE = ("Data this edit replaced or released (an earlier World or mesh, a deleted object's data) now has no "
-                 "users. Blender keeps it in this session only and does not write it when the file is saved.")
+# The commit frees the data its own swaps replaced (commit_orphans), so what is listed is a deleted object's data, as
+# after Blender's delete, or replaced data something still points at or the commit could not free (not_freed, with
+# not_freed_reasons; an asset-marked block is never freed, and a save does not write it either once nothing uses it,
+# writefile.cc). Data the edits merely released is not listed, as Blender's in-place edit lists nothing.
+LEFTOVER_NOTE = ("Data this edit left without users (a deleted object's data, or data it replaced that something still "
+                 "points at or that it could not free) stays in this session only: Blender does not write it when the "
+                 "file is saved.")
+NOT_FREED_NOTE = " not_freed counts the replaced data the edit could not free; not_freed_reasons says why."
 HELD_NOTE = (" held_only_by_them is data only those blocks use: the next save still writes it, and it reopens unused. "
              "Typed programs have no purge; to remove both now, a reviewed script can call "
              "bpy.data.orphans_purge(do_local_ids=True, do_linked_ids=False, do_recursive=True).")
@@ -25,8 +31,8 @@ FRAME_NOTE = ("This edit moved the current frame, which every object's revision 
               "revisions observed after it (look objects up again), never to earlier ones.")
 
 
-def held_only_by(orphans):
-    """Sorted names of the local materials whose every user is a slot of these unused blocks.
+def held_blocks(orphans):
+    """The local materials whose every user is a slot of these unused blocks.
 
     A mesh's (or curve's) material slots are each one user of the material, so a
     material with as many users as those slots, and no fake user, is used by
@@ -40,8 +46,13 @@ def held_only_by(orphans):
                 pointer = material.as_pointer()
                 count, _ = references.get(pointer, (0, material))
                 references[pointer] = (count + 1, material)
-    return sorted(material.name[:64] for count, material in references.values()
-                  if material.users == count and not material.use_fake_user and material.library is None)
+    return [material for count, material in references.values()
+            if material.users == count and not material.use_fake_user and material.library is None]
+
+
+def held_only_by(orphans):
+    """Sorted names of ``held_blocks``."""
+    return sorted(material.name[:64] for material in held_blocks(orphans))
 
 
 class ProgramCommitReportMixin:
@@ -81,13 +92,13 @@ class ProgramCommitReportMixin:
             shown = None
         return {"world": shown} if shown is not None else {}
 
-    def _commit_notes(self, stage, replaced, released):
+    def _commit_notes(self, stage, replaced, released, kept=None):
         """``orphan_data``, and the private ``stage_names.FIXES`` when a name the results gave changed at commit:
         a reserved name taken meanwhile, the World's when its users changed after staging, or a new object's that
         the artist took while its stage was suspended (stage_new_objects)."""
         from . import stage_names
         from .action_world import COMMITTED_NAME
-        notes = self._leftovers(replaced, released)
+        notes = self._leftovers(replaced, released, kept)
         frame = getattr(self, "frame", None)
         if frame is not None and (self.scene.frame_current, self.scene.frame_subframe) != tuple(frame):
             notes["frame_moved"] = FRAME_NOTE
@@ -106,20 +117,25 @@ class ProgramCommitReportMixin:
         return notes
 
     @staticmethod
-    def _leftovers(replaced, released):
+    def _leftovers(replaced, released, kept=None):
         """``{"orphan_data": ...}`` for live data the commit replaced or released that no longer has a user."""
-        names = {}
+        names, orphans = {}, {}
         for block in [pair[0] for pair in replaced] + list(released):
-            if (block is not None and not block.is_embedded_data and block.users == 0 and not block.use_fake_user
-                    and block.library is None):
-                names[block.as_pointer()] = block.name[:64]
+            try:
+                if (block is not None and not block.is_embedded_data and block.users == 0 and not block.use_fake_user
+                        and block.library is None):
+                    names[block.as_pointer()] = block.name[:64]
+                    orphans[block.as_pointer()] = block   # Once each: a block both replaced and released.
+            except ReferenceError:
+                continue   # Freed by the commit (commit_orphans): no longer in the file at all.
         if not names:
             return {}
         listed = sorted(names.values())
         report = {"count": len(listed), "names": listed[:MAX_LEFTOVER_NAMES], "note": LEFTOVER_NOTE}
-        # Once each: a block both replaced and released (a deleted object's swapped data) is one set of users.
-        orphans = {block.as_pointer(): block for block in [pair[0] for pair in replaced] + list(released)
-                   if block is not None and block.as_pointer() in names}
+        if kept and kept.get("count"):   # Replaced data the commit could not free (commit_orphans): counted, said why.
+            report["not_freed"] = kept["count"]
+            report["not_freed_reasons"] = list(kept.get("reasons") or ())
+            report["note"] += NOT_FREED_NOTE
         held = held_only_by(list(orphans.values()))
         if held:
             report["held_only_by_them"] = {"count": len(held), "names": held[:MAX_LEFTOVER_NAMES]}

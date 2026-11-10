@@ -11,6 +11,8 @@ driven by the test as the job manager would drive it. The compiled suite
 ``test_blender_view_wait`` does the same with a real render job.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

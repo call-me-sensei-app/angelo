@@ -93,6 +93,8 @@ def ensure_written(identities):
         return False
     studio = StudioLibrary(library_dir)
     manifest = studio_assets.read_manifest(directory)
+    if manifest is None:
+        return False   # There but not read now: drag the files; a manifest written from nothing forgets every item.
     wanted = []
     for identity in identities:
         record = studio.assets.get(identity)
@@ -112,7 +114,11 @@ def ensure_written(identities):
     while True:
         with studio_assets.sync_lock(directory) as held:
             if held:
+                if host.halted(directory):
+                    return False   # Turned off (or its record can't be read now): drag the files instead.
                 manifest = studio_assets.read_manifest(directory)
+                if manifest is None:
+                    return False
                 results = host.convert_batch(bpy.app.binary_path, wanted, threading.Event())
                 studio_assets.apply_results(manifest, wanted, results, host._state["session"])
                 studio_assets.write_manifest(directory, manifest)

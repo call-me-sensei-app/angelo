@@ -6,6 +6,8 @@
  * \ingroup asset_system
  */
 
+#include <atomic>
+#include <limits>
 #include <iostream>
 #include <set>
 
@@ -17,6 +19,7 @@
 #include "asset_catalog_definition_file.hh"
 
 #include "BLI_fileops.h"
+#include "BLI_threads.h"
 #include "BLI_path_utils.hh"
 
 /* For S_ISREG() and S_ISDIR() on Windows. */
@@ -34,6 +37,47 @@ static CLG_LogRef LOG = {"asset.catalog"};
 
 namespace asset_system {
 
+namespace {
+std::atomic<uint64_t> edit_generation{1};
+std::atomic<uint64_t> edits_in_progress{0};
+std::atomic<bool> unsupported_edit{false};
+
+void advance_edit_generation()
+{
+  uint64_t value = edit_generation.load();
+  while (value != 0 &&
+         !edit_generation.compare_exchange_weak(
+             value, value == std::numeric_limits<uint64_t>::max() ? 0 : value + 1))
+  {
+  }
+}
+
+}  // namespace
+
+CatalogEditScope::CatalogEditScope(const bool requires_main_thread)
+{
+  edits_in_progress.fetch_add(1);
+  if (requires_main_thread && !BLI_thread_is_main()) {
+    unsupported_edit.store(true);
+  }
+  advance_edit_generation();
+}
+
+CatalogEditScope::~CatalogEditScope()
+{
+  advance_edit_generation();
+  edits_in_progress.fetch_sub(1);
+}
+
+uint64_t catalog_edit_generation()
+{
+  if (!BLI_thread_is_main() || unsupported_edit.load() || edits_in_progress.load() != 0) {
+    return 0;
+  }
+  const uint64_t generation = edit_generation.load();
+  return edits_in_progress.load() == 0 && edit_generation.load() == generation ? generation : 0;
+}
+
 const CatalogFilePath AssetCatalogService::DEFAULT_CATALOG_FILENAME = "blender_assets.cats.txt";
 
 AssetCatalogService::AssetCatalogService(const CatalogFilePath &asset_library_root,
@@ -42,6 +86,7 @@ AssetCatalogService::AssetCatalogService(const CatalogFilePath &asset_library_ro
       asset_library_root_(asset_library_root),
       is_read_only_(read_only_tag ? true : false)
 {
+  const CatalogEditScope edit_scope;
 }
 
 AssetCatalogService::AssetCatalogService(read_only_tag /*unused*/) : AssetCatalogService()
@@ -49,10 +94,14 @@ AssetCatalogService::AssetCatalogService(read_only_tag /*unused*/) : AssetCatalo
   const_cast<bool &>(is_read_only_) = true;
 }
 
-AssetCatalogService::~AssetCatalogService() = default;
+AssetCatalogService::~AssetCatalogService()
+{
+  const CatalogEditScope edit_scope;
+}
 
 void AssetCatalogService::tag_has_unsaved_changes(AssetCatalog *edited_catalog)
 {
+  const CatalogEditScope edit_scope{true};
   BLI_assert(!is_read_only_);
 
   if (edited_catalog) {
@@ -64,6 +113,7 @@ void AssetCatalogService::tag_has_unsaved_changes(AssetCatalog *edited_catalog)
 
 void AssetCatalogService::untag_has_unsaved_changes()
 {
+  const CatalogEditScope edit_scope;
   BLI_assert(catalog_collection_);
   catalog_collection_->has_unsaved_changes_ = false;
 
@@ -96,6 +146,7 @@ bool AssetCatalogService::is_read_only() const
 
 void AssetCatalogService::tag_all_catalogs_as_unsaved_changes()
 {
+  const CatalogEditScope edit_scope;
   for (auto &catalog : catalog_collection_->catalogs_.values()) {
     catalog->flags.has_unsaved_changes = true;
   }
@@ -185,6 +236,7 @@ AssetCatalogFilter AssetCatalogService::create_catalog_filter(
 
 void AssetCatalogService::delete_catalog_by_id_soft(const CatalogID catalog_id)
 {
+  const CatalogEditScope edit_scope;
   std::unique_ptr<AssetCatalog> *catalog_uptr_ptr = catalog_collection_->catalogs_.lookup_ptr(
       catalog_id);
   if (catalog_uptr_ptr == nullptr) {
@@ -206,6 +258,7 @@ void AssetCatalogService::delete_catalog_by_id_soft(const CatalogID catalog_id)
 
 void AssetCatalogService::delete_catalog_by_id_hard(CatalogID catalog_id)
 {
+  const CatalogEditScope edit_scope;
   catalog_collection_->catalogs_.remove(catalog_id);
   catalog_collection_->deleted_catalogs_.remove(catalog_id);
 
@@ -246,6 +299,7 @@ void AssetCatalogService::prune_catalogs_by_id(const CatalogID catalog_id)
 void AssetCatalogService::update_catalog_path(const CatalogID catalog_id,
                                               const AssetCatalogPath &new_catalog_path)
 {
+  const CatalogEditScope edit_scope;
   AssetCatalog *renamed_cat = this->find_catalog(catalog_id);
   const AssetCatalogPath old_cat_path = renamed_cat->path;
 
@@ -271,6 +325,7 @@ void AssetCatalogService::update_catalog_path(const CatalogID catalog_id,
 
 AssetCatalog *AssetCatalogService::create_catalog(const AssetCatalogPath &catalog_path)
 {
+  const CatalogEditScope edit_scope;
   std::unique_ptr<AssetCatalog> catalog = AssetCatalog::from_path(catalog_path);
   catalog->flags.has_unsaved_changes = true;
 
@@ -308,11 +363,13 @@ static std::string asset_definition_default_file_path_from_dir(StringRef asset_l
 
 void AssetCatalogService::load_from_disk()
 {
+  const CatalogEditScope edit_scope;
   this->load_from_disk(asset_library_root_);
 }
 
 void AssetCatalogService::load_from_disk(const CatalogFilePath &file_or_directory_path)
 {
+  const CatalogEditScope edit_scope;
   BLI_stat_t status;
   if (BLI_stat(file_or_directory_path.data(), &status) == -1) {
     /* It's fine if the catalogs file doesn't exist, it just means there are no catalogs. */
@@ -340,6 +397,7 @@ void AssetCatalogService::add_from_existing(
     const AssetCatalogService &other_service,
     AssetCatalogCollection::OnDuplicateCatalogIdFn on_duplicate_items)
 {
+  const CatalogEditScope edit_scope;
   catalog_collection_->add_catalogs_from_existing(*other_service.catalog_collection_,
                                                   on_duplicate_items);
 }
@@ -407,6 +465,7 @@ std::unique_ptr<AssetCatalogDefinitionFile> AssetCatalogService::parse_catalog_f
 
 void AssetCatalogService::reload_catalogs()
 {
+  const CatalogEditScope edit_scope;
   /* TODO(Sybren): expand to support multiple CDFs. */
   AssetCatalogDefinitionFile *const cdf = catalog_collection_->catalog_definition_file_.get();
   if (!cdf || cdf->file_path.empty() || !BLI_is_file(cdf->file_path.c_str())) {
@@ -531,6 +590,7 @@ bool AssetCatalogService::write_to_disk_ex(const CatalogFilePath &blend_file_pat
 
 void AssetCatalogService::prepare_to_merge_on_write()
 {
+  const CatalogEditScope edit_scope{true};
   /* TODO(Sybren): expand to support multiple CDFs. */
 
   if (!catalog_collection_->catalog_definition_file_) {
@@ -669,6 +729,7 @@ bool AssetCatalogService::is_redo_possbile() const
 
 void AssetCatalogService::undo()
 {
+  const CatalogEditScope edit_scope{true};
   BLI_assert_msg(is_undo_possbile(), "Undo stack is empty");
 
   redo_snapshots_.append(std::move(catalog_collection_));
@@ -680,6 +741,7 @@ void AssetCatalogService::undo()
 
 void AssetCatalogService::redo()
 {
+  const CatalogEditScope edit_scope{true};
   BLI_assert(!is_read_only_);
   BLI_assert_msg(is_redo_possbile(), "Redo stack is empty");
 
@@ -692,6 +754,7 @@ void AssetCatalogService::redo()
 
 void AssetCatalogService::undo_push()
 {
+  const CatalogEditScope edit_scope{true};
   BLI_assert(!is_read_only_);
   std::unique_ptr<AssetCatalogCollection> snapshot = catalog_collection_->deep_copy();
   undo_snapshots_.append(std::move(snapshot));

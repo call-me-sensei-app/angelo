@@ -14,6 +14,8 @@ saved to the output; raw ``angelo_execute_python`` stays refused headless; an ap
 neither the tool nor the approvals folder; the child reads the person's approvals and can never change them.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import tempfile
 import os
@@ -30,11 +32,12 @@ from angelo_agent.headless_host import bind_script_files  # noqa: E402
 from angelo_agent.headless_session import child_command  # noqa: E402
 import test_native_headless_mcp as headless_harness  # noqa: E402  (a module: its tests are not collected again here)
 from test_native_script_files import RecordingExecutor  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 BUILD = "result = 7\n"
 
 
-@unittest.skipIf(sys.platform == "win32", "Headless sessions are macOS and Linux for now")
+@unittest.skipIf(sys.platform == "win32", environment_skip("Headless sessions are macOS and Linux for now"))
 class HeadlessScriptFileTests(unittest.TestCase):
     tick, call, open = headless_harness.HeadlessTests.tick, headless_harness.HeadlessTests.call, headless_harness.HeadlessTests.open
 

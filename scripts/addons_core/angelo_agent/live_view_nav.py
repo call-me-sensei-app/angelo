@@ -10,8 +10,8 @@ else; an event passes on only when it is
 
 * a window-wide command that never edits the document, bound in the artist's own keymap (``ALLOWED``: save, open,
   quit, preferences, full screen, workspaces, Angelo's own chat and studio toggles);
-* a key the chat's field edits while the chat holds keyboard focus (``input_policy.edits_field``, P1-2 M2): other
-  keys and shortcuts are held then too;
+* a key the chat acts on while its field holds keyboard focus (``composer_input.takes_off_chat``, P1-2 M2; an open
+  picker is not that focus); the keys it would type but does nothing with off its area are held;
 * on an area edge, where Blender resizes and joins areas (``session_rail_input``);
 * on one of Angelo's own overlays in that view (``session_rail_input``).
 

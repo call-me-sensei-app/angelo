@@ -74,8 +74,10 @@ def approval_digest(call):
 
 def awaiting_person(call):
     """Whether ``call`` waits for the person's Approve or Decline (its card is shown)."""
-    return bool(call.approval and not (call.authorized or call.executing or call.approved or call.automatic
-                                       or call.revoked or call.__dict__.get("consent_approved")))
+    return bool(getattr(call, "approval", False) and not (   # getattr: also the chat's drawing (approval_wait).
+        any(getattr(call, flag, False) for flag in ("authorized", "executing", "approved", "automatic", "revoked"))
+        or vars(call).get("consent_approved") or getattr(call, "needs_person", True) is False))   # A mirror: its
+    # worker's own verdict that it runs without the person (worker_mirror_events), as the mirror's Auto reads it.
 
 
 def pending_digests(controller):
@@ -251,6 +253,7 @@ def admit_autonomous(controller, call):
 class LeasedConsent:
     """Mixed in before ``Controller`` for a chat hosted in its worker: every standing consent comes from the lease
     (``consent_lease``), none from this process. The window's consent checks run unchanged on top of it."""
+    explains_auto = False   # The lease decides what Auto runs here, not the base rule a card's line states.
 
     @property
     def consent_lease(self):

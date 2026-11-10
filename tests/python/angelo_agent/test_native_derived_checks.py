@@ -6,6 +6,8 @@ Pure validation, the staged job with a fake backend, and the host summary:
 no Blender, provider or inference.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import sys

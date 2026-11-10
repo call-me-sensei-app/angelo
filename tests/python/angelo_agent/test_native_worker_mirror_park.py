@@ -8,6 +8,8 @@ comes back unsent with its attachments), a Stop during the relaunch, and a chat 
 queue, routing and mirror; the worker process and its ``chat.open`` are fakes. No Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile
@@ -28,10 +30,11 @@ class Ops:
     """The reopened chat's ``send_op``: every op recorded, answered ok."""
 
     def __init__(self):
-        self.calls = []
+        self.calls, self.fields = [], []
 
     def __call__(self, session, op, **fields):
         self.calls.append((op, fields.get("text")))
+        self.fields.append(dict(fields))
         return {"ok": True}
 
 
@@ -90,6 +93,19 @@ class ParkedMirrorFixture(ParkedFixture):
 
 
 class ParkedSendTests(ParkedMirrorFixture):
+    def test_host_classification_survives_the_parked_queue_and_reopen(self):
+        mirror = self.mirror()
+        mirror.send("workers finished", host_request=[], host_kind="angelo_event")
+        self.assertEqual(mirror._sending.fields["host_kind"], "angelo_event")
+        self.assertEqual(self.sent(), [])
+        self.relaunched()
+        self.answer_open()
+        fields = next(fields for fields in self.ops.fields if fields.get("text") == "workers finished")
+        self.assertEqual(fields["host_kind"], "angelo_event")
+        self.assertEqual(fields["host_request"], [])
+        self.assertEqual(self.sent(), [("chat.send", "workers finished")])
+
+
     def test_the_persons_message_relaunches_reopens_resumed_and_is_sent_once_after(self):
         mirror = self.mirror()
         errors = []

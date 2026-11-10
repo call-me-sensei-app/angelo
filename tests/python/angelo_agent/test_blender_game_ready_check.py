@@ -10,12 +10,18 @@ Generic shapes whose answers are known, never a production asset:
 - ``_bpy._angelo_reduce``: the bundled meshoptimizer is found and checked; bad arguments raise Python errors, never a
   crash; the native nearest-point and coverage kernels equal the brute-force reference of
   test_native_game_ready_check; the weld splits exactly where UVs, normals or materials differ; simplification keeps
-  UV seams and returns index buffers over the same vertices; ``decimate`` gives exactly the Decimate modifier's mesh.
-- ``angelo_game_ready_check`` through its host route: the facts it promises, for LOD objects, both reduction methods,
-  a collider and a skinned mesh (weights kept as attributes, or refused with the reason past meshoptimizer's 32), and
-  the scene, its data-blocks and Undo left exactly as they were.
+  UV seams and returns index buffers over the same vertices; ``decimate`` gives exactly the Decimate modifier's mesh,
+  and the same on a ``snapshot``, which neither freeing nor editing the original changes; Decimate on a snapshot and
+  ``convex_hull`` (the bmesh operator's hull) let other Python threads run while they work.
+- ``angelo_game_ready_check`` through its host route: the call returns a pending result whose poll gives the facts it
+  promises, for LOD objects, both reduction methods, a collider and a skinned mesh (weights kept as attributes, or
+  refused with the reason past meshoptimizer's 32), and the scene, its data-blocks and Undo left exactly as they were.
 Report: ``results.json`` (observed times are not checked: timing is bench_game_ready_check.py's).
 """
+
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 
 import json
 import math
@@ -131,13 +137,46 @@ def fingerprint():
             bpy.data.is_dirty)
 
 
+calls = []   # (ms in the call, ms to the result) of each check through the host route.
+
+
 def run(arguments):
-    # The window is looked up on every call: read_factory_settings replaces the window manager, so a window kept
-    # from before would be freed memory.
+    """The host route's answer, polled as the controller polls it. The window is looked up on every call:
+    read_factory_settings replaces the window manager, so a window kept from before would be freed memory."""
     window = bpy.context.window_manager.windows[0]
     started = time.perf_counter()
-    result = game_ready_host.execute(window, CHECK, validate_call(CHECK, arguments, host=True))
-    return result, (time.perf_counter() - started) * 1000.0
+    pending = game_ready_host.execute(window, CHECK, validate_call(CHECK, arguments, host=True))
+    returned = time.perf_counter()
+    if not hasattr(pending, "poll"):
+        raise AssertionError("the check answered on the calling thread: %r" % type(pending))
+    result = None
+    while result is None:
+        time.sleep(0.005)
+        result = pending.poll()
+    calls.append(((returned - started) * 1000.0, (time.perf_counter() - started) * 1000.0))
+    if result.get("error_code"):   # As the controller delivers a refusal while measuring: the result says why.
+        raise RefusalError(result["error"], code=result["error_code"])
+    return result, calls[-1][1]
+
+
+def gil_free(work):
+    """Whether this thread ran Python in the middle of ``work()`` on another thread (it would not, were the GIL
+    held), and how long the work took."""
+    import threading
+    span, ticks = {}, []
+
+    def other():
+        span["start"] = time.perf_counter()
+        work()
+        span["end"] = time.perf_counter()
+    thread = threading.Thread(target=other)
+    thread.start()
+    while thread.is_alive():
+        ticks.append(time.perf_counter())
+    thread.join()
+    start, end = span["start"], span["end"]
+    middle = (start + 0.4 * (end - start), start + 0.6 * (end - start))
+    return any(middle[0] < t < middle[1] for t in ticks), round((end - start) * 1000.0, 1)
 
 
 def library_and_refusals():
@@ -170,7 +209,12 @@ def library_and_refusals():
         "raster_resolution": lambda: R.rasterize(positions, indices, np.zeros(8, dtype=np.float32), 0),
         "decimate_not_a_mesh": lambda: R.decimate(bpy.context.scene, 0.5),
         "decimate_ratio": lambda: R.decimate(bpy.data.meshes.new("Empty"), 0.0),
+        "decimate_another_capsule": lambda: R.decimate(R.surface(positions, indices), 0.5),
+        "snapshot_not_a_mesh": lambda: R.snapshot(bpy.context.scene),
     }
+    if hasattr(R, "convex_hull"):
+        bad["convex_hull_float64"] = lambda: R.convex_hull(positions.astype(np.float64))
+        bad["convex_hull_nan"] = lambda: R.convex_hull(np.full((4, 3), np.nan, dtype=np.float32))
     raised = {}
     for name, call in bad.items():
         try:
@@ -206,13 +250,13 @@ def weld_and_simplify():
     from angelo_agent import game_ready_mesh as M
     counts = {}
     for obj in (flat, smooth):
-        read = M.read(obj, depsgraph, 1.0, R)
+        read = M.read(obj, depsgraph, 1.0, R).finish()
         counts[obj.name] = len(M.Reducer(read, R, 1.0, 0.5, 1.0).positions)
         read.release()
     # A flat cube: 4 corners x 6 faces. Smooth with its default box UVs: every face's own UVs still split it.
     check("weld_splits_hard_edges", counts["Flat"] == 24, counts)
     sphere = uv_sphere("Sphere", 64, 32)
-    read = M.read(sphere, depsgraph, 1.0, R)
+    read = M.read(sphere, depsgraph, 1.0, R).finish()
     reducer = M.Reducer(read, R, 1.0, 0.5, 1.0)
     vertices = len(sphere.data.vertices)
     # Smooth: one vertex per position except along the UV seam (one meridian) and at the poles' UV fans.
@@ -262,6 +306,55 @@ def decimate_equals_the_modifier():
         check("decimate_keeps_uvs_%g" % ratio, result["corner_uvs"] is not None and result["uv_map"] == "UVMap")
 
 
+def snapshots_and_hulls():
+    """A snapshot decimates exactly as its mesh does, keeps that answer after the original is freed or edited, and
+    lets other threads run while it works; the native hull is the bmesh operator's."""
+    reset()
+    obj = uv_sphere("Snap", 256, 128)
+    expected = R.decimate(obj.data, 0.2)
+    snap = R.snapshot(obj.data)
+    evaluated = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    freed = R.snapshot(evaluated.to_mesh())
+    evaluated.to_mesh_clear()   # The evaluated mesh is gone; its snapshot shares nothing that went with it.
+    obj.data.vertices[0].co.x += 10.0   # An edit of the original after the snapshot was taken.
+    obj.data.update()
+    for name, mesh in (("snapshot", snap), ("snapshot_of_freed", freed)):
+        got = R.decimate(mesh, 0.2)
+        check("decimate_on_a_%s_equals_the_mesh" % name, got["positions"] == expected["positions"]
+              and got["tris"] == expected["tris"] and got["corner_uvs"] == expected["corner_uvs"])
+    edited = R.decimate(obj.data, 0.2)
+    check("an_edit_reaches_the_mesh_not_its_snapshot", edited["positions"] != expected["positions"])
+    ran, ms = gil_free(lambda: R.decimate(snap, 0.2))
+    check("decimate_on_a_snapshot_frees_the_gil", ran, {"decimate_ms": ms})
+    del snap, freed
+    check("convex_hull_in_a_bullet_build", hasattr(R, "convex_hull") == hasattr(bmesh.ops, "convex_hull"))
+    if not hasattr(R, "convex_hull"):
+        return
+    rng = np.random.default_rng(3)
+    points = (rng.normal(size=(200000, 3)) * (1.0, 0.6, 0.3)).astype(np.float32)
+    positions, tris = (np.frombuffer(b, dtype=t).reshape(-1, 3) for b, t in zip(R.convex_hull(points),
+                                                                                 (np.float32, np.int32)))
+    bm = bmesh.new()
+    for point in points[:2000]:
+        bm.verts.new(point)
+    reference_hull = bmesh.ops.convex_hull(bm, input=bm.verts[:])
+    faces = [f for f in reference_hull["geom"] if isinstance(f, bmesh.types.BMFace)]
+    bm_corners = sorted(tuple(round(c, 5) for c in v.co) for v in {v for f in faces for v in f.verts})
+    bm_tris = sum(len(f.verts) - 2 for f in faces)
+    bm.free()
+    small_positions, small_tris = (np.frombuffer(b, dtype=t).reshape(-1, 3) for b, t in zip(
+        R.convex_hull(np.ascontiguousarray(points[:2000])), (np.float32, np.int32)))
+    corners = sorted(tuple(round(float(c), 5) for c in v) for v in small_positions[np.unique(small_tris)])
+    check("convex_hull_is_the_bmesh_operator_s", corners == bm_corners and len(small_tris) == bm_tris,
+          {"vertices": len(corners), "bmesh_vertices": len(bm_corners), "tris": len(small_tris),
+           "bmesh_tris": bm_tris})
+    inside = np.all(np.isin(np.unique(tris), np.arange(len(positions))))
+    check("convex_hull_triangles_index_its_vertices", inside and len(tris) > 0)
+    ran, ms = gil_free(lambda: R.convex_hull(points))
+    check("convex_hull_frees_the_gil", ran, {"convex_hull_ms": ms})
+    check("convex_hull_of_one_point_is_empty", R.convex_hull(np.zeros((8, 3), dtype=np.float32)) is None)
+
+
 def tool_end_to_end():
     reset()
     source = uv_sphere("Rock", 96, 48)
@@ -308,6 +401,7 @@ def tool_end_to_end():
     if undo_before is not None:
         check("tool_no_undo_step", len(bpy.context.window_manager.undo_steps) == undo_before)
     observed["tool_native_ms"] = result["native_ms"]
+    observed["tool_call_and_result_ms"] = [round(x, 1) for x in calls[-1]]
     observed["tool_example"] = {k: result["lods"][1][k] for k in ("name", "tris", "hausdorff", "silhouette")}
     try:
         run({"object": handles["Rock"], "lods": [queries.object_handle(bpy.data.objects["UCX_Rock_00"])],
@@ -388,6 +482,7 @@ try:
     kernels_match_reference()
     weld_and_simplify()
     decimate_equals_the_modifier()
+    snapshots_and_hulls()
     tool_end_to_end()
     skinned_meshes()
     report["success"] = all(checks.values())

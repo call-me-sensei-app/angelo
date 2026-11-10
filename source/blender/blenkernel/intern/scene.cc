@@ -57,6 +57,7 @@
 
 #include "BKE_action.hh"
 #include "BKE_anim_data.hh"
+#include "BKE_angelo_stage_links.hh"
 #include "BKE_animsys.h"
 #include "BKE_bpath.hh"
 #include "BKE_callbacks.hh"
@@ -1280,7 +1281,7 @@ static void scene_blend_write(BlendWriter *writer, ID *id, const void *id_addres
 
     writer->write_struct(sce->rigidbody_world->shared);
     writer->write_struct(sce->rigidbody_world->effector_weights);
-    BKE_ptcache_blend_write(writer, &(sce->rigidbody_world->shared->ptcaches));
+    BKE_ptcache_blend_write(writer, &(sce->rigidbody_world->shared->ptcaches), true);
   }
 
   BKE_previewimg_blend_write(writer, sce->preview);
@@ -1498,7 +1499,7 @@ static void scene_blend_read_data(BlendDataReader *reader, ID *id)
        * We should only do this when rbw->shared == nullptr, because those pointers
        * are always set (for compatibility with older Blenders). We mustn't link
        * the same pointcache twice. */
-      BKE_ptcache_blend_read_data(reader, &rbw->ptcaches, &rbw->pointcache, false);
+      BKE_ptcache_blend_read_data(reader, &rbw->ptcaches, &rbw->pointcache, false, true);
 
       /* make sure simulation starts from the beginning after loading file */
       if (rbw->pointcache) {
@@ -1507,7 +1508,7 @@ static void scene_blend_read_data(BlendDataReader *reader, ID *id)
     }
     else {
       /* link caches */
-      BKE_ptcache_blend_read_data(reader, &rbw->shared->ptcaches, &rbw->shared->pointcache, false);
+      BKE_ptcache_blend_read_data(reader, &rbw->shared->ptcaches, &rbw->shared->pointcache, false, true);
 
       /* make sure simulation starts from the beginning after loading file */
       if (rbw->shared->pointcache) {
@@ -2757,7 +2758,10 @@ static void scene_graph_update_tagged(Depsgraph *depsgraph, Main *bmain, bool on
   ViewLayer *view_layer = DEG_get_input_view_layer(depsgraph);
   bool used_multiple_passes = false;
 
-  bool run_callbacks = DEG_id_type_any_updated(depsgraph);
+  /* Angelo: an agent's private stage scene runs the callbacks on every evaluation, also one that
+   * only rebuilds relations (no ID tagged yet): the add-on checks every link and path the stage's
+   * active graph could build and releases the hold for that evaluation only (B1, stage_routes). */
+  bool run_callbacks = DEG_id_type_any_updated(depsgraph) || BKE_angelo_is_stage_scene(*scene);
   if (run_callbacks) {
     BKE_callback_exec_id(bmain, &scene->id, BKE_CB_EVT_DEPSGRAPH_UPDATE_PRE);
   }
@@ -2771,6 +2775,11 @@ static void scene_graph_update_tagged(Depsgraph *depsgraph, Main *bmain, bool on
   BKE_main_view_layers_synced_ensure(bmain);
 
   for (int pass = 0; pass < 2; pass++) {
+    /* Angelo: a held stage scene is not evaluated in any pass; a release (one passing check) is
+     * consumed by one pass, so nothing unchecked is evaluated (BKE_angelo_stage_take_hold). */
+    if (BKE_angelo_stage_take_hold(*scene)) {
+      return;
+    }
     /* (Re-)build dependency graph if needed. */
     DEG_graph_relations_update(depsgraph);
     /* Uncomment this to check if graph was properly tagged for update. */
@@ -2860,6 +2869,10 @@ void BKE_scene_graph_update_for_newframe_ex(Depsgraph *depsgraph, const bool cle
   BKE_main_view_layers_synced_ensure(bmain);
 
   for (int pass = 0; pass < 2; pass++) {
+    /* Angelo: a held stage scene is not evaluated; a release is consumed (BKE_angelo_stage_take_hold). */
+    if (BKE_angelo_stage_take_hold(*scene)) {
+      return;
+    }
     /* Update animated image textures for particles, modifiers, gpu, etc,
      * call this at the start so modifiers with textures don't lag 1 frame.
      */

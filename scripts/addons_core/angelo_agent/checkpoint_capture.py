@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import time
 
+from . import change_clock, checkpoint_store_text
 from .checkpoint_capture_pins import acquire_capture_pin, abandon_capture_pin
 from .checkpoint_capture_records import file_identity, output_names, validate_record_bytes, validate_transition
 from .checkpoint_filesystem import (_file_info, _open_file, _private_child, _private_directory, _read_json,
@@ -47,7 +48,8 @@ class _CaptureResource:
     __slots__ = ("stack", "folder", "pin", "outputs", "declared", "create_attempts",
                  "declare_attempts", "ledger", "failed", "busy", "native_active", "native_attempted",
                  "publish_attempted", "finish_attempted", "published", "verified_outputs", "sealed_outputs",
-                 "components", "phase", "started", "validated")
+                 "components", "phase", "started", "validated", "bind_required", "content_digest",
+                 "content_bound")
 
     def __init__(self):
         self.stack = ExitStack()
@@ -66,6 +68,9 @@ class _CaptureResource:
         self.phase = "reserved"
         self.started = time.monotonic()
         self.validated = None  # The last fresh read's exact record bytes and validated result.
+        self.bind_required = None  # _native_binding's answer, given once before the BASE write.
+        self.content_digest = None  # A bound ordinary BASE's BLAKE2b, sealed as content by finish.
+        self.content_bound = False  # Set only once native's capture_bind returned: nothing unbound becomes valid.
 
 
 def _native_facts(capture, owner):
@@ -99,9 +104,14 @@ def _component_binding(record):
             tuple(sorted(sculpt.items())) if sculpt is not None else None)
 
 
-def _hash_descriptor(descriptor, expected_size):
-    """Bounded reads of the retained file, preserving its synchronous writer offset."""
-    before = descriptor_witness(descriptor)
+def _hash_descriptor(descriptor, expected_size, bind=None):
+    """Bounded reads of the retained file, preserving its synchronous writer offset.
+
+    The witness settles before the first read (``change_clock``), so a write during or after hashing carries
+    another change time even where the file system's clock is coarse (Windows). ``bind``, a native content
+    hasher (``capture_hasher``), receives every chunk BLAKE2b does, in order: one read serves both.
+    """
+    before = change_clock.settle(descriptor_witness(descriptor))
     if before.st_size != expected_size or before.st_nlink != 1:
         raise ValueError("The verified capture component changed before hashing")
     saved_offset = os.lseek(descriptor, 0, os.SEEK_CUR)
@@ -114,6 +124,8 @@ def _hash_descriptor(descriptor, expected_size):
             if not data:
                 raise ValueError("The verified capture component became truncated")
             digest.update(data)
+            if bind is not None:
+                bind.update(data)
             remaining -= len(data)
         if os.read(descriptor, 1) or not _stable_file(before, descriptor_witness(descriptor)):
             raise ValueError("The verified capture component changed while hashing")
@@ -265,14 +277,6 @@ class CaptureOwner(CheckpointPublicationMixin):
         if resource is None or not resource.native_active or resource.busy:
             raise ValueError("The native capture interval is not available for release")
         resource.native_active = False
-
-    def _native_purpose(self):
-        """Original purpose only; it selects native witness cost, not authority."""
-        with self._operation() as resource, _transaction(self._binding.root):
-            if not resource.native_active:
-                raise ValueError("The capture purpose requires its live native interval")
-            self._fresh(resource)
-            return dict(self._binding.sealed)["purpose"]
 
     @contextmanager
     def _operation(self, *, allow_failed=False):
@@ -440,6 +444,7 @@ class CaptureOwner(CheckpointPublicationMixin):
         _raise_cleanup(errors)
 
 
+@checkpoint_store_text.awaited()   # The person waits for the capture: a coarse step is waited, not refused.
 def capture_checkpoint(store, original_path="", *, capture_mode=EVERY_REQUEST, purpose="request", retain_native=False):
     """Complete one native capture lifecycle; failures never become request success."""
     if retain_native and purpose != "safety":

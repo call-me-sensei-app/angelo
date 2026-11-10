@@ -12,6 +12,8 @@ engine in code (docstrings and comments do not count) and refers to a render ope
 ``bpy.ops.render.opengl``) must be ``needs_opengl``, unless EXEMPT says why it never renders with EEVEE.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest

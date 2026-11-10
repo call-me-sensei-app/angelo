@@ -8,6 +8,10 @@ before and after; interleave binary runs after compilation has stopped.
 No provider, GPU, Undo, or timer polling is included in these timings.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 from pathlib import Path

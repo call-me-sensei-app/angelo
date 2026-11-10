@@ -460,6 +460,8 @@ static void remove_invalid_faces(Mesh &mesh, const IndexMask &valid_faces)
 
   mesh.faces_num = new_faces.size();
   mesh.corners_num = new_faces.total_size();
+  mem_lifetime::invalidate(
+      &mesh.face_offset_indices, sizeof(mesh.face_offset_indices), &mesh.face_offset_indices);
   mesh.face_offset_indices = new_face_offsets.release().data;
   mesh.runtime->face_offsets_sharing_info->remove_user_and_delete_if_last();
   mesh.runtime->face_offsets_sharing_info = implicit_sharing::info_for_mem_free(

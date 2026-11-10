@@ -7,6 +7,8 @@ Real channels (a Unix socket pair, the relay's descriptor passed with Angelo's a
 that echoes what it sees, its key included: what reaches the worker proves the key never does.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import stat
@@ -24,8 +26,11 @@ from angelo_agent import (cache_affinity, claude_direct, cli_runtime, runtime_fi
                           runtime_service, worker_channel)
 from angelo_agent.claude_transport import claude_arguments  # noqa: E402
 from angelo_agent.protocol import JsonRpcProcess, RpcError  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
-POSIX_ONLY = unittest.skipIf(sys.platform == "win32", "The relay's descriptor passing is POSIX; Windows uses pipes")
+POSIX_ONLY = unittest.skipIf(sys.platform == "win32", environment_skip(
+    "The relay's descriptor passing is POSIX; Windows uses named pipes (test_native_runtime_filter.WindowsRelayTests, "
+    "test_native_parallel_workers_transport)"))
 KEY = "sk-relay-test-" + "k" * 40
 SESSION = "chat-1"
 CLAUDE_VALUES = {"tools": "WebSearch,WebFetch", "direct": False, "fast": False, "model": "opus", "effort": "low",

@@ -11,6 +11,8 @@
 Synthetic folders only.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 from pathlib import Path
@@ -20,6 +22,9 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+
+from host_test_policy import environment_skip
+from platform_env import home_environ
 
 ROOT = Path(__file__).resolve().parents[3]
 ADDONS = ROOT / "scripts/addons_core"
@@ -116,6 +121,8 @@ class ColdUnreadableListTests(Fixture):
                 else:
                     os.chmod(listing, 0)
                     self.addCleanup(os.chmod, listing, stat.S_IRUSR | stat.S_IWUSR)
+                    if os.access(listing, os.R_OK):   # Windows keeps only a read-only bit; root reads anything.
+                        self.skipTest(environment_skip("running as a user who can read anything"))
                 result = subprocess.run([sys.executable, "-I", "-c", code, str(ADDONS), str(self.base)],
                                         capture_output=True, text=True, timeout=120)
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -134,7 +141,7 @@ class FormerStoreTests(Fixture):
         self.synthetic(old_state / "sessions", "chat.json")
         self.synthetic(old_accounts, "connections.json")
         self.synthetic(project / "scene", "notes.txt")
-        with patch.dict(os.environ, {"HOME": str(self.base)}):
+        with patch.dict(os.environ, home_environ(self.base)):
             private_roots.private_roots(old_state, old_accounts, [], environ={})
             getattr(private_roots, "_retained_cache", {}).clear()   # As a fresh process.
             usual_accounts = self.base / "usual-accounts"
@@ -173,15 +180,21 @@ class ConventionTests(Fixture):
         home = self.base
         self.synthetic(home / "Library" / "Application Support" / "Other", "state.json")
         self.synthetic(home / "Library" / "CloudStorage" / "Dropbox" / "project", "notes.txt")
+        for folder in ("Roaming", "Local"):
+            self.synthetic(home / "AppData" / folder / "Other", "state.json")
         self.synthetic(home / "work" / "retained" / "codex-profile" / "connection", "auth.json")
         self.synthetic(home / "work" / "project", "notes.txt")
-        with patch.dict(os.environ, {"HOME": str(home)}):
+        with patch.dict(os.environ, home_environ(home)):
             files = FileWorkspace(home, excluded=[])
             convention = files.convention
         if sys.platform == "darwin":
             self.refused(read, files, "Library/Application Support/Other/state.json")
             self.assertEqual(read(files, "Library/CloudStorage/Dropbox/project/notes.txt")["text"], "SYNTHETIC")
             self.assertNotIn("Library", names(files))
+        if sys.platform == "win32":
+            for folder in ("Roaming", "Local"):
+                self.refused(read, files, f"AppData/{folder}/Other/state.json")
+            self.assertEqual(names(files, "AppData"), [])
         self.refused(read, files, "work/retained/codex-profile/connection/auth.json")
         self.assertEqual(names(files, "work/retained"), [])
         self.assertEqual(read(files, "work/project/notes.txt")["text"], "SYNTHETIC")
@@ -207,6 +220,8 @@ class ConventionTests(Fixture):
         with patch.object(tempfile, "tempdir", str(temporary)):
             for platform in ("win32", "linux", "darwin"):
                 with self.subTest(platform=platform):
+                    if platform == "darwin" and os.name == "nt":   # canonical() asks macOS through fcntl.
+                        self.skipTest(environment_skip("macOS's folder spelling (fcntl F_GETPATH) needs fcntl"))
                     convention = Convention({"LOCALAPPDATA": str(local)}, platform=platform, home=self.base)
                     self.assertFalse(convention.private_path(temporary / "project.zip-extracted" / "scene"))
                     self.assertTrue(convention.private_path(temporary / "x" / "codex-profile" / "id"))

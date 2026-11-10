@@ -8,6 +8,7 @@
 
 #include <limits>
 #include <map>
+#include <vector>
 
 #include "GHOST_EventDragnDrop.hh"
 #include "GHOST_EventTrackpad.hh"
@@ -32,6 +33,7 @@
 #include "IMB_imbuf.hh"
 #include "IMB_imbuf_types.hh"
 
+#include "GHOST_ClipboardImage.hh"
 #include "GHOST_EventButton.hh"
 #include "GHOST_EventCursor.hh"
 #include "GHOST_EventKey.hh"
@@ -2495,48 +2497,13 @@ void GHOST_SystemWin32::putClipboard(const char *buffer, bool selection) const
   }
 }
 
-GHOST_TSuccess GHOST_SystemWin32::hasClipboardImage(void) const
-{
-  if (IsClipboardFormatAvailable(CF_DIBV5) ||
-      IsClipboardFormatAvailable(RegisterClipboardFormat("PNG")))
-  {
-    return GHOST_kSuccess;
-  }
-
-  /* This could be a file path to an image file. */
-  GHOST_TSuccess result = GHOST_kFailure;
-  if (IsClipboardFormatAvailable(CF_HDROP)) {
-    if (OpenClipboard(nullptr)) {
-      if (HANDLE hGlobal = GetClipboardData(CF_HDROP)) {
-        if (HDROP hDrop = static_cast<HDROP>(GlobalLock(hGlobal))) {
-          UINT fileCount = DragQueryFile(hDrop, 0xffffffff, nullptr, 0);
-          if (fileCount == 1) {
-            WCHAR lpszFile[MAX_PATH] = {0};
-            DragQueryFileW(hDrop, 0, lpszFile, MAX_PATH);
-            char *filepath = alloc_utf_8_from_16(lpszFile, 0);
-            blender::ImBuf *ibuf = blender::IMB_load_image_from_filepath(
-                filepath,
-                blender::ImBufFlags::ByteData | blender::ImBufFlags::MultiLayer |
-                    blender::ImBufFlags::Test);
-            free(filepath);
-            if (ibuf) {
-              blender::IMB_freeImBuf(ibuf);
-              result = GHOST_kSuccess;
-            }
-          }
-          GlobalUnlock(hGlobal);
-        }
-      }
-      CloseClipboard();
-    }
-  }
-  return result;
-}
-
-static uint *getClipboardImageFilepath(int *r_width, int *r_height)
+/**
+ * The path of the one file copied to the clipboard (`CF_HDROP`, as Explorer copies it), or null.
+ * Opens and closes the clipboard itself. Caller frees.
+ */
+static char *getClipboardFilepath()
 {
   char *filepath = nullptr;
-
   if (OpenClipboard(nullptr)) {
     if (HANDLE hGlobal = GetClipboardData(CF_HDROP)) {
       if (HDROP hDrop = static_cast<HDROP>(GlobalLock(hGlobal))) {
@@ -2551,192 +2518,148 @@ static uint *getClipboardImageFilepath(int *r_width, int *r_height)
     }
     CloseClipboard();
   }
-
-  if (filepath) {
-    blender::ImBuf *ibuf = blender::IMB_load_image_from_filepath(
-        filepath, blender::ImBufFlags::ByteData | blender::ImBufFlags::MultiLayer);
-    free(filepath);
-    if (ibuf) {
-      *r_width = ibuf->x;
-      *r_height = ibuf->y;
-      const uint64_t byte_count = static_cast<uint64_t>(ibuf->x) * ibuf->y * 4;
-      uint *rgba = static_cast<uint *>(malloc(byte_count));
-      if (rgba) {
-        memcpy(rgba, ibuf->byte_data(), byte_count);
-      }
-      blender::IMB_freeImBuf(ibuf);
-      return rgba;
-    }
-  }
-
-  return nullptr;
+  return filepath;
 }
 
-static uint *getClipboardImageDibV5(int *r_width, int *r_height)
+/**
+ * The formats to read the picture from, in order (#GHOST_ClipboardImage_windows_formats): "PNG"
+ * first, then `CF_DIBV5`. The clipboard must be open. \return how many are in \a r_order.
+ */
+static size_t getClipboardImageFormats(UINT r_order[2])
 {
-  HANDLE hGlobal = GetClipboardData(CF_DIBV5);
-  if (hGlobal == nullptr) {
-    return nullptr;
+  std::vector<uint32_t> formats;
+  for (UINT cf = EnumClipboardFormats(0); cf; cf = EnumClipboardFormats(cf)) {
+    formats.push_back(cf);
   }
-
-  BITMAPV5HEADER *bitmapV5Header = (BITMAPV5HEADER *)GlobalLock(hGlobal);
-  if (bitmapV5Header == nullptr) {
-    return nullptr;
+  uint32_t order[2];
+  const size_t count = GHOST_ClipboardImage_windows_formats(
+      formats.data(), formats.size(), RegisterClipboardFormat("PNG"), CF_DIBV5, order);
+  for (size_t i = 0; i < count; i++) {
+    r_order[i] = order[i];
   }
-
-  int offset = bitmapV5Header->bV5Size + bitmapV5Header->bV5ClrUsed * sizeof(RGBQUAD);
-
-  BYTE *buffer = (BYTE *)bitmapV5Header + offset;
-  int bitcount = bitmapV5Header->bV5BitCount;
-  int width = bitmapV5Header->bV5Width;
-  int height = bitmapV5Header->bV5Height;
-
-  /* Clipboard data is untrusted. Protect against arithmetic overflow as DibV5
-   * only supports up to DWORD size bytes. */
-  if (uint64_t(width) * uint64_t(height) > (std::numeric_limits<DWORD>::max() / 4)) {
-    GlobalUnlock(hGlobal);
-    return nullptr;
-  }
-
-  *r_width = width;
-  *r_height = height;
-
-  uchar *source = (uchar *)buffer;
-  uint *rgba = (uint *)malloc(uint64_t(width) * height * 4);
-  uint8_t *target = (uint8_t *)rgba;
-
-  if (bitmapV5Header->bV5Compression == BI_BITFIELDS && bitcount == 32) {
-    /* It is unclear from the MSDN documentation whether or not the 3 RGB mask values are always
-     * written as part of the main BITMAPV5HEADER header or if they are included after the
-     * structure. In reality there are applications (Windows Snipping Tool) that write both,
-     * and there are applications (Krita, Paint.NET) that only set the header values. Handle
-     * both by checking against our expected size. */
-    const SIZE_T mask_size = sizeof(DWORD) * 3;
-    const SIZE_T actual_size = GlobalSize(hGlobal);
-    const SIZE_T expected_size = offset + (SIZE_T(width) * height * 4);
-    if (expected_size == actual_size - mask_size) {
-      source += mask_size; /* Skip redundant color masks. */
-    }
-
-    DWORD ColorMasks[4];
-    ColorMasks[0] = bitmapV5Header->bV5RedMask ? bitmapV5Header->bV5RedMask : 0xff;
-    ColorMasks[1] = bitmapV5Header->bV5GreenMask ? bitmapV5Header->bV5GreenMask : 0xff00;
-    ColorMasks[2] = bitmapV5Header->bV5BlueMask ? bitmapV5Header->bV5BlueMask : 0xff0000;
-    ColorMasks[3] = bitmapV5Header->bV5AlphaMask ? bitmapV5Header->bV5AlphaMask : 0xff000000;
-
-    /* Bit shifts needed for the ColorMasks. */
-    DWORD ColorShifts[4];
-    for (int i = 0; i < 4; i++) {
-      _BitScanForward(&ColorShifts[i], ColorMasks[i]);
-    }
-
-    for (int h = 0; h < height; h++) {
-      for (int w = 0; w < width; w++, target += 4, source += 4) {
-        const DWORD *pix = (DWORD *)source;
-        target[0] = uint8_t((*pix & ColorMasks[0]) >> ColorShifts[0]);
-        target[1] = uint8_t((*pix & ColorMasks[1]) >> ColorShifts[1]);
-        target[2] = uint8_t((*pix & ColorMasks[2]) >> ColorShifts[2]);
-        target[3] = uint8_t((*pix & ColorMasks[3]) >> ColorShifts[3]);
-      }
-    }
-  }
-  else if (bitmapV5Header->bV5Compression == BI_RGB && bitcount == 32) {
-    for (int h = 0; h < height; h++) {
-      for (int w = 0; w < width; w++, target += 4, source += 4) {
-        const RGBQUAD *quad = (RGBQUAD *)source;
-        target[0] = uint8_t(quad->rgbRed);
-        target[1] = uint8_t(quad->rgbGreen);
-        target[2] = uint8_t(quad->rgbBlue);
-        target[3] = (bitmapV5Header->bV5AlphaMask) ? uint8_t(quad->rgbReserved) : 255;
-      }
-    }
-  }
-  else if (bitmapV5Header->bV5Compression == BI_RGB && bitcount == 24) {
-    int bytes_per_row = ((((width * bitcount) + 31) & ~31) >> 3);
-    int slack = bytes_per_row - (width * 3);
-    for (int h = 0; h < height; h++, source += slack) {
-      for (int w = 0; w < width; w++, target += 4, source += 3) {
-        const RGBTRIPLE *triple = (RGBTRIPLE *)source;
-        target[0] = uint8_t(triple->rgbtRed);
-        target[1] = uint8_t(triple->rgbtGreen);
-        target[2] = uint8_t(triple->rgbtBlue);
-        target[3] = 255;
-      }
-    }
-  }
-
-  GlobalUnlock(hGlobal);
-  return rgba;
+  return count;
 }
 
-/* Works with any image format that ImBuf can load. */
-static uint *getClipboardImageImBuf(int *r_width, int *r_height, UINT format)
+GHOST_TSuccess GHOST_SystemWin32::hasClipboardImage(void) const
+{
+  if (IsClipboardFormatAvailable(CF_DIBV5) ||
+      IsClipboardFormatAvailable(RegisterClipboardFormat("PNG")))
+  {
+    return GHOST_kSuccess;
+  }
+
+  /* This could be a file path to an image file: read its header only. */
+  GHOST_TSuccess result = GHOST_kFailure;
+  if (IsClipboardFormatAvailable(CF_HDROP)) {
+    if (char *filepath = getClipboardFilepath()) {
+      int width, height;
+      if (GHOST_ClipboardImage_file_size(filepath, &width, &height)) {
+        result = GHOST_kSuccess;
+      }
+      free(filepath);
+    }
+  }
+  return result;
+}
+
+/** The size of the picture in clipboard format \a format, from its header alone. */
+static bool getClipboardImageDataSize(UINT format, int *r_width, int *r_height)
+{
+  HANDLE hGlobal = GetClipboardData(format);
+  if (hGlobal == nullptr) {
+    return false;
+  }
+  const uint8_t *data = static_cast<const uint8_t *>(GlobalLock(hGlobal));
+  if (data == nullptr) {
+    return false;
+  }
+  const size_t data_size = GlobalSize(hGlobal);
+  /* A DIB's header holds its size; an encoded PNG's is read without decoding the pixels. */
+  const bool found = (format == CF_DIBV5) ?
+                         GHOST_ClipboardImage_dib_size(data, data_size, r_width, r_height) :
+                         GHOST_ClipboardImage_memory_size(data, data_size, r_width, r_height);
+  GlobalUnlock(hGlobal);
+  return found;
+}
+
+GHOST_TSuccess GHOST_SystemWin32::getClipboardImageSize(int *r_width, int *r_height) const
+{
+  /* One image file copied in Explorer. Other files (several, or none an image) fall through to
+   * the clipboard's picture, as #getClipboardImageBuffer does. */
+  if (IsClipboardFormatAvailable(CF_HDROP)) {
+    char *filepath = getClipboardFilepath();
+    const bool found = filepath && GHOST_ClipboardImage_file_size(filepath, r_width, r_height);
+    free(filepath);
+    if (found) {
+      return GHOST_kSuccess;
+    }
+  }
+
+  if (!OpenClipboard(nullptr)) {
+    return GHOST_kFailure;
+  }
+  /* "PNG", else (when there is none or its data cannot be had) `CF_DIBV5`. */
+  bool found = false;
+  UINT formats[2];
+  const size_t count = getClipboardImageFormats(formats);
+  for (size_t i = 0; i < count && !found; i++) {
+    found = getClipboardImageDataSize(formats[i], r_width, r_height);
+  }
+  CloseClipboard();
+  return found ? GHOST_kSuccess : GHOST_kFailure;
+}
+
+/** The bitmap or encoded picture in clipboard format \a format, read into an #ImBuf. */
+static blender::ImBuf *getClipboardImageData(UINT format)
 {
   HANDLE hGlobal = GetClipboardData(format);
   if (hGlobal == nullptr) {
     return nullptr;
   }
-
-  LPVOID pMem = GlobalLock(hGlobal);
-  if (!pMem) {
+  const uint8_t *data = static_cast<const uint8_t *>(GlobalLock(hGlobal));
+  if (data == nullptr) {
     return nullptr;
   }
-
-  uint *rgba = nullptr;
-
-  blender::ImBuf *ibuf = blender::IMB_load_image_from_memory(
-      (uchar *)pMem, GlobalSize(hGlobal), blender::ImBufFlags::ByteData, "<clipboard>");
-
-  if (ibuf) {
-    *r_width = ibuf->x;
-    *r_height = ibuf->y;
-    const uint64_t byte_count = uint64_t(ibuf->x) * ibuf->y * 4;
-    rgba = (uint *)malloc(byte_count);
-    memcpy(rgba, ibuf->byte_data(), byte_count);
-    blender::IMB_freeImBuf(ibuf);
+  const size_t data_size = GlobalSize(hGlobal);
+  blender::ImBuf *ibuf = nullptr;
+  if (format == CF_DIBV5) {
+    /* Clipboard data is untrusted: every offset is checked against the block's size, and a format
+     * that is neither decoded here nor by the BMP reader is refused. */
+    ibuf = GHOST_ClipboardImage_dib_load(data, data_size);
   }
-
+  else {
+    /* Works with any image format that ImBuf can load. */
+    ibuf = GHOST_ClipboardImage_flatten(blender::IMB_load_image_from_memory(
+        data, data_size, blender::ImBufFlags::ByteData, "<clipboard>"));
+  }
   GlobalUnlock(hGlobal);
-  return rgba;
+  return ibuf;
 }
 
-uint *GHOST_SystemWin32::getClipboardImage(int *r_width, int *r_height) const
+blender::ImBuf *GHOST_SystemWin32::getClipboardImageBuffer() const
 {
+  /* One image file copied in Explorer; other files fall through to the clipboard's picture. */
   if (IsClipboardFormatAvailable(CF_HDROP)) {
-    return getClipboardImageFilepath(r_width, r_height);
+    char *filepath = getClipboardFilepath();
+    blender::ImBuf *ibuf = GHOST_ClipboardImage_flatten(GHOST_ClipboardImage_file_load(filepath));
+    free(filepath);
+    if (ibuf) {
+      return ibuf;
+    }
   }
 
   if (!OpenClipboard(nullptr)) {
     return nullptr;
   }
-
-  /* Synthesized formats are placed after posted formats. */
-  UINT cfPNG = RegisterClipboardFormat("PNG");
-  UINT format = 0;
-  for (int cf = EnumClipboardFormats(0); cf; cf = EnumClipboardFormats(cf)) {
-    if (ELEM(cf, CF_DIBV5, cfPNG)) {
-      format = cf;
-    }
-    if (cf == CF_DIBV5 || (cf == CF_BITMAP && format == cfPNG)) {
-      break; /* Favor CF_DIBV5, but not if synthesized. */
-    }
+  /* "PNG", else (when there is none, or its data cannot be had or decoded) `CF_DIBV5`. */
+  blender::ImBuf *ibuf = nullptr;
+  UINT formats[2];
+  const size_t count = getClipboardImageFormats(formats);
+  for (size_t i = 0; i < count && ibuf == nullptr; i++) {
+    ibuf = getClipboardImageData(formats[i]);
   }
-
-  uint *rgba = nullptr;
-
-  if (format == CF_DIBV5) {
-    rgba = getClipboardImageDibV5(r_width, r_height);
-  }
-  else if (format == cfPNG) {
-    rgba = getClipboardImageImBuf(r_width, r_height, cfPNG);
-  }
-  else {
-    *r_width = 0;
-    *r_height = 0;
-  }
-
   CloseClipboard();
-  return rgba;
+  return ibuf;
 }
 
 static bool putClipboardImageDibV5(uint *rgba, int width, int height)
@@ -2795,6 +2718,9 @@ static bool putClipboardImagePNG(uint *rgba, int width, int height)
   /* Load buffer into ImBuf, convert to PNG. */
   blender::ImBuf *ibuf = blender::IMB_allocFromBuffer(
       reinterpret_cast<uint8_t *>(rgba), nullptr, width, height, 32);
+  if (ibuf == nullptr) {
+    return false; /* Out of memory. */
+  }
   ibuf->ftype = blender::IMB_FTYPE_PNG;
   ibuf->foptions.quality = 15;
   blender::Vector<uint8_t> encoded = blender::IMB_save_image_to_buffer(

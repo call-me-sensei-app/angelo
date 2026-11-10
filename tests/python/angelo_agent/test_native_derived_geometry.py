@@ -11,6 +11,8 @@ families and what each kind of check can see. test_blender_partial_checks.py
 runs the same programs in the compiled app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

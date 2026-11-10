@@ -11,6 +11,10 @@ Below the bar the section offers no choice. Screenshots of each state. The prefe
 GUI ``--factory-startup --enable-event-simulate`` only, disposable profile, no provider, account or network.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import os

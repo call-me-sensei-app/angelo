@@ -43,13 +43,16 @@ def _quoted(line):
 def parse(text):
     """Return ``(header_text, entries)``; the header is the ``msgstr`` of the empty msgid."""
     entries, current, field = [], None, None
+    has_translation = False
     pending = {"comments": [], "extracted": [], "refs": [], "flags": []}
 
     def flush():
-        nonlocal current
+        nonlocal current, has_translation
         if current is not None:
+            if not has_translation:
+                raise ValueError("Missing msgstr section for %r" % current.id)
             entries.append(current)
-        current = None
+        current, has_translation = None, False
 
     for raw in text.splitlines():
         line = raw.strip()
@@ -82,7 +85,7 @@ def parse(text):
             pending = {"comments": [], "extracted": [], "refs": [], "flags": []}
             field = "ctxt"
         elif line.startswith("msgid"):
-            if current is None or field == "str":
+            if current is None or (field != "ctxt" and not line.startswith("msgid_plural")):
                 flush()
                 current = Entry("", obsolete=obsolete, **pending)
                 pending = {"comments": [], "extracted": [], "refs": [], "flags": []}
@@ -90,6 +93,7 @@ def parse(text):
             field = "id"
         elif line.startswith("msgstr"):
             current.str = _quoted(line)
+            has_translation = True
             field = "str"
         elif line.startswith('"') and current is not None:
             value = _quoted(line)

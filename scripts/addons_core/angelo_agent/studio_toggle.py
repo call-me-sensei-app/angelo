@@ -300,12 +300,13 @@ def _select_tab_when_shown(window, tab, tries=40):
 
 def close_studio(window):
     from . import studio, studio_views
-    studio_views.forget_window(studio._views, window.as_pointer())   # A Studio opened again starts fresh.
+    pointer = window.as_pointer()   # Read before the close: the closed window's RNA is gone after it.
+    studio_views.forget_window(studio._views, pointer)   # A Studio opened again starts fresh.
     area = next(iter(live_windows.areas(window)), None)
     region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
     with bpy.context.temp_override(window=window, area=area, region=region):
         bpy.ops.wm.window_close()
-    _opened.discard(window.as_pointer())
+    _opened.discard(pointer)
 
 
 def draw(layout, context, compact=False):

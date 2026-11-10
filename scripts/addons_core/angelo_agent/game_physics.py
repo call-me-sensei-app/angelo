@@ -186,15 +186,72 @@ def english(finding):
 
 # --- Reading Blender (main thread).
 
-def _animated(obj):
+# An object's own transform, as the exporter writes it on its node (TRS channels).
+TRANSFORM_PATHS = frozenset({"location", "rotation_euler", "rotation_quaternion", "rotation_axis_angle", "scale",
+                             "delta_location", "delta_rotation_euler", "delta_rotation_quaternion", "delta_scale"})
+
+
+def _has_animation(obj):
     data = obj.animation_data
     return data is not None and (data.action is not None or len(data.nla_tracks) > 0 or len(data.drivers) > 0)
+
+
+def _animated_paths(obj):
+    """The data paths animated on ``obj`` itself: its action's slot, its NLA strips' slots and its drivers."""
+    data = obj.animation_data
+    if data is None:
+        return set()
+    from bpy_extras import anim_utils
+    pairs = [(data.action, data.action_slot)] + [(strip.action, strip.action_slot) for track in data.nla_tracks
+                                                 for strip in track.strips]
+    paths = {curve.data_path for curve in data.drivers}
+    for action, slot in pairs:
+        bag = anim_utils.action_get_channelbag_for_slot(action, slot) if action is not None and slot else None
+        paths.update(curve.data_path for curve in (bag.fcurves if bag is not None else ()))
+    return paths
+
+
+def moves(own_paths, parent_type, parent_animated):
+    """Whether an object moves inside its parent: its own transform is animated, or it follows a bone of an animated
+    armature. An armature's posed bones move what they deform without moving the deformed object, and the exporter
+    keeps such a mesh's node still (its skin does the moving), so a skinned mesh's shape is hoisted like any other."""
+    return bool(own_paths & TRANSFORM_PATHS) or (parent_type == "BONE" and parent_animated)
+
+
+_TRANSFORMS = {}   # Object.session_uid -> (key, its animated transform paths): a findings draw reads, not scans.
+
+
+def _transform_paths(obj):
+    """The transform paths animated on ``obj`` itself. Scanning reads every F-curve of every action it has (a
+    character can carry a hundred), so the answer is kept until an Action changes (``fitting.animation`` counts
+    those, and loads, undos and redos), or the object's action, slot, number of curves in it, NLA tracks or drivers
+    change (a key inserted by a script before anything is evaluated)."""
+    data = obj.animation_data
+    if data is None:
+        return frozenset()
+    from bpy_extras import anim_utils
+    from io_scene_gltf2.angelo_physics import fitting
+    slot = data.action_slot
+    bag = anim_utils.action_get_channelbag_for_slot(data.action, slot) if data.action is not None and slot else None
+    key = (fitting.animation[0], data.action.as_pointer() if data.action else None, slot.handle if slot else None,
+           len(bag.fcurves) if bag is not None else 0, len(data.nla_tracks), len(data.drivers))
+    cached = _TRANSFORMS.get(obj.session_uid)
+    if cached is None or cached[0] != key:
+        cached = (key, frozenset(_animated_paths(obj) & TRANSFORM_PATHS))
+        _TRANSFORMS[obj.session_uid] = cached
+    return cached[1]
+
+
+def _animated(obj):
+    parent = obj.parent
+    return moves(_transform_paths(obj), obj.parent_type,
+                 parent is not None and parent.type == "ARMATURE" and _has_animation(parent))
 
 
 def records(objects):
     """Plain records of the objects a check needs: those with physics or a Godot suffix, and every object above one
     (a body may be an unmarked object's ancestor). Reading never creates an object's physics storage."""
-    from io_scene_gltf2.angelo_physics import props
+    from io_scene_gltf2.angelo_physics import fitting, props, shapes
     from io_scene_gltf2.angelo_physics.godot_suffixes import godot_suffix
     rows, seen = [], set()
 
@@ -212,9 +269,9 @@ def records(objects):
         if marked:
             row.update(fit=settings.fit, size=tuple(settings.size), radius=settings.radius, height=settings.height,
                        offset=tuple(settings.offset) if settings.fit == "MANUAL" else (0.0, 0.0, 0.0))
-            if row["has_geometry"] and settings.fit == "AUTO":
-                corners = [tuple(corner) for corner in obj.bound_box]
-                row["extents"] = tuple(max(c[i] for c in corners) - min(c[i] for c in corners) for i in range(3))
+            if row["has_geometry"] and settings.fit == "AUTO":   # Measured as the export fits it, never in a draw.
+                minimum, maximum = fitting.cached_bounds(obj) or shapes.bounds(obj.bound_box)
+                row["extents"] = tuple(high - low for low, high in zip(minimum, maximum))
             row["suffix_note"] = godot_suffix(row["body"], row["shape"], row["has_geometry"],
                                               row["collision_only"])[1]
         rows.append(row)

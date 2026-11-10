@@ -11,6 +11,8 @@ Every recovery test runs on this host's POSIX descriptors and on the Windows
 handle backend through ``fake_nt_files.FakeNtApi``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import errno
 import json
 import os
@@ -327,6 +329,12 @@ class PosixRecovery(unittest.TestCase):
         self.assertIsNone(job_resume.resume_facts(record))
 
 
+# The stand-in skips itself on Windows (fake_nt_files); skipping here, before setUp, classifies it as a platform skip.
+STAND_IN = environment_skip("The POSIX stand-in opens names relative to a directory descriptor, which Windows lacks; "
+                            "on Windows the Posix classes here run the real backend")
+
+
+@unittest.skipIf(os.name == "nt", STAND_IN)
 class WindowsRecovery(PosixRecovery):
     windows = True
 
@@ -397,6 +405,11 @@ class PosixRenderEnd(unittest.TestCase):
         if self.windows:
             self.skipTest(environment_skip("The real Windows backend refuses to move a held folder; the stand-in has no final path"))
         runner, stand_ins, staging = self.render(relative="shot010/anim")
+        if os.name == "nt":   # The real backend holds the staging folder open, so Windows refuses the move itself.
+            with self.assertRaises(PermissionError):
+                os.rename(self.root / "shot010", self.root / "shot010_v2")
+            self.assertEqual(self.finish(runner, stand_ins)[0], "done")
+            return
         os.rename(self.root / "shot010", self.root / "shot010_v2")
         runner._check_output_path()
         status, reason, receipt = self.finish(runner, stand_ins)
@@ -439,6 +452,7 @@ class PosixRenderEnd(unittest.TestCase):
             self.assertTrue(job_outputs.discard_path(leftover.path, "j10"))
 
 
+@unittest.skipIf(os.name == "nt", STAND_IN)
 class WindowsRenderEnd(PosixRenderEnd):
     windows = True
 

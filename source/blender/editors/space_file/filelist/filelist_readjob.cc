@@ -144,7 +144,6 @@ static void filelist_readjob_endjob(void *flrjv)
   flrj->filelist->flags |= FL_IS_READY;
 
   WM_reports_from_reports_move(flrj->wm, &flrj->reports);
-  BKE_reports_free(&flrj->reports);
 }
 
 static void filelist_readjob_free(void *flrjv)
@@ -161,6 +160,11 @@ static void filelist_readjob_free(void *flrjv)
     filelist_freelib(flrj->tmp_filelist);
     filelist_free(flrj->tmp_filelist);
   }
+
+  /* Freed here, not in #filelist_readjob_endjob: a read that never ran (killed or replaced while
+   * pending or suspended behind another read of the same job type, as when a split duplicates an
+   * Asset Browser) is freed without its end callback, which leaked the report list's lock. */
+  BKE_reports_free(&flrj->reports);
 
   MEM_delete(flrj);
 }

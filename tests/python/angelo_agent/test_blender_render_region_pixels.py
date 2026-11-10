@@ -25,6 +25,10 @@ Writes render-region-pixels.json under ANGELO_QA_DIR (``--engines`` and ``--scen
 rewritten, and ``ANGELO_RR_STEP <case> <step>`` printed, before every step, so a crash names the step it was in.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys

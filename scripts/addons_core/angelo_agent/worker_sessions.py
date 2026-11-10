@@ -100,8 +100,8 @@ def _person_request(controller):
     """The person's request a start belongs to (its row itself, never an index a row inserted before it shifts, EVENT
     R2-L-4): Angelo's own turn (``worker_resume``) continues the request before it, so its starts count on that
     request's Auto budget (break-it EVENT H-3)."""
-    from .request_rows import person_request
-    return next((id(row) for row in reversed(controller.state.get("messages") or ()) if person_request(row)), None)
+    from .request_rows import person_request_start
+    return next((id(row) for row in reversed(controller.state.get("messages") or ()) if person_request_start(row)), None)
 
 
 def auto_start_allowed(controller, arguments):
@@ -153,7 +153,7 @@ def _last_turn_failed(chat):
     if receipts:
         return receipts[-1].get("status") != "completed"
     rows = list(chat.state.get("messages") or ())
-    since = next((index for index in range(len(rows) - 1, -1, -1) if rows[index].get("role") == "user"), -1)
+    since = next((index for index in range(len(rows) - 1, -1, -1) if rows[index].get("role") == "user" and not rows[index].get("steer")), -1)
     ends = [row.get("role") for row in rows[since + 1:] if row.get("role") in ("assistant", "error")]
     return (ends[-1] == "error") if ends else getattr(chat, "cancelled", False) is True
 

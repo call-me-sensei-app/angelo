@@ -16,6 +16,8 @@ one is available (``ANGELO_TEST_CODEX`` or the agent runtime); it is skipped oth
 network or inference.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import http.server
 import json
 import os

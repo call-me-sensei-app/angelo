@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from angelo_agent import controller as controller_module
+from angelo_agent import auto_reasons, controller as controller_module
 from angelo_agent.controller import Controller, ToolDispatchBudget
 from angelo_agent.program_jobs import ProgramError, ProgramJob, PreviewStore, WriterLease
 from angelo_agent.program_spec import PROGRAM_TOOLS, validate_program
@@ -152,8 +152,8 @@ class AgentRuntimeFixture:
         self.validators = controller_module.validate_call
         self.tool_patch = patch.dict(controller_module.TOOL_MAP, {value["name"]: value for value in PROGRAM_TOOLS})
         self.tool_patch.start()
-        self.bounded_patch = patch("angelo_agent.controller.BOUNDED_MUTATIONS",
-            controller_module.BOUNDED_MUTATIONS | {"angelo_scene_program"})
+        self.bounded_patch = patch("angelo_agent.auto_reasons.BOUNDED_MUTATIONS",
+            auto_reasons.BOUNDED_MUTATIONS | {"angelo_scene_program"})
         self.bounded_patch.start()
         self.validator_patch = patch("angelo_agent.controller.validate_call", side_effect=lambda name, args:
             validate_program(name, args) if name in {value["name"] for value in PROGRAM_TOOLS} else self.validators(name, args))

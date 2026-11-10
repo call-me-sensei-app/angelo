@@ -8,6 +8,8 @@ which has no ``error_reason`` and only the descriptions), the organization's app
 ``login_hint``. The fake console follows the console's grant and OAuth error answers for each case.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import unittest
@@ -127,8 +129,10 @@ class RefreshRefusalTests(AccountCase):
             self.clock.advance(600)
             account.access_token()  # Rotates: ``token`` is now a used one.
 
-            def present_again():
-                account._refresh_token, account._access = token, ""
+            def present_again():  # As a process whose record lost the mark, or an older build, would.
+                account._refresh_token, account._stored.vault.token, account._access = token, token, ""
+                if hasattr(account, "_record"):  # This build never presents a token its record marks presented.
+                    account._record = type(account._record)(None, account.console_url)
             return present_again
 
         cases = [  # (case, start, with error_reason, a console without it)

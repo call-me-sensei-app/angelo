@@ -11,6 +11,10 @@ default). Blender's selection counts include what was reached. Screenshots: the 
 toggle on and the hidden selection showing faintly through, and the selection seen from an angle.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import math
 import os

@@ -213,12 +213,28 @@ def _pressure_record_bytes(item):
     return item["bytes"]
 
 
+def _anchors(item, reasons):
+    """Whether a kept record is, or may still become, a restore point whose file chain must survive.
+
+    A READY record, and any version 4 record, anchors only while Restore can select it, or while its capture is
+    still pinned (from reserve through ``finish``, which only the live owner can run). One no Restore admits (a
+    failed late settle, a crash or POST failure between publish and finish, an INVALID pair, a version 4
+    reservation whose owner is gone) can never become one, and nothing sweeps it, so anchoring on it would keep
+    every later write version forever. A legacy reservation keeps the conservative rule: legacy captures write no
+    pins, so a live owner may still complete it.
+    """
+    if item.get("capture_active") is True:
+        return True
+    if item["state"] == "READY" or item.get("version") == 4:
+        return scene_usable(item)
+    return bool(item["files"]) or item["ref"] in reasons
+
+
 def _dependencies(records, candidates, reasons):
     """Candidates owning write versions a retained restore point still needs."""
     proposed = {item["ref"] for item in candidates}
     anchors = [item.get("boundary") or 0 for item in records if item["ref"] not in proposed and
-               item["state"] != "PRUNED" and
-               (item["state"] == "READY" or item["files"] or item["ref"] in reasons)]
+               item["state"] != "PRUNED" and _anchors(item, reasons)]
     earliest = min(anchors) if anchors else None
     return [item for item in candidates if earliest is not None and any(
         entry.get("phase", "ready") != "discarded" and entry.get("sequence", 0) >= earliest

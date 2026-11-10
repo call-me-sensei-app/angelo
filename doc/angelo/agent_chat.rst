@@ -144,7 +144,12 @@ Composer
   pointer, ``input_policy.POINTER_KEYS``). Escape ends editing as in a Blender text field, but keeps the draft and
   clears the selection; after it every key goes to the editor under the pointer (Z over the 3D view opens the
   shading pie) until a click in the composer. A click outside the composer, orbiting, scrolling or a context menu
-  elsewhere also ends editing. With a toolbar control focused by Tab, Escape first returns to the field; with a
+  elsewhere also ends editing. A send that leaves the message box empty (Enter, including a message held while a
+  turn runs) ends editing at the first deliberate pointer move outside the chat: G, Tab or Z over the 3D view while
+  Angelo works are then the view's, never typed into the empty draft. Keys typed without moving the pointer (the
+  next message, a steer) stay the chat's, so no word's first letter becomes a hotkey; a draft typed since the send
+  keeps the focus as before (``input_policy.sent_away``).
+  With a toolbar control focused by Tab, Escape first returns to the field; with a
   picker open, Escape closes the picker (or clears its search first). Keys pressed with the pointer over the chat
   go to the chat, as to any editor under the pointer. Media Studio's fields and the kit's fields
   (``ui_kit_field``) end editing on Escape the same way; ``test_native_field_escape`` drives each one.
@@ -168,7 +173,23 @@ Composer
   Restore"). A Save As moves it; a Save Copy, Save Startup File and a save into Angelo's state folder never do (Auto
   Save and quit.blend run no save handler). The same document is the same id,
   at the same path as written, in the same file, read only from the open document's own file at its load and save
-  (``document_identity.file_identity``): its file number and creation time on macOS, where the device number
+  (``document_identity.file_identity``; at a load the file Blender read, identified on the descriptor it read
+  through as it opened it, ``_bpy._angelo_saved.read_file``, and where a process has none a stat before the read
+  and after it that must agree, else unknown, so the chat is offered, never rebound; at a save the identity the save
+  took of the file it wrote, on the writer's own descriptor as it closed it and through a handle held across its
+  rename into place, taken by name while that descriptor still kept the file open (a file system that numbers a
+  file per open, CIFS ``noserverino`` or some FUSE mounts, gives the name the descriptor's number only then),
+  ``document_file_identity``, ``_bpy._angelo_saved``; a save that gave none leaves the file
+  unknown, never a stat of the path after the rename; a save whose temporary file name holds another file than the
+  held one (found at the close, or there since: a replace, or this one moved aside first; a lookup of the name while
+  the hold keeps the file open, never the link count alone, which some FUSE mounts report as 0) fails before its
+  version backups and leaves the file on disk as it was; one replaced in the moment between that check and the
+  rename names no file and warns that the file on disk may be the other program's (a file system that renames by a
+  copy leaves another file with the same size and time there: no warning); a temporary file whose name is empty at
+  the close counts as moved aside unless the name shows that very file once it is closed (some network file
+  systems show a name only then); a failed write removes its temporary
+  file only while it holds its own file there: Blender 5.2 and upstream ``main`` run ``save_post`` after that rename with
+  the path alone, an upstream candidate): its file number and creation time on macOS, where the device number
   changes when an external drive or disk image is mounted again; the volume serial and file index on Windows; the
   device and inode on Linux. A retargeted symlink, a same-named volume, a reused drive letter or a copy made by
   ``cp -p``, ``ditto``, ``rsync -t`` or Finder is another file. A known limit, by construction: a byte-identical
@@ -242,6 +263,91 @@ Composer
   caret, the selection, a click and Up/Down (which keep the caret's x) agree
   with the text. ``test_blender_chat_scroll_caret.py`` checks both in the
   running app against Blender's own Outliner and the app's own glyph rendering.
+* A draft longer than the composer's eight rows scrolls in the composer itself (``composer_scroll``): each chat
+  keeps its own first shown row. A wheel turn (three rows a notch) or a trackpad swipe over the composer moves it
+  through ``scroll_input.view_up``, the system's scroll direction, as the transcript moves; at either end the event
+  stops there and never scrolls the transcript behind it (a draft that fits leaves the wheel to the transcript). A
+  thin, auto-hiding scrollbar on the text's right (the kit's, ``ui_kit_rows.draw_scrollbar``) shows while the
+  pointer is over the text, for a moment after a scroll and while dragged; its thumb drags and its track jumps.
+  The draft (and the hint) wrap ``composer_scroll.BAR_CLEARANCE`` short of the text viewport's right edge (the
+  kit's bar inset and hover growth, its hit margin and a unit), so the bar never covers a glyph and a click on a full row's last character is the text's. A
+  chat's scroll is the chat's: another chat in the area shows its own rows, and coming back shows the rows it was
+  left at (``composer_input.adopt``, from the chat's first frame there). The
+  view follows the caret only when the caret or the draft changed since the last draw (typing, a key, a click, a
+  paste, Undo), and then only as far as keeps the caret in view: a person reading earlier rows is never pulled back
+  by a redraw, and a long paste opens at the caret. When the rows are wrapped anew (the chat resized, another font
+  size or interface scale) the same text stays at the top, and a caret that was in view stays in view. Clicks, double and triple clicks, drag-select and Up/Down use the
+  scrolled rows; a drag held past the text's top or bottom scrolls a row at once and on every 60 ms while the button
+  stays down there. The caret is drawn only while its row is shown. The text field, its bar and the pointer's
+  position on them are left to right in an Arabic interface too (``canvas_rtl.unmirrored``). 1.0.9 (maintainer
+  report): the composer showed the eight rows ending at the caret, so earlier text was reached only by moving the
+  caret, and the wheel scrolled the transcript.
+* The composer edits as the platform's own multi-line text field: ``composer_keys.TABLE`` holds every shortcut
+  per platform as data (macOS: an ``NSTextView``'s standard bindings and the Emacs keys Cocoa honours; Windows and
+  Linux: a multi-line edit control's), ``composer_edit`` performs each action and ``composer_input`` connects them
+  to the chat's input handler. macOS: Cmd+Left/Right the visual row's start and end, Cmd+Up/Down the draft's top
+  and bottom, Option+Left/Right by word (to a word's end), Option+Up/Down by paragraph, Option+Backspace and
+  Cmd+Backspace delete a word and to the row's start (Fn+Option+Delete and Fn+Cmd+Delete forward), Fn+Delete
+  deletes forward, Ctrl+A/E/B/F/P/N/D/H/K/Y/T as in every Cocoa field (Ctrl+K kills to the paragraph's end,
+  Ctrl+Y yanks it), Home/End and Page Up/Down scroll without moving the caret (Option+Page Up/Down moves it),
+  Cmd+A/C/X/V, Cmd+Z and Shift+Cmd+Z (Ctrl+C/X/V/Z too, as Blender takes them on macOS). Windows and Linux:
+  Home/End the visual row, Ctrl+Home/End the draft, Ctrl+Left/Right by word (to the next word's start),
+  Ctrl+Backspace/Delete by word, Page Up/Down a page, Ctrl+A/C/X/V, Ctrl+Insert, Shift+Insert, Shift+Delete,
+  Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z. Shift with any move extends the selection; Left/Right without it collapse a
+  selection to its edge; a double-click selects a word and a triple-click its paragraph (a drag after either
+  extends by words or paragraphs), Shift+click extends; Up/Down move by visual row. A row wrapped at a space ends
+  before it; one wrapped inside a long word or between Chinese or Japanese characters ends after its last
+  character, where the caret is upstream (``composer_edit.Draft.upstream``): it is drawn at that row's end and
+  Home, End, Up and Down go from that row, as in a native field. A printable character with no Cmd or Ctrl types,
+  Option included on macOS (it types characters on most layouts: "@" is Option+L on a German Mac) and a macOS dead
+  key (Option+E) stays in the field; on Windows and Linux Alt+letter is a shortcut and AltGr types (Windows reports
+  it as Ctrl+Alt; Linux's AltGr is the third level, which Blender reports with no modifier). Over the chat, a key the composer leaves that the Console keymap under
+  it would type (``input_policy.edits_field``: a character with any modifier but Cmd, Ctrl+digit included, and
+  Ctrl+Tab) stays with the chat, so the Console never types past the selection.
+  A field key with an unlisted modifier acts as the key without Shift, else alone. A double-click selects the word
+  under the pointer's glyph (past a row's end, the row's last word); Up, Down and the page keys keep their column
+  through shorter rows until another key moves the caret. The keys go where the chat's typing goes (the focus
+  contract above: the composer while it edits, else the editor under the pointer, the chat included); the view keys
+  (``input_policy.POINTER_KEYS``: Home, the backtick's view pie, the numpad) stay the editor's under the pointer
+  even while the composer has the keyboard, and are the composer's with the pointer over the chat. Another module answers a key in the
+  composer through ``composer_keys.EXTERNAL`` (key, exact modifiers, a named condition of the draft such as
+  "empty", and "module.function"), checked before the table (an entry that fails leaves the key to the table). They are read by the
+  chat's window modal handler, not keymap items, so a keyconfig preset reload never removes them. Linux takes the
+  Windows table: GTK's text view differs only in stopping Ctrl+Right at a word's end.
+* Undo and Redo in the composer are the draft's own (``composer_edit.History``), never the scene's: a typing or
+  deleting run is one step, ended by any other edit, a caret move or a selection (typing over a selection starts
+  a step, so Undo brings the selected text back, selected); a paste, a cut, a word delete and Shift+Enter are steps of their
+  own. While the draft has Undo or Redo steps, Cmd/Ctrl+Z and its Redo are the draft's and
+  stop at the history's ends; a draft with none (untouched, or changed outside the composer: a sent message, a voice
+  transcript) leaves the key to Blender, so a sent message never comes back and the agent's work can be undone
+  as before (the composer takes the keyboard whenever it appears, so a composer that always kept the key would end
+  scene Undo by keyboard). The history is the draft's own: its Console line's in its chat
+  (``composer_input._history``, the 64 most recent), so it moves with the line (maximize, full screen), another
+  chat in the same area never undoes into this one's text, a chat's history comes back with it after a chat switch,
+  and two areas showing one chat at once (a split: each has its own line) keep their own. A draft copied to a new
+  line, or written over an old one (a pop-out, a dock, the chat toggle, Swap Areas), starts its own history, as any
+  draft written outside the composer does: Cmd/Ctrl+Z is Blender's until it is edited there (handing a history on
+  to an equal draft on another line gave some draft another's text in every form tried, break-it rounds 8-11). The
+  add-on's timer keeps only the histories of chat drafts (``drafts.chat_draft_line``), so a freed line's address
+  does not bring its Undo back, except to a chat draft line allocated there before the timer looks (a quarter
+  second or so, longer while a window is between screens) whose draft equals the old one at its next edit. The
+  composer's scroll goes with the chat as last drawn in any area (``composer_input.keep``). An
+  area made a chat again (``editor_types.select_console``) or one that stopped showing the chat any other way (the
+  native editor picker, a workspace tab, a join: ``composer_input.sweep`` from the add-on's timer, at most every
+  quarter second and never while a window is between screens) takes the newer rows when it shows the chat again and
+  none of its old editing, and its picker closes; areas showing the chat at once keep their own. Over a live view
+  the focused chat is handed every key it acts on off its own area (``composer_input.takes_off_chat``: Return,
+  Escape, the field's keys, its table, Tab's focus move, a key that types); the other typing keys are held there,
+  while the window commands and view keys a live view always lets through still pass; a chat switch drops the last
+  chat's selection, drag and caret affinity, and an affinity is its draft's, never another draft's at the same index. Escape and a picker opening end a
+  drag-select and its autoscroll.
+  A selection that a write elsewhere left behind (the caret no longer at one of its ends) is dropped, never widened.
+  Any button release ends every drag (a drag-select, either scrollbar), wherever it lands, and so does a tool taking
+  the window; a pressed chat button still gets its release. ``test_native_composer_editing`` drives every table entry on both tables,
+  ``test_native_composer_input`` the handler and the draw (1x, 1.5x, Arabic), ``test_native_composer_field_keys``
+  the keys and clicks through the handler (each break-it round's findings), ``test_native_composer_areas`` several
+  areas and a live view in front of the chat, and
+  ``test_blender_composer_gui`` the running app with captures, a keyconfig preset reload included.
 * The model chip shows the runtime catalog's name for the model, including a
   full ID the catalog lists under an alias (``model_profiles``); an unknown ID
   is shown as it is. It opens a reasoning card: effort title, model breadcrumb,
@@ -258,6 +364,81 @@ Composer
   is sent before Send; emptying the draft, leaving it unchanged for two minutes
   or writing in another chat closes it again (``performance.rst``, "Runtime
   prewarm").
+
+Messages sent while Angelo works
+================================
+
+Sending during a running turn is never refused (``steering``, ``chat_pending``, ``steering_delivery``). 1.0.9
+showed "Something went wrong" ("The current request is still running; queue the connection for the next message"):
+Enter prepared the chat's connection under the running request.
+
+* **Enter** (or the send arrow, drawn beside Stop while a message is typed) holds the message and the message box's
+  pictures as a *pending message*, drawn in a tray pinned between the transcript and the composer (outside the
+  scroll), oldest first. Its chip says which happened: **Steering** (Angelo reads it at its next step) or **Queued**
+  (sent when the turn ends). A message with pictures queues; so does every message while the turn can't take one.
+* Each bubble has **Now · After this turn** (switches while it waits), **Edit** (its text and pictures back in this
+  chat's message box, after anything typed) and **Remove**. Up arrow in an empty message box takes back the newest.
+  A bubble a runtime is reading, or that is being sent, has no controls.
+* **Safe steps.** A steer reaches the running request only where the host owns the moment between model steps,
+  never while something the model asked for runs:
+
+  - Claude typed plans: after the previous round's plan ran (or failed), as the last block of the next round's
+    prompt, "Message from the person, sent while you were working:" then the words (model-facing, never translated).
+  - Codex: as a native ``turn/steer`` user message (the person's raw words, ``clientUserMessageId``), written when
+    no Angelo call is outstanding: when the last one is answered, or at once if none was. Codex reads pending input
+    only when its next model request starts, after every tool output, and Angelo's runtime holds a code-mode cell
+    while one of Angelo's calls is unanswered, so nothing runs while it is read. ``features.instant_interrupt`` is
+    set off. The person's own Codex (not Angelo's runtime) has no hold: its messages queue.
+  - A Codex plan's correction turn carries them as Claude's rounds do; Claude's opt-in direct tools, voice, a
+    connected app's task, Angelo's own event turn and a worker-hosted chat's turn take none (they queue).
+
+* **Read, not just sent.** A steer leaves the tray only once the model read it: a Claude round answered it; a Codex
+  steer's user item (its ``clientId``) appeared and the model's output followed (an accepted ``turn/steer`` can
+  still be dropped by an interrupt). Then it is a user row where the model read it, captioned "Sent while Angelo
+  worked", with no Restore of its own: the request's snapshot covers it.
+* **Reached means sent, on evidence only.** A message the agent has is never sent again, even if the turn never
+  answered it: a Claude round that carried it was written, or Codex echoed it as a user message of the turn (Codex
+  echoes what it drains or records, and drops undrained input on any interrupt). It stays the request's row. An
+  accepted ``turn/steer`` Codex never echoed comes back (first after a normal end, paused after any other); one
+  with no answer in time is not offered again in that turn (Codex does not dedupe by ``clientUserMessageId``).
+  A refusal before the agent got it (at once, or later on a worker's lane) brings it back paused, never lost and
+  never cut by the tray's limit (``Inbox.not_sent``). After Angelo closes, a Codex message seen but never answered
+  comes back paused: the person decides whether to send it again.
+* **Known limits** (late or mislabelled, never lost or sent twice): a Claude round written while Angelo is closing
+  comes back after the relaunch saying it was not sent, though Claude has it; a steer Codex accepted before Angelo
+  cut a runaway or overdue turn is sent after the request, not into its resend. Every chat kind's turn end
+  (a worker-hosted chat's too) pauses what waits after Stop or a failure (``chat_pending.turn_ended``).
+* **Only the person's requests.** A steer goes only into a request of the person's, never Angelo's own (a worker-done
+  event, Continue, a goal step) or a connected app's task; those wait, and Angelo's worker-done event waits for the
+  person's waiting messages. On a Codex plan turn, only the final messages after a steer the model read can
+  supersede its final plan, so a steer costs no correction turn. The model gets steer text redacted as every
+  message is (``Controller.redact``).
+* **After the turn.** A normal end sends every waiting message as one request, oldest first (a steer the turn never
+  read goes too), through the same path as Enter (``console.submit``: the connection prepared, the scene checked,
+  the chosen tools, a fresh observation, a worker chat's lane). A refusal pauses them with its reason on the bubble,
+  never an error card. **Stop, a failure, or a request that never started** sends nothing by itself: the bubbles say
+  **Not sent** and offer **Send**. An Auto escalation re-runs the request with the steers it read, in order.
+* **One way to send.** ``console.send_message`` is what Enter, the send arrow and a card's Resend call: during a
+  turn it holds the message (``chat_pending.hold``; an empty or one-too-many message is refused in the same words
+  as an idle send), otherwise it starts a request (``console.submit``).
+* **Angelo's own follow-ups** (a stop card's Continue, goal mode's next step) go through
+  ``chat_pending.send_or_queue``: sent at once when the chat is idle and nothing of the person's waits; otherwise
+  they wait in the tray under their own label (the person can remove one) and go out as a request of their own
+  after the person's messages. Never steered, never joined to the person's words, never edited or saved. Automatic
+  next steps check ``chat_pending.person_waiting`` first: the person's words go first.
+* **Approvals.** A steer is the person's words for the model and answers nothing: only Approve and Decline do. While
+  an approval card holds the turn's call, a steer waits ("Angelo reads this once you answer the approval above").
+* **A connection or model chosen during a turn** never touches the running request: it takes over from the next
+  message and the chat says so once (``Controller.select``, ``choose_connection``, ``controller_choice``).
+* **Saved with their chat**: ``pending/<chat id>.json`` beside the session (never a field of the chat file, which an
+  older Angelo would refuse to save over); after a relaunch they come back paused, never sent by themselves, and
+  nothing moves into another chat.
+* Readers that mean "the current request" skip steer rows (``request_rows.starts_request``,
+  ``person_request_start``); the handoff tells a fresh context a steer was "sent by the person while the previous
+  request ran; read during it". Receipts count ``steers_delivered`` and ``pending_sent`` (receipt-only).
+* Tests: ``test_native_steering_inbox``, ``test_native_steering_delivery`` (Claude rounds, Codex ``turn/steer`` and
+  its events, the turn's end), ``test_native_steering_chat`` (the 1.0.9 defect, deferred choices, sends, rows,
+  saving); the running app: ``test_blender_steering.py``.
 
 Models and connections
 ======================
@@ -659,6 +840,78 @@ Approvals
   File writes and deletions need individual approval in every mode. Applying a
   scene change requires Blender's Global Undo. Tool calls dispatch to a bounded
   main-thread queue; ``agent_execution.rst`` specifies the tools.
+* **Waiting for the person is the card, never a status** (``approval_wait``).
+  A step waits exactly while a pending call waits for the person's Approve or
+  Decline (``worker_consent.awaiting_person``: never one approved, automatic,
+  running or revoked, nor a mirrored worker call its worker runs itself); a
+  connected app's waiting signals (the status bar, a call's ``state``, a
+  task's ``state``) read it too; the chat draws its card in place of the live
+  row, and no controller status says "approval" (in 1.0.9 an expired or
+  answered card left "Waiting for your approval" on the live row until the
+  runtime's next status, minutes on Codex). The session rail's tile for a chat
+  with a card reads "Waiting for your approval: <the card's title>", and its
+  click opens the chat with the card's buttons in view. When the person has
+  scrolled the transcript so the card's buttons are out of view, a pill at the
+  transcript's top names the card and its click scrolls to it. The pill sits
+  at the top, and for a second from the draw that reveals the card (however
+  long that draw took to come) its spot, a little wider than the pill and
+  never past the transcript (top or bottom), takes no click and shows no
+  hover (an inert hit; a second click within that second does nothing; after
+  it the spot is no hit at all, for hover and press alike, and a press
+  reaches the card), so a double-click's second press never lands on
+  the revealed card's Approve or Always allow, however short the transcript. A
+  switch the person did not click (back to the lead after a merge) never
+  scrolls. In Auto, a card says why it asks, in a line its rule's reason code
+  selects (``auto_reasons``): ``Controller._auto_bounded`` is
+  ``bounded_reason(...) is None``, so the code that made the step ask is the
+  one that picks the words, never a list of tools; the card reads ``(msgid,
+  fields)``. The codes: a kind of step Auto never runs (bakes, deletes,
+  background jobs, downloads and imports, exports until the new-output-file
+  rule lands), a text file (it always asks: the maintainer, 2026-11-05), a
+  scene program that sets an add-on's render engine, a worker start past
+  Auto's limit for one message, and a merge that adds another copy of a part.
+  A branch of the rule may return its own ``(msgid, fields)`` instead (the
+  new-output-file rule's denied decision: renders and exports to new files in
+  the project's folder run in Auto; overwrites, deletes and writes elsewhere
+  still ask), or ``UNDECIDED`` before it has decided, which shows no line; a
+  script that names preferences or Angelo's own add-on always asks
+  (``consent_excluded``). Every code the rule returns in Auto has its line or
+  a stated reason for none (``NO_LINE``), pinned by the test. Cards that state
+  their own reason (a recovery review, a collaborator's usage, a script a
+  standing consent would run once allowed, a worker chat's own admission gate)
+  get none, and so does a chat whose Auto decision is not the base rule
+  (``explains_auto`` is False: a worker's lease, the lead's mirror of a worker
+  chat). A status the host sets for one call's work ("Working in Angelo",
+  "Waiting for a render", "Generating media") ends with that call
+  (``call_status``), handing the row to another pending call's own status, if
+  any, else to Thinking. None of this decides what asks, which is unchanged,
+  and none of the card, rail or pill text reaches a model; a connected app's
+  call and task ``state`` read the card's predicate, and its task reply keeps
+  its ``status`` words ("Approval required", "Approve collaborator usage"),
+  now derived from the card (``approval_wait.status_for_apps``), so they
+  never outlive it, and the status no longer names work that ended. Pinned by
+  ``test_native_approval_wait`` and, in the window with real clicks and the
+  app's own tool pump, ``test_blender_approval_wait``.
+* **Every card says until when it waits** (``approval_wait.until_text``): "Waits
+  for your answer until 18:42", the local clock time of the call's deadline
+  (``tool_deadlines``: from admission; a held scene moves it later), with
+  seconds when it falls within the current minute; recomputed at each draw, no
+  timer. A step the host ended because it ran out of time before anything of
+  it ran reads a neutral **Expired · nothing ran** chip, never a red Failed, and
+  its opened row says why: nobody answered its card in time, or it ran out of
+  time before it could start (``call_ended``: a closed ``ended`` value on the
+  step's row, set by the host at the expiry only when the call never executed,
+  mutated or committed and no preparation may have had effects; never in the
+  result the model reads). Any other ``EXPIRED`` (a download that failed while
+  it ran, a submitted job) keeps reading Failed, and rows saved before keep
+  their status. Group titles count "1 step expired". Pinned by
+  ``test_native_expiry_state``.
+* **A card asked again** (``review_again``): when the person's Approve meets a
+  binding that changed while the card was shown, the card stays, its header
+  reads *Asked again* and its first line names what changed ("What this step
+  uses changed while it waited (the scene: an edit, a selection or an
+  evaluation), so it is asking again. Check it, then approve."); for a second
+  after it is drawn its Approve takes no click (``agent_execution.rst``).
 * Approval cards describe the change in plain language, naming objects rather
   than handles, with the exact code or parameters under Show code or Show
   details. A card never claims more than the step does: a script's body reads
@@ -923,6 +1176,22 @@ for 2m 10s without sharing its thoughts, then wrote a plan with 8 steps."). A ho
 ``~user`` and ``/root``; web addresses are left whole). All of it is display only: nothing is
 stored, sent to a model or changes what runs. ``test_native_live_progress`` covers the rules without Blender;
 ``test_blender_chat_waiting`` checks the clock in the running app.
+
+When an approval waits in a hidden chat, the corner launcher names its card and
+shows an amber mark. The status bar also names the first unseen in-app card,
+including in workspaces without a 3D view. A card in another chat has a pointer
+in the current chat. Opening any of these routes selects that conversation and
+reveals its current card; it never approves it. Transcript presses are blocked
+before the first reveal draw and the whole transcript is shielded for the
+normal double-click interval afterward. Hidden canvas hits and focus are dropped.
+A reveal is bound to the exact pending call, its epoch, generation and delivery
+owner, and the controller's request (including a mirrored worker's request).
+Reusing a call ID never transfers an earlier reveal to a new request. A stale
+reveal target is dropped; the opening click shield still lasts through its first
+viewport draw, even if the original card has finished or been replaced.
+The waiting list is refreshed by the existing pump/watch, never by drawing. It
+reads whether a chat is shown now (``chat_toggle.chat_shown``), so the chat just
+hidden lists its own card at once, never after the next watch.
 
 Attachments and drops
 =====================

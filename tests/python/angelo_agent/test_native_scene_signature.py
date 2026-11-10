@@ -5,6 +5,8 @@ column as Blender stores them, and compared as the rounded lists were (equal to 
 read one by one into the same layout; a collection that cannot be bulk-read falls back to that. The real layout is
 checked on Blender data by the concurrent-edit fixture's read-backs and benchmark_blender_agent_execution."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from array import array
 from pathlib import Path
 import sys

@@ -9,6 +9,8 @@ Every path is under a temporary directory: the real Blender and Angelo folders a
 never touched. See doc/angelo/app_identity.rst, "Migrating existing settings".
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib.util
 import json
 import os
@@ -25,6 +27,7 @@ sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(ROOT / "scripts/modules"))
 sys.path.insert(0, str(HERE))
 import test_native_state_migration as base  # noqa: E402
+from platform_env import essential_environ  # noqa: E402
 from angelo_agent import state_migration, storage  # noqa: E402
 from angelo_agent.checkpoint_filesystem import anchored_files_supported  # noqa: E402
 from angelo_agent.checkpoints import CheckpointStore  # noqa: E402
@@ -88,7 +91,7 @@ class UserFolderMigrationTests(unittest.TestCase):
         self.assertEqual((blender_config / "userpref.blend").read_bytes(), b"BLENDER-userpref")
         self.assertEqual((blender_config / "startup.blend").read_bytes(), b"BLENDER-startup")
         self.assertFalse((self.current / state_migration.MARKER).exists())
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, essential_environ(), clear=True):
             state = SessionStore(self.current, self.session).load()
             self.assertEqual(state["task_memory"]["brief"]["objective"], "Keep the pre-rename brief",
                              "the brief follows the chat to the new folder")
@@ -145,7 +148,7 @@ class UserFolderMigrationTests(unittest.TestCase):
         status, message = self.run_migration()
         self.assertEqual(status, "migrated", message)
         self.assertFalse((self.current / state_migration.MARKER).exists())
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, essential_environ(), clear=True):
             store = CheckpointStore(self.current, self.session)
             self.assertEqual(store.recovery_copy(record["id"])[1].read_bytes(), data)
             self.assertEqual(store.restore_since(record["id"]), 1)

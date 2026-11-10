@@ -2,23 +2,18 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Main-thread glue for the Angelo team account ("Angelo team" in AI Providers).
 
-``ui`` (the add-on's UI module) stays the owner of connections, in-memory keys,
-catalogs and controllers. This module owns the one ``team_account.TeamAccount``
-and its virtual team connections (``team_connections``). It mirrors the current
-grant key into ``ui._memory_keys`` for each usable team coding connection, so
-the existing chat, catalog and collaborator paths pass it to the runtime
-exactly as they pass an API key; a renewed key reaches a chat at its next
-request (``Controller.select`` restarts the warm runtime and resumes its native
-context). Signing out removes the key, stops idle runtimes bound to team
-connections and keeps their native contexts for a later sign-in by the same
-person in the same organization.
+``ui`` (the add-on's UI module) stays the owner of connections, in-memory keys, catalogs and controllers. This module
+owns the one ``team_account.TeamAccount`` and its virtual team connections (``team_connections``). It mirrors the
+current grant key into ``ui._memory_keys`` for each usable team coding connection, so the existing chat, catalog and
+collaborator paths pass it to the runtime exactly as they pass an API key; a renewed key reaches a chat at its next
+request (``Controller.select`` restarts the warm runtime and resumes its native context). Signing out removes the key,
+stops idle runtimes bound to team connections and keeps their native contexts for a later sign-in by the same person
+in the same organization.
 
-The managed policy (``managed_policy``) decides what is shown: a policy-managed
-or team context asks the person to contact their administrator when they have
-no seat or no providers, and personal connections disappear when the policy
-allows only team connections. All text is translated where it is drawn
-(``display_text.shown``). No network or key-store I/O runs here; draw code only
-reads state.
+The managed policy (``managed_policy``) decides what is shown: a policy-managed or team context asks the person to
+contact their administrator when they have no seat or no providers, and personal connections disappear when the policy
+allows only team connections. All text is translated where it is drawn (``display_text.shown``). No network or
+key-store I/O runs here; draw code only reads state.
 """
 
 import os
@@ -104,7 +99,7 @@ def start(ui, *, background, environ=None, platform=None, backend=None, grant_ba
                     if access_backend is not None and vault is not None else None)
     _account = TeamAccount(console.url, vault=vault, grant_vault=grant_vault, access_vault=access_vault,
                            storage_reason=storage_reason, process_lock=team_lock.factory(directory),
-                           usage_buffer=team_usage_buffer.UsageBuffer(directory))
+                           record_directory=directory, usage_buffer=team_usage_buffer.UsageBuffer(directory))
     team_usage_reports.attach(_account)  # Chats' finished team tasks are counted for this account.
     global _org_policy
     _org_policy = team_org_policy.OrganizationPolicy(_account, directory)
@@ -115,12 +110,14 @@ def start(ui, *, background, environ=None, platform=None, backend=None, grant_ba
 
 
 def close():
-    global _account, _reason, _applied, _chats
+    global _account, _reason, _applied, _chats, _org_policy
     team_usage_reports.attach(None)
+    if _org_policy is not None:
+        _org_policy.save_owed()   # The last try of a refused save (team_org_policy.PENDING keeps it meanwhile).
     if _account is not None:
         _account.close()
     managed_policy.set_organization_source(None)
-    _account, _reason, _applied, _chats = None, "", None, None
+    _account, _reason, _applied, _chats, _org_policy = None, "", None, None, None
     from . import worker_consent_lead
     worker_consent_lead.changed()
     _records.clear()
@@ -224,6 +221,8 @@ def _pump(ui):
     _account.tick(idle=not any(c.busy for c in controllers))
     view, key = _account.view(), _account.grant_key()
     if (view.version, key) == _applied:
+        if _org_policy is not None:
+            _org_policy.retry_due()   # A refused save of the policy, tried again after its pause.
         return False
     _applied = (view.version, key)
     if _org_policy is not None:
@@ -288,10 +287,10 @@ def _wrapped(layout, text, icon='NONE'):
 
 def _storage(view):
     name = store_text().name
-    if view.stored == "saved":
-        return Text(STORED, store=name)
-    if view.stored == "unreadable":
-        return Text(STORED_UNREADABLE, store=name)
+    if view.stored == "failed" and view.save_problem:  # Retried (team_refresh_marks).
+        return Text(team_token_store.SAVE_FAILED, store=name, problem=view.save_problem)
+    if view.stored in {"saved", "unreadable"}:
+        return Text(STORED if view.stored == "saved" else STORED_UNREADABLE, store=name)
     if view.stored in {"session", "failed"}:
         # The store's own reason already says the sign-in lasts until Angelo quits (team_token_store).
         return _account.storage_reason or Text(STORED_SESSION, reason=Text(NOT_SAVED, store=name))

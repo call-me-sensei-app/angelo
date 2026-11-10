@@ -34,7 +34,7 @@ import threading
 import uuid
 
 from .action_schema_types import stored_forms
-from . import plan_steps, tool_deadlines
+from . import plan_steps, steering_delivery, tool_deadlines
 from .claude_stream import STATUS_PLAN, STATUS_THINKING, THINKING_SECONDS as PROGRESS_SECONDS
 from .plan_bindings import OwnCommits
 from .live_throttle import Latest
@@ -244,7 +244,7 @@ class PlanTurns:
         self.begin_turn()
 
     def begin_turn(self):  # watch: a message that keeps streaming without finishing (plan_runaway)
-        self.streams, self.messages, self.progress, self.watch = {}, [], {}, TurnWatch()
+        self.streams, self.messages, self.progress, self.watch, self.steered = {}, [], {}, TurnWatch(), 0
 
     def reply_delta(self, item, delta, emit=None):
         """The reply text a message delta adds; ``emit`` also gets a status saying what the plan will make.
@@ -282,7 +282,7 @@ class PlanTurns:
         parsed = [parse_plan(text, self.allowed) for _, text in self.messages]
         plan, problem = parsed[-1]
         if problem is None and any(earlier and earlier["operations"] and earlier["operations"] != plan["operations"]
-                                   for earlier, _ in parsed[:-1]):
+                                   for earlier, _ in parsed[self.steered:-1]):   # Answered before a steer read.
             plan, problem = None, SUPERSEDED
         return self.messages[-1][0], plan, problem
 
@@ -384,7 +384,7 @@ def finish(provider, turns, context, fence, native_id, status):
                 raise PlanRejected("Host rejected the plan before running any operation:\n" + shown)
             context.emit("message", {"role": "system", **notice(
                 "Nothing of the last plan ran; asking for a corrected plan:\n{problem}", problem=shown)})
-            status = provider.plan_turn(native_id, problem, turns)
+            status = steering_delivery.plan_turn(provider, native_id, problem, turns)
             continue
         operations = [operation for operation in operations if not _repeats(operation, turns.calls + turns.ran)]
         if not operations:
@@ -421,7 +421,7 @@ def finish(provider, turns, context, fence, native_id, status):
                 context.emit("message", {"role": "system", **notice(
                     "The plan stopped at operations[{index}]; asking for the edits still needed:\n{problem}", index=index, problem=continuable)})
                 prompt = continuation_prompt(context, executed, results, _observation(provider, context, fence))
-            status = provider.plan_turn(native_id, prompt, turns)
+            status = steering_delivery.plan_turn(provider, native_id, prompt, turns)
             continue
         context.emit("message", {"role": "system", "text": problem})
         return failure_status

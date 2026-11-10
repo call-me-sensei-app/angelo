@@ -16,14 +16,15 @@ Features and their actions (``ACTIONS``):
 
 TOOL = "angelo_app_feature"
 ACTIONS = {"ENGINE_LINK": ("ON", "OFF", "ADD_TO_PROJECT")}   # Enum values in Blender's identifier style.
-ENGINES = ("GODOT", "UNITY", "UNREAL")
+ENGINES = ("GODOT", "UNITY", "UNREAL", "WEB")   # WEB: a Three.js page through its dev server.
 
 APP_FEATURE_TOOLS = [{
     "name": TOOL,
     "description": (
         "Turn an Angelo feature on or off as its + menu row does; approved on a card. ENGINE_LINK: ON listens on this "
-        "computer for the Angelo Link plugin of Godot, Unity and Unreal; OFF stops it; ADD_TO_PROJECT opens a folder "
-        "picker for the engine's project, copies the plugin there and turns the link on."),
+        "computer for the Angelo Link plugin of Godot, Unity, Unreal and a Three.js page's Vite dev server; OFF stops "
+        "it; ADD_TO_PROJECT opens a folder picker for the engine's project, copies the plugin there (WEB: puts the npm "
+        "install command on the clipboard) and turns the link on."),
     "inputSchema": {"type": "object", "properties": {
         "feature": {"type": "string", "enum": sorted(ACTIONS)},
         "action": {"type": "string", "enum": sorted({action for actions in ACTIONS.values() for action in actions})},

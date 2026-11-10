@@ -91,7 +91,8 @@ def claude_session(executable, context, native_id=None, default_model=None):
     from .claude_text import NO_WEB_SEARCH
     from .tool_specs import native_plan_schema
     options = context.turn_options or clean_options(context.state.get("options"))
-    native_tools = ",".join(getattr(context, "native_tools", ("WebSearch", "WebFetch")))
+    from .web_search_access import native_tools as chat_native_tools
+    native_tools = ",".join(chat_native_tools(context))   # Without WebSearch once the organization turned it off.
     direct = claude_direct.enabled(context)   # Opt-in: Angelo's tools as direct calls instead of one plan per round.
     # A context's own base (Studio's prompt editor) is its whole prompt: none of the chat agent's base, plan or
     # direct-tools text, which describe scenes, sculpting and views it can't touch (test_native_studio_editor_prompt).
@@ -117,8 +118,15 @@ def claude_session(executable, context, native_id=None, default_model=None):
     # Diagnostic runs only (debug_thinking.py): the thinking summaries a harness reads to find where a miss began.
     values = {"tools": native_tools, "direct": direct, "fast": options["fast"], "model": model or "",
               "effort": claude_effort(options["effort"]), "thinking": bool(debug_thinking.claude_arguments(context)),
-              "resume": native_id or ""}
+              "resume": native_id or "", "gateway": gateway_session(context)}
     return claude_arguments(executable, values), initialize
+
+
+def gateway_session(context):
+    """Whether a session runs on a team connection, whose WebFetch goes through the gateway (``team_network``)."""
+    from .provider_registry import TEAM_MODES, spec_for
+    mode = (getattr(context, "state", None) or {}).get("provider")
+    return mode in TEAM_MODES and spec_for(mode)["runtime"] == "claude"
 
 
 def check_access(mode, api_key, executable, env, local=False):
@@ -149,13 +157,16 @@ def check_access(mode, api_key, executable, env, local=False):
 def claude_arguments(executable, values):
     """A session's command from its launch values (``claude_session``); Angelo rebuilds a worker's launch here."""
     import json
-    from . import claude_direct, debug_thinking
+    from . import claude_direct, debug_thinking, team_network
     allowed_tools = values["tools"] + ("," + claude_direct.ALLOW_RULE if values["direct"] else "")
+    # A team session's WebFetch goes through its gateway (team_network.settings); no other session sets hooks.
+    settings = {"fastMode": values["fast"], "hooks": {},
+                **team_network.settings(values.get("gateway", False), values.get("hooks_blocked"))}
     # Never --bare: its built-in tools are only shell and file tools (runtime_environment.require_angelo_profile).
     command = [executable, "-p", "--input-format", "stream-json", "--output-format", "stream-json",
                "--verbose", "--include-partial-messages", "--tools", values["tools"], "--allowedTools", allowed_tools,
                "--strict-mcp-config", "--permission-mode", "dontAsk", "--setting-sources", "",
-               "--disable-slash-commands", "--settings", json.dumps({"fastMode": values["fast"], "hooks": {}}),
+               "--disable-slash-commands", "--settings", json.dumps(settings),
                "--mcp-config", '{"mcpServers":{}}',
                # The working directory, date and other per-machine lines leave the system prompt (Claude Code
                # moves them to the first user message), so the plan schema, the system prompt and Angelo's
@@ -186,7 +197,11 @@ def launch_values(arguments):
     values = {"tools": tools, "direct": (after("--allowedTools") or "") != tools,
               "fast": '"fastMode": true' in (after("--settings") or ""), "model": after("--model") or "",
               "effort": after("--effort") or "", "thinking": "--thinking-display" in arguments,
-              "resume": next((part[len("--resume="):] for part in arguments if part.startswith("--resume=")), "")}
+              "resume": next((part[len("--resume="):] for part in arguments if part.startswith("--resume=")), ""),
+              "gateway": '"skipWebFetchPreflight": true' in (after("--settings") or "")}
+    # A worker built the hook settings from its own reading of the administrator's Claude Code policy; rebuild the same
+    # form here (the host decides the launch it runs from its own reading: runtime_plan).
+    values["hooks_blocked"] = False if values["gateway"] else None
     sound = (set(filter(None, tools.split(","))) <= {"WebSearch", "WebFetch"} and values["effort"] in CLAUDE_EFFORTS
              and (not values["model"] or _MODEL.fullmatch(values["model"]))
              and (not values["resume"] or _RESUME.fullmatch(values["resume"])))
@@ -253,9 +268,17 @@ class ClaudeTurn:
         self.activity = TurnActivity()
         self.stream = RoundStream(getattr(self.controller, "record_running_usage", None), self.count_retry,
                                   self.count_streamed)
+        # This round's WebSearch calls: one that fails because the organization turned web search off is noted.
+        from .web_search_access import Searches
+        self.searches = Searches(self.note_web_search_off)
 
     def owns_request(self):
         return self.owner.owns_request()
+
+    def note_web_search_off(self):
+        """A search failed because the organization turned web search off: the next turn relaunches without it."""
+        from .web_search_access import record_off
+        record_off(self.controller)
 
     def count_retry(self, kind):
         """Claude Code retried an API request of this turn: the receipt counts it (``claude_stream.retry_kind``)."""

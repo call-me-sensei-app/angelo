@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Workspace metadata yields, cancels and bounds worker count without moving live bpy access off-thread."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import threading
 import time
@@ -9,12 +11,16 @@ import unittest
 from unittest.mock import patch
 
 import test_native_blend_file as fixtures
+from host_test_policy import environment_skip
 from angelo_agent import blend_file_pending as pending
 from angelo_agent.read_spec import validate_read
 from angelo_agent.studio_agent import StudioPending
 
 
-@unittest.skipUnless(os.name == "posix", "anchored POSIX fixture")
+# The workspace's own backend opens the file on every platform (Windows: anchored_windows); only a FIFO is POSIX's.
+FIFOS = unittest.skipUnless(hasattr(os, "mkfifo"), environment_skip("Windows file systems hold no FIFOs"))
+
+
 class PendingMetadataTests(unittest.TestCase):
     def setUp(self):
         fixtures.WorkspaceFileTests.setUp(self)
@@ -86,6 +92,7 @@ class PendingMetadataTests(unittest.TestCase):
                 self.finished(result)
         self.assertFalse(pending._active)
 
+    @FIFOS
     def test_fifo_refusals_do_not_consume_worker_slots(self):
         for index in range(pending.MAX_ACTIVE):
             file = "pipe%d.blend" % index
@@ -96,6 +103,7 @@ class PendingMetadataTests(unittest.TestCase):
         self.assertEqual(self.metadata.calls, [])
         self.assertTrue(self.finished(pending.begin(self.args, self.workspace))["readable"])
 
+    @FIFOS
     def test_regular_entry_swapped_to_fifo_cannot_block_a_cancelled_worker(self):
         entered, release = threading.Event(), threading.Event()
         path = self.root / self.args["file"]

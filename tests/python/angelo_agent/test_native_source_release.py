@@ -12,10 +12,11 @@ text is rendered completely, by this tool and from the variables CMake defines. 
 ``versions.cmake`` parses into the manifest. ``doc/angelo/releasing.rst`` has the dry run on the real tree.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import io
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -79,21 +80,25 @@ class RepoCase(unittest.TestCase):
         }
         for relative, text in files.items():
             (repo / relative).parent.mkdir(parents=True, exist_ok=True)
-            (repo / relative).write_text(text)
+            (repo / relative).write_text(text, newline="\n")
         self.asset = b"\x89PNG real splash bytes"
         oid = hashlib.sha256(self.asset).hexdigest()
         pointer = "version https://git-lfs.github.com/spec/v1\noid sha256:%s\nsize %d\n" % (oid, len(self.asset))
         (repo / "release/datafiles").mkdir(parents=True)
-        (repo / "release/datafiles/splash.png").write_text(pointer)
+        # Committed as Git LFS writes every pointer, with LF line ends (text mode would write CRLF on Windows).
+        (repo / "release/datafiles/splash.png").write_text(pointer, newline="\n")
         store = repo / ".git/lfs/objects" / oid[:2] / oid[2:4]
         store.mkdir(parents=True)
         (store / oid).write_bytes(self.asset)
         self.store_object = store / oid
-        build = repo / "build.sh"
-        build.write_text("#!/bin/sh\n")
-        build.chmod(0o755)
-        os.symlink("main.c", repo / "source/link.c")
+        (repo / "build.sh").write_text("#!/bin/sh\n")
         git(repo, "add", "-A")
+        # An executable and a symbolic link set in the index, as any host's Git records them: Windows has no execute
+        # bit, and its Git adds no link it can't make. The tool reads modes from the commit, never the folder.
+        git(repo, "update-index", "--chmod=+x", "build.sh")
+        (self.folder / "link").write_text("main.c")
+        link = git(repo, "hash-object", "-w", "--no-filters", str(self.folder / "link")).strip()
+        git(repo, "update-index", "--add", "--cacheinfo", "120000,%s,source/link.c" % link)
         git(repo, "update-index", "--add", "--cacheinfo", "160000,%s,lib/macos_arm64" % LIB_COMMIT)
         git(repo, "commit", "-q", "-m", "release")
         self.version = json.loads((repo / "scripts/modules/angelo_identity.json").read_text())["version"]["label"]

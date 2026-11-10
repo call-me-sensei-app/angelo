@@ -6,6 +6,8 @@ Break-it P1-12 T6 and P1-13 U4: the pacing helpers were pinned, the timers that 
 Blender dropped on a file load (P1-13 U3) passed every test. The real window is the session rail's GUI suite.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import sys
 import time

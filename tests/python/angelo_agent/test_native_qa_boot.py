@@ -8,6 +8,8 @@ the gate's rule (timers, a build running or about to start, a build held back by
 GUI suite or QA helper waits on those timers itself; a timer's value recorded as a diagnostic or a check is not a wait.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import importlib.util
 import sys
@@ -22,7 +24,7 @@ TIMERS = {("director", "_timer"), ("ui", "_layout_timer")}
 
 
 def load_gate(director_timer=None, layout_timer=None, tabs=True, building=False, missing=(), quiet=True,
-              holding=None, owed=False, startup_timer=None, cover_since=None):
+              holding=None, owed=False, startup_timer=None, cover_since=None, frame_owed=None):
     """``qa_boot`` loaded from its file against stand-ins; nothing is left in ``sys.modules``."""
     package = types.ModuleType("angelo_agent")
     package.director = SimpleNamespace(_timer=director_timer)
@@ -32,7 +34,8 @@ def load_gate(director_timer=None, layout_timer=None, tabs=True, building=False,
                    context=SimpleNamespace(window_manager=SimpleNamespace(windows=["window"])),
                    app=SimpleNamespace(timers=SimpleNamespace(is_registered=lambda timer: timer is not None))),
                "angelo_default_layout": SimpleNamespace(_timer=startup_timer, _cover={"since": cover_since,
-                                                                                       "handlers": []})}
+                                                                                       "handlers": [],
+                                                                                       "frame_owed": frame_owed})}
     if tabs:
         package.studio_workspaces = SimpleNamespace(_building=building, _holding=holding, missing=lambda: list(missing),
                                                     startup_quiet=lambda window: quiet,
@@ -81,6 +84,14 @@ class GateTests(unittest.TestCase):
         with patch:
             self.assertEqual(gate.waiting_on(), ["Angelo's start-up cover"])
         self.assertTrue(started(cover_since=None))
+
+    def test_waits_for_the_frame_after_the_cover_lifted(self):
+        """The native cover does not render the viewports it hides: they draw in the frame after it lifts."""
+        self.assertFalse(started(frame_owed=True))
+        gate, patch = load_gate(frame_owed=True)
+        with patch:
+            self.assertEqual(gate.waiting_on(), ["the frame after Angelo's start-up cover"])
+        self.assertTrue(started(frame_owed=False))
 
     def test_a_build_held_back_by_the_suites_own_card_is_not_waited_for(self):
         self.assertTrue(started(missing=["studio"], quiet=False), "a card or the welcome holds it: the suite lets go")

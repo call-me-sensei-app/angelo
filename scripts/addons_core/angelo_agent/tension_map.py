@@ -20,10 +20,10 @@ from bpy.types import Operator
 from . import tension_map_logic as logic
 from .ui_text import iface_, n_
 
-MENU_LABEL = n_("Tension map")
+MENU_LABEL = n_("Tension Map")   # The feature's name, as its operator and overlay spell it.
 MENU_WHY = n_("See where a posed or simulated mesh stretches (red) and compresses (blue)")
 SECTION = n_("Inspect")
-UNDO_ADD = n_("Tension map")
+UNDO_ADD = n_("Tension Map")
 UNDO_REST, UNDO_CAPTURE, UNDO_REMOVE = n_("Tension rest shape"), n_("Capture rest shape"), n_("Remove tension map")
 
 

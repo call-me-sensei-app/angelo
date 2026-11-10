@@ -10,6 +10,8 @@
 
 #include "BLI_enum_flags.hh"
 #include "BLI_ghash.h"
+#include "BLI_span.hh"
+#include "BLI_vector.hh"
 
 #include <cstdarg>
 
@@ -270,6 +272,16 @@ struct BMOpSlot {
       BMO_FlagSet *flags;
     } enum_data;
   } data;
+
+  /**
+   * Angelo: for a #BMO_OP_SLOT_MAPPING slot, the keys of `data.ghash` in the order they were first
+   * inserted (#BMO_slot_map_insert); null for other slots. Iterating a mapping
+   * (#BMO_iter_new, #BMO_slot_map_keys_ordered) follows it. The hash is keyed by element pointers,
+   * so its own order follows heap addresses, which differ between processes: an extrude made its
+   * side faces, and so a UV sphere its faces, in another order every run, and an order-sensitive
+   * tool (the Float boolean with that sphere as its cutter) then gave another result.
+   */
+  Vector<void *> *map_order;
 };
 
 /* mainly for use outside bmesh internal code */
@@ -822,6 +834,12 @@ void *BMO_iter_step(BMOIter *iter);
  * remember for pointer maps this will be a pointer to a pointer.
  */
 void **BMO_iter_map_value_p(BMOIter *iter);
+
+/**
+ * Angelo: the keys of a mapping slot in the order they were first inserted. Keys written straight
+ * into the slot's hash (#BMO_SLOT_AS_GHASH) come after them, in the hash's order.
+ */
+Span<void *> BMO_slot_map_keys_ordered(BMOpSlot *slot);
 void *BMO_iter_map_value_ptr(BMOIter *iter);
 
 float BMO_iter_map_value_float(BMOIter *iter);

@@ -26,7 +26,8 @@ could appear in none of them.
   so the viewport is not crowded; the pills' chevron (``asset_shelf_add``) or picking a tab expands it to one row of
   small previews. Hidden, collapsed or expanded (the chevron, View > Asset Shelf, the region's edge) is remembered
   per user (``asset-shelf.json`` in the state folder, ``STATE_KEY``) and applied to every Object-mode 3D view of any
-  file. The 3D views' draws sample the shelf's visibility (``_sample``, no timer); a change counts as the
+  file. The 3D views' draws sample the shelf's visibility (``_sample``; ``media_shelf_cover`` under the start-up
+  cover, where views do not draw, applies the choice there); a change counts as the
   person's only within one Object-mode view of a Manual layout, never across a mode switch or in Director (which
   hides every shelf itself, ``director_layout.configure``).
 """
@@ -34,7 +35,7 @@ could appear in none of them.
 import bpy
 from bpy.app.handlers import persistent
 
-from . import live_target, live_windows
+from . import change_clock, live_target, live_windows
 
 FILE = "asset-shelf.json"
 KEY = "object_shelf_shown"   # Before collapsing: True or False (read as expanded or hidden).
@@ -116,18 +117,18 @@ def studio_catalogs():
     Their paths follow the interface language (Part E rewrites the catalogue file), their ids never change
     (``studio_assets.CATALOGS``), so the paths are read by id. Empty before the library exists."""
     try:
-        from . import studio_assets, studio_state
+        from . import studio_assets, studio_files, studio_state
         cats = studio_assets.asset_directory(studio_state.library_directory()) / studio_assets.CATS_FILE
-        stamp = cats.stat().st_mtime_ns
+        info = cats.stat()
     except (ImportError, OSError, ValueError, AttributeError):
         return {}
-    key = (str(cats), stamp)
+    key = change_clock.cache_key(info, (str(cats), info.st_mtime_ns))   # In the clock's tick (Windows): not kept.
     if key not in _catalogs:
         kinds = {identity: kind.lower() for kind, (identity, *_rest) in studio_assets.CATALOGS.items()}
         found = {}
-        try:
-            lines = cats.read_text(encoding="utf-8").splitlines()
-        except (OSError, UnicodeDecodeError):
+        try:   # Bytes that aren't UTF-8 (the person's) are kept as they are, as the sync keeps them.
+            lines = studio_files.shared_read(cats)[0].splitlines()
+        except OSError:
             lines = []
         for line in lines:
             parts = line.split(":", 2)
@@ -163,14 +164,20 @@ def catalog_kind(path, catalogs=None):
     with ``catalogs``."""
     if not path:
         return None
+    parent = None
     if catalogs is None:
         try:
             from . import studio_assets
+            parent = getattr(studio_assets, "TAB_PATH", None)
             if hasattr(studio_assets, "catalog_kind"):
-                return studio_assets.catalog_kind(path)
+                kind = studio_assets.catalog_kind(path)
+                if kind is not None:
+                    return kind
         except ImportError:
-            pass
+            pass   # Then the names in the file: another Angelo may have written them in its own language.
     for kind, root in (studio_catalogs() if catalogs is None else catalogs).items():
+        if parent and not root.startswith(parent + "/"):
+            continue   # Moved out of Angelo's parent by the person: a path of its own is no longer ours to name.
         if path == root or path.startswith(root + "/"):
             return kind
     return None

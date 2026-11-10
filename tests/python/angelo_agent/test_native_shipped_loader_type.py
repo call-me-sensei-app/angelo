@@ -12,6 +12,8 @@ shipped file. Each case runs in an isolated interpreter (``-I -S``) against a st
 Python when ``ANGELO_TEST_APP_PYTHON`` names it.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib.util
 import json
 import os

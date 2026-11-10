@@ -3,6 +3,8 @@
 """The AI Providers canvas page: layout (centred column, every control hit-testable, nothing outside the
 column, narrow widths) and the pure status-to-chip table. No Blender: a fake measuring view."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path
@@ -108,6 +110,22 @@ class Readiness(unittest.TestCase):
         self.assertEqual(readiness(False, "Not connected", "CODING")[0], "Not connected")
         self.assertEqual(readiness(False, "API key rejected (401)", "GENAI")[1], "coral")
         self.assertEqual(readiness(False, "Key configured · not verified", "GENAI")[0], "Not checked yet")
+
+    def test_the_retained_summary_contains_page_facts_without_mutating_the_model(self):
+        import copy
+        from angelo_agent.providers_page_model import summary
+        data = model()
+        data["attention"] = [{"title": "Check a connection"}]
+        before = copy.deepcopy(data)
+        result = summary(data)
+        self.assertEqual(result, {"sections": ["Coding agents", "Agent permissions"],
+                                 "rows": ["ChatGPT", "Claude", "Always allow scripts"],
+                                 "chips": ["Available in chat", "Sign-in expired"],
+                                 "team": data["team"]["title"], "slim_team": True,
+                                 "attention": ["Check a connection"], "add": data["hero"].get("add")})
+        self.assertEqual(data, before)
+        data["sections"][0]["rows"][0]["name"] = "Changed later"
+        self.assertEqual(result["rows"][0], "ChatGPT", "Retained facts never alias a live connection row")
 
     def test_the_new_modules_stay_small_and_ui_py_does_not_grow(self):
         for name in ("providers_page_layout.py", "providers_page_draw.py", "providers_page_model.py",

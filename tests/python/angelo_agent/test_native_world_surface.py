@@ -7,6 +7,8 @@ follows, a muted node's pass-through, the Sky type and sun elevation when a Sky 
 colour and its family. ``test_blender_script_api_notes.py`` runs the module on real Blender 5.2 worlds.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import math
 import sys
 import unittest

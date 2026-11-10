@@ -28,6 +28,10 @@ temporary blend in ANGELO_QA_DIR; no user project, provider or account is used.
 Inspect results.json: a zero exit status alone is not proof.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 from pathlib import Path
@@ -71,7 +75,7 @@ def window():
 
 def boundary():
     """Exactly what console.execute does around a successful send."""
-    turn = turn_context.prepare(window(), CHAT)
+    turn = turn_context.prepare(window(), CHAT, clock=QUIET)
     turn.commit()
     return turn.observation
 
@@ -125,10 +129,18 @@ def program(handle, revision, location):
             "expected_checks": [{"kind": "finite_coordinates", "target": handle}]}
 
 
+
+def QUIET():
+    """A revision budget's clock that never advances: the cases that check the revisions themselves, not the budget,
+    must not depend on how busy the machine is (a loaded runner spent the wall-clock budget before the third
+    revision; preempted_send_binds_the_named_object keeps the real clock to test the budget)."""
+    return 0.0
+
+
 def ordering(objects):
     legacy = turn_context.legacy_observation(window())
     check("legacy_cap_cuts_off_the_active_object", "Active Cube" not in [o["name"] for o in legacy["objects"]])
-    observation = turn_context.prepare(window(), None).observation
+    observation = turn_context.prepare(window(), None, clock=QUIET).observation
     names = [entry["name"] for entry in observation["objects"]]
     check("active_first_then_selected_beyond_the_cap", names[:3] == ["Active Cube", "Selected A", "Selected B"])
     # 40 objects: the active and two selected ones, then at most MAX_FILL_OBJECTS scene-order rows (payload trims).
@@ -262,7 +274,7 @@ def preview_revisions_survive_until_accept(objects):
 def named_and_changed_objects_are_revised(objects):
     made, filler = window().scene.objects["Live Created"], window().scene.objects["Filler 20"]
     # Not committed: the previous steps' own commits are still in the feed.
-    observation = turn_context.prepare(window(), CHAT, message="Move 'Filler 20' beside the new cube").observation
+    observation = turn_context.prepare(window(), CHAT, message="Move 'Filler 20' beside the new cube", clock=QUIET).observation
     rows = {entry["name"]: entry for entry in observation["objects"]}
     check("own_commit_object_is_recently_changed_with_production_revision",
           rows.get("Live Created", {}).get("recently_changed")

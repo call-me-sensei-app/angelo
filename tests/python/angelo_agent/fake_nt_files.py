@@ -24,6 +24,8 @@ import sys
 import unittest
 from pathlib import Path
 
+from host_test_policy import environment_skip
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import anchored_windows as aw
 
@@ -37,8 +39,9 @@ REAL_BACKEND_HOST = os.name == "nt"
 class FakeNtApi:
     def __init__(self, aliases=None, data_reparse=(), redirect=None, final_paths=None):
         if REAL_BACKEND_HOST:
-            raise unittest.SkipTest("The POSIX stand-in opens names relative to a directory descriptor; on Windows "
-                                    "windows_ntfs_checks.py runs the real backend")
+            raise unittest.SkipTest(environment_skip(
+                "The POSIX stand-in opens names relative to a directory descriptor; on Windows the real backend runs "
+                "(each suite's POSIX classes, and windows_ntfs_checks.py)"))
         self.aliases = dict(aliases or {})        # {(directory, alias): long name}
         self.data_reparse = {str(path) for path in data_reparse}
         self.redirect = {str(key): value for key, value in (redirect or {}).items()}

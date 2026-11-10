@@ -40,6 +40,8 @@ def register():
     import sys
     from . import tls_distrust
     tls_distrust.install()   # First: every TLS connection in the app refuses compromised CA keys (tls_distrust).
+    from . import change_clock
+    change_clock.prime()   # Windows: which volumes keep coarse times, listed on a thread; no settle waits for it.
     import bpy
     from . import data_migration, product_env, state_migration
     # Before anything opens the account store, Media Studio library or agent state.
@@ -68,6 +70,8 @@ def register():
     font_watch.register()    # Rebinds the chat's fonts after Blender reloads its own (a theme preset, Text Rendering).
     app_notices.register()   # Update notices, crash reports and What's New (doc/angelo/updates_and_reports.rst).
     job_ui.register()        # Background jobs: their timer, file events, status bar and operators.
+    from . import refused_saves
+    refused_saves.register()   # A save another program keeps refusing (Windows) is told on a card.
     about_card.register()    # The About Angelo card (the Angelo menu's About).
     settings_import_ui.register()   # Import Blender Settings… and its undo (File > Defaults, Preferences).
     pycache_retention.schedule()   # Earlier builds' bytecode caches, a minute after startup, on a thread.
@@ -90,6 +94,8 @@ def register():
     chat_launcher.register()   # Angelo in the 3D view's corner while the chat is hidden; a click opens it.
     asset_shelf_add.register()   # Generate on every Asset Shelf: Media Studio on the shelf's tab.
     media_shelf.register()   # Object mode's Asset Shelf: models and materials, Media Studio's included.
+    from . import media_shelf_cover
+    media_shelf_cover.register()   # The shelf's samples while the start-up cover hides the 3D views.
     from . import photo_drop
     photo_drop.register()   # A photo dropped on the 3D view: Angelo's drop card (doc/angelo/photo_drop.rst).
     from . import tension_map
@@ -142,6 +148,8 @@ def unregister():
     from . import export_baked
     export_baked.unregister()
     shelf_empty.unregister()
+    from . import media_shelf_cover
+    media_shelf_cover.unregister()
     media_shelf.unregister()
     asset_shelf_add.unregister()
     from . import ai_render_card, bake_maps_card, render_engines, render_region, skeleton_check_ui, uv_checker
@@ -161,6 +169,8 @@ def unregister():
     settings_import_ui.unregister()
     about_card.unregister()
     job_ui.unregister()
+    from . import refused_saves
+    refused_saves.unregister()
     app_notices.unregister()
     font_watch.unregister()
     from . import session_rail_input

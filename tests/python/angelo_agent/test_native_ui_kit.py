@@ -6,6 +6,8 @@ No Blender here: the fake view measures text at a fixed width per character. The
 in every state are checked by the GUI gallery (``test_blender_ui_kit_gallery``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

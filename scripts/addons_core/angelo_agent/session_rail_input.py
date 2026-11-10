@@ -57,17 +57,20 @@ def _items():
     return _keymap_items
 
 
-def switch(session_id, window=None):
+def switch(session_id, window=None, reveal=False):
     """Make ``session_id`` the active session: its chat shown and its scene full screen. Only what is displayed
     changes (the maintainer, 2026-10-25): a worker's part is drawn over the big view (``live_view_draw``, never the
     window's scene), and the lead's tile brings the lead's own scene back into the main window (``document_scene.show``:
     the person's click is the one route that sets the window's scene; break-it E2E-20 R5-M-1)."""
-    from . import document_scene, live_view_draw, parallel_sessions, rail_pictures, ui
+    from . import approval_wait, document_scene, live_view_draw, parallel_sessions, rail_pictures, ui
     if session_id not in parallel_sessions.sessions():
         return False
     if ui._sessions is None or session_id != ui._sessions.active:
         ui.show_session(session_id)
     parallel_sessions.note_active(session_id)
+    if reveal:   # The person's tile click opens it at its waiting card; a switch back after a merge never scrolls.
+        approval_wait.request_reveal(session_id, approval_wait.awaiting(ui._controllers.get(session_id)),
+                                     controller=ui._controllers.get(session_id))
     if not parallel_sessions.is_worker(session_id) and session_id in ui._controllers:
         document_scene.show(ui._controllers[session_id], ui.main_window())
     for item in [window] if window is not None else live_windows.windows(bpy.context.window_manager):
@@ -288,7 +291,7 @@ class ANGELO_OT_session_rail_input(Operator):
                     elif found[0] == "minimize":
                         rail_controls.minimize(self, window)
                     else:
-                        switch(found[1], window)
+                        switch(found[1], window, reveal=True)
                 drawn.pressed.pop(self.window, None)
                 area.tag_redraw()
             return {'RUNNING_MODAL'}
@@ -315,16 +318,16 @@ class ANGELO_OT_session_rail_input(Operator):
     def _live(self, context, window, area, region, worker, event, x, y):
         """An event over a live view: its own navigation and inspection, or held; the few it hands on reach no
         handler of the 3D view beneath (its input is held, ``live_view_draw.renew``)."""
-        from . import live_nav, live_view_draw, live_view_nav
+        from . import composer_input, live_nav, live_view_draw, live_view_nav
         drag = live_view_draw.navigation.drag
         if not drag.mode and event.type in BUTTONS | MOVES and _on_edge(window, area, event.mouse_x, event.mouse_y):
             return {'PASS_THROUGH'}   # Resizing, splitting or joining areas: Blender's own, never the view's.
         keyboard = not _pointer(event)
         typing = keyboard and _chat_focused(window) and not input_policy.follows_pointer(event.type)
+        if typing and composer_input.takes_off_chat(event):
+            return {'PASS_THROUGH'}   # The chat acts on it with the pointer resting over the view.
         if typing and input_policy.edits_field(event):
-            if event.alt and event.type not in input_policy.FIELD_KEYS:
-                return {'RUNNING_MODAL'}   # The chat inserts no Option character off its own area: nobody's.
-            return {'PASS_THROUGH'}   # Typing in the chat with the pointer resting over the view.
+            return {'RUNNING_MODAL'}   # It would type, but the chat does nothing with it off its own area: nobody's.
         if live_view_nav.allowed(live_view_nav.event_from(event), _items()):
             return {'PASS_THROUGH'}
         if event.type in MOVES and not drag.mode:

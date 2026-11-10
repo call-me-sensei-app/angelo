@@ -76,6 +76,7 @@ set(SRC
   intern/hash_mm2a.cc
   intern/hash_mm3.cc
   intern/hash_tables.cc
+  intern/hash_xxh3.cc
   intern/implicit_sharing.cc
   intern/index_mask.cc
   intern/index_mask_expression.cc
@@ -196,6 +197,7 @@ set(SRC
   BLI_boxpack_2d.h
   BLI_build_config.h
   BLI_cache_mutex.hh
+  BLI_checkpoint_budget.hh
   BLI_color.hh
   BLI_color_mix.hh
   BLI_color_types.hh
@@ -255,6 +257,7 @@ set(SRC
   BLI_hash_mm2a.hh
   BLI_hash_mm3.hh
   BLI_hash_tables.hh
+  BLI_hash_xxh3.hh
   BLI_heap.h
   BLI_heap_simple.h
   BLI_implicit_sharing.h
@@ -537,6 +540,7 @@ if(WITH_GTESTS)
     tests/BLI_generic_vector_array_test.cc
     tests/BLI_ghash_test.cc
     tests/BLI_hash_mm2a_test.cc
+    tests/BLI_hash_xxh3_test.cc
     tests/BLI_heap_simple_test.cc
     tests/BLI_heap_test.cc
     tests/BLI_implicit_sharing_test.cc

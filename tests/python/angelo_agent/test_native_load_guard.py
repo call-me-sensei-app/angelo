@@ -7,6 +7,8 @@ over 30 to 179 test files run one at a time, a Codex release build with a host s
 modules. Every case here uses a fake lock (``ANGELO_BILLED_LOCK``), never the machine's real one.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import os
@@ -21,6 +23,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT / "scripts/angelo"))
 import load_guard as guard  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 HOLDER = "timed-trial-999999999"   # NAME-PID; no process has PID 999999999.
 
@@ -117,7 +120,7 @@ class AncestorTests(unittest.TestCase):
 
     def test_this_process_is_its_own_first_ancestor(self):
         if sys.platform == "win32":
-            self.skipTest("no ps on Windows; no machine there holds the lock")
+            self.skipTest(environment_skip("no ps on Windows; no machine there holds the lock"))
         self.assertIn(os.getpid(), guard.ancestor_pids())
 
 
@@ -134,7 +137,6 @@ class CommandLineTests(LockCase):
             guard.main(["host tests", "--files", "0"])
 
 
-@unittest.skipIf(sys.platform == "win32", "the runners' shell entry points; no Windows machine holds the lock")
 class EntryPointTests(LockCase):
     """The real entry points, run as a person or agent would, against a fake lock."""
 
@@ -151,9 +153,10 @@ class EntryPointTests(LockCase):
         self.hold()
         runner = str(HERE / "run_host_tests.py")
         self.assert_refused(self.run_entry(sys.executable, runner))
-        too_many = ["test_native_module_size.py"] * (guard.LIGHT_FILES + 1)
+        too_many = ["test_native_qa_waits.py"] * (guard.LIGHT_FILES + 1)
         self.assert_refused(self.run_entry(sys.executable, runner, *too_many))
-        single = self.run_entry(sys.executable, runner, "tests/python/angelo_agent/test_native_module_size.py")
+        # Exercise named admission with the small dependency-free wait helpers, not product size regressions.
+        single = self.run_entry(sys.executable, runner, "tests/python/angelo_agent/test_native_qa_waits.py")
         self.assertEqual(single.returncode, 0, single.stdout + single.stderr)
         self.assertIn("OK", single.stderr)
 
@@ -169,6 +172,7 @@ class EntryPointTests(LockCase):
         self.assert_refused(self.run_entry(sys.executable, runner, "--binary", sys.executable))
         self.assertEqual(self.run_entry(sys.executable, runner, "--list").returncode, 0)
 
+    @unittest.skipIf(sys.platform == "win32", environment_skip("the build scripts are bash scripts for macOS"))
     def test_build_scripts_are_refused_first(self):
         bash = shutil.which("bash")
         if not bash or not shutil.which("python3"):

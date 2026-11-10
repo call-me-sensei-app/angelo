@@ -249,7 +249,9 @@ static void rna_Cache_change(Main * /*bmain*/, Scene * /*scene*/, PointerRNA *pt
 
   PTCacheID pid = BKE_ptcache_id_find(ob, scene, cache);
 
-  DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
+  if (ob) {
+    DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
+  }
 
   if (pid.cache) {
     /* Just make sure this wasn't changed. */
@@ -324,7 +326,9 @@ static void rna_Cache_idname_change(Main * /*bmain*/, Scene * /*scene*/, Pointer
       BKE_ptcache_load_external(&pid);
     }
 
-    DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
+    if (ob) {
+      DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
+    }
     WM_main_add_notifier(NC_OBJECT | ND_POINTCACHE, ob);
   }
   else {

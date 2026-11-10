@@ -17,9 +17,82 @@
 
 #include "BKE_duplilist.hh"
 
+#include "DNA_ID.h"
+
 #include "DEG_depsgraph.hh"
 
 #define STATS_MAX_SIZE 16384
+
+namespace blender {
+
+/* Angelo: `DepsgraphUpdate.angelo_recalc`, the update's own recalc bits, each item one bit
+ * (doc/angelo/scene_intelligence.rst, "Update kinds"). Aliases (ANIMATION_NO_FLUSH) and composites
+ * (ALL, PSYS_ALL, GEOMETRY_ALL_MODES) are left out: a duplicate or multi-bit item would make the
+ * Python set report wrong members. OTHER is computed for every bit outside the named ones. */
+static constexpr int ANGELO_RECALC_OTHER = 1 << 30;
+static constexpr EnumPropertyItem rna_enum_angelo_recalc_items[] = {
+    {ID_RECALC_TRANSFORM, "TRANSFORM", 0, "Transform", ""},
+    {ID_RECALC_GEOMETRY, "GEOMETRY", 0, "Geometry", ""},
+    {ID_RECALC_ANIMATION, "ANIMATION", 0, "Animation", ""},
+    {ID_RECALC_PSYS_REDO, "PSYS_REDO", 0, "Particle Redo", ""},
+    {ID_RECALC_PSYS_RESET, "PSYS_RESET", 0, "Particle Reset", ""},
+    {ID_RECALC_PSYS_CHILD, "PSYS_CHILD", 0, "Particle Children", ""},
+    {ID_RECALC_PSYS_PHYS, "PSYS_PHYS", 0, "Particle Physics", ""},
+    {ID_RECALC_SHADING, "SHADING", 0, "Shading", ""},
+    {ID_RECALC_SELECT, "SELECT", 0, "Selection", ""},
+    {ID_RECALC_BASE_FLAGS, "BASE_FLAGS", 0, "Base Flags", ""},
+    {ID_RECALC_POINT_CACHE, "POINT_CACHE", 0, "Point Cache", ""},
+    {ID_RECALC_EDITORS, "EDITORS", 0, "Editors", ""},
+    {ID_RECALC_SYNC_TO_EVAL, "SYNC_TO_EVAL", 0, "Sync to Evaluated", ""},
+    {ID_RECALC_SEQUENCER_STRIPS, "SEQUENCER_STRIPS", 0, "Sequencer Strips", ""},
+    {ID_RECALC_FRAME_CHANGE, "FRAME_CHANGE", 0, "Frame Change", ""},
+    {ID_RECALC_AUDIO_FPS, "AUDIO_FPS", 0, "Audio FPS", ""},
+    {ID_RECALC_AUDIO_VOLUME, "AUDIO_VOLUME", 0, "Audio Volume", ""},
+    {ID_RECALC_AUDIO_MUTE, "AUDIO_MUTE", 0, "Audio Mute", ""},
+    {ID_RECALC_AUDIO_LISTENER, "AUDIO_LISTENER", 0, "Audio Listener", ""},
+    {ID_RECALC_AUDIO, "AUDIO", 0, "Audio", ""},
+    {ID_RECALC_PARAMETERS, "PARAMETERS", 0, "Parameters", ""},
+    {ID_RECALC_SOURCE, "SOURCE", 0, "Source", ""},
+    {ID_RECALC_TAG_FOR_UNDO, "TAG_FOR_UNDO", 0, "Tag for Undo", ""},
+    {ID_RECALC_NTREE_OUTPUT, "NTREE_OUTPUT", 0, "Node Tree Output", ""},
+    {ID_RECALC_HIERARCHY, "HIERARCHY", 0, "Hierarchy", ""},
+    {ANGELO_RECALC_OTHER, "OTHER", 0, "Other", "A recalc bit with no item of its own"},
+    {0, nullptr, 0, nullptr, nullptr},
+};
+
+static constexpr uint angelo_recalc_named_mask()
+{
+  uint mask = 0;
+  for (const EnumPropertyItem &item : rna_enum_angelo_recalc_items) {
+    if (item.identifier != nullptr && item.value != ANGELO_RECALC_OTHER) {
+      mask |= uint(item.value);
+    }
+  }
+  return mask;
+}
+
+static constexpr bool angelo_recalc_items_are_distinct_bits()
+{
+  uint seen = 0;
+  for (const EnumPropertyItem &item : rna_enum_angelo_recalc_items) {
+    if (item.identifier == nullptr) {
+      continue;
+    }
+    const uint bit = uint(item.value);
+    if (bit == 0 || (bit & (bit - 1)) != 0 || (seen & bit) != 0) {
+      return false;
+    }
+    seen |= bit;
+  }
+  return true;
+}
+
+static_assert(angelo_recalc_items_are_distinct_bits(),
+              "Every angelo_recalc item is one bit, and no two share it");
+static_assert((angelo_recalc_named_mask() & ANGELO_RECALC_OTHER) == 0,
+              "OTHER's bit is never a recalc bit with an item of its own");
+
+}  // namespace blender
 
 #ifdef RNA_RUNTIME
 
@@ -33,10 +106,12 @@
 #  include "BLI_string.h"
 #  include "BLI_threads.h"
 
+#  include "DNA_node_types.h"
 #  include "DNA_scene_types.h"
 
 #  include "RNA_access.hh"
 
+#  include "BKE_node.hh"
 #  include "BKE_object.hh"
 #  include "BKE_report.hh"
 #  include "BKE_scene.hh"
@@ -67,6 +142,14 @@ void **rna_DepsgraphIterator_instance(PointerRNA *ptr)
 {
   RNA_DepsgraphIterator *di = static_cast<RNA_DepsgraphIterator *>(ptr->data);
   return &di->py_instance;
+}
+#  endif
+
+#  ifdef WITH_PYTHON
+/** Angelo: one shared wrapper per graph, invalidated when the graph is freed. */
+void **rna_Depsgraph_instance(PointerRNA *ptr)
+{
+  return DEG_graph_py_instance(static_cast<Depsgraph *>(ptr->data));
 }
 #  endif
 
@@ -226,6 +309,24 @@ static bool rna_DepsgraphUpdate_is_updated_shading_get(PointerRNA *ptr)
   return ((id->recalc & (ID_RECALC_SHADING | ID_RECALC_ANIMATION)) != 0);
 }
 
+/* Angelo: the update's own recalc bits plus those of its embedded node tree, which Blender reports
+ * as an update of the owner even when the owner's own bits are zero (DEG_iterator_ids_step). An
+ * Object's data bits are not folded in. Never empty: no named bit reads as OTHER. */
+static int rna_DepsgraphUpdate_angelo_recalc_get(PointerRNA *ptr)
+{
+  ID *id = static_cast<ID *>(ptr->data);
+  uint recalc = id->recalc;
+  if (const bNodeTree *ntree = bke::node_tree_from_id(id)) {
+    recalc |= ntree->id.recalc;
+  }
+  constexpr uint named = angelo_recalc_named_mask();
+  int result = int(recalc & named);
+  if ((recalc & ~named) != 0 || result == 0) {
+    result |= ANGELO_RECALC_OTHER;
+  }
+  return result;
+}
+
 static bool rna_DepsgraphUpdate_is_updated_geometry_get(PointerRNA *ptr)
 {
   ID *id = static_cast<ID *>(ptr->data);
@@ -373,6 +474,13 @@ struct RNA_Depsgraph_Instances_Iterator {
   DEGObjectIterData deg_data[2];
   DupliObject dupli_object_current[2];
   int counter;
+#  ifdef WITH_PYTHON
+  /**
+   * Angelo: a temporary object's Python wrapper nothing else held when its step ended, kept to
+   * wrap the next temporary in the same slot (the same address) instead of making a new one.
+   */
+  void *parked_object_py[2];
+#  endif
 };
 
 static void rna_Depsgraph_object_instances_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
@@ -395,10 +503,69 @@ static void rna_Depsgraph_object_instances_begin(CollectionPropertyIterator *ite
   iter->valid = di_it->iterators[0].iter.valid;
 }
 
+/**
+ * Angelo: what Python holds of an iteration step is released when the step is over, so a kept
+ * wrapper raises ReferenceError instead of reading another item or freed memory:
+ * - the instance (`RNA_DepsgraphIterator::py_instance`), whose slot the next step but one reuses;
+ * - an instance's `object`, a temporary copy in the iterator data (#DEGObjectIterData::
+ *   temp_dupli_object) a later step overwrites and the end frees. Its wrapper is parked when
+ *   nothing else holds it (its dependents invalidated) and wraps the slot's next copy, at the
+ *   same address; otherwise it is invalidated. Only a live copy (a dupli is current) holds a
+ *   valid slot.
+ */
+static void rna_depsgraph_instances_release_step(RNA_Depsgraph_Instances_Iterator *di_it,
+                                                 const int slot,
+                                                 const bool allow_park)
+{
+#  ifdef WITH_PYTHON
+  RNA_DepsgraphIterator &di = di_it->iterators[slot];
+  if (di.py_instance) {
+    BPY_DECREF_RNA_INVALIDATE(di.py_instance);
+    di.py_instance = nullptr;
+  }
+  DEGObjectIterData &data = di_it->deg_data[slot];
+  void *&object_py = data.temp_dupli_object.id.py_instance;
+  if (data.dupli_object_current != nullptr && object_py) {
+    if (allow_park && di_it->parked_object_py[slot] == nullptr &&
+        BPY_rna_instance_is_unshared(object_py))
+    {
+      BPY_rna_instance_dependents_invalidate(object_py, false);
+      di_it->parked_object_py[slot] = object_py;
+    }
+    else {
+      BPY_DECREF_RNA_INVALIDATE(object_py);
+    }
+    object_py = nullptr;
+  }
+#  else
+  UNUSED_VARS(di_it, slot, allow_park);
+#  endif
+}
+
+/** Angelo: give the slot's new temporary object its parked wrapper back (see above). */
+static void rna_depsgraph_instances_unpark(RNA_Depsgraph_Instances_Iterator *di_it, const int slot)
+{
+#  ifdef WITH_PYTHON
+  DEGObjectIterData &data = di_it->deg_data[slot];
+  if (di_it->parked_object_py[slot] && data.dupli_object_current != nullptr &&
+      data.temp_dupli_object.id.py_instance == nullptr)
+  {
+    data.temp_dupli_object.id.py_instance = di_it->parked_object_py[slot];
+    di_it->parked_object_py[slot] = nullptr;
+  }
+#  else
+  UNUSED_VARS(di_it, slot);
+#  endif
+}
+
 static void rna_Depsgraph_object_instances_next(CollectionPropertyIterator *iter)
 {
   RNA_Depsgraph_Instances_Iterator *di_it = static_cast<RNA_Depsgraph_Instances_Iterator *>(
       iter->internal.custom);
+
+  /* Python asks for the next item before it runs the loop body on the current one (see above),
+   * so the slot overwritten now holds the item before the current one: its body has run. */
+  rna_depsgraph_instances_release_step(di_it, (di_it->counter + 1) % 2, true);
 
   /* We need to copy current iterator status to next one being worked on. */
   di_it->iterators[(di_it->counter + 1) % 2].iter = di_it->iterators[di_it->counter % 2].iter;
@@ -418,6 +585,7 @@ static void rna_Depsgraph_object_instances_next(CollectionPropertyIterator *iter
     di_it->deg_data[di_it->counter % 2].dupli_object_current =
         &di_it->dupli_object_current[di_it->counter % 2];
   }
+  rna_depsgraph_instances_unpark(di_it, di_it->counter % 2);
   iter->valid = di_it->iterators[di_it->counter % 2].iter.valid;
 }
 
@@ -428,17 +596,18 @@ static void rna_Depsgraph_object_instances_end(CollectionPropertyIterator *iter)
   for (int i = 0; i < ARRAY_SIZE(di_it->iterators); i++) {
     RNA_DepsgraphIterator *di = &di_it->iterators[i];
     DEGObjectIterData *data = &di_it->deg_data[i];
+    rna_depsgraph_instances_release_step(di_it, i, false);
+#  ifdef WITH_PYTHON
+    if (di_it->parked_object_py[i]) {
+      BPY_DECREF_RNA_INVALIDATE(di_it->parked_object_py[i]);
+      di_it->parked_object_py[i] = nullptr;
+    }
+#  endif
     if (i == 0) {
       /* Is shared between both iterators. */
       MEM_delete(data->settings);
     }
     DEG_iterator_objects_end(&di->iter);
-
-#  ifdef WITH_PYTHON
-    if (di->py_instance) {
-      BPY_DECREF_RNA_INVALIDATE(di->py_instance);
-    }
-#  endif
   }
 
   MEM_delete(di_it);
@@ -502,7 +671,9 @@ static void rna_Depsgraph_updates_begin(CollectionPropertyIterator *iter, Pointe
 static PointerRNA rna_Depsgraph_updates_get(CollectionPropertyIterator *iter)
 {
   ID *id = static_cast<ID *>((static_cast<BLI_Iterator *>(iter->internal.custom))->current);
-  return RNA_pointer_create_with_parent(iter->parent, RNA_DepsgraphUpdate, id);
+  /* Angelo: owned by the evaluated ID it reports, with that ID as its only ancestor, so a kept
+   * update raises ReferenceError once the ID is freed ("Dependent Wrappers" in `bpy_rna.cc`). */
+  return RNA_pointer_create_id_subdata(*id, RNA_DepsgraphUpdate, id);
 }
 
 static ID *rna_Depsgraph_id_eval_get(Depsgraph *depsgraph, ID *id_orig)
@@ -688,6 +859,18 @@ static void rna_def_depsgraph_update(BlenderRNA *brna)
   RNA_def_property_clear_flag(prop, PROP_ANIMATABLE | PROP_EDITABLE);
   RNA_def_property_ui_text(prop, "Shading", "Object shading is updated");
   RNA_def_property_boolean_funcs(prop, "rna_DepsgraphUpdate_is_updated_shading_get", nullptr);
+
+  /* Angelo: doc/angelo/scene_intelligence.rst, "Update kinds". */
+  prop = RNA_def_property(srna, "angelo_recalc", PROP_ENUM, PROP_NONE);
+  RNA_def_property_flag(prop, PROP_ENUM_FLAG);
+  RNA_def_property_enum_items(prop, rna_enum_angelo_recalc_items);
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE | PROP_EDITABLE);
+  RNA_def_property_ui_text(prop,
+                           "Update Kinds",
+                           "The update's recalc bits, as tagged and as flushed, its embedded node "
+                           "tree included (an Object's data is a separate update); never empty, "
+                           "OTHER for any bit without an item of its own");
+  RNA_def_property_enum_funcs(prop, "rna_DepsgraphUpdate_angelo_recalc_get", nullptr, nullptr);
 }
 
 static void rna_def_depsgraph(BlenderRNA *brna)
@@ -705,6 +888,10 @@ static void rna_def_depsgraph(BlenderRNA *brna)
 
   srna = RNA_def_struct(brna, "Depsgraph", nullptr);
   RNA_def_struct_ui_text(srna, "Dependency Graph", "");
+
+#  ifdef WITH_PYTHON
+  RNA_def_struct_register_funcs(srna, nullptr, nullptr, "rna_Depsgraph_instance");
+#  endif
 
   prop = RNA_def_enum(srna, "mode", enum_depsgraph_mode_items, 0, "Mode", "Evaluation mode");
   RNA_def_property_clear_flag(prop, PROP_EDITABLE);

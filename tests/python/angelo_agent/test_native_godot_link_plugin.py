@@ -12,6 +12,9 @@ newer than Godot 4.2, so an older editor is told the plugin needs Godot 4.4 inst
 behaviour, including strict warning settings, is checked in a real Godot editor by ``test_blender_godot_link_e2e.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
+import os
 import re
 import sys
 import unittest
@@ -55,18 +58,18 @@ class PluginContractTests(unittest.TestCase):
     def test_the_record_is_looked_for_where_angelo_writes_it(self):
         client = source("link_client.gd")
         self.assertIn('OS.get_environment("ANGELO_%s")' % protocol.RECORD_VARIABLE, client)
+        # Absolute on every host (C:\H on Windows): the folder must be a full path there.
+        home, local = Path(os.path.abspath("/H")), Path(os.path.abspath("/L"))
         expected = {
-            "darwin": storage.data_directory({}, "darwin", "/H") / protocol.RECORD_FILE,
-            "win32": storage.data_directory({"LOCALAPPDATA": "/L"}, "win32", "/H") / protocol.RECORD_FILE,
-            "linux": storage.data_directory({}, "linux", "/H") / protocol.RECORD_FILE,
+            "darwin": storage.data_directory({}, "darwin", home) / protocol.RECORD_FILE,
+            "win32": storage.data_directory({"LOCALAPPDATA": str(local)}, "win32", home) / protocol.RECORD_FILE,
+            "linux": storage.data_directory({}, "linux", home) / protocol.RECORD_FILE,
         }
-        darwin = expected["darwin"].as_posix()
-        self.assertTrue(darwin.startswith("/H/"))
-        self.assertIn('"%s"' % darwin[len("/H/"):], client)
-        self.assertEqual(expected["win32"].parent.as_posix(), "/L/Angelo")
+        self.assertIn('"%s"' % expected["darwin"].relative_to(home).as_posix(), client)
+        self.assertEqual(expected["win32"].parent, local / "Angelo")
         self.assertIn('OS.get_environment("LOCALAPPDATA")', client)
         self.assertIn('"Angelo/%s"' % protocol.RECORD_FILE, client)
-        self.assertEqual(expected["linux"].as_posix(), "/H/.local/state/Angelo/" + protocol.RECORD_FILE)
+        self.assertEqual(expected["linux"], home / ".local/state/Angelo" / protocol.RECORD_FILE)
         self.assertIn('"XDG_STATE_HOME"', client)
         self.assertIn('".local/state"', client)
 

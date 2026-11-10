@@ -415,6 +415,12 @@ is not the app's), with the Python the harnesses use (``P``)::
     $P tests/python/angelo_agent/final_runs.py status --output <campaign>
     $P tests/python/angelo_agent/final_runs.py report --output <campaign>
 
+Every billed step reads its profile's account first (``provider_accounts.py``):
+the Codex profile must be signed in to the dedicated evaluation account, and a
+Claude step's profile to the account ``ANGELO_TEST_CLAUDE_ACCOUNT`` (an email or
+account UUID) names. Export it before ``run`` or ``dry-run --depth preflight``; nothing
+records which Claude account is right, so a Claude step without it refuses.
+
 ``init --discover-connections`` uses the one Claude and the one ChatGPT
 subscription connection in ``--connections-dir`` instead of naming them
 (``--claude-connection`` and ``--chatgpt-connection`` take their IDs, as do

@@ -10,6 +10,8 @@ need fresh approval when they changed while queued; opaque extension internals
 alone never ask twice.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import functools
 import sys
 import tempfile
@@ -452,7 +454,7 @@ class LookTests(LookCase):
         runner = LookRunner(self.blender.window, {"kind": "RENDER_PREVIEW", "queue": False, "minutes": 1.0,
                                                   "format": "PNG", "resolution": [64, 36], "frame_start": 12,
                                                   "frame_end": 12, "samples": 8},
-                            Path(self.references.directory) / "look.png", 120)
+                            Path(self.references.directory) / "look.png", 120, 20)
         handlers.render_pre.append(lambda *args: None)
         with self.assertRaisesRegex(JobRequestError, "runs without the person's approval"):
             runner.start()

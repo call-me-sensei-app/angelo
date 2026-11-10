@@ -40,7 +40,7 @@ from . import private_roots, thread_start
 from . import live_target, live_windows, team_library_access, team_library_results as results
 from .studio_agent import StudioPending
 from .team_errors import TeamError
-from .refusal_codes import RefusalError, refusal_code
+from .refusal_codes import RefusalError, refusal_code, coded
 from .team_library_client import TeamLibraryClient, TeamLibraryError
 from .team_library_files import (IMAGE_FORMATS, MAX_BYTES, ImportFailed, NotImported, Refused, check_image, extension,
                                  inspect, sniff)
@@ -209,14 +209,14 @@ class TeamLibraryService:
 
     def __init__(self, controller, window):
         if controller is None:
-            raise RuntimeError("Team-library tools must be bound to an active chat.")
+            raise coded(RuntimeError("Team-library tools must be bound to an active chat."), "OWNERSHIP")
         self.controller, self.window = controller, window
 
     def _client(self):
         account = team_library_access.account()
         reason = team_library_access.refusal(account)
         if reason:
-            raise ValueError(reason)
+            raise coded(ValueError(reason), "UNSUPPORTED")
         return TeamLibraryClient(account)
 
     def _pending(self, work, finish, status, timeout, folder=None, note="", changes_scene=False):

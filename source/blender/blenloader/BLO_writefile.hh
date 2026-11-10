@@ -14,6 +14,7 @@
 namespace blender {
 
 struct BlendThumbnail;
+struct FileIdentity;
 struct Main;
 struct MemFile;
 struct ReportList;
@@ -58,6 +59,14 @@ struct BlendFileWriteParams {
   /** With G_FILE_COMPRESS, keep files at or below this byte size uncompressed.
    * Zero preserves unconditional compression. Only temporary stage bundles opt in. */
   size_t compression_min_size = 0;
+  /**
+   * Angelo: when set, the identity (#BLI_file_identity_held) of the file written: the finished
+   * temporary file, held open across its rename over `filepath` and identified after it, and
+   * `*written_valid` whether it could be taken. A stat of `filepath` afterwards (a `save_post`
+   * handler's) could find a file another program put there since.
+   */
+  FileIdentity *written = nullptr;
+  bool *written_valid = nullptr;
 };
 
 /**
@@ -77,6 +86,17 @@ void BLO_write_admit_set(BLOWriteAdmitFn admit);
  */
 using BLOWriteSyncFn = int (*)(int file, const char *dirpath);
 void BLO_write_sync_hook_set(BLOWriteSyncFn sync);
+
+#ifdef WITH_GTESTS
+/**
+ * Angelo, for tests only (compiled only into test builds: a release binary has no such hook):
+ * called by a save that identifies its file (#BlendFileWriteParams::written) with the temporary
+ * file's path, once with `stage` 0 after the file is held and before its check and version
+ * backups, and once with `stage` 1 after the backups and before the rename. Null: none.
+ */
+using BLOWriteStageFn = void (*)(int stage, const char *tempname);
+void BLO_write_stage_hook_set(BLOWriteStageFn stage);
+#endif
 
 /**
  * \return Success.

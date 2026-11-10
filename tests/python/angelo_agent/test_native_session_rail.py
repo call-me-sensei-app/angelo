@@ -6,6 +6,8 @@ live-view input, the lead's worker tools and their gate.
 The in-Blender proofs are ``test_blender_live_view.py`` (background, real workers) and the session rail's GUI suite.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import os
 import sys
@@ -443,21 +445,29 @@ class RedrawTests(unittest.TestCase):
         self.assertFalse(rail_redraw.rearm(10.6, 10.6))
 
     def test_a_redraw_the_rail_asked_for_is_costed_from_its_tag(self):
-        """Break-it P1-11 S2: the tag-to-draw time counts the sync before PRE_VIEW; capped, and the larger measure."""
+        """Break-it P1-11 S2: the tag-to-draw time counts the sync before PRE_VIEW; capped, and the larger measure.
+
+        The draw's clock is fixed here: ``note_drawn`` reads it after its own work (the first call imports
+        ``rail_minimized``, ~15 ms with a cold bytecode cache), so a wall clock made this test fail in fresh processes."""
         import time as clock
-        window, area = 101, 202
+        from types import SimpleNamespace
+        window, area, now = 101, 202, 1000.0
         tables = (rail_redraw.view_cost, rail_redraw._view_started, rail_redraw._tag_started, rail_redraw.shown,
                   rail_redraw.drawn_at)
         saved = tuple(dict(table) for table in tables)
+        fixed = SimpleNamespace(perf_counter=lambda: now, monotonic=clock.monotonic)
         try:
-            rail_redraw.view_cost.pop(window, None)
-            now = clock.perf_counter()
-            rail_redraw._view_started[area], rail_redraw._tag_started[window] = now - 0.004, now - 0.030
-            rail_redraw.note_drawn(window, 1, [tile("lead")], area)
-            self.assertAlmostEqual(rail_redraw.view_cost[window][-1], 0.030, delta=0.01)
-            rail_redraw._tag_started[window] = clock.perf_counter() - 9.0   # A window not drawn for a while.
-            rail_redraw.note_drawn(window, 1, [tile("lead")], area)
-            self.assertLessEqual(rail_redraw.view_cost[window][-1], rail_redraw.MAX_SAMPLE)
+            with patch.object(rail_redraw, "time", fixed):
+                rail_redraw.view_cost.pop(window, None)
+                rail_redraw._view_started[area], rail_redraw._tag_started[window] = now - 0.004, now - 0.030
+                rail_redraw.note_drawn(window, 1, [tile("lead")], area)
+                self.assertAlmostEqual(rail_redraw.view_cost[window][-1], 0.030, delta=1e-9)   # The larger measure.
+                rail_redraw._view_started[area], rail_redraw._tag_started[window] = now - 0.050, now - 0.030
+                rail_redraw.note_drawn(window, 1, [tile("lead")], area)
+                self.assertAlmostEqual(rail_redraw.view_cost[window][-1], 0.050, delta=1e-9)
+                rail_redraw._tag_started[window] = now - 9.0   # A window not drawn for a while.
+                rail_redraw.note_drawn(window, 1, [tile("lead")], area)
+                self.assertEqual(rail_redraw.view_cost[window][-1], rail_redraw.MAX_SAMPLE)
         finally:
             for table, kept in zip(tables, saved):
                 table.clear()
@@ -774,7 +784,8 @@ class PrivatePartTests(unittest.TestCase):
 
     def test_pictures_and_reads_wait_for_tools_and_jobs(self):
         source = (ADDON / "parallel_sessions.py").read_text(encoding="utf-8")
-        self.assertIn("work_guard._render(bpy)", source)
+        self.assertIn("scene_jobs.running(bpy, scene_jobs.live_view_fallback)", source)
+        self.assertIn("work_guard._render(bpy)", (ADDON / "scene_jobs.py").read_text(encoding="utf-8"))
         self.assertIn('getattr(manager, "is_interface_locked", False)', source)
         self.assertIn("parallel_sessions._held_now()", (ADDON / "rail_pictures.py").read_text(encoding="utf-8"))
 

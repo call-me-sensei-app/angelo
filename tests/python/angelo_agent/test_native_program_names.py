@@ -13,6 +13,8 @@ its journal replayed in reverse as commit's rollback does. The compiled-app
 path is covered by test_blender_object_management.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import importlib
 import itertools

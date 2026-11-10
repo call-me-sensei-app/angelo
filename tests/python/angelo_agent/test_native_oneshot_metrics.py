@@ -7,6 +7,8 @@ request receipt and chat rows, a Claude Code stream and Codex notifications.
 No process, account or model is involved.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import unittest

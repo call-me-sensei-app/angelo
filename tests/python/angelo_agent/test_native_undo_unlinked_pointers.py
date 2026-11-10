@@ -9,6 +9,8 @@ resolves, and remapping it lost ``scene.world`` on Redo (doc/angelo/agent_execut
 ``test_blender_undo_unlinked_pointers.py`` calls the swap with the flags pinned here.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 from pathlib import Path
 import re

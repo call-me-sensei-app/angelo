@@ -1760,6 +1760,10 @@ void BKE_blendfile_link(BlendfileLinkAppendContext *lapp_context, ReportList *re
     /* here appending/linking starts */
 
     mainl = BLO_library_link_begin(&lib_context.blo_handle, libname, lapp_context->params);
+    if (mainl == nullptr) {
+      /* The reader already reported why this source could not be admitted. No item was linked. */
+      continue;
+    }
     lib = mainl->curlib;
     BLI_assert(lib != nullptr);
     /* In case lib was already existing but not found originally, see #99820. */

@@ -7,6 +7,8 @@ Methods resolve those named dependencies at call time; this base owns no resourc
 """
 
 
+import contextlib
+
 from . import stage_bundle_folder
 from .program_jobs import ProgramError
 
@@ -51,6 +53,19 @@ class ProgramStageBundleMixin:
             metadata = node_metadata(stage.context)
         from . import stage_new_objects
         made = stage_new_objects.remember(stage)  # Their names are free in Main while suspended (stage_new_objects).
+        from . import stage_links, stage_routes
+        stage_routes.audit(stage)  # Whatever evaluated it since its last check stayed private (else refused).
+        stage_routes.forget(stage)  # A resumed stage is checked afresh (its IDs may move).
+        stage_links.stand_in(self, stage)  # Neither a detached graph nor a bundle may take the person's data along.
+        try:
+            return self._suspend(stage, storage, made, metadata, use_memory)
+        except Exception:
+            with contextlib.suppress(Exception):  # The suspension's own failure is the one reported.
+                stage_links.live(stage)  # Still resident: it reads the live data again.
+            raise
+
+    def _suspend(self, stage, storage, made, metadata, use_memory):
+        from . import stage_new_objects
         descriptor = storage.SuspendedStage("", stage.scene.name, stage.binding,
                                     {handle: obj.name for handle, obj in stage.objects.items()},
                                     {alias: obj.name for alias, obj in stage.context.aliases.items()} if stage.context else {},
@@ -107,6 +122,8 @@ class ProgramStageBundleMixin:
                     _angelo_stage.attach(stage.native_owner, scope.native_scope)
                 from .stage_borrowing import restore
                 restore(stage.resident)  # The live materials it reads, back in their slots (or STALE).
+                from . import stage_links
+                stage_links.live(stage.resident)  # Its links to live data, from the stand-ins (or STALE).
                 from .program_material_facts import snapshot_provenance
                 from . import stage_new_objects
                 stage_new_objects.reattached(stage.resident)  # Blender renames one whose name was taken meanwhile.
@@ -172,6 +189,7 @@ class ProgramStageBundleMixin:
                 if isinstance(group, bpy.types.NodeTree) and group.name in stage.node_bounds:
                     context.node_bounds[group] = stage.node_bounds[group.name]
             restore_node_metadata(context, stage.node_metadata)
+            context.originals = stage.binding["originals"]  # Kernel-side route checks know the bound objects too.
             hydrated = storage.Stage(scene, collection, scene.view_layers[0], stage.binding, context=context,
                              objects=objects, originals=stage.binding["originals"], owned_ids=ids,
                              changes={key: set(value) for key, value in stage.changes.items()},
@@ -180,6 +198,8 @@ class ProgramStageBundleMixin:
             restore_provenance(hydrated)
             from .stage_borrowing import restore
             restore(hydrated)  # The live materials it reads, back in their slots (or STALE).
+            from . import stage_links
+            stage_links.live(hydrated)  # Its links to live data, from the stand-ins (or STALE).
             # Admission/preflight precedes every evaluated update, including a
             # hydrated scene with persisted kernel authority.
             self.validate_stage(hydrated)

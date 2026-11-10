@@ -13,6 +13,8 @@ No model, Blender or network. Pinned here:
   falls back to the in-place write, so a completed trial is never lost to a reader; a killed writer's temporary file is
   removed by the next write.
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import contextlib
 import io
 import json

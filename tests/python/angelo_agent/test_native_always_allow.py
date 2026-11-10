@@ -6,6 +6,8 @@ Real ``Controller`` approval routes with Blender stand-ins; no provider or
 profile. Contract: doc/angelo/agent_execution.rst, "Always allow scripts".
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import json
 import sys

@@ -11,6 +11,8 @@ Connect button (``quick_connect``) adds a connection. Host-only, with a real
 ``ConnectionStore`` and a measuring stand-in view.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import unittest

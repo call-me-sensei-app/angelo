@@ -9,6 +9,8 @@ and the approval card (so review and consent cover exactly what runs), the refus
 the read-only fetch, and the Claude plan path. Blender stand-ins; no provider or profile.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import sys
 import tempfile

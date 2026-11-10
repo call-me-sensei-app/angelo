@@ -17,17 +17,21 @@ when it is on PATH (GitHub's Ubuntu runners have it, and then the dry run's plan
 structural check.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import re
 import shutil
-import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+
+from host_test_policy import environment_skip
+from platform_env import stand_in_program
 
 ROOT = Path(__file__).resolve().parents[3]
 TOOLS = ROOT / "scripts/angelo"
@@ -333,7 +337,7 @@ class SignScriptTests(unittest.TestCase):
 
 
 class AgentRuntimeSigningTests(unittest.TestCase):
-    """OpenAI's unchanged executables keep OpenAI's signature; codex.exe, Angelo's build, gets Angelo's."""
+    """The upstream command runner keeps OpenAI's signature; the three fork-built executables get Angelo's."""
 
     def test_the_signer_reads_the_pin_and_never_signs_openais_files(self):
         text = read(SIGN)
@@ -369,10 +373,12 @@ class AgentRuntimeSigningTests(unittest.TestCase):
         dry = block(text, "if ($DryRun) {", "} else {")
         self.assertIn("Where-Object { $_.Name -notin $UpstreamSigned -and (Test-KeyFile $_) }", dry, "the plan never lists OpenAI's files")
 
-    def test_the_pin_names_codex_exe_as_angelos_and_the_rest_as_openais(self):
+    def test_the_pin_names_three_fork_executables_as_angelos_and_only_the_runner_as_openais(self):
         self.assertEqual(WINDOWS["upstream_signer"], "OpenAI OpCo, LLC")
         own = [name for name in WINDOWS["required"] + WINDOWS["optional"] if name not in WINDOWS["upstream_signed"]]
-        self.assertEqual(own, ["codex.exe"])
+        self.assertEqual(own, ["codex.exe", "codex-code-mode-host.exe", "codex-windows-sandbox-setup.exe"])
+        self.assertEqual(WINDOWS["upstream_signed"], ["codex-command-runner.exe"])
+        self.assertIn("codex-command-runner.exe", WINDOWS["required"])
         self.assertNotIn("windows", PIN.get("_pending", {}), "the Windows binaries exist")
 
     def test_the_build_checks_the_runtime_before_compiling_and_its_installed_copy_after(self):
@@ -456,7 +462,9 @@ class ValidationMachineTests(unittest.TestCase):
         self.assertEqual(pattern, agent_runtime._VERSION.pattern, "the version the app reads from initialize")
         self.assertNotRegex(text, r"api\.openai\.com|chatgpt\.com|codex login", "offline: no account or provider")
 
-    @unittest.skipUnless(shutil.which("bash") and shutil.which("shasum") and os.name != "nt", "needs bash and shasum")
+    @unittest.skipIf(os.name == "nt", environment_skip(
+        "gcp_windows_validate.sh is a bash launcher run from the macOS workstation, not on Windows"))
+    @unittest.skipUnless(shutil.which("bash") and shutil.which("shasum"), "needs bash and shasum")
     def test_the_upload_command_checks_the_folder_and_sends_only_the_pinned_files(self):
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from test_native_bundle_contents import windows_file
@@ -496,7 +504,7 @@ class ValidationMachineTests(unittest.TestCase):
             self.assertIn("storage rm --quiet gs://example-project-example-vm/agent-runtime/**", log)
             self.assertIn("gs://example-project-example-vm/agent-runtime/", log.splitlines()[-2])
             shutil.rmtree(captured)
-            (runtime / "codex-code-mode-host.exe").write_bytes(windows_file("codex.exe"))   # OpenAI's signature gone
+            (runtime / "codex-command-runner.exe").write_bytes(windows_file("codex.exe"))   # OpenAI's signature gone
             subprocess.run("shasum -a 256 *.exe > SHA256SUMS", shell=True, cwd=runtime, check=True)
             done = upload()
             self.assertNotEqual(done.returncode, 0)
@@ -530,8 +538,7 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn("[string]$AgentRuntimeDir = $env:ANGELO_AGENT_RUNTIME_DIR", text)
 
 
-@unittest.skipUnless(shutil.which("cmake") and shutil.which("cpack") and os.name != "nt",
-                     "CMake and CPack are required, and the stand-in signer is a POSIX script")
+@unittest.skipUnless(shutil.which("cmake") and shutil.which("cpack"), "CMake and CPack are required")
 class CpackHookTests(unittest.TestCase):
     """windows_sign_staging.cmake through a real cpack run (TGZ instead of WiX: the hook is generator-neutral)."""
 
@@ -549,12 +556,11 @@ class CpackHookTests(unittest.TestCase):
         self.build = self.folder / "build"
         subprocess.run(["cmake", "-S", str(source), "-B", str(self.build)], check=True, capture_output=True)
         self.signer = self.folder / "signer"
-        self.signer.write_text("#!/usr/bin/env python3\nimport json, os, sys\nfrom pathlib import Path\n"
-                               "args = sys.argv[1:]\nPath(os.environ['HOOK_ARGS']).write_text(json.dumps(args))\n"
-                               "for path in Path(args[args.index('-Path') + 1]).rglob('*'):\n"
-                               "    path.is_file() and path.write_bytes(path.read_bytes() + b' SIGNED')\n"
-                               "sys.exit(int(os.environ.get('HOOK_EXIT', '0')))\n")
-        self.signer.chmod(self.signer.stat().st_mode | stat.S_IEXEC)
+        self.signer = stand_in_program(self.signer, "import json, os, sys\nfrom pathlib import Path\n"
+                                       "args = sys.argv[1:]\nPath(os.environ['HOOK_ARGS']).write_text(json.dumps(args))\n"
+                                       "for path in Path(args[args.index('-Path') + 1]).rglob('*'):\n"
+                                       "    path.is_file() and path.write_bytes(path.read_bytes() + b' SIGNED')\n"
+                                       "sys.exit(int(os.environ.get('HOOK_EXIT', '0')))\n")
 
     def cpack(self, expect="Angelo.exe", exit_code="0"):
         env = dict(os.environ, ANGELO_SIGN_SCRIPT=str(SIGN), ANGELO_SIGN_EXPECT=expect, ANGELO_POWERSHELL=str(self.signer),
@@ -619,9 +625,10 @@ class ParseTests(unittest.TestCase):
             self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
             plan = json.loads(Path(folder, "plan.json").read_text())
             self.assertEqual(sorted(Path(p).name for p in plan["signed"]),
-                             ["Angelo-launcher.exe", "Angelo.exe", "_ctypes.pyd", "codex.exe", "tbb.dll"])
+                             ["Angelo-launcher.exe", "Angelo.exe", "_ctypes.pyd", "codex-code-mode-host.exe",
+                              "codex-windows-sandbox-setup.exe", "codex.exe", "tbb.dll"])
             self.assertEqual(sorted(entry.split(" ")[0] for entry in plan["upstream_kept"]), sorted(WINDOWS["upstream_signed"]))
-            self.assertEqual(plan["batches"], 2)
+            self.assertEqual(plan["batches"], 3)
             self.assertIn('/csp Google Cloud KMS Provider /kc %s' % KEY, done.stdout)
 
 

@@ -12,17 +12,19 @@ import time
 import uuid
 from pathlib import Path
 
-from . import product_env
+from . import product_env, shared_replace
 from .storage import connection_directory
 from .provider_registry import GENAI, PROVIDER_NAMES, SPECS, TEAM, service_mode
 from .references import image_type, MIME
 from .ui_text import iface_, n_, rpt_
+from .refusal_codes import coded
+from .display_text import describe_error, error_message
 
 DEFAULT_ENHANCER = {"connection": "AUTO_GEMINI", "model": "gemini-3.8-flash"}
 ASPECTS = ("1:1", "16:9", "9:16", "4:3", "3:4")
 # Display text for values the editor stores as identifiers. Marked with ``n_`` here and
 # translated with ``iface_`` where drawn; the identifiers themselves (and what a model sees) stay English.
-KIND_LABELS = {"IMAGE": n_("IMAGE"), "3D": n_("3D"), "VIDEO": n_("VIDEO")}
+KIND_LABELS = {"IMAGE": n_("Image"), "3D": n_("3D"), "VIDEO": n_("Video")}
 KINDS = frozenset(KIND_LABELS)
 MEDIA_KINDS = ("IMAGE", "3D", "VIDEO")   # Media Studio's generation kinds, in its tabs' order.
 FOLDER_ROWS = (("ALL", n_("All items")), ("UNFILED", n_("Unfiled")))
@@ -64,16 +66,36 @@ class StudioValueError(Templated, ValueError):
 
 
 def error_text(error):
-    """An error for a report: its template in the interface language, else its text (provider detail stays as sent)."""
-    template = getattr(error, "template", None)
-    return rpt_(template, **error.fields) if isinstance(template, str) else rpt_(str(error))
+    """An error for a report, in the interface language: ``display_text.error_message`` (a template's fields, such as
+    a provider's detail, stay as sent; an unexpected exception is a plain sentence, never Python's wording)."""
+    return error_message(error)
 
 
 def refusal_text(error):
-    """The reason of a refusal ``bpy.ops`` raised for a Studio operator's report ("Error: <reason>"), for the notice."""
-    lines = [line.strip() for line in str(error).splitlines() if line.strip()]
-    kind, separator, reason = lines[-1].partition(": ") if lines else ("", "", "")
-    return reason if separator else kind
+    """The whole reason of a refusal ``bpy.ops`` raised for a Studio operator ("Error: <reason>"), for the notice:
+    every line of it, never only the last (``display_text.describe_error``)."""
+    return describe_error(error)
+
+
+NOTICE_ROWS = 3   # The Studio notice wraps to this many rows; a longer one ends its last row with "…".
+
+
+def notice_rows(value, measure, width, max_rows=NOTICE_ROWS):
+    """The Studio notice ``value`` (already translated) as at most ``max_rows`` measured rows within ``width``.
+
+    ``measure(text)`` is a drawn width. Rows come back drawable (visual order); when the notice needs more rows,
+    the last one shown holds the rest of the sentence cut with "…" at the end of its reading order.
+    """
+    from . import canvas_rtl, rtl_text
+    rows = canvas_rtl.rows(str(value), measure, width)
+    if len(rows) <= max_rows:
+        return rows
+    logical = [rtl_text.to_logical(row) if rtl_text.is_visual(row) else row for row in rows[max_rows - 1:]]
+    text = rtl_text.to_logical(str(value)) if rtl_text.is_visual(str(value)) else str(value)
+    rest = logical[0]
+    for row in logical[1:]:   # Rows cut at a space get it back; a cut inside a word (CJK, long words) does not.
+        rest += row if rest + row in text else " " + row
+    return rows[:max_rows - 1] + [canvas_rtl.elide(rest, measure, width)]
 
 
 def refusable(state, call):
@@ -131,11 +153,15 @@ def library_directory():
     override, variable = product_env.lookup("LIBRARY_DIR")
     path = Path(override or connection_directory().parent / "media-studio").expanduser()
     if not path.is_absolute():
-        raise StudioValueError(n_("{variable} must be an absolute path"), variable=variable)
+        raise coded(StudioValueError(n_("{variable} must be an absolute path"), variable=variable), "UNSUPPORTED")
     return path
 
 
 def atomic_json(path, value):
+    """Write ``value`` to ``path`` whole, or not at all. The rename is every add-on file's (``shared_replace``):
+    on Windows it lands while a reader holds ``path`` open, as ``read_json`` does (a job's state, read by the
+    library's reload or another window, while its worker saves), and a plain ``os.replace`` there refused the save:
+    a finished job then never left "generating" (CI 41887060350, ``test_native_studio``)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = path.with_name(path.name + "." + str(uuid.uuid4()) + ".tmp")
@@ -145,16 +171,17 @@ def atomic_json(path, value):
             json.dump(value, handle, ensure_ascii=False, indent=2)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, path)
+        shared_replace.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
 
 
 def read_json(path, default):
+    """``path``'s JSON, else ``default``. Read through ``shared_replace``: never a writer's refusal."""
     try:
         if path.stat().st_size > 1024 * 1024:
             return default
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(shared_replace.read_bytes(path).decode("utf-8"))
     except (OSError, ValueError, UnicodeError):
         return default
 
@@ -369,7 +396,7 @@ class StudioLibrary:
         root = self.directory / "outputs" / str(uuid.UUID(asset["id"]))
         path = root / relative
         if Path(relative).name != relative or path.is_symlink() or not path.is_file():
-            raise ValueError(n_("The local asset is missing or invalid"))
+            raise coded(ValueError(n_("The local asset is missing or invalid")), "VALIDATION")
         return path
 
     def visible(self, kind, folder="ALL", query=""):
@@ -382,11 +409,11 @@ class StudioLibrary:
     def import_image(self, source, folder=""):
         source = Path(source)
         if not source.is_file() or source.is_symlink():
-            raise ValueError(n_("Select a regular image file"))
-        with source.open("rb") as handle:
+            raise coded(ValueError(n_("Select a regular image file")), "VALIDATION")
+        with shared_replace.open_file(source) as handle:   # Sharing delete: never refuses its writer.
             data = handle.read(20 * 1024 * 1024 + 1)
         if len(data) > 20 * 1024 * 1024:
-            raise ValueError(n_("Local images must be at most 20 MiB"))
+            raise coded(ValueError(n_("Local images must be at most 20 MiB")), "VALIDATION")
         from .studio_generation import validated_image
         suffix = validated_image(data)
         asset = self.add("IMAGE", source.name, IMPORTED_MODEL, folder=folder, status="ready")

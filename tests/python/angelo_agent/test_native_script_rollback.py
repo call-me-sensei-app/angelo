@@ -9,6 +9,8 @@ rules run in the app in ``test_blender_script_rollback.py`` (every case against
 the scene itself) and ``test_blender_turn_recovery.py`` (through the approval).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest

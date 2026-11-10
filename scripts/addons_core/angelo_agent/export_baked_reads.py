@@ -14,16 +14,17 @@ binding stale:
   bake evaluates render settings (measured), the digest the viewport's mesh plus every setting.
 * The materials whose shading the bake reads (the sources', else the target's): node trees (every computing property,
   the values inside a node, input and output socket values, links, the active output, a script's text or file),
-  groups by their own, the displacement method, the images they read (a file's size and time, packed bytes, or the pixels themselves while
-  the image has unsaved edits such as image painting) and the view layer's material override.
+  groups by their own, the displacement method, the images they read (``export_baked_images``: what a bake reads of
+  each, held pixels or files) and the view layer's material override.
 * Placement, where the result depends on it: the sources and cage relative to the target; any object a node names
   (a Texture Coordinate's object) relative to the target; the target's own placement and object data when a node
   reads world space, the camera or the object (``placed``).
-* Ambient occlusion: Cycles' AO reaches every surface a render shows within the world's AO distance (objects hidden
-  only in the viewport included, measured), so with an AO map or a tree's non-local AO node the digest holds that
-  distance and each object instance whose bounds come within it, relative to the target (its geometry, ray
-  visibility and modifier settings). A target moved with nothing in reach and no placement-reading node stays
-  current.
+* Ambient occlusion: Cycles' AO reaches every surface a render shows within the world's AO distance (objects hidden only
+  in the viewport included, measured), so with an AO map or a tree's non-local AO node the digest holds that distance
+  and each object instance whose bounds come within it, relative to the target (its geometry, ray visibility and
+  modifier settings). A target moved with nothing in reach and no placement-reading node stays current.
+* Hidden in the viewport or not: an object a render shows is read as the viewport evaluates it when shown, as are
+  its instances (``export_baked_hidden``), so only visibility that changes a render changes the digest.
 
 Relative placements are rounded to ``QUANTUM`` so moving a group together reads as unchanged within float rounding.
 One ``Reader`` serves a whole export: trees, images, shapes and the scene's instances are read once. Main thread.
@@ -34,6 +35,10 @@ import os
 
 import bpy
 import numpy
+
+from . import change_keys, export_baked_hidden as hidden
+from .blend_file_paths import node_file_places
+from .export_baked_images import READ_KEYS as KEYS, image_digest, image_key, image_path
 
 # A node's (or modifier's) own properties that only place or show it: they never change what it computes. Only the
 # node itself: inside it, the same names compute (a color ramp stop's ``color``, a curve point's ``location``), so a
@@ -69,12 +74,12 @@ def _text(value):
 
 
 def _file(path):
-    """A file's identity for the digest: its size and time, as for an image's file."""
+    """A node's script or IES file at one place Cycles may open it (``node_file_places``): the path, its key."""
     try:
-        status = os.stat(bpy.path.abspath(path))
-        return status.st_size, status.st_mtime_ns
+        status = os.stat(path)
+        return path, change_keys.key(status, path, (status.st_size, status.st_mtime_ns), keys=KEYS, change=False)
     except OSError:
-        return "missing"
+        return path, "missing"
 
 
 def _plain(value):
@@ -85,10 +90,39 @@ def _plain(value):
     return value
 
 
+def _positions(data):
+    """The point positions of geometry data (a mesh, curves or points an instance shows), or None."""
+    attribute = getattr(data, "attributes", None)
+    attribute = attribute.get("position") if attribute is not None else None
+    if attribute is None or attribute.data_type != "FLOAT_VECTOR":
+        return None
+    values = numpy.empty(len(attribute.data) * 3, dtype=numpy.float32)
+    attribute.data.foreach_get("vector", values)
+    return values
+
+
+def _points(data, hasher):
+    """Hash the points of geometry data that is no mesh (curves, a point cloud); False when it has none."""
+    positions = _positions(data)
+    if positions is None:
+        return False
+    hasher.update(_text(("points", type(data).__name__, len(positions))))
+    hasher.update(positions.tobytes())
+    return True
+
+
 def _bounds(evaluated, matrix):
-    """An evaluated object's world-space bounds, (low, high), under ``matrix``."""
+    """An evaluated object's (or an instance's data's) world-space bounds, (low, high), under ``matrix``; None for
+    data with no points."""
     matrix = numpy.asarray(matrix, dtype=numpy.float64)
-    corners = numpy.asarray([tuple(corner) for corner in evaluated.bound_box], dtype=numpy.float64)
+    if isinstance(evaluated, bpy.types.Object):
+        corners = numpy.asarray([tuple(corner) for corner in evaluated.bound_box], dtype=numpy.float64)
+    else:
+        positions = _positions(evaluated)
+        if positions is None or not len(positions):
+            return None
+        positions = positions.reshape(-1, 3).astype(numpy.float64)
+        corners = numpy.asarray([positions.min(axis=0), positions.max(axis=0)])
     world = corners @ matrix[:3, :3].T + matrix[:3, 3]
     return world.min(axis=0), world.max(axis=0)
 
@@ -118,6 +152,8 @@ class Reader:
         self.depsgraph = depsgraph
         self.trees, self.images, self.shapes = {}, {}, {}
         self.instances = None   # (keys, digests, matrices, low, high) of the scene's object instances, when needed.
+        self.shown = None       # ``export_baked_hidden.visibility``: (rendered, evaluated) session uids.
+        self.worlds = {}        # session uid -> (matrix, bounds) of a reader the viewport does not evaluate.
 
     # -- materials -------------------------------------------------------------------------------------------
     def _value(self, item, depth, notes, nested=False):
@@ -138,7 +174,7 @@ class Reader:
                 if value is None:
                     parts.append("%s=None" % name)
                 elif isinstance(value, bpy.types.ID):
-                    parts.append("%s=%s" % (name, self._id(value, notes)))
+                    parts.append("%s=%s" % (name, self._id(value, notes, getattr(item, "image_user", None))))
                 elif depth > 0:
                     parts.append("%s={%s}" % (name, self._value(value, depth - 1, notes, True)))
             elif kind == "COLLECTION":
@@ -148,8 +184,9 @@ class Reader:
             elif not prop.is_readonly:
                 if hasattr(value, "__len__") and not isinstance(value, str):
                     value = tuple(value)
-                elif kind == "STRING" and prop.subtype == "FILE_PATH" and value:
-                    value = (value, _file(value))   # A script or IES file the node reads: its content counts.
+                elif kind == "STRING" and prop.subtype == "FILE_PATH" and value:   # Its places and content count.
+                    library = getattr(getattr(item, "id_data", None), "library", None)
+                    value = tuple(_file(path) for path in node_file_places(value, library, bpy.path.abspath))
                 elif kind == "ENUM" and isinstance(value, str) and ("WORLD" in value or "CAMERA" in value):
                     notes.placed = True   # A node working in world or camera space.
                 elif name == "from_instancer" and value:
@@ -157,10 +194,10 @@ class Reader:
                 parts.append("%s=%r" % (name, value))
         return ",".join(parts)
 
-    def _id(self, block, notes):
-        if isinstance(block, bpy.types.Image):
-            return "Image(%r,%r,%r,%r,%s)" % (block.filepath_raw, block.source, block.colorspace_settings.name,
-                                              block.alpha_mode, self.image(block))
+    def _id(self, block, notes, user=None):
+        if isinstance(block, bpy.types.Image):   # Read through ``user``, its node's image user.
+            return "Image(%r,%r,%r,%r,%s)" % (image_path(block), block.source, block.colorspace_settings.name,
+                                              block.alpha_mode, self.image(block, user))
         if isinstance(block, bpy.types.NodeTree):
             text, inner = self.tree(block)
             notes.add(inner)
@@ -205,53 +242,53 @@ class Reader:
         self.trees[key] = (text, notes)
         return text, notes
 
-    def image(self, image):
-        """What an image's pixels are now: its unsaved pixels while edited, else its packed bytes, file or
-        generator settings."""
-        key = image.session_uid
+    def image(self, image, user=None):
+        """An image's pixels now, every tile, as ``user`` reads them in a bake (``export_baked_images``)."""
+        scene = self.depsgraph.scene
+        key = image_key(image, user, scene.frame_current)
         if key not in self.images:
-            self.images[key] = self._image(image)
+            self.images[key] = image_digest(image, key, scene.render, user, scene.frame_current)
         return self.images[key]
 
-    def _image(self, image):
-        hasher = hashlib.blake2b(digest_size=16)
-        if image.is_dirty:   # Painted or otherwise edited since it was loaded or saved.
-            if image.has_data:
-                pixels = numpy.empty(len(image.pixels), dtype=numpy.float32)
-                image.pixels.foreach_get(pixels)
-                hasher.update(b"pixels" + pixels.tobytes())
-            else:
-                hasher.update(b"dirty")
-        elif image.packed_file is not None:
-            hasher.update(b"packed" + bytes(image.packed_file.data))
-        elif image.source in {"FILE", "SEQUENCE", "MOVIE", "TILED"}:
-            path = bpy.path.abspath(image.filepath_raw, library=image.library)
-            paths = ([path.replace("<UDIM>", str(tile.number)) for tile in image.tiles] if image.source == "TILED"
-                     else [path])
-            for each in paths:
-                try:
-                    status = os.stat(each)
-                    hasher.update(_text((each, status.st_size, status.st_mtime_ns)))
-                except OSError:
-                    hasher.update(_text((each, "missing")))
-            if image.source in {"SEQUENCE", "MOVIE"}:
-                hasher.update(_text(self.depsgraph.scene.frame_current))
-        else:
-            hasher.update(_text((image.generated_type, tuple(image.generated_color), image.generated_width,
-                                 image.generated_height, image.use_generated_float)))
-        return hasher.hexdigest()
-
     # -- geometry --------------------------------------------------------------------------------------------
+    def visibility(self):
+        if self.shown is None:
+            self.shown = hidden.visibility(self.depsgraph.view_layer)
+        return self.shown
+
     def mesh(self, obj, hasher, full):
-        """Hash an evaluated object's geometry: ``full`` every attribute and normal (the objects a bake renders
-        from), else the surface AO rays hit (positions and faces)."""
-        evaluated = obj if obj.is_evaluated else obj.evaluated_get(self.depsgraph)
+        """Hash an object's geometry as evaluated: ``full`` every attribute and normal (the objects a bake renders
+        from), else the surface AO rays hit (positions and faces). One the viewport doesn't evaluate (disabled in
+        viewports) is evaluated for this read, as it would be shown, and its placement kept (``world``)."""
+        if not obj.is_evaluated and obj.session_uid not in self.visibility()[1]:
+            def read(geometry, matrix):
+                matrix = numpy.asarray(matrix, dtype=numpy.float64)
+                self.worlds[obj.session_uid] = (matrix, _bounds(geometry, matrix))
+                self.geometry(geometry, hasher, full)
+
+            if hidden.own(self.depsgraph, obj, read):
+                return
+        self.geometry(obj if obj.is_evaluated else obj.evaluated_get(self.depsgraph), hasher, full)
+
+    def world(self, obj):
+        """A reader's world matrix as evaluated (``mesh`` keeps it for one the viewport doesn't evaluate)."""
+        found = self.worlds.get(obj.session_uid)
+        return found[0] if found is not None else numpy.asarray(obj.matrix_world, dtype=numpy.float64)
+
+    def geometry(self, evaluated, hasher, full):
+        """Hash an evaluated object's geometry, or the data an instance shows in its object's place."""
+        if not isinstance(evaluated, bpy.types.Object):
+            if isinstance(evaluated, bpy.types.Mesh):
+                self._mesh(evaluated, hasher, full)
+            elif not _points(evaluated, hasher):
+                hasher.update(_text(("no surface", type(evaluated).__name__)))
+            return
         mesh, temporary = evaluated.data, False
         if not isinstance(mesh, bpy.types.Mesh):
             try:
                 mesh, temporary = evaluated.to_mesh(), True
             except RuntimeError:
-                hasher.update(_text(("no surface", obj.name)))
+                hasher.update(_text(("no surface", evaluated.name)))
                 return
         try:
             self._mesh(mesh, hasher, full)
@@ -308,7 +345,6 @@ class Reader:
         """``digest`` and the same without the AO reach: ``(all, own)``. When only ``all`` changed, what changed is
         geometry near the target, which its baked AO saw."""
         hasher = hashlib.blake2b(digest_size=16)
-        inverse = numpy.linalg.pinv(numpy.asarray(target.matrix_world, dtype=numpy.float64))   # Zero scale too.
         readers = [target, *sources] + ([cage] if cage is not None else [])
         notes = Notes()
         for index, obj in enumerate(readers):
@@ -317,12 +353,14 @@ class Reader:
                 continue
             hasher.update(_text(("|object", index)))
             self.mesh(obj, hasher, True)
+            if not index:   # After its mesh: that is where a target the viewport doesn't evaluate is placed.
+                inverse = numpy.linalg.pinv(self.world(target))   # Zero scale too.
             # Its modifiers' settings, render-only ones too (a bake evaluates them). Their own notes are dropped:
             # what an armature or a hook's object does is already in the evaluated mesh.
             for modifier in obj.modifiers:
                 hasher.update(_text(("|modifier", modifier.type, self._value(modifier, 1, Notes()))))
             if index:
-                hasher.update(quantized(inverse @ numpy.asarray(obj.matrix_world, dtype=numpy.float64)))
+                hasher.update(quantized(inverse @ self.world(obj)))
         shaded = [obj for obj in (sources or [target]) if obj is not None]
         for index, obj in enumerate(shaded):
             for slot in obj.material_slots:
@@ -355,7 +393,7 @@ class Reader:
         if notes.placed:
             camera = self.depsgraph.scene.camera
             hasher.update(_text(("|placed", target.name, tuple(target.color), target.pass_index)))
-            hasher.update(quantized(target.matrix_world))
+            hasher.update(quantized(self.world(target)))
             if camera is not None:
                 hasher.update(quantized(camera.matrix_world))
                 hasher.update(_text(self._value(camera.data, 0, Notes())))
@@ -373,27 +411,18 @@ class Reader:
                     found.append(None)
             hasher.update(_text(("|attribute", kind, name, found)))
 
-    def _rendered(self):
-        """The view layer's objects a render shows (``hide_render`` off, in no excluded or render-disabled
-        collection), hidden in the viewport or not: a bake's AO sees them all (measured)."""
-        found, todo = set(), [self.depsgraph.view_layer.layer_collection]
-        while todo:
-            layer = todo.pop()
-            if layer.exclude or layer.collection.hide_render:
-                continue
-            found.update(obj.session_uid for obj in layer.collection.objects if not obj.hide_render)
-            todo += list(layer.children)
-        return found
-
-    def _shape(self, obj, original):
-        """An evaluated object's surface, its ray visibility and its modifiers' settings (a render evaluates
-        render-only modifiers the viewport skips)."""
-        data = obj.data
+    def _shape(self, geometry, original):
+        """An evaluated object's surface (or an instance's data's), its ray visibility and its modifiers' settings
+        (a render evaluates render-only modifiers the viewport skips)."""
+        data = geometry.data if isinstance(geometry, bpy.types.Object) else geometry
         key = (original.session_uid, data.name if data is not None else "", data.session_uid if data else 0,
-               obj.is_evaluated)
+               geometry.is_evaluated)
         if key not in self.shapes:
             shape = hashlib.blake2b(digest_size=16)
-            self.mesh(obj, shape, False)
+            if isinstance(geometry, bpy.types.Object):
+                self.mesh(geometry, shape, False)
+            else:
+                self.geometry(geometry, shape, False)
             shape.update(_text(tuple(getattr(original, name, None) for name in RAYS)))
             for modifier in original.modifiers:
                 shape.update(_text((modifier.type, self._value(modifier, 0, Notes()))))
@@ -402,35 +431,46 @@ class Reader:
 
     def _scene(self):
         """Every geometry instance a render shows: owners (original object, is an instance), shape digests,
-        world matrices and world bounds. The viewport's evaluated instances, plus rendered objects hidden in the
-        viewport (their own mesh: the viewport evaluates no modifiers for them)."""
-        rendered = self._rendered()
-        owners, digests, matrices, low, high = [], [], [], [], []
+        world matrices and world bounds. The viewport's evaluated instances, and what objects hidden in the
+        viewport show (``export_baked_hidden``), each own geometry as a render shows it."""
+        rendered = self.visibility()[0]
+        entries = []   # (owner uid, original uid, instanced, shape digest, matrix, low, high)
 
-        def add(obj, original, matrix, instanced):
-            if obj.type not in GEOMETRY_TYPES:
+        def add(geometry, original, matrix, instanced, owner=None):
+            if isinstance(geometry, bpy.types.Object) and geometry.type not in GEOMETRY_TYPES:
                 return
             matrix = numpy.asarray(matrix, dtype=numpy.float64)
-            world_low, world_high = _bounds(obj, matrix)
-            owners.append((original.session_uid, instanced))
-            digests.append(self._shape(obj, original))
-            matrices.append(matrix)
-            low.append(world_low)
-            high.append(world_high)
+            bounds = _bounds(geometry, matrix)
+            if bounds is not None:
+                entries.append((original.session_uid if owner is None else owner, original.session_uid, instanced,
+                                self._shape(geometry, original), matrix, *bounds))
 
-        seen = set()
+        seen, parents = {}, set()
         for instance in self.depsgraph.object_instances:
             original = instance.object.original
             owner = instance.parent.original if instance.is_instance and instance.parent else original
             if owner.session_uid not in rendered:
                 continue
-            seen.add(original.session_uid)
-            add(instance.object, original, instance.matrix_world, instance.is_instance)
-        for obj in self.depsgraph.scene.objects:
-            if obj.session_uid in rendered and obj.session_uid not in seen:
-                add(obj, obj, obj.matrix_world, False)
-        return (owners, digests, numpy.asarray(matrices).reshape(-1, 4, 4), numpy.asarray(low).reshape(-1, 3),
-                numpy.asarray(high).reshape(-1, 3))
+            seen[owner.session_uid] = owner
+            if instance.is_instance:
+                parents.add(owner.session_uid)
+            add(instance.object, original, instance.matrix_world, instance.is_instance, owner.session_uid)
+        # The viewport's own-geometry rule, made a render's: Show Instancer for renders, and a child its parent
+        # instances on vertices or faces (shown in the viewport, never rendered).
+        hide = set()
+        for uid, obj in seen.items():
+            instancer = uid in parents or obj.is_instancer or len(obj.particle_systems) > 0
+            if not hidden.shows_self(obj, instancer):
+                hide.add(uid)
+            elif instancer and not obj.show_instancer_for_viewport:
+                add(obj.evaluated_get(self.depsgraph), obj, obj.matrix_world, False)
+        entries = [entry for entry in entries if entry[2] or entry[0] not in hide]
+        hidden.each(self.depsgraph, [obj.original for obj in self.depsgraph.scene.objects
+                                     if obj.session_uid in rendered and obj.session_uid not in seen], add)
+        return ([(entry[1], entry[2]) for entry in entries], [entry[3] for entry in entries],
+                numpy.asarray([entry[4] for entry in entries]).reshape(-1, 4, 4),
+                numpy.asarray([entry[5] for entry in entries]).reshape(-1, 3),
+                numpy.asarray([entry[6] for entry in entries]).reshape(-1, 3))
 
     def _reach(self, hasher, readers, inverse):
         """The AO distance and every other instance whose bounds come within it of the readers' bounds: its shape
@@ -446,7 +486,11 @@ class Reader:
         own = {obj.session_uid for obj in readers}
         near = numpy.zeros(len(owners), dtype=bool)
         for obj in readers:   # Its own bounds, so a reader hidden in the viewport reaches the same neighbours.
-            reader_low, reader_high = _bounds(obj.evaluated_get(self.depsgraph), obj.matrix_world)
+            found = self.worlds.get(obj.session_uid)
+            bounds = found[1] if found is not None else _bounds(obj.evaluated_get(self.depsgraph), obj.matrix_world)
+            if bounds is None:
+                continue
+            reader_low, reader_high = bounds
             near |= numpy.all((low <= reader_high + distance) & (high >= reader_low - distance), axis=1)
         near &= ~numpy.asarray([uid in own and not instanced for uid, instanced in owners])
         relative = numpy.round(numpy.einsum("ij,njk->nik", inverse, matrices[near]) / QUANTUM).astype(numpy.int64)

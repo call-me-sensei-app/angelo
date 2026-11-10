@@ -18,9 +18,15 @@ operators, with ``COST`` once calls that added objects took ``NOTE_SECONDS`` or 
 Blender's, never an instruction.
 
 ``len(bpy.data.objects)`` walks every object (no length callback, ``rna_main.cc``), so a call is counted only while its
-operator's last call took ``COUNTED_FROM`` or more, and ``COUNT_SHARE`` times what a count itself took: a cheap
+operator's recent cost took ``COUNTED_FROM`` or more, and ``COUNT_SHARE`` times what a count itself took: a cheap
 operator in a long loop pays for the timing alone in a scene of any size, and an operator that adds objects, which
-costs more as the scene grows, is counted from the point its cost could matter.
+costs more as the scene grows, is counted from the point its cost could matter. The recent cost is the operator's
+slowest call, halved by each later one (``DECAY``), never only its last: a cheap call of the same operator (one that
+added nothing, or failed at once) just before one that adds would otherwise leave that call uncounted, and a loop
+alternating the two would lose every added object and the cost note with them (release-1.0.9 review). A slow call
+then pays for at most a few counts after it, each under a twentieth of its own time. And an operator that has added
+objects stays counted while its counts took at most ``COUNT_BUDGET`` of its own time, so a longer run of cheap calls
+between its adding ones never hides them either (1.0.10 break-it: eight or more did).
 """
 
 import time
@@ -28,7 +34,9 @@ import time
 TOP = 3
 NOTE_SECONDS = 1.0   # A pause a person notices; below it the measurements alone stand.
 COUNTED_FROM = 0.001   # Seconds.
-COUNT_SHARE = 20   # A call's two counts stay within a tenth of its operator's last call.
+COUNT_SHARE = 20   # A call's two counts stay within a tenth of its operator's recent cost.
+DECAY = 0.5   # Each call keeps this share of its operator's recent cost, or its own time when that is more.
+COUNT_BUDGET = 0.1   # An operator that added objects: counted while its counts took at most this share of its time.
 # Model-visible (never translated): how Blender runs a bpy.ops call, a fact of its source.
 COST = ("Blender updates the scene's dependency graph before and after each bpy.ops call; an added object makes that "
         "update rebuild the whole graph, so each call that adds one takes longer the more objects the scene has. "
@@ -69,7 +77,8 @@ class Clock:
     def __init__(self, bpy):
         self._bpy, self._ops, self._real, self._active = bpy, None, None, False   # A kept callable counts nothing.
         self._depth, self._count_seconds = 0, 0.0
-        # "module.function" -> [calls, seconds, seconds of the calls that added objects, the last call's seconds]
+        # "module.function" -> [calls, seconds, seconds of the calls that added objects, its recent cost (DECAY),
+        #                       seconds its counts took]
         self.calls = {}
 
     def __enter__(self):
@@ -106,18 +115,24 @@ class Clock:
         if not self._active or self._depth:   # Kept past the script, or inside an operator already timed.
             return operator(*args, **kwargs)
         self._depth += 1
-        row = self.calls.setdefault(name, [0, 0.0, 0.0, COUNTED_FROM])
-        before = self._objects() if row[3] >= max(COUNTED_FROM, COUNT_SHARE * self._count_seconds) else None
+        row = self.calls.setdefault(name, [0, 0.0, 0.0, COUNTED_FROM, 0.0])
+        counted = (row[3] >= max(COUNTED_FROM, COUNT_SHARE * self._count_seconds)
+                   or row[2] > 0.0 and row[4] <= COUNT_BUDGET * row[1])
+        before = self._objects() if counted else None
+        if before is not None:
+            row[4] += self._count_seconds
         begun = time.perf_counter()
         try:
             return operator(*args, **kwargs)
         finally:
             spent = time.perf_counter() - begun
             after = self._objects() if before is not None else None
+            if after is not None:
+                row[4] += self._count_seconds
             self._depth -= 1
             row[0] += 1
             row[1] += spent
-            row[3] = spent
+            row[3] = max(spent, row[3] * DECAY)
             if before is not None and after is not None and after > before:
                 row[2] += spent
 

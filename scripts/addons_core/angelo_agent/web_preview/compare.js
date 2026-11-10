@@ -3,7 +3,10 @@
 // The Compare view: Angelo's viewport, drawn from this page's camera with the scene's lights, World and view
 // transform (web_compare.py), over the page's own Three.js picture. Wipe shows Angelo left of the handle and
 // Three.js right of it; Difference shows where they differ (four times brighter than the difference). Both report
-// the average difference. While comparing the camera stays put; a new export or a resize draws Angelo again.
+// the average difference. While comparing the camera stays put; a new export or a resize draws Angelo again. The
+// handle follows the pointer anywhere over the view (drag.js), never dragging Angelo's picture out.
+import { followDrag, noNativeDrag } from "./drag.js";
+
 const $ = (id) => document.getElementById(id);
 const AMPLIFY = 4;
 
@@ -133,12 +136,8 @@ export function setupCompare({ renderer, scene, camera, controls, canvas, look, 
   done.addEventListener("click", stop);
   wipeMode.addEventListener("click", () => { mode = "wipe"; draw(); });
   differenceMode.addEventListener("click", () => { mode = "difference"; draw(); measure(); });
-  view.addEventListener("pointerdown", (event) => {
-    if (mode !== "wipe" || event.target.closest("button")) return;
-    view.setPointerCapture(event.pointerId);
-    drag(event);
-  });
-  view.addEventListener("pointermove", (event) => { if (view.hasPointerCapture(event.pointerId)) drag(event); });
+  noNativeDrag(shot, difference);
+  followDrag(view, { accept: (event) => mode === "wipe" && !event.target.closest("button"), move: drag });
   window.addEventListener("keydown", (event) => { if (event.key === "Escape" && active) stop(); });
   new ResizeObserver(() => { if (active) ask(); }).observe(canvas);
 

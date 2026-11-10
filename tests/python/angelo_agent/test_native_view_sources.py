@@ -11,6 +11,8 @@ the delivered PNG back. ``test_blender_view_sources`` checks the same in the
 compiled application against Blender's own buffers.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import sys
 import tempfile

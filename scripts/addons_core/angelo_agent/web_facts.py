@@ -10,6 +10,8 @@ data.
 
 import bpy
 
+from .blend_file_paths import located
+
 PRINCIPLED = "ShaderNodeBsdfPrincipled"
 
 
@@ -94,7 +96,7 @@ def describe_image(image):
     width, height = (int(value) for value in image.size[:2])
     missing = False
     if image.source == "FILE" and not image.packed_file:
-        path = bpy.path.abspath(image.filepath, library=image.library)
+        path = located(image.filepath, image.library, bpy.path.abspath)
         import os
         missing = not path or not os.path.isfile(path)
     return {"name": image.name, "source": image.source, "width": width, "height": height, "missing": missing}
@@ -127,13 +129,37 @@ def _look(scene):
     return web_look.facts(scene)
 
 
+def _effect_settings(scene):
+    """What ``_effects`` reads from the scene itself (its compositor's nodes are updates of their own tree)."""
+    return {"compositor": getattr(scene, "compositing_node_group", None) or getattr(scene, "node_tree", None),
+            "use_compositing": bool(scene.render.use_compositing), "motion_blur": bool(scene.render.use_motion_blur)}
+
+
 def _effects(scene, objects):
-    tree = getattr(scene, "compositing_node_group", None) or getattr(scene, "node_tree", None)
-    use_compositor = bool(tree is not None and scene.render.use_compositing and any(
+    read = _effect_settings(scene)
+    tree = read["compositor"]
+    use_compositor = bool(tree is not None and read["use_compositing"] and any(
         node.bl_idname not in PASSTHROUGH and not node.mute for node in tree.nodes))
-    return {"motion_blur": bool(scene.render.use_motion_blur),
+    return {"motion_blur": read["motion_blur"],
             "depth_of_field": sorted(obj.name for obj in objects if obj.type == "CAMERA" and obj.data.dof.use_dof),
             "compositor": use_compositor}
+
+
+# The web export's options to Blender's glTF exporter that decide what it reads from the scene
+# (``web_export._operator_settings``; ``gltf_scene_reads``).
+GLTF_OPTIONS = {"export_cameras": True, "export_lights": True, "export_animations": True, "export_extras": False}
+
+
+def scene_settings(scene):
+    """Everything a web export reads from the scene ID itself, as one comparable value: the look
+    (``web_look.settings``), how the World travels (``web_world.settings``), the render effects and what the glTF
+    exporter reads (``gltf_scene_reads``). An edit of these updates only the scene, which ``scene_changes.content``
+    ignores, so the live preview adds this to its key (``web_preview``); the data they point at (the World, its
+    nodes, a compositor tree) updates on its own. Cheap: a few property reads, no node walk, run on every depsgraph
+    update."""
+    from . import gltf_scene_reads, web_look, web_world
+    return (web_look.settings(scene), web_world.settings(scene), _effect_settings(scene),
+            gltf_scene_reads.settings(scene, None, GLTF_OPTIONS))
 
 
 def gather(scene, view_layer, selection_only=False, depsgraph=None, baked=None):
@@ -166,5 +192,6 @@ def gather(scene, view_layer, selection_only=False, depsgraph=None, baked=None):
         "look": _look(scene),
         "effects": _effects(scene, objects),
         "triangles": triangles,
-        "baked": {key: list(baked.get(key, ())) for key in ("used", "stale", "nearby", "packing")} if baked else {},
+        "baked": ({key: list(baked.get(key, ())) for key in ("used", "stale", "nearby", "packing", "updated")}
+                  if baked else {}),
     }

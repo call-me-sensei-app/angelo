@@ -8,6 +8,8 @@ now names the folder its workspace-relative ``output`` belongs to and the name
 it falls back to when that one is taken, for every kind of output.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import types
@@ -111,8 +113,9 @@ class FallbackNameTests(unittest.TestCase):
                 staging.output, staging.identity = Path("/w") / relative, "j7"
                 folder, dependencies = publishes == "folder", publishes == "file_set"
                 second = staging._candidate(folder, dependencies)[1]
-                expected = str(Path(relative).parent / second) if publishes != "file_set" else \
-                    str(Path(relative).parent / second / Path(relative).name)
+                # The name is workspace-relative text the agent reads: '/'-separated on every platform.
+                expected = (Path(relative).parent / second).as_posix() if publishes != "file_set" else \
+                    (Path(relative).parent / second / Path(relative).name).as_posix()
                 self.assertEqual(fallback_name(relative, "j7", publishes), expected.removeprefix("./"))
 
 

@@ -31,6 +31,10 @@ lead's side is what the window's own timer pumps. Its timed checks start when th
 
 GUI ``--factory-startup --enable-event-simulate`` only, disposable profile, no provider or paid call; unforced."""
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import subprocess
@@ -860,7 +864,10 @@ def tick():
         if phase == 'typed':
             from angelo_agent import card_host
             draft = chat_area().spaces.active.history[-1].body if chat_area().spaces.active.history else ''
-            check('typing_over_the_live_view_with_a_card_reaches_the_chat', draft.endswith('ax'), draft)
+            # macOS Option characters (Option+S = ß, Option+D = ∂) are text and reach the draft like any other key;
+            # elsewhere Alt+letter is a shortcut, not text, so only the plain letters arrive.
+            typed = 'axß∂' if sys.platform == 'darwin' else 'ax'
+            check('typing_over_the_live_view_with_a_card_reaches_the_chat', draft.endswith(typed), draft)
             check('typing_and_option_keys_never_reach_the_document', document_state() == state['document'],
                   [document_state(), state['document']])
             screenshot('5-live-typing-with-card.png')

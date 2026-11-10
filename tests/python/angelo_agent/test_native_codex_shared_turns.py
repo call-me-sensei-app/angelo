@@ -8,6 +8,8 @@ turn (its ID is returned again), and ``turn/interrupt`` ends a turn unless the
 test marks it stuck.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import itertools
 import os
 import sys
@@ -21,13 +23,16 @@ from types import SimpleNamespace
 import machine_clock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from angelo_agent import codex_connect, codex_runtime, providers  # noqa: E402
+from angelo_agent import codex_connect, codex_login, codex_runtime, providers  # noqa: E402
 from angelo_agent.codex_connect import ContextLost  # noqa: E402
 from angelo_agent.codex_runtime import Retired, Runtime  # noqa: E402
 from angelo_agent.codex_turns import STUCK, STUCK_SHARED, MessageNotSent  # noqa: E402
 from angelo_agent.protocol import RpcError  # noqa: E402
 
 KEY = ("connection-a", "codex_subscription", None, ("codex", "app-server"))
+# The model reads it too (an error row of the chat): what happened and what the person does. Pinned word for word.
+REFUSAL = ("Angelo can't read Codex's sign-in file (auth.json in Codex's folder). Check that the file can be read, "
+           "or sign in to Codex again, then send the message again.")
 
 
 def wait_for(condition, seconds=5):
@@ -366,9 +371,117 @@ class LoginFileTests(SharedCase):
         self.assertEqual(len(self.processes), 2)
         replaced = self.login.with_name("auth.json.new")
         replaced.write_text('{"tokens": "secnd"}')
-        os.replace(replaced, self.login)  # Atomically replaced, as Codex writes it.
+        os.replace(replaced, self.login)  # Atomically replaced, as another tool might write it.
         self.provider()
         self.assertEqual(len(self.processes), 3)
+
+    def test_a_same_size_rewrite_with_its_times_put_back_retires_it(self):
+        # Codex writes auth.json in place (truncate, then write: FileAuthStorage::save). Inside one tick of a coarse
+        # clock (NTFS 15.6 ms, FAT and exFAT 2 s) such a rewrite keeps every stat field; os.utime to a whole second
+        # stands for that here, on every host.
+        os.utime(self.login, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
+        self.provider()
+        before = os.stat(self.login)
+        with open(self.login, "r+b") as handle:   # In place: same file, same size, another account's tokens.
+            handle.write(b'{"tokens": "other"}')
+        os.utime(self.login, ns=(before.st_atime_ns, before.st_mtime_ns))
+        after = os.stat(self.login)
+        self.assertEqual((before.st_ino, before.st_size, before.st_mtime_ns),
+                         (after.st_ino, after.st_size, after.st_mtime_ns), "every stat field held still")
+        self.provider()
+        self.assertEqual(len(self.processes), 2, "the bytes changed: the process started on the old login retires")
+
+    def denied(self):
+        """``open`` of the login file fails as an unreadable file's does (permissions, a lock); the reads are counted."""
+        reads = []
+
+        def denied(path, *args, **kwargs):
+            reads.append(str(path))
+            raise PermissionError(13, "Permission denied", str(path))
+        return unittest.mock.patch.object(codex_login, "open", denied, create=True), reads
+
+    def retires(self):
+        """Every ``Runtime.retire`` call, counted, the retirement itself unchanged."""
+        calls, retire = [], Runtime.retire
+
+        def counted(runtime):
+            calls.append(runtime)
+            return retire(runtime)
+        return unittest.mock.patch.object(Runtime, "retire", counted), calls
+
+    def test_a_login_file_that_cannot_be_read_refuses_the_first_connect_at_once(self):
+        # Before: an unreadable file stamped a value no other equals, so each of three attempts started and retired a
+        # process, and the connect ended "The Codex connection kept changing while connecting".
+        denied, reads = self.denied()
+        counting, retired = self.retires()
+        with denied, counting, self.assertRaises(RpcError) as caught:
+            self.provider()
+        self.assertEqual(self.processes, [], "no app-server starts on a login file nobody can read")
+        self.assertEqual(retired, [], "nothing to retire")
+        self.assertEqual(reads, [str(self.login)], "one read, one attempt")
+        self.assertEqual(str(caught.exception), REFUSAL)
+        self.assertIsInstance(caught.exception, codex_runtime.LoginUnreadable)
+        self.assertEqual(caught.exception.i18n, [REFUSAL, {}], "the chat translates its row where it draws it")
+        self.assertIs(caught.exception.message_not_sent, True, "a connect sent nothing: the message goes back")
+        self.assertIs(caught.exception.show_reason, True)
+        self.provider()   # Readable: the first process starts, and its stamp holds.
+        self.provider()
+        self.assertEqual(len(self.processes), 1)
+
+    def test_a_running_process_is_kept_when_its_login_file_cannot_be_read(self):
+        first = self.provider()
+        denied, reads = self.denied()
+        counting, retired = self.retires()
+        with denied, counting, self.assertRaises(codex_runtime.LoginUnreadable):
+            self.provider()
+        self.assertEqual(reads, [str(self.login)], "refused on the first attempt")
+        self.assertEqual(retired, [], "its login cannot be compared: kept for its chats, admitting no new one")
+        self.assertEqual(len(self.processes), 1)
+        self.assertFalse(first.rpc.runtime.retired)
+        self.assertFalse(self.processes[0].closed.is_set())
+        self.provider()   # Readable and unchanged: the same process serves the next chat.
+        self.assertEqual(len(self.processes), 1)
+        self.login.write_text('{"tokens": "other"}')   # Changed while it could not be read: compared, and retired.
+        self.provider()
+        self.assertEqual(len(self.processes), 2)
+        self.assertTrue(first.rpc.runtime.retired)
+
+    def test_a_login_file_readable_then_unreadable_during_a_first_connect_is_refused_and_its_process_kept(self):
+        real_open, reads = open, []
+
+        def second_read_denied(path, *args, **kwargs):   # The process's own stamp, then check_login's read.
+            reads.append(str(path))
+            if len(reads) == 2:
+                raise PermissionError(13, "Permission denied", str(path))
+            return real_open(path, *args, **kwargs)
+        counting, retired = self.retires()
+        with unittest.mock.patch.object(codex_login, "open", second_read_denied, create=True), counting, \
+                self.assertRaises(codex_runtime.LoginUnreadable):
+            self.provider()
+        self.assertEqual((len(self.processes), retired), (1, []), "one start, refused, never retired or retried")
+        self.provider()
+        self.assertEqual(len(self.processes), 1, "the stamp it started with holds")
+
+    def test_the_refusal_names_no_path_and_no_one(self):
+        nested = Path(tempfile.mkdtemp(prefix="person-name-")) / ".codex"
+        self.addCleanup(lambda: __import__("shutil").rmtree(nested.parent, ignore_errors=True))
+        nested.mkdir()
+        self.login = nested / "auth.json"
+        self.login.write_text("{}")
+        denied, _reads = self.denied()
+        with denied, self.assertRaises(codex_runtime.LoginUnreadable) as caught:
+            self.provider()
+        shown = str(caught.exception) + repr(caught.exception.i18n) + repr(caught.exception.args)
+        private = (str(Path.home()), Path.home().name, str(nested), nested.parent.name, os.sep, "~")
+        for value in private:
+            if len(value) >= 3 or value in (os.sep, "~"):   # A home of "/" has no name; a short one may be a word.
+                self.assertNotIn(value, shown)
+        # Raised outside the read's except: no chained PermissionError carries the path into a traceback.
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+        self.assertNotIn("/", shown)
+        self.assertNotIn("\\", shown)
+        self.assertIn("auth.json", shown, "named as the person finds it, in Codex's folder")
 
     def test_a_sign_in_after_the_process_started_retires_it(self):
         self.login.unlink()
@@ -377,19 +490,18 @@ class LoginFileTests(SharedCase):
         self.provider()
         self.assertEqual(len(self.processes), 2)
 
-    def test_each_connect_costs_one_stat_and_reads_nothing(self):
+    def test_each_connect_reads_the_login_file_once(self):
         self.provider()
-        real_stat, stats = os.stat, []
+        real_open, opened = open, []
 
         def counted(path, *args, **kwargs):
-            stats.append(str(path))
-            return real_stat(path, *args, **kwargs)
-        with unittest.mock.patch.object(codex_runtime.os, "stat", counted), \
-                unittest.mock.patch("builtins.open", side_effect=AssertionError("The login file is never read")):
+            opened.append(str(path))
+            return real_open(path, *args, **kwargs)
+        with unittest.mock.patch.object(codex_login, "open", counted, create=True):
             self.provider()
-        self.assertEqual(stats, [str(self.login)])
+        self.assertEqual(opened, [str(self.login)])
         machine_clock.assert_cost(self, lambda: [codex_runtime.login_stamp(self.login) for _ in range(2000)],
-                                  2000 * 0.001, "About a stat")
+                                  2000 * 0.001, "An open, a read and a SHA-256 of a few kilobytes")
 
     def test_the_login_file_is_the_profiles(self):
         self.assertEqual(codex_runtime.login_file({"CODEX_HOME": "/profiles/a"}), Path("/profiles/a/auth.json"))

@@ -25,9 +25,11 @@ LOCALE_DIR = ROOT / "locale/angelo"
 POT = LOCALE_DIR / "angelo.pot"
 
 UI_MODULES = frozenset("""
-about_card game_physics game_physics_ui agent_workspace_ui approvals approval_review canvas_controls chat_composer chat_drop chat_popovers chat_settings chat_titles chat_view
+fab_preferences fab_settings fab_ui fab_overlay worker_mirror_events
+camera_preview_setting
+about_card game_physics game_physics_ui agent_workspace_ui approvals approval_review canvas_controls chat_composer chat_drop clipboard_image chat_popovers chat_settings chat_titles chat_view
 chat_welcome checkpoint_images checkpoint_restore_ui checkpoint_seal connect_hero team_access
-chat_replies chat_notices turn_end chat_start_states chat_toggle chat_hint chat_launcher asset_shelf_add media_shelf shelf_empty studio_toggle studio_video studio_video_ui studio_media_tiles flow_video_node flow_open flow_window flow_start flow_menu studio_to_flow flow_text_field flow_setup asset_browser_entry asset_browser_states studio_workspaces chat_destinations
+chat_replies chat_notices chat_resend chat_pending turn_end call_ended review_again chat_start_states chat_toggle chat_hint chat_launcher asset_shelf_add media_shelf shelf_empty studio_toggle studio_video studio_video_ui studio_media_tiles flow_video_node flow_open flow_window flow_start flow_menu studio_to_flow flow_text_field flow_setup asset_browser_entry asset_browser_states studio_workspaces chat_destinations
 checkpoint_review_ui checkpoint_settings_ui console director director_select_through feedback_ui uv_checker uv_checker_card display_text editor_types first_run flow_approvals
 flow_chat flow_drop flow_nodes flow_recipe_ui flow_ui intro key_store managed_policy preferences_ui preview_branding
 project_brief_rebind_ui quick_connect saved_keys_ui settings_import_card settings_import_ui snapshot_blocks splash_setup setup_card start_card firstlaunch_controls studio studio_draw studio_input studio_ops studio_asset_ops studio_library_ops media_drop studio_item_menu media_menus studio_approvals
@@ -35,9 +37,9 @@ studio_chat team_account_ui team_chat team_connections team_errors team_library_
 team_status_bar team_token_store ui voice_ui welcome_screen welcome_slides welcome_art flow_character_nodes flow_character_ui studio_workflow_ops studio_workflows
 app_notices card_draw card_host card_kit crash_card crash_ui update_card update_restart update_ui updates_prefs whatsnew_card
 approval_steps chat_card_draw chat_cards detail_keys review_card review_text job_approvals job_chat job_desktop job_ui trusted_scripts_ui recovery_review
-activity_text chat_rows live_progress live_row chat_guard chat_blocks changes_popup
+activity_text chat_history chat_rows live_progress live_row chat_guard chat_blocks changes_popup approval_wait launcher_waiting auto_reasons
 stop_notice
-ui_kit ui_kit_builder ui_kit_controls ui_kit_field ui_kit_rows ui_kit_select ui_kit_status
+ui_kit ui_kit_builder ui_kit_controls ui_kit_field ui_kit_rows ui_kit_select ui_kit_status ui_formats activity_details draft_overflow chat_goal
 chat_add_menu chat_add_nav chat_add_draw chosen_tools
 library_actions library_overlay library_overlay_draw library_ui library_approvals
 web_export_ui web_preview web_shader web_shader_ui engine_link_ui shot_capture shot_capture_ui engine_suggest_ui
@@ -53,6 +55,11 @@ bake_maps_card bake_maps_text
 render_region render_region_card render_region_draw render_region_pills
 tension_map tension_map_card tension_map_logic
 skeleton_report_card skeleton_check_ui skeleton_menu
+version_carry_over_ui
+conversations conversations_delete conversations_layout conversations_popover conversations_ui model_picker_ui
+agent_target_labels surface_focus
+
+checkpoint_store_text refused_saves moved_state_notice
 """.split())
 
 # Modules whose text a model reads (tool specs, schemas, guidance, observations, prompts). They never translate:
@@ -66,14 +73,47 @@ read_spec data_path data_read data_read_rows data_read_values data_read_policy
 blend_file blend_file_listing blend_file_paths
 external_mcp_tools
 worker_spec visibility_facts
-library_spec library_agent
+library_spec library_agent blender_assets_agent blender_asset_previews
 """.split())
 
 # Modules with UI-looking code that never shows translatable chrome, and why.
 NON_UI_MODULES = {
+    'update_restart_handoff': 'Committed native updater handoff and revocable process ownership; notices remain translated in update_restart.',
+    'fab_browser_windows_store_setup': 'Private Windows Store native root setup and ownership checks; no UI text.',
+    'fab_browser_platform': 'Private lazy browser platform dispatcher and explicit native Store lifecycle; no UI text.',
+    "handoff_candidates": "neutral historical activity admission and final presentation; no interface text",
+    "handoff_full": "owned full-result final projection and work bounds; no interface text",
+    "handoff_currency_view": "owned neutral receipt revision filtering and work bounds; no interface text",
+    "handoff_bound": "neutral primitive shape and final-work bounds; no interface text",
+    "handoff_compose": "bounded machine-facing history composition; no interface text",
+    "handoff_excerpt": "bounded machine-facing historical result excerpts; no interface text",
+    "handoff_model": "bounded machine-facing result copies; no interface text",
+    "handoff_program_copy": "bounded machine-facing typed-program result copies; no interface text",
+    "handoff_text": "bounded primitive JSON text entries; no interface text",
+    "handoff_unchecked": "bounded machine-facing unverified receipts; no interface text",
+    "handoff_labels": "bounded machine-facing historical receipt labels; no interface text",
+    "handoff_receipts": "budgeted historical receipt inspection; no interface text",
+    "handoff_projection": "bounded primitive and identifier copies; no interface text",
+    "handoff_history": "bounded transcript order and host-summary adjacency; no interface text",
+    "handoff_json": "bounded primitive JSON and machine-facing refusal codes; no interface text",
+    "request_submissions": "private fenced retry ownership; no person-facing sentences",
+    "steering": "the pending messages' state (no bpy): its refusals never reach the person (chat_pending.hold checks "
+                "first, with translated texts); chat_pending draws every bubble",
+    "steering_delivery": "hands the person's steers to a running request: model-facing English only (its heading)",
+    "controller_choice": "a connection or model chosen during a turn: its one chat notice is a ui_text.notice "
+                         "template, translated where the chat draws it",
+    "composer_edit": "the composer's editing as pure functions over the draft (text, caret, selection); no interface "
+                     "text of its own",
+    "composer_input": "the composer's keys, clicks and drags between the chat's input handler and its editing; no "
+                      "interface text of its own",
+    "composer_keys": "the composer's per-platform shortcut table (event types and action names, never shown)",
+    "composer_scroll": "the composer's scroll offset, wheel, trackpad and scrollbar geometry; no interface text of "
+                       "its own",
     "web_world_key": "the World picture's cache key, read from Blender's RNA (property names, never shown); no "
                      "interface text of its own",
     "rail_redraw": "redraw scheduling and per-window badge signatures; no interface text of its own",
+    "media_shelf_cover": "applies the remembered shelf state under the start-up cover from a timer; its one "
+                         "message is a console line for developers, no interface text of its own",
     "chat_tables": "lays out a reply's markdown table (geometry and runs of the model's own text); no interface "
                    "text of its own",
     "rig_host": "the hand-rigging tools' results and refusals: model-facing English data, no interface text",
@@ -122,6 +162,9 @@ NON_UI_MODULES = {
                      "refused, kept by the chat's error row",
     "worker_reasons": "why a worker chat's request did not go through: n_ reason templates nested in chat notices "
                       "(translated whole where shown); its log lines are English; it draws nothing",
+    "goal_text": "a goal round's request is model-facing English; its chat notices are n_ templates shown through "
+                 "display_text, and its round row is built with iface_ at display time",
+    "goal_loop": "a held goal's rounds: no interface text of its own (goal_text words its notices)",
     "worker_resume": "the worker-done event: its request is model-facing English; its one chat notice (a send that "
                      "failed) is an n_ template shown through display_text",
     "worker_routing": "which document a chat works on: its refusals are model-facing English; its chat notices (why "
@@ -147,10 +190,11 @@ NON_UI_MODULES = {
     "studio_assets_host": "writes the catalogue names in the interface language (iface_); no interface of its own",
     "media_place": "places Media Studio items for media_drop; its refusals are n_ constants media_drop shows with "
                    "error_text, the rest data names",
-    "studio_assets_space": "the Asset Browser library's files and size; marks the four size units (n_) its caller "
-                           "shows with iface_, the rest file contents",
+    "studio_assets_space": "the Asset Browser library's files and size (shown with ui_formats.format_bytes); no "
+                           "interface text, only file contents",
     "studio_assets_landing": "packs the pictures of appended Media Studio image assets; no interface text, only log "
                              "lines",
+    "studio_files": "reads and writes the asset library's files without losing what is in them; no interface text",
     "font_watch": "rebinds the canvases' fonts after Blender reloads its own; no interface text",
     "top_bar_fit": "measures labels its callers already translated, to size their top-bar buttons; no text of its own",
     "job_manager": "background-job lifecycle: its refusals are model-facing English; the receipt notes it marks "
@@ -240,6 +284,8 @@ NON_UI_MODULES = {
                       "failures are notices, translated where the chat shows the error",
     "unsent_loss": "the retry of a request whose runtime ended before it sent anything; its log lines are English, "
                    "and the one chat error it raises is a notice, translated where the chat shows it",
+    "codex_login": "the Codex login file's stamp; the one chat error a person reads (an unreadable sign-in file) "
+                   "is a notice, translated where the chat shows it",
     "settings_import": "copies a Blender user folder; its product names and error texts go to the log, and the "
                        "cards that show the result translate their own words (settings_import_card)",
     "settings_import_apply": "applies a settings import; it only prints English log lines, and the notice that "
@@ -249,6 +295,49 @@ NON_UI_MODULES = {
     "chrome_guard": "keeps Angelo's own editors without stock header, sidebar and toolbar; no interface text",
     "top_bar_anchor": "where the top bar's Chat button is drawn, for the hint, the Flows popup and GUI suites; no interface text",
     "layout_after": "runs Studio and Flows entries once a layout change has settled; it only prints English log lines",
+    "conversation_title": "a chat's own name, cleaned (the person's data, never translated); no interface text",
+    "conversation_search": "searches chat titles and requests (the person's and the model's words); no interface text",
+    "pdf_text": "reads an attached PDF's text in a child process: its codes are model-facing English, and the chip's "
+                "reasons for them are references' n_ constants",
+    "pdf_text_worker": "the PDF reader's child process: JSON answers to pdf_text, no interface text",
+    "chat_input_blocked": "records which tool holds a chat's window for chat_view's notice; no interface text",
+    'native_recovery': 'native recovery capability protocol and model-facing fail-closed admission error',
+    'shape_key_state': 'one exact account of a shape-key datablock for object revisions; model-facing data, no interface text',
+    'chat_key_arming': 'press-owned keyboard activation and approval ownership; no interface text',
+    "pdf_darwin_watchdog": "PDF-only sampled Darwin physical-footprint accounting/admission; no UI text",
+    'fab_approval': 'Private immutable local Fab approval snapshots and sanitized presentation facts; no interface text',
+    'fab_browser_account': 'Private typed Fab account observations; never interface text or proof by shape',
+    'fab_browser_account_page': 'Private worker-owned Fab account/listing/download observation and lifecycle; no app interface text',
+    'fab_browser_connection': 'Worker-owned browser connection/public metadata and closed pending account producers; no UI text',
+    'fab_browser_diagnostics': 'Private bounded browser lifecycle diagnostics; no interface text',
+    'fab_browser_download': 'Private worker-owned Fab account/listing/download observation and lifecycle; no app interface text',
+    'fab_browser_download_file': 'Private worker-owned Fab account/listing/download observation and lifecycle; no app interface text',
+    'fab_browser_identity': 'Private worker-owned Fab account/listing/download observation and lifecycle; no app interface text',
+    'fab_browser_listing_owner': 'Private worker-owned Fab account/listing/download observation and lifecycle; no app interface text',
+    'fab_browser_listing_page': 'Private worker-owned Fab account/listing/download observation and lifecycle; no app interface text',
+    'fab_browser_ownership': 'Exact process/profile/window identity and drain proof; no UI text',
+    'fab_browser_process': 'Owned Mac browser/CDP worker process lifecycle; no UI text',
+    'fab_browser_profile': 'Private browser profile storage and credential lifetime; no interface text',
+    'fab_browser_selected': 'Private worker-owned Fab account/listing/download observation and lifecycle; no app interface text',
+    'fab_browser_selected_control': 'Private worker-owned Fab account/listing/download observation and lifecycle; no app interface text',
+    'fab_browser_transport': 'Worker-only Fab transport and credential-free closed model failures; no UI text',
+    'fab_browser_variants': 'Private immutable actual Fab listing and selected-file records; no interface text',
+    'fab_host': 'Main-thread cached facade and worker-owned Fab connection/Session lifecycle; no drawing or translated literals',
+    'fab_host_jobs': 'Bounded Fab operation, cancellation and result lifetime owner; no interface text',
+    'fab_host_state': 'Bounded primitive Fab display facts and closed reason codes; no interface text',
+    'fab_library_agent': 'Library tool routing; model-facing outcomes and individually translated human overlay notices',
+    'fab_native_job': 'Model-facing typed GLB pending transaction and exact native/cache cleanup ownership',
+    'fab_browser_download_file_windows': 'Private Windows browser process/profile/pipe/evidence owner; no application interface text or account authority',
+    'fab_browser_manual_close': 'Bounded Fab operation, cancellation and result lifetime owner; no interface text',
+    'fab_browser_manual_connection': 'Bounded Fab operation, cancellation and result lifetime owner; no interface text',
+    'fab_browser_manual_window': 'Bounded Fab operation, cancellation and result lifetime owner; no interface text',
+    'fab_browser_pipes_windows': 'Private Windows browser process/profile/pipe/evidence owner; no application interface text or account authority',
+    'fab_browser_process_windows': 'Private Windows browser process/profile/pipe/evidence owner; no application interface text or account authority',
+    'fab_browser_profile_metadata_windows': 'Private Windows browser process/profile/pipe/evidence owner; no application interface text or account authority',
+    'fab_browser_profile_session_windows': 'Private Windows browser process/profile/pipe/evidence owner; no application interface text or account authority',
+    'fab_browser_profile_windows': 'Private Windows browser process/profile/pipe/evidence owner; no application interface text or account authority',
+    'fab_browser_windows_proof': 'Private Windows browser process/profile/pipe/evidence owner; no application interface text or account authority',
+    'fab_login_transition': 'Bounded Fab operation, cancellation and result lifetime owner; no interface text',
 }
 
 # C/C++ files that differ from Blender 5.2.2 and carry interface text (repo-relative, as the extractor records them).
@@ -272,7 +361,9 @@ source/blender/editors/space_api/angelo_studio_drop.cc
 source/blender/editors/render/render_region.cc
 source/blender/render/intern/angelo_region_render.cc
 source/blender/blenkernel/intern/mesh_remesh_voxel_estimate.cc
+source/blender/blenloader/intern/writefile.cc
 source/blender/editors/object/object_remesh.cc
+source/blender/editors/undo/angelo_undo.cc
 """.split())
 
 def _release_notes_msgids():
@@ -294,6 +385,8 @@ def _release_notes_msgids():
 # Text Angelo adds to Blender's own RNA from C++ (dynamic enum items, renamed operators): (context, msgid, origin).
 # The RNA dump records these under Blender's class names, so they are listed here and checked by the native suite.
 EXTRA_MSGIDS = (
+    ("Operator", "Before Asset Import", "source/blender/editors/undo/angelo_undo.cc"),
+    ("Operator", "Import Asset", "source/blender/editors/undo/angelo_undo.cc"),
     ("", "AI", "source/blender/makesrna/intern/rna_screen.cc"),
     ("", "Coding Agent", "source/blender/makesrna/intern/rna_screen.cc"),
     ("", "Native coding-agent chat with approved Angelo tools", "source/blender/makesrna/intern/rna_screen.cc"),
@@ -475,7 +568,7 @@ EXTRA_MSGIDS = (
      'source/blender/windowmanager/intern/wm_files.cc'),
     ('', 'Recovered scene (not your file)',
      'source/blender/windowmanager/intern/wm_window.cc'),
-    ('', 'This file is managed by the Angelo asset system. It can only be',
+    ('', 'This file is managed by the Angelo asset system. It can only be saved as a new, regular file.',
      'source/blender/windowmanager/intern/wm_files.cc'),
     ('WindowManager', 'Angelo will now close.',
      'source/blender/windowmanager/intern/wm_platform_support.cc'),

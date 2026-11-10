@@ -10,6 +10,8 @@ subscribers to the settings written); the Auto modes make them, name that
 Python and never say the scene is unchanged. ``view_policy`` has the scope.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import sys
 import tempfile

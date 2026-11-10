@@ -16,7 +16,8 @@ import time
 import bpy
 
 from . import card_kit as kit, ui_kit_field as field
-from .card_kit import BaseCard, MUTED
+from .card_kit import BaseCard
+from . import ui_tokens as tk
 from .provider_registry import CODING, GENAI, PROVIDER_NAMES
 from .ui_text import iface_, n_
 
@@ -124,11 +125,11 @@ class ConnectionSheet(BaseCard):
         names = dict(self._providers())
         provider = names.get(self.provider, PROVIDER_NAMES.get(self.provider, self.provider))
         if editing:
-            b.paragraph(iface_("{provider} · fixed for this connection", provider=provider), 13, MUTED)
+            b.paragraph(iface_("{provider} · fixed for this connection", provider=provider), 13, tk.MUTED)
         else:
             b.paragraph(iface_("What it is for"), 12.5)
             b.gap(4)
-            b.segmented("group", [(CODING, iface_("Coding agent")), (GENAI, iface_("Media generation"))], self.group,
+            b.segmented("group", [(CODING, iface_("Coding agents")), (GENAI, iface_("Media generation"))], self.group,
                         width=b.inner)
             b.gap(14)
             b.select("provider_open", None, self._providers(), self.provider, open=self.select_open,
@@ -146,7 +147,7 @@ class ConnectionSheet(BaseCard):
             hint = iface_("Leave blank to keep the current key") if editing else iface_("Paste your API key")
             b.text_field("field", "key", self.key, placeholder=hint, label=iface_("API key"))
             b.gap(6)
-            b.paragraph(iface_("API usage is billed to your {provider} account.", provider=provider), 12, MUTED)
+            b.paragraph(iface_("API usage is billed to your {provider} account.", provider=provider), 12, tk.MUTED)
             if self._key_url():   # Where the provider issues keys, opened in the browser (only on a click).
                 b.gap(6)
                 b.buttons([], left=[("get_key", None, iface_("Get a {provider} key in your browser", provider=provider),
@@ -154,26 +155,26 @@ class ConnectionSheet(BaseCard):
             b.gap(8)
             if saved_keys_ui.available():
                 b.toggle("remember", None, saved_keys_ui.TEXT.remember, self.remember)
-                b.paragraph(iface_(saved_keys_ui.TEXT.remember_description), 12, MUTED)
+                b.paragraph(iface_(saved_keys_ui.TEXT.remember_description), 12, tk.MUTED)
             else:
-                b.paragraph(saved_keys_ui.unavailable_reason(), 12, MUTED)
+                b.paragraph(saved_keys_ui.unavailable_reason(), 12, tk.MUTED)
         elif not editing:
             b.gap(10)
             b.checkbox("reuse", None, iface_("Use existing sign-in on this computer"), self.reuse)
             note = self._subscription_note()
             if note:
                 b.gap(4)
-                b.paragraph(note, 12, MUTED)
+                b.paragraph(note, 12, tk.MUTED)
         else:
             b.gap(8)
-            b.paragraph(iface_("Your subscription sign-in stays with its official runtime."), 12, MUTED)
+            b.paragraph(iface_("Your subscription sign-in stays with its official runtime."), 12, tk.MUTED)
         b.gap(12)
         b.disclosure("advanced", iface_("Advanced"), self.advanced)
         if self.advanced:
             b.gap(6)
             b.text_field("field", "model", self.model, placeholder=iface_("Runtime default"), label=iface_("Model ID"))
             b.gap(4)
-            b.paragraph(iface_("Blank uses the runtime's default model."), 12, MUTED)
+            b.paragraph(iface_("Blank uses the runtime's default model."), 12, tk.MUTED)
         if self.status:
             b.gap(14)
             kind, title, body = self.status

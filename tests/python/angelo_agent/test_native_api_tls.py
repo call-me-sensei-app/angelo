@@ -6,6 +6,8 @@ Uses a loopback HTTPS server and a throwaway certificate, never a provider or
 real key. OpenSSL is also required by the managed-policy host tests.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import shutil
 import ssl

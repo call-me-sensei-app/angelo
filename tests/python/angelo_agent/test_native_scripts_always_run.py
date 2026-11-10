@@ -9,6 +9,8 @@ tools aid the model, never handicap it (doc/angelo/performance.rst, "Tools aid, 
 real admission path (Controller.request_tool) and in the real Claude plan loop.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib.util
 import sys
 import tempfile
@@ -75,7 +77,8 @@ class ClaudePlanTests(unittest.TestCase):
         from angelo_agent.providers import ClaudeProvider
         from angelo_agent.routing import RuntimeContext
         chat = host()
-        chat.state["id"], chat.store, chat.models, chat.resolve_call = "chat-a", None, [], lambda name, arguments: arguments
+        chat.state["id"], chat.store, chat.models, chat.resolve_call = ("chat-a", None, [],
+                                                                    lambda name, arguments, *, step=None: arguments)
         chat._closing = False
         context = RuntimeContext(chat, "claude_subscription", {}, "", None, chat._epoch)
         context.request_observation = Mock(side_effect=lambda callback: callback({"context_version": 2, "objects": []}))

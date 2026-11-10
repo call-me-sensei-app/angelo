@@ -879,7 +879,7 @@ static void rna_Mesh_uv_layers_begin(CollectionPropertyIterator *iter, PointerRN
 
 PointerRNA rna_Mesh_uv_layers_iterator_get(CollectionPropertyIterator *iter)
 {
-  CustomDataLayer *layer = *static_cast<CustomDataLayer **>(rna_iterator_array_get(iter));
+  CustomDataLayer *layer = static_cast<CustomDataLayer *>(rna_AttributeGroup_iterator_item(iter));
   return RNA_pointer_create_with_parent(iter->parent, RNA_MeshUVLoopLayer, layer);
 }
 
@@ -1218,7 +1218,7 @@ static void rna_Mesh_vertex_colors_begin(CollectionPropertyIterator *iter, Point
 
 PointerRNA rna_Mesh_vertex_colors_iterator_get(CollectionPropertyIterator *iter)
 {
-  CustomDataLayer *layer = *static_cast<CustomDataLayer **>(rna_iterator_array_get(iter));
+  CustomDataLayer *layer = static_cast<CustomDataLayer *>(rna_AttributeGroup_iterator_item(iter));
   return RNA_pointer_create_with_parent(iter->parent, RNA_MeshLoopColorLayer, layer);
 }
 

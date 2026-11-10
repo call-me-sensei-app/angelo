@@ -18,8 +18,7 @@ live where the editor can show it. Main thread; every engine through its adapter
   every editor of the project is told to re-import either way.
 * The link ends when another file is opened, the file is saved elsewhere, the editor asks, or the link stops.
 
-doc/angelo/engine_link.rst is the contract; doc/angelo/godot_link.rst is Godot's.
-"""
+doc/angelo/engine_link.rst is the contract; doc/angelo/godot_link.rst is Godot's."""
 
 import os
 import secrets
@@ -31,7 +30,8 @@ import time
 import bpy
 
 from . import (engine_link_assets as assets, engine_link_facts as facts, engine_link_import, engine_link_saves,
-               engine_link_protocol as protocol, engine_link_reads as reads, live_windows, private_roots, scene_changes)
+               engine_link_protocol as protocol, engine_link_reads as reads, gltf_scene_reads, live_windows,
+               private_roots, scene_changes, web_link_live)
 
 POLL_SECONDS = 0.1
 QUIET_SECONDS = 0.35       # Stillness before a live export.
@@ -39,6 +39,7 @@ MAX_QUIET_SECONDS = 10.0
 SHARE = 3.0
 REQUEST_SECONDS = 600.0    # A request nobody answered expires.
 
+_MODULE = sys.modules[__name__]   # This module, whose state the live frames read (engine_link_live.publish).
 hooks = {"request": None, "withdraw": None, "changed": None}   # engine_link_ui's card and redraws.
 _state = {"server": None, "token": None, "record": None, "pending": None, "session": None, "opening": None,
           "dirty_at": None, "exporting": False, "last_ms": 0.0, "scene": None, "folder": None, "window": None,
@@ -167,12 +168,17 @@ def _handle(client, header, info=None, lookup=None, seq=None):   # engine_link_r
         return
     if kind == "disconnected":
         facts.forget(_state["facts"], client)
+        web_link_live.forget(client)
         found = _state["pending"]
         if found is not None and found["client"] == client:
             _withdraw()
         _notify("changed")
         return
     if kind == "status":
+        if header.get("code") == "resync":   # A web page's delta didn't fit what it shows: a full frame now.
+            web_link_live.resync(client)
+            _state["dirty_at"] = 0.0
+            return
         _state["reports"] = (_state["reports"] + [dict(header, client=client)])[-20:]
         if _state["session"] is not None and _state["server"] is not None:
             facts.from_editor(_state["facts"], _state["session"]["asset"], client, _state["server"].info_of(client),
@@ -266,14 +272,20 @@ def accept(window, request=None):
         _end("replaced")
     editable = asset.editable
     _state["opening"] = {"asset": asset, "client": found["client"], "id": found["id"]}
-    if asset.kind == ".blend" or assets.working_is_current(asset):
-        result = _in(window, lambda: bpy.ops.wm.open_mainfile(filepath=editable))
-    else:
-        result = _in(window, lambda: engine_link_import.working_file(asset, _writing))
+    result = None
+    try:   # A raised open (a working file kept or stamped refused, shared_replace) is answered too: nothing waits.
+        if asset.kind == ".blend" or assets.working_is_current(asset):
+            from . import file_trust   # The project's file trusted as Blender would open it, never as the session is.
+            result = _in(window, lambda: bpy.ops.wm.open_mainfile(filepath=editable,
+                                                                 use_scripts=file_trust.default(editable)))
+        else:
+            result = _in(window, lambda: engine_link_import.working_file(asset, _writing))
+    finally:
+        if result is None or "FINISHED" not in result:
+            _state["opening"] = None
+            _reply(found["client"], {"type": "refused", "id": found["id"], "code": "failed",
+                                     "message": "Angelo couldn't open the asset"})
     if "FINISHED" not in result:
-        _state["opening"] = None
-        _reply(found["client"], {"type": "refused", "id": found["id"], "code": "failed",
-                                 "message": "Angelo couldn't open the asset"})
         raise RuntimeError("Angelo couldn't open " + asset.ident)
     if _state["opening"] is not None:   # The load handler didn't run (a background session): link now.
         _begin(live_windows.first(bpy.context.window_manager, temporary=False) or window)
@@ -346,6 +358,18 @@ def _followed(window):
     return None, None
 
 
+def scene_key(scene, view_layer):
+    """What the live export reads that an update of the scene alone can change: the shared key
+    (``scene_changes.scene_key``) and what the glTF exporter reads from the scene with the linked engine's live
+    options (``gltf_scene_reads``: its name, the camera aspect, the engine for lights, the extras Godot asks for)."""
+    key = scene_changes.scene_key(scene, view_layer)
+    found = _state["session"]
+    if found is None or scene is None:
+        return key
+    options = assets.adapter(found["asset"].engine).live_options(found["params"])
+    return (key, gltf_scene_reads.settings(scene, view_layer, options))
+
+
 @bpy.app.handlers.persistent
 def _on_depsgraph(scene, depsgraph):
     if _state["session"] is None or _state["exporting"] or threading.current_thread() is not threading.main_thread():
@@ -354,9 +378,11 @@ def _on_depsgraph(scene, depsgraph):
     followed, view_layer = _followed(window)
     if followed is None or scene.session_uid != followed.session_uid:
         return
-    changed, _state["scene"] = scene_changes.matters(depsgraph, scene, view_layer, _state["scene"])
+    changed, _state["scene"] = scene_changes.matters(depsgraph, scene, view_layer, _state["scene"], key=scene_key)
     if changed:
         _state["dirty_at"] = time.monotonic()
+        if _state["session"]["asset"].engine == "web":   # The web's frames hold only what changed.
+            web_link_live.note(depsgraph)
 
 
 def _tick():
@@ -372,6 +398,9 @@ def _tick():
     found = _state["pending"]
     if found is not None and time.monotonic() - found["at"] > REQUEST_SECONDS:
         decline()
+    linked = _state["session"]
+    if linked is not None and linked["asset"].engine == "web" and _state["dirty_at"] is None and editors(live=True):
+        _state["dirty_at"] = web_link_live.due(_followed(_window())[0])   # Pixels with no update, or a due check.
     dirty_at = _state["dirty_at"]
     if _state["session"] is not None and dirty_at is not None:
         quiet = scene_changes.quiet_seconds(_state["last_ms"], QUIET_SECONDS, SHARE, MAX_QUIET_SECONDS)
@@ -393,37 +422,9 @@ def _tick():
 
 def publish(window):
     """Export the linked scene now and send it to the project's editors that show live scenes; returns the bytes
-    sent (0: none)."""
-    found = _state["session"]
-    _state["dirty_at"] = None
-    if found is None:
-        return 0
-    asset = found["asset"]
-    if not editors(live=True):
-        return 0   # No editor of that project shows live scenes: nothing to show it to (it gets one when it asks).
-    path = os.path.join(_state["folder"], "live.glb")
-    _state["exporting"] = True
-    started = time.perf_counter()
-    try:
-        assets.export(window, path, assets.adapter(asset.engine).live_options(found["params"]))
-        with open(path, "rb") as handle:
-            body = handle.read()
-    except Exception as error:
-        _state["error"] = facts.plain(error, 300)   # Never cut before its paths are removed.
-        facts.push_failed(_state["facts"], _state["error"])
-        _broadcast(asset, {"type": "status", "asset": asset.ident, "code": "export_failed",
-                           "message": "Angelo couldn't export the change; %s shows the last one"
-                           % assets.display_name(asset.engine)}, live=True)
-        return 0
-    finally:
-        _state["exporting"] = False
-        _state["last_ms"] = (time.perf_counter() - started) * 1000.0
-        _state["scene"] = scene_changes.scene_key(*_followed(window))
-    _state["version"] += 1
-    sent = _broadcast(asset, {"type": "scene", "asset": asset.ident, "version": _state["version"],
-                              "export_ms": round(_state["last_ms"], 1)}, body, live=True)
-    facts.pushed(_state["facts"], _state["version"], len(body), _state["last_ms"], sent)
-    return len(body) if sent else 0
+    sent (0: none). ``engine_link_live`` holds it, with each engine's frames."""
+    from . import engine_link_live
+    return engine_link_live.publish(window, _MODULE)
 
 
 # Files -----------------------------------------------------------------------------------------------------------
@@ -452,10 +453,7 @@ def _save_post(filepath, *_args):
         if bpy.data.filepath and not assets.same_file(bpy.data.filepath, asset.editable):
             _end("saved_elsewhere")   # Save As to another file: that file isn't the asset.
         return   # A copy (a checkpoint, Save Copy) is not the asset's save.
-    durable = assets.adapter(asset.engine).durable(asset, found["params"])
-    _state["saves"] = number = _state.get("saves", 0) + 1
-    facts.save_started(_state["facts"], number, _state["version"], durable is not None)
-    engine_link_saves.saved(_state, _broadcast, bpy.app.binary_path, found, filepath, durable, number)
+    engine_link_saves.post(_state, _broadcast, bpy.app.binary_path, found, filepath)
 
 
 def _written():   # Ended write-backs: the stamp and the editors' re-import (engine_link_saves).
@@ -474,8 +472,14 @@ def _atexit():   # Sockets and files only: Blender's data is already freed at at
         protocol.remove_record(_state["record"])
 
 
+@bpy.app.handlers.persistent
+def _unsure(*_args):   # Undo, redo and a file read can give objects new session uids: the web's next frame is whole.
+    web_link_live.unsure()
+
+
 _HANDLERS = ((bpy.app.handlers.depsgraph_update_post, _on_depsgraph), (bpy.app.handlers.load_post, _load_post),
-             (bpy.app.handlers.save_post, _save_post))
+             (bpy.app.handlers.save_post, _save_post), (bpy.app.handlers.undo_post, _unsure),
+             (bpy.app.handlers.redo_post, _unsure), (bpy.app.handlers.load_post, _unsure))
 
 
 def register():

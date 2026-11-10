@@ -13,7 +13,7 @@ RENDERED looks (``view_render``) and strips (``view_motion``) apply it
 themselves. Here:
 
 * **Viewport captures** (SOLID, WIREFRAME, ATTRIBUTE, MATERIAL, LIT):
-  ``view_capture.DisplayOverrides`` sets the 3D view's shading and overlay
+  ``view_viewport.DisplayOverrides`` sets the 3D view's shading and overlay
   settings (``view_capture.display_keys``). They belong to the screen, which
   Blender does not copy for evaluation, so the writes update the depsgraph in
   two cases only (``rna_space.cc``): the shading type changing to or from

@@ -22,6 +22,7 @@
 #include "DNA_meshdata_types.h"
 
 #include "BLI_bitmap.h"
+#include "BLI_checkpoint_budget.hh"
 #include "BLI_listbase.h"
 #include "BLI_map.hh"
 #include "BLI_math_matrix_types.hh"
@@ -312,7 +313,11 @@ class Writer {
 
   void raw(const void *data, size_t size)
   {
-    if (!ok || size > maximum_ - total) {
+    if (!ok) {
+      return;
+    }
+    if (size > maximum_ - total) {
+      blender::checkpoint_budget_refused(); /* The encoded section budget. */
       ok = false;
       return;
     }
@@ -527,14 +532,16 @@ bool schema_read(Reader &reader,
   size_t bytes;
   if (!reader.ok || count > INT_MAX - 5 || external > 1 ||
       !product(count, sizeof(CustomDataLayer), bytes) || !add_allocation(owned_bytes, bytes) ||
-      owned_bytes > max_backing_bytes ||
       uint64_t(count) * 20 > uint64_t(reader.bytes.size()) - reader.position)
   {
     return false;
   }
+  if (!blender::checkpoint_budget_fits(owned_bytes, max_backing_bytes)) {
+    return false;
+  }
   if (external) {
     if (!add_allocation(owned_bytes, sizeof(CustomDataExternal)) ||
-        owned_bytes > max_backing_bytes)
+        !blender::checkpoint_budget_fits(owned_bytes, max_backing_bytes))
     {
       return false;
     }
@@ -687,7 +694,7 @@ bool geometry_read_validate(Reader &reader,
     size_t scratch;
     if (length < 2 || length > header.counts[3] || !add(loop_count, length) ||
         loop_count > header.counts[3] || !product(length, sizeof(uint32_t) * 2, scratch) ||
-        scratch > scratch_limit)
+        !blender::checkpoint_budget_fits(scratch, scratch_limit))
     {
       return false;
     }
@@ -859,8 +866,8 @@ bool allocation_plan(BMGeometryDecodePlan &plan)
     return false;
   }
   size_t total = plan.info.owned_input_and_plan_bytes;
-  if (!add(total, backing) || total > plan.limits.max_backing_bytes ||
-      scratch > plan.limits.max_scratch_bytes)
+  if (!add(total, backing) || !blender::checkpoint_budget_fits(total, plan.limits.max_backing_bytes) ||
+      !blender::checkpoint_budget_fits(scratch, plan.limits.max_scratch_bytes))
   {
     return false;
   }
@@ -1328,7 +1335,7 @@ bool encode_mesh(const BMesh &mesh,
   }
   size_t history_bytes;
   if (!product(header.history, size_t(5), history_bytes) || !add(wire_bytes, history_bytes) ||
-      uint64_t(wire_bytes) > limits.max_section_bytes)
+      !blender::checkpoint_budget_fits(uint64_t(wire_bytes), limits.max_section_bytes))
   {
     return fail(r_error, "The BMesh snapshot exceeds the encoded section budget");
   }
@@ -1347,7 +1354,8 @@ bool encode_mesh(const BMesh &mesh,
   });
   size_t face_scratch;
   if (!valid_faces || !product(maximum_face, sizeof(uint32_t), face_scratch) ||
-      !add_allocation(scratch_bytes, face_scratch) || scratch_bytes > limits.max_scratch_bytes)
+      !add_allocation(scratch_bytes, face_scratch) ||
+      !blender::checkpoint_budget_fits(scratch_bytes, limits.max_scratch_bytes))
   {
     return fail(r_error, "The BMesh snapshot face or encode scratch budget is invalid");
   }
@@ -1504,10 +1512,10 @@ BMGeometryDecodePlan *BM_geometry_snapshot_decode_prepare(Array<std::byte, 0> &&
   /* Consume even on failure. The parent has already bounded its read allocation. */
   Array<std::byte, 0> bytes(std::move(owned_section));
   size_t owned_bytes = 0;
-  if (uint64_t(bytes.size()) > limits.max_section_bytes ||
+  if (!blender::checkpoint_budget_fits(uint64_t(bytes.size()), limits.max_section_bytes) ||
       !add_allocation(owned_bytes, sizeof(BMGeometryDecodePlan)) ||
       (bytes.size() && !add(owned_bytes, MEM_allocN_len(bytes.data()))) ||
-      owned_bytes > limits.max_backing_bytes)
+      !blender::checkpoint_budget_fits(owned_bytes, limits.max_backing_bytes))
   {
     fail(r_error, "The BMesh section input exceeds the codec backing budget");
     return nullptr;

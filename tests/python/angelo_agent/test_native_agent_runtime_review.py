@@ -19,6 +19,8 @@ fixed behaviour, with the attacks that did not break anything ("holds") kept:
 Host-only: fake app-servers, one real ``JsonRpcProcess`` over a silent process, no model, no network.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import io
 import json
@@ -42,6 +44,7 @@ from angelo_agent.protocol import JsonRpcProcess, RpcError  # noqa: E402
 from angelo_agent.routing import TOOLSET_VERSION  # noqa: E402
 from test_native_cache_affinity import PATCHED, STOCK, TEST_SECRET, patched_fork  # noqa: E402
 from test_native_codex_runtime import FakeProcess, PoolCase, Provider, Recorder, app_server, threads_counter  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 AGENT = {"userAgent": "angelo_blender/%s (Mac OS; arm64)" % agent_runtime.PIN["version"]}  # The pinned runtime.
 TOOLS = [{"name": "angelo_scene_search"}]
@@ -155,7 +158,8 @@ class PerUserSecretTests(unittest.TestCase):
         legacy = cache_affinity_secret.secret({"SENSEI_CACHE_KEY_SECRET": OTHER_SECRET}, self.folder)
         self.assertNotEqual(legacy, bytes.fromhex(OTHER_SECRET), "Only the ANGELO_ spelling")
 
-    @unittest.skipIf(os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0), "POSIX permissions")
+    @unittest.skipIf(os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0), environment_skip(
+        "POSIX permissions (chmod cannot make a Windows folder unwritable; root writes anywhere)"))
     def test_an_unwritable_folder_keeps_this_launch_private_and_says_so(self):
         self.folder.mkdir()
         self.folder.chmod(0o500)
@@ -402,7 +406,8 @@ class KeyedConnectReceipt(PoolCase):
         codex = Path(folder, "codex")
         codex.write_text("#!/bin/sh\n")
         codex.chmod(0o755)
-        Path(folder, "codex-code-mode-host").write_text("")  # Beside codex, as agent_runtime.verify requires.
+        host = (agent_runtime.layout() or {"required": ("", "codex-code-mode-host")})["required"][1]
+        Path(folder, host).write_text("")  # Beside codex under this platform's name, as agent_runtime.verify requires.
         processes = []
 
         def process(command, *, env=None, cwd=None, spawn=None, on_event=None, on_request=None):

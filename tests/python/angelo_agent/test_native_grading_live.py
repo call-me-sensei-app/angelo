@@ -9,6 +9,8 @@ runs the same steps in the real application; ``test_native_grading_contract.py``
 holds the contract itself, the guard and the frozen gate sets.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 from pathlib import Path
 import sys

@@ -170,26 +170,17 @@ def settle(window):
         window.view_layer.update()
 
 
-EVALUATING_JOBS = ("RENDER", "OBJECT_BAKE")   # Blender's jobs that evaluate the document's scene on their thread.
-
-
 def _jobs_run():
-    """A job evaluates the document's scene on its own thread (a render, a bake, Angelo's point cache, geometry nodes
-    and export jobs), or the interface is locked for one: an evaluation here would race it, so the scene is left as
-    it is (break-it E2E-20 R2-M-2). Material previews and compositing evaluate no scene of the document, so a binding
-    still settles beside them (R3-L-2: they run often in the lead's window). Unknown counts as running."""
+    """A job evaluates the document's scene, or writes its data, on its own thread (``scene_jobs``: every job type
+    classified natively; a render, a bake, an import, a remesh), or the interface is locked for one: an evaluation
+    here would race it, so the scene is left as it is (break-it E2E-20 R2-M-2). Compositing evaluates its own copy
+    first, so a binding still settles beside it (R3-L-2); a preview renders the view layer's own depsgraph when it
+    shows a scene or a pose, so a binding waits for previews too. Unknown counts as running."""
     try:
         import bpy
         if getattr(bpy.context.window_manager, "is_interface_locked", False):
             return True
-        if any(bpy.app.is_job_running(kind) for kind in EVALUATING_JOBS):
-            return True
-        from . import work_guard
-        try:
-            from _bpy import _angelo_jobs
-        except ImportError:
-            return False
-        return any(_angelo_jobs.progress(scene, kind) is not None for scene in bpy.data.scenes
-                   for kind in work_guard.OTHER_JOBS)
+        from . import scene_jobs
+        return bool(scene_jobs.running(bpy, scene_jobs.settle_fallback))
     except Exception:   # noqa: BLE001 - a check that cannot tell leaves the scene alone.
         return True

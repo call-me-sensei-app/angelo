@@ -15,6 +15,8 @@ Recorded GPT trials met three ends and lost rounds at each:
   call that removes both (typed programs have no purge).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

@@ -6,6 +6,8 @@ The compiled-app suite (test_blender_read_tools.py) proves the same contract wit
 Blender's own library reader and real .blend files.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import json
 import os
@@ -23,6 +25,7 @@ from angelo_agent import blend_file, blend_file_listing, blend_file_paths as pat
 from angelo_agent import native_programs  # noqa: E402,F401  (patched by name below)
 from angelo_agent.files import FileWorkspace  # noqa: E402
 from angelo_agent.read_spec import validate_read  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 from read_tools_fakes import Collection, Struct, prop, rna  # noqa: E402
 
 ID = rna("ID", [prop("name", "STRING")])
@@ -30,7 +33,11 @@ TYPES = {name: rna(identifier, base=ID) for name, identifier in (
     ("objects", "Object"), ("meshes", "Mesh"), ("materials", "Material"), ("images", "Image"), ("scenes", "Scene"),
     ("node_groups", "NodeTree"), ("libraries", "Library"), ("worlds", "World"), ("lights", "Light"),
     ("textures", "Texture"), ("linestyles", "FreestyleLineStyle"), ("sounds", "Sound"))}
-POSIX = unittest.skipUnless(os.name == "posix", "POSIX path spelling")
+
+
+def native(*parts):
+    """A full path of this host (a drive on Windows), as the open file's folder and workspace are."""
+    return os.path.join("C:\\" if os.name == "nt" else "/", *parts)
 
 
 def block(kind, name, users=1, **fields):
@@ -56,16 +63,17 @@ def open_file(folder="/Users/alice/Client X/island", **collections):
 
 
 class PathNamingTests(unittest.TestCase):
-    @POSIX
     def test_inside_the_workspace_or_the_files_folder_is_relative_otherwise_a_base_name(self):
-        folder, workspace = "/Users/alice/Client X/island", "/Users/alice/Client X"
+        folder, workspace = native("Users", "alice", "Client X", "island"), native("Users", "alice", "Client X")
         for raw, expected in (
                 ("//textures/rock.png", {"file": "island/textures/rock.png"}),         # Workspace-relative first.
-                ("/Users/alice/Client X/island/hdr/sky.exr", {"file": "island/hdr/sky.exr"}),
+                (native("Users", "alice", "Client X", "island", "hdr", "sky.exr"), {"file": "island/hdr/sky.exr"}),
                 ("//../shared/wood.png", {"file": "shared/wood.png"}),                 # Outside the folder, inside the workspace.
                 ("//../../Other Client/logo.png", {"file": "logo.png", "outside": True}),
-                ("/Volumes/Projects/ACME/tex.png", {"file": "tex.png", "outside": True}),
+                (native("Volumes", "Projects", "ACME", "tex.png"), {"file": "tex.png", "outside": True}),
+                ("/Volumes/Projects/ACME/tex.png", {"file": "tex.png", "outside": True}),   # Not full on Windows.
                 ("C:\\Users\\bob\\Desktop\\tex.png", {"file": "tex.png", "outside": True}),
+                ("D:\\Projects\\tex.png", {"file": "tex.png", "outside": True}),               # Another drive.
                 ("\\\\server\\share\\tex.png", {"file": "tex.png", "outside": True}),
                 ("relative/unknown.png", {"file": "unknown.png", "outside": True}),
                 ("//textures/", {"file": "island/textures"})):
@@ -73,39 +81,54 @@ class PathNamingTests(unittest.TestCase):
                 self.assertEqual(paths.public_name(raw, folder, workspace), expected)
         # Without a workspace (or outside it), a file in the .blend's own folder is relative to that folder.
         self.assertEqual(paths.public_name("//textures/rock.png", folder), {"file": "textures/rock.png"})
-        self.assertEqual(paths.public_name("//textures/rock.png", folder, "/elsewhere"), {"file": "textures/rock.png"})
+        self.assertEqual(paths.public_name("//textures/rock.png", folder, native("elsewhere")),
+                         {"file": "textures/rock.png"})
         # An unsaved file has no folder: nothing is relative to it.
         self.assertEqual(paths.public_name("//textures/rock.png", "", workspace), {"file": "rock.png", "outside": True})
 
-    @POSIX
     def test_no_public_name_is_absolute_or_climbs(self):
-        folder, workspace = "/Users/alice/Client X/island", "/Users/alice/Client X"
+        folder, workspace = native("Users", "alice", "Client X", "island"), native("Users", "alice", "Client X")
         for raw in ("//a.png", "//../a.png", "//../../a.png", "//../../../../etc/passwd", "/etc/passwd", "/a.png",
-                    "//sub/../../../x.png", "C:/x.png", "~/x.png", "//./a.png", "/Users/alice/Client X", "//"):
+                    "//sub/../../../x.png", "C:/x.png", "~/x.png", "//./a.png", "/Users/alice/Client X", "//",
+                    native("etc", "passwd"), workspace):
             with self.subTest(raw=raw):
                 name = paths.public_name(raw, folder, workspace)["file"]
                 self.assertFalse(name.startswith(("/", "~", "..")) or ".." in name.split("/") or ":" in name, name)
                 self.assertNotIn("alice", name)
 
-    @POSIX
     def test_state_asks_one_question(self):
         asked = []
 
         def exists(path):
             asked.append(path)
             return path.endswith("here.png") or path.endswith("tile.1001.png")
-        folder = "/proj"
+        folder = native("proj")
+        foreign = "/a/b.png" if os.name == "nt" else "C:\\a\\b.png"   # Written on the other platform.
         self.assertEqual(paths.state("//here.png", folder, exists=exists), paths.PRESENT)
         self.assertEqual(paths.state("//gone.png", folder, exists=exists), paths.MISSING)
-        self.assertEqual(paths.state("//tile.<UDIM>.png", folder, exists=exists), paths.PRESENT)
+        self.assertEqual(paths.state("//tile.<UDIM>.png", folder, exists=exists, tile=1001), paths.PRESENT)
         self.assertEqual(paths.state("//here.png", "", exists=exists), paths.UNKNOWN)       # Unsaved file.
-        self.assertEqual(paths.state("C:\\a\\b.png", folder, exists=exists), paths.UNKNOWN)  # Another platform.
+        self.assertEqual(paths.state(foreign, folder, exists=exists), paths.UNKNOWN)
         self.assertEqual(paths.state("//anything.png", folder, packed=True, exists=exists), paths.PACKED)
-        self.assertEqual(asked, ["/proj/here.png", "/proj/gone.png", "/proj/tile.1001.png"])
+        self.assertEqual(asked, [native("proj", name) for name in ("here.png", "gone.png", "tile.1001.png")])
 
         def failing(_path):
             raise OSError("stale mount")
         self.assertEqual(paths.state("//x.png", folder, exists=failing), paths.UNKNOWN)
+        uvtile = paths.state("//tile.<UVTILE>.png", folder, exists=lambda path: path.endswith("tile.u1_v1.png"),
+                             tile=1001)
+        self.assertEqual(uvtile, paths.PRESENT)
+
+    def test_tile_file_path_follows_blenders_two_tile_namings(self):
+        self.assertEqual(paths.tile_file_path("/p/a.<UDIM>.png", 1002), "/p/a.1002.png")
+        self.assertEqual(paths.tile_file_path("/p/a.<UVTILE>.png", 1001), "/p/a.u1_v1.png")
+        self.assertEqual(paths.tile_file_path("/p/a.<UVTILE>.png", 1002), "/p/a.u2_v1.png")
+        self.assertEqual(paths.tile_file_path("/p/a.<UVTILE>.png", 1010), "/p/a.u10_v1.png")
+        self.assertEqual(paths.tile_file_path("/p/a.<UVTILE>.png", 1011), "/p/a.u1_v2.png")
+        self.assertEqual(paths.tile_file_path("/p/<UVTILE>/a.<UVTILE>.png", 1013), "/p/u3_v2/a.u3_v2.png")
+        # BKE_image_get_tile_strformat: <UDIM> wins, and <UVTILE> then stays as written.
+        self.assertEqual(paths.tile_file_path("/p/<UVTILE>.<UDIM>.png", 1002), "/p/<UVTILE>.1002.png")
+        self.assertIsNone(paths.tile_file_path("/p/a.1001.png", 1001))
 
 
 class OpenFileTests(unittest.TestCase):
@@ -277,8 +300,20 @@ class FakeMetadata:
                 "decoded_bytes": opened.st_size, "input_bytes": opened.st_size, "blocks": 4, "passes": 2}
 
 
-@unittest.skipUnless(os.name == "posix", "anchored POSIX files; the Windows backend has its own suite")
+ERROR_PRIVILEGE_NOT_HELD = 1314
+
+
 class WorkspaceFileTests(unittest.TestCase):
+    """Through the anchored backend of this host: descriptors on POSIX, verified handles on Windows."""
+
+    def symlink(self, link, target, **options):
+        try:
+            link.symlink_to(target, **options)
+        except OSError as error:   # Windows lets only an elevated or Developer Mode user make one.
+            if getattr(error, "winerror", None) != ERROR_PRIVILEGE_NOT_HELD:
+                raise
+            self.skipTest(environment_skip("this Windows user may not create symbolic links"))
+
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
@@ -320,6 +355,7 @@ class WorkspaceFileTests(unittest.TestCase):
         self.assertEqual((page["total"], len(page["items"]), page["next_offset"]), (21, 5, None))
         self.assertEqual(self.read("stages/s8.blend", list="UNUSED")["code"], "UNKNOWN_LIST")
 
+    @unittest.skipIf(os.name == "nt", environment_skip("FIFOs are POSIX; a Windows named pipe is never a folder entry"))
     def test_fifo_is_rejected_before_open_or_native_scan(self):
         os.mkfifo(self.root / "pipe.blend")
         with patch.object(blend_file_listing, "_open_file") as opened:
@@ -328,22 +364,28 @@ class WorkspaceFileTests(unittest.TestCase):
         opened.assert_not_called()
         self.assertEqual(self.metadata.calls, [])
 
-    def test_files_outside_the_workspace_are_answers_not_reads(self):
-        (self.root / "link.blend").symlink_to(self.outside)
-        (self.root / "folder-link").symlink_to(self.outside.parent, target_is_directory=True)
-        (self.root / ".hidden.blend").write_bytes(b"BLENDER")
-        hard = self.root / "hard.blend"
-        os.link(self.outside, hard)
-        for file, code in (("../outside.blend", "OUTSIDE_WORKSPACE"), (str(self.outside), "OUTSIDE_WORKSPACE"),
-                           ("link.blend", "OUTSIDE_WORKSPACE"), ("folder-link/outside.blend", "OUTSIDE_WORKSPACE"),
-                           (".hidden.blend", "OUTSIDE_WORKSPACE"), ("stages/../../outside.blend", "OUTSIDE_WORKSPACE"),
-                           ("hard.blend", "NOT_A_FILE"), ("stages", "NOT_BLEND"), ("stages/missing.blend", "NOT_FOUND"),
-                           ("nowhere/s8.blend", "NOT_FOUND"), ("notes.txt", "NOT_BLEND")):
+    def assert_answers(self, cases):
+        for file, code in cases:
             with self.subTest(file=file):
                 result = self.read(file)
                 self.assertEqual((result["readable"], result["code"]), (False, code))
         self.assertEqual(self.libraries.calls, [], "Blender never opened any of them")
         self.assertEqual(self.metadata.calls, [])
+
+    def test_files_outside_the_workspace_are_answers_not_reads(self):
+        (self.root / ".hidden.blend").write_bytes(b"BLENDER")
+        hard = self.root / "hard.blend"
+        os.link(self.outside, hard)
+        self.assert_answers((("../outside.blend", "OUTSIDE_WORKSPACE"), (str(self.outside), "OUTSIDE_WORKSPACE"),
+                             (".hidden.blend", "OUTSIDE_WORKSPACE"),
+                             ("stages/../../outside.blend", "OUTSIDE_WORKSPACE"), ("hard.blend", "NOT_A_FILE"),
+                             ("stages", "NOT_BLEND"), ("stages/missing.blend", "NOT_FOUND"),
+                             ("nowhere/s8.blend", "NOT_FOUND"), ("notes.txt", "NOT_BLEND")))
+
+    def test_links_to_files_outside_the_workspace_are_answers_not_reads(self):
+        self.symlink(self.root / "link.blend", self.outside)
+        self.symlink(self.root / "folder-link", self.outside.parent, target_is_directory=True)
+        self.assert_answers((("link.blend", "OUTSIDE_WORKSPACE"), ("folder-link/outside.blend", "OUTSIDE_WORKSPACE")))
 
     def test_files_that_are_not_blends_are_answers(self):
         (self.root / "text.blend").write_bytes(b"this is not a blend file at all")
@@ -380,6 +422,7 @@ class WorkspaceFileTests(unittest.TestCase):
         original = target.stat().st_ino
         observed = []
         backup = target.with_suffix(".held")
+        self.symlink(self.root / "probe", self.outside)   # Skips before the read where links cannot be made.
         def swap_back(descriptor, _token):
             target.rename(backup)
             target.symlink_to(self.outside)

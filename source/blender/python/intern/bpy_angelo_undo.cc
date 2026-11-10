@@ -11,11 +11,13 @@
 
 #include <Python.h>
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <utility>
 
 #include "BLI_threads.h"
+#include "BLO_asset_source_paths.hh"
 #include "BLI_map.hh"
 #include "BLI_set.hh"
 #include "BKE_context.hh"
@@ -33,6 +35,7 @@
 #include "WM_types.hh"
 #include "bpy_rna.hh"
 #include "../../editors/undo/angelo_commit_rights.hh"
+#include "../../editors/undo/angelo_recovery_observation.hh"
 #include "ED_undo.hh"
 #include "MEM_guardedalloc.h"
 
@@ -67,6 +70,9 @@ static constexpr const char *capsule_name = "angelo.native_commit_undo";
 
 struct UndoScope {
   AngeloUndoCapture *capture = nullptr;
+  bool stock_asset = false;
+  AngeloAssetTransactionResult asset_result;
+  std::shared_ptr<const BLOAssetSourcePaths> source_paths;
   bool finishing = false;
   bool terminal = false;
   bool publication_known = false;
@@ -79,6 +85,16 @@ struct UndoScope {
   Vector<AngeloCommitIDIdentity> approved_objects;
   Vector<AngeloCommitIDIdentity> created_collections;
   bool approved_objects_sealed = false;
+  /* What the written Objects and Scene held before the first write (ReplacedData authority). */
+  Vector<AngeloCommitIDIdentity> replaceable;
+  bool replaceable_sealed = false;
+  /* One opaque self-retirement plan belongs only to this exact synchronous capture. */
+  AngeloCommitDeleteRight *self_retirement = nullptr;
+  bool self_retirement_prepared = false;
+  ~UndoScope()
+  {
+    ED_angelo_commit_delete_free(self_retirement);
+  }
 };
 
 static bool require_main_thread()
@@ -616,6 +632,38 @@ static PyObject *undo_seal_approved_objects(PyObject * /*self*/, PyObject *args)
   Py_RETURN_NONE;
 }
 
+static PyObject *commit_delete_result(const AngeloCommitDeleteResult &outcome,
+                                     const bool success,
+                                     const char *error)
+{
+  /* A native/Python callback error is not evidence that deletion did not happen. Keep actual
+   * native effects in the receipt, without invoking an exception's user-defined __str__. */
+  PyObject *error_type = nullptr, *error_value = nullptr, *error_traceback = nullptr;
+  PyErr_Fetch(&error_type, &error_value, &error_traceback);
+  const std::string callback_error = error_type ? PyExceptionClass_Name(error_type) : "";
+  PyObject *remaining = identity_rows(outcome.remaining);
+  PyObject *removed = identity_rows(outcome.removed);
+  PyObject *result = nullptr;
+  if (remaining && removed) {
+    result = Py_BuildValue("{s:O,s:O,s:O,s:O,s:N,s:N,s:K,s:s,s:s}",
+                           "success", success && callback_error.empty() ? Py_True : Py_False,
+                           "kernel_called", outcome.kernel_called ? Py_True : Py_False,
+                           "scope_valid_after", outcome.scope_valid_after ? Py_True : Py_False,
+                           "unexpected_scope", outcome.unexpected_scope ? Py_True : Py_False,
+                           "remaining", remaining, "removed", removed,
+                           "kernel_deleted_ids", uint64_t(outcome.kernel_deleted_ids),
+                           "error", error ? error : "", "callback_error", callback_error.c_str());
+  }
+  else {
+    Py_XDECREF(remaining);
+    Py_XDECREF(removed);
+  }
+  Py_XDECREF(error_type);
+  Py_XDECREF(error_value);
+  Py_XDECREF(error_traceback);
+  return result;
+}
+
 static PyObject *undo_delete_ids(PyObject *args, const AngeloCommitDeletePurpose purpose)
 {
   PyObject *capsule, *roots, *keep = nullptr;
@@ -645,6 +693,12 @@ static PyObject *undo_delete_ids(PyObject *args, const AngeloCommitDeletePurpose
     case AngeloCommitDeletePurpose::CreatedCollection:
       authorized = scope.created_collections;
       break;
+    case AngeloCommitDeletePurpose::ReplacedData:
+      authorized = scope.replaceable;
+      break;
+    case AngeloCommitDeletePurpose::SelfReplacedData:
+      PyErr_SetString(PyExc_RuntimeError, "Self retirement requires its scope-owned prepared right");
+      return nullptr;
   }
   const char *error = nullptr;
   AngeloCommitDeleteResult outcome;
@@ -679,32 +733,185 @@ static PyObject *undo_delete_ids(PyObject *args, const AngeloCommitDeletePurpose
       }
     }
   }
-  /* A native/Python callback error is not evidence that deletion did not happen. Keep actual
-   * native effects in the receipt, without invoking an exception's user-defined __str__. */
+  return commit_delete_result(outcome, success, error);
+}
+
+static PyObject *undo_seal_replaceable(PyObject * /*self*/, PyObject *args)
+{
+  PyObject *capsule, *holders;
+  if (!PyArg_ParseTuple(args, "OO:seal_replaceable", &capsule, &holders)) {
+    return nullptr;
+  }
+  CommitOperation operation(capsule);
+  if (!operation.scope) {
+    return nullptr;
+  }
+  UndoScope &scope = *operation.scope;
+  if (scope.replaceable_sealed) {
+    PyErr_SetString(PyExc_RuntimeError, "The replaceable data of this commit is already sealed");
+    return nullptr;
+  }
+  Vector<AngeloCommitIDIdentity> identities;
+  if (!commit_identities(scope, holders, identities)) {
+    return nullptr;
+  }
+  for (const AngeloCommitIDIdentity &identity : identities) {
+    if (!ELEM(identity.id_type, ID_OB, ID_SCE)) {
+      PyErr_SetString(PyExc_ValueError, "Replaceable data is sealed from written Objects and Scenes");
+      return nullptr;
+    }
+  }
+  /* The trusted controller seals the binding's written Objects and Scene once, before the first
+   * write; the closure itself is read natively (what they held), never taken from Python. */
+  const char *error = nullptr;
+  if (!ED_angelo_commit_replaceable(
+          BPY_context_get(), scope.capture, identities, scope.replaceable, &error))
+  {
+    PyErr_SetString(PyExc_RuntimeError, error ? error : "The replaceable data could not be read");
+    return nullptr;
+  }
+  scope.replaceable_sealed = true;
+  return PyLong_FromSsize_t(Py_ssize_t(scope.replaceable.size()));
+}
+
+/** Prepare one scope-owned self-only batch; Python receives eligibility, never deletion authority. */
+static PyObject *undo_prepare_self_retirements(PyObject * /*self*/, PyObject *args)
+{
+  PyObject *capsule, *roots;
+  if (!PyArg_ParseTuple(args, "OO:prepare_self_retirements", &capsule, &roots)) {
+    return nullptr;
+  }
+  CommitOperation operation(capsule);
+  if (!operation.scope) {
+    return nullptr;
+  }
+  UndoScope &scope = *operation.scope;
+  if (!scope.replaceable_sealed || scope.self_retirement_prepared) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "Self retirement requires sealed replaced data and one fresh plan");
+    return nullptr;
+  }
+  Vector<AngeloCommitIDIdentity> root_ids, eligible;
+  if (!commit_identities(scope, roots, root_ids)) {
+    return nullptr;
+  }
+  const char *error = nullptr;
+  AngeloCommitDeleteRight *right = ED_angelo_commit_self_replaced_prepare(
+      BPY_context_get(), scope.capture, root_ids, scope.replaceable, eligible, &error);
+  if (error || PyErr_Occurred()) {
+    ED_angelo_commit_delete_free(right);
+    if (!PyErr_Occurred()) {
+      PyErr_SetString(PyExc_RuntimeError, error);
+    }
+    return nullptr;
+  }
+  scope.self_retirement = right;
+  scope.self_retirement_prepared = true;
+  return identity_rows(eligible);
+}
+
+static PyObject *undo_validate_self_retirements(PyObject * /*self*/, PyObject *capsule)
+{
+  CommitOperation operation(capsule);
+  if (!operation.scope) {
+    return nullptr;
+  }
+  UndoScope &scope = *operation.scope;
+  if (!scope.self_retirement_prepared) {
+    PyErr_SetString(PyExc_RuntimeError, "No self retirement plan belongs to this capture");
+    return nullptr;
+  }
+  const char *error = nullptr;
+  if (scope.self_retirement &&
+      !ED_angelo_commit_delete_validate(BPY_context_get(), scope.capture,
+                                        *scope.self_retirement, &error))
+  {
+    if (!PyErr_Occurred()) {
+      PyErr_SetString(PyExc_RuntimeError, error ? error : "Self retirement proof changed");
+    }
+    return nullptr;
+  }
+  if (PyErr_Occurred()) {
+    return nullptr;
+  }
+  Py_RETURN_TRUE;
+}
+
+static PyObject *undo_consume_self_retirements(PyObject * /*self*/, PyObject *capsule)
+{
+  CommitOperation operation(capsule);
+  if (!operation.scope) {
+    return nullptr;
+  }
+  UndoScope &scope = *operation.scope;
+  if (!scope.self_retirement_prepared || !scope.self_retirement) {
+    PyErr_SetString(PyExc_RuntimeError, "No nonempty self retirement plan belongs to this capture");
+    return nullptr;
+  }
+  /* One native right proves the entire batch before its first free. Never consume root by root. */
+  AngeloCommitDeleteResult outcome;
+  const char *error = nullptr;
+  const bool success = ED_angelo_commit_delete(
+      BPY_context_get(), scope.capture, *scope.self_retirement, outcome, &error);
+  return commit_delete_result(outcome, success, error);
+}
+
+static PyObject *undo_delete_replaced_data(PyObject * /*self*/, PyObject *args)
+{
+  PyObject *capsule, *roots;
+  int max_passes = 16; /* A replaced root whose last user was another freed root: real chains are two deep. */
+  if (!PyArg_ParseTuple(args, "OO|i:delete_replaced_data", &capsule, &roots, &max_passes)) {
+    return nullptr;
+  }
+  if (max_passes < 1 || max_passes > 64) {
+    PyErr_SetString(PyExc_ValueError, "delete_replaced_data passes must be 1 to 64");
+    return nullptr;
+  }
+  CommitOperation operation(capsule);
+  if (!operation.scope) {
+    return nullptr;
+  }
+  UndoScope &scope = *operation.scope;
+  if (!scope.replaceable_sealed) {
+    PyErr_SetString(PyExc_RuntimeError, "Seal the replaceable data before the first write");
+    return nullptr;
+  }
+  Vector<AngeloCommitIDIdentity> root_ids;
+  if (!commit_identities(scope, roots, root_ids)) {
+    return nullptr;
+  }
+  AngeloCommitFreeResult outcome;
+  const char *error = nullptr;
+  const bool success = ED_angelo_commit_free_replaced(
+      BPY_context_get(), scope.capture, root_ids, scope.replaceable, max_passes, outcome, &error);
   PyObject *error_type = nullptr, *error_value = nullptr, *error_traceback = nullptr;
   PyErr_Fetch(&error_type, &error_value, &error_traceback);
   const std::string callback_error = error_type ? PyExceptionClass_Name(error_type) : "";
-  PyObject *remaining = identity_rows(outcome.remaining);
-  PyObject *removed = identity_rows(outcome.removed);
-  PyObject *result = nullptr;
-  if (remaining && removed) {
-    result = Py_BuildValue("{s:O,s:O,s:O,s:O,s:N,s:N,s:K,s:s,s:s}",
-                           "success", success && callback_error.empty() ? Py_True : Py_False,
-                           "kernel_called", outcome.kernel_called ? Py_True : Py_False,
-                           "scope_valid_after", outcome.scope_valid_after ? Py_True : Py_False,
-                           "unexpected_scope", outcome.unexpected_scope ? Py_True : Py_False,
-                           "remaining", remaining, "removed", removed,
-                           "kernel_deleted_ids", uint64_t(outcome.kernel_deleted_ids),
-                           "error", error ? error : "", "callback_error", callback_error.c_str());
-  }
-  else {
-    Py_XDECREF(remaining);
-    Py_XDECREF(removed);
-  }
   Py_XDECREF(error_type);
   Py_XDECREF(error_value);
   Py_XDECREF(error_traceback);
-  return result;
+  Vector<AngeloCommitIDIdentity> refused_ids;
+  for (const auto &item : outcome.refused) {
+    refused_ids.append(item.first);
+  }
+  PyObject *py_removed = identity_rows(outcome.removed);
+  PyObject *py_refused = identity_rows(refused_ids);
+  PyObject *py_reasons = PyList_New(outcome.refused.size());
+  if (!py_removed || !py_refused || !py_reasons) {
+    Py_XDECREF(py_removed);
+    Py_XDECREF(py_refused);
+    Py_XDECREF(py_reasons);
+    return nullptr;
+  }
+  for (const int i : outcome.refused.index_range()) {
+    PyList_SET_ITEM(py_reasons, i, PyUnicode_FromString(outcome.refused[i].second.c_str()));
+  }
+  return Py_BuildValue("{s:O,s:N,s:N,s:N,s:i,s:O,s:n,s:s,s:s}",
+                       "success", success ? Py_True : Py_False, "removed", py_removed,
+                       "refused", py_refused, "reasons", py_reasons, "passes", outcome.passes,
+                       "unfinished", outcome.unfinished ? Py_True : Py_False,
+                       "unexpected", Py_ssize_t(outcome.unexpected.size()), "error", error ? error : "",
+                       "callback_error", callback_error.c_str());
 }
 
 static PyObject *undo_delete_stage(PyObject * /*self*/, PyObject *args)
@@ -1399,7 +1606,194 @@ static PyObject *test_sculpt_grid_surfaces(PyObject * /*self*/, PyObject * /*arg
 }
 #endif
 
+static PyObject *undo_recovery_capabilities(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!require_main_thread()) {
+    return nullptr;
+  }
+  using namespace ed::undo::recovery;
+  /* A versioned lifecycle scaffold is not permission to consume irreversible effects.
+   * Keep each missing producer explicit; Python must require the complete capability set. */
+  return Py_BuildValue("{s:i,s:i,s:O,s:O,s:O,s:O}",
+                       "schema_version", Capabilities::schema_version,
+                       "observer_limit", Registry::capacity,
+                       "identity_binding_ready", Capabilities::identity_binding_ready ? Py_True : Py_False,
+                       "exact_preimage_ready", Capabilities::exact_preimage_ready ? Py_True : Py_False,
+                       "checked_restore_ready", Capabilities::checked_restore_ready ? Py_True : Py_False,
+                       "terminal_effect_seal_ready",
+                       Capabilities::terminal_effect_seal_ready ? Py_True : Py_False);
+}
+
+
+/* The extra reference is published before native activation. Unknown outcomes retain the
+ * actual capsule; Python losing a return value cannot silently discard a partial import. */
+static PyObject *asset_pending_owner = nullptr;
+
+static UndoScope *asset_scope(PyObject *value)
+{
+  if (!require_main_thread()) { return nullptr; }
+  auto *scope = static_cast<UndoScope *>(PyCapsule_GetPointer(value, capsule_name));
+  if (scope && !scope->stock_asset) {
+    PyErr_SetString(PyExc_TypeError, "Expected an asset transaction scope"); return nullptr;
+  }
+  return scope;
+}
+
+static PyObject *asset_receipt(const AngeloAssetTransactionResult &r)
+{
+  const char *state = "RECOVERY_REQUIRED";
+  switch (r.state) {
+    case AngeloAssetTransactionState::Active: state = "ACTIVE"; break;
+    case AngeloAssetTransactionState::Committed: state = "COMMITTED"; break;
+    case AngeloAssetTransactionState::Restored: state = "RESTORED"; break;
+    case AngeloAssetTransactionState::RecoveryRequired: break;
+    case AngeloAssetTransactionState::Abandoned: state = "ABANDONED"; break;
+  }
+  return Py_BuildValue("{s:i,s:s,s:O,s:O,s:O,s:O,s:O,s:z}",
+      "schema", 1, "state", state,
+      "published", r.publication_known ? (r.published ? Py_True : Py_False) : Py_None,
+      "restored", r.restored ? Py_True : Py_False,
+      "recovery_required", r.state == AngeloAssetTransactionState::RecoveryRequired ? Py_True : Py_False,
+      "closed", r.closed ? Py_True : Py_False,
+      "recoverable", r.recoverable ? Py_True : Py_False,
+      "error", r.error);
+}
+
+static PyObject *asset_capabilities(PyObject *, PyObject *)
+{
+  return Py_BuildValue("{s:i,s:O,s:O,s:O,s:O}", "schema", 1,
+      "native_undo", Py_True, "dirty_preimage", Py_True,
+      "checked_restore", Py_True, "nested_undo_suppressed", Py_True);
+}
+
+static PyObject *asset_pending(PyObject *, PyObject *)
+{
+  return Py_NewRef(asset_pending_owner ? asset_pending_owner : Py_None);
+}
+
+static PyObject *asset_begin(PyObject *, PyObject *args, PyObject *kwargs)
+{
+  if (!require_main_thread()) { return nullptr; }
+  PyObject *pairs = nullptr;
+  static const char *names[] = {"source_paths", nullptr};
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|O:asset_begin", const_cast<char **>(names), &pairs)) {
+    return nullptr;
+  }
+  if (asset_pending_owner) {
+    PyErr_SetString(PyExc_RuntimeError, "An asset transaction still requires settlement"); return nullptr;
+  }
+  if (pairs && !PyTuple_CheckExact(pairs)) {
+    PyErr_SetString(PyExc_TypeError, "source_paths must be an exact tuple"); return nullptr;
+  }
+  try {
+    Vector<BLOAssetSourcePathPair> paths;
+    if (pairs) {
+      for (Py_ssize_t i = 0; i < PyTuple_GET_SIZE(pairs); ++i) {
+        PyObject *pair = PyTuple_GET_ITEM(pairs, i);
+        if (!PyTuple_CheckExact(pair) || PyTuple_GET_SIZE(pair) != 2 ||
+            !PyUnicode_CheckExact(PyTuple_GET_ITEM(pair, 0)) ||
+            !PyUnicode_CheckExact(PyTuple_GET_ITEM(pair, 1))) {
+          PyErr_SetString(PyExc_TypeError, "Each source path pair must contain two strings"); return nullptr;
+        }
+        Py_ssize_t a_len, b_len;
+        const char *a = PyUnicode_AsUTF8AndSize(PyTuple_GET_ITEM(pair, 0), &a_len);
+        const char *b = PyUnicode_AsUTF8AndSize(PyTuple_GET_ITEM(pair, 1), &b_len);
+        if (!a || !b) { return nullptr; }
+        paths.append({StringRef(a, a_len), StringRef(b, b_len)});
+      }
+    }
+    const char *error = nullptr;
+    auto route = BLO_asset_source_paths_create(paths, &error);
+    if (!route) { PyErr_SetString(PyExc_ValueError, error ? error : "Invalid source paths"); return nullptr; }
+    auto *scope = MEM_new<UndoScope>(__func__);
+    scope->stock_asset = true; scope->source_paths = std::move(route);
+    PyObject *capsule = PyCapsule_New(scope, capsule_name, capsule_free);
+    if (!capsule) { MEM_delete(scope); return nullptr; }
+    asset_pending_owner = Py_NewRef(capsule);
+    bContext *C = BPY_context_get();
+    Py_BEGIN_ALLOW_THREADS;
+    try { ED_angelo_undo_stock_asset_begin(C, scope->source_paths, &error, &scope->capture); }
+    catch (...) { error = "Native asset preparation did not complete"; }
+    Py_END_ALLOW_THREADS;
+    if (!scope->capture) {
+      Py_CLEAR(asset_pending_owner); Py_DECREF(capsule);
+      PyErr_SetString(PyExc_RuntimeError, error ? error : "Could not capture asset Before"); return nullptr;
+    }
+    if (error || !BLO_asset_source_paths_activate(scope->source_paths, &error)) {
+      scope->asset_result = ED_angelo_undo_stock_asset_recover(C, scope->capture);
+      Py_DECREF(capsule);
+      PyErr_SetString(PyExc_RuntimeError, error ? error : "Could not activate asset source paths"); return nullptr;
+    }
+    scope->asset_result = ED_angelo_undo_stock_asset_status(scope->capture);
+    return capsule;
+  }
+  catch (...) { PyErr_SetString(PyExc_RuntimeError, "Could not prepare asset transaction"); return nullptr; }
+}
+
+static PyObject *asset_status(PyObject *, PyObject *value)
+{
+  UndoScope *scope = asset_scope(value);
+  if (!scope) { return nullptr; }
+  if (scope->capture) { scope->asset_result = ED_angelo_undo_stock_asset_status(scope->capture); }
+  return asset_receipt(scope->asset_result);
+}
+
+static PyObject *asset_finish(PyObject *, PyObject *args, PyObject *kwargs)
+{
+  PyObject *value, *keep = Py_True;
+  static const char *names[] = {"scope", "keep", nullptr};
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|O:asset_finish", const_cast<char **>(names), &value, &keep)) {
+    return nullptr;
+  }
+  UndoScope *scope = asset_scope(value);
+  if (!scope) { return nullptr; }
+  if (!PyBool_Check(keep)) { PyErr_SetString(PyExc_TypeError, "keep must be bool"); return nullptr; }
+  BLO_asset_source_paths_deactivate(*scope->source_paths);
+  bContext *C = BPY_context_get();
+  Py_BEGIN_ALLOW_THREADS;
+  try { scope->asset_result = ED_angelo_undo_stock_asset_finish(C, scope->capture, keep == Py_True); }
+  catch (...) { scope->asset_result = ED_angelo_undo_stock_asset_status(scope->capture); }
+  Py_END_ALLOW_THREADS;
+  return asset_receipt(scope->asset_result);
+}
+
+static PyObject *asset_recover(PyObject *, PyObject *value)
+{
+  UndoScope *scope = asset_scope(value);
+  if (!scope) { return nullptr; }
+  BLO_asset_source_paths_deactivate(*scope->source_paths);
+  bContext *C = BPY_context_get();
+  Py_BEGIN_ALLOW_THREADS;
+  try { scope->asset_result = ED_angelo_undo_stock_asset_recover(C, scope->capture); }
+  catch (...) { scope->asset_result = ED_angelo_undo_stock_asset_status(scope->capture); }
+  Py_END_ALLOW_THREADS;
+  return asset_receipt(scope->asset_result);
+}
+
+static PyObject *asset_close(PyObject *, PyObject *value)
+{
+  UndoScope *scope = asset_scope(value);
+  if (!scope) { return nullptr; }
+  BLO_asset_source_paths_deactivate(*scope->source_paths);
+  if (scope->capture) {
+    scope->asset_result = ED_angelo_undo_stock_asset_status(scope->capture);
+    try { scope->asset_result.closed = ED_angelo_undo_stock_asset_close(scope->capture); }
+    catch (...) { scope->asset_result.closed = false; }
+  }
+  if (scope->asset_result.closed && asset_pending_owner == value) { Py_CLEAR(asset_pending_owner); }
+  return asset_receipt(scope->asset_result);
+}
+
 static PyMethodDef methods[] = {
+    {"recovery_capabilities", undo_recovery_capabilities, METH_NOARGS,
+     "Read versioned irreversible-recovery capabilities; incomplete producers grant no admission."},
+    {"asset_transaction_capabilities", asset_capabilities, METH_NOARGS, "Focused native asset Undo facts."},
+    {"asset_begin", reinterpret_cast<PyCFunction>(asset_begin), METH_VARARGS | METH_KEYWORDS, "Capture a fresh asset Before."},
+    {"asset_finish", reinterpret_cast<PyCFunction>(asset_finish), METH_VARARGS | METH_KEYWORDS, "Commit or checked-restore an asset import."},
+    {"asset_status", asset_status, METH_O, "Read stored transaction facts without replay."},
+    {"asset_close", asset_close, METH_O, "Close a settled asset transaction."},
+    {"asset_recover", asset_recover, METH_O, "Explicitly recover a retained asset Before."},
+    {"asset_pending", asset_pending, METH_NOARGS, "Read the retained native asset scope."},
     {"publication", undo_publication, METH_O,
      "Read this consumed scope publication outcome; never inspect history names or positions."},
     {"seal_approved_objects", undo_seal_approved_objects, METH_VARARGS,
@@ -1411,6 +1805,16 @@ static PyMethodDef methods[] = {
     {"delete_stage", undo_delete_stage, METH_VARARGS, "Delete exact native-owned stage data."},
     {"delete_approved_objects", undo_delete_approved_objects, METH_VARARGS,
      "Delete exact originally approved Objects."},
+    {"seal_replaceable", undo_seal_replaceable, METH_VARARGS,
+     "Seal what the written Objects and Scene hold before the first write (replaced-data authority)."},
+    {"prepare_self_retirements", undo_prepare_self_retirements, METH_VARARGS,
+     "Prepare one opaque, scope-bound proof for sealed data held only by counted self links."},
+    {"validate_self_retirements", undo_validate_self_retirements, METH_O,
+     "Revalidate the opaque self-retirement proof without consuming it or freeing data."},
+    {"consume_self_retirements", undo_consume_self_retirements, METH_O,
+     "Consume the complete prepared self-retirement batch after a fresh native proof."},
+    {"delete_replaced_data", undo_delete_replaced_data, METH_VARARGS,
+     "Free replaced data this commit left unused, to a fixed point; refusals are returned."},
     {"new_collection", undo_new_collection, METH_VARARGS,
      "Create a Collection and retain its native creation identity for rollback."},
     {"delete_created_collections", undo_delete_created_collections, METH_VARARGS,

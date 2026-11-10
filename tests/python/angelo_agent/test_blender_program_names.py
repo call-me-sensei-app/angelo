@@ -31,6 +31,10 @@ GUI factory startup with the exact Angelo binary; no provider, account or paid
 request. Writes program-names.json in ANGELO_QA_DIR.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import contextlib
 import json
 import os

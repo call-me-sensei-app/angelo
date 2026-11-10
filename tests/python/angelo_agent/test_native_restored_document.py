@@ -12,6 +12,8 @@ the native step, how a refusal is reported, the update card's Save) and the nati
 ``test_blender_restore_keeps_file`` proves the native behaviour in the compiled app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import re
 import sys

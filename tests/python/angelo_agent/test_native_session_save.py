@@ -12,6 +12,8 @@ reads as before, the old file when a value cannot be saved, and the
 write-sync-replace order.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import enum
 import json
 import os
@@ -24,8 +26,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from angelo_agent import sessions  # noqa: E402
+from angelo_agent import session_journal, sessions, win32_replace  # noqa: E402
 from angelo_agent.sessions import SessionStore  # noqa: E402
+
+# The rename a rewrite ends with on this host (session_journal.replace): POSIX semantics on Windows, else os.replace.
+REPLACE = (win32_replace, "replace") if session_journal._WINDOWS else (os, "replace")
 
 
 class Label(str):
@@ -87,7 +92,8 @@ class SessionSaveTests(unittest.TestCase):
         self.assertEqual(saved["messages"][0]["text"], journal_state(self.store)["messages"][0]["text"])
         self.assertEqual(saved["messages"][2]["result"]["verification"]["checks"][0]["counts"]["1"], 2**70)
         self.assertIn("Café ✓ 日本語".encode("utf-8"), data, "UTF-8, not escaped ASCII")
-        self.assertEqual(stat.S_IMODE(self.store.path.stat().st_mode), 0o600)
+        if os.name != "nt":   # Windows keeps only a file's read-only bit.
+            self.assertEqual(stat.S_IMODE(self.store.path.stat().st_mode), 0o600)
 
     def test_a_value_that_cannot_be_saved_leaves_no_temporary_file_and_the_old_journal(self):
         state = journal_state(self.store)
@@ -113,7 +119,7 @@ class SessionSaveTests(unittest.TestCase):
         self.assertEqual(saved, json.loads(json.dumps(state["messages"])))
 
     def test_the_temporary_file_is_synced_before_it_replaces_the_journal(self):
-        steps, fsync, replace = [], os.fsync, os.replace
+        steps, fsync, replace = [], os.fsync, getattr(*REPLACE)
 
         def synced(descriptor):
             steps.append(("fsync", os.fstat(descriptor).st_size))
@@ -122,7 +128,7 @@ class SessionSaveTests(unittest.TestCase):
         def replaced(source, target):
             steps.append(("replace", Path(source), Path(target)))
             replace(source, target)
-        with patch.object(sessions.os, "fsync", synced), patch.object(sessions.os, "replace", replaced):
+        with patch.object(sessions.os, "fsync", synced), patch.object(*REPLACE, replaced):
             self.store.save(journal_state(self.store))
         size = self.store.path.stat().st_size
         self.assertEqual([step[0] for step in steps], ["fsync", "replace"])
@@ -133,12 +139,12 @@ class SessionSaveTests(unittest.TestCase):
         self.assertEqual(self.temporaries(), [])
 
     def test_two_rewrites_never_share_a_temporary_file_and_a_crash_leftover_is_removed(self):
-        names, replace = [], os.replace
+        names, replace = [], getattr(*REPLACE)
 
         def recorded(source, target):
             names.append(Path(source).name)
             replace(source, target)
-        with patch.object(sessions.os, "replace", recorded):
+        with patch.object(*REPLACE, recorded):
             self.store.save(journal_state(self.store))
             self.store.invalidate()
             self.store.save(journal_state(self.store))

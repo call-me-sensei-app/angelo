@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Anchored copy lifetime/integrity only; native decode and Sculpt Restore are separate."""
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import hashlib
 import json
 import os
@@ -17,6 +19,7 @@ from angelo_agent import checkpoint_seal
 from angelo_agent.checkpoints import CheckpointStore
 from angelo_agent.checkpoint_capture import CaptureOwner
 from fake_nt_files import FakeNtApi
+from host_test_policy import environment_skip
 import file_times  # noqa: E402
 
 SESSION = "00000000-0000-4000-8000-000000000001"
@@ -136,6 +139,78 @@ class RecoveryResourceTests(unittest.TestCase):
         self.assertNotEqual(first.path, second.path)
         self.assertEqual(first.path.read_bytes(), second.path.read_bytes())
 
+    def test_the_working_pair_settles_once_before_either_is_hashed(self):
+        """Break-it (share follow-up) M2: one wait for both copies (a coarse step is waited out once, not per file),
+        on Angelo's own open writers, before either is hashed."""
+        events, settle_all, hashed = [], recovery.change_clock.settle_all, recovery._hash_descriptor
+
+        def settling(witnesses, clock=None, **options):
+            witnesses = tuple(witnesses)
+            events.append(("settle", len(witnesses), options.get("writing")))
+            return settle_all(witnesses, clock, **options)
+
+        def hashing(fd, size):
+            events.append(("hash", size))
+            return hashed(fd, size)
+        with patch.object(recovery.change_clock, "settle_all", side_effect=settling), \
+                patch.object(recovery, "_hash_descriptor", side_effect=hashing):
+            self.prepare()
+        self.assertEqual(events, [("settle", 2, True), ("hash", len(self.base)), ("hash", len(self.runtime))])
+
+    def test_a_refused_preparation_leaves_no_working_copy(self):
+        """Where closing may restamp, the Restore is refused in the person's words, and neither working copy stays
+        behind in ``recoveries`` (break-it, share follow-up L2: a refusal after both copies left both)."""
+        from angelo_agent import checkpoint_store_text
+
+        def restamps(witnesses, clock=None, **options):
+            raise recovery.change_clock.ClosingRestamps("closing restamps")
+        with patch.object(recovery.change_clock, "settle_all", side_effect=restamps), \
+                self.assertRaises(ValueError) as refused:
+            self.prepare()
+        self.assertEqual(refused.exception.args[0].template, checkpoint_store_text.RESTAMPS_AT_CLOSE)
+        self.assertEqual(list((self.store.directory / "recoveries").iterdir()), [])
+        self.assertEqual(self.prepare().path.read_bytes(), self.base, "the next Restore still prepares")
+
+    def test_a_clock_set_wrong_refuses_the_restore_in_the_person_s_words(self):
+        from angelo_agent import checkpoint_store_text
+
+        def ahead(witnesses, clock=None, **options):
+            raise recovery.change_clock.ClockAhead("The file's change time is ahead of the system clock")
+        with patch.object(recovery.change_clock, "settle_all", side_effect=ahead), \
+                self.assertRaises(ValueError) as refused:
+            self.prepare()
+        self.assertEqual(refused.exception.args[0].template, checkpoint_store_text.CLOCK_AHEAD)
+        self.assertEqual(list((self.store.directory / "recoveries").iterdir()), [], "nothing left behind")
+
+    def test_a_working_copy_that_cannot_be_removed_still_closes_its_preparation(self):
+        """Break-it (share follow-up) rounds 4-5: a removal that fails (a share dropped) or is interrupted never skips
+        ``close``; its error is kept with the preparation's own."""
+        original = recovery._open_file
+
+        def restamps(witnesses, clock=None, **options):
+            raise recovery.change_clock.ClosingRestamps("closing restamps")
+        for failure in (PermissionError("read-only share"), KeyboardInterrupt()):
+            with self.subTest(failure=type(failure).__name__):
+                opened = []
+
+                def opening(folder, name, flags, *args, **kwargs):
+                    descriptor = original(folder, name, flags, *args, **kwargs)
+                    if flags & os.O_CREAT:   # The working copies; sources are read through their own closing block.
+                        opened.append(descriptor)
+                    return descriptor
+                with patch.object(recovery, "_open_file", side_effect=opening), \
+                        patch.object(recovery.change_clock, "settle_all", side_effect=restamps), \
+                        patch.object(recovery, "_unlink_file", side_effect=failure), \
+                        self.assertRaises(BaseExceptionGroup) as failed:
+                    self.prepare()
+                kinds = [type(error) for error in failed.exception.exceptions]
+                self.assertEqual(kinds[0], ValueError, "the refusal itself comes first")
+                self.assertIn(type(failure), kinds)
+                self.assertEqual(len(opened), 2, "both working copies were made")
+                for fd in opened:
+                    with self.assertRaises(OSError, msg="closed"):
+                        os.fstat(fd)
+
     def test_destination_hash_return_change_cannot_refresh_verified_seal(self):
         original = recovery._hash_descriptor
         for target_size in (len(self.base), len(self.runtime)):
@@ -249,7 +324,8 @@ class RecoveryResourceTests(unittest.TestCase):
             active.abandon()
 
 
-@unittest.skipIf(os.name == "nt", "POSIX stand-in; native Windows uses base tests")
+@unittest.skipIf(os.name == "nt", environment_skip(
+    "the Windows API stand-in for POSIX hosts; native Windows runs the base tests on the real API"))
 class RecoveryResourceFakeNtTests(RecoveryResourceTests):
     def setUp(self):
         self.api = FakeNtApi()

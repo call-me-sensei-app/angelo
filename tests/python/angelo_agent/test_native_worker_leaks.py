@@ -12,6 +12,8 @@ Grants and releases land on threads of their own: a check waits for the state it
 failure), and every thread a test started has ended before its stand-ins are taken away.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile

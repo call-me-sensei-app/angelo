@@ -12,6 +12,8 @@ ends, and the external engine draws a region render over the last render without
 are checked in Blender by ``test_blender_render_region_pixels``; the window by ``test_blender_render_region``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import sys
 import types

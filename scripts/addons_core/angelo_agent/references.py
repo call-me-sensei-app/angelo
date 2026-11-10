@@ -4,31 +4,83 @@
 
 import base64
 import os
-import shutil
 import subprocess
 import threading
+import time
 import uuid
 from pathlib import Path
 
-from . import child_process, thread_start
+from . import pdf_text, thread_start
 from .image_proof import digest, url_digest
+from .refusal_codes import coded
+from .ui_text import n_
 
 MAX_IMAGES = 4
 MAX_TOOL_IMAGES = 6
 MAX_BYTES = 5 * 1024 * 1024
+MAX_FILE_BYTES = 20 * 1024 * 1024
 MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 TEXT_TYPES = frozenset({".txt", ".md", ".rst", ".py", ".json", ".csv", ".yaml", ".yml", ".obj", ".mtl", ".svg", ".gltf"})
 ASSET_TYPES = frozenset({".blend", ".glb", ".fbx", ".stl"})
 FILE_TYPES = frozenset(MIME) | TEXT_TYPES | ASSET_TYPES | {".pdf"}
 FILE_FILTER = ";".join("*" + suffix for suffix in sorted(FILE_TYPES))
-PDF_SECONDS = 30
+PDF_SECONDS = pdf_text.SECONDS
 # What angelo_read_reference returns while a PDF it reads is extracted off Blender's main thread.
 PDF_PENDING_NOTE = ("This PDF's text is being extracted off Blender's main thread (up to 30 s); "
                     "call angelo_read_reference again for it. Nothing else is needed.")
 
 
+# Files whose text needs a reader this install must carry: suffix -> (whether it is here, the person's reason on
+# the file's chip, the model's error). ``content`` refuses with the model's and ``problem`` shows the person's, from
+# this one table, so the chip and what the agent reads never disagree (chat-surface audit: a PDF whose text could
+# not be read was reported only to the model). PDFs are read by the bundled pypdf (``pdf_text``), so this fails
+# only on a damaged install.
+UNREAD = n_("This file's text couldn't be read. Attach a text copy or pictures of its pages instead.")
+LOCKED = n_("This PDF is locked or protected, so its text can't be read. Attach an unlocked copy or pictures of "
+            "its pages instead.")
+NO_TEXT = n_("This PDF has no text to read; it may be scanned. Attach pictures of its pages instead.")
+MISSING_READER = n_("This PDF's text can't be read because Angelo's PDF reader is missing. Reinstall Angelo, or "
+                    "attach pictures of its pages instead.")
+NEEDS_READER = {".pdf": (lambda: pdf_text.available(), MISSING_READER, pdf_text.MISSING_ERROR)}
+# A file's own failure (``pdf_text.Unreadable.code``) -> the person's reason on its chip; any other is UNREAD.
+PERSON = {"encrypted": LOCKED, "empty": NO_TEXT}
+_FOUND = {}   # suffix -> (found, when checked): a chip is drawn every frame; the files are looked at every 2 s at most.
+
+
+def _missing(suffix, cached=False):
+    """A read probes availability; drawing uses only the last known answer, never the filesystem."""
+    need = NEEDS_READER.get(suffix)
+    if need is None:
+        return None
+    if not cached:
+        _FOUND[suffix] = (bool(need[0]()), time.monotonic())
+    return need if _FOUND.get(suffix, (None, 0.0))[0] is False else None
+
+
+def refresh_readers(reset=False):
+    """Refresh outside drawing and return changed; reset clears this installation cache on unregister."""
+    if reset:
+        _FOUND.clear()
+        return False
+    changed, now = False, time.monotonic()
+    for suffix, (found, when) in tuple(_FOUND.items()):
+        if found is None or now - when > 2.0:
+            _missing(suffix)
+            changed |= found != _FOUND[suffix][0]
+    return changed
+
+
 class TextFailure(str):
-    """A file's cached extraction failure (``ReferenceStore.content``): the error it raises again."""
+    """A file's cached extraction failure (``ReferenceStore.content``): the error it raises again, with the person's
+    reason for its chip in ``person`` (a message id)."""
+
+    person = UNREAD
+
+    @classmethod
+    def of(cls, message, person=None):
+        failure = cls(message)
+        failure.person = person or UNREAD
+        return failure
 
 
 def image_type(data):
@@ -63,7 +115,7 @@ class ReferenceStore:
             suffix = source.suffix.lower()
             if suffix not in FILE_TYPES:
                 raise ValueError("Supported attachments: images, text/code, PDF and Blender/3D assets")
-            limit = self.image_limit if suffix in MIME else 20 * 1024 * 1024
+            limit = self.image_limit if suffix in MIME else MAX_FILE_BYTES
             with source.open("rb") as handle:
                 data = handle.read(limit + 1)
             if not data or len(data) > limit:
@@ -91,6 +143,12 @@ class ReferenceStore:
             for reference in snapshots:
                 Path(reference["path"]).unlink(missing_ok=True)
             raise
+        for reference in snapshots:   # Off this (often the main) thread, so the chip can warn before sending.
+            if reference["kind"] == "pdf":
+                try:
+                    self.content(reference, block=False)
+                except (OSError, ValueError):   # Pending, unreadable or missing: problem() and the turn say so.
+                    pass
         return snapshots
 
     def new_observation(self, name):
@@ -165,16 +223,16 @@ class ReferenceStore:
         """
         name = Path(str(reference.get("path", ""))).name
         if not name or name in {".", ".."}:
-            raise ValueError("This image reference is unavailable; attach it again")
+            raise coded(ValueError("This image reference is unavailable; attach it again"), "VALIDATION")
         return self.directory / name
 
     def checked_path(self, reference):
         path = self._own_file(reference)
         if path.is_symlink() or not path.is_file():
-            raise ValueError("This image reference is unavailable; attach it again")
+            raise coded(ValueError("This image reference is unavailable; attach it again"), "VALIDATION")
         uuid.UUID(path.stem)
-        if path.suffix not in FILE_TYPES or path.stat().st_size > (self.image_limit if path.suffix in MIME else 20 * 1024 * 1024):
-            raise ValueError("Invalid image reference")
+        if path.suffix not in FILE_TYPES or path.stat().st_size > (self.image_limit if path.suffix in MIME else MAX_FILE_BYTES):
+            raise coded(ValueError("Invalid image reference"), "VALIDATION")
         return path
 
     def codex_inputs(self, references):
@@ -190,17 +248,18 @@ class ReferenceStore:
 
         Cached by file identity (snapshot name, size, modification time), so a
         PDF whose extraction failed or timed out is not tried again every turn;
-        an attachment is a fresh snapshot. A missing ``pdftotext`` or an OS
+        an attachment is a fresh snapshot. A missing PDF reader or an OS
         error is not the file's failure and is not cached. ``block=False``
-        (Blender's main thread) never runs ``pdftotext``: a PDF not extracted
+        (Blender's main thread) never reads a PDF itself: a PDF not extracted
         yet starts its extraction on a background thread and raises
         ``ReferencePending``.
         """
         path = self.checked_path(reference)
         stat = path.stat()
         key, pdf = (path.stem, stat.st_size, stat.st_mtime_ns), path.suffix == ".pdf"
-        if pdf and key not in self._texts and not shutil.which("pdftotext"):
-            raise ValueError("PDF text extraction requires installed pdftotext; attach text or page images instead")
+        missing = _missing(path.suffix) if key not in self._texts else None
+        if missing is not None:
+            raise ValueError(missing[2])
         with self._lock:
             running = None if key in self._texts else self._extracting.get(key)
             start = key not in self._texts and running is None
@@ -213,6 +272,7 @@ class ReferenceStore:
                                    lambda: self._unstarted(key, running))
             except RuntimeError:   # No thread to extract on: not extracting, so a later read starts it again.
                 raise ReferencePending(PDF_PENDING_NOTE) from None
+            _redraw_when_set(running)
         elif start:
             error = self._extract(key, path, running)
             if error is not None:
@@ -226,6 +286,23 @@ class ReferenceStore:
         if isinstance(value, TextFailure):
             raise ValueError(str(value))
         return value
+
+    def problem(self, reference):
+        """Why ``reference``'s content can't reach the agent, as a message id for the person (its chip), else None:
+        the reader its kind needs is missing (``NEEDS_READER``), or its text was already found unreadable (the
+        failure's own reason: locked, no text, unreadable). Never extracts or blocks: what is not known yet is no
+        problem; ``import_images`` starts a PDF's extraction at once, so its chip learns before the message is sent."""
+        try:
+            suffix, identity = Path(reference["path"]).suffix, Path(reference["path"]).stem
+        except (KeyError, TypeError):
+            return None
+        missing = _missing(suffix, cached=True)
+        if missing is not None:
+            return missing[1]
+        with self._lock:
+            failed = next((value.person for key, value in self._texts.items()
+                           if key[0] == identity and isinstance(value, TextFailure)), None)
+        return failed
 
     def _unstarted(self, key, event):
         with self._lock:
@@ -243,11 +320,11 @@ class ReferenceStore:
         value = error = None
         try:
             value = _file_text(path)
-        except ValueError as failure:
-            value = TextFailure(str(failure))
+        except ValueError as failure:   # pdf_text.Unreadable's code names the person's reason.
+            value = TextFailure.of(str(failure), PERSON.get(getattr(failure, "code", None)))
         except subprocess.TimeoutExpired:
-            value = TextFailure("Extracting this PDF's text timed out after %d s; attach readable text or page "
-                                "images instead" % PDF_SECONDS)
+            value = TextFailure.of("Extracting this PDF's text timed out after %d s; attach readable text or page "
+                                   "images instead" % PDF_SECONDS)
         except OSError as failure:
             error = failure
         finally:
@@ -273,7 +350,7 @@ class ReferenceStore:
                         pass
 
     def prompt_context(self, references):
-        """Each attached file's excerpt for a turn. A file whose text cannot be read (a scanned PDF, no pdftotext)
+        """Each attached file's excerpt for a turn. A file whose text cannot be read (a scanned or locked PDF)
         says why in its own entry: one unreadable file never fails the turn the others go with."""
         parts = []
         for reference in references:
@@ -316,25 +393,46 @@ class ReferencePending(ValueError):
     """A PDF's text is being extracted on another thread; read it again shortly."""
 
 
+def _redraw_when_set(event, interval=0.1):
+    """Redraw the chats once a background read settles, so its chip shows the outcome without waiting for input.
+
+    Only Blender's main thread registers the timer (a worker thread's read, ``prime``, redraws nothing), and the
+    timer only polls ``event``: the reading thread never touches ``bpy``. Without Blender there is nothing to redraw.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        return
+    try:
+        import bpy
+        register = bpy.app.timers.register
+    except (ImportError, AttributeError):
+        return
+
+    def poll():
+        if not event.is_set():
+            return interval
+        _redraw_chats()
+        return None
+    register(poll, first_interval=interval)
+
+
+def _redraw_chats():
+    import bpy
+    from . import console, live_windows
+    for window in live_windows.windows(bpy.context.window_manager):
+        for area in live_windows.areas(window):
+            if console.is_chat(area):
+                area.tag_redraw()
+
+
 def _file_text(path):
-    """A reference file's text: UTF-8 text, a PDF's first 64 pages through pdftotext, or '' for others."""
+    """A reference file's text: UTF-8 text, a PDF's through the bundled reader (``pdf_text``: first 64 pages, at most
+    30 s, no OCR, never on Blender's main thread), or '' for others."""
     if path.suffix in TEXT_TYPES:
         return path.read_text(encoding="utf-8-sig")[:1000000]
     if path.suffix != ".pdf":
         return ""
-    executable = shutil.which("pdftotext")
-    if not executable:
-        raise OSError("PDF text extraction requires installed pdftotext")   # Not the file's failure: not cached.
-    # Never on Blender's UI thread (ReferenceStore.content). No PDF scripts,
-    # browsing, OCR or automatic scene import are performed.
-    output = child_process.run([executable, "-f", "1", "-l", "64", "-enc", "UTF-8", str(path), "-"],
-                               capture_output=True, timeout=PDF_SECONDS, check=False)
-    if output.returncode:
-        raise ValueError("Couldn't extract this PDF's text; attach readable text or page images")
-    value = output.stdout.decode("utf-8", errors="replace")[:1000000]
-    if not value.strip():
-        raise ValueError("This PDF contains no extractable text; attach page images for visual reference")
-    return value
+    # No PDF scripts, browsing, OCR or automatic scene import are performed.
+    return pdf_text.extract(path)
 
 
 def codex_result_images(context, result):

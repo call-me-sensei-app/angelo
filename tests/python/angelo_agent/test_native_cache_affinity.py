@@ -13,6 +13,8 @@ keyed process never warms, resumes or forks a base: new chats start keyed thread
 receipt exists. The adversarial review's reproductions are in ``test_native_agent_runtime_review.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import io
 import json
@@ -100,7 +102,9 @@ class SelectionTests(unittest.TestCase):
     def test_an_override_that_is_not_an_executable_file_is_an_error_never_a_fallback(self):
         plain = Path(self.temp.name, "plain")
         plain.write_text("")
-        for value in (str(plain), str(Path(self.temp.name, "missing")), "codex", self.temp.name):
+        # A file without its execute bit: Windows has no such bit (os.access finds every file executable there).
+        unexecutable = [str(plain)] if os.name != "nt" else []
+        for value in unexecutable + [str(Path(self.temp.name, "missing")), "codex", self.temp.name]:
             os.environ["ANGELO_AGENT_RUNTIME"] = value
             with self.subTest(value=value), patch.object(cli_runtime.shutil, "which", return_value=self.other):
                 with self.assertRaises(RpcError) as caught:
@@ -109,6 +113,10 @@ class SelectionTests(unittest.TestCase):
                 self.assertFalse(agent_runtime.is_agent_runtime(self.other))
 
     def test_without_an_agent_runtime_codex_is_found_as_before(self):
+        # None bundled: from a checkout, install_root is a folder above it, where a machine may keep a runtime.
+        bundled = patch.object(agent_runtime, "bundled", return_value=None)
+        bundled.start()
+        self.addCleanup(bundled.stop)
         self.assertIsNone(agent_runtime.executable())
         self.assertEqual(cli_runtime.find_executable("codex", self.other), self.other)
         self.assertFalse(agent_runtime.is_agent_runtime(self.other))

@@ -10,6 +10,10 @@ writes plant the mixed completion state directly. Actual job completion and
 GUI controls remain the production bake/render suites' remit.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 from array import array
 import json
 import os

@@ -8,6 +8,8 @@ deleted by another item's download. Each request now holds a lease on its item's
 caller's import ends; the trim removes only folders nobody holds. Concurrent requests for one item share one
 download. Against a loopback server; ``check_item`` is stubbed (the files' contents are not the subject here)."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import gc
 import os
 import tempfile

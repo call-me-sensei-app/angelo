@@ -21,7 +21,7 @@ from pathlib import Path
 import bpy
 from bpy.app.handlers import persistent
 
-from . import live_windows
+from . import change_clock, live_windows
 from .job_chat import MOVED_REASON as MOVED, title
 from .job_manager import JobManager, install, shared
 from .job_spec import PREVIEW, JobRequestError
@@ -38,7 +38,9 @@ _recent = None  # (job id, monotonic deadline) of the last finished job, for the
 def manager(create=True):
     if shared() is None and create:
         from . import ui
-        jobs = JobManager(JobStore(ui.state_directory()), on_change=_changed, on_finish=_finished)
+        store = JobStore(ui.state_directory())
+        store.on_refused = _keep_ticking   # A refused save is retried from the timer, even with no job running.
+        jobs = JobManager(store, on_change=_changed, on_finish=_finished)
         _reconcile(jobs)
         install(jobs)
     return shared()
@@ -94,6 +96,11 @@ def _signature(record):
     eta = record.get("eta_s")
     return (record["status"], int(100 * float(record.get("progress") or 0)), None if eta is None else int(eta // 5),
             record["detail"].get("frames_done"))
+
+
+def _keep_ticking():
+    if not bpy.app.timers.is_registered(_tick):
+        bpy.app.timers.register(_tick, first_interval=POLL_SECONDS, persistent=True)
 
 
 def _changed(record):
@@ -158,6 +165,8 @@ def _tick():
         working = jobs.has_work()
     from . import job_desktop
     job_desktop.sync(jobs)
+    if jobs.store.retry_refused():   # A refused save (its file held open) keeps the timer until it lands.
+        working = True
     if not working:
         redraw()
         return None
@@ -275,7 +284,8 @@ def resume_state(record):
     if folder is None or not folder.is_dir():
         return None
     try:
-        key = (str(folder), folder.stat().st_mtime_ns)
+        info = folder.stat()   # A stat in the clock's current tick (Windows) is listed again next time.
+        key = change_clock.cache_key(info, (str(folder), info.st_mtime_ns))
     except OSError:
         return None
     cached = _resume_cache.get(record["id"])
@@ -430,6 +440,9 @@ def register():
 
 def unregister():
     from . import job_desktop, look_notify, render_drivers
+    jobs = manager(create=False)
+    if jobs is not None and jobs.store.refused_at is not None:
+        jobs.store.save()   # Owed (a refused save): one last try before quit, said again if refused.
     job_desktop.shutdown()
     look_notify.unregister()
     render_drivers.unwatch()

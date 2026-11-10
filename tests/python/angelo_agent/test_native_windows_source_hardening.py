@@ -16,6 +16,8 @@ These run the real launcher and machine tools (test_native_windows_source_send.p
 of their own, not the review's.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import io
 import os
 import shutil
@@ -33,6 +35,7 @@ for folder in (HERE, SCRIPTS):
     if str(folder) not in sys.path:
         sys.path.insert(0, str(folder))
 import source_tree  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 from test_native_windows_source_send import ENV, LauncherFixture, git, git_lfs_works  # noqa: E402
 
 
@@ -45,6 +48,8 @@ def case_insensitive(folder):
         probe.unlink()
 
 
+@unittest.skipIf(os.name == "nt", environment_skip(
+    "gcp_windows_validate.sh is a bash launcher run from the macOS workstation, not on Windows"))
 @unittest.skipUnless(git_lfs_works(), "the launcher is bash with git and Git LFS, run from the workstation")
 class SendHardeningTests(LauncherFixture, unittest.TestCase):
     def launcher(self, command, *extra):
@@ -219,18 +224,20 @@ class ExtractionStaysInsideTests(unittest.TestCase):
         self.assertEqual(sorted(os.listdir(self.outside)), ["victim.txt"])
         self.assertEqual((self.outside / "victim.txt").read_text(), "precious\n")
 
-    @unittest.skipIf(os.name == "nt", "needs symlinks without the privilege Windows asks for")
     def test_an_existing_link_in_the_tree_is_replaced_never_written_or_deleted_through(self):
         tree = self.root / "tree"
         tree.mkdir()
-        os.symlink(self.outside, tree / "linked")
+        try:
+            os.symlink(self.outside, tree / "linked", target_is_directory=True)
+        except OSError:   # Windows makes one only as an administrator or with Developer Mode (the build machine can).
+            self.skipTest(environment_skip("creating a symbolic link needs a privilege this Windows account lacks"))
         os.link(self.outside / "victim.txt", tree / "same-inode.txt")
         listing = self.root / "deleted.txt"
         listing.write_text("linked/victim.txt\n")
         source_tree.extract(tree, [], str(listing))   # a stray linked folder on a deleted path: the link goes
         self.assertFalse(os.path.lexists(tree / "linked"))
         self.assertEqual((self.outside / "victim.txt").read_text(), "precious\n")
-        os.symlink(self.outside, tree / "linked")
+        os.symlink(self.outside, tree / "linked", target_is_directory=True)
         source_tree.extract(tree, [str(self.archive("over.tar.gz", [("linked/new.txt", "file", b"inside\n"),
                                                                      ("same-inode.txt", "file", b"replaced\n")]))])
         self.assertFalse((tree / "linked").is_symlink())

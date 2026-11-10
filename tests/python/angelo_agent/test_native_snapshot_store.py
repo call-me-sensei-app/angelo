@@ -8,6 +8,8 @@ collection and compaction, crash leftovers, private permissions, link refusal
 and writer exclusion.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import io
 import os
@@ -376,9 +378,10 @@ class IndexSideFileTests(unittest.TestCase):
 
     def refused_shapes(self, side, outside):
         shapes = {"symbolic link": lambda: side.symlink_to(outside),
-                  "hard link": lambda: os.link(outside, side),
-                  "fifo": lambda: os.mkfifo(side, 0o600),
-                  "open mode": lambda: (side.write_bytes(b""), os.chmod(side, 0o644))}
+                  "hard link": lambda: os.link(outside, side)}
+        if os.name != "nt":  # Windows has no FIFO files, and no POSIX mode bits: its profile's access list applies
+            shapes.update({"fifo": lambda: os.mkfifo(side, 0o600),
+                           "open mode": lambda: (side.write_bytes(b""), os.chmod(side, 0o644))})
         for shape, make in shapes.items():
             with self.subTest(shape, name=side.name):
                 if side.exists() or side.is_symlink():

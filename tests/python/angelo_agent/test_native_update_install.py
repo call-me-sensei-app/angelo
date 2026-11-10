@@ -4,9 +4,11 @@
 
 The macOS script (update_helpers/install_update_macos.sh) runs here exactly as Angelo starts it, with
 RELAUNCH off: it waits for a process to end, swaps two stand-in bundles, records the result, and puts the old
-bundle back when the second rename fails. It is POSIX sh with absolute tool paths, so it runs on the Linux CI
+bundle back when the second rename fails. It uses explicit Bash with absolute tool paths, so it runs on the Linux CI
 too. The Windows script is checked by its contract here and run for real on Windows (releasing.rst).
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import os
 import shutil
@@ -25,6 +27,7 @@ from angelo_agent import update_install  # noqa: E402
 from angelo_agent.update_install import Request  # noqa: E402
 
 HELPERS = update_install.HELPER_FOLDER
+INVOCATION = "a" * 32
 
 
 def bundle(path, marker):
@@ -114,10 +117,10 @@ class StartTests(unittest.TestCase):
         (self.work / update_install.READY_FILE).write_text("old")
         (self.work / update_install.RESULT_FILE).write_text("status=failed\n")
         calls = []
-        update_install.start(Request("macos", self.work, 1, "1.0.1", "Angelo", app="/A", new="/N"),
+        update_install.start(Request("macos", self.work, 1, "1.0.1", "Angelo", app="/A", new="/N", invocation=INVOCATION),
                              environ={"HOME": "/h"}, popen=lambda args, **kw: calls.append((args, kw)))
         args, options = calls[0]
-        self.assertEqual(args, ["/bin/sh", str(self.work / "install_update_macos.sh")])
+        self.assertEqual(args, ["/bin/bash", "--noprofile", "--norc", str(self.work / "install_update_macos.sh")])
         self.assertTrue(options["start_new_session"])
         self.assertEqual((self.work / "install_update_macos.sh").read_bytes(),
                          (HELPERS / "install_update_macos.sh").read_bytes())
@@ -131,7 +134,7 @@ class StartTests(unittest.TestCase):
             calls.append(kw["creationflags"])
             if kw["creationflags"] & update_install.CREATE_BREAKAWAY_FROM_JOB:
                 raise PermissionError("job forbids breakaway")
-        update_install.start(Request("windows", self.work, 1, "1.0.1", "Angelo.exe", msi="m", root="r"),
+        update_install.start(Request("windows", self.work, 1, "1.0.1", "Angelo.exe", msi="m", root="r", invocation=INVOCATION),
                              environ={"SystemRoot": r"C:\Windows"}, popen=popen)
         self.assertEqual(len(calls), 2)
         self.assertTrue(calls[0] & update_install.CREATE_NO_WINDOW and not calls[1] & update_install.CREATE_BREAKAWAY_FROM_JOB)
@@ -154,15 +157,17 @@ class WindowsScriptContractTests(unittest.TestCase):
         self.assertNotIn(b"\n", raw.replace(b"\r\n", b""), "no bare line feeds")
         raw.decode("ascii")   # An ASCII script: every path arrives through the environment instead.
         text = raw.decode("ascii")
-        for name in ("PID", "EXECUTABLE", "MSI", "SHA256", "ROOT", "DIR", "VERSION", "RELAUNCH", "OPEN"):
+        for name in ("PID", "EXECUTABLE", "MSI", "SHA256", "ROOT", "DIR", "VERSION", "RELAUNCH", "OPEN", "INVOCATION"):
             self.assertIn("ANGELO_UPDATE_" + name, text)
         for flag in ("/qb!-", "/norestart", "ALLUSERS=2", "MSIINSTALLPERUSER=1", "MSIRESTARTMANAGERCONTROL=Disable",
                      "REBOOT=ReallySuppress", 'INSTALL_ROOT="%ANGELO_UPDATE_ROOT%"'):
             self.assertIn(flag, text)
         install = text.index('start "" /wait msiexec.exe')
-        self.assertLess(text.index('mkdir "%dir%\\helper.lock"'), text.index("type nul > \"%dir%\\helper.ready\""),
+        self.assertLess(text.index('mkdir "%dir%\\helper.lock"'), text.index("[IO.File]::WriteAllText"),
                         "one installer at a time, and it says it runs before it waits")
         self.assertLess(text.index(":wait"), install, "nothing is installed before Angelo quits")
+        self.assertLess(text.index("ANGELO_UPDATE_COMMIT:"), text.index(":wait"),
+                        "complete invocation frame and EOF precede any parent-exit/install path")
         self.assertLess(text.index("certutil -hashfile"), install, "the installer's digest is checked again first")
         self.assertIn('findstr /i /x /c:"%ANGELO_UPDATE_SHA256%"', text,
                       "matched as a whole line, whatever else the command processor prints")
@@ -213,21 +218,22 @@ class MacScriptTests(unittest.TestCase):
 
     def run_script(self, pid, new=None, executable="Angelo", requirement="", locked=False, gatekeeper=False):
         request = Request("macos", self.work, pid, "1.0.1", executable, relaunch=False, app=str(self.app),
-                          new=str(new or self.new), requirement=requirement, gatekeeper=gatekeeper)
+                          new=str(new or self.new), requirement=requirement, gatekeeper=gatekeeper, invocation=INVOCATION)
         script = update_install.prepare_folder(request)
         if locked:
             (self.work / update_install.LOCK_DIR).mkdir()
         env = update_install.helper_environment(request, {"HOME": str(self.root)})
-        done = subprocess.run(["/bin/sh", str(script)], env=env, timeout=60, capture_output=True, text=True)
+        done = subprocess.run(["/bin/bash", "--noprofile", "--norc", str(script)], env=env, timeout=60,
+                              input="ANGELO_UPDATE_COMMIT:" + INVOCATION + "\n", capture_output=True, text=True)
         if locked:
             return done
-        self.assertTrue(update_install.ready(self.work), done.stderr)
+        self.assertTrue(update_install.ready(self.work, INVOCATION), done.stderr)
         return update_install.read_result(self.work)
 
     def test_a_second_installer_for_the_same_update_does_nothing(self):
         done = self.run_script(999999, locked=True)
         self.assertEqual(done.returncode, 0)
-        self.assertFalse(update_install.ready(self.work))
+        self.assertFalse(update_install.ready(self.work, INVOCATION))
         self.assertIsNone(update_install.read_result(self.work))
         self.assertEqual((self.app / "Contents/marker.txt").read_text(), "old")
 
@@ -277,32 +283,59 @@ class MacScriptTests(unittest.TestCase):
 
     def test_another_copy_of_the_app_running_stops_the_swap(self):
         executable = self.app / "Contents/MacOS/Angelo"
-        # The stand-in runs until cleanup kills it, and must be alive when the script looks (checked below).
-        pipes = {"stdin": subprocess.PIPE, "stderr": subprocess.PIPE}
         if sys.platform == "darwin":
-            # macOS reports a process by the path it was started as (argv[0]), and refuses to run a copied
-            # system binary, so the stand-in copy runs sleep under the bundle's executable path.
-            other = subprocess.Popen([str(executable), "3600"], executable=shutil.which("sleep"), **pipes)
+            # macOS refuses to run a copied system binary: the stand-in executable is a link to sleep, so the
+            # kernel runs that same file however the copy is started.
+            executable.symlink_to(shutil.which("sleep"))
+            wait = ["3600"]
         else:
-            # /proc names the executable file itself, so a copy must run from the bundle path. Not a copy of
-            # coreutils: the multi-call uutils on Ubuntu 26.04 runners picks its tool by the file's own name and
-            # exits 1 as "coreutils: unknown program 'Angelo'" (CI runs 40880625304, 40895325478). A copied shell
-            # does not care what it is called, and waits in its read builtin, so no child replaces it in /proc.
+            # Not a copy of coreutils: the multi-call uutils on Ubuntu 26.04 runners picks its tool by the file's own
+            # name and exits 1 as "coreutils: unknown program 'Angelo'" (CI runs 40880625304, 40895325478). A copied
+            # shell does not care what it is called, and waits in its read builtin, so no child replaces it in /proc.
             shutil.copyfile(shutil.which("sh"), executable)
             os.chmod(executable, 0o755)
-            other = subprocess.Popen([str(executable), "-c", "read _"], **pipes)
+            wait = ["-c", "read _"]
+        (self.root / "angelo").symlink_to(executable)   # A link of another name, as a person might make.
+        (self.root / "Linked.app").symlink_to(self.app)
+        # ps reports a process by the path it was started as; the script must still see the file it runs.
+        starts = {"its own path": ([str(executable)], None), "a link to it": ([str(self.root / "angelo")], None),
+                  "a link to the bundle": ([str(self.root / "Linked.app/Contents/MacOS/Angelo")], None),
+                  "a relative path": (["./MacOS/Angelo"], self.app / "Contents")}
+        for how, (command, cwd) in starts.items():
+            with self.subTest(started_through=how):
+                # The stand-in runs until it is killed, and must be alive when the script looks (checked below).
+                other = subprocess.Popen(command + wait, cwd=cwd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+                try:
+                    time.sleep(0.2)
+                    result = self.run_script(999999)
+                    if other.poll() is not None:
+                        self.fail("the stand-in copy exited (code %s) before the script looked for it: %s" % (
+                            other.returncode, other.stderr.read().decode(errors="replace").strip()))
+                finally:
+                    other.kill()
+                    other.communicate()
+                self.assertEqual((result["status"], result["step"]), ("aborted", "another_instance"))
+                self.assertEqual((self.app / "Contents/marker.txt").read_text(), "old")
+                for name in (update_install.READY_FILE, update_install.RESULT_FILE, update_install.LOCK_DIR):
+                    path = self.work / name
+                    shutil.rmtree(path) if path.is_dir() else path.unlink(missing_ok=True)
 
-        def stop():
-            other.kill()
-            other.communicate()
-        self.addCleanup(stop)
+    def test_a_copy_of_the_app_elsewhere_does_not_stop_the_swap(self):
+        (self.app / "Contents/MacOS/Angelo").write_bytes(b"installed")
+        executable = bundle(self.root / "Elsewhere" / "Angelo.app", "other") / "Contents/MacOS/Angelo"
+        if sys.platform == "darwin":
+            executable.symlink_to(shutil.which("sleep"))
+            wait = ["3600"]
+        else:
+            shutil.copyfile(shutil.which("sh"), executable)
+            os.chmod(executable, 0o755)
+            wait = ["-c", "read _"]
+        other = subprocess.Popen([str(executable)] + wait, stdin=subprocess.PIPE)
+        self.addCleanup(other.communicate)
+        self.addCleanup(other.kill)
         time.sleep(0.2)
         result = self.run_script(999999)
-        if other.poll() is not None:
-            self.fail("the stand-in copy exited (code %s) before the script looked for it: %s" % (
-                other.returncode, other.stderr.read().decode(errors="replace").strip()))
-        self.assertEqual((result["status"], result["step"]), ("aborted", "another_instance"))
-        self.assertEqual((self.app / "Contents/marker.txt").read_text(), "old")
+        self.assertEqual((result["status"], result["step"]), ("installed", "swap"), "another file is another app")
 
 
 class WindowsUpdateEvidenceTests(unittest.TestCase):

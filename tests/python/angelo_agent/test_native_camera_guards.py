@@ -9,6 +9,8 @@ camera-marker rule, and the path grammar and walk of ``dependency_paths``.
 test_blender_camera_guards.py runs the check inside the Angelo binary.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import math
 import sys

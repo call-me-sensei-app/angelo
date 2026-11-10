@@ -21,6 +21,9 @@ TITLES = {CODING: n_("Coding agents"), GENAI: n_("Media generation")}
 DESCRIPTIONS = {CODING: n_("Models that work in Angelo with you. Every connected account is a choice in the chat "
                            "and can be a collaborator."),
                 GENAI: n_("Image, 3D and video providers used by Media Studio and Generation Flows")}
+CLAUDE_ROUTE_TITLE = n_("Claude Code follows your administrator's network settings")
+CLAUDE_ROUTE_LINE = n_("This computer's Claude Code policy sets {names}. On team connections Claude Code's traffic then "
+                       "follows those settings instead of going only to your organization's gateway.")
 DESCRIPTION_NO_COLLABORATORS = n_("Models that work in Angelo with you. Every connected account is a choice in the chat.")
 
 
@@ -128,6 +131,11 @@ def _attention(ui, policy):
             notices.append({"title": iface_("A pre-rename folder needs attention"), "lines": [iface_(notice)]})
     for problem in saved_keys_ui.notices():
         notices.append({"title": shown(problem), "lines": []})
+    from . import claude_managed, connection_access
+    routes = claude_managed.env_overrides() if connection_access._team().signed_in() else []
+    if routes:   # The administrator's own Claude Code policy overrides the team fence (team_network).
+        notices.append({"title": iface_(CLAUDE_ROUTE_TITLE), "lines": [iface_(CLAUDE_ROUTE_LINE, names=join(routes))],
+                        "tone": "muted", "glyph": "info"})
     from . import agent_runtime
     if agent_runtime.override() is not None:
         notices.append({"title": iface_("Agent runtime override: ANGELO_AGENT_RUNTIME={value}", value=agent_runtime.override()),
@@ -273,6 +281,8 @@ def build(ui, prefs):
     sections.append(_background_jobs(prefs))
     sections.append(_parallel_edit(prefs))
     sections.append(_enhance(ui))
+    from . import fab_ui
+    sections.append(fab_ui.preferences_section(prefs))
     from . import providers_page_external
     sections.append(providers_page_external.external_apps(ui, prefs, policy))
     hero = {"title": iface_("AI Providers"), "banner": banner_ready(),
@@ -313,3 +323,12 @@ def sentence(text):
 
 def ui_module():
     return sys.modules.get(f"{__package__}.ui")
+
+
+def summary(model):
+    """Closed page facts retained by the host for UI inspection; no connection objects or state mutation."""
+    return {"sections": [s["title"] for s in model.get("sections", ())],
+            "rows": [r.get("name") for s in model.get("sections", ()) for r in s.get("rows", ())],
+            "chips": [r["chip"][0] for s in model.get("sections", ()) for r in s.get("rows", ()) if r.get("chip")],
+            "team": (model.get("team") or {}).get("title"), "slim_team": bool((model.get("team") or {}).get("slim")),
+            "attention": [n["title"] for n in model.get("attention", ())], "add": model["hero"].get("add")}

@@ -14,11 +14,15 @@ from bpy.types import FileHandler, Operator, OperatorFileListElement
 from . import studio as core   # Rebound state (_jobs) is read through the module.
 from .provider_registry import is_coding
 from .studio_generation import GenerationError, enhance_gemini, public_url
+from .display_text import describe_error
 from .studio_state import error_text
+from .ui_kit import paragraph   # Dialog sentences wrap, so a longer translation is never clipped.
 from .ui_text import iface_, n_, plural_
 from .studio_input import state_for
 from .studio import (  # noqa: E402 (studio imports this module after defining these)
     _enhancement_connections, _enhancement_events, _enhancements, attach, is_studio, library, redraw, selected)
+
+ENHANCE_FAILED = n_("Enhancement failed; original prompt unchanged")
 
 
 class ANGELO_OT_studio_files(Operator):
@@ -85,7 +89,7 @@ class ANGELO_OT_studio_url(Operator):
 
     def draw(self, context):
         self.layout.prop(self, "url", text="")
-        self.layout.label(text="Public HTTPS image link. Downloaded only when you generate.")
+        paragraph(self.layout, iface_("Public HTTPS image link. Downloaded only when you generate."), 390)
 
     def execute(self, context):
         try:
@@ -133,7 +137,7 @@ class ANGELO_OT_studio_prompt(Operator):
     def invoke(self, context, event):
         state = state_for(self.area_pointer)
         state.update(prompt_dialog={"enhanced": self.enhanced}, expanded_prompt=self.prompt,
-                     focus="expanded_prompt", caret=len(self.prompt), selection=None)
+                     field_focus="expanded_prompt", caret=len(self.prompt), selection=None)
         redraw()
         return {'FINISHED'}
 
@@ -201,26 +205,26 @@ class ANGELO_OT_studio_generate(Operator):
         layout = self.layout
         layout.label(text=iface_("{model} · {account}", model=model["name"], account=model["account"]), translate=False)
         layout.label(text=state["price_line"], translate=False)
-        layout.label(text="Uses your team's fal key through Angelo." if model.get("team") else "Billed to this fal account by fal.")
+        paragraph(layout, iface_("Uses your team's fal key through Angelo.") if model.get("team") else iface_("Billed to this fal account by fal."), 400)
         sent = len(state["references"])
         if sent:
-            layout.label(text=plural_(sent, "Uploads {count} image to fal (an unlisted link).", "Uploads {count} images to fal (unlisted links)."), translate=False)
-        layout.label(text="Stop asks fal to cancel; a video already started may still be billed.", icon='INFO')
+            paragraph(layout, plural_(sent, "Uploads {count} image to fal (an unlisted link).", "Uploads {count} images to fal (unlisted links)."), 400)
+        paragraph(layout, iface_("Stop asks fal to cancel; a video already started may still be billed."), 400, 'INFO')
         if not model["verified"] and not model.get("team"):
-            layout.label(text=iface_("Key/model access has not been verified yet."), icon='ERROR', translate=False)
+            paragraph(layout, iface_("Key/model access has not been verified yet."), 400, 'ERROR')
 
     def draw(self, context):
         model, state = self._model, self._snapshot
         if state["kind"] == "VIDEO":
             return self._draw_video(model, state)
         self.layout.label(text=iface_("{model} · {account}", model=model["name"], account=model["account"]), translate=False)
-        self.layout.label(text="Uses your team's provider key through Angelo." if model.get("team") else "Billed to this API account, not your coding subscription.")
-        self.layout.label(text=plural_(len(state["references"]), "Upload {count} image reference. One output requested.", "Upload {count} image references. One output requested."), translate=False)
+        paragraph(self.layout, iface_("Uses your team's provider key through Angelo.") if model.get("team") else iface_("Billed to this API account, not your coding subscription."), 380)
+        paragraph(self.layout, plural_(len(state["references"]), "Upload {count} image reference. One output requested.", "Upload {count} image references. One output requested."), 380)
         if model["mode"] == "meshy_api" and state["texture"] and not state["references"]:
-            self.layout.label(text="Two billable stages: geometry preview + textured refine.", icon='INFO')
+            paragraph(self.layout, iface_("Two billable stages: geometry preview + textured refine."), 380, 'INFO')
         if not model["verified"] and not model.get("team"):
-            self.layout.label(text=iface_("Key/model access has not been verified yet."), icon='ERROR', translate=False)
-        self.layout.label(text="Nothing is inserted into the scene automatically.")
+            paragraph(self.layout, iface_("Key/model access has not been verified yet."), 380, 'ERROR')
+        paragraph(self.layout, iface_("Nothing is inserted into the scene automatically."), 380)
 
     def execute(self, context):
         try:
@@ -286,7 +290,7 @@ def enhancement_binding():
 
 class ANGELO_OT_studio_enhance(Operator):
     bl_idname = "angelo.studio_enhance"
-    bl_label = "Enhance Prompt"
+    bl_label = "Enhance Media Studio Prompt"
     area_pointer: StringProperty(options={'SKIP_SAVE'})
 
     def invoke(self, context, event):
@@ -296,15 +300,15 @@ class ANGELO_OT_studio_enhance(Operator):
             state_for(self.area_pointer)
             return context.window_manager.invoke_props_dialog(self, width=420, confirm_text=iface_("Enhance prompt"))
         except ValueError as error:
-            state_for(self.area_pointer)["notice"] = str(error)
+            state_for(self.area_pointer)["notice"] = describe_error(error)
             redraw()
             self.report({'ERROR'}, error_text(error))
             return {'CANCELLED'}
 
     def draw(self, context):
         self.layout.label(text=self._name, translate=False)
-        self.layout.label(text="Uses this account's credits or subscription allowance.")
-        self.layout.label(text="Text only. Original prompt preserved; review before applying.")
+        paragraph(self.layout, iface_("Uses this account's credits or subscription allowance."), 360)
+        paragraph(self.layout, iface_("Text only. Original prompt preserved; review before applying."), 360)
 
     def execute(self, context):
         from . import ui
@@ -332,14 +336,15 @@ class ANGELO_OT_studio_enhance(Operator):
                         if is_coding(record) else enhance_gemini(access, config["model"], prompt, kind, generation_model, transport))
                     result = {"enhanced": reply, "notice": n_("Enhanced prompt ready. Review & apply to replace your draft.")}
                 except Exception as error:
-                    message = access.redact(str(error)) if access is not None else str(error).replace(key, "[REDACTED]") if key else str(error)
-                    result = {"notice": message[:350] or n_("Enhancement failed; original prompt unchanged")}
+                    def redact(text):
+                        return access.redact(text) if access is not None else text.replace(key, "[REDACTED]") if key else text
+                    result = {"notice": describe_error(error, ENHANCE_FAILED, redact)}
                 if not cancel.is_set():
                     _enhancement_events.put((pointer, result))
             try:
                 threading.Thread(target=run, daemon=True, name="AngeloPromptEnhance").start()
             except RuntimeError:   # No thread to enhance on (``thread_start``): it ends now, as one that failed.
-                _enhancement_events.put((pointer, {"notice": n_("Enhancement failed; original prompt unchanged")}))
+                _enhancement_events.put((pointer, {"notice": ENHANCE_FAILED}))
             redraw()
             return {'FINISHED'}
         except ValueError as error:

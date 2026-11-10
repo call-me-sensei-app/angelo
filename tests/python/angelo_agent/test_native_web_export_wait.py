@@ -5,7 +5,11 @@
 
 Each step returns at once whatever the worker does; nothing is written until the picture's job is done; an edit made
 meanwhile waits for its own picture; a stalled worker's export is written without the picture after the wait, with
-a finding; cancelling ends the wait and the agent's staged file is discarded."""
+a finding, a World the file goes without for good (never "pending") that the person and the agent are told about;
+a bake that ran out of time is made again for the next explicit export, never by the live preview; cancelling ends
+the wait and the agent's staged file is discarded."""
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import sys
 import tempfile
@@ -59,7 +63,7 @@ class Writer:
             self.jobs.pop(0)
             if require and self.jobs:   # The World changed meanwhile: its own picture is being made.
                 raise EnvironmentPending(self.jobs[0])
-        return report("ready" if require else "pending")
+        return report("ready" if require else "pending" if require is False else "failed")
 
 
 class PendingExportTests(unittest.TestCase):
@@ -115,11 +119,37 @@ class PendingExportTests(unittest.TestCase):
         self.assertIsNone(waiting.step())
         clock.now += 1.0
         found = waiting.step()
-        self.assertEqual(writer.calls, [True, False])
-        self.assertEqual(found["settings"]["environment"]["status"], "pending")
+        self.assertEqual(writer.calls, [True, None])   # None: leave the picture out of the file for good.
+        self.assertEqual(found["settings"]["environment"]["status"], "failed")
         self.assertEqual((found["findings"][0]["code"], found["findings"][0]["params"]["reason"]),
                          ("world_failed", "not made within 30 s"))
+        self.assertEqual(web_export_wait.left_out(found), found["findings"][:1])   # What the person is told.
         job.release.set()
+
+    def test_a_bake_that_failed_by_itself_keeps_its_own_reason(self):
+        from angelo_agent import web_compat
+        job, clock = stalled_job(), Clock()
+
+        def write(require):
+            if require and not job.done.is_set():
+                raise EnvironmentPending(job)
+            failed = report("failed")
+            failed["findings"].append(web_compat.finding("world_failed", "Sky", reason="the bake took longer than 1 s"))
+            return failed
+        waiting = PendingExport(write, "Sky", wait_seconds=30.0, clock=clock)
+        self.assertIsNone(waiting.step())
+        clock.now += 30.0
+        found = waiting.step()
+        self.assertEqual([item["params"]["reason"] for item in web_export_wait.left_out(found)],
+                         ["the bake took longer than 1 s"])
+        job.release.set()
+
+    def test_left_out_names_only_a_missing_world(self):
+        from angelo_agent import web_compat
+        findings = [web_compat.finding("world_light_path", "Sky"), web_compat.finding("world_missing", "Sky", image="a"),
+                    web_compat.finding("world_failed", "Sky", reason="r")]
+        self.assertEqual([item["code"] for item in web_export_wait.left_out({"findings": findings})],
+                         ["world_missing", "world_failed"])
 
     def test_cancel_ends_the_wait(self):
         job = stalled_job()
@@ -290,6 +320,56 @@ class AgentPendingTests(unittest.TestCase):
     def test_the_read_back_timer_survives_a_file_load(self):
         source = (ADDON / "web_readback.py").read_text(encoding="utf-8")
         self.assertIn("bpy.app.timers.register(_tick, first_interval=POLL_SECONDS, persistent=True)", source)
+
+    def test_a_world_left_out_is_said_in_the_calls_result(self):
+        job, clock = stalled_job(), Clock()
+        waiting = PendingExport(Writer(job), "Sky", wait_seconds=30.0, clock=clock)
+        self.assertIsNone(waiting.step())
+        call = self.web_host._pending_class()(None, waiting, Publication(), SimpleNamespace(name="scene.glb"))
+        clock.now += 30.0
+        result = call.poll()
+        self.assertEqual(result["settings"]["environment"]["status"], "failed")
+        self.assertEqual(result["findings"][0]["message"], "World Sky: its environment picture couldn't be made "
+                                                           "(not made within 30 s); the web gets none")
+        job.release.set()
+
+    def test_a_wait_that_ran_out_leaves_the_world_out_of_the_file(self):
+        """The file a developer ships says no World, never one still to come (that is the live preview's)."""
+        from angelo_agent import web_environment, web_export, web_look
+        world = {"kind": "BAKE", "name": "Sky", "key": ("k",)}
+        pending = SimpleNamespace(status="pending")
+        with mock.patch.object(web_environment, "ensure", return_value=pending), \
+                mock.patch.object(web_look, "_config_path", return_value=""):
+            with self.assertRaises(EnvironmentPending):
+                web_export._environment(None, world, True)
+            self.assertEqual(web_export._environment(None, world, False)[1]["status"], "pending")
+            self.assertEqual(web_export._environment(None, world, None), (None, {"kind": "BAKE", "status": "failed"},
+                                                                         None))
+
+    def test_a_bake_that_ran_out_is_made_again_for_the_next_explicit_export_only(self):
+        from angelo_agent import web_environment
+        world = {"kind": "BAKE", "key": ("ran out",)}
+        started = []
+
+        def start_bake(job, scene):
+            started.append(job)
+            return SimpleNamespace(start=lambda: None), None
+        self.addCleanup(web_environment._jobs.pop, world["key"], None)
+        with mock.patch.object(web_environment, "_start_bake", side_effect=start_bake):
+            first = web_environment.ensure(None, world, "")
+            first.ran_out = True
+            first.finish(error="the bake took longer than 120 s")
+            self.assertIs(web_environment.ensure(None, world, ""), first)   # The live preview: never again.
+            self.assertIs(web_environment.ensure(None, world, "", first.ended - 1.0), first)   # Asked before it ended.
+            again = web_environment.ensure(None, world, "", first.ended + 1.0)   # An explicit export asked after.
+            self.assertIsNot(again, first)
+            self.assertEqual((again.status, len(started)), ("pending", 2))
+            self.assertIs(web_environment.ensure(None, world, "", first.ended + 1.0), again)   # Once per bake.
+            failed = web_environment.ensure(None, {"kind": "BAKE", "key": ("broken",)}, "")
+            self.addCleanup(web_environment._jobs.pop, ("broken",), None)
+            failed.finish(error="the background Blender ended without a picture (exit 1)")
+            self.assertIs(web_environment.ensure(None, {"kind": "BAKE", "key": ("broken",)}, "", failed.ended + 1),
+                          failed)   # Only running out of time is tried again; a broken World fails the same way.
 
     def test_a_failed_export_is_the_calls_result_and_discards(self):
         job = stalled_job()

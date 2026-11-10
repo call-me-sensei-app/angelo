@@ -8,6 +8,8 @@ discarded preview's private bundle stayed on disk, because round 10 moved Angelo
 the discard still removed a bundle folder only when it sat directly in the system temporary folder.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 from pathlib import Path
 import sys

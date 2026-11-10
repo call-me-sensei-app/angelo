@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Actual native Studio canvas, synthetic pointer/key events, fixture-only APIs."""
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import base64
 import hashlib
 import json
@@ -119,10 +123,10 @@ def capture(name):
     state.setdefault("captures", {})[name] = request
 
 
-def event(kind, x=30, y=30, unicode="", ctrl=False):
+def event(kind, x=30, y=30, unicode="", ctrl=False, shift=False):
     r = region()
     value = SimpleNamespace(type=kind, value='PRESS', mouse_x=r.x+x, mouse_y=r.y+y, mouse_prev_y=r.y+y,
-        unicode=unicode, ctrl=ctrl, oskey=False, alt=False, shift=False)
+        unicode=unicode, ctrl=ctrl, oskey=False, alt=False, shift=shift, is_repeat=False)
     with bpy.context.temp_override(window=window(), area=area(), region=r):
         return studio.ANGELO_OT_studio_input.modal(handler, bpy.context, value)
 
@@ -180,7 +184,7 @@ def tick():
             click("collapse")
             click("focus", "prompt")
             event('A', unicode='A')
-            event('RET')
+            event('RET', shift=True)   # text_keys.enter: Shift+Return is a new line; Return acts.
             event('B', unicode='B')
             state["checks"]["prompt_native_multiline_and_no_python_execution"] = v["prompt"] == "A\nB" and before == [(o.name,tuple(o.location)) for o in bpy.context.scene.objects]
             click("model")
@@ -241,7 +245,7 @@ def tick():
             state["checks"]["enhancement_preserves_original_until_applied"] = v["enhanced"] == "Enhanced fixture prompt: luminous blue sword" and v["prompt"] == "[Local UI fixture] Native gallery result"
             click("review_enhance")
             capture("studio-enhanced-prompt-review.png")
-            state["checks"]["expanded_multiline_prompt_editor"] = v.get("prompt_dialog", {}).get("enhanced") and v["focus"] == "expanded_prompt"
+            state["checks"]["expanded_multiline_prompt_editor"] = v.get("prompt_dialog", {}).get("enhanced") and v.get("field_focus") == "expanded_prompt"
             click("prompt_apply")
             state["checks"]["apply_and_undo_prompt_enhancement"] = v["prompt"] == "Enhanced fixture prompt: luminous blue sword"
             click("undo_enhance")

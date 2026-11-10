@@ -91,14 +91,16 @@ def _check_materials(target, sources):
     """Every material a job reads or points at an image must be this file's own, with nodes."""
     for obj in [target, *sources]:
         if not any(slot.material for slot in obj.material_slots):
-            raise JobRequestError("%s has no material; give it one before baking its maps" % obj.name)
+            raise JobRequestError("%s has no material; give it one before baking its maps" % obj.name,
+                                  code="VALIDATION")
         for slot in obj.material_slots:
             material = slot.material
             if material is None:
-                raise JobRequestError("%s has an empty material slot; fill or remove it before baking" % obj.name)
+                raise JobRequestError("%s has an empty material slot; fill or remove it before baking" % obj.name,
+                                      code="VALIDATION")
             if material.library is not None or material.node_tree is None or not material.is_editable:
                 raise JobRequestError("The material %s is linked or has no nodes, so its maps can't be baked"
-                                      % material.name)
+                                      % material.name, code="UNSUPPORTED")
     targets.TargetNodes(target, None).materials()
 
 
@@ -112,10 +114,11 @@ def uv_tiles(target):
     tiles = targets.covered_tiles(target, _EveryTile, explicit=True)
     if not tiles:
         raise JobRequestError("None of %s's faces lie in a UV tile (its active UV map); move its UVs into 0 to 1"
-                              % target.name)
+                              % target.name, code="VALIDATION")
     if len(tiles) > MAX_TILES:
         raise JobRequestError("%s's UVs span %d UDIM tiles; a bake does at most %d" % (target.name, len(tiles),
-                                                                                       MAX_TILES))
+                                                                                       MAX_TILES),
+                              code="LIMIT_EXCEEDED")
     return [] if tiles == [1001] else tiles
 
 

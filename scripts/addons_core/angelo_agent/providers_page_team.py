@@ -61,7 +61,7 @@ def _signed_in(section, view):
             "lines": lines, "facts": facts,
             "icons": [("refresh", "team_refresh", "")],
             "buttons": [(iface_("Sign out"), "team_sign_out", "", "secondary")]}
-    head["lines"].insert(0, view.email or iface_("signed in"))
+    head["lines"].insert(0, view.email or iface_("Signed in"))   # A line of its own under the team's name.
     section["rows"].append(head)
     if state["state"] == team_access.NO_SEAT:
         head["chip"] = (iface_("No seat"), "amber", False)

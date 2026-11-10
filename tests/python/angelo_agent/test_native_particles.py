@@ -7,6 +7,8 @@ revisions, evaluation and Undo are covered by test_blender_particles.py and
 test_blender_program_commit_effects.py in the compiled app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

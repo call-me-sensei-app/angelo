@@ -7,6 +7,8 @@ something else ("give anything else you add a meaningful name of its own"). Plac
 brief allows something other than its target.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

@@ -39,6 +39,7 @@ import struct
 
 from .view_framing import output_size
 from .view_png import encode_png
+from .refusal_codes import coded
 
 MAX_BYTES = 256 * 1024 * 1024
 MAX_PIXELS = 68_000_000        # 8 bits a channel: four bytes a pixel decoded. An 8K frame is 33 million.
@@ -103,12 +104,12 @@ def admit(path, label):
     except OSError:
         found = None
     if found is None or found[0] < 1 or found[1] < 1:
-        raise RuntimeError("%s is not a PNG, JPEG or OpenEXR picture of at most %d MB that can be shown"
-                           % (label, MAX_BYTES // (1024 * 1024)))
+        raise coded(RuntimeError("%s is not a PNG, JPEG or OpenEXR picture of at most %d MB that can be shown"
+                                 % (label, MAX_BYTES // (1024 * 1024))), "VALIDATION")
     limit = MAX_PIXELS if found[2] == 8 else MAX_FLOAT_PIXELS
     if found[0] * found[1] > limit:
-        raise RuntimeError("%s is %dx%d: more than the %d million pixels of this kind that can be shown"
-                           % (label, found[0], found[1], limit // 1_000_000))
+        raise coded(RuntimeError("%s is %dx%d: more than the %d million pixels of this kind that can be shown"
+                                 % (label, found[0], found[1], limit // 1_000_000)), "LIMIT_EXCEEDED")
     return found
 
 
@@ -175,8 +176,8 @@ def scaled(path, region=None, long_side=None, *, stored=False):
         if region is not None:
             left, top, right, bottom = pixel_box(region, *source)
             if min(right - left, bottom - top) < MIN_REGION_PIXELS:
-                raise RuntimeError("That region is only %dx%d pixels of the %dx%d picture; choose a larger one"
-                                   % ((right - left, bottom - top) + source))
+                raise coded(RuntimeError("That region is only %dx%d pixels of the %dx%d picture; choose a larger one"
+                                   % ((right - left, bottom - top) + source)), "VALIDATION")
             # Rows are stored bottom first; ``crop`` takes inclusive corners.
             buffer.crop((left, source[1] - bottom), (right - 1, source[1] - top - 1))
             facts["region_pixels"] = [right - left, bottom - top]

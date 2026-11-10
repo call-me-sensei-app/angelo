@@ -25,7 +25,7 @@ import os
 import time
 import uuid
 
-from . import fal_models, fal_queue
+from . import fal_models, fal_queue, shared_replace
 from .studio_http import GatewayRejection, GenerationCancelled, GenerationError, request_bytes
 from .ui_text import n_
 
@@ -69,7 +69,7 @@ def load_video(reference):
     path = Path(reference.get("path") or "")
     if not path.is_file() or path.is_symlink():
         raise GenerationError(n_("A reference video is missing; choose it again"))
-    with path.open("rb") as handle:
+    with shared_replace.open_file(path) as handle:   # A result _write replaces may be the reference.
         data = handle.read(MAX_VIDEO_UPLOAD + 1)
     if len(data) > MAX_VIDEO_UPLOAD or len(data) < 12 or data[4:8] != b"ftyp":
         raise GenerationError(n_("A reference video must be an MP4 of at most 50 MB"))
@@ -217,7 +217,12 @@ def _write(directory, name, data):
         fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         with os.fdopen(fd, "wb") as handle_file:
             handle_file.write(data)
-        os.replace(temporary, directory / name)
+        try:
+            shared_replace.replace(temporary, directory / name)
+        except PermissionError:   # Windows: held open past its retries; never a paid result failed for good.
+            if not shared_replace._WINDOWS:
+                raise   # Elsewhere a permission error is the folder's own: the job fails, said.
+            raise MonitoringPaused("The result couldn't be saved yet (its file is in use); monitoring paused") from None
     finally:
         temporary.unlink(missing_ok=True)
 

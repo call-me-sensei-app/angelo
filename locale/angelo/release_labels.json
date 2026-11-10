@@ -1,4 +1,5 @@
 {
+ "Read earlier messages in long chats and return to the latest messages without losing your place.": [],
  "The agent can push, save and stop an engine live link you turned on, and says what Godot, Unity or Unreal confirmed.": [],
  "With the engine live link on, the agent can read what is linked, ask you to open a model from the engine, send the live update now, save the model so the engine re-imports it, and stop editing. Each step asks you first, and turning the link on stays yours.": [],
  "Godot, Unity and Unreal Engine now confirm each live update they show and each re-import, so Angelo and its agent know the engine has the change. Add Angelo Link to a project again to update its plugin.": [
@@ -285,6 +286,55 @@
   [
    "World",
    "*"
+  ]
+ ],
+ "Fewer crashes from add-ons and scripts that keep scene data while it changes.": [],
+ "Add-ons and scripts that keep removed modifiers, mesh elements, keyframes or custom properties report that the data was removed instead of reading old data or crashing.": [],
+ "Views of numeric custom-property arrays stay safe when a script resizes, replaces or removes the property.": [],
+ "Scripts can keep live UI data across layout changes without losing valid references.": [],
+ "Custom Python constructors report removed data safely when initialization changes the scene or unregisters a class.": [
+  [
+   "Python",
+   false
+  ]
+ ],
+ "Angelo 1.0.10 brings Blender Essentials and Fab assets into your library, adds PDF references, and makes account reconnection and long chat histories easier to use.": [
+  [
+   "Blender Essentials",
+   false
+  ]
+ ],
+ "Find Blender Essentials and Fab assets through the library tools, with approval before importing.": [
+  [
+   "Blender Essentials",
+   false
+  ]
+ ],
+ "Attach PDFs as text references and inspect the objects changed by an agent action.": [],
+ "Search installed and online Blender Essentials for models, materials, worlds, node groups and brushes, then approve their use in your file.": [
+  [
+   "Blender Essentials",
+   false
+  ]
+ ],
+ "Connect Fab, browse available GLB models and approve an exact download and import. Paid suggestions are off by default; Angelo never purchases assets or accepts license terms for you.": [
+  [
+   "Connect Fab",
+   null
+  ]
+ ],
+ "Asset imports capture your unsaved work first and publish success as one Undo step. If recovery cannot complete, Angelo keeps the recovery state and asks you to keep the document open.": [
+  [
+   "Undo",
+   "*"
+  ]
+ ],
+ "Attach a PDF to give the agent its extractable text without installing a separate PDF reader. Protected or image-only PDFs explain when text cannot be read.": [],
+ "Reconnect a coding account from the affected chat, with cancellation and a retry tied to that chat and connection.": [],
+ "Open Scene Changes to see the names of added, removed and modified objects.": [
+  [
+   "Scene Changes",
+   "Operator"
   ]
  ]
 }

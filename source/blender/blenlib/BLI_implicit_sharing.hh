@@ -14,6 +14,7 @@
 #include "BLI_utility_mixins.hh"
 
 #include "MEM_guardedalloc.h"
+#include "MEM_lifetime.hh"
 
 namespace blender {
 
@@ -270,6 +271,9 @@ void copy_shared_pointer(T *src_ptr,
  */
 template<typename T> void free_shared_data(T **data, const ImplicitSharingInfo **sharing_info)
 {
+  if (*data) {
+    mem_lifetime::invalidate(data, sizeof(*data), data);
+  }
   if (*sharing_info) {
     BLI_assert(*data != nullptr);
     (*sharing_info)->remove_user_and_delete_if_last();
@@ -292,8 +296,12 @@ void make_trivial_data_mutable(T **data,
                                const ImplicitSharingInfo **sharing_info,
                                const int64_t size)
 {
+  T *old = *data;
   *data = static_cast<T *>(
       detail::make_trivial_data_mutable_impl(*data, sizeof(T) * size, alignof(T), sharing_info));
+  if (*data != old) {
+    mem_lifetime::invalidate(data, sizeof(*data), data);
+  }
 }
 
 /**
@@ -306,8 +314,12 @@ void resize_trivial_array(T **data,
                           int64_t old_size,
                           int64_t new_size)
 {
+  T *old = *data;
   *data = static_cast<T *>(detail::resize_trivial_array_impl(
       *data, sizeof(T) * old_size, sizeof(T) * new_size, alignof(T), sharing_info));
+  if (*data != old || new_size < old_size) {
+    mem_lifetime::invalidate(data, sizeof(*data), data);
+  }
 }
 
 }  // namespace implicit_sharing

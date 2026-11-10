@@ -8,7 +8,9 @@ refusal's own result says it changed:
 * **Nothing changed** (a stale refusal with ``scene_changed`` false and no partial change, started mutation,
   cleanup or rollback failure: ``unchanged``; or one refused at commit preflight, whose typed edit was never
   applied although Blender's preparation callbacks ran: ``not_applied``, its note kept): nothing is held:
-  other edits, scripts and jobs run as usual. The result names the targets that changed under the edit
+  other edits, scripts and jobs run as usual. Every classified refusal the host raises before a call's edit
+  starts says so (dispatch, native staging, and the run's own binding check, ``stale_binding``); an
+  unclassified one never does (``refusal_codes.error_result``). The result names the targets that changed under the edit
   (``read``) and the tools that read them; a second such refusal adds its own. A corrected edit binds what a
   later read or observation showed; the owner refuses an older binding. Recorded (an Astra bridge trial): a
   cosmetic program refused as stale held the request until a cited correction, the model read every target
@@ -22,9 +24,12 @@ refusal's own result says it changed:
   expired; never a capture the host took without showing it, nor a collaborator's read. Once every target is
   read, scene mutations of that same model step are still refused, carrying what changed, and run from the
   next step (``step``): a read's result can go to code the model wrote before seeing it (a Codex exec cell
-  that reads and then edits). A render job is not a mutation (``scene_mutation``): it changes nothing in
-  the scene. An unclassified or internal failure, or a stale one naming no target, has nothing a read can
-  explain and holds until the next request; a classified failure naming no target keeps its own text.
+  that reads and then edits). A Codex call counts in the step that wrote it, which the bundled runtime
+  names (``model_steps``, which keeps the barrier's step count): a cell that yielded keeps its own step, and
+  the runtime's announcement of the next request ends a step whether or not usage was reported. A render
+  job is not a mutation (``scene_mutation``): it changes nothing in the scene. An unclassified or internal
+  failure, or a stale one naming no target, has nothing a read can explain and holds until the next
+  request; a classified failure naming no target keeps its own text.
   A refusal never names an empty list of targets: a hold with none says scene edits wait for the next
   request. Every tool a recovery names is named as the chat's model calls it (``naming``,
   ``recovery_reads.callable_name``; ``tools.more__<name>`` for a deferred tool in Codex code mode).
@@ -53,6 +58,7 @@ from types import MappingProxyType
 
 from .job_spec import RENDERS
 from .refusal_codes import RefusalError, STALE_CODES, refusal_code, refusal_details
+from .model_steps import ModelSteps
 from .recovery_evidence import MAX_BYTES, MAX_RECORDS
 
 FIELD = "recovery_observation"
@@ -103,12 +109,6 @@ def may_have_changed(result):
     return result.get("scene_changed") is True or any(result.get(key) for key in MAY_HAVE_CHANGED)
 
 
-def record_model_step(context):
-    """A model response of the lead request ended: ``RecoveryBarrier.step`` (never a collaborator's context)."""
-    if not context.cancelled:
-        context.host.recovery_barrier.step()
-
-
 def citation(value):
     """The schema's ``recovery_observation`` value, validated; it has no effect (module docstring)."""
     if not isinstance(value, str) or re.fullmatch(r"recovery:[a-f0-9]{32}", value) is None:
@@ -157,7 +157,7 @@ def shown_targets(tool, result):
     return {handle for handle in shown if isinstance(handle, str)}, gone
 
 
-class RecoveryBarrier:
+class RecoveryBarrier(ModelSteps):
     def __init__(self, naming=None, restorable=None):
         self._lock = threading.RLock()
         self.naming = naming  # name -> the name the chat's model calls (recovery_reads.namer); None: as is.
@@ -179,22 +179,9 @@ class RecoveryBarrier:
         with self._lock:
             self.records = OrderedDict()
             self.pending = None
+            self.closed_hold = None  # The last hold that closed: what it showed, and the step its reads completed in.
             self.generation = 0
-            self.steps = 0  # Model steps of this request (``step``).
-
-    def step(self):
-        """A model step ended: a later call was written by a model that had this step's results.
-
-        Codex: each ``thread/tokenUsage/updated`` of the lead request's turn (``provider_usage``), which Codex
-        sends only after every tool call of that response, an exec cell's included, has resolved, and each turn
-        end (also ``provider_usage``). Claude: each round (``Controller.record_model_round``), submitted after the
-        previous round's plan ran and before its own plan runs. So two calls with the same count came from one
-        step. Known limit: a Codex exec cell that yields keeps running past its response's usage report, and
-        app-server reports usage only when the provider does; closing both needs the runtime to name a call's
-        exec cell.
-        """
-        with self._lock:
-            self.steps += 1
+            self.clear_steps()
 
     def _keep(self, records):
         for handle, row in records.items():
@@ -364,20 +351,34 @@ class RecoveryBarrier:
                           "see their current values and bind their current revisions. Nothing else waits.")
             return {"holding": pending["holding"], "reason": reason, "read": unread, "read_tools": self._names(READ_TOOLS)}
 
-    def check(self, name, arguments):
+    def check(self, name, arguments, step=None):
         """Refuse a scene mutation while a hold is open; False (admitted) otherwise.
 
         Checked before inferred binding, admission, dispatch and live commit, and free of side effects a
         refused call could leave (Codex builds its activity summary through the same check). Once every target
         is read, scene mutations of that same model step are still refused, carrying what changed: a read's
         result can go to code the model wrote before seeing it (a Codex exec cell that reads and then edits).
-        From the next step (``step``) they run, and the hold closes.
+        From the next step (``step``) they run, and the hold closes. ``step`` is the step that wrote the call
+        when the runtime names it (``call_step``: a yielded exec cell's later edit keeps its cell's step), else
+        the call counts in the current step. A call written no later than the step that completed a closed
+        hold's reads is still refused: its code never saw what changed (a yielded cell's edit after the model's
+        own informed edit closed the hold).
         """
         with self._lock:
-            pending = self.pending
-            if pending is None or not pending["holding"] or not scene_mutation(name, arguments):
+            written = self.steps if step is None else step
+            if not scene_mutation(name, arguments):
                 return False
-            if self._complete() and self.steps > pending.get("complete_step", self.steps):
+            pending = self.pending
+            if pending is None or not pending["holding"]:
+                closed = self.closed_hold
+                if closed is None or written > closed["step"]:
+                    return False
+                raise RefusalError("This edit was written in or before the step that read every target again, "
+                                   "before what changed (recovery.changes) reached you, so it did not run. Edit again "
+                                   "from what you have read.", code="RECOVERY_REQUIRED",
+                                   details={"recovery": copy.deepcopy(closed["recovery"])})
+            if self._complete() and written > pending.get("complete_step", self.steps):
+                self.closed_hold = {"step": pending.get("complete_step", self.steps), "recovery": self.description()}
                 self.pending = None  # Permanent from here on: closing it twice changes nothing.
                 return False
             description = self.description()

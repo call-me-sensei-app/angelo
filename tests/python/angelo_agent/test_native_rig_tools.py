@@ -3,6 +3,8 @@
 """The hand-rigging tool family's contract (rig_spec, its declaration, deferral, guidance and picture delivery), and
 that a worker's chat is neither offered, run nor told of it, on either path (design A′ or the lanes). No Blender."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

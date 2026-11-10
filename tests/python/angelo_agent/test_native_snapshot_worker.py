@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Host tests: the snapshot worker thread and its main-thread host glue."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import os
 import sys
@@ -161,7 +163,7 @@ class SnapshotServiceTests(unittest.TestCase):
         self.assertTrue(self.pump_until(lambda: self.controller.emit.called))
         message = self.controller.emit.call_args[0][1]
         self.assertEqual(message["role"], "system")
-        self.assertIn("removed 1 oldest restore point", message["text"])
+        self.assertIn("removed the oldest snapshot", message["text"])
         for record in records[1:]:
             # The reason and every record's state, so a failure says which window it was (a flake seen once in 30
             # full-suite runs, 2026-10-19, reported only "False is not true").

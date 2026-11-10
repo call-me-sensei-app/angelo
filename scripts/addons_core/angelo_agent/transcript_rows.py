@@ -77,6 +77,10 @@ class TranscriptRows:
             self._last_save = time.monotonic()
             self._save_owed = False   # Everything noted is written: the pump owes no save.
 
+    def redact(self, value):
+        text = str(value)
+        return text.replace(self.api_key, "[REDACTED]") if self.api_key else text
+
     def _redacted_text(self, previous, text):
         """``text`` redacted for a row whose stored text was ``previous`` (``Controller.redact``).
 

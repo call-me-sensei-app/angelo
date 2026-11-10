@@ -11,12 +11,17 @@ Angelo binary: ``--background --factory-startup --disable-autoexec
 --python-exit-code 1``. No provider, account, network request or paid call.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
 import tempfile
 import traceback
 from pathlib import Path
+from unittest.mock import patch
 
 import bpy
 from mathutils import Vector
@@ -30,7 +35,7 @@ os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_CONNECTIONS_DIR=str(OU
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import native_programs as native, scene_queries as queries, scene_validation  # noqa: E402
-from angelo_agent import scene_settings  # noqa: E402
+from angelo_agent import commit_orphans, scene_settings  # noqa: E402
 from angelo_agent.action_world_spec import world_graph  # noqa: E402
 from angelo_agent.tool_specs import validate_call  # noqa: E402
 from program_qa_helpers import no_stages, commit_operator  # noqa: E402
@@ -94,6 +99,7 @@ def colour_and_strength():
     queries.invalidate()
     world = window.scene.world
     name, colour, strength = world.name, *background(world)[:2]
+    world_uid = world.session_uid
     entry = settings()
     check("settings_report_world", entry["world"]["supported_graph"] and abs(entry["world"]["strength"] - strength) < 1e-6)
     program = configure(entry, color=[.1, .2, .3], strength=2.5)
@@ -104,19 +110,30 @@ def colour_and_strength():
           and abs(background(window.scene.world)[1] - strength) < 1e-6)
     delta = next(item for item in job.delta["details"] if item["handle"] == entry["handle"])["changes"]["world"]
     check("world_delta_before_after", abs(delta["before"]["strength"] - strength) < 1e-6 and abs(delta["after"]["strength"] - 2.5) < 1e-6)
-    check("world_commits", commit(job) and world_checks_passed(job))
+    before_free = {}
+    free = commit_orphans.free_replaced
+
+    def read_then_free(replaced, scope=None):   # The replaced World as the commit leaves it, read before it is freed.
+        for pair in replaced:
+            if pair[0] is not None and pair[0].session_uid == world_uid:
+                before_free["strength"] = background(pair[0])[1]
+        return free(replaced, scope)
+    with patch.object(commit_orphans, "free_replaced", read_then_free):
+        check("world_commits", commit(job) and world_checks_passed(job))
     new_colour, new_strength, _ = background(window.scene.world)
     check("world_values_live", abs(new_strength - 2.5) < 1e-6 and all(abs(a - b) < 1e-6 for a, b in zip(new_colour, [.1, .2, .3]))
           and abs(window.scene.world.color[2] - .3) < 1e-6)
-    # The edited copy takes the name (commit adopts it); the replaced World object is untouched.
-    check("original_world_untouched", abs(background(world)[1] - strength) < 1e-6 and window.scene.world.name == name
-          and window.scene.world != world)
+    # The edited copy takes the name (commit adopts it); the World it replaced is untouched until the commit frees it
+    # (commit_orphans), and one Undo below gives it back.
+    check("original_world_untouched", abs(before_free.get("strength", -1.0) - strength) < 1e-6
+          and window.scene.world.name == name and window.scene.world.session_uid != world_uid)
+    check("original_world_freed", world_uid not in {block.session_uid for block in bpy.data.worlds})
     row = next(item for item in job.result["live_revisions"]["objects"] if item.get("type") == "SCENE")
     check("world_live_revision_is_fresh", row["object_revision"] == settings()["revision"])
     bpy.ops.ed.undo()
     queries.invalidate()
     check("world_one_undo_restores", window.scene.world.name == name and abs(background(window.scene.world)[1] - strength) < 1e-6
-          and no_stages())
+          and window.scene.world.session_uid == world_uid and no_stages())
 
 
 def environment_image():

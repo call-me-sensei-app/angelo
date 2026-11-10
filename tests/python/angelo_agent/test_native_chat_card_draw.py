@@ -3,6 +3,8 @@
 """The chat's decision cards (chat_card_draw): plain summaries, readable details, measured layout, and controls
 that are either live with their original action or disabled with a reason, never dead."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import sys
 import types

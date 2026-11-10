@@ -68,11 +68,18 @@ class ToolCall:
     chat_id: str = ""  # The chat that asked for it: what its card reads is that chat's own (worker_approval).
     merge_waits: bool = False  # An approved merge stopped at its run behind its chat's own bound edit (merge_hold).
     binds_after_merge: bool = False  # A′: an edit not bound yet, waiting for its chat's earlier merge (merge_hold).
+    # The model step that wrote it, when its runtime names one (model_steps.record_call_step: a yielded
+    # Codex exec cell's later call keeps its cell's step); None: the step it is checked in. Host-only.
+    model_step: object = None
+    shown_status: str = ""  # The live row's status this call set for its own work; it ends with the call (call_status).
 
 
 def request_tool(self, call_id, name, arguments, callback, *, enqueue=True, request_fence=None,
-                 delivery_owner=None, parent_call=None, result_observer=None, completion_sink=None, script_file=None):
-    """Admit synchronously; deliver immediate answers after our admission locks have exited."""
+                 delivery_owner=None, parent_call=None, result_observer=None, completion_sink=None, script_file=None,
+                 model_step=None):
+    """Admit synchronously; deliver immediate answers after our admission locks have exited.
+
+    ``model_step``: the step that wrote the call (``ToolCall.model_step``), None for the step it is checked in."""
     from .program_completion import CompletionWaiter
 
     callback = CompletionWaiter(callback, completion_sink)
@@ -80,7 +87,8 @@ def request_tool(self, call_id, name, arguments, callback, *, enqueue=True, requ
     try:
         return self._admit_tool_request(call_id, name, arguments, callback, answer=answers.append,
             enqueue=enqueue, request_fence=request_fence, delivery_owner=delivery_owner,
-            parent_call=parent_call, result_observer=result_observer, script_file=script_file)
+            parent_call=parent_call, result_observer=result_observer, script_file=script_file,
+            model_step=model_step)
     finally:
         for result in answers:
             self._observe_tool_result(result_observer, result)
@@ -155,6 +163,8 @@ def end_closed_delivery(self, call):
                       "cleanup_error": str(error)[:300]}
     else:
         result = {"error": "The tool delivery ended before execution; no operation was applied"}
+        if not (call.committing or call.preparation_effects_possible):   # Unstarted or only staged: nothing of it ran.
+            result.update(error_code="CANCELLED", scene_changed=False)
     self.finish_tool(call, result)
     return True
 
@@ -169,8 +179,10 @@ def observe_tool_result(observer, result):
             pass
 
 
-def request_context_tool(self, call_id, name, arguments, callback, *, delivery_owner=None, script_file=None):
-    """Route one request's owned tool call without moving billing or request state."""
+def request_context_tool(self, call_id, name, arguments, callback, *, delivery_owner=None, script_file=None,
+                         model_step=None):
+    """Route one request's owned tool call without moving billing or request state; ``model_step``: the step that
+    wrote it (``record_call_step``), None for the step it is checked in."""
     from . import routing
 
     owner = delivery_owner if delivery_owner is not None else self.delivery_owner
@@ -197,7 +209,8 @@ def request_context_tool(self, call_id, name, arguments, callback, *, delivery_o
     scope = routing.route_key(self.connection_id, self.state["provider"]) + "/" + str(self.state.get("native_id") or "connecting")
     self.program_completions.request(scope + "/" + str(call_id), name, arguments, callback,
                                      delivery_owner=owner, result_observer=observer,
-                                     script_file=script_file if name == "angelo_execute_python" else None)
+                                     script_file=script_file if name == "angelo_execute_python" else None,
+                                     model_step=model_step)
 
 
 def result_observer(context, name, arguments, *, delivery_owner=None):

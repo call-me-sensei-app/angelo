@@ -18,6 +18,10 @@ inference, network or paid service is used; logs are checked for native
 assertions, tracebacks and leaks.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import argparse
 import hashlib
 import json

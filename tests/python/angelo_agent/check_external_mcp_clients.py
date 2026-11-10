@@ -34,6 +34,8 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import provider_isolation as isolation  # noqa: E402  (each profile's account before it is billed)
 
 PROMPTS = {
     "claude_tools": ("Use only the angelo MCP tools for this, never a shell. Look at the open Blender scene, then add "
@@ -66,7 +68,8 @@ def run_claude(args, resources, state, name, folder):
     command = [args.claude, "-p", PROMPTS[name], "--output-format", "stream-json", "--verbose", "--model",
                args.claude_model, "--mcp-config", str(config_path), "--strict-mcp-config",
                "--allowedTools", "mcp__angelo"]
-    env = dict(os.environ, CLAUDE_CONFIG_DIR=args.claude_config_dir)
+    env = dict(isolation.without_credentials(os.environ),
+               CLAUDE_CONFIG_DIR=isolation.checked("claude-profile", args.claude_config_dir))
     run = _run(command, env, folder, name)
     # The session's transcript holds the request shape; it leaves the signed-in profile, which keeps nothing.
     for path in Path(args.claude_config_dir).glob("projects/*/%s.jsonl" % run.pop("session", None)):
@@ -81,7 +84,7 @@ def run_codex(args, resources, state, name, folder):
                "--dangerously-bypass-approvals-and-sandbox",   # Nobody answers Codex's own prompts in exec mode.
                "-c", "mcp_servers.angelo.command=" + python, "-c", "mcp_servers.angelo.args=" + arguments,
                "-c", "mcp_servers.angelo.tool_timeout_sec=900", "--json", PROMPTS[name]]
-    env = dict(os.environ, CODEX_HOME=args.codex_home)
+    env = dict(isolation.without_credentials(os.environ), CODEX_HOME=isolation.checked("codex-profile", args.codex_home))
     run = _run(command, env, folder, name)
     for path in Path(args.codex_home).glob("sessions/**/rollout-*%s.jsonl" % run.pop("session", None)):
         (folder / (name + "-rollouts")).mkdir(exist_ok=True)
@@ -135,8 +138,13 @@ def main():
     args = parser.parse_args()
     root = Path(args.out).resolve()
     root.mkdir(parents=True, exist_ok=True)
-    env = isolated_environment(root)
+    # Before anything starts: both apps' profiles and every subscription in the task's store, at their accounts.
+    isolation.check_billed([("claude-profile", args.claude_config_dir), ("codex-profile", args.codex_home)],
+                           [args.connections_dir])
+    env = isolation.without_credentials(isolated_environment(root))
     env["ANGELO_CONNECTIONS_DIR"] = args.connections_dir
+    # A connection that reuses a native sign-in finds none: never the person's ~/.codex or ~/.claude.
+    env.update(CODEX_HOME=str(root / "no-login" / ".codex"), CLAUDE_CONFIG_DIR=str(root / "no-login" / ".claude"))
     # The person's real HOME: a provider CLI that Angelo's task starts finds its sign-in in the login Keychain only
     # there. State, config and accounts stay private.
     for name in ("HOME", "CFFIXED_USER_HOME"):

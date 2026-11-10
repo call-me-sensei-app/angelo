@@ -9,8 +9,8 @@ forwarded to the worker (``worker_process`` over ``worker_channel``), which runs
 
 * **Reads** run there and return their result, plus the recovery evidence they captured, which joins this thread's
   ``recovery_evidence.collect`` as if read here.
-* **Preconditions** come back as exact values (``worker_values``), so the controller's ``==`` checks and the program
-  review behave as in one process.
+* **Preconditions** come back as exact values (``worker_values``), so the controller's binding checks (``stale_binding.same``)
+  and the program review behave as in one process.
 * **An approved edit runs whole in the worker:** ``supports_native_job`` is False, so the controller sends the call
   through ``execute`` once it is approved; the worker stages and commits it through its own controller with its own
   Undo, refuses it when its binding is no longer exactly the one approved here, saves its file, and returns the
@@ -261,7 +261,8 @@ class RemoteExecutor:
             if not answer.get("resend_identifiers"):
                 return answer
             self._sent_identifiers = None
-        raise _nothing_ran(RuntimeError("The worker could not take this chat's observed handles; nothing ran"))
+        raise _nothing_ran(RefusalError("The worker could not take this chat's observed handles; nothing ran",
+                                        code="OWNERSHIP"))   # The worker's chat moved on (it started again).
 
     def _admit(self, name, arguments=None):
         refusals.admit(name, arguments)   # Before anything is sent; the worker checks again (``worker_host``).

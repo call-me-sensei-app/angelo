@@ -28,6 +28,8 @@ message) carries ``app-name: <reason>`` in a comment on its line, or alone on th
 covers, so a new string never inherits an allowance silently.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import functools
 import json
@@ -48,6 +50,7 @@ UPSTREAM_WORD = re.compile(r"\b[Bb]lender\b")
 
 # (pattern, the class of context it names). A match covers the occurrences of "Blender" inside it.
 ALLOWED = tuple((re.compile(pattern), reason) for pattern, reason in (
+    (r"\bBlender Essentials\b", "the third-party asset library’s official name, not the running application"),
     (r"\bBlender Python\b", "the scripting API's name, which stock Blender shares"),
     (r"\b(?:stock|upstream|installed) Blender\b", "stock Blender, a separate program"),
     (r"\bBlender v?(?:\d+(?:\.\d+)*|\{version\}|\{:?\d*[ds]?\}|%[sd])|\b(?:[Vv]ersions? of|newer|older|newest|future|later) Blender\b"

@@ -20,10 +20,15 @@ LINE = 14   # A why line too long for one line wraps to a second, and its row gr
 INDENT = 14   # A row inside a group, in a list that shows the group's header above it.
 TEXT_X = 50   # A row's title column, beside its tile; a row with no glyph (a template, a flow) keeps the column, no tile.
 ACTIONABLE = ("row", "toggle", "group")
-TILE_FILL = (0.255, 0.255, 0.255, 1)
-# A glyph's cut-out (the inside of a ring, a link's opening): the tile's own colour, TEAL_SOFT over the popover, made
-# opaque. TEAL_SOFT is translucent, so drawn over a teal rim it left the rim solid (a filled disc, a flat block).
-OPENING = tuple(0.165 * (1 - 0.22) + c * 0.22 for c in ui_tokens.TEAL[:3]) + (1,)
+TOKEN_NAMES = {"TILE_FILL": "HIGHLIGHT"}   # The + tile's fill, by its old name (base_mesh_thumbs reads it).
+__getattr__ = ui_tokens.forward(TOKEN_NAMES, __name__)
+
+
+def opening():
+    """A glyph's cut-out (the inside of a ring, a link's opening): the tile's own colour, TEAL_SOFT over the menu,
+    made opaque. TEAL_SOFT is translucent, so drawn over a teal rim it left the rim solid (a filled disc, a flat
+    block). Read as it draws, in the theme's variant."""
+    return ui_tokens.over(ui_tokens.TEAL_SOFT, ui_tokens.MENU)
 
 
 def _label(value):
@@ -43,9 +48,10 @@ def _shown(row, key):
 
 def draw_glyph(view, glyph, tx, ty):
     """A row's 32 px tile: attach (+), base_mesh (a head on shoulders), studio (a framed spark), flow (three linked
-    nodes), new (+ in teal), web (a globe), region (a frame with a teal quarter), link (two chain links), video (a film
+    nodes), new (+ in teal), web (a globe), region (a frame with a teal quarter), link (two chain links), apps (a plug), video (a film
     frame around a play mark), library (a magnifier over tiles), bake_maps (a 2 x 2 grid of maps), tension (a spring),
-    feedback (a speech bubble), select (a dashed marquee), anything else a dot. Shapes and strokes only: no icon font, nothing mirrored."""
+    feedback (a speech bubble), select (a dashed marquee), goal (a target), anything else a dot. Shapes and strokes only:
+    no icon font, nothing mirrored."""
     from . import render_glyphs
     if render_glyphs.draw_tile(view, glyph, tx, ty):   # AI render and the engines (render_glyphs).
         return
@@ -54,8 +60,8 @@ def draw_glyph(view, glyph, tx, ty):
         view.stroke(tx + 16, ty + 9, tx + 16, ty + 23, ui_tokens.TEAL, 1.8)
         return
     if glyph == "attach":
-        view.shape(tx, ty, 32, 32, TILE_FILL, 8)
-        view.icon("plus", tx + 16, ty + 16, view.TEXT)
+        view.shape(tx, ty, 32, 32, ui_tokens.HIGHLIGHT, 8)
+        view.icon("plus", tx + 16, ty + 16, ui_tokens.TEXT)
         return
     view.shape(tx, ty, 32, 32, ui_tokens.TEAL_SOFT, 8)
     teal = ui_tokens.TEAL
@@ -75,9 +81,15 @@ def draw_glyph(view, glyph, tx, ty):
         if glyph == "new":
             view.shape(tx + 20, ty + 1, 11, 11, ui_tokens.INK, 5.5)
             view.icon("plus", tx + 25.5, ty + 6.5, teal)
+    elif glyph == "goal":   # A target: two rings and a centre.
+        view.shape(tx + 7, ty + 7, 18, 18, teal, 9)
+        view.shape(tx + 8.8, ty + 8.8, 14.4, 14.4, opening(), 7.2)
+        view.shape(tx + 11, ty + 11, 10, 10, teal, 5)
+        view.shape(tx + 12.6, ty + 12.6, 6.8, 6.8, opening(), 3.4)
+        view.shape(tx + 14.5, ty + 14.5, 3, 3, teal, 1.5)
     elif glyph == "web":
         view.shape(tx + 7, ty + 7, 18, 18, teal, 9)
-        view.shape(tx + 8.6, ty + 8.6, 14.8, 14.8, OPENING, 7.4)
+        view.shape(tx + 8.6, ty + 8.6, 14.8, 14.8, opening(), 7.4)
         view.stroke(tx + 8, ty + 16, tx + 24, ty + 16, teal, 1.4)
         for (ax, ay), (bx, by) in (((16, 8), (12.5, 16)), ((12.5, 16), (16, 24)), ((16, 8), (19.5, 16)),
                                    ((19.5, 16), (16, 24))):
@@ -102,7 +114,7 @@ def draw_glyph(view, glyph, tx, ty):
         for n, (dx, dy) in enumerate(((7, 7), (17, 7), (7, 17), (17, 17))):
             view.shape(tx + dx, ty + dy, 8, 8, teal, 2)
             if n:
-                view.shape(tx + dx + 1.6, ty + dy + 1.6, 4.8, 4.8, OPENING, 1.2)
+                view.shape(tx + dx + 1.6, ty + dy + 1.6, 4.8, 4.8, opening(), 1.2)
     elif glyph == "region":   # A frame with one teal quarter: a region of the render rendered again.
         for (ax, ay), (bx, by) in (((8, 8), (24, 8)), ((24, 8), (24, 24)), ((24, 24), (8, 24)), ((8, 24), (8, 8))):
             view.stroke(tx + ax, ty + ay, tx + bx, ty + by, teal, 1.4)
@@ -119,10 +131,15 @@ def draw_glyph(view, glyph, tx, ty):
         for dx, dy in ((-4, 2.5), (4, -2.5)):
             view.shape(tx + 16 + dx - 6.5, ty + 16 + dy - 4, 13, 8, teal, 4)
         for dx, dy in ((-4, 2.5), (4, -2.5)):
-            view.shape(tx + 16 + dx - 4, ty + 16 + dy - 1.6, 8, 3.2, OPENING, 1.6)
+            view.shape(tx + 16 + dx - 4, ty + 16 + dy - 1.6, 8, 3.2, opening(), 1.6)
+    elif glyph == "apps":   # A plug, prongs up and its cable down: Apps and settings (connecting other apps).
+        view.shape(tx + 10.5, ty + 19, 3, 7, teal, 1.5)
+        view.shape(tx + 18.5, ty + 19, 3, 7, teal, 1.5)
+        view.shape(tx + 8, ty + 11, 16, 9, teal, 3)
+        view.stroke(tx + 16, ty + 11, tx + 16, ty + 5, teal, 2)
     elif glyph == "feedback":   # A speech bubble with its tail at the lower left: Report a bug, Request a feature.
         view.shape(tx + 6, ty + 10, 20, 15, teal, 5)
-        view.shape(tx + 7.6, ty + 11.6, 16.8, 11.8, OPENING, 3.6)
+        view.shape(tx + 7.6, ty + 11.6, 16.8, 11.8, opening(), 3.6)
         for (ax, ay), (bx, by) in (((10, 11), (8, 6)), ((8, 6), (15, 11))):
             view.stroke(tx + ax, ty + ay, tx + bx, ty + by, teal, 1.5)
         for x in (11.5, 16, 20.5):
@@ -185,9 +202,9 @@ def draw_row(view, row, rect, glyphs=None):
         view.text(view.elide(_shown(row, "label"), rx + rw - 24 - tx, 13), tx, ry + (rh - 21 if lines else 17), 13)
         below = 0
     for n, line in enumerate(lines):
-        view.text(line, tx, ry + rh - 37 - below - LINE * n, 11.5, view.MUTED)
+        view.text(line, tx, ry + rh - 37 - below - LINE * n, 11.5, ui_tokens.MUTED)
     if row["kind"] == "group":   # Open: the chevron points down at its rows; closed: it points on.
-        view.icon("chevron" if row.get("open") else "next", rx + rw - 16, ry + rh / 2, view.MUTED)
+        view.icon("chevron" if row.get("open") else "next", rx + rw - 16, ry + rh / 2, ui_tokens.MUTED)
     elif row.get("selected"):   # The shared check: a symbol, so it reads the same in a mirrored (right-to-left) draw.
         from . import ui_kit
         ui_kit.check(view, rx + rw - 16, ry + rh / 2, 1.0, ui_tokens.TEAL, 1.6)
@@ -235,20 +252,20 @@ def draw_rows(view, state, popup, rows, rects, area, width, height, first=0, pin
             rx, rw = rx + INDENT, rw - INDENT
         kind = row["kind"]
         if kind == "section":
-            view.text(view.elide(_label(row["label"]).upper(), rw - 16, 11), rx + 8, ry + 8, 11, view.MUTED)
+            view.text(view.elide(_label(row["label"]), rw - 16, 11), rx + 8, ry + 8, 11, ui_tokens.MUTED)   # As translated
             continue
         if kind == "note":
-            view.text(view.elide(_label(row["label"]), rw - 16, 11.5), rx + 8, ry + 6, 11.5, view.MUTED)
+            view.text(view.elide(_label(row["label"]), rw - 16, 11.5), rx + 8, ry + 6, 11.5, ui_tokens.MUTED)
             continue
         target = (row["action"], row["value"])
         if popup.get("hover") == target or pointed == target:
-            view.shape(rx, ry + 1, rw, rh - 2, view.LINE, 9)
+            view.shape(rx, ry + 1, rw, rh - 2, ui_tokens.HIGHLIGHT, 9)
         if pointed == target:   # The keyboard's place: the shared ring.
             from . import ui_kit
             ui_kit.focus_ring(view, (rx, ry + 1, rw, rh - 2), 9, 1.0)
         if kind == "toggle":
             track = (rx + 8, ry + 9, 30, 17)
-            view.shape(*track, ui_tokens.TEAL if row["on"] else (0.29, 0.29, 0.29, 1), 8)
+            view.shape(*track, ui_tokens.TEAL if row["on"] else ui_tokens.CONTROL_OFF, 8)
             view.shape(track[0] + (15 if row["on"] else 2), track[1] + 2, 13, 13,
                        ui_tokens.INK if row["on"] else ui_tokens.TEXT, 6)
             view.text(view.elide(_label(row["label"]), rw - 56, 12), rx + 48, ry + 13, 12)
@@ -270,7 +287,7 @@ def draw_scrollbar(view, popup, area):
     content = lh + geometry["max_scroll"]
     thumb_h = max(22, lh * lh / content)
     thumb_y = ly + lh - thumb_h - (lh - thumb_h) * popup.get("scroll", 0) / geometry["max_scroll"]
-    view.shape(lx + lw + 2, thumb_y, 2, thumb_h, view.MUTED, 1)
+    view.shape(lx + lw + 2, thumb_y, 2, thumb_h, ui_tokens.MUTED, 1)
 
 
 def _hit(view, state, rect, action, value, width, height):

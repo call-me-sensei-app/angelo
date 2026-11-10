@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -22,6 +23,20 @@
 #include "AS_asset_catalog_path.hh"
 
 namespace blender::asset_system {
+
+/** Process-wide supported catalog edit token. Zero refuses updater authorization.
+ * Main-thread only: this is not a transaction snapshot of background library caches. */
+uint64_t catalog_edit_generation();
+
+/** Invalidates updater decisions across supported mutation/replacement, including
+ * background cache work. This does not serialize catalogs or grant edit ownership. */
+class CatalogEditScope {
+ public:
+  explicit CatalogEditScope(bool requires_main_thread = false);
+  ~CatalogEditScope();
+  CatalogEditScope(const CatalogEditScope &) = delete;
+  CatalogEditScope &operator=(const CatalogEditScope &) = delete;
+};
 
 class AssetCatalog;
 class AssetCatalogCollection;

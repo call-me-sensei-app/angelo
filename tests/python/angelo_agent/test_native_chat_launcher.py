@@ -9,6 +9,8 @@ input that never makes a tool or a dock wait, the toggle's own translated label 
 cost guard for the blink, and no launcher in automation runs. ``test_blender_chat_launcher`` proves it in the app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import types
@@ -247,7 +249,9 @@ class SignalTests(unittest.TestCase):
                 mock.patch.object(launcher.bpy, "context", context, create=True), \
                 mock.patch.object(launcher, "_redraw"), mock.patch.object(launcher, "_leave"), \
                 mock.patch.object(launcher, "moving", return_value=moving), \
-                mock.patch.object(launcher, "update") as update:
+                mock.patch.object(launcher, "update") as update, \
+                mock.patch("angelo_agent.launcher_waiting.select"), \
+                mock.patch("angelo_agent.launcher_waiting.clear_hidden_hits"):
             launcher._open(window)
             self.assertIn(7, launcher._opening, "Angelo hides at once on the click")
             run = timers.register.call_args.args[0]

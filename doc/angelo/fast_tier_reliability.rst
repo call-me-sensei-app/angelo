@@ -79,8 +79,10 @@ artist routinely changes without touching an object. So:
   closed, with an error naming what changed and what to do.
 * A still object's revision carries no frame at all
   (``scene_fingerprints.context_field``, ``revision_time.still``: the rule
-  above, with a parent, a Mirror or Array object and a focus object followed
-  and required still rather than refused), so a frame change made before a
+  above, with a parent and every Object a modifier or the object's data points
+  at, read from Blender's RNA, followed and required still rather than
+  refused; a followed armature, lattice or curve is judged by the same rules),
+  so a frame change made before a
   program is written, by the person or by the model's own script, does not
   stale its binding either; a time-dependent object's revision still does.
   A frame move between approval and staging still rebinds only under the

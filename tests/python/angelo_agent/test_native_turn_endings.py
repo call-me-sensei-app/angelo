@@ -6,6 +6,8 @@ or owed for a check, and no name round is asked for (turn_endings).
 Pinned with the real ClaudeProvider loop and mocked rounds, as in test_native_self_checks.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import sys
 import unittest

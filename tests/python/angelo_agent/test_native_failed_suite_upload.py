@@ -8,6 +8,8 @@ folders came back; and only ``FAILED`` lines counted, never a crashed, timed-out
 the runner's ``summary.json``, and no shipped tooling parses a suite name out of text.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import sys
 import unittest

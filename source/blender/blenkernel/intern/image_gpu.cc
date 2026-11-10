@@ -376,7 +376,7 @@ void BKE_image_ensure_gpu_texture(Image *image, ImageUser *iuser)
       (!ELEM(image->runtime->gpu_view, IMAGE_GPU_VIEW_NONE, iuser->multi_index) &&
        iuser->multi_index >= 2))
   {
-    BKE_image_partial_update_mark_full_update(image);
+    BKE_image_partial_update_mark_gpu_stale(image); /* Angelo: another pass, not new pixels. */
   }
 }
 
@@ -719,7 +719,7 @@ static ImBuf *update_do_scale(const uchar *rect,
     (*h)--;
   }
 
-  /* Scale pixels. */
+  /* Scale pixels. Null when the copy cannot be allocated (#IMB_scale ignores it). */
   ImBuf *ibuf = IMB_allocFromBuffer(rect, rect_float, part_w, part_h, 4);
   IMB_scale(ibuf, *w, *h, IMBScaleFilter::Box, false);
 
@@ -754,6 +754,9 @@ static void gpu_texture_update_scaled(gpu::Texture *tex,
     int limit_h = GPU_texture_height(tex);
 
     ibuf = update_do_scale(rect, rect_float, &x, &y, &w, &h, limit_w, limit_h, full_w, full_h);
+  }
+  if (ibuf == nullptr) {
+    return; /* Out of memory: this part of the texture keeps its pixels. */
   }
 
   const void *data = ibuf->float_data() ? static_cast<const void *>(ibuf->float_data()) :

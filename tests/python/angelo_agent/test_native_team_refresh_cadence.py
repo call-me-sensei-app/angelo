@@ -10,6 +10,8 @@ refresh; and a shared token is used only with the refresh token it came with,
 never when it was refused, expired or another account's.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import subprocess
@@ -43,7 +45,7 @@ class CadenceCase(AccountCase):
                               access_vault=self.shared if access_vault == "shared" else access_vault,
                               process_lock=team_lock.factory(self.folder.name, 5), clock=self.clock.time,
                               monotonic=self.clock.monotonic, policy=lambda: policy or self.policy)
-        self.addCleanup(account.close)
+        self.addCleanup(self.stop, account)  # Its worker opens the lock file in the folder.
         return account
 
     def start(self, policy=None):

@@ -33,3 +33,21 @@ def set_times(fd, ns):
     access, modified = filetime(ns[0]), filetime(ns[1])
     if not kernel32.SetFileTime(msvcrt.get_osfhandle(fd), None, ctypes.byref(access), ctypes.byref(modified)):
         raise ctypes.WinError(ctypes.get_last_error())
+
+
+def set_times_exact(fd, ns):
+    """``set_times`` to the file system's own precision: POSIX ``futimens`` (nanoseconds; CPython's ``os.utime`` on a
+    descriptor goes through ``futimes`` on macOS, which keeps microseconds), Windows ``SetFileTime`` (100 ns, NTFS's
+    own step). What another program can do to put a file's modification time back exactly as it was."""
+    if os.name == "nt":
+        set_times(fd, ns)
+        return
+    import ctypes
+
+    class Timespec(ctypes.Structure):
+        _fields_ = [("tv_sec", ctypes.c_long), ("tv_nsec", ctypes.c_long)]
+    libc = ctypes.CDLL(None, use_errno=True)
+    times = (Timespec * 2)(*(Timespec(int(value) // 10**9, int(value) % 10**9) for value in ns))
+    if libc.futimens(fd, times) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))

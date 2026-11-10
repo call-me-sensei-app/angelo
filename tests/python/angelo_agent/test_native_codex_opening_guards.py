@@ -9,6 +9,8 @@ around the warm-up's turn/start sends no turn or ends it at once; every sent
 warm-up leaves a receipt with what is known.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import threading
 import time

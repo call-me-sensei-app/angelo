@@ -14,6 +14,10 @@ the menu and the picker are saved for a look.
 Needs Godot 4.4 or newer: ``ANGELO_QA_GODOT`` (default ``/Applications/Godot.app/Contents/MacOS/Godot``).
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import subprocess

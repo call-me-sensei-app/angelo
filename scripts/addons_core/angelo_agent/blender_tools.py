@@ -29,6 +29,7 @@ from .program_spec import PROGRAM_NAMES
 from .validation_spec import VALIDATION_NAMES
 from .action_recipes import RECIPE_NAMES
 from .view_spec import VIEW_NAMES
+from .goal_spec import GOAL_NAMES
 from .job_spec import JOB_NAMES
 from .engine_check_spec import ENGINE_NAMES
 from . import job_host, live_windows, program_context, script_document, web_host
@@ -185,9 +186,9 @@ class BlenderExecutor:
         if name in SCULPT_MUTATIONS:
             from . import sculpt
             area = next((a for a in live_windows.areas(self.window) if a.type == 'VIEW_3D'), None)
-            if area is None:
-                raise RuntimeError('Keep a 3D Viewport open for sculpt approval')
-            region = next(r for r in area.regions if r.type == 'WINDOW')
+            region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area is not None else None
+            if region is None:   # Refused before anything ran, as library and team imports refuse a missing view.
+                raise RefusalError('Keep a 3D Viewport open for sculpt approval', code="UNSUPPORTED")
             with bpy.context.temp_override(window=self.window, area=area, region=region):
                 return sculpt.precondition(self.window, name, arguments)
         if name == "angelo_apply_batch":
@@ -327,6 +328,9 @@ class BlenderExecutor:
         if name in RECIPE_NAMES:
             from . import action_recipes
             return action_recipes.execute(self.window,name,arguments)
+        if name in GOAL_NAMES:   # A goal held across turns: its state and the host's measurement (goal_loop).
+            from . import goal_controls
+            return goal_controls.execute(self.studio_context, self.window, arguments)
         if name in VIEW_NAMES:
             from . import view_capture
             return view_capture.execute(self.window,arguments,self.observation_store,self.studio_context,True)

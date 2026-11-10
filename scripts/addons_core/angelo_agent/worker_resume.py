@@ -10,9 +10,9 @@ checks of 2026-10-25).
 - A batch opens at a start in a turn the person asked for (``worker_sessions.execute``); a start in Angelo's own turn
   opens none, so events never chain without the person (break-it EVENT H-3), and its starts count on the person's
   request's Auto budget (``worker_sessions``). Its event fires at most once, at a queue step where the lead's chat
-  is open, current and idle (no turn, nothing pending, no setup owed, and Blender not held by a render, bake or
-  Angelo job: the send's own preconditions, EVENT M-1) and its own scene is shown (``document_scene.away``: R5-M-1,
-  else the send is refused and the event lost), none of its workers is starting, queued, waiting to start
+  is open, current and idle (no turn, nothing pending, a connection it can send on, R2-L-7, and Blender not held
+  by a render, bake or Angelo job: the send's own preconditions, EVENT M-1) and its own scene is shown
+  (``document_scene.away``: R5-M-1, else the send is refused and the event lost), none of its workers is starting, queued, waiting to start
   again or working (``worker_sessions.finished``) or still has its saved part's count being read (``_checking``:
   status cannot say yet whether it is mergeable, so the batch waits, never ends on it, A′), and some part is
   mergeable (``worker_merge.part_refusal``'s rule, the status rows' ``mergeable``). With nothing mergeable the batch
@@ -31,6 +31,9 @@ checks of 2026-10-25).
 - ``ASK_TURNS`` (the maintainer: on): such a turn starts in Ask too, with no click, and its own merge of the batch's
   parts runs with no card (``event_merge``, read by ``Controller._auto_bounded``); any other edit in it asks. Read
   only can merge nothing and starts no turn: its next turn reads the same facts (``worker_facts.OBSERVED``).
+- The step runs on the window's queue timer (``worker_queue.tick``). A background Angelo runs no timer and never offers
+  parallel edit to a person (``parallel_access``): only a forced test or benchmark run leads workers there, and its
+  own driver steps the queue for the event to fire (EVENT R2-L-7).
 Main thread. No bpy at import.
 """
 
@@ -38,6 +41,7 @@ import json
 import unicodedata
 
 from . import document_scene
+from . import request_rows
 
 # The maintainer, 2026-10-25: "Should auto start the lead. User should not have to confirm" (Ask too; Read only can
 # merge nothing, so it starts no turn), and its own merge in Ask: "Yes, even in ask mode since it's part of the same
@@ -56,9 +60,10 @@ UNFINISHED = frozenset({"stopped", "failed", "not_sent"})   # How a worker's tur
 def started(controller, numbers=()):
     """The lead started workers ``numbers`` (``worker_sessions.execute``): a batch opens, or the open one goes on; never
     in a turn Angelo started itself (EVENT H-3: the person's next message is what opens the next one)."""
+    from .request_rows import HOST_REQUESTS
     rows = controller.state.get("messages") or ()
-    last = next((row for row in reversed(rows) if isinstance(row, dict) and row.get("role") == "user"), None)
-    if last is None or last.get("request_kind") != REQUEST_KIND:
+    last = next((row for row in reversed(rows) if request_rows.starts_request(row)), None)
+    if last is None or last.get("request_kind") not in HOST_REQUESTS:
         _batches.setdefault(controller.state["id"], set()).update(numbers)
 
 
@@ -91,7 +96,7 @@ def step(ui):
         if chat is None or getattr(chat, "document_invalid", False) or getattr(chat, "_closing", False):
             cancel(lead_id)   # Gone, closed or invalidated (a load): its parts can never merge through it.
             continue
-        if not _idle(chat) or not _ended(chat) or document_scene.away(chat, ui.document_key()):
+        if not _idle(chat, ui) or not _ended(chat) or document_scene.away(chat, ui.document_key()):
             continue
         batch = _batches.pop(lead_id)   # Once per batch, whatever follows: a send that fails says so in the chat.
         parts = _unmerged(chat)
@@ -99,12 +104,30 @@ def step(ui):
             _fire(ui, chat, parts, batch)
 
 
-def _idle(chat):
-    """No turn, nothing pending, and nothing that would refuse the send for a while (EVENT M-1)."""
+def _idle(chat, ui=None):
+    """No turn, nothing pending, and nothing that would refuse the send for a while (EVENT M-1): a connection it can
+    send on, by the chat's own rule read now (``ui.connection_available``, which shows Connect otherwise), never the
+    one-shot ``setup_required`` signal the chat pump clears for the shown chat and keeps for others (R2-L-7)."""
     worker = getattr(chat, "_worker", None)
-    if chat.busy or chat.pending or (worker is not None and worker.is_alive()) or getattr(chat, "setup_required", False):
+    if chat.busy or chat.pending or (worker is not None and worker.is_alive()) or not _connected(chat, ui):
+        return False
+    if getattr(chat, "inbox", None) is not None and chat.inbox.has_due():
         return False
     return not _blender_busy()
+
+
+def _connected(chat, ui):
+    """``ui.connection_available`` for ``chat``; a host without the window's rule lets the send decide, as before. One
+    that raises waits, said, and never stops the worker queue's timer this step runs in."""
+    check = getattr(ui, "connection_available", None)
+    if check is None:
+        return True
+    try:
+        return bool(check(chat))
+    except Exception as error:   # noqa: BLE001
+        from .pump_guard import report_defect
+        report_defect("the worker-done event's connection check", error)
+        return False
 
 
 def _blender_busy():
@@ -161,7 +184,7 @@ def event_merge(controller, arguments):
     in the turn the event started (the person approved that flow when the workers started); never an ``again`` that
     places a part merged before (``worker_merge.auto_merge_allowed``). Any other edit in that turn asks, as Ask does."""
     rows = controller.state.get("messages") or ()
-    last = next((row for row in reversed(rows) if isinstance(row, dict) and row.get("role") == "user"), None)
+    last = next((row for row in reversed(rows) if request_rows.starts_request(row)), None)
     if last is None or last.get("request_kind") != REQUEST_KIND or not controller.busy:
         return False
     # Only this batch's parts (EVENT R2-H-1): never an earlier batch's, one whose turn ended unfinished, or one whose
@@ -211,7 +234,7 @@ def _fire(ui, chat, rows, batch=frozenset()):
     try:
         ui.prepare_controller(chat)
         worker_routing.deliver(chat, ui.main_window(), message, lambda turn: chat.send(
-            message, observation=turn.observation, recovery_evidence=turn.recovery_evidence, host_request=parts),
+            message, observation=turn.observation, recovery_evidence=turn.recovery_evidence, host_request=parts, host_kind=REQUEST_KIND),
             failures.append)
     except Exception as error:   # noqa: BLE001 - said in the lead's chat; the batch is over either way.
         failures.append(error)

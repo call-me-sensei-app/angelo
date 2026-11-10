@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The viewport looks ``angelo_view`` draws: the display settings each one sets for a draw and puts back.
 
-``view_capture.DisplayOverrides`` writes these to the drawing viewport only
+``view_viewport.DisplayOverrides`` writes these to the drawing viewport only
 for the call and restores them in ``finally`` (``view_motion`` does the same
 for a strip). Every look is Blender's own Workbench or EEVEE draw with fixed
 settings, so a look reads the same in every scene and every artist viewport:

@@ -22,12 +22,17 @@ and visits a copy, so a callback that grows or clears the caller's list is safe.
 Each helper still works for live IDs and still raises ``TypeError`` for a
 value that is not an ID.
 
-Not covered, as in stock Blender: a wrapper Blender never invalidates, kept
-from before the ID's type changed (a light's ``type``, ``type_recast()``) or
-made by a Python subclass constructor (``doc/angelo/agent_execution.rst``).
+Wrappers kept from before the ID's type changed (a light's ``type``,
+``type_recast()``) or made by a Python subclass constructor are invalidated
+with the shared one since 1.0.10: ``test_blender_instance_alias_wrappers.py``
+(``doc/angelo/agent_execution.rst``).
 
 Background only. No add-on, provider, account or paid call.
 """
+
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 
 import json
 import os

@@ -15,6 +15,8 @@ domain and deleted); the Keychain wrapper; that no credential or provider error 
 update feed and the macOS receipt naming the same addresses.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import io
 import json
@@ -43,6 +45,8 @@ import r2_client  # noqa: E402
 import release_downloads as layout  # noqa: E402
 import sign_notarize_macos  # noqa: E402
 import sign_update_feed  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from host_test_policy import environment_skip  # noqa: E402
 
 ACCOUNT = "0123456789abcdef0123456789abcdef"
 KEY_ID = "TESTKEYID-NEVER-PRINTED"
@@ -492,6 +496,8 @@ class CheckTests(Case):
         self.assertIn("R2_ACCOUNT_ID, R2_DOWNLOADS_ACCESS_KEY_ID, R2_DOWNLOADS_SECRET_ACCESS_KEY not set", self.errors)
 
 
+@unittest.skipIf(os.name == "nt", environment_skip("publish_installers.sh is a bash launcher that reads the macOS "
+                                                   "Keychain; it runs on the release Mac"))
 class WrapperTests(unittest.TestCase):
     """publish_installers.sh with stand-ins for ``security`` and ``python3`` on PATH (no Keychain is touched)."""
 

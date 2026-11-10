@@ -45,6 +45,7 @@ import time
 import uuid
 from pathlib import Path
 
+from . import shared_replace
 from .protocol import RpcError
 
 FORK = {"experimentalPredictionMode": True, "ephemeral": True, "excludeTurns": True}
@@ -414,7 +415,7 @@ class BaseStore:
 
     def _read(self):
         try:
-            entries = json.loads(self.path.read_text(encoding="utf-8")).get("bases")
+            entries = json.loads(shared_replace.read_text(self.path)).get("bases")
         except (OSError, ValueError, AttributeError):
             return {}
         return {key: entry for key, entry in entries.items()
@@ -423,7 +424,7 @@ class BaseStore:
 
     def _failures(self):
         try:
-            failures = json.loads(self.path.read_text(encoding="utf-8")).get("failures")
+            failures = json.loads(shared_replace.read_text(self.path)).get("failures")
         except (OSError, ValueError, AttributeError):
             return {}
         if not isinstance(failures, dict):
@@ -477,8 +478,8 @@ class BaseStore:
             fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump(value, handle)
-            os.replace(temporary, self.path)
-        except OSError:
-            pass  # Not remembered: the next launch warms this variant again.
+            shared_replace.replace(temporary, self.path)   # Readers share delete; a foreign handle is tried again.
+        except OSError as error:   # Not remembered: the next launch warms this variant again.
+            print("Angelo: a warm-up's base could not be saved; the next launch warms it again:", error)
         finally:
             temporary.unlink(missing_ok=True)

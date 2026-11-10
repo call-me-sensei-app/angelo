@@ -424,21 +424,18 @@ def _tick():
 
 def _held_now():
     """A tool, a navigation or a modal edit holds one of Angelo's windows (``input_policy.canvas_blocking``), the
-    interface is locked, or a render, bake or simulation job runs: a read and a picture both wait, however long
-    (break-it P1-1 H1, P1-2 H2). ``work_guard._render`` is the one job check: Blender's own kinds and Angelo's
-    ``_angelo_jobs`` for point caches, geometry-nodes bakes and fluids, which ``bpy.app.is_job_running`` cannot see."""
+    interface is locked, or a job evaluates the document's scene on its thread (``scene_jobs``: every job type
+    classified natively, this list without it): a read and a picture both wait, however long (break-it P1-1 H1,
+    P1-2 H2)."""
     try:
         import bpy
-        from . import input_policy, live_windows, work_guard
+        from . import input_policy, live_windows, scene_jobs
         manager = bpy.context.window_manager
         if getattr(manager, "is_interface_locked", False):
             return True
         if any(input_policy.canvas_blocking(window) for window in live_windows.every_window(manager)):
             return True
-        if work_guard._render(bpy):
-            return True
-        from _bpy import _angelo_jobs
-        return any(_angelo_jobs.progress(scene, "FLUID") is not None for scene in bpy.data.scenes)
+        return bool(scene_jobs.running(bpy, scene_jobs.live_view_fallback))
     except (ImportError, AttributeError, RuntimeError, TypeError, ValueError) as error:
         if _held_error[0] != repr(error):   # Said once per kind of failure, never every tick (P1-3 L9).
             _held_error[0] = repr(error)

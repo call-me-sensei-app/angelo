@@ -12,6 +12,8 @@ row; every other save (tool rows, the turn's end, a completion, close, a switch)
 Dependency-free: the controller's own pump and journal, no Blender, provider process or model.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import sys

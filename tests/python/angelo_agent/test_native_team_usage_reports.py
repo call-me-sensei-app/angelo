@@ -11,6 +11,8 @@ the console round trip, quit and several processes are in
 ``test_native_team_usage_flush``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import subprocess
@@ -208,7 +210,7 @@ folder, now = sys.argv[2], float(sys.argv[3])
 def stall(source, target):  # The process dies between writing the new file and replacing the old one.
     open(os.path.join(folder, "stalled"), "w").close()
     time.sleep(60)
-os.replace = stall
+buffer.shared_replace.replace = stall
 buffer.UsageBuffer(folder).add(tuple(sys.argv[4:7]), {("%s", "anthropic", "m"): (5, 10)}, now)
 """
 
@@ -217,9 +219,10 @@ class CrashTests(BufferCase):
     def test_a_failed_write_leaves_the_previous_file(self):
         self.add({(TODAY, "anthropic", "m"): (1, 1)})
         before = Path(self.folder.name, buffer.FILE).read_text()
-        with patch("angelo_agent.team_usage_buffer.os.replace", side_effect=OSError("disk full")):
+        with patch.object(buffer.shared_replace, "replace", side_effect=OSError("disk full")) as replace:
             with self.assertRaises(OSError):
                 self.add({(TODAY, "anthropic", "m"): (5, 1)})
+            replace.assert_called_once()
         self.assertEqual(Path(self.folder.name, buffer.FILE).read_text(), before)
         self.assertEqual(buffer.UsageBuffer(self.folder.name).pending(OWNER, NOW)[0],
                          {(TODAY, "anthropic", "m"): [1, 1]})

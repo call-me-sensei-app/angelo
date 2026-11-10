@@ -25,6 +25,7 @@ from .job_settings import scene_value
 import re
 
 from .job_spec import FORMATS, SCENE_FORMAT, JobRequestError, name_problem
+from .refusal_codes import refusal_code
 
 STEREO_VIEWS = frozenset({"left", "right"})
 MAX_GROUP_DEPTH = 8
@@ -47,7 +48,7 @@ def active_views(scene):
              if view.use and (render.views_format == 'MULTIVIEW' or view.name in STEREO_VIEWS)]
     if not views:
         raise JobRequestError("Stereoscopy is on but none of its views is enabled; enable a view or turn "
-                              "Stereoscopy off")
+                              "Stereoscopy off", code="VALIDATION")
     return views
 
 
@@ -65,7 +66,7 @@ def views_format(scene, file_format, views):
     if wanted == "STEREO_3D" and scene.render.views_format == 'STEREO_3D' and {name for name, _ in views} == STEREO_VIEWS:
         if file_format == MULTILAYER:   # Blender writes no file at all then (image_save.cc, "Stereo 3D not supported").
             raise JobRequestError("Angelo writes no multilayer OpenEXR file for Stereo 3D views; set the views' "
-                                  "format to Individual or Multi-View, or render another format")
+                                  "format to Individual or Multi-View, or render another format", code="UNSUPPORTED")
         return "STEREO_3D"
     return "INDIVIDUAL"
 
@@ -76,7 +77,7 @@ def scene_format(scene):
     if getattr(image, "media_type", "IMAGE") == "VIDEO" or image.file_format not in outputs.EXTENSIONS:
         raise JobRequestError("The scene writes a video; a render job names each frame's file. Pass format MP4 "
                               "(an H.264 video of PNG frames) or an image format, or set the scene's output to an "
-                              "image format")
+                              "image format", code="VALIDATION")
     if image.file_format == "JPEG2000" and image.jpeg2k_codec == "J2K":
         return image.file_format, outputs.JPEG2000_CODESTREAM
     return image.file_format, outputs.EXTENSIONS[image.file_format]
@@ -130,12 +131,14 @@ def file_output_nodes(scene):
             if node.bl_idname == "CompositorNodeOutputFile":
                 if tree.library is not None or not tree.is_editable:
                     raise JobRequestError("The File Output node %s is in a linked node group, so a job can't send "
-                                          "its files to the job's folder; mute it or make the group local" % node.name)
+                                          "its files to the job's folder; mute it or make the group local" % node.name,
+                                          code="UNSUPPORTED")
                 found.append((node_path, node))
             elif getattr(node, "node_tree", None) is not None:
                 if depth >= MAX_GROUP_DEPTH:
                     raise JobRequestError("The compositor nests node groups deeper than %d levels; a job can't "
-                                          "follow its File Output nodes that far" % MAX_GROUP_DEPTH)
+                                          "follow its File Output nodes that far" % MAX_GROUP_DEPTH,
+                                          code="LIMIT_EXCEEDED")
                 walk(node.node_tree, node_path + ".node_tree", depth + 1)
 
     walk(tree, "compositing_node_group", 0)
@@ -145,7 +148,7 @@ def file_output_nodes(scene):
 def _extension(image_format, node):
     if getattr(image_format, "media_type", "IMAGE") == "VIDEO" or image_format.file_format not in outputs.EXTENSIONS:
         raise JobRequestError("The File Output node %s writes a video; a render job writes image files. Set its "
-                              "format to an image or mute it" % node.name)
+                              "format to an image or mute it" % node.name, code="UNSUPPORTED")
     if image_format.file_format == "JPEG2000" and image_format.jpeg2k_codec == "J2K":
         return outputs.JPEG2000_CODESTREAM
     return outputs.EXTENSIONS[image_format.file_format]
@@ -159,7 +162,8 @@ def describe_node(node, folder):
         own = item.format if item.override_node_format and not multilayer else node.format
         if not multilayer and own.file_format == "OPEN_EXR_MULTILAYER":
             raise JobRequestError("The item %s of the File Output node %s overrides its format with a multi-layer "
-                                  "file; a job can't name that file. Use the node's own format" % (item.name, node.name))
+                                  "file; a job can't name that file. Use the node's own format" % (item.name, node.name),
+                                  code="UNSUPPORTED")
         items.append({"name": item.name, "extension": _extension(own, node), "views_format": own.views_format,
                       "linked": bool(socket.is_linked)})
     return {"folder": folder, "name": node.name, "multilayer": multilayer, "extension": _extension(node.format, node),
@@ -186,7 +190,7 @@ class Plan:
             self.outputs = outputs.plan(self.extension, self.views, self.views_format,
                                         [description for _path, description in self.nodes], prefix, digits)
         except outputs.PlanError as error:
-            raise JobRequestError(str(error)) from None
+            raise JobRequestError(str(error), code=refusal_code(error)) from None
 
     @property
     def single(self):

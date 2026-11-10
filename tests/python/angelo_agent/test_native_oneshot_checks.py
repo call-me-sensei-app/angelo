@@ -8,6 +8,8 @@ is each test's reference job, which refuses to write a reference unless the
 brief's checks fail on the factory scene and pass on the ground truth.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

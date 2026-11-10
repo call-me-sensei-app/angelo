@@ -9,6 +9,10 @@ BLF calls, locale preferences and the canvas preparation timer run on the main
 thread. Measured timer slices are not promises about native font-call latency.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import copy
 import hashlib
 import json
@@ -335,7 +339,7 @@ def mount(arguments, label):
     controller.version += 1
     view = chat_view._views.setdefault(parts()['area'].as_pointer(), {})
     view['expanded'] = set()
-    chat_view._scroll[controller.state['id']] = 0
+    chat_view._scroll[(parts()['area'].as_pointer(), controller.state['id'])] = 0
     before = dict(state['heavy_draw_calls'])
     redraw()
     check(label + '_first_draw_does_not_build_review', before == dict(state['heavy_draw_calls']))
@@ -500,7 +504,7 @@ def scroll_to_last(call, marker, screenshot):
     line_height = geometry()[2] + 8
     wanted = bottom + view['content_height'] - 52 - len(layout.preview) * line_height - 14 - index * line_height
     desired = max(0, min(view['max_scroll'], wanted - (bottom + visible / 2)))
-    chat_view._scroll[controller.state['id']] = min(view['max_scroll'], desired + 66)
+    chat_view._scroll[(parts()['area'].as_pointer(), controller.state['id'])] = min(view['max_scroll'], desired + 66)
     event('WHEELDOWNMOUSE', x=parts()['region'].width / 2, y=bottom + visible / 2)
     redraw()
     check(state['tag'] + '_wheel_reaches_last_mandatory_control',

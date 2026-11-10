@@ -9,6 +9,8 @@ character one em, anything else 0.58 em, wider than Inter's average, so a pass h
 A source guard keeps the class closed: no Studio button draws translated text at a fixed literal width.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest

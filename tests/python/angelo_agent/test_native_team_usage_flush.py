@@ -13,7 +13,10 @@ nothing, and four real processes sharing one profile. No real console,
 network or key store is used.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
+import inspect
 import io
 import json
 import os
@@ -33,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import team_lock, team_usage_reports  # noqa: E402
 from angelo_agent.controller import Controller  # noqa: E402
 from angelo_agent.team_account import TeamAccount  # noqa: E402
-from angelo_agent.team_usage_buffer import FILE, UsageBuffer, day_of  # noqa: E402
+from angelo_agent.team_usage_buffer import FILE, LOCK, UsageBuffer, day_of  # noqa: E402
 from angelo_agent.telemetry import RequestMetrics  # noqa: E402
 from fake_team_console import ORG_ID, USER_ID  # noqa: E402
 from test_native_team_account import AccountCase, FileVault, wait_for  # noqa: E402
@@ -48,11 +51,12 @@ class FlushCase(AccountCase):
         self.console.reports.clock = self.clock.time  # The console's "today" is the test clock's.
         self.owner = (self.console.url, ORG_ID, USER_ID)
 
-    def usage_account(self, vault=None, clock=None, monotonic=None):
+    def usage_account(self, vault=None, clock=None, monotonic=None, record=False):
+        extra = {"record_directory": self.folder.name} if record else {}
         account = TeamAccount(self.console.url, vault=self.vault if vault is None else vault,
                               process_lock=team_lock.factory(self.folder.name, 5), policy=lambda: self.policy,
                               clock=clock or self.clock.time, monotonic=monotonic or self.clock.monotonic,
-                              usage_buffer=UsageBuffer(self.folder.name))
+                              usage_buffer=UsageBuffer(self.folder.name), **extra)
         self.addCleanup(self.stop, account)
         return account
 
@@ -246,6 +250,35 @@ class QuitTests(FlushCase):
         started = machine_clock.start(self)
         account.close()
         started.assert_within(team_usage_reports.EXIT_SECONDS + 0.5)
+        # Quit waits a second at most; on a loaded machine the report it started lands after that (the test below).
+        self.assertTrue(account.join(10))
+        self.assertEqual(self.console.reports.totals(), {self.today(*OPUS): (2, 95000)})
+        self.assertEqual(self.pending(), ({}, None))
+
+    def test_a_quit_report_still_running_is_waited_for_before_its_folder_goes(self):
+        """A quit report that outlives ``close`` (held here inside the usage file's lock past the quit's second, as a
+        loaded Windows runner did in host-tests run 41878207643) still lands, once, and the stop every test here
+        cleans up with waits for it: until then it has the lock file open, which Windows refuses to delete
+        (WinError 32). POSIX deletes an open file, so the lock is probed instead."""
+        account = self.usage_account()
+        self.sign_in(account)
+        self.count(account, 2)
+        read, late = account._usage_buffer._read, threading.Event()
+
+        def late_read():
+            if threading.current_thread().name == "AngeloUsageReport" and not late.is_set():
+                late.set()
+                time.sleep(team_usage_reports.EXIT_SECONDS + 2.0)
+            return read()
+        account._usage_buffer._read = late_read
+        started = machine_clock.start(self)
+        account.close()
+        started.assert_within(team_usage_reports.EXIT_SECONDS + 0.5)
+        wait_for(late.is_set)  # The quit report is inside the lock, for two seconds more at least.
+        self.stop(account)
+        with team_lock.held(self.folder.name, 0, name=LOCK):  # LockTimeout while a thread still holds it.
+            pass
+        self.assertFalse(account._exit_report.is_alive())
         self.assertEqual(self.console.reports.totals(), {self.today(*OPUS): (2, 95000)})
         self.assertEqual(self.pending(), ({}, None))
 
@@ -324,8 +357,11 @@ from angelo_agent.team_usage_buffer import UsageBuffer
 from test_native_team_account import FileVault
 from test_native_team_usage_reports import receipt
 folder, console, tasks = sys.argv[3], sys.argv[4], int(sys.argv[5])
+import inspect
+extra = {"record_directory": folder} if "record_directory" in inspect.signature(TeamAccount).parameters else {}
 account = TeamAccount(console, vault=FileVault(os.path.join(folder, "vault")), policy=Policy,
-                      process_lock=team_lock.factory(folder, 30), usage_buffer=UsageBuffer(folder))
+                      process_lock=team_lock.factory(folder, 30), usage_buffer=UsageBuffer(folder),
+                      **extra)  # As Angelo's processes run: the shared sign-in record too (team_refresh_marks).
 while not os.path.exists(os.path.join(folder, "go")):
     time.sleep(0.005)
 account.restore()
@@ -337,7 +373,8 @@ for index in range(tasks):
     if index % 5 == 4:
         account._task_usage_report()  # A scheduled report while the others count.
 account.close()  # Quit: the report at exit.
-print(json.dumps({"status": account.view().status}))
+view = account.view()
+print(json.dumps({"status": view.status, "message": str(view.message)}))
 """
 
 
@@ -345,7 +382,8 @@ class MultiProcessTests(FlushCase):
     def test_processes_sharing_a_profile_report_every_task_exactly_once(self):
         self.console.reports.clock = time.time
         vault = FileVault(os.path.join(self.folder.name, "vault"))
-        first = self.usage_account(vault=vault, clock=time.time, monotonic=time.monotonic)
+        shared = "record_directory" in inspect.signature(TeamAccount).parameters  # The record, as in Angelo.
+        first = self.usage_account(vault=vault, clock=time.time, monotonic=time.monotonic, record=shared)
         self.sign_in(first)
         first.close()
         here, addons = str(Path(__file__).resolve().parent), str(ROOT / "scripts/addons_core")
@@ -353,11 +391,11 @@ class MultiProcessTests(FlushCase):
                                       "20"], stdout=subprocess.PIPE, text=True) for _ in range(4)]
         time.sleep(0.5)
         Path(self.folder.name, "go").touch()
-        statuses = [json.loads(child.communicate(timeout=90)[0].strip().splitlines()[-1])["status"]
-                    for child in children]
-        self.assertEqual(statuses, ["signed_in"] * 4)
+        ends = [json.loads(child.communicate(timeout=90)[0].strip().splitlines()[-1]) for child in children]
+        self.assertEqual([end["status"] for end in ends], ["signed_in"] * 4,
+                         "messages %s; grants revoked %s" % ([end["message"] for end in ends], self.console.revoked))
         # The next start sends whatever a quitting process left behind (another one's batch was in flight).
-        last = self.usage_account(vault=vault, clock=time.time, monotonic=time.monotonic)
+        last = self.usage_account(vault=vault, clock=time.time, monotonic=time.monotonic, record=shared)
         last.restore()
         wait_for(lambda: last.view().signed_in, timeout=10)
         for _ in range(5):

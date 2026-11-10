@@ -9,6 +9,8 @@ ran. REGATE_OUTPUTS replays those plans through the scripted app-server
 against an owner that compares revisions exactly, as Blender's does.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import sys

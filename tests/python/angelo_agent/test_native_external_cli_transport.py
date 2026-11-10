@@ -7,6 +7,8 @@ macOS sun_path), so these run unchanged on Linux CI and macOS. Never the real
 ``$TMPDIR/angelo-<uid>`` runtime directory or a real Angelo profile.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import shutil
@@ -20,6 +22,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 import machine_clock
+from host_test_policy import environment_skip
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import cli_client, external_cli
@@ -27,8 +30,8 @@ from angelo_agent import external_cli_protocol as protocol
 from angelo_agent.external_cli import LocalCliServer, Peer, TransportUnavailable
 
 # The Unix-socket transport and its POSIX private files; Windows refuses to listen (WindowsRefusalTests).
-UNIX_TRANSPORT = unittest.skipIf(sys.platform == "win32", "Windows has no CLI transport yet: the server refuses to "
-                                 "listen there (doc/angelo/external_cli.rst)")
+UNIX_TRANSPORT = unittest.skipIf(sys.platform == "win32", environment_skip(
+    "Windows has no CLI transport yet: the server refuses to listen there (doc/angelo/external_cli.rst)"))
 
 
 def echo_handler(calls):
@@ -349,6 +352,8 @@ class ServerTests(unittest.TestCase):
             with self.assertRaises(TransportUnavailable):
                 LocalCliServer(self.state, echo_handler([]), runtime_directory=self.runtime).start()
 
+
+class SourceTests(unittest.TestCase):
     def test_transport_source_has_no_network_listener(self):
         source = Path(external_cli.__file__).read_text(encoding="utf-8")
         for forbidden in ("AF_INET", "AF_INET6", "0.0.0.0", "127.0.0.1", "localhost"):

@@ -37,6 +37,7 @@
 
 #include "bpy_angelo_stage.hh"
 #include "bpy_angelo_stage_layers.hh"
+#include "bpy_angelo_stage_relink.hh"
 #include "bpy_angelo_undo.hh"
 #include "bpy_rna.hh"
 
@@ -408,6 +409,36 @@ static PyMethodDef methods[] = {
      stage_discard,
      METH_O,
      "Free detached IDs; never free IDs already restored to Main."},
+    {"relink",
+     BPY_angelo_stage_relink,
+     METH_VARARGS,
+     "(outside, journal): point the given stage IDs' links at the second ID of each (old, new) "
+     "pair, users and non-users alike; outside: the IDs they still name outside themselves."},
+    {"unrelink",
+     BPY_angelo_stage_unrelink,
+     METH_O,
+     "(restored, skipped): restore exactly the slots a relink journal changed, once."},
+    {"reach",
+     BPY_angelo_stage_reach,
+     METH_VARARGS,
+     "(reached or None past the limit, animated): every ID the roots reach by any link."},
+    {"copy_plain",
+     BPY_angelo_stage_copy_plain,
+     METH_O,
+     "A plain local copy (never linked, never an override) with no users, or None."},
+    {"links",
+     BPY_angelo_stage_links,
+     METH_O,
+     "[(owner, holder, target, flags)]: every ID pointer foreach_ID_link visits on the given IDs, "
+     "read only (flags: the LINK_* constants)."},
+    {"session_uid_last",
+     BPY_angelo_stage_session_uid_last,
+     METH_NOARGS,
+     "The newest session UID given so far: IDs made later have greater ones."},
+    {"stand_in",
+     BPY_angelo_stage_stand_in,
+     METH_O,
+     "A new, empty local ID of the given ID's type with no users, or None for a type with none."},
     {"layer_flags",
      BPY_angelo_stage_layer_flags,
      METH_VARARGS,
@@ -442,7 +473,12 @@ static PyModuleDef module = {
 
 PyObject *BPY_angelo_stage_module()
 {
-  return PyModule_Create(&module);
+  PyObject *result = PyModule_Create(&module);
+  if (result != nullptr && !BPY_angelo_stage_add_link_flags(result)) {
+    Py_DECREF(result);
+    return nullptr;
+  }
+  return result;
 }
 
 }  // namespace blender

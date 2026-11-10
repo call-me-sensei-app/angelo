@@ -40,7 +40,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import kept_state, team_lock
+from . import kept_state, shared_replace, team_lock
 
 FILE = "team-usage.json"
 LOCK = "team-usage.lock"
@@ -245,7 +245,7 @@ class UsageBuffer:
         """``(owners, the file's text)``: None for no file; ``_UNREAD`` for one that can't be read now (never written
         over); ``_DAMAGED`` for one that is damaged, too large or another version's (kept beside it, then replaced)."""
         try:
-            with open(self.path, "rb") as handle:
+            with shared_replace.open_file(self.path) as handle:   # Shares delete (shared_replace).
                 raw = handle.read(MAX_FILE + 1)
         except FileNotFoundError:
             return {}, None
@@ -275,7 +275,7 @@ class UsageBuffer:
             handle.write(_encode(owners))
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, self.path)
+        shared_replace.replace(temporary, self.path)   # Refused: raised; the caller keeps the counts and retries.
 
 
 def _empty():

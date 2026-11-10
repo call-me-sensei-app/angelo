@@ -10,6 +10,8 @@ and the person's notice lists the checks still open. Jobs start whatever the che
 recorded runs were wrong checks on a right scene (doc/angelo/agent_execution.rst, "The script kit and self-checks").
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import sys
 import unittest

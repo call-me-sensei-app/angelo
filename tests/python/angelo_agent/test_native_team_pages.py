@@ -8,6 +8,8 @@ with fields escaped, in the person's language and direction, and with the
 wordmark identical to the brand asset.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import hashlib
 import html

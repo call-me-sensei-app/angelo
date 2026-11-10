@@ -15,6 +15,8 @@ values the fix was developed on are EIO and EACCES; the held-out ones (EPERM, ES
 ``chmod 000`` were added after it, as were the node-folder, marker, earlier-folder and render-end call sites.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import errno
 import os
 import stat
@@ -33,6 +35,7 @@ from angelo_agent import job_render_outputs as render_outputs  # noqa: E402
 from angelo_agent.files import FileWorkspace  # noqa: E402
 from angelo_agent.job_store import new_record  # noqa: E402
 from fake_nt_files import FakeNtApi  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 import job_frame_fixtures as fixtures  # noqa: E402
 from test_native_job_recovery import render_runner  # noqa: E402
 
@@ -199,7 +202,8 @@ class WindowsRecoveryUnknown(_RecoveryCases, unittest.TestCase):
     windows = True
 
 
-@unittest.skipIf(os.name == "nt" or os.geteuid() == 0, "POSIX permissions as an ordinary user")
+@unittest.skipIf(os.name == "nt" or os.geteuid() == 0, environment_skip(
+    "POSIX permissions as an ordinary user (Windows keeps only a read-only bit; root reads anything)"))
 class RealPermissions(_Recovery, unittest.TestCase):
     """A real EACCES from the kernel (``chmod 000``), not an injected one."""
 

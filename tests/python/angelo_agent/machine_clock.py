@@ -18,6 +18,9 @@ budget, stated in seconds on the nominal machine, scales with that pass both way
 a slow one. A round pairs a reference with the work; up to three rounds, so one stall in either half is not a failure,
 and a round far past the bound ends at once. The work must be safe to run again.
 
+A bound on how much work code does (it must not grow with its input) needs no clock: ``thread_work`` counts the
+instructions and calls, the same on every machine.
+
 The same idea as the script kit's sweep bound in test_blender_script_kit_reviews.py, where the reference is a pass over
 the same scene. These tests have no common scene, so they share one reference pass.
 """

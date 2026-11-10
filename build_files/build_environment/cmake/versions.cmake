@@ -404,7 +404,7 @@ Copyright © 1991-1995 Stichting Mathematisch Centrum. All rights reserved.
 #   https://github.com/python/cpython/tree/v3.11.9/Lib/ensurepip/__init__.py
 # Angelo: pip is installed at this version over Python's own (python_site_packages.cmake) and over the
 # precompiled libraries' copy (build_files/cmake/angelo_python_packages.json): its vendored certifi.
-set(PYTHON_PIP_VERSION 26.2.2)
+set(PYTHON_PIP_VERSION 26.3)
 set(PYTHON_PIP_CPE "cpe:2.3:a:pypa:pip:${PYTHON_PIP_VERSION}:*:*:*:*:*:*:*")
 
 set(TBB_YEAR 2022)
@@ -457,7 +457,7 @@ set(URLLIB3_CPE "cpe:2.3:a:urllib3:urllib3:${URLLIB3_VERSION}:*:*:*:*:*:*:*")
 # Needed by: Python's `requests` module (so add-ons can authenticate against trusted certificates).
 # Angelo: keep equal to build_files/cmake/angelo_python_packages.json, which installs it over the
 # precompiled libraries' copy (2026.10.19 drops emSign ECC Root CA - G3, GHSA-6q48-6c7w-9gw2).
-set(CERTIFI_VERSION 2026.10.19)
+set(CERTIFI_VERSION 2026.10.23)
 # Needed by: Some of Blender's add-ons (to support convenient interaction with online services).
 set(REQUESTS_VERSION 2.32.3)
 # Needed by: Python's `numpy` module (used by some add-ons).

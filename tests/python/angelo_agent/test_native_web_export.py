@@ -4,6 +4,8 @@
 what won't carry over to Three.js, the size budget read from a .glb, the tool's place in the families, and the
 pinned Three.js build the preview serves."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import re
@@ -105,8 +107,8 @@ class FindingTests(unittest.TestCase):
                        {"name": "Huge", "source": "FILE", "width": 8192, "height": 4096}],
             "effects": {"motion_blur": True, "depth_of_field": ["Cam"], "compositor": True},
             "triangles": 2_000_000,
-            "baked": {"used": [("Crate", "Crate Baked")], "stale": ["Barrel", "Rock"], "nearby": ["Rock"],
-                      "packing": [("Hull", "UNITY")]},
+            "baked": {"used": [("Crate", "Crate Baked")], "stale": ["Barrel", "Rock", "Vase"], "nearby": ["Rock"],
+                      "packing": [("Hull", "UNITY")], "updated": ["Vase"]},
         }
         found = web_compat.findings(facts)
         severities = [item["severity"] for item in found]
@@ -142,6 +144,18 @@ class FindingTests(unittest.TestCase):
         self.assertIn("Crate Baked", web_compat.english(found[3])["message"])
         self.assertIn("Bake", web_compat.english(found[0])["fix"])
         self.assertEqual(self.codes({"baked": {}}), [])
+
+    def test_bindings_made_before_this_update_are_said_once_not_as_edits(self):
+        # 1.0.10's digest reads the pixels a bake copies and each image's resolved path: a binding made before it
+        # reads as stale once, and nothing was edited, so one line names them all and says why.
+        found = web_compat.findings({"baked": {"stale": ["Barrel", "Vase", "Lamp", "Jar", "Cup"],
+                                               "updated": ["Vase", "Lamp", "Jar", "Cup"], "nearby": []}})
+        self.assertEqual([(item["code"], item["subject"]) for item in found],
+                         [("baked_stale", "Barrel"), ("baked_stale_update", "Cup, Jar, Lamp (+1)")])
+        message = web_compat.english(found[1])["message"]
+        self.assertIn("before this update", message)
+        self.assertNotIn("changed", message)
+        self.assertIn("Bake", web_compat.english(found[1])["fix"])
 
     def test_the_page_translates_templates_not_names(self):
         finding = web_compat.findings({"lights": [{"name": "Panel", "type": "AREA"}]})[0]
@@ -234,7 +248,7 @@ class BundledThreeTests(unittest.TestCase):
             if line and not line.startswith("#"):
                 digest, path = line.split("  ", 1)
                 listed[path] = digest
-        on_disk = {str(path.relative_to(self.VENDOR)) for path in self.VENDOR.rglob("*")
+        on_disk = {path.relative_to(self.VENDOR).as_posix() for path in self.VENDOR.rglob("*")   # MANIFEST: '/'.
                    if path.is_file() and path.name not in {"MANIFEST", "LICENSE"}}
         self.assertEqual(set(listed), on_disk)
         for path, digest in listed.items():
@@ -244,15 +258,15 @@ class BundledThreeTests(unittest.TestCase):
     def test_the_page_loads_nothing_from_the_network(self):
         page = ADDON / "web_preview"
         own = sorted(path for path in page.iterdir() if path.suffix in {".html", ".js", ".css"})
-        self.assertEqual([path.name for path in own], ["app.css", "app.js", "compare.js", "index.html", "look.js",
-                                                       "panel.js", "shaders.js"])
+        self.assertEqual([path.name for path in own], ["app.css", "app.js", "compare.js", "drag.js", "index.html",
+                                                       "look.js", "panel.js", "shaders.js"])
         for path in own:
             text = path.read_text(encoding="utf-8")
             self.assertNotRegex(text, r"""(src|href|url|from|import)\s*[=(]?\s*["']?(https?:)?//""", path.name)
         imports = re.findall(r'from "([^"]+)"', "".join(path.read_text(encoding="utf-8") for path in own
                                                          if path.suffix == ".js"))
         for name in imports:
-            self.assertTrue(name in {"three", "./shaders.js", "./panel.js", "./look.js", "./compare.js"}
+            self.assertTrue(name in {"three", "./shaders.js", "./panel.js", "./look.js", "./compare.js", "./drag.js"}
                             or name.startswith("three/addons/"), name)
             if name.startswith("three/addons/"):
                 self.assertTrue((self.VENDOR / "examples/jsm" / name[len("three/addons/"):]).is_file(), name)

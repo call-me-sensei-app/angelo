@@ -30,6 +30,9 @@ Duck-typed: anything without ``bl_rna`` is read through its attributes, as the h
 import os
 import zlib
 
+from . import change_keys
+from .blend_file_paths import image_files, located, node_file_places
+
 MAX_NODES = 256          # Nodes per tree; more and the key holds the change count too.
 MAX_GROUP_DEPTH = 4      # Node groups inside node groups.
 MAX_DEPTH = 6            # Nested data inside one node (a curve mapping's curves' points: 3).
@@ -115,7 +118,8 @@ def stop():
 
 
 class _Digest:
-    def __init__(self):
+    def __init__(self, frame=None):
+        self.frame = frame      # The scene frame a bake renders at: None for a picture read from the stored file.
         self.unreliable = False
         self.ids = set()        # session_uid of the datablocks read.
         self.groups = {}        # A group's parts, read once per key.
@@ -150,31 +154,54 @@ def _plain(value):
         return repr(value)
 
 
+KEYS = change_keys.ChangeKeys()   # The World's files: one key while a file is unchanged (``change_keys``).
+
+
 def _file(path):
-    try:
+    try:   # A miss bakes again: settled, else its bytes (``change_keys``); a file it can't read is missing.
         stat = os.stat(path)
+        return change_keys.key(stat, path, (path, stat.st_mtime_ns, stat.st_size), keys=KEYS, change=False)
     except (OSError, ValueError):
         return (path, None)
-    return (path, stat.st_mtime_ns, stat.st_size)
+
+
+def _blender_abspath():
+    try:
+        import bpy
+        return bpy.path.abspath
+    except ImportError:   # No Blender: the host tests' stand-ins hold absolute paths.
+        return lambda path, library=None: path
 
 
 def _abspath(path, library=None):
-    try:
-        import bpy
-        return bpy.path.abspath(path, library=library)
-    except ImportError:
-        return path
+    return located(path, library, _blender_abspath())
 
 
-def image_stamp(image, digest=None):
-    """An image's identity and contents: its file (time and size), its packed bytes, its colour space and size."""
+def _normal(path):
+    return os.path.normpath(path) if path else ""   # One spelling per file; normpath("") is ".", the working folder.
+
+
+def image_stamp(image, digest=None, user=None):
+    """An image's identity and contents: the files it is read from (time and size), its packed bytes, its colour
+    space and size.
+
+    Each picture is keyed on the files its maker opens (the rule ``export_baked_images`` follows for a bake): an
+    ``IMAGE`` picture reads the stored file itself (``web_environment``), while a ``BAKE`` (``digest.frame`` set)
+    renders the World in another Blender, which opens what Blender names for the node's image ``user`` at that frame
+    (``blend_file_paths.image_files``: a sequence's frame, each tile, a movie). Both read the packed bytes when there
+    are any, and neither reads pixels held in this Blender, so a file saved over without a reload is what both make
+    their picture from (measured, 1.0.10)."""
     if image is None:
         return None
     if digest is not None:
         digest.uses(image)
     path = None
     if image.source in {"FILE", "SEQUENCE", "MOVIE", "TILED"} and not image.packed_file:
-        path = _file(_abspath(image.filepath, getattr(image, "library", None)))
+        frame = getattr(digest, "frame", None)
+        if frame is None:
+            path = _file(_normal(_abspath(image.filepath, getattr(image, "library", None))))
+        else:
+            path = tuple(_file(each) for each in image_files(image, user, frame, _blender_abspath()))
     packed = image.packed_file
     if packed:   # The bytes themselves: a repack of another file of the same size is another picture.
         data = getattr(packed, "data", None)
@@ -183,7 +210,11 @@ def image_stamp(image, digest=None):
         "generated_type", "generated_width", "generated_height", "generated_color", "use_generated_float"))
     if digest is not None and (image.is_dirty or image.source not in {"FILE", "GENERATED"}):
         digest.unreliable = True   # Painted in memory, a sequence, a movie or tiles: not what the file holds now.
-    return (image.name, image.source, getattr(image, "filepath", ""), path, packed, generated,
+    # Where it reads from, resolved (Make Paths Relative changes no picture); none for packed bytes, read wherever
+    # the project is.
+    stored = _abspath(image.filepath, getattr(image, "library", None)) if getattr(image, "filepath", "") else ""
+    stored = "" if packed else stored
+    return (image.name, image.source, _normal(stored), path, packed, generated,
             image.colorspace_settings.name, tuple(int(v) for v in image.size[:2]), bool(image.is_dirty))
 
 
@@ -218,9 +249,10 @@ def _struct(value, digest, depth, skip=()):
         except (AttributeError, RuntimeError):
             continue
         if kind == "STRING" and getattr(prop, "subtype", "") == "FILE_PATH" and item:
-            parts.append((name, _file(_abspath(item))))   # An external file: what it holds counts.
+            library = getattr(getattr(value, "id_data", None), "library", None)   # An external file: what it holds
+            parts.append((name, tuple(_file(path) for path in node_file_places(item, library, _blender_abspath()))))
         elif kind == "POINTER" or (kind is None and hasattr(item, "bl_rna")):
-            parts.append((name, _pointer(item, digest, depth)))
+            parts.append((name, _pointer(item, digest, depth, getattr(value, "image_user", None))))
         elif kind == "COLLECTION":
             items = list(item)
             if len(items) > MAX_ITEMS:
@@ -233,14 +265,15 @@ def _struct(value, digest, depth, skip=()):
     return tuple(parts)
 
 
-def _pointer(item, digest, depth):
+def _pointer(item, digest, depth, user=None):
+    """``item`` read for the digest; ``user``: the image user of the node or struct holding it (an image's)."""
     if item is None:
         return None
     if _is_id(item):
         kind = _rna_name(item)
         digest.uses(item)
         if kind == "Image":
-            return image_stamp(item, digest)
+            return image_stamp(item, digest, user)
         if kind == "Text":   # A Script node's source: editing it updates no depsgraph, so its words count.
             return (kind, item.name, zlib.crc32(item.as_string().encode("utf-8")))
         if kind not in READ_IDS:
@@ -312,7 +345,7 @@ def _volatile(digest, frame):
 
 def key(world, engine, frame=None):
     """The key of ``world``'s picture as ``engine`` renders it. ``frame``: (frame, subframe), for what may move."""
-    digest = _Digest()
+    digest = _Digest(frame[0] if frame else 0)
     digest.uses(world)
     tree = world.node_tree
     settings = _struct(world, digest, 0, skip=("node_tree", "animation_data", "original"))

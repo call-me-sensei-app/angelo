@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """``win32_replace``: a POSIX-semantics replace on Windows, and ``os.replace`` where that is unsupported.
 
-The rename itself runs only on Windows (``windows_journal_replace_check.py`` checks it on a real host); here the
-structure it passes, its error mapping and its fallback are pinned. ``test_native_journal_guard`` drives a chat's
-store through both paths.
+The rename itself runs only on Windows (here on a Windows host; ``windows_journal_replace_check.py`` checks it with a
+reader holding the file); the structure it passes, its error mapping and its fallback are pinned on every host.
+``test_native_journal_guard`` drives a chat's store through both paths.
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import ctypes
 import os
@@ -84,13 +86,22 @@ class FallbackTests(unittest.TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
 
-    def test_off_windows_or_unsupported_it_replaces_classically_and_logs_once(self):
-        with patch("sys.stderr") as stderr:
+    def test_unsupported_it_replaces_classically_and_logs_once(self):
+        # No SetFileInformationByHandle: what _bind finds off Windows, forced here so Windows takes the path too.
+        with patch.object(win32_replace, "_bind", lambda: None), patch("sys.stderr") as stderr:
             win32_replace.replace(self.source, self.target)
             self.source.write_bytes(b"newer")
             win32_replace.replace(self.source, self.target)
         self.assertEqual((win32_replace.last, self.target.read_bytes()), (win32_replace.CLASSIC, b"newer"))
         self.assertEqual(sum("POSIX semantics" in str(call) for call in stderr.write.call_args_list), 1)
+
+    def test_this_host_takes_its_own_path(self):
+        """The real call: POSIX semantics on Windows (an NTFS temporary folder), ``os.replace`` elsewhere."""
+        with patch("sys.stderr"):
+            win32_replace.replace(self.source, self.target)
+        expected = win32_replace.POSIX if os.name == "nt" else win32_replace.CLASSIC
+        self.assertEqual((win32_replace.last, self.target.read_bytes(), self.source.exists()),
+                         (expected, b"new", False))
 
     def test_posix_semantics_when_supported_and_its_refusal_raised(self):
         calls = []

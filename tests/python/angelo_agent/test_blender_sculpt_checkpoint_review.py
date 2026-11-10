@@ -32,6 +32,10 @@ Baselines are observed after a settling view-layer update: an ordinary save flus
 can move the editing authority and leave the other graph's grids pending.
 No provider, account or paid call.
 """
+
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 import array
 import contextlib
 import hashlib
@@ -82,6 +86,8 @@ SCENES = {'A': 'Review Scene A', 'B': 'Review Scene B'}
 SHARED, TARGET = 'Review Shared', 'Review Agent Target'
 BRIDGE = program_undo.native_bridge()
 SCRIPT = Path(__file__).name  # How a load handler defined in this script is named (its file, not English prose).
+# The native commit's Undo step names, as Blender's history stores them (untranslated; angelo_undo.cc).
+BEFORE_STEP, COMMIT_STEP = 'Before Checked Program', 'Apply Checked Program'
 REPORT = {'success': False, 'phase': 'boot', 'checks': {}, 'compare': {}, 'facts': {}, 'paid_requests': 0,
           'binary': bpy.app.binary_path}
 STATE = {'phase': 'boot', 'started': time.monotonic()}
@@ -374,9 +380,9 @@ def tick():
             compare('one_undo_returns_to_before_commit', STATE['before_commit'], observe())
             check('target_back_at_origin', bpy.data.objects[TARGET].location.x == 0.)
             with context('A'):
-                no_empty_step = not bpy.ops.ed.undo.poll() or history_rows()[-1]['name'] != 'Before Validated Native Program'
+                no_empty_step = not bpy.ops.ed.undo.poll() or history_rows()[-1]['name'] != BEFORE_STEP
             check('no_empty_before_step', no_empty_step and not any(
-                row['name'] == 'Before Validated Native Program' for row in history_rows()))
+                row['name'] == BEFORE_STEP for row in history_rows()))
             STATE['phase'] = 'memfile-edit'
         elif phase == 'memfile-edit':
             settle()
@@ -398,7 +404,7 @@ def tick():
             REPORT['facts']['memfile_commit_history'] = after[-4:]
             check('two_graph_memfile_commit_keeps_its_exact_boundary_visible',
                   [row['name'] for row in after[len(before):] if 'S' not in row['flags']]
-                  == ['Before Validated Native Program', 'Commit Validated Native Program'])
+                  == [BEFORE_STEP, COMMIT_STEP])
             with context('A'):
                 check('one_undo_after_memfile_commit', bpy.ops.ed.undo() == {'FINISHED'})
             STATE['phase'] = 'memfile-undone'
@@ -526,7 +532,7 @@ def tick():
             # Decoding a MemFile reached by Undo is not the live state Undo left: keep the exact boundary.
             check('memfile_with_redo_keeps_its_exact_boundary_visible',
                   [row['name'] for row in history_rows()[active + 1:] if 'S' not in row['flags']]
-                  == ['Before Validated Native Program', 'Commit Validated Native Program'])
+                  == [BEFORE_STEP, COMMIT_STEP])
             with context('A'):
                 check('one_undo_after_redo_commit', bpy.ops.ed.undo() == {'FINISHED'})
             STATE['phase'] = 'redo-undone'
@@ -549,7 +555,7 @@ def tick():
                 outcome, result = commit(bpy.context.window, 9.)
             check('latest_memfile_one_graph_commit_adds_one_visible_step', outcome == ['FINISHED'] and
                   [row['name'] for row in history_rows()[len(before):] if 'S' not in row['flags']]
-                  == ['Commit Validated Native Program'])
+                  == [COMMIT_STEP])
             with context('A'):
                 check('one_undo_after_latest_commit', bpy.ops.ed.undo() == {'FINISHED'})
             STATE['phase'] = 'latest-undone'

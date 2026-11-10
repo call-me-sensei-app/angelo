@@ -95,6 +95,12 @@ def from_gltf_vector(vector, yup):
     return (x, -z, y) if yup else (x, y, z)
 
 
+def bounds_from_gltf(minimum, maximum, yup):
+    """(minimum, maximum) in Blender axes of glTF-axes bounds (+Y up turns Blender's Y into glTF's -Z)."""
+    low, high = from_gltf_vector(minimum, yup), from_gltf_vector(maximum, yup)
+    return tuple(map(min, low, high)), tuple(map(max, low, high))
+
+
 def swap_size(size, yup):
     """A box's extents between Blender and glTF axes (the same swap both ways: Y and Z trade places)."""
     return (size[0], size[2], size[1]) if yup else tuple(size)

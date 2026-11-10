@@ -4,6 +4,8 @@
 call is validated, and the executor runs that same code object: the text is the cache key, so a hit is never another
 script's, a text that does not compile keeps nothing, and a parent-inverse statement still gets its host call."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import sys
 import unittest

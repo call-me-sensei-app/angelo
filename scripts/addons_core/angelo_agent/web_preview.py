@@ -11,8 +11,10 @@ Nothing runs while the preview is off. It stops on ``stop``, when the add-on unl
 
 The export carries the scene's look (``web_look``): the page applies its tone mapping and exposure and lights the
 scene with its World. The World's picture is made off the main thread (``web_environment``); an export never waits
-for it, and the timer exports again once it lands. The page's Compare button asks for Angelo's viewport from the
-page's camera, which the timer draws (``web_compare``).
+for it, and the timer exports again once it lands. Until then the export carries the World the page shows (the last
+picture or colour this preview published, ``shown``), so a page opened or reloaded during the bake lights the scene
+as the open page does. The page's Compare button asks for Angelo's viewport from the page's camera, which the timer
+draws (``web_compare``).
 """
 
 import os
@@ -22,7 +24,7 @@ import time
 import bpy
 
 from . import private_roots
-from . import live_windows, scene_changes, web_compat, web_environment, web_export, web_world_key
+from . import live_windows, scene_changes, web_compat, web_environment, web_export, web_facts, web_world_key
 from .web_shader_spec import ANGELO_DECLARATIONS
 from .ui_text import iface_, is_rtl, n_
 
@@ -60,7 +62,7 @@ PAGE_TEXT = {   # Key -> English; translated when the preview starts (``_strings
 
 _state = {"server": None, "folder": None, "window": None, "dirty_at": None, "exporting": False,
           "last_ms": 0.0, "request": None, "scene": None, "strings": {}, "exports": 0, "materials": [],
-          "page": None, "shader_signature": (), "pictures": 0, "picture_pending": False}
+          "page": None, "shader_signature": (), "pictures": 0, "picture_pending": False, "shown": {}}
 
 
 def running():
@@ -94,6 +96,13 @@ def _window():
     return live_windows.find(wm, _state["window"], live=False) or live_windows.first(wm, temporary=False)
 
 
+def scene_key(scene, view_layer):
+    """What the export reads that an update of the scene alone can change: the frame, camera, World and which
+    objects show (``scene_changes.scene_key``), and the scene's own settings the export reads, its look among them
+    (``web_facts.scene_settings``)."""
+    return scene_changes.scene_key(scene, view_layer) + (web_facts.scene_settings(scene),)
+
+
 @bpy.app.handlers.persistent
 def _on_depsgraph(scene, depsgraph):
     if _state["server"] is None or _state["exporting"] or threading.current_thread() is not threading.main_thread():
@@ -101,7 +110,8 @@ def _on_depsgraph(scene, depsgraph):
     window = _window()
     if window is None or scene.session_uid != window.scene.session_uid:
         return
-    changed, _state["scene"] = scene_changes.matters(depsgraph, scene, window.view_layer, _state["scene"])
+    changed, _state["scene"] = scene_changes.matters(depsgraph, scene, window.view_layer, _state["scene"],
+                                                     key=scene_key)
     if changed:
         _state["dirty_at"] = time.monotonic()
 
@@ -161,7 +171,7 @@ def refresh(window):
     _state["pictures"] = web_environment.landed()
     try:
         report = web_export.export(window, window.scene, window.view_layer, path, _state["request"],
-                                   require_environment=False)
+                                   require_environment=False, shown=_state["shown"])
     except Exception as error:  # The page keeps the last good export and says this one failed.
         server.publish(None, {"status": "failed", "error": type(error).__name__, "strings": _state["strings"],
                               "updated": time.time()})
@@ -169,7 +179,7 @@ def refresh(window):
     finally:
         _state["exporting"] = False
         _state["last_ms"] = (time.perf_counter() - started) * 1000.0
-        _state["scene"] = scene_changes.scene_key(window.scene, window.view_layer)
+        _state["scene"] = scene_key(window.scene, window.view_layer)
     _state["picture_pending"] = report["settings"].get("environment", {}).get("status") == "pending"
     with open(path, "rb") as handle:
         body = handle.read()
@@ -260,7 +270,7 @@ def stop():
         import shutil
         shutil.rmtree(folder, ignore_errors=True)
     _state.update(window=None, dirty_at=None, request=None, scene=None, materials=[], page=None, shader_signature=(),
-                  picture_pending=False)
+                  picture_pending=False, shown={})
     return True
 
 

@@ -73,6 +73,7 @@
 
 #include "BLT_translation.hh"
 
+#include "BKE_angelo_image_source.hh"
 #include "BKE_bpath.hh"
 #include "BKE_colortools.hh"
 #include "BKE_global.hh"
@@ -137,6 +138,7 @@ static void image_runtime_free_data(Image *image)
     image->runtime->partial_update_user = nullptr;
   }
   BKE_image_partial_update_register_free(image);
+  bke::angelo_image_source_free(*image);
 }
 
 static void image_init_data(ID *id)
@@ -244,6 +246,11 @@ static void image_foreach_cache(ID *id,
 
   key.identifier = runtime_base_id + offsetof(bke::ImageRuntime, cache);
   function_callback(id, &key, reinterpret_cast<void **>(&image->runtime->cache), 0, user_data);
+
+  /* Angelo: the record of what the cached pixels were loaded from stays with them. */
+  key.identifier = runtime_base_id + offsetof(bke::ImageRuntime, angelo_source_loads);
+  function_callback(
+      id, &key, reinterpret_cast<void **>(&image->runtime->angelo_source_loads), 0, user_data);
 
   auto gputexture_offset = [image](int target, int eye) {
     constexpr size_t base_offset = offsetof(bke::ImageRuntime, gputexture);
@@ -520,6 +527,7 @@ static void image_blend_read_after_liblink(BlendLibReader *reader, ID *id)
   if (ima->runtime->cache == nullptr) {
     BKE_image_free_buffers(ima);
   }
+  bke::angelo_image_source_restore_after_undo(*ima);
 }
 
 IDTypeInfo IDType_ID_IM = {
@@ -676,6 +684,7 @@ static void image_free_packedfiles(Image *ima)
 void BKE_image_free_packedfiles(Image *ima)
 {
   image_free_packedfiles(ima);
+  bke::angelo_image_source_changed(*ima);
 }
 
 static void image_free_autosave_packedfiles(Image *ima)
@@ -1647,6 +1656,7 @@ bool BKE_image_memorypack(Image *ima)
     }
     BKE_image_clear_autosave(ima);
   }
+  bke::angelo_image_source_changed(*ima);
 
   return ok;
 }
@@ -1765,6 +1775,7 @@ void BKE_image_packfiles(ReportList *reports, Image *ima, const char *basepath)
   }
 
   BKE_image_clear_autosave(ima);
+  bke::angelo_image_source_changed(*ima);
 }
 
 void BKE_image_packfiles_from_mem(ReportList *reports,
@@ -1793,6 +1804,7 @@ void BKE_image_packfiles_from_mem(ReportList *reports,
     base_tile->gen_flag &= ~IMA_GEN_TILE;
 
     BKE_image_clear_autosave(ima);
+    bke::angelo_image_source_changed(*ima);
   }
 }
 
@@ -3481,6 +3493,7 @@ void BKE_image_signal(Main *bmain, Image *ima, ImageUser *iuser, int signal)
       }
       BKE_image_walk_all_users(bmain, ima, image_tag_frame_recalc);
       BKE_image_partial_update_mark_full_update(ima);
+      bke::angelo_image_source_changed(*ima);
 
       break;
 
@@ -3565,6 +3578,7 @@ void BKE_image_signal(Main *bmain, Image *ima, ImageUser *iuser, int signal)
         image_tag_reload(ima, nullptr, iuser, ima);
       }
       BKE_image_walk_all_users(bmain, ima, image_tag_reload);
+      bke::angelo_image_source_changed(*ima);
       break;
     case IMA_SIGNAL_USER_NEW_IMAGE:
       if (iuser) {
@@ -4118,7 +4132,7 @@ RenderResult *BKE_image_acquire_renderresult(Scene *scene, Image *ima)
     }
     else {
       rr = BKE_image_get_renderslot(ima, ima->render_slot)->render;
-      BKE_image_partial_update_mark_full_update(ima);
+      BKE_image_partial_update_mark_gpu_stale(ima); /* Angelo: another slot, not new pixels. */
     }
 
     /* set proper views */
@@ -4358,6 +4372,9 @@ static ImBuf *load_movie_single(Image *ima, ImageUser *iuser, int frame, const i
 
   ia = static_cast<ImageAnim *>(BLI_findlink(&ima->anims, view_id));
 
+  /* The decoder may retain a different file than the current path. */
+  bke::angelo_image_source_note_unsupported_load(*ima, view_id);
+
   if (ia->anim == nullptr) {
     char filepath[FILE_MAX];
     ImBufFlags flags = (ima->flag & IMA_DEINTERLACE) ? ImBufFlags::Deinterlace : ImBufFlags::Zero;
@@ -4474,6 +4491,8 @@ static ImBuf *load_image_single(Image *ima,
               "<packed data>",
               nullptr,
               ima->colorspace_settings.name);
+          bke::angelo_image_source_note_packed_load(
+              *ima, view_id, tile_number, *imapf.packedfile, uint32_t(flag));
         }
         break;
       }
@@ -4502,8 +4521,23 @@ static ImBuf *load_image_single(Image *ima,
 
     BKE_image_user_file_path(&iuser_t, ima, filepath);
 
-    /* read ibuf */
-    ibuf = IMB_load_image_from_filepath(filepath, flag, ima->colorspace_settings.name);
+    /* Stamp the descriptor that the decoder actually reads. */
+    const int file = BLI_open(filepath, O_BINARY | O_RDONLY, 0);
+    const bke::AngeloImageSourceFileWitness witness =
+        bke::angelo_image_source_prepare_file_load(file, filepath);
+    ibuf = IMB_load_image_from_file_descriptor(file, flag, filepath, ima->colorspace_settings.name);
+    bke::angelo_image_source_note_file_load(*ima,
+                                           view_id,
+                                           tile_number,
+                                           is_sequence ? iuser_t.framenr : 0,
+                                           witness,
+                                           uint32_t(flag));
+    if (ibuf) {
+      ibuf->filepath = filepath;
+    }
+    if (file != -1) {
+      close(file);
+    }
   }
 
   if (ibuf) {
@@ -5541,7 +5575,7 @@ void BKE_image_user_frame_calc(Image *ima, ImageUser *iuser, int cfra)
        * multiple image users may use different frames, this is to
        * be improved with perhaps a GPU texture cache. */
       if (ima->runtime->gpuframenr != IMAGE_GPU_FRAME_NONE) {
-        BKE_image_partial_update_mark_full_update(ima);
+        BKE_image_partial_update_mark_gpu_stale(ima); /* Angelo: another frame, not new pixels. */
       }
       ima->runtime->gpuframenr = iuser->framenr;
     }

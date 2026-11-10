@@ -29,11 +29,20 @@ TempLibraryContext *BLO_library_temp_load_id(Main *real_main,
   BKE_main_init_from_reference(*temp_lib_ctx->bmain_base, *real_main);
 
   BlendHandle *blendhandle = BLO_blendhandle_from_file(blend_file_path, &temp_lib_ctx->bf_reports);
+  if (blendhandle == nullptr) {
+    BLO_library_temp_free(temp_lib_ctx);
+    return nullptr;
+  }
 
   LibraryLink_Params lib_link_params;
   BLO_library_link_params_init(&lib_link_params, temp_lib_ctx->bmain_base, 0, ID_TAG_TEMP_MAIN);
 
   Main *bmain_lib = BLO_library_link_begin(&blendhandle, blend_file_path, &lib_link_params);
+  if (bmain_lib == nullptr) {
+    BLO_blendhandle_close(blendhandle);
+    BLO_library_temp_free(temp_lib_ctx);
+    return nullptr;
+  }
 
   temp_lib_ctx->temp_id = BLO_library_link_named_part(
       bmain_lib, &blendhandle, idcode, idname, &lib_link_params);

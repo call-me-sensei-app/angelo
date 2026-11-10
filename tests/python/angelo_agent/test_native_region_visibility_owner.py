@@ -7,6 +7,8 @@ handler lifecycle. The GUI suite and the unchanged shared sculpt fixture cover
 that separately. Requires a host C++ compiler; does not build or launch Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 from pathlib import Path
 import re
@@ -56,7 +58,7 @@ class RegionVisibilityOwnerTests(unittest.TestCase):
                     flags = ["-DWITH_PYTHON"] if python_enabled else []
                     compiled = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", *flags,
                                                str(cpp), "-o", str(executable)],
-                                              text=True, capture_output=True, timeout=30)
+                                              text=True, capture_output=True, timeout=300)   # A hung compiler, not a slow runner.
                     self.assertEqual(compiled.returncode, 0, compiled.stderr)
                     result = subprocess.run([str(executable)], text=True, capture_output=True, timeout=10)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

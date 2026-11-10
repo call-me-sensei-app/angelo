@@ -415,17 +415,18 @@ class SessionCollection:
         self.path = self.directory / "conversations.json"
         self.records = {}
         self.active = None
-        self._dirty, self._saved_at = False, 0.0  # A noted change not yet written, and when the index last was.
+        # A noted change not yet written, when the index last was, and when its last save was refused (``save``).
+        self._dirty, self._saved_at, self._refused_at = False, 0.0, None
         # A list it can't use is never written over as if empty (kept_state); the chats on disk are listed again.
         raw, self._state = kept_state.read(self.path)
         self.records, self.active, self._state = session_kept.index_records(self.directory, raw, self._state)
         self._kept = session_kept.take_kept_index(self.directory, self.path, self.records)  # Removed once saved.
         self._recovered = set()   # Listed again from sessions/: the saved list's title wins once it can be read.
-        if self._state in (kept_state.UNKNOWN, kept_state.DAMAGED):   # And every chat on disk it doesn't list yet.
+        if self._state in (kept_state.UNKNOWN, kept_state.DAMAGED) or session_kept.owed(self.path):   # All on disk.
             for identity, record in session_kept.recovered_index(self.directory / "sessions").items():
                 if self.records.setdefault(identity, record) is record:
                     self._recovered.add(identity)
-            self.active = max(self.records.values(), key=lambda r: r["updated"])["id"] if self.records else None
+            self.active = self.active or max(self.records.values(), key=lambda r: r["updated"], default={}).get("id")
         if not self.records:
             # Preserve the prototype's previous single conversation on upgrade.
             legacy = SessionStore(directory).load()
@@ -464,7 +465,7 @@ class SessionCollection:
 
     def save_if_due(self, interval=1.0):
         """Write the index when a noted change waits and it was last written over ``interval`` seconds ago."""
-        if self._dirty and time.monotonic() - self._saved_at > interval:
+        if self._dirty and time.monotonic() - self._saved_at > interval and session_kept.retry_due(self._refused_at):
             self.save()
 
     def ordered(self):
@@ -481,11 +482,9 @@ class SessionCollection:
             return   # Kept beside it first (every chat is listed again from sessions/), or not written at all.
         self._state, self._recovered = kept_state.OK, set()
         payload = {"version": 1, "active": self.active, "sessions": list(self.records.values())}
-        temporary = self.path.with_suffix(".tmp")
-        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, allow_nan=False)
-        os.replace(temporary, self.path)
-        kept_state.remove_copies(self._kept)   # What they listed is in the file now.
-        self._kept = []
+        self._refused_at = session_kept.write_index(self.path, payload, self._refused_at)
+        if self._refused_at is not None:   # Owed: ``save_if_due`` writes it later, never a raise into the pump.
+            self._dirty = True
+            return
+        self._kept = session_kept.settled(self.path, self._kept)   # Its copies and owed marker: in the file now.
         self._dirty, self._saved_at = False, time.monotonic()

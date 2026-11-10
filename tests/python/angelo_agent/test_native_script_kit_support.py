@@ -10,6 +10,8 @@ reaches the other's triangle bounds. The union-find that joins floating parts to
 is grounded and the lowest point it reaches. test_blender_script_kit_support runs the whole check on real scenes.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import random
 import sys

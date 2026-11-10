@@ -20,7 +20,7 @@ import secrets
 import time
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from . import kept_state
+from . import kept_state, shared_replace
 from .job_spec import JOB_ID, PREVIEW
 
 ACTIVE = frozenset({"queued", "starting", "running", "stopping"})
@@ -116,6 +116,8 @@ class JobStore:
         self.next_number = 1
         self._saved_at = 0.0
         self.unsaved = False  # A ``shown`` mark made off the main thread waits for the next save (mark_shown).
+        self.refused_at = None  # When a save was refused (monotonic; Windows: the file held open): retried (job_ui).
+        self.on_refused = None  # Called (main thread) when a save is refused: job_ui keeps its timer for the retry.
         self.state = kept_state.NONE  # How the file read (kept_state): never written over as if it were empty.
         self._kept = []  # Copies an earlier save kept beside it, read back: removed once a save holds their records.
         self.load()
@@ -194,6 +196,8 @@ class JobStore:
         now = time.monotonic() if now is None else now
         if throttle and now - self._saved_at < throttle:
             return False
+        if throttle and self.refused_at is not None and now - self.refused_at < shared_replace.RETRY_SECONDS:
+            return False   # A progress save while one is owed: ``retry_refused`` writes it after the pause.
         if self.state in (kept_state.UNKNOWN, kept_state.DAMAGED) and not kept_state.keep_before_write(self.path):
             return False   # Kept beside it first (its records come back at the next load), or not written at all.
         self.state = kept_state.OK
@@ -205,13 +209,26 @@ class JobStore:
             descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
                 handle.write(payload)
-            os.replace(temporary, self.path)
-        except OSError:
+            shared_replace.replace(temporary, self.path)
+        except OSError as error:   # The records stay in memory; the job timer saves them again (retry_refused).
+            shared_replace.discard(temporary)
+            if self.refused_at is None:
+                print("Angelo: the background jobs could not be saved; Angelo tries again:", error)
+            self.refused_at = now
+            if self.on_refused is not None:
+                self.on_refused()
             return False
-        self._saved_at, self.unsaved = now, False
+        self._saved_at, self.unsaved, self.refused_at = now, False, None
         kept_state.remove_copies(self._kept)   # Their records are in the file now.
         self._kept = []
         return True
+
+    def retry_refused(self, now=None):
+        """Save again after a refused save, at most every ``shared_replace.RETRY_SECONDS``; True while one is owed."""
+        now = time.monotonic() if now is None else now
+        if self.refused_at is not None and now - self.refused_at >= shared_replace.RETRY_SECONDS:
+            self.save(now=now)
+        return self.refused_at is not None
 
     def interrupted(self, *, now):
         """Records a previous run left queued or running, now ``interrupted`` (startup reconciliation)."""
@@ -392,8 +409,8 @@ def context_entry(record, *, position=None):
         if detail.get("peak_memory_mb"):   # What its Cycles render used at most (job_deadline.observe_memory).
             entry["peak_memory_mb"] = detail["peak_memory_mb"]
         outputs = output_entries(receipt)
-        for key in ("files", "images", "caches", "kept", "sequence", "missing", "unexpected", "unrestored", "video",
-                    "video_error", "note", "facts"):   # facts: per target, what a texture set's PNGs can't hold.
+        for key in ("files", "images", "caches", "kept", "kept_folder", "left_published", "sequence", "missing",
+                    "unexpected", "unrestored", "video", "video_error", "note", "facts"):   # facts: per target, what a texture set's PNGs can't hold.
             if receipt.get(key) and not (key == "images" and outputs):  # Each output names its image itself.
                 entry[key] = receipt[key]
         if receipt.get("materials"):   # The baked materials, made but never assigned (bake_maps_material).

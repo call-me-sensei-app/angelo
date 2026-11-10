@@ -10,6 +10,8 @@ CLI host. Also ``team_lock`` across real processes, ``display_text``
 translation at display time, ``team_reads`` parsing and the status-bar item.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import plistlib
 import shutil

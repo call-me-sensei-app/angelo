@@ -50,8 +50,9 @@ def _inputs(review):
     return seen[:6]
 
 
-def approval_layout(call, x, top, width, wrap, line_height, details=False):
-    """(ops, height) for a pending angelo_flow_run approval. ``details`` adds each step's exact request."""
+def approval_layout(call, x, top, width, wrap, line_height, details=False, note=""):
+    """(ops, height) for a pending angelo_flow_run approval. ``details`` adds each step's exact request; ``note`` is
+    the muted line saying why it asks in Auto (``approval_wait.reason_text``), under the warning."""
     review, picked = call.precondition, choices(call)
     rows, selection = run_lines(review, picked)
     # The decision-card language (chat_card_draw): amber rail, a Needs your approval chip, the action as the title.
@@ -112,7 +113,7 @@ def approval_layout(call, x, top, width, wrap, line_height, details=False):
                                     total=f"{selection['later_total']:.2f}"), x + PAD, y, 12, MUTED, width - 2 * PAD))
     from .flow_approvals import message
     warning = message("angelo_flow_run", dict(call.arguments, _review=review, _choices=picked), getattr(call, "usage_label", ""))["warning"]
-    for value, _ in wrap(warning, max(40, width - 2 * PAD), 11):
+    for value, _ in [*wrap(warning, max(40, width - 2 * PAD), 11), *(wrap(note, max(40, width - 2 * PAD), 11) if note else ())]:
         y -= line_height - 4
         ops.append(("text", value.rstrip(), x + PAD, y, 11, MUTED, width - 2 * PAD))
     y -= 14 + 28

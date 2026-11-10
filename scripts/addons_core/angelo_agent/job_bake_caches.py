@@ -35,13 +35,15 @@ def blend_relative(path):
     """``//…``: ``path`` as Blender stores a path beside the .blend (raises JobRequestError when it can't)."""
     if not bpy.data.filepath:
         raise JobRequestError("Save the file first: a disk cache is found by its path from the .blend, so it "
-                              "survives moving the project. Without output the bake is packed into the file")
+                              "survives moving the project. Without output the bake is packed into the file",
+                              code="VALIDATION")
     try:
         relative = Path(path).resolve().relative_to(Path(bpy.data.filepath).resolve().parent)
     except ValueError:
         raise JobRequestError("This chat's file workspace is not the saved file's folder, so a cache here could "
                               "not be found by a path from the .blend. The workspace follows the file on the next "
-                              "message; or leave output out to pack the bake into the file") from None
+                              "message; or leave output out to pack the bake into the file",
+                              code="VALIDATION") from None
     return "//" + str(PurePosixPath(*relative.parts))
 
 

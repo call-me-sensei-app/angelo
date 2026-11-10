@@ -35,6 +35,7 @@
 #include "BLI_ghash.h"
 #include "BLI_linklist.h"
 #include "BLI_memarena.h"
+#include "BLI_memory_utils.hh"
 #include "BLI_path_utils.hh"
 #include "BLI_string.h"
 #include "BLI_string_ref.hh"
@@ -43,6 +44,7 @@
 
 #include "BLT_translation.hh"
 
+#include "BKE_angelo_stage_links.hh"
 #include "BKE_anim_data.hh"
 #include "BKE_armature.hh"
 #include "BKE_asset.hh"
@@ -939,6 +941,15 @@ static void id_swap(Main *bmain,
   const ID id_a_back = *id_a;
   const ID id_b_back = *id_b;
 
+  if (!do_full_id) {
+    /* Angelo: each ID keeps its own header, Python wrapper included, while its contents and custom
+     * properties move to the other ID (often a temporary one freed next): wrappers of that content
+     * would follow neither, so they become invalid, as when an ID is freed. A full swap moves the
+     * wrapper with the content, so its dependents stay right. */
+    BKE_libblock_py_sub_data_invalidate(id_a);
+    BKE_libblock_py_sub_data_invalidate(id_b);
+  }
+
   char *id_swap_buff = static_cast<char *>(alloca(id_struct_size));
 
   memcpy(id_swap_buff, id_a, id_struct_size);
@@ -1156,15 +1167,17 @@ void BKE_libblock_management_main_add(Main *bmain, void *idv)
   }
 
   ListBaseT<ID> *lb = which_libbase(bmain, GS(id->name));
-  BKE_main_lock(bmain);
-  BLI_addtail(lb, id);
-  /* We need to allow adding extra datablocks into libraries too, e.g. to support generating new
-   * overrides for recursive resync. */
-  BKE_id_new_name_validate(*bmain, *lb, *id, nullptr, IDNewNameMode::RenameExistingNever, true);
-  /* alphabetic insertion: is in new_id */
-  id->tag &= ~(ID_TAG_NO_MAIN | ID_TAG_NO_USER_REFCOUNT);
-  bmain->is_memfile_undo_written = false;
-  BKE_main_unlock(bmain);
+  {
+    BKE_main_lock(bmain);
+    BLI_SCOPED_DEFER([&]() { BKE_main_unlock(bmain); });
+    BLI_addtail(lb, id);
+    /* We need to allow adding extra datablocks into libraries too, e.g. to support generating new
+     * overrides for recursive resync. */
+    BKE_id_new_name_validate(*bmain, *lb, *id, nullptr, IDNewNameMode::RenameExistingNever, true);
+    /* alphabetic insertion: is in new_id */
+    id->tag &= ~(ID_TAG_NO_MAIN | ID_TAG_NO_USER_REFCOUNT);
+    bmain->is_memfile_undo_written = false;
+  }
 
   BKE_lib_libblock_session_uid_ensure(id);
 }
@@ -1181,12 +1194,14 @@ void BKE_libblock_management_main_remove(Main *bmain, void *idv)
   /* For now, allow userrefcounting IDs to get out of Main - can be handy in some cases... */
 
   ListBaseT<ID> *lb = which_libbase(bmain, GS(id->name));
-  BKE_main_lock(bmain);
-  BLI_remlink(lb, id);
-  BKE_main_namemap_remove_id(*bmain, *id);
-  id->tag |= ID_TAG_NO_MAIN;
-  bmain->is_memfile_undo_written = false;
-  BKE_main_unlock(bmain);
+  {
+    BKE_main_lock(bmain);
+    BLI_SCOPED_DEFER([&]() { BKE_main_unlock(bmain); });
+    BLI_remlink(lb, id);
+    BKE_main_namemap_remove_id(*bmain, *id);
+    id->tag |= ID_TAG_NO_MAIN;
+    bmain->is_memfile_undo_written = false;
+  }
 }
 
 void BKE_libblock_management_usercounts_set(Main *bmain, void *idv)
@@ -1421,12 +1436,14 @@ void *BKE_libblock_alloc_in_lib(Main *bmain,
         id->lib = owner_library ? *owner_library : nullptr;
       }
 
-      BKE_main_lock(bmain);
-      BLI_addtail(lb, id);
-      BKE_id_new_name_validate(*bmain, *lb, *id, name, IDNewNameMode::RenameExistingNever, true);
-      bmain->is_memfile_undo_written = false;
-      /* alphabetic insertion: is in new_id */
-      BKE_main_unlock(bmain);
+      {
+        BKE_main_lock(bmain);
+        BLI_SCOPED_DEFER([&]() { BKE_main_unlock(bmain); });
+        BLI_addtail(lb, id);
+        BKE_id_new_name_validate(*bmain, *lb, *id, name, IDNewNameMode::RenameExistingNever, true);
+        bmain->is_memfile_undo_written = false;
+        /* alphabetic insertion: is in new_id */
+      }
 
       /* Split Main case, now the ID should get the Main's #curlib. */
       if (bmain->curlib) {
@@ -1500,6 +1517,11 @@ void BKE_lib_libblock_session_uid_ensure(ID *id)
       id->session_uid = atomic_add_and_fetch_uint32(&global_session_uid, 1);
     }
   }
+}
+
+uint32_t BKE_lib_libblock_session_uid_last()
+{
+  return atomic_add_and_fetch_uint32(&global_session_uid, 0);
 }
 
 void BKE_lib_libblock_session_uid_renew(ID *id)

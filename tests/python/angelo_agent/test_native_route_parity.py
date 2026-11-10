@@ -9,6 +9,8 @@ inside a light's row (``shines_from``), a new key list nobody registered, and a 
 size budget.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import sys

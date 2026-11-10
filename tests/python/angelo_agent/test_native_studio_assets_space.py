@@ -10,6 +10,8 @@ stale. A library entry that came back after Turn off is on again. Every control 
 real Turn off and the size Media Studio shows are ``test_blender_studio_assets``'s.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import os
 import sys
@@ -160,15 +162,17 @@ class FreeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             directory, ours, _theirs, _outside = tree(root)
             held, release, results = threading.Event(), threading.Event(), []
+            self.addCleanup(release.set)
 
-            def writer():
+            def writer():   # Until released (by this test or its cleanup): no clock ends it before a check looks.
                 with studio_assets.sync_lock(directory):
                     held.set()
-                    release.wait(5)
-            thread = threading.Thread(target=writer)
+                    release.wait()
+            thread = threading.Thread(target=writer, daemon=True)
             thread.start()
             held.wait(5)
-            worker = space.free_later(directory, False, results.append, wait=3.0)
+            # No limit on this wait (the bounded one is checked below): only the writer's end lets the free go on.
+            worker = space.free_later(directory, False, results.append, wait=float("inf"))
             self.assertTrue(worker.is_alive(), "returned at once, the worker waits")
             release.set()
             thread.join()
@@ -178,7 +182,7 @@ class FreeTests(unittest.TestCase):
                 space.free_later(directory, True, results.append)
             held.clear()
             release.clear()
-            thread = threading.Thread(target=writer)
+            thread = threading.Thread(target=writer, daemon=True)
             thread.start()
             held.wait(5)
             space.free_later(directory, False, results.append, wait=0.3).join(5)

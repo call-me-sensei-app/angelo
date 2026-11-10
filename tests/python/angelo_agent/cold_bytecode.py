@@ -44,6 +44,23 @@ def shipped_loader(module):
         isinstance(loader, SourceFileLoader) and type(loader).get_code is not SourceFileLoader.get_code)
 
 
+def _with_drive(source, drives):
+    """``source_from_cache``'s answer under a prefix as a file that exists: Windows' cache path drops the source's
+    drive (cache_from_source), so it is the first of ``drives`` that holds the file. The current drive is only one
+    candidate: a bytecode folder in %LOCALAPPDATA% and an app or checkout on D: are on different drives. On POSIX
+    (no drives) and when no drive holds it, ``source`` itself."""
+    if os.path.splitdrive(source)[0]:
+        return source
+    return next((drive + source for drive in drives if os.path.isfile(drive + source)), source)
+
+
+def _drives(modules, *folders):
+    """The drives of the loaded modules' files and of ``folders`` (the bytecode folder, the working folder), in that
+    order without repeats: [""] on POSIX."""
+    paths = [module.__file__ for module in list(modules.values()) if isinstance(getattr(module, "__file__", None), str)]
+    return list(dict.fromkeys(os.path.splitdrive(os.path.abspath(path))[0] for path in paths + list(folders)))
+
+
 def audit(prefix, modules=None, app_root=None):
     """What a launch wrote into the bytecode folder ``prefix``, and which loaded modules came from shipped bytecode.
 
@@ -56,6 +73,7 @@ def audit(prefix, modules=None, app_root=None):
     """
     modules = modules if modules is not None else sys.modules
     written, recompiled = [], []
+    drives = _drives(modules, prefix, os.getcwd()) if prefix else []
     saved = sys.pycache_prefix
     sys.pycache_prefix = prefix   # source_from_cache maps a file in the folder back only while it is the prefix.
     try:
@@ -66,7 +84,7 @@ def audit(prefix, modules=None, app_root=None):
                 path = os.path.join(folder, name)
                 written.append(path)
                 try:
-                    source = importlib.util.source_from_cache(path)
+                    source = _with_drive(importlib.util.source_from_cache(path), drives)
                 except ValueError:
                     continue
                 if shipped_bytecode(source):
@@ -117,7 +135,8 @@ def probe_loader(modules=None, app_root=None):
                 spec.loader.get_code(spec.name)
             except Exception:  # noqa: BLE001 - a loader that cannot give the code is a failure too.
                 failed.add(name)
-        written = {os.path.realpath(importlib.util.source_from_cache(os.path.join(root, file)))
+        drives = _drives({name: modules[name] for name in served}, folder, os.getcwd())
+        written = {os.path.realpath(_with_drive(importlib.util.source_from_cache(os.path.join(root, file)), drives))
                    for root, _dirs, files in os.walk(folder) for file in files if file.endswith(".pyc")}
     finally:
         sys.pycache_prefix, sys.dont_write_bytecode = saved

@@ -9,6 +9,8 @@ names them (no larger than the names it read before: the latency budget). test_b
 on a real merge.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest

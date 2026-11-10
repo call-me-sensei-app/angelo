@@ -9,6 +9,8 @@ names) keep running. The lines below are the recorded shapes. test_blender_scrip
 against Blender 5.2's own RNA.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import sys
 import unittest

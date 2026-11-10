@@ -12,6 +12,8 @@ ctypes' own argument conversion is exercised too. They cannot prove behavior
 on real Windows; see "Manual checks on Windows" in doc/angelo/ai_providers.rst.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ctypes
 import sys
 import unittest
@@ -26,6 +28,7 @@ from angelo_agent.credential_manager_windows import (_FUNCTIONS, CRED_MAX_CREDEN
 from angelo_agent.key_store import COMMENT, SERVICE, KeyStoreError
 from angelo_agent.saved_keys import SavedKeys, account_name
 from fake_c_libraries import CAbiLibrary, CFunction, address, store, struct
+from host_test_policy import environment_skip
 from test_native_saved_keys import KEY, OTHER, settle
 
 ACCOUNT = "%s@0123456789abcdef" % uuid.UUID(int=1)
@@ -221,7 +224,7 @@ class CredentialManagerTests(unittest.TestCase):
         self.assertEqual(caught.exception.kind, "unavailable")
         self.assertIn("sign-in session", caught.exception.message)
 
-    @unittest.skipIf(sys.platform == "win32", "advapi32 exists on Windows")
+    @unittest.skipIf(sys.platform == "win32", environment_skip("advapi32 is part of Windows, so it cannot be missing there"))
     def test_missing_library_fails_at_construction(self):
         with self.assertRaises((AttributeError, OSError)):
             CredentialApi()

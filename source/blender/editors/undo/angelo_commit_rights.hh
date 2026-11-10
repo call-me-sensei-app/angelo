@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include "BLI_span.hh"
 #include "BLI_sys_types.h"
@@ -30,6 +31,11 @@ enum class AngeloCommitDeletePurpose {
   PrivateStage,
   ApprovedObject,
   CreatedCollection,
+  /** Live data a commit's own swaps replaced (data, Key, Material, NodeTree, Action, ParticleSettings,
+   * World) that nothing uses any more: authority is the scope's sealed replaceable closure. */
+  ReplacedData,
+  /** Prepared self-only roots; cascade IDs retain the ordinary unused-data policy. */
+  SelfReplacedData,
 };
 
 struct AngeloCommitDeleteRight;
@@ -69,6 +75,23 @@ AngeloCommitDeleteRight *ED_angelo_commit_delete_prepare(
     Span<AngeloCommitIDIdentity> keep,
     const char **r_error);
 
+/** Prepare one all-proof-before-any-free batch of sealed plain roots held only by their own counted
+ * self edges. Every surviving outside link still passes the ordinary deletion proof. A null result
+ * without an error is a valid empty plan. This does not broaden the ordinary zero-user free loop. */
+AngeloCommitDeleteRight *ED_angelo_commit_self_replaced_prepare(
+    bContext *C,
+    AngeloUndoCapture *capture,
+    Span<AngeloCommitIDIdentity> roots,
+    Span<AngeloCommitIDIdentity> authorized,
+    Vector<AngeloCommitIDIdentity> &r_eligible,
+    const char **r_error);
+
+/** Fresh, non-consuming revalidation while the caller can still roll its transaction back. */
+bool ED_angelo_commit_delete_validate(bContext *C,
+                                      AngeloUndoCapture *capture,
+                                      const AngeloCommitDeleteRight &right,
+                                      const char **r_error);
+
 /** Consumes the right on its first attempt, including a preflight refusal. No fallback deletion. */
 bool ED_angelo_commit_delete(bContext *C,
                              AngeloUndoCapture *capture,
@@ -76,6 +99,46 @@ bool ED_angelo_commit_delete(bContext *C,
                              AngeloCommitDeleteResult &r_result,
                              const char **r_error);
 void ED_angelo_commit_delete_free(AngeloCommitDeleteRight *right);
+
+/**
+ * The replaceable closure of `holders` (the written Objects and the written Scene, before any commit
+ * write): every local Main ID of a family a commit swaps (object data, Key, Material, NodeTree,
+ * Action, ParticleSettings, World) the holders reach through counted (user) links, transitively
+ * through those families only. This is the authority of #AngeloCommitDeletePurpose::ReplacedData:
+ * data the written objects held before the commit, never another ID of the file.
+ */
+bool ED_angelo_commit_replaceable(bContext *C,
+                                  AngeloUndoCapture *capture,
+                                  Span<AngeloCommitIDIdentity> holders,
+                                  Vector<AngeloCommitIDIdentity> &r_closure,
+                                  const char **r_error);
+
+struct AngeloCommitFreeResult {
+  /** Identities the passes freed (Main and embedded), checked absent from Main afterwards. */
+  Vector<AngeloCommitIDIdentity> removed;
+  /** Roots (any family) still in Main with the reason their last proof refused them. */
+  Vector<std::pair<AngeloCommitIDIdentity, std::string>> refused;
+  /** Pointers the kernel freed outside the proven closures. Never dereference these addresses. */
+  Vector<uintptr_t> unexpected;
+  int passes = 0;
+  bool unfinished = false;
+};
+
+/**
+ * Free the replaced data `roots` that nothing uses, through the native deletion proof, in passes:
+ * a root becomes eligible once nothing uses it (after another root's free). Never anything but a
+ * root and its stock cascade (Key, embedded data); every root must be in `authorized` (the sealed
+ * replaceable closure). One Main inventory per pass, read after every preview job is stopped. Roots refused
+ * one by one are tried together once (roots that only point at each other). At most `max_passes`.
+ * Returns false only when the scope changed or the kernel freed outside a proof (reported).
+ */
+bool ED_angelo_commit_free_replaced(bContext *C,
+                                    AngeloUndoCapture *capture,
+                                    Span<AngeloCommitIDIdentity> roots,
+                                    Span<AngeloCommitIDIdentity> authorized,
+                                    int max_passes,
+                                    AngeloCommitFreeResult &r_result,
+                                    const char **r_error);
 
 struct AngeloCommitEngineResult {
   bool setter_called = false;

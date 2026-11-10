@@ -9,6 +9,8 @@ is ``doc/angelo/oneshot_tests.rst``, "How material colours are read". Tolerances
 summation over octaves), the others 1e-5.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

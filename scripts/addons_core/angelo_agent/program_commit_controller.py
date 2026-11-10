@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from . import exact_fence
 from .chat_settings import clean_options
 from .refusal_codes import RefusalError, error_result
+from .stale_binding import same as same_binding
 from .program_context import (MAX_CONTEXT_REBINDS, MAX_STAGING_RESTARTS,
                               changed_message, refusal_message)
 from .program_jobs import native_preparation_error_result as _preparation_error_result
@@ -167,7 +168,7 @@ class ProgramCommitController:
             else:
                 current, failure = self._fresh_precondition(call, executor)
             self._check_native_preparation(call, preparation, document)
-            if failure is not None or current != preparation.precondition:
+            if failure is not None or not same_binding(current, preparation.precondition):
                 outcome = self._frame_rebind(call, executor)
                 self._check_native_preparation(call, preparation, document)
                 if (isinstance(outcome, dict) and "arguments" in outcome
@@ -315,7 +316,7 @@ class ProgramCommitController:
         self._check_native_preparation(call, preparation, document)
         if failure is not None:
             raise failure
-        if current != preparation.precondition:
+        if not same_binding(current, preparation.precondition):
             from .program_context import change_code
             change = self._binding_change(call, executor, current)
             raise RefusalError(changed_message(change, "immediately before typed apply")
@@ -435,7 +436,7 @@ class ProgramCommitController:
                     self._check_native_preparation(call, preparation, document)
                 if not self._tool_available(call, document):
                     return {"error_code": 'CANCELLED', "error": "The staged invocation stopped during revalidation", "scene_changed": False}
-                if failure is not None or current != call.precondition:
+                if failure is not None or not same_binding(current, call.precondition):   # A NaN equals a NaN in its place.
                     outcome = self._frame_rebind(call, executor) if preparation is None else None
                     if (isinstance(outcome, dict) and "arguments" in outcome
                             and self._restart_staging(call, {"context_changed": "frame", "scene_changed": False})):

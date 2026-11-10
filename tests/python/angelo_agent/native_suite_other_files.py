@@ -16,12 +16,18 @@ EXCLUDED = {
                               "run by hand on an idle machine.",
     "check_mcp_discovery.py": "LIVE, billed: how often Codex finds Angelo's or Blender MCP's tools from a plain request.",
     "bench_headless_mcp_latency.py": "Headless MCP latency against Blender MCP's CLI tools on the same files; run alone.",
+    "bench_commit_orphans.py": "Per-commit cost and memory of freeing replaced data on the production commit path "
+                               "(about 30,000 IDs), against a build without it; run alone on a quiet machine.",
     "bench_parallel_workers.py": "Worker Blender start time, tool-call round trip and memory per worker; run alone.",
+    "bench_rna_hot_paths.py": "Comparative RNA hot-path instruction and time measurements; run through Mac 1's "
+                              "performance queue, separately from functional suites.",
     "bench_uv_checker.py": "The viewport UV checker's draw time: off against main (ABAB) and on against a stock "
                            "checker material; launches builds, run alone on a quiet machine.",
     "bench_uv_checker_draw.py": "The in-app half of bench_uv_checker.py; that driver launches it.",
     "bench_engine_preflight.py": "Export time with and without the engine preflight on a production-size scene (ABAB), "
                                  "and the engine link's save; run alone on a quiet machine.",
+    "bench_export_snapshot.py": "export_snapshot.take's copy time by file size against CopyFile2, copyfile and a hard "
+                                "link; standard library, for Windows; run alone.",
     "bench_game_ready_check.py": "The game-ready check's cost by phase and meshoptimizer against Decimate (ABAB) on "
                                  "held-out asset files; launches nothing itself, run alone on a quiet machine.",
     "bench_engine_skeleton.py": "What the engine-skeleton check costs unused (startup import and register, + menu rows, "
@@ -37,6 +43,8 @@ EXCLUDED = {
                                "(view_warm.GRACE_SECONDS); run alone, niced.",
     "bench_game_physics_export.py": "A glTF export without the game physics extension, with it and nothing marked, "
                                     "and with physics marked (doc/angelo/game_physics.rst); run alone.",
+    "bench_game_physics_panel.py": "The Game Physics panel's draw on a large skinned mesh, before and after the shared "
+                                   "fit (doc/angelo/game_physics.rst); run alone, the two arms alternately.",
     "bench_worker_mirror_pump.py": "A worker chat's mirror cost per lead pump against chat size; no Blender, run alone.",
     "parallel_live_trial.py": "BILLED live parallel-agent trials (a lead and two workers); needs --authorize-billed-runs.",
     "parallel_live_session.py": "In-app driver started only by parallel_live_trial.py; refuses to run otherwise.",
@@ -81,6 +89,8 @@ EXCLUDED = {
     "benchmark_blender_sculpt.py": "Performance benchmark of sculpt batching.",
     "benchmark_blender_sculpt_audit.py": "Serial performance benchmark; run alone.",
     "benchmark_blender_snapshot_cost.py": "Performance benchmark of request snapshots; run alone.",
+    "benchmark_blender_content_binding.py": "Checkpoint content binding's cost: Sculpt pairs, safety captures and "
+                                            "XXH3 against BLAKE2b; run alone, once per build of a frozen pair.",
     "benchmark_blender_stage_compression.py": "Performance benchmark of stage-bundle compression; run alone.",
     "benchmark_blender_turn_context.py": "Performance benchmark of turn context and change feed; run alone.",
     "benchmark_blender_uv_unwrap_work.py": "Growth of the typed uv_unwrap action with mesh size; run alone.",
@@ -97,6 +107,10 @@ EXCLUDED = {
     "bench_mcp_vs_angelo.py": "BILLED Blender MCP vs Angelo benchmark launcher; needs --authorize-billed-runs.",
     "bench_mcp_blender_startup.py": "Stock-Blender startup started only by bench_mcp_trial.py; refuses otherwise.",
     "bench_gpu.py": "The GPU test VMs' Cycles preference; run as a script only by its own probe, in a background Blender.",
+    "bench_change_clock.py": "Windows latency of the change-clock settle (capture, Restore, file tools, mirror reads, "
+                             "export copies); a VM runs it alone.",
+    "probe_volume_stamps.py": "Windows, administrator: how NTFS, FAT32 and exFAT (VHDX disks it makes and removes) "
+                              "stamp times against the system clock; a VM runs it alone.",
     "eval_live_agent.py": "BILLED live-agent latency launcher; needs --authorize-billed-runs and a connection.",
     "measure_parts_check.py": "Subscription-billed measurement of the parts check's accuracy (gate on parts_check.READY); "
                               "run by hand in a background Blender with a connection.",
@@ -130,9 +144,12 @@ EXCLUDED = {
                                "holding the main thread, with a stalled worker (doc/angelo/web_export.rst, The "
                                "World); run by a slot on an app clone with this checkout's add-on."),
     "gltfpack_stand_in.py": "gltfpack's stand-in that test_blender_web_export_gltfpack.py puts on PATH; never alone.",
+    "browser_web_preview_drag.py": ("Every drag on the live web preview page in Chromium, Firefox and WebKit "
+                                    "(Playwright, no Blender; doc/angelo/web_export.rst, Validation); explicit only."),
     "native_coverage_metrics.py": "Read-only coverage measurement for native_coverage.rst; not a pass/fail suite.",
     "test_codex_external_local.py": "Host-Python test that drives the installed Codex CLI; explicit only.",
     "codex_prompt_probe.py": "Unbilled probe of the installed Codex CLI's request bytes (fake local endpoint); explicit only.",
+    "codex_image_prefix_probe.py": "Unbilled probe: whether a dynamic tool's picture keeps a Codex chat's request prefix (fake local endpoint); explicit only.",
     "codex_cache_fork_check.py": "Prompt-cache A/B of prediction-mode forks against fresh Codex threads; unbilled "
                                  "dry run by default, BILLED only with --authorize-billed-run; explicit only.",
     "codex_fork_probe.py": "Unbilled probe of prediction-mode forks across Codex app-server processes (fake local "
@@ -154,6 +171,8 @@ EXCLUDED = {
     "prefix_composition.py": "Host-Python byte report of a new chat's fixed opening by section, tool and kind; "
                              "a measurement, not a pass/fail suite.",
     "team_gateway_probe.py": "Unbilled probe of the gateway paths Codex and Claude Code call for team connections (local recorder); explicit only.",
+    "team_network_probe.py": "Unbilled check that real Claude Code and Codex on a team connection open no connection but "
+                             "their gateway (local gateway, recording proxy); explicit only.",
     "live_team_sign_in.py": "LIVE (unbilled) team sign-in against a real console; a person clicks Allow in the browser; explicit only.",
     "live_team_library_check.py": "LIVE (unbilled, read-only) team library and IP reads against a real console; "
                                   "a person clicks Allow in the browser; explicit only.",
@@ -185,13 +204,14 @@ EXCLUDED = {
 
 # Imported fixture/helper modules and host runners: not entry points.
 HELPERS = frozenset({
+    "essentials_dirty_undo.py",
     "hosted_worker_chat.py", "hosted_codex_stand_in.py", "hosted_rail_turns.py",
     "pump_blocking.py",   # The worker suites' pump checks: time a UI pump spends blocked, not its wall time.
     "concurrent_edit_oracle.py", "concurrent_edit_payload.py", "concurrent_edit_runtime.py",
     "studio_workflows_evidence.py",   # test_blender_studio_workflows' evidence-run steps
     "bake_maps_fixtures.py",   # test_blender_bake_maps_*: block-image materials and the synchronous texture set
     "job_frame_fixtures.py", "hand_fixtures.py", "hand_fixture_scenes.py", "eval_rig_tasks.py",
-    "engine_link_compare.py", "engine_link_compare_session.py",
+    "engine_link_compare.py", "engine_link_compare_session.py", "eval_steer.py",
     "rail_main_costs.py",   # test_blender_rail_main_view's cost cases
     'program_completion_fixtures.py',
     "runtime_identity.py",   # eval_live_agent plan.agent_runtime: which Codex file a live eval's app runs
@@ -213,9 +233,11 @@ HELPERS = frozenset({
     "runtime_unsent_fakes.py",   # test_native_runtime_unsent_loss{,_paths}'s shared fakes and dead runtime
     "worker_process_fake_worker.py",   # test_native_worker_process_ended's stand-in worker Blender
     "fake_c_libraries.py", "fake_nt_files.py", "fake_provider_cli.py", "fake_team_console.py", "file_name_rules.py",
+    "fake_native_binding.py",   # the stand-in native checkpoint content binding (capture_hasher, capture_bind)
+    "content_binding_fixtures.py",   # test_blender_checkpoint_content_binding's rewrite, hooks and Sculpt owner
     "file_times.py",
     "fresh_shader.py",   # shader code new in every run, for timings that claim an uncompiled shader
-    "fake_team_library.py", "fake_usage_reports.py", "gui_launch.py", "headless_page.py", "identity_fixtures.py", "long_jobs_fixtures.py",
+    "fake_team_library.py", "fake_usage_reports.py", "team_host_fence.py", "gui_launch.py", "headless_page.py", "identity_fixtures.py", "long_jobs_fixtures.py",
     "long_session_cost_model.py", "long_session_timers.py", "loopback_server.py", "macos_window.py", "measured_results.py", "notices_fakes.py",
     "native_addon_guard.py", "native_suite_checks.py", "native_suite_manifest.py", "native_suite_other_files.py",
     "native_suite_paths.py", "native_suite_process.py",
@@ -225,8 +247,10 @@ HELPERS = frozenset({
     "render_region_probe.py",    # where a region render pixel run crashes, per variant (diagnostic)
     "perf_counters.py", "perf_ratchet.py", "picture_fakes.py", "plan_budgets.py", "plan_output_accounting.py",
     "production_jobs_fixtures.py",
-    "production_jobs_harness.py", "program_production_helpers.py", "program_qa_helpers.py", "parallel_workers_qa.py", "composer_hint_qa.py", "parallel_live_cases.py",
+    "production_jobs_harness.py", "program_production_helpers.py", "program_qa_helpers.py", "rig_layouts_qa.py",
+    "parallel_workers_qa.py", "composer_hint_qa.py", "composer_gui_review.py", "parallel_live_cases.py",
     "eval_parallel.py", "parallel_kits.py", "parallel_variants.py", "parallel_instance_parts.py",
+    "parallel_merge_privacy_media.py",
     "scenario_oneshot_chess.py",
     "scenario_oneshot_parlour.py", "scenario_oneshot_roadster.py", "scenario_oneshot_outfit.py",
     # The long one-shot candidates (BENCH-PREREG Amendment I; town centre gates 1.0.6): scenarios, their stand-in kits
@@ -253,8 +277,17 @@ HELPERS = frozenset({
     "script_stream_fixtures.py",
     "view_source_fakes.py",
     "tool_mention_kinds.py",   # test_native_tool_mentions: what every kind of chat is told and offered.
-    "run_host_tests.py", "host_test_policy.py", "machine_clock.py",
+    # test_native_precondition_refusal_codes: its static walk from every precondition, and the add-on it reads.
+    "precondition_reach.py", "precondition_package.py",
+    # Every suite's and host test's first import, and what it applies: no real provider login without an opt-in.
+    "suite_isolation.py", "provider_isolation.py",
+    "provider_accounts.py", "account_fixtures.py",   # The account a billed profile is signed in to; test sign-ins.
+    "run_host_tests.py", "host_test_policy.py", "platform_env.py", "channel_endpoints.py", "machine_clock.py",
+    "thread_work.py",   # Work a thread does, counted (test_native_worker_mirror_reader, engine_link_reads).
+    "ntfs_sharing.py",   # Windows' file sharing on any host: a held reader refuses a replace (shared_replace tests).
+    "save_identity_stand_in.py",   # A save naming the file it wrote, stood in (document, engine link, headless).
     "script_pixel_fixtures.py", "script_review_fixtures.py", "sculpt_undo_admission_cases.py",
+    "addon_stand_in_import.py",   # host tests: add-on modules imported against a stand-in bpy, the package put back
     "prune_installed_addon.py",   # the release stage's host step before its native suites (stale installed add-on files)
     "run_native_suites.py", "snapshot_fixtures.py", "strict_plan_vectors.py", "team_library_fixtures.py",
     "token_accounting.py", "turn_recovery_fixtures.py", "translation_cards.py", "update_crash_gui.py", "update_crash_scenes.py", "update_fixtures.py",

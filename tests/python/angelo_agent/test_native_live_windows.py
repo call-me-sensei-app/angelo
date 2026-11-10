@@ -10,7 +10,10 @@ helper that yields only windows with a screen, and the source rule below that fa
 ``.areas`` read in Angelo's own modules.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
+import hashlib
 import sys
 import types
 import unittest
@@ -40,13 +43,47 @@ def angelo_sources():
     return sorted(path for path in found if path != HELPER)
 
 
-def direct_walks(source):
+# These three accesses describe native HWND integers, never Blender WindowManager.windows.
+# Pin the actual EnumWindows/GetWindowThreadProcessId producer AND each exact consumer body.
+# Any body change or new access loses the classification and is caught by the ordinary rule.
+_NATIVE_HWND_PINS = {'_Native.__init__': 'cc926094333695a41cca33b5257851b60ff9c14ccd945c013fec07147c11b51f', '_handle': '62a50c5ebeaf347b2bfac7a795de4d666dddf74a8e09caa4ded272ed4095e44c', '_Native.windows': '6ecae069dc244606c4588c504495788b8ec3dca9e9a1ba47f466eafad09bfbb5', '_CloseRequest.__init__': '3812b7f1f8319ccb99bf1faccb5e14fbe65d5e87327c2ea382e8e9cff99572ca', 'prove': '4f407be540db5c4a6b948d3c63ca1c17ae924660a08f2a281c4e76c1b4da767b', 'request_normal_close': 'dec8a7e800263f4d8f4877b32da81b4c41fe39a821c55fe61b932d6e02cc97e5'}
+_NATIVE_HWND_SITES = {'_CloseRequest.__init__': 'self.windows',
+                      'prove': 'native.windows', 'request_normal_close': 'native.windows'}
+
+
+def native_hwnd_sites(source, relative):
+    if relative != 'scripts/addons_core/angelo_agent/fab_browser_windows_proof.py':
+        return frozenset()
+    tree = ast.parse(source)
+    functions = {}
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            functions.update((node.name + '.' + method.name, method) for method in node.body
+                             if isinstance(method, ast.FunctionDef))
+        elif isinstance(node, ast.FunctionDef):
+            functions[node.name] = node
+    if any(name not in functions or hashlib.sha256(ast.dump(functions[name], include_attributes=False).encode()).hexdigest()
+           != digest for name, digest in _NATIVE_HWND_PINS.items()):
+        return frozenset()
+    sites = []
+    for name, expression in _NATIVE_HWND_SITES.items():
+        matches = [(node.lineno, ast.unparse(node)) for node in ast.walk(functions[name])
+                   if isinstance(node, ast.Attribute) and node.attr == 'windows'
+                   and ast.unparse(node) == expression]
+        if len(matches) != 1:
+            return frozenset()
+        sites.extend(matches)
+    return frozenset(sites)
+
+
+def direct_walks(source, native_hwnds=frozenset()):
     """``(line, text)`` of every ``.windows``/``.areas`` read not made through the helper, and every read that names
     them as a string (``getattr(x, "windows")``, ``x.path_resolve("areas")``, ``attrgetter("windows")``)."""
     found = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Attribute) and node.attr in WALKED:
-            if not (isinstance(node.value, ast.Name) and node.value.id in HELPER_NAMES):
+            if ((node.lineno, ast.unparse(node)) not in native_hwnds
+                    and not (isinstance(node.value, ast.Name) and node.value.id in HELPER_NAMES)):
                 found.append((node.lineno, ast.unparse(node)))
         elif isinstance(node, ast.Call):
             name = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None)
@@ -171,7 +208,8 @@ class SourceRuleTests(unittest.TestCase):
         sources = angelo_sources()
         self.assertGreater(len(sources), 600, "the scan finds the add-on")
         bypasses = ["%s:%d: %s" % (path.relative_to(ROOT), line, text)
-                    for path in sources for line, text in direct_walks(path.read_text(encoding="utf-8"))]
+                    for path in sources for line, text in direct_walks(path.read_text(encoding="utf-8"),
+                        native_hwnd_sites(path.read_text(encoding="utf-8"), path.relative_to(ROOT).as_posix()))]
         self.assertEqual(bypasses, [], "walk windows and areas through live_windows (scripts/modules/"
                                        "angelo_live_windows.py), which skips a window without a screen")
 
@@ -185,6 +223,27 @@ class SourceRuleTests(unittest.TestCase):
         for text in ("live_windows.windows(wm)", "live_windows.areas(window)", "usage['windows']",
                      "def windows(): pass", "windows = []"):
             self.assertFalse(direct_walks(text), text)
+
+    def test_native_hwnd_roles_are_exact_and_do_not_exempt_the_module(self):
+        relative = 'scripts/addons_core/angelo_agent/fab_browser_windows_proof.py'
+        source = (ROOT / relative).read_text()
+        sites = native_hwnd_sites(source, relative)
+        self.assertEqual(len(sites), 3)
+        self.assertEqual(len(direct_walks(source)), 3)
+        self.assertEqual(direct_walks(source, sites), [])
+        self.assertEqual(native_hwnd_sites(source, 'scripts/addons_core/angelo_agent/other.py'), frozenset())
+        extended = source + '\ndef added(wm):\n    return wm.windows\n'
+        self.assertTrue(direct_walks(extended, native_hwnd_sites(extended, relative)))
+
+    def test_changed_native_producer_or_caller_loses_its_role_classification(self):
+        relative = 'scripts/addons_core/angelo_agent/fab_browser_windows_proof.py'
+        source = (ROOT / relative).read_text()
+        for changed in (source.replace('return tuple(result)', 'return tuple(bpy.context.window_manager.windows)'),
+                        source.replace('windows = native.windows(before.pid, visible=True,',
+                                       'windows = native.windows(other.pid, visible=True,')):
+            self.assertNotEqual(changed, source)
+            self.assertEqual(native_hwnd_sites(changed, relative), frozenset())
+            self.assertTrue(direct_walks(changed))
 
     def test_no_timer_step_looks_its_window_up_itself(self):
         found = ["%s:%d: %s" % (path.relative_to(ROOT), line, name)

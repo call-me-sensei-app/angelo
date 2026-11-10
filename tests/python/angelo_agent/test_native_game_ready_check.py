@@ -5,6 +5,8 @@ deferred read tools, that nothing of it loads until it is called, and its measur
 known, with a brute-force NumPy reference standing in for the native kernels (``_bpy._angelo_reduce``). The native
 kernels are checked against the same reference in the compiled app (test_blender_game_ready_check)."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import math
 import sys

@@ -8,7 +8,11 @@ No Blender, provider process or model. The exposing case (1.0.6 GUI test, 2026-1
 Open Recent stool.blend, and the chat said "Document changed. Start New Chat before issuing scene commands."
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
+import contextlib
 import copy
+import inspect
 import itertools
 import sys
 import tempfile
@@ -81,19 +85,23 @@ class Blender:
         self.ui.bpy.data.filepath = path
         identity.after_save(self.ui)    # ui.document_save_post
 
-    def _load(self, path, scenes):
-        left = identity.leaving(self.ui)   # ui.document_load_pre
+    def _load(self, path, scenes, meanwhile=None):
+        # ui.document_load_pre, with the file about to be read where this build identifies it before the read.
+        reads = "filepath" in inspect.signature(identity.leaving).parameters
+        left = identity.leaving(self.ui, path) if reads else identity.leaving(self.ui)
         self.loads += 1
         self.ui._document_serial = "load-%d" % self.loads
         if not self.ui._restoring_snapshot:   # As ui.document_load_pre: a Restore rebinds every chat itself.
             identity.follow(self.ui, left)
         self.ui.bpy.data.filepath, self.ui.bpy.data.scenes = path, scenes
         self.shown = scenes[0]
+        if meanwhile is not None:   # Something done to the disk after Blender read the file, before load_post.
+            meanwhile()
         identity.after_load(self.ui)       # ui.document_load_post
 
-    def open(self, name):
+    def open(self, name, meanwhile=None):
         path = self.path(name)
-        self._load(path, [Scene(scene, props) for scene, props in copy.deepcopy(self.disk[path])])
+        self._load(path, [Scene(scene, props) for scene, props in copy.deepcopy(self.disk[path])], meanwhile)
 
     def new(self):   # File > New: the home file, whatever it carries.
         self._load("", [Scene("Scene", {identity.PROPERTY: "f" * 32})])
@@ -124,6 +132,27 @@ def notices(chat):
     return [m for m in chat.state["messages"] if CHANGED in str(m.get("text"))]
 
 
+REAL_SAVED_FILE_IDENTITY = getattr(identity, "saved_file_identity", None)
+
+
+def stand_in_for_the_save(case, file_identity):
+    """Blender's save names the file it wrote to its ``save_post`` handlers (``_bpy._angelo_saved``); a host test has
+    no Blender, so its saves name the file at the path when the handler runs, ``file_identity`` (no other program
+    writes there in these tests). A test of a write landing after the save uses ``REAL_SAVED_FILE_IDENTITY``."""
+    if REAL_SAVED_FILE_IDENTITY is None:   # A build whose save handler stats the path itself.
+        return
+    patcher = mock.patch.object(identity, "saved_file_identity", file_identity)
+    patcher.start()
+    case.addCleanup(patcher.stop)
+
+
+def real_saves():
+    """Inside a ``Base`` test: the save handler's own ``saved_file_identity`` (``_bpy._angelo_saved`` decides)."""
+    if REAL_SAVED_FILE_IDENTITY is None:
+        return contextlib.nullcontext()
+    return mock.patch.object(identity, "saved_file_identity", REAL_SAVED_FILE_IDENTITY)
+
+
 class Base(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.TemporaryDirectory()
@@ -131,6 +160,7 @@ class Base(unittest.TestCase):
         files = mock.patch.object(identity, "file_identity", self.blender.file_identity)   # The model's file system.
         files.start()
         self.addCleanup(files.stop)
+        stand_in_for_the_save(self, self.blender.file_identity)
         self.states = itertools.count()
         self.chats = []
 
@@ -182,6 +212,45 @@ class ReloadTests(Base):
         stages.assert_called_once_with(identity.LEFT_STAGES)
         calls.assert_called_once_with(identity.LEFT_CALLS)
         self.assert_bound(self.stool)
+
+    def test_a_save_binds_the_file_it_wrote_never_one_put_at_its_path_after(self):
+        """Stat before read, the save half (release-1010 audit re-check 2, L2): the saved file's identity was a stat
+        at save_post, after Blender's rename, so a file put at the path in between became the document's. The save now
+        names the file it wrote (``_bpy._angelo_saved``, ``saved_file``) and the document is bound to that one."""
+        import types
+        path = self.blender.path("stool.blend")
+        native = types.ModuleType("_bpy")
+        native._angelo_saved = SimpleNamespace(saved_file=lambda: (path, 7, 4242, 10, 20, 4242))
+        with mock.patch.dict(sys.modules, {"_bpy": native}), \
+                real_saves():
+            self.blender.save("stool.blend")   # The model's file at the path is another one (its own number).
+        self.assertEqual(identity._open[3][:2], [7, 4242], "the file the save wrote")
+        self.assertNotEqual(identity._open[3], self.blender.file_identity(path))
+
+    def test_a_load_binds_the_file_it_read_never_one_at_its_path_before_or_after(self):
+        """Release-1010 break-it (M7): a load was identified by stats of its path before and after the read, so a file
+        put there and moved away again around the read (ABA) passed for the one read. The load now names the file it
+        read, on the descriptor Blender read it through (``_bpy._angelo_saved.read_file``)."""
+        import types
+        path = self.blender.path("stool.blend")
+        native = types.ModuleType("_bpy")
+        native._angelo_saved = SimpleNamespace(saved_file=lambda: None,
+                                               read_file=lambda: (path, 7, 4343, 10, 20, 4343))
+        with mock.patch.dict(sys.modules, {"_bpy": native}):
+            self.blender.open("stool.blend")   # Before and after, the model's own file is at the path.
+        self.assertEqual(identity._open[3][:2], [7, 4343], "the file the load read")
+
+    def test_a_save_that_could_not_identify_its_file_binds_none(self):
+        """Release-1010 audit re-check 3 (P3): where the save gave no identity (it could not tell its file was the one
+        at the path), the save handler took a stat of the path after the rename: the order this exists to avoid. The
+        file is now unknown, so a later load offers the chat the document instead of rebinding it."""
+        import types
+        native = types.ModuleType("_bpy")
+        native._angelo_saved = SimpleNamespace(saved_file=lambda: None)
+        with mock.patch.dict(sys.modules, {"_bpy": native}), \
+                real_saves():
+            self.blender.save("stool.blend")
+        self.assertIsNone(identity._open[3], "unknown, never a stat of the path after the save")
 
     def test_a_file_with_another_id_at_the_same_path_invalidates(self):
         self.blender.disk[self.blender.path("stool.blend")] = [("Scene", {identity.PROPERTY: "a" * 32})]
@@ -312,6 +381,22 @@ class RelaunchTests(Base):
         self.blender.open("stool.blend")
         self.assert_bound(restored)
         self.assertIsNone(document_scene.refusal(restored))
+
+    def test_a_file_put_at_its_path_after_blender_read_it_never_becomes_the_chats(self):
+        """Stat before read (release-1010 audit re-check 2, L2): the open file's identity was a stat at load_post,
+        after Blender read the file, so a copy of this document put at its path in between (a sync client restoring
+        an older version) became the file a chat working on the document read was remembered with, and reopening
+        that copy later rebound the chat to it. Now that file is unknown: the chat is asked, never rebound."""
+        self.blender.save("stool.blend")
+        path = self.blender.path("stool.blend")
+
+        def restored_copy():   # Another program replaces the file (same id) after Blender read it.
+            self.blender.disk[path] = copy.deepcopy(self.blender.disk[path])
+        self.blender.open("stool.blend", meanwhile=restored_copy)
+        restored = self.relaunch(self.chat())   # It worked on the document Blender read.
+        self.blender.open("stool.blend")        # The copy put there: never read for this chat.
+        self.assertIsNone(restored.document, "never bound to a file it did not work on")
+        self.assertIsNotNone(restored.awaited_file)
 
     def test_another_file_leaves_a_waiting_chat_waiting(self):
         self.blender.save("stool.blend")

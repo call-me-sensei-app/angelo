@@ -43,7 +43,9 @@ WINDOWS_ENVIRONMENT = ("SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "PATHEX
 
 
 # QA switches a worker honours when the Angelo that starts it has them set (suites only; never set in a release).
-QA_ENVIRONMENT = ("ANGELO_QA_GPU_PROBE_CRASH",)
+# Test-only names a worker keeps: a QA fault probe, and a test's isolated-profile marker (suite_isolation), so a suite
+# that serves as the worker runs in place, never relaunched under another process id. Absent outside tests.
+QA_ENVIRONMENT = ("ANGELO_QA_GPU_PROBE_CRASH", "ANGELO_TEST_ISOLATED")
 
 
 class WorkerUnavailable(RuntimeError):

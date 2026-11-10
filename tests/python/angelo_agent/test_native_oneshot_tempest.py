@@ -7,6 +7,8 @@ arms; every probe has a margin from the one rule; no check counts mesh pieces or
 state; no piece's check target admits another piece; the brief never says how to work.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import sys
 import unittest

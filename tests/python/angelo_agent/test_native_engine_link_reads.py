@@ -11,6 +11,8 @@ hard-link check for Angelo's working file, the path scrubber's root and home lis
 the agent's OPEN and for an editor's own Edit in Angelo, runs off the main thread, the editor's requests kept in order.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import threading
@@ -21,10 +23,19 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import machine_clock  # noqa: E402
+import thread_work  # noqa: E402
 import test_native_engine_link_tool as base  # noqa: E402  (its stand-in bpy and fixtures)
 
 engine_link, host, assets, EDIT, RefusalError = base.engine_link, base.host, base.assets, base.EDIT, base.RefusalError
 reads, opening, godot = assets.reads, host.opening, base.godot_link_assets
+LOOKUP = reads.Lookup   # The real one: ToolTests' fixture settles each read at once, these tests take the real wait.
+
+# A held read's gate, a read's completion wait and, outside the tests of it, a read's deadline: guards against a hang
+# only, never what a test measures. A test waits on a read's own completion signal and then ticks or polls once, so a
+# loaded machine (a 10 s deadline ran out at a load of 570) changes how long a test takes, never what it finds.
+HELD_S = base.SETTLED_S
+# A Windows listing's stat carries each entry's attributes (the hidden bit); one built from a tuple alone holds None.
+ATTRIBUTES = {"st_file_attributes": 0} if hasattr(os.stat_result, "st_file_attributes") else {}
 
 
 class Entry:
@@ -47,7 +58,7 @@ class Entry:
         return self._inode
 
     def stat(self, follow_symlinks=True):
-        return os.stat_result((0o100644, self._inode, 0, 1, 0, 0, 0, 0, 0, 0))
+        return os.stat_result((0o100644, self._inode, 0, 1, 0, 0, 0, 0, 0, 0), ATTRIBUTES)
 
 
 class Huge:
@@ -85,7 +96,7 @@ class Lister:
 class BoundedWalkTests(unittest.TestCase):
     def test_a_huge_folder_is_read_only_up_to_the_lookup_bound(self):
         """The audit's case: one folder of 100,000 entries; and, held out, the bound reached across many folders."""
-        for size, folders in ((100000, ()), (300, {"/p/" + "d%06d" % i for i in range(300)} | {"/p"})):
+        for size, folders in ((100000, ()), (300, {os.path.join("/p", "d%06d" % i) for i in range(300)} | {"/p"})):
             with self.subTest(size=size), mock.patch.object(assets.os, "scandir", Huge(size, folders)) as listed:
                 found, complete = assets.named(godot, "/p", "barrel")
                 self.assertEqual((found, complete), ([], False))
@@ -144,22 +155,28 @@ class BoundedWalkTests(unittest.TestCase):
 class InboxCostTests(unittest.TestCase):
     def test_a_pass_costs_in_proportion_to_the_requests_waiting(self):
         """Break-it 10-N3: a flood of acknowledgements from one editor never costs a pass more than linear time."""
-        def seconds(count):
+        def work(count):   # Counted (``thread_work``), never timed: the same on a loaded runner.
             server = mock.Mock()
             server.drain.return_value = [(1, {"type": "status", "code": "previewed"})] * count
             server.info_of.return_value = {}
-            started = time.perf_counter()
-            handled = sum(1 for _ in reads.Inbox().ready(server, lambda *_: None))
+            handled, counted = thread_work.count(lambda: sum(1 for _ in reads.Inbox().ready(server, lambda *_: None)))
             self.assertEqual(handled, count)
-            return time.perf_counter() - started
-        # 8x the requests: linear costs about 8x, the quadratic pass about 64x. The bound sits between with room for a
-        # loaded machine's noise (the best of five), so only the shape of the cost decides it.
-        small, large = min(seconds(4000) for _ in range(5)), min(seconds(32000) for _ in range(5))
-        self.assertLess(large / max(small, 1e-6), 24.0)
+            return counted.steps
+        small, large = work(4000), work(16000)
+        self.assertLess(large / small, 8.0, (small, large))   # Linear: about 4; the quadratic pass was about 16.
 
 
 class OffMainThreadTests(unittest.TestCase):
-    setUp, asked, link = base.ToolTests.setUp, base.ToolTests.asked, base.ToolTests.link   # Its fixtures alone.
+    asked, link = base.ToolTests.asked, base.ToolTests.link   # Its fixtures alone.
+
+    def setUp(self):
+        base.ToolTests.setUp(self)   # Its deadline of HELD_S too; the deadline's own tests set theirs.
+        self.lookups = []
+
+        def lookup(*args, **kwargs):   # Every read started, for its completion signal.
+            self.lookups.append(LOOKUP(*args, **kwargs))
+            return self.lookups[-1]
+        self.enterContext(mock.patch.object(reads, "Lookup", lookup))
 
     def held(self):
         """``engine_link_names.resolve`` held until released: a project on a slow drive."""
@@ -167,43 +184,47 @@ class OffMainThreadTests(unittest.TestCase):
         self.addCleanup(gate.set)
 
         def resolve(*args):
-            gate.wait(10)
+            gate.wait(HELD_S)
             return real(*args)
         self.enterContext(mock.patch.object(opening.names, "resolve", resolve))
         return gate
 
     def open(self, asset="res://crate.glb"):
-        started = time.monotonic()
-        result = host.execute(None, EDIT, {"action": "OPEN", "asset": asset}, base.SimpleNamespace())
-        return result, time.monotonic() - started
+        return host.execute(None, EDIT, {"action": "OPEN", "asset": asset}, base.SimpleNamespace())
+
+    def read(self, asset=None):
+        """The one editor request still being read (for ``asset``, if given): its read, for its completion signal."""
+        found, = [entry[3] for entry in reads.inbox._queue if not entry[4] and entry[3] is not None
+                  and (asset is None or entry[1].get("asset") == asset)]
+        return found
+
+    def answered(self, lookup):
+        """Waits on ``lookup``'s own completion signal, then the one tick that answers it."""
+        self.assertTrue(lookup.wait(HELD_S), "the read finished")
+        engine_link._tick()
 
     def test_a_slow_project_never_holds_the_main_thread_and_the_card_comes_after(self):
         self.server.editor(1)
         events, gate = self.asked(), self.held()
-        result, waited = self.open()
-        # Held, the read takes the gate's 10 s; the call must return long before that. Half of it leaves room for a cold
-        # first import on a slow machine (a fixed 0.5 s failed there) and still tells waiting from not waiting.
-        self.assertLess(waited, 5.0)
+        window = machine_clock.start(self)
+        result = self.open()
+        window.assert_within(0.5, "OPEN waits for no read")
         self.assertFalse(isinstance(result, dict))   # Pending: the controller polls it.
         self.assertIsNone(result.poll())
         self.assertEqual(events, [])
         gate.set()
-        found = None
-        for _ in range(200):
-            found = result.poll()
-            if found is not None:
-                break
-            time.sleep(0.01)
+        self.assertTrue(self.lookups[-1].wait(HELD_S), "the read finished")
+        found = result.poll()
         self.assertEqual((found["asked"], events), ("res://crate.glb", ["res://crate.glb"]))
 
     def test_a_refusal_after_reading_is_the_same_unchanged_result_a_plan_corrects(self):
         from angelo_agent.claude_outcomes import correctable_failure
         self.server.editor(1)
         gate = self.held()
-        result, _ = self.open("res://missing.glb")
+        result = self.open("res://missing.glb")
         gate.set()
-        while (found := result.poll()) is None:
-            time.sleep(0.01)
+        self.assertTrue(self.lookups[-1].wait(HELD_S), "the read finished")
+        found = result.poll()
         self.assertEqual((found["error_code"], found["scene_changed"]), ("VALIDATION", False))
         self.assertIn("doesn't exist yet", found["error"])
         self.assertIsNotNone(correctable_failure([{"tool": EDIT, "arguments": {"action": "OPEN", "asset": "x"}}],
@@ -213,8 +234,8 @@ class OffMainThreadTests(unittest.TestCase):
         self.server.editor(1)
         events, _gate = self.asked(), self.held()
         with mock.patch.object(reads, "READ_S", 0.1):
-            result, _ = self.open()
-            time.sleep(0.3)
+            result = self.open()
+            time.sleep(0.3)   # Past the deadline itself: what this test is about.
             found = result.poll()
         self.assertEqual((found["error_code"], found["scene_changed"], events), ("VALIDATION", False, []))
         self.assertIn("couldn't read the engine's project in time", found["error"])
@@ -227,7 +248,7 @@ class OffMainThreadTests(unittest.TestCase):
         real = godot.resolve
 
         def resolve(request):
-            gate.wait(10)
+            gate.wait(HELD_S)
             return real(request)
         self.server.drain = lambda: [sent.pop(0) for _ in list(sent)]
         sent.extend([(1, {"type": "open", "id": "a", "asset": "res://crate.glb", "project": str(self.project)}),
@@ -237,12 +258,9 @@ class OffMainThreadTests(unittest.TestCase):
             engine_link._tick()
             window.assert_within(0.5, "the tick waits for no resolve")
             self.assertEqual((events, self.server.sent), ([], []))   # Nothing answered yet, the close included.
+            opened = self.read()
             gate.set()
-            for _ in range(200):
-                engine_link._tick()
-                if self.server.sent:
-                    break
-                time.sleep(0.01)
+            self.answered(opened)   # The open, then the close that waited its turn, in that one tick.
         self.assertEqual([header["type"] for _client, header in self.server.sent], ["pending", "closed"])
         self.assertEqual(events, ["res://crate.glb"])
 
@@ -260,34 +278,45 @@ class OffMainThreadTests(unittest.TestCase):
                      (2, {"type": "status", "asset": "res://crate.glb", "code": "previewed", "version": 1}),
                      (1, {"type": "close", "id": "b", "asset": "res://crate.blend"}),
                      (2, {"type": "close", "id": "c", "asset": "res://other.glb"})])   # Not the linked one.
-        with mock.patch.object(godot, "resolve", lambda request: gate.wait(10) and real(request)):
+        with mock.patch.object(godot, "resolve", lambda request: gate.wait(HELD_S) and real(request)):
             window = machine_clock.start(self)
             engine_link._tick()
             window.assert_within(0.5, "the tick waits for no resolve")
             self.assertEqual([(client, header["type"]) for client, header in self.server.sent], [(2, "closed")])
             self.assertIn(2, engine_link._state["facts"]["editors"])   # Its acknowledgement was read.
+            opened = self.read()
             gate.set()
-            for _ in range(200):
-                engine_link._tick()
-                if len(self.server.sent) >= 3:
-                    break
-                time.sleep(0.01)
+            self.answered(opened)
         self.assertEqual([(client, header["type"]) for client, header in self.server.sent if client == 1],
                          [(1, "pending"), (1, "closed")])   # Editor 1's own order held.
 
     def test_the_card_answers_the_request_sent_last_whichever_is_read_first(self):
         """Break-it 10-N2: editor 1 asks first on a slow drive, editor 2 next on a fast one; 2's card stays, 1's
         request is refused as superseded (as when both resolve at once), and 1's acknowledgements pass its open."""
+        self.card_answers_the_last_request(fast_read_held=False)
+
+    def test_the_card_still_answers_the_last_request_when_its_read_misses_the_ticks_wait(self):
+        """Held out: editor 2's read takes longer than the one QUICK_S wait a tick gives it (a loaded machine; the 1.0.9
+        audit saw ``[] != ['res://barrel.glb']`` right after one tick). Its card comes on a later tick, never lost, and
+        editor 1's open still waits alone."""
+        self.card_answers_the_last_request(fast_read_held=True)
+
+    def card_answers_the_last_request(self, fast_read_held):
         self.server.editor(1)
         self.server.editor(2)
         (self.project / "barrel.glb").write_bytes(b"x")
-        events, gate, sent = self.asked(), threading.Event(), []
+        events, gate, fast_gate, sent = self.asked(), threading.Event(), threading.Event(), []
         self.addCleanup(gate.set)
+        self.addCleanup(fast_gate.set)
+        if not fast_read_held:
+            fast_gate.set()
         real = godot.resolve
 
         def resolve(request):
             if request["asset"] == "res://crate.glb":
-                gate.wait(10)
+                gate.wait(HELD_S)
+            else:
+                fast_gate.wait(HELD_S)
             return real(request)
         self.server.drain = lambda: [sent.pop(0) for _ in list(sent)]
         sent.extend([(1, {"type": "open", "id": "a", "asset": "res://crate.glb", "project": str(self.project)}),
@@ -295,15 +324,23 @@ class OffMainThreadTests(unittest.TestCase):
                      (1, {"type": "status", "code": "previewed", "asset": "res://crate.glb", "version": 1})])
         with mock.patch.object(godot, "resolve", resolve):
             engine_link._tick()
+            # Editor 2's read runs off the main thread: a tick waits at most QUICK_S for it, and a slower read lands on
+            # a later tick. Wait for that read's own completion signal, then tick; never assume one tick's timing.
+            fast = [entry[3] for entry in reads.inbox._queue if not entry[4]
+                    and entry[1].get("asset") == "res://barrel.glb"]
+            if fast_read_held:
+                self.assertEqual(len(fast), 1)   # Held past the tick's wait: still being read after it.
+            if fast:
+                self.assertEqual(events, [])
+                fast_gate.set()
+                self.answered(fast[0])
             self.assertEqual(events, ["res://barrel.glb"])
             held = [entry[1]["type"] for entry in reads.inbox._queue if not entry[4]]
             self.assertEqual(held, ["open"])   # Editor 1's status passed its own slow open; only the open waits.
+            slow = self.read()   # Editor 1's open, still being read.
             gate.set()
-            for _ in range(200):
-                engine_link._tick()
-                if any(client == 1 for client, _header in self.server.sent):
-                    break
-                time.sleep(0.01)
+            self.answered(slow)
+            self.assertTrue(any(client == 1 for client, _header in self.server.sent))   # Refused as superseded.
         self.assertEqual(engine_link.pending()["asset"].ident, "res://barrel.glb")
         self.assertEqual(events, ["res://barrel.glb"])
         self.assertIn((1, "refused", "superseded"), [(client, header["type"], header.get("code"))
@@ -322,16 +359,16 @@ class OffMainThreadTests(unittest.TestCase):
         sent.extend([(1, {"type": "open", "id": "a", "asset": "res://crate.glb", "project": str(self.project)}),
                      (2, {"type": "open", "id": "b", "asset": "res://barrel.glb", "project": str(self.project)})])
         def resolve(request):   # Editor 1's project is on a slow drive.
-            return (request["asset"] != "res://crate.glb" or gate.wait(10)) and real(request)
+            return (request["asset"] != "res://crate.glb" or gate.wait(HELD_S)) and real(request)
         with mock.patch.object(godot, "resolve", resolve):
             engine_link._tick()
+            if events == []:   # Editor 2's read outlasted the tick's short wait (a loaded machine): its card next.
+                self.answered(self.read("res://barrel.glb"))
+            self.assertEqual(events, ["res://barrel.glb"])
             engine_link.decline()   # The person's Not now on editor 2's card.
+            slow = self.read()
             gate.set()
-            for _ in range(200):
-                engine_link._tick()
-                if any(client == 1 for client, _header in self.server.sent):
-                    break
-                time.sleep(0.01)
+            self.answered(slow)
         self.assertIsNone(engine_link.pending())
         self.assertEqual(events, ["res://barrel.glb"])
         self.assertIn((1, "refused", "superseded"), [(client, header["type"], header.get("code"))
@@ -356,10 +393,10 @@ class OffMainThreadTests(unittest.TestCase):
                                               "project": str(self.project)})]
         self.addCleanup(gate.set)
         self.server.drain = lambda: [sent.pop(0) for _ in list(sent)]
-        with mock.patch.object(godot, "resolve", lambda request: gate.wait(10)), \
+        with mock.patch.object(godot, "resolve", lambda request: gate.wait(HELD_S)), \
                 mock.patch.object(reads, "READ_S", 0.1):
             engine_link._tick()
-            time.sleep(0.3)
+            time.sleep(0.3)   # Past the deadline itself: what this test is about.
             engine_link._tick()
         (_client, header), = self.server.sent
         self.assertEqual((header["type"], header["code"]), ("refused", "unreadable"))
@@ -371,14 +408,15 @@ class OffMainThreadTests(unittest.TestCase):
                                               "project": str(self.project)})]
         self.addCleanup(gate.set)
         self.server.drain = lambda: [sent.pop(0) for _ in list(sent)]
-        with mock.patch.object(godot, "resolve", lambda request: gate.wait(10)):
+        real = godot.resolve   # A real asset once read: delivered anywhere, its "pending" would reach an editor.
+        with mock.patch.object(godot, "resolve", lambda request: (gate.wait(HELD_S), real(request))[1]):
             engine_link._tick()
         restarted = base.FakeServer(self.project)
         restarted.editor(1)
         engine_link._state["server"] = restarted
+        lookup = self.read()
         gate.set()
-        time.sleep(0.05)
-        engine_link._tick()
+        self.answered(lookup)   # Read, so the tick has an answer it must not deliver.
         self.assertEqual((self.server.sent, restarted.sent), ([], []))
 
 

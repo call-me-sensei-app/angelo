@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Delivered query evidence through real Codex/controller dispatch; no Blender or provider."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 from pathlib import Path
@@ -246,7 +248,8 @@ class DeliveredQueryTests(ProviderFixture):
                         backend.bind(validate_program("angelo_scene_program", candidate))
         backend._revision = lambda *_args: R2
         binding = {"handles": [H1], "originals": {H1: obj}, "revisions": {H1: R1}}
-        with patch("angelo_agent.native_programs.assert_supported_custom_links"):
+        with patch("angelo_agent.native_programs.assert_supported_custom_links"), \
+             patch("angelo_agent.native_programs.assert_still_admitted"):   # A stand-in object has no mode.
             with self.assertRaisesRegex(ProgramError, "exact target or a mutable dependency changed"):
                 backend.verify(binding)
 

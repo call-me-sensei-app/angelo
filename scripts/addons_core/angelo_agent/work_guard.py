@@ -14,18 +14,25 @@ update card turns into a sentence (``update_card``):
 ``generation``   a Generative Studio job (paid, in flight)
 ``job``          a background render, bake or export (``job_manager``)
 ``render``       a render, bake, composite or export Blender runs for the person
+``task``         any other job Blender runs for the person (a proxy build, tracking, an import, a remesh...)
 ``interaction``  a modal tool or drag in progress in a window
 ``unknown``      an owner could not be asked: fail closed, never guess "idle"
+
+Blender's own jobs come from ``_angelo_jobs.running_work`` (``bpy_angelo_jobs_work.cc``), which classifies every
+job type Blender has, so a job no list here names is still seen; jobs that only recompute what a relaunch
+recomputes (previews, listings, shader compilation) are not work. A build without it falls back to the closed
+lists below, which see renders, bakes, composites and the exports Angelo starts only.
 
 Main thread only (it reads Blender's and the owners' live state). Each owner is
 imported lazily, so a build or a test without one reads it as idle.
 """
 
+# The closed lists of a build without ``running_work``; ``_render`` (also the parallel sessions' job check) reads them.
 BLENDER_JOBS = ("RENDER", "RENDER_PREVIEW", "OBJECT_BAKE", "COMPOSITE")
 # Modal operators that are no one's work: the notice card the person is pressing Restart to Update on.
 OWN_OPERATORS = frozenset({"angelo.card_host"})
 OTHER_JOBS = ("POINTCACHE", "BAKE_GEOMETRY_NODES", "USD_EXPORT", "ALEMBIC_EXPORT")
-ORDER = ("scene", "agent", "preview", "flow", "generation", "job", "render", "interaction", "unknown")
+ORDER = ("scene", "agent", "preview", "flow", "generation", "job", "render", "task", "interaction", "unknown")
 
 
 def _controllers():
@@ -72,6 +79,16 @@ def _render(bpy):
     return any(_angelo_jobs.progress(scene, kind) is not None for scene in bpy.data.scenes for kind in OTHER_JOBS)
 
 
+def _blender_work(bpy):
+    """The kinds (``render``, ``task``) of Blender's jobs that are someone's work and run or wait to run now."""
+    try:
+        from _bpy import _angelo_jobs
+        running_work = _angelo_jobs.running_work
+    except (ImportError, AttributeError):   # A build without it: the closed lists.
+        return {"render"} if _render(bpy) else set()
+    return {kind for _job_type, kind in running_work()}
+
+
 def _interaction(bpy):
     from . import input_policy, live_windows
     # Every window, one between screens included: its modal tool is still the person's work (fail closed).
@@ -89,8 +106,15 @@ def reasons(bpy=None):
     except Exception:
         controllers = None
         found.append("unknown")
+    blender = []   # Read once for both of its codes.
+
+    def blender_work(kind):
+        if not blender:
+            blender.append(_blender_work(bpy))
+        return kind in blender[0]
     checks = (("scene", lambda: _scene(controllers)), ("agent", lambda: _agent(controllers)),
-              ("preview", lambda: _preview(controllers)), ("flow", _flow), ("generation", _generation), ("job", _job), ("render", lambda: _render(bpy)),
+              ("preview", lambda: _preview(controllers)), ("flow", _flow), ("generation", _generation), ("job", _job),
+              ("render", lambda: blender_work("render")), ("task", lambda: blender_work("task")),
               ("interaction", lambda: _interaction(bpy)))
     for code, check in checks:
         if controllers is None and code in {"agent", "preview"}:

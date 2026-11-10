@@ -1,0 +1,585 @@
+{
+  "rule": "Fixed 2026-11-04 before any download. Every .glb directly in the model folder of each Kenney 3D starter kit on GitHub other than the 3D Platformer (Starter-Kit-Match-3 has no 3D models), and every .glb of KayKit Character Pack Skeletons 1.0 (skinned, animated characters), each pinned to the commit below. No file is dropped by name, size or content; .gltf+.bin files are outside the rule because the driver imports .glb. Local names get a per-kit prefix because names collide across kits.",
+  "excluded": "Kenney Starter Kit 3D Platformer (it may have been seen while the feature was developed; the feature's own development tests build their scenes in code). KayKit Adventurers, Dungeon Remastered and Furniture Bits and the Poly Haven models are held-out sets of other features and were passed over to keep this set fresh.",
+  "sources": [
+    {
+      "kit": "Kenney Starter Kit Racing",
+      "repo": "KenneyNL/Starter-Kit-Racing",
+      "commit": "2f2e5f2646dda89cb21d4e8539bab60c6e955dc8",
+      "glob": "models/*.glb",
+      "prefix": "racing-",
+      "licence": "CC0-1.0 (models); the kit's Godot project code is MIT (LICENSE)",
+      "licence_file": "README.md",
+      "licence_statement": "3D Models & sounds _(CC0 licensed)_",
+      "licence_url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/README.md",
+      "licence_sha256": "b37aa56ea98519356514dd0a45d86cf847d3f62144470250c174eeb44e0d9710",
+      "models": 13
+    },
+    {
+      "kit": "Kenney Starter Kit City Builder",
+      "repo": "KenneyNL/Starter-Kit-City-Builder",
+      "commit": "4535092b740b378b700efd9df9e27a631815b84a",
+      "glob": "models/*.glb",
+      "prefix": "city-",
+      "licence": "CC0-1.0 (models); the kit's Godot project code is MIT (LICENSE.md)",
+      "licence_file": "README.md",
+      "licence_statement": "Sprites and 3D Models _(CC0 licensed)_",
+      "licence_url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/README.md",
+      "licence_sha256": "0d6f9a90d2177658b56c47d4cbc4d759b151f8c3a09b24586da450c969de697d",
+      "models": 15
+    },
+    {
+      "kit": "Kenney Starter Kit FPS",
+      "repo": "KenneyNL/Starter-Kit-FPS",
+      "commit": "185fd2326d74a5cf858cffc616f87cf9696f9cc0",
+      "glob": "models/*.glb",
+      "prefix": "fps-",
+      "licence": "CC0-1.0 (models); the kit's Godot project code is MIT (LICENSE.md)",
+      "licence_file": "README.md",
+      "licence_statement": "Sprites and 3D Models _(CC0 licensed)_",
+      "licence_url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-FPS/185fd2326d74a5cf858cffc616f87cf9696f9cc0/README.md",
+      "licence_sha256": "69d77c39c3c05692b6a0ddbc626615d403421ab3c7b884b0a5ad4ae90368c02a",
+      "models": 10
+    },
+    {
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "repo": "KenneyNL/Starter-Kit-Basic-Scene",
+      "commit": "a6927e66ff8dd8e173660ce4825abe773c65f683",
+      "glob": "sample/Mini Arena/Models/GLB format/*.glb",
+      "prefix": "arena-",
+      "licence": "CC0-1.0",
+      "licence_file": "sample/Mini Arena/License.txt",
+      "licence_statement": "License: (Creative Commons Zero, CC0)",
+      "licence_url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/License.txt",
+      "licence_sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+      "models": 22
+    },
+    {
+      "kit": "KayKit Character Pack Skeletons 1.0",
+      "repo": "KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0",
+      "commit": "15b62b9bad122f72926c10fb14d622c73819fa54",
+      "glob": "addons/kaykit_character_pack_skeletons/Characters/gltf/*.glb",
+      "prefix": "skeletons-",
+      "licence": "CC0-1.0",
+      "licence_file": "LICENSE.txt",
+      "licence_statement": "License: (Creative Commons Zero, CC0)",
+      "licence_url": "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0/15b62b9bad122f72926c10fb14d622c73819fa54/LICENSE.txt",
+      "licence_sha256": "5d822abca4e08c5a91d329e5372b3dc605cba8d994f752cb0f7dfdb7a0a79954",
+      "models": 4
+    }
+  ],
+  "models": [
+    {
+      "file": "racing-decoration-empty.glb",
+      "kit": "Kenney Starter Kit Racing",
+      "path": "models/decoration-empty.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/models/decoration-empty.glb",
+      "bytes": 55764,
+      "sha256": "3815b26a5274173934d37cf605e320450efad4e0034040868b6aea761cfd74bc"
+    },
+    {
+      "file": "racing-decoration-forest.glb",
+      "kit": "Kenney Starter Kit Racing",
+      "path": "models/decoration-forest.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/models/decoration-forest.glb",
+      "bytes": 189784,
+      "sha256": "664a53f0f709fef9096af3bbfb1aa76536527a616b05170c0cf4e27e33358a00"
+    },
+    {
+      "file": "racing-decoration-tents.glb",
+      "kit": "Kenney Starter Kit Racing",
+      "path": "models/decoration-tents.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/models/decoration-tents.glb",
+      "bytes": 168004,
+      "sha256": "19dbf2a778ad75f95c7d61f12866ef7174ab69cad169d3749c5400f5e14db8a3"
+    },
+    {
+      "file": "racing-track-bump.glb",
+      "kit": "Kenney Starter Kit Racing",
+      "path": "models/track-bump.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/models/track-bump.glb",
+      "bytes": 17888,
+      "sha256": "6db020edc53532ebc0971c9d4ad9afb11c4de67c510649ca843db4616514f43c"
+    },
+    {
+      "file": "racing-track-corner.glb",
+      "kit": "Kenney Starter Kit Racing",
+      "path": "models/track-corner.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/models/track-corner.glb",
+      "bytes": 103480,
+      "sha256": "0ffb3d83b60456fc5a2962447111a1a64bfe943f4ad95462e1edba107be81c80"
+    },
+    {
+      "file": "racing-track-finish.glb",
+      "kit": "Kenney Starter Kit Racing",
+      "path": "models/track-finish.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/models/track-finish.glb",
+      "bytes": 24544,
+      "sha256": "2fec3b681658d6e77e20c4342d1e3ceeaab3e8d2fbf340942cde25cc2b21975b"
+    },
+    {
+      "file": "racing-track-straight.glb",
+      "kit": "Kenney Starter Kit Racing",
+      "path": "models/track-straight.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/models/track-straight.glb",
+      "bytes": 11080,
+      "sha256": "2d8080df1fe27e39981480809f36eba7f239e814f96bff61bb4c99793221b701"
+    },
+    {
+      "file": "racing-track-tents.glb",
+      "kit": "Kenney Starter Kit Racing",
+      "path": "models/track-tents.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/models/track-tents.glb",
+      "bytes": 167988,
+      "sha256": "eaf68bbb44e362e291b71d13015fbafc4ce22a9102bda029614972d6cc843c7f"
+    },
+    {
+      "file": "racing-vehicle-motorcycle.glb",
+      "kit": "Kenney Starter Kit Racing",
+      "path": "models/vehicle-motorcycle.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/models/vehicle-motorcycle.glb",
+      "bytes": 97172,
+      "sha256": "c97911b8dbc2d5dd9d1961b46eb4d1f132b67a6c5a84f45593fea44e0595dd92"
+    },
+    {
+      "file": "racing-vehicle-truck-green.glb",
+      "kit": "Kenney Starter Kit Racing",
+      "path": "models/vehicle-truck-green.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/models/vehicle-truck-green.glb",
+      "bytes": 104228,
+      "sha256": "df362d027a09b19395be0e96abd7cc2dc54608dfb920b592e64357b589f9fcd6"
+    },
+    {
+      "file": "racing-vehicle-truck-purple.glb",
+      "kit": "Kenney Starter Kit Racing",
+      "path": "models/vehicle-truck-purple.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/models/vehicle-truck-purple.glb",
+      "bytes": 78552,
+      "sha256": "03e32f5abcbbd03da3591f42fdaae2cf7d27ed379df7ce0d1f233bea02998565"
+    },
+    {
+      "file": "racing-vehicle-truck-red.glb",
+      "kit": "Kenney Starter Kit Racing",
+      "path": "models/vehicle-truck-red.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/models/vehicle-truck-red.glb",
+      "bytes": 92436,
+      "sha256": "eca99bd9ab0a2b02125f915e65d1ec8f1c5a93be7c6d4840efdac6633f47772c"
+    },
+    {
+      "file": "racing-vehicle-truck-yellow.glb",
+      "kit": "Kenney Starter Kit Racing",
+      "path": "models/vehicle-truck-yellow.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Racing/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8/models/vehicle-truck-yellow.glb",
+      "bytes": 93480,
+      "sha256": "1ebd83174eab6d2fdf69eb5d8e32bd06a23a86d9edc4fe915a4160430a7c36a5"
+    },
+    {
+      "file": "city-building-garage.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/building-garage.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/building-garage.glb",
+      "bytes": 19204,
+      "sha256": "7373b558fc9b1e27e60b60ca1ce53000af7e132d7304eeb6d49b47528a3b6806"
+    },
+    {
+      "file": "city-building-small-a.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/building-small-a.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/building-small-a.glb",
+      "bytes": 39660,
+      "sha256": "22ce989013bd16b1732e81798e343cf85f947e92b6c93825b18131feded48e07"
+    },
+    {
+      "file": "city-building-small-b.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/building-small-b.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/building-small-b.glb",
+      "bytes": 49764,
+      "sha256": "0bc8459045975158524753d6b648ff77e5f91fe8c033bc4886930b6d55543a2b"
+    },
+    {
+      "file": "city-building-small-c.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/building-small-c.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/building-small-c.glb",
+      "bytes": 70088,
+      "sha256": "3ea0f46fbed4e0acba7fda365cd968b3f23a6e02b9fee79dd54c99c42ffadf2f"
+    },
+    {
+      "file": "city-building-small-d.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/building-small-d.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/building-small-d.glb",
+      "bytes": 39348,
+      "sha256": "0ab476fbd7956cea52e590a8e68e351ce2f6fc04df158aa3f5a76b7744bf37a0"
+    },
+    {
+      "file": "city-grass-trees-tall.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/grass-trees-tall.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/grass-trees-tall.glb",
+      "bytes": 47016,
+      "sha256": "d23e3b722453236bf6f4f8922b7bf64f81a7f3f804848a89c4b100ccbf13abef"
+    },
+    {
+      "file": "city-grass-trees.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/grass-trees.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/grass-trees.glb",
+      "bytes": 38160,
+      "sha256": "cb06d03cc1c64ca7e7692c0aef3628d8e7cd4afee69093025f9ddd668653a4ce"
+    },
+    {
+      "file": "city-grass.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/grass.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/grass.glb",
+      "bytes": 4604,
+      "sha256": "3e3ec91132ad8519967aa2e4c0bedbab2aeed39b5714d66068bb75648ae73a52"
+    },
+    {
+      "file": "city-pavement-fountain.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/pavement-fountain.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/pavement-fountain.glb",
+      "bytes": 14076,
+      "sha256": "ea2996089e90a79ba13d764106d374486bb8137666cf1cdbaebd1927ef365185"
+    },
+    {
+      "file": "city-pavement.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/pavement.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/pavement.glb",
+      "bytes": 3620,
+      "sha256": "60152776325d436761a13eb0c2ec9368b393bc82cf754b63cab810d79639ade9"
+    },
+    {
+      "file": "city-road-corner.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/road-corner.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/road-corner.glb",
+      "bytes": 11096,
+      "sha256": "85aec60d66c5084bb658274a1468139a5def1e9e9575c01286ed6c2069916789"
+    },
+    {
+      "file": "city-road-intersection.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/road-intersection.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/road-intersection.glb",
+      "bytes": 13140,
+      "sha256": "0212ffe9945b933535503372855c54dee20d54ddfc07e1c72963e67558a14183"
+    },
+    {
+      "file": "city-road-split.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/road-split.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/road-split.glb",
+      "bytes": 9400,
+      "sha256": "31bf582953db8315edfade4ba49d81145a78bda9757b6442dc417e14cc84b5ff"
+    },
+    {
+      "file": "city-road-straight-lightposts.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/road-straight-lightposts.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/road-straight-lightposts.glb",
+      "bytes": 18216,
+      "sha256": "fc5340621fefdd43ab0bbf4bdaa41de9822dc545ce787fbfd92b75ce85d51e62"
+    },
+    {
+      "file": "city-road-straight.glb",
+      "kit": "Kenney Starter Kit City Builder",
+      "path": "models/road-straight.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-City-Builder/4535092b740b378b700efd9df9e27a631815b84a/models/road-straight.glb",
+      "bytes": 6148,
+      "sha256": "008a6305de778439d1a99be78a3e0945c72a9bc9cc0bade1b51a666d5db01d0b"
+    },
+    {
+      "file": "fps-blaster-repeater.glb",
+      "kit": "Kenney Starter Kit FPS",
+      "path": "models/blaster-repeater.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-FPS/185fd2326d74a5cf858cffc616f87cf9696f9cc0/models/blaster-repeater.glb",
+      "bytes": 66288,
+      "sha256": "e76220e5ad3877d879e70fe21bd5bc76a5988b8682aa5f7976739e71caf70e05"
+    },
+    {
+      "file": "fps-blaster.glb",
+      "kit": "Kenney Starter Kit FPS",
+      "path": "models/blaster.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-FPS/185fd2326d74a5cf858cffc616f87cf9696f9cc0/models/blaster.glb",
+      "bytes": 59552,
+      "sha256": "9c2110d94c1bd7e01bfe6827a3d87e14962a1f721d8b300c67bdd36f492140a1"
+    },
+    {
+      "file": "fps-cloud.glb",
+      "kit": "Kenney Starter Kit FPS",
+      "path": "models/cloud.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-FPS/185fd2326d74a5cf858cffc616f87cf9696f9cc0/models/cloud.glb",
+      "bytes": 23784,
+      "sha256": "4c667239958ae8950b6bc2f55bdb59814b24fc9f6d8531eb09411150e09c87f2"
+    },
+    {
+      "file": "fps-enemy-flying.glb",
+      "kit": "Kenney Starter Kit FPS",
+      "path": "models/enemy-flying.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-FPS/185fd2326d74a5cf858cffc616f87cf9696f9cc0/models/enemy-flying.glb",
+      "bytes": 57828,
+      "sha256": "e4868f6d8cac2a8f728430229789206841ca64727d94de2d808b468e4f182f8c"
+    },
+    {
+      "file": "fps-grass-small.glb",
+      "kit": "Kenney Starter Kit FPS",
+      "path": "models/grass-small.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-FPS/185fd2326d74a5cf858cffc616f87cf9696f9cc0/models/grass-small.glb",
+      "bytes": 9052,
+      "sha256": "8dfe00761fa833daab3192148b9b3d573f2a10aa2eff2c01a8a386dd304e7fda"
+    },
+    {
+      "file": "fps-grass.glb",
+      "kit": "Kenney Starter Kit FPS",
+      "path": "models/grass.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-FPS/185fd2326d74a5cf858cffc616f87cf9696f9cc0/models/grass.glb",
+      "bytes": 9032,
+      "sha256": "8e11283ca11894860a4dcb8f523165eda5de39f68fda43d892efc3a3d3eb567e"
+    },
+    {
+      "file": "fps-platform-large-grass.glb",
+      "kit": "Kenney Starter Kit FPS",
+      "path": "models/platform-large-grass.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-FPS/185fd2326d74a5cf858cffc616f87cf9696f9cc0/models/platform-large-grass.glb",
+      "bytes": 17076,
+      "sha256": "19ee4b9e745f757d87d584094433e3f4d86be958bcd7eeba586874f088d2697b"
+    },
+    {
+      "file": "fps-platform.glb",
+      "kit": "Kenney Starter Kit FPS",
+      "path": "models/platform.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-FPS/185fd2326d74a5cf858cffc616f87cf9696f9cc0/models/platform.glb",
+      "bytes": 17064,
+      "sha256": "6eac72ffbda64b4414833eb49d3b160fddf169c2caccca237a07e15a20731764"
+    },
+    {
+      "file": "fps-wall-high.glb",
+      "kit": "Kenney Starter Kit FPS",
+      "path": "models/wall-high.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-FPS/185fd2326d74a5cf858cffc616f87cf9696f9cc0/models/wall-high.glb",
+      "bytes": 20492,
+      "sha256": "946a0f875bd515323afd883553729a29ac764b405e382bf9a30d6527dac74589"
+    },
+    {
+      "file": "fps-wall-low.glb",
+      "kit": "Kenney Starter Kit FPS",
+      "path": "models/wall-low.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-FPS/185fd2326d74a5cf858cffc616f87cf9696f9cc0/models/wall-low.glb",
+      "bytes": 17456,
+      "sha256": "c42c89dead3835fde97d1ede232bf1a69d297cd41e1d6bfe7e25c87b233a2ec0"
+    },
+    {
+      "file": "arena-banner.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/banner.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/banner.glb",
+      "bytes": 22108,
+      "sha256": "96e1cf7924fcc871be0e7e182c9b918de381b9783ca9e96922f8db62af384056"
+    },
+    {
+      "file": "arena-block.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/block.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/block.glb",
+      "bytes": 2804,
+      "sha256": "656e07f0a3e7d0620892aca6fc40683b4266ff6b9672ecf89f3553e5ed85a1fb"
+    },
+    {
+      "file": "arena-border-corner.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/border-corner.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/border-corner.glb",
+      "bytes": 11124,
+      "sha256": "120ce330ca50fe50e51bf693eadb957abaca972c42d573a07d8e8e404560bc3c"
+    },
+    {
+      "file": "arena-border-straight.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/border-straight.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/border-straight.glb",
+      "bytes": 6520,
+      "sha256": "76ef69e8858f3d17c652d92033a553db58296135a5810d1bd5e54f47b5aa40c4"
+    },
+    {
+      "file": "arena-bricks.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/bricks.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/bricks.glb",
+      "bytes": 13192,
+      "sha256": "fd1d2c033c7db8b7352ac1becdab447d09cabcc11c73adf9bb6790f9680eaa86"
+    },
+    {
+      "file": "arena-character-soldier.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/character-soldier.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/character-soldier.glb",
+      "bytes": 215704,
+      "sha256": "b0410b4a34068e56ac1af3a2571f4497f84f1e481cced895b618d1fe8136529c"
+    },
+    {
+      "file": "arena-column-damaged.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/column-damaged.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/column-damaged.glb",
+      "bytes": 14308,
+      "sha256": "442a6856e7e2d042c9e3af155dabf6d394f7ba91b2e271ee6392da22555a072c"
+    },
+    {
+      "file": "arena-column.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/column.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/column.glb",
+      "bytes": 17140,
+      "sha256": "5c815b5fd43d613a21afddaaa90dc2f90b80e31f03dbdde98921cb7424e836c0"
+    },
+    {
+      "file": "arena-floor-detail.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/floor-detail.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/floor-detail.glb",
+      "bytes": 6484,
+      "sha256": "804224caf3008fcdbd57d7ccc2c4734320c58ca880895699307670d2443e324b"
+    },
+    {
+      "file": "arena-floor.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/floor.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/floor.glb",
+      "bytes": 1796,
+      "sha256": "15512c5ca6e9d3eb60efd237bbbf5b8010fdea63e0d8e6623f72b59de20279ab"
+    },
+    {
+      "file": "arena-stairs-corner-inner.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/stairs-corner-inner.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/stairs-corner-inner.glb",
+      "bytes": 7584,
+      "sha256": "2e232cecda1d633acc1b78707ee50089fd40a167293c173536d61ef064697a5c"
+    },
+    {
+      "file": "arena-stairs-corner.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/stairs-corner.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/stairs-corner.glb",
+      "bytes": 8752,
+      "sha256": "af8eb87dc8826e184f585ebccf0592c909da7370559cd840b218593f4b1c8a38"
+    },
+    {
+      "file": "arena-stairs.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/stairs.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/stairs.glb",
+      "bytes": 5244,
+      "sha256": "54a3f12c720f9cb83027b5429e330d7c50578f70771fd1bf9a2e521fe131ca6f"
+    },
+    {
+      "file": "arena-statue.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/statue.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/statue.glb",
+      "bytes": 51012,
+      "sha256": "5ba8ecba963f6b3ec974809e2bf0b615da7e2701cd0efc6a3c0e946efb147397"
+    },
+    {
+      "file": "arena-tree.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/tree.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/tree.glb",
+      "bytes": 34164,
+      "sha256": "f8632c9758a78f60aa4ca68bf0e5ac972770167a5608e179293a12552d8fc2ef"
+    },
+    {
+      "file": "arena-trophy.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/trophy.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/trophy.glb",
+      "bytes": 23752,
+      "sha256": "253f6d5f321ab20f8f505dfe35b7404c98d2d492728e6df5f69dd29e936b8be5"
+    },
+    {
+      "file": "arena-wall-corner.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/wall-corner.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/wall-corner.glb",
+      "bytes": 22476,
+      "sha256": "4dc0e770106a122885f41be0bb4024466a7f58bc29a13f07b6600c4babbeb777"
+    },
+    {
+      "file": "arena-wall-gate.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/wall-gate.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/wall-gate.glb",
+      "bytes": 31064,
+      "sha256": "f70a86344f202b3a8057e3a6ee9cd632ba51a5c16795cfde34cd10e906f14697"
+    },
+    {
+      "file": "arena-wall.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/wall.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/wall.glb",
+      "bytes": 16000,
+      "sha256": "b05ab8645136cc26e761ae2189f660a585dca88c11721771bca3fb4c1f7a807f"
+    },
+    {
+      "file": "arena-weapon-rack.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/weapon-rack.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/weapon-rack.glb",
+      "bytes": 20056,
+      "sha256": "bb95da3746098e36f3d87a1e1036ca70ead7fe95860191871e02f7c58ff1efe5"
+    },
+    {
+      "file": "arena-weapon-spear.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/weapon-spear.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/weapon-spear.glb",
+      "bytes": 7152,
+      "sha256": "9634e12abce01a07d40d5156454bfa1123eba72af6449fccf577980e331adbeb"
+    },
+    {
+      "file": "arena-weapon-sword.glb",
+      "kit": "Kenney Mini Arena 1.0 (in Starter Kit Basic Scene)",
+      "path": "sample/Mini Arena/Models/GLB format/weapon-sword.glb",
+      "url": "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-Basic-Scene/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena/Models/GLB%20format/weapon-sword.glb",
+      "bytes": 9340,
+      "sha256": "e4d2219d954148dd8b04fccc7602726c34eafad58c0dc5a45268155fcf6cc8c4"
+    },
+    {
+      "file": "skeletons-Skeleton_Mage.glb",
+      "kit": "KayKit Character Pack Skeletons 1.0",
+      "path": "addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Mage.glb",
+      "url": "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0/15b62b9bad122f72926c10fb14d622c73819fa54/addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Mage.glb",
+      "bytes": 4761048,
+      "sha256": "e05b0f5cfa395271c9f75fd07c0a0613c56f401ece4ab644e080001a79971075"
+    },
+    {
+      "file": "skeletons-Skeleton_Minion.glb",
+      "kit": "KayKit Character Pack Skeletons 1.0",
+      "path": "addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Minion.glb",
+      "url": "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0/15b62b9bad122f72926c10fb14d622c73819fa54/addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Minion.glb",
+      "bytes": 4814296,
+      "sha256": "6ffc003f895bed0b074791e0e490846210a2e2f8fc7da300aba53cc185f95968"
+    },
+    {
+      "file": "skeletons-Skeleton_Rogue.glb",
+      "kit": "KayKit Character Pack Skeletons 1.0",
+      "path": "addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Rogue.glb",
+      "url": "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0/15b62b9bad122f72926c10fb14d622c73819fa54/addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Rogue.glb",
+      "bytes": 4827024,
+      "sha256": "4003f2b77891bb56f7e0de7d555abcb497aebbcaee35b614211f16275f9ccae3"
+    },
+    {
+      "file": "skeletons-Skeleton_Warrior.glb",
+      "kit": "KayKit Character Pack Skeletons 1.0",
+      "path": "addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Warrior.glb",
+      "url": "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0/15b62b9bad122f72926c10fb14d622c73819fa54/addons/kaykit_character_pack_skeletons/Characters/gltf/Skeleton_Warrior.glb",
+      "bytes": 4863620,
+      "sha256": "178b6fda810b814c250d8a2010c24dfd9b458b9006dd323353e620b7ff118bbe"
+    }
+  ]
+}

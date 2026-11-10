@@ -12,6 +12,8 @@ of known-safe kinds, anything else named (P2R6). The in-Blender proof is
 ``test_blender_parallel_merge_instances.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import itertools
 import sys
 import unittest

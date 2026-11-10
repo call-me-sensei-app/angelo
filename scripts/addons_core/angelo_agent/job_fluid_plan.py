@@ -31,6 +31,8 @@ domains of every shape (``test_native_job_fluid_plan``).
 import math
 import re
 
+from .refusal_codes import coded
+
 # Floats Mantaflow allocates per cell while it bakes (grids of the solver script, inflow and obstacle grids,
 # vectors counted as three). A liquid adds its FLIP particles (two per cell by default, position and velocity).
 GAS_GRIDS, LIQUID_GRIDS, NOISE_GRIDS = 40, 30, 15
@@ -56,7 +58,7 @@ _WINDOWS_NAMES = ("con", "prn", "aux", "null") + tuple("com%d" % n for n in rang
 def grid(size, resolution):
     """``(x, y, z)`` cells of a domain whose sides are ``size`` (scene units) at ``resolution`` (its longest side)."""
     if min(size) <= 0:
-        raise ValueError("a fluid domain needs a size on every axis")
+        raise coded(ValueError("a fluid domain needs a size on every axis"), "VALIDATION")
     x, y, z = size
     axis = 0 if x >= max(y, z) else 1 if y >= max(x, z) else 2   # Blender's order when sides tie.
     scale = resolution / size[axis]

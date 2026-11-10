@@ -7,6 +7,8 @@ time one character past MAX_PATH. Its workers' chat journals live under the suit
 runner nested below the suite's own folder, so the depth grew with the suite's name and the caller's output folder.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import sys
 import tempfile
@@ -73,7 +75,10 @@ class ProfileTests(unittest.TestCase):
     def test_a_too_deep_windows_run_is_refused_before_it_starts(self):
         lanes = self.plan(LANES, platform="win32")
         self.assertEqual(lanes["preconditions"], [])   # This test's own temporary folder is shallow.
-        deep = self.run_dir / ("d" * (native_suite_paths.WINDOWS_PATH_LIMIT - len(str(self.run_dir))))
+        # One character past the limit: deep enough to refuse, still a folder Windows can make without long paths.
+        below = len(lanes["env"]["LOCALAPPDATA"]) - len(str(self.run_dir))   # The profile's own part of the path.
+        free = native_suite_paths.WINDOWS_PATH_LIMIT - native_suite_paths.ANGELO_DATA_DEPTH - below
+        deep = self.run_dir / ("d" * (free - len(str(self.run_dir))))
         refused = self.plan(LANES, run_dir=deep, platform="win32")
         self.assertEqual(len(refused["preconditions"]), 1)
         self.assertIn("too deep for Windows paths", refused["preconditions"][0])

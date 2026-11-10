@@ -7,6 +7,8 @@ handoff to a model and every test read it) and may carry ``i18n``, the
 template the canvas translates as it draws (``ui_text.notice``/``display_notice``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import json
 import sys
@@ -61,14 +63,14 @@ class NoticeTests(unittest.TestCase):
                    "preferred": ["a/b"], "policy": {"max_bytes": 0, "max_count": 0, "max_age_days": 0},
                    "remaining_bytes": 0, "released_bytes": 3 * 1024 ** 2}
         text = snapshot_service.notice_text({"kind": "maintained", "summary": summary})
-        self.assertEqual(text, "Snapshot limit applied: removed 2 oldest restore points (3.0 MiB), first those captured before "
-                               "the project's latest git commit. Their Restore links now show unavailable; limits are in "
+        self.assertEqual(text, "Snapshot limit applied: removed 2 snapshots (3.0 MiB), first those captured before "
+                               "the project's latest git commit. Their Restore links now show as unavailable; limits are in "
                                "Snapshot Settings.")
         single = snapshot_service.notice_text({"kind": "maintained", "summary": dict(summary, removed=["a/b"], preferred=[])})
-        self.assertIn("removed 1 oldest restore point (3.0 MiB). Their Restore", single)
+        self.assertIn("removed the oldest snapshot (3.0 MiB). Its Restore", single)
         failed = snapshot_service.notice_text({"kind": "failed", "task": "ingest", "error": "disk full"})
-        self.assertEqual(failed, "Snapshot storage could not finish deduplicating a snapshot: disk full. "
-                                 "Existing restore points stay available.")
+        self.assertEqual(failed, "Snapshot storage could not finish packing a new snapshot: disk full. "
+                                 "Existing snapshots stay available.")
         controller = SimpleNamespace(emit=MagicMock())
         ui = SimpleNamespace(_controllers={"chat": controller}, _controller=controller)
         snapshot_service._shown.clear()

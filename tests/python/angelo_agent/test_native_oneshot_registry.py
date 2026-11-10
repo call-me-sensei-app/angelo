@@ -6,6 +6,8 @@ Also pins that the scenario registry is unchanged: the one-shot tests are
 listed apart, and a scenario's reference digest never depends on their files.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import hashlib
 import io

@@ -9,8 +9,11 @@ ends with a typed plan, ``thread/fork`` answers Angelo's cache-affinity probe as
 ``HostedBatchRuntime`` reads only the log off the main thread. No Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -234,6 +237,41 @@ class InstallTests(unittest.TestCase):
         batch.write_text("@echo off\r\n\"python\" \"stand_in.py\" %*\r\n")
         with self.assertRaises(cli_windows.UnsafeBatchArguments):
             cli_windows.launch_command([str(batch), *self.COMMAND], lambda: self.fail("no node"), {})
+
+
+class TakeOverTests(unittest.TestCase):
+    """``take_over``: the codex an Angelo started with the suite's environment launches is the stand-in, also where the
+    app bundles its agent runtime (which it runs before anything on PATH) and the caller's environment never turned it
+    off: a suite started by hand ran the bundled Codex under the caller's own sign-in, and no scripted call came."""
+
+    def setUp(self):
+        self.folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.folder, True)
+        self.bundled = self.folder / "Helpers" / "codex"   # The app's own runtime: there, and executable.
+        self.bundled.parent.mkdir(parents=True)
+        self.bundled.write_text("#!/bin/sh\nexit 3\n")
+        self.bundled.chmod(0o755)
+
+    def test_the_bundled_runtime_is_off_and_the_stand_in_is_first_on_path(self):
+        from angelo_agent import agent_runtime
+        environ = {"PATH": os.pathsep.join(("/usr/bin", "/bin"))}   # A caller that set no runtime switch.
+        folder = stand_in.take_over(environ, self.folder / "stand-in", windows=False)
+        self.assertEqual((folder, environ[stand_in.ENV]), (self.folder / "stand-in", str(self.folder / "stand-in")))
+        self.assertEqual(environ["PATH"].split(os.pathsep)[0], str(folder / "bin"))
+        with patch.object(agent_runtime, "bundled", return_value=str(self.bundled)):
+            self.assertEqual(agent_runtime.executable({}), str(self.bundled))   # Unset: the app runs its own.
+            self.assertIsNone(agent_runtime.executable(environ))   # The suite's: the codex found on PATH.
+
+    def test_the_leads_own_lookup_finds_the_stand_in_not_the_bundled_runtime(self):
+        """The lead's real lookup on this platform (a shell wrapper, or Windows' ``codex.exe`` found by PATHEXT)."""
+        from angelo_agent import agent_runtime, cli_runtime
+        environ = {"PATH": os.pathsep.join(("/usr/bin", "/bin"))}
+        folder = stand_in.take_over(environ, self.folder / "stand-in")
+        with patch.object(agent_runtime, "bundled", return_value=str(self.bundled)), patch.dict(os.environ):
+            os.environ.pop(stand_in.RUNTIME, None)
+            os.environ.update(environ)
+            found = Path(cli_runtime.find_executable("codex"))
+        self.assertEqual((found.parent, found.stem.lower()), (folder / "bin", "codex"))
 
 
 class HostedBatchRuntimeTests(unittest.TestCase):

@@ -9,6 +9,8 @@ which version it is. ``test_blender_gate_answers.py`` walks the version-2 long
 set in the real application.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 from pathlib import Path

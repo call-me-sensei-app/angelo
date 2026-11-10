@@ -12,6 +12,8 @@ and every modal handler in the add-on consulting the policy. The running app is 
 the notice cards' rules are in ``test_native_card_host``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import sys
 import types

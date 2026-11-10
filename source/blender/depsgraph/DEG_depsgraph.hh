@@ -92,6 +92,12 @@ void DEG_graph_replace_owners(Depsgraph *depsgraph,
 /** Free graph's contents and graph itself. */
 void DEG_graph_free(Depsgraph *graph);
 
+/**
+ * Angelo: the graph's Python instance slot (#RNA_struct_instance for `bpy.types.Depsgraph`). The
+ * graph releases and invalidates the wrapper it holds when it is freed.
+ */
+void **DEG_graph_py_instance(Depsgraph *graph);
+
 /** \} */
 
 /* -------------------------------------------------------------------- */

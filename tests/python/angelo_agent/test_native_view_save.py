@@ -11,6 +11,8 @@ changes the scene; ``test_blender_view_sources`` proves the pixels and the
 silence of add-on Python in Blender itself.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import unittest

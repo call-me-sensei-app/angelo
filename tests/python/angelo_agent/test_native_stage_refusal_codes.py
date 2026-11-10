@@ -12,6 +12,8 @@ program stages carries its closed code (``refusal_codes``) at the raise site;
 only genuine internal faults stay unclassified, which still fail closed.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest

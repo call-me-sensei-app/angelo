@@ -8,6 +8,8 @@ the result's words, and Angelo's own add-on staying unregistered in the child. T
 ``test_blender_headless_preferences.py``. Contract: doc/angelo/external_mcp.rst, "Preferences".
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import shutil
@@ -19,6 +21,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 import machine_clock
+from host_test_policy import environment_skip
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 import angelo_agent  # noqa: E402
@@ -26,7 +29,14 @@ from angelo_agent import headless_preferences as preferences  # noqa: E402
 from angelo_agent import headless_main  # noqa: E402
 from angelo_agent import headless_files  # noqa: E402
 from angelo_agent import headless_working_copy as working_copy  # noqa: E402
+from angelo_agent import headless_session  # noqa: E402
 from angelo_agent.headless_session import HeadlessSession, child_command, child_environment  # noqa: E402
+
+# The child, its staging and its working copy run only where headless sessions do (the session refuses elsewhere);
+# the launcher's command and environment are checked on every platform.
+HEADLESS_HOST = sys.platform in headless_session.SUPPORTED_PLATFORMS
+NOT_HEADLESS = environment_skip("headless sessions run only on headless_session.SUPPORTED_PLATFORMS (macOS and Linux)")
+HEADLESS_ONLY = unittest.skipUnless(HEADLESS_HOST, NOT_HEADLESS)
 
 
 class FolderTests(unittest.TestCase):
@@ -36,6 +46,9 @@ class FolderTests(unittest.TestCase):
         self.assertEqual(preferences.person_config_directory(environ, "darwin"),
                          Path("/fixed/Library/Application Support/Angelo/5.2/config"))
         self.assertEqual(preferences.person_config_directory(environ, "linux"), Path("/h/.config/angelo/5.2/config"))
+
+    @HEADLESS_ONLY
+    def test_macos_ignores_home_as_blenders_lookup_does(self):
         import pwd
         account = pwd.getpwuid(os.getuid()).pw_dir
         self.assertEqual(preferences.person_config_directory({"HOME": "/elsewhere"}, "darwin"),
@@ -43,6 +56,7 @@ class FolderTests(unittest.TestCase):
                          "macOS: Blender's lookup ignores HOME, so the launcher does too")
 
 
+@HEADLESS_ONLY
 class StageTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="hpref-"))
@@ -117,7 +131,7 @@ class CommandTests(unittest.TestCase):
                    "BLENDER_USER_EXTENSIONS": "/evil", "BLENDER_USER_RESOURCES": "/evil"}
         private = Path("/tmp/p")
         mine = child_environment(environ, private, preferences_used=True)
-        self.assertEqual(mine["BLENDER_USER_CONFIG"], "/tmp/p/config")
+        self.assertEqual(mine["BLENDER_USER_CONFIG"], str(private / "config"))
         self.assertNotIn("BLENDER_USER_CONFIG", child_environment(environ, private))
         for environment in (mine, child_environment(environ, private)):
             for name in ("BLENDER_USER_SCRIPTS", "BLENDER_USER_EXTENSIONS", "BLENDER_USER_RESOURCES"):
@@ -157,6 +171,8 @@ class FallbackTests(unittest.TestCase):
         return sorted(path.name for path in self.root.iterdir() if path.name.startswith("scene.angelo-"))
 
     def session(self, *readies):
+        if not HEADLESS_HOST:   # HeadlessSession.open refuses there before any child starts.
+            self.skipTest(NOT_HEADLESS)
         readies = list(readies)
 
         def child(command, environ, stderr=None):
@@ -218,6 +234,25 @@ class FallbackTests(unittest.TestCase):
         (self.config / preferences.USERPREF).write_bytes(b"BLENDER prefs, changed by the person")
         session.open(str(self.source), ("read",))
         self.assertEqual(self.started[-1][0], "yours", "changed preferences are tried again")
+
+    def test_a_failure_is_remembered_for_the_preferences_that_failed_not_a_later_save(self):
+        """Stat before read (release-1010 audit re-check 2, break-it): the failure was remembered under a stat taken
+        after the failed start, so preferences the person saved during it (the broken add-on turned off) were never
+        tried for the launcher's life."""
+        session = self.session(None, {"ok": True, "file": str(self.source), "preferences": preferences.describe("x")},
+                               {"ok": True, "file": str(self.source), "preferences": preferences.describe("x")})
+        child_type = session.child_type
+
+        def person_saves_during_the_start(command, environ, stderr=None):
+            child = child_type(command, environ, stderr)
+            if command[command.index("--preferences") + 1] == preferences.YOURS:
+                (self.config / preferences.USERPREF).write_bytes(b"BLENDER prefs, the broken add-on turned off")
+            return child
+        session.child_type = person_saves_during_the_start
+        session.open(str(self.source), ("read",))
+        session.close()
+        session.open(str(self.source), ("read",))
+        self.assertEqual([code for code, *_rest in self.started], ["yours", "start_failed", "yours"])
 
     def test_a_hang_is_bounded(self):
         child = FakeChild(None, hangs=True)
@@ -282,9 +317,10 @@ class WorkingCopyTests(unittest.TestCase):
         self.opened.append(Path(filepath))
         return {"FINISHED"}
 
+    @HEADLESS_ONLY   # The copy is placed by a rename onto its claimed name: POSIX semantics.
     def test_blender_opens_a_copy_next_to_the_source_never_the_source(self):
         before = headless_files.identity(self.source)
-        working = working_copy.open_copy(self.bpy, self.source)
+        working, _identity = working_copy.open_copy(self.bpy, self.source)
         self.assertEqual(self.opened, [working])
         self.assertNotEqual(working, self.source)
         self.assertEqual(working.parent, self.source.parent, "the same folder: // paths stay valid")
@@ -292,21 +328,24 @@ class WorkingCopyTests(unittest.TestCase):
         self.assertEqual(working.read_bytes(), self.source.read_bytes())
         self.assertEqual(headless_files.identity(self.source), before, "the source is only read")
 
+    @HEADLESS_ONLY
     def test_a_read_only_folder_opens_the_source_itself(self):
         os.chmod(self.root, 0o555)
         self.addCleanup(os.chmod, self.root, 0o755)
         if os.access(self.root, os.W_OK):
-            self.skipTest("running as a user who can write anywhere")
-        self.assertEqual(working_copy.open_copy(self.bpy, self.source), self.source)
+            self.skipTest(environment_skip("running as a user who can write anywhere"))
+        self.assertEqual(working_copy.open_copy(self.bpy, self.source)[0], self.source)
 
+    @HEADLESS_ONLY
     def test_a_copy_blender_cannot_open_is_removed(self):
         self.bpy.ops.wm.open_mainfile = lambda **_: {"CANCELLED"}
         with self.assertRaises(RuntimeError):
             working_copy.open_copy(self.bpy, self.source)
         self.assertEqual(sorted(path.name for path in self.root.iterdir()), ["scene.blend"])
 
+    @HEADLESS_ONLY
     def test_an_unedited_copy_is_removed_only_while_it_is_the_sessions(self):
-        working = working_copy.open_copy(self.bpy, self.source)
+        working, _identity = working_copy.open_copy(self.bpy, self.source)
         identity = headless_files.identity(working)
         Path(str(working) + "1").write_bytes(b"backup an add-on's save left")
         self.assertFalse(working_copy.discard(self.source, self.source, headless_files.identity(self.source)))
@@ -316,13 +355,95 @@ class WorkingCopyTests(unittest.TestCase):
         self.assertEqual(sorted(path.name for path in self.root.iterdir()), ["scene.blend"])
         self.assertEqual(self.source.read_bytes(), b"BLENDER-v502 the person's scene")
 
+    def blender(self, during_open):
+        """A stand-in Blender whose open reads the file, then runs ``during_open(path)``; its save_post handlers are
+        Blender's list, as a person's add-on's save during the open runs them."""
+        handlers = SimpleNamespace(persistent=lambda function: function, save_post=[])
+        read = []
+
+        def open_mainfile(filepath, load_ui, use_scripts):
+            read.append(Path(filepath).read_bytes())
+            during_open(Path(filepath), handlers)
+            return {"FINISHED"}
+        return SimpleNamespace(ops=SimpleNamespace(wm=SimpleNamespace(open_mainfile=open_mainfile)),
+                               app=SimpleNamespace(handlers=handlers)), read
+
+    def replace(self, path, data):   # A save by Blender or another program: a new file renamed over the name.
+        temporary = path.with_name(path.name + ".tmp")
+        temporary.write_bytes(data)
+        os.replace(temporary, path)
+
+    def test_a_write_after_blender_read_the_file_reads_as_a_change(self):
+        """Stat before read (release-1010 audit, re-check 2): the identity was a stat taken after the open, so a
+        version another program wrote once Blender had read the file became the session's baseline, and its next
+        save replaced that version (or the removal of an unedited copy removed it)."""
+        output = self.root / "scene.angelo-20261105-010000.blend"
+        output.write_bytes(b"BLENDER the session's output")
+        bpy, read = self.blender(lambda path, _handlers: self.replace(path, b"BLENDER the person saved it meanwhile"))
+        identity = working_copy.open_read(bpy, output)
+        self.assertEqual(read, [b"BLENDER the session's output"])
+        self.assertNotEqual(identity, headless_files.identity(output), "Blender holds the older version")
+        self.assertFalse(working_copy.discard(output, self.source, identity), "the newer version is never removed")
+        self.assertEqual(output.read_bytes(), b"BLENDER the person saved it meanwhile")
+
+    def test_an_in_process_save_during_the_open_is_the_sessions_own(self):
+        output = self.root / "scene.angelo-20261105-010000.blend"
+        output.write_bytes(b"BLENDER the session's output")
+
+        def add_on_saves(path, handlers):   # A person's load_post handler saving the file Blender has open.
+            self.replace(path, b"BLENDER as Blender holds it, saved")
+            from save_identity_stand_in import saving   # As Blender's save names the file it wrote to its handlers.
+            with saving(path):
+                for handler in list(handlers.save_post):
+                    handler(str(path))
+        bpy, _read = self.blender(add_on_saves)
+        self.assertEqual(working_copy.open_read(bpy, output), headless_files.identity(output))
+        self.assertEqual(bpy.app.handlers.save_post, [], "its own handler is gone after the open")
+        unchanged, _read = self.blender(lambda _path, _handlers: None)
+        self.assertEqual(working_copy.open_read(unchanged, output), headless_files.identity(output))
+
+    @HEADLESS_ONLY   # place renames onto the claimed name: POSIX semantics.
+    def test_a_placed_file_s_identity_is_of_the_bytes_written_not_a_later_write(self):
+        """Stat before read, its mirror (break-it): a save's identity was a stat of the output after placing it, so a
+        version another program wrote there next became the session's, and its next save replaced it unnoticed."""
+        staged, target = self.root / "staged.blend", headless_files.claim_output(self.source)
+        staged.write_bytes(b"BLENDER the session's save")
+        rename = headless_files.shared_replace.replace
+
+        def rename_then_another_program_writes(source, destination):
+            rename(source, destination)
+            self.replace(Path(destination), b"BLENDER another program's version")
+        with patch.object(headless_files.shared_replace, "replace", side_effect=rename_then_another_program_writes) as placing:
+            written = headless_files.place(staged, target)
+            placing.assert_called_once()
+        self.assertIsNotNone(written)
+        self.assertNotEqual(written, headless_files.identity(target), "the later version reads as a change")
+        self.assertEqual(headless_files.place(staged, target), headless_files.identity(target), "unchanged: equal")
+        host = (Path(working_copy.__file__).parent / "headless_host.py").read_text(encoding="utf-8")
+        self.assertIn("written = headless_files.place(staged, target)", host)
+        self.assertIn("self.output, self.output_identity = target, written", host)
+
+    def test_the_child_s_identities_are_the_ones_taken_around_the_open(self):
+        main = (Path(working_copy.__file__).parent / "headless_main.py").read_text(encoding="utf-8")
+        self.assertIn("working, opened = resume, open_read(bpy, resume)", main)
+        self.assertIn("working, opened = open_copy(bpy, source, options.working)", main)
+        self.assertIn("host.output, host.output_identity = resume, opened", main)
+        self.assertIn("working_identity=opened", main)
+        host = (Path(working_copy.__file__).parent / "headless_host.py").read_text(encoding="utf-8")
+        self.assertIn("self.working, self.working_identity = working_copy.open_copy(self.bpy, self.source)", host)
+        self.assertNotIn("open_mainfile(filepath=str(resume)", main)
+
     def test_the_childs_source_baseline_is_the_launchers(self):
         command = child_command("/A", "/s.py", "/f.blend", "c", "codex", ("read",), source_identity=(1, 2, 3, 4))
         argv = command[command.index("--") + 1:]
         argv = [{"{in}": "3", "{out}": "4"}.get(part, part) for part in argv]
         self.assertEqual(headless_main.parse(argv).source_identity, (1, 2, 3, 4))
-        self.assertIsNone(headless_main._identity("not json"))
-        self.assertIsNone(headless_main._identity('["a"]'))
+        self.assertIsNone(headless_main._identity(""), "none sent: the child takes its own baseline")
+        for text in ("not json", '["a"]'):
+            # One sent that is no identity (a launcher that could not vouch for the file) reads as a change, never as
+            # no baseline, which would let the child adopt the file as it finds it (fail open).
+            self.assertIsNotNone(headless_main._identity(text))
+            self.assertNotEqual(headless_main._identity(text), (1, 2, 3, 4))
 
 
 class LauncherPolicyTests(unittest.TestCase):
@@ -434,10 +555,10 @@ class OwnAddonTests(unittest.TestCase):
     startup; the full add-on must not run there. The early return is inert in a window: pinned for every branch."""
 
     MODULES = ("tls_distrust", "data_migration", "product_env", "state_migration", "console", "studio", "ui",
-               "about_card", "app_notices", "font_watch", "job_ui", "prefs_reload", "pycache_retention",
+               "about_card", "app_notices", "font_watch", "job_ui", "refused_saves", "prefs_reload", "pycache_retention",
                "settings_import_ui", "studio_assets_host", "asset_shelf_add", "chat_launcher", "chat_toggle",
                "media_shelf", "studio_toggle", "shelf_empty", "export_baked", "web_export_ui", "web_shader_ui",
-               "engine_link_ui", "game_physics_ui",
+               "engine_link_ui", "game_physics_ui", "media_shelf_cover",
                "shot_capture_ui", "codex_runtime", "session_rail_input", "timer_jobs", "layout_hold", "document_identity",
                "render_engines", "ai_render_card", "bake_maps_card", "render_region", "photo_drop", "library_ui",
                "tension_map", "uv_checker", "skeleton_check_ui", "engine_suggest_ui", "director_select_through",
@@ -477,7 +598,7 @@ class OwnAddonTests(unittest.TestCase):
             for expected in ("tls_distrust.install", "timer_jobs.register", "layout_hold.register", "ui.register",
                              "document_identity.register",
                              "app_notices.register",
-                             "job_ui.register", "pycache_retention.schedule", "studio_assets_host.register",
+                             "job_ui.register", "refused_saves.register", "pycache_retention.schedule", "studio_assets_host.register",
                              "shelf_empty.register", "export_baked.register", "web_shader_ui.register",
                              "web_export_ui.register",
                              "shot_capture_ui.register", "photo_drop.register", "tension_map.register",
@@ -485,7 +606,7 @@ class OwnAddonTests(unittest.TestCase):
                              "director_select_through.register"):
                 self.assertIn(expected, registered, environ)
             for expected in ("shelf_empty.unregister", "web_export_ui.unregister", "shot_capture_ui.unregister",
-                             "ui.unregister", "photo_drop.unregister", "tension_map.unregister", "uv_checker.unregister",
+                             "ui.unregister", "refused_saves.unregister", "photo_drop.unregister", "tension_map.unregister", "uv_checker.unregister",
                              "skeleton_check_ui.unregister",
                              "codex_runtime.close_all", "layout_hold.unregister", "timer_jobs.unregister",
                              "engine_suggest_ui.unregister", "director_select_through.unregister"):

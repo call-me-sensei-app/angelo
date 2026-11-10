@@ -16,6 +16,8 @@ artist's scene. ``FakeBlender`` models exactly those rules; the native
 reproduction is ``duplicate_then_edit`` in ``test_blender_particles.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import contextlib
 import sys

@@ -1,15 +1,17 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The game-ready check's meshes: a Blender object read into world-space arrays, and its reductions made in memory.
-Main thread; nothing here changes the scene or any data-block.
+Nothing here changes the scene or any data-block.
 
-- ``read`` takes the geometry an export would take: the evaluated mesh (modifiers applied), except for a mesh an
-  Armature modifier deforms, which is read as its base mesh in rest pose with its deforming groups' weights.
+- ``read`` (main thread) takes the geometry an export would take: the evaluated mesh (modifiers applied), except for a
+  mesh an Armature modifier deforms, which is read as its base mesh in rest pose with its deforming groups' weights.
+  It copies the arrays out and, for Decimate, takes a snapshot of the mesh (``_angelo_reduce.snapshot``: no Main,
+  arrays shared), then frees what it evaluated; ``MeshRead.finish`` makes the world-space geometry on any thread.
 - ``Reducer`` welds the triangle corners into the vertex buffer an engine would get (one vertex per distinct
   position, UV, shading normal and material), then reduces it with meshoptimizer (``_bpy._angelo_reduce.simplify``)
   to index buffers over that same buffer, so every LOD of the chain shares LOD0's vertices. Seams, hard edges and
   material borders are split vertices, which the simplifier never collapses across.
-- ``decimate`` runs Blender's own Decimate (Collapse) on a copy of the same mesh for comparison.
+- ``decimate`` runs Blender's own Decimate (Collapse) on the snapshot for comparison, on any thread.
 """
 
 import time
@@ -18,21 +20,27 @@ import numpy as np
 
 from .game_ready_metrics import Geometry
 
-MAX_TRIANGLES = 2_000_000   # The measurements hold float64 copies per triangle corner on the main thread.
+MAX_TRIANGLES = 2_000_000   # The measurements hold float64 copies per triangle corner in memory.
 
 
 class MeshRead:
-    """One object's geometry, how it was read, and what the reductions need from its Blender mesh."""
+    """One object's arrays as read, how it was read, and its snapshot for Decimate (None when not asked for);
+    ``geometry`` once ``finish`` made it."""
 
-    def __init__(self, geometry, note, mesh, owner, groups, group_names, matrix):
-        self.geometry, self.note, self.mesh, self.owner = geometry, note, mesh, owner
-        self.groups, self.group_names, self.matrix = groups, group_names, matrix
+    def __init__(self, raw, note, snapshot, groups, group_names, matrix, others, unit_scale):
+        self.raw, self.note, self.snapshot, self.groups, self.group_names = raw, note, snapshot, groups, group_names
+        self.matrix, self.others, self.unit_scale, self.geometry = matrix, others, unit_scale, None
+
+    def finish(self):
+        """The world-space geometry from the arrays read (any thread); ``self``."""
+        if self.geometry is None:
+            self.geometry, self.groups, self.group_names = _geometry(self)
+            self.raw = None
+        return self
 
     def release(self):
-        """Free the evaluated mesh ``read`` made (an object's own mesh is never freed)."""
-        if self.owner is not None:
-            self.owner.to_mesh_clear()
-            self.owner = self.mesh = None
+        """Drop the snapshot (freed with its last reference)."""
+        self.snapshot = None
 
 
 def _armature_modifier(obj):
@@ -81,8 +89,8 @@ def to_world(positions, normals, matrix, unit_scale):
     return world.astype(np.float32), None if out_normals is None else out_normals.astype(np.float32)
 
 
-def read(obj, depsgraph, unit_scale, reduce):
-    """``obj`` as a MeshRead; the caller calls its ``release`` once the reductions are done."""
+def read(obj, depsgraph, unit_scale, reduce, snapshot=False):
+    """``obj`` as a MeshRead (main thread): its arrays, and with ``snapshot`` its mesh's snapshot for Decimate."""
     modifier = _armature_modifier(obj)
     groups, names = [], []
     owner = None
@@ -97,33 +105,35 @@ def read(obj, depsgraph, unit_scale, reduce):
         owner = obj.evaluated_get(depsgraph)
         mesh = owner.to_mesh()
         note = "the evaluated mesh (every enabled modifier applied), as an export takes it"
-    try:   # Anything raised before the MeshRead exists must still free the evaluated mesh.
-        return _read(obj, mesh, owner, groups, names, others, modifier, note, unit_scale, reduce)
-    except BaseException:
+    try:   # The evaluated mesh is freed however this ends; the snapshot shares its arrays and outlives it.
+        if len(mesh.loop_triangles) > MAX_TRIANGLES:
+            raise ValueError("%s has %d triangles; the check measures up to %d" % (
+                obj.name[:64], len(mesh.loop_triangles), MAX_TRIANGLES))
+        raw = _arrays(mesh)
+        weights = reduce.vertex_weights(mesh, groups) if groups else None
+        return MeshRead(raw + (weights,), note, reduce.snapshot(mesh) if snapshot else None, groups, names,
+                        obj.matrix_world.copy(), others if modifier is not None else 0, unit_scale)
+    finally:
         if owner is not None:
             owner.to_mesh_clear()
-        raise
 
 
-def _read(obj, mesh, owner, groups, names, others, modifier, note, unit_scale, reduce):
-    if len(mesh.loop_triangles) > MAX_TRIANGLES:
-        raise ValueError("%s has %d triangles; the check measures up to %d" % (obj.name[:64], len(mesh.loop_triangles),
-                                                                            MAX_TRIANGLES))
-    positions, vertex_tris, corner_tris, materials, corner_normals, uv = _arrays(mesh)
-    matrix = obj.matrix_world.copy()
-    world, normals = to_world(positions, corner_normals, matrix, unit_scale)
-    weights = None
+def _geometry(read_mesh):
+    """(Geometry, groups, group names) of a MeshRead's arrays, in world space: NumPy only, any thread."""
+    positions, vertex_tris, corner_tris, materials, corner_normals, uv, weight_bytes = read_mesh.raw
+    world, normals = to_world(positions, corner_normals, read_mesh.matrix, read_mesh.unit_scale)
+    groups, names, weights = read_mesh.groups, read_mesh.group_names, None
     if groups:
-        weights = np.frombuffer(reduce.vertex_weights(mesh, groups), dtype=np.float32).reshape(len(positions), -1)
+        weights = np.frombuffer(weight_bytes, dtype=np.float32).reshape(len(positions), -1)
         # Only groups that weigh something on this mesh move it: a rig's other bones are not its influences.
         used = np.flatnonzero((weights > 0.0).any(axis=0))
         weights = np.ascontiguousarray(weights[:, used])
         groups, names = [groups[i] for i in used], [names[i] for i in used]
     geometry = Geometry(world, vertex_tris, None if uv is None else uv[corner_tris], normals[corner_tris], weights,
                         weight_names=names if groups else None)
-    geometry.modifiers_not_applied = others if modifier is not None else 0
+    geometry.modifiers_not_applied = read_mesh.others
     geometry.corner_material = np.repeat(materials, 3)   # The weld splits material borders.
-    return MeshRead(geometry, note, mesh, owner, groups, names, matrix)
+    return geometry, groups, names
 
 
 class Reducer:
@@ -192,9 +202,10 @@ class Reducer:
 
 
 def decimate(read_mesh, ratio, reduce, unit_scale):
-    """Blender's Decimate (Collapse, triangulated) of the same mesh as a Geometry, and the time it took."""
+    """Blender's Decimate (Collapse, triangulated) of the read mesh's snapshot as a Geometry, and the time it took
+    (any thread: the snapshot is the check's own)."""
     started = time.perf_counter()
-    result = reduce.decimate(read_mesh.mesh, ratio, triangulate=True, groups=read_mesh.groups or None)
+    result = reduce.decimate(read_mesh.snapshot, ratio, triangulate=True, groups=read_mesh.groups or None)
     elapsed = (time.perf_counter() - started) * 1000.0
     positions = np.frombuffer(result["positions"], dtype=np.float32).reshape(-1, 3)
     tris = np.frombuffer(result["tris"], dtype=np.int32).reshape(-1, 3)

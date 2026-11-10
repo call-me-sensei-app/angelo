@@ -137,6 +137,15 @@ def check_connection(mode, api_key, transport=read_probe):
                        True, models)
 
 
+def policy_refusal():
+    """Why the managed policy forbids checking a personal key now, or None (``connection_access``)."""
+    from . import connection_access, managed_policy
+    if connection_access.personal_allowed():
+        return None
+    policy = managed_policy.current()
+    return managed_policy.personal_refusal(policy, policy.require_team_sign_in and connection_access._team().signed_in())
+
+
 class ApiConnections:
     def __init__(self, transport=read_probe):
         self.results, self.running, self.generations = {}, set(), {}
@@ -152,6 +161,13 @@ class ApiConnections:
         identity, mode = record["id"], record["mode"]
         if self.closed or identity in self.running:
             raise RuntimeError("A connection check is already running")
+        refusal = policy_refusal()
+        if refusal is not None:
+            # A personal key the policy forbids is never sent to its provider, not even to check it (a saved key
+            # loading at start-up included): nothing outside the team's gateway is contacted.
+            self.invalidate(identity)
+            self.results[identity] = CheckResult("failed", refusal)
+            return
         api_key = clean_key(api_key)
         self.invalidate(identity)
         generation = self.generations[identity]

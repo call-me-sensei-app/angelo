@@ -26,7 +26,8 @@ MAX_IMAGES = 4   # Studio's reference limit; fal documents no maximum for the mu
 
 def _refusal(template, **fields):
     from .studio_state import StudioValueError
-    return StudioValueError(template, **fields)
+    from .refusal_codes import coded
+    return coded(StudioValueError(template, **fields), "VALIDATION")   # A model's option refused: nothing ran.
 
 
 def controls(model):

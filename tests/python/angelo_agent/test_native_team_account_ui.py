@@ -10,6 +10,8 @@ of the stored connections. The hygiene tests pin the size, license, bpy-free
 core and the single loopback listener.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 from dataclasses import replace
 import sys

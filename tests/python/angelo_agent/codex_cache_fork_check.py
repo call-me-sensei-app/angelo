@@ -49,6 +49,7 @@ from angelo_agent.storage import valid_profile_directory  # noqa: E402
 from angelo_agent.team_library_spec import TEAM_NAMES  # noqa: E402
 from angelo_agent.tool_specs import TOOL_MAP, codex_tools  # noqa: E402
 from codex_prompt_probe import FakeResponses  # noqa: E402
+import provider_isolation as isolation  # noqa: E402
 
 ALLOWED = frozenset(TOOL_MAP) - TEAM_NAMES  # As the gates and benchmarks run (not signed in to a team).
 ORDER = "ABBAABBAAB"
@@ -67,13 +68,18 @@ class Stop(RuntimeError):
 
 
 def dedicated_profile(codex_home, connection_id):
-    """A validated dedicated Codex profile, never ``~/.codex``; its sign-in file must exist (never read)."""
+    """A validated dedicated Codex profile, never ``~/.codex``, signed in to the evaluation account
+    (``provider_accounts``: only its id_token's claims are read)."""
     path = Path(codex_home).expanduser().resolve()
     if path == (Path.home() / ".codex").resolve():
         raise SystemExit("--codex-home must be a dedicated profile, never ~/.codex")
     valid_profile_directory(str(path), connection_id, "codex_subscription")
     if not (path / "auth.json").is_file():
         raise Stop("The Codex profile is not signed in; sign-in is the person's step, not this check's")
+    try:
+        isolation.check_billed([("codex-profile", path)])
+    except isolation.Refusal as refusal:
+        raise SystemExit("--codex-home: %s" % refusal) from None
     return str(path)
 
 

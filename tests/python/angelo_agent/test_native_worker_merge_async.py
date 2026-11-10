@@ -12,6 +12,8 @@ same merge applied again joins its gate, another merge of the same parts is refu
 that leaves its chat while it waits is released; leases grown old are asked again; off, nothing is sent.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import threading
@@ -133,13 +135,17 @@ class GateFixture(OperatorFixture):
         return c
 
     def tick(self, c, apply=None):
-        """One UI tick: the gates' sweep, then the chat's tools; how long it took."""
+        """One UI tick: the gates' sweep, then the chat's tools."""
         from angelo_agent.controller import ToolDispatchBudget
-        begun = time.perf_counter()
         gate.sweep()
         c.pump_tools(self.scene, c.document, budget=ToolDispatchBudget(seconds=60),
                      apply_mutation=apply or (lambda call: c.execute_tool(call, self.scene, c.document)))
-        return time.perf_counter() - begun
+
+    def assert_tick_at_once(self, c, apply=None):
+        """A tick returns at once (``machine_clock``: a stalled runner is not a wait)."""
+        window = machine_clock.start(self)
+        self.tick(c, apply)
+        window.assert_within(AT_ONCE)
 
     def settle(self, c, replies, apply=None):
         self.assertTrue(until(lambda: (self.tick(c, apply), bool(replies))[1]), "the merge never ended")
@@ -164,15 +170,16 @@ class WedgedWorkerTests(GateFixture):
         self.assertEqual((outcomes, self.scene.ran, replies), ([{'CANCELLED'}], [], []), "no Undo step, nothing read")
         self.assertTrue(until(lambda: self.two.ops() == ["chat.hold"] and self.one.ops() == ["chat.hold"]))
         for _ in range(5):
-            self.assertLess(self.tick(c, click), AT_ONCE)
+            self.assert_tick_at_once(c, click)
         self.assertEqual((self.scene.ran, self.merges), ([], []))
         self.assertNotIn("part.lease", self.two.ops(), "a lease before every hold was answered")
         self.one.unwedge()
         reply = self.settle(c, replies, click)
         self.assertTrue(reply.get("success"), reply)
         self.assertEqual(outcomes[-1], {'FINISHED'}, "the merge ran outside its Undo step")
-        self.assertEqual(self.merges, [{"/p/1.blend": ["chat.hold", "part.lease"],
-                                        "/p/2.blend": ["chat.hold", "part.lease"]}], "read outside its holds/leases")
+        self.assertEqual(self.merges, [{str(self.one.part): ["chat.hold", "part.lease"],
+                                        str(self.two.part): ["chat.hold", "part.lease"]}],
+                         "read outside its holds/leases")
         self.assertTrue(until(lambda: self.one.ops() == self.two.ops() == [
             "chat.hold", "part.lease", "part.unlease", "chat.release"]))
 
@@ -218,8 +225,9 @@ class NormalCaseTests(GateFixture):
             c, replies = self.run_merge("merge")   # Every hold and lease answered before ``waits`` reads the gate.
         self.assertEqual(len(replies), 1)
         self.assertTrue(replies[0].get("success"), replies[0])
-        self.assertEqual(self.merges, [{"/p/1.blend": ["chat.hold", "part.lease"],
-                                        "/p/2.blend": ["chat.hold", "part.lease"]}], "read outside its holds/leases")
+        self.assertEqual(self.merges, [{str(self.one.part): ["chat.hold", "part.lease"],
+                                        str(self.two.part): ["chat.hold", "part.lease"]}],
+                         "read outside its holds/leases")
         self.assertTrue(self.released(self.one, self.two))
 
 
@@ -309,7 +317,7 @@ class ReentrancyTests(GateFixture):
         self.assertTrue(until(lambda: self.one.ops()[-1:] == ["chat.release"]))   # Sent, not yet answered.
         second = []
         c.request_tool("merge-2", MERGE, {"parts": [{"worker": 1}]}, second.append)
-        self.assertLess(self.tick(c), AT_ONCE)
+        self.assert_tick_at_once(c)
         self.assertFalse(until(lambda: self.one.ops().count("chat.hold") > 1, 0.2), "a hold ahead of the release")
         self.one.unwedge()
         self.assertTrue(self.settle(c, second).get("success"), second)
@@ -345,7 +353,7 @@ class LifetimeTests(GateFixture):
         self.tick(c)
         reply = self.settle(c, replies)
         self.assertTrue(reply.get("success"), reply)
-        read = self.merges[0]["/p/1.blend"]   # Read under its one hold and its second lease.
+        read = self.merges[0][str(self.one.part)]   # Read under its one hold and its second lease.
         self.assertEqual((read.count("chat.hold"), read.count("part.lease"), read.count("chat.release")), (1, 2, 0))
         self.assertTrue(until(lambda: sorted(self.one.ops()) == sorted(
             ["chat.hold", "part.lease", "part.unlease", "part.lease", "part.unlease", "chat.release"])))

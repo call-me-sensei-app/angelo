@@ -42,6 +42,7 @@ from .view_blur import NOT_DRAWN, own_offscreen_per_draw
 from .view_framing import output_size
 from .view_png import encode_png
 from .view_spec import CAMERA, FIT, SCENE_CAMERA, framing_kind
+from .refusal_codes import coded
 
 STRIP_SECONDS = 20.0
 GAP = 2                   # Dark pixels between tiles.
@@ -158,7 +159,8 @@ def _fixed_camera(window, primary, item, objects, frames, epoch, resolution, dea
             if time.perf_counter() > deadline:
                 break
         if not points:
-            raise RuntimeError("The targets have no visible geometry at these frames, so there is nothing to frame")
+            raise coded(RuntimeError("The targets have no visible geometry at these frames, so there is nothing to frame"),
+                        "VALIDATION")
     return capture._camera(window, primary, item, points, epoch, resolution), {}
 
 
@@ -168,7 +170,7 @@ def _draw(window, area, shading, cameras, frames, size, deadline):
     import numpy
     from mathutils import Matrix
     from . import view_capture as capture
-    space, region = area.spaces.active, next(r for r in area.regions if r.type == "WINDOW")
+    space, region = area.spaces.active, capture.window_region(area)
     scene, layer = window.scene, window.view_layer
     from . import view_warm
     overrides, tiles, missing, failed = capture.DisplayOverrides(), {}, [], set()
@@ -214,10 +216,10 @@ def execute(window, checked, references, controller=None):
     written = capture.display_keys(checked["shading"])
     refusal = _refusal(window, mode, written)
     if refusal:
-        raise RuntimeError(refusal)
+        raise coded(RuntimeError(refusal), "UNSUPPORTED")
     areas = capture._view3d_areas(window)
     area = capture._draw_area(areas)
-    region = next(r for r in area.regions if r.type == "WINDOW")
+    region = capture.window_region(area)
     scene, item, frames = window.scene, checked["views"][0], checked["frames"]
     original = (scene.frame_current, scene.frame_subframe)
     columns, rows = GRID[len(frames)]
@@ -230,7 +232,7 @@ def execute(window, checked, references, controller=None):
         side_effects, physics = scene_effects(scene)
         refusal, report = extension_refusal(scene, mode, written)  # Again at start, before the first frame.
         if refusal:
-            raise RuntimeError(refusal)
+            raise coded(RuntimeError(refusal), "UNSUPPORTED")
         handlers = report.view_python  # What the Auto modes let the strip run (subscribers: after it ends).
         check = view_scene_check.SceneCheck(window, deep=bool(report.depsgraph_handlers))
         try:
@@ -252,7 +254,8 @@ def execute(window, checked, references, controller=None):
             scene.frame_set(original[0], subframe=original[1])
         scene_check = check.finish()
         if scene_queries.document_epoch() != epoch:
-            raise RuntimeError("Document IDs were replaced during the strip; search the scene and view again")
+            raise coded(RuntimeError("Document IDs were replaced during the strip; search the scene and view again"),
+                        "STALE_REVISION")
     sheet = compose(tiles, frames, columns, rows, size)
     png = encode_png(sheet.tobytes(), sheet.shape[1], sheet.shape[0], bottom_up=False)
     reference = references.new_observation("Frames %d-%d · %s" % (frames[0], frames[-1], checked["shading"].lower()))

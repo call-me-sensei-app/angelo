@@ -197,7 +197,7 @@ class ANGELO_OT_render_region_again(Operator):
 
 class ANGELO_OT_render_region_revert(Operator):
     bl_idname = "angelo.render_region_revert"
-    bl_label = "Revert Region"
+    bl_label = "Revert Region Render"
     bl_description = ("Show the last render's pixels in the region rendered over it again, or the region render "
                       "again")
 

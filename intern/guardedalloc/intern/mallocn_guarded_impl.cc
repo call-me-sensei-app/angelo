@@ -18,6 +18,7 @@
 #include <pthread.h>
 
 #include "MEM_guardedalloc.h"
+#include "MEM_lifetime.hh"
 #include "MEM_safe_multiply.h"
 
 /* Quiet warnings when dealing with allocated data written into the blend file.
@@ -1088,6 +1089,7 @@ void MEM_guarded_freeN(void *vmemh, const DestructorType destructor_type)
         MemorY_ErroR(memh->name, free_after_leak_detection_message);
       }
 
+      mem_lifetime::invalidate_allocation(vmemh, memh->len);
       memh->tag1 = MEMFREE;
       memh->tag2 = MEMFREE;
       memt->tag3 = MEMFREE;

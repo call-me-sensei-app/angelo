@@ -10,6 +10,8 @@ contended (unknown), never as uncontended. ``subprocess.run`` is patched;
 nothing is started.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import subprocess
 import sys
@@ -68,7 +70,8 @@ class UnknownLoadTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             sampler = quiet.Sampler(Path(folder) / "load.jsonl", threshold=6)
             with mock.patch.object(quiet.subprocess, "run", failing), \
-                    mock.patch.object(quiet.os, "getloadavg", return_value=(1.0, 1.0, 1.0)):
+                    mock.patch.object(quiet.os, "getloadavg", return_value=(1.0, 1.0, 1.0), create=True):
+                # create: Windows has no getloadavg; its load comes from PowerShell, which ``failing`` stands for.
                 sample = sampler.sample()
             self.assertEqual((sample["heavy"], sample["other_cores"]), (None, None))
             sampler.samples = [{"load": [2.0, 1, 1], "heavy": [], "other_cores": 0.4}, sample]

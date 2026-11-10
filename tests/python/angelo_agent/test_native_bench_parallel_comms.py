@@ -13,6 +13,8 @@ worker, recorded while the trial runs, and a brief thread the record does not na
 record without the verdict reading it.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import tempfile

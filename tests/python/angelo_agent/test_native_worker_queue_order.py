@@ -10,6 +10,8 @@ limit stops one worker launched ahead, not all; a background Angelo steps its po
 ahead stops at its turn's end there too.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile

@@ -29,8 +29,12 @@ FIXES = "_name_fixes"  # Private key of a commit's result: names the staged resu
 
 
 def hide(extras, block, public_name):
-    """Give a staged copy its private name; ``public_name`` is the name of the live ID it copies."""
-    block.name = PREFIX + extras.get(STAGE, "stage")[:8] + "_" + public_name
+    """Give a staged copy its private name; ``public_name`` is the name of the live ID it copies.
+
+    An ID whose name Blender keeps (``is_property_readonly``: the builtin font and its copies) keeps its own name;
+    it is still mapped to ``public_name`` and identified by its markers, never by its name."""
+    if not block.is_property_readonly("name"):
+        block.name = PREFIX + extras.get(STAGE, "stage")[:8] + "_" + public_name
     extras.setdefault(NAMES, {})[block.name] = public_name
     return block
 

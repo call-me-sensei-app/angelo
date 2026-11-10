@@ -5,6 +5,8 @@
 The window suite ``test_blender_connect_hero`` shows it with screenshots.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

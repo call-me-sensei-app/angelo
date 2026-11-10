@@ -3,6 +3,8 @@
 """rail_positions_checks: the geometry rules test_blender_rail_positions holds the Sessions panel to (1.0.6), on plain
 values: each rule passes a layout that keeps it and fails one that breaks it, at more than one scale and size."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

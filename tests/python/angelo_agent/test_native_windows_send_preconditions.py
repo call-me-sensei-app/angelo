@@ -14,6 +14,8 @@
 * Only the machine tools trust their own tree past git's ownership check; the shared release checks do not.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import shutil
 import subprocess
@@ -32,6 +34,7 @@ for folder in (HERE, SCRIPTS):
 import source_extract  # noqa: E402
 import source_tree  # noqa: E402
 from test_native_windows_source_send import ENV, LauncherFixture, git, git_lfs_works  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 
 def text(name):
@@ -136,6 +139,8 @@ class SendableTests(unittest.TestCase):
             self.assertEqual(source_tree.unsendable(ROOT), [])
 
 
+@unittest.skipIf(os.name == "nt", environment_skip("the launcher (gcp_windows_*.sh) is bash, run from the macOS "
+                                                   "workstation"))
 @unittest.skipUnless(git_lfs_works(), "the launcher is bash with git and Git LFS, run from the workstation")
 class LauncherRefusalTests(LauncherFixture, unittest.TestCase):
     def test_the_launcher_refuses_to_send_one(self):

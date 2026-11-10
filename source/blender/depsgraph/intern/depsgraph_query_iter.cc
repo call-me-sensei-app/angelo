@@ -285,6 +285,9 @@ void DEGObjectIterData::transfer_from(DEGObjectIterData &other)
   this->temp_dupli_object = dna::shallow_copy(other.temp_dupli_object);
   this->temp_dupli_object_runtime = other.temp_dupli_object_runtime;
   this->temp_dupli_object.runtime = &temp_dupli_object_runtime;
+  /* Angelo: a Python wrapper of `other`'s temporary object stays `other`'s (the copy holds no
+   * reference to it). See #DEG_iterator_temp_object_from_dupli. */
+  this->temp_dupli_object.id.py_instance = nullptr;
   this->id_node_index = other.id_node_index;
   this->num_id_nodes = other.num_id_nodes;
 }
@@ -494,6 +497,10 @@ bool evil::DEG_iterator_temp_object_from_dupli(const Object *dupli_parent,
                                                bke::ObjectRuntime *r_temp_runtime)
 {
   *r_temp_object = dna::shallow_copy(*dupli->ob);
+  /* Angelo: the temporary object is its own struct, so it never borrows the instanced object's
+   * Python wrapper (which wraps that object, not this copy). A wrapper Python makes for it is the
+   * caller's to release before the copy is overwritten or freed (`rna_depsgraph.cc`). */
+  r_temp_object->id.py_instance = nullptr;
   r_temp_object->runtime = r_temp_runtime;
   *r_temp_object->runtime = *dupli->ob->runtime;
 

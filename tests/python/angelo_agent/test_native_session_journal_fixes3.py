@@ -13,6 +13,8 @@ Each test here failed before its fix:
   name, never the key (``SessionStore.redact_kept``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import os

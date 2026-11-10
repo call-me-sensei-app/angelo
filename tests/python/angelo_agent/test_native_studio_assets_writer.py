@@ -10,6 +10,8 @@ loses the model: the file stands without a preview, no item after it is blamed (
 never started to the render before it), and the rest of the session writes without a render.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import threading
@@ -22,6 +24,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(ROOT / "scripts/addons_core/angelo_agent"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from platform_env import stand_in_program  # noqa: E402
 
 
 def fake_bpy():
@@ -38,6 +42,11 @@ def fake_bpy():
     mathutils = types.ModuleType("mathutils")
     mathutils.Vector = mathutils.Matrix = object
     return {"bpy": bpy, "bpy.app": bpy.app, "bpy.app.handlers": handlers, "mathutils": mathutils}
+
+
+def stand_in_writer(folder, source):
+    """A program that runs the Python ``source`` as the writer (``platform_env.stand_in_program``)."""
+    return stand_in_program(Path(folder) / "writer", source)
 
 
 MODULES = fake_bpy()
@@ -58,15 +67,12 @@ class StoppedWriterTests(unittest.TestCase):
         self.assertTrue(reason.startswith(host.STOPPED + " (exit code 2)"), reason)
         self.assertIn("usage", reason.lower(), "the child's own output says why")
 
-    @unittest.skipIf(sys.platform == "win32", "the stand-in writer is a script run through its #! line")
     def test_a_writer_that_dies_rendering_a_preview_blames_no_item(self):
         # The stand-in reports the first item written with its render running, then ends as a crashed writer does.
         with tempfile.TemporaryDirectory() as folder:
-            writer = Path(folder) / "writer"
-            writer.write_text(f"#!{sys.executable}\nimport json, sys\nprint('Writing: angelo.crash.txt')\n"
-                              "open(sys.argv[-1], 'w').write(json.dumps({'first': {'ok': True, 'preview': "
-                              f"{host.RENDERING!r}}}}}))\nsys.exit(3)\n")
-            writer.chmod(0o700)
+            writer = stand_in_writer(folder, "import json, sys\nprint('Writing: angelo.crash.txt')\n"
+                                     "open(sys.argv[-1], 'w').write(json.dumps({'first': {'ok': True, 'preview': "
+                                     f"{host.RENDERING!r}}}}}))\nsys.exit(3)\n")
             with mock.patch.dict(sys.modules, MODULES), mock.patch("sys.stderr") as console:
                 results = host.convert_batch(str(writer), [{"id": "first"}, {"id": "second"}], threading.Event())
         self.assertEqual(list(results), ["first"], "the item that never started is not blamed")
@@ -124,20 +130,17 @@ class StoppedWriterTests(unittest.TestCase):
             host._sync_locked("library", "directory", {}, "binary", "one", threading.Event(), run, lambda: False)
         self.assertEqual(batches, [["new"]])
 
-    @unittest.skipIf(sys.platform == "win32", "the stand-in writer is a script run through its #! line")
     def test_every_writer_after_a_preview_crash_renders_nothing(self):
         # Every caller of convert_batch (the sync, a drag's write at once) gets the session's switch: the first
         # writer ends rendering a preview, the next is asked for no render (the stand-in echoes each item's flag).
         with tempfile.TemporaryDirectory() as folder:
-            writer = Path(folder) / "writer"
-            writer.write_text(f"#!{sys.executable}\nimport json, sys\n"
-                              "batch = json.load(open(sys.argv[-2]))\n"
-                              "if batch[0]['id'] == 'first':\n"
-                              f"    json.dump({{'first': {{'ok': True, 'preview': {host.RENDERING!r}}}}}, "
-                              "open(sys.argv[-1], 'w'))\n    sys.exit(3)\n"
-                              "json.dump({i['id']: {'ok': True, 'render': i.get('render', True)} for i in batch}, "
-                              "open(sys.argv[-1], 'w'))\n")
-            writer.chmod(0o700)
+            writer = stand_in_writer(folder, "import json, sys\n"
+                                     "batch = json.load(open(sys.argv[-2]))\n"
+                                     "if batch[0]['id'] == 'first':\n"
+                                     f"    json.dump({{'first': {{'ok': True, 'preview': {host.RENDERING!r}}}}}, "
+                                     "open(sys.argv[-1], 'w'))\n    sys.exit(3)\n"
+                                     "json.dump({i['id']: {'ok': True, 'render': i.get('render', True)} "
+                                     "for i in batch}, open(sys.argv[-1], 'w'))\n")
             with mock.patch.dict(sys.modules, MODULES), mock.patch.dict(host._state, previews=True), \
                     mock.patch("sys.stderr"):
                 first = host.convert_batch(str(writer), [{"id": "first"}], threading.Event())

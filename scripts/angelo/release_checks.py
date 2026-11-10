@@ -304,6 +304,16 @@ def _run_problems(folder, files, pin, runner):
                 if feature not in properties:
                     problems.append("%s's %s has no %s: this is not the patched build (stock Codex has the same "
                                     "version)" % (codex.name, name, feature))
+        # A pinned request field: a property of the parameters of a server request Angelo answers (request_fields).
+        for name, fields in pin.get("request_fields", {}).items():
+            if name.startswith("_"):
+                continue
+            try:
+                properties = json.loads((out / (name + ".json")).read_text(encoding="utf-8"))["properties"]
+            except (OSError, ValueError, KeyError, TypeError):
+                properties = {}
+            problems += ["%s's %s has no %s: this is not the patched build" % (codex.name, name, field)
+                         for field in fields if field not in properties]
         # A pinned notification is named, quoted, somewhere in the schema (its ServerNotification method).
         text = "".join(path.read_text(encoding="utf-8", errors="replace") for path in sorted(out.rglob("*.json")))
         problems += ["%s's app-server schema has no %s notification: this is not the patched build"

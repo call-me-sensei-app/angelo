@@ -17,6 +17,10 @@ GUI --factory-startup --enable-event-simulate only; transcript rows are set dire
 network.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -166,7 +170,7 @@ def scroll_steps():
     distance = int(min(120, outliner_top()[0].height / 3, chat()[1].height / 3))
     swipe(region, distance)   # Blender's view down first: an Outliner at its top cannot move further up.
     yield 0.3
-    identity = controller().state["id"]
+    identity = (chat()[0].as_pointer(), controller().state["id"])
     s = scale()
     for label, dy in (("view_up", -distance), ("view_down", distance)):
         region, top = outliner_top()

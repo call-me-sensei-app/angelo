@@ -5,6 +5,8 @@
 Dependency-free, on ``test_native_document_identity``'s model of Angelo's window over a disk of .blend files.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import shutil
 import sys
@@ -17,7 +19,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from test_native_document_identity import Base, Scene, identity, notices  # noqa: E402
+from test_native_document_identity import Base, Scene, identity, notices, stand_in_for_the_save  # noqa: E402
 from angelo_agent import document_offer, document_scene, worker_ending, worker_resume  # noqa: E402
 from angelo_agent.controller import Controller  # noqa: E402
 
@@ -499,6 +501,7 @@ class FileIdentityTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root, True)
+        stand_in_for_the_save(self, identity.file_identity)   # Its saves name the file at the path.
 
     def test_a_retargeted_symlink_names_another_file(self):
         for version in ("v1", "v2"):

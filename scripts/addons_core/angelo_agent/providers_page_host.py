@@ -21,7 +21,7 @@ from bpy.types import Operator
 from .ui_text import iface_
 from .input_policy import modal_options, overlay_passes, refresh_move
 from . import canvas_rtl, card_kit as kit, preferences_ui, providers_page_draw, providers_page_layout, providers_page_model
-from . import live_windows, providers_page_external, providers_page_rail
+from . import fab_ui, live_windows, providers_page_external, providers_page_rail, ui_tokens
 
 _handler = None
 _plans = {}      # region pointer -> (plan, page height)
@@ -134,6 +134,11 @@ def _top(region):
 
 
 def _draw():
+    with ui_tokens.themed():
+        _draw_themed()
+
+
+def _draw_themed():
     global _sheet_plan
     context = bpy.context
     region = context.region
@@ -221,11 +226,7 @@ def _plan(context, region, top, state=None):
 
 
 def _remember(model):
-    summary = {"sections": [s["title"] for s in model.get("sections", ())],
-               "rows": [r.get("name") for s in model.get("sections", ()) for r in s.get("rows", ())],
-               "chips": [r["chip"][0] for s in model.get("sections", ()) for r in s.get("rows", ()) if r.get("chip")],
-               "team": (model.get("team") or {}).get("title"), "slim_team": bool((model.get("team") or {}).get("slim")),
-               "attention": [n["title"] for n in model.get("attention", ())], "add": model["hero"].get("add")}
+    summary = providers_page_model.summary(model)
     if not states_drawn or states_drawn[-1] != summary:
         states_drawn.append(summary)
         del states_drawn[:-16]
@@ -249,7 +250,7 @@ def _start_input(window):
 SIMPLE_OPERATORS = {"team_sign_in": ("team_sign_in", 'INVOKE_DEFAULT', None), "team_sign_out": ("team_sign_out", 'INVOKE_DEFAULT', None),
                     "team_cancel": ("team_cancel_sign_in", 'EXEC_DEFAULT', None), "team_refresh": ("team_refresh", 'EXEC_DEFAULT', None),
                     "team_copy_link": ("team_copy_sign_in_link", 'EXEC_DEFAULT', None),
-                    "team_console": ("team_open_console", 'EXEC_DEFAULT', "page"), "enhancer": ("enhancer_settings", 'INVOKE_DEFAULT', None)}
+                    "team_console": ("team_open_console", 'EXEC_DEFAULT', "page"), "enhancer": ("enhancer_settings", 'INVOKE_DEFAULT', None), **fab_ui.PREF_OPERATORS}
 MENU_OPERATORS = {"menu_cancel_signin": ("cancel_signin", "mode"), "menu_reconnect": ("connection_signin", "connection_id"),
                   "menu_load_key": ("connection_load_key", "connection_id"), "menu_check": ("connection_check", "connection_id")}
 

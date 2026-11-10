@@ -14,7 +14,10 @@ Every test runs twice: on this host's POSIX descriptors and on the Windows
 handle backend through ``fake_nt_files.FakeNtApi`` (a junction there is a link).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
+from contextlib import ExitStack
 import sys
 import tempfile
 import unittest
@@ -28,6 +31,7 @@ from angelo_agent import job_outputs  # noqa: E402
 from angelo_agent.files import FileWorkspace  # noqa: E402
 from angelo_agent.job_spec import JobRequestError  # noqa: E402
 from fake_nt_files import FakeNtApi  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 
 def tree(root):
@@ -156,6 +160,43 @@ class PosixOutputs(unittest.TestCase):
         staging.close()
         self.assertEqual((self.root / "renders/still.png").read_bytes(), b"taken meanwhile")
 
+    def test_a_folder_renamed_onto_a_new_output_folder_is_never_taken_for_it(self):
+        """Stat before read (release-1010 audit re-check 2, L3): a new output folder was known by a lookup of its name
+        after mkdir, and POSIX lets a rename put another (empty) folder at that name first: the job then published
+        into that folder, and an unpublish removed it. Windows never replaces a folder by a rename."""
+        if self.windows or os.name == "nt":
+            self.skipTest(environment_skip("a rename replaces an empty folder only on POSIX"))
+        staging = self.staging("renders/anim", "jr")
+        (staging.path / "frame_0001.png").write_bytes(b"png")
+        theirs, target = self.root / "renders/theirs", self.root / "renders/anim"
+        theirs.mkdir()
+        mark = os.stat(theirs).st_ino
+
+        def then_theirs_lands(real):
+            def call(*args, **kwargs):
+                result = real(*args, **kwargs)
+                if theirs.exists():
+                    os.rename(theirs, target)   # Replaces the job's new, still empty folder.
+                return result
+            return call
+        patches = [patch.object(cf, "make_directory", then_theirs_lands(cf.make_directory))]
+        try:   # Where folders are moved into place (this build), the swap lands right after the move.
+            from angelo_agent import exclusive_rename
+        except ImportError:
+            exclusive_rename = None
+        if exclusive_rename is not None:
+            patches.append(patch.object(exclusive_rename, "rename", then_theirs_lands(exclusive_rename.rename)))
+        with ExitStack() as stack:
+            for patcher in patches:
+                stack.enter_context(patcher)
+            with self.assertRaises(job_outputs.OutputMoved):
+                staging.publish_folder()
+        self.assertEqual(os.stat(target).st_ino, mark, "their folder stays where it was put")
+        self.assertEqual(os.listdir(target), [], "nothing of the job is published into it")
+        staging.discard()
+
+    # Volumes without an exclusive rename or hard links (exFAT, FAT, shares): test_native_job_outputs_volumes.
+
     def test_a_failed_publication_removes_only_what_it_created(self):
         staging = self.staging("exports/asset.usda", "j9")
         (staging.path / "asset.usda").write_text("x")
@@ -216,8 +257,8 @@ class PosixOutputs(unittest.TestCase):
         staging.discard()
 
 
-@unittest.skipIf(os.name == "nt", "The POSIX stand-in opens links with O_PATH or O_SYMLINK; on Windows "
-                                   "windows_ntfs_checks.py runs the real backend")
+@unittest.skipIf(os.name == "nt", environment_skip("The POSIX stand-in opens links with O_PATH or O_SYMLINK; on "
+                                                    "Windows PosixOutputs runs the real backend"))
 class WindowsOutputs(PosixOutputs):
     """The same contract through ``anchored_windows`` (a stand-in junction is a link)."""
     windows = True

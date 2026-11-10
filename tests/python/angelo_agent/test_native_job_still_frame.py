@@ -8,6 +8,8 @@ On the bridge one-shot, whose brief asks for frame 60, a still's start was refus
 range; every other frame field and value, and every other kind, is left as written and refused as before.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import sys
 import unittest

@@ -8,6 +8,8 @@ English label only. In Japanese the label ran to 7 px from the chat's edge (Engl
 right-aligned under the user's bubble by its own measured width, and both links' hits cover what is drawn.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest

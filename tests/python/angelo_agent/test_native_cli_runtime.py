@@ -6,6 +6,8 @@ Nothing here starts an official runtime: install trees are temporary files, the
 login shell is a script written for the test, and the Codex process is a fixture.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import os
@@ -25,6 +27,7 @@ from angelo_agent import child_process, claude_transport, cli_runtime, providers
 from angelo_agent.cli_runtime import RUNTIMES
 from claude_protocol_fixtures import NEWER, REQUIRES, TESTED, TOO_OLD  # The supported range, from RUNTIMES.
 from angelo_agent.protocol import RpcError
+from host_test_policy import environment_skip
 
 FINDER_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 
@@ -36,8 +39,9 @@ def executable(path, text="#!/bin/sh\nexit 0\n"):
     return str(path)
 
 
-@unittest.skipIf(os.name == "nt", "macOS and Linux discovery; Windows has its own (test_native_windows_cli.py, "
-                                   "and windows_cli_checks.py on a real Windows machine)")
+@unittest.skipIf(os.name == "nt", environment_skip("macOS and Linux discovery; Windows has its own "
+                                                   "(test_native_windows_cli.py, and windows_cli_checks.py on a real "
+                                                   "Windows machine)"))
 class FinderLaunch(unittest.TestCase):
     """A temporary home and system tree stand in for /Users/x and /opt/homebrew; PATH is a Finder launch's."""
 
@@ -169,8 +173,9 @@ class PathForTheLaunchedCli(FinderLaunch):
         self.assertIn('code_mode_hold_dynamic_tools=["workers_status", "jobs_wait"]', overrides(command))
 
 
-@unittest.skipIf(os.name == "nt", "The login-shell PATH probe is macOS and Linux only; Windows reads the PATH "
-                                   "saved in its registry instead (test_native_windows_cli.py)")
+@unittest.skipIf(os.name == "nt", environment_skip("The login-shell PATH probe is macOS and Linux only; Windows reads "
+                                                   "the PATH saved in its registry instead "
+                                                   "(test_native_windows_cli.py)"))
 class LoginShellProbeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

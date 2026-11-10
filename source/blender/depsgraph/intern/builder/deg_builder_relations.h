@@ -300,6 +300,13 @@ class DepsgraphRelationBuilder : public DepsgraphBuilder {
   Node *get_node(const RNAPathKey &key);
 
   OperationNode *find_node(const OperationKey &key) const;
+  /* Angelo: flag what an operation reads that no relation names (DEG_angelo_upstream.hh). */
+  void mark_undeclared_reads(const OperationKey &key);
+  void mark_reads_owner_transform(const OperationKey &key);
+  void record_path_read(const OperationKey &key,
+                        const PointerRNA &root,
+                        const char *path,
+                        const PointerRNA &resolved);
   ComponentNode *find_node(const ComponentKey &key) const;
   bool has_node(const ComponentKey &key) const;
   bool has_node(const OperationKey &key) const;

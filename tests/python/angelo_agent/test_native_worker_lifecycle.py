@@ -12,8 +12,11 @@ failure until the chat's turn has ended, never a finish, and the merge gate says
 worker's stop ends the processes its scripts started, as the Job Object does on Windows (E2E-19A L-3).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import gc
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -127,7 +130,11 @@ class DeadWorkerTests(unittest.TestCase):
         self.assertIsNotNone(late.remote_executor)
         self.assertIn("w-dead", parallel_sessions.workers())   # Its tile stays (its last saved part, marked ended).
         self.assertEqual(worker_sessions._running(), ["w-late", "w-3", "w-4"])
-        lead = SimpleNamespace(state={"id": "lead"}, remote_executor=None)
+        # A chat's own store names its state folder, which Windows' path-depth check reads (worker_paths.check_start).
+        state = tempfile.TemporaryDirectory(prefix="angelo-lifecycle-")
+        self.addCleanup(state.cleanup)
+        lead = SimpleNamespace(state={"id": "lead"}, remote_executor=None,
+                               store=SimpleNamespace(directory=Path(state.name)))
         with mock.patch.object(worker_routing, "worker_snapshots", return_value=False), \
                 mock.patch.object(parallel_access, "enabled", return_value=True), \
                 mock.patch.object(parallel_access, "worker_limit", return_value=4):

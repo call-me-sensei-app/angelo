@@ -8,6 +8,8 @@ over a stand-in for the native pass (``_bpy._angelo_live.instance_bounds``): the
 each reader states. test_blender_object_bounds.py checks the real geometry in Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

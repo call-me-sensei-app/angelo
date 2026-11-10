@@ -29,6 +29,10 @@ Run through ``run_native_suites.py --gui --include test_blender_canvas_states``;
 check ``canvas-states.json`` for ``success`` and ``phase == "complete"``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -301,22 +305,23 @@ def tick():
             return .3
         if phase == "running":
             flow = quick_connect.flow("claude_subscription")
-            if not wait(phase, lambda: flow and flow["phase"] == "signing_in" and rect_of("welcome_cancel", "claude_subscription")
+            if not wait(phase, lambda: flow and flow["phase"] == "signing_in" and rect_of("welcome_cancel", ("claude_subscription", flow["token"]))
                         and fake_provider_cli.held(LOGIN_HOLD)):
                 return .2
             capture("canvas-7-running-with-cancel.png")
             checks["return_starts_connect_and_the_row_shows_running"] = (rect_of(*CLAUDE) is None
-                                                                        and rect_of("welcome_cancel", "claude_subscription") is not None)
+                                                                        and rect_of("welcome_cancel", ("claude_subscription", flow["token"])) is not None)
             order = canvas_controls.focus_order(view().get("hits", []))
             state["focus_start"] = view().get("focus")
-            target = ("welcome_cancel", "claude_subscription")
+            state["cancel_flow_token"] = flow["token"]
+            target = ("welcome_cancel", ("claude_subscription", flow["token"]))
             view()["focus"] = None
             for _ in range(order.index(target) + 1):
                 press_key('TAB')
             state["phase"] = "cancel"
             return .3
         if phase == "cancel":
-            checks["tab_reaches_cancel"] = view().get("focus") == ("welcome_cancel", "claude_subscription")
+            checks["tab_reaches_cancel"] = view().get("focus") == ("welcome_cancel", ("claude_subscription", state["cancel_flow_token"]))
             press_key('RET')
             state["phase"] = "cancelled"
             return .3

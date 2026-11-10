@@ -16,6 +16,8 @@ Pinned here:
   token count read a worker turn as they read a lead turn, and a finished turn leaves them.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import threading
 import time
@@ -157,7 +159,7 @@ class SharedPrewarmTests(unittest.TestCase):
             worker_chat_wiring._prewarm_shared(worker, mirror)
             self.assertTrue(until(lambda: len(asked) == expected, 1.0))
             if expected:   # The worker's first launch (``runtime_relay.Launcher``) of a plain app-server: same key.
-                self.assertEqual(asked[0], {"session": "w1", "workspace": "/state/workspaces/w1",
+                self.assertEqual(asked[0], {"session": "w1", "workspace": str(mirror.workspace),   # A native path.
                                             **runtime_relay.launch_request(["codex", "app-server"], {})})
 
 

@@ -17,6 +17,8 @@ window's actual card operators (``ui_class``), no Blender, no provider:
 The in-Blender proof of the script route is ``test_blender_worker_python.py`` (lane P3).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import tempfile

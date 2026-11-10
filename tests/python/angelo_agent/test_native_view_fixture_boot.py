@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """GUI-test-only startup wrapper and its host tests; benchmark harness helpers remain unchanged."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib.util
 from pathlib import Path
 import sys

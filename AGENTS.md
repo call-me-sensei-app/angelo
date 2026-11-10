@@ -53,6 +53,19 @@ agent-readiness, pre-change assessment, confidence, and validation rules.
   latency and cost.
 - After implementation, report actual acceptance results, skipped checks,
   remaining risks, human/agent impact, and updated confidence per objective.
+- Blender suites run only via run_native_suites.py; tests never see real
+  provider logins (isolated HOME/CODEX_HOME/CLAUDE_CONFIG_DIR by default; only
+  the billed eval harness opts in, with the evaluation-account profile). Every
+  suite and host test imports `suite_isolation` first (`provider_isolation.py`),
+  so a suite started by hand relaunches itself with that profile; the opt-in is
+  `ANGELO_TEST_REAL_PROVIDERS=eval-profile:<path>`, never `~/.codex` or
+  `~/.claude`. Before a billed start the account itself is read
+  (`provider_accounts.py`): a Codex profile's id_token claims must be the
+  dedicated evaluation account, and a Claude profile must match the account the
+  opt-in names
+  (`<path>|account=<email or UUID>`, or `ANGELO_TEST_CLAUDE_ACCOUNT` for the
+  benchmarks outside it; refused when none is named). Only an 8-character
+  account prefix and an email domain are ever shown.
 
 ## Actual Code Layout
 
@@ -158,7 +171,9 @@ new code, tests and documentation never introduce them.
   and save-time frames, the transport and record, and the working files.
   [Godot live link](doc/angelo/godot_link.rst): the Angelo Link Godot plugin,
   the live preview that never enters the Godot scene, and save-time write-back
-  and re-import.
+  and re-import. [Web live link](doc/angelo/web_link.rst): a developer's own
+  Three.js page through its dev server's plugin (`@call-me-sensei/angelo`), node
+  identity in live scenes, and the canvas capture `angelo_view` WEB asks for.
 - [Game physics](doc/angelo/game_physics.rst): `Object.angelo_physics` (body,
   collision shape, fitting), written as OMI_physics_body/OMI_physics_shape by
   every glTF export from the glTF add-on (`io_scene_gltf2/angelo_physics`, live

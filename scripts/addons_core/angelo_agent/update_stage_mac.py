@@ -34,7 +34,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from . import update_delta
+from . import shared_replace, update_delta
 
 TASKPOLICY = "/usr/sbin/taskpolicy"
 SPCTL = "/usr/sbin/spctl"
@@ -198,7 +198,7 @@ def _accept(candidate, staged, version, app, runner):
     try:
         check(candidate, version, app, runner)
         staged.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(candidate, staged)
+        shared_replace.replace(candidate, staged)
     finally:
         shutil.rmtree(candidate.parent, ignore_errors=True)
     return staged
@@ -217,13 +217,73 @@ def fingerprint(bundle):
     return digest.hexdigest()
 
 
-def other_instances(app, executable, own_pid, runner=run):
-    """Process ids of other copies of this app running from the same bundle (they would break in a swap)."""
-    target = str(Path(app) / "Contents/MacOS" / executable)
+def _kernel_processes():
+    """``[(pid, executable)]`` of every process, each named by the file the kernel runs (libproc's ``proc_pidpath``:
+    symbolic links resolved, never the path or ``argv[0]`` it was started as); None where libproc is unavailable."""
+    import ctypes
+    try:
+        libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
+    except OSError:
+        return None
+    count = libproc.proc_listallpids(None, 0)
+    if count <= 0:
+        return None
+    pids = (ctypes.c_int * (count + 64))()   # Room for processes started since the count.
+    count = libproc.proc_listallpids(pids, ctypes.sizeof(pids))
+    if count <= 0:
+        return None
+    found, buffer = [], ctypes.create_string_buffer(4096)   # PROC_PIDPATHINFO_MAXSIZE
+    for pid in pids[:count]:
+        if pid > 0 and libproc.proc_pidpath(pid, buffer, ctypes.sizeof(buffer)) > 0:
+            found.append((pid, os.fsdecode(buffer.value)))
+    return found
+
+
+def _started_paths(runner):
+    """``[(pid, path)]`` from ``ps``: the path each process was started as (a relative one cannot be resolved)."""
     result = runner(["/bin/ps", "-axo", "pid=,comm="], TIMEOUTS["inspect"], False)
-    pids = []
+    found = []
     for line in (result.stdout or "").splitlines():
         pid, _, command = line.strip().partition(" ")
-        if command.strip() == target and pid.isdigit() and int(pid) != own_pid:
-            pids.append(int(pid))
+        if pid.isdigit():
+            found.append((int(pid), command.strip()))
+    return found
+
+
+def _identity(path):
+    try:
+        status = os.stat(path)   # Follows links: the file itself.
+    except OSError:
+        return None
+    return status.st_dev, status.st_ino
+
+
+def other_instances(app, executable, own_pid, runner=run, processes=_kernel_processes):
+    """Process ids of other copies of this app running from the same bundle (they would break in a swap).
+
+    A process counts when it runs this bundle's executable file, however it was started: through a symbolic link
+    to the app or to the executable, or by a relative path. Both sides are compared as files (device and inode),
+    so a link, ``/tmp`` against ``/private/tmp`` or another spelling of the same folder still matches; a copy of
+    the app elsewhere does not. Without libproc the paths ``ps`` reports (``argv[0]``) are compared the same way,
+    and a relative one counts when its file name is the executable's."""
+    target = Path(app) / "Contents/MacOS" / executable
+    wanted, real = _identity(target), os.path.realpath(target)
+    listed = processes()
+    if listed is None:
+        listed = _started_paths(runner)
+    name = os.path.basename(real).casefold()
+    pids = []
+    for pid, path in listed:
+        if pid == own_pid or not path:
+            continue
+        if not os.path.isabs(path):   # Only ps names one so, relative to a folder it does not say: fail closed.
+            same = os.path.basename(path).casefold() == name
+        elif wanted is not None:
+            # A file of another name is not this one (cheap, before a stat); a link is followed first.
+            same = ((os.path.basename(path).casefold() == name or os.path.islink(path))
+                    and _identity(path) == wanted)
+        else:   # The app's executable is not there to compare with: its path, resolved.
+            same = os.path.realpath(path) == real
+        if same:
+            pids.append(pid)
     return pids

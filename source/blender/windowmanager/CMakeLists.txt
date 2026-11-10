@@ -35,12 +35,14 @@ set(SRC
   intern/wm_files.cc
   intern/wm_checkpoint_install.cc
   intern/wm_checkpoint_resources.cc
+  intern/wm_checkpoint_write.cc
   intern/wm_checkpoint.hh
   intern/wm_files_colorspace.cc
   intern/wm_files_link.cc
   intern/wm_gesture.cc
   intern/wm_gesture_ops.cc
   intern/wm_init_exit.cc
+  intern/wm_angelo_job_reports.cc
   intern/wm_jobs.cc
   intern/wm_keymap.cc
   intern/wm_keymap_utils.cc
@@ -53,6 +55,7 @@ set(SRC
   intern/wm_platform.cc
   intern/wm_platform_support.cc
   intern/wm_playanim.cc
+  intern/wm_quit_activities.cc
   intern/wm_splash_screen.cc
   intern/wm_stereo.cc
   intern/wm_subwindow.cc
@@ -74,6 +77,7 @@ set(SRC
   message_bus/intern/wm_message_bus_static.cc
 
   WM_angelo_input_hold.hh
+  WM_angelo_job_reports.hh
   WM_api.hh
   WM_keymap.hh
   WM_message.hh
@@ -230,10 +234,19 @@ add_library(bf::windowmanager ALIAS bf_windowmanager)
 add_dependencies(bf_windowmanager bf_rna)
 
 if(WITH_GTESTS)
-  set_source_files_properties(intern/wm_checkpoint_install.cc PROPERTIES COMPILE_DEFINITIONS WITH_GTESTS)
+  # APPEND: never replace a definition these files carry for another reason (blenloader does the same).
+  set_property(SOURCE intern/wm_checkpoint_install.cc intern/wm_checkpoint_resources.cc intern/wm_files.cc
+    APPEND PROPERTY COMPILE_DEFINITIONS WITH_GTESTS
+  )
   set(TEST_INC
+    # `GHOST_ClipboardImage.hh`, for `wm_clipboard_image_test.cc`.
+    ../../../intern/ghost/intern
   )
   set(TEST_SRC
+    intern/wm_angelo_job_reports_test.cc
+    intern/wm_checkpoint_resources_test.cc
+    intern/wm_checkpoint_write_test.cc
+    intern/wm_clipboard_image_test.cc
     intern/wm_dragdrop_test.cc
   )
   blender_add_test_suite_lib(windowmanager "${TEST_SRC}" "${INC};${TEST_INC}" "${INC_SYS}" "${LIB}")

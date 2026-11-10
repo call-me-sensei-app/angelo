@@ -87,7 +87,18 @@ void wm_homefile_read_post(bContext *C, const wmFileReadPost_Params *params_file
 
 void wm_file_read_report(Main *bmain, wmWindow *win);
 
-void wm_close_file_dialog(bContext *C, wmGenericCallback *post_action);
+/**
+ * The close confirmation: Save / Don't Save / Cancel when `offer_save` (the Save Prompt preference
+ * is on and something is unsaved), and the running activities that `quitting` (or, when false,
+ * reading another file) would end (#WM_quit_activities_foreach); with nothing unsaved to offer,
+ * Quit (or Continue) and Cancel. Takes ownership of `post_action`.
+ */
+/** The window whose screen shows the close-file confirmation, or null when none does. */
+wmWindow *wm_close_file_dialog_window(wmWindowManager *wm);
+void wm_close_file_dialog(bContext *C,
+                          wmGenericCallback *post_action,
+                          bool offer_save,
+                          bool quitting);
 /** Angelo: whether ``filepath`` is a Restore's private working copy (under the state folder's
  * ``checkpoints``): never a document a person saves (wm_files.cc, "the document after a Restore"). */
 bool WM_angelo_recovery_copy(const char *filepath);

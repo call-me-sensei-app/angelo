@@ -1132,6 +1132,8 @@ static wmOperatorStatus screen_render_invoke(bContext *C, wmOperator *op, const 
                        WM_JOB_EXCL_RENDER | WM_JOB_PRIORITY | WM_JOB_PROGRESS,
                        WM_JOB_TYPE_RENDER);
   WM_jobs_customdata_set(wm_job, rj, render_freejob);
+  /* Angelo: the job writes the operator's reports; they are its own (#WM_jobs_reports_attach). */
+  WM_jobs_reports_attach(wm_job, rj->reports);
   /* Angelo: a region render is short; its end and its tiles are picked up sooner (render_region.cc). */
   WM_jobs_timer(wm_job, region_job.active ? 0.05 : 0.2, NC_SCENE | ND_RENDER_RESULT, 0);
   WM_jobs_callbacks(wm_job, render_startjob, nullptr, nullptr, render_endjob);

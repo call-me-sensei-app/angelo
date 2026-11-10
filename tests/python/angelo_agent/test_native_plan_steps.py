@@ -8,6 +8,8 @@ The fixture is a recorded Opus 5.5 plan for the arched footbridge one-shot (its 
 of plan after 5 s of thinking, with nothing of it on screen until its reply.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import tempfile

@@ -5,13 +5,11 @@
 It is ``ExternalHost`` with three differences, so a call runs the code it runs in the window (``RequestService``
 admission, ``ExternalWork``, ``DirectRequest``, ``Controller.request_tool`` under Approve for me):
 
-* **Transport and loop.** Requests arrive over the launcher's pipes (``headless_pipe.PipeServer``), not a socket,
-  and background Blender runs no timers, so ``run`` is the main-thread loop ``ui.pump`` would be: drain, the apps'
-  requests, the shared tool pump with the background window's executor. It wakes as soon as work arrives.
-* **Nothing waits for a person.** Only reads and bounded typed edits are admitted (``tools_for(headless=True)``), and
-  ``angelo_run_script_file`` for a file the person always allows while it is unchanged (``script_files``, read from
-  the person's state folder, never written; keyed by the opened source); a call that still reaches an approval card
-  (an unapproved or changed script file, an Ask policy, a recovery review) is finished at once as ``needs_gui``.
+* **Transport and loop.** Pipes (``headless_pipe.PipeServer``), no socket or background timers. ``run`` is
+  ``ui.pump``'s main-thread request/tool loop with the background window's executor, woken as soon as work arrives.
+* **Nothing waits for a person.** Reads, bounded typed edits (``tools_for(headless=True)``), and unchanged
+  always-allowed ``angelo_run_script_file`` scripts (``script_files``; opened source, read-only state) are admitted.
+  Any approval card (changed/unapproved scripts, Ask policy or recovery review) finishes at once as ``needs_gui``.
 * **Edits go to a new file.** After a call that committed an edit, the session is saved to an output file claimed
   next to the source (``headless_files``); the first save moves the session's file path to it, so nothing can ever
   save over the source. An edit that ended its request (it failed and may have changed the scene) reloads the last
@@ -161,7 +159,8 @@ class WakingQueue(WorkQueue):
 
 
 class HeadlessHost(ExternalHost):
-    def __init__(self, environment, *, source, label, app, levels, bpy, source_identity=None, working=None):
+    def __init__(self, environment, *, source, label, app, levels, bpy, source_identity=None, working=None,
+                 working_identity=None):
         super().__init__(environment, server_factory=None, environ={})
         self.bpy = bpy
         self.source = Path(source)
@@ -173,7 +172,9 @@ class HeadlessHost(ExternalHost):
         # The file Blender has open (headless_working_copy): a copy of the source next to it, never the source
         # unless its folder is read-only; it becomes the output with the first saved edit.
         self.working = Path(working) if working is not None else self.source
-        self.working_identity = headless_files.identity(self.working)
+        # The identity of what Blender read (headless_working_copy.open_read), never a stat taken after the open.
+        self.working_identity = (working_identity if working_identity is not None
+                                 else headless_files.identity(self.working))
         self.file_note = None   # headless_main: the file the app opened, the copy and the preferences, in words.
         self.app, self.levels = app, tuple(levels)
         self.client = ClientInfo(label, Peer(uid=os.getuid(), pid=os.getppid(), checked=True), frozenset(levels),
@@ -272,6 +273,8 @@ class HeadlessHost(ExternalHost):
                                                                         "code": "output_unwritable"})
         return super().handle_app_call(work)
 
+    announce_moves, answers_held = False, True   # A reload is said by the call that caused it; saved, then answered.
+
     def responder(self, work, fields, replayed=False, current=None, tool=None):
         respond = super().responder(work, fields, replayed=replayed)
         key = (work.client.label, work.payload.get("id"))
@@ -296,6 +299,8 @@ class HeadlessHost(ExternalHost):
                     self._notes[key] = note
                     while len(self._notes) > NOTES_KEPT:
                         self._notes.pop(next(iter(self._notes)))
+            if current is not None and not replayed:
+                current.count_out()   # In flight until now (ExternalWork); also run before each request (drain).
             respond(_with_note(value, note))
 
     def after_call(self, tool, current, value):
@@ -315,7 +320,7 @@ class HeadlessHost(ExternalHost):
                 return None   # Refused before anything ran (needs_gui): nothing to reload.
             # A failed script may leave a change Undo could not restore (review N2): always the last saved state
             # again, so a partial change is never saved by a later edit.
-            if tool == SCRIPT_FILE_TOOL or (current is not None and current.direct.closed is not None):
+            if tool == SCRIPT_FILE_TOOL or (current is not None and current.direct.closed_by_call):   # Ended by it.
                 self.reload()
                 return RELOADED.format(name=(self.output or self.source).name)
             return None
@@ -375,14 +380,14 @@ class HeadlessHost(ExternalHost):
                 target = headless_files.claim_output(self.source)   # Changed meanwhile: never replaced.
             if target.resolve() == self.source.resolve():
                 raise RuntimeError("Refusing to save over the source")
-            headless_files.place(staged, target)
+            written = headless_files.place(staged, target)   # The identity of the bytes it wrote, never a later stat.
         except BaseException:
             if target != self.output:
                 headless_files.remove_empty(target)
             raise
         finally:
             shutil.rmtree(private, ignore_errors=True)
-        self.output, self.output_identity = target, headless_files.identity(target)
+        self.output, self.output_identity = target, written
         if target == self.working:
             self.working_identity = self.output_identity
         # The document is now the session's saved state (a reload loads this output), so it reads as saved
@@ -391,12 +396,12 @@ class HeadlessHost(ExternalHost):
         self.publish()
         return self.output
 
-    def track_in_process_save(self):
-        """Angelo's own ``save_post`` handler: a plain save of the open copy in this process (one of the person's
-        add-ons, or an approved script) is the session's own state, never a change on disk by someone else."""
-        current = getattr(self.bpy.data, "filepath", "") or ""
+    def track_in_process_save(self, filepath=None):
+        """A save_post of this process's open copy (add-on or approved script) is its own state, never an external edit.
+        ``filepath`` names what that save wrote, as identified by ``headless_files.saved_identity``, never a later stat."""
+        current = filepath if isinstance(filepath, str) else getattr(self.bpy.data, "filepath", "") or ""
         if self.working != self.source and current and os.path.realpath(current) == os.path.realpath(self.working):
-            self.working_identity = headless_files.identity(self.working)
+            self.working_identity = headless_files.saved_identity(current)
             if self.output == self.working:
                 self.output_identity = self.working_identity
 
@@ -414,8 +419,7 @@ class HeadlessHost(ExternalHost):
         self.output = self.output_identity = None
         self.discard_working()
         # A fresh copy of the source, never the source itself (headless_working_copy).
-        self.working = working_copy.open_copy(self.bpy, self.source)
-        self.working_identity = headless_files.identity(self.working)
+        self.working, self.working_identity = working_copy.open_copy(self.bpy, self.source)   # What it read.
 
     def refusal_text(self, controller, call):
         """Why ``call`` cannot run here, in the app's words (a script file names its reason and how to approve)."""

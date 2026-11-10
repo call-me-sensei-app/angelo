@@ -20,6 +20,10 @@ The window's own proof, in pixels, is ``test_blender_flow_setup_states``. Run th
 ``run_native_suites.py --include test_blender_flow_node_rows``; check ``flow-node-rows.json`` for ``success``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys

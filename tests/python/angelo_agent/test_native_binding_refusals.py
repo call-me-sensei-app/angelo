@@ -11,6 +11,8 @@ remaining refusal says, for each reason a row can lack a revision. The handles a
 omissions. Host only; no Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 from types import SimpleNamespace
 import unittest

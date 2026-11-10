@@ -3,6 +3,8 @@
 """Checks of the Angelo Library's downloaded files before Blender reads them (library_files.py): multi-file glTF
 references, Radiance HDR headers, texture maps, and the KTX2 adapter for ToonLab's rocks. Crafted files only."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import json
 import struct

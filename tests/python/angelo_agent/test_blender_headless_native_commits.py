@@ -27,6 +27,10 @@ it) with the app's binary and Python, without changing the bundle. Writes ``head
 Contract: doc/angelo/external_mcp.rst, "Headless".
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import argparse
 import json
 import os

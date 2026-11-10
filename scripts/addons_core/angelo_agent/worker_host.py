@@ -29,6 +29,7 @@ import uuid
 
 from . import part_leases, private_roots
 from . import worker_refusals as refusals, worker_script, worker_values as values
+from .stale_binding import same as same_binding
 from .worker_pictures import carry as _carry, pictures_in as _references
 
 EDIT_SECONDS = 240.0     # An approved edit's staging and commit; Angelo waits longer (remote_executor.EDIT_SECONDS).
@@ -276,7 +277,7 @@ class WorkerHost:
                 call = shadow.pending.get(key)
                 if (call is not None and call.approval and not approved_once and not call.executing
                         and not call.authorized and not call.recovery_review):
-                    if call.precondition != approved:
+                    if not same_binding(call.precondition, approved):   # A NaN equals a NaN in its place.
                         shadow.finish_tool(call, {"error_code": "STALE_REVISION", "error": STALE_APPROVAL,
                                                   "scene_changed": False})
                     elif script and not worker_script.approved(call, request):

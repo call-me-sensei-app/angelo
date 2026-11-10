@@ -8,6 +8,8 @@ prove what the host does with these events, not that a live runtime sends
 them. ``test_native_turn_activity_codex`` holds the Codex turns.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import threading
@@ -419,7 +421,8 @@ class LiveLabelTests(unittest.TestCase):
         self.assertEqual(live_label(STATUS_PLAN), "Preparing the next steps")
         for status in (STATUS_THINKING, "Completed", ""):
             self.assertEqual(live_label(status), "Thinking")
-        self.assertEqual(live_label("Approval required"), "Waiting for your approval")  # chat_titles.LIVE (1.0.4)
+        # 1.0.10: nothing sets an approval status; a card waiting is the card itself (test_native_approval_wait).
+        self.assertEqual(live_label("Approval required"), "Thinking")
         self.assertEqual(live_label("Connecting"), "Connecting")
 
 

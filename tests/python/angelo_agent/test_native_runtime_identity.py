@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """A live eval's plan names the Codex file its app runs, by digest (runtime_identity). Nothing is launched."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import sys
 import tempfile

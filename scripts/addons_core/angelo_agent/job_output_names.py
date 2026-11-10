@@ -8,6 +8,8 @@ create that never replaces (``job_outputs.Staging``), and the approval and the s
 writes under before anything is written (``job_host.output_location``), so they never disagree.
 """
 
+import errno
+import os
 from pathlib import PurePosixPath
 
 MAX_NAMES = 64   # Names tried: the output's own, then 63 with the job's ID; past them nothing is published (TAKEN).
@@ -27,6 +29,21 @@ def candidates(name, identity, folder_output, has_dependencies):
         stem, suffix = path.stem, path.suffix
     return [path.name] + [_fit(stem, "-%s%s%s" % (identity, "" if number == 1 else "-%d" % number, suffix))
                           for number in range(1, MAX_NAMES)]
+
+
+def as_asked(path, relative):
+    """An admitted output ``path`` (the file tools' resolved one) for ``relative``, the name the job was asked for.
+
+    A part longer than ``MAX_BYTES`` raises ``OSError`` (ENAMETOOLONG) on every system: resolving a path on Windows
+    never refuses one, so its job ran and only then failed to publish. A case-folding file system (NTFS) resolves a
+    taken name to the spelling already on disk; the output keeps the spelling asked for, so its fallback does too.
+    """
+    parts = PurePosixPath(str(relative).replace("\\", "/")).parts
+    if any(len(part.encode("utf-8", "surrogatepass")) > MAX_BYTES for part in parts):
+        raise OSError(errno.ENAMETOOLONG, os.strerror(errno.ENAMETOOLONG))
+    if parts and path.name != parts[-1] and path.name.casefold() == parts[-1].casefold():
+        return path.with_name(parts[-1])
+    return path
 
 
 def _fit(stem, tail):

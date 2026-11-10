@@ -160,11 +160,14 @@ def draw_provider_tile(view, rect, scale, ui=None, letter="", name="", caption="
 
 
 # -- scrollbar ---------------------------------------------------------------------------------------------------
+BAR_INSET, BAR_WIDTH, BAR_GROW = 8, 4, 2   # The track's left edge from the rect's right, its width, its hover growth.
+
+
 def scrollbar_rects(rect, content, visible, offset, scale):
     if content <= visible + 0.5:
         return None
     x, y, w, h = rect
-    track = (x + w - 8 * scale, y + 4 * scale, 4 * scale, h - 8 * scale)
+    track = (x + w - BAR_INSET * scale, y + 4 * scale, BAR_WIDTH * scale, h - 8 * scale)
     thumb_h = max(28 * scale, track[3] * visible / content)
     travel = track[3] - thumb_h
     ratio = max(0.0, min(1.0, offset / max(1.0, content - visible)))
@@ -197,7 +200,7 @@ def draw_scrollbar(view, rect, scale, content, visible, offset, alpha=1.0, hover
         return
     track, thumb = rects
     if hover or dragging:   # Wider and brighter under the pointer, so it reads as grabbable.
-        grow = 2 * scale
+        grow = BAR_GROW * scale
         track = (track[0] - grow, track[1], track[2] + grow, track[3])
         thumb = (thumb[0] - grow, thumb[1], thumb[2] + grow, thumb[3])
         view.shape(*track, (1, 1, 1, 0.07 * alpha), track[2] / 2)

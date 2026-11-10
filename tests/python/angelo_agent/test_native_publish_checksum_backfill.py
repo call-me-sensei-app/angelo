@@ -12,6 +12,8 @@ nothing to add, no ``SHA256SUMS`` and a state the verification rejects are refus
 option takes nothing but the version.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import io
 import json

@@ -24,7 +24,7 @@ from collections.abc import Mapping
 from .owned_values import owned
 
 # The fields an ``activity`` event may set on its row (Controller._pump_events).
-FIELDS = ("status", "result", "tool", "arguments", "parent_call", "collaborator")
+FIELDS = ("status", "result", "tool", "arguments", "parent_call", "collaborator", "ended")   # ended: call_ended
 
 
 def _holds(value, key):

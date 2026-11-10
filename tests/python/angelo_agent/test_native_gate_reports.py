@@ -8,6 +8,8 @@ answer read. Runs of different versions are never totalled or shown together
 without saying so. ``test_native_grading_reports.py`` covers version 1.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import json

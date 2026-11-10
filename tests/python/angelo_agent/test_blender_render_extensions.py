@@ -18,7 +18,9 @@ Angelo add-on enabled (no provider, account or network):
   really runs and counts. A driver of an object in an unrelated scene does not
   block a look. With auto-execution on, the full expression runs and blocks
   the look; switched off again, it keeps counting until a load, because
-  Blender keeps the expression it compiled.
+  Blender keeps the expression it compiled (in a child without the runner's
+  override: since Blender's auto-run trust fix the command line holds for the
+  whole session, and a person's ordinary session has none).
 * **Held.** Keyed ``cycles.samples`` (64 at frame 1, 128 at frame 2) and a keyed
   view-layer count are muted by a job's ``Overrides``: evaluating frame 2 keeps
   the job's 8, and a tiny real Cycles render of frame 2 reports 8 samples;
@@ -40,6 +42,10 @@ Angelo add-on enabled (no provider, account or network):
 Run through ``run_native_suites.py --include test_blender_render_extensions``;
 check ``render-extensions.json`` for ``success``.
 """
+
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 
 import json
 import os
@@ -185,7 +191,6 @@ def evaluate(scene, frame):
 def drivers(policy, scene, addon):
     """Which drivers count, against what Blender really runs (the runner starts with --disable-autoexec)."""
     from angelo_agent import render_drivers
-    preferences = bpy.context.preferences.filepaths
     cube = bpy.data.objects["Cube"]
     check("runner_starts_in_restricted_mode", not render_drivers.auto_execute() and render_drivers.restricted())
     simple = cube.driver_add("location", 0).driver
@@ -211,23 +216,63 @@ def drivers(policy, scene, addon):
     check("unrelated_scene_driver_does_not_block_a_look", counted(policy, scene) == []
           and refused(policy.refuse_look, scene) is None)
     check("unrelated_scene_driver_counts_for_its_own_scene", counted(policy, other) == ["Elsewhere: location[1]"])
-    preferences.use_scripts_auto_execute = True  # Sets the document's flag at once, as the preference does.
-    blocked.expression = "len(bpy.data.objects) * 0 + 7.0"  # Compiled again, now in full.
-    check("auto_execution_runs_the_full_expression", evaluate(scene, 4).z == 7.0)
-    check("driver_on_rendered_object_blocks_a_look", counted(policy, scene) == ["Cube: location[2]"]
-          and "Cube: location[2]" in (refused(policy.refuse_look, scene) or ""))
-    preferences.use_scripts_auto_execute = False
-    check("compiled_in_full_keeps_counting_after_switching_off", not render_drivers.restricted()
-          and counted(policy, scene) == ["Cube: location[2]"])
-    # What the conservative rule rests on: Blender still runs the expression it compiled in full.
-    REPORT["full_expression_after_switching_off"] = evaluate(scene, 5).z
-    render_drivers.document_loaded()  # As load_post does: a load compiles every driver again.
-    check("a_load_trusts_restricted_mode_again", render_drivers.restricted() and counted(policy, scene) == [])
     cube.driver_remove("location", 2)
+    trusted_session_checks()
     bpy.data.objects.remove(elsewhere)
     bpy.data.scenes.remove(other)
     del bpy.app.driver_namespace["qa_driver_call"]
     scene.frame_set(1)
+
+
+def trusted_session_checks():
+    """The preference's own switch, in a process without the runner's --disable-autoexec: since Blender's "Auto-run
+    scripts trusted for unintended files" fix, a command-line override holds for the whole session, so the preference
+    no longer flips the document's flag here; in a person's ordinary session (no override) it still does."""
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as folder:
+        out = Path(folder) / "trusted.json"
+        completed = subprocess.run([bpy.app.binary_path, "--background", "--factory-startup", "--python-exit-code", "1",
+                                    "--python", str(Path(__file__).resolve()), "--", "--trusted-child", str(out)],
+                                   capture_output=True, text=True, timeout=600)
+        child = json.loads(out.read_text()) if out.exists() else {"checks": {}, "error": completed.stderr[-600:]}
+    for name in ("auto_execution_runs_the_full_expression", "driver_on_rendered_object_blocks_a_look",
+                 "compiled_in_full_keeps_counting_after_switching_off", "a_load_trusts_restricted_mode_again"):
+        check(name, child["checks"].get(name, False))
+    REPORT["full_expression_after_switching_off"] = child.get("full_expression_after_switching_off")
+    if child.get("error"):
+        REPORT["trusted_child_error"] = child["error"]
+
+
+def trusted_child(out):
+    """The child's side: a session without an override, Angelo enabled, the Cube's bpy expression."""
+    from angelo_agent import render_drivers, render_extensions as policy, ui
+    ui._authentication.start = lambda *args, **kwargs: None
+    ui.refresh_connected_models = lambda *args, **kwargs: None
+    addon_utils.enable("angelo_agent", default_set=False, persistent=False)
+    scene, cube = bpy.context.scene, bpy.data.objects["Cube"]
+    preferences = bpy.context.preferences.filepaths
+    result = {}
+    try:
+        preferences.use_scripts_auto_execute = False
+        render_drivers.document_loaded()
+        blocked = cube.driver_add("location", 2).driver
+        preferences.use_scripts_auto_execute = True  # Sets the document's flag at once, as the preference does.
+        blocked.expression = "len(bpy.data.objects) * 0 + 7.0"  # Compiled again, now in full.
+        check("auto_execution_runs_the_full_expression", evaluate(scene, 4).z == 7.0)
+        check("driver_on_rendered_object_blocks_a_look", counted(policy, scene) == ["Cube: location[2]"]
+              and "Cube: location[2]" in (refused(policy.refuse_look, scene) or ""))
+        preferences.use_scripts_auto_execute = False
+        check("compiled_in_full_keeps_counting_after_switching_off", not render_drivers.restricted()
+              and counted(policy, scene) == ["Cube: location[2]"])
+        # What the conservative rule rests on: Blender still runs the expression it compiled in full.
+        result["full_expression_after_switching_off"] = evaluate(scene, 5).z
+        render_drivers.document_loaded()  # As load_post does: a load compiles every driver again.
+        check("a_load_trusts_restricted_mode_again", render_drivers.restricted() and counted(policy, scene) == [])
+    except Exception:
+        result["error"] = traceback.format_exc()
+    result["checks"] = REPORT["checks"]
+    Path(out).write_text(json.dumps(result, default=str))
 
 
 def held():
@@ -378,6 +423,8 @@ def message_bus(policy):
 
 def main():
     assert "--factory-startup" in sys.argv and bpy.app.background, "Use an isolated factory-startup background process"
+    if "--trusted-child" in sys.argv:
+        return trusted_child(sys.argv[sys.argv.index("--trusted-child") + 1])
     try:
         from angelo_agent import render_extensions, ui
         ui._authentication.start = lambda *args, **kwargs: None

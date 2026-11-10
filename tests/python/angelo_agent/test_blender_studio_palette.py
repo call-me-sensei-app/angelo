@@ -15,6 +15,10 @@ Run through ``run_native_suites.py --gui --include test_blender_studio_palette``
 ``success`` and ``phase == "complete"``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -156,14 +160,18 @@ def refresh_gap(view, region):
 
 
 def set_palette(name):
-    from angelo_agent import studio, studio_draw
+    # Studio draws the shared ui_tokens roles (its own names only forward to them, studio.TOKEN_NAMES): the palette is
+    # swapped on those roles, in the module and in the dark variant themed() re-applies.
+    from angelo_agent import studio, ui_tokens
+    roles = {key: studio.TOKEN_NAMES[key] for key in VIOLET if key in studio.TOKEN_NAMES}
     if "tokens" not in state:
-        state["tokens"] = {key: getattr(studio, key) for key in VIOLET}
-    values = VIOLET if name == "violet" else state["tokens"]
-    for module in (studio, studio_draw):
-        for key, value in values.items():
-            if hasattr(module, key):
-                setattr(module, key, value)
+        state["tokens"] = {key: getattr(ui_tokens, role) for key, role in roles.items()}
+        state["dark"] = {role: ui_tokens.DARK.get(role) for role in roles.values()}
+    for key, role in roles.items():
+        value = VIOLET[key] if name == "violet" else state["tokens"][key]
+        setattr(ui_tokens, role, value)
+        if role in ui_tokens.DARK:
+            ui_tokens.DARK[role] = value if name == "violet" else state["dark"][role]
 
 
 def set_theme(look):
@@ -286,6 +294,9 @@ def tick():
             view = studio.view(area)
             tab_rect = next(r for r, action, value in view["hits"] if action == "tab" and value == tab)
             create = view["geometry"]["create"]
+            if view.get("mirror") is not None:   # Right to left: hits are layout rects, drawn mirrored (canvas_rtl.drawn).
+                tab_rect = (view["mirror"] - tab_rect[0] - tab_rect[2], *tab_rect[1:])
+                create = (view["mirror"] - create[0] - create[2], *create[1:])
             state["captures"][label] = {
                 "palette": palette, "violet": round(violet_share(px), 4),
                 "tab_contrast": round(contrast(px, (region.x + tab_rect[0], region.y + tab_rect[1], tab_rect[2], tab_rect[3])), 2),

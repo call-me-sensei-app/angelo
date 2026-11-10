@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Host-only adversarial contracts for the structural concurrency fixture; no Blender/model/process launch."""
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import ast
 import copy
 from pathlib import Path

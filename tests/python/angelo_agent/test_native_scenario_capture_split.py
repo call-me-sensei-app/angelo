@@ -16,6 +16,8 @@ Also here: the scorecard captures a one-shot scene with ``oneshot_job.py``
 own log.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import random
 import struct

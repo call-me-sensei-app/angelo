@@ -33,6 +33,7 @@ from .validation_reader import (
     Inconclusive, Unobservable, ValidationReader as _Reader, context_value as _get,
     number_vector as _numbers, resolve_target as _target,
 )
+from .refusal_codes import coded
 
 
 @dataclass
@@ -100,7 +101,7 @@ def verify(context, checks):
 def observe(context, target):
     """Bounded typed target summary for an already handle/revision-bound context."""
     if type(target) is not str or not 1 <= len(target) <= 128 or any(ord(c) < 32 for c in target):
-        raise ValueError("Choose an explicit bounded target alias/handle")
+        raise coded(ValueError("Choose an explicit bounded target alias/handle"), "VALIDATION")
     obj = _target(context, target)
     if obj is None:
         return {"success": False, "status": "fail", "target": target, "exists": False, "read_only": True}

@@ -34,7 +34,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import blender_folders, user_copies
+from . import blender_folders, shared_replace, user_copies
 
 ANGELO, BLENDER = "Angelo", "Blender"   # Product names, shown as they are.
 FOUND, NONE, SHARED = "found", "none", "shared"
@@ -274,12 +274,16 @@ def _place(item):
         if item.link is not None:
             os.symlink(item.link, temporary)
         elif item.merge and item.target.is_file():
-            temporary.write_text(merge_lists(item.target.read_text(encoding="utf-8", errors="replace"),
-                                             item.source.read_text(encoding="utf-8", errors="replace")),
+            temporary.write_text(merge_lists(shared_replace.read_bytes(item.target).decode("utf-8", "replace"),
+                                             shared_replace.read_bytes(item.source).decode("utf-8", "replace")),
                                  encoding="utf-8")
         else:
             user_copies.copy_file(item.source, temporary)   # Writable by the person, whatever the source's mode.
-        os.replace(temporary, item.target)
+        if os.name == "nt" and os.path.islink(item.target):
+            # Windows refuses a rename onto a link to a folder (Access is denied): the link goes first. The import
+            # backed it up before placing anything, so its undo still puts it back.
+            os.unlink(item.target)
+        shared_replace.replace(temporary, item.target, told=False)   # A loaded font: refused, in the import's notice.
     except OSError:
         if os.path.lexists(temporary):
             os.unlink(temporary)
@@ -310,7 +314,7 @@ def merge_lists(own, brought):
 def backup_matches(backup, destinations):
     """The manifest in ``backup`` when it belongs to these destinations (this Angelo version's folders), else None."""
     try:
-        manifest = json.loads((Path(backup) / MANIFEST).read_text(encoding="utf-8"))
+        manifest = json.loads(shared_replace.read_text(Path(backup) / MANIFEST))   # Never refuses a writer.
     except (OSError, ValueError):
         return None
     if not isinstance(manifest, dict) or manifest.get("version") != MANIFEST_VERSION:
@@ -370,5 +374,9 @@ def _within(path, root):
 
 def _write_json(path, value):
     temporary = Path(path).with_suffix(".tmp")
-    temporary.write_text(json.dumps(value, indent=1), encoding="utf-8")
-    os.replace(temporary, path)
+    try:
+        temporary.write_text(json.dumps(value, indent=1), encoding="utf-8")
+        shared_replace.replace(temporary, path)
+    except OSError:
+        shared_replace.discard(temporary)
+        raise

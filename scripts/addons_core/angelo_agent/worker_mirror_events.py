@@ -28,8 +28,9 @@ import hashlib
 import json
 import time
 
-from . import (activity_rows, event_queue, plan_progress, reply_overlay, script_overlay, ui_text, usage_meter,
-               worker_mirror_cards)
+from . import (activity_rows, event_queue, plan_progress, reply_overlay, request_rows, script_overlay, ui_text,
+               usage_meter, worker_mirror_cards)
+from . import display_text
 from .pending_delivery import ToolCall
 
 JOURNAL = "worker_journal"   # Internal kinds: never a ``Controller.emit`` kind, so a forwarded event cannot pose as one.
@@ -231,8 +232,10 @@ def admit(mirror, kind, data):
 
 def apply(mirror, kind, data):
     """One display event (module docstring). Returns True when anything shown changed."""
+    from . import request_submissions
     now = time.monotonic()
     if kind in MODEL_KINDS:
+        request_submissions.worker_event(mirror, _pair(data), delivered=True)
         mirror._signs["accepted"], mirror._signs["last"] = True, now
     if kind in {"delta", "thinking"} and type(data.get("text")) is str and mirror.busy:
         usage_meter.streamed(getattr(mirror, "_request_metrics", None), len(data["text"]))   # The live count.
@@ -318,10 +321,21 @@ def finish(mirror, data):
                     message.update(status="completed",
                                    duration_ms=round((time.perf_counter() - mirror._thinking_times[item]) * 1000))
                     mirror._touched(index)
-    if data.get("not_sent") is True and getattr(mirror, "_host_request", None) is None and mirror._turn_message:
+    from . import request_submissions
+    retry_owned = request_submissions.worker_event(
+        mirror, _pair(data), finished=True, not_sent=data.get("not_sent") is True,
+        error=RuntimeError(display_text.Text(ui_text.n_("Your message wasn't sent. Send it again when you're ready."))))
+    from .chat_pending import give_back   # Pending messages it carried: back on their own bubbles, paused.
+    if retry_owned:
+        pass
+    elif data.get("not_sent") is True and request_rows.persons_send(mirror) and give_back(mirror):
+        pass
+    elif data.get("not_sent") is True and request_rows.persons_send(mirror) and mirror._turn_message:
         mirror.unsent_draft = mirror._turn_message   # Back where the person types (``drafts``), as a window's chat.
         if not mirror.attachments:   # With its attachments, as a window's chat (``Controller._pump_events``).
             mirror.attachments = [dict(reference) for reference in getattr(mirror, "turn_attachments", ())]
+    from .chat_pending import turn_ended   # Every chat kind's turn end: Stop or a failure pauses what waits.
+    turn_ended(mirror, status, cancelled=bool(mirror.cancelled), not_sent=data.get("not_sent") is True)
     mirror.thinking.clear()
     mirror.status = status.title()
 
@@ -331,6 +345,10 @@ def signs(mirror, data):
     now = time.monotonic()
     if data.get("accepted") in (True, False):
         mirror._signs["accepted"] = data["accepted"]
+        if (data["accepted"] is True and _pair(data) is not None
+                and _pair(data) == mirror._worker_request):
+            from . import request_submissions
+            request_submissions.worker_event(mirror, _pair(data), delivered=True)
     for name in ("last", "heard"):
         age = data.get(name + "_ago")
         if type(age) in (int, float) and 0 <= age < 86400:

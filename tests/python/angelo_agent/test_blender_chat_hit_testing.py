@@ -6,6 +6,10 @@ GUI --factory-startup --enable-event-simulate only. All snapshots, preferences,
 accounts and quit recovery are disposable; no providers/auth/paid calls/builds.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 from pathlib import Path
@@ -63,7 +67,7 @@ def parts():
 def redraw(scroll=None):
     context = parts()
     if scroll is not None:
-        chat_view._scroll[controller.state['id']] = scroll
+        chat_view._scroll[(context['area'].as_pointer(), controller.state['id'])] = scroll
     with bpy.context.temp_override(**context):
         context['area'].tag_redraw()
         bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=2)

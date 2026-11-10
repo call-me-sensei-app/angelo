@@ -21,7 +21,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import blender_folders, user_copies
+from . import blender_folders, change_clock, user_copies
 from .ui_text import n_
 
 CATEGORY = "Render"
@@ -74,8 +74,9 @@ _scanned = {}   # folder -> (its modification time, its rows): the switcher asks
 def scan(folder, skip=()):
     """``[{module, name, source}]``: the Render add-ons in ``folder`` whose module is not in ``skip``, by name."""
     folder = Path(folder)
-    try:
-        stamp = folder.stat().st_mtime_ns
+    try:   # A folder changed in the clock's current tick (Windows) is listed again next time.
+        info = folder.stat()
+        stamp = change_clock.cache_key(info, info.st_mtime_ns)
     except OSError:
         return []
     cached = _scanned.get(str(folder))
@@ -130,10 +131,14 @@ def _stamp(row):
     if path is None:
         module = next((m for m in addon_utils.modules(refresh=False) if m.__name__ == row["module"]), None)
         path = Path(module.__file__) if module is not None and getattr(module, "__file__", None) else None
-    try:
-        return tuple(entry.stat().st_mtime_ns for entry in ((path, path / "__init__.py") if path.is_dir() else (path,)))
+    try:   # Settled (change_clock): the verdict kept on it sees a later change of the add-on, in its tick too.
+        found = [entry.stat() for entry in ((path, path / "__init__.py") if path.is_dir() else (path,))]
+        change_clock.settle_all(found, change=False)
+    except change_clock.Unsettled:
+        return change_clock.unique()   # The clock went back: equal to no stamp, so the add-on is offered again.
     except (AttributeError, OSError):
         return None
+    return tuple(info.st_mtime_ns for info in found)
 
 
 def _size(path):

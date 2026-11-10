@@ -18,6 +18,10 @@ just created was missing (x1b: a program creating a collection and excluding ano
 just removed was read through a dangling layer collection (SIGSEGV under ASan). Both calls now sync first (x1-x1c).
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys

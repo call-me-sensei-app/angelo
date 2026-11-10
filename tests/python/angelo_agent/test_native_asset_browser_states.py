@@ -8,6 +8,8 @@ Host side: which state a browser gets from ``SpaceFileBrowser.angelo_listed_coun
 proof, counts and pixels, is ``test_blender_asset_browser_states``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

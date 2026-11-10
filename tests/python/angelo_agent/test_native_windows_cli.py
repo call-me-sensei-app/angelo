@@ -9,6 +9,8 @@ Windows run (doc/angelo/ai_providers.rst, "Windows") proves the real behaviour
 with installed CLIs.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import subprocess
 import sys
@@ -23,6 +25,7 @@ HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parents[2] / "scripts/addons_core"), str(HERE)]
 from angelo_agent import child_process, cli_runtime, cli_windows
 from angelo_agent.protocol import RpcError
+from host_test_policy import environment_skip
 
 NPM_SHIM = r'''@ECHO off
 GOTO start
@@ -241,8 +244,8 @@ class ChildProcessTests(unittest.TestCase):
         self.assertEqual(child_process._utf8({"text": True, "encoding": "cp1252"}), {"text": True, "encoding": "cp1252"})
         self.assertEqual(child_process._utf8({"stdout": subprocess.PIPE}), {"stdout": subprocess.PIPE})
 
-    @unittest.skipIf(os.name == "nt", "The POSIX route; Windows starts a ChildProcess (the real child below and "
-                                      "windows_cli_checks.py on a Windows machine)")
+    @unittest.skipIf(os.name == "nt", environment_skip("The POSIX route; Windows starts a ChildProcess (the real child "
+                                                       "below and windows_cli_checks.py on a Windows machine)"))
     def test_text_pipes_are_utf8_and_everything_else_passes_through(self):
         with patch.object(child_process.subprocess, "run") as run, patch.object(child_process.subprocess, "Popen") as popen:
             child_process.run(["tool"], capture_output=True, text=True, timeout=5)
@@ -341,7 +344,8 @@ class SignInChildTests(unittest.TestCase):
         job.terminate(10)
         self.assertEqual(job.kernel32.calls, [("TerminateJobObject", 99)])
 
-    @unittest.skipIf(os.name == "nt", "The POSIX route (Windows: the job tests above and windows_cli_checks.py)")
+    @unittest.skipIf(os.name == "nt", environment_skip("The POSIX route (Windows: the job tests above and "
+                                                       "windows_cli_checks.py)"))
     def test_posix_ignores_the_option_and_ends_only_the_child(self):
         with patch.object(child_process.subprocess, "Popen") as popen:
             child_process.popen(["claude", "auth", "login"], keep_gui_programs=True)

@@ -13,6 +13,8 @@ acknowledgement answers only its own save, an unnumbered one the newest written 
 the file; the card names the asset and the engine.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import shutil
@@ -29,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import machine_clock  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 
 def fake_bpy():
@@ -36,7 +39,7 @@ def fake_bpy():
     bpy.types = types.ModuleType("bpy.types")
     bpy.types.__getattr__ = lambda name: type(name, (), {})
     handlers = SimpleNamespace(persistent=lambda function: function, depsgraph_update_post=[], load_post=[],
-                               save_post=[], exit_pre=[])
+                               save_post=[], exit_pre=[], undo_post=[], redo_post=[])
     timers = SimpleNamespace(registered=set())
     timers.register = lambda function, **kwargs: timers.registered.add(function)
     timers.unregister = timers.registered.discard
@@ -77,6 +80,12 @@ class FakeServer:
         self.info = {}
         self.project = project
 
+
+    def lagging(self, client):   # LinkServer: a client that lost delta scenes (none here).
+        return False
+
+    def lagging_any(self):
+        return False
     def editor(self, client, engine="godot", project=None, capabilities=("durable", "live", "acks")):
         self.info[client] = {"engine": engine, "project": str(project or self.project), "project_name": "Game",
                              "version": "4.7.2"}
@@ -106,7 +115,7 @@ class FakeWriteBack:
     def __init__(self):
         self.requests, self.done = [], []
 
-    def request(self, *args, baked=(), stamp=None):
+    def request(self, *args, baked=(), stamp=None, saved=None):
         self.requests.append(args)
 
     def busy(self):
@@ -117,8 +126,23 @@ class FakeWriteBack:
         return items
 
 
+SETTLED_S = 600.0   # A settled read's wait and deadline: guards against a hang, never what a test measures.
+
+
+class SettledLookup(assets.reads.Lookup):
+    """``engine_link_reads.Lookup`` whose main-thread wait lasts until the read is done: the call or tick that starts
+    a read sees it finished, however loaded the machine (one QUICK_S wait ran out at a load of 570, and OPEN returned
+    a pending result to tests reading ``result["asked"]``). These tests are about what OPEN and the inbox do with a
+    read, not when it lands; test_native_engine_link_reads' OffMainThreadTests take the real wait."""
+
+    def wait(self, seconds=SETTLED_S):
+        return super().wait(seconds)
+
+
 class ToolTests(unittest.TestCase):
     def setUp(self):
+        from save_identity_stand_in import stand_in_for_saves
+        stand_in_for_saves(self)   # Blender's save names the file it wrote (``_bpy._angelo_saved``): stood in.
         # Modules the host imports when called (scene_changes, studio_agent, ui_text, engine_suggest_ui) see the
         # stand-in bpy only during this test, and nothing they bind on the package outlives it.
         package = sys.modules.get("angelo_agent", PACKAGE)
@@ -148,6 +172,8 @@ class ToolTests(unittest.TestCase):
                                  folder=tempfile.mkdtemp(), version=0, exporting=False)
         BPY.data.filepath, BPY.data.is_dirty = "", False
         BPY.app.background = True
+        self.enterContext(mock.patch.object(assets.reads, "Lookup", SettledLookup))
+        self.enterContext(mock.patch.object(assets.reads, "READ_S", SETTLED_S))
 
     def link(self, ident="res://crate.glb"):
         asset = godot_link_assets.resolve({"project": str(self.project), "asset": ident})
@@ -371,7 +397,7 @@ class ToolTests(unittest.TestCase):
 
     def push(self, live=True):
         BPY.context.scene = BPY.context.view_layer = None   # A background session follows the context's scene.
-        with mock.patch.object(assets, "export", lambda window, path, options: Path(path).write_bytes(b"glb")), \
+        with mock.patch.object(assets, "export", lambda window, path, options, export_id=None: Path(path).write_bytes(b"glb")), \
                 mock.patch.object(engine_link.scene_changes, "scene_key", lambda scene, view_layer: None):
             return host.execute(None, EDIT, {"action": "PUSH"})
 
@@ -448,7 +474,7 @@ class ToolTests(unittest.TestCase):
         self.assertEqual(len(self.writeback.requests), 1)
         self.assertIsNone(pending.poll(), "the write-back is running")
         self.writeback.done.append((self.writeback.requests[-1][0], None))
-        with mock.patch.object(assets, "write_stamp"):
+        with mock.patch.object(assets, "written_stamp"):
             engine_link._written()
         saved = [header for _client, header in self.server.sent if header["type"] == "saved"]
         self.assertEqual(saved[-1]["save"], 1)
@@ -548,7 +574,7 @@ class ToolTests(unittest.TestCase):
         self.ack(1, code="reimported", save=self.writeback.requests[-1][0][1])   # Early, before its write.
         self.assertIsNone(second.poll())
         self.writeback.done.append((self.writeback.requests[-1][0], None))
-        with mock.patch.object(assets, "write_stamp"):
+        with mock.patch.object(assets, "written_stamp"):
             engine_link._written()
         self.assertIsNone(second.poll(), "the early ack counts for nothing")
         time.sleep(0.001)
@@ -656,8 +682,10 @@ class ToolTests(unittest.TestCase):
 
     def test_a_working_folder_it_cannot_list_is_never_assumed_clear(self):
         """Break-it 5-H1: a subfolder the scan can't read may hold the file's other name: counted as holding it."""
+        if os.name == "nt":
+            self.skipTest(environment_skip("POSIX mode bits: Windows ignores a folder's mode"))
         if os.geteuid() == 0:
-            self.skipTest("root reads everything")
+            self.skipTest(environment_skip("running as a user who can write anywhere"))
         working = self.project / ".angelo" / "sub"
         working.mkdir(parents=True)
         (working / "crate.glb.blend").write_bytes(b"x")
@@ -869,9 +897,18 @@ class ToolTests(unittest.TestCase):
         source = (ROOT / "scripts/addons_core/angelo_agent/controller.py").read_text(encoding="utf-8")
         start = source.index("    def send(self, text")
         body = source[start:source.index("    def _start_turn(", start)]
-        self.assertIn('if host_request is None and not getattr(self, "_external_task", False):', body)
+        # A pending message (steering) carries its words' time from when it was held, not from when it is sent.
+        self.assertIn('if self._persons_send and not pending:', body)
         self.assertIn("self.person_spoke_at = time.monotonic()", body)
-        self.assertEqual(source.count("person_spoke_at ="), 1, "set nowhere else (no escalation, no event)")
+        pending = (ROOT / "scripts/addons_core/angelo_agent/chat_pending.py").read_text(encoding="utf-8")
+        hold = pending[pending.index("def hold(controller"):pending.index("\ndef ", pending.index("def hold(controller") + 1)]
+        self.assertIn("controller.person_spoke_at = time.monotonic()", hold)   # The person's held words, at hold.
+        own = pending[pending.index("def send_or_queue("):pending.index("\ndef ", pending.index("def send_or_queue(") + 1)]
+        self.assertNotIn("person_spoke_at", own)   # Angelo's own follow-up never counts as the person speaking.
+        self.assertNotIn(" hold(controller", own)
+        package = sorted((ROOT / "scripts/addons_core/angelo_agent").rglob("*.py"))
+        setters = [path.name for path in package for _ in range(path.read_text(encoding="utf-8").count("person_spoke_at ="))]
+        self.assertEqual(setters, ["chat_pending.py", "controller.py"], "set nowhere else (no escalation, no event)")
         self.server.editor(1)
         events, lead = self.asked(), self.chat(1)
         self.asks(lead)
@@ -978,11 +1015,15 @@ class ToolTests(unittest.TestCase):
         self.server.editor(2)
         host.execute(None, EDIT, {"action": "OPEN", "asset": "res://crate.blend"})
         asset = engine_link.pending()["asset"]
-        BPY.ops.wm.open_mainfile = lambda filepath: (setattr(BPY.data, "filepath", filepath), {"FINISHED"})[1]
+        opened = []
+        BPY.ops.wm.open_mainfile = lambda filepath, **options: (
+            opened.append(options), setattr(BPY.data, "filepath", filepath), {"FINISHED"})[2]
         BPY.context.window_manager.windows = []
         with mock.patch.object(engine_link.live_windows, "first", lambda *args, **kwargs: None):
             engine_link.accept(None)
         self.assertEqual(engine_link.session(), asset)
+        self.assertEqual(opened, [{"use_scripts": False}], "the project's file opens with its own trust "
+                         "(file_trust; unreadable here, so never trusted), never the session's")
         self.assertEqual(sorted(client for client, header in self.server.sent if header["type"] == "opened"), [1, 2])
 
     def test_open_refuses_what_no_connected_project_holds_and_ambiguity(self):

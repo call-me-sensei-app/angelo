@@ -15,7 +15,7 @@ import zlib
 import bpy
 
 from .scene_spec import validate_scene
-from .refusal_codes import RefusalError
+from .refusal_codes import RefusalError, coded
 from .scene_read_values import (SceneQueryError, ReadBudget, ReadOutput,
                                 dump as _dump, hash_value as _hash, label as _name,
                                 session_uid as _uid, pointer as _pointer)
@@ -69,7 +69,7 @@ def _read_output(limit):
 
 def _main_thread():
     if threading.current_thread() is not threading.main_thread():
-        raise SceneQueryError("Native scene observations require Blender's main thread")
+        raise coded(SceneQueryError("Native scene observations require Blender's main thread"), "INTERNAL_ERROR")
 
 
 def _identity(value):
@@ -109,7 +109,7 @@ def resolve_object(window, handle):
     try:
         checked = validate_scene("angelo_scene_object", {"object": handle})["object"]
     except ValueError:
-        raise SceneQueryError("Use an exact observed scene object handle") from None
+        raise coded(SceneQueryError("Use an exact observed scene object handle"), "VALIDATION") from None
     _main_thread()
     _scope(window)
     _, epoch, uid = checked.split(":")
@@ -273,7 +273,7 @@ def object_revision_at_frame(window, obj, frame_current):
 def _bound_target(window, obj):
     _main_thread()
     if obj not in window.scene.objects[:]:
-        raise SceneQueryError("Native program target must belong to the bound scene")
+        raise coded(SceneQueryError("Native program target must belong to the bound scene"), "VALIDATION")
 
 
 def _scene_snapshot(window, deadline=None):

@@ -10,10 +10,14 @@ in a disposable app copy with its own bundled add-on (never a source tree on ``s
         --python probe_downgrade_two_builds.py -- produce /absolute/disposable/folder
     <released app>/Contents/MacOS/Angelo ... --python probe_downgrade_two_builds.py -- consume /absolute/disposable/folder
 
-``produce`` saves a project, captures an ordinary checkpoint (record version 3) and then one with a native runtime
-owner (a Multires object in Sculpt Mode: record version 4) through the build's own ``ui.capture_checkpoint``, and
-asserts both versions and both scene maps: a run that cannot make a version-4 capture fails rather than passing on
-ordinary checkpoints alone. ``consume`` asserts that the released build's inventory has no issue and that a Restore
+``produce`` saves a project, captures an ordinary checkpoint (record version 3), a safety checkpoint in Object mode
+(version 3; content-sealed by a build with content binding, identity-sealed before it), an ordinary one whose
+timestamps read as coarse (``coarse_timestamps`` patched: content-sealed by every build) and then one with a native
+runtime owner (a Multires object in Sculpt Mode: record version 4) through the build's own ``ui.capture_checkpoint``,
+and asserts the versions, the seals and the scene maps: a run that cannot make a version-4 capture fails rather than
+passing on ordinary checkpoints alone. Run it both ways: a released build producing and this one consuming checks
+that checkpoints written before content binding still restore; this one producing and a released one consuming is
+the downgrade. ``consume`` asserts that the released build's inventory has no issue and that a Restore
 of each checkpoint FINISHES and removes an edit made after it. Each prints one ``TWO-BUILD-PROBE {json}`` line and
 exits non-zero on a failed assertion (``--python-exit-code 1``). Not collected by any suite. The recorded results are
 in ``doc/angelo/checkpoint_policy.rst`` (Downgrade).
@@ -50,6 +54,16 @@ try:
     if MODE == "produce":
         bpy.ops.wm.save_as_mainfile(filepath=str(ROOT / "project.blend"))
         ordinary = ui.capture_checkpoint(controller)
+        import _bpy
+        from unittest import mock
+        from angelo_agent import checkpoint_seal
+        safety = ui.capture_checkpoint(controller, purpose="safety")   # Object mode: no Sculpt owner.
+        with mock.patch.object(checkpoint_seal, "coarse_timestamps", return_value=True):
+            coarse = ui.capture_checkpoint(controller)
+        binds = hasattr(_bpy._angelo_checkpoint, "capture_bind")
+        report.update(content_binding=binds, safety=safety["id"], coarse=coarse["id"],
+                      seals={kind: checkpoint_seal.binding(record) for kind, record in
+                             (("ordinary", ordinary), ("safety", safety), ("coarse", coarse))})
         bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=8)
         target = bpy.context.object
         modifier = target.modifiers.new("Probe Multires", "MULTIRES")
@@ -62,8 +76,13 @@ try:
                       session=controller.checkpoints.session_id, ordinary=ordinary["id"], sculpt=sculpt["id"])
         report["maps"] = {kind: (ROOT / "state" / "checkpoint-scenes" / report["session"]
                                  / (report[kind] + ".json")).is_file() for kind in ("ordinary", "sculpt")}
+        report["versions"] = {kind: record.get("version") for kind, record in
+                              (("safety", safety), ("coarse", coarse))}
         (ROOT / "probe.json").write_text(json.dumps(report), encoding="utf-8")
         assert ordinary.get("version") == 3, "The ordinary capture is not version 3"
+        assert report["versions"] == {"safety": 3, "coarse": 3}, "A version 3 capture is not version 3"
+        assert report["seals"] == {"ordinary": "identity", "coarse": "content",
+                                   "safety": "content" if binds else "identity"}, "Unexpected seals"
         assert sculpt.get("version") == 4, "No runtime-owner capture: the probe is invalid"
         assert all(report["maps"].values()), "A scene map is missing"
     elif MODE == "consume":
@@ -73,7 +92,7 @@ try:
         report["inventory_issues"] = [issue.get("error") for issue in inventory["issues"]]
         report["listed"] = sorted(item["id"] for item in inventory["checkpoints"])
         outcomes = []
-        for kind in ("ordinary", "sculpt"):
+        for kind in [kind for kind in ("ordinary", "safety", "coarse", "sculpt") if kind in produced]:
             identity = produced[kind]
             controller.state["messages"].append({"role": "user", "text": kind, "checkpoint": identity,
                                                  "checkpoint_scope": "before_request"})
@@ -88,7 +107,7 @@ try:
             outcomes.append([kind, outcome, "AfterCheckpoint" not in bpy.data.objects])
         report["restores"] = outcomes
         assert not inventory["issues"], "Downgrade inventory failed"
-        assert {produced["ordinary"], produced["sculpt"]} <= set(report["listed"]), "A checkpoint is not listed"
+        assert {produced[kind] for kind, _, _ in outcomes} <= set(report["listed"]), "A checkpoint is not listed"
         assert all(outcome == ["FINISHED"] and gone for _, outcome, gone in outcomes), "A checkpoint did not restore"
     else:
         raise AssertionError(MODE)

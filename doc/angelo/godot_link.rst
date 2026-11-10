@@ -156,7 +156,16 @@ Following the scene
 
 ``engine_link`` follows the scene of the window the asset opened in, with the web
 preview's change rules (``scene_changes``: geometry, transform, shading, other
-data, or the frame, world, camera and what shows; never a selection click). It
+data, or the frame, world, camera and what shows; never a selection click), and
+its key holds what the glTF exporter reads from the scene itself with the
+engine's live options (``engine_link.scene_key``, ``gltf_scene_reads``): the
+scene's name and physics format; the render size and pixel aspect when cameras
+export; the engine when lights do; the scene's custom properties when extras do
+(Godot's default); the active collection when the .import settings ask for it
+(an object's own settings, such as its render visibility, update the object and
+count anyway). A setting a live export never reads (the
+frame rate: it has no animation) exports nothing (``test_native_engine_link_key``,
+``test_blender_engine_link_key``). It
 exports once the scene has been still for 0.35 s and at least three times the last
 export's duration (at most 10 s), never during a drag, a brush stroke, playback, a
 background job or Edit Mode. Edit Mode's changes reach the mesh when the person

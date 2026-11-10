@@ -8,6 +8,8 @@ checked: the two signature streams are allowed and required, and any other added
 Where the Windows 1.0.3 MSI is at hand (ANGELO_TEST_MSI), its 50 entries are read too.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import struct
 import sys

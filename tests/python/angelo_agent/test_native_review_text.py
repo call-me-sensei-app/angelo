@@ -6,6 +6,8 @@ Pure host tests of the composer chip's model lookup and of the approval card
 of a reviewed script that uses application preferences. No Blender or model.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

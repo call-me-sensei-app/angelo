@@ -12,7 +12,9 @@
  *   `bpy_angelo_meshopt.hh`, which opens it on first use and refuses a missing or older library. A
  *   refusal raises `RuntimeError` with the reason and calls nothing. `simplify()` returns index buffers
  *   over the caller's own vertices, so a chain of reductions shares the first one's vertex buffer.
- * - `decimate()` runs Blender's Decimate (Collapse) on a copy of a mesh for comparison.
+ * - `decimate()` runs Blender's Decimate (Collapse) on a copy of a mesh for comparison, on a
+ *   `snapshot()` off the main thread. `convex_hull()` is Blender's convex hull operator (a build
+ *   with Bullet).
  * - `surface()`, `nearest()` and `rasterize()` measure: distances from points to a triangle surface
  *   (Hausdorff), and triangle coverage of pixel centres (silhouettes, UV overlap).
  *
@@ -20,7 +22,8 @@
  * points; uint32 or int32 for indices; uint8 for vertex locks. Every index and value is checked before a
  * call, because meshoptimizer only asserts its preconditions and a release build would read out of
  * bounds. Results are `bytes` (`numpy.frombuffer` reads them without a copy). Heavy work releases the GIL;
- * nothing here touches Blender data except `decimate()`, which only reads the mesh it is given.
+ * nothing here touches Blender data except `snapshot()`, `vertex_weights()` and `decimate()` given
+ * a Blender mesh, which only read it (main thread).
  */
 
 #include <Python.h>
@@ -63,6 +66,7 @@ constexpr int MAX_STREAMS = 16;
 constexpr int MAX_RESOLUTION = 4096;
 constexpr int64_t MAX_RASTER_BYTES = int64_t(256) << 20;
 const char *const SURFACE_CAPSULE = "_bpy._angelo_reduce.Surface";
+const char *const SNAPSHOT_CAPSULE = "_bpy._angelo_reduce.Snapshot";
 
 enum class Kind { Float, Index, Byte, Any };
 
@@ -730,7 +734,12 @@ static PyObject *reduce_decimate(PyObject * /*self*/, PyObject *args, PyObject *
   {
     return nullptr;
   }
-  const Mesh *mesh = static_cast<const Mesh *>(PyC_RNA_AsPointer(py_mesh, "Mesh"));
+  /* A snapshot is the caller's own (no other code can reach it), so Decimate runs on it without
+   * the GIL; a Blender mesh is read on the main thread with the GIL held, as any bpy call is. */
+  const bool own = PyCapsule_CheckExact(py_mesh);
+  const Mesh *mesh = own ? static_cast<const Mesh *>(
+                               PyCapsule_GetPointer(py_mesh, SNAPSHOT_CAPSULE)) :
+                           static_cast<const Mesh *>(PyC_RNA_AsPointer(py_mesh, "Mesh"));
   if (mesh == nullptr) {
     return nullptr;
   }
@@ -742,9 +751,15 @@ static PyObject *reduce_decimate(PyObject * /*self*/, PyObject *args, PyObject *
   if (!get_groups(py_groups, groups)) {
     return nullptr;
   }
-  /* Holds the GIL: the mesh is Blender data, read on the main thread like any other bpy call. */
-  const angelo_reduce::DecimateResult result = angelo_reduce::decimate(
-      *mesh, ratio, triangulate != 0, symmetry_axis, groups);
+  angelo_reduce::DecimateResult result;
+  if (own) {
+    Py_BEGIN_ALLOW_THREADS;
+    result = angelo_reduce::decimate(*mesh, ratio, triangulate != 0, symmetry_axis, groups);
+    Py_END_ALLOW_THREADS;
+  }
+  else {
+    result = angelo_reduce::decimate(*mesh, ratio, triangulate != 0, symmetry_axis, groups);
+  }
   auto to_bytes = [](const void *source, const int64_t count, const size_t size) {
     char *data;
     PyObject *bytes = new_bytes(count, size, &data);
@@ -784,6 +799,61 @@ static PyObject *reduce_decimate(PyObject * /*self*/, PyObject *args, PyObject *
                        "uv_map",
                        result.uv_map.c_str());
 }
+
+static void snapshot_free(PyObject *capsule)
+{
+  angelo_reduce::snapshot_free(
+      static_cast<Mesh *>(PyCapsule_GetPointer(capsule, SNAPSHOT_CAPSULE)));
+}
+
+static PyObject *reduce_snapshot(PyObject * /*self*/, PyObject *py_mesh)
+{
+  const Mesh *mesh = static_cast<const Mesh *>(PyC_RNA_AsPointer(py_mesh, "Mesh"));
+  if (mesh == nullptr) {
+    return nullptr;
+  }
+  Mesh *copy = angelo_reduce::snapshot(*mesh);
+  PyObject *capsule = PyCapsule_New(copy, SNAPSHOT_CAPSULE, snapshot_free);
+  if (capsule == nullptr) {
+    angelo_reduce::snapshot_free(copy);
+  }
+  return capsule;
+}
+
+#ifdef WITH_BULLET
+static PyObject *reduce_convex_hull(PyObject * /*self*/, PyObject *py_points)
+{
+  Buffer points_buffer;
+  Span<float3> points;
+  if (!get_positions(py_points, points_buffer, points, "points")) {
+    return nullptr;
+  }
+  Vector<float3> positions;
+  Vector<int3> tris;
+  bool made;
+  Py_BEGIN_ALLOW_THREADS;
+  made = angelo_reduce::convex_hull(points, positions, tris);
+  Py_END_ALLOW_THREADS;
+  if (!made) {
+    Py_RETURN_NONE;
+  }
+  char *data;
+  PyObject *out_positions = new_bytes(positions.size(), sizeof(float3), &data);
+  if (out_positions != nullptr) {
+    std::memcpy(data, positions.data(), size_t(positions.size()) * sizeof(float3));
+  }
+  PyObject *out_tris = new_bytes(tris.size(), sizeof(int3), &data);
+  if (out_tris != nullptr) {
+    std::memcpy(data, tris.data(), size_t(tris.size()) * sizeof(int3));
+  }
+  if (out_positions == nullptr || out_tris == nullptr) {
+    Py_XDECREF(out_positions);
+    Py_XDECREF(out_tris);
+    return nullptr;
+  }
+  return Py_BuildValue("(NN)", out_positions, out_tris);
+}
+#endif
 
 static PyMethodDef methods[] = {
     {"status",
@@ -835,7 +905,20 @@ static PyMethodDef methods[] = {
      (PyCFunction)(void *)reduce_decimate,
      METH_VARARGS | METH_KEYWORDS,
      "decimate(mesh, ratio, *, triangulate=True, symmetry_axis=-1, groups=None): Blender's Decimate "
-     "(Collapse) on a copy of the mesh, as arrays (positions, tris, corner_uvs, corner_normals, weights)."},
+     "(Collapse) on a copy of the mesh, as arrays (positions, tris, corner_uvs, corner_normals, "
+     "weights). mesh is a Blender mesh (main thread) or a snapshot (any thread, no GIL)."},
+    {"snapshot",
+     reduce_snapshot,
+     METH_O,
+     "snapshot(mesh): a copy of a Blender mesh in no Main (main thread), its arrays shared with "
+     "the mesh, for decimate() on any thread; freed with the returned object."},
+#ifdef WITH_BULLET
+    {"convex_hull",
+     reduce_convex_hull,
+     METH_O,
+     "convex_hull(points): (positions float32, tris int32) of the convex hull of float32 points "
+     "from Blender's convex_hull operator (Bullet), without the GIL; None for no hull."},
+#endif
     {nullptr, nullptr, 0, nullptr},
 };
 

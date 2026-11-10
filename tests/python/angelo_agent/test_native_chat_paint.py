@@ -8,6 +8,8 @@ move holds until the area's own draw after the dock, or ``WAIT`` seconds; then c
 ``on_complete`` runs, never for an area that is gone.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import types
 import unittest

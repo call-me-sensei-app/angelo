@@ -3,6 +3,7 @@
 #pragma once
 
 #include "BLI_bit_span.hh"
+#include "BLI_checkpoint_budget.hh"
 #include "BLI_function_ref.hh"
 #include "BLI_math_vector_types.hh"
 #include "BLI_span.hh"
@@ -21,10 +22,14 @@ MainUndoState *main_undo_state_capture_checkpoint(Main &bmain, size_t limit, con
 /** Complete initial Undo, including fresh live BMLog provenance, with cumulative admission. */
 MainUndoState *main_undo_state_capture_initial_checkpoint(Main &bmain, size_t limit,
                                                          size_t &used, const char **r_error);
-/** Shared finite preallocation charge used by checkpoint copies, never by ordinary Undo. */
+/** Shared finite preallocation charge used by checkpoint copies, never by ordinary Undo. A refusal
+ * is a budget refusal (BLI_checkpoint_budget.hh). */
 inline bool checkpoint_snapshot_charge(size_t &used, const size_t limit, const size_t bytes)
 {
-  if (bytes > limit || used > limit - bytes) { return false; }
+  if (bytes > limit || used > limit - bytes) {
+    checkpoint_budget_refused();
+    return false;
+  }
   used += bytes;
   return true;
 }

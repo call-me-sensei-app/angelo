@@ -20,6 +20,8 @@ passed although the model said it could not see an image. A visual answer
 Scripted rows and receipt paths; no Blender, process or model.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import sys
 import unittest

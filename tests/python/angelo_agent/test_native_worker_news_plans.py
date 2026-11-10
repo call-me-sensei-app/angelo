@@ -9,6 +9,8 @@ round wrote it and the model answered. The adoption handshake runs on the real l
 worker, and binding takes its answer (``RemoteExecutor.greet``); the Blender suites adopt real workers.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import threading
 import unittest
@@ -145,15 +147,20 @@ class HandoffTests(unittest.TestCase):
             self.addCleanup(patcher.stop)
         self.context = SimpleNamespace(state={"id": "lead"}, _request_generation=3, record_provider_turn=lambda: None)
 
-    def test_rows_a_handoff_carries_tell_nothing_even_cut_by_the_excerpt(self):
+    def test_admitted_handoff_rows_do_not_acknowledge_worker_news(self):
         from angelo_agent.routing import handoff
         rows = [{"role": "user", "text": "Build the room."},
                 {"role": "activity", "call_id": "c1", "tool": "angelo_workers_status", "status": "completed",
                  "arguments": {}, "result": {"workers": [{"worker": 1, "name": "Sofa", "state": "replied",
-                                                          "reply": "x" * 9000}]}}]
+                                                          "reply": "Finished the seating."}]}}]
         text, _ids = handoff(rows, 0, 24000, identifiers=None)
         self.assertIn("Sofa", text)
         self.assertEqual(worker_news.fresh("lead"), ["w1"])
+        rows[1]["result"]["workers"][0]["reply"] = "x" * 9000
+        omitted, ids = handoff(rows, 0, 24000, identifiers=None)
+        self.assertIn("handoff_omission", omitted)
+        self.assertNotIn("c1", ids)
+        self.assertEqual(worker_news.fresh("lead"), ["w1"], "Omission cannot acknowledge unseen worker news")
 
     def test_the_opening_prompt_names_untold_finishes_and_is_told_once_written(self):
         from angelo_agent.provider_usage import record_runtime_round

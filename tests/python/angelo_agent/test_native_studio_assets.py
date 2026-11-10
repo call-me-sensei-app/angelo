@@ -8,9 +8,12 @@ writer in batches with lowered priority and stops it with the add-on; a preferen
 (``prefs_reload.READ_LISTENERS``). The real writer and Preferences entry are ``test_blender_studio_assets``'s.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -93,7 +96,8 @@ class PlanTests(unittest.TestCase):
         found = {item["id"]: item for item in convert}
         self.assertEqual(remove, [])
         self.assertEqual(found[model["id"]]["catalog_id"], studio_assets.CATALOGS["3D"][0])
-        self.assertTrue(found[model["id"]]["blend"].endswith(f"blender-assets/models/{model['id']}.blend"))
+        blend = Path(found[model["id"]]["blend"]).as_posix()   # A native path; compared in one spelling.
+        self.assertTrue(blend.endswith(f"blender-assets/models/{model['id']}.blend"), blend)
         self.assertEqual(len(found[image["id"]]["files"]), 2)
         self.assertEqual(found[image["id"]]["description"], "A poster")
         self.assertIn("Nano Banana 2.1", found[image["id"]]["tags"])
@@ -308,6 +312,150 @@ class CatalogueTests(unittest.TestCase):
         for other in ("Angelo Media Studio", "Models", "Props/Models", "Angelo Media Studio/Hero",
                       "Angelo Media Studio/Modelle2", "Angelo Media Studio/ImagesX/Skies"):
             self.assertIsNone(studio_assets.catalog_kind(other, german), other)
+
+    def test_another_angelos_language_is_kept_until_this_one_changes_its_own(self):
+        """Two Angelo instances in different interface languages share the file: each renamed the catalogues back to
+        its own language on every sync. Only a language change of its own, or a missing catalogue, writes now."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / studio_assets.CATS_FILE
+            german, english = {"3D": "Modelle", "IMAGE": "Bilder"}, {"3D": "Models", "IMAGE": "Images"}
+            self.assertTrue(studio_assets.write_catalogs(directory, german))   # The other Angelo, first.
+            self.assertFalse(studio_assets.write_catalogs(directory, english, renamed=False))
+            self.assertIn("Angelo Media Studio/Modelle:Modelle", path.read_text(encoding="utf-8"))
+            self.assertTrue(studio_assets.write_catalogs(directory, english, renamed=True))   # Its own change.
+            self.assertIn("Angelo Media Studio/Models:Models", path.read_text(encoding="utf-8"))
+            text = path.read_text(encoding="utf-8")
+            path.write_text("\n".join(line for line in text.splitlines()
+                                       if not line.startswith(studio_assets.CATALOGS["IMAGE"][0])) + "\n",
+                            encoding="utf-8")
+            self.assertTrue(studio_assets.write_catalogs(directory, english, renamed=False), "a missing one")
+            self.assertIn(f"{studio_assets.CATALOGS['IMAGE'][0]}:Angelo Media Studio/Images:Images",
+                          path.read_text(encoding="utf-8"))
+
+    def test_a_catalogue_the_person_renamed_is_never_renamed_back(self):
+        """1.0.10 break-it: the first sync of every launch reverted a rename made in the Asset Browser. Angelo records
+        the lines it wrote (``WRITTEN_NAMES``); any other line is the person's."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / studio_assets.CATS_FILE
+            english = {"3D": "Models", "IMAGE": "Images"}
+            self.assertTrue(studio_assets.write_catalogs(directory, english))
+            identity = studio_assets.CATALOGS["3D"][0]
+            renamed = f"{identity}:Angelo Media Studio/Props:Props"
+            path.write_text("\n".join(renamed if line.startswith(identity) else line
+                                       for line in path.read_text(encoding="utf-8").splitlines()) + "\n",
+                            encoding="utf-8")
+            self.assertFalse(studio_assets.write_catalogs(directory, english, renamed=True))
+            self.assertTrue(studio_assets.write_catalogs(directory, {"3D": "Modelle", "IMAGE": "Bilder"}))
+            text = path.read_text(encoding="utf-8")
+        self.assertIn(renamed, text)   # The person's, in any language.
+        self.assertNotIn("Modelle", text)
+        self.assertIn("Angelo Media Studio/Bilder:Bilder", text)   # Angelo's own still follows the language.
+
+    def _upgrade(self, directory, models_name):
+        """A library a 1.0.9 Angelo wrote: its catalogue file, with the Models line named ``models_name``, and no
+        record of whose lines are whose."""
+        path = Path(directory) / studio_assets.CATS_FILE
+        studio_assets.write_catalogs(directory, {"3D": models_name, "IMAGE": "Images"})
+        (Path(directory) / studio_assets.WRITTEN_NAMES).unlink()
+        return path
+
+    def test_an_upgrade_records_ownership_on_its_first_sync_even_when_nothing_changes(self):
+        """Audit of 1.0.10 (B18): an unchanged first sync wrote no record, so the person's rename after it was taken
+        for Angelo's and reverted at the next launch."""
+        english = {"3D": "Models", "IMAGE": "Images"}
+        identity = studio_assets.CATALOGS["3D"][0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._upgrade(directory, "Models")
+            self.assertFalse(studio_assets.write_catalogs(directory, english, renamed=True))
+            self.assertTrue((Path(directory) / studio_assets.WRITTEN_NAMES).is_file())
+            renamed = f"{identity}:Angelo Media Studio/Props:Props"
+            path.write_text("\n".join(renamed if line.startswith(identity) else line
+                                       for line in path.read_text(encoding="utf-8").splitlines()) + "\n",
+                            encoding="utf-8")
+            for names in (english, {"3D": "Modelle", "IMAGE": "Bilder"}):   # The next launches, any language.
+                studio_assets.write_catalogs(directory, names, renamed=True)
+                self.assertIn(renamed, path.read_text(encoding="utf-8"))
+
+    def test_an_upgrade_keeps_a_name_angelo_would_not_have_written(self):
+        """The person renamed the catalogue before upgrading: with no record, a name that is neither this language's
+        nor English is kept as theirs, in every language."""
+        identity = studio_assets.CATALOGS["3D"][0]
+        for names in ({"3D": "Models", "IMAGE": "Images"}, {"3D": "Modelle", "IMAGE": "Bilder"}):
+            with self.subTest(names=names), tempfile.TemporaryDirectory() as directory:
+                path = self._upgrade(directory, "Hero props")
+                studio_assets.write_catalogs(directory, names, renamed=True)
+                studio_assets.write_catalogs(directory, names, renamed=True)
+                text = path.read_text(encoding="utf-8")
+                self.assertIn(f"{identity}:Angelo Media Studio/Hero props:Hero props", text)
+                self.assertIn("Angelo Media Studio/%s:%s" % (names["IMAGE"], names["IMAGE"]), text,
+                              "Angelo's own line still follows the language")
+
+    def test_an_unreadable_record_renames_nothing_and_is_kept(self):
+        """Review of the 1.0.10 audit fix: a record that is there but cannot be read now (a cloud-sync placeholder,
+        a stale mount) is not a library from before 1.0.10. No line is renamed and the record is not rewritten (the
+        other languages' lines it holds stay Angelo's). A missing catalogue waits too: added then, it could never be
+        recorded (the audit re-check's P3; test_native_studio_assets_unreadable)."""
+        german, english = {"3D": "Modelle", "IMAGE": "Bilder"}, {"3D": "Models", "IMAGE": "Images"}
+        image = studio_assets.CATALOGS["IMAGE"][0]
+        with tempfile.TemporaryDirectory() as directory:
+            path, record = Path(directory) / studio_assets.CATS_FILE, Path(directory) / studio_assets.WRITTEN_NAMES
+            studio_assets.write_catalogs(directory, german)
+            saved = record.read_bytes()
+            path.write_text("\n".join(line for line in path.read_text(encoding="utf-8").splitlines()
+                                       if not line.startswith(image)) + "\n", encoding="utf-8")
+            shared_replace = studio_assets.shared_replace   # The module studio_assets and studio_files read through.
+            real = shared_replace.open_shared
+
+            def failing(name, *arguments):   # The shared reader every read of Studio's own files goes through.
+                if Path(name).name == studio_assets.WRITTEN_NAMES:
+                    raise PermissionError(1, "not now")
+                return real(name, *arguments)
+            missing = path.read_bytes()
+            with mock.patch.object(shared_replace, "open_shared", failing):
+                self.assertIsNone(studio_assets.write_catalogs(directory, english, renamed=True))
+            self.assertEqual(path.read_bytes(), missing)   # Not renamed, nothing added while unknown.
+            self.assertEqual(record.read_bytes(), saved)
+            studio_assets.write_catalogs(directory, english, renamed=True)   # Readable again: Angelo's own follow.
+            self.assertIn("Angelo Media Studio/Models:Models", path.read_text(encoding="utf-8"))
+
+    def test_a_record_angelo_could_not_have_written_is_rebuilt(self):
+        identity = studio_assets.CATALOGS["3D"][0]
+        for broken in ("{not json", "[1, 2]", '{"%s": "Models"}' % identity):
+            with self.subTest(broken=broken), tempfile.TemporaryDirectory() as directory:
+                path = self._upgrade(directory, "Hero props")
+                (Path(directory) / studio_assets.WRITTEN_NAMES).write_text(broken, encoding="utf-8")
+                studio_assets.write_catalogs(directory, {"3D": "Models", "IMAGE": "Images"}, renamed=True)
+                self.assertIn(f"{identity}:Angelo Media Studio/Hero props:Hero props", path.read_text(encoding="utf-8"))
+                self.assertIsInstance(json.loads((Path(directory) / studio_assets.WRITTEN_NAMES).read_text()), dict)
+
+    def test_an_upgrade_keeps_another_languages_line_as_written(self):
+        """Known limit: with no record, a line a 1.0.9 Angelo wrote in a third language cannot be told from the
+        person's own name, so it is kept as it is, in every language, until the person renames it."""
+        identity = studio_assets.CATALOGS["3D"][0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._upgrade(directory, "Modèles")
+            for names in ({"3D": "Models", "IMAGE": "Images"}, {"3D": "Modelle", "IMAGE": "Bilder"}):
+                studio_assets.write_catalogs(directory, names, renamed=True)
+                self.assertIn(f"{identity}:Angelo Media Studio/Modèles:Modèles", path.read_text(encoding="utf-8"))
+
+    def test_an_upgrade_still_translates_angelos_own_english_line(self):
+        identity = studio_assets.CATALOGS["3D"][0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._upgrade(directory, "Models")
+            self.assertTrue(studio_assets.write_catalogs(directory, {"3D": "Modelle", "IMAGE": "Bilder"}))
+            self.assertIn(f"{identity}:Angelo Media Studio/Modelle:Modelle", path.read_text(encoding="utf-8"))
+
+    def test_a_missing_catalogue_is_added_alone(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / studio_assets.CATS_FILE
+            self.assertTrue(studio_assets.write_catalogs(directory, {"3D": "Modelle", "IMAGE": "Bilder"}))
+            image = studio_assets.CATALOGS["IMAGE"][0]
+            path.write_text("\n".join(line for line in path.read_text(encoding="utf-8").splitlines()
+                                       if not line.startswith(image)) + "\n", encoding="utf-8")
+            self.assertTrue(studio_assets.write_catalogs(directory, {"3D": "Models", "IMAGE": "Images"}, renamed=False))
+            text = path.read_text(encoding="utf-8")
+        self.assertIn("Angelo Media Studio/Modelle:Modelle", text)   # Kept in the other Angelo's language.
+        self.assertIn(f"{image}:Angelo Media Studio/Images:Images", text)
 
     def test_catalogues_the_person_adds_are_kept(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -852,7 +1000,6 @@ class SyncTests(unittest.TestCase):
             self.assertFalse(studio_assets_host.sync(library.root, directory, {}, "b", "s", threading.Event(), run))
             run.assert_not_called()
 
-    @unittest.skipIf(sys.platform == "win32", "the stand-in writer is a POSIX script")
     def test_the_writer_runs_lowered_and_stops_with_the_add_on(self):
         with tempfile.TemporaryDirectory() as root:
             writer = Path(root) / "writer"
@@ -862,14 +1009,25 @@ class SyncTests(unittest.TestCase):
                 args = sys.argv[sys.argv.index("--") + 1:]
                 batch = json.load(open(args[0]))
                 time.sleep(.2)   # After the launcher lowered this process.
-                json.dump({{"nice": os.getpriority(os.PRIO_PROCESS, 0), "ids": [i["id"] for i in batch]}},
-                          open(args[1], "w"))
+                if os.name == "nt":   # BELOW_NORMAL_PRIORITY_CLASS
+                    import ctypes
+                    kernel32 = ctypes.windll.kernel32
+                    kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+                    lowered = kernel32.GetPriorityClass(ctypes.c_void_p(kernel32.GetCurrentProcess())) == 0x4000
+                else:
+                    lowered = os.getpriority(os.PRIO_PROCESS, 0) >= 10
+                json.dump({{"lowered": lowered, "ids": [i["id"] for i in batch]}}, open(args[1], "w"))
                 time.sleep(float(batch[0].get("sleep", 0)))
                 """))
             writer.chmod(writer.stat().st_mode | stat.S_IEXEC)
+            if sys.platform == "win32":   # Windows starts no "#!" script: Python runs the stand-in, as launched.
+                popen = subprocess.Popen
+                self.enterContext(mock.patch.object(studio_assets_host.subprocess, "Popen",
+                                                    lambda command, **options: popen([sys.executable, *command],
+                                                                                     **options)))
             results = studio_assets_host.convert_batch(str(writer), [{"id": "a", "sleep": 0.6}], threading.Event())
             self.assertEqual(results["ids"], ["a"])
-            self.assertGreaterEqual(results["nice"], 10)
+            self.assertIs(results["lowered"], True)
             stop = threading.Event()
             threading.Timer(.3, stop.set).start()
             started = machine_clock.start(self)

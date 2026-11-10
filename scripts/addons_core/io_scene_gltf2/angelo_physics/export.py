@@ -22,16 +22,25 @@ it is numbered) rearranges it so engines import what the person meant. Godot 4.4
 * **Collision only.** A collision-only mesh is written only as its shape: the mesh is in the file (a convex or mesh
   shape points at it) but no node draws it, like Godot's ``-colonly``.
 
-Mesh shapes point at the object's exported mesh; a primitive is fitted (``shapes``) and any scale between its node
-and the fitted object is baked into its dimensions.
+Mesh shapes point at the object's exported mesh. A primitive is fitted (``shapes``) to ``fitting.rest_bounds``, the
+measurement the Game Physics panel and Edit Fitted Size share: the evaluated geometry, or for a mesh an armature
+deforms the rest pose its skin binds (fitting the current frame would size the shape to a pose the engine never
+loads). A skinned mesh's shape is placed where its skin draws it (its first joint times that joint's inverse bind
+matrix, as glTF readers do; they ignore a skinned mesh's own node). Any scale between the shape's node and the
+fitted object is baked into its dimensions. An export that doesn't apply modifiers writes a mesh the fit may not
+match, and says so.
 """
 
+import numpy as np
+
 from ..io.com import gltf2_io
+from ..io.com.constants import ComponentType, DataType
 from ..io.com.gltf2_io_extensions import ChildOfRootExtension, Extension
-from . import props, shapes
+from . import fitting, props, shapes
 from .godot_suffixes import SUFFIX_NOTES, godot_suffix
 
 BODY_EXTENSION = "OMI_physics_body"
+LIVE_EXPORT_ID = "angelo_link_web"   # Angelo's web live link (angelo_agent.web_link_assets.LIVE_EXPORT_ID).
 SHAPE_EXTENSION = "OMI_physics_shape"
 TRS_PATHS = frozenset({"translation", "rotation", "scale"})
 GEOMETRY_TYPES = frozenset({"MESH", "CURVE", "SURFACE", "FONT", "META"})
@@ -41,15 +50,16 @@ PHYSICS_TYPES = GEOMETRY_TYPES | {"EMPTY"}
 class Marked:
     """One exported node of a marked object and the object's physics settings (read once)."""
     __slots__ = ("node", "obj", "body", "mass", "shape", "fit", "axis", "size", "radius", "height", "offset",
-                 "collision_only", "mesh")
+                 "collision_only", "mesh", "skin", "bounds")
 
     def __init__(self, node, obj):
         settings = obj.angelo_physics
-        self.node, self.obj, self.mesh = node, obj, node.mesh
+        self.node, self.obj, self.mesh, self.skin = node, obj, node.mesh, node.skin
         self.body, self.mass, self.shape = settings.body, settings.mass, settings.shape
         self.fit, self.axis = settings.fit, settings.axis
         self.size, self.radius, self.height = tuple(settings.size), settings.radius, settings.height
         self.offset, self.collision_only = tuple(settings.offset), settings.collision_only
+        self.bounds = None   # ``fitting.rest_bounds``, measured once (``_fit``).
 
 
 class PhysicsExportExtension:
@@ -79,7 +89,9 @@ class PhysicsExportExtension:
             if self.formats.get(id(scene), "OMI") == "GODOT_SUFFIXES":
                 write_suffixes(records, log)
             else:
-                write_omi(records, tree, animations, export_settings['gltf_yup'], log)
+                write_omi(records, tree, animations, export_settings['gltf_yup'], log,
+                          export_settings.get('gltf_apply', True),
+                          live=export_settings.get("gltf_export_id") == LIVE_EXPORT_ID)
 
 
 def _supported(record, log):
@@ -143,31 +155,113 @@ def _relative(path):
     return matrix
 
 
+def _floats(accessor, count):
+    """An accessor's first ``count`` floats, or None when its bytes aren't at hand."""
+    data = getattr(getattr(accessor, "buffer_view", None), "data", None)
+    if (data is None or accessor.component_type != ComponentType.Float or accessor.sparse is not None
+            or accessor.byte_offset or len(data) < count * 4):
+        return None
+    return np.frombuffer(data, dtype="<f4", count=count).astype(np.float64)
+
+
+def _world(tree, node):
+    """A node's transform in the glTF scene, composed from its ancestors' TRS (numpy 4x4)."""
+    path = [node]
+    parent = tree.parents.get(id(node))
+    while parent is not None:
+        path.append(parent)
+        parent = tree.parents.get(id(parent))
+    return np.array(_relative(list(reversed(path))), dtype=np.float64)
+
+
+def _skin_frame(skin, tree):
+    """Where a skin draws the vertices written for it, in the scene: its first joint's transform times that joint's
+    inverse bind matrix (how every glTF reader places a skinned mesh, whatever its own node says), or None."""
+    joints = skin.joints or ()
+    if not joints or not isinstance(joints[0], gltf2_io.Node) or id(joints[0]) not in tree.parents:
+        return None
+    values = _floats(skin.inverse_bind_matrices, 16)
+    return None if values is None else _world(tree, joints[0]) @ values.reshape(4, 4).T   # Stored column by column.
+
+
+def _gltf_matrix(matrix, yup):
+    """A Blender object matrix in glTF axes (the exporter's +Y up conversion on both sides)."""
+    axes = np.array(((1, 0, 0, 0), (0, 0, 1, 0), (0, -1, 0, 0), (0, 0, 0, 1)), dtype=np.float64) if yup else np.eye(4)
+    return axes @ np.array(matrix, dtype=np.float64) @ axes.T
+
+
+def _skinned_frames(record, tree, yup):
+    """For a skinned record, (object axes -> its node's frame, written vertices -> its node's frame); None otherwise.
+    The exporter writes a skinned mesh's vertices in world space and glTF draws them through the skin, never at the
+    mesh's own node, so a shape fitted in the object's axes, or pointing at those vertices, needs these to sit where
+    the mesh is drawn."""
+    if record.skin is None:
+        return None
+    written = _skin_frame(record.skin, tree)
+    to_node = np.linalg.inv(_world(tree, record.node)) @ (np.eye(4) if written is None else written)
+    return to_node @ _gltf_matrix(record.obj.matrix_world, yup), to_node
+
+
+def _then(relative, matrix):
+    """``relative`` (a 4x4 tuple matrix or None) followed by ``matrix`` (numpy or None), as a tuple matrix or None."""
+    if matrix is None:
+        return relative
+    matrix = tuple(tuple(float(value) for value in row) for row in matrix)
+    return matrix if relative is None else shapes.multiply(relative, matrix)
+
+
 def _fit(record):
     if record.fit == "MANUAL" or record.obj.type == "EMPTY":
         return shapes.manual(record.shape, record.offset, record.size, record.radius, record.height, record.axis)
-    minimum, maximum = shapes.bounds(record.obj.bound_box)
-    return shapes.fit_bounds(record.shape, minimum, maximum, record.axis)
+    if record.bounds is None:
+        record.bounds = fitting.rest_bounds(record.obj)   # The panel and Edit Fitted Size measure the same way.
+    return shapes.fit_bounds(record.shape, *record.bounds, record.axis)
 
 
-def _placed(record, relative, yup):
+def _placed(record, relative, tree, yup):
     """(translation, rotation, scale, OMI shape entry) of a node holding ``record``'s shape below a node whose frame
     reaches the record's node through ``relative`` (None: the record's node itself); identity parts are None. A
     primitive bakes any scale into its size; a mesh shape can't be resized, so its node keeps the scale."""
+    frames = _skinned_frames(record, tree, yup)
     if record.shape in shapes.MESH_SHAPES:
-        translation, rotation, scale = shapes.decompose(relative) if relative is not None else (None, None, None)
+        matrix = _then(relative, frames[1] if frames else None)
+        translation, rotation, scale = shapes.decompose(matrix) if matrix is not None else (None, None, None)
         entry = shapes.omi_shape(kind=record.shape, mesh=record.mesh)
     else:
-        translation, rotation, fit = shapes.placement(shapes.to_gltf_fit(_fit(record), yup), relative)
+        translation, rotation, fit = shapes.placement(shapes.to_gltf_fit(_fit(record), yup),
+                                                      _then(relative, frames[0] if frames else None))
         scale, entry = None, shapes.omi_shape(fit)
     return (_vector(translation or (0, 0, 0), (0, 0, 0)),
             _vector(rotation or shapes.IDENTITY_ROTATION, shapes.IDENTITY_ROTATION),
             _vector(scale or (1, 1, 1), (1, 1, 1)), entry)
 
 
+def _unapplied(record, yup):
+    """Whether a fitted primitive measures modifiers this export doesn't write (it doesn't apply modifiers)."""
+    if record.fit == "MANUAL" or record.shape in shapes.MESH_SHAPES or not any(
+            modifier.show_viewport and modifier.type != "ARMATURE" for modifier in getattr(record.obj, "modifiers", ())):
+        return False
+    accessors = [(primitive.attributes or {}).get("POSITION") for primitive in (record.mesh.primitives or ())] if (
+        record.mesh is not None) else []
+    if record.skin is not None or not accessors or any(not getattr(item, "min", None) for item in accessors):
+        return True
+    written = [shapes.bounds_from_gltf(item.min, item.max, yup) for item in accessors]
+    low = tuple(min(item[0][i] for item in written) for i in range(3))
+    high = tuple(max(item[1][i] for item in written) for i in range(3))
+    _fit(record)
+    return any(abs(a - b) > 1e-4 for a, b in zip(low + high, record.bounds[0] + record.bounds[1]))
+
+
 def _vector(values, identity):
     values = tuple(float(value) for value in values)
     return None if all(abs(a - b) <= shapes.EPSILON for a, b in zip(values, identity)) else list(values)
+
+
+def _source(node):
+    """The extras that name the node a collider is made for, in Angelo's web live link's frames only (``live``),
+    where the tree is keyed (``extras.angelo_uid``), so the page sends it with the object whose shape it is."""
+    key = (node.extras or {}).get("angelo_uid") if isinstance(node.extras, dict) else None
+    return {"angelo_from": key} if key is not None else None
 
 
 def _relocate_visual(node, animations):
@@ -185,7 +279,7 @@ def _relocate_visual(node, animations):
     return visual
 
 
-def write_omi(records, tree, animations, yup, log):
+def write_omi(records, tree, animations, yup, log, apply=True, live=False):
     animated = {id(channel.target.node) for animation in animations for channel in animation.channels or ()
                 if channel.target is not None and channel.target.path in TRS_PATHS}
     bodies = {}
@@ -233,14 +327,19 @@ def write_omi(records, tree, animations, yup, log):
                             % (record.obj.name, owner.obj.name))
             else:
                 hoist = path
-        own = _placed(record, None, yup)
+        if not apply and _unapplied(record, yup):
+            log.warning("Game physics: %s's shape is fitted to its modifiers' result, which this export doesn't apply; "
+                        "export with Apply Modifiers, or size the shape by hand" % record.obj.name)
+        own = _placed(record, None, tree, yup)
         own_node_fits = (record.node.mesh is None and record.node.camera is None and own[:3] == (None, None, None))
         if own_node_fits and (hoist is None or len(hoist) == 1):
             holder, entry = record.node, own[3]   # The object's own node is (or is directly below) its body.
         else:
             parent = owner.node if hoist is not None else record.node
-            translation, rotation, scale, entry = _placed(record, _relative(hoist) if hoist else None, yup)
-            holder = gltf2_io.Node(camera=None, children=[], extensions=None, extras=None, matrix=None, mesh=None,
+            translation, rotation, scale, entry = _placed(record, _relative(hoist) if hoist else None, tree, yup)
+            holder = gltf2_io.Node(camera=None, children=[], extensions=None,
+                                   extras=_source(record.node) if live else None,
+                                   matrix=None, mesh=None,
                                    name=(record.node.name or "") + ("Trigger" if role == "trigger" else "Collider"),
                                    rotation=rotation, scale=scale, skin=None, translation=translation, weights=None)
             parent.children = list(parent.children or []) + [holder]

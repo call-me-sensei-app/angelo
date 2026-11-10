@@ -84,6 +84,7 @@ class _ReadOnlyStore:
 
 class MirrorController(Controller):
     hosted_in_worker = True
+    explains_auto = False   # Its worker decides what asks (``needs_person``): no card line states the base rule.
     store_type = MirrorStore   # Reads only what its worker wrote since the last read (``worker_mirror_journal``).
 
     def __init__(self, directory, session_id, send_op=None, *, records=None, settings=None):
@@ -208,30 +209,47 @@ class MirrorController(Controller):
             raise MirrorRefused(Text(NOT_ACCEPTED, why=text, code=code))
         return answer
 
-    def send(self, text, observation=None, *, recovery_evidence=None, host_request=None):
-        """The person's message (or Angelo's own ``host_request``) to the worker's chat, sent without waiting
+    def send(self, text, observation=None, *, recovery_evidence=None, host_request=None, host_kind=None, references=None, pending=(), submission=None, use_composer_choices=True):
+        """The person's message or classified host request to the worker, without waiting.
         (``worker_mirror_ops``): the turn shows as sending until the worker confirms it, or comes back unsent. The
-        worker observes its own document, so ``observation`` and ``recovery_evidence`` (the lead's) are never sent."""
+        worker observes its own document, so ``observation`` and ``recovery_evidence`` (the lead's) are never sent.
+        ``references``/``pending``: pending messages sent after a turn (``chat_pending.dispatch_due``), with their own
+        pictures instead of the message box's, back on their own bubbles if the worker never takes them."""
+        from . import request_submissions
+        if submission is not None:
+            submission.before_start(self)
         del observation, recovery_evidence
+        from .request_rows import request_kind as checked_kind
+        host_kind = checked_kind(host_kind)
         if self.busy:
             raise RuntimeError(Text(n_("An agent turn is already running")))
-        if not str(text).strip() and not self.attachments or len(str(text)) > 32000:
+        from . import request_rows
+        selected, host_kind, persons = request_rows.sender(self, host_request, host_kind, references)
+        if not str(text).strip() and not selected or len(str(text)) > 32000:
             raise ValueError(Text(n_("Enter a message of 1-32000 characters")))
         from . import worker_mirror_park as park   # A parked chat's worker starts again.
         if not callable(self.send_op) and not park.waits(self):
             raise MirrorRefused(Text(NOT_OPEN))
         before = park.consent(self) if callable(self.send_op) else None   # A parked chat's: as it goes (``_go``).
-        drafts = [] if host_request is not None else [dict(reference) for reference in self.attachments]
-        self.turn_attachments = drafts
-        del self.attachments[:len(drafts)]
+        box = host_request is None and references is None and not getattr(self, "_external_task", False)
+        drafts = [dict(r) for r in selected]
+        self.turn_attachments, self._turn_pending = drafts, list(pending)
+        if box:
+            del self.attachments[:len(drafts)]
         self.begin_turn()
+        self._send_submission = None
+        if submission is not None:
+            submission.bind(self)
         self.status = ops.SENDING
         self._turn_message, self._host_request = text, host_request   # A message never sent goes back (finish).
+        self._persons_send = persons   # Only the person's (request_rows).
         self._sending = (ops.submit if callable(self.send_op) else park.held)(
             self, "chat.send", "send", before=before, text=text, attachments=drafts,
-            host_request=list(host_request) if host_request is not None else None)
+            host_request=list(host_request) if host_request is not None else None,
+            **({"host_kind": host_kind} if host_kind is not None else {}))   # The person's: as before.
         from . import worker_mirror_prewarm
         worker_mirror_prewarm.sent(self)   # Its prewarm, if any, is the worker's request's now.
+
 
     def approve_call(self, call_id):
         """Approve the call: only through ``worker_consent_lead.approve``, so what goes back is the digest its card

@@ -21,6 +21,10 @@ TCP listener exists, and the AI Providers page draws the card (screenshot).
 No provider, model, network or account is used. Contract: doc/angelo/external_mcp.rst.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import argparse
 import base64
 import json

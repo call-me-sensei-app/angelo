@@ -54,6 +54,7 @@ from pathlib import Path
 from . import live_target, view_picture
 from .render_extensions import ViewRefused
 from .view_spec import CURRENT_SOURCES, JOB, LAST_JOB, RENDER_RESULT, RENDERED, split_image
+from .refusal_codes import coded
 
 FRAME_FILE = re.compile(r"frame_(-?[0-9]+)\.(png|jpg|exr)")
 RENDER_KINDS = ("RENDER_STILL", "RENDER_ANIMATION")
@@ -309,8 +310,8 @@ def _job_named(controller, name):
     mine = [record for record in manager.store.records.values()
             if record["session"] == controller.state["id"] and record["kind"] in RENDER_KINDS]
     if not mine:
-        raise RuntimeError("This conversation has started no render job yet; start one with angelo_job_start, or "
-                           "render a look (RENDERED without image)")
+        raise coded(RuntimeError("This conversation has started no render job yet; start one with angelo_job_start, or "
+                                 "render a look (RENDERED without image)"), "VALIDATION")
     return manager, max(mine, key=lambda record: int(record["id"][1:]))
 
 
@@ -336,12 +337,14 @@ def finished_image(window, checked, references, controller):
     def show():
         from . import job_host
         if owned and not current():
-            raise RuntimeError("The render job changed or is no longer owned by this conversation; inspect its card")
+            raise coded(RuntimeError("The render job changed or is no longer owned by this conversation; inspect its card"),
+                        "OWNERSHIP")
         job_host.guard("angelo_view")  # Another queued job may already have locked Blender.
         try:
             live = held()
             if live is None:
-                raise RuntimeError("The window closed (or another file was opened) before the render finished")
+                raise coded(RuntimeError("The window closed (or another file was opened) before the render finished"),
+                            "CANCELLED")
             result = shown(live, checked, references, controller)
         except RuntimeError:
             if owned and not current():
@@ -379,7 +382,8 @@ def shown(window, checked, references, controller):
         except RuntimeError:
             raise
         except Exception as error:
-            raise RuntimeError("%s could not be read (%s)" % (source.label, str(error)[:120])) from None
+            raise coded(RuntimeError("%s could not be read (%s)" % (source.label, str(error)[:120])),
+                        "INTERNAL_ERROR") from None
     finally:
         if source.temporary is not None:
             references.discard_observation(source.temporary)

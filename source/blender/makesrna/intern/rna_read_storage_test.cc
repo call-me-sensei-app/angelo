@@ -13,6 +13,7 @@
 #include "DNA_scene_types.h"
 
 #include "RNA_access.hh"
+#include "RNA_define.hh"
 #include "RNA_prototypes.hh"
 
 #include "rna_internal.hh"
@@ -257,6 +258,112 @@ TEST_F(RNAReadStorageTest, RuntimeRegistrationLifetimeCannotReuseCompiledPropert
     EXPECT_TRUE(registry.structs.is_empty());
   }
   EXPECT_EQ(callback_calls, 0);
+}
+
+TEST_F(RNAReadStorageTest, RuntimeDeclarationEpochTracksSameNamedReplacement)
+{
+  BlenderRNA registry;
+  uint64_t previous = RNA_runtime_declaration_generation();
+  StructRNA *runtime = RNA_def_struct_ptr(&registry, "DeclarationEpochFixture", RNA_Scene);
+  ASSERT_NE(runtime, nullptr);
+  EXPECT_GT(RNA_runtime_declaration_generation(), previous);
+  previous = RNA_runtime_declaration_generation();
+  RNA_def_struct_flag(runtime, STRUCT_NO_DATABLOCK_IDPROPERTIES);
+  EXPECT_GT(RNA_runtime_declaration_generation(), previous);
+  previous = RNA_runtime_declaration_generation();
+  for (int lifetime = 0; lifetime < 2; lifetime++) {
+    PropertyRNA *prop = RNA_def_property(runtime, "same_name", PROP_FLOAT, PROP_NONE);
+    ASSERT_NE(prop, nullptr);
+    EXPECT_GT(RNA_runtime_declaration_generation(), previous);
+    previous = RNA_runtime_declaration_generation();
+    RNA_def_property_array(prop, 3);
+    EXPECT_GT(RNA_runtime_declaration_generation(), previous);
+    previous = RNA_runtime_declaration_generation();
+    RNA_def_property_flag(prop, PROP_HIDDEN);
+    EXPECT_GT(RNA_runtime_declaration_generation(), previous);
+    previous = RNA_runtime_declaration_generation();
+    EXPECT_EQ(RNA_def_property_free_identifier(runtime, "same_name"), 1);
+    EXPECT_GT(RNA_runtime_declaration_generation(), previous);
+    previous = RNA_runtime_declaration_generation();
+  }
+  RNA_struct_free(&registry, runtime);
+  EXPECT_GT(RNA_runtime_declaration_generation(), previous);
+  EXPECT_TRUE(registry.structs.is_empty());
+}
+
+TEST_F(RNAReadStorageTest, MaterialViewsNeverReconcileTrailingObjectSlots)
+{
+  Object object{};
+  Mesh mesh{};
+  Material visible{}, dormant{};
+  std::memcpy(object.id.name, "OBMaterialRead", sizeof("OBMaterialRead"));
+  std::memcpy(mesh.id.name, "MEMaterialRead", sizeof("MEMaterialRead"));
+  std::memcpy(visible.id.name, "MAVisible", sizeof("MAVisible"));
+  std::memcpy(dormant.id.name, "MADormant", sizeof("MADormant"));
+  Material *data_materials[] = {&visible};
+  Material *object_materials[] = {nullptr, &dormant};
+  char links[] = {0, 0};
+  mesh.mat = data_materials;
+  mesh.totcol = 1;
+  object.type = OB_MESH;
+  object.data = &mesh.id;
+  object.mat = object_materials;
+  object.matbits = links;
+  object.totcol = 2;
+  object.actcol = 2;
+  PointerRNA owner(&object.id, RNA_Object, &object);
+  PropertyRNA *active = builtin_property(RNA_Object, "active_material");
+  ASSERT_NE(active, nullptr);
+  EXPECT_EQ(RNA_property_pointer_get(&owner, active).data, &visible);
+  EXPECT_EQ(object.totcol, 2);
+  PropertyRNA *slots = builtin_property(RNA_Object, "material_slots");
+  PropertyRNA *effective = builtin_property(RNA_MaterialSlot, "material");
+  PropertyRNA *name = builtin_property(RNA_MaterialSlot, "name");
+  ASSERT_NE(slots, nullptr);
+  ASSERT_NE(effective, nullptr);
+  ASSERT_NE(name, nullptr);
+  CollectionPropertyIterator iter;
+  int visited = 0;
+  RNA_property_collection_begin(&owner, slots, &iter);
+  while (iter.valid) {
+    EXPECT_EQ(RNA_property_pointer_get(&iter.ptr, effective).data, &visible);
+    char text[64];
+    RNA_property_string_get(&iter.ptr, name, text);
+    EXPECT_STREQ(text, "Visible");
+    EXPECT_EQ(object.totcol, 2);
+    visited++;
+    RNA_property_collection_next(&iter);
+  }
+  RNA_property_collection_end(&iter);
+  EXPECT_EQ(visited, 2);
+  EXPECT_EQ(object.mat, object_materials);
+  EXPECT_EQ(object.mat[1], &dormant);
+  EXPECT_EQ(visible.id.us, 0);
+  EXPECT_EQ(dormant.id.us, 0);
+}
+
+TEST_F(RNAReadStorageTest, RawObjectMaterialSlotRetainsDormantPointerAndBounds)
+{
+  Object object{};
+  Material dormant{};
+  std::memcpy(object.id.name, "OBRawSlot", sizeof("OBRawSlot"));
+  std::memcpy(dormant.id.name, "MADormant", sizeof("MADormant"));
+  Material *materials[] = {&dormant};
+  object.mat = materials;
+  object.totcol = 1;
+  PropertyRNA *raw = builtin_property(RNA_MaterialSlot, "angelo_object_material");
+  ASSERT_NE(raw, nullptr);
+  EXPECT_EQ(RNA_property_flag(raw) & PROP_EDITABLE, 0);
+  PointerRNA slot(&object.id, RNA_MaterialSlot, &object.id);
+  EXPECT_EQ(RNA_property_pointer_get(&slot, raw).data, &dormant);
+  slot.data = reinterpret_cast<void *>(uintptr_t(&object.id) + 1);
+  EXPECT_EQ(RNA_property_pointer_get(&slot, raw).data, nullptr);
+  slot.data = &object.id;
+  object.mat = nullptr;
+  EXPECT_EQ(RNA_property_pointer_get(&slot, raw).data, nullptr);
+  object.totcol = -1;
+  EXPECT_EQ(RNA_property_pointer_get(&slot, raw).data, nullptr);
+  EXPECT_EQ(dormant.id.us, 0);
 }
 
 TEST_F(RNAReadStorageTest, GeneratedEmbeddedPointerExtractionNeverRefines)

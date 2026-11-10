@@ -93,7 +93,9 @@ def kept_connection(args, connection_id):
     ids = list(ConnectionStore(root / "accounts").records)
     if ids != [connection_id]:
         raise ValueError("The profile's connection store must hold exactly %s" % connection_id)
-    return {"id": connection_id, "kept_from_profile": str(root / "accounts")}
+    record = ConnectionStore(root / "accounts").records[connection_id]
+    return {"id": connection_id, "kept_from_profile": str(root / "accounts"), "mode": record.get("mode"),
+            "reuse_native": record.get("reuse_native"), "profile": record.get("native_profile")}
 
 
 # In the app (eval_live_agent_session) -----------------------------------------------------------

@@ -9,6 +9,8 @@ rigs; the held-out rigs (real Rigify, Mixamo-rigged and hand-made characters) ru
 (test_blender_engine_skeleton.py), and the engines' own imports in the engine e2e.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import math
 import sys

@@ -338,6 +338,9 @@ ImBuf *IMB_allocFromBuffer(
   }
 
   ibuf = IMB_allocImBuf(w, h, ImBufFlags::Zero);
+  if (ibuf == nullptr) {
+    return nullptr;
+  }
 
   ibuf->channels = channels;
 
@@ -346,13 +349,19 @@ ImBuf *IMB_allocFromBuffer(
   if (float_buffer) {
     /* TODO(sergey): The 4 channels is the historical code. Should probably be `channels`, but
      * needs a dedicated investigation. */
-    imb_alloc_buffer(ibuf->float_buffer, w, h, 4, sizeof(float), false);
+    if (!imb_alloc_buffer(ibuf->float_buffer, w, h, 4, sizeof(float), false)) {
+      IMB_freeImBuf(ibuf);
+      return nullptr;
+    }
 
     memcpy(ibuf->float_data_for_write(), float_buffer, sizeof(float[4]) * w * h);
   }
 
   if (byte_buffer) {
-    imb_alloc_buffer(ibuf->byte_buffer, w, h, 4, sizeof(uint8_t), false);
+    if (!imb_alloc_buffer(ibuf->byte_buffer, w, h, 4, sizeof(uint8_t), false)) {
+      IMB_freeImBuf(ibuf);
+      return nullptr;
+    }
 
     memcpy(ibuf->byte_data_for_write(), byte_buffer, sizeof(uint8_t[4]) * w * h);
   }

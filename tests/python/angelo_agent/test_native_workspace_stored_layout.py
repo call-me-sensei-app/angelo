@@ -7,6 +7,8 @@ workspace and crashed ``ED_workspace_change`` on a null layout. The app's proof,
 with the guard, is ``test_blender_workspace_stored_layout``; this pins the guard in the source.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import unittest
 from pathlib import Path

@@ -11,6 +11,7 @@ image format as Blender's do, one render job the test drives) and
 import importlib
 import sys
 import tempfile
+import time
 import unittest
 
 import numpy
@@ -55,7 +56,8 @@ class LookCase(unittest.TestCase):
                                                 "imbuf": self.blender.imbuf,
                                                 "mathutils": mathutils, "angelo_agent.job_ui": job_ui})
         self.modules.start()
-        for name in ("view_render", "view_render_restore", "view_capture", "job_runners", "job_settings", "scene_queries"):
+        for name in ("view_render", "view_render_runner", "view_render_restore", "view_capture", "job_runners",
+                     "job_settings", "scene_queries"):
             sys.modules.pop("angelo_agent." + name, None)
         self.render = importlib.import_module("angelo_agent.view_render")
         self.manager = JobManager(JobStore(self.temp.name), clock=self.clock,
@@ -64,7 +66,7 @@ class LookCase(unittest.TestCase):
         capture = importlib.import_module("angelo_agent.view_capture")
         self.patches = [
             patch.object(self.render, "scene_queries", SimpleNamespace(document_epoch=lambda: self.epoch)),
-            patch.object(self.render.time, "monotonic", self.clock),
+            patch.object(time, "monotonic", self.clock),   # Read by the look's runner (view_render_runner).
             patch.object(capture, "_targets", lambda window, handles: ([], [])),
             patch.object(capture, "_scene_camera", lambda window, epoch, resolution: None),
             patch("angelo_agent.native_programs.runtime_is_staging", lambda: self.staging)]

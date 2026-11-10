@@ -102,6 +102,8 @@ def send(provider, context, params, attempt):
     # Stop may race with turn/start before its ID has reached the host.
     if context.cancelled:
         provider.stop_request(fence)
+    from .steering_delivery import codex_offer
+    codex_offer(provider)   # Steers the person sent before this turn opened: in now, if no call is outstanding.
     # Host tool calls arrive inside a Codex turn: approving and running them is not model time.
     turns = provider._plan
     overdue = turn_activity.wait(provider.done, provider._activity, busy=getattr(context, "tools_pending", None),

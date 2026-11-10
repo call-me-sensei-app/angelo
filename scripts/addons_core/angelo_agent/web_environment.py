@@ -30,9 +30,13 @@ from pathlib import Path
 
 import numpy as np
 
+from .blend_file_paths import located
+
 WIDTH = 1024            # Pixels around the horizon: enough for lighting and a soft background, ~2 MB as RGBE.
 SAMPLES = 16            # A bake's samples per pixel: camera rays only, so these only smooth edges.
 BAKE_SECONDS = 120      # A bake that takes longer is stopped; the export then carries no environment.
+# Measured 2026-11-05 (doc/angelo/web_export.rst): 2-30 s for a Sky, an 8K HDRI baked and a detailed procedural World
+# on one to all CPU threads, so a bake this long has stalled (a paused or starved process) rather than worked.
 KEEP = 3                # Pictures kept: the World now and a couple it was a moment ago (an undo, a toggle).
 
 _jobs = collections.OrderedDict()   # key -> _Job, newest last.
@@ -59,10 +63,13 @@ class _Job:
         self.ms = 0.0
         self.process = None
         self.done = threading.Event()
+        self.ran_out = False      # Stopped after BAKE_SECONDS: the next explicit export makes it again.
+        self.ended = None         # time.monotonic() when it finished.
 
     def finish(self, data=None, width=0, height=0, error=""):
         with _lock:
             self.data, self.width, self.height, self.error = data, width, height, error
+            self.ended = time.monotonic()
             self.status = "ready" if data is not None else "failed"
             _landed[0] += 1
         self.done.set()
@@ -179,6 +186,7 @@ def _wait_for_bake(job, command, out, scratch):
             except subprocess.TimeoutExpired:
                 job.process.kill()
                 job.process.wait()
+                job.ran_out = True
                 raise PictureError("the bake took longer than %d s" % BAKE_SECONDS)
         if code != 0 or not os.path.isfile(out):
             raise PictureError("the background Blender ended without a picture (exit %s)" % code)
@@ -202,7 +210,7 @@ def _start_image(job, world, config_path):
     from . import private_roots
     image = bpy.data.images[world["image"]]
     source = bytes(image.packed_file.data) if image.packed_file else \
-        bpy.path.abspath(image.filepath, library=image.library)
+        located(image.filepath, image.library, bpy.path.abspath)
     scratch = private_roots.mkdtemp("angelo-web-world-")
     return threading.Thread(target=_from_image, name="Angelo web environment", daemon=True,
                             args=(job, source, config_path, image.colorspace_settings.name, world["turn"], scratch)), \
@@ -227,11 +235,17 @@ def _start_bake(job, scene):
                             args=(job, command, out, scratch)), scratch
 
 
-def ensure(scene, world, config_path):
-    """The job making ``world``'s picture (``web_world.plan`` of ``scene``), started now if needed. Main thread."""
+def ensure(scene, world, config_path, asked=None):
+    """The job making ``world``'s picture (``web_world.plan`` of ``scene``), started now if needed. Main thread.
+
+    ``asked``: when an explicit export was asked (``time.monotonic()``): a bake that ran out of time before then is
+    made again for it rather than answered with that failure. The live preview passes none, so a World too slow to
+    bake is never baked over and over."""
     key = world["key"]
     with _lock:
         job = _jobs.get(key)
+        if job is not None and asked is not None and job.ran_out and job.ended is not None and job.ended < asked:
+            job = None
         if job is not None:
             _jobs.move_to_end(key)
             return job

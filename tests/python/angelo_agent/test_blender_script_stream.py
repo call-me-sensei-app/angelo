@@ -38,6 +38,10 @@ checks, so the same paced stream times a build without the script well (the base
 ``doc/angelo/performance.rst``, "Streamed progress") and one with it.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys

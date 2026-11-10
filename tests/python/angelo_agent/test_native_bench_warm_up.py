@@ -4,6 +4,8 @@
 plan or resume ever reads it. Unbilled; the sides' processes are replaced. The unbilled dry run
 (``--dry-run-scenario --warm-up-only``) proves the warm-up's prefix is the trial's."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import json

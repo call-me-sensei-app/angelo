@@ -10,6 +10,8 @@ any reorder pushes some other content later than before (live handles, a script'
 read-back), so the excerpt keeps the result's own order and only the facts its cut would lose follow it.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import unittest

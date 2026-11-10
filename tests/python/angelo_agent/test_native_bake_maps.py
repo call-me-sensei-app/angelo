@@ -8,6 +8,8 @@ references and the job in the running app are
 ``test_blender_bake_maps_correctness.py`` and ``test_blender_bake_maps_job.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import struct
 import sys
 import unittest

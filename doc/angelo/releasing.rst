@@ -286,7 +286,7 @@ several hundred files with ``-Scope All``. A release signed through eSigner
 uses ``-Scope KeyFiles`` (``ANGELO_SIGN_SCOPE``):
 
 - **What is signed:** the app's and launcher's executables
-  (``angelo_identity.json``), the agent runtime's own files and the MSI, about 4
+  (``angelo_identity.json``), the agent runtime's own files and the MSI, about 6
   signings per release.
 - **What is left:** every other binary stays as it is. Verification accepts it
   unsigned, but a vendor's signature on it must still be valid.
@@ -407,8 +407,8 @@ What it does, refusing at the first problem:
    ``codex-code-mode-host`` (by path, nothing else) with
    ``agent_runtime_entitlements.plist``, the ``.appex`` with
    ``thumbnailer_entitlements.plist``, then ``Angelo.app`` with
-   ``entitlements.plist``. The code-mode host arrives signed by OpenAI and is
-   re-signed with Angelo's identity like every other file.
+   ``entitlements.plist``. Both runtime executables are rebuilt from the pinned
+   fork and signed with Angelo's identity.
 4. **Verify**: ``codesign --verify --strict`` and the hardened-runtime flag on
    every signature, a Developer ID authority, a secure timestamp and one team
    for all of them, the entitlements of every file signed with entitlements
@@ -537,8 +537,9 @@ batches with retries for a busy time-stamping service, and ``signtool verify
 /pa``. A vendor's valid signature (Microsoft's runtime, GPU libraries) is kept;
 a file changed after it was signed (``HashMismatch``) stops the build; any
 other invalid signature is replaced. The agent runtime is the exception, by
-its pin: OpenAI's unchanged executables in ``agent-runtime`` keep OpenAI's
-signature and are never signed, and ``codex.exe`` always gets Angelo's
+its pin: only the unchanged ``codex-command-runner.exe`` keeps OpenAI's
+signature and is never signed; ``codex.exe``, ``codex-code-mode-host.exe`` and
+``codex-windows-sandbox-setup.exe`` always get Angelo's
 (`Agent runtime`_, "Signing"). ``ANGELO_SIGN_CERTIFICATE``,
 ``ANGELO_SIGN_KMS_KEY``, ``ANGELO_SIGN_TIMESTAMP_URL`` and
 ``ANGELO_SIGN_CHAIN_FILE`` may replace the options.
@@ -916,7 +917,7 @@ lacks a pinned setting. The runtime keeps
 upstream's version string, so a live eval's plan names the runtime file it ran
 and its SHA-256 (``plan.agent_runtime``, ``runtime_identity.py``).
 ``scripts/addons_core/angelo_agent/agent_runtime.json``
-pins it: the Codex version (``0.163.0``), the fork's branch and
+pins it: the Codex version (``0.166.0``), the fork's branch and
 commit, the feature and, per platform, the folder in the installed app and its
 files. Upstream names are kept, because Codex finds its code-mode host next to
 its own executable:
@@ -931,26 +932,36 @@ Windows    ``<install folder>\agent-runtime``  ``codex.exe``, ``codex-code-mode-
 =========  ==================================  ==============================================================
 
 **Building it.** In the fork, on the pinned commit, as ``ANGELO.md`` there
-says (upstream's release profile, then ``strip -S -x`` on macOS); on macOS
-``scripts/angelo/build_agent_runtime_macos.sh <fork checkout> <folder>`` runs
-that recipe, and refuses to start beside another run's timed benchmark trial
-(``agent_execution.rst``, "Reproducible validation"). The code-mode host is
-upstream's own build of the same release. On Windows ``codex.exe`` is
-built the way upstream's ``rust-release-windows.yml`` builds it (the MSVC
-Build Tools and Windows SDK, its MSVC environment, ``cargo build --target
-x86_64-pc-windows-msvc --release --bin codex``; the ``.pdb`` is kept apart and
-never bundled), and the other three files are OpenAI's signed release assets of
-the pinned tag, renamed without their ``-x86_64-pc-windows-msvc`` suffix and
-checked against the SHA-256 digests GitHub publishes for them. Keep a
-``SHA256SUMS`` and the build's provenance beside them. Put the files in one
-folder and check it::
+says (upstream's release profile, then ``strip -S -x`` on macOS). Build both
+``codex`` and ``codex-code-mode-host`` on macOS.
+``scripts/angelo/build_agent_runtime_macos.sh`` accepts both names after
+``<fork checkout> <folder>`` and refuses to start beside another
+run's timed benchmark trial (``agent_execution.rst``, "Reproducible validation").
+On Windows use upstream's MSVC Build Tools, Windows SDK and MSVC environment,
+with ``cargo build --target x86_64-pc-windows-msvc --release --bin codex
+--bin codex-code-mode-host --bin codex-windows-sandbox-setup``; keep the
+``.pdb`` files apart, never bundled. Only ``codex-command-runner.exe`` remains
+OpenAI's unchanged signed release asset of the pinned tag, checked against its
+published SHA-256 and valid signature.
+
+The 1.0.10 trust refresh uses fork commit
+``0ffcb4dbb1e2e310dd375d50911ea667c22f2210``, webpki-roots 1.0.11 and unchanged
+rustls-webpki 0.103.16. The hosts and Windows setup helper contain Rust TLS
+clients and embedded anchors, so their old binaries cannot be reused for this
+refresh. Its reviewed build input records the raw source archive separately
+from the lock overlay that normalizes only local workspace versions to the
+already-declared 0.166.0; compile that exact input with ``--offline --locked``.
+Bind the host's platform-specific V8 archive and binding hashes as well. Keep
+``SHA256SUMS`` and that build provenance beside the output. Put the files in
+one folder and check it::
 
    python3 scripts/angelo/release_checks.py agent-runtime <folder> [--platform macos|windows]
 
 It refuses a missing or wrong-platform file (an arm64 Mach-O executable on
-macOS, an x64 PE executable on Windows), a Windows helper without OpenAI's
-embedded signature, a version other than the pin (``codex --version``) and a
-build without the parameter in its app-server schema (``codex app-server
+macOS, an x64 PE executable on Windows), a Windows file listed in
+``upstream_signed`` without OpenAI's embedded signature, a version other than
+the pin (``codex --version``) and a build without the parameter, a pinned request field (``request_fields``) or a
+pinned notification in its app-server schema (``codex app-server
 generate-json-schema``: stock Codex reports the same version). Both run offline
 and write only to a temporary ``CODEX_HOME``; ``--no-run`` checks another
 platform's folder without running it.
@@ -964,8 +975,8 @@ pin's ``release_marker``: the app then refuses any path in
 ``ANGELO_AGENT_RUNTIME`` and accepts only ``off``).
 ``build_release_windows.ps1`` takes ``-AgentRuntimeDir`` (or
 ``ANGELO_AGENT_RUNTIME_DIR``) and checks the same in PowerShell, plus OpenAI's
-valid signature on the helpers (``Get-AuthenticodeSignature``), before anything
-compiles: both platforms find the runtime the same way, in the folder
+valid signature on the retained command runner (``Get-AuthenticodeSignature``),
+before anything compiles: both platforms find the runtime the same way, in the folder
 ``ANGELO_AGENT_RUNTIME_DIR`` names on the build machine. After the build the
 installed copies must be the checked files byte for byte, and the manifest
 records each file's SHA-256. Without the folder the script stops at once with
@@ -976,15 +987,16 @@ connections then use the person's own Codex), and ``-Sign`` refuses it.
 runtime and checks a bundled one's version and parameter.
 
 **Signing.** macOS signs both executables with Angelo's identity (`Entitlements`_).
-On Windows the pin's ``upstream_signed`` files (``codex-code-mode-host.exe``,
-``codex-command-runner.exe``, ``codex-windows-sandbox-setup.exe``: OpenAI's
-unchanged release files) ship with OpenAI's own Authenticode signature
-(``upstream_signer``): ``sign_windows.ps1`` keeps it, never signs, re-signs or
-strips one, and stops when one is not validly signed by OpenAI; ``codex.exe``,
-Angelo's build, is signed with Angelo's certificate like every other Angelo
-binary and may never keep another signer's. ``-Mode VerifyMsi`` requires
-OpenAI's signature on the helpers, Angelo's on ``codex.exe``, and exactly the
-pinned files in the MSI's ``agent-runtime`` folder.
+On Windows the pin's ``upstream_signed`` list contains only the unchanged
+``codex-command-runner.exe``, which keeps OpenAI's own valid Authenticode
+signature (``upstream_signer``). ``sign_windows.ps1`` never signs, re-signs or
+strips it, and refuses an invalid or different signer. The rebuilt
+``codex.exe``, ``codex-code-mode-host.exe`` and ``codex-windows-sandbox-setup.exe``
+are signed with Angelo's certificate and may never keep another signer's.
+The signer derives these key files from the pin, not a codex-only allowlist.
+``-Mode VerifyMsi`` requires OpenAI's signature on the command runner, Angelo's
+on all three rebuilt executables, and exactly the pinned files in the MSI's
+``agent-runtime`` folder.
 
 **Checking the installed runtime.** ``windows_agent_runtime_check.ps1`` takes
 ``-Msi`` (unpacked with ``msiexec /a``) or ``-InstallDir``: exactly the pinned
@@ -1192,11 +1204,13 @@ instead.
   folder chosen with ``PYTHONPYCACHEPREFIX`` is not Angelo's to manage. One
   build's folder holds about 17 MB after a launch with the add-on.
 
-Startup is unchanged: the bytecode is compiled once per build either way, now
-into the cache. A first launch with an empty cache compiles about 900 modules
+Startup was unchanged when the folder came in (before the shipped bytecode
+below was read): the bytecode was compiled once per build either way, then
+into the cache. A first launch with an empty cache compiled about 900 modules
 (1.2 s on an M4 Pro), as a build without the prefix does into its bundle on
-its first launch; the bundled bytecode cannot spare it, because Python reads
-bytecode only from the prefix once one is set. Measured on one Mac with the
+its first launch. Since "Angelo reads the bytecode it ships" (below), a first
+launch compiles only the few modules imported before ``sitecustomize`` (13
+files on 1.0.10, see `First launch`_). Measured on one Mac with the
 same source built without and with these measures, both staged and signed ad
 hoc and started through Launch Services, interleaved (seconds from ``open``
 until the add-on is enabled):
@@ -1312,6 +1326,86 @@ Known limits:
 * **App Translocation is checked by unit tests only**: a real translocated
   launch needs a quarantined app and the Gatekeeper prompt.
 
+First launch
+============
+
+A person's first launch of a downloaded build pays costs no later launch
+pays. Measured by the release kit's first-launch slot
+(``rel/firstlaunch1010``: a fresh copy of the published disk image, the
+quarantine attribute a browser download carries, a new user and the app's
+Metal shader cache in ``getconf DARWIN_USER_CACHE_DIR`` removed; timed from
+the process start to Angelo's setup card), in order:
+
+* **macOS's first execution of new code**: Gatekeeper scans the new 190 MB
+  executable and the system validates each library the first time it loads
+  (``amfid``, ``syspolicyd``). It is per copied file, quarantined or not, and
+  happens before ``main``: no window exists yet. A fresh copy's ``Angelo
+  --version`` took 9.7 s against 0.34 s on its second run (1.0.9, Mac 2,
+  untimed; Gatekeeper's scan about 4 s of it).
+* **GPU shaders, compiled once per Mac**: Metal caches compiled shaders per
+  app, so a first launch compiles every shader its first frames draw. Most of
+  it was the 3D view's draw engines (workbench, overlays), and the first frame
+  rendered the stock layout's 3D view *under* Angelo's startup cover: the main
+  loop was held 3.5 s (Mac 2) before the window showed anything. The window
+  manager now skips a viewport region the cover hides
+  (``WM_angelo_startup_cover_hides``, ``wm_draw.cc``), keeping its layout, and
+  lifting the cover tags every area for a redraw: the first frame shows the
+  cover and the splash art as soon as the main loop runs, and the draw
+  engines compile for the 3D view a person will see. Skipping alone would only
+  move the compile after the layout, so a skipped 3D view also starts its
+  overlay shaders in the shader workers (``DRW_overlay_shaders_compile_async``,
+  the list the overlay engine itself starts at its first draw) and, for a
+  Solid view, the Workbench shaders its first draw requests
+  (``DRW_workbench_shaders_compile_async``: the view's lighting, clipping,
+  X-ray, cavity, shadow and outline decide them as Workbench's own
+  ``SceneState`` does); they compile while the layout settles instead of one
+  at a time on the first visible draw. Upstream Blender (5.3 release branch
+  and main, 2026-11-04) has neither: overlay's list is inline in its
+  ``Resources::init`` and Workbench compiles on first use (a 5.3 merge must
+  move 5.3's three new Gaussian-splat overlay shaders into
+  ``ShaderModule::compile_async``). Both run when a covered view is tagged
+  for a redraw, not every frame. A skipped region still gets its buffers, so
+  depth reads, blits and window captures never find a missing viewport (a new
+  buffer is cleared, its depth at the near plane, which depth picking reads as
+  no hit; a kept one holds its last frame, as between any file load and a
+  view's next draw), and ``view3d_depths_rect_create`` returns no depths for a
+  region that has none (as ``ED_view3d_depth_override`` already did). As a
+  draw does, a skip clears the view's depth override, so a depth read after
+  the view moved under the cover renders afresh. Its ``RegionView3D``
+  matrices are the file's until it draws. What waits for a
+  hidden view's draw waits for the lift, and covered time never counts against
+  its bound (``angelo_live_windows.covered``): ``qa_boot`` waits for the frame
+  after it (``_cover["frame_owed"]``, cleared by that frame's first region
+  draw), as do ``flow_open``'s framing, ``drawn_view.ready`` (the rail's
+  pictures) and ``chat_toggle``'s follow. The Object-mode shelf's remembered
+  state, which its 3D view's draws apply ``SETTLE`` seconds after the view
+  entered Object mode, is applied under the cover instead
+  (``media_shelf_cover``: a timer samples the covered views and applies it
+  once a view's shelf state has held for a few samples, and the lift itself
+  applies it to a view the samples have not reached, as a file opened later
+  is covered for about a tenth of a second), not in front of a returning
+  person after the lift. It waits for the view's shelf to exist (Blender gives
+  a new shelf its default state), and nothing under the cover is remembered as
+  their choice: the views' draws after the lift settle afresh. Material
+  Preview and Rendered views get no precompile: EEVEE and Cycles start when
+  the cover lifts. A file opened later is covered the same way, so its hidden
+  first render is skipped too.
+* **Python bytecode is not a cost**: the shipped bytecode is read (above), so
+  a first launch compiles 13 modules.
+* **Angelo's own startup** (the default layout, Director, the setup card) is
+  the same on every launch.
+
+Before and after, untimed on a loaded Mac 2 (M5 Max; the timed numbers come
+from Mac 1's slot, ``rel/firstlaunch1010``), ad hoc 1.0.10 builds, new user and
+empty Metal cache, three interleaved pairs, seconds from the process start to
+the setup card: before (``4499cb70833``) 7.95, 7.90, 6.29, the hidden first
+frame holding the main loop 3.2 to 3.7 s; after (``cc49385eb89``: skip,
+overlay and Workbench shaders started early) 6.41, 5.34, 5.14, the first
+visible 3D-view draw holding it 1.2 to 1.6 s. The same user's second launch
+to the welcome: before 3.09, 2.72, 2.86; after 3.90, 2.70, 2.61.
+A Gatekeeper prompt (a browser download opened from the Finder) adds the
+person's own time before any of this.
+
 Bundle contents
 ===============
 
@@ -1372,11 +1466,13 @@ whose intermediates' private keys were disclosed as recoverable on 2026-10-20.
   floors only. ``scripts/angelo/trust_store_exceptions.json`` holds the
   maintainer's known exceptions, each one exact file digest, one key and one
   runtime version with its reason and end; the check prints an accepted one and
-  fails on one whose runtime version has passed. 1.0.5 has two: OpenAI's signed
-  0.163.0 ``codex-code-mode-host.exe`` (its TLS code is unused) and
-  ``codex-windows-sandbox-setup.exe`` (an analytics-gated metrics POST to
-  ab.chatgpt.com with OpenAI's public client key and no user data), until the
-  first stable Codex 0.164 or later.
+  fails on one whose runtime version has passed. There are none since 1.0.10:
+  1.0.5 to 1.0.9 had two, OpenAI's signed 0.163.0 ``codex-code-mode-host.exe``
+  and ``codex-windows-sandbox-setup.exe`` (its analytics-gated metrics POST to
+  ab.chatgpt.com trusted emSign ECC Root CA - G3), which ended with Codex
+  0.166.0. That historical result does not qualify old hosts or setup helpers
+  for the 1.0.10 trust-store refresh; the current rebuilt artifacts must still
+  pass the full check above.
 * **Tests.** ``test_native_trust_store.py`` checks the list against the real
   certificates, serves forged chains under every compromised key through both
   paths and requires the shipped stores to anchor none of them (the controls,

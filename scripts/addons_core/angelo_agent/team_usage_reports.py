@@ -29,7 +29,7 @@ provider and model, how many agent tasks finished and the longest one.
 
 Standard library only; no bpy. ``TeamAccount`` provides ``_lock``, ``_view``,
 ``_clock``, ``_monotonic``, ``_enqueue``, ``_authorized``, ``_transport``,
-``_access``, ``_access_expiry``, ``_closed`` and ``console_url``.
+``_access``, ``_access_expiry``, ``_closed``, ``_exit_report`` and ``console_url``.
 """
 
 import json
@@ -236,6 +236,7 @@ class UsageReportTasks:
             except Exception:  # noqa: BLE001 - quitting must never fail for a usage report.
                 pass
             return
+        self._exit_report = thread  # ``join``: a caller that keeps running waits for it; quit never does.
         thread.join(timeout)  # A daemon left sending is ended with the process; its batch stays for the next start.
 
     def _report_at_exit(self):

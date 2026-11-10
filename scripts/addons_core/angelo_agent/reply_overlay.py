@@ -61,5 +61,6 @@ def shown(controller, messages):
     rows = {index: item for item, index in controller._items.items() if item in replies}
     drawn = [dict(message, text=drawable(controller, replies[rows[index]])) if index in rows else message
              for index, message in enumerate(messages)]
-    return drawn + [{"role": "assistant", "text": drawable(controller, text)}
+    return drawn + [{"role": "assistant", "text": drawable(controller, text),
+                     "_display_identity": (controller._request_generation, item)}
                     for item, text in replies.items() if item not in controller._items]

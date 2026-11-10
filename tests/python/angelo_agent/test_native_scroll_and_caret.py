@@ -13,6 +13,8 @@ advances made that drift from the drawn glyphs on a 2x display, more with every 
 character index (``ConsoleLine.current_character``), never a UTF-8 byte offset.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import re
 import sys
@@ -130,7 +132,8 @@ class EverySurfaceScrollsTheSameWay(unittest.TestCase):
         "input_policy.py": "detects a real pointer move to refresh hover; no scroll",
         "scroll_input.py": "the one place a scroll delta is read",
     }
-    SURFACES = ("chat_scrollbar.py", "chat_view.py", "card_host.py", "studio_input.py", "session_rail_input.py")
+    SURFACES = ("chat_scrollbar.py", "chat_view.py", "card_host.py", "studio_input.py", "session_rail_input.py",
+                "composer_scroll.py")
 
     def test_only_scroll_input_reads_a_pointer_delta(self):
         for path in sorted(ADDON.glob("*.py")):
@@ -146,13 +149,19 @@ class EverySurfaceScrollsTheSameWay(unittest.TestCase):
         """One swipe Blender's views follow upward; each surface's offset must move toward its top."""
         source = {name: (ADDON / name).read_text() for name in self.SURFACES}
         # Bottom-anchored (0 = newest row): the transcript adds the upward travel.
-        self.assertRegex(source["chat_scrollbar.py"], r"scrolls\.get\(session, 0\) \+ scroll_input\.view_up\(")
+        self.assertIn("delta = scroll_input.view_up(event, 66, scale)", source["chat_scrollbar.py"])
+        self.assertIn("current = scrolls.get(session, 0)", source["chat_scrollbar.py"])
+        self.assertIn("_set(scrolls, session, state, current + delta)", source["chat_scrollbar.py"])
         # Top-anchored lists and boxes subtract it.
         self.assertIn("delta = -scroll_input.view_up(event, 58, ui_scale())", source["chat_view.py"])
         self.assertIn("delta = -scroll_input.view_up(event, 54 * plan.scale)", source["card_host.py"])
         self.assertIn("step = -scroll_input.view_up(event, 48)", source["studio_input.py"])
         self.assertIn('travel = rest - scroll_input.view_up(event, POPUP_ROW)', source["studio_input.py"])
         self.assertIn("-scroll_input.view_up(event, RAIL_STEP, plan.scale)", source["session_rail_input.py"])
+        # The composer's first row shown (0 = the draft's top): the upward travel takes rows off it (``wheel``).
+        self.assertIn("scroll_input.view_up(event, WHEEL_ROWS * view[\"line_height\"], scale)",
+                      source["composer_scroll.py"])
+        self.assertIn("moved = clamp(first - rows, total)", source["composer_scroll.py"])
 
 
 class CaretMeasuredAsDrawn(StubbedCanvas):

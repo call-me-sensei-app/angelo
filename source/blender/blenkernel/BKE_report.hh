@@ -73,6 +73,15 @@ struct Report {
   const char *message;
   /** Unique per-session identifier, assigned at creation. */
   int session_uid;
+  /**
+   * Angelo: the message before translation, or null. #BKE_report and #BKE_reportf set it only
+   * when their own `RPT_` changed the text: the message ID, or the untranslated format filled with
+   * the same arguments. Null when nothing was translated (an English interface, report translation
+   * off, a job thread) and when the caller translated the text before the call, whose English is
+   * unknown here. Owned by the report. Gives a reader that must not depend on the interface
+   * language (the agent) Blender's own English; the Info editor keeps showing `message`.
+   */
+  const char *message_untranslated = nullptr;
 };
 
 struct ReportList {
@@ -119,12 +128,31 @@ void BKE_reports_clear(ReportList *reports);
 
 /** Moves all reports from `reports_src` to `reports_dst`. */
 void BKE_reports_move_to_reports(ReportList *reports_dst, ReportList *reports_src);
+/**
+ * Angelo: #BKE_reports_move_to_reports that also calls `moved` for each report it moves, while
+ * both lists are locked, so a reader sees exactly the reports that move (none added meanwhile by
+ * another thread is missed or seen twice). `moved` must not touch either list.
+ */
+void BKE_reports_move_to_reports_ex(ReportList *reports_dst,
+                                    ReportList *reports_src,
+                                    void (*moved)(const Report &report, void *user_data),
+                                    void *user_data);
 
 /** (Un)lock given `reports`, in case external code needs to access its data. */
 void BKE_reports_lock(ReportList *reports);
 void BKE_reports_unlock(ReportList *reports);
 
 void BKE_report(ReportList *reports, eReportType type, const char *message);
+/**
+ * Angelo: add a report whose `message` the caller already translated, with Blender's English
+ * beside it (#Report::message_untranslated; none is stored when `message_untranslated` is null or
+ * the same text). For a message whose arguments are translated too, which #BKE_reportf cannot
+ * rebuild in English. `message` is stored as given.
+ */
+void BKE_report_translated(ReportList *reports,
+                           eReportType type,
+                           const char *message,
+                           const char *message_untranslated);
 void BKE_reportf(ReportList *reports, eReportType type, const char *format, ...)
     ATTR_PRINTF_FORMAT(3, 4);
 

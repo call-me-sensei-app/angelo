@@ -7,6 +7,8 @@ the installed Cycles definitions, staging, commit, Undo and recovery are
 covered by test_blender_render_setup.py in the compiled app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

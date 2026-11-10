@@ -4,7 +4,7 @@
 (``chat_guard``): one that raises is a plain row (an approval a plain card that still answers), every other is built as
 designed. Moved out of ``chat_view._draw_chat`` (its size pin)."""
 
-from . import chat_guard
+from . import chat_guard, chat_history
 
 
 def build(controller, ui, expanded, state, width, size, line_height, bubble_max_width):
@@ -12,8 +12,11 @@ def build(controller, ui, expanded, state, width, size, line_height, bubble_max_
     from . import reply_overlay
     blocks = []
     messages = controller.state["messages"]
-    for message in (chat_guard.call("The shown rows", reply_overlay.shown, controller, messages) or messages)[-160:]:
-        identity = (controller.state["id"], id(message))
+    shown = chat_guard.call("The shown rows", reply_overlay.shown, controller, messages) or messages
+    page = chat_history.page(shown, state, controller.state["id"])
+    for index, message in enumerate(page, state["history_range"][0]):
+        identity = ((controller.state["id"], id(messages[index])) if index < len(messages)
+                    else (controller.state["id"], message.get("_display_identity", id(message))))
         try:
             identity = message.get("call_id") or identity
             block = _block(controller, ui, message, identity, expanded, state, width, size, line_height,
@@ -27,7 +30,9 @@ def build(controller, ui, expanded, state, width, size, line_height, bubble_max_
 
 def _block(controller, ui, message, identity, expanded, state, width, size, line_height, bubble_max_width):
     from . import chat_notices, chat_replies, chat_rows, chat_view, console
-    role = "system" if message.get("request_kind") == "angelo_event" else message["role"]   # Angelo's: a notice.
+    if message.get("withdrawn") is True:
+        return None   # A steer no round answered: it is back in the tray (steering).
+    role = "system" if message.get("request_kind") in ("angelo_event", "angelo_goal") else message["role"]   # Angelo's: a notice.
     if role == "tool" and message["text"].startswith("Approval required"):
         return None
     if role == "user":
@@ -39,6 +44,9 @@ def _block(controller, ui, message, identity, expanded, state, width, size, line
     if role in {"system", "tool"} and (block := chat_rows.notice_block(message, identity, expanded, width, size,
                                                                        line_height)):
         return block
+    if role == "system" and chat_notices.is_own_card(message):   # A state with a way out: a card with its pill.
+        return chat_notices.block(message, identity, message is controller.state["messages"][-1], ui, controller,
+                                  width, size, line_height, expanded)
     if role in {"system", "tool"}:
         # Native notices and legacy tools share Codex's quiet activity rows.
         rows = chat_view.wrap(console.display_text(message), max(40, width - 60), size, chat_view._font)
@@ -55,15 +63,19 @@ def _block(controller, ui, message, identity, expanded, state, width, size, line
 def cards(controller, area, workspace_cards, expanded, state, width, size, line_height, flow_wrap, preview_available):
     """The blocks after the transcript: a pending approval (else the live progress row while it works) and the
     workspace's preview and job cards, each built on its own (REVIEW-CHAT-GUARD M2)."""
-    from . import chat_card_draw, chat_rows, flow_chat
+    from . import approval_wait, chat_card_draw, chat_rows, flow_chat, review_again
     blocks = []
-    pending = next((c for c in tuple(controller.pending.values()) if c.approval), None)
+    pending = approval_wait.awaiting(controller)   # The one call a card waits on; never also the live row.
 
     def approval():
         if flow_chat.is_run_review(pending):
             details = ("approval", pending.id) in expanded
-            _, card_height = flow_chat.approval_layout(pending, 16, 0, width - 32, flow_wrap, line_height, details)
-            return ("flow_approval", {"call": pending, "details": details}, (), card_height + 12, pending.id, 0)
+            note = "\n".join(filter(None, (review_again.note(pending),   # Asked again: what changed,
+                                            approval_wait.reason_text(controller, pending),   # why it asks in Auto,
+                                            approval_wait.until_text(pending))))   # then until when it waits.
+            _, card_height = flow_chat.approval_layout(pending, 16, 0, width - 32, flow_wrap, line_height, details, note)
+            return ("flow_approval", {"call": pending, "details": details, "note": note}, (), card_height + 12,
+                    pending.id, 0)
         return chat_card_draw.approval_block(controller, pending, area, width, size, line_height, expanded, state)
     if pending is not None:
         blocks.append(chat_guard.card("An approval card", approval,   # i18n: a log line, never drawn

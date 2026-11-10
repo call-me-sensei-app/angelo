@@ -7,6 +7,8 @@ be refused before any decoder runs: the FBX zlib bomb is refused after
 inflating at most its declared length plus one byte.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import os
 import tempfile

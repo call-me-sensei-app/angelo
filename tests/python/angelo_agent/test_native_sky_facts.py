@@ -7,6 +7,8 @@ sun and choose its type before it looks. Those statements must be what world_lig
 reports) and what world_light_table measured in Blender 5.2, never an estimate; and they stay facts, not advice.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import math
 from pathlib import Path
 import re

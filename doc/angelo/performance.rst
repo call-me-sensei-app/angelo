@@ -1788,10 +1788,11 @@ proportion to the history. The worker's probe calls ``lstat`` for every stored
 snapshot to stay exact (``checkpoint_policy.rst``), so it stays linear, at
 about a twentieth of its old per-record cost; store accounting is read only
 when the upper bound does not settle the byte limit. The exact checks are
-unchanged (about 46–50 ms per edit). Commits that swap mesh data leave the
+unchanged (about 46–50 ms per edit). Commits that swapped mesh data left the
 replaced mesh as an orphan (124 orphan meshes and 124 orphan materials after
-500 edits) until the file is saved and reopened; that has no measurable effect
-on the checks.
+500 edits) until the file was saved and reopened, with no measurable effect on
+the checks; since 1.0.10 a commit frees what it replaced (``commit_orphans``,
+``agent_execution.rst``, "Data a commit replaced").
 
 What would make the checks flat
 -------------------------------

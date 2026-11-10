@@ -7,6 +7,8 @@ nearest-element lookups that tools share (loop cut, knife, path pick, the pre-se
 particle brushes keep testing depth. test_blender_select_through(_gui).py prove the behavior in the app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import re
 import sys

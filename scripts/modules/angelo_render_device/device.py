@@ -81,9 +81,14 @@ def _read():
         found = os.stat(_path)
         key = (_path, found.st_mtime_ns, found.st_size)
         if _cache is None or _cache[:3] != key:
+            import angelo_change_clock   # Kept only under a settled stat: a same-size write in its tick shares its key.
+            keep = angelo_change_clock.settled(found, change=False)
             with open(_path, encoding="utf-8") as handle:
-                _cache = key + (handle.read(),)
-        saved = json.loads(_cache[3])   # A fresh object each time: callers change what they read.
+                text = handle.read()
+            _cache = key + (text,) if keep else None
+        else:
+            text = _cache[3]
+        saved = json.loads(text)   # A fresh object each time: callers change what they read.
         return saved if isinstance(saved, dict) and saved.get("version") == 1 else {}
     except (OSError, TypeError, ValueError):
         return {}

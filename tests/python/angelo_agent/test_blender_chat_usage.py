@@ -14,6 +14,10 @@ ANGELO_QA_DIR. The report's ``draw_cost`` compares the chat's own draw time (``c
 with the meter shown and hidden, alternating blocks on the same chat.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import os

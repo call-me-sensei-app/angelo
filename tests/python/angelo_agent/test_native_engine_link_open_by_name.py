@@ -10,16 +10,20 @@ the lookup reads no hidden folder, link or Angelo's working folder and stops at 
 tool did anything says nothing changed, so a plan returns it to the model; one after an effect never does.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import re
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_native_engine_link_tool as base  # noqa: E402  (its stand-in bpy and fixtures)
+from host_test_policy import environment_skip  # noqa: E402
 
 engine_link, host, assets, EDIT, RefusalError = base.engine_link, base.host, base.assets, base.EDIT, base.RefusalError
 
@@ -142,6 +146,8 @@ class OpenByNameTests(unittest.TestCase):
 
     def test_what_the_lookup_cant_read_or_name_makes_it_unsure(self):
         """Break-it 8b-1 and 8b-2: a match it can't name, or a folder it can't read, may be the other barrel."""
+        if os.name == "nt":
+            self.skipTest(environment_skip("Windows names cannot hold a newline, and its folders ignore mode bits"))
         self.place("evil\nfolder/barrel.glb", "props/barrel.glb")
         self.server.editor(1)
         with self.assertRaises(RefusalError) as refused:
@@ -153,7 +159,7 @@ class OpenByNameTests(unittest.TestCase):
         os.chmod(self.project / "locked", 0)
         self.addCleanup(os.chmod, self.project / "locked", 0o755)
         if os.access(self.project / "locked", os.R_OK):
-            self.skipTest("this account reads every folder")   # root
+            self.skipTest(environment_skip("running as a user who can write anywhere"))
         with self.assertRaises(RefusalError) as refused:
             self.open("barrel")
         self.assertIn("couldn't be read whole", str(refused.exception))
@@ -194,8 +200,8 @@ class OpenByNameTests(unittest.TestCase):
             def is_junction(self):
                 return self.junction
 
-            def stat(self, follow_symlinks=True):
-                return os.stat_result((0,) * 10)
+            def stat(self, follow_symlinks=True):   # As a real entry's: Windows' carries its attributes.
+                return SimpleNamespace(st_mode=0o40755, st_file_attributes=0)
 
             def is_dir(self, follow_symlinks=True):
                 return True

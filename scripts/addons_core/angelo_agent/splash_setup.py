@@ -142,9 +142,10 @@ def open_start(window):
     held = live_target.window_ref(window)   # The card answers later: its window read live then.
 
     def act(action, path):
+        from . import file_trust
         window = held()
         if action == "scene":
-            after_close(window, lambda: bpy.ops.wm.open_mainfile(filepath=path))
+            after_close(window, lambda: bpy.ops.wm.open_mainfile(filepath=path, use_scripts=file_trust.default(path)))
         elif action == "open":
             after_close(window, lambda: bpy.ops.wm.open_mainfile('INVOKE_DEFAULT'))
         elif action == "whats_new":

@@ -63,7 +63,7 @@ def preserve(path):
                 return earlier.name
             if kept.st_size == status.st_size:
                 data = session_journal.read_bytes(path) if data is None else data
-                if earlier.read_bytes() == data:
+                if session_journal.read_bytes(earlier) == data:   # A kept copy redact_kept rewrites.
                     return earlier.name
         except OSError:
             continue  # Removed meanwhile (another instance's failed copy), or unreadable: compared by link only.
@@ -136,7 +136,7 @@ def redact_kept(path, secret):
         try:
             if not stat.S_ISREG(os.stat(kept, follow_symlinks=False).st_mode):
                 continue
-            data = kept.read_bytes()
+            data = session_journal.read_bytes(kept)   # Shares delete, as every reader of a rewritten copy.
             clean = data
             for form in forms:
                 clean = clean.replace(form, b"[REDACTED]")
@@ -237,3 +237,59 @@ def recovered_index(folder):
     except OSError:
         return {}
     return records
+
+
+OWED = ".owed"   # Beside a chat list whose last save was refused (``mark_owed``).
+
+
+def write_index(path, payload, refused_at=None):
+    """Write the chat list ``payload`` whole at ``path`` (``shared_replace``): None when written. When refused (on
+    Windows its file held open past the retries) the list is marked owed and the time of the refusal returned, said
+    once (``refused_at``: the last refusal's, None when the last save landed)."""
+    from . import shared_replace
+    temporary = path.with_suffix(".tmp")
+    try:
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, allow_nan=False)
+        shared_replace.replace(temporary, path)
+    except OSError as error:
+        shared_replace.discard(temporary)
+        if refused_at is None:
+            print("Angelo: the chat list could not be saved yet; Angelo tries again:", error)
+        mark_owed(path)
+        return time.monotonic()
+    return None
+
+
+def retry_due(refused_at):
+    """Whether an owed chat list is saved now: never refused, or ``shared_replace.RETRY_SECONDS`` after it was."""
+    from . import shared_replace
+    return refused_at is None or time.monotonic() - refused_at >= shared_replace.RETRY_SECONDS
+
+
+def mark_owed(path):
+    """A chat list whose save was refused (Windows: its file held open, ``shared_replace``): a marker beside it, so
+    a load before a later save lands lists every chat on disk again (``owed``), never losing one made meanwhile from
+    the switcher (quit with the save still refused)."""
+    try:
+        os.close(os.open(str(path) + OWED, os.O_CREAT | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600))
+    except OSError as error:
+        print("Angelo: the chat list's owed save could not be marked:", error)
+
+
+def owed(path):
+    return os.path.lexists(str(path) + OWED)
+
+
+def settled(path, kept):
+    """A chat list saved whole: the copies it holds now (``kept``) and its owed marker go. Returns no copies."""
+    from . import kept_state
+    kept_state.remove_copies(kept)
+    try:
+        os.unlink(str(path) + OWED)
+    except FileNotFoundError:
+        pass
+    except OSError as error:   # Left: the next load lists the chats on disk again, which loses nothing.
+        print("Angelo: the chat list's owed marker could not be removed:", error)
+    return []

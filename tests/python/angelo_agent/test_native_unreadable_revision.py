@@ -9,6 +9,8 @@ edit and the one-shot ended unrendered. The same refusal meets any object whose 
 read (unfingerprinted curves, custom bevel profiles, bound deform caches) or that is over the read budget.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

@@ -4,6 +4,8 @@
 when the payload carrying it was written, never when the write fails or an error payload replaces it (break-it
 OVH2-M-2). No Blender or provider: the RPC is a recorder (its ``respond`` is the transport write)."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 from pathlib import Path

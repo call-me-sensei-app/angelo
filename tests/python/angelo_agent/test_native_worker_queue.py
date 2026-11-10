@@ -14,6 +14,8 @@ reconciled as a confirmed death and frees its place; a chat that cannot be made 
 in-Blender proof is ``test_blender_parallel_workers.py`` and ``test_blender_parallel_merge.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile
@@ -102,7 +104,8 @@ class Fixture(unittest.TestCase):
     LIMIT = 2
 
     def setUp(self):
-        self.ui = SimpleNamespace(_controllers={})
+        # The state folder: Windows checks a start's deepest path against it first (worker_paths.check_start).
+        self.ui = SimpleNamespace(_controllers={}, state_directory=tempfile.gettempdir)
         patches = [mock.patch.dict(sys.modules, {"angelo_agent.ui": self.ui}),
                    mock.patch.object(angelo_agent, "ui", self.ui, create=True),
                    mock.patch.object(parallel_access, "worker_limit", lambda: self.LIMIT),

@@ -114,6 +114,18 @@ struct PTCacheID {
   struct PTCacheID *next, *prev;
 
   struct Scene *scene;
+  /**
+   * The object that owns the cache; for a rigid body world's cache, the rigid body object it was
+   * reached through (#BKE_ptcache_ids_from_object), a different one per object, or null when it
+   * was built from the world (#BKE_ptcache_id_from_rigidbody with no object, #BKE_ptcache_id_find
+   * with no object, the simulation): the world belongs to a scene and is not an ID. Every
+   * `BKE_ptcache_*` function accepts a null owner. A rigid body world's cache, whatever its owner
+   * here, has no disk files of its own: it stays in memory (#BKE_ptcache_toggle_disk_cache leaves
+   * it there; a disk flag it carries anyway does not change its effective storage policy).
+   * Only as an external cache (#PTCACHE_EXTERNAL) does it use files, named after the cache's own
+   * name in its own folder (`<name>_<frame>.bphys`), read and, once its bake is freed, written
+   * there as objects' external caches are.
+   */
   struct ID *owner_id;
   void *calldata;
   unsigned int type, file_type;
@@ -279,6 +291,10 @@ void BKE_ptcache_id_from_smoke(PTCacheID *pid, struct Object *ob, struct FluidMo
 void BKE_ptcache_id_from_dynamicpaint(PTCacheID *pid,
                                       struct Object *ob,
                                       struct DynamicPaintSurface *surface);
+/**
+ * \param ob: Optional, may be NULL: the rigid body object the world's cache is reached through.
+ * It only becomes #PTCacheID.owner_id; it never names files (see #PTCacheID.owner_id).
+ */
 void BKE_ptcache_id_from_rigidbody(PTCacheID *pid, struct Object *ob, struct RigidBodyWorld *rbw);
 
 /**
@@ -397,6 +413,8 @@ void BKE_ptcache_disk_to_mem(struct PTCacheID *pid);
 void BKE_ptcache_mem_to_disk(struct PTCacheID *pid);
 /**
  * Convert disk cache to memory cache and vice versa. Clears the cache that was converted.
+ * A cache with no disk files of its own (a rigid body world's, see #PTCacheID.owner_id) and any
+ * cache of an unsaved file stay in memory: #PTCACHE_DISK_CACHE is cleared, the memory cache kept.
  */
 void BKE_ptcache_toggle_disk_cache(struct PTCacheID *pid);
 /**
@@ -421,10 +439,15 @@ void BKE_ptcache_invalidate(struct PointCache *cache);
 
 /********************** .blend File I/O *********************/
 
-void BKE_ptcache_blend_write(struct BlendWriter *writer, ListBaseT<PointCache> *ptcaches);
+/** File-less owners pass force_memory; external caches retain their disk policy.
+ * The writer normalizes only its serialized copy, never the live shared cache. */
+void BKE_ptcache_blend_write(struct BlendWriter *writer,
+                           ListBaseT<PointCache> *ptcaches,
+                           bool force_memory = false);
 void BKE_ptcache_blend_read_data(struct BlendDataReader *reader,
                                  ListBaseT<PointCache> *ptcaches,
                                  struct PointCache **ocache,
-                                 int force_disk);
+                                 int force_disk,
+                                 bool force_memory = false);
 
 }  // namespace blender

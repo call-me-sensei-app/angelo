@@ -15,6 +15,8 @@ platform: worker_pool killed its workers with ``os.kill(pid, signal.SIGKILL)``, 
 died-worker and two-parts checks never ran there (release-106's C1 run); ``Popen.kill()`` works everywhere.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import re
 import sys

@@ -11,7 +11,7 @@ Decimate on the same input. It returns facts, never a pass or fail. It is the in
 (collision, lightmap UVs, LOD chains, the ``GAME_READY`` job, batch work) are judged by, so it is built to be precise
 and cheap, and every fact says what it measured.
 
-Owners: ``game_ready_spec.py`` (schema and arguments), ``game_ready_host.py`` (the host route),
+Owners: ``game_ready_spec.py`` (schema and arguments), ``game_ready_host.py`` (the host route, off the main thread),
 ``game_ready_mesh.py`` (reading objects, welding, reductions), ``game_ready_metrics.py`` (the measurements),
 ``game_ready_collider.py`` (the collider facts) and the
 native module ``_bpy._angelo_reduce`` (``source/blender/python/intern/bpy_angelo_reduce*.cc`` and
@@ -95,7 +95,7 @@ without seeing how it was made.
   hull to the collider, and the share of source points it leaves outside with the farthest of them. The inside test
   is the half-spaces of a convex collider's faces, or the generalized winding number for a non-convex one, capped at
   16.8 million point-triangle pairs: past that ``inside_test`` says it was not measured and why. The hull comes from
-  ``bmesh.ops.convex_hull``, which needs Bullet: a build without it (the development preset) reports ``hull`` as not
+  Blender's ``convex_hull`` operator (``_angelo_reduce.convex_hull``), which needs Bullet: a build without it (the development preset) reports ``hull`` as not
   measured and gives the rest.
 * **Empty and apart**: a LOD with no triangles reads ``empty`` and nothing else. ``apart`` marks a LOD whose bounding
   box does not overlap the source's: everything compares objects where they are, so a LOD placed beside its source
@@ -110,7 +110,26 @@ A mesh is read as an export takes it: the evaluated mesh, every enabled modifier
 call). A mesh an enabled Armature modifier deforms is read as its base mesh in rest pose instead, with the weights of
 the groups that the armature's deforming bones drive; ``source.geometry`` says which, and its other enabled
 modifiers are not applied (``modifiers_not_applied``: a Mirror before the Armature leaves half the mesh). Up to
-2,000,000 triangles: the measurements keep float64 copies per triangle corner on the main thread.
+2,000,000 triangles: the measurements keep float64 copies per triangle corner in memory.
+
+Off the main thread
+-------------------
+
+A large mesh takes seconds to measure (below), so the call never measures on Blender's main thread. There it only
+resolves the objects and reads each one (``game_ready_mesh.read``): the arrays copied out of the mesh it would export,
+the deforming groups' weights, and, when Decimate is asked for, a **snapshot** of the source mesh
+(``_angelo_reduce.snapshot``: a copy in no Main whose arrays are implicitly shared with the original, so it costs
+almost nothing). The evaluated meshes are freed before the call returns. Everything else runs on the check's own
+thread: the world-space geometry, the weld and meshoptimizer, Decimate on the snapshot, the convex hull, every
+measurement. The native calls among them release the GIL, so Angelo's interface keeps drawing and answering.
+
+The call returns a ``StudioPending`` (``studio_agent``), which the controller polls as it polls a render or a
+Studio job; the chat's live row reads "Checking a mesh for games" (``STATUS``, ``chat_titles.LIVE``). The facts are of
+the meshes as they were when the call started: an edit made meanwhile copies what it writes and never reaches the
+snapshot. A failure while measuring is delivered as the same refusal, with the same code, as one raised at once. Stop
+(or the call's end) stops the measuring at its next step. A check that has not finished after ``CHECK_SECONDS``
+(15 minutes) ends with ``LIMIT_EXCEEDED`` and says so, and nothing more is measured. ``check()`` keeps the one-call
+route for the benchmark and the native suite's direct calls.
 
 Reductions
 ==========
@@ -147,7 +166,9 @@ The native module
   ``OPTION_ERROR_ABSOLUTE``, ``OPTION_PRUNE`` and ``OPTION_REGULARIZE``; ``weld``; ``scale``.
 * ``surface``/``nearest``: a BVH over triangles (Blender's ``BLI_kdopbvh``) and nearest points for many query points on
   all cores. ``rasterize``: triangle coverage of pixel centres, top-left rule, views in parallel.
-* ``decimate`` and ``vertex_weights`` read a ``Mesh`` and nothing else.
+* ``vertex_weights`` and ``snapshot`` read a ``Mesh`` (main thread) and nothing else; ``decimate`` reads a ``Mesh``
+  with the GIL held, or a snapshot without it. ``convex_hull`` (a build with Bullet) is Blender's ``convex_hull``
+  operator on float32 points in a BMesh of its own, without the GIL.
 * Arrays are C-contiguous buffers (NumPy): float32 positions, uint32 or int32 indices, uint8 locks. Each is copied
   into the module's own memory first, then every index, count and value is checked on that copy (meshoptimizer only
   asserts its preconditions, and a release build would read out of bounds), so a Python thread changing the array
@@ -230,7 +251,30 @@ weight change p95 medians are 0.040 vs 0.126 at 0.5, 0.076 vs 0.200 at 0.25 and 
 index-only meshopt keeps shading and texturing far better, and Decimate, which moves vertices, keeps the shape
 closer at strong reductions. That trade is why the check reports both and decides nothing.
 
-**Time: not measured.** Every run above was on a loaded machine (1-minute load 7 to 19), so no time is stated.
+**The main thread's pause** (the check moved off it, 1.1): measured 2026-11-04 on Mac 1 (Apple M4 Pro, 1-minute
+load 4.4 to 5.7, the shared machine's billed lock held) with one Release build (origin/main e8825b6be04 with this
+change, and the unmerged #140 and #141, which touch no part of the check), running ``origin/main``'s add-on (before)
+or this change's (after). 3 process pairs in alternating order, 2 checks per case each (6 per arm), each check with
+ratios 0.5, 0.25 and 0.1 and both methods. Before, the whole check was one frozen main thread; after, the longest
+time the main thread could not run Python (the call, which reads the meshes, or a wait for the GIL between 4 ms
+ticks) and the 99th percentile of those waits. Medians, with the range of the 6:
+
+==================================  =========  =========================  ===================  ======  =================
+Case                                Triangles  Before: frozen (ms)        After: longest (ms)  p99 ms  Check's time (ms)
+==================================  =========  =========================  ===================  ======  =================
+Subdivided Suzanne (development)    1,007,616  13,056 (12,620 to 13,286)  204 (195 to 216)     4.3     13,056 -> 12,800
+Subdivided Suzanne (development)    251,904    2,852 (2,756 to 2,950)     86 (50 to 127)       8.1     2,852 -> 2,870
+Poly Haven ship_pinnace (held out)  65,782     1,058 (1,022 to 1,144)     15 (14 to 16)        6.7     1,058 -> 1,037
+Poly Haven marble_bust_01           17,456     350 (341 to 352)           4 (4 to 6)           2.5     350 -> 348
+KayKit Knight                       1,052      177 (173 to 178)           2 (1 to 3)           1.3     177 -> 181
+==================================  =========  =========================  ===================  ======  =================
+
+Each asset's largest mesh within ``MAX_TRIANGLES``; Poly Haven's jacaranda tree, whose one mesh has 3,863,832
+triangles, is refused by that bound and not counted. The check's own time is unchanged; what remains on the main
+thread is the read (copying the arrays out, about 0.2 ms per thousand triangles). A background Angelo has no
+interface, so this measures the main thread's availability, not frames drawn.
+
+**Time: not measured** for the quality runs above: every one was on a loaded machine (1-minute load 7 to 19).
 To measure on a quiet machine with ``bench_game_ready_check.py``: meshopt per LOD and the weld, Decimate on the same
 inputs in a build with the shipping configuration (the development preset's Decimate is far slower than the shipped
 app's, the stock modifier as much as this tool's call, so its times are no comparison), and the whole check's time
@@ -254,12 +298,16 @@ Tests
 =====
 
 * Host: ``test_native_game_ready_check`` (arguments, registration, the lazy import, and every measurement on meshes
-  with known answers against a brute-force NumPy reference of the native kernels); ``test_native_game_ready_framing``
+  with known answers against a brute-force NumPy reference of the native kernels); ``test_native_game_ready_thread``
+  (the call returns at once, everything after the read runs on the check's thread, the result equals the one-call
+  route's, failures and Stop); ``test_native_game_ready_framing``
   (comparisons cover everything either mesh has: extra or missing parts, larger copies and a LOD-only shell, each
   also with the roles swapped, and identical meshes still a perfect match).
 * Native (BACKGROUND): ``test_blender_game_ready_check`` (the idle proof, the library check, refusals without a
-  crash, native kernels equal to the reference, the weld, seams kept, Decimate equal to the modifier, every fact
-  through the host route with the scene unchanged, skinned meshes).
+  crash, native kernels equal to the reference, the weld, seams kept, Decimate equal to the modifier and the same on
+  a snapshot whose original was freed or edited, Decimate on a snapshot and the convex hull letting other threads
+  run, the hull equal to the bmesh operator's, every fact through the host route's pending result with the scene
+  unchanged, skinned meshes).
 * Benchmark: ``tests/python/angelo_agent/bench_game_ready_check.py`` (alone, on a quiet machine).
 
 Not yet

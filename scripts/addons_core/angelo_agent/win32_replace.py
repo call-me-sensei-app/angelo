@@ -18,12 +18,16 @@ POSIX semantics from another.
 Standard library only; ``ctypes`` is bound on first use, on Windows only.
 """
 
+import errno
 import os
 import sys
 
 POSIX, CLASSIC = "posix", "classic"
 _UNSUPPORTED = frozenset({1, 50, 87})   # ERROR_INVALID_FUNCTION, ERROR_NOT_SUPPORTED, ERROR_INVALID_PARAMETER
 _DELETE, _SHARE_ALL, _OPEN_EXISTING = 0x00010000, 0x7, 3
+# FILE_FLAG_OPEN_REPARSE_POINT: a link at ``source`` is the entry renamed, never the file it names (os.replace's
+# MoveFileExW renames the link too; a settings import moves a link into place, ``settings_import._place``).
+_OPEN_REPARSE_POINT = 0x00200000
 _FILE_RENAME_INFO_EX = 22               # FILE_INFO_BY_HANDLE_CLASS.FileRenameInfoEx
 _REPLACE_IF_EXISTS, _POSIX_SEMANTICS = 0x1, 0x2
 last = None                             # Which path the last replace took (``POSIX`` or ``CLASSIC``): evidence.
@@ -46,8 +50,8 @@ def replace(source, target):
     except Unsupported as error:
         if not _logged:
             _logged = True
-            print("Angelo: a chat file is replaced without POSIX semantics here (%s); a reader holding it open "
-                  "delays its compaction" % error, file=sys.stderr)
+            print("Angelo: files are replaced without POSIX semantics here (%s); a reader holding one open "
+                  "delays its save" % error, file=sys.stderr)
     os.replace(source, target)
     last = CLASSIC
 
@@ -58,7 +62,7 @@ def _posix(source, target):
     api = _bind()
     if api is None:
         raise Unsupported("no SetFileInformationByHandle")
-    handle = api.create(source, _DELETE, _SHARE_ALL, None, _OPEN_EXISTING, 0, None)
+    handle = api.create(source, _DELETE, _SHARE_ALL, None, _OPEN_EXISTING, _OPEN_REPARSE_POINT, None)
     if handle is None or handle == api.invalid:
         _raise(api.last_error(), source, target, opening=True)
     try:
@@ -93,6 +97,8 @@ def _raise(code, source, target, opening=False):
         raise PermissionError(13, "[WinError %d] the file is in use" % code, source, None, target)
     if code in (2, 3):
         raise FileNotFoundError(2, "[WinError %d] not found" % code, source, None, target)
+    if code == 17:   # ERROR_NOT_SAME_DEVICE: as os.replace says it (EXDEV), so a caller copies across instead.
+        raise OSError(errno.EXDEV, "[WinError 17] the replace crosses volumes", source, None, target)
     raise OSError(5, "[WinError %d] the replace failed" % code, source, None, target)
 
 

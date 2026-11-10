@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Exact numeric/byte packing and bounded ID-property admission without bpy."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from array import array
 import math
 from pathlib import Path

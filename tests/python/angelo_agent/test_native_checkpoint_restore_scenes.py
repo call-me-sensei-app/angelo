@@ -11,6 +11,8 @@ missing); a chat with no work, or one bound to another file, takes the window's 
 fakes are ``test_native_checkpoint_restore_ui``'s.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 from pathlib import Path
 import sys
@@ -27,8 +29,10 @@ from angelo_agent import checkpoint_restore_ui as flow, checkpoint_scene_map, co
 from angelo_agent.controller_recovery import restored_document  # noqa: E402
 from test_native_checkpoint_scene_map import MALFORMED  # noqa: E402
 
-ORIGINAL, RECOVERED, SAFETY = '/private/original.blend', '/private/recovered.blend', '/private/safety-working.blend'
-AGAIN, BETWEEN = '/private/recovered-again.blend', '/private/between.blend'
+# Native spellings: the flow opens ``str()`` of the recovery copy's Path, so bpy.data.filepath is the host's form.
+ORIGINAL, RECOVERED, SAFETY = (str(Path(name)) for name in ('/private/original.blend', '/private/recovered.blend',
+                                                            '/private/safety-working.blend'))
+AGAIN, BETWEEN = (str(Path(name)) for name in ('/private/recovered-again.blend', '/private/between.blend'))
 SERIALS = {ORIGINAL: 'before', RECOVERED: 'restored', SAFETY: 'reloaded', AGAIN: 'again', BETWEEN: 'between'}
 CAPTURED = {'Atelier': 11, 'Garden': 12, 'Harbor': 13}   # The original file's scenes when the checkpoint was taken.
 READ = checkpoint_scene_map.read

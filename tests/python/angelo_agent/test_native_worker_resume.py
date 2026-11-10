@@ -10,6 +10,8 @@ person's; Angelo's own turn neither opens a batch nor gets a fresh Auto budget (
 M-3, L-1, L-2, L-3).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import unittest
@@ -35,9 +37,10 @@ class Lead:
         self.setup_required = False
         self.sent, self.hosts, self.rows = [], [], []
 
-    def send(self, text, observation=None, recovery_evidence=None, host_request=None):
+    def send(self, text, observation=None, recovery_evidence=None, host_request=None, host_kind=None):
         self.sent.append(text)
         self.hosts.append(host_request)
+        self.kinds = getattr(self, "kinds", []) + [host_kind]   # The event names its kind (goal_loop reads it).
 
     def emit(self, kind, data):
         self.rows.append(data)
@@ -50,7 +53,8 @@ class Base(unittest.TestCase):
         self.lead = Lead()
         self.shown = SCENE   # The scene Angelo's window shows (``ui.document_key``).
         self.ui = SimpleNamespace(_controllers={"lead": self.lead}, prepare_controller=lambda chat=None: None,
-                                  main_window=lambda: None, document_key=lambda: self.shown)
+                                  main_window=lambda: None, document_key=lambda: self.shown,
+                                  connection_available=lambda chat: not chat.setup_required)
         self.rows = [{"worker": 1, "name": "Sofa", "state": "done", "turn": "completed", "mergeable": True},
                      {"worker": 2, "name": "Lamp", "state": "idle", "turn": "stopped", "mergeable": True},
                      {"worker": 3, "name": "Rug", "state": "done", "turn": "completed", "mergeable": False}]
@@ -111,6 +115,20 @@ class EventTests(Base):
         self.assertEqual((self.lead.sent, self.lead.rows), ([], []))
         self.assertTrue(worker_resume.pending("lead"))
         self.shown = (7, 101)   # Its tile brought its scene back.
+        self.step()
+        self.assertEqual(len(self.lead.sent), 1)
+
+    def test_waits_for_the_persons_own_waiting_messages_to_go_first(self):
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
+        from angelo_agent.steering import Inbox
+        worker_resume.started(self.lead, [1, 2, 3])
+        self.lead.inbox = Inbox()
+        item = self.lead.inbox.hold("and make it red")   # Sent while the lead's turn ran; its send is due.
+        self.step()
+        self.assertEqual(self.lead.sent, [], "Angelo's event never goes ahead of the person's words")
+        self.lead.inbox.sent([item])
         self.step()
         self.assertEqual(len(self.lead.sent), 1)
 
@@ -273,7 +291,8 @@ class BatchTests(Base):
 
     def test_an_unsent_event_is_never_handed_back_as_the_persons(self):
         source = (ROOT / "scripts/addons_core/angelo_agent/controller.py").read_text()
-        self.assertIn('if data.get("not_sent") is True and getattr(self, "_host_request", None) is None:', source)
+        self.assertIn('request_submissions.not_sent(', source)
+        self.assertIn('request_rows.persons_send(self) and not retry_unsent', source)
         from angelo_agent import request_rows   # Any host request is Angelo's, even with no parts (R2-L-8).
         self.assertEqual(request_rows.request_fields(SimpleNamespace(_host_request=[])),
                          {"request_kind": "angelo_event", "parts": []})
@@ -320,15 +339,18 @@ class RowTests(unittest.TestCase):
         source = (ROOT / "scripts/addons_core/angelo_agent/controller.py").read_text()
         self.assertIn("task = request_rows.request_fields(self)", source)
         self.assertIn("message.update(request_rows.kept_fields(data))", source)
-        self.assertIn("drafts = () if host_request is not None else self.attachments", source)
+        self.assertIn("request_rows.sender(self, host_request, host_kind, references)", source)
+        own, kind, person = request_rows.sender(SimpleNamespace(attachments=["draft"]), [], "angelo_event")
+        self.assertEqual((own, kind, person), ((), "angelo_event", False))
         self.assertIn("del self.attachments[:len(self.turn_attachments)]", source)   # The person's draft stays.
         host = SimpleNamespace(_host_request=["1 Sofa"], external_client="")
         self.assertEqual(request_rows.request_fields(host), {"request_kind": "angelo_event", "parts": ["1 Sofa"]})
         self.assertEqual(request_rows.kept_fields({"request_kind": "angelo_event", "parts": [1]}),
                          {"request_kind": "angelo_event", "parts": ["1"]})
         self.assertEqual(request_rows.request_fields(SimpleNamespace(_host_request=None)), {})
-        ui_source = (ROOT / "scripts/addons_core/angelo_agent/ui.py").read_text()   # Only the person's Stop.
-        self.assertIn("worker_resume.stop(controller)", ui_source)
+        ui_source = (ROOT / "scripts/addons_core/angelo_agent/ui.py").read_text()   # Only the person's Stop
+        self.assertIn("stopped = person_stop(controller)", ui_source)   # (ANGELO_OT_stop), through stop_notice.
+        self.assertIn("worker_resume.stop(controller)", (ROOT / "scripts/addons_core/angelo_agent/stop_notice.py").read_text())
         self.assertNotIn("worker_resume.cancel", source)
         stopped = SimpleNamespace(state={"id": "lead"}, stop=mock.Mock())
         worker_resume._batches["lead"] = True

@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import json
 import os
@@ -10,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
+from angelo_agent import connections, kept_state, shared_replace
 from angelo_agent.connections import ConnectionStore
 from angelo_agent.storage import connection_directory
 from angelo_agent.providers import profile_environment, ClaudeProvider
@@ -52,12 +54,15 @@ class PersistentConnectionsTests(unittest.TestCase):
             credential = profile / "credentials-do-not-open.fixture"
             credential.write_text("must never be read or copied")
             destination = ConnectionStore(root / "stable-accounts")
-            original_read = Path.read_text
-            def checked_read(path, *args, **kwargs):   # Its retained-profile list names folders, never reads them.
-                self.assertIn(path.name, {"connections.json", "retained-native-profiles.json",
-                                           "retained-native-profiles.last-good.json"})
-                return original_read(path, *args, **kwargs)
-            with patch.object(Path, "read_text", checked_read):
+            original_read, original_shared = Path.read_text, shared_replace.open_shared
+            def checked(read):   # Its retained-profile list names folders, never reads them.
+                def checked_read(path, *args, **kwargs):
+                    self.assertIn(Path(path).name, {"connections.json", "retained-native-profiles.json",
+                                                    "retained-native-profiles.last-good.json"})
+                    return read(path, *args, **kwargs)
+                return checked_read
+            with patch.object(Path, "read_text", checked(original_read)), \
+                    patch.object(shared_replace, "open_shared", checked(original_shared)):
                 recovered = destination.import_metadata(source.directory)
             self.assertEqual(recovered, [account["id"]])
             restored = ConnectionStore(destination.directory).records[account["id"]]
@@ -133,6 +138,76 @@ class PersistentConnectionsTests(unittest.TestCase):
             first.remove(account["id"])
             self.assertTrue(second.reload_if_changed())
             self.assertNotIn(account["id"], second.records)
+
+    def test_a_save_landing_during_a_read_is_noticed(self):
+        """Stat before read (release-1010 audit, re-check 2): the signature was taken after the read, so another
+        window's save between the two left the old accounts held under the new file's signature, unnoticed."""
+        with tempfile.TemporaryDirectory() as root:
+            first, second = ConnectionStore(root), ConnectionStore(root)
+            first.add("ANTHROPIC", "SUBSCRIPTION")
+            read, added = kept_state.read, []
+
+            def read_then_another_window_saves(path):
+                value = read(path)
+                if not added:   # Once: the other window's save reads through here too.
+                    added.append(None)
+                    added[0] = first.add("OPENAI", "SUBSCRIPTION")["id"]
+                return value
+            with patch.object(kept_state, "read", side_effect=read_then_another_window_saves):
+                self.assertTrue(second.reload_if_changed())
+            second.reload_if_changed()
+            self.assertIn(added[0], second.records)
+            self.assertEqual(set(second.records), set(ConnectionStore(root).records))
+
+    def test_a_file_that_keeps_changing_is_read_a_bounded_number_of_times(self):
+        with tempfile.TemporaryDirectory() as root:
+            held = ConnectionStore(root)
+            account = held.add("ANTHROPIC", "SUBSCRIPTION")
+            read, reads = kept_state.read, []
+
+            def read_then_replaced(path):   # Another window replaces the file after every read.
+                value = read(path)
+                reads.append(path)
+                temporary = Path(root) / "replacement.tmp"
+                temporary.write_bytes(Path(path).read_bytes())
+                os.replace(temporary, path)
+                return value
+            with patch.object(kept_state, "read", side_effect=read_then_replaced):
+                fresh = ConnectionStore(root)   # A first load: its last read, under no stat's signature.
+                self.assertEqual(len(reads), connections.READ_ATTEMPTS)
+                self.assertIn(account["id"], fresh.records)
+                held.records[account["id"]]["name"] = "Held"   # Unsaved: a later load takes the file's, as always.
+                del reads[:]
+                held.reload()
+                self.assertEqual(len(reads), connections.READ_ATTEMPTS)
+                self.assertNotEqual(held.records[account["id"]]["name"], "Held", "the last read, never the old state")
+            for store in (fresh, held):   # Either reads again at the next check, once the file holds still.
+                self.assertTrue(store.reload_if_changed())
+                self.assertFalse(store.reload_if_changed())
+
+    def test_a_removal_made_while_the_file_kept_changing_is_never_undone(self):
+        """A store whose reload after its own save could not get a stable read once kept its state from before that
+        save; the account it had just added was then missing from its baseline, so after another window removed
+        it, this store's next save wrote it back (break-it review of the stat-before-read fix, L)."""
+        with tempfile.TemporaryDirectory() as root:
+            held, other = ConnectionStore(root), ConnectionStore(root)
+            read = kept_state.read
+
+            def read_then_replaced(path):   # Something keeps replacing the file, even under the lock.
+                value = read(path)
+                if Path(path).exists():
+                    temporary = Path(root) / "replacement.tmp"
+                    temporary.write_bytes(Path(path).read_bytes())
+                    os.replace(temporary, path)
+                return value
+            held.add("OPENAI", "SUBSCRIPTION")   # The file exists, so every later read sees it replaced.
+            with patch.object(kept_state, "read", side_effect=read_then_replaced):
+                added = held.add("ANTHROPIC", "SUBSCRIPTION")["id"]   # Its reload after the save: no stable read.
+            self.assertTrue(other.reload_if_changed())
+            other.remove(added)
+            self.assertNotIn(added, ConnectionStore(root).records)
+            held.save()   # Any later save of this window: an edit of another account, a dismissal.
+            self.assertNotIn(added, ConnectionStore(root).records)
 
     def test_one_corrupt_record_does_not_hide_later_connections(self):
         with tempfile.TemporaryDirectory() as root:

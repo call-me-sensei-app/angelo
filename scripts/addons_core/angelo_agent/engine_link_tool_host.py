@@ -68,6 +68,8 @@ def _editor(client, info, linked, known, now):
               "live": "live" in shown, "acks": facts.ACKS in shown}
     if info.get("version"):
         editor["version"] = str(info["version"])[:40]
+    if "capture" in shown:   # A web page angelo_view WEB can picture (engine_link_capture); others say nothing.
+        editor["capture"] = True
     if linked is not None:
         editor["linked_project"] = assets.serves(linked, info)
         editor.update(_ack_fields(known["editors"].get(client), now))

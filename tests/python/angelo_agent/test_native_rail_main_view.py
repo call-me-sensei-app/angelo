@@ -12,6 +12,8 @@ matrices and pictures are proven by ``test_blender_rail_main_view.py`` (backgrou
 shots of ``test_blender_rail_crowd.py`` (GUI, Director Mode).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import math
 import sys
 import unittest

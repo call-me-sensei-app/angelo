@@ -241,7 +241,9 @@ WMCheckpointColdInstall *WM_checkpoint_cold_prepare(
       plan.objects.size() > INT64_MAX / 4 || plan.grids.size() > INT64_MAX / 4 ||
       !charge(size_t(plan.objects.size()) * (sizeof(WMCheckpointColdInstall::Target) + sizeof(uint32_t)) * 4) ||
       !charge(size_t(plan.grids.size()) * (sizeof(Scene *) + sizeof(ViewLayer *) + sizeof(uint32_t)) * 4)) {
-    BKE_report(reports, RPT_ERROR, "Checkpoint coarse owner controls exceed finite admission"); return nullptr;
+    /* A charge refusal was counted by checkpoint_snapshot_charge; an overflowing count is not one. */
+    BKE_report(reports, RPT_ERROR, "Checkpoint coarse owner controls exceed finite admission");
+    return nullptr;
   }
   auto cold = std::make_unique<WMCheckpointColdInstall>();
   cold->coarse_limit = limits.max_backing_bytes;

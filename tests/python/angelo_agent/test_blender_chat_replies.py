@@ -13,6 +13,10 @@ Run through ``run_native_suites.py --gui --include test_blender_chat_replies``;
 check ``chat-replies.json`` for ``success`` and ``phase == "complete"``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -213,7 +217,7 @@ def tick():
             if not wait(lambda: view_state().get("max_scroll", 0) > 200):
                 return .2
             from angelo_agent import chat_view
-            identity = controller().state["id"]
+            identity = (chat()[0].as_pointer(), controller().state["id"])
             chat_view._scroll[identity] = view_state()["max_scroll"] // 2
             view_state()["scroll_hover"] = "transcript"
             chat()[0].tag_redraw()
@@ -226,7 +230,7 @@ def tick():
             row_top = max((r[1] + r[3] for r, a, v in view_state()["hits"] if a.startswith("welcome_")), default=0)
             checks["reconnect_row_sits_below_the_transcript"] = 0 < row_top <= view_state()["message_viewport"][1] + 1
             from angelo_agent import chat_view
-            identity = controller().state["id"]
+            identity = (chat()[0].as_pointer(), controller().state["id"])
             before = chat_view._scroll[identity]
             track, thumb = view_state()["scrollbar"]
             x, y = to_window(thumb)
@@ -238,7 +242,7 @@ def tick():
             return .3
         if phase == "dragged":
             from angelo_agent import chat_view
-            identity = controller().state["id"]
+            identity = (chat()[0].as_pointer(), controller().state["id"])
             capture("replies-6-scrollbar-dragging.png")
             checks["dragging_the_thumb_scrolls_up"] = chat_view._scroll[identity] > state["drag_before"]
             x, y = to_window(view_state()["scrollbar"][1])
@@ -247,7 +251,7 @@ def tick():
             return .3
         if phase == "released":
             from angelo_agent import chat_view
-            identity = controller().state["id"]
+            identity = (chat()[0].as_pointer(), controller().state["id"])
             checks["release_ends_the_drag"] = not view_state().get("scroll_drag")
             view_state()["scroll_hover"] = None
             chat_view._scroll[identity] = 0

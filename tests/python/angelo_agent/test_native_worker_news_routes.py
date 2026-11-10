@@ -5,6 +5,8 @@ OVH6: six rounds each found a route that bypassed acknowledgement). Call sites a
 hand list of files: a new serializer call anywhere fails here until it is routed (names news through ``noted`` /
 ``prompt_news`` and acknowledges after its write) or declared to tell nothing (it writes no news field)."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest
@@ -26,9 +28,7 @@ ROUTED = {   # call -> how what it writes reaches the model and is acknowledged
                                                "round_written",
 }
 TELLS_NOTHING = {   # call -> why what it writes carries no news field (so it acknowledges nothing)
-    "routing.py:handoff:history_result_text#1": "history rows: rows never tell",
-    "routing.py:handoff:history_result_text#2": "history rows (compact form): rows never tell",
-    "routing.py:handoff:model_result#1": "history rows (compact form): rows never tell",
+    "handoff_candidates.py:prepare_activity:model_result#1": "history rows (compact form): rows never tell",
     "routing.py:shared_context:handoff#1": "a voice session's history: no worker tools, rows never tell",
     "model_results.py:model_result:model_result#1": "the copy itself (a normalised lookup's slots; its callers route)",
     "model_results.py:plan_results:model_result#1": "the copy itself (its callers route)",

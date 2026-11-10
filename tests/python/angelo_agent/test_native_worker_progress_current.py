@@ -7,6 +7,8 @@ built; a worker reports its plan when it likes, so a count it has not updated si
 tile's own picture. A save after its last report hides the count (and the step it names) until it reports again; a
 plan reported all done stays."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

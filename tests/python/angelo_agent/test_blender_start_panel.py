@@ -16,6 +16,10 @@ fails); English, Arabic and a narrow view are captured. No network, account or i
 Run through ``run_native_suites.py --gui --include test_blender_start_panel``; check ``start-panel.json``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import tempfile
@@ -132,7 +136,8 @@ def untranslated():
     missing = []
     for message in (start_card.TITLE, start_card.SUBTITLE, start_card.RECENT, start_card.NEW, start_card.OPEN,
                     start_card.WHATS_NEW, "Edited today"):
-        expected = iface_(message).strip()
+        # What's New is the About card's Operator-context message (start_card draws it in that context).
+        expected = iface_(message, "Operator" if message == start_card.WHATS_NEW else None).strip()
         drawn = (expected in lines or "".join(expected.split()) in joined
                  or (len(expected.split()) > 1 and set(expected.split()) <= words))   # A wrapped paragraph.
         if expected == message or not drawn:

@@ -484,6 +484,7 @@ target_compile_definitions(bf_rna PRIVATE RNA_RUNTIME)
 if(WITH_GTESTS)
   set(TEST_SRC
     makesrna_test.cc
+    rna_depsgraph_update_test.cc
     rna_read_storage_test.cc
   )
   set(TEST_LIB

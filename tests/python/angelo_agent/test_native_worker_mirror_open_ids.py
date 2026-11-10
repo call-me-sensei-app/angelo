@@ -8,6 +8,8 @@ park's close and a resumed open the worker's requests count from zero again, and
 the resumed turn, ``finished`` included, so it stayed busy for good.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

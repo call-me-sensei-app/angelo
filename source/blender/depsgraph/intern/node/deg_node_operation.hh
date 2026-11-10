@@ -9,7 +9,12 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <string>
+
+#include "BLI_vector.hh"
+
+#include "RNA_types.hh"
 
 #include "intern/node/deg_node.hh"
 
@@ -245,12 +250,40 @@ enum OperationFlag {
   /* Evaluation of the node is temporarily disabled. */
   DEPSOP_FLAG_MUTE = (1 << 5),
 
+  /* Angelo: the operation reads data no relation names (a driver's Python expression that is not
+   * a simple expression, or a driver variable whose target did not resolve at build time). Set by
+   * the relation builder, read by the upstream query (DEG_angelo_upstream.hh); never cleared by
+   * evaluation, rebuilt with the relations. */
+  DEPSOP_FLAG_ANGELO_UNDECLARED_READS = (1 << 6),
+
+  /* Angelo: a driver whose variable reads its own ID's final transform, for which Blender builds
+   * no relation (it would be a cycle when the driver writes that ID's own properties). The
+   * upstream query adds the owner's transform component when it reaches this operation. */
+  DEPSOP_FLAG_ANGELO_READS_OWNER_TRANSFORM = (1 << 7),
+
   /* Set of flags which gets flushed along the relations. */
   DEPSOP_FLAG_FLUSH = (DEPSOP_FLAG_USER_MODIFIED),
 
   /* Set of flags which get cleared upon evaluation. */
   DEPSOP_FLAG_CLEAR_ON_EVAL = (DEPSOP_FLAG_DIRECTLY_MODIFIED | DEPSOP_FLAG_NEEDS_UPDATE |
                                DEPSOP_FLAG_USER_MODIFIED),
+};
+
+/**
+ * Angelo: a driver variable's RNA path as the relation builder resolved it. Its relation was built
+ * from what the path named then; a write that changes what it names without tagging the relations
+ * (a C write, a Python collection move or removal, a write from another thread) leaves that
+ * relation wrong, so the upstream query resolves the path again and compares
+ * (DEG_angelo_upstream.hh).
+ */
+struct AngeloPathRead {
+  /** Where resolution starts: the variable's target ID or context struct. */
+  PointerRNA root;
+  std::string path;
+  /** What the path named at build time: the owner ID and type of the struct holding the
+   * property. A relation goes to a node of that ID chosen by that struct. */
+  const ID *owner = nullptr;
+  const StructRNA *type = nullptr;
 };
 
 /* Atomic Operation - Base type for all operations */
@@ -300,6 +333,9 @@ struct OperationNode : public Node {
 
   /* (OperationFlag) extra settings affecting evaluation. */
   int flag;
+
+  /* Angelo: the RNA paths a driver operation's variables resolved at build time, or null. */
+  std::unique_ptr<Vector<AngeloPathRead>> angelo_path_reads;
 
   DEG_DEPSNODE_DECLARE;
 };

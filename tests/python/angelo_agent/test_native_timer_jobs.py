@@ -13,6 +13,8 @@ without touching the new file. Failed loads, holds, unregister and quit.blend: `
 source scans: ``test_native_timer_jobs_scan``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import sys
 import types

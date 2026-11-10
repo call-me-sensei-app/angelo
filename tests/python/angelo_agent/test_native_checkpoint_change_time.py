@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Legacy Windows birth-time stats with by-handle change witnesses; no NTFS claim."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from contextlib import contextmanager
 import os
 from pathlib import Path
@@ -10,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 from fake_nt_files import FakeNtApi
+from host_test_policy import environment_skip
 from angelo_agent import checkpoint_capture as capture, checkpoint_filesystem as filesystem
 import test_native_checkpoint_capture_publication as publication
 import test_native_checkpoint_recovery_resources as recovery
@@ -29,14 +32,15 @@ class BirthTimeStat:
 
 class ChangeTimeApi(FakeNtApi):
     def change_time(self, descriptor):
-        return _FSTAT(descriptor).st_ctime_ns
+        # WindowsApi returns FILETIME (100 ns ticks since 1601), not POSIX nanoseconds.
+        return _FSTAT(descriptor).st_ctime_ns // 100 + 116444736000000000
 
 
 @contextmanager
 def legacy_runtime():
     if os.name == "nt":
-        raise unittest.SkipTest("The POSIX stand-in of the NT API cannot open a Windows drive; on Windows the real "
-                                "backend runs in the capture and recovery suites")
+        raise unittest.SkipTest(environment_skip("The POSIX stand-in of the NT API cannot open a Windows drive; on "
+                                                 "Windows the real backend runs in the capture and recovery suites"))
     api = ChangeTimeApi()
     with (patch.object(filesystem, "_windows_api", return_value=api),
           patch.object(filesystem, "_needs_windows_change_time", return_value=True),
@@ -45,6 +49,13 @@ def legacy_runtime():
 
 
 class CheckpointChangeTimeTests(unittest.TestCase):
+    def test_change_time_standin_uses_windows_filetime_units(self):
+        # WindowsApi.change_time returns 100 ns ticks since 1601, not POSIX nanoseconds.
+        with tempfile.TemporaryFile() as handle:
+            info = _FSTAT(handle.fileno())
+            expected = info.st_ctime_ns // 100 + 116444736000000000
+            self.assertEqual(ChangeTimeApi().change_time(handle.fileno()), expected)
+
     def test_same_size_restored_mtime_retains_birthtime_but_invalidates_change_witness(self):
         with tempfile.TemporaryDirectory() as temp, legacy_runtime():
             root = Path(temp).resolve()
@@ -92,8 +103,8 @@ class CheckpointChangeTimeTests(unittest.TestCase):
                 fixture.tearDown()
 
     def test_legacy_capture_ack_tamper_and_positive_pair(self):
-        for method in ("test_base_ack_change_cannot_be_adopted_by_later_pair_seal",
-                       "test_runtime_ack_change_cannot_be_adopted_by_later_pair_seal",
+        for method in ("test_base_change_after_publication_is_never_sealed_validated",
+                       "test_runtime_change_after_publication_is_never_sealed_validated",
                        "test_pair_is_hashed_published_then_finished_after_post"):
             with self.subTest(method=method):
                 self.run_fixture(publication.CapturePublicationTests, method)

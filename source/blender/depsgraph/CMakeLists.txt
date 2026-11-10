@@ -86,6 +86,7 @@ set(SRC
   intern/depsgraph_update.cc
   intern/depsgraph_writeback_sync.cc
 
+  DEG_angelo_upstream.hh
   DEG_depsgraph.hh
   DEG_depsgraph_build.hh
   DEG_depsgraph_debug.hh
@@ -181,11 +182,15 @@ if(WITH_GTESTS)
   set(TEST_SRC
     intern/builder/deg_builder_nodes_test.cc
     intern/builder/deg_builder_rna_test.cc
+    intern/depsgraph_angelo_upstream_status_test.cc
+    intern/depsgraph_angelo_upstream_test.cc
+    intern/depsgraph_angelo_upstream_test_fixture.hh
     intern/depsgraph_query_foreach_test.cc
     intern/node/deg_node_component_test.cc
   )
   set(TEST_LIB
     ${LIB}
+    PRIVATE bf::animrig
     bf_depsgraph
   )
   blender_add_test_suite_lib(depsgraph "${TEST_SRC}" "${INC};${TEST_INC}" "${INC_SYS}" "${TEST_LIB}")

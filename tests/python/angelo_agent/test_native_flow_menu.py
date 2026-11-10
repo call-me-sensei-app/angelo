@@ -13,6 +13,8 @@ flow's error) and links back to Media Studio with the shared pill; the popup's m
 ``test_native_flow_window``'s.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import contextlib
 import sys

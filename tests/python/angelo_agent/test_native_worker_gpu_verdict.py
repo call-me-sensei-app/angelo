@@ -5,6 +5,8 @@ with each view, so no hosted worker starts a probe child Angelo already knows th
 verdict, or a malformed one, the worker probes as before (fail closed). No Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

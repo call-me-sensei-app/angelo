@@ -31,6 +31,7 @@ import eval_provider_limits as limits
 import eval_warm_up
 import mcp_request_parameters
 import oneshot_metrics
+import provider_isolation as isolation
 
 WAIT_S = 300.
 
@@ -55,9 +56,10 @@ def mcp_side(config, folder, stamp=None):
     probed = mcp.probe_mcp_server(server, mcp.clean_environment(TMPDIR=folder / "tmp"), folder / "tmp", list_only=True)
     command = scenario.client_command(mcp.claude_command(config, config_path, probed["tools"]), config, folder)
     record["claude_command"] = command
-    stream = mcp.ClaudeStream(command, mcp.clean_environment(
-        CLAUDE_CONFIG_DIR=config["claude_config_dir"], TMPDIR=folder / "tmp",
-        **config.get("fake_model_environment", {})), cwd, folder)
+    stream = mcp.ClaudeStream(command, mcp.clean_environment(   # The profile's account, checked at this launch.
+        CLAUDE_CONFIG_DIR=isolation.checked("claude-profile", config["claude_config_dir"],
+                                            fake=config.get("fake_model_environment", {}).get("ANTHROPIC_BASE_URL")),
+        TMPDIR=folder / "tmp", **config.get("fake_model_environment", {})), cwd, folder)
     try:
         stream.start()
         sent = time.monotonic()

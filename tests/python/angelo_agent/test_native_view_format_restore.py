@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Native RNA-shaped pointer boundaries and format-dependent scalar restoration."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import unittest
 from types import SimpleNamespace

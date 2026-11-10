@@ -22,6 +22,7 @@ Standard library only; no bpy.
 
 import contextlib
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -77,6 +78,60 @@ def held(directory, timeout=TIMEOUT, *, name=LOCK_NAME, clock=time.monotonic, sl
             _unlock(handle)
 
 
+class Holder:
+    """An OS file lock a process keeps for as long as it holds something the others wait for.
+
+    ``take`` locks ``directory/name`` without waiting (True when this process holds it now); ``release`` lets it go;
+    ``held_elsewhere`` tells whether another live process holds it. The OS releases it when its process exits, so a
+    closed or crashed holder reads as gone (``team_refresh_marks``: the holder of an unsaved team sign-in).
+    """
+
+    def __init__(self, directory, name):
+        self.path, self._handle = Path(directory) / name, None
+        self._guard = threading.Lock()  # ``take`` and ``release`` run on the worker and on chat threads.
+
+    @property
+    def held(self):
+        return self._handle is not None
+
+    def take(self):
+        with self._guard:
+            return self._take()
+
+    def _take(self):
+        if self._handle is None:
+            handle = open(self.path, "a+b")
+            try:
+                locked = _try_lock(handle)
+            except OSError:
+                handle.close()
+                raise
+            if not locked:
+                handle.close()
+                return False
+            self._handle = handle
+        return True
+
+    def release(self):
+        with self._guard:
+            handle, self._handle = self._handle, None
+            if handle is not None:
+                try:
+                    _unlock(handle)
+                finally:
+                    handle.close()
+
+    def held_elsewhere(self):
+        """True when another process holds the lock (this process's own hold counts as not elsewhere)."""
+        if self._handle is not None:
+            return False
+        with open(self.path, "a+b") as handle:
+            if not _try_lock(handle):
+                return True
+            _unlock(handle)
+            return False
+
+
 def factory(directory, timeout=TIMEOUT):
-    """A zero-argument context-manager factory, as ``TeamAccount(process_lock=…)`` takes."""
-    return lambda: held(directory, timeout)
+    """A context-manager factory, as ``TeamAccount(process_lock=…)`` takes: no argument, or a shorter wait."""
+    return lambda wait=timeout: held(directory, wait)

@@ -15,22 +15,22 @@ from pathlib import Path
 
 from .providers import CodexProvider, ClaudeProvider
 from .runtime_bindings import retire_connection as retire_codex_runtimes  # Worker children end too.
-from .provider_registry import billing_kind, billing_label, is_team, runtime_kind
+from .provider_registry import STANDING_CONSENT, USAGE_SEPARATOR, billing_kind, billing_label, is_team, runtime_kind
 from .owned_values import owned
 from .sessions import SessionStore
-from .studio_spec import STUDIO_NAMES, STUDIO_USAGE
+from .studio_spec import STUDIO_NAMES
 from .flow_tool_spec import FLOW_NAMES, FLOW_USAGE
 from .studio_agent import StudioPending
-from .tool_specs import TOOL_MAP, BOUNDED_MUTATIONS, FILE_TOOLS, RIG_IMAGE_TOOLS, validate_call
-from .engine_link_tool_spec import asks_only as engine_link_asks_only
+from .tool_specs import TOOL_MAP, FILE_TOOLS, RIG_IMAGE_TOOLS, validate_call
 from .chat_settings import clean_options, claude_effort, codex_turn_options, selected_model, stored_options
 from .references import ReferenceStore
 from .files import FileWorkspace
 from .checkpoints import CheckpointStore
 from .checkpoint_policy import CheckpointPolicyStore, DEFAULT_POLICY, capture_scope, requires_capture
 from .routing import RuntimeContext, MODES, TOOLSET_VERSION, context_key, handoff, route_key, shared_context
+from . import request_submissions
 from . import activity_rows, claude_direct, codex_opening, live_progress, model_profiles, pending_delivery, plan_progress, pump_guard, reply_overlay
-from . import chat_changes, document_scene, event_queue, merge_framing, render_extensions, request_rows, script_overlay, worker_news, worker_resume
+from . import auto_reasons, call_ended, call_status, review_again, chat_changes, document_scene, event_queue, goal_loop, merge_framing, message_end, render_extensions, request_rows, script_overlay, worker_news, worker_resume
 from .plan_schema import PlanRejected, deferred_schemas
 from .protocol import RpcError
 from .providers import CLAUDE_PLAN_REJECTIONS
@@ -53,11 +53,12 @@ from . import script_store  # Scripts by id: resolve_call builds a patch's code;
 from .pending_delivery import ToolCall
 from .tool_finalization import DISPLAY_EVENTS, complete_result, journal_tool, save_if_owed, save_observed_state
 from .memory_projects import admit_restore_scope, bind_saved_memory, confirm_rebind_memory, rebind_review
-from . import task_memory, program_completion, program_camera, usage_meter, merge_hold, recovery_reads, worker_facts, unsent_loss, thread_start
+from . import chat_pending, steering, steering_delivery, task_memory, program_completion, program_camera, usage_meter, merge_hold, recovery_reads, stale_binding, unsent_loss, thread_start
 from .controller_external import ExternalRequests, bound_target
 from .trusted_scripts import TrustedScripts
 from .worker_routing import SealedFiles
 from .transcript_rows import TranscriptRows
+from .controller_choice import ConnectionChoice
 from .program_commit_controller import (ProgramCommitController, NativePreparation,
                                         CONTEXT_BOUND_PROGRAMS, _preparation_outcome)
 
@@ -85,7 +86,7 @@ class ToolDispatchBudget:
 from .tool_pump import pump_controller_tools  # noqa: E402,F401 - its home before the worker lanes.
 
 
-class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, ExternalRequests, SealedFiles):
+class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommitController, ExternalRequests, SealedFiles):
     def __init__(self, directory, settings=None, session_id=None):
         self.store = getattr(self, "store_type", SessionStore)(directory, session_id)  # worker_journal_owner's.
         self.state = self.store.load()
@@ -187,6 +188,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self.telemetry = TelemetryStore.shared(directory)
         self._request_metrics = None
         self._request_message_index = None
+        self._request_text = ""   # The current request's own words (``_start_turn``).
         self.setup_required = False
         self.connection_error = False
         self.models = []
@@ -196,6 +198,9 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self.attachments = []
         self.turn_attachments = []
         self.unsent_draft = None  # A message that never reached the agent, for the UI to put back (drafts.py).
+        self.inbox = steering.Inbox()   # Messages sent while a turn runs: steered into it or queued (steering).
+        self._turn_pending = []   # The pending messages the current request carries (chat_pending.dispatch_due).
+        chat_pending.load(self)   # Its pending messages from before a relaunch, back paused.
         self.turn_outcome = None  # (status, stopped, not sent, rows) as the last turn ended (session_rail.turn_end).
         self.turn_options = None
         self.checkpoints = CheckpointStore(directory, self.state["id"])
@@ -232,10 +237,6 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
     @api_key.setter
     def api_key(self, value):  # Wherever a key is bound, the transcript's rows stop holding it (activity_rows).
         activity_rows.bind_key(self, value)
-
-    def redact(self, value):
-        text = str(value)
-        return text.replace(self.api_key, "[REDACTED]") if self.api_key else text
 
     def metrics_report(self, scope="SESSION", limit=20):
         if scope not in {"SESSION", "ALL"}:
@@ -299,6 +300,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             self.recovery_barrier.observe(self._initial_recovery_evidence)
             self._initial_recovery_evidence = {}
         self._request_message_index = None
+        self._request_text = ""   # The current request's own words (``_start_turn``).
         warm_probe = getattr(self.provider, "has_warm_runtime", None)
         warm = warm_probe() is True if callable(warm_probe) else self.provider is not None
         self._request_metrics = self.telemetry.begin(RequestMetrics(runtime_kind(self.state["provider"]), warm,
@@ -424,11 +426,11 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         if not playing:
             if call.waiting_for_playback:
                 call.waiting_for_playback = False
-                self.status = "Staging native program"
+                call.shown_status = self.status = "Staging native program"
             return False
         if not call.waiting_for_playback:
             call.waiting_for_playback = True
-            self.status = "Waiting for animation playback to stop"
+            call.shown_status = self.status = "Waiting for animation playback to stop"
             if call.metrics:
                 call.metrics.count("playback_waits")
             self.emit("activity", {"id": call.id, "status": "running", "result": {
@@ -603,25 +605,31 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         if route is not None and self._turn_escalations == 0:
             escalating = step is not None and step.action == "escalate"
             self._recent_escalations = (self._recent_escalations + [escalating])[-model_routing.STICKY_WINDOW:]
-        if step is None:   # The message ended (Auto continues nothing): a worker chat's turn is one sample.
-            return worker_facts.turn_ended(self, data.get("status"))
-        if step.action == "suggest":
-            self._append_row({"role": "system", **ui_text.notice(
-                "A stronger model on this connection, {model}, may handle this request better ({reason}). Choose it in the "
-                "model picker to retry; nothing is retried automatically.", model=step.rung.model, reason=step.reason)})
-            self.version += 1
-            return worker_facts.turn_ended(self, data.get("status"))
+        if step is None or step.action == "suggest":   # The message ended: Auto continues nothing (message_end).
+            if step is not None:
+                self._append_row({"role": "system", **ui_text.notice(
+                    "A stronger model on this connection, {model}, may handle this request better ({reason}). Choose it in "
+                    "the model picker to retry; nothing is retried automatically.", model=step.rung.model, reason=step.reason)})
+                self.version += 1
+            return message_end.ended(self, data)
         self._append_row({"role": "system", **ui_text.notice(
             "Auto asked {model} instead ({reason}); nothing had been applied to the scene.", model=step.rung.model, reason=step.reason)})
         self._turn_route = dataclasses.replace(route, model=step.rung.model, tier=step.rung.tier,
                                                effort=step.rung.effort, ladder=route.ladder[1:])
         self._turn_escalations += 1
-        try:
-            self._start_turn(self._turn_message, self._turn_observation, user_row=False)
+        try:   # The request again, with the steers its first try read, in order (steering_delivery).
+            self._start_turn(steering_delivery.with_steers(self._request_text, self._request_steers()),
+                             self._turn_observation, user_row=False)
         except Exception as error:
             self._append_row({"role": "error", "text": self.redact(error)})
-            self.version += 1
-            worker_facts.turn_ended(self, "failed")   # The escalation could not start: the message ended there.
+            self.version, data["status"] = self.version + 1, "failed"   # Not a normal end (chat_pending.turn_ended).
+            message_end.ended(self, data)   # Final failure, including pending-message status and goal accounting.
+
+    def _request_steers(self):
+        """The texts of the steers the current request read, oldest first (never one withdrawn unread)."""
+        index, rows = self._request_message_index, self.state["messages"]
+        start = index + 1 if type(index) is int else len(rows)
+        return [row["text"] for row in rows[start:] if row.get("steer") is True and row.get("withdrawn") is not True]
 
     def standing_consent(self, call, binding):
         """Whether a consultation may run without its approval click.
@@ -680,6 +688,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
     def record_provider_accepted(self, *, request_fence=None):
         """Keep the acknowledged input's context snapshot (ledger_events)."""
         ledger_events.record_accepted(self, request_fence=request_fence)
+        if not self.cancelled and (request_fence is None or request_fence.matches(self)):
+            request_submissions.delivered(self)
 
     def record_runtime_start(self, milliseconds, *, cold=True, request_fence=None):
         """Deferred native launch time, never inference or fabricated warmth.
@@ -837,7 +847,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self._approval_wait(call)
         call.approved = True
         call.authorized, call.staging, call.approval = True, True, False
-        self.status = "Staging native program"
+        call.shown_status = self.status = "Staging native program"
         self.emit("activity", {"id": call.id, "status": "running", "result": {
             "status": "staging", "final": False, "scene_changed": False,
             "note": "Approved staged work; the live document has not been changed."}})
@@ -995,7 +1005,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                     current, failure = self._fresh_precondition(call, executor)
                     if not self._tool_available(call, document):
                         continue
-                    if failure is not None or (call.precondition is not None and current != call.precondition):
+                    if failure is not None or (call.precondition is not None and not stale_binding.same(current, call.precondition)):
                         current = self._rebind_once(call, executor, current, failure)
                     call.precondition = current
                     self.ensure_request_checkpoint(staging=True)
@@ -1074,22 +1084,6 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         from .document_work import set_document   # Another file invalidates it; the same file reopened never does.
         set_document(self, document)
 
-    @property
-    def selection_connection_id(self):
-        return (self.state.get("next_route") or {}).get("connection_id", self.state.get("connection_id"))
-
-    @property
-    def selection_provider(self):
-        return (self.state.get("next_route") or {}).get("provider", self.state["provider"])
-
-    @property
-    def selection_models(self):
-        return self._next_binding["models"] if self._next_binding else self.models
-
-    @property
-    def selection_settings(self):
-        return self._next_binding["settings"] if self._next_binding else self.settings
-
     def remember_runtime(self, synced_length=None):
         key = self.context_key()
         previous = self.state["runtime_sessions"].get(key, {})
@@ -1108,80 +1102,6 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             entry["model"] = self._context_model
         self.state["runtime_sessions"][key] = entry
         self._route_models[route_key(self.state.get("connection_id"), self.state["provider"])] = list(self.models)
-
-    def select(self, provider, settings, api_key="", connection_id=None, models=None):
-        if self.busy or (self._worker and self._worker.is_alive()):
-            raise RuntimeError("The current request is still running; queue the connection for the next message")
-        if provider not in MODES:
-            raise ValueError("Unknown provider profile")
-        connection_id = connection_id if connection_id is not None else self.state.get("connection_id")
-        old_key = route_key(self.state.get("connection_id"), self.state["provider"])
-        new_key = route_key(connection_id, provider)
-        changed = provider != self.state["provider"] or new_key != old_key or settings != self.settings or api_key != self.api_key
-        self.remember_runtime()
-        if changed and self.provider:
-            threading.Thread(target=self.provider.close, daemon=True).start()
-            self.provider = None
-        # Native threads belong to one credential/profile scope, not just a model.
-        profile_changed = bool(self.settings) and (
-            settings.get("reuse_codex_login", True) != self.settings.get("reuse_codex_login", True)
-            or settings.get("connection_id") != self.settings.get("connection_id")
-            or settings.get("auth_directory") != self.settings.get("auth_directory")
-            or settings.get("native_profile") != self.settings.get("native_profile"))
-        key_changed = provider.endswith("_api") and api_key != self.api_key
-        if changed:
-            self._epoch += 1
-            self._runtime_context = None
-            self.models_loading = False
-            self._items.clear()
-            if new_key == old_key and (profile_changed or key_changed):
-                self._drop_contexts(new_key)
-            saved = self.state["runtime_sessions"].get(new_key, {})
-            self.state["context_slot"], self._context_model = None, saved.get("model")
-            self.state["native_id"] = saved.get("native_id")
-            self.state["toolset_version"] = saved.get("toolset_version", TOOLSET_VERSION)
-            self.models = list(models if models is not None else self._route_models.get(new_key, []))
-        self.settings = dict(settings)
-        self.api_key = api_key
-        self.state["provider"] = provider
-        self.state["connection_id"] = connection_id
-        self.state["next_route"] = None
-        self._next_binding = None
-        self.connection_error = False
-        if models is not None:
-            self.models = list(models)
-        self.version += 1
-
-    def choose_connection(self, provider, settings, api_key, connection_id, models=None, model=""):
-        """Selection changes this chat's NEXT request, never its active billing."""
-        if provider not in MODES:
-            raise ValueError("Unknown provider profile")
-        choices = list(models or self._route_models.get(route_key(connection_id, provider), []))
-        selected = next((m for m in choices if m["id"] == model), None) if model else next((m for m in choices if m["default"]), None)
-        if model and not selected:
-            raise ValueError("Refresh the models available to this connection")
-        options = stored_options(self.state.get("options"))
-        changed = connection_id != self.selection_connection_id or provider != self.selection_provider
-        effort = options["effort"]
-        if selected and selected["efforts"] and effort not in selected["efforts"]:
-            effort = selected["default_effort"] if selected["default_effort"] in selected["efforts"] else selected["efforts"][0]
-        self.state["options"] = stored_options(options | {"model": model, "effort": effort,
-            "fast": not changed and options["fast"] and bool(selected and selected["fast_tier"])})
-        if self.busy or (self._worker and self._worker.is_alive()):
-            self._next_binding = {"provider": provider, "settings": dict(settings), "api_key": api_key,
-                                  "connection_id": connection_id, "models": choices}
-            self.state["next_route"] = {"provider": provider, "connection_id": connection_id}
-        else:
-            self.select(provider, settings, api_key, connection_id, choices)
-        self.version += 1
-        self.save()
-
-    def apply_next_connection(self):
-        if self._next_binding and not self.busy and not (self._worker and self._worker.is_alive()):
-            self.select(**self._next_binding)
-            self.save()
-            return True
-        return False
 
     def invalidate_runtime(self, connection_id=None):
         """Never resume a context after reauthentication, removal or restore."""
@@ -1245,6 +1165,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self._runtime_context = None
         self.provider = None
         self._script_consent = None
+        chat_pending.save(self, final=True)   # The old chat keeps its pending messages; the new one starts with none.
+        self.inbox, self._pending_saved, self._pending_refused_at = steering.Inbox(), None, None
         self.state = self.store.new(self.state["provider"])
         self.store.seal(0)
         self._project_owner = object()
@@ -1307,8 +1229,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         if is_team(self.state["provider"]):
             # The Angelo gateway relays HTTP model calls; realtime voice isn't one of its routes.
             raise RuntimeError("Voice isn't available on team connections. Select a personal Codex connection for voice.")
-        if self.document_invalid or getattr(self, "awaited_file", None) is not None:
-            raise RuntimeError("Start a new chat for the current Angelo document")
+        if self.document_invalid or getattr(self, "awaited_file", None) is not None:   # The composer's own sentence.
+            raise RuntimeError(document_scene.refusal(self) or "Start a new chat for the current Angelo document")
         from .voice import availability
         unavailable = availability()
         if unavailable:
@@ -1387,28 +1309,40 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 self.emit("message", {"role": "error", "text": self.redact(error)})
         threading.Thread(target=append, daemon=True).start()
 
-    def send(self, text, observation=None, *, recovery_evidence=None, host_request=None):
+    def send(self, text, observation=None, *, recovery_evidence=None, host_request=None, host_kind=None, references=None, pending=(), submission=None, use_composer_choices=True):
+        """Pending sends carry their own references; host_kind retains host/person classification."""
+        if submission is not None:
+            submission.before_start(self)
         self.require_model_chat()
         self.apply_next_connection()
+        # The person's Enter holds a message instead (console.execute); this refuses any other caller. Not
+        # ``turn_running``: a worker lane calls this with its own preparation marked (worker_routing.deliver).
         if self.busy or (self._worker and self._worker.is_alive()):
-            raise RuntimeError(display_text.Text(ui_text.n_("An agent turn is already running")))
+            raise RuntimeError(display_text.Text(ui_text.n_(
+                "Angelo is still working on your last message. Wait for it, or press Stop.")))
         if self.document_invalid or getattr(self, "awaited_file", None) is not None:   # Its own file: document_identity.
-            raise RuntimeError(display_text.Text(ui_text.n_("The document changed; start a new chat")))
-        drafts = () if host_request is not None else self.attachments   # Angelo's own (worker_resume): none of theirs.
+            raise RuntimeError(document_scene.refusal(self) or display_text.Text(ui_text.n_("The document changed; start a new chat")))
+        drafts, kind, persons = request_rows.sender(self, host_request, host_kind, references)
         if (not text.strip() and not drafts) or len(text) > 32000:
             raise ValueError(display_text.Text(ui_text.n_("Enter a message of 1-32000 characters")))
         # Validate snapshots on the caller thread, before consuming the draft.
         for reference in drafts:
             self.references.checked_path(reference)
         self.turn_attachments, self._host_request = [dict(r) for r in drafts], host_request and list(host_request)
-        self._initial_recovery_evidence = recovery_evidence or {}
+        self._turn_takes_drafts = host_request is None and references is None and not getattr(self, "_external_task", False)
+        self._turn_pending = list(pending)
+        self._initial_recovery_evidence, self._request_kind, self._persons_send = recovery_evidence or {}, kind, persons
         self._turn_route = self._auto_route(clean_options(self.state.get("options")))
         self._turn_escalations, self._turn_mutated, self._turn_observation = 0, False, observation
-        if host_request is None and not getattr(self, "_external_task", False):   # The person's own words only.
-            self.person_spoke_at = time.monotonic()   # engine_link_agent.caller_of (break-it 5-P).
-        self._start_turn(text, observation, user_row=True)
+        if self._persons_send and not pending:   # Held messages were spoken at hold, never again on restoration.
+            self.person_spoke_at = time.monotonic()
+        goal_loop.request_started(self, text, host_kind=kind, person=persons,
+                                  use_composer_choices=use_composer_choices)
+        self._start_turn(text, observation, user_row=True, submission=submission)
+        if pending and self._request_metrics is not None:
+            self._request_metrics.count("pending_sent", len(pending))   # Receipt-only (telemetry).
 
-    def _start_turn(self, text, observation, *, user_row):
+    def _start_turn(self, text, observation, *, user_row, submission=None):
         """One model request of the current user request: the first, or Auto's escalation.
 
         The escalation re-run adds no user row and reuses the request's
@@ -1424,6 +1358,10 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self.turn_options = options
         request_index = self._request_message_index
         self._begin_metrics(new_request=user_row)
+        if user_row:
+            self._send_submission = None
+            if submission is not None:
+                submission.bind(self)
         if prewarmed:
             self._request_metrics.count("runtime_prewarmed")
         if not user_row:
@@ -1442,10 +1380,13 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         self._turn_collaborators = [] if self.remote_executor is not None else list(self.collaborators)
         history = list(self.state["messages"])
         if not user_row and type(request_index) is int and request_index < len(history):
-            # The prompt carries the request itself; the handoff must not repeat it.
-            del history[request_index]
+            # The prompt carries the request itself and its steers; the handoff must not repeat them.
+            history = [row for index, row in enumerate(history) if index != request_index
+                       and not (index > request_index and row.get("steer") is True)]
         self._turn_history = history
         self._turn_message, self._native_unsynced_from = text, None
+        if user_row:
+            self._request_text = text   # What an Auto re-run asks again (``_after_turn``), its steers added then.
         self._items.clear()
         self.thinking.clear()
         self._thinking_message = None
@@ -1459,7 +1400,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                                   "checkpoint": self.request_checkpoint, "provider": self.state["provider"],
                                   "checkpoint_scope": capture_scope(self._turn_checkpoint_policy),
                                   "connection_id": self.state.get("connection_id")})
-            del self.attachments[:len(self.turn_attachments)]   # What it took: Angelo's own request takes none.
+            if getattr(self, "_turn_takes_drafts", True):   # What it took from the message box, and only that.
+                del self.attachments[:len(self.turn_attachments)]
         prompt = text or request_rows.IMAGE_ONLY_TEXT
         self._pending_ledger, self._turn_delivered, self._turn_round_inputs = None, False, []
         self._turn_requests = 0 if user_row else getattr(self, "_turn_requests", 0)   # A re-run counts on (worker_facts).
@@ -1560,12 +1502,12 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             return identifiers.IdentifierTable()
         return None
 
-    def resolve_call(self, name, arguments):
-        """Short identifiers in model-submitted arguments, resolved (identifiers.expand_call)."""
-        self.recovery_barrier.check(name, arguments)
+    def resolve_call(self, name, arguments, *, step=None):
+        """Model-submitted short identifiers, resolved (identifiers.expand_call); ``step``: model_steps."""
+        self.recovery_barrier.check(name, arguments, step=step)
         arguments = script_store.expand(self, name, arguments)  # A script's base and edits, built into its code.
         expanded = identifiers.expand_call(name, arguments, self._identifiers)
-        self.recovery_barrier.check(name, expanded)
+        self.recovery_barrier.check(name, expanded, step=step)
         return expanded
 
     def compact_identifiers(self, value):
@@ -1701,6 +1643,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             event_queue.flush(self)   # What a long main-thread call left held joins the queue first.
             return self._pump_events()
         finally:
+            request_submissions.settle(self)
             self._main_thread_block(metrics, started)
 
     def _pump_events(self):
@@ -1788,6 +1731,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                         self.state["messages"].append(message)
                 if data["role"] == "user" and self.busy:
                     self._request_message_index = index
+                    request_submissions.admit(self)
             elif kind in {"delta", "message_complete"}:
                 if self._request_metrics and data.get("text"):
                     self._request_metrics.mark("first_text_ms")
@@ -1841,7 +1785,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 self._initial_request_checkpoint()
                 with self.lock:
                     messages = self.state["messages"]
-                    index = next((i for i in reversed(range(len(messages))) if messages[i]["role"] == "user"), None)
+                    index = next((i for i in reversed(range(len(messages))) if request_rows.starts_request(messages[i])), None)
                     if index is not None:
                         checkpoint = {"checkpoint": self.request_checkpoint} if self.request_checkpoint else {}
                         self._change_row(index, **checkpoint, checkpoint_scope=capture_scope(self._turn_checkpoint_policy))
@@ -1868,6 +1812,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                     if kind == "thinking_completed":
                         message.update(status="completed", duration_ms=round((data.get("time", time.perf_counter()) - self._thinking_times[item]) * 1000))
                     self._touched(self._thinking_messages[item])
+            elif kind == "steer_shown":   # The person's message read mid-turn: its own row, never the request's.
+                chat_pending.show_steer(self, data)
             elif kind == "activity":  # Its row holds no key: stored, saved, handed off and drawn redacted.
                 activity_rows.store(self, data)
             elif kind == "setup_required":
@@ -1876,17 +1822,24 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 self.busy = False
                 turn_end.end_turn_calls(self)   # First: a step it stopped is the turn's own (its rail report, its model).
                 self.turn_outcome = (data.get("status"), bool(self.cancelled), data.get("not_sent") is True, len(self.state["messages"]))  # Read once, never rewritten by later actions.
+                retry_unsent = (data.get("not_sent") is True and request_submissions.not_sent(
+                    self, RuntimeError(display_text.Text(ui_text.n_("Your message wasn't sent. Send it again when you're ready.")))))
+                if data.get("not_sent") is not True:
+                    request_submissions.finished(self)
                 with self.lock:
                     anchor = self._request_message_index  # "Worked for 1m 58s" under the turn (chat_rows.worked).
                     started = live_progress.started(self)
                     if (started is not None and type(anchor) is int and 0 <= anchor < len(self.state["messages"])
                             and self.state["messages"][anchor].get("role") == "user"):
                         self._change_row(anchor, worked_ms=round((time.monotonic() - started) * 1000))
-                    if data.get("not_sent") is True and getattr(self, "_host_request", None) is None:  # The person's.
+                    if data.get("not_sent") is True and request_rows.persons_send(self) and not retry_unsent:  # The person's.
                         self.state["messages"].append({"role": "system", **ui_text.notice("Your message wasn't sent. Send it again when you're ready.")})
-                        self.unsent_draft = self._turn_message
-                        if not self.attachments:
-                            self.attachments = [dict(reference) for reference in self.turn_attachments]
+                        if self._turn_pending and not self._turn_escalations:   # Never read: back on their bubbles.
+                            self.inbox.restore(self._turn_pending, "not_started")
+                        else:
+                            self.unsent_draft = self._request_text if self._turn_escalations else self._turn_message
+                            if not self.attachments:
+                                self.attachments = [dict(reference) for reference in self.turn_attachments]
                     for item, index in self._thinking_messages.items():
                         if self.state["messages"][index].get("status") == "running":
                             self._change_row(index, status="completed", duration_ms=round((time.perf_counter() - self._thinking_times[item]) * 1000))
@@ -1906,15 +1859,20 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                     self._main_thread_block(metrics, self._pump_started)
                 self._finish_metrics(data["status"])
                 self._after_turn(data)
+                chat_pending.turn_ended(self, data.get("status"), cancelled=bool(self.cancelled),
+                                        not_sent=data.get("not_sent") is True)
         if changed:
             self.version += 1
         save_if_owed(self, changed and durable)   # A durable change the save throttle skips is owed, never dropped.
+        if self.inbox.version != getattr(self, "_pending_saved", None):
+            chat_pending.save(self)   # Its pending messages' file (steering): written when they changed.
+            self.version += 1   # And the tray redraws: a provider thread may have changed them.
         return changed
 
     request_tool = pending_delivery.request_tool
 
     def _admit_tool_request(self, call_id, name, arguments, callback, *, answer, enqueue, request_fence,
-                            delivery_owner, parent_call, result_observer, script_file=None):
+                            delivery_owner, parent_call, result_observer, script_file=None, model_step=None):
         """Keep admitted callbacks raw; ``answer`` collects only refusals and completed-result replays."""
         with self.lock:
             admitted_fence = request_fence if request_fence is not None else RequestFence.capture(self)
@@ -1936,7 +1894,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             answer({"error_code": 'VALIDATION', "error": "Use a bounded printable native invocation identifier"})
             return
         try:
-            resolved = self.resolve_call(name, arguments)
+            resolved = self.resolve_call(name, arguments, step=model_step)
             arguments = validate_call(name, resolved)   # Nothing holds a valid call back: a script goes to approval.
             submitted_digest = program_completion.submitted_digest(resolved)
         except ValueError as error:
@@ -2037,7 +1995,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                             generation=admitted_fence.generation, invocation_digest=digest, chat_id=self.state["id"],
                             submitted_arguments_digests=(submitted_digest,), metrics=metrics,
                             delivery_owner=delivery_owner, parent_call=parent_call, result_observer=result_observer,
-                            script_consent=self.admission_script_consent(),
+                            script_consent=self.admission_script_consent(), model_step=model_step,
                             script_file=script_file if name == "angelo_execute_python" else None,
                             queued_at=time.monotonic(), expires=time.monotonic() + tool_seconds(name))
             self.pending[key] = call
@@ -2112,19 +2070,9 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 not call.merge_waits and (self._automatic_script(call) or self._auto_bounded(call)) for call in list(self.pending.values()))))
 
     def _auto_bounded(self, call, mode=None):
-        """Auto runs this bounded edit without a card. A worker start only up to the parts one request may start so
-        (``worker_sessions.auto_start_allowed``: billed worker sessions, break-it E2E-2 M3), and a merge unless its
-        ``again`` places a part merged before (``worker_merge.auto_merge_allowed``, E2E-20 R5-M-2): else it asks."""
-        mode = mode or clean_options(self.state.get("options"))["approval"]
-        if mode in {"ASK", "AUTO_BOUNDED"} and engine_link_asks_only(call.name, getattr(call, "arguments", None)):
-            return True   # It only raises the person's own request card (engine_link_tool_spec.asks_only).
-        if mode != "AUTO_BOUNDED" or call.name not in BOUNDED_MUTATIONS:   # Ask: only the worker-done event's merge.
-            return mode == "ASK" and call.name == "angelo_workers_merge" and worker_resume.event_merge(self, call.arguments)
-        if call.name in {"angelo_workers_start", "angelo_workers_merge"}:
-            from . import worker_merge, worker_sessions
-            allowed = worker_sessions.auto_start_allowed if call.name.endswith("start") else worker_merge.auto_merge_allowed
-            return allowed(self, call.arguments)
-        return call.name != "angelo_scene_program" or not render_extensions.engine_edits(call.arguments)   # Add-on engine: ask.
+        """Auto runs this bounded edit without a card: its rule's reason code is None (``auto_reasons``, whose codes
+        also choose the card's line saying why it asks)."""
+        return auto_reasons.bounded_reason(self, call, mode) is None
 
     _end_closed_delivery = pending_delivery.end_closed_delivery
 
@@ -2148,7 +2096,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             self.finish_tool(call, {"error": "Document changed or turn stopped", "error_code": "CANCELLED"})
             return False
         try:
-            call.recovery_review = self.recovery_barrier.check(call.name, call.arguments)
+            call.recovery_review = self.recovery_barrier.check(call.name, call.arguments, step=call.model_step)
             evidence = self.recovery_barrier.description() if call.recovery_review else None
             # Preserve the immutable review identity when the detached facts are unchanged.
             if evidence != call.recovery_evidence:
@@ -2232,19 +2180,18 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                         continue
                     if not any(m["id"] == call.arguments["model"] for m in binding["models"]):
                         raise ValueError("Refresh the models on the requested collaborator connection")
-                    call.usage_label = binding.get("name", binding["provider"]) + " · " + billing_label(binding["provider"])
+                    call.usage_label = binding.get("name", binding["provider"]) + USAGE_SEPARATOR + billing_label(binding["provider"])
                     call.approval = True
                     call.approval_started = time.monotonic()
                     if self.standing_consent(call, binding):
                         # The person's visible setting stands in for this click; the
                         # activity row and the receipt still show it and its usage.
                         call.automatic = True
-                        call.usage_label += " · standing consent"
+                        call.usage_label += USAGE_SEPARATOR + STANDING_CONSENT   # English, as the model reads it.
                         self.emit("activity", {"id": call.id, "status": "running", "collaborator": call.usage_label})
                         budget.executions += 1
                         self.execute_tool(call, executor, document)
                         continue
-                    self.status = "Approve collaborator usage"
                     self.emit("activity", {"id": call.id, "status": "approval", "collaborator": call.usage_label})
                 except (RuntimeError, ValueError) as error:
                     if not self.expire_tool(call):
@@ -2263,10 +2210,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                     call.precondition = self._precondition(call, executor)
                     if not self._tool_available(call, document):
                         continue
-                    if call.name in STUDIO_USAGE:
-                        call.usage_label = executor.usage_label(call.name, call.arguments)
-                    elif call.name in FLOW_USAGE:
-                        call.usage_label = executor.usage_label(call.name, call.arguments, call.precondition)
+                    review_again.label_usage(call, executor)   # The paid account and price its card shows.
                     call.approval = True
                     call.approval_started = time.monotonic()
                     if apply_mutation and not call.recovery_review and (self._automatic_script(call) or self._auto_bounded(call, mode)):
@@ -2279,10 +2223,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                             budget.executions += 1
                             apply_mutation(call)
                         continue
-                    call.precondition = prepare_review(call, call.precondition)
-                    self.status = "Approval required"
-                    self.emit("activity", {"id": call.id, "status": "approval", **(
-                        {"result": {"recovery": self.recovery_barrier.description()}} if call.recovery_review else {})})
+                    review_again.show_card(self, call, prepare_review)   # Its card says it waits.
                 except Exception as error:
                     if not self.expire_tool(call) and self.pending.get(call.id) is call:
                         # Refused at dispatch, before approval: nothing of this call ran
@@ -2303,6 +2244,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         # The approved script file this call runs (an app's angelo_run_script_file), or None: the executor runs it as
         # that file, as Blender's Text editor or ``blender --python`` would (break-it review FR-M1).
         executor.script_file = getattr(call, "script_file", None)
+        clicked = review_again.take_click(call)   # The person's own Approve on its card (review_again), read once.
         if self.pending.get(call.id) is not call or call.executing:
             return
         if not self._tool_available(call, document):
@@ -2317,13 +2259,17 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             return
         try:
             self.require_script_authorized(call)
+            if review_again.unanswered(call, clicked):
+                return   # Asked again since this approval was queued: only a click on the card as it is now runs it.
             self._approval_wait(call)
             if call.precondition is not None:
                 current = self._precondition(call, executor)
                 if not self._tool_available(call, document):
                     return
-                if current != call.precondition:
-                    raise RefusalError("The target changed after the approval request; inspect it before retrying", code="STALE_REVISION")
+                if not stale_binding.same(current, call.precondition):   # A NaN equals a NaN in its place.
+                    if review_again.renew(self, call, executor, current, change := self._binding_change(call, executor, current), clicked):
+                        return   # The person's click found it changed: its card asks again (review_again).
+                    raise stale_binding.refusal(call, executor, current, change)
             # Precondition reads may themselves take long enough for the call to
             # expire or for Stop to arrive. Recheck immediately before mutation.
             if not self._tool_available(call, document):
@@ -2376,7 +2322,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 reference = next((r for r in records if Path(r["path"]).stem == call.arguments["reference"]), None)
                 if reference is None:
                     raise ValueError("This reference wasn't attached to this conversation")
-                # Main thread: never runs pdftotext. A PDF the worker did not prime is extracted in the background.
+                # Main thread: never reads a PDF. A PDF the worker did not prime is extracted in the background.
                 result = self._measure(call.metrics, "execution_ms", lambda: self.references.read(
                     reference, call.arguments["start"], call.arguments["length"], block=False))
             else:
@@ -2402,8 +2348,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                     call.approval = False
                     if getattr(result, "timeout", None):
                         call.expires = time.monotonic() + result.timeout
-                    self.status = getattr(result, "status_text", "") or ("Generating media" if call.name.endswith("generate")
-                                                                    or call.name in FLOW_USAGE else "Enhancing prompt")
+                    call.shown_status = self.status = getattr(result, "status_text", "") or ("Generating media" if call.name.endswith("generate")
+                        or call.name in FLOW_USAGE else "Enhancing prompt")
                     running = {"asset_id": result.asset_id, "account": call.usage_label,
                                "note": getattr(result, "activity_note", "") or "Provider work runs in the background. Stop only ends local monitoring; submitted work may still be billed."}
                     if getattr(result, "run_id", None):
@@ -2415,7 +2361,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                 return
             if not isinstance(error, Exception):  # Named: never a bare exit status, nor an empty error.
                 error = RuntimeError(type(error).__name__ + (": " + str(error) if str(error) else ""))
-            result = error_result(error)
+            result = error_result(error, **({} if call.executing else stale_binding.NOT_STARTED))  # Only started_call sets executing here.
             if call.mutation_started and getattr(error, 'partial_changes_possible', True):
                 # The executor could have failed after changing data. Unless it explicitly identifies a
                 # preflight failure, never hide that uncertainty behind a bare error or blindly retry/auto-Undo.
@@ -2526,7 +2472,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
         except (ValueError, TypeError, RecursionError, OverflowError):
             result = self._serialization_failure(call, result)
             result = json.loads(self.redact(json.dumps(result, ensure_ascii=False, allow_nan=False)))
-        result = dict(result, native_dispatch_wait_ms=call.dispatch_wait_ms)
+        result = review_again.finished(call, dict(result, native_dispatch_wait_ms=call.dispatch_wait_ms))
         if problems := chat_changes.report_problems(result.get("changes"), result.get("file_changes")):   # One schema.
             result = chat_changes.drifted(call.name, problems, result)
         if result.get("error"):
@@ -2539,6 +2485,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
             self.pending.pop(call.id)
             result = complete_result(self, call, result, persist=persist)
         self._observe_tool_result(call.result_observer, result)
+        call_status.settle(self, call)   # The live row stops naming its work.
         completion = program_completion.mint_completion(self, call, captured, result)
         if call.metrics:
             call.metrics.count("tool_completions")
@@ -2555,7 +2502,7 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
                     call.metrics.mark("first_verified_result_ms")
         arguments = call.arguments if call.program_arguments is None else dict(call.arguments, program=call.program_arguments)
         self.emit("activity", {"id": call.id, "tool": call.name, "arguments": arguments,
-                               "status": "failed" if result.get("error") or result.get("success") is False else "completed", "result": result})
+                               "status": "failed" if result.get("error") or result.get("success") is False else "completed", "result": result, **call_ended.event(call, result)})
         program_completion.deliver_completion(self, call, result, completion)
         if call.local:
             self.busy = False
@@ -2607,6 +2554,8 @@ class Controller(TranscriptRows, TrustedScripts, ProgramCommitController, Extern
     def close(self):
         self.recovery_barrier.clear()
         self._initial_recovery_evidence = {}
+        self.inbox.turn_ended(False, "relaunch")   # Its pending messages stay with the chat, paused.
+        chat_pending.save(self, final=True)
         self.cancel_tools("Blender chat disconnected")
         self.invalidate_native_stages("Blender chat disconnected; retained previews were discarded")
         self._closing = True

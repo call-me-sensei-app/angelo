@@ -31,6 +31,10 @@ Module                        Responsibility
                               publication, all-or-nothing set publication. Pure.
 ``job_output_names.py``       The names an output is published under: its own, else the next
                               free one with the job's ID. Pure.
+``exclusive_rename.py``       A rename between held folders that never replaces (macOS, Linux),
+                              which moves a new output folder into place. Pure.
+``job_output_links.py``       A staged folder's files published into a new output folder: links,
+                              or moves where a volume has no links. Pure.
 ``job_recovery.py``           An animation render's finished frames kept after a quit, crash,
                               file load or failed publication, and rendering the rest. Pure.
 ``job_frame_check.py``        Whether a written PNG, JPEG or OpenEXR file is whole, from its
@@ -121,6 +125,12 @@ Module                        Responsibility
                               ``scripts/modules``: Cycles imports it, never the agent.
 ``bpy_angelo_jobs.cc``        ``_bpy._angelo_jobs``: progress, stop, the job notifier, the
                               document's auto-execution flag and the desktop notification calls.
+``bpy_angelo_jobs_work.cc``    ``_bpy._angelo_jobs.running_work`` (every job type that is someone's
+                              work, whoever owns it), ``running_scene_jobs`` (every job type whose
+                              thread evaluates the document's scene or writes its data: the
+                              parallel sessions' live view and bindings wait, ``scene_jobs.py``)
+                              and the asset catalog checks Restart to Update makes
+                              (updates_and_reports.rst, "Never during work").
 ``job_desktop.py``            Outside the window: the computer held awake while a job runs, and the
                               operating system's notification when a long job ends (see
                               `Away from the computer`_).
@@ -558,11 +568,62 @@ What a job changes
   taken, the whole set goes to the next free name (`Taken names`_; a folder
   holding the set when it has dependencies, so its references still resolve).
   Files are new hard links made through the held handles; a failure removes
-  what that publication created. A USD export must resolve every asset reference
+  what that publication created. A new folder is known by a handle on the
+  folder made, never by a lookup of its name afterwards (another process could
+  rename its own empty folder onto it first): on Windows the handle that made
+  it; on macOS and Linux it is made in the staging folder and moved into place
+  by a rename that never replaces (``exclusive_rename``: ``renameatx_np``
+  ``RENAME_EXCL``, ``renameat2`` ``RENAME_NOREPLACE``). Where the system or file
+  system has no such rename (exFAT on macOS, NFS and SMB shares), the folder is
+  made in place and identified on a handle at once; a folder found there that
+  holds anything, or of another owner than the volume reports for the staging
+  folder, is another's, and the next free name is taken. Residual: a process of
+  the same user renaming its own empty folder onto the name between the
+  ``mkdir`` and the open; the job then publishes into that folder.
+
+  **Volumes without hard links** (FAT, exFAT, on macOS, Windows and Linux): the
+  staged files themselves are moved into place, a rename on the same volume, as
+  instant as a link and with no second copy on disk. A move never replaces:
+  Windows renames without replace; macOS and Linux use the exclusive rename,
+  and where the volume has none (exFAT on macOS) create the new name
+  exclusively and rename the file over that empty file (residual: another
+  process replacing that empty file in that moment loses it to the output). An
+  unpublish (a name of a set taken meanwhile, any failure) first undoes each
+  move, newest first, while the file at its published name is still the one
+  moved there (identified on the handle that moved it: FAT renumbers a moved
+  file), so the staging folder stays whole and a set still moves whole to its
+  folder; a file another program put at a published name is never moved or
+  removed, and a move that can't be undone leaves what holds it published,
+  never removed, and named: the receipt lists it (``left_published``, the
+  card's "Left published"), says the publication stopped part way, and a set
+  is then never published again into its folder without it. A failure removes
+  only the staging folder's own files and the folders left empty, on every
+  volume: a file another program put into a folder the publication made stays,
+  with the folders down to it. A crash part way leaves whole files published and the rest in
+  staging: an animation's next start counts a planned file found at its place
+  in the announced folder and gone from staging as finished when staging's note
+  says this job moved it (``.angelo-job-moved``, written before each move;
+  another program's file at a planned name is never counted; when the noted
+  files' folder is gone or renamed, staging is kept, named), publishes the
+  rest into that folder, and so never drops a frame's other files as
+  unfinished; a web export whose publication stops part way keeps its staging
+  folder and names what stayed published in its refusal (``CLEANUP_FAILED``); another job's rest goes with its staging folder at the next start, as
+  with links. Residual: a crash in the moment between creating the exclusive
+  name and renaming the file over it (no exclusive rename: exFAT on macOS,
+  shares) leaves that empty file at the published name; the next start reads
+  it as another program's file and leaves it. A recovery that finds another
+  file at any planned name keeps its staging folder, named (``kept_folder``),
+  so the staged file under that name is never removed. Staging and output are checked to be on
+  the same volume (they sit side by side); otherwise nothing is moved or copied
+  and the job fails with its files kept. When finishing fails for any reason,
+  or every name is taken, a staging folder that holds files is kept, never
+  removed: the receipt names it (``kept_folder``) and the card's Open shows it.
+
+  A USD export must resolve every asset reference
   (``UsdUtils.ComputeAllDependencies``, on the staged set before it is
   published); otherwise the job fails, nothing is published and the receipt
-  lists the missing names. A cancel or failure
-  removes staging, except that an animation keeps its finished frames (Blender
+  lists the missing names. A cancel, or a failure of the work itself,
+  removes staging (a publication that fails keeps it, above), except that an animation keeps its finished frames (Blender
   writes a frame only after it finished it), also after a quit, a crash, a file
   load or a full disk (`Keeping frames after a crash`_). A frame counts as
   finished only when its files are whole (``job_frame_check``). Blender Undo
@@ -950,14 +1011,67 @@ material slots never change, and nothing is added to Undo.
     is its output's) and links, which output is active, a script node's text or
     file, groups by their own trees, the displacement method, the view layer's
     material override, and
-    each image's pixels as they are now: its unsaved pixels while it has edits
-    (image painting), else its packed bytes, its file's size and time (each
-    UDIM tile's), or its generator settings.
+    each image's pixels as they are now, every UDIM tile of it
+    (``export_baked_images``), from where the bake reads them. Cycles copies
+    some images from the pixels Blender holds (``image_is_builtin``: packed,
+    generated, a movie, unsaved edits such as image painting, a UDIM image with
+    a generated tile, one Add Tile filled and nobody saved) and opens every other
+    from its files on disk, whatever Blender holds (measured in the built app: a
+    file saved over while Blender held the old pixels baked the file's; packed
+    after that, the bake copied the held, older pixels). For an image Cycles
+    copies, the digest holds every buffer the bake reads, read natively as
+    Cycles' loader reads it (``_bpy._angelo_digest.pixels``: the node's image
+    user at the frame a render computes, each tile, loaded when not held and
+    freed again when the image held nothing, XXH3 over each buffer as stored;
+    ``Image.pixels`` holds only the first tile). So held or not, reloaded or
+    reopened from the same source, it reads the same, and pixels held from
+    before their source changed read as what they are (1.0.10 audit, re-check
+    2: a bake from such pixels read as current after a Reload or a reopen,
+    since the digest held the image's packed bytes and files). A generated
+    image without edits is its settings, which make its pixels. For any other
+    image the digest holds each file Blender reads (size and time once its
+    clock has passed it, else its bytes: ``change_keys``). The add-on's
+    rule (``reads_memory``) is held to Cycles' source text by
+    ``test_native_baked_digest_buffers``. One helper, ``blend_file_paths.read_files``, names those
+    files as Blender's own source does: a tile's (``<UDIM>`` as ``1002``,
+    ``<UVTILE>`` as ``u2_v1``, and Cycles' own name too where it differs, for
+    a path holding both tokens); a sequence's file of the frame its node's
+    image user reads at the scene frame (start, duration, offset and cyclic, as
+    a render computes it; the name's last digit run before the extension is
+    the frame, zero-padded to its width); a movie's one file at that frame;
+    and, for an image whose views are separate files, each view's file (the
+    stored name's view suffix swapped for each active view's). Blender keeps a
+    multi-view image's views as it set them up, from the scene of that time,
+    and Python cannot read that list, so the scene's views are used only when
+    Blender's own name for the node's view (``Image.filepath_from_user``) is
+    among them; otherwise the image reads as stale. A path saved on Windows, and
+    the path of the library a linked image comes from, are spelled as Blender
+    opens them on macOS and Linux (``located``, ``native_spelling``: ``\`` as
+    ``/``, ``C:\`` as ``/c/``). An image no image user reads (a
+    Geometry Nodes Image input, whose effect the evaluated mesh carries) is
+    named by its stored file.
   - *Placement, where the result depends on it*: sources and cage relative to
     the target; an object a node names, relative to the target; the target's own
     placement, colour, pass index and name when a node reads world space, the
     camera or the object (Geometry, Object Info, a world-space transform, and
     so on).
+  - *Hidden in the viewport or not* (``export_baked_hidden``): a bake renders
+    every object a render shows, so each one, and each instance it makes, is
+    read as the viewport evaluates a shown object. ``Depsgraph.object_instances``
+    lists only what the viewport shows: an object hidden with the eye is still
+    evaluated (measured in Blender 5.2) but not listed, and one disabled in
+    viewports (by itself or a collection) is not evaluated at all.
+    ``_bpy._angelo_digest.instances`` hands over what those show (geometry-nodes
+    instances, a collection instance, particles), evaluating a disabled one in a
+    temporary depsgraph of its own with the visibility optimization off, as
+    Blender's Apply Modifier does for a hidden object; a source, cage or target
+    disabled in viewports is read the same way. So hiding or showing an object
+    in the viewport leaves the digest as it was, and an edit to what a hidden
+    object shows (an instanced object, a modifier's target, an armature's pose)
+    makes it stale. Visibility that changes a render does count: Disable in
+    Renders, a collection excluded or disabled in renders, Show Instancer for
+    renders (an instancer's own geometry), and a child its parent instances on
+    vertices or faces (shown in the viewport, never rendered).
   - *Ambient occlusion*: Cycles' AO reaches every surface a render shows within
     the world's AO distance, not only the target's (10 m when there is no
     world), objects hidden only in the viewport included (measured). With an AO
@@ -979,7 +1093,25 @@ material slots never change, and nothing is added to Undo.
   summed each UV vertex's corners in a pointer-hashed set (UVs an ulp apart,
   stale after a rename), and the Fast Boolean (``bmesh_intersect.cc``,
   ``edge_order``) split edges in a pointer-hashed map's order (its new
-  elements in another order).
+  elements in another order). Between processes the input itself moved: a
+  BMesh operator's mapping slot is a pointer-keyed hash, and extrude made its
+  side faces in that hash's order, so ``extrude_face_region``,
+  ``extrude_edge_only``, ``spin``, ``solidify`` and the UV sphere primitive
+  made their elements in another order every run, and a Fast Boolean with a UV
+  sphere cutter had 262 to 1,519 corners from run to run. Mapping slots iterate
+  in insertion order (``bmesh_operators.cc``, "Mapping Slot Order"; Python's
+  ``bmesh.ops`` map results too). The order elements are freed in counts as well,
+  since it decides where the next elements are allocated: Bevel freed its rebuilt
+  faces from a pointer-hashed set, so a triangulate after a large vertex bevel
+  came out in another order every run. Every BMesh operator and edit-mode tool
+  whose output order came from iterating a pointer-keyed container now walks an
+  insertion-ordered one: Bevel's rebuilt faces, Grid Fill's split edges
+  (``BM_edgeloop_expand``), the knife's edge splits, face cuts and line hits
+  (sorted stably, equal hits in the order they were found, no longer by vertex
+  address), and Weld Edges into Faces. A pointer-keyed set or map is otherwise only looked up, or iterated
+  where each item is handled on its own (normals, flags, merged positions); Region
+  Match hashes elements by index. ``test_blender_bmesh_operator_order`` compares
+  four processes.
 * **Plan** (``export_baked.plan``). For each exported mesh object with a binding:
   if its slots already hold the baked material (Use Baked Material), the export
   writes it as it is. If the digest still matches, every slot is written with
@@ -988,14 +1120,36 @@ material slots never change, and nothing is added to Undo.
   also holds the digest without the AO reach, so when only that part changed
   the object is listed in ``nearby`` too and the export says something near it
   changed, which its baked AO saw. An object with no binding costs one property
-  read.
+  read. Each binding records the digest's scheme (``ANGELO_PG_baked.scheme``,
+  ``export_baked.SCHEME``: 1 from 1.0.10, which reads the pixels a bake copies
+  and each image's resolved path). A stale binding of an earlier scheme was made
+  before that change, so the plan lists it in ``updated`` and the export says so
+  once for all of them (``baked_stale_update``: "Baked before this update:
+  ..."), instead of saying each changed (1.0.10 also reads the AO's reach anew,
+  so this comes before ``nearby``). A binding of an earlier scheme that a plan
+  finds current is recorded at ``SCHEME`` after the plan
+  (``export_baked._record``, a timer writing the ID property when the digest is
+  still the one verified, so no depsgraph update and no preview export), so a
+  later change is said as an edit. The ``stale`` list the model reads is
+  unchanged; the findings carry the one ``baked_stale_update`` line in place of
+  those objects' own. A stored path's spelling is no input: an image the bake
+  opens from disk, and a node's external file (an IES or script file: for a
+  linked tree both beside the open file, where Cycles 5.2 opens it from its
+  inlined, library-less copy, and beside the library,
+  ``blend_file_paths.node_file_places``), are read by the absolute path they
+  resolve to, so Make Paths Relative or Absolute and a save's relative remap
+  keep a binding current, and a relative path that names another file once the
+  .blend moves does not. An image a bake copies from memory (packed, generated,
+  edited) has no path in the digest: its pixels are what is read, wherever the
+  project is.
 * **Where it applies.** The web export, the live web preview and
   ``angelo_web_export`` (``baked_materials``, on by default; the File > Export >
   Web dialog's Baked Materials) report ``baked`` (``used``, ``stale``) and the
-  findings ``baked_used``, ``baked_stale`` and ``baked_stale_nearby``. The
-  engine link's live scene and its glTF write-back always use it; a save with a
-  stale object sends a ``baked_stale`` or ``baked_stale_nearby`` status that the
-  engine's editor shows. In this session the
+  findings ``baked_used``, ``baked_stale``, ``baked_stale_nearby`` and
+  ``baked_stale_update``. The engine link's live scene and its glTF write-back
+  always use it; a save with a stale object sends a ``baked_stale``,
+  ``baked_stale_nearby`` or ``baked_stale_update`` status that the engine's
+  editor shows. In this session the
   glTF exporter's ``gather_mesh_materials_hook`` (a hook Angelo adds to
   ``io_scene_gltf2``'s ``nodes.py``) swaps the materials it writes for that
   object's mesh only; a mesh shared with an unbound object is written twice,
@@ -1010,15 +1164,28 @@ material slots never change, and nothing is added to Undo.
   person's own File > Export glTF and the team library's model upload keep
   their materials, and so do Angelo's FBX exports (no material substitution).
   A bound object made by a ``BAKE_MAPS`` run before this binding existed is not
-  bound; bake again. The digest reads meshes as the viewport evaluates them:
-  a neighbour hidden in the viewport is read as its own mesh and modifier
-  settings (so showing or hiding one with modifiers reads as a change), and
-  geometry-nodes instances made by an object hidden in the viewport are not
-  seen. **Known limit:** unsaved painting on a UDIM image's tiles other than
-  the first doesn't make a bake stale until the image is saved (Blender gives
-  Python only the first tile's pixels; hashing every tile is planned for 1.1.1).
-  A painted image that is then saved reads as a change even if its
-  pixels end as they were.
+  bound; bake again. Instances read as the viewport makes them: a member of an
+  instanced collection that is disabled in viewports is left out of the
+  viewport's instances (Blender's own collection-instance rule) though a render
+  shows it, so an edit to such a member alone isn't seen. Without the native
+  reader (a build that lacks ``_bpy._angelo_digest``) an image Cycles copies
+  from memory reads as stale unless it is a still image of one buffer (read
+  through ``Image.pixels``), and hidden objects read as the viewport's
+  depsgraph holds them (their own geometry, no instances). A binding made
+  before 1.0.10 whose bake read an image Cycles copies (packed, a movie, a UDIM
+  image with a generated tile, unsaved edits) reads as stale once: its digest
+  held that image's packed bytes or files, not the pixels; bake again.
+  Pixels a read decodes are hashed as Blender holds them, so two things can
+  read as stale once though a bake would barely differ (never the reverse): an
+  image a Geometry Nodes or texture node also reads gains a float copy of its
+  pixels in place (``IMB_float_from_byte``), which Cycles then copies instead of
+  the bytes; and a binding opened on another platform or Blender version, whose
+  colour management or movie decoder may round differently.
+  The digest also records how an image's pixels are held: in a file, as a buffer
+  held in memory, packed, or generated. So when the source a bake read changes
+  how it is held or stored while its pixels stay the same, it reads as a change
+  once (never the reverse): a painted image that is then saved, a file rewritten
+  with the same pixels, or packing or unpacking the image.
 
 **Cost.** Measured 2026-11-02 on Mac 1 (M4 Pro, macOS, background Angelo), rc108
 binary b59129e3eb2 with the base add-on (ccfe921bb52, A) and with this one (B),
@@ -1038,6 +1205,29 @@ medians 174.8-187.8 and 177.3-184.4, and the live export 138.9 ms and 136.5 ms
 (web) and 316.7 and 314.6 ms (live). ``plan`` alone, the digests, took 17.8 ms
 for 20 bound objects and 49.4 ms for 200; the rest is the exporter writing a
 baked material per object (200 distinct materials instead of 12).
+Unsaved pixels: 1.0.9 copied the first tile into Python as floats and hashed it,
+195 ms for one 4K byte tile (Mac 1, stock Blender 5.2, background, median of
+three); XXH3-128 over a tile as stored, the native reader's hash, takes 1.5 ms
+for a 4K byte tile and 5.7 ms for a 4K float tile (Blender's bundled xxhash at
+-O2, best of seven), so every tile of a four-tile 4K image costs less than one
+tile did. Objects hidden in the viewport cost their own instance lists, and one
+disabled in viewports an evaluation of its own per export (only with a bound
+object that bakes AO, or one that reads it); ``test_blender_baked_export_hidden``
+records both in the built app (``cost``).
+
+Held pixels (1.0.10, untimed on Mac 2 under another session's load, load average
+31-126; the 1.0.10 builds of this change, f1f45b62f49 and 7725888f1a6, with the
+1.0.10 add-on before it and with this one; median of five ``export_baked.plan`` calls, which take the
+same digest a bind does): 20 packed 4K PNGs read 1.3-1.6 s before (Python copied
+and hashed every packed file's bytes) and now 52-72 ms while held, 41-59 ms while
+held nowhere once remembered, and 1.2-1.8 s on the first export that decodes them
+(after a reopen, or once a bake or render freed them; Cycles decodes them the
+same way); one packed 8K PNG 281-337 ms before, now 9-12 ms, 6-9 ms and
+258-335 ms. A UDIM set of ten 4K files reads 0.4-1.2 ms either way (file times,
+as before); with one generated 4K tile (Cycles then copies every tile) 25-31 ms
+held, 0.5-0.6 ms remembered and 685-853 ms decoded once. 20 4K files read 3-8 ms either way.
+A read keeps nothing it loaded: it drops each buffer once hashed. An image held
+only in part (some tiles) decodes the others on each read.
 
 Validation: ``test_native_web_export`` (findings), ``test_native_engine_link_state``
 (save plan, stale status, FBX untouched), ``test_native_engine_link_writeback``
@@ -1049,6 +1239,22 @@ person's slots unchanged, held-out kits); ``test_blender_baked_export_stale``
 edit does: every input above stale, selection, renaming and moves out of reach
 current; placement-reading nodes, an instance scatter, high-to-low sources and
 cage, and a real high-to-low bake; given scene files run the same battery);
+``test_blender_baked_export_hidden`` (hiding or disabling an instancer, a
+collection instance, a modified neighbour and a high-to-low source in the
+viewport stays current, an edit to what each shows while hidden is stale,
+render visibility and Show Instancer for renders count, unsaved paint on each
+UDIM tile is stale; its stand-in twin is ``test_native_baked_digest_hidden``);
+``test_blender_baked_export_buffers`` (real bakes: a binding is current exactly
+when a bake now reads the bound bake's pixels, across a Reload and a save and
+reopen, for an image packed after its file was saved over, a UDIM image with a
+generated tile, unsaved edits, and plain, packed and generated images; its
+stand-in twin, ``test_native_baked_digest_buffers``, adds a movie and a buffer
+evicted under memory pressure, and holds the rule to Cycles' source);
+``test_blender_image_read_files`` (a sequence frame's file or a view's file
+saved again and reloaded is stale, another frame's is not, and the file and
+frame names equal Blender's ``Image.filepath_from_user`` and image user; its
+stand-in twins are ``test_native_baked_digest_frames`` and
+``test_native_image_read_files``);
 ``test_blender_baked_export_shading`` (every shader node type's writable
 properties, inner values and socket values, one edit at a time, each stale;
 added ramp stops and curve points, a group's inner value, script text and

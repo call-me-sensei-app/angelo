@@ -9,6 +9,8 @@ and both links share the card's one link style. ``test_blender_first_run``
 proves the same card in the running app and screenshots it.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import json
 import sys
@@ -22,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[3]
 ADDON = ROOT / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 import angelo_agent  # noqa: E402
-from angelo_agent import canvas_controls, first_run  # noqa: E402
+from angelo_agent import canvas_controls, first_run, ui_tokens  # noqa: E402
 from angelo_agent.markdown_text import safe_url  # noqa: E402
 
 
@@ -134,7 +136,7 @@ class WelcomeCardRowTests(unittest.TestCase):
 
     def tip_lines(self, view):
         return [entry for entry in view.texts
-                if entry[4] == canvas_controls.LINK and not entry[0].startswith("More options")]
+                if entry[4] == ui_tokens.LINK and not entry[0].startswith("More options")]
 
     def test_the_column_is_centred_in_a_wide_chat_and_keeps_its_margin_in_a_narrow_one(self):
         """1.0.5 review row 24: ~370 px of cards at the left of a ~700 px chat left its right half empty."""
@@ -155,7 +157,7 @@ class WelcomeCardRowTests(unittest.TestCase):
         (value, x, y, size, _), = self.tip_lines(view)
         left = self.rect(state, "welcome_example")[0]   # The column's left edge (centred in the chat).
         self.assertEqual((value, x, size), (first_run.TIP, left, 11), "One quiet line, the size of the card's other link")
-        underline = (left, y - 3, left + measure(value, 11), y - 3, canvas_controls.LINK)
+        underline = (left, y - 3, left + measure(value, 11), y - 3, ui_tokens.LINK)
         self.assertIn(underline, view.strokes, "Underlined, as a link")
         last_example, tip = state["hits"][-2][0], self.rect(state, "url")
         self.assertLessEqual(tip[1] + tip[3], last_example[1], "The tip sits under the examples")
@@ -170,7 +172,7 @@ class WelcomeCardRowTests(unittest.TestCase):
         x, y, w, h = self.rect(state, "url")
         for value, tx, ty, _, _ in lines:
             self.assertTrue(x <= tx and tx + measure(value, 11) <= x + w and y <= ty - 3 and ty + 11 <= y + h, value)
-            self.assertIn((tx, ty - 3, tx + measure(value, 11), ty - 3, canvas_controls.LINK), view.strokes)
+            self.assertIn((tx, ty - 3, tx + measure(value, 11), ty - 3, ui_tokens.LINK), view.strokes)
         self.assertGreaterEqual(min(rect[1] for rect, _, _ in state["hits"]), 120, "Every row stays above the composer")
 
     def test_more_options_follows_the_tip_on_a_team_connection(self):

@@ -65,9 +65,13 @@ class WriteQueue:
         self.bake = 0
 
     def hold_baked(self, index, count):
-        """Arrays of a bake just read for target ``index``."""
+        """Arrays of a bake just read for target ``index``. The bake's reservation already counts the arrays it reads
+        back (``bake_maps_steps.step_bytes``), so they move out of it to the target and are not held twice; only
+        what the reservation did not cover is added."""
+        moved = min(count, self.bake)
+        self.bake -= moved
         self.baking[index] = self.baking.get(index, 0) + count
-        self._hold(count)
+        self._hold(count - moved)
 
     def hand_over(self, index, work):
         """Target ``index`` has all its arrays: queue it for writing."""

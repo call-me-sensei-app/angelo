@@ -5,6 +5,8 @@ object_revision gives each object, a budget of each object's own over one shared
 refusals per object, and the rows, Booleans and motion resolved from one name index of the scene. Host fakes only;
 test_blender_world.py and the concurrent-edit fixture read real revisions after scripts."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import threading
 import unittest

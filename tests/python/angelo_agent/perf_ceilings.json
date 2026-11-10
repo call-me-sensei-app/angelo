@@ -69,7 +69,7 @@
           "ceiling": 277220183
         },
         "chat_waiting/hero_frame": {
-          "ceiling": 1713527
+          "ceiling": 1803728
         },
         "chat_waiting/icon_frame": {
           "ceiling": 187012
@@ -81,19 +81,19 @@
           "ceiling": 83527
         },
         "conversation_journal/admission_save_at_50": {
-          "ceiling": 1915250,
+          "ceiling": 1706626,
           "tolerance": 0.1
         },
         "conversation_journal/admission_save_at_500": {
-          "ceiling": 1949369,
+          "ceiling": 1678163,
           "tolerance": 0.1
         },
         "conversation_journal/edit_saves_at_50": {
-          "ceiling": 51119928,
+          "ceiling": 36407745,
           "tolerance": 0.1
         },
         "conversation_journal/edit_saves_at_500": {
-          "ceiling": 53397334,
+          "ceiling": 36937988,
           "tolerance": 0.1
         },
         "deep_collections/object_scoped_delta": {
@@ -112,7 +112,7 @@
           "ceiling": 796745440
         },
         "deep_collections/staged_1_operation_1_check_work_clock": {
-          "ceiling": 1253501742,
+          "ceiling": 1412049182,
           "tolerance": 0.1
         },
         "deep_collections/target_revision": {
@@ -164,7 +164,7 @@
           "tolerance": 0.15
         },
         "default/whole_scene_signature": {
-          "ceiling": 21056043
+          "ceiling": 14490160
         },
         "dense_geometry/object_scoped_delta": {
           "ceiling": 62361619
@@ -192,23 +192,23 @@
           "ceiling": 59460753
         },
         "long_session/edit_cycle_first_10": {
-          "ceiling": 996909546,
+          "ceiling": 1131349528,
           "tolerance": 0.1
         },
         "long_session/edit_cycle_last_10": {
-          "ceiling": 1016837430,
+          "ceiling": 1144786382,
           "tolerance": 0.1
         },
         "long_session/move_material_slots_01": {
-          "ceiling": 225198071,
+          "ceiling": 257288317,
           "tolerance": 0.1
         },
         "long_session/move_material_slots_08": {
-          "ceiling": 882660521,
+          "ceiling": 983521940,
           "tolerance": 0.1
         },
         "long_session/move_material_slots_32": {
-          "ceiling": 3217419805,
+          "ceiling": 3643957097,
           "tolerance": 0.1
         },
         "many_objects/object_scoped_delta": {
@@ -227,7 +227,7 @@
           "ceiling": 791012189
         },
         "many_objects/staged_1_operation_1_check_work_clock": {
-          "ceiling": 1192919017,
+          "ceiling": 1325316114,
           "tolerance": 0.1
         },
         "many_objects/target_revision": {
@@ -248,10 +248,10 @@
           "ceiling": 6203541
         },
         "native_reads/positions": {
-          "ceiling": 14624133
+          "ceiling": 28636184
         },
         "native_reads/sculpt_mesh": {
-          "ceiling": 67398
+          "ceiling": 66073
         },
         "native_reads/sculpt_query": {
           "ceiling": 383324802
@@ -260,11 +260,11 @@
           "ceiling": 18445918
         },
         "native_reads/topology": {
-          "ceiling": 13765527,
+          "ceiling": 40457883,
           "tolerance": 0.06
         },
         "native_reads/vertex_group_weights": {
-          "ceiling": 36366444
+          "ceiling": 45740630
         },
         "native_reads/vertex_groups_one": {
           "ceiling": 12955279
@@ -330,11 +330,11 @@
           "ceiling": 127659752
         },
         "stage_bundle/deep_collections/hydrate_compressed": {
-          "ceiling": 149661980,
+          "ceiling": 164769456,
           "tolerance": 0.1
         },
         "stage_bundle/deep_collections/hydrate_uncompressed": {
-          "ceiling": 118039541,
+          "ceiling": 131876014,
           "tolerance": 0.1
         },
         "stage_bundle/deep_collections/suspend_compressed": {
@@ -342,7 +342,7 @@
           "tolerance": 0.1
         },
         "stage_bundle/deep_collections/suspend_uncompressed": {
-          "ceiling": 54282817,
+          "ceiling": 59854240,
           "tolerance": 0.1
         },
         "stage_bundle/default/hydrate_compressed": {
@@ -358,7 +358,7 @@
           "tolerance": 0.1
         },
         "stage_bundle/default/suspend_uncompressed": {
-          "ceiling": 17871766,
+          "ceiling": 19727623,
           "tolerance": 0.1
         },
         "stage_bundle/dense_geometry/hydrate_compressed": {
@@ -374,7 +374,7 @@
           "tolerance": 0.1
         },
         "stage_bundle/dense_geometry/suspend_uncompressed": {
-          "ceiling": 16989582,
+          "ceiling": 18717069,
           "tolerance": 0.1
         },
         "stage_bundle/large_target/hydrate_compressed": {
@@ -394,11 +394,11 @@
           "tolerance": 0.1
         },
         "stage_bundle/many_objects/hydrate_compressed": {
-          "ceiling": 136794632,
+          "ceiling": 151270124,
           "tolerance": 0.1
         },
         "stage_bundle/many_objects/hydrate_uncompressed": {
-          "ceiling": 105731541,
+          "ceiling": 119257995,
           "tolerance": 0.1
         },
         "stage_bundle/many_objects/suspend_compressed": {
@@ -406,7 +406,7 @@
           "tolerance": 0.1
         },
         "stage_bundle/many_objects/suspend_uncompressed": {
-          "ceiling": 48997775,
+          "ceiling": 53988117,
           "tolerance": 0.1
         },
         "view_check/large/handlers": {
@@ -428,34 +428,34 @@
           "ceiling": 3188703
         },
         "view_policy/large/display": {
-          "ceiling": 126982,
+          "ceiling": 51825,
           "tolerance": 0.2
         },
         "view_policy/large/material": {
           "ceiling": 2278640
         },
         "view_policy/large/saved_picture": {
-          "ceiling": 1964715
+          "ceiling": 1717853
         },
         "view_policy/medium/display": {
-          "ceiling": 116988
+          "ceiling": 51901
         },
         "view_policy/medium/material": {
-          "ceiling": 215632
+          "ceiling": 156742
         },
         "view_policy/medium/saved_picture": {
-          "ceiling": 1982532
+          "ceiling": 1719058
         },
         "view_policy/small/display": {
           "ceiling": 126764,
           "tolerance": 0.18
         },
         "view_policy/small/material": {
-          "ceiling": 178493,
+          "ceiling": 108339,
           "tolerance": 0.119
         },
         "view_policy/small/saved_picture": {
-          "ceiling": 1977614
+          "ceiling": 1726579
         }
       },
       "retired": {
@@ -525,102 +525,103 @@
         }
       },
       "last_measured": {
-        "date": "2026-11-02",
-        "commit": "b59129e3eb22008c0f94bc2fd8e43d481442fbb5",
-        "binary_sha256": "1b28d08a3a68ea97bad7ac2d76f542e64aa627e8c76a2305c2a650baf8183257",
-        "binary_uuid": "2bd1b402-6285-3aa4-96e5-445aef7f9471",
-        "sources_sha256": "f9969e047df5967e2323da0178575a0722ca74e51092b2102f80dbec1b51d609",
+        "date": "2026-11-10",
+        "commit": "8df844a9114bdbfe6bc3f8f6ddcd51a4b0db0d13",
+        "binary_sha256": "39bc69a8c3d0c7a81cd470e64e425ce3aed9a2dcd4811527d305f0cb0ae2085b",
+        "binary_uuid": "6ecc0177-a191-3f13-a97d-29c6071b2cae",
+        "sources_sha256": "620dfbcfff591a31086e8ebe0b73bedb5eaf33fe0bc405a98599e42b6cb23f78",
         "operations": 110,
         "highest_ratio": {
           "operation": "snapshot/dense_500mb_repeat_capture_three_write_sum",
-          "ratio": 1.19794
+          "ratio": 1.43827
         },
         "spreads": {
-          "chat_waiting/first_wait_geometry": 0.00144,
-          "chat_waiting/hero_frame": 0.01484,
-          "chat_waiting/icon_frame": 0.0069,
-          "chat_waiting/reveal_frame": 0.00638,
-          "chat_waiting/timer_tick": 0.11084,
-          "deep_collections/object_scoped_delta": 0.00018,
-          "deep_collections/rich_object_query": 0.00653,
-          "deep_collections/search_100_objects": 0.00073,
-          "deep_collections/search_page_coverage_10": 0.00195,
-          "deep_collections/search_page_coverage_100": 0.00129,
-          "deep_collections/staged_1_operation_1_check_work_clock": 0.01104,
-          "deep_collections/target_revision": 8e-05,
-          "deep_collections/transform_object_query": 0.00028,
-          "default/eight_separate_staged_programs_work_clock": 0.00049,
-          "default/legacy_typed_location": 0.09154,
-          "default/object_scoped_delta": 0.00016,
-          "default/one_object_delta": 0.00525,
-          "default/rich_object_query_warm_exact_revalidation": 0.00227,
-          "default/search_100_objects": 0.00136,
-          "default/search_page_coverage_100": 0.00029,
-          "default/staged_1_operation_1_check_work_clock": 0.01145,
-          "default/staged_8_operations_1_check_work_clock": 0.00243,
-          "default/target_only_signature": 0.00242,
-          "default/transform_object_query": 0.00046,
-          "default/whole_request_snapshot": 0.00729,
-          "default/whole_scene_signature": 0.00136,
-          "dense_geometry/object_scoped_delta": 0.00022,
-          "dense_geometry/rich_object_query": 0.0003,
-          "dense_geometry/search_100_objects": 0.00048,
-          "dense_geometry/search_page_coverage_10": 0.00118,
-          "dense_geometry/search_page_coverage_100": 0.00046,
-          "dense_geometry/staged_1_operation_1_check_work_clock": 0.01376,
-          "dense_geometry/target_revision": 0.00012,
-          "dense_geometry/transform_object_query": 0.00017,
-          "many_objects/object_scoped_delta": 0.00086,
-          "many_objects/rich_object_query": 0.00137,
-          "many_objects/search_100_objects": 0.02031,
-          "many_objects/search_page_coverage_10": 0.00248,
-          "many_objects/search_page_coverage_100": 0.0008,
-          "many_objects/staged_1_operation_1_check_work_clock": 0.01554,
-          "many_objects/target_revision": 0.00011,
-          "many_objects/transform_object_query": 0.0001,
-          "snapshot/dense_200mb_repeat_capture_three_write_sum": 0.1638,
-          "snapshot/dense_500mb_repeat_capture_three_write_sum": 0.06542,
-          "snapshot/dense_50mb_repeat_capture_three_write_sum": 0.12023,
-          "snapshot/history_1000_repeat_capture_three_write_sum": 0.0084,
-          "snapshot/history_10_repeat_capture_three_write_sum": 0.02726,
-          "snapshot/many_ids_10000_repeat_capture_three_write_sum": 0.10323,
-          "stage_bundle/deep_collections/hydrate_compressed": 0.0218,
-          "stage_bundle/deep_collections/hydrate_uncompressed": 0.02975,
-          "stage_bundle/deep_collections/suspend_compressed": 0.00506,
-          "stage_bundle/deep_collections/suspend_uncompressed": 0.00162,
-          "stage_bundle/default/hydrate_compressed": 0.04073,
-          "stage_bundle/default/hydrate_uncompressed": 0.05713,
-          "stage_bundle/default/suspend_compressed": 0.00172,
-          "stage_bundle/default/suspend_uncompressed": 0.00932,
-          "stage_bundle/dense_geometry/hydrate_compressed": 0.04141,
-          "stage_bundle/dense_geometry/hydrate_uncompressed": 0.11802,
-          "stage_bundle/dense_geometry/suspend_compressed": 0.00113,
-          "stage_bundle/dense_geometry/suspend_uncompressed": 0.00512,
-          "stage_bundle/large_target/hydrate_compressed": 0.0126,
-          "stage_bundle/large_target/hydrate_uncompressed": 0.038,
-          "stage_bundle/large_target/suspend_compressed": 0.01603,
-          "stage_bundle/large_target/suspend_uncompressed": 0.05964,
-          "stage_bundle/many_objects/hydrate_compressed": 0.00088,
-          "stage_bundle/many_objects/hydrate_uncompressed": 0.04094,
-          "stage_bundle/many_objects/suspend_compressed": 0.00821,
-          "stage_bundle/many_objects/suspend_uncompressed": 0.00062,
-          "view_check/large/handlers": 0.00032,
-          "view_check/large/no_handlers": 0.00321,
-          "view_check/medium/handlers": 0.00027,
-          "view_check/medium/no_handlers": 0.00018,
-          "view_check/small/handlers": 0.00043,
-          "view_check/small/no_handlers": 0.02158,
-          "view_policy/large/display": 0.00265,
-          "view_policy/large/material": 0.00176,
-          "view_policy/large/saved_picture": 0.00182,
-          "view_policy/medium/display": 0.01163,
-          "view_policy/medium/material": 0.00654,
-          "view_policy/medium/saved_picture": 0.00256,
-          "view_policy/small/display": 0.30031,
-          "view_policy/small/material": 0.03542,
-          "view_policy/small/saved_picture": 0.00328
+          "chat_waiting/first_wait_geometry": 0.00137,
+          "chat_waiting/hero_frame": 0.01588,
+          "chat_waiting/icon_frame": 0.02825,
+          "chat_waiting/reveal_frame": 0.0079,
+          "chat_waiting/timer_tick": 0.10227,
+          "deep_collections/object_scoped_delta": 0.0022,
+          "deep_collections/rich_object_query": 0.0015,
+          "deep_collections/search_100_objects": 0.00072,
+          "deep_collections/search_page_coverage_10": 0.00281,
+          "deep_collections/search_page_coverage_100": 0.00126,
+          "deep_collections/staged_1_operation_1_check_work_clock": 0.00953,
+          "deep_collections/target_revision": 0.00176,
+          "deep_collections/transform_object_query": 0.00176,
+          "default/eight_separate_staged_programs_work_clock": 0.00697,
+          "default/legacy_typed_location": 0.11105,
+          "default/object_scoped_delta": 0.00295,
+          "default/one_object_delta": 0.00047,
+          "default/rich_object_query_warm_exact_revalidation": 0.00305,
+          "default/search_100_objects": 0.002,
+          "default/search_page_coverage_100": 0.00147,
+          "default/staged_1_operation_1_check_work_clock": 0.01318,
+          "default/staged_8_operations_1_check_work_clock": 0.00666,
+          "default/target_only_signature": 0.00246,
+          "default/transform_object_query": 0.00057,
+          "default/whole_request_snapshot": 0.0151,
+          "default/whole_scene_signature": 0.00204,
+          "dense_geometry/object_scoped_delta": 0.0003,
+          "dense_geometry/rich_object_query": 0.00273,
+          "dense_geometry/search_100_objects": 0.00089,
+          "dense_geometry/search_page_coverage_10": 0.00025,
+          "dense_geometry/search_page_coverage_100": 0.00057,
+          "dense_geometry/staged_1_operation_1_check_work_clock": 0.02006,
+          "dense_geometry/target_revision": 0.00024,
+          "dense_geometry/transform_object_query": 0.00306,
+          "many_objects/object_scoped_delta": 0.00082,
+          "many_objects/rich_object_query": 0.00193,
+          "many_objects/search_100_objects": 0.02092,
+          "many_objects/search_page_coverage_10": 0.00311,
+          "many_objects/search_page_coverage_100": 0.00104,
+          "many_objects/staged_1_operation_1_check_work_clock": 0.0121,
+          "many_objects/target_revision": 0.00083,
+          "many_objects/transform_object_query": 0.00153,
+          "snapshot/dense_200mb_repeat_capture_three_write_sum": 0.0373,
+          "snapshot/dense_500mb_repeat_capture_three_write_sum": 0.05216,
+          "snapshot/dense_50mb_repeat_capture_three_write_sum": 0.07731,
+          "snapshot/history_1000_repeat_capture_three_write_sum": 0.00848,
+          "snapshot/history_10_repeat_capture_three_write_sum": 0.02376,
+          "snapshot/many_ids_10000_repeat_capture_three_write_sum": 0.0171,
+          "stage_bundle/deep_collections/hydrate_compressed": 0.03537,
+          "stage_bundle/deep_collections/hydrate_uncompressed": 0.03417,
+          "stage_bundle/deep_collections/suspend_compressed": 0.00163,
+          "stage_bundle/deep_collections/suspend_uncompressed": 0.00679,
+          "stage_bundle/default/hydrate_compressed": 0.06637,
+          "stage_bundle/default/hydrate_uncompressed": 0.08911,
+          "stage_bundle/default/suspend_compressed": 0.00278,
+          "stage_bundle/default/suspend_uncompressed": 0.01461,
+          "stage_bundle/dense_geometry/hydrate_compressed": 0.047,
+          "stage_bundle/dense_geometry/hydrate_uncompressed": 0.03125,
+          "stage_bundle/dense_geometry/suspend_compressed": 0.00414,
+          "stage_bundle/dense_geometry/suspend_uncompressed": 0.00552,
+          "stage_bundle/large_target/hydrate_compressed": 0.01759,
+          "stage_bundle/large_target/hydrate_uncompressed": 0.02601,
+          "stage_bundle/large_target/suspend_compressed": 0.0175,
+          "stage_bundle/large_target/suspend_uncompressed": 0.08806,
+          "stage_bundle/many_objects/hydrate_compressed": 0.01933,
+          "stage_bundle/many_objects/hydrate_uncompressed": 0.04734,
+          "stage_bundle/many_objects/suspend_compressed": 0.0036,
+          "stage_bundle/many_objects/suspend_uncompressed": 0.00463,
+          "view_check/large/handlers": 0.0008,
+          "view_check/large/no_handlers": 0.00139,
+          "view_check/medium/handlers": 0.0032,
+          "view_check/medium/no_handlers": 0.0037,
+          "view_check/small/handlers": 0.00453,
+          "view_check/small/no_handlers": 0.02177,
+          "view_policy/large/display": 0.08572,
+          "view_policy/large/material": 0.00328,
+          "view_policy/large/saved_picture": 0.01372,
+          "view_policy/medium/display": 0.01148,
+          "view_policy/medium/material": 0.05989,
+          "view_policy/medium/saved_picture": 0.00063,
+          "view_policy/small/display": 0.47898,
+          "view_policy/small/material": 0.03735,
+          "view_policy/small/saved_picture": 0.00663
         },
         "abab_decided": [
+          "chat_waiting/icon_frame",
           "chat_waiting/timer_tick",
           "default/legacy_typed_location",
           "many_objects/search_100_objects",
@@ -630,32 +631,34 @@
           "snapshot/history_1000_repeat_capture_three_write_sum",
           "snapshot/history_10_repeat_capture_three_write_sum",
           "snapshot/many_ids_10000_repeat_capture_three_write_sum",
+          "stage_bundle/deep_collections/hydrate_compressed",
+          "stage_bundle/deep_collections/hydrate_uncompressed",
           "stage_bundle/default/hydrate_compressed",
           "stage_bundle/default/hydrate_uncompressed",
           "stage_bundle/dense_geometry/hydrate_compressed",
-          "stage_bundle/dense_geometry/hydrate_uncompressed",
-          "stage_bundle/large_target/hydrate_uncompressed",
           "stage_bundle/large_target/suspend_uncompressed",
           "stage_bundle/many_objects/hydrate_uncompressed",
           "view_check/small/no_handlers",
+          "view_policy/large/display",
+          "view_policy/medium/material",
           "view_policy/small/display"
         ],
         "loads": {
-          "benchmark_blender_agent_execution.py": 3.38,
-          "benchmark_blender_snapshot_cost.py": 2.92,
-          "benchmark_blender_stage_compression.py": 2.62,
-          "benchmark_blender_view_scene_check.py": 2.49,
-          "benchmark_blender_long_session.py": 2.49,
-          "benchmark_blender_session_journal.py": 2.16,
-          "benchmark_blender_native_reads.py": 2.16,
-          "benchmark_blender_chat_waiting.py": 1.98,
-          "abab A0": 3.67,
-          "abab B1": 3.46,
-          "abab A2": 3.46,
-          "abab B3": 3.46
+          "benchmark_blender_agent_execution.py": 5.31,
+          "benchmark_blender_snapshot_cost.py": 5.52,
+          "benchmark_blender_stage_compression.py": 6.0,
+          "benchmark_blender_view_scene_check.py": 5.91,
+          "benchmark_blender_long_session.py": 5.91,
+          "benchmark_blender_session_journal.py": 5.48,
+          "benchmark_blender_native_reads.py": 5.52,
+          "benchmark_blender_chat_waiting.py": 5.42,
+          "abab A0": 5.92,
+          "abab B1": 5.92,
+          "abab A2": 5.77,
+          "abab B3": 5.77
         },
         "max_load": 6.0,
-        "conditions": "desktop app open; ABAB against the stamped 1.0.7 build (exe 418828cd, stamp 20f277a0d5e) at --max-load 6.0 with Spotlight indexing paused (sudo mdutil -a -i off, maintainer ~16:11); maintainer 2026-11-01 ~22:00 \"(a) Side-by-side\": Mac 1 drifted after the reboot (stamped 1.0.7 read 1.0046x of the 200 MB three-write ceiling at 16:14, 1.08-1.14x at 21:50; free disk 94 -> 65 GB); perf_abab of 03cb462ddb5 vs 418828cd passed every noisy op (release-1.0.8.noindex/mac1/abab-03cb-1101-2147); same tolerances and ABAB rule as 1.0.7; supersedes #12 absolute for 1.0.8 only"
+        "conditions": "Mac 1 with the release desktop apps open; noisy operations by ABAB against the stamped 3052a35 build"
       },
       "updated_from": "perf-ratchet.json",
       "v1_freeze": {

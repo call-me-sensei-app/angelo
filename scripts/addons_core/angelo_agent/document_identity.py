@@ -44,10 +44,10 @@ load is another document, as in 1.0.6 (``document_scene.unattended``). Main thre
 
 import os
 import re
-import sys
 import unicodedata
 import uuid
 
+from . import document_file_identity
 from .ui_text import n_
 
 PROPERTY = "_angelo_document_id"
@@ -90,14 +90,18 @@ def file_identity(path):
         info = os.stat(path)
     except (OSError, ValueError):
         return None
-    if not info.st_ino:
-        return None
-    stamp = 0
-    if sys.platform == "darwin":
-        stamp = getattr(info, "st_birthtime_ns", None)
-        if stamp is None:
-            stamp = int(getattr(info, "st_birthtime", 0) * 1_000_000_000)
-    return [int(info.st_dev), int(info.st_ino), int(stamp)]
+    return _identity_of(info)
+
+
+_identity_of = document_file_identity.identity_of   # ``file_identity`` of a stat taken already.
+
+
+def loaded_file_identity(path):   # ``load_post``: the file the load read (``document_file_identity.at_load``).
+    return document_file_identity.at_load(path, file_identity, same_file)
+
+
+def saved_file_identity(path):   # ``save_post``: the file the save wrote, or None (``document_file_identity.at_save``).
+    return document_file_identity.at_save(path)
 
 
 def same_file(recorded, file):
@@ -334,11 +338,12 @@ def _completes(ui):
     return bool(handlers) and getattr(ui, "document_load_post", 0) in handlers.load_post and _load_failed in handlers.load_post_fail
 
 
-def leaving(ui):
+def leaving(ui, filepath=None):
     """``ui.document_load_pre``, before the load serial is renewed: each chat of the outgoing document that holds work
     about it leaves it (``_leave``) and waits for the load to say whether it is the same document (``after_load``).
-    The returned chats are left out of ``follow``."""
+    The returned chats are left out of ``follow``. ``filepath``: the file about to be read."""
     global _leaving, _previous
+    document_file_identity.reading(filepath, file_identity)   # Identified before Blender reads it.
     from .document_work import holds_document_work
     _leaving = None
     identity, path, file = open_document(ui)
@@ -391,7 +396,7 @@ def after_load(ui, *, failed=False):
         identity, path = stored(ui.bpy.data.scenes) or previous[0], previous[1]
     else:
         identity = stored(ui.bpy.data.scenes) if path else None
-        file = file_identity(path) if path else None   # The file just read: no other path is ever looked at.
+        file = loaded_file_identity(path) if path else None   # The file the load read, never a later stat.
     _open = (ui._document_serial, identity or uuid.uuid4().hex, path or "", file)
     if ui._restoring_snapshot or unattended():
         return
@@ -438,8 +443,9 @@ def after_save(ui):
     path = ui.bpy.data.filepath or ""
     if not target or not path or _canonical(target) != _canonical(path) or _private(ui, target):
         return
-    # Blender writes a temporary file and renames it over the target: the file is a new one after every save.
-    _open = (ui._document_serial, current(ui), path, file_identity(path))
+    # A new file after every save (a temporary one renamed over it): as the save identified the file it wrote.
+    file = saved_file_identity(path)
+    _open = (ui._document_serial, current(ui), path, file)
     _each(ui._controllers.values(), lambda chat: remember(chat, ui, saved=True, persist=True))
     for chat in ui._controllers.values():
         if getattr(chat, "offered_file", None) is not None:

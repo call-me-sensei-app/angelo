@@ -5,6 +5,8 @@
 Host-only preparation and font stand-ins; this does not claim native GUI coverage.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 from dataclasses import replace
 import json

@@ -59,8 +59,9 @@ def _spawn(function):
 
 
 def _key(path, stat=None):
+    """One version of one file: a save writes a new file (a new inode), whatever the clock's tick (Windows)."""
     stat = os.stat(path) if stat is None else stat
-    return str(path), stat.st_mtime_ns, stat.st_size
+    return str(path), stat.st_mtime_ns, stat.st_size, stat.st_ino
 
 
 def _identity(stat):

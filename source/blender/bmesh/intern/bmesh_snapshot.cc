@@ -22,6 +22,7 @@
 #include "DNA_meshdata_types.h"
 
 #include "BLI_bitmap.h"
+#include "BLI_checkpoint_budget.hh"
 #include "BLI_listbase.h"
 #include "BLI_map.hh"
 #include "BLI_mempool.h"
@@ -935,6 +936,7 @@ BMGeometrySnapshot *BM_geometry_snapshot_create_bounded(const BMesh *bm, const s
   size_t charge;
   if (!BM_geometry_snapshot_preallocation_bound(bm, charge, r_error)) { return nullptr; }
   if (used > limit || charge > limit - used) {
+    blender::checkpoint_budget_refused();
     fail(r_error, "BMesh capture exceeds finite preallocation admission");
     return nullptr;
   }
@@ -963,6 +965,7 @@ BMesh *BM_geometry_snapshot_restore_bounded(const BMGeometrySnapshot *snapshot,
     fail(r_error, "Finite geometry restore requires a valid snapshot"); return nullptr;
   }
   if (used > limit || charge > limit - used) {
+    blender::checkpoint_budget_refused();
     fail(r_error, "Geometry replay exceeds finite preallocation admission"); return nullptr;
   }
   used += charge;

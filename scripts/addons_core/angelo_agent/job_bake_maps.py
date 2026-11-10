@@ -75,7 +75,7 @@ class TextureSetRunner(Runner):
         try:
             self.plans = [bake_maps_plan.plan(target, self.sources, self.cage, request) for target in self.objects]
         except ReferenceError:
-            raise JobRequestError("An object of this bake was removed") from None
+            raise JobRequestError("An object of this bake was removed", code="STALE_REVISION") from None
         bakes = sum(len(plan.steps) * max(1, len(plan.tiles)) for plan in self.plans)
         samples = max([step.samples for plan in self.plans for step in plan.steps] or [1])
         check_work(request, width, height, samples, max(1, bakes) * max(1, len(self.sources)))

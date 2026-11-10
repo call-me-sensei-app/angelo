@@ -20,6 +20,10 @@
 
 #ifdef RNA_RUNTIME
 
+#  include <algorithm>
+
+#  include "MEM_guardedalloc.h"
+
 #  ifdef WITH_PYTHON
 #    include "BPY_extern.hh"
 #  endif
@@ -46,7 +50,9 @@
 #  include "BLI_listbase.h"
 #  include "BLI_string.h"
 #  include "BLI_threads.h"
+#  include "BLI_vector.hh"
 
+#  include "DEG_angelo_upstream.hh"
 #  include "DEG_depsgraph_build.hh"
 #  include "DEG_depsgraph_query.hh"
 
@@ -269,6 +275,53 @@ static void rna_ViewLayer_update_tagged(ID *id_ptr,
 #  ifdef WITH_PYTHON
   BPy_END_ALLOW_THREADS;
 #  endif
+}
+
+static_assert(int(DEGUpstreamStatus::Ok) == 0 && int(DEGUpstreamStatus::NoGraph) == 1 &&
+                  int(DEGUpstreamStatus::RelationsStale) == 2 &&
+                  int(DEGUpstreamStatus::Evaluating) == 3 &&
+                  int(DEGUpstreamStatus::NotInGraph) == 4 &&
+                  int(DEGUpstreamStatus::TooLarge) == 5 &&
+                  int(DEGUpstreamStatus::NotMainThread) == 6 &&
+                  int(DEGUpstreamStatus::UndeclaredReads) == 7,
+              "angelo_upstream_status_items values are DEGUpstreamStatus values");
+
+/* Angelo: doc/angelo/scene_intelligence.rst, "Upstream relations". Records are flat triples of
+ * (session UID as `ID.session_uid` returns it, ID type code, depsgraph node type), and only when
+ * the status is OK. */
+static void rna_ViewLayer_angelo_upstream(ID *id_self,
+                                          ViewLayer *view_layer,
+                                          Main *bmain,
+                                          ReportList *reports,
+                                          ID *id,
+                                          int *r_status,
+                                          int **r_records,
+                                          int *r_records_num)
+{
+  *r_records = nullptr;
+  *r_records_num = 0;
+  if (!BLI_thread_is_main()) {
+    *r_status = int(DEGUpstreamStatus::NotMainThread);
+    return;
+  }
+  if (id->tag & ID_TAG_COPIED_ON_EVAL) {
+    BKE_report(reports, RPT_ERROR, "Expected an original data-block, not an evaluated copy");
+    *r_status = int(DEGUpstreamStatus::NotInGraph);
+    return;
+  }
+  const Scene *scene = id_cast<const Scene *>(id_self);
+  Vector<int> records;
+  const DEGUpstreamStatus status = DEG_angelo_foreach_upstream(
+      bmain, scene, view_layer, id, [&](const DEGUpstreamRecord &record) {
+        records.extend({int(record.session_uid), record.id_type, int(record.node_type)});
+      });
+  *r_status = int(status);
+  if (status != DEGUpstreamStatus::Ok || records.is_empty()) {
+    return;
+  }
+  *r_records = MEM_new_array_uninitialized<int>(size_t(records.size()), __func__);
+  std::copy(records.begin(), records.end(), *r_records);
+  *r_records_num = int(records.size());
 }
 
 static void rna_ObjectBase_select_update(Main * /*bmain*/, Scene * /*scene*/, PointerRNA *ptr)
@@ -641,6 +694,7 @@ void RNA_def_view_layer(BlenderRNA *brna)
   FunctionRNA *func;
   StructRNA *srna;
   PropertyRNA *prop;
+  PropertyRNA *parm;
 
   srna = RNA_def_struct(brna, "ViewLayer", nullptr);
   RNA_def_struct_ui_text(srna, "View Layer", "View layer");
@@ -742,6 +796,51 @@ void RNA_def_view_layer(BlenderRNA *brna)
   RNA_def_property_override_flag(prop, PROPOVERRIDE_NO_COMPARISON);
   RNA_def_property_ui_text(prop, "Dependency Graph", "Dependencies in the scene data");
   RNA_def_property_pointer_funcs(prop, "rna_ViewLayer_depsgraph_get", nullptr, nullptr, nullptr);
+
+  /* Angelo: doc/angelo/scene_intelligence.rst, "Upstream relations" (DEG_angelo_upstream.hh). */
+  static const EnumPropertyItem angelo_upstream_status_items[] = {
+      {0, "OK", 0, "OK", "Every component upstream of the data-block was listed"},
+      {1, "NO_GRAPH", 0, "No Graph", "The view layer has no dependency graph yet"},
+      {2,
+       "RELATIONS_STALE",
+       0,
+       "Relations Stale",
+       "The dependency graph's relations are waiting for a rebuild"},
+      {3, "EVALUATING", 0, "Evaluating", "The dependency graph is evaluating"},
+      {4, "NOT_IN_GRAPH", 0, "Not in Graph", "This view layer does not evaluate the data-block"},
+      {5, "TOO_LARGE", 0, "Too Large", "Too many operations are upstream to list"},
+      {6, "NOT_MAIN_THREAD", 0, "Not Main Thread", "Called off the main thread"},
+      {7,
+       "UNDECLARED_READS",
+       0,
+       "Undeclared Reads",
+       "Something upstream reads data no relation names (a Python driver expression)"},
+      {0, nullptr, 0, nullptr, nullptr},
+  };
+  func = RNA_def_function(srna, "angelo_upstream", "rna_ViewLayer_angelo_upstream");
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_MAIN | FUNC_USE_REPORTS);
+  RNA_def_function_ui_description(
+      func,
+      "List the data-block components the evaluation of an ID depends on, read from the "
+      "relations this view layer's dependency graph already has. Never builds, updates or "
+      "evaluates a graph. Only for the main thread");
+  parm = RNA_def_pointer(func, "id", "ID", "", "Original data-block whose inputs are listed");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
+  parm = RNA_def_enum(
+      func, "status", angelo_upstream_status_items, 0, "Status", "Records are given only when OK");
+  RNA_def_function_output(func, parm);
+  parm = RNA_def_int_array(func,
+                           "records",
+                           1,
+                           nullptr,
+                           0,
+                           0,
+                           "Records",
+                           "Flat triples: session UID (as ID.session_uid), ID type code, "
+                           "dependency graph node type",
+                           0,
+                           0);
+  RNA_def_parameter_flags(parm, PROP_DYNAMIC, PARM_OUTPUT);
 
   /* Nested Data. */
   /* *** Non-Animated *** */

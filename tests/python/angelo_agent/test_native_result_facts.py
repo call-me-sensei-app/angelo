@@ -8,6 +8,8 @@ the sky's sun (``from_sky_deg``). A Claude context gets certified results as com
 The real commit's ``world`` is in test_blender_rc10_gaps. Host only; no Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

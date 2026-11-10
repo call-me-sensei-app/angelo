@@ -23,18 +23,23 @@ import math
 import time
 
 from . import activity_text, live_row
-from .live_row import code_caption, code_height  # noqa: F401  (the script well's size and caption, re-exported)
-from .card_kit import AMBER, AMBER_SOFT, MUTED, TEAL, TEAL_SOFT, TEXT
-from .ui_tokens import CORAL, CORAL_SOFT
+from .live_row import code_caption, code_height, note_progress as _note  # noqa: F401  (the script well's size and caption, re-exported)
+from . import ui_tokens as tk
 from .legacy_names import current_tool_name
 from .ui_text import iface_, n_, plural_
 
 ROLES = frozenset({"activity", "thinking", "live", "activity_group", "progress_notice", "marble_hero", "worked"})
-NEUTRAL_SOFT = (1, 1, 1, 0.07)
-DETAIL_FILL = (0.075, 0.082, 0.098, 1)    # The collapsed Details well, one step darker than PANEL.
-GUIDE = (1, 1, 1, 0.08)                   # The thread that ties an open group's steps to its header.
-TONES = {"teal": (TEAL, TEAL_SOFT), "coral": (CORAL, CORAL_SOFT), "amber": (AMBER, AMBER_SOFT),
-         "neutral": (MUTED, NEUTRAL_SOFT)}
+# A tone's ui_tokens roles (its colour, its soft fill), read where it is drawn. The collapsed Details well is
+# DETAIL_FILL; GUIDE is the thread that ties an open group's steps to its header.
+TONES = {"teal": ("TEAL", "TEAL_SOFT"), "coral": ("CORAL", "CORAL_SOFT"), "amber": ("AMBER", "AMBER_SOFT"),
+         "neutral": ("MUTED", "NEUTRAL_SOFT")}
+TOKEN_NAMES = {"DETAIL_FILL": "DETAIL_FILL", "GUIDE": "GUIDE"}   # By their old names here (live_row reads them).
+__getattr__ = tk.forward(TOKEN_NAMES, __name__)
+
+
+def tone(name):
+    """A tone's colour (``TONES``) in the variant being drawn."""
+    return getattr(tk, TONES[name][0])
 ROW = 36          # A step or group row.
 PLANNED = 28      # A provisional step under the live row (plan_steps).
 LIVE = 44         # The live row itself.
@@ -59,6 +64,9 @@ def _details(message, role, following=()):
     if role != "activity":
         from .live_progress import thinking_detail
         return thinking_detail(message, following)
+    ended = activity_text.call_ended.detail(message)   # Why a step the host ended did not run, before its details.
+    if ended:
+        return ended + "\n\n" + _details(dict(message, ended=None), role)
     arguments = message.get("arguments", {})
     tool = current_tool_name(message.get("tool", ""))
     if tool == _DELEGATE:
@@ -275,9 +283,10 @@ def _lines(x, y, color, segments, thickness=1.2):
         view.stroke(x + x1, y + y1, x + x2, y + y2, color, thickness)
 
 
-def kind_icon(kind, x, y, color=MUTED):
+def kind_icon(kind, x, y, color=None):
     """A 12 px stroke icon per kind of work, centred on (x, y), in chat_view's stroke style."""
     view = _view()
+    color = tk.MUTED if color is None else color
     if kind in {"read", "look"}:  # An eye.
         _circle(x, y + 4.5, 7, color, 220, 100)
         _circle(x, y - 4.5, 7, color, 40, 100)
@@ -339,10 +348,7 @@ def _spinner(x, y, color, radius=4.5):
     _circle(x, y, radius, color, -(time.monotonic() * 300) % 360, 100, 1.6)
 
 
-_CHIP = {"running": ("running", None), "queued": ("preview", n_("Queued")), "planned": ("preview", n_("Planned")),
-         "needs_you": ("needs_you", None), "declined": ("preview", n_("Declined")), "stopped": ("preview", n_("Stopped")),
-         "failed": ("failed", None), "reverted": ("needs_you", n_("Reverted")), "preview": ("preview", None),
-         "done": ("done", None)}
+_CHIP = activity_text.CHIP   # The row chip's kind and label by status.
 
 
 def chip(right, y, status, scale=1.0):
@@ -370,7 +376,7 @@ def draw(role, message, rows, block_height, key, top, bottom, width, size, line_
     if role == "worked":
         from .live_progress import elapsed
         _title(view, iface_("Worked for {time}", time=elapsed(message["ms"] / 1000)), 16, width - 16,
-               top - WORKED / 2 - (size - 1) * 0.36, size - 1, MUTED)
+               top - WORKED / 2 - (size - 1) * 0.36, size - 1, tk.MUTED)
         return
     if role == "marble_hero":
         from . import marble_draw
@@ -378,13 +384,13 @@ def draw(role, message, rows, block_height, key, top, bottom, width, size, line_
     centre = top - ROW / 2
     indent = INDENT if message.get("_grouped") else 0
     if indent:
-        _fill(25, bottom, 1, block_height, GUIDE)
+        _fill(25, bottom, 1, block_height, tk.GUIDE)
     x = 16 + indent
     right = width - 16
     if role == "live":
         from . import marble_draw
         if not marble_draw.draw_icon(x + 8, centre, state):  # The carved raven; a voice turn keeps the spinner.
-            _spinner(x + 7, centre, TEAL, 5)
+            _spinner(x + 7, centre, tk.TEAL, 5)
         live_row.status_line(view, message, x + 24, right, centre, size, state)
         live_row.draw_note(view, message, top - LIVE + 6, width, size)
         _draw_planned(view, message, top, bottom, width, size, state)
@@ -393,28 +399,28 @@ def draw(role, message, rows, block_height, key, top, bottom, width, size, line_
         return
     if role == "activity_group":
         if message["live"]:
-            _spinner(x + 7, centre, TEAL, 5)
+            _spinner(x + 7, centre, tk.TEAL, 5)
         else:
-            kind_icon("work", x + 7, centre, MUTED)
+            kind_icon("work", x + 7, centre, tk.MUTED)
         right -= chip(right, centre, message["status"]) + 10
-        view.icon("chevron" if message["opened"] else "next", right - 6, centre, MUTED)
-        _title(view, message["title"], x + 24, right - 18, centre - size * 0.36, size, TEXT)
+        view.icon("chevron" if message["opened"] else "next", right - 6, centre, tk.MUTED)
+        _title(view, message["title"], x + 24, right - 18, centre - size * 0.36, size, tk.TEXT)
         state["hits"].append(((16, top - ROW, width - 32, ROW), "expand", key))
         _note(state, key, role, message["title"], message["status"])
         return
     if role == "activity":
         status = activity_text.step_status(message)
         kind_icon(activity_text.step_kind(message), x + 7, centre,
-                  TONES[activity_text.status_tone(status)][0] if status in {"failed", "needs_you"} else MUTED)
+                  tone(activity_text.status_tone(status)) if status in {"failed", "needs_you"} else tk.MUTED)
         right -= chip(right, centre, status) + 10
         label = activity_text.step_title(message)
         _note(state, key, role, label, status)
     else:  # Thinking: a disclosure, no chip.
         opened = bool(rows)
-        view.icon("chevron" if opened else "next", x + 7, centre, MUTED)
+        view.icon("chevron" if opened else "next", x + 7, centre, tk.MUTED)
         label = (iface_("Thinking") if message.get("status") == "running"
                  else iface_("Thought for {seconds}s", seconds=max(1, round(message.get("duration_ms", 0) / 1000))))
-    _title(view, label, x + 24, right, centre - size * 0.36, size, MUTED if role == "thinking" else TEXT)
+    _title(view, label, x + 24, right, centre - size * 0.36, size, tk.MUTED if role == "thinking" else tk.TEXT)
     state["hits"].append(((16 + indent, top - ROW, width - 32 - indent, ROW), "expand", key))
     _draw_attachments(view, message, rows, block_height, top, bottom, width, size, line_height, state, role, indent)
 
@@ -427,17 +433,17 @@ def _draw_planned(view, message, top, bottom, width, size, state):
     if not planned:
         return
     header = message.get("header", LIVE)
-    _fill(25, bottom + 6, 1, top - header + 4 - bottom - 6, GUIDE)
+    _fill(25, bottom + 6, 1, top - header + 4 - bottom - 6, tk.GUIDE)
     x, right = 16 + INDENT, width - 16
     for index, ((kin, _, _, _), text) in enumerate(zip(planned, labels)):
         centre = top - header + 4 - PLANNED * index - PLANNED / 2
-        kind_icon(kin, x + 7, centre, MUTED)
+        kind_icon(kin, x + 7, centre, tk.MUTED)
         end = right - chip(right, centre, "planned", 0.9) - 10
-        _title(view, text, x + 24, end, centre - (size - 1) * 0.36, size - 1, MUTED)
+        _title(view, text, x + 24, end, centre - (size - 1) * 0.36, size - 1, tk.MUTED)
     if more:
         centre = top - header + 4 - PLANNED * len(planned) - PLANNED / 2
         _title(view, plural_(more, "{count} more step", "{count} more steps"), x + 24, right,
-               centre - (size - 1) * 0.36, size - 1, MUTED)
+               centre - (size - 1) * 0.36, size - 1, tk.MUTED)
 
 
 def _draw_attachments(view, message, rows, block_height, top, bottom, width, size, line_height, state, role, indent):
@@ -452,19 +458,11 @@ def _draw_attachments(view, message, rows, block_height, top, bottom, width, siz
         preview_height += message["_flow_card"] + 12
     if rows:
         _fill(16 + indent + 8, bottom + 12 + preview_height, width - 40 - indent, block_height - ROW - 8 - preview_height,
-                   DETAIL_FILL, 8)
+                   tk.DETAIL_FILL, 8)
         y = top - ROW - 18
         for value, _ in rows:
-            view.text(value.rstrip(), 36 + indent, y, size - 1, MUTED, view._mono if role == "activity" else view._font)
+            view.text(value.rstrip(), 36 + indent, y, size - 1, tk.MUTED, view._mono if role == "activity" else view._font)
             y -= line_height
-
-
-def _note(state, key, role, title, status):
-    """What a progress row last drew, by its key: read by the GUI fixtures, never by the add-on."""
-    drawn = state.setdefault("progress_drawn", {})
-    if len(drawn) > 512:
-        drawn.clear()
-    drawn[key] = (role, title, status)
 
 
 def _draw_notice(view, payload, key, top, bottom, width, size, line_height, state):
@@ -481,7 +479,7 @@ def _draw_notice(view, payload, key, top, bottom, width, size, line_height, stat
 def _draw_quiet(view, payload, key, top, bottom, width, size, line_height, state):
     """One muted line: a teal check, the headline and its note; Details open under it."""
     centre = top - QUIET / 2
-    color = TONES[payload["tone"]][0]
+    color = tone(payload["tone"])
     _circle(23, centre, 6, color, thickness=1.3)
     if payload["tone"] == "teal":
         view.icon("check", 23, centre, color)
@@ -489,12 +487,12 @@ def _draw_quiet(view, payload, key, top, bottom, width, size, line_height, state
         _fill(22.3, centre - 0.5, 1.4, 4, color)
         _fill(22.3, centre - 3.6, 1.4, 1.4, color)
     label = payload["headline"] + (" · " + payload["body"] if payload["body"] else "")
-    _title(view, label, 40, width - 40, centre - (size - 1) * 0.36, size - 1, MUTED)
-    view.icon("chevron" if payload["opened"] else "next", width - 26, centre, MUTED)
+    _title(view, label, 40, width - 40, centre - (size - 1) * 0.36, size - 1, tk.MUTED)
+    view.icon("chevron" if payload["opened"] else "next", width - 26, centre, tk.MUTED)
     state["hits"].append(((16, top - QUIET + 2, width - 32, QUIET - 4), "expand", ("notice", key)))
     if payload["rows"]:
-        _fill(32, bottom + 6, width - 48, top - QUIET - bottom - 6, DETAIL_FILL, 8)
+        _fill(32, bottom + 6, width - 48, top - QUIET - bottom - 6, tk.DETAIL_FILL, 8)
         y = top - QUIET - 18
         for value, _ in payload["rows"]:
-            view.text(value.rstrip(), 44, y, size - 2, MUTED, view._mono)
+            view.text(value.rstrip(), 44, y, size - 2, tk.MUTED, view._mono)
             y -= line_height - 2

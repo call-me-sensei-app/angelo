@@ -18,6 +18,8 @@ The shipped stores are read from the pinned wheels (``ANGELO_PYTHON_WHEELS_DIR``
 the throwaway keys, as in the managed-policy and API TLS tests; every command works with OpenSSL 3 and LibreSSL (macOS ``/usr/bin/openssl``, which signs with SHA-1 unless told).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import glob
 import hashlib
@@ -236,7 +238,8 @@ class VersionTests(unittest.TestCase):
         self.certifi("site-packages/pip/_vendor/certifi", "2026.01.04")
         newest = {"certifi": "2099.1.1", "webpki-roots": OSError("offline")}
         found = trust_store.version_problems(self.folder, runtime_pin={"version": version}, newest=newest)
-        self.assertTrue(any("pip/_vendor/certifi is certifi 2026.01.04" in problem for problem in found), found)
+        vendored = os.path.join("pip", "_vendor", "certifi")   # The report names a folder as this system spells it.
+        self.assertTrue(any("%s is certifi 2026.01.04" % vendored in problem for problem in found), found)
         self.assertTrue(any("declares no trust_roots" in problem for problem in found), found)
         self.assertTrue(any("2099.1.1 is published" in problem for problem in found), found)
         self.assertTrue(any("could not be looked up" in problem for problem in found), found)

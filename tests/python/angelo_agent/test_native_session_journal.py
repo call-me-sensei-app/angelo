@@ -8,6 +8,8 @@ way an earlier build reads it (``json.loads`` of the whole file).
 ``test_native_session_journal_cost.py`` pins what one save costs.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import random
@@ -20,9 +22,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from angelo_agent import session_journal, session_writer  # noqa: E402
+from angelo_agent import session_journal, session_writer, shared_replace, win32_replace  # noqa: E402
 from angelo_agent.invocations import reserve_invocation  # noqa: E402
 from angelo_agent.sessions import HISTORY_WARNING, SessionStore, read_transcript  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 
 def plain(value):
@@ -216,7 +219,8 @@ class WriterTests(JournalCase):
         self.assertEqual(self.store.last_write, "rewrite")
         self.assert_restores()
 
-    @unittest.skipIf(session_journal.fcntl is None, "advisory locks are POSIX")
+    @unittest.skipIf(session_journal.fcntl is None, environment_skip(
+        "advisory locks are POSIX; Windows takes none (another app on the same profile is unsupported there)"))
     def test_an_append_checks_and_writes_under_an_exclusive_lock(self):
         self.store.save(self.state)
         held, flock = [], session_journal.fcntl.flock
@@ -238,13 +242,17 @@ class WriterTests(JournalCase):
             return replace(source, target)
         win32 = SimpleNamespace(create=lambda path, *_: os.open(path, os.O_RDONLY), invalid=-1, close=os.close,
                                 last_error=lambda: 0, descriptor=lambda handle, _flags: handle)   # A real descriptor.
+        # Windows replaces through win32_replace (a real POSIX-semantics rename on a Windows host): refuse that one.
         with patch.object(session_journal, "_WINDOWS", True), patch.object(session_journal, "_win32", lambda: win32), \
-                patch.object(session_journal.os, "replace", busy_twice), patch.object(session_journal.time, "sleep"):
+                patch.object(shared_replace, "_WINDOWS", True), patch.object(win32_replace, "replace", busy_twice), \
+                patch.object(session_journal.time, "sleep"):
             self.store.save(self.state)
         self.assertEqual(len(calls), 3)
         self.state["messages"].append(row(1))
         refused = patch.object(session_journal.os, "replace", side_effect=PermissionError(13, "denied"))
-        with refused as replace:   # Elsewhere a refusal is not retried; the file is as it was, so the save appends.
+        with patch.object(session_journal, "_WINDOWS", False), patch.object(shared_replace, "_WINDOWS", False), \
+                refused as replace:
+            # Elsewhere a refusal is not retried; the file is as it was, so the save appends.
             self.store.compact(self.state)
         self.assertEqual(replace.call_count, 1)
         self.assertEqual(self.store.last_write, "append")

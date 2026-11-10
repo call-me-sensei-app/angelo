@@ -8,6 +8,8 @@ invoke, which asks or offers a size. A new Remesh modifier's voxel size follows 
 test_blender_voxel_remesh_guard(_gui).py prove the behavior in the app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import sys
 import unittest

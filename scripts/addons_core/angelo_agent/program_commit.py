@@ -30,7 +30,7 @@ from .program_transfers import (_set_settings, _settings, _live_id, touched_path
                                 active_state, restore_active_state, transfer_scene_settings)
 from .program_memberships import (link_new_objects, verify_new_memberships,  # Tests patch these here.
                                   ProgramMembershipMixin)
-from . import camera_guards, commit_fidelity, exact_fence, kept_values
+from . import camera_guards, commit_fidelity, commit_orphans, exact_fence, kept_values
 from .program_commit_report import ProgramCommitReportMixin
 
 
@@ -52,11 +52,15 @@ class ProgramCommitMixin(ProgramCommitReportMixin, ProgramMembershipMixin):
             scope.validate_stage(stage)
         deleted = tuple(scope.approved_deletions if scope is not None else stage.extras.get("deleted", ()))
         self.final_checks(stage, before_apply)  # Last stage evaluation, then every pre-write check in one exact fence.
+        from . import stage_routes
+        stage_routes.disarm(stage)  # Never evaluated after final routing checks.
         exact_fence.require_ran(before_apply, ProgramError)  # An override of final_checks that skipped it: no write.
         bpy = _bpy()
         source_map = {obj.as_pointer(): stage.originals[handle] for handle, obj in stage.objects.items()}
         new_objects = [obj for obj in stage.scene.objects if obj.as_pointer() not in source_map]
         source_map.update({obj.as_pointer(): obj for obj in new_objects})
+        from . import stage_links
+        source_map.update(stage_links.originals(stage))
         fidelity = commit_fidelity.capture(stage, new_objects)  # Before any write (commit_fidelity).
         world = self._world_before()  # What the World and its Sun lights showed, to report a change (never raises).
         journals, linked, new_groups, new_modifiers, new_constraints = [], [], [], [], []
@@ -70,6 +74,7 @@ class ProgramCommitMixin(ProgramCommitReportMixin, ProgramMembershipMixin):
         kept_worlds, replaced_worlds, replaced_particles, replaced_trees = [], [], [], []
         keep = set()
         cameras = camera_guards.prepare(self, stage)  # The frame update and what orbits were measured from.
+        commit_orphans.seal(scope, stage, self.scene)  # What the written IDs hold, before any write (commit_orphans).
         for handle in stage.binding["writes"]:
             obj = stage.originals[handle]
             journals.append((obj, {"data": obj.data, "transforms": _transform_values(obj),
@@ -222,6 +227,8 @@ class ProgramCommitMixin(ProgramCommitReportMixin, ProgramMembershipMixin):
             from .anim_commit import replaced_actions, apply_renames
             replaced.extend(replaced_actions(stage, journals))  # The copy standing for each replaced Action.
             replaced.extend(replaced_worlds + replaced_particles + replaced_trees)
+            # Graph-only routing: irreversible self-retirement remains disabled.
+            stage_links.commit(stage, replaced, source_map)
             _adopt_names(replaced, settings_journal)
             apply_renames(stage, settings_journal)  # action_set RENAME, after names are adopted.
             owned_identities = capture_cleanup_identities(stage.owned_ids + list(stage.context.created_ids))
@@ -230,9 +237,10 @@ class ProgramCommitMixin(ProgramCommitReportMixin, ProgramMembershipMixin):
                 pointer = block.as_pointer()
                 if pointer in owned_identities and owned_identities[pointer] == (_uid(block), block.id_type):
                     kept.append(block)
-                    for holder, prop, dependency in _embedded_links(block):
+                    for holder, prop, dependency in list(_embedded_links(block)):  # The whole walk before a write.
                         if isinstance(dependency, bpy.types.Object) and dependency.as_pointer() in source_map and not prop.is_readonly:
                             repoint(holder, prop, source_map[dependency.as_pointer()], dependency)
+            stage_links.verify(stage, kept, keep_roots)
             stage_names.publish(stage.extras, kept, settings_journal)  # Kept copies take public names (stage_names).
             from .program_names import apply_names  # Renames and claimed names in program order, journaled.
             apply_names(stage, self.scene, new_objects, settings_journal)
@@ -280,6 +288,10 @@ class ProgramCommitMixin(ProgramCommitReportMixin, ProgramMembershipMixin):
             if scope is not None:
                 scope.job.committed_transfers = None  # A rollback never publishes a partial correspondence.
             rollback_errors = []
+            try:
+                stage_links.rollback(stage)
+            except Exception as rollback:
+                rollback_errors.append(str(rollback))
             from .anim_commit import rollback as rollback_animation
             rollback_animation(undo_journal, rollback_errors)  # Before object journals may clear animation data.
             for action, collection, item in reversed(membership_journal):
@@ -386,6 +398,12 @@ class ProgramCommitMixin(ProgramCommitReportMixin, ProgramMembershipMixin):
         retain_cleanup(remaining)
         if stage.bundle:
             self._remove_bundle(stage.bundle)
+        # The data the swaps replaced, which only the rollback above could still need (commit_orphans). Before the
+        # revisions, so they describe the file as it stays; released data of deleted objects stays, as in Blender.
+        replaced, kept_replaced = commit_orphans.free_replaced(replaced, scope)
+        if kept_replaced.get("unexpected"):  # Never silent: the kernel freed IDs outside the proven closure.
+            cleanup_error += ("; " if cleanup_error else "") + "freeing replaced data removed %d IDs outside its proof" % (
+                kept_replaced["unexpected"])
         # After cleanup: the stage collection no longer links the new objects,
         # so these are the revisions the next program's bind will recompute.
         live_revisions = self.post_commit_revisions(stage, new_objects)
@@ -411,7 +429,7 @@ class ProgramCommitMixin(ProgramCommitReportMixin, ProgramMembershipMixin):
                 "changes": {"added": [{"name": obj.name, "type": obj.type} for obj in new_objects[:MAX_RESULT_ROWS]],
                             "removed": removed_rows, "modified": self._committed_rows(stage),
                             "truncated": len(new_objects) > MAX_RESULT_ROWS, "scope": "Validated native staged transaction"}}
-        result.update(self._commit_notes(stage, replaced, released))  # Leftover data; names commit had to change.
+        result.update(self._commit_notes(stage, replaced, released, kept_replaced))  # Leftovers; names it changed.
         result.update(self._world_after(world))  # The World and Sun lights it changed, as a script's result says.
         result.update(self._motion_after(stage, new_objects))  # Where what it edits that moves is, at a few frames.
         camera_guards.annotate(cameras, result)  # Unkeyed animated values its frame update replaced.

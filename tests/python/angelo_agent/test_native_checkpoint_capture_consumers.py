@@ -6,6 +6,8 @@ V4 metadata/payload bytes are synthetic declarations, never native-produced or
 verified Sculpt companions. No producer, Blender, provider or native reader.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 from contextlib import contextmanager
 import hashlib
@@ -377,9 +379,47 @@ class CaptureConsumerTests(unittest.TestCase):
         self.assertEqual(changed["capture_validation"], "PENDING")
         self.assertEqual(len(changed["files"]), 1)
 
+    def test_unpinned_v4_reservation_anchors_no_later_write_version(self):
+        for protect in (False, True):
+            with self.subTest(safety=protect):
+                self.store = CheckpointStore(self.root / ("state-" + str(uuid.uuid4())), str(uuid.uuid4()))
+                old, dead = self.snapshot(), self.snapshot()
+                value = self.declare_v4(dead, state="RESERVED")
+                self.store.journal(dead["id"], self.project, "separate.md")
+                if protect:
+                    record = dict(self.store.load(dead["id"]), purpose="safety", protected=True)
+                    self.metadata(self.store, dead["id"]).write_text(json.dumps(validate_record(record, dead["id"])))
+                self.write(old, "new after the v4 boundary")
+                self.snapshot()
+                plan = self.store.prune_plan({"max_count": 1, "max_bytes": 0})
+                self.assertEqual([item["id"] for item in plan["candidates"]], [old["id"]], value["state"])
+
+    def test_usable_v4_restore_point_anchors_later_write_versions(self):
+        """A pair Restore admits (VALIDATED or INTERRUPTED_VALID) keeps every write version after its boundary."""
+        def item(name, created, boundary, **fields):
+            return {"ref": "s/" + name, "session_id": "s", "id": name, "created": created, "boundary": boundary,
+                    "state": "READY", "version": 1, "scene_usable": True, "capture_validation": None,
+                    "capture_active": False, "files": [], "purpose": "request", "protected": False,
+                    "bytes": 100, "fingerprint": name, **fields}
+        for validation in ("VALIDATED", "INTERRUPTED_VALID", "PENDING"):
+            with self.subTest(validation=validation):
+                first = item("first", 1, 1, files=[{"sequence": 3, "phase": "ready"}])
+                # Kept (protected), so only its usability decides whether it anchors first's write version.
+                pair = item("pair", 2, 2, version=4, capture_validation=validation, protected=True)
+                latest = item("latest", 4, 4)
+                inventory = {"checkpoints": [first, pair, latest], "issues": [], "token": "t", "total_bytes": 300}
+                plan = plan_retention(inventory, {"max_count": 1, "max_bytes": 0}, now=10)
+                if validation == "PENDING":
+                    self.assertEqual([entry["ref"] for entry in plan["candidates"]], ["s/first"])
+                    continue
+                self.assertEqual([entry["ref"] for entry in plan["candidates"]], ["s/latest"])
+                reason = next(entry["reason"] for entry in plan["protected"] if entry["ref"] == "s/first")
+                self.assertEqual(reason, "required by a retained file restore chain")
+
     def test_unavailable_v4_journal_remains_a_retention_dependency_anchor(self):
         old, pending = self.snapshot(), self.snapshot()
         self.declare_v4(pending, state="RESERVED")
+        self.pin(pending)  # Its owner is live: the reservation may still become a restore point.
         self.store.journal(pending["id"], self.project, "separate.md")
         self.write(old, "new after the v4 boundary")
         self.snapshot()
@@ -388,10 +428,39 @@ class CaptureConsumerTests(unittest.TestCase):
         self.assertIn(checkpoint_ref(self.store.session_id, old["id"]),
                       {item["ref"] for item in plan["protected"]})
 
+    def dead_ready_chain(self, **declare):
+        """first (journal entry after B), a READY v4 B no Restore admits, latest: the 1.1 batch-3 #188 Low."""
+        (self.project / "notes.md").write_text("before B")
+        first, dead = self.snapshot(), self.snapshot()
+        self.declare_v4(dead, **declare)
+        self.write(first, "after B")
+        latest = self.snapshot()
+        self.assertFalse(self.store.availability(dead["id"])["available"])
+        return first, dead, latest
+
+    def test_unpinned_ready_v4_no_restore_admits_anchors_no_later_write_version(self):
+        for declare in ({}, {"validation": "INVALID"}):
+            with self.subTest(**declare):
+                self.store = CheckpointStore(self.root / ("state-" + str(uuid.uuid4())), str(uuid.uuid4()))
+                first, dead, latest = self.dead_ready_chain(**declare)
+                plan = self.store.prune_plan({"max_count": 1, "max_bytes": 0})
+                self.assertEqual([item["id"] for item in plan["candidates"]], [first["id"]])
+                self.assertNotIn("required by a retained file restore chain",
+                                 {item["reason"] for item in plan["protected"]})
+
+    def test_unpinned_safety_ready_v4_no_restore_admits_anchors_nothing(self):
+        first, dead, latest = self.dead_ready_chain()
+        record = self.store.load(dead["id"])
+        record.update(purpose="safety", protected=True)
+        self.metadata(self.store, dead["id"]).write_text(json.dumps(validate_record(record, dead["id"])))
+        plan = self.store.prune_plan({"max_count": 1, "max_bytes": 0})
+        self.assertEqual([item["id"] for item in plan["candidates"]], [first["id"]])
+
     def test_retained_v4_ready_without_own_journal_anchors_later_before_image(self):
         (self.project / "notes.md").write_text("before B")
         first, retained = self.snapshot(), self.snapshot()
         self.declare_v4(retained)
+        self.pin(retained)  # Between its READY write and finish: finish may still make it a restore point.
         self.write(first, "after B")
         latest = self.snapshot()
         entry = self.store.load(first["id"])["files"][0]

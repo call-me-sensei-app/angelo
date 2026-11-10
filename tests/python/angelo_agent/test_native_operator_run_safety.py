@@ -8,6 +8,8 @@ on real operators by test_blender_operator_run_safety.py, and the scene
 override across mode switches by test_blender_operator_run_windows.py (GUI).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import importlib
 import sys

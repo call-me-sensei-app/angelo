@@ -10,6 +10,8 @@ mixes two in one run; the report states it above the verdict, and an unmarked ru
 never changes the verdict: the same frozen rules decide every run. An early run without grades says its grade is held,
 never that grades are missing.
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import json
 import tempfile
 import unittest

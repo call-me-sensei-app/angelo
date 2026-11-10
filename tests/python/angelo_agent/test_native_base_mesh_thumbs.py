@@ -7,6 +7,8 @@ distinct PNG that the add-on's own reader decodes (no ``bpy.data`` image), and t
 A git-archive snapshot holds LFS pointers instead of PNGs; there only the files' presence and distinctness are checked.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import sys
 import unittest

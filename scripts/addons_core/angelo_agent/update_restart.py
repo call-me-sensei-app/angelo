@@ -14,25 +14,32 @@ person presses Restart to Update, ``begin``:
    Cancel). An untitled file opens the File Browser, and a restored document's
    first Save over its file asks its question (``restored_document``); the
    restart continues only after the file was saved, and stops if it was not. Images with unsaved
-   pixels are saved with the file, and the restart stops if one can't be;
+   pixels are saved with the file, and the restart stops if one can't be. Asset catalogs with
+   unsaved changes (Blender's own quit dialog asks about them too) are written by that save, with
+   "Save modified asset catalogs" on for it whatever the quit dialog last left, and the restart
+   stops if one is still unsaved (a library folder that can't be written); Don't Save discards
+   them, as Blender's quit does;
 4. starts the installer (``update_install``), waits until it reports it is
    running, and quits. The installer replaces the app once Angelo has exited
    and opens it again with the same file.
 
 At the next launch ``handle_results`` reads what the installer did: a
-successful install removes the previous app and the downloads; a failed one is
+successful install removes the previous app and the downloads, and one Windows
+finishes only when it restarts (``update_install.needs_reboot``) says so once; a failed one is
 told once and counted, and after ``update_ready.INSTALL_ATTEMPTS`` failures the
 version is offered as a download instead.
 """
 
 import os
 import time
+import sys
 from pathlib import Path
 
 import bpy
 
 from . import (app_version, card_host, card_kit as kit, live_windows, update_card, update_flow, update_install, update_state,
                work_guard)
+from . import update_restart_handoff as handoff
 from .ui_text import iface_, n_, plural_
 
 READY_TIMEOUT = 15.0
@@ -48,12 +55,19 @@ NOT_STARTED_BODY = n_("Angelo is still open and nothing was changed. Try again, 
 SAVE_FAILED_TITLE = n_("Angelo did not restart")
 SAVE_FAILED_BODY = n_("Your file could not be saved, so Angelo kept it open. Save it, then restart.")
 IMAGES_FAILED_BODY = n_("Some images could not be saved. Save or pack them in the Image Editor, then restart.")
+CATALOGS_BODY = n_("Your asset catalogs have unsaved changes.")
+CATALOGS_FAILED_BODY = n_("Some asset catalogs could not be saved. Save them in the Asset Browser, then restart.")
 RECOVERY_COPY_BODY = n_("This scene is a recovery copy, not your file: save it with File > Save As")
+REBOOT_TITLE = n_("Angelo {version} is installed")
+REBOOT_BODY = n_("Restart Windows to finish the update: a file that was in use is replaced when Windows starts again.")
 OTHER_TITLE = n_("Close the other Angelo windows first")
 OTHER_BODY = n_("Another Angelo window is open from the same app. Close it, then restart to update.")
 DOWNLOAD, CLOSE = n_("Download"), n_("Close", "Angelo")
 
-_watch = None   # A save in progress: {"offer", "ready", "saved_path", "failed", "opened", "asking"}
+_installer = None  # Sole Popen/native owner; handoff borrows this module, never copies its record.
+DRAIN_TIMEOUT = 5.0
+
+_watch = None   # A save in progress: {"offer", "ready", "saved_path", "failed", "opened", "asking", "catalogs"}
 
 
 def _ready_module():
@@ -63,6 +77,26 @@ def _ready_module():
 
 def _dirty_images():
     return [image for image in bpy.data.images if image.is_dirty]
+
+
+def _native_jobs():
+    try:
+        from _bpy import _angelo_jobs
+    except ImportError:
+        return None
+    return _angelo_jobs if hasattr(_angelo_jobs, "catalogs_unsaved") else None
+
+
+def _catalogs_unsaved():
+    """Whether a loaded asset library has catalog changes not written yet; False on a build that cannot tell."""
+    native = _native_jobs()
+    return bool(native is not None and native.catalogs_unsaved())
+
+
+def _catalogs_with_file(enable):
+    """Set whether saving the file writes modified asset catalogs; the setting before, or None (a build without it)."""
+    native = _native_jobs()
+    return None if native is None else bool(native.catalogs_save_with_file(enable))
 
 
 def _other_instances(ready):
@@ -97,11 +131,12 @@ def begin(offer, ready, host):
         live.consider(offer, manual=True)   # Prepared again, then offered again.
         host.redraw()
         return
-    images = _dirty_images()
-    if bpy.data.is_dirty or images:
+    images, catalogs = _dirty_images(), _catalogs_unsaved()
+    if bpy.data.is_dirty or images or catalogs:
         name = Path(bpy.data.filepath).name
         host.close("save")
-        card_host.request(SaveCard(name, len(images), lambda choice: _after_prompt(choice, offer, ready)))
+        card_host.request(SaveCard(name, len(images), lambda choice: _after_prompt(choice, offer, ready),
+                                   catalogs=catalogs, file_changed=bpy.data.is_dirty or bool(images)))
         return
     launch(offer, ready)
 
@@ -126,7 +161,7 @@ def _after_prompt(choice, offer, ready):
     asking = _restored_question()   # Its Save asks first, as File > Save does; a plain save is refused.
     if not bpy.data.filepath or asking:
         _watch = {"offer": offer, "ready": ready, "saved_path": None, "failed": False, "opened": time.monotonic(),
-                  "asking": asking}
+                  "asking": asking, "catalogs": _catalogs_with_file(True)}   # Restored when the watch ends.
         for handler, list_ in ((_on_saved, bpy.app.handlers.save_post), (_on_save_failed, bpy.app.handlers.save_post_fail)):
             if handler not in list_:
                 list_.append(handler)
@@ -135,7 +170,7 @@ def _after_prompt(choice, offer, ready):
             (bpy.ops.wm.save_mainfile if asking else bpy.ops.wm.save_as_mainfile)('INVOKE_DEFAULT')
         bpy.app.timers.register(_watch_save, first_interval=0.5)
         return
-    if _save_file():
+    if _save_file() and not _catalogs_left():
         launch(offer, ready)
 
 
@@ -162,14 +197,26 @@ def _save_file():
     after this call, so ``bpy.data.is_dirty`` still reads True here (its quit-after-save dialog trusts the
     write's result the same way).
     """
+    previous = _catalogs_with_file(True)   # The save's post handler writes the libraries' catalogs.
     try:
         saved = bpy.ops.wm.save_mainfile() == {'FINISHED'}
     except RuntimeError as error:
         print("Angelo update: saving before the restart failed:", error)
         saved = False
+    finally:
+        if previous is not None:
+            _catalogs_with_file(previous)
     if not saved:
         _notice(SAVE_FAILED_TITLE, SAVE_FAILED_BODY)
     return saved
+
+
+def _catalogs_left():
+    """After the save: True (and a notice) when an asset catalog is still unsaved, so the restart stops."""
+    if _catalogs_unsaved():
+        _notice(SAVE_FAILED_TITLE, CATALOGS_FAILED_BODY)
+        return True
+    return False
 
 
 def _event_path(args):
@@ -231,74 +278,83 @@ def _watch_save():
         return None
     if _document_saved(watch):
         _watch = None
-        _stop_watching()
-        if not _dirty_images():   # Saved before the File Browser opened; nothing changed meanwhile.
-            launch(watch["offer"], watch["ready"])
-        else:
+        _stop_watching(watch)
+        if _dirty_images():   # Saved before the File Browser opened; nothing may have changed meanwhile.
             _notice(SAVE_FAILED_TITLE, IMAGES_FAILED_BODY)
+        elif not _catalogs_left():
+            launch(watch["offer"], watch["ready"])
         return None
     if watch["failed"]:
         _watch = None
-        _stop_watching()
+        _stop_watching(watch)
         _notice(SAVE_FAILED_TITLE, SAVE_FAILED_BODY)
         return None
     waited = time.monotonic() - watch["opened"]
     if (watch["asking"] and waited > QUESTION_WAIT) or (not watch["asking"] and not _browser_open() and waited > 1.0):
         _watch = None   # Cancelled: nothing happens, the update stays ready.
-        _stop_watching()
+        _stop_watching(watch)
         return None
     return 0.3
 
 
-def _stop_watching():
+def _stop_watching(watch=None):
+    if watch is not None and watch.get("catalogs") is not None:
+        _catalogs_with_file(watch["catalogs"])   # The quit dialog's setting, as it was before this save.
     for handler, list_ in ((_on_saved, bpy.app.handlers.save_post), (_on_save_failed, bpy.app.handlers.save_post_fail)):
         if handler in list_:
             list_.remove(handler)
 
 
+_quit_native = handoff.quit_native
+
+
+_catalog_generation = handoff.catalog_generation
+
+
+def _document_stamp():
+    return handoff.document_stamp(bpy.data)
+
+
+def _installer_document_changed(*_args):
+    if _installer is not None:
+        _installer["changed"] = True
+
+
+def _change_handlers():
+    return tuple(getattr(bpy.app.handlers, name) for name in
+                 ("depsgraph_update_post", "load_pre", "save_pre", "undo_pre", "redo_pre"))
+
+
+def _detach_change_handlers():
+    for handlers in _change_handlers():
+        if _installer_document_changed in handlers:
+            handlers.remove(_installer_document_changed)
+
+
+_close_original = handoff.close_original
+
+
+def _stand_down(record):
+    """Revoke only this invocation. Unproved cleanup retains its exact owner."""
+    return handoff.stand_down(sys.modules[__name__], record)
+
+
+def _release_installer(record):
+    return handoff.release_installer(sys.modules[__name__], record)
+
+
+def _confirm_installer_quit(invocation):
+    """Fixed native handler preflight. No grant is written from Python."""
+    return handoff.confirm_installer_quit(sys.modules[__name__], invocation)
+
+
+def _poll_installer():
+    return handoff.poll_installer(sys.modules[__name__])
+
+
 def launch(offer, ready):
-    """Start the installer, then quit once it is running. Nothing is unsaved by now (or the person chose so)."""
-    live = _ready_module()
-    waiting = work_guard.reasons()
-    if waiting:   # Work began during the prompt: the update stays ready and its card says why it waits.
-        print("Angelo update: the restart waits for", ", ".join(waiting))
-        if not card_host.is_active("update"):
-            card_host.request(update_card.UpdateCard(offer, app_version.current(), _decide, live=live))
-        return
-    install_root, mac = ready.install_root, ready.family == "macos"
-    try:
-        requirement = _requirement(ready) if mac else ""
-        request = update_install.Request(
-            family=ready.family, work=Path(ready.work), pid=os.getpid(), version=ready.version,
-            executable=_executable(ready), open_file=bpy.data.filepath, app=install_root if mac else "",
-            new=ready.payload if mac else "", msi="" if mac else ready.payload, root="" if mac else install_root,
-            launcher=_launcher(ready), requirement=requirement, sha256="" if mac else ready.fingerprint,
-            gatekeeper=mac and ready.gatekeeper == "1")
-        process = update_install.start(request)
-    except Exception as error:   # Whatever stops the hand-over leaves Angelo running and says so.
-        print("Angelo update: the installer could not start:", error)
-        _not_started(live.target(offer))
-        return
-    live.set_restarting(ready.version)
-    if not card_host.is_active("update"):
-        card_host.request(update_card.UpdateCard(offer, app_version.current(), _decide, live=live))
-    started = time.monotonic()
-
-    def wait():
-        if update_install.ready(ready.work):
-            bpy.ops.wm.quit_blender()
-            return None
-        if time.monotonic() - started > READY_TIMEOUT:
-            try:   # A late installer must never act behind Angelo's back.
-                process.kill()
-            except (OSError, AttributeError):
-                pass
-            live.set_restarting(None)
-            _not_started(live.target(offer))
-            return None
-        return 0.2
-
-    bpy.app.timers.register(wait, first_interval=0.2)
+    """Start one revocable helper; only committed native exit grants installation."""
+    return handoff.launch(sys.modules[__name__], offer, ready)
 
 
 def _decide(choice, offer):
@@ -354,6 +410,9 @@ def handle_results(preparer, state_directory):
         if result["status"] == "installed" and version == current:
             update_flow.remove_previous(work, preparer.support()[1])
             _record(state_directory, "", 0)
+            if update_install.needs_reboot(result):   # Still a success; said once, even if the folder outlives this.
+                (work / update_install.RESULT_FILE).unlink(missing_ok=True)
+                _notice(REBOOT_TITLE, REBOOT_BODY, version=app_version.display(version))
             continue
         (work / update_install.RESULT_FILE).unlink(missing_ok=True)
         if app_version.parse(version) > app_version.parse(current):
@@ -383,8 +442,11 @@ class SaveCard(kit.BaseCard):
 
     kind, modal, priority, cancel_action = "update_save", True, 90, "cancel"
 
-    def __init__(self, name, image_count, on_choice):
+    def __init__(self, name, image_count, on_choice, catalogs=False, file_changed=True):
+        """``catalogs``: asset catalogs are unsaved too; ``file_changed``: the file itself (or an image) is, so the
+        file's own line is said (an untitled file's always is: saving it asks for a name)."""
         self.name, self.image_count, self.on_choice = name, image_count, on_choice
+        self.catalogs, self.file_changed = catalogs, file_changed
 
     def layout(self, view, region_w, region_h, scale, ui):
         def build(size):
@@ -396,12 +458,15 @@ class SaveCard(kit.BaseCard):
             text_w = width - text_x - b.pad - 20 * size
             top = b.y
             b.paragraph(iface_(SAVE_TITLE), 17, kit.TEXT, x=text_x, width=text_w, leading=1.3)
-            body = iface_(SAVE_BODY, name=self.name) if self.name else iface_(SAVE_BODY_UNTITLED)
-            b.paragraph(body, 13, kit.MUTED, x=text_x, width=text_w, leading=1.45)
+            if not self.name or self.file_changed:
+                body = iface_(SAVE_BODY, name=self.name) if self.name else iface_(SAVE_BODY_UNTITLED)
+                b.paragraph(body, 13, kit.MUTED, x=text_x, width=text_w, leading=1.45)
             if self.image_count:
                 images = plural_(self.image_count, "{count} image has unsaved changes too.",
                                  "{count} images have unsaved changes too.")
                 b.paragraph(images, 13, kit.MUTED, x=text_x, width=text_w, leading=1.45)
+            if self.catalogs:
+                b.paragraph(iface_(CATALOGS_BODY), 13, kit.MUTED, x=text_x, width=text_w, leading=1.45)
             b.y = max(b.y, top + icon) + 18 * size
             b.buttons([("dont_save", None, iface_(DONT_SAVE), "secondary", True),
                        ("save", None, iface_(SAVE), "primary", True)],

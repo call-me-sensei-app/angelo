@@ -33,6 +33,94 @@ def target_view(context):
     return area, region
 
 
+class ANGELO_OT_fab_connection(Operator):
+    bl_idname = "angelo.fab_connection"
+    bl_label = "Fab connection"
+    bl_description = "Connect to Fab, or disconnect your current session"
+    bl_options = {'INTERNAL'}
+    request: StringProperty(options={'SKIP_SAVE'})  # i18n: local action and opaque owner nonces, not displayed
+
+    def execute(self, context):
+        from . import fab_ui, library_overlay, preferences_ui
+        accepted = fab_ui.run_connection_request(context.window, self.request)
+        library_overlay.redraw_all()
+        preferences_ui.redraw()
+        return {'FINISHED'} if accepted else {'CANCELLED'}
+
+
+
+def _asset_recovery_status():
+    """Read-only native status; polling must never recover, fetch or resend an import."""
+    from . import blender_asset_commit
+    from .team_library_files import NotImported
+    try:
+        status = blender_asset_commit.recovery_status()
+        if status is None:
+            return None
+        return dict(status, busy=bool(getattr(blender_asset_commit._recovery_owner, 'applying', False)))
+    except NotImported:
+        return None  # This app has no native transaction feature.
+    except Exception:
+        return {'recoverable': False, 'busy': False, 'unknown': True}
+
+
+class ANGELO_OT_library_recover(Operator):
+    bl_idname = "angelo.library_recover"
+    bl_label = "Recover Asset Import"
+    bl_description = "Restore the document state from before the interrupted asset import"
+    bl_options = {'REGISTER'}
+
+    @classmethod
+    def poll(cls, context):
+        status = _asset_recovery_status()
+        return bool(status and status.get('recoverable') is True and not status.get('busy'))
+
+    def execute(self, context):
+        from . import blender_asset_commit, library_overlay
+        # Recheck at invocation, independently of the button's last drawn state.
+        if not self.poll(context):
+            self.report({'ERROR'}, rpt_("Recovery is unavailable. Keep this document open and do not import another asset."))
+            return {'CANCELLED'}
+        try:
+            status = blender_asset_commit.recover_pending()
+        except Exception:
+            self.report({'ERROR'}, rpt_("Recovery did not complete. Keep this document open and do not import another asset."))
+            library_overlay.redraw_all()
+            return {'CANCELLED'}
+        library_overlay.redraw_all()
+        if not status or status.get('state') != 'RESTORED' or status.get('closed') is not True:
+            self.report({'ERROR'}, rpt_("Recovery did not complete. Keep this document open and do not import another asset."))
+            return {'CANCELLED'}
+        self.report({'INFO'}, rpt_("The document state from before the asset import was restored."))
+        return {'FINISHED'}
+
+
+class ANGELO_PT_asset_recovery(Panel):
+    bl_label = "Asset Recovery"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Angelo"
+
+    @classmethod
+    def poll(cls, context):
+        return _asset_recovery_status() is not None
+
+    def draw(self, context):
+        status = _asset_recovery_status()
+        if status is None:
+            return
+        column = self.layout.column(align=True)
+        column.label(text="An asset import needs attention.", icon='ERROR')
+        column.label(text="Keep this document open.")
+        if status.get('busy'):
+            column.label(text="Wait for the current import to finish.")
+        elif status.get('recoverable') is True:
+            column.operator("angelo.library_recover", icon='LOOP_BACK')
+        else:
+            column.label(text="Recovery is currently unavailable.")
+        column.label(text="Do not import another asset yet.")
+
+
 class ANGELO_OT_library_open(Operator):
     bl_idname = "angelo.library_open"
     bl_label = "Angelo Library"
@@ -165,12 +253,13 @@ class ANGELO_PT_library_world(_Surface, Panel):
     KIND, TEXT, ICON = 'HDRI', n_("Browse Library HDRIs"), 'WORLD'
 
 
-classes = (ANGELO_OT_library_open, ANGELO_OT_library_add, ANGELO_OT_library_credits, ANGELO_PT_library_materials,
+classes = (ANGELO_OT_library_recover, ANGELO_PT_asset_recovery, ANGELO_OT_fab_connection, ANGELO_OT_library_open, ANGELO_OT_library_add, ANGELO_OT_library_credits, ANGELO_PT_library_materials,
            ANGELO_PT_library_world)
 
 
 def register():
-    from . import chat_destinations, library_overlay
+    from . import chat_destinations, fab_host, library_host, library_overlay  # noqa: F401 - warm facade, no library() factory.
+    fab_host.register()   # Cached owner only; opening a browser still requires the person's Connect.
     for cls in classes:
         bpy.utils.register_class(cls)
     library_overlay.register()

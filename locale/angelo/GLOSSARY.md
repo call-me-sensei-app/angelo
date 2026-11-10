@@ -56,7 +56,8 @@ on a property), so Angelo's own meaning is shown: **Keys** (API keys, not keyfra
 handbook), **Prompt** (what you ask for, not a console cursor), **Close** (a dialog button, not a closed shape),
 **Modified** (changed objects, not a date), **Assets** (Media Studio items, not financial assets), **Include**,
 **Expand**, **Finishing**, **Transparent**, and the UV checker's pattern switch: **Pattern**, **Grid**, **Checker**,
-**Density**, **Stretch** (nouns naming a view, not Blender's verbs or "controller"). Add a word here, and its context, when a screenshot shows Blender's sense.
+**Density**, **Stretch** (nouns naming a view, not Blender's verbs or "controller"), and goal mode's **Goal** (a target
+the agent keeps working toward, not a physics goal) and **Start** (a button that starts it, not a start point). Add a word here, and its context, when a screenshot shows Blender's sense.
 
 ## Renderings per language
 

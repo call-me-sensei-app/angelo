@@ -12,6 +12,8 @@ when it changed; the watcher reads scans on the main thread and asks for the car
 nothing except Link a project…, which opens that engine's folder picker.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ctypes
 import importlib
 import json

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Immutable teardown ownership after partial deletion, without native RNA."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import sys
 import tempfile
@@ -338,7 +340,7 @@ class StorageTests(unittest.TestCase):
 
     def test_admission_rejects_nested_and_embedded_custom_id_links(self):
         class Holder:
-            bl_rna = SimpleNamespace(properties=[])
+            bl_rna = SimpleNamespace(identifier="Holder", properties=[])
             def as_pointer(self):
                 return id(self)
             def keys(self):
@@ -347,7 +349,7 @@ class StorageTests(unittest.TestCase):
                 return self.values[name]
         root, embedded = Holder(), Holder()
         root.values = {"number": 1., "text": "artist label", "nested": {"vector": [1, 2, 3]}}
-        root.bl_rna = SimpleNamespace(properties=[SimpleNamespace(identifier="settings", type="POINTER")])
+        root.bl_rna = SimpleNamespace(identifier="Holder", properties=[SimpleNamespace(identifier="settings", type="POINTER")])
         root.settings = embedded
         embedded.values = {}
         fake = SimpleNamespace(types=SimpleNamespace(ID=FakeID, Mesh=type("Mesh", (FakeID,), {}), Object=FakeObject,

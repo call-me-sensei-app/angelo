@@ -89,7 +89,8 @@ RENDER_REQUEST_SECONDS = 360
 # ``image`` may add ``:<name>`` to a source (view_sources.rst): the data-block of IMAGE, the texture of UV.
 # EDITOR: the window as the person sees it, or with ``:<type>`` one editor.
 RENDER_RESULT, LAST_JOB, IMAGE_DATA, UV, EDITOR = "RENDER_RESULT", "LAST_JOB", "IMAGE", "UV", "EDITOR"
-WEB = "WEB"   # The live web preview as the browser shows it (web_export.rst; described by angelo_web_preview).
+WEB = "WEB"   # A page as the browser shows it: the web link's page, else the live web preview (web_link.rst,
+# web_export.rst; described by angelo_engine_link_status and angelo_web_preview).
 JOB = r"^j[1-9][0-9]{0,8}$"
 IMAGE = r"^(RENDER_RESULT|LAST_JOB|j[1-9][0-9]{0,8}|IMAGE|UV|EDITOR|WEB)(:.+)?$"
 # Sources that show current state, made by view_finished's SOURCES like any picture, never a job to wait for.
@@ -214,10 +215,11 @@ def _number(value, low, high, what):
     return float(value)
 
 
-def _camera_item(value, index):
-    """A validated free camera with its defaults filled (ValueError naming the field otherwise)."""
-    where = "views[%d]" % index
-    unknown = sorted(set(value) - _CAMERA_FIELDS, key=str)
+def _camera_item(value, index, where=None, fields=_CAMERA_FIELDS):
+    """A validated free camera with its defaults filled (ValueError naming the field otherwise). ``where`` names it
+    in errors (``views[index]`` by default); ``fields`` limits what it may hold (``goal_spec``: no reference)."""
+    where = where or "views[%d]" % index
+    unknown = sorted(set(value) - fields, key=str)
     if unknown:
         raise ValueError("%s has unknown field %s: a free camera takes location, look_at, lens or ortho_scale, and "
                          "reference" % (where, str(unknown[0])[:40]))

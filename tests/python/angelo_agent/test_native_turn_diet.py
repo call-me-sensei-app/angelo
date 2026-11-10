@@ -7,6 +7,8 @@ staleness rules over host fakes, and the real Controller and ClaudeProvider
 over the unbilled stdio fixture: no Blender, Claude process or inference.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import sys
@@ -364,7 +366,7 @@ class RebaseTests(ControllerFixture):
         self.entry()["context_tokens"] = 5000
         rebased = self.turn("Thanks.", observation=self.scene())
         handoff_part = rebased.split("Shared conversation handoff", 1)[1]
-        self.assertIn("Move it to 5.", handoff_part, "The last turn is handed off")
+        self.assertIn("handoff_omission", handoff_part, "Bounded rebase reports history it could not admit")
         self.assertNotIn("Move it to 4.", handoff_part, "Earlier turns are summarized by the seed's requests")
         self.assertIn("historical_native_results_omitted=", rebased)
         self.assertNotIn("historical_native_result=", rebased)

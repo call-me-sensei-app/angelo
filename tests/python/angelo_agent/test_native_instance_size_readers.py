@@ -9,6 +9,8 @@ their radius). These pin each reader over a stand-in for the native pass; test_n
 facts and test_blender_object_bounds.py the real geometry.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import types
 import unittest

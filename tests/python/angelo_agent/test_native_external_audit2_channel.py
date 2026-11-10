@@ -10,6 +10,8 @@
   answered as the save ends; the reader never waits.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import queue
 import socket
 import sys
@@ -22,6 +24,7 @@ import machine_clock
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import part_leases, worker_channel, worker_host  # noqa: E402
 from angelo_agent.headless_pipe import Writer  # noqa: E402
+from channel_endpoints import endpoint  # noqa: E402
 
 
 def socket_pair(case):
@@ -51,10 +54,10 @@ class HookLock:
 class AnswersAreDeliveredOnce(unittest.TestCase):
     def setUp(self):
         ours, theirs = socket_pair(self)
-        self.client = worker_channel.Client(worker_channel.socket_endpoint(ours, 1 << 20, 1 << 20))
+        self.client = worker_channel.Client(endpoint(ours))
         self.addCleanup(self.client.close)
         self.lock = self.client._lock = HookLock()
-        self.end = worker_channel.socket_endpoint(theirs, 1 << 20, 1 << 20)
+        self.end = endpoint(theirs)
         self.writer = Writer(theirs.makefile("wb", buffering=0), 1 << 20)
         self.late = queue.Queue()
 
@@ -111,11 +114,11 @@ class TheReaderNeverWaitsForASave(unittest.TestCase):
 
     def setUp(self):
         ours, theirs = socket_pair(self)
-        self.client = worker_channel.Client(worker_channel.socket_endpoint(ours, 1 << 20, 1 << 20))
+        self.client = worker_channel.Client(endpoint(ours))
         self.addCleanup(self.client.close)
         self.part = str(Path(__file__).resolve())
         self.host = object.__new__(worker_host.WorkerHost)   # Its real reader, without a Blender behind it.
-        self.host.endpoint = worker_channel.socket_endpoint(theirs, 1 << 20, 1 << 20)
+        self.host.endpoint = endpoint(theirs)
         self.host.part, self.host.inbox, self.host.chats = self.part, queue.Queue(), None
         self.host.start_reader()
 

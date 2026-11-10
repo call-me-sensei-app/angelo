@@ -18,6 +18,8 @@ Pinned, each across both sides at once:
   ``ASK_SECONDS`` (5 s) passed on the settle clock, never before (R3b H2).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import threading
 import unittest

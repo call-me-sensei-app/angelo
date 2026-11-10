@@ -22,9 +22,10 @@ doc/angelo/agent_integration.rst, "Shared Codex app-server and forked openings":
   never ends abandons its thread: the chat continues in a new context
   (``codex_connect``).
 * Retirement: reauthentication, a sign-in, a sign-out or account switch made
-  outside Angelo (the login file changed: ``login_stamp``), a status check
-  that finds no account or a failed check retire a process. It admits no new
-  chat and closes when its last chat lets go.
+  outside Angelo (the login file changed: ``codex_login.login_stamp``), a
+  status check that finds no account or a failed check retire a process. It admits no new
+  chat and closes when its last chat lets go. A login file that is there but
+  cannot be read refuses the connect at once (``LoginUnreadable``).
 * Bases: warmed, resumed, forked and remembered by ``codex_bases``; readied as
   soon as a chat's connection is ready (``codex_connect.prepare_opening``).
   This is the stock-Codex path. A process of Angelo's agent runtime
@@ -35,13 +36,12 @@ doc/angelo/agent_integration.rst, "Shared Codex app-server and forked openings":
 
 import hashlib
 import json
-import os
 import re
 import threading
 import time
-from pathlib import Path
 
 from . import cache_affinity, codex_bases
+from .codex_login import UNREADABLE, LoginUnreadable, login_file, login_stamp  # noqa: F401 (login_file: callers)
 from .codex_turns import OpenTurns
 from .protocol import DISCONNECTED, RpcError, TransportClosed, ended, log, lost_runtime
 
@@ -63,29 +63,6 @@ def eligible(controller, mode, external, plan, catalog_only=False):
 def pool_key(connection_id, mode, command, env):
     """One shared app-server per connection, mode, profile and command: connections never share one."""
     return (connection_id, mode, env.get("CODEX_HOME"), tuple(command))
-
-
-def login_file(env):
-    """The ChatGPT login file of the app-server's profile (``CODEX_HOME``, else ``~/.codex``, as ``codex_command``)."""
-    return Path(env.get("CODEX_HOME") or Path.home() / ".codex") / "auth.json"
-
-
-def login_stamp(path):
-    """The login file's presence, device, inode, modification time and size: one ``stat``, nothing read.
-
-    A running app-server keeps the login it started with, so a sign-out or account
-    switch made outside Angelo (the Codex CLI or app sharing the profile) changes
-    only this file. Codex rewrites it on a token refresh too (rarely: a profile used
-    for five days of runs kept the same file); that retires the process as well,
-    which costs the next chat one process start.
-    """
-    try:
-        info = os.stat(path)
-    except FileNotFoundError:
-        return None
-    except OSError:
-        return "unreadable"
-    return info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size
 
 
 def _thread_of(params):
@@ -158,6 +135,8 @@ class Runtime:
         self.agent_runtime, self.cache_affinity = agent_runtime, False
         # Taken before the process reads its login: a later change can only be noticed, never missed.
         self.login, self.login_stamp = login, login_stamp(login) if login is not None else None
+        if self.login_stamp == UNREADABLE:
+            raise LoginUnreadable()   # Before the spawn (``runtime_for`` pools nothing): no process on such a login.
         self.lock = threading.RLock()
         self.leases, self.owners, self.loaded, self.voice, self.abandoned = [], {}, set(), set(), set()
         self.turns = OpenTurns()
@@ -293,8 +272,19 @@ class Runtime:
             return self.totals.get(thread_id)
 
     def check_login(self):
-        """A connect: a login file changed since the process started retires it (``login_stamp``)."""
-        if self.login is not None and login_stamp(self.login) != self.login_stamp:
+        """A connect: a login file changed since the process started retires it (``login_stamp``).
+
+        One that cannot be read refuses this connect (``LoginUnreadable``) and does NOT retire the process: its login
+        cannot be compared, so no new chat is admitted on it (fail closed), while its running chats keep it as any
+        connect leaves them. Retiring would only start another process that reads the same file. Once the file can
+        be read, the next connect compares it again: a sign-in change made meanwhile changed its bytes, and retires.
+        """
+        if self.login is None:
+            return
+        stamp = login_stamp(self.login)
+        if stamp == UNREADABLE:
+            raise LoginUnreadable()
+        if stamp != self.login_stamp:
             self.retire()
             raise Retired("The Codex login changed since this app-server started")
 
@@ -396,7 +386,9 @@ def transport(spawn, on_event, on_request, start, verify, key=None, connection_i
     check closes the provider's own process; a shared one is retired. A process
     retired before this chat's lease or while it started (a sign-in during its
     ``initialize``), or whose login or account changed, is passed over for the
-    pool's next one.
+    pool's next one. A login file that is there but cannot be read refuses at
+    once (``LoginUnreadable``): no process starts, none is retired, no second
+    attempt (``Runtime.check_login``).
     """
     if key is None:
         rpc = spawn(on_event, on_request)
@@ -416,6 +408,8 @@ def transport(spawn, on_event, on_request, start, verify, key=None, connection_i
             runtime.check_login()
             lease = runtime.lease(on_event, on_request)
             return lease, verify(lease)
+        except LoginUnreadable:
+            raise   # Never retried, and its process is kept (``Runtime.check_login``); no lease was taken.
         except Exception as error:
             lost = ended(runtime.rpc)
             raced = isinstance(error, Retired) or runtime.retired  # Retired meanwhile, its process maybe closed.

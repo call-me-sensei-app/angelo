@@ -16,6 +16,7 @@ import json
 import re
 import uuid
 
+from .refusal_codes import RefusalError
 from .studio_spec import OPTIONS, _validate
 
 FORMAT = "angelo.flow/1"
@@ -76,8 +77,17 @@ _NAME = re.compile(r"[^\x00-\x1f\x7f\s](?:[^\x00-\x1f\x7f]{0,61}[^\x00-\x1f\x7f\
 _FLOW_NAME = re.compile(r"[^\x00-\x1f\x7f]{1,63}")
 
 
-class FlowError(ValueError):
-    """An invalid flow or edit. Nothing was changed."""
+class FlowError(RefusalError):
+    """An invalid flow or edit. Nothing was changed: a closed refusal (``VALIDATION`` unless the raise names another
+    code), so a flow run refused at its binding holds none of its request's other edits (``request_recovery``).
+
+    A ``ValueError``, as it always was: every ``except ValueError`` still catches it. Uncoded, a flow run refused before
+    approval (nothing to generate, a stale revision, the paid limit) read as an unclassified failure and held every
+    later scene edit of the request (audit-1010 Re-check 3 P2).
+    """
+
+    def __init__(self, message, *, code="VALIDATION", details=None):
+        super().__init__(message, code=code, details=details)
 
 
 def _name(value, what="node"):

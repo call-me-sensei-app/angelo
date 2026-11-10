@@ -4,6 +4,8 @@
 by measurement, the ``angelo_look`` extras, the World's form, its Radiance picture as the page decodes it, the .glb
 patch after gltfpack, the Compare view's camera and the server's Compare route."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import http.client
 import json
@@ -106,6 +108,11 @@ class KnownToneTests(unittest.TestCase):
         tone, output, difference = web_tone_known.MEASURED[("Filmic", None)]
         self.assertEqual(found, {"tone_mapping": tone, "output": output, "difference": difference})
 
+    def test_the_table_is_for_srgb_and_any_other_display_is_measured(self):
+        with mock.patch.object(web_tone, "_measure", return_value=None) as measured:
+            web_tone.measure(str(self.CONFIG), "Filmic", None, "sRGB - Display")
+        measured.assert_called_once_with(str(self.CONFIG), "Filmic", None, "sRGB - Display")
+
     def test_any_other_configuration_is_measured(self):
         with tempfile.TemporaryDirectory() as folder:
             other = Path(folder) / "config.ocio"
@@ -120,6 +127,42 @@ def look(**changes):
     return dict({"view_transform": "Filmic", "look": None, "exposure": 1.0, "gamma": 1.0, "curves": False,
                  "white_balance": False, "display": "sRGB", "readable": True, "tone_mapping": "AgXToneMapping",
                  "output": "srgb", "difference": 2.5}, **changes)
+
+
+class WebDisplayTests(unittest.TestCase):
+    """The web is sRGB: a look is measured on the configuration's sRGB display whatever monitor the person views on
+    (1.0.10 break-it: measured on Display P3 or PQ, Standard lost its exact counterpart and PQ chose AgX at 18%)."""
+
+    def config(self, displays):
+        views = dict(displays)
+        made = SimpleNamespace(getDisplays=lambda: list(views), getViews=lambda display: views[display])
+        return SimpleNamespace(Config=SimpleNamespace(CreateFromFile=lambda path: made))
+
+    def setUp(self):
+        web_tone._displays.clear()
+        self.addCleanup(web_tone._displays.clear)
+
+    def test_the_sRGB_display_with_the_view_is_measured_on(self):
+        ocio = self.config([("Display P3", ["Standard", "AgX"]), ("sRGB - Display", ["Standard", "AgX"])])
+        with mock.patch.dict(sys.modules, {"PyOpenColorIO": ocio}):
+            self.assertEqual(web_tone.web_display("aces.ocio", "Display P3", "AgX"), "sRGB - Display")
+            self.assertEqual(web_tone.web_display("aces.ocio", "sRGB - Display", "AgX"), "sRGB - Display")
+
+    def test_a_view_no_sRGB_display_has_and_a_configuration_without_one_measure_as_given(self):
+        ocio = self.config([("Rec.2100-PQ", ["AgX - SDR"]), ("sRGB", ["AgX"])])
+        with mock.patch.dict(sys.modules, {"PyOpenColorIO": ocio}):
+            self.assertEqual(web_tone.web_display("hdr.ocio", "Rec.2100-PQ", "AgX - SDR"), "Rec.2100-PQ")
+        with mock.patch.dict(sys.modules, {"PyOpenColorIO": self.config([("Display P3", ["Standard"])])}):
+            self.assertEqual(web_tone.web_display("p3.ocio", "Display P3", "Standard"), "Display P3")
+
+    def test_srgb_displays_by_name_and_no_display_finding_for_them(self):
+        self.assertEqual([web_tone.srgb_display(name) for name in ("sRGB", "sRGB - Display", "srgb", "sRGB (Linear)",
+                                                                   "Display P3", "Linear sRGB", None)],
+                         [True, True, True, False, False, False, False])
+        look = {"view_transform": "Standard", "difference": 0.0, "tone_mapping": "LinearToneMapping", "gamma": 1.0}
+        codes = lambda display: [item["code"] for item in web_compat._look(dict(look, display=display))]
+        self.assertNotIn("display_device", codes("sRGB - Display"))
+        self.assertIn("display_device", codes("Display P3"))
 
 
 class ExtrasTests(unittest.TestCase):

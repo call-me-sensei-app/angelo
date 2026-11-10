@@ -1,8 +1,8 @@
 Angelo's agent runtime: a modified build of OpenAI Codex
 =======================================================
 
-Angelo bundles a build of OpenAI Codex 0.163.0 (https://github.com/openai/codex, tag
-rust-v0.163.0) and runs it as its agent runtime: the app-server behind ChatGPT and the other
+Angelo bundles a build of OpenAI Codex 0.166.0 (https://github.com/openai/codex, tag
+rust-v0.166.0) and runs it as its agent runtime: the app-server behind ChatGPT and the other
 Codex connections.
 
   macOS:    Angelo.app/Contents/Helpers/codex and codex-code-mode-host
@@ -14,15 +14,19 @@ License
 
 OpenAI Codex is licensed under the Apache License, Version 2.0: LICENSE.txt in this folder. Its NOTICE
 file is NOTICE.txt. The third-party software these programs contain, and the terms each comes under, are
-listed in THIRD-PARTY-NOTICES.txt.
+listed in THIRD-PARTY-NOTICES.txt. That generated list conservatively covers normal source-package
+dependencies; it does not assert that every dependency survives linking in every named binary. The retained
+command runner remains the exact upstream release executable, with the origin and signature stated below.
 
 Modification
 ------------
 
-The codex program (codex.exe on Windows) was modified for Angelo. codex-code-mode-host and, on Windows,
-codex-command-runner.exe and codex-windows-sandbox-setup.exe are OpenAI's, unchanged, from the same
-release; on Windows they keep OpenAI's own signature. The modification adds four optional settings, one
-notification and more detail to one kind of error message:
+The codex program (codex.exe on Windows) was modified for Angelo. It, codex-code-mode-host and the
+Windows sandbox setup helper are built from Angelo's fork. On Windows these rebuilt executables require
+Angelo's signature. Only the exact upstream codex-command-runner.exe is retained unchanged with
+OpenAI's own signature, verified valid. The fork refreshes webpki-roots to 1.0.11; rustls-webpki remains
+0.103.16. Its application changes add five optional settings,
+two notifications, one request field and more detail to one kind of error message:
 
   * cacheAffinityKey, an experimental parameter of Codex's app-server (1 to 64 visible ASCII characters)
     on thread/start, thread/resume and thread/fork. When it is set, the thread's model requests send it
@@ -54,18 +58,29 @@ notification and more detail to one kind of error message:
     request (its first output, or the request's completion), Codex names each picture that request newly
     carried by the SHA-256 of its bytes (and of the bytes the tool returned, when Codex re-encoded it), so
     Angelo can tell by content which pictures the model received. It carries hashes only.
+  * modelStep, a field of the app-server's item/tool/call request. A turn numbers its model requests from
+    0, and each app tool call names the request that wrote it (for a call made by JavaScript the model
+    runs in code mode, the request that wrote that code, even after it handed control back to the model),
+    the turn's latest request and the code's cell. Angelo uses it to tell whether the model had seen a
+    result before it wrote a call.
+  * turn/modelRequestStarted, an app-server notification naming each model request of a turn by that
+    number as the turn sends it, before the request's input is built.
+  * serial_dynamic_tools, a setting listing app tools whose calls run one at a time, as every app tool's
+    did before Codex 0.164 (Angelo lists every one of its tools, which it answers in order).
+  * On every new input, app-server checks that the conversation's model provider is still the one the
+    configuration selects. It now builds the whole configuration for that check only when the configuration
+    has changed since the last check for the same folder, instead of on every input; the outcome is the same.
 
-Without the four settings, Codex behaves as released apart from that error detail and the notification
-(which clients that do not read it ignore). Its Cargo.lock also takes
-the root-store crates webpki-roots 1.0.10, webpki-root-certs 1.0.10 and rustls-webpki 0.103.16 (October
-2026: emSign ECC Root CA - G3 removed and eight compromised eMudhra intermediate keys refused): upstream's
-own change (openai/codex#55616) and the version upstream's release line carries. Everything else is
-OpenAI's code, unchanged.
+Without the five settings, Codex behaves as released apart from that error detail, the notifications and
+the request field (which clients that do not read them ignore). Everything else is OpenAI's code,
+unchanged apart from the root-store update described above. Rebuilding the host and sandbox setup
+also refreshes their compiled-in Mozilla trust anchors; their source-level program behavior is unchanged.
 
-The modified source is the branch angelo/rust-v0.163.0-hold-images of
+The modified source is the branch angelo/rust-v0.166.0-call-steps of
 https://github.com/call-me-sensei-app/codex, a fork of https://github.com/openai/codex based on the tag
-rust-v0.163.0: commit 76996e2e1290de41e93a0d0a6ddd122d95f18bf3, tag angelo-rust-v0.163.0-hold-images. Its tree
-is identical to commit 26765206242546005a9ad364734d9a2618aed035, the one these programs were built from. ANGELO.md at the root of
+rust-v0.166.0: commit 0ffcb4dbb1e2e310dd375d50911ea667c22f2210. Rebuilt executables use that source plus a reviewed
+Cargo.lock overlay that normalizes only local workspace versions to the already-declared 0.166.0.
+No external dependency is changed by that overlay. ANGELO.md at the root of
 that branch describes the changes and their tests.
 
 Angelo returns to unmodified OpenAI Codex once Codex itself offers an equivalent

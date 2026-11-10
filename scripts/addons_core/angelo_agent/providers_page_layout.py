@@ -10,16 +10,26 @@ API: ``layout(view, model, region_w, top, scale, ui) -> Plan`` (``top`` is the p
 pixels: the View2D scroll moves it); ``plan.card[3]`` is the page height the panel's spacer reserves.
 """
 
-from . import card_kit as kit
-from .card_kit import AMBER, AMBER_SOFT, CARD, LINE, MUTED, PANEL, PANEL_HOVER, TEAL, TEAL_SOFT, TEXT, Plan, _state
-from .ui_tokens import CORAL, CORAL_SOFT, SUBTITLE
+from . import card_kit as kit, ui_tokens as tk
+from .card_kit import Plan, _state
 
 MAX_WIDTH = 720
 NARROW = 540            # Below this column width the readiness chip moves under the name.
-PAGE_BG = (0.074, 0.080, 0.096, 1)   # The content region behind the column (one step below CARD).
 BANNER_ASPECT = 480 / 1520   # welcome_screen.BANNER_ASPECT (the banner art's height over width).
-TONES = {"teal": (TEAL, TEAL_SOFT), "amber": (AMBER, AMBER_SOFT), "coral": (CORAL, CORAL_SOFT),
-         "muted": (MUTED, (1, 1, 1, 0.07))}
+def tones():
+    """Current draw's status colours; a plan stores resolved colours, not import-time values."""
+    return {"teal": (tk.TEAL, tk.TEAL_SOFT), "amber": (tk.AMBER, tk.AMBER_SOFT),
+            "coral": (tk.CORAL, tk.CORAL_SOFT), "muted": (tk.MUTED, tk.NEUTRAL_SOFT)}
+
+
+def __getattr__(name):
+    # Preserve the old module attributes for callers while resolving colours in the current draw.
+    if name == "PAGE_BG":
+        return tk.DETAIL_FILL
+    if name == "TONES":
+        return tones()
+    raise AttributeError("module %r has no attribute %r" % (__name__, name))
+
 
 
 class Page:
@@ -96,7 +106,7 @@ def layout(view, model, region_w, top, scale, ui=None):
         _section(page, section)
     if model.get("trust"):
         page.y += 6 * s
-        page.y += page.text_block(model["trust"], 20 * s, page.y, width - 40 * s, 12, MUTED)
+        page.y += page.text_block(model["trust"], 20 * s, page.y, width - 40 * s, 12, tk.MUTED)
     page.y += 32 * s
     return _place(page, (region_w - width) / 2, top, region_w)
 
@@ -108,7 +118,7 @@ def _hero(page, hero):
     the drawn mark without the art (an undownloaded asset)."""
     s, w = page.s, page.width
     top, pad = page.y, 28 * s
-    panel = page.rect(0, top, w, 0, CARD, 16)
+    panel = page.rect(0, top, w, 0, tk.CARD, 16)
     art_h, text_w, y = 0, w - 2 * pad - (90 * s if w > 460 * s else 0), top + pad
     if hero.get("banner"):
         inset = 3 * s
@@ -118,8 +128,8 @@ def _hero(page, hero):
             text_w, y = w * 0.5 - pad, top + max(pad, art_h * 0.14)
         else:              # Too narrow to share: the art on top, the text under it.
             y, art_h = top + art_h + 2 * inset + 16 * s, 0
-    y += page.text_block(hero["title"], pad, y, text_w, 28, TEXT, 1.3) + 6 * s
-    y += page.text_block(hero["purpose"], pad, y, text_w, 14, SUBTITLE) + 16 * s
+    y += page.text_block(hero["title"], pad, y, text_w, 28, tk.TEXT, 1.3) + 6 * s
+    y += page.text_block(hero["purpose"], pad, y, text_w, 14, tk.SUBTITLE) + 16 * s
     if hero.get("add"):
         page.button(pad, y, hero["add"], hero.get("add_style", "primary"), hero.get("add_action", "add"), "", height=36, size=13.5,
                     icon=None if hero.get("add_action") else "plus")
@@ -136,16 +146,16 @@ def _attention(page, notices):
     s, w = page.s, page.width
     for notice in notices:
         tone = notice.get("tone", "amber")
-        color, soft = TONES[tone]
+        color, soft = tones()[tone]
         top, pad = page.y, 16 * s
-        box = page.rect(0, top, w, 0, PANEL, 12)
+        box = page.rect(0, top, w, 0, tk.PANEL, 12)
         edge = page.rect(0, top, 3 * s, 0, color, 1.5)
         x = pad + 26 * s
         page.items.append(("glyph", notice.get("glyph", "alert"), pad, top + pad, 16 * s, color))
         y = top + pad
-        y += page.text_block(notice["title"], x, y, w - x - pad, 14, TEXT) + 2 * s
+        y += page.text_block(notice["title"], x, y, w - x - pad, 14, tk.TEXT) + 2 * s
         for line in notice.get("lines", ()):
-            y += page.text_block(line, x, y, w - x - pad, 12.5, MUTED) + 2 * s
+            y += page.text_block(line, x, y, w - x - pad, 12.5, tk.MUTED) + 2 * s
         if notice.get("locks"):
             cx = x
             y += 4 * s
@@ -171,18 +181,18 @@ def _team(page, team):
     s, w = page.s, page.width
     if team.get("slim"):
         top, pad = page.y, 16 * s
-        box = page.rect(0, top, w, 0, PANEL, 14)
+        box = page.rect(0, top, w, 0, tk.PANEL, 14)
         page.items.append(("tile", pad, top + pad, 36 * s, "", "people", None))
         right = page.button_width(team["button"][0], icon="external") if team.get("button") else 0
         if team.get("chip"):
             right = page.chip_width(team["chip"], "amber")
         x, text_w = pad + 50 * s, w - pad * 2 - 50 * s - right - 12 * s
         y = top + pad - 2 * s
-        y += page.text_block(team["title"], x, y, text_w, 14, TEXT) + 1 * s
+        y += page.text_block(team["title"], x, y, text_w, 14, tk.TEXT) + 1 * s
         for line in team.get("lines", ()):
-            y += page.text_block(line, x, y, text_w, 12.5, MUTED)
+            y += page.text_block(line, x, y, text_w, 12.5, tk.MUTED)
         for line in team.get("problems", ()):
-            y += page.text_block(line, x, y, text_w, 12.5, AMBER)
+            y += page.text_block(line, x, y, text_w, 12.5, tk.AMBER)
         y = max(y, top + pad + 36 * s) + pad
         if team.get("button"):
             label, action, value = team["button"]
@@ -201,9 +211,9 @@ def _section(page, section):
     top = page.y
     add = section.get("add")
     add_w = page.button_width(add[0], icon="plus") if add else 0
-    page.y += page.text_block(section["title"], 0, page.y, w - add_w - 12 * s, 17, TEXT, 1.3) + 3 * s
+    page.y += page.text_block(section["title"], 0, page.y, w - add_w - 12 * s, 17, tk.TEXT, 1.3) + 3 * s
     if section.get("description"):
-        page.y += page.text_block(section["description"], 0, page.y, w - add_w - 12 * s, 12.5, MUTED)
+        page.y += page.text_block(section["description"], 0, page.y, w - add_w - 12 * s, 12.5, tk.MUTED)
     if add:
         page.button(w - add_w, top + 6 * s, add[0], "ghost", add[1], add[2], icon="plus")
     page.y += 12 * s
@@ -218,15 +228,15 @@ def _section(page, section):
         page.y += 30 * s + 10 * s
     if not rows:
         if section.get("empty"):
-            page.y += page.text_block(section["empty"], 0, page.y, w, 12.5, MUTED) + 8 * s
+            page.y += page.text_block(section["empty"], 0, page.y, w, 12.5, tk.MUTED) + 8 * s
         page.y += 22 * s
         return
     box_top = page.y
-    box = page.rect(0, box_top, w, 0, PANEL, 16)
+    box = page.rect(0, box_top, w, 0, tk.PANEL, 16)
     y = box_top
     for index, row in enumerate(rows):
         if index:
-            page.rect(18 * s, y, w - 36 * s, 1 * s, LINE)
+            page.rect(18 * s, y, w - 36 * s, 1 * s, tk.LINE)
         y = _row(page, row, y)
     box[4] = y - box_top
     page.y = y + 30 * s
@@ -253,7 +263,7 @@ def _row(page, row, top):
     y = top + pad - 1 * s
     name_w = min(page.measure(row["name"], 15), text_w)
     name_rows = page.lines(row["name"], text_w, 15)
-    y += page.text_block(row["name"], x, y, text_w, 15, TEXT, 1.35)
+    y += page.text_block(row["name"], x, y, text_w, 15, tk.TEXT, 1.35)
     if row.get("tag"):
         tag_w = page.chip_width(row["tag"], "muted", 11)
         if len(name_rows) == 1 and name_w + 8 * s + tag_w <= text_w:
@@ -265,7 +275,7 @@ def _row(page, row, top):
         page.chip(x, y + 3 * s, chip[0], chip[1], spinner=chip[2])
         y += 28 * s
     for line in row.get("lines", ()):
-        y += page.text_block(line, x, y, text_w if not narrow else w - x - pad, 12.5, MUTED) + 1 * s
+        y += page.text_block(line, x, y, text_w if not narrow else w - x - pad, 12.5, tk.MUTED) + 1 * s
     facts = row.get("facts", ())
     if facts:
         y += 6 * s
@@ -274,7 +284,7 @@ def _row(page, row, top):
             fw = 20 * s + page.measure(label, 12)
             if fx + fw > w - pad and fx > x:
                 fx, y, line = x, y + line + 2 * s, 20 * s
-            color = TONES[tone][0] if tone != "muted" else MUTED
+            color = tones()[tone][0] if tone != "muted" else tk.MUTED
             page.items.append(("glyph", glyph, fx, y + 2.5 * s, 12 * s, color))
             line = max(line, page.text_block(label, fx + 18 * s, y, w - fx - pad, 12, color) + 2 * s)
             fx += fw + 16 * s
@@ -318,25 +328,25 @@ def _switch_row(page, row, top):
     y = top + pad - 1 * s
     title_rows = page.lines(row["name"], text_w, 14)
     title_w = page.measure(row["name"], 14) if len(title_rows) == 1 else text_w
-    y += page.text_block(row["name"], pad, y, text_w, 14, TEXT if row.get("enabled", True) else MUTED, 1.4)
+    y += page.text_block(row["name"], pad, y, text_w, 14, tk.TEXT if row.get("enabled", True) else tk.MUTED, 1.4)
     if row.get("chip"):
         label, tone, spin = row["chip"]
         page.chip(pad + title_w + 8 * s, y - 14 * s * 1.4 + 1 * s, label, tone, spinner=spin)
     for line in row.get("lines", ()):
-        y += page.text_block(line, pad, y, text_w, 12.5, MUTED) + 1 * s
+        y += page.text_block(line, pad, y, text_w, 12.5, tk.MUTED) + 1 * s
     for glyph, label, tone in row.get("facts", ()):
         y += 6 * s
-        color = MUTED if tone == "muted" else TONES[tone][0]
+        color = tk.MUTED if tone == "muted" else tones()[tone][0]
         page.items.append(("glyph", glyph, pad, y + 2.5 * s, 12 * s, color))
         y += page.text_block(label, pad + 18 * s, y, text_w - 18 * s, 12, color)
     if row.get("lock"):
         y += 6 * s
-        page.items.append(("glyph", "lock", pad, y + 2.5 * s, 12 * s, AMBER))
-        y += page.text_block(row["lock"], pad + 18 * s, y, text_w - 18 * s, 12, AMBER)
+        page.items.append(("glyph", "lock", pad, y + 2.5 * s, 12 * s, tk.AMBER))
+        y += page.text_block(row["lock"], pad + 18 * s, y, text_w - 18 * s, 12, tk.AMBER)
     if row.get("warning"):
         y += 6 * s
-        page.items.append(("glyph", "alert", pad, y + 2.5 * s, 12 * s, AMBER))
-        y += page.text_block(row["warning"], pad + 18 * s, y, text_w - 18 * s, 12, AMBER)
+        page.items.append(("glyph", "alert", pad, y + 2.5 * s, 12 * s, tk.AMBER))
+        y += page.text_block(row["warning"], pad + 18 * s, y, text_w - 18 * s, 12, tk.AMBER)
     enabled = row.get("enabled", True)
     page.items.append(("switch", w - pad - sw, top + pad, sw, sh, bool(row.get("on")), row["action"], row.get("value"), enabled))
     page.hit(w - pad - sw - 6 * s, top + pad - 6 * s, sw + 12 * s, sh + 12 * s, row["action"], row.get("value"), enabled)
@@ -359,13 +369,13 @@ def _place(page, x0, y_top, region_w):
         if kind == "rect":
             _, x, top, w, h, color, radius = item
             ops.append(("shape", rect(x, top, w, h), color, radius))
-            if color is PANEL or color is CARD:
+            if color is tk.PANEL or color is tk.CARD:
                 ops.insert(len(ops) - 1, ("shape", (x0 + x - 1, y_top - top - h - 1, w + 2, h + 2), kit.EDGE, radius + 1))
         elif kind == "shadow":
             _, x, top, w, h = item
             for depth, alpha in ((8, 0.05), (4, 0.08)):
                 d = depth * s
-                ops.append(("shape", (x0 + x - d, y_top - top - h - d - 2 * s, w + 2 * d, h + 2 * d), (0, 0, 0, alpha), 16 * s + d))
+                ops.append(("shape", (x0 + x - d, y_top - top - h - d - 2 * s, w + 2 * d, h + 2 * d), tk.shade(alpha), 16 * s + d))
         elif kind == "text":
             _, line, x, top, size, leading, color = item
             ops.append(("text", line, x0 + x, y_top - top - leading / 2 - 0.36 * size, size, color))

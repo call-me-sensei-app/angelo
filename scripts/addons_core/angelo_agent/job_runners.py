@@ -27,7 +27,7 @@ Reasons and notes are English (the model reads them); fixed ones are marked with
 
 import bpy
 
-from . import job_dispatch, job_outputs, job_recovery, live_target
+from . import job_dispatch, job_manager, job_outputs, job_recovery, live_target
 from . import job_render_outputs as render_outputs
 from . import job_render_video, render_extensions, render_reach
 from .job_manager import NOT_PUBLISHED, JobStartError
@@ -202,7 +202,15 @@ class Runner:
 
     def _moved(self, reason):
         """Its output's folders stopped being the verified ones: nothing is published (an animation keeps its
-        finished frames, ``RenderRunner._moved``)."""
+        finished frames, ``RenderRunner._moved``). Every name taken is no reason to lose what it wrote: its staging
+        folder is kept, named (``job_manager.kept_outputs``)."""
+        left = getattr(self.staging, "left_published", None)   # Moved files that stay published: never discarded.
+        if (reason == job_outputs.TAKEN or left) and (kept := job_manager.kept_outputs(self.staging)) is not None:
+            self.published = self.staging.path
+            return "failed", reason, job_manager.unpublished_receipt(self.staging, kept)
+        if left:
+            self.abandon()
+            return "failed", reason, job_manager.unpublished_receipt(self.staging, None)
         return self._discard("failed", reason, NOT_PUBLISHED)
 
 

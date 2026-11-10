@@ -4,6 +4,8 @@
 material carries, the page's built-ins agreeing with Blender's, and the page's capture and shader report reaching
 Angelo only from the page itself."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import http.client
 import json
 import re

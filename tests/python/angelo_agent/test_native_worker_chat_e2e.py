@@ -19,6 +19,8 @@ a consent revocation is acknowledged, and an unacknowledged one kills the child 
 crosses to the worker.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import json
 import os
@@ -40,9 +42,12 @@ from angelo_agent import (cli_runtime, runtime_relay, session_journal, worker_ch
 from angelo_agent.chat_settings import normalize_models  # noqa: E402
 from angelo_agent.controller import Controller  # noqa: E402
 from angelo_agent.protocol import JsonRpcProcess  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 KEY = "sk-e2e-" + "q" * 40
-POSIX_ONLY = unittest.skipIf(sys.platform == "win32", "The relay's descriptor passing is POSIX; Windows uses pipes")
+POSIX_ONLY = unittest.skipIf(sys.platform == "win32", environment_skip(
+    "The relay's descriptor passing is POSIX; Windows uses named pipes (test_native_runtime_filter.WindowsRelayTests, "
+    "test_native_parallel_workers_transport)"))
 
 
 def wait_for(predicate, timeout=10.0, pump=None):

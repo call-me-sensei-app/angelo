@@ -66,11 +66,11 @@ NOTICE_DAMAGED = n_("The checkpoint seal key was damaged, so it was set aside an
                     "Checkpoints captured before this can't be verified for Restore; new checkpoints are unaffected.")
 NOTICE_MISSING = n_("The checkpoint seal key was missing, so a new key was started. Checkpoints captured "
                     "before this can't be verified for Restore; new checkpoints are unaffected.")
-NOTICE_RESTORED = n_("The checkpoint seal key file was missing or damaged, so it was written again from this "
-                     "session's copy; checkpoints stay verifiable.")
-NOTICE_REPLACED = n_("The checkpoint seal key file now holds another key, for example from another Angelo using this "
-                     "profile or a profile synced from another computer. New checkpoints use that key, and this "
-                     "session's key was kept beside it, so earlier checkpoints stay verifiable.")
+NOTICE_RESTORED = n_("The key Angelo uses to check snapshots was missing or damaged, so Angelo wrote it again from "
+                     "its own copy. Snapshots that used this key can still be checked.")
+NOTICE_REPLACED = n_("Another Angelo using this profile, or a profile synced from another computer, replaced the key "
+                     "Angelo uses to check snapshots. Angelo kept its own key too, so snapshots that used it can still be "
+                     "checked.")
 NOTICE_REPLACED_UNKEPT = n_("The checkpoint seal key file now holds another key, for example from another Angelo using "
                             "this profile or a profile synced from another computer. New checkpoints use that key. "
                             "This session's key could not be kept, so checkpoints captured before this can't be "
@@ -359,10 +359,11 @@ def _identity_binding(size, mtime_ns, inode):
     return {"identity": [int(size), int(mtime_ns) // 1000, int(inode)]}
 
 
-def coarse_timestamps(mtime_ns):
-    """Whether a modification time has no sub-millisecond part: HFS+, FAT/exFAT and SMB keep 10 ms to 2 s,
-    so two captures can share one timestamp there (a sub-millisecond file system does so once in a million)."""
-    return int(mtime_ns) % 1_000_000 == 0
+def coarse_timestamps(mtime_ns, device=None):
+    """Whether two captures can share one modification time: on Windows, a volume (``device``) keeping 2 s steps
+    (FAT, exFAT); elsewhere or on a share, a time with no sub-millisecond part (HFS+ 1 s, FAT/exFAT 2 s, SMB)."""
+    from . import change_clock   # On Windows the volume's file system decides, as for every settle.
+    return change_clock.coarse_times(device, mtime_ns)
 
 
 def _mac(secret, identity, separator, record, binding):

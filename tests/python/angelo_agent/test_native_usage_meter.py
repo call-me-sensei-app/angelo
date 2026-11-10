@@ -7,6 +7,8 @@ The receipts are ``telemetry.clean_receipt`` shapes; the plan-window payloads fo
 These fixtures prove the host's arithmetic and wording, not a provider's reporting.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import tempfile

@@ -12,6 +12,8 @@
 Ported from the UI re-review's proofs (review-ui, round 2). No Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import contextlib
 import sys
@@ -262,7 +264,7 @@ class ApproveDrawingPathTests(Base):
     """E: every path that draws an Approve records the card it shows (``chat_guard.shown_approvals``)."""
 
     DRAWERS = {"chat_card_draw", "chat_guard", "flow_chat"}   # Register an "approve" hit in the chat's transcript.
-    OTHERS = {"chat_view", "worker_chat_host", "providers_page_model"}   # Dispatch, op names, a word match.
+    OTHERS = {"chat_view", "worker_chat_host", "providers_page_model", "chat_key_arming"}   # Dispatch, op names, a word match.
 
     def test_every_module_with_an_approve_action_is_a_known_drawer_or_none(self):
         found = set()

@@ -9,6 +9,8 @@ checks the response format already states, instead of stating them twice; no
 kind or check loses its exact schema and the host validates as before.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import sys
 import unittest

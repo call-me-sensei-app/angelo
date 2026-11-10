@@ -7,6 +7,8 @@ NOT verify as much as what does: flipped message/signature/key bits, a
 non-canonical scalar, a small-order key and wrong lengths.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import unittest

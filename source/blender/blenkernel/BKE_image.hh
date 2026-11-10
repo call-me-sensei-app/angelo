@@ -14,8 +14,11 @@
 #include "BLI_mutex.hh"
 #include "BLI_string_ref.hh"
 
+#include "BKE_angelo_image_source.hh"
+
 #include "IMB_imbuf_enums.h"
 
+#include <atomic>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -90,6 +93,28 @@ struct ImageRuntime {
 
   /* The image's current update count. See deg::set_id_update_count for more information. */
   uint64_t update_count = 0;
+
+  /**
+   * Angelo: incremented whenever the image's pixels are marked changed for the GPU
+   * (#BKE_image_partial_update_mark_region, #BKE_image_partial_update_mark_full_update): painting,
+   * pixels written through Python, bakes. Read-only as `Image.angelo_pixel_revision`, so a reader
+   * can tell that pixels changed without a depsgraph update or reading them. Drawing another pass,
+   * layer, view, frame or render slot rebuilds the GPU texture without counting
+   * (#BKE_image_partial_update_mark_gpu_stale).
+   */
+  std::atomic<uint64_t> angelo_pixel_revision = 0;
+
+  /**
+   * Angelo: changes on reload, source type, packing/unpacking or changed per-slot descriptor
+   * metadata, packed bytes or load settings. Metadata is change evidence, not exact byte identity;
+   * opaque movie decoder sources are unsupported (see #angelo_image_source_loads_supported).
+   * Never on unchanged load evidence, acquire/release, freeing buffers, GPU rebuilds or pixel
+   * edits (those are #angelo_pixel_revision). Values never repeat across images in a process.
+   * Read-only as `Image.angelo_source_revision`; see BKE_angelo_image_source.hh.
+   */
+  std::atomic<uint64_t> angelo_source_revision = angelo_image_source_revision_fresh();
+  /** The last load of each view, tile and frame; moved with #cache across undo steps. */
+  AngeloImageSourceLoads *angelo_source_loads = nullptr;
 
   float view_offset[2] = {};
   float view_zoom = 1.0f;
@@ -801,5 +826,12 @@ void BKE_image_partial_update_mark_region(Image *image,
                                           const rcti *updated_region);
 /** \brief Mark the whole image to be updated. */
 void BKE_image_partial_update_mark_full_update(Image *image);
+/**
+ * \brief Mark the whole image to be updated because the GPU texture shows other pixels than are
+ * drawn now (another pass, layer, view, frame or render slot), while the pixels themselves are
+ * unchanged: never counted in `angelo_pixel_revision`. Upstream (5.3) keeps a GPU texture per
+ * image buffer and marks only pixel writes, so this distinction is built in there.
+ */
+void BKE_image_partial_update_mark_gpu_stale(Image *image);
 
 }  // namespace blender

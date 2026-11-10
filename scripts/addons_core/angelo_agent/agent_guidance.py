@@ -40,6 +40,8 @@ bpy_extras.anim_utils.action_get_channelbag_for_slot(action, animation_data.acti
 invert is a property, not a socket."""
 
 
+SCULPT_SENTENCE = "Sculpt with native angelo_*sculpt* tools, never Python vertex loops or UI gestures."
+
 SCULPT_GUIDANCE = """
 angelo_inspect_sculpt returns surface probes and working density; angelo_prepare_sculpt enters Sculpt Mode and can
 add 0-3 non-destructive Multires levels. The person's masks, hidden faces, topology and transforms are preserved.

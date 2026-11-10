@@ -6,6 +6,8 @@ The window suite ``test_blender_canvas_states`` proves the same states in the
 running app with screenshots; these tests pin the rules.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path
@@ -39,8 +41,8 @@ class Redraw:
         self.count += 1
 
 
-def key(kind, shift=False, unicode=""):
-    return SimpleNamespace(type=kind, value='PRESS', shift=shift, ctrl=False, oskey=False, alt=False, unicode=unicode)
+def key(kind, shift=False, unicode="", value='PRESS'):
+    return SimpleNamespace(type=kind, value=value, shift=shift, ctrl=False, oskey=False, alt=False, unicode=unicode)
 
 
 class PointerTests(unittest.TestCase):
@@ -101,8 +103,10 @@ class FocusTests(unittest.TestCase):
 
     def test_return_or_space_activates_escape_and_typing_return_to_the_text_field(self):
         state, redraw = {"hits": HITS, "focus": ("welcome_team", "")}, Redraw()
-        self.assertEqual(cc.key(key('RET'), state, redraw), ("welcome_team", ""))
-        self.assertEqual(cc.key(key('SPACE'), state, redraw), ("welcome_team", ""))
+        self.assertFalse(cc.key(key('RET'), state, redraw))
+        self.assertEqual(cc.key(key('RET', value='RELEASE'), state, redraw), ("welcome_team", ""))
+        self.assertFalse(cc.key(key('SPACE'), state, redraw))
+        self.assertEqual(cc.key(key('SPACE', value='RELEASE'), state, redraw), ("welcome_team", ""))
         self.assertFalse(cc.key(key('ESC'), state, redraw))
         self.assertIsNone(state["focus"])
         state["focus"] = ("welcome_team", "")
@@ -253,9 +257,11 @@ class SurfaceSourceTests(unittest.TestCase):
         def key(kind, unicode="", ctrl=False, oskey=False, alt=False):
             return SimpleNamespace(type=kind, unicode=unicode, ctrl=ctrl, oskey=oskey, alt=alt)
         for event in (key("A", "a"), key("A", "\u00e5", alt=True), key("BACK_SPACE"), key("BACK_SPACE", ctrl=True),
-                      key("UP_ARROW"), key("RET"), key("V", oskey=True), key("V", ctrl=True), key("ESC")):
+                      key("UP_ARROW"), key("RET"), key("V", oskey=True), key("V", ctrl=True), key("ESC"),
+                      key("TAB", ctrl=True), key("ONE", "1", ctrl=True), key("Q", "@", ctrl=True, alt=True)):
             self.assertTrue(input_policy.edits_field(event), event)
-        for event in (key("TAB"), key("S", oskey=True), key("Z", ctrl=True), key("F3"), key("N", ctrl=True)):
+        for event in (key("TAB"), key("S", oskey=True), key("Z", ctrl=True), key("F3"), key("N", ctrl=True),
+                      key("N", "\x0e", ctrl=True), key("ONE", "1", oskey=True)):
             self.assertFalse(input_policy.edits_field(event), event)
 
     def test_a_team_sign_in_in_progress_is_busy_with_cancel(self):

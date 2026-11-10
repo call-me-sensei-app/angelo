@@ -28,6 +28,7 @@ Contract: doc/angelo/agent_chat.rst, "Usage meter".
 Standard library only; no bpy.
 """
 
+import contextlib
 import copy
 import json
 import math
@@ -39,7 +40,7 @@ import uuid
 import weakref
 from pathlib import Path
 
-from . import kept_state, model_profiles, write_turn
+from . import kept_state, model_profiles, shared_replace, write_turn
 from .state_file_writes import encode_usage
 
 TOKEN_KEYS = ("input", "cache_read", "cache_write", "output")
@@ -239,7 +240,7 @@ class UsageLedger:
             self._damaged = True   # Larger than any build writes.
             return {}
         try:
-            fd = os.open(self.path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            fd = shared_replace.open_shared(self.path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))   # Shares delete.
             with os.fdopen(fd, "rb") as handle:
                 data = handle.read(LEGACY_FILE_BYTES + 1)
         except FileNotFoundError:
@@ -388,15 +389,14 @@ class UsageLedger:
             fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
             with os.fdopen(fd, "wb") as handle:
                 handle.write(encoded)
-            os.replace(temporary, self.path)
+            shared_replace.replace(temporary, self.path)   # Another Angelo's read never refuses it (it shares delete).
             with self.lock:
                 self._written = max(self._written, changes)
             return True
-        except (OSError, ValueError, TypeError):
-            try:
+        except (OSError, ValueError, TypeError) as error:   # Still owed: written with the next change or the drain.
+            print("Angelo: the usage totals could not be saved yet; they are kept and saved again:", error)
+            with contextlib.suppress(OSError):
                 temporary.unlink(missing_ok=True)
-            except OSError:
-                pass
             return False
 
 

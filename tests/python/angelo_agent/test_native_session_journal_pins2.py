@@ -7,6 +7,8 @@ The manual tools for these checks are in ``journal_review/`` (``kill_compact.py`
 ``lock_wait.py``, ``save_costs.py``, ``keep_disks.py``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import contextlib
 import errno

@@ -15,6 +15,7 @@ from .gltf_morph import import_options
 from .studio_agent import StudioAgent
 from .provider_registry import billing_label, is_coding
 from .studio_state import MEDIA_KINDS
+from .refusal_codes import coded
 
 
 def _enhancer(arguments):
@@ -150,7 +151,7 @@ def import_glb(window, path):
 
 def service_for(controller, window):
     if controller is None:
-        raise RuntimeError("Studio tools must be bound to an active chat")
+        raise coded(RuntimeError("Studio tools must be bound to an active chat"), "OWNERSHIP")
     from . import live_target, studio, ui
     service, live = getattr(controller, "media_service", None), live_target.window_ref(window)   # Kept on the chat:
     if service is None:   # its imports read the window live, never the window itself (live_target).

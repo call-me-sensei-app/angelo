@@ -13,14 +13,16 @@ mode. See doc/angelo/external_mcp.rst.
 
 A document load invalidates an External conversation as it does any chat. A
 CLI client rotates explicitly (``angelo session new``); an app's next call
-moves it to a fresh conversation itself, because a model has no such command,
-and the call that was running when the file changed says so.
+moves it to a fresh conversation itself, because a model has no such command;
+until the app has read there, a read runs with ``MOVED`` and anything else does
+not run (``MOVED_NOT_RUN``); the call that was running when the file changed
+says so too.
 """
 
 import time
 import uuid
 
-from .external_clients import APP_NAMES, TASKS, tools_for
+from .external_clients import APP_NAMES, READ_TOOLS, TASKS, tools_for
 from .external_work import ExternalWork
 from .invocations import document_digest
 from .document_offer import person_only
@@ -30,6 +32,13 @@ TASK_ROWS = 12           # Progress rows a status returns (the latest ones).
 TASK_TEXT = 1200         # Characters of one row's text.
 CALLS_KEPT = 1024        # Call IDs remembered per host (external_apps: a delivered-again call never runs twice).
 TASK_STATES = {"Completed": "done", "Failed": "failed", "Interrupted": "stopped", "Escalated": "done"}
+# After an app's conversation moved to what the window shows (another scene or file), until a read's answer has gone
+# out there: a read runs with MOVED first in its answer; anything else does not run (MOVED_NOT_RUN), so no edit runs
+# before the model has been told. The app's model reads both.
+MOVED = ("Angelo's window now shows another scene or file, so this call went to a fresh External conversation on what "
+         "it shows now. Observe the scene before relying on names or handles from earlier calls.")
+MOVED_NOT_RUN = ("Angelo's window now shows another scene or file; this app moved to a fresh External conversation on "
+                 "what it shows now, and this call did not run. Observe the scene, then retry.")
 
 
 def work_tools(client):
@@ -53,6 +62,11 @@ def app_name(registry_record):
 class ExternalApps:
     """Mixed into ``ExternalHost``: ``self.env``, ``self.conversation``, ``self._reply``, ``self.apps``."""
 
+    # Whether an app's conversation moved to the shown document stays unobserved until it reads there (``MOVED``,
+    # ``MOVED_NOT_RUN``). False where every document change is said by the call that caused it (``HeadlessHost``).
+    announce_moves = True
+    answers_held = False   # The host sends each answer from the call's worker (``ExternalWork``).
+
     def _app_conversation(self, work):
         """The app's External conversation for the shown document, rotated after a load or a switch to another scene
         (an External conversation follows what the window shows: ``document_scene``); (controller, error)."""
@@ -60,6 +74,9 @@ class ExternalApps:
         controller = self.conversation(label, create=True)
         document = self.env.document_key()
         if controller.document_invalid or controller.document != document:
+            # Its request can never take another call (the conversation rotates): closed now if nothing of it is in
+            # flight, so only work still running here makes the app wait.
+            self.settle(controller, rotating=True)
             if controller.pending or controller.busy or self._work_open(controller):
                 return controller, ("stale", "Angelo's window now shows another scene or file; earlier work is still "
                                     "finishing. Retry shortly, then observe the scene again.")
@@ -69,6 +86,9 @@ class ExternalApps:
 
     def rotate(self, label, old):
         identity = self.create_conversation(label, previous=old.state["id"])
+        self._unobserved.discard(old.state["id"])
+        if self.announce_moves:
+            self._unobserved.add(identity)
         old.emit("message", {"role": "system", **notice("The window now shows another scene or file; '{label}' "
                              "continues in conversation {identity}. This transcript stays readable.", label=label,
                              identity=identity)})
@@ -77,6 +97,28 @@ class ExternalApps:
     def _work_open(self, controller):
         work = self._work.get(controller.state["id"])
         return work is not None and not work.closed
+
+    def settle(self, controller, rotating=False):
+        """Close what of ``controller``'s earlier work is over and has nothing in flight, exactly as the tick's sweeps
+        would (``close_finished``: a CLI read with no call pending; ``pump_apps``: an app request that cannot take
+        another call, ``finishable``), before a new call or command is admitted. An answer goes out before the main
+        thread's next sweep, and the client's next call can be admitted ahead of that sweep: it must never read the
+        answered work as still running. ``rotating``: the conversation is about to move to a fresh one (its document
+        is no longer shown), so its request ends whether or not it could have taken another call: without the window
+        a reload tells no conversation (``headless_host``), so ``usable`` cannot see it. Work still in flight stays.
+        """
+        identity = controller.state["id"]
+        fence = self._open.get(identity)
+        if fence is not None and not controller.pending:
+            controller.close_external_read(fence)
+            del self._open[identity]
+        current = self._work.get(identity)
+        if current is None:
+            return
+        if not current.closed and (rotating or not current.usable()) and current.finishable():
+            current.close("the request ended")
+        if current.closed:
+            del self._work[identity]
 
     # Tool level -------------------------------------------------------------------------------------
 
@@ -90,12 +132,16 @@ class ExternalApps:
             return self._reply(work, controller, *error)
         identity = controller.state["id"]
         self._settle_task(identity)
+        self.settle(controller)
         if identity in self._open:   # A phase-1 read of this label is finishing; it shares no request with an app.
             return self._reply(work, controller, "busy", "Earlier reads are finishing; retry shortly")
         task = self._tasks.get(identity)
         if task is not None and controller.busy and not self._work_open(controller):
             return self._reply(work, controller, "busy", "Angelo is running a task for this app; wait for it "
                                "(angelo_task_status) or stop it (angelo_task_stop) before calling tools")
+        unobserved = identity in self._unobserved   # Moved here (by a call or a task start), not told by a read yet.
+        if unobserved and payload["tool"] not in READ_TOOLS:
+            return self._reply(work, controller, "stale", MOVED_NOT_RUN)
         current = self._work.get(identity)
         if current is not None and not current.usable():
             if not current.finishable():
@@ -107,24 +153,26 @@ class ExternalApps:
                 return self._reply(work, controller, "busy", "This External conversation is finishing earlier work")
             record = self.apps().get(label, {})
             current = self._work[identity] = ExternalWork(controller, label, app_name(record),
-                                                          work_tools(work.client))
+                                                          work_tools(work.client), answers_held=self.answers_held)
         # Captured here on the main thread: the reply is sent from the call's worker thread.
         fields = {"document": document_digest(repr(self.env.document_key())), "conversation": identity,
                   "projection_roots": tuple(self.env.private_roots())}
 
-        record = {"work": current, "fields": fields}
+        note = MOVED if unobserved else None
+        record = {"work": current, "fields": fields, "note": note}
         self._calls[(label, payload["id"])] = record
         while len(self._calls) > CALLS_KEPT:
             self._calls.pop(next(iter(self._calls)))
         current.submit(("call", payload["id"]), payload["tool"], payload["arguments"],
-                       self.responder(work, fields, current=current, tool=payload["tool"]))
+                       _noted(self.responder(work, fields, current=current, tool=payload["tool"]), note,
+                              lambda: self._unobserved.discard(identity)))
         work.admitted = True
 
     def _again(self, work, known, payload):
         """A call ID this host has had: wait on, or get, the first delivery's answer from the request that ran it."""
         known["work"].submit(("call", payload["id"]), payload["tool"], payload["arguments"],
-                             self.responder(work, known["fields"], replayed=True, current=known["work"],
-                                            tool=payload["tool"]))
+                             _noted(self.responder(work, known["fields"], replayed=True, current=known["work"],
+                                                   tool=payload["tool"]), known.get("note")))
         work.admitted = True
 
     def responder(self, work, fields, replayed=False, current=None, tool=None):
@@ -195,10 +243,11 @@ class ExternalApps:
         return self._task_reply(work, identity)
 
     def _task_start(self, work, label):
-        controller, error = self._app_conversation(work)
+        controller, error = self._app_conversation(work)   # Its agent observes the scene; the app is told later.
         if error:
             return self._reply(work, controller, *error)
         identity = controller.state["id"]
+        self.settle(controller)
         current = self._work.get(identity)
         if current is not None and not current.closed:
             if not current.finishable():
@@ -239,7 +288,8 @@ class ExternalApps:
         if controller is None or task is None:
             return self._reply(work, controller, "not_applied", "The task's conversation is gone")
         rows = controller.state["messages"][task["start"]:]
-        waiting = any(row.get("role") == "activity" and row.get("status") == "approval" for row in rows)
+        from .approval_wait import awaiting
+        waiting = awaiting(controller) is not None   # The card itself, never an activity row that outlived it.
         self._settle_task(identity)
         if not self._task_terminal(identity):
             state = "waiting_for_approval_in_angelo" if waiting else "running"
@@ -249,7 +299,8 @@ class ExternalApps:
         reply = next((row.get("text", "") for row in reversed(rows) if row.get("role") == "assistant"
                       and row.get("text")), "") or next((row.get("text", "") for row in reversed(rows)
                                                          if row.get("role") == "system" and row.get("host_summary")), "")
-        result = {"task_id": task["id"], "state": state, "status": controller.status,
+        from .approval_wait import status_for_apps
+        result = {"task_id": task["id"], "state": state, "status": status_for_apps(controller),
                   "elapsed_s": round(task.get("ended", time.monotonic()) - task["started"], 1),
                   "progress": [_row(row) for row in rows[-TASK_ROWS:] if _row(row)],
                   "reply": reply[-TASK_TEXT * 4:] if state != "running" else "",
@@ -268,6 +319,21 @@ def _responder(work, fields, replayed=False):
                            message="Completed" if not failed else "The call reported an error",
                            call={"replayed": replayed, "admitted": True}))
     return respond
+
+
+def _noted(respond, note, sending=None):
+    """``respond`` with ``note`` first in the MCP result's text; ``sending`` runs just before it goes out (any thread),
+    so the client's next call never finds it unsent."""
+    if not note:
+        return respond
+
+    def noted(value):
+        if isinstance(value, dict) and isinstance(value.get("content"), list):
+            value = dict(value, content=[{"type": "text", "text": note}, *value["content"]])
+        if sending is not None:
+            sending()
+        respond(value)
+    return noted
 
 
 def _row(row):
@@ -291,13 +357,9 @@ def _route(controller):
     return {"runtime": kind, "billing": billing, "model": (controller.state.get("options") or {}).get("model") or ""}
 
 
-def waiting(controllers, active_id):
-    """``(client name, session id)`` of External conversations with an approval card the person is not looking at."""
-    found = []
-    for controller in controllers:
-        label = getattr(controller, "external_client", "")
-        if not label or controller.state.get("id") == active_id:
-            continue
-        if any(call.approval and not call.executing and not call.automatic for call in list(controller.pending.values())):
-            found.append((label, controller.state["id"]))
-    return found
+def waiting(controllers, active_id, chat_shown=True):
+    """External subset of unseen cards; a hidden active chat is unseen too."""
+    from .approval_wait import unseen
+    return [(controller.external_client, controller.state["id"])
+            for controller in unseen(controllers, active_id, chat_shown)
+            if getattr(controller, "external_client", "")]

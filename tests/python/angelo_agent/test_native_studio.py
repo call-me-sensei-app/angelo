@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import base64
 import json
@@ -7,7 +8,6 @@ import os
 import sys
 import tempfile
 import threading
-import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -15,7 +15,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent.studio_state import (StudioLibrary, DEFAULT_ENHANCER, studio_layout,
-                                       model_options, image_dimensions, library_directory)
+                                       model_options, image_dimensions, library_directory, atomic_json, read_json)
+from angelo_agent import session_journal, shared_replace, studio_generation, thread_start
 from angelo_agent.studio_generation import (generate, enhance_gemini, image_payload, image_outputs,
     GenerationError, GenerationCancelled, public_url, public_addresses, checked_glb, StudioJobs,
     validated_image, validate_generation, multipart)
@@ -28,6 +29,7 @@ from types import SimpleNamespace
 
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+axtoAAAAASUVORK5CYII=")
 KEY = "fixture-key-not-sent-to-any-provider"
+JOIN_SECONDS = 60.0   # Only a hung worker takes this long: a guard, never a speed bound.
 GLB_JSON = b'{"asset":{"version":"2.0"}}'
 GLB_JSON += b" " * (-len(GLB_JSON) % 4)
 GLB = b"glTF" + (2).to_bytes(4, "little") + (20 + len(GLB_JSON)).to_bytes(4, "little") + len(GLB_JSON).to_bytes(4, "little") + b"JSON" + GLB_JSON
@@ -309,11 +311,8 @@ class StudioServiceTests(unittest.TestCase):
             store = StudioLibrary(root)
             jobs = StudioJobs(store, transport)
             asset = store.add("IMAGE", "Cat", "Fixture", model_id="gpt-image-2.5-flare")
-            jobs.start(asset, binding("openai_images_api"), {}, [])
-            deadline = time.monotonic() + 2
-            while jobs.active and time.monotonic() < deadline:
-                jobs.pump()
-                time.sleep(.01)
+            run_job(self, lambda: jobs.start(asset, binding("openai_images_api"), {}, []))
+            jobs.pump()
             jobs.close()
             self.assertEqual(store.assets[asset["id"]]["status"], "failed")
             self.assertNotIn(KEY, json.dumps(store.assets))
@@ -326,18 +325,60 @@ class StudioServiceTests(unittest.TestCase):
             store = StudioLibrary(root)
             asset = store.add("IMAGE", "Cat", "Fixture", model_id="gpt-image-2.5-flare")
             jobs = StudioJobs(store, transport)
-            jobs.start(asset, binding("openai_images_api"), {}, [])
-            deadline = time.monotonic() + 2
+            run_job(self, lambda: jobs.start(asset, binding("openai_images_api"), {}, []))
             result_path = store.directory / "outputs" / asset["id"] / "job-state.json"
-            while time.monotonic() < deadline:
-                if result_path.exists() and json.loads(result_path.read_text()).get("status") == "ready":
-                    break
-                time.sleep(.01)
             recovered = StudioLibrary(root)
             self.assertEqual(recovered.assets[asset["id"]]["status"], "ready")
             self.assertEqual(recovered.checked_file(asset, "image-1.png").read_bytes(), PNG)
             self.assertNotIn(KEY, result_path.read_text())
             jobs.close()
+
+    def test_a_job_whose_state_cannot_be_saved_still_finishes(self):
+        """A save refused (Windows refuses a replace while another handle holds the file) never strands the job: the
+        pump still gets its end. Its worker died at the final save, leaving the card "generating" for good."""
+        def transport(url, **kwargs):
+            return json.dumps({"data":[{"b64_json":base64.b64encode(PNG).decode()}]}).encode()
+        with tempfile.TemporaryDirectory() as root:
+            store = StudioLibrary(root)
+            asset = store.add("IMAGE", "Cat", "Fixture", model_id="gpt-image-2.5-flare")
+            jobs = StudioJobs(store, transport)
+            with patch.object(studio_generation, "atomic_json", side_effect=PermissionError(13, "in use")):
+                run_job(self, lambda: jobs.start(asset, binding("openai_images_api"), {}, []))
+            jobs.pump()
+            self.assertEqual((store.assets[asset["id"]]["status"], jobs.active), ("ready", {}))
+            jobs.close()
+
+    def test_a_read_of_a_job_state_never_refuses_its_save(self):
+        """The library reads a job's state through ``shared_replace.open_shared`` and saves it with
+        ``shared_replace.replace``, so a save that lands while a read holds the file replaces it (Windows: POSIX
+        semantics) and the read goes on with the file it opened. A plain read there refused the worker's save; a
+        finished job then stayed "generating" (CI 41887060350, on a Windows runner)."""
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "job-state.json"
+            atomic_json(path, {"status": "generating"})
+            real = shared_replace.open_shared
+
+            def held(opened, *args, **keywords):   # The worker saves while the library's read has the file open.
+                descriptor = real(opened, *args, **keywords)
+                atomic_json(path, {"status": "ready"})
+                return descriptor
+            with patch.object(shared_replace, "open_shared", held):
+                self.assertEqual(read_json(path, None), {"status": "generating"})
+            self.assertEqual(read_json(path, None), {"status": "ready"})
+
+
+def run_job(test, start):
+    """``start()`` a Studio job and wait for its worker thread to end: joined, so a slow machine only waits longer."""
+    threads, real = [], thread_start.start
+
+    def recorded(thread, undo):
+        threads.append(thread)
+        return real(thread, undo)
+    with patch.object(thread_start, "start", recorded):
+        start()
+    for thread in threads:
+        thread.join(JOIN_SECONDS)
+        test.assertFalse(thread.is_alive(), "the generation never ended")
 
 
 class StudioRefusalTests(unittest.TestCase):
@@ -353,8 +394,9 @@ class StudioRefusalTests(unittest.TestCase):
         self.assertEqual(refusal_text(RuntimeError("Error: Add a Gemini API key in AI Providers\n")),
                          "Add a Gemini API key in AI Providers")
         self.assertEqual(refusal_text(RuntimeError("Error: First\nError: Connect this model's API account in AI Providers")),
-                         "Connect this model's API account in AI Providers")
-        self.assertEqual(refusal_text(RuntimeError("")), "")
+                         "First\nConnect this model's API account in AI Providers")
+        from angelo_agent.display_text import FAILED
+        self.assertEqual(refusal_text(RuntimeError("")), FAILED)
 
     def test_a_refused_click_becomes_the_notice_and_never_escapes(self):
         from angelo_agent.studio_state import refusable

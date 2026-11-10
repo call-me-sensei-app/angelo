@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """TRELLIS 2 through fal: the 3D tab's model list, bodies against fal's schemas, one submit, the GLB, resume, agent."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import tempfile

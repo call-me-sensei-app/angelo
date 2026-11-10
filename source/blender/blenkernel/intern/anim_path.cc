@@ -237,6 +237,23 @@ bool BKE_where_on_path(const Object *ob,
                        float *r_radius,
                        float *r_weight)
 {
+  /* Every output is defined even when this returns false: some callers use them regardless, and
+   * left unset they held whatever the stack did (a text on a single-point path read NaN). */
+  if (r_vec) {
+    zero_v4(r_vec);
+  }
+  if (r_dir) {
+    zero_v3(r_dir);
+  }
+  if (r_quat) {
+    unit_qt(r_quat);
+  }
+  if (r_radius) {
+    *r_radius = 1.0f;
+  }
+  if (r_weight) {
+    *r_weight = 1.0f;
+  }
   if (ob == nullptr || ob->type != OB_CURVES_LEGACY) {
     return false;
   }

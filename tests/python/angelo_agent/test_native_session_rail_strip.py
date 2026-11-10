@@ -7,6 +7,8 @@ position, and a panel that never leaves the view at any interface scale (Windows
 8 px off a 502 px view at 3x). Each rule is checked over every position, scale, view size and worker count here, never
 one layout; the in-app proof is the rail positions GUI suite."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from itertools import combinations

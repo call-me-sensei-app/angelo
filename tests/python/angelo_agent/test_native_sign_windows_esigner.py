@@ -9,6 +9,8 @@ pinned jar under its bundled java.exe, never through cmd.exe; a returned copy re
 equal Authenticode digest. The argument quoting's round trip is test_native_sign_windows_quoting.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import re
@@ -18,6 +20,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from host_test_policy import environment_skip
 from test_native_sign_windows import SIGN, TOOLS, block, ps_structure_problems, read
 
 SIGN_BOOTSTRAP = TOOLS / "windows_sign_bootstrap.ps1"
@@ -29,6 +32,10 @@ REMOTE = TOOLS / "sign_remote.sh"
 INPUTS = TOOLS / "windows_release_inputs.ps1"
 RELEASE_STAGE = TOOLS / "windows_release_validate.ps1"
 DRIVER = TOOLS / "gcp_windows_validate.sh"
+# sign_remote.sh is the release owner's bash tool (gcloud, shasum) on the macOS workstation; its dry runs are checked
+# there and in the Linux host suite, never on Windows.
+WORKSTATION_ONLY = unittest.skipIf(os.name == "nt", environment_skip(
+    "sign_remote.sh is a bash tool run from the macOS workstation, not on Windows"))
 
 
 class EsignerTests(unittest.TestCase):
@@ -281,6 +288,7 @@ class SignRemoteTests(unittest.TestCase):
             args += ["--msi", str(msi)] if with_msi else []
             return subprocess.run(args, capture_output=True, text=True, env=environment)
 
+    @WORKSTATION_ONLY
     def test_a_files_job_sends_the_key_files_and_attests_code_and_job_in_metadata(self):
         done = self.run_remote("files", "angelo-104-keys", with_msi=False)
         self.assertEqual(done.returncode, 0, done.stderr)
@@ -296,6 +304,7 @@ class SignRemoteTests(unittest.TestCase):
         self.assertIn("angelo-sign-code=", steps[2])
         self.assertIn("instances start win-sign", steps[3])
 
+    @WORKSTATION_ONLY
     def test_a_probe_and_an_msi_job(self):
         check = self.run_remote("check", "first-check", with_files=False, with_msi=False)
         self.assertEqual(check.returncode, 0, check.stderr)
@@ -307,6 +316,7 @@ class SignRemoteTests(unittest.TestCase):
         self.assertEqual(msi.returncode, 0, msi.stderr)
         self.assertEqual(json.loads(msi.stdout.splitlines()[0])["msi"], "Angelo-1.0.4-windows-x64.msi")
 
+    @WORKSTATION_ONLY
     def test_a_files_job_takes_only_key_files_and_a_fresh_out(self):
         with tempfile.TemporaryDirectory() as folder:
             files = Path(folder, "key")
@@ -328,6 +338,7 @@ class SignRemoteTests(unittest.TestCase):
             self.assertNotEqual(done.returncode, 0)
             self.assertIn("must be new or empty", done.stderr)
 
+    @WORKSTATION_ONLY
     def test_refusals(self):
         for kind, job, files, msi in (("sign", "x", True, True), ("msi", "../escape", False, True), ("files", "", True, False),
                                       ("files", "no-files", False, False), ("msi", "no-msi", False, False)):

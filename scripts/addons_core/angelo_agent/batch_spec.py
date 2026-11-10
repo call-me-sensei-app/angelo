@@ -40,6 +40,7 @@ import math
 import re
 
 from .action_schema_types import POINTER, array, boolean, enum, integer, nullable, number, obj, vector
+from .refusal_codes import coded
 
 MAX_BATCH_PARTS = 8
 # Objects one batch may create, and all batches of one program together (doc/angelo/native_coverage.rst,
@@ -102,14 +103,14 @@ def _path_positions(along):
     lengths = [math.dist(a, b) for a, b in zip(points, points[1:])]
     total = sum(lengths)
     if total < 1e-9:
-        raise ValueError('batch along needs a path longer than zero')
+        raise coded(ValueError('batch along needs a path longer than zero'), "VALIDATION")
     if along['count'] is not None:
         distances = [total * index / (along['count'] - 1) for index in range(along['count'])]
     else:
         steps = int(math.floor(total / along['spacing'] + 1e-6))
         if steps > MAX_BATCH_COPIES:
-            raise ValueError('batch BATCH_TOO_LARGE: this spacing puts more than %d instances on the path'
-                             % (MAX_BATCH_COPIES + 1))
+            raise coded(ValueError('batch BATCH_TOO_LARGE: this spacing puts more than %d instances on the path'
+                                   % (MAX_BATCH_COPIES + 1)), "VALIDATION")
         distances = [along['spacing'] * index for index in range(steps + 1)]
     placed, segment, start = [], 0, 0.0
     for distance in distances:

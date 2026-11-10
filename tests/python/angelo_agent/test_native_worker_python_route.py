@@ -12,6 +12,8 @@ when it cannot). Evidence: the parallel-agents Python spike (2026-10-25, r2 r4 f
 another file's data saved as the part). The in-Blender proof is lane P3's ``test_blender_worker_python``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import hashlib
 import json

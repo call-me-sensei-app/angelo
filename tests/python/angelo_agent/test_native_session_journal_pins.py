@@ -9,6 +9,8 @@ and links, earlier builds' file formats, the redaction rewrite, the restore's
 badges, and the purity the writer's task-memory cache relies on.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -27,6 +29,7 @@ from angelo_agent.checkpoint_restore_ui import _mark_scene_history  # noqa: E402
 from angelo_agent.controller import Controller, ToolDispatchBudget  # noqa: E402
 from angelo_agent.invocations import reserve_invocation  # noqa: E402
 from angelo_agent.sessions import HISTORY_WARNING, SessionStore, read_transcript  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 CUBE = {"name": "Journal Cube", "size": 1, "location": [0, 0, 0]}
 FAKE_KEY = "sk-test-fake-0123456789abcdef"  # A fake key: no credential is read.
@@ -250,7 +253,8 @@ class WriterTests(Case):
                 other.save(foreign)
         self.assertEqual(read_transcript(self.store.path)["messages"], plain(self.state["messages"]))
 
-    @unittest.skipIf(session_journal.fcntl is None, "advisory locks are POSIX")
+    @unittest.skipIf(session_journal.fcntl is None, environment_skip(
+        "advisory locks are POSIX; Windows relies on its sharing rule instead (simulated in test_native_journal_guard)"))
     def test_a_rewrite_waits_for_an_appends_lock_and_then_refuses_the_changed_file(self):
         """Another app's rewrite that starts between this append's identity check and its write takes the old
         file's lock first (session_guard), so it waits for the append, then finds the file changed and writes

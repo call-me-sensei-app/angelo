@@ -66,16 +66,19 @@ def encode(header, payload=b""):
 
 
 def decode_header(body, max_payload=MAX_PAYLOAD):
-    """The header dict of ``body`` (the JSON after the length), checked; raises FrameError."""
+    """The header dict of ``body`` (the JSON after the length), checked; raises FrameError. ``max_payload`` is the
+    largest payload a header may announce, or a function of the parsed header that returns it (Angelo's server
+    allows a client one payload only in reply to a capture it asked for: ``engine_link_server``)."""
     try:
         header = json.loads(body.decode("utf-8"), parse_constant=_reject_constant)
     except (UnicodeError, ValueError, RecursionError) as error:
         raise FrameError("The header is not UTF-8 JSON") from error
     if not isinstance(header, dict) or not isinstance(header.get("type"), str):
         raise FrameError("A header is a JSON object with a type")
+    limit = max_payload(header) if callable(max_payload) else max_payload
     size = header.get("bytes", 0)
-    if type(size) is not int or not 0 <= size <= max_payload:
-        raise FrameError("The payload length is outside 0-%d bytes" % max_payload)
+    if type(size) is not int or not 0 <= size <= limit:
+        raise FrameError("The payload length is outside 0-%d bytes" % limit)
     return header
 
 
@@ -83,7 +86,8 @@ class Reader:
     """Incremental frame parser for a non-blocking socket: ``feed`` bytes, then take complete ``frames``.
 
     ``max_payload`` bounds what a header may announce, checked before any of it is buffered (Angelo's server reads
-    clients with 0: they never send a payload, so a client can't make it hold more than one header)."""
+    clients with 0, or with a function that allows one capture it asked for, so a client can't make it hold more
+    than one header and that capture); see ``decode_header``."""
 
     def __init__(self, max_payload=MAX_PAYLOAD):
         self._buffer = bytearray()
@@ -93,9 +97,26 @@ class Reader:
     def feed(self, data):
         self._buffer += data
 
+    def limit(self, max_payload):
+        """From the next header on, bound announced payloads by ``max_payload`` (a number, or a function of the
+        header: ``decode_header``)."""
+        self._max_payload = max_payload
+
     def frames(self):
-        """[(header, payload bytes)] completed so far. Raises FrameError on a bad frame."""
+        """[(header, payload bytes)] completed so far. Raises FrameError on a bad frame, after returning the frames
+        completed before it (they were whole when it arrived), so a client's last good frame is still handled."""
+        if getattr(self, "_failed", None) is not None:
+            raise self._failed
         done = []
+        try:
+            return self._frames(done)
+        except FrameError as error:
+            if not done:
+                raise
+            self._failed = error
+            return done
+
+    def _frames(self, done):
         while True:
             if self._header is None:
                 if len(self._buffer) < 4:
@@ -157,6 +178,16 @@ def _owned(info):
     return not hasattr(os, "geteuid") or info.st_uid == os.geteuid()
 
 
+def _linked(path):
+    """Whether ``path`` is a symbolic link where ``open`` has no ``O_NOFOLLOW`` to refuse one (Windows follows it)."""
+    if getattr(os, "O_NOFOLLOW", 0):
+        return False
+    try:
+        return stat.S_ISLNK(os.lstat(path).st_mode)
+    except OSError:
+        return True   # Gone or unreadable since it was opened: never taken for the file that was.
+
+
 def write_record(path, record):
     """Write ``record`` owner-only (0600 in a 0700 folder where modes exist), never through a link or over a live
     record. A leftover record (its process gone) is replaced. Raises FileExistsError when another live Angelo owns
@@ -187,7 +218,7 @@ def read_record(path):
     try:
         info = os.fstat(descriptor)
         modes = sys.platform != "win32"
-        if (not stat.S_ISREG(info.st_mode) or not _owned(info) or info.st_size > MAX_RECORD
+        if (_linked(path) or not stat.S_ISREG(info.st_mode) or not _owned(info) or info.st_size > MAX_RECORD
                 or modes and stat.S_IMODE(info.st_mode) & 0o077):
             return None
         data = os.read(descriptor, MAX_RECORD + 1)

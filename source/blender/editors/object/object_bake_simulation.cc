@@ -605,6 +605,9 @@ static wmOperatorStatus start_bake_job(bContext *C,
 
   WM_jobs_customdata_set(
       wm_job, job, [](void *job) { MEM_delete(static_cast<BakeGeometryNodesJob *>(job)); });
+  /* Angelo: its end reports into the operator's reports; they are its own
+   * (#WM_jobs_reports_attach). */
+  WM_jobs_reports_attach(wm_job, op->reports);
   WM_jobs_timer(wm_job, 0.1, NC_OBJECT | ND_MODIFIER, NC_OBJECT | ND_MODIFIER);
   WM_jobs_callbacks(
       wm_job, bake_geometry_nodes_startjob, nullptr, nullptr, bake_geometry_nodes_endjob);

@@ -16,6 +16,10 @@ development build without one records the skip. Run only in a disposable instanc
 request, paid call or GPU kernel compile is involved (the Metal device is only listed, never rendered on).
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import shutil

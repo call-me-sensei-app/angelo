@@ -7,6 +7,8 @@ retention that followed a symbolic link at the cache root and removed old folder
 need a child interpreter of a built app are not covered here.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import io
 import os
 import shutil
@@ -20,6 +22,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import pycache_retention  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from host_test_policy import environment_skip  # noqa: E402
 
 DAY = 86400
 
@@ -121,7 +125,7 @@ class RetentionReviewTests(unittest.TestCase):
 
     def test_an_unreadable_folder_is_kept_and_not_reported(self):
         if os.name == "nt" or os.geteuid() == 0:
-            self.skipTest("POSIX permissions as a normal user")
+            self.skipTest(environment_skip("POSIX permissions as a normal user"))
         current = self.build("62eb10e43a0", 0)
         locked = self.build("afaca1a036c", 30)
         (locked / "Applications" / "module.cpython-313.pyc").write_bytes(b"pyc")

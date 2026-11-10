@@ -8,6 +8,8 @@ studio-claude probe's recorded request). The editor's text is now the session's 
 line of any chat-agent text reaches it, whichever field (appendSystemPrompt or systemPrompt) a build sends it in.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import itertools
 from pathlib import Path

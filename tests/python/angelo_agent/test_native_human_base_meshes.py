@@ -5,6 +5,8 @@
 The in-app check that placing each file gives the table's objects is ``test_blender_chosen_tools``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import json
 from pathlib import Path

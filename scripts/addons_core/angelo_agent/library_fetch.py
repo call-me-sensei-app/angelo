@@ -34,7 +34,7 @@ import weakref
 import zlib
 from pathlib import Path
 
-from . import app_http, library_catalog as catalog, team_library_files
+from . import app_http, library_catalog as catalog, shared_replace, team_library_files
 
 LATEST_URL = "https://assets.toonlab.io/catalog/v1/latest.json"   # ToonLab's catalog export.
 URL_VARIABLE = "ANGELO_LIBRARY_URL"    # Another latest.json (tests, a development mirror on this computer).
@@ -89,8 +89,8 @@ def read_local(folder):
     """The cached index's document, or None (missing, or no longer matching its record)."""
     record_path = Path(folder) / "index.json"
     try:
-        record = json.loads(record_path.read_text())
-        data = (Path(folder) / record["file"]).read_bytes()
+        record = json.loads(shared_replace.read_text(record_path))   # Sharing delete: another Angelo's save lands.
+        data = shared_replace.read_bytes(Path(folder) / record["file"])
         if hashlib.sha256(data).hexdigest() != record["sha256"]:
             return None
         return _decode(data)
@@ -150,8 +150,12 @@ def refresh(folder, current_version=None):
 
 def _atomic(path, data):
     temporary = path.with_name(".%s.%d.part" % (path.name, threading.get_ident()))
-    temporary.write_bytes(data)
-    os.replace(temporary, path)
+    try:
+        temporary.write_bytes(data)
+        shared_replace.replace(temporary, path)   # Refused past its retries: raised (the refresh says so), none left.
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 # -- item files -----------------------------------------------------------------------------------------------
@@ -173,7 +177,7 @@ def _inside(folder, name):
 
 def _digests(path):
     sha, md5 = hashlib.sha256(), hashlib.md5()
-    with open(path, "rb") as handle:
+    with shared_replace.open_file(path) as handle:   # Another Angelo's _download may replace it meanwhile.
         for chunk in iter(lambda: handle.read(CHUNK), b""):
             sha.update(chunk)
             md5.update(chunk)
@@ -234,7 +238,7 @@ def _download(url, path, file, cancel):
             raise FetchError("A library download ended early; try again.")
         if (sha.hexdigest() != file["sha256"]) if "sha256" in file else (md5.hexdigest() != file["md5"]):
             raise FetchError("A library file doesn't match its checksum; it wasn't used.", "UNSUPPORTED")
-        os.replace(temporary, path)
+        shared_replace.replace(temporary, path)   # Another Angelo importing it: retried, else the fetch fails, said.
     finally:
         body.close()
         temporary.unlink(missing_ok=True)
@@ -360,8 +364,9 @@ def _remove(entry):
 
 # -- thumbnails -----------------------------------------------------------------------------------------------
 
-def thumbnail(root, url):
-    """The thumbnail's cached file (downloaded when missing), or None when it can't be had."""
+def thumbnail(root, url, hosts=catalog.FILE_HOSTS):
+    """The thumbnail's cached file (downloaded when missing), or None when it can't be had. ``hosts``: where this
+    picture may come from (the Angelo Library's ToonLab hosts; a Fab result's is Fab's own image host)."""
     folder = Path(root) / "thumbs"
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / (hashlib.sha256(url.encode()).hexdigest()[:32] + ".img")
@@ -369,7 +374,7 @@ def thumbnail(root, url):
         os.utime(path)
         return path
     try:
-        data = _get(url, MAX_THUMB, "preview", catalog.FILE_HOSTS)
+        data = _get(url, MAX_THUMB, "preview", hosts)
     except FetchError:
         return None
     try:   # Format and pixel bounds from the header, before the main thread ever decodes it.

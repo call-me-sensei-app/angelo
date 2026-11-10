@@ -297,7 +297,7 @@ class MetadataReader:
         for curve in animation.drivers:
             work.take(items=1 + len(curve.driver.variables))
             # Every variable and target (a changed driver fails the binding); never an expression's code.
-            result["drivers"].append(describe(curve, label))
+            result["drivers"].append(describe(curve, label, value))
         return result
 
     def camera_light(self, obj, work):

@@ -2436,7 +2436,9 @@ void view3d_depths_rect_create(ARegion *region, rcti *rect, ViewDepths *r_d)
   int w = BLI_rcti_size_x(rect);
   int h = BLI_rcti_size_y(rect);
 
-  if (w <= 0 || h <= 0) {
+  GPUViewport *viewport = WM_draw_region_get_viewport(region);
+  if (w <= 0 || h <= 0 || viewport == nullptr) {
+    /* No viewport: the region has not drawn yet (as #ED_view3d_depth_override checks). */
     r_d->depths = nullptr;
     return;
   }
@@ -2449,7 +2451,6 @@ void view3d_depths_rect_create(ARegion *region, rcti *rect, ViewDepths *r_d)
   r_d->depths = MEM_new_array_uninitialized<float>(w * h, "View depths Subset");
 
   {
-    GPUViewport *viewport = WM_draw_region_get_viewport(region);
     view3d_gpu_read_Z_pixels(viewport, rect, r_d->depths);
     /* Range is assumed to be this as they are never changed. */
     r_d->depth_range[0] = 0.0;

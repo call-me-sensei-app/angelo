@@ -13,6 +13,8 @@
   included), read-only chats refuse them, and failures clean up.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import os
@@ -578,6 +580,74 @@ class SaveTests(HostCase):
         answers = self.request("angelo_team_library_save", self.args)
         self.assertEqual(answers, [])
         self.assertTrue(self.controller.pending[next(iter(self.controller.pending))].approval)
+
+
+class PrepareReadsOnceTests(unittest.TestCase):
+    def test_an_image_is_uploaded_as_the_one_read_that_checked_it(self):
+        """Stat before read (release-1010 audit re-check 2, L5): an image's format and dimensions came from one read and
+        its size, digest and upload from later ones, so a version written in between was uploaded under the first
+        one's description."""
+        import struct
+        from pathlib import Path
+        stand_in = types.ModuleType("bpy")
+        stand_in.app = types.SimpleNamespace(version_string="5.2.3")
+        with unittest.mock.patch.dict(sys.modules, {"bpy": stand_in}):
+            sys.modules.pop("angelo_agent.team_library_save", None)
+            from angelo_agent import team_library_save as save
+        png = (b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 4, 3) + b"\x08\x02\x00\x00\x00"
+               + b"\x00" * 4 + b"the rest of the picture")
+        with tempfile.TemporaryDirectory() as root:
+            source, folder = Path(root) / "view.png", Path(root) / "private"
+            folder.mkdir()
+            source.write_bytes(png)
+            sniff = save.sniff
+
+            refused = []
+
+            def sniff_then_another_version_lands(head):   # Saved as programs save: a new file renamed over it.
+                found = sniff(head)
+                replacement = source.with_name("replacement.jpg")
+                replacement.write_bytes(b"\xff\xd8\xff" + b"a larger JPEG written meanwhile" * 40)
+                try:
+                    os.replace(replacement, source)
+                except PermissionError:   # Windows: no replace while Angelo's handle reads it; that save fails.
+                    refused.append(True)
+                return found
+            window = types.SimpleNamespace(scene=types.SimpleNamespace(name="Scene"))
+            with unittest.mock.patch.object(save, "_view", return_value=source), \
+                    unittest.mock.patch.object(save, "sniff", side_effect=sniff_then_another_version_lands):
+                prepared = save.prepare(None, window, {"source": "VIEW", "view_id": "v"}, folder)
+            self.assertEqual((prepared["mime"], prepared["width"], prepared["height"]), ("image/png", 4, 3))
+            self.assertEqual(prepared["size"], len(png))
+            self.assertEqual(Path(prepared["path"]).read_bytes(), png, "uploaded: the bytes that were checked")
+            self.assertEqual(Path(prepared["path"]).parent, folder, "a private copy, never the file at its path")
+            self.assertEqual(bool(refused), os.name == "nt", "Windows refuses the other save; POSIX lets it land")
+
+    def test_an_image_rewritten_in_place_while_read_is_refused(self):
+        import struct
+        from pathlib import Path
+        stand_in = types.ModuleType("bpy")
+        stand_in.app = types.SimpleNamespace(version_string="5.2.3")
+        with unittest.mock.patch.dict(sys.modules, {"bpy": stand_in}):
+            sys.modules.pop("angelo_agent.team_library_save", None)
+            from angelo_agent import team_library_save as save
+        png = (b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 4, 3)
+               + b"\x08\x02\x00\x00\x00" + b"\x00" * 4 + b"the rest" * (600 * 1024))
+        with tempfile.TemporaryDirectory() as root:
+            source, folder = Path(root) / "view.png", Path(root) / "private"
+            folder.mkdir()
+            source.write_bytes(png)
+            sniff = save.sniff
+
+            def sniff_then_rewritten_in_place(head):
+                found = sniff(head)
+                source.write_bytes(png + b"more")   # The same file, truncated and written again.
+                return found
+            window = types.SimpleNamespace(scene=types.SimpleNamespace(name="Scene"))
+            with unittest.mock.patch.object(save, "_view", return_value=source), \
+                    unittest.mock.patch.object(save, "sniff", side_effect=sniff_then_rewritten_in_place), \
+                    self.assertRaisesRegex(ValueError, "changed while Angelo read it"):
+                save.prepare(None, window, {"source": "VIEW", "view_id": "v"}, folder)
 
 
 if __name__ == "__main__":

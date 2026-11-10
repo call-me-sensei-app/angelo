@@ -28,13 +28,17 @@
 
 #include "BLT_translation.hh"
 
+#include "DNA_image_types.h"
 #include "DNA_listBase.h"
 #include "DNA_scene_types.h"
 #include "DNA_windowmanager_types.h"
 
+#include "BKE_angelo_stage_links.hh"
 #include "BKE_context.hh"
 #include "BKE_global.hh"
+#include "BKE_idtype.hh"
 #include "BKE_lib_id.hh"
+#include "BKE_lib_query.hh"
 #include "BKE_lib_override.hh"
 #include "BKE_library.hh"
 #include "BKE_main.hh"
@@ -48,6 +52,8 @@
 #include "DEG_depsgraph_query.hh"
 
 #include "RNA_access.hh"
+
+#include "BLO_asset_source_paths.hh"
 
 #include "MEM_guardedalloc.h"
 
@@ -455,6 +461,15 @@ struct UndoCaptureScope : SculptProtectedScope {
   Main *main;
   UndoStep *expected_active;
   bool published = false;
+  const bContext *import_context = nullptr;
+  const void *import_wm = nullptr, *import_window = nullptr;
+  int import_undo_depth = 0;
+  bool import_receipts_started = false;
+  Set<uint> import_original_id_uids;
+  std::shared_ptr<const BLOAssetSourcePaths> import_source_paths;
+  const Scene *import_scene = nullptr;
+  const ViewLayer *import_view_layer = nullptr;
+  uint import_scene_uid = 0;
 
   UndoCaptureScope(Main *bmain, UndoStack *stack)
       : SculptProtectedScope(stack), main(bmain), expected_active(stack->step_active)
@@ -465,7 +480,7 @@ struct UndoCaptureScope : SculptProtectedScope {
 
 UndoCaptureScope *BKE_undosys_capture_begin(Main *bmain, UndoStack *stack)
 {
-  if (!BLI_thread_is_main() || restore_traversal ||
+  if (!BLI_thread_is_main() || checkpoint_owner || protected_scope || restore_traversal ||
       BKE_undosys_restore_phase() != UndoRestorePhase::Inactive ||
       !bmain || bmain != G_MAIN || !stack || !restore_main_owns_stack(*bmain, stack) ||
       !stack->step_active || stack->step_init || stack->group_level != 0)
@@ -482,6 +497,188 @@ bool BKE_undosys_capture_validate(const UndoCaptureScope *scope)
          restore_main_owns_stack(*scope->main, scope->stack) &&
          scope->stack->step_active == scope->expected_active && !scope->stack->step_init &&
          scope->stack->group_level == 0 && !scope->invalid_notification_owner;
+}
+
+void BKE_undosys_capture_stock_import_disable(UndoCaptureScope *scope)
+{
+  if (scope) { scope->import_context = nullptr; }
+}
+
+void BKE_undosys_capture_stock_import_enable(UndoCaptureScope *scope, const bContext *C,
+                                            const void *wm, const void *window, const int depth,
+                                            const std::shared_ptr<const BLOAssetSourcePaths> &source_paths)
+{
+  BLI_assert(BKE_undosys_capture_validate(scope));
+  /* Capture actual native identities before publishing import permission. A failure leaves
+   * import_context null; begin's existing owned cleanup disposes the scope, not artist IDs. */
+  BLI_assert(!scope->import_receipts_started);
+  if (scope->import_receipts_started || !source_paths) {
+    return;
+  }
+  scope->import_receipts_started = true;
+  ID *id;
+  FOREACH_MAIN_ID_BEGIN (scope->main, id) {
+    scope->import_original_id_uids.add(id->session_uid);
+  }
+  FOREACH_MAIN_ID_END;
+  scope->import_source_paths = source_paths;
+  scope->import_scene = CTX_data_scene(C);
+  scope->import_view_layer = CTX_data_view_layer(C);
+  scope->import_scene_uid = scope->import_scene ? scope->import_scene->id.session_uid : 0;
+  scope->import_wm = wm;
+  scope->import_window = window;
+  scope->import_undo_depth = depth;
+  scope->import_context = C;
+}
+
+bool BKE_undosys_capture_stock_import_admit(const bContext *C, const void *wm,
+                                            const void *window, const int depth,
+                                            const char *operator_id)
+{
+  if (!BKE_undosys_capture_scope_active()) { return false; }
+  const auto *scope = static_cast<const UndoCaptureScope *>(protected_scope);
+  if (!BKE_undosys_capture_validate(scope) || !scope->import_context ||
+      C != scope->import_context || wm != scope->import_wm || window != scope->import_window ||
+      BKE_undosys_restore_phase() != UndoRestorePhase::Preparing) { return false; }
+  return STREQ(operator_id, "WM_OT_append") || STREQ(operator_id, "IMPORT_SCENE_OT_gltf") ||
+         depth > scope->import_undo_depth;
+}
+
+bool BKE_undosys_capture_stock_id_remove_admit(const bContext *C,
+                                                   Main *bmain,
+                                                   const ID *id)
+{
+  if (!C || !BKE_undosys_capture_scope_active()) {
+    return false;
+  }
+  const auto *scope = static_cast<const UndoCaptureScope *>(protected_scope);
+  if (!BKE_undosys_capture_validate(scope) ||
+      BKE_undosys_restore_phase() != UndoRestorePhase::Preparing ||
+      C != scope->import_context || bmain != scope->main || bmain != G_MAIN ||
+      CTX_data_main(C) != bmain || CTX_wm_manager(C) != scope->import_wm ||
+      CTX_wm_window(C) != scope->import_window ||
+      CTX_data_scene(C) != scope->import_scene ||
+      CTX_data_view_layer(C) != scope->import_view_layer)
+  {
+    return false;
+  }
+  /* Resolve saved context members in the current Main before dereferencing them. */
+  bool context_matches = false;
+  for (const Scene &scene : bmain->scenes) {
+    if (&scene == scope->import_scene && scene.id.session_uid == scope->import_scene_uid) {
+      for (const ViewLayer &view_layer : scene.view_layers) {
+        if (&view_layer == scope->import_view_layer) {
+          context_matches = true;
+          break;
+        }
+      }
+      break;
+    }
+  }
+  if (!context_matches) {
+    return false;
+  }
+  /* Resolve current membership before dereferencing a caller-supplied address. */
+  const ID *candidate = nullptr;
+  ID *current;
+  FOREACH_MAIN_ID_BEGIN (bmain, current) {
+    if (current == id) {
+      candidate = current;
+      break;
+    }
+  }
+  FOREACH_MAIN_ID_END;
+  if (!candidate || !candidate->session_uid ||
+      scope->import_original_id_uids.contains(candidate->session_uid))
+  {
+    return false;
+  }
+  const auto route = BLO_asset_source_paths_current();
+  if (!route || route.get() != scope->import_source_paths.get() ||
+      route.owner_before(scope->import_source_paths) ||
+      scope->import_source_paths.owner_before(route))
+  {
+    return false;
+  }
+  if (GS(candidate->name) == ID_LI) {
+    const Library *library = reinterpret_cast<const Library *>(candidate);
+    /* readfile installs one internal EXTRAUSER_SET, not a linked-data user. */
+    char private_path[FILE_MAX];
+    if (!library->runtime || ID_FAKE_USERS(candidate) != 0 ||
+        ID_REFCOUNTING_USERS(candidate) != 0 ||
+        !BLO_asset_source_path_resolve(route, library->runtime->filepath_abs, {}, private_path))
+    {
+      return false;
+    }
+  }
+  else {
+    const IDTypeInfo *type = BKE_idtype_get_info_from_id(candidate);
+    /* Only ordinary independent orphans belong to this transaction. Document/UI
+     * roots and no-memfile IDs retain their existing protected-owner refusal.
+     * Outgoing links are released by the unchanged Core delete/refcount path. */
+    if (!type || (type->flags & (IDTYPE_FLAGS_NEVER_UNUSED | IDTYPE_FLAGS_NO_COPY |
+                                IDTYPE_FLAGS_NO_MEMFILE_UNDO)) ||
+        candidate->lib || candidate->override_library ||
+        (candidate->flag & (ID_FLAG_EMBEDDED_DATA | ID_FLAG_EMBEDDED_DATA_LIB_OVERRIDE)) ||
+        (candidate->tag & (ID_TAG_NO_MAIN | ID_TAG_NOT_ALLOCATED | ID_TAG_NO_USER_REFCOUNT |
+                           ID_TAG_EXTRAUSER | ID_TAG_EXTRAUSER_SET)) ||
+        candidate->us != 0 || ID_FAKE_USERS(candidate) != 0)
+    {
+      return false;
+    }
+    /* Native orphan handling also protects viewer images independently of users. */
+    if (GS(candidate->name) == ID_IM &&
+        reinterpret_cast<const Image *>(candidate)->source == IMA_SRC_VIEWER)
+    {
+      return false;
+    }
+  }
+  bool referenced = false;
+  ID *owner;
+  FOREACH_MAIN_ID_BEGIN (bmain, owner) {
+    BKE_library_foreach_ID_link(
+        bmain,
+        owner,
+        [&](LibraryIDLinkCallbackData *data) {
+          if (*data->id_pointer == id) {
+            /* The native embedded traversal proves the forward owning edge from
+             * this deletion root. Only its exact declared owner backpointer is
+             * internal to that same deletion unit, not an incoming external use.
+             * Keep all other loopback, weak and runtime pointers as refusals. */
+            if (owner == candidate && data->owner_id == candidate && data->self_id &&
+                data->self_id != candidate &&
+                (data->self_id->flag & ID_FLAG_EMBEDDED_DATA) &&
+                (data->cb_flag & IDWALK_CB_LOOPBACK))
+            {
+              const IDTypeInfo *embedded_type = BKE_idtype_get_info_from_id(data->self_id);
+              if (embedded_type && embedded_type->owner_pointer_get &&
+                  embedded_type->owner_pointer_get(data->self_id, false) == data->id_pointer)
+              {
+                return IDWALK_RET_NOP;
+              }
+            }
+            referenced = true;
+            return IDWALK_RET_STOP_ITER;
+          }
+          return IDWALK_RET_NOP;
+        },
+        nullptr,
+        LibraryForeachIDFlag(IDWALK_READONLY | IDWALK_INCLUDE_UI | IDWALK_DO_LIBRARY_POINTER |
+                             IDWALK_DO_INTERNAL_RUNTIME_POINTERS));
+    if (referenced) {
+      break;
+    }
+  }
+  FOREACH_MAIN_ID_END;
+  return !referenced;
+}
+
+bool BKE_undosys_capture_scope_active()
+{
+  /* Only two scopes protect Main: a capture (a native commit's own writes run inside it) and a
+   * restore traversal, which also sets restore_traversal. A checkpoint observation is neither. */
+  return BLI_thread_is_main() && protected_scope != nullptr && protected_scope->active &&
+         restore_traversal == nullptr && !checkpoint_observation_get();
 }
 
 bool BKE_undosys_capture_finalize(UndoCaptureScope *scope, bContext *C)
@@ -1365,6 +1562,49 @@ bool BKE_undosys_capture_publish(UndoCaptureScope *scope, UndoStep *before, Undo
   scope->expected_active = after;
   scope->published = true;
   return true;
+}
+
+bool BKE_undosys_capture_restore_before(UndoCaptureScope *scope, bContext *C,
+                                        UndoStep *before, UndoStep *barrier, bool *history_owns_before)
+{
+  *history_owns_before = false;
+  if (!BKE_undosys_capture_validate(scope) || scope->published || !before ||
+      before->type != BKE_UNDOSYS_TYPE_MEMFILE || before->prev || before->next ||
+      !barrier || barrier->prev || barrier->next || barrier->use_old_bmain_data ||
+      BLI_findindex(&scope->stack->steps, before) >= 0) { return false; }
+  UndoStack *stack = scope->stack;
+  UndoStep *const old_active = stack->step_active;
+  UndoStep *const old_memfile = stack->step_active_memfile;
+  BLI_insertlinkafter(&stack->steps, old_active, before);
+  BLI_insertlinkafter(&stack->steps, before, barrier);
+  *history_owns_before = true;
+  /* Exact capture-to-restore handoff. The phase/Main/stack globals stay protected between
+   * these stores; no callback, allocation or operator dispatch occurs in the gap. */
+  scope->active = false;
+  protected_scope = nullptr;
+  SculptRestoreTraversal restore_scope(stack);
+  restore_scope.activate(G_MAIN);
+  try {
+    if (!undosys_step_decode(C, G_MAIN, stack, before, STEP_UNDO, true) ||
+        !restore_scope.finalize(C)) {
+      BLI_remlink(&stack->steps, barrier); barrier->prev = barrier->next = nullptr;
+      stack->recovery_required = true;
+      if (G_MAIN) { G_MAIN->is_undo_recovery_required = true; }
+      return false;
+    }
+    BLI_remlink(&stack->steps, barrier); barrier->prev = barrier->next = nullptr;
+    BLI_remlink(&stack->steps, before);
+    before->prev = before->next = nullptr;
+    *history_owns_before = false;
+    stack->step_active = old_active; stack->step_active_memfile = old_memfile;
+    return true;
+  }
+  catch (...) {
+    BLI_remlink(&stack->steps, barrier); barrier->prev = barrier->next = nullptr;
+    stack->recovery_required = true;
+    if (G_MAIN) { G_MAIN->is_undo_recovery_required = true; }
+    return false;
+  }
 }
 
 bool BKE_undosys_checkpoint_restore_publish(CheckpointCaptureOwner *owner,

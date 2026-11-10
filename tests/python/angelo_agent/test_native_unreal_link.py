@@ -16,6 +16,8 @@ Covered:
   can't edit; a re-import combines every mesh and keeps the file's normals (``_pin_pipelines``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import json
 import os
@@ -248,7 +250,7 @@ class PluginClientTests(unittest.TestCase):
         self.assertEqual(opened()[0][1]["asset"], "/Game/A")
         self.assertEqual(list(self.server.clients().values())[0],
                          {"engine": "unreal", "version": "5.8.2", "project": "/P", "project_name": "P",
-                          "capabilities": ["durable"]})
+                          "project_key": engine_link_server.project_key("/P"), "capabilities": ["durable"]})
         self.server.send(opened()[0][0], {"type": "scene", "asset": "/Game/A", "version": 1}, b"glTF" + bytes(100000))
         self.assertTrue(self.until(client, lambda: self.received))
         header, payload = self.received[0]
@@ -350,10 +352,11 @@ class PluginTests(unittest.TestCase):
 
     def test_record_location_matches_angelo(self):
         self.assertEqual(link_client.record_path({"ANGELO_LINK_RECORD": "/x.json"}, "darwin"), "/x.json")
+        # A native path, joined as this host joins one (the folder layout is the named platform's).
         self.assertEqual(link_client.record_path({"HOME": "/h"}, "darwin"),
-                         "/h/Library/Application Support/Angelo/angelo-link.json")
+                         os.path.join("/h", "Library", "Application Support", "Angelo", "angelo-link.json"))
         self.assertEqual(link_client.record_path({"HOME": "/h", "XDG_STATE_HOME": "/s"}, "linux"),
-                         "/s/Angelo/angelo-link.json")
+                         os.path.join("/s", "Angelo", "angelo-link.json"))
 
     def test_refusals_and_request(self):
         project = tempfile.mkdtemp()

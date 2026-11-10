@@ -6,6 +6,7 @@
 #include <climits>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <limits>
 #include <string>
 #include <utility>
@@ -32,6 +33,7 @@
 #include "bpy_capi_utils.hh"
 #include "bpy_app_handlers.hh"
 #include "bpy_angelo_checkpoint.hh"
+#include "bpy_angelo_checkpoint_binding.hh"
 #include "../../windowmanager/intern/wm_checkpoint.hh"
 
 namespace blender {
@@ -101,6 +103,12 @@ struct NativeCapture {
   bool complete = false, post_attempted = false, post_failed = false, active = false;
   bool terminal_safety = false;
   bool safety_consumed = false;
+  /** Content binding (capture_bind): ``bind_required`` is the owner's answer before the BASE
+   * write (a safety capture, or a coarse-clock volume); a capture with Sculpt owners always binds.
+   * The bindings are the writer's own and never leave native code. */
+  bool bind_required = false, bind_attempted = false, content_bound = false;
+  uint64_t owner_count = 0;
+  WMCheckpointContentBinding base_binding, runtime_binding;
   bool resources_released = false;
   bool consuming = false;
   WMCheckpointContent *content = nullptr;
@@ -316,11 +324,111 @@ static bool borrow_output(NativeCapture &capture, const char *role, int &fd, Fil
   }
   return true;
 }
-static PyObject *capture_call(PyObject *, PyObject *owner)
+constexpr const char *admission_name = "angelo.native_restore_admission";
+/** A Restore's memory admission (``restore_admission``), taken before its safety capture. Restore
+ * prepares its Sculpt target inside that capture (checkpoint_readback); before the two overlapped
+ * it prepared the target first, so the capture's admissions read the RAM with the target decoded
+ * and the target's without the capture's buffers. The admission keeps both sides reading the RAM
+ * that way: the capture admits under ``debit`` (the most the admitted target keeps once prepared)
+ * and the preparation under a credit of what the capture took (``safety_footprint``). Each side
+ * measures what it took; Restore (checkpoint_restore_ui) reverts to the earlier order whenever the
+ * capture failed under the debit or the target took more than it (``restore_admission_state``). */
+struct RestoreAdmission {
+  /** How a side ended: ``Budget`` when a step handed a budget refused (#WM_checkpoint_budget_refused),
+   * the only refusal another order of the two could change; ``Refused`` for any other failure. */
+  enum class Outcome { Unused, Budget, Refused, Done };
+  uint64_t base_bytes = 0;
+  int64_t debit = 0;
+  /** The OS-available RAM each side took: across the capture, and across the whole target
+   * preparation (``restore_admission_begin_target`` to ``restore_admission_end_target``). */
+  uint64_t safety_footprint = 0, target_footprint = 0, target_start = 0;
+  /** What Restore holds beside the target's preparation that the earlier order did not (the
+   * safety capture's read buffer), credited to the preparation's admissions with the footprint. */
+  uint64_t held_bytes = 0;
+  Outcome capture = Outcome::Unused, prepare = Outcome::Unused;
+  bool consumed = false, target_begun = false, target_ended = false;
+};
+static const char *outcome_name(const RestoreAdmission::Outcome outcome)
 {
-  if (!require_main_thread() || !exact_owner(owner)) {
+  switch (outcome) {
+    case RestoreAdmission::Outcome::Budget:
+      return "budget";
+    case RestoreAdmission::Outcome::Refused:
+      return "refused";
+    case RestoreAdmission::Outcome::Done:
+      return "done";
+    case RestoreAdmission::Outcome::Unused:
+      break;
+  }
+  return "unused";
+}
+/** Records how ``outcome`` ended when the scope exits: ``Done`` if the caller set it, else
+ * ``Budget`` or ``Refused`` by whether a budget refusal was counted meanwhile. */
+class AdmissionOutcome {
+  RestoreAdmission::Outcome *outcome_;
+  uint64_t refusals_;
+
+ public:
+  explicit AdmissionOutcome(RestoreAdmission::Outcome *outcome)
+      : outcome_(outcome), refusals_(WM_checkpoint_budget_refusals())
+  {
+    if (outcome_) {
+      *outcome_ = RestoreAdmission::Outcome::Refused;
+    }
+  }
+  ~AdmissionOutcome()
+  {
+    if (outcome_ && *outcome_ != RestoreAdmission::Outcome::Done) {
+      *outcome_ = WM_checkpoint_budget_refusals() != refusals_ ? RestoreAdmission::Outcome::Budget :
+                                                                 RestoreAdmission::Outcome::Refused;
+    }
+  }
+  AdmissionOutcome(const AdmissionOutcome &) = delete;
+  AdmissionOutcome &operator=(const AdmissionOutcome &) = delete;
+};
+static void admission_capsule_free(PyObject *capsule)
+{
+  delete static_cast<RestoreAdmission *>(PyCapsule_GetPointer(capsule, admission_name));
+}
+/** The admission behind ``capsule`` (a Python error and nullptr when it is not one). */
+static RestoreAdmission *restore_admission_of(PyObject *capsule)
+{
+  return static_cast<RestoreAdmission *>(PyCapsule_GetPointer(capsule, admission_name));
+}
+/** What the OS-available RAM fell by between two readings (0 if it rose). */
+static uint64_t memory_taken(const uint64_t before, const uint64_t after)
+{
+  return before > after ? before - after : 0;
+}
+/** ``capture(owner, admission=None)``. With a Restore's memory admission (``restore_admission``),
+ * every admission this capture makes reads the RAM less the admission's debit, as if the target the
+ * Restore prepares inside this capture were already decoded, and the RAM it takes is recorded. */
+static PyObject *capture_call(PyObject *, PyObject *args)
+{
+  PyObject *owner, *admission_capsule = Py_None;
+  if (!require_main_thread() || !PyArg_ParseTuple(args, "O|O", &owner, &admission_capsule) ||
+      !exact_owner(owner))
+  {
     return nullptr;
   }
+  RestoreAdmission *admission = nullptr;
+  if (admission_capsule != Py_None) {
+    admission = restore_admission_of(admission_capsule);
+    if (!admission) { return nullptr; }
+    if (admission->capture != RestoreAdmission::Outcome::Unused) {
+      PyErr_SetString(PyExc_ValueError, "The Restore's memory admission already admitted a safety capture");
+      return nullptr;
+    }
+  }
+  /* Refused until it returns; ``Budget`` when a budget refusal under the debit ended it, which the
+   * earlier order (no debit, the target decoded) may admit. */
+  std::optional<WMCheckpointMemoryOffset> debit;
+  uint64_t available_before = 0;
+  if (admission) {
+    available_before = WM_checkpoint_available_memory();
+    debit.emplace(-admission->debit);
+  }
+  AdmissionOutcome outcome(admission ? &admission->capture : nullptr);
   auto capture = std::make_unique<NativeCapture>();
   capture->owner = Py_NewRef(owner);
   PyObject *binding = PyObject_CallMethod(owner, "_native_begin", nullptr);
@@ -348,12 +456,31 @@ static PyObject *capture_call(PyObject *, PyObject *owner)
   FileStamp encoded_base, encoded_runtime;
   const char *failure_stage = "native owner admission";
   if (success) {
+    /* Decided before the BASE write, from the fresh empty output: whether the owner will compare
+     * the published BASE with what is written. Fail closed on an owner without the method. */
+    failure_stage = "content binding admission";
+    PyObject *bind = PyObject_CallMethod(owner, "_native_binding", nullptr);
+    success = bind && PyBool_Check(bind);
+    if (bind && !success) {
+      PyErr_SetString(PyExc_TypeError, "The capture owner did not decide its content binding");
+    }
+    capture->bind_required = success && bind == Py_True;
+    Py_XDECREF(bind);
+  }
+  if (success) {
     failure_stage = "BASE capture/serialization";
-    success = WM_checkpoint_capture_write(*capture->capture, logical_path, capture->base, &reports);
+    success = WM_checkpoint_capture_write(*capture->capture, logical_path, capture->base,
+                                          capture->bind_required, &reports);
     if (success) {
       failure_stage = "BASE descriptor identity/bytes";
       success = file_stamp(capture->base, encoded_base) && encoded_base.bytes &&
                 same_identity(encoded_base, capture->base_stamp);
+    }
+    if (success && WM_checkpoint_capture_owner_count(*capture->capture) &&
+        !WM_checkpoint_capture_binding(*capture->capture, WMCheckpointRole::Base).present)
+    {
+      failure_stage = "unbound runtime owner";
+      success = false;
     }
     if (success && WM_checkpoint_capture_owner_count(*capture->capture)) {
       failure_stage = "RUNTIME descriptor admission";
@@ -369,6 +496,10 @@ static PyObject *capture_call(PyObject *, PyObject *owner)
       failure_stage = "capture purpose admission";
       PyObject *purpose = PyObject_CallMethod(owner, "_native_purpose", nullptr);
       success = purpose && PyUnicode_CheckExact(purpose);
+      if (success && PyUnicode_CompareWithASCIIString(purpose, "safety") == 0 && !capture->bind_required) {
+        failure_stage = "unbound safety capture";
+        success = false;
+      }
       if (success && PyUnicode_CompareWithASCIIString(purpose, "safety") == 0) {
         failure_stage = "safety content witness";
         capture->content = WM_checkpoint_capture_content(*capture->capture, &reports);
@@ -384,7 +515,22 @@ static PyObject *capture_call(PyObject *, PyObject *owner)
     success = file_stamp(capture->base, base) && base == encoded_base && base.bytes &&
               (capture->runtime < 0 ||
                (file_stamp(capture->runtime, runtime) && runtime == encoded_runtime && runtime.bytes));
+  }
+  if (success) {
+    /* A binding covers exactly the bytes its writer accepted: the final stamps' sizes. */
+    failure_stage = "final content binding";
+    const WMCheckpointContentBinding &base_binding = WM_checkpoint_capture_binding(
+        *capture->capture, WMCheckpointRole::Base);
+    const WMCheckpointContentBinding &runtime_binding = WM_checkpoint_capture_binding(
+        *capture->capture, WMCheckpointRole::Runtime);
+    capture->owner_count = WM_checkpoint_capture_owner_count(*capture->capture);
+    success = (!base_binding.present || base_binding.bytes == base.bytes) &&
+              (!(capture->owner_count || capture->bind_required) || base_binding.present) &&
+              (capture->runtime < 0 ? !runtime_binding.present :
+                                      runtime_binding.present && runtime_binding.bytes == runtime.bytes);
     if (success) {
+      capture->base_binding = base_binding;
+      capture->runtime_binding = runtime_binding;
       capture->base_stamp = base;
       capture->runtime_stamp = runtime;
       capture->complete = true;
@@ -410,7 +556,7 @@ static PyObject *capture_call(PyObject *, PyObject *owner)
        * still take precedence and are restored above without stringifying their payload. */
       char *native_error = BKE_reports_string(&reports, RPT_ERROR);
       PyErr_Format(PyExc_RuntimeError,
-                   "Checkpoint capture failed; partial outputs remain unproved (stage: %s)%s%s",
+                   "Checkpoint capture failed before anything was published (stage: %s)%s%s",
                    failure_stage,
                    native_error ? ": " : "",
                    native_error ? native_error : "");
@@ -427,6 +573,10 @@ static PyObject *capture_call(PyObject *, PyObject *owner)
     return nullptr;
   }
   capture.release();
+  if (admission) {
+    admission->safety_footprint = memory_taken(available_before, WM_checkpoint_available_memory());
+    admission->capture = RestoreAdmission::Outcome::Done;
+  }
   return capsule;
 }
 static PyObject *facts_call(PyObject *, PyObject *args)
@@ -479,6 +629,13 @@ static PyObject *post_call(PyObject *, PyObject *args)
     PyErr_SetString(PyExc_ValueError, "Checkpoint POST was already attempted");
     return nullptr;
   }
+  if ((capture->owner_count || capture->bind_required) && !capture->content_bound) {
+    /* Published bytes that were never compared with the writer's are not this capture's. */
+    PyErr_SetString(PyExc_ValueError,
+                    "The retained native checkpoint output was not bound to its published content");
+    post_admission_failed(*capture);
+    return nullptr;
+  }
   PyObject *publication = PyObject_CallMethod(owner, "_native_publication", nullptr);
   if (!publication) {
     post_admission_failed(*capture);
@@ -492,6 +649,87 @@ static PyObject *post_call(PyObject *, PyObject *args)
     PyErr_SetString(PyExc_RuntimeError, "Checkpoint was published but SAVE_POST failed");
     return nullptr;
   }
+  Py_RETURN_NONE;
+}
+static bool capture_role(const char *name, WMCheckpointRole &role)
+{
+  if (std::strcmp(name, "BASE") == 0) {
+    role = WMCheckpointRole::Base;
+    return true;
+  }
+  if (std::strcmp(name, "RUNTIME") == 0) {
+    role = WMCheckpointRole::Runtime;
+    return true;
+  }
+  PyErr_SetString(PyExc_ValueError, "A checkpoint component role is BASE or RUNTIME");
+  return false;
+}
+/** ``capture_hasher(capsule, owner, role)``: a native hasher for one bound component, which the
+ * owner feeds the bytes it reads and hands to ``capture_bind``. It exposes no digest. */
+static PyObject *capture_hasher_call(PyObject *, PyObject *args)
+{
+  PyObject *capsule, *owner;
+  const char *name;
+  if (!PyArg_ParseTuple(args, "OOs", &capsule, &owner, &name)) {
+    return nullptr;
+  }
+  WMCheckpointRole role;
+  if (!capture_role(name, role)) {
+    return nullptr;
+  }
+  NativeCapture *capture = admit(capsule, owner, true);
+  if (!capture) {
+    return nullptr;
+  }
+  const WMCheckpointContentBinding &binding = role == WMCheckpointRole::Base ? capture->base_binding :
+                                                                             capture->runtime_binding;
+  if (capture->bind_attempted || capture->post_attempted || !binding.present) {
+    PyErr_SetString(PyExc_ValueError, "The native checkpoint component has no pending content binding");
+    return nullptr;
+  }
+  return BPY_checkpoint_hasher_new(capsule, role);
+}
+/** ``capture_bind(capsule, owner, base_hasher, runtime_hasher=None)``: compare the bytes the owner
+ * read from its published components with what the capture wrote, inside native, once. Every
+ * component the capture bound needs its hasher. Required before POST for a pair and for every
+ * capture whose owner asked for binding; any difference refuses the capture. */
+static PyObject *capture_bind_call(PyObject *, PyObject *args)
+{
+  PyObject *capsule, *owner, *base_hasher, *runtime_hasher = Py_None;
+  if (!PyArg_ParseTuple(args, "OOO|O", &capsule, &owner, &base_hasher, &runtime_hasher) ||
+      !require_main_thread())
+  {
+    return nullptr;
+  }
+  auto *pending = static_cast<NativeCapture *>(PyCapsule_GetPointer(capsule, capture_name));
+  if (!pending) { return nullptr; }
+  NativeCapsuleLease lease(capsule, pending->consuming);
+  if (!lease) { return nullptr; }
+  NativeCapture *capture = admit(capsule, owner, true);
+  if (!capture) {
+    return nullptr;
+  }
+  if (capture->bind_attempted || capture->post_attempted) {
+    PyErr_SetString(PyExc_ValueError, "The native checkpoint content binding was already attempted");
+    return nullptr;
+  }
+  capture->bind_attempted = true;
+  const char *failure = BPY_checkpoint_hasher_bind(base_hasher, capsule, WMCheckpointRole::Base,
+                                                   capture->base_binding);
+  if (!failure && capture->runtime_binding.present) {
+    failure = runtime_hasher == Py_None ?
+                  "no RUNTIME hasher" :
+                  BPY_checkpoint_hasher_bind(runtime_hasher, capsule, WMCheckpointRole::Runtime,
+                                             capture->runtime_binding);
+  }
+  else if (!failure && runtime_hasher != Py_None) {
+    failure = "a RUNTIME hasher for a capture without RUNTIME";
+  }
+  if (failure) {
+    PyErr_Format(PyExc_ValueError, "The retained native checkpoint output changed (%s)", failure);
+    return nullptr;
+  }
+  capture->content_bound = true;
   Py_RETURN_NONE;
 }
 static PyObject *abort_call(PyObject *, PyObject *args)
@@ -626,10 +864,119 @@ static bool exact_recovery(PyObject *resource)
   if (!exact) { PyErr_SetString(PyExc_TypeError, "An exact anchored CheckpointRecovery is required"); }
   return exact;
 }
-static PyObject *prepare_restore_call(PyObject *, PyObject *resource)
+/** ``restore_admission(base_bytes, cache_bytes)``: a Restore's memory admission, taken before its
+ * safety capture. ``base_bytes``: a Sculpt pair's BASE size, which native decodes (refused here,
+ * with ``prepare_restore``'s message, when the RAM does not admit it), or 0 for a target native
+ * never decodes (a version 3 copy). ``cache_bytes``: what the target's preparation can add to the
+ * file cache, the bytes it reads and writes (checkpoint_restore_ui). The debit, under which the
+ * safety capture admits, is the most the target takes once prepared: that cache bound plus, for a
+ * pair, its BASE backing and the codec backing of its decoded companion and of its install
+ * controls (#WM_checkpoint_memory_limits), from this same reading. */
+static PyObject *restore_admission_call(PyObject *, PyObject *args)
+{
+  unsigned long long base_bytes = 0, cache_bytes = 0;
+  if (!require_main_thread() || !PyArg_ParseTuple(args, "KK", &base_bytes, &cache_bytes)) {
+    return nullptr;
+  }
+  int64_t debit = WM_checkpoint_memory_offset_of(uint64_t(cache_bytes));
+  if (base_bytes) {
+    ReportList reports;
+    BKE_reports_init(&reports, RPT_STORE);
+    BLI_SCOPED_DEFER([&]() { BKE_reports_free(&reports); });
+    ed::sculpt_paint::checkpoint::CodecLimits limits{};
+    size_t base_backing_bytes = 0;
+    if (!WM_checkpoint_memory_limits(limits, base_bytes, &reports, &base_backing_bytes)) {
+      raise_with_reports(PyExc_ValueError, "The complete checkpoint pair failed native preparation", reports);
+      return nullptr;
+    }
+    debit = WM_checkpoint_memory_offset_add(
+        debit, WM_checkpoint_memory_offset_add(
+                   WM_checkpoint_memory_offset_of(base_backing_bytes),
+                   WM_checkpoint_memory_offset_add(WM_checkpoint_memory_offset_of(limits.max_backing_bytes),
+                                                   WM_checkpoint_memory_offset_of(limits.max_backing_bytes))));
+  }
+  auto admission = std::make_unique<RestoreAdmission>();
+  admission->base_bytes = base_bytes;
+  admission->debit = debit;
+  PyObject *capsule = PyCapsule_New(admission.get(), admission_name, admission_capsule_free);
+  if (capsule) { admission.release(); }
+  return capsule;
+}
+/** ``restore_admission_state(admission)``: ``{"debit", "safety", "target": bytes, "capture",
+ * "prepare": "unused" | "budget" | "refused" | "done", "measured": bool}``: what each side was
+ * admitted under, what it took, and how it ended; ``measured`` once the target's whole preparation
+ * was measured (``restore_admission_end_target``). */
+static PyObject *restore_admission_state_call(PyObject *, PyObject *capsule)
+{
+  if (!require_main_thread()) { return nullptr; }
+  const RestoreAdmission *admission = restore_admission_of(capsule);
+  if (!admission) { return nullptr; }
+  return Py_BuildValue("{s:L,s:K,s:K,s:s,s:s,s:O}", "debit", static_cast<long long>(admission->debit),
+                       "safety", static_cast<unsigned long long>(admission->safety_footprint), "target",
+                       static_cast<unsigned long long>(admission->target_footprint), "capture",
+                       outcome_name(admission->capture), "prepare", outcome_name(admission->prepare),
+                       "measured", admission->target_ended ? Py_True : Py_False);
+}
+/** ``restore_admission_begin_target(admission, held_bytes=0)``: the target's preparation starts (its
+ * working copy, hashes, decode and binding): the RAM it takes is measured from here, as the earlier
+ * order ran all of it before the safety capture's admissions read the RAM. ``held_bytes``: what
+ * Restore holds meanwhile that the earlier order did not (the read-back's buffer), credited to the
+ * preparation's admissions. Once. */
+static PyObject *restore_admission_begin_target_call(PyObject *, PyObject *args)
+{
+  PyObject *capsule;
+  unsigned long long held_bytes = 0;
+  if (!require_main_thread() || !PyArg_ParseTuple(args, "O|K", &capsule, &held_bytes)) { return nullptr; }
+  RestoreAdmission *admission = restore_admission_of(capsule);
+  if (!admission) { return nullptr; }
+  if (admission->target_begun) {
+    PyErr_SetString(PyExc_ValueError, "The Restore's target preparation was already measured");
+    return nullptr;
+  }
+  admission->target_begun = true;
+  admission->held_bytes = uint64_t(held_bytes);
+  admission->target_start = WM_checkpoint_available_memory();
+  Py_RETURN_NONE;
+}
+/** ``restore_admission_end_target(admission)``: the target's preparation ended; records what it took. */
+static PyObject *restore_admission_end_target_call(PyObject *, PyObject *capsule)
+{
+  if (!require_main_thread()) { return nullptr; }
+  RestoreAdmission *admission = restore_admission_of(capsule);
+  if (!admission) { return nullptr; }
+  if (!admission->target_begun || admission->target_ended) {
+    PyErr_SetString(PyExc_ValueError, "The Restore's target preparation was not being measured");
+    return nullptr;
+  }
+  admission->target_ended = true;
+  admission->target_footprint = memory_taken(admission->target_start, WM_checkpoint_available_memory());
+  Py_RETURN_NONE;
+}
+/** ``prepare_restore(recovery, admission=None)``: decode and read the prepared pair. With an
+ * admission (``restore_admission``), every admission here reads the RAM plus what that Restore's
+ * safety capture took, and how it ended is recorded in it (``restore_admission_state``). */
+static PyObject *prepare_restore_call(PyObject *, PyObject *args)
 {
   using namespace ed::sculpt_paint::checkpoint;
-  if (!require_main_thread() || !exact_recovery(resource)) { return nullptr; }
+  PyObject *resource, *admission_capsule = Py_None;
+  if (!require_main_thread() || !PyArg_ParseTuple(args, "O|O", &resource, &admission_capsule) ||
+      !exact_recovery(resource))
+  {
+    return nullptr;
+  }
+  RestoreAdmission *admission = nullptr;
+  if (admission_capsule != Py_None) {
+    admission = restore_admission_of(admission_capsule);
+    if (!admission) { return nullptr; }
+    if (admission->consumed || !admission->base_bytes) {
+      PyErr_SetString(PyExc_ValueError, admission->consumed ?
+          "The Restore's memory admission was already used" :
+          "The Restore's memory admission was not for a Sculpt pair");
+      return nullptr;
+    }
+    admission->consumed = true;
+  }
+  AdmissionOutcome outcome(admission ? &admission->prepare : nullptr);
   auto restore = std::make_unique<NativeRestore>();
   restore->resource = Py_NewRef(resource);
   PyObject *binding = PyObject_CallMethod(resource, "_native_begin", nullptr);
@@ -650,6 +997,19 @@ static PyObject *prepare_restore_call(PyObject *, PyObject *resource)
   ReportList reports;
   BKE_reports_init(&reports, RPT_STORE);
   BLI_SCOPED_DEFER([&]() { BKE_reports_free(&reports); });
+  std::optional<WMCheckpointMemoryOffset> credit;
+  if (success && admission) {
+    if (admission->base_bytes != restore->base_stamp.bytes) {
+      BKE_report(&reports, RPT_ERROR, "The Restore's memory admission was for another BASE size");
+      success = false;
+    }
+    else {
+      /* The test model charges guarded allocations only: a Python buffer it never charged is not credited. */
+      const uint64_t held = WM_checkpoint_memory_model_active() ? 0 : admission->held_bytes;
+      credit.emplace(WM_checkpoint_memory_offset_add(WM_checkpoint_memory_offset_of(admission->safety_footprint),
+                                                     WM_checkpoint_memory_offset_of(held)));
+    }
+  }
   CodecLimits limits{};
   size_t base_backing_bytes = 0;
   success = success && WM_checkpoint_memory_limits(limits, restore->base_stamp.bytes, &reports, &base_backing_bytes);
@@ -692,7 +1052,7 @@ static PyObject *prepare_restore_call(PyObject *, PyObject *resource)
     read_report.reports = &reports;
     restore->base_data = BLO_read_checkpoint_from_descriptor(restore->logical_path.c_str(),
                                                             restore->base, &read_report, tokens);
-    success = bool(restore->base_data) && tokens.complete;
+    success = bool(restore->base_data) && tokens.complete;   /* Its data budget counts its own refusal. */
     if (success) {
       restore->cold = WM_checkpoint_cold_prepare(*restore->base_data->main, *restore->plan, tokens, &reports);
       success = restore->cold != nullptr;
@@ -718,6 +1078,9 @@ static PyObject *prepare_restore_call(PyObject *, PyObject *resource)
     return nullptr;
   }
   restore.release();
+  if (admission) {
+    admission->prepare = RestoreAdmission::Outcome::Done;
+  }
   return capsule;
 }
 static bool safety_content_valid(NativeCapture &safety, Main &main,
@@ -819,6 +1182,13 @@ static PyObject *restore_call(PyObject *, PyObject *args)
       safety->source_main != CTX_data_main(BPY_context_get()))
   {
     PyErr_SetString(PyExc_ValueError, "Restore needs its prepared pair and completed protected native safety capture");
+    return nullptr;
+  }
+  if (!safety->content_bound) {
+    /* A second layer, unreachable by design: this safety capture completed a successful POST
+     * (checked above), and post_call refuses an unbound capture. Stated here because Restore
+     * replaces the document. */
+    PyErr_SetString(PyExc_ValueError, "The safety capture was not bound to the content it wrote");
     return nullptr;
   }
   if (!safety_content_valid(*safety, *safety->source_main)) { return nullptr; }
@@ -1044,14 +1414,43 @@ static PyObject *capture_release_call(PyObject *, PyObject *capsule)
   }
   Py_RETURN_NONE;
 }
+#ifdef WITH_GTESTS
+/** Test seam (WITH_GTESTS builds): ``bytes`` as the available RAM, less what Blender allocates from
+ * now on (#WM_checkpoint_test_available_memory); ``None`` reads the OS again. */
+static PyObject *test_available_memory_call(PyObject *, PyObject *bytes)
+{
+  if (!require_main_thread()) { return nullptr; }
+  if (bytes == Py_None) {
+    WM_checkpoint_test_available_memory(std::nullopt);
+    Py_RETURN_NONE;
+  }
+  const unsigned long long available = PyLong_AsUnsignedLongLong(bytes);
+  if (PyErr_Occurred()) { return nullptr; }
+  WM_checkpoint_test_available_memory(uint64_t(available));
+  Py_RETURN_NONE;
+}
+/** Test seam (WITH_GTESTS builds): the next capture's BASE binding gate ignores Sculpt sessions. */
+static PyObject *test_skip_next_sculpt_gate_call(PyObject *, PyObject *)
+{
+  if (!require_main_thread()) { return nullptr; }
+  WM_checkpoint_test_skip_next_sculpt_gate();
+  Py_RETURN_NONE;
+}
+#endif
 static PyMethodDef methods[] = {
-    {"capture", capture_call, METH_O, nullptr},
+    {"capture", capture_call, METH_VARARGS, nullptr},
     {"capture_facts", facts_call, METH_VARARGS, nullptr},
     {"capture_post", post_call, METH_VARARGS, nullptr},
+    {"capture_hasher", capture_hasher_call, METH_VARARGS, nullptr},
+    {"capture_bind", capture_bind_call, METH_VARARGS, nullptr},
     {"capture_close", close_call, METH_O, nullptr},
     {"capture_abort", abort_call, METH_VARARGS, nullptr},
     {"capture_release", capture_release_call, METH_O, nullptr},
-    {"prepare_restore", prepare_restore_call, METH_O, nullptr},
+    {"restore_admission", restore_admission_call, METH_VARARGS, nullptr},
+    {"restore_admission_state", restore_admission_state_call, METH_O, nullptr},
+    {"restore_admission_begin_target", restore_admission_begin_target_call, METH_VARARGS, nullptr},
+    {"restore_admission_end_target", restore_admission_end_target_call, METH_O, nullptr},
+    {"prepare_restore", prepare_restore_call, METH_VARARGS, nullptr},
     {"restore", restore_call, METH_VARARGS, nullptr},
     {"close_restore", close_restore_call, METH_O, nullptr},
     {"failed_restore_safety", failed_restore_safety_call, METH_NOARGS, nullptr},
@@ -1064,6 +1463,10 @@ static PyMethodDef methods[] = {
     {"is_recovery_copy", is_recovery_copy_call, METH_VARARGS, nullptr},
     {"restored_save_pending", restored_save_pending_call, METH_NOARGS, nullptr},
     {"set_state_root", set_state_root_call, METH_VARARGS, nullptr},
+#ifdef WITH_GTESTS
+    {"_test_skip_next_sculpt_gate", test_skip_next_sculpt_gate_call, METH_NOARGS, nullptr},
+    {"_test_available_memory", test_available_memory_call, METH_O, nullptr},
+#endif
     {nullptr, nullptr, 0, nullptr},
 };
 static PyModuleDef module = {PyModuleDef_HEAD_INIT, "_angelo_checkpoint", nullptr, -1, methods};

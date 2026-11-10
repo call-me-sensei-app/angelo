@@ -9,6 +9,8 @@ test_blender_first_run.py, test_blender_chat_cards.py and
 test_blender_director_navigation.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import sys
 import tempfile
@@ -22,7 +24,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[3]
 ADDON = ROOT / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
-from angelo_agent import first_run  # noqa: E402
+from angelo_agent import agent_runtime, first_run  # noqa: E402
 from angelo_agent.approvals import approval_message  # noqa: E402
 from angelo_agent.chat_titles import tool_title  # noqa: E402
 from angelo_agent.connections import ConnectionStore  # noqa: E402
@@ -42,19 +44,28 @@ def fake_bpy():
 class FakeAuthentication:
     def __init__(self, statuses):
         self.status, self.running, self.started, self.cancelled = dict(statuses), set(), [], []
+        self.attempts = {}
 
     def start(self, mode, settings, state_dir, login=False, identity=None, api_key=""):
         identity = identity or mode
         self.started.append((mode, identity, login))
         self.running.add(identity)
         self.status[identity] = "Complete sign-in in your browser…" if login else "Checking native sign-in…"
+        self.attempts[identity] = self.attempts.get(identity, 0) + 1
+        return self.attempts[identity]
+
+    def attempt(self, identity):
+        return self.attempts.get(identity)
 
     def finish(self, identity, status):
         self.running.discard(identity)
         self.status[identity] = status
 
-    def cancel(self, identity):
+    def cancel(self, identity, *, attempt=None):
+        if attempt is not None and attempt != self.attempts.get(identity):
+            return False
         self.cancelled.append(identity)
+        return True
 
 
 class FakeUI:
@@ -191,6 +202,13 @@ class ConnectFlowTests(unittest.TestCase):
 
 
 class OfferAndNoticeTests(unittest.TestCase):
+    def setUp(self):
+        # No bundled agent runtime unless a test says so: a checkout finds one wherever its install-root folder holds
+        # one (the Windows validation machine keeps agent-runtime\\codex.exe beside its source folder).
+        patcher = mock.patch.object(agent_runtime, "present", lambda environ=None: False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_connect_options_follow_detected_clis_then_the_api_key(self):
         rows = first_run.connect_options({"codex_subscription": "Not connected", "claude_subscription": "Connected to Claude"})
         self.assertEqual([(r["id"], r["label"], r["action"]) for r in rows],
@@ -201,8 +219,10 @@ class OfferAndNoticeTests(unittest.TestCase):
         self.assertIn("browser", rows[1]["note"])
         connected = first_run.connect_options({"claude_subscription": "Connected to Claude"}, ready_modes={"claude_subscription"})
         self.assertEqual((connected[0]["label"], connected[0]["note"]), ("Use Claude", first_run.ALREADY_CONNECTED))
-        none = first_run.connect_options({"claude_subscription": "Native runtime unavailable; check its executable path"})
-        self.assertEqual([r["id"] for r in none], ["api_key"])
+        missing = {"claude_subscription": "Native runtime unavailable; check its executable path"}
+        self.assertEqual([r["id"] for r in first_run.connect_options(missing)], ["api_key"])
+        with mock.patch.object(agent_runtime, "present", lambda environ=None: True):   # Angelo carries it.
+            self.assertEqual([r["id"] for r in first_run.connect_options(missing)], ["codex_subscription", "api_key"])
 
     def test_an_organisation_sign_in_slots_in_first(self):
         team = {"label": "Your team", "note": "Ask your admin for access", "action": "welcome_team", "value": None}

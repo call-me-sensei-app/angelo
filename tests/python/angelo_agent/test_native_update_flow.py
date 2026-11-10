@@ -6,6 +6,8 @@ downgrade, a ready update that survives a restart, and folders cleaned without t
 The platform modules are stood in for (their own rules are test_native_update_stage); downloads write files.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import shutil
 import sys

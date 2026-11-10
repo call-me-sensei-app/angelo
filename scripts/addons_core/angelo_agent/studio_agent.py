@@ -17,7 +17,8 @@ import threading
 import uuid
 from pathlib import Path
 
-from . import thread_start
+from . import change_clock, thread_start
+from .refusal_codes import RefusalError, coded
 from .studio_generation import GenerationError, validate_generation, public_url
 from .studio_spec import validate_studio
 from .studio_agent_video import kind_of, price_note, reference_list, video_generation, video_price
@@ -73,8 +74,9 @@ def _publish_export(folder, temporary, name):
 
 
 def fingerprint(path):
+    """What an approval binds; settled (``change_clock``), so a later write changes it in the file's last tick too."""
     path = Path(path)
-    stat = path.stat()
+    stat = change_clock.settle(path.stat(), change=False)
     return (str(path), stat.st_ino, stat.st_size, stat.st_mtime_ns)
 
 
@@ -112,22 +114,23 @@ class StudioAgent:
 
     def folder(self, identity):
         if identity and identity not in self.library.folders:
-            raise ValueError("Choose an existing Studio folder ID")
+            raise RefusalError("Choose an existing Studio folder ID", code="VALIDATION")
         return identity
 
     def asset(self, identity, ready=False):
         asset = self.library.assets.get(identity)
         if not asset:
-            raise ValueError("This Studio asset is unavailable; refresh the library")
+            raise RefusalError("This Studio asset is unavailable; refresh the library", code="VALIDATION")
         if ready and (asset.get("status") != "ready" or not asset.get("files")):
-            raise ValueError("Wait for a ready Studio asset; failed/stopped tasks are never automatically retried")
+            raise RefusalError("Wait for a ready Studio asset; failed/stopped tasks are never automatically retried",
+                               code="VALIDATION")
         return asset
 
     def attachment(self, identity):
         records = self.controller.turn_attachments + [r for m in self.controller.state["messages"] for r in m.get("references", [])]
         reference = next((r for r in records if Path(r["path"]).stem == identity), None)
         if not reference or reference.get("kind") != "image":
-            raise ValueError("Choose an image attached to THIS conversation")
+            raise RefusalError("Choose an image attached to THIS conversation", code="VALIDATION")
         # The checked path, not the stored one: it survives a move of the state folder.
         return dict(reference, path=str(self.controller.references.checked_path(reference)))
 
@@ -142,31 +145,32 @@ class StudioAgent:
         if source == "ASSET":
             asset = self.asset(identity, ready=True)
             if asset["kind"] != "IMAGE":
-                raise ValueError("Only a library IMAGE can be used as a generation reference")
+                raise RefusalError("Only a library IMAGE can be used as a generation reference", code="VALIDATION")
             path = self.library.checked_file(asset, asset["files"][0])
             return {"path": str(path), "name": asset["prompt"][:160] or path.name}
         # Syntax only, NO DNS or URL fetch until the user approves usage.
         try:
             parsed = public_url(identity)
         except GenerationError as error:
-            raise ValueError(str(error)) from None
+            raise RefusalError(str(error), code="VALIDATION") from None
         try:
             address = ipaddress.ip_address(parsed.hostname)
         except ValueError:
             address = None
         if (address and not address.is_global) or parsed.hostname == "localhost" or parsed.hostname.endswith(".localhost"):
-            raise ValueError("Use a public HTTPS image URL, not a local/private address")
+            raise RefusalError("Use a public HTTPS image URL, not a local/private address", code="VALIDATION")
         return {"url": identity, "name": "Public HTTPS image reference"}
 
     def generation(self, args):
         choice = next((m for m in self.catalog() if m["connection"] == args["connection_id"] and m["id"] == args["model"]), None)
         if not choice or not choice["ready"]:
-            raise ValueError("Connect/check the exact generation account and model in AI Providers; no billing fallback")
+            raise RefusalError("Connect/check the exact generation account and model in AI Providers; no billing fallback",
+                               code="UNSUPPORTED")
         binding = self.binding(choice["connection"])
         if kind_of(choice["mode"], choice["id"]) == "VIDEO":
             return (choice, binding) + video_generation(self, choice, args)
         if args.get("frames"):
-            raise ValueError("Frames are for video models; pass images as references")
+            raise RefusalError("Frames are for video models; pass images as references", code="VALIDATION")
         options = generation_options(choice["mode"], choice["id"], args.get("options", {}))
         references = self.references(args)
         self.folder(args.get("folder", ""))
@@ -209,18 +213,20 @@ class StudioAgent:
         if name in {"angelo_studio_export", "angelo_studio_import_3d"}:
             index = args.get("output_index", 0)
             if index >= len(asset["files"]):
-                raise ValueError("Choose an existing output index")
+                raise RefusalError("Choose an existing output index", code="VALIDATION")
             path = self.library.checked_file(asset, asset["files"][index])
             signature = (signature, fingerprint(path))
             if name == "angelo_studio_import_3d" and (asset["kind"] != "3D" or path.suffix.lower() != ".glb"):
-                raise ValueError("Choose a ready, self-contained 3D GLB")
+                raise RefusalError("Choose a ready, self-contained 3D GLB", code="VALIDATION")
             if name == "angelo_studio_export":
                 require_anchored_files()
                 if path.stat().st_size > MAX_CREATED_FILE:
-                    raise StudioExportError("Agent exports must be at most 150 MiB, matching the bounded Studio model-output limit")
+                    raise coded(StudioExportError("Agent exports must be at most 150 MiB, matching the bounded Studio "
+                                                  "model-output limit"), "LIMIT_EXCEEDED")
                 target = self.controller.files.path(args["path"])
                 if target.exists() or target.is_symlink() or target.suffix.lower() != path.suffix.lower():
-                    raise ValueError("Choose a NEW workspace output path with the same file extension; no overwrites")
+                    raise RefusalError("Choose a NEW workspace output path with the same file extension; no overwrites",
+                                       code="VALIDATION")
                 signature = (signature, str(target))
         return signature
 
@@ -358,6 +364,7 @@ class StudioAgent:
                         opened = os.fstat(src.fileno())
                         if not _same_file(source_info, opened):
                             raise StudioExportError("The library output changed; inspect it before exporting")
+                        change_clock.settle(opened, change=False)   # A write during the copy changes its stat.
                         if target.exists() or target.is_symlink():
                             raise StudioExportError("The workspace output appeared after review; no overwrite was performed")
                         # Persist the absent-target journal BEFORE any output

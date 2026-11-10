@@ -101,6 +101,7 @@
 
 #include "BLI_endian_defines.h"
 #include "BLI_fileops.hh"
+#include "BLI_hash_xxh3.hh"
 #include "BLI_implicit_sharing.hh"
 #include "BLI_listbase.h"
 #include "BLI_math_base.h"
@@ -132,6 +133,8 @@
 #include "BKE_preferences.h"
 #include "BKE_report.hh"
 #include "BKE_workspace.hh"
+
+#include "BLT_translation.hh"
 
 #include "DRW_engine.hh"
 
@@ -190,15 +193,51 @@ struct ZstdFrame {
 
 class RawWriteWrap : public WriteWrap {
  public:
-  /** \param durable: Sync the data to the storage device in #close (#BlendFileWriteParams). */
-  explicit RawWriteWrap(const bool durable = false) : durable_(durable) {}
+  /**
+   * \param durable: Sync the data to the storage device in #close (#BlendFileWriteParams).
+   * \param hold_on_close: Hold the file #close closes (#WriteWrap::take_closed_hold).
+   */
+  explicit RawWriteWrap(const bool durable = false, const bool hold_on_close = false)
+      : durable_(durable), hold_on_close_(hold_on_close)
+  {
+  }
+  ~RawWriteWrap() override
+  {
+    BLI_file_identity_release(closed_hold_);
+  }
+  RawWriteWrap(const RawWriteWrap &) = delete;
+  RawWriteWrap &operator=(const RawWriteWrap &) = delete;
 
   bool open(const char *filepath) override;
   bool close() override;
   bool write(const void *buf, size_t buf_len) override;
+  bool closed_identity(FileIdentity *r_identity) const override
+  {
+    *r_identity = closed_identity_;
+    return closed_identity_valid_;
+  }
+  void *take_closed_hold(bool *r_other) override
+  {
+    *r_other = closed_other_;
+    void *hold = closed_hold_;
+    closed_hold_ = nullptr;
+    return hold;
+  }
 
  private:
   int file_handle = 0;
+  /** The name #open opened, which #close holds the file by (#hold_on_close_). */
+  std::string filepath_;
+  const bool hold_on_close_;
+  /** The file #close closed, held by its name while #file_handle still kept it open. */
+  void *closed_hold_ = nullptr;
+  /** Whether #close found another file than its own at its name (#WriteWrap::take_closed_hold). */
+  bool closed_other_ = false;
+  /** Whether no file (or a link) was at the name before the close (looked up again after it). */
+  bool missing_at_close_ = false;
+  /** The file #close closed, identified on #file_handle just before (#WriteWrap::closed_identity). */
+  FileIdentity closed_identity_;
+  bool closed_identity_valid_ = false;
   const bool durable_;
   /** Whether data was written since #open, which #close then makes durable. */
   bool has_data = false;
@@ -214,6 +253,27 @@ static BLOWriteSyncFn blo_write_sync_hook = nullptr;
 void BLO_write_sync_hook_set(BLOWriteSyncFn sync)
 {
   blo_write_sync_hook = sync;
+}
+
+#ifdef WITH_GTESTS
+static BLOWriteStageFn blo_write_stage_hook = nullptr;
+
+void BLO_write_stage_hook_set(BLOWriteStageFn stage)
+{
+  blo_write_stage_hook = stage;
+}
+#endif
+
+/** Angelo: the test stage hook (#BLO_write_stage_hook_set); nothing outside test builds. */
+static void write_stage(const int stage, const void *written, const char *tempname)
+{
+#ifdef WITH_GTESTS
+  if (written != nullptr && blo_write_stage_hook) {
+    blo_write_stage_hook(stage, tempname);
+  }
+#else
+  UNUSED_VARS(stage, written, tempname);
+#endif
 }
 
 /**
@@ -244,10 +304,15 @@ bool RawWriteWrap::open(const char *filepath)
    * whatever is there instead of opening through it: a link planted at that name would otherwise
    * make this save truncate and overwrite the file it points at. Each (re)open starts a new
    * file, as the minimum-size writer's switch to compression expects. */
+  BLI_file_identity_release(closed_hold_);
+  closed_hold_ = nullptr;
+  closed_other_ = missing_at_close_ = false;
   const int file = BLI_open_replacing(filepath, O_BINARY | O_WRONLY, 0666);
 
   if (file != -1) {
     file_handle = file;
+    filepath_ = filepath;
+    closed_identity_valid_ = false;
     has_data = false;
     write_failed = false;
     write_errno = 0;
@@ -265,7 +330,53 @@ bool RawWriteWrap::close()
    * a file whose write failed is not kept (syncing it would also replace the write's error). */
   const bool synced = !durable_ || !has_data || write_failed || write_file_sync(file_handle);
   const int sync_errno = errno;
+  /* After the last write (a compressed save's worker threads have drained by now) and the sync. */
+  closed_identity_valid_ = BLI_file_identity_descriptor(file_handle, &closed_identity_);
+  const int write_side_errno = errno; /* What the caller reports for a failure: never the hold's. */
+  if (hold_on_close_ && closed_identity_valid_) {
+    /* Angelo: held by its name while this descriptor still keeps the file open, where a file
+     * system that numbers a file per open (CIFS `noserverino`, some FUSE mounts) still gives the
+     * name the descriptor's number. Another file at the name was put there during the write. */
+    errno = 0;
+    void *hold = BLI_file_identity_hold(filepath_.c_str());
+#ifndef WIN32
+    /* No file at the name, or a link (never followed): this one was moved aside meanwhile, unless
+     * the name shows this very file once it is closed (some network file systems show a file's
+     * name only then). On Windows the writer's handle shares no delete, so it can't be moved
+     * during the write. */
+    missing_at_close_ = hold == nullptr && ELEM(errno, ENOENT, ENOTDIR, ELOOP);
+#endif
+    FileIdentity held;
+    if (hold != nullptr && BLI_file_identity_held(hold, &held)) {
+      if (BLI_file_identity_same_file(held, closed_identity_)) {
+        closed_hold_ = hold;
+        hold = nullptr;
+      }
+      else {
+        closed_other_ = true;
+      }
+    }
+    BLI_file_identity_release(hold);
+    errno = write_side_errno;
+  }
   const bool closed = (::close(file_handle) != -1);
+  if (missing_at_close_) {
+    /* Held now only when the name shows the very file the descriptor wrote; otherwise moved
+     * aside (and maybe replaced): another file, refused. */
+    const int close_errno = errno;
+    void *hold = BLI_file_identity_hold(filepath_.c_str());
+    FileIdentity held;
+    if (hold != nullptr && BLI_file_identity_held(hold, &held) &&
+        BLI_file_identity_same_file(held, closed_identity_))
+    {
+      closed_hold_ = hold;
+    }
+    else {
+      closed_other_ = true;
+      BLI_file_identity_release(hold);
+    }
+    errno = close_errno;
+  }
   if (!synced) {
     errno = sync_errno;
   }
@@ -311,6 +422,14 @@ class ZstdWriteWrap : public WriteWrap {
   bool open(const char *filepath) override;
   bool close() override;
   bool write(const void *buf, size_t buf_len) override;
+  bool closed_identity(FileIdentity *r_identity) const override
+  {
+    return base_wrap.closed_identity(r_identity);
+  }
+  void *take_closed_hold(bool *r_other) override
+  {
+    return base_wrap.take_closed_hold(r_other);
+  }
 
  private:
   void write_task(ZstdWriteBlockTask *task);
@@ -2276,6 +2395,9 @@ class BorrowedDescriptorWriteWrap : public WriteWrap {
   int error_number_ = 0;
 
  public:
+  /** Optional checkpoint content binding (CheckpointWriteContext::content): appended with each
+   * buffer once the descriptor accepted all of it, so it covers exactly the bytes written. */
+  XXH3_128Stream *content = nullptr;
 #ifdef WITH_GTESTS
   const BlendFileDescriptorTestHooks *test_hooks = nullptr;
 #endif
@@ -2321,6 +2443,9 @@ class BorrowedDescriptorWriteWrap : public WriteWrap {
     }
     else if (uint64_t(written) != size) {
       error_ = Error::ShortWrite;
+    }
+    if (error_ == Error::None && content) {
+      content->update(buffer, size);
     }
     return error_ == Error::None;
   }
@@ -2386,6 +2511,11 @@ static bool write_file_to_descriptor(Main *mainvar,
     BKE_report(reports, RPT_ERROR, "Checkpoint writing requires both native capture/token hooks");
     return false;
   }
+  if (checkpoint && checkpoint->content && checkpoint->content->bytes() != 0) {
+    BKE_report(reports, RPT_ERROR, "Checkpoint content binding requires a fresh stream");
+    return false;
+  }
+  writer.content = checkpoint ? checkpoint->content : nullptr;
 
   BLI_stat_t stat_info;
   if (BLI_fstat(descriptor, &stat_info) != 0) {
@@ -2438,6 +2568,39 @@ static bool write_file_to_descriptor(Main *mainvar,
   }
   write_file_main_validate_post(mainvar, reports);
   return true;
+}
+
+/**
+ * Angelo: whether the name `name` is known to hold another file than the held one (`held`, a save's
+ * own file): its lookup there identifies another file, or none while the held one is unlinked. The
+ * lookup runs while the hold keeps the file open, where a file system that numbers a file per open
+ * still gives the name the hold's number. `r_held` and `r_at`: both identities, when known.
+ */
+static bool held_replaced_at(const void *held,
+                             const char *name,
+                             FileIdentity *r_held = nullptr,
+                             FileIdentity *r_at = nullptr)
+{
+  FileIdentity mine, at;
+  if (!BLI_file_identity_held(held, &mine)) {
+    return false;
+  }
+  errno = 0;
+  const bool found = BLI_file_identity(name, &at);
+#ifndef WIN32
+  /* No file at the name, or a link there (never followed): not this one, wherever it went. */
+  const bool gone = !found && ELEM(errno, ENOENT, ENOTDIR, ELOOP);
+#else
+  const bool gone = false;
+#endif
+  if (r_held) {
+    *r_held = mine;
+  }
+  if (r_at) {
+    *r_at = at;
+  }
+  return found ? !BLI_file_identity_same_file(at, mine) :
+                 (gone || BLI_file_identity_held_unlinked(held));
 }
 
 static bool BLO_write_file_impl(Main *mainvar,
@@ -2583,6 +2746,14 @@ static bool BLO_write_file_impl(Main *mainvar,
       mainvar, &ww, filepath, nullptr, nullptr, write_flags, use_userdef, thumb, debug_dst);
 
   const bool close_ok = ww.close();
+  if (params->written_valid) {
+    *params->written_valid = false; /* Angelo: a save that fails names no file. */
+  }
+  /* Angelo: the file this save wrote, held by its name while the writer's descriptor still kept
+   * it open, and only when it is the file that descriptor wrote (#WriteWrap::take_closed_hold).
+   * `tempname` is a predictable name, which another program can replace from here on. */
+  bool swapped = false;
+  void *written = params->written ? ww.take_closed_hold(&swapped) : nullptr;
 
   if (UNLIKELY(path_list_backup)) {
     BKE_bpath_list_restore(mainvar, path_list_flag, path_list_backup);
@@ -2591,8 +2762,35 @@ static bool BLO_write_file_impl(Main *mainvar,
 
   if (err || !close_ok) {
     BKE_report(reports, RPT_ERROR, errno ? strerror(errno) : "Failed to finish writing blend file");
-    remove(tempname);
+    /* Angelo: a save that identifies its file removes the name only while it holds its own file
+     * there: never another program's. A file left at `tempname` is replaced by the next save. */
+    FileIdentity writer, at;
+    if (params->written == nullptr ||
+        (written != nullptr ? !held_replaced_at(written, tempname) :
+                              (!swapped && ww.closed_identity(&writer) &&
+                               BLI_file_identity(tempname, &at) &&
+                               BLI_file_identity_same_file(at, writer))))
+    {
+      remove(tempname);
+    }
+    BLI_file_identity_release(written);
 
+    return false;
+  }
+
+  /* Angelo: the file written, held across its rename and identified after it through that handle:
+   * never a lookup of `filepath`, which another program could have replaced since. Without a hold
+   * the save names no file (#BlendFileWriteParams::written_valid). Checked before the version
+   * backups, so a refused save leaves every file on disk as it was: another program's file at
+   * `tempname` (found at the close, or there since: a replace, or a move of this one aside first)
+   * would otherwise be renamed into the document's place, with this save's bytes left behind. */
+  write_stage(0, written, tempname);
+  if (swapped || held_replaced_at(written, tempname)) {
+    BLI_file_identity_release(written);
+    BKE_report(reports,
+               RPT_ERROR,
+               RPT_("Cannot save: another program replaced the file being saved; the file on disk "
+                    "was not changed"));
     return false;
   }
 
@@ -2600,15 +2798,39 @@ static bool BLO_write_file_impl(Main *mainvar,
    * (move `.blend1` -> `.blend2`, `.blend` -> `.blend1` .. etc). */
   if (use_save_versions) {
     if (!do_history(filepath, reports)) {
+      BLI_file_identity_release(written);
       BKE_report(reports, RPT_ERROR, "Version backup failed (file saved with @)");
       return false;
     }
   }
 
+  write_stage(1, written, tempname);
   if (BLI_rename_overwrite(tempname, filepath) != 0) {
+    BLI_file_identity_release(written);
     BKE_report(reports, RPT_ERROR, "Cannot change old file (file saved with @)");
     return false;
   }
+  FileIdentity mine, at;
+  if (held_replaced_at(written, filepath, &mine, &at)) {
+    /* Angelo: another file is at the document's name now: one replaced between the check above
+     * and the rename (the rename put it there), or a file system that renames by a copy keeping
+     * the size and time (no warning: nothing tells them apart). The save names no file either way. */
+    if (at.size != mine.size || at.modified_ns != mine.modified_ns) {
+      BKE_report(reports,
+                 RPT_WARNING,
+                 RPT_("Saved, but another program replaced the file at the same moment: the file on "
+                      "disk may be that program's"));
+    }
+    BLI_file_identity_release(written);
+    written = nullptr;
+  }
+  if (params->written) {
+    const bool valid = BLI_file_identity_held(written, params->written);
+    if (params->written_valid) {
+      *params->written_valid = valid;
+    }
+  }
+  BLI_file_identity_release(written);
 
   if (params->use_durable) {
     /* Make the data and the renames durable: one flush of the drive's cache, which also covers the
@@ -2649,10 +2871,13 @@ bool BLO_write_file(Main *mainvar,
                     const BlendFileWriteParams *params,
                     ReportList *reports)
 {
+  if (params->written_valid) {
+    *params->written_valid = false; /* Angelo: a save that fails, however early, names no file. */
+  }
   if (blo_write_admit && !blo_write_admit(filepath, reports)) {
     return false;
   }
-  RawWriteWrap raw_wrap(params->use_durable);
+  RawWriteWrap raw_wrap(params->use_durable, params->written != nullptr);
 
   if (write_flags & G_FILE_COMPRESS) {
     ZstdWriteWrap zstd_wrap(raw_wrap);
@@ -2690,6 +2915,27 @@ bool BLO_write_checkpoint_to_descriptor(Main *mainvar,
   return write_file_to_descriptor(
       mainvar, logical_filepath, descriptor, write_flags, params, reports, writer, &context);
 }
+
+#ifdef WITH_GTESTS
+bool BLO_write_checkpoint_to_descriptor_for_test(Main *mainvar,
+                                                 const char *logical_filepath,
+                                                 const int descriptor,
+                                                 const int write_flags,
+                                                 const BlendFileWriteParams *params,
+                                                 ReportList *reports,
+                                                 const CheckpointWriteContext &context,
+                                                 const BlendFileDescriptorTestHooks &hooks)
+{
+  if (!hooks.write) {
+    BKE_report(reports, RPT_ERROR, "BASE descriptor test requires a write callback");
+    return false;
+  }
+  BorrowedDescriptorWriteWrap writer(descriptor);
+  writer.test_hooks = &hooks;
+  return write_file_to_descriptor(
+      mainvar, logical_filepath, descriptor, write_flags, params, reports, writer, &context);
+}
+#endif
 
 #ifdef WITH_GTESTS
 bool BLO_write_file_to_descriptor_for_test(Main *mainvar,

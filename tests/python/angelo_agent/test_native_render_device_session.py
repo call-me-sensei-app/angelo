@@ -9,6 +9,8 @@ viewport, the listing child itself), the device a job really used and the person
 calls the gate before it creates or resets a session (checked on its source).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import json
 import os
@@ -60,7 +62,10 @@ class Base(unittest.TestCase):
         timers = SimpleNamespace(is_registered=lambda function: function in self.timers,
                                  register=lambda function, **_: self.timers.append(function),
                                  unregister=lambda function: self.timers.remove(function))
-        self.app = SimpleNamespace(binary_path="/Applications/Angelo.app/Contents/MacOS/Angelo", timers=timers,
+        # A real absolute folder, resolved: Windows resolves a path without a drive against the current one, and a
+        # relative start's resolution (os.path.realpath) begins at the current folder as given.
+        binary = os.path.join(os.path.realpath(self.folder), "Angelo.app", "Contents", "MacOS", "Angelo")
+        self.app = SimpleNamespace(binary_path=binary, timers=timers,
                                    version_string="5.2.2", build_hash=b"42d31e3d07a5", background=False,
                                    handlers=SimpleNamespace(load_factory_preferences_post=[]))
         self.bpy = SimpleNamespace(app=self.app, utils=SimpleNamespace(user_resource=lambda *a, **k: self.folder),
@@ -114,10 +119,17 @@ class SavedListingTests(Base):
     def test_the_same_app_started_by_another_path_is_the_same_build(self):
         self.first_listing(APPLE)
         self.new_start()
+        # Really in the app's folder: Windows makes a relative path absolute in the system (GetFullPathNameW), never
+        # through os.getcwd, so only the process's own current folder says where a shell started it.
         cwd = Path(self.app.binary_path).parents[2]
-        with mock.patch("os.getcwd", return_value=str(cwd)):
+        cwd.mkdir(parents=True)
+        before = os.getcwd()
+        os.chdir(cwd)
+        try:
             self.app.binary_path = "Contents/MacOS/Angelo"   # Started from a shell inside the app's folder.
             self.assertEqual(render_device.setup(self.preferences, listing=False)["from"], "saved")
+        finally:
+            os.chdir(before)
 
     def test_another_build_lists_again(self):
         self.first_listing(APPLE)

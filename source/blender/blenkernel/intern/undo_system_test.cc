@@ -12,6 +12,7 @@
 #include "BLI_string.h"
 #include "BLI_vector.hh"
 
+#include "BKE_angelo_stage_links.hh"
 #include "BKE_context.hh"
 #include "BKE_callbacks.hh"
 #include "BKE_global.hh"
@@ -186,6 +187,7 @@ TEST_F(UndoSystemCheckedDecodeTest, RestoreLeaseBlocksMutationAndIsVisibleToWork
     UndoStack *stack = step.test_stack;
     ASSERT_TRUE(BKE_undosys_restore_activate(stack, bmain));
     EXPECT_EQ(BKE_undosys_restore_phase(), UndoRestorePhase::Preparing);
+    EXPECT_FALSE(BKE_undosys_capture_scope_active()); /* Angelo: a restore is never a capture. */
     bool worker_observed = false;
     std::thread observer([&]() {
       worker_observed = BKE_undosys_restore_phase() == UndoRestorePhase::Preparing &&
@@ -255,9 +257,12 @@ TEST_F(UndoSystemCheckedDecodeTest, CaptureRequiresItsActualCurrentMainOwner)
   UndoCaptureScope *scope = BKE_undosys_capture_begin(CTX_data_main(data.C), data.stack);
   ASSERT_NE(scope, nullptr);
   EXPECT_TRUE(BKE_undosys_capture_validate(scope));
+  /* Angelo: a native commit's capture is told apart from a restore (its own relinks run). */
+  EXPECT_TRUE(BKE_undosys_capture_scope_active());
   EXPECT_EQ(BKE_undosys_capture_begin(CTX_data_main(data.C), data.stack), nullptr);
   BKE_undosys_capture_end(scope);
   EXPECT_EQ(BKE_undosys_restore_phase(), UndoRestorePhase::Inactive);
+  EXPECT_FALSE(BKE_undosys_capture_scope_active());
 }
 
 TEST_F(UndoSystemCheckedDecodeTest, CaptureRefusesDuringUnmarkedDecodeWithoutActivatingLease)

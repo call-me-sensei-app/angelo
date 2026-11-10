@@ -16,6 +16,8 @@ was and the verdict is INCOMPLETE, every decided figure unchanged. A correct one
 or one that records no task: C6's lost trial), one that sent nothing (rule 2), a moved-aside workspace and a warm-up add
 nothing. An attempt's record that cannot be read cannot show its message and is named.
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import hashlib
 import json
 import re

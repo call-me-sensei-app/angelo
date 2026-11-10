@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later */
 #pragma once
 
+#include <string>
+
 #include "DNA_ID_enums.h"
 #include "DNA_listBase.h"
 
@@ -26,6 +28,7 @@ struct BHead;
 struct BlendfileLinkAppendContext;
 struct BlendThumbnail;
 struct FileData;
+struct FileIdentity;
 struct FileReader;
 struct ID;
 struct Library;
@@ -206,6 +209,13 @@ ENUM_OPERATORS(eBLOReadSkip)
 BlendFileData *BLO_read_from_file(const char *filepath,
                                   eBLOReadSkip skip_flags,
                                   BlendFileReadReport *reports);
+/**
+ * Angelo: the file the last #BLO_read_from_file on the main thread read (a document load, the
+ * preferences), identified on the descriptor it read through as it opened it: never a lookup of
+ * its name, which another program could replace before or after the read. False when there is
+ * none, or the file could not be identified (#FileIdentity, `BLI_fileops.hh`).
+ */
+bool BLO_angelo_last_read(std::string *r_path, FileIdentity *r_identity);
 /**
  * Open a blender file from memory. The function returns NULL
  * and sets a report in the list if it cannot open the file.
@@ -493,7 +503,8 @@ void BLO_library_link_params_init_with_context(LibraryLink_Params *params,
  * #BLO_blendhandle_from_file or #BLO_blendhandle_from_memory.
  * \param filepath: Used for relative linking, copied to the `lib->filepath`.
  * \param params: Settings for linking that don't change from beginning to end of linking.
- * \return the library #Main, to be passed to #BLO_library_link_named_part as \a mainl.
+ * \return the library #Main, to be passed to #BLO_library_link_named_part as \a mainl,
+ * or nullptr with an error report when an asset source route refuses this read.
  */
 Main *BLO_library_link_begin(BlendHandle **bh,
                              const char *filepath,

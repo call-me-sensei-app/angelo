@@ -11,6 +11,8 @@ closes the quote; the whole first message stays within the send limit, the schem
 reads, in order: the part, the image sentence, the person's messages, the looked-up schemas.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path
@@ -33,6 +35,15 @@ def lead(*rows):
 
 def person(text, **fields):
     return dict({"role": "user", "text": text}, **fields)
+
+
+class SteerReferenceTests(unittest.TestCase):
+    def test_a_steer_after_the_request_keeps_its_files_this_requests(self):
+        box = {"name": "box.png", "kind": "image", "bytes": 5, "path": "/nowhere/box.png"}
+        chat = lead(person("Build a hut", references=[box]), {"role": "assistant", "text": "Building"},
+                    person("make the roof red", steer=True, steer_id=1))
+        self.assertEqual(worker_references.taken(chat), [(box, worker_references.THIS)],
+                         "A steer belongs to its request and carries no files")
 
 
 class TakenTests(unittest.TestCase):

@@ -7,6 +7,8 @@ app-server schema and Claude Code 2.1.258 result contract. These fixtures prove
 the host's differencing and fencing, not a live provider's reporting.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import threading

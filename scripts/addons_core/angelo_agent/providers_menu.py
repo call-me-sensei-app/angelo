@@ -9,7 +9,7 @@ is no room). Remove asks in the menu itself, with the store's ``remove_descripti
 """
 
 from . import card_kit as kit
-from .card_kit import MUTED, TEXT
+from . import ui_tokens as tk
 from .ui_text import iface_
 
 
@@ -39,9 +39,9 @@ def layout(view, anchor, rows, confirm, region, scale, ui):
     if confirm:
         name, description = confirm
         b.gap(4)
-        b.paragraph(iface_("Remove {name}?", name=name), 14, TEXT)
+        b.paragraph(iface_("Remove {name}?", name=name), 14, tk.TEXT)
         b.gap(2)
-        b.paragraph(description, 12, MUTED)
+        b.paragraph(description, 12, tk.MUTED)
         b.gap(10)
         b.buttons([("menu_close", None, iface_("Cancel"), "secondary", True),
                    ("menu_remove_confirm", None, iface_("Remove"), "destructive", True)], size=12.5, height=30)

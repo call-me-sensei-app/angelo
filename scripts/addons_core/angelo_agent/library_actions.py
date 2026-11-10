@@ -44,6 +44,8 @@ def add(window, area, region, item, at=None):
     """Fetch then import ``item`` into ``area``'s scene: at region pixel ``at`` (a drop) or the view's centre."""
     from . import library_host
     state = _overlay().state_for(area)
+    if state.get("source") == "fab":
+        return False  # Only the owner-fenced review action may enqueue a Fab import.
     resolution = state["resolution"].get(item["id"])
     space, rv3d = area.spaces.active, region.data
     x, y = at if at is not None else (region.width / 2, region.height / 2)

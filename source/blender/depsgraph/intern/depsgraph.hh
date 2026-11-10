@@ -168,6 +168,13 @@ struct Depsgraph {
   DepsgraphDebug debug;
 
   bool is_evaluating;
+
+  /**
+   * Angelo: the Python wrapper of this graph (#RNA_struct_instance), invalidated with the
+   * wrappers and iterators that depend on it when the graph is freed (`bpy_rna.cc`, "Dependent
+   * Wrappers"). Owned by the graph (one reference).
+   */
+  void *py_instance = nullptr;
   /* Private checkpoint-only evaluation receipt and selected Object visibility. Empty/inactive
    * outside its synchronous lease; modifier eligibility still follows the ordinary profile. */
   bool checkpoint_pool_has_no_workers = false;

@@ -8,8 +8,10 @@ a fixed set of tone mappings. Rather than a table of names, both are measured on
 
 * the test set (``SAMPLES``) is a grey ramp from 6.5 stops under to 6.5 over middle grey and the 24 ColorChecker
   patches at six exposures: the range most renders occupy, neutrals and saturated colours alike;
-* Blender's side is its own OpenColorIO processor for the view and look on the sRGB display (``measure``), so a
-  custom configuration is measured the same way as the bundled one;
+* Blender's side is its own OpenColorIO processor for the view and look on the configuration's sRGB display
+  (``measure``, ``web_display``): the web is sRGB whatever the person's own monitor is (a Display P3, PQ or Rec.1886
+  display would measure that monitor's encoding instead), so a custom configuration is measured the same way as the
+  bundled one, ACES ones naming theirs "sRGB - Display";
 * three.js's side is its own shader code (``tonemapping_pars_fragment``), ported line for line below, then the sRGB
   (or, for a linear output, no) transfer the renderer applies;
 * the difference is the mean absolute difference of the display values, in percent of the display range.
@@ -22,6 +24,7 @@ over as ``2 ** exposure`` (``toneMappingExposure``).
 
 import hashlib
 import os
+import re
 
 import numpy as np
 
@@ -133,7 +136,34 @@ def exposure(stops):
     return round(2.0 ** float(stops), 6)
 
 
-_measured = {}   # (configuration, view, look) -> nearest(); a few entries per session.
+_measured = {}   # (configuration, view, look, display) -> nearest(); a few entries per session.
+_displays = {}   # (configuration, display, view) -> the display ``web_display`` measures on.
+_SRGB_DISPLAY = re.compile(r"srgb(\b|\s|$)", re.IGNORECASE)   # "sRGB", "sRGB - Display", never "sRGB (Linear)".
+
+
+def srgb_display(name):
+    """Whether a display is an sRGB one by its name: Blender's "sRGB", ACES configurations' "sRGB - Display"."""
+    return isinstance(name, str) and bool(_SRGB_DISPLAY.match(name.strip())) and "linear" not in name.lower()
+
+
+def web_display(config_path, display, view):
+    """The display a web page's colours are measured on: ``display`` when it is an sRGB one, else the
+    configuration's sRGB display that has ``view`` (the person may view on a wide-gamut or HDR monitor), else
+    ``display`` itself when the configuration has none."""
+    if srgb_display(display):
+        return display
+    key = (config_path, display, view)
+    if key not in _displays:
+        found = display
+        try:
+            import PyOpenColorIO as ocio
+            config = ocio.Config.CreateFromFile(config_path)
+            found = next((name for name in config.getDisplays() if srgb_display(name) and view in config.getViews(name)),
+                         display)
+        except Exception:  # noqa: BLE001 - unreadable: measured as given, and the measurement says why.
+            pass
+        _displays[key] = found
+    return _displays[key]
 _digests = {}    # (configuration, modified, size) -> sha256 of the file.
 
 
@@ -152,25 +182,25 @@ def _known(config_path, view, look):
     return None if found is None else {"tone_mapping": found[0], "output": found[1], "difference": found[2]}
 
 
-def measure(config_path, view, look):
-    """``nearest`` for ``view`` and ``look`` (None or "None": no look) of the OpenColorIO configuration at
-    ``config_path``, measured with Blender's bundled PyOpenColorIO; None when it cannot be read. Cached, and for
-    Angelo's own configuration measured ahead (``web_tone_known``), so an export never waits for it."""
+def measure(config_path, view, look, display="sRGB"):
+    """``nearest`` for ``view`` and ``look`` (None or "None": no look) on ``display`` of the OpenColorIO configuration
+    at ``config_path``, measured with Blender's bundled PyOpenColorIO; None when it cannot be read. Cached, and for
+    Angelo's own configuration measured ahead for sRGB (``web_tone_known``), so an export never waits for it."""
     look = None if look in (None, "", "None") else look
-    key = (config_path, view, look)
+    key = (config_path, view, look, display)
     if key not in _measured:
-        _measured[key] = (_known(config_path, view, look) if __package__ else None) or \
-            _measure(config_path, view, look)
+        _measured[key] = (_known(config_path, view, look) if __package__ and display == "sRGB" else None) or \
+            _measure(config_path, view, look, display)
     found = _measured[key]
     return dict(found) if found is not None else None
 
 
-def _measure(config_path, view, look):
+def _measure(config_path, view, look, display="sRGB"):
     try:
         import PyOpenColorIO as ocio
         config = ocio.Config.CreateFromFile(config_path)
         source = config.getRoleColorSpace("scene_linear")
-        transform = ocio.DisplayViewTransform(src=source, display="sRGB", view=view)
+        transform = ocio.DisplayViewTransform(src=source, display=display, view=view)
         if look:   # Blender applies the look in scene-linear light, before the view.
             transform = ocio.GroupTransform([ocio.LookTransform(src=source, dst=source, looks=look), transform])
         pixels = SAMPLES.astype(np.float32)

@@ -9,7 +9,7 @@ import sys
 import uuid
 from pathlib import Path
 
-from . import anchored_windows, private_conventions, private_roots
+from . import anchored_windows, change_clock, private_conventions, private_roots
 from .private_conventions import subtree_mounts  # noqa: F401 - file tools' name for it
 from .checkpoint_filesystem import (_file_info, _open_directory_at, _open_file, _private_directory,
     _replace_file, _unlink_file, assert_directory_identity, directory_info, entry_info,
@@ -329,13 +329,15 @@ class FileWorkspace:
         require_anchored_files()
         if name == "angelo_list_files":
             with self._folder(path) as folder:
-                info = directory_info(folder)
+                info = change_clock.settle(directory_info(folder), change=False)   # Entries changed later show.
                 return "directory", info.st_mtime_ns, info.st_ino, info.st_dev
         try:
             with self._folder(path.parent) as folder:
                 info = optional_info(folder, path.name)
         except FileNotFoundError:
             info = None
+        if info is not None and name != "angelo_read_file":   # What a mutation's later checks compare.
+            change_clock.settle(info, change=False)
         return file_signature(info) if info is not None else ("missing",)
 
     def _list(self, path):
@@ -382,6 +384,7 @@ class FileWorkspace:
                 opened = os.fstat(handle.fileno())
                 if not same_file(info, opened) or opened.st_nlink != 1 or opened.st_size > MAX_FILE:
                     raise ValueError("The workspace file changed while opening it")
+                change_clock.settle(opened, change=False)   # A write during the read changes the signature.
                 handle.seek(arguments["start"])
                 data = handle.read(arguments["length"])
                 if file_signature(os.fstat(handle.fileno())) != file_signature(opened):

@@ -13,6 +13,8 @@ function, the benchmark's layout-free draw stays the benchmark's, and Angelo's c
 own pass. ``test_blender_window_pixels_gui`` compares the capture with the screen in many editors and regions.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import unittest
 from pathlib import Path

@@ -3,6 +3,8 @@
 """Fixed native cache cases after the original measurements: the marble's reuse gate (the aggregate ratio is
 reported only, test_native_marble_cache_contract)."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import time
 import traceback
 
@@ -15,8 +17,8 @@ MAX_SECONDS = 2.0
 CASES = ('cold', 'key', 'size', 'expiry', 'unrequested', 'pixels')
 CHECKS = CASES + ('cleanup', 'deadline', 'accounting', 'outer_deadline')
 KEY_FIELDS = ('width', 'height', 'scale', 'font', 'rtl', 'session', 'version', 'status', 'attachments',
-              'scroll', 'draft', 'font_size', 'input_serial', 'hover', 'pressed', 'focus', 'focused',
-              'selection', 'scrollbar', 'jobs', 'hero_size', 'clock')
+              'scroll', 'history_start', 'draft', 'font_size', 'input_serial', 'hover', 'pressed', 'focus', 'focused',
+              'selection', 'scrollbar', 'composer_scroll', 'jobs', 'hero_size', 'clock')
 
 
 def assert_inactive():

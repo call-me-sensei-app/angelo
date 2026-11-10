@@ -10,6 +10,8 @@ Windows and Linux backends have their own suites
 the platform selector is in ``test_native_key_store.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import threading
 import time

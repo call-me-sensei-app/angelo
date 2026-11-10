@@ -10,6 +10,8 @@ a request on a status call (2.8-8.2 s) after its own script before merging a par
 message instead of 16-20 s.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import unittest

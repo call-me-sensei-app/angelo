@@ -11,6 +11,8 @@ older one, and closes every client when it stops; it keeps, bounded, the engine 
 version and what the editor can show.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import socket
@@ -21,10 +23,12 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import engine_link_protocol as protocol, engine_link_server  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 TOKEN = bytes(range(32))
 
@@ -116,18 +120,25 @@ class RecordTests(unittest.TestCase):
             pid -= 1
         return pid
 
-    @unittest.skipIf(sys.platform == "win32", "file modes and symbolic links")
-    def test_unsafe_records_are_ignored(self):
+    def test_a_linked_record_is_never_followed(self):
         self.path.parent.mkdir(parents=True)
         target = self.folder / "elsewhere.json"
         target.write_text(json.dumps(self.record))
         os.chmod(target, 0o600)
-        os.symlink(target, self.path)
+        try:
+            os.symlink(target, self.path)
+        except OSError:
+            if os.name != "nt":
+                raise
+            self.skipTest(environment_skip("Windows makes a symlink only with a privilege this user lacks"))
         self.assertIsNone(protocol.read_record(self.path), "a link is never followed")
-        os.unlink(self.path)
+
+    def test_unsafe_records_are_ignored(self):
+        self.path.parent.mkdir(parents=True)
         self.path.write_text(json.dumps(self.record))
-        os.chmod(self.path, 0o644)
-        self.assertIsNone(protocol.read_record(self.path), "readable by others")
+        if sys.platform != "win32":   # Windows has no mode bits: the per-user data folder is the record's privacy.
+            os.chmod(self.path, 0o644)
+            self.assertIsNone(protocol.read_record(self.path), "readable by others")
         os.chmod(self.path, 0o600)
         for broken in (dict(self.record, token="zz" * 32), dict(self.record, port=0), dict(self.record, protocol="x")):
             self.path.write_text(json.dumps(broken))
@@ -304,12 +315,37 @@ class ClientInfoTests(unittest.TestCase):
     def test_the_engine_its_version_and_capabilities_are_kept(self):
         info = engine_link_server.client_info({"engine": "unreal", "unreal": "5.8.2", "project": "/p",
                                                "capabilities": ["durable"], "token": "never kept"})
-        self.assertEqual(info, {"engine": "unreal", "version": "5.8.2", "project": "/p", "capabilities": ["durable"]})
+        self.assertEqual(info, {"engine": "unreal", "version": "5.8.2", "project": "/p",
+                                "project_key": engine_link_server.project_key("/p"), "capabilities": ["durable"]})
 
     def test_an_editor_that_names_no_engine_is_godot_and_says_nothing_it_shows(self):
         info = engine_link_server.client_info({"godot": "4.7.2", "project": "/p"})
-        self.assertEqual(info, {"engine": "godot", "version": "4.7.2", "project": "/p"})
+        self.assertEqual(info, {"engine": "godot", "version": "4.7.2", "project": "/p",
+                                "project_key": engine_link_server.project_key("/p")})
         self.assertNotIn("capabilities", info, "absent: the engine's adapter decides")
+
+    def test_an_editors_project_is_resolved_when_it_authenticates_and_never_when_compared(self):
+        """The engine link compares an editor's project with the linked asset's on the main thread (``serves``), so
+        the folder is resolved once, here, on the client's thread: through a link it is the folder linked to."""
+        from angelo_agent import engine_link_assets as assets, godot_link_assets as godot
+        folder = Path(tempfile.mkdtemp()).resolve()
+        game, other = folder / "game", folder / "other"
+        for project in (game, other):
+            project.mkdir()
+            (project / "project.godot").write_text("config_version=5\n")
+            (project / "crate.glb").write_bytes(b"x")
+        (folder / "link").symlink_to(game, target_is_directory=True)
+        asset = godot.resolve({"project": str(game), "asset": "res://crate.glb"})
+        linked, elsewhere = (engine_link_server.client_info({"project": str(path)}) for path in (folder / "link", other))
+        self.assertEqual(linked["project"], str(folder / "link"))   # As the editor said it, for what it says.
+        with mock.patch.object(os.path, "realpath", side_effect=AssertionError("a folder read when compared")):
+            self.assertEqual((assets.serves(asset, linked), assets.serves(asset, elsewhere)), (True, False))
+            self.assertFalse(assets.serves(asset, {"engine": "godot"}), "no project: never this one")
+        # A NUL names no folder: POSIX's realpath refuses it, Windows' makes it absolute; either way it never raises
+        # and the key keeps the NUL, so it matches no resolved project.
+        unresolvable = engine_link_server.client_info({"project": "a\0b"})
+        self.assertIn("\0", unresolvable["project_key"])
+        self.assertFalse(assets.serves(asset, unresolvable))
 
     def test_everything_is_bounded(self):
         info = engine_link_server.client_info({"engine": "x" * 99, "capabilities": ["y" * 99] * 50,

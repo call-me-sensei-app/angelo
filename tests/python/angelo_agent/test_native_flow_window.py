@@ -5,6 +5,8 @@ node editor chrome (``flow_window``), text fields that never cut their text (``f
 only waits for an account or a model said neutrally, never as a red failure (``flow_nodes``). The drawn result is
 the GUI suites' (``test_blender_studio_discoverability``, ``test_blender_chat_start_states``)."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import sys
 import types

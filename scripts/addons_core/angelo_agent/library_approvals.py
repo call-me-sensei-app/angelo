@@ -31,6 +31,10 @@ def _effect(kind, args):
 def message(name, args):
     if name != "angelo_library_import":
         return {"title": iface_("Angelo Library action"), "body": name, "warning": ""}
+    if args['item_id'].startswith('fab:'):
+        return _fab_message(args)
+    if args['item_id'].startswith('blender:'):
+        return _blender_message(args)
     from . import library_catalog, library_host
     item = library_host.library().get(args["item_id"])
     if item is None:   # The precondition refuses this before a card; a catalog swapped meanwhile lands here.
@@ -47,3 +51,44 @@ def message(name, args):
     return {"title": iface_("Add from the Angelo Library"), "body": body,
             "warning": iface_("Downloads the files from ToonLab, checks them (format, size, checksums) and imports "
                               "them as one Undo step. Nothing in them runs.")}
+
+
+def _blender_message(args):
+    from . import blender_assets
+    from .refusal_codes import RefusalError
+    try:
+        row = blender_assets.get(args['item_id'])
+    except RefusalError:
+        return {'title': iface_('Add from the Angelo Library'), 'body': iface_('Item {id}', id=args['item_id']),
+                'warning': iface_("This item isn't in the library's catalog any more.")}
+    body = 'Blender Essentials · ' + iface_('“{title}” · {license} · {size}', title=row['name'],  # i18n: product name
+                                           license=row['license'] or iface_('licence not stated'),
+                                           size=_size(sum(f['size'] for f in row.get('files', (row['file'],)))))
+    if row['kind'] == 'node_group' and args.get('objects'):
+        effect = iface_('Adds this Geometry Nodes asset as a modifier on the chosen meshes.')
+    elif row['kind'] in {'node_group', 'brush'}:
+        effect = iface_('Loads the asset into this file without connecting nodes or activating a brush.')
+    else:
+        effect = _effect({'material': 'texture', 'world': 'hdri'}.get(row['kind'], row['kind']), args)
+    return {'title': iface_('Add from the Angelo Library'), 'body': body + '\n' + effect,
+            'warning': iface_("Uses Blender Essentials. Downloads its file only if needed, verifies it and appends "
+                              "the selected asset as one Undo step.")}
+
+
+def _fab_message(args):
+    from . import fab_ui
+    facts = args.get('_fab_review')
+    if type(facts) is not dict:
+        return {'title': 'Fab', 'body': iface_('Item {id}', id=args['item_id']),  # i18n: product name
+                'warning': iface_('Choose an asset to review its license and versions.')}
+    size = fab_ui.size_text(facts)
+    if size is None:
+        raise ValueError('The approved Fab choice has no bounded size')
+    body = '\n'.join([facts['title'], facts['version'],
+        iface_('License: {license}', license=facts['license']),
+        iface_('Access: {access}', access=iface_(fab_ui.ACCESS.get(facts['access'], fab_ui.ACCESS['unverified']))),
+        size, _effect('model', args)])
+    if facts['attribution']:
+        body += '\n' + iface_('Credit required: {attribution}', attribution=facts['attribution'])
+    return {'title': 'Fab', 'body': body,  # i18n: product name
+            'warning': iface_('Downloads the approved Fab version, verifies it and imports it as one Undo step. Nothing in the file runs.')}

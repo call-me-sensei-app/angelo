@@ -144,7 +144,7 @@ def _adopt_names(pairs, journal):
     Staging copies data, Actions and Worlds, which Blender names with a
     suffix (``Cube.001``). After commit the replaced ID has no users when the
     edited object was its only user, so the copy takes its name and the orphan
-    the suffixed one; a replaced ID that other users keep (shared data) keeps
+    the suffixed one (freed after the commit, ``commit_orphans``); a replaced ID that other users keep (shared data) keeps
     its name. Every rename is journaled for rollback.
     """
     import uuid

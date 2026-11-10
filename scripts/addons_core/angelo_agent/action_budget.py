@@ -223,16 +223,7 @@ def assert_evaluation_budget(context, obj, drivers=True):
     """
     context.assert_staged(obj)
     if drivers:
-        from .driver_rules import problem
-        for block in context.owned_ids:
-            for holder in (block, getattr(block, 'node_tree', None)):
-                animation = getattr(holder, 'animation_data', None)
-                for curve in animation.drivers if animation is not None else ():
-                    found = problem(curve)
-                    if found is not None:  # Python, or the stage's context: never evaluated by a stage (driver_rules).
-                        raise RefusalError('Native staged evaluation runs only drivers Blender evaluates natively, '
-                                           'not %s (%r drives %s)' % (found, str(holder.name)[:64], curve.data_path[:96]),
-                                           code='UNSUPPORTED')
+        assert_staged_drivers(context)
     if obj.type == 'MESH':
         return _modifier_bound(context, obj)
     if obj.type == 'ARMATURE' and len(obj.data.bones) > MAX_EVALUATED_BONES:
@@ -245,8 +236,47 @@ def assert_evaluation_budget(context, obj, drivers=True):
 
 
 
+def assert_staged_drivers(context):
+    """Before any evaluation: every driver on every ID the stage owns (and the node tree each embeds) is native and
+    reaches only what the stage may evaluate (driver_rules.stage_problem), else refused. It reads every owned ID
+    whatever is staged, a World or scene settings with no object included."""
+    from .driver_rules import stage_problem, stage_refusal
+    inside = stage_reach(context)
+    for block in context.owned_ids:
+        for holder in (block, getattr(block, 'node_tree', None)):
+            animation = getattr(holder, 'animation_data', None)
+            for curve in animation.drivers if animation is not None else ():
+                found, named = stage_problem(curve, holder, inside)
+                if found is not None:  # Python, or data the stage does not own: never evaluated (driver_rules).
+                    raise RefusalError(stage_refusal(found, holder, curve, named, context), code='UNSUPPORTED')
+
+
+def stage_reach(context):
+    """What a staged driver may reach (``driver_rules.stage_problem``): an ID the stage owns, or one it embeds.
+
+    The stage's depsgraph builds every ID a driver's targets name and every ID their paths cross, and writes their
+    evaluated animation back to the originals, so a driver reaching a live ID refuses before the first evaluation.
+    With the stage-links routes (``stage_links.available()``: every link of a staged ID names its staged or reference
+    copy, and ``stage_routes.check`` refuses before every evaluation a driver read that crosses anything but owned,
+    live or borrowed data, a driver-reached scene, and a destination outside the stage: ``stage_paths``), that check
+    decides, and this one defers to it. Without them it is the defence, fail-closed."""
+    try:
+        from . import stage_links, stage_routes  # noqa: F401  Both, or neither: the routes ship together.
+    except ImportError:
+        stage_links = None
+    if stage_links is not None and stage_links.available():
+        return lambda block: True
+    owned = set()
+    for block in context.owned_ids:
+        owned.add(block.as_pointer())
+        tree = getattr(block, 'node_tree', None)
+        if tree is not None and getattr(tree, 'is_embedded_data', False):
+            owned.add(tree.as_pointer())
+    return lambda block: block.as_pointer() in owned
+
+
 def assert_stage_budgets(context):
-    """``assert_evaluation_budget`` for every staged object, with one driver scan for all of them.
+    """``assert_evaluation_budget`` for every staged object, with one driver scan of every owned ID.
 
     The pass reads the stage collection once and changes nothing, so membership
     is answered from that snapshot instead of one collection lookup per object.
@@ -256,8 +286,9 @@ def assert_stage_budgets(context):
     staged_objects = list(context.collection.objects)
     context.members = {staged.as_pointer() for staged in staged_objects}
     try:
-        for index, staged in enumerate(staged_objects):
-            assert_evaluation_budget(context, staged, drivers=not index)
+        assert_staged_drivers(context)   # Once, and also for a stage that holds no object (a World edit).
+        for staged in staged_objects:
+            assert_evaluation_budget(context, staged, drivers=False)
     finally:
         context.members = None
 
@@ -269,5 +300,7 @@ def _update_stage(context):
     end()  # Evaluation runs drivers and depsgraph handlers: no exact read before it is reused after it.
     assert_stage_budgets(context)
     from .kept_values import kept_update
-    kept_update(context, context.view_layer.update)  # Unkeyed values Blender keeps stay (kept_values).
+    from . import stage_routes
+    # Validate, release for this evaluation only, then hold and inspect its tripwire.
+    stage_routes.guarded(context, lambda: kept_update(context, context.view_layer.update))
     assert_evaluated(context.view_layer.depsgraph, context.collection.objects)

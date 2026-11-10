@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 #include "MEM_guardedalloc.h"
 
@@ -18,6 +19,7 @@
 #include "BLI_path_utils.hh" /* Only for assertions. */
 #include "BLI_set.hh"
 #include "BLI_string.h"
+#include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
 #include "DNA_genfile.h"
@@ -101,6 +103,9 @@ static bool blendhandle_load_id_data_and_validate(FileData *fd,
   r_idflag = blo_bhead_id_flag(fd, bhead);
   if (r_library_data) {
     r_library_data->filepath = blo_bhead_library_filepath(fd, bhead);
+    if (!r_library_data->filepath) {
+      return false;
+    }
     r_library_data->flag = blo_bhead_library_flag(fd, bhead);
   }
   /* Do not list (and therefore allow direct linking of) packed data.
@@ -198,7 +203,14 @@ LinkNode *BLO_blendhandle_get_datablock_info(BlendHandle *bh,
         bhead = blo_read_asset_data_block(fd, bhead, &asset_meta_data);
         /* blo_read_asset_data_block() reads all DATA heads and already advances bhead to the
          * next non-DATA one. Go back, so the loop doesn't skip the non-DATA head. */
-        bhead = blo_bhead_prev(fd, bhead);
+        if (bhead) {
+          bhead = blo_bhead_prev(fd, bhead);
+        }
+        /* Asset data is missing in corrupt files. */
+        if (use_assets_only && asset_meta_data == nullptr) {
+          MEM_delete(info);
+          continue;
+        }
       }
 
       STRNCPY(info->name, name);
@@ -207,7 +219,8 @@ LinkNode *BLO_blendhandle_get_datablock_info(BlendHandle *bh,
 
       bool has_preview = false;
       /* See if we can find a preview in the data of this ID. */
-      for (BHead *data_bhead = blo_bhead_next(fd, id_bhead); data_bhead->code == BLO_CODE_DATA;
+      for (BHead *data_bhead = blo_bhead_next(fd, id_bhead);
+           data_bhead && data_bhead->code == BLO_CODE_DATA;
            data_bhead = blo_bhead_next(fd, data_bhead))
       {
         if (data_bhead->SDNAnr == sdna_nr_preview_image) {
@@ -250,17 +263,26 @@ static BHead *blo_blendhandle_read_preview_rects(FileData *fd,
         preview_from_file->h[preview_index])
     {
       bhead = blo_bhead_next(fd, bhead);
-      BLI_assert((preview_from_file->w[preview_index] * preview_from_file->h[preview_index] *
-                  sizeof(uint)) == bhead->len);
-      result->rect[preview_index] = static_cast<uint *>(
-          BLO_library_read_struct(fd, bhead, "PreviewImage Icon Rect"));
+
+      const int64_t pixels_num = int64_t(preview_from_file->w[preview_index]) *
+                                 preview_from_file->h[preview_index];
+      const int64_t pixel_size = sizeof(uint);
+      if (bhead && bhead->SDNAnr == SDNA_RAW_DATA_STRUCT_INDEX && bhead->len % pixel_size == 0 &&
+          bhead->len / pixel_size == pixels_num)
+      {
+        result->rect[preview_index] = static_cast<uint *>(
+            BLO_library_read_struct(fd, bhead, "PreviewImage Icon Rect"));
+      }
+      else {
+        result->rect[preview_index] = nullptr;
+      }
+      if (result->rect[preview_index] == nullptr) {
+        result->w[preview_index] = result->h[preview_index] = 0;
+      }
     }
     else {
       /* This should not be needed, but can happen in 'broken' .blend files,
        * better handle this gracefully than crashing. */
-      BLI_assert(preview_from_file->rect[preview_index] == nullptr &&
-                 preview_from_file->w[preview_index] == 0 &&
-                 preview_from_file->h[preview_index] == 0);
       result->rect[preview_index] = nullptr;
       result->w[preview_index] = result->h[preview_index] = 0;
     }
@@ -352,6 +374,20 @@ void BLO_read_invalidate_message(BlendHandle *bh, Main *bmain, const char *messa
 
 /**********/
 
+/** #BLO_angelo_last_read: main thread only. */
+static std::string blo_angelo_read_path;
+static FileIdentity blo_angelo_read_identity;
+
+bool BLO_angelo_last_read(std::string *r_path, FileIdentity *r_identity)
+{
+  if (!BLI_thread_is_main() || blo_angelo_read_path.empty()) {
+    return false;
+  }
+  *r_path = blo_angelo_read_path;
+  *r_identity = blo_angelo_read_identity;
+  return true;
+}
+
 BlendFileData *BLO_read_from_file(const char *filepath,
                                   eBLOReadSkip skip_flags,
                                   BlendFileReadReport *reports)
@@ -363,9 +399,16 @@ BlendFileData *BLO_read_from_file(const char *filepath,
   FileData *fd;
 
   fd = blo_filedata_from_file(filepath, reports);
+  if (BLI_thread_is_main()) {
+    /* Before its libraries are read: the file this read is of, or none. */
+    const bool known = fd != nullptr && fd->file_identity.has_value();
+    blo_angelo_read_path = known ? (fd->asset_source_paths ? fd->relabase : filepath) : "";
+    blo_angelo_read_identity = known ? *fd->file_identity : FileIdentity();
+  }
   if (fd) {
     fd->skip_flags = skip_flags;
-    bfd = blo_read_file_internal(fd, filepath);
+    /* Asset reads use the mapped private identity consistently, including relative-path repair. */
+    bfd = blo_read_file_internal(fd, fd->asset_source_paths ? fd->relabase : filepath);
     blo_filedata_free(fd);
   }
 

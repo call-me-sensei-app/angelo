@@ -27,6 +27,7 @@ Elsewhere they call ``subprocess`` itself (only the UTF-8 default differs).
 """
 
 import os
+import math
 import struct
 import subprocess
 import threading
@@ -36,6 +37,7 @@ CREATE_SUSPENDED = 0x00000004
 CREATE_NO_WINDOW = 0x08000000
 IMAGE_SUBSYSTEM_WINDOWS_GUI = 2
 JOB_OBJECT_BASIC_PROCESS_ID_LIST = 3
+JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1
 PROCESS_TERMINATE, PROCESS_QUERY_LIMITED_INFORMATION = 0x0001, 0x1000
 
 
@@ -61,10 +63,31 @@ def console_members(pids, program_of):
     return [pid for pid in pids if pe_subsystem(program_of(pid) or "") != IMAGE_SUBSYSTEM_WINDOWS_GUI]
 
 
+class ChildCleanupUnavailable(RuntimeError):
+    """Retain exact owner; unknown native-close outcomes permanently forbid handle reuse.
+
+    Known pending exit/member state may be observed again with the same owner.
+    The original operation remains __cause__; no passive-to-force fallback is implied.
+    """
+    def __init__(self, owner, cleanup_error):
+        super().__init__("Owned Windows child cleanup is unproved")
+        self.owner, self.cleanup_error = owner, cleanup_error
+
+
+def _deadline(value):
+    if type(value) not in (int, float) or not math.isfinite(value):
+        raise ValueError("A finite monotonic deadline is required")
+    return value
+
+
 class _WindowsJob:
     """A Job Object holding one process tree (kernel32 through ctypes)."""
 
-    def __init__(self, process_handle, pid):
+    def __init__(self, process_handle, pid, *, required=False):
+        self.handle, self.lock, self.closed = None, threading.Lock(), False
+        self.required = required
+        self._close_attempted = False
+        self.close_unknown = False
         import ctypes
         from ctypes import wintypes
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -87,8 +110,14 @@ class _WindowsJob:
             function = getattr(kernel32, name)
             function.restype, function.argtypes = restype, argtypes
         # A reader thread's wait() may close the job while the UI thread terminates it: never use a closed handle.
-        self.kernel32, self.ctypes, self.handle, self.lock, self.closed = kernel32, ctypes, None, threading.Lock(), False
+        self.kernel32, self.ctypes = kernel32, ctypes
         job = kernel32.CreateJobObjectW(None, None)
+        if required:
+            self.handle = job or None  # Retain even an unassigned job if setup fails.
+            if not job or not kernel32.AssignProcessToJobObject(job, int(process_handle)):
+                raise OSError("The required process job could not be attached")
+            self._resume(pid)
+            return
         if job and kernel32.AssignProcessToJobObject(job, int(process_handle)):
             self.handle = job
         elif job:
@@ -125,6 +154,7 @@ class _WindowsJob:
 
     def terminate(self, pid, keep_gui=False):
         with self.lock:
+            self._require_known_locked()
             if self.handle is not None:
                 if keep_gui:
                     self._end_console_members()
@@ -174,8 +204,64 @@ class _WindowsJob:
                     self.kernel32.CloseHandle(process)
             time.sleep(0.05)
 
+    def _require_known_locked(self):
+        # Once native CloseHandle was attempted without a known success, its numeric
+        # value may be closed/reused. No query, signal or close may use it again.
+        if (getattr(self, "required", False) and
+                (getattr(self, "close_unknown", False) or
+                 (getattr(self, "_close_attempted", False) and not self.closed))):
+            raise OSError("The retained process job close outcome is unknown")
+
+    def _active_count_locked(self):
+        """Checked BASIC_ACCOUNTING_INFORMATION, Windows LARGE_INTEGER/DWORD widths."""
+        self._require_known_locked()
+        ctypes = self.ctypes
+        class ACCOUNTING(ctypes.Structure):
+            _fields_ = [(name, ctypes.c_int64) for name in
+                        ("user", "kernel", "period_user", "period_kernel")] + [
+                        (name, ctypes.c_uint32) for name in
+                        ("faults", "total", "active", "terminated")]
+        if self.handle is None or ctypes.sizeof(ACCOUNTING) != 48:
+            raise OSError("The retained process job is unavailable")
+        found = ACCOUNTING()
+        if not self.kernel32.QueryInformationJobObject(self.handle, JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION, ctypes.byref(found),
+                                                       ctypes.sizeof(found), None):
+            raise OSError("The retained process job could not be inspected")
+        return found.active
+
+    def active_count(self):
+        with self.lock:
+            return self._active_count_locked()
+
+    def terminate_owned(self):
+        """No PID fallback, including when the leader has already exited."""
+        with self.lock:
+            self._require_known_locked()
+            if self.handle is None or not self.kernel32.TerminateJobObject(self.handle, 1):
+                raise OSError("The retained process job could not be terminated")
+
+    def wait_empty(self, deadline):
+        deadline = _deadline(deadline)
+        while time.monotonic() < deadline:
+            if self.active_count() == 0:
+                return
+            time.sleep(min(.05, max(0, deadline - time.monotonic())))
+        raise subprocess.TimeoutExpired("owned Windows job", 0)
+
     def close(self):
         with self.lock:
+            if getattr(self, "required", False):
+                if self.closed:
+                    return
+                if self._active_count_locked() != 0:
+                    raise OSError("The retained process job still has members")
+                self._require_known_locked()
+                self._close_attempted = True
+                self.close_unknown = True  # Publish uncertainty BEFORE the sole native attempt.
+                if not self.kernel32.CloseHandle(self.handle):
+                    raise OSError("The retained process job handle could not be closed")
+                self.handle, self.closed, self.close_unknown = None, True, False
+                return
             self.closed = True
             if self.handle is not None:
                 self.kernel32.CloseHandle(self.handle)
@@ -189,21 +275,154 @@ def _utf8(kwargs):
 
 
 class ChildProcess(subprocess.Popen):
-    """Windows only: started suspended in a Job Object, without a console window."""
+    """Windows child, suspended until Job Object setup, without a console window.
 
-    def __init__(self, args, keep_gui_programs=False, **kwargs):
+    retain_job=True is an explicit owner API: requires attachment, retains the job
+    after leader exit, and requires explicit drain_job(deadline) or the signal-free
+    finish_job_passive(deadline) normal-retention proof. Defaults preserve CLI/browser
+    sign-in behavior. Strict startup failure cleanup is bounded to five seconds; a
+    ChildCleanupUnavailable retains the partial process owner for retry.
+    """
+
+    def __init__(self, args, keep_gui_programs=False, *, retain_job=False, **kwargs):
+        if type(retain_job) is not bool or (retain_job and keep_gui_programs):
+            raise ValueError("A retained job cannot preserve unrelated GUI programs")
+        self._retain_job = retain_job
+        self._job_lifecycle_lock = threading.RLock()
+        self._job_force_attempted = False
+        self._passive_drained_job = None
+        self._job_ready = False
         self._job, self._keep_gui = None, keep_gui_programs
         kwargs["creationflags"] = kwargs.get("creationflags", 0) | CREATE_NO_WINDOW | CREATE_SUSPENDED
         super().__init__(args, **kwargs)
         try:
-            self._job = _WindowsJob(self._handle, self.pid)
-        except BaseException:
-            super().kill()
-            super().wait()
+            if retain_job:
+                # Publish the partial owner before attachment/resume can fail.
+                self._job = _WindowsJob.__new__(_WindowsJob)
+                self._job.__init__(self._handle, self.pid, required=True)
+            else:
+                self._job = _WindowsJob(self._handle, self.pid)
+            self._job_ready = True
+        except BaseException as primary:
+            if retain_job:
+                try:
+                    self._failed_start_cleanup(time.monotonic() + 5)
+                except BaseException as cleanup:
+                    raise ChildCleanupUnavailable(self, cleanup) from primary
+            else:
+                super().kill()
+                super().wait()
             raise
 
+    def _finish_job_drain(self, deadline, *, kill_leader=False):
+        with self._job_lifecycle_lock:
+            self._job_force_attempted = True  # Before any termination/partial-start cleanup.
+            return self._finish_job_drain_locked(deadline, kill_leader=kill_leader)
+
+    def _finish_job_drain_locked(self, deadline, *, kill_leader=False):
+        failure, reaped, empty = None, False, False
+        job = self._job
+        if job is not None and getattr(job, "handle", None) is not None:
+            try:
+                job.terminate_owned()
+            except OSError as error:
+                failure = error
+        if kill_leader:
+            try:
+                super().kill()  # Partial attachment may have left this own child outside the job.
+            except OSError as error:
+                failure = failure or error
+        try:
+            super().wait(timeout=max(0, deadline - time.monotonic()))
+            reaped = True
+        except (OSError, subprocess.TimeoutExpired) as error:
+            failure = failure or error
+        if job is not None and getattr(job, "handle", None) is not None:
+            try:
+                job.wait_empty(deadline)
+                empty = True
+            except (OSError, subprocess.TimeoutExpired) as error:
+                failure = failure or error
+            if reaped and empty:
+                try:
+                    job.close()
+                except OSError as error:
+                    failure = failure or error
+        if failure is not None:
+            raise failure
+
+    def _failed_start_cleanup(self, deadline):
+        self._finish_job_drain(deadline, kill_leader=True)
+
+    def drain_job(self, deadline):
+        """Opt-in owner: terminate, prove all members gone and reap leader before releasing job.
+
+        Failure retains this object/job for retry. A leader exit alone is never drain proof.
+        No native Windows support, profile ACL or browser capability is implied.
+        """
+        deadline = _deadline(deadline)
+        if not self._retain_job or self._job is None:
+            raise ValueError("No retained job was requested")
+        with self._job_lifecycle_lock:
+            self._job_force_attempted = True  # A force/default cancellation can never earn retention.
+        try:
+            if self._job.closed:
+                return
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(self.args, 0)
+            if not self._job_ready:
+                self._failed_start_cleanup(deadline)
+                return
+            self._finish_job_drain(deadline)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise ChildCleanupUnavailable(self, error) from error
+
+    def finish_job_passive(self, deadline):
+        """Normal-retention owner: zero exit, whole Job empty and one known close.
+
+        Uses this existing child/Job only. Never signals, kills, reopens a PID or
+        falls back to force drain. Any uncertainty retains ChildCleanupUnavailable.owner.
+        Only this method's own completed proof is idempotent; job.closed alone is not.
+        """
+        deadline = _deadline(deadline)
+        if not self._retain_job or self._job is None:
+            raise ValueError("No retained job was requested")
+        with self._job_lifecycle_lock:
+            job = self._job
+            try:
+                if self._job_force_attempted or not self._job_ready:
+                    raise OSError("This child cannot prove a passive normal exit")
+                if self._passive_drained_job is job:
+                    return
+                if job.closed or getattr(job, "close_unknown", False):
+                    raise OSError("No passive completion proof exists for this Job")
+                if time.monotonic() >= deadline:
+                    raise subprocess.TimeoutExpired(self.args, 0)
+                code = super().wait(timeout=max(0, deadline - time.monotonic()))
+                if type(code) is not int or code != 0:
+                    raise OSError("The owned child did not exit normally with code zero")
+                job.wait_empty(deadline)  # Checked whole-Job accounting, not leader exit alone.
+                if time.monotonic() >= deadline:
+                    raise subprocess.TimeoutExpired(self.args, 0)
+                job.close()  # Same Job checks empty again and latches native-close uncertainty.
+                if not job.closed or job.handle is not None or getattr(job, "close_unknown", False):
+                    raise OSError("The retained process Job close is not known")
+                self._passive_drained_job = job  # Set only after all native proofs above.
+            except BaseException as error:
+                raise ChildCleanupUnavailable(self, error) from error
+
     def _end_tree(self):
-        if self._job is not None and self.returncode is None:
+        with self._job_lifecycle_lock:
+            if self._retain_job:
+                self._job_force_attempted = True
+            return self._end_tree_locked()
+
+    def _end_tree_locked(self):
+        if self._retain_job:
+            if self._job is None:
+                raise OSError("The retained process job is unavailable")
+            self._job.terminate_owned()
+        elif self._job is not None and self.returncode is None:
             self._job.terminate(self.pid, keep_gui=self._keep_gui)
 
     def terminate(self):
@@ -216,13 +435,13 @@ class ChildProcess(subprocess.Popen):
 
     def poll(self):
         code = super().poll()
-        if code is not None and self._job is not None:
+        if code is not None and self._job is not None and not self._retain_job:
             self._job.close()   # Survivors (a browser it opened) keep running.
         return code
 
     def wait(self, timeout=None):
         code = super().wait(timeout)
-        if self._job is not None:
+        if self._job is not None and not self._retain_job:
             self._job.close()
         return code
 

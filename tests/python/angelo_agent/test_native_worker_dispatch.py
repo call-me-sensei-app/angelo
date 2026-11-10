@@ -12,6 +12,8 @@ while a message is prepared on the lane ends the delivery (M-5). The in-Blender 
 slow edit) is ``test_blender_parallel_workers.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import threading
 import time

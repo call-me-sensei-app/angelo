@@ -11,6 +11,8 @@ is fitted to keep each engine's name exactly as the engine registers it, while t
 dropdown is marked untranslated, and the catalogue validator refuses a translation that drops an engine's name.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import sys
 import unittest

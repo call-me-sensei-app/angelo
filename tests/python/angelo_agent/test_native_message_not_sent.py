@@ -8,6 +8,8 @@ runs with a stand-in provider (no subprocess or inference) and ``drafts`` with
 stand-in chat inputs (no Blender).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import unittest

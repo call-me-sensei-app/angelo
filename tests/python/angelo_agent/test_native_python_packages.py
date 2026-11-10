@@ -8,6 +8,8 @@ its metadata, does nothing on a rerun, and refuses (changing nothing) a wheel wh
 not what the pin and the wheel format promise.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import hashlib
 import io

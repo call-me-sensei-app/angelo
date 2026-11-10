@@ -6,6 +6,8 @@ Contract: doc/angelo/updates_and_reports.rst, "Release lines". Builds before 1.0
 shipped build does so is proved by update_lines_shipped_client.py, run against the published apps at release time.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import dataclasses
 import io

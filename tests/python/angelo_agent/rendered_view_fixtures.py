@@ -400,18 +400,24 @@ class HeldPreparation:
     merely slow to prepare raced the budget's main-thread check (test_blender_rendered_view_safety on the 1.0.7
     cuts 744f498d0a6 and d72ea2aa3ea: preparation took ~0.5 s against a 0.3 s budget, and a check seen late let the
     first samples in). The handler is the fixture's own (``render_extensions.host_handler``), never add-on Python a
-    look refuses. A context manager: leaving it releases and removes the handler; it never holds longer than
-    ``limit`` seconds."""
+    look refuses. A context manager: leaving it releases and removes the handler.
+
+    ``limit`` (seconds; None for none) only unwedges a suite whose main thread ends up waiting on the held render
+    itself. A hold it ended proves nothing about the budget it held for (the main thread did not run for that long),
+    so ``ended`` records how each hold ended ("released" or "limit") and leaving, with no other error under way,
+    fails when one that had ended before it ended by its limit: a stalled machine fails loudly, never as a check
+    that passed for the wrong reason (test_native_held_preparation's own release check, CI 41896025168, Windows:
+    the main thread did not run for the hold's 60 s and found the render already going on)."""
 
     def __init__(self, limit=60.0):
         import threading
         from angelo_agent import render_extensions
-        self.held, self._go, self.threads = threading.Event(), threading.Event(), []
+        self.held, self._go, self.threads, self.ended, self.limit = threading.Event(), threading.Event(), [], [], limit
 
         def hold(*_args):
             self.threads.append(threading.current_thread() is threading.main_thread())
             self.held.set()
-            self._go.wait(limit)
+            self.ended.append("released" if self._go.wait(limit) else "limit")
         self._handler = render_extensions.host_handler(hold)
 
     def release(self):
@@ -421,10 +427,14 @@ class HeldPreparation:
         bpy.app.handlers.render_pre.append(self._handler)
         return self
 
-    def __exit__(self, *_exc):
+    def __exit__(self, exc_type, *_exc):
         self._go.set()
         if self._handler in bpy.app.handlers.render_pre:
             bpy.app.handlers.render_pre.remove(self._handler)
+        if exc_type is None and "limit" in self.ended:
+            raise AssertionError("a preparation hold ended by its %s s limit, not by release: the suite's main thread "
+                                 "did not run for that long, so what it checked after it is not what it held "
+                                 "for" % self.limit)
         return False
 
 

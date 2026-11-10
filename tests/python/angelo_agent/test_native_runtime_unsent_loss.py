@@ -14,6 +14,8 @@ that dead runtime deterministically (the transports and the shared pool: ``test_
   and a second loss gives the message back unsent with the reason.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import stat
 import sys
@@ -32,8 +34,11 @@ from angelo_agent import runtime_service, worker_channel  # noqa: E402
 from angelo_agent.controller import Controller  # noqa: E402
 from angelo_agent.protocol import JsonRpcProcess, RpcError  # noqa: E402
 from angelo_agent.routing import TOOLSET_VERSION  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
-POSIX_ONLY = unittest.skipIf(sys.platform == "win32", "The relay's descriptor passing is POSIX; Windows uses pipes")
+POSIX_ONLY = unittest.skipIf(sys.platform == "win32", environment_skip(
+    "The relay's descriptor passing is POSIX; Windows uses named pipes (test_native_runtime_filter.WindowsRelayTests, "
+    "test_native_parallel_workers_transport)"))
 KEY = "sk-unsent-test-" + "k" * 40
 SESSION = "chat-1"
 

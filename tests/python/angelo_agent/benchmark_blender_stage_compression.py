@@ -33,6 +33,10 @@ the cohort, so ``large_target`` (a 99,856-vertex grid, just under the
 100,000-vertex program input limit) is the cohort where bundle bytes matter.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import argparse
 import itertools
 import json

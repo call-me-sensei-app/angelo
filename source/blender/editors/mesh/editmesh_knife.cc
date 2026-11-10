@@ -10,6 +10,8 @@
 
 #include <fmt/format.h>
 
+#include <algorithm>
+
 #include "MEM_guardedalloc.h"
 
 #include "BLF_api.hh"
@@ -29,6 +31,7 @@
 #include "BLI_stack.h"
 #include "BLI_string_utf8.h"
 #include "BLI_vector.hh"
+#include "BLI_vector_set.hh"
 
 #include "BLT_translation.hh"
 
@@ -1835,29 +1838,15 @@ static void linehit_to_knifepos(KnifePosData *kpos, KnifeLineHit *lh)
 
 /* Primary key: lambda along cut
  * Secondary key: lambda along depth
- * Tertiary key: pointer comparisons of verts if both snapped to verts
+ * Angelo: hits equal in both keep the order they were found in (a stable sort below); the
+ * tertiary key used to be the vertices' addresses, which differ between processes.
  */
-static int linehit_compare(const KnifeLineHit &lh1, const KnifeLineHit &lh2)
+static bool linehit_compare(const KnifeLineHit &lh1, const KnifeLineHit &lh2)
 {
-  if (lh1.l < lh2.l) {
-    return true;
+  if (lh1.l != lh2.l) {
+    return lh1.l < lh2.l;
   }
-  if (lh1.l > lh2.l) {
-    return false;
-  }
-  if (lh1.m < lh2.m) {
-    return true;
-  }
-  if (lh1.m > lh2.m) {
-    return false;
-  }
-  if (lh1.v < lh2.v) {
-    return true;
-  }
-  if (lh1.v > lh2.v) {
-    return false;
-  }
-  return false;
+  return lh1.m < lh2.m;
 }
 
 /*
@@ -1873,7 +1862,7 @@ static void prepare_linehits_for_cut(KnifeTool_OpData *kcd)
     return;
   }
 
-  std::ranges::sort(kcd->linehits, linehit_compare);
+  std::stable_sort(kcd->linehits.begin(), kcd->linehits.end(), linehit_compare);
 
   /* Remove any edge hits that are preceded or followed
    * by a vertex hit that is very near. Mark such edge hits using
@@ -1940,14 +1929,32 @@ static void prepare_linehits_for_cut(KnifeTool_OpData *kcd)
   }
 }
 
+/**
+ * Angelo: a list per BMesh element, in the order the elements were first added. The edges are
+ * split and the faces cut in this order: a pointer-keyed map's order followed heap addresses,
+ * which differ between processes, and with it the order of the elements a cut makes.
+ */
+template<typename T> struct KnifeElemLists {
+  VectorSet<T *> elems;
+  Vector<ListBaseT<LinkData> *> lists;
+
+  ListBaseT<LinkData> *lookup_or_add(KnifeTool_OpData *kcd, T *elem)
+  {
+    const int64_t index = elems.index_of_or_add(elem);
+    if (index == lists.size()) {
+      lists.append(knife_empty_list(kcd));
+    }
+    return lists[index];
+  }
+};
+
 /* Add hit to list of hits in facehits[f], where facehits is a map, if not already there. */
 static void add_hit_to_facehits(KnifeTool_OpData *kcd,
-                                Map<BMFace *, ListBaseT<LinkData> *> &facehits,
+                                KnifeElemLists<BMFace> &facehits,
                                 BMFace *f,
                                 KnifeLineHit *hit)
 {
-  ListBaseT<LinkData> *list = facehits.lookup_or_add_cb(f,
-                                                        [&]() { return knife_empty_list(kcd); });
+  ListBaseT<LinkData> *list = facehits.lookup_or_add(kcd, f);
   knife_append_list_no_dup(kcd, list, hit);
 }
 
@@ -2221,8 +2228,8 @@ static void knife_make_cuts(KnifeTool_OpData *kcd, int ob_index)
   ListBaseT<LinkData> *list;
   float pct;
   BLI_mempool_iter iter;
-  Map<BMFace *, ListBaseT<LinkData> *> fhash;
-  Map<BMEdge *, ListBaseT<LinkData> *> ehash;
+  KnifeElemLists<BMFace> fhash;
+  KnifeElemLists<BMEdge> ehash;
 
   /* Put list of cutting edges for a face into fhash, keyed by face. */
   BLI_mempool_iternew(kcd->kedges, &iter);
@@ -2244,11 +2251,7 @@ static void knife_make_cuts(KnifeTool_OpData *kcd, int ob_index)
     if (!f || kfe->e) {
       continue;
     }
-    list = fhash.lookup_default(f, nullptr);
-    if (!list) {
-      list = knife_empty_list(kcd);
-      fhash.add(f, list);
-    }
+    list = fhash.lookup_or_add(kcd, f);
     knife_append_list(kcd, list, kfe);
   }
 
@@ -2266,11 +2269,7 @@ static void knife_make_cuts(KnifeTool_OpData *kcd, int ob_index)
       if (!e) {
         continue;
       }
-      list = ehash.lookup_default(e, nullptr);
-      if (!list) {
-        list = knife_empty_list(kcd);
-        ehash.add(e, list);
-      }
+      list = ehash.lookup_or_add(kcd, e);
       /* There can be more than one kfe in kfv's list with same e. */
       if (!find_ref(list, kfv)) {
         knife_append_list(kcd, list, kfv);
@@ -2279,7 +2278,9 @@ static void knife_make_cuts(KnifeTool_OpData *kcd, int ob_index)
   }
 
   /* Split bmesh edges where needed. */
-  for (auto [e, list] : ehash.items()) {
+  for (const int64_t index : ehash.elems.index_range()) {
+    BMEdge *e = ehash.elems[index];
+    list = ehash.lists[index];
     BLI_listbase_sort_r(list, sort_verts_by_dist_cb, e->v1->co);
 
     for (LinkData &ref : *list) {
@@ -2294,8 +2295,8 @@ static void knife_make_cuts(KnifeTool_OpData *kcd, int ob_index)
   }
 
   /* Do cuts for each face. */
-  for (auto [f, list] : fhash.items()) {
-    knife_make_face_cuts(kcd, bm, f, list);
+  for (const int64_t index : fhash.elems.index_range()) {
+    knife_make_face_cuts(kcd, bm, fhash.elems[index], fhash.lists[index]);
   }
 }
 
@@ -2336,7 +2337,7 @@ static void knife_add_cut(KnifeTool_OpData *kcd)
   }
 
   /* Make facehits: map face -> list of linehits touching it. */
-  Map<BMFace *, ListBaseT<LinkData> *> facehits;
+  KnifeElemLists<BMFace> facehits;
   for (KnifeLineHit &hit : kcd->linehits) {
     KnifeLineHit *lh = &hit;
     if (lh->f) {
@@ -2358,9 +2359,9 @@ static void knife_add_cut(KnifeTool_OpData *kcd)
    * the linehits will be filled in (as edges are split or
    * in-face verts are made), so it may be true that both
    * the v and the kfe or f fields will be non-null. */
-  for (const auto &item : facehits.items()) {
-    BMFace *f = item.key;
-    ListBaseT<LinkData> *list = item.value;
+  for (const int64_t index : facehits.elems.index_range()) {
+    BMFace *f = facehits.elems[index];
+    ListBaseT<LinkData> *list = facehits.lists[index];
     knife_cut_face(kcd, f, list);
   }
 
@@ -2832,10 +2833,12 @@ static void knife_find_line_hits(KnifeTool_OpData *kcd)
     return;
   }
 
-  Set<BMFace *> faces;
+  /* Angelo: insertion-ordered, so the hits (and the cut's new elements) come in the order the
+   * BVH found the faces, not in heap order. */
+  VectorSet<BMFace *> faces;
   Map<BMFace *, uint> fobs;
-  Set<KnifeEdge *> kfes;
-  Set<KnifeVert *> kfvs;
+  VectorSet<KnifeEdge *> kfes;
+  VectorSet<KnifeVert *> kfvs;
 
   Object *ob;
   BMEditMesh *em;
@@ -2908,6 +2911,9 @@ static void knife_find_line_hits(KnifeTool_OpData *kcd)
 
   /* First look for vertex hits. */
   Vector<KnifeLineHit> linehits;
+  /* The vertices the cut uses (the others are skipped below, as before, with no removal from the
+   * ordered set being iterated). */
+  Set<KnifeVert *> kfvs_in_cut;
   for (KnifeVert *v : kfvs) {
     KnifeEdge *kfe_hit = nullptr;
 
@@ -2933,19 +2939,15 @@ static void knife_find_line_hits(KnifeTool_OpData *kcd)
     if (kfv_is_in_cut) {
       knife_linehit_set(kcd, s1, s2, s, v->cageco, v->ob_index, v, kfe_hit, &hit);
       linehits.append(hit);
-    }
-    else {
-      /* This vertex isn't used so remove from `kfvs`.
-       * This is useful to detect KnifeEdges that can be skipped.
-       * And it optimizes iteration a little bit. */
-      kfvs.remove(v);
+      /* Used to detect KnifeEdges that can be skipped. */
+      kfvs_in_cut.add(v);
     }
   }
 
   /* Now edge hits; don't add if a vertex at end of edge should have hit. */
   for (KnifeEdge *kfe : kfes) {
     /* If we intersect any of the vertices, don't attempt to intersect the edge. */
-    if (kfvs.contains(kfe->v1) || kfvs.contains(kfe->v2)) {
+    if (kfvs_in_cut.contains(kfe->v1) || kfvs_in_cut.contains(kfe->v2)) {
       continue;
     }
 

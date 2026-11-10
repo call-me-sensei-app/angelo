@@ -15,6 +15,7 @@
 #include <fmt/format.h>
 
 #include "MEM_guardedalloc.h"
+#include "MEM_lifetime.hh"
 
 #include "DNA_ID.h"
 #include "DNA_anim_types.h"
@@ -5410,13 +5411,12 @@ void RNA_property_collection_skip(CollectionPropertyIterator *iter, int num)
 
 void RNA_property_collection_end(CollectionPropertyIterator *iter)
 {
-  CollectionPropertyRNA *cprop = reinterpret_cast<CollectionPropertyRNA *>(
-      rna_ensure_property(iter->prop));
-
+  /* A dynamic collection descriptor may be gone. Its ID-property cursor owns no descriptor. */
   if (iter->idprop) {
     rna_iterator_array_end(iter);
   }
   else {
+    auto *cprop = reinterpret_cast<CollectionPropertyRNA *>(rna_ensure_property(iter->prop));
     cprop->end(iter);
   }
 }
@@ -5579,6 +5579,7 @@ bool RNA_property_collection_remove(PointerRNA *ptr, PropertyRNA *prop, int key)
         return false;
       }
 
+      mem_lifetime::invalidate(array + key, sizeof(IDProperty) * size_t(len - key));
       if (key + 1 < len) {
         /* move element to be removed to the back */
         memcpy(&tmp, &array[key], sizeof(IDProperty));
@@ -5622,6 +5623,8 @@ bool RNA_property_collection_move(PointerRNA *ptr, PropertyRNA *prop, int key, i
         return false;
       }
 
+      mem_lifetime::invalidate(array + std::min(key, pos),
+                               sizeof(IDProperty) * size_t(std::abs(key - pos) + 1));
       memcpy(&tmp, &array[key], sizeof(IDProperty));
       if (pos < key) {
         memmove(array + pos + 1, array + pos, sizeof(IDProperty) * (key - pos));
@@ -5659,6 +5662,7 @@ void RNA_property_collection_clear(PointerRNA *ptr, PropertyRNA *prop)
       IDProperty tmp, *array = IDP_property_array_get(idprop);
       for (int i = 0; i < len; i++) {
         if ((array[i].flag & IDP_FLAG_OVERRIDELIBRARY_LOCAL) != 0) {
+          mem_lifetime::invalidate(array + i, sizeof(IDProperty) * size_t(len - i));
           memcpy(&tmp, &array[i], sizeof(IDProperty));
           memmove(array + i, array + i + 1, sizeof(IDProperty) * (len - (i + 1)));
           memcpy(&array[len - 1], &tmp, sizeof(IDProperty));

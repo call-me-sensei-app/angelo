@@ -10,6 +10,10 @@
 
 #include "intern/depsgraph.hh" /* own include */
 
+#ifdef WITH_PYTHON
+#  include "BPY_extern.hh"
+#endif
+
 #include <cstring>
 #include <memory>
 #include <utility>
@@ -84,6 +88,14 @@ Depsgraph::Depsgraph(Main *bmain, Scene *scene, ViewLayer *view_layer, eEvaluati
 
 Depsgraph::~Depsgraph()
 {
+#ifdef WITH_PYTHON
+  /* Angelo: iterators over this graph and kept wrappers of it raise ReferenceError from now on;
+   * done first, while the evaluated data they reach is still valid. */
+  if (py_instance) {
+    BPY_DECREF_RNA_INVALIDATE(py_instance);
+    py_instance = nullptr;
+  }
+#endif
   clear_id_nodes();
   delete time_source;
   BLI_spin_end(&lock);
@@ -324,6 +336,11 @@ void DEG_graph_free(Depsgraph *graph)
   deg::Depsgraph *deg_depsgraph = reinterpret_cast<deg::Depsgraph *>(graph);
   deg::unregister_graph(deg_depsgraph);
   delete deg_depsgraph;
+}
+
+void **DEG_graph_py_instance(Depsgraph *graph)
+{
+  return &reinterpret_cast<deg::Depsgraph *>(graph)->py_instance;
 }
 
 bool DEG_is_evaluating(const Depsgraph *depsgraph)

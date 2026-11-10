@@ -12,6 +12,7 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_memory_utils.hh"
 #include "BLI_string.h"
 #include "BLI_utildefines.h"
 
@@ -677,6 +678,36 @@ static bool idprop_ui_data_update_id(IDProperty *idprop, PyObject *args, PyObjec
   return true;
 }
 
+/* -------------------------------------------------------------------- */
+/** \name Owner Lifetime (Angelo)
+ *
+ * A UI manager points into its owner ID's custom properties: it is cleared when the ID is freed
+ * (`bpy_rna.cc`, "Dependent Wrappers") and then raises ReferenceError.
+ * \{ */
+
+static bool idprop_ui_manager_valid_or_raise(const BPy_IDPropertyUIManager *self)
+{
+  pyrna_dependent_check(const_cast<BPyRNA_DependentLink &>(self->dependent));
+  if (self->property) {
+    return true;
+  }
+  PyErr_SetString(PyExc_ReferenceError, "IDProperty UI data of a removed data-block");
+  return false;
+}
+
+void BPy_IDPropertyUIManager_owner_freed(PyObject *self)
+{
+  reinterpret_cast<BPy_IDPropertyUIManager *>(self)->property = nullptr;
+}
+
+static void BPy_IDPropertyUIManager_dealloc(PyObject *self)
+{
+  pyrna_dependent_detach(&reinterpret_cast<BPy_IDPropertyUIManager *>(self)->dependent);
+  Py_TYPE(self)->tp_free(self);
+}
+
+/** \} */
+
 PyDoc_STRVAR(
     /* Wrap. */
     BPy_IDPropertyUIManager_update_doc,
@@ -700,46 +731,60 @@ static PyObject *BPy_IDPropertyUIManager_update(BPy_IDPropertyUIManager *self,
                                                 PyObject *args,
                                                 PyObject *kwargs)
 {
+  if (!idprop_ui_manager_valid_or_raise(self)) {
+    return nullptr;
+  }
   IDProperty *property = self->property;
   BLI_assert(IDP_ui_data_supported(property));
 
+  /* Parsing min/max/default/items may execute arbitrary Python. Only the staged
+   * metadata is touched until the original property and UI data are revalidated. */
+  IDP_ui_data_ensure(property);
+  IDProperty staging = *property;
+  staging.ui_data = IDP_ui_data_copy(property);
+  mem_lifetime::Watch ui_watch{};
+  mem_lifetime::set(ui_watch, property->ui_data);
+  BLI_SCOPED_DEFER([&]() {
+    mem_lifetime::clear(ui_watch);
+    if (staging.ui_data) {
+      IDP_ui_data_free(&staging);
+    }
+  });
+  bool success = false;
   switch (IDP_ui_data_type(property)) {
     case IDP_UI_DATA_TYPE_INT:
-      IDP_ui_data_ensure(property);
-      if (!idprop_ui_data_update_int(property, args, kwargs)) {
-        return nullptr;
-      }
-      Py_RETURN_NONE;
+      success = idprop_ui_data_update_int(&staging, args, kwargs);
+      break;
     case IDP_UI_DATA_TYPE_BOOLEAN:
-      IDP_ui_data_ensure(property);
-      if (!idprop_ui_data_update_bool(property, args, kwargs)) {
-        return nullptr;
-      }
-      Py_RETURN_NONE;
+      success = idprop_ui_data_update_bool(&staging, args, kwargs);
+      break;
     case IDP_UI_DATA_TYPE_FLOAT:
-      IDP_ui_data_ensure(property);
-      if (!idprop_ui_data_update_float(property, args, kwargs)) {
-        return nullptr;
-      }
-      Py_RETURN_NONE;
+      success = idprop_ui_data_update_float(&staging, args, kwargs);
+      break;
     case IDP_UI_DATA_TYPE_STRING:
-      IDP_ui_data_ensure(property);
-      if (!idprop_ui_data_update_string(property, args, kwargs)) {
-        return nullptr;
-      }
-      Py_RETURN_NONE;
+      success = idprop_ui_data_update_string(&staging, args, kwargs);
+      break;
     case IDP_UI_DATA_TYPE_ID:
-      IDP_ui_data_ensure(property);
-      if (!idprop_ui_data_update_id(property, args, kwargs)) {
-        return nullptr;
-      }
-      Py_RETURN_NONE;
+      success = idprop_ui_data_update_id(&staging, args, kwargs);
+      break;
     case IDP_UI_DATA_TYPE_UNSUPPORTED:
       PyErr_Format(PyExc_TypeError, "IDProperty \"%s\" does not support RNA data", property->name);
       return nullptr;
   }
 
-  BLI_assert_unreachable();
+  if (!idprop_ui_manager_valid_or_raise(self)) {
+    return nullptr;
+  }
+  if (mem_lifetime::expired(ui_watch)) {
+    PyErr_SetString(PyExc_ReferenceError, "IDProperty UI data changed during Python conversion");
+    return nullptr;
+  }
+  if (!success) {
+    return nullptr;
+  }
+  IDP_ui_data_free(property);
+  property->ui_data = staging.ui_data;
+  staging.ui_data = nullptr;
   Py_RETURN_NONE;
 }
 
@@ -893,6 +938,9 @@ PyDoc_STRVAR(
     "   returned dictionary and their types will depend on the property's type.\n");
 static PyObject *BPy_IDIDPropertyUIManager_as_dict(BPy_IDPropertyUIManager *self)
 {
+  if (!idprop_ui_manager_valid_or_raise(self)) {
+    return nullptr;
+  }
   IDProperty *property = self->property;
   BLI_assert(IDP_ui_data_supported(property));
 
@@ -955,6 +1003,9 @@ PyDoc_STRVAR(
     "   Remove the RNA UI data from this IDProperty.\n");
 static PyObject *BPy_IDPropertyUIManager_clear(BPy_IDPropertyUIManager *self)
 {
+  if (!idprop_ui_manager_valid_or_raise(self)) {
+    return nullptr;
+  }
   IDProperty *property = self->property;
   BLI_assert(IDP_ui_data_supported(property));
 
@@ -988,6 +1039,9 @@ PyDoc_STRVAR(
     "   :raises TypeError: If the types of the two properties don't match.\n");
 static PyObject *BPy_IDPropertyUIManager_update_from(BPy_IDPropertyUIManager *self, PyObject *args)
 {
+  if (!idprop_ui_manager_valid_or_raise(self)) {
+    return nullptr;
+  }
   IDProperty *property = self->property;
   BLI_assert(IDP_ui_data_supported(property));
 
@@ -996,6 +1050,9 @@ static PyObject *BPy_IDPropertyUIManager_update_from(BPy_IDPropertyUIManager *se
     return nullptr;
   }
 
+  if (!idprop_ui_manager_valid_or_raise(ui_manager_src)) {
+    return nullptr;
+  }
   IDProperty *src_prop = ui_manager_src->property;
   if ((property->type != src_prop->type) || property->subtype != src_prop->subtype) {
     PyErr_SetString(PyExc_TypeError, "Properties type does not match.");
@@ -1059,6 +1116,9 @@ static PyMethodDef BPy_IDPropertyUIManager_methods[] = {
 
 static PyObject *BPy_IDPropertyUIManager_repr(BPy_IDPropertyUIManager *self)
 {
+  if (!idprop_ui_manager_valid_or_raise(self)) {
+    return nullptr;
+  }
   return PyUnicode_FromFormat(
       "<bpy id prop ui manager: name=\"%s\", address=%p>", self->property->name, self->property);
 }
@@ -1074,7 +1134,7 @@ PyTypeObject BPy_IDPropertyUIManager_Type = {
     /*tp_name*/ "IDPropertyUIManager",
     /*tp_basicsize*/ sizeof(BPy_IDPropertyUIManager),
     /*tp_itemsize*/ 0,
-    /*tp_dealloc*/ nullptr,
+    /*tp_dealloc*/ BPy_IDPropertyUIManager_dealloc,
     /*tp_vectorcall_offset*/ 0,
     /*tp_getattr*/ nullptr,
     /*tp_setattr*/ nullptr,

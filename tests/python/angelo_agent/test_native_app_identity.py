@@ -10,6 +10,8 @@ the real CMake loader. Windows installers themselves are not built here (see
 doc/angelo/app_identity.rst, "Windows validation").
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import shutil
 import subprocess
@@ -89,8 +91,8 @@ class IdentityDataTests(unittest.TestCase):
 
     def test_the_current_values_are_the_decided_ones(self):
         """Decided values are as decided; pending ones keep their placeholder until the one line changes."""
-        self.assertEqual(IDENTITY["version"]["label"], "1.0.9")
-        self.assertEqual(angelo_identity.APP_VERSION_DISPLAY, "1.0.9")
+        self.assertEqual(IDENTITY["version"]["label"], "1.0.10")
+        self.assertEqual(angelo_identity.APP_VERSION_DISPLAY, "1.0.10")
         self.assertEqual(IDENTITY["vendor"]["name"], "Hyperbond Studio PTE. LTD.")
         self.assertEqual(IDENTITY["bundle"]["macos_id"], "studio.hyperbond.angelo")  # Final.
         self.assertEqual(IDENTITY["bundle"]["linux_desktop_id"], IDENTITY["bundle"]["macos_id"])
@@ -457,7 +459,7 @@ message("PARTS=${{ANGELO_APP_VERSION_MAJOR}}.${{ANGELO_APP_VERSION_MINOR}}.${{AN
                 if key in info and key in expected:
                     self.assertEqual(info[key].replace("2026-01-01", "${DATE}"),
                                      expected[key].replace("${MACOSX_BUNDLE_LONG_VERSION_STRING}",
-                                                          "1.0.9 (based on Blender 5.2.2) ${DATE}"), key)
+                                                          "1.0.10 (based on Blender 5.2.2) ${DATE}"), key)
         app = plistlib.loads((self.out / "app.plist").read_bytes())
         self.assertEqual(app["CFBundleIdentifier"], bundle["macos_id"])
         self.assertTrue(app["CFBundleGetInfoString"].endswith(", " + IDENTITY["vendor"]["name"]))
@@ -496,11 +498,11 @@ message("PARTS=${{ANGELO_APP_VERSION_MAJOR}}.${{ANGELO_APP_VERSION_MINOR}}.${{AN
         self.assertIn("<name>Angelo</name>", meta)
         self.assertNotIn("blender.org", meta)
         readme = self.rendered("readme.html")
-        self.assertIn("Angelo 1.0.9", readme)
+        self.assertIn("Angelo 1.0.10", readme)
         self.assertIn("based on\n      Blender 5.2.2", readme)
         self.assertIn("https://www.blender.org/about/license/", readme)
         copyright_text = self.rendered("copyright.txt")
-        for needed in ("Angelo 1.0.9 is based on Blender 5.2.2", "Hyperbond Studio PTE. LTD.", "Copyright (C) 2023  Blender Foundation",
+        for needed in ("Angelo 1.0.10 is based on Blender 5.2.2", "Hyperbond Studio PTE. LTD.", "Copyright (C) 2023  Blender Foundation",
                        "GNU General Public License", "Stichting Blender Foundation"):
             self.assertIn(needed, copyright_text)
 

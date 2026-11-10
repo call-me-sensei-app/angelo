@@ -8,6 +8,8 @@ the driver's shader cache held it: 49.9 ms against 349-855 ms before, and the ch
 00110f294d4). Without Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import sys
 import unittest

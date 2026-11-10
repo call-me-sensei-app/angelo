@@ -11,8 +11,7 @@
   the working .blend that Angelo edits for an asset it can't open itself (``<project>/.angelo/<relative path>.blend``)
   with its stamp, the live .glb export, and copying a plugin into a project in one step.
 
-No Blender data changes here; ``export`` only reads the scene.
-"""
+No Blender data changes here; ``export`` only reads the scene."""
 
 import hashlib
 import importlib
@@ -25,14 +24,18 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import engine_link_reads as reads, user_copies
+from . import engine_link_reads as reads, engine_link_stamps as stamps, shared_replace, user_copies
 from .engine_link_facts import listing as _listing
 
+# An install's copy and the plugin it replaces, then gone: in WORKING_FOLDER, or hidden beside the plugin's folder
+# when that is on another volume (install_plugin).
+PLUGIN_STAGING = ".angelo-plugin-install-"
 WORKING_FOLDER = ".angelo"     # Inside the project; no engine imports it (hidden, and Godot also reads its .gdignore).
 EXPORT_ID = "angelo_link"
 ADAPTERS = {"godot": "godot_link_assets",   # engine -> adapter module; an engine not listed is refused ("engine").
             "unity": "unity_link_assets",
-            "unreal": "unreal_link_assets"}
+            "unreal": "unreal_link_assets",
+            "web": "web_link_assets"}       # A Three.js page, through its dev server's Angelo Link plugin.
 
 # The live preview and save of an engine that records no exporter table of its own: the glTF exporter's defaults,
 # with modifiers applied (what the person sees). Live: no animation, at the current frame (``live_options``).
@@ -88,7 +91,8 @@ _HIDDEN = 0x2       # FILE_ATTRIBUTE_HIDDEN; Windows' listing carries it, so rea
 
 def _skipped(entry, engine_adapter):
     """Whether the lookup leaves this folder entry out: a link or junction, anything hidden, or a folder the engine
-    ignores (``NAME_IGNORED``: Godot's .gdignore, Unity's trailing ~); None when it can't be read."""
+    ignores (``NAME_IGNORED``: Godot's .gdignore, Unity's trailing ~; ``NAME_SKIPPED``: folders by name, such as a
+    web project's node_modules and build output); None when it can't be read."""
     try:
         if entry.name.startswith(".") or entry.is_symlink() or getattr(entry, "is_junction", lambda: False)():
             return True
@@ -96,6 +100,8 @@ def _skipped(entry, engine_adapter):
             return True
         if not entry.is_dir(follow_symlinks=False):
             return False
+        if entry.name.casefold() in getattr(engine_adapter, "NAME_SKIPPED", ()):
+            return True
         suffix, mark = getattr(engine_adapter, "NAME_IGNORED", ("", ""))
         return bool(suffix and entry.name.endswith(suffix) or mark and os.path.exists(os.path.join(entry.path, mark)))
     except OSError:
@@ -174,9 +180,13 @@ def capabilities(info):
 
 
 def serves(asset, info, live=False):
-    """Whether a connected editor is one of ``asset``'s engine and project (and, with ``live``, shows live scenes)."""
-    return (info.get("engine", "godot") == asset.engine
-            and os.path.normcase(os.path.realpath(info.get("project", ""))) == os.path.normcase(asset.project)
+    """Whether a connected editor is one of ``asset``'s engine and project (and, with ``live``, shows live scenes).
+    It runs on the main thread for every acknowledgement, close and broadcast, so it never reads the filesystem: the
+    editor's project was resolved when it authenticated (``engine_link_server.project_key``); an info without that
+    key compares as said."""
+    said = info.get("project_key")
+    said = said if said is not None else os.path.normcase(info.get("project", ""))
+    return (info.get("engine", "godot") == asset.engine and said == os.path.normcase(asset.project)
             and (not live or "live" in capabilities(info)))
 
 
@@ -271,6 +281,15 @@ def working_path(asset):
     return str(Path(asset.project, WORKING_FOLDER, *parts[:-1], parts[-1] + ".blend"))
 
 
+def _working_root(project):
+    """The project's .angelo folder, made when missing; never a link (OSError)."""
+    folder = Path(project, WORKING_FOLDER)
+    if folder.is_symlink():
+        raise OSError("Angelo's working folder in the project is a link: %s" % folder.name)
+    folder.mkdir(exist_ok=True)
+    return folder
+
+
 def ensure_working_folder(asset):
     """Create the project's .angelo folder with a .gdignore and a README. Raises OSError when the folder, or the working
     file, is a link or leads out of the project (a cloned project can't make Angelo write elsewhere)."""
@@ -306,7 +325,7 @@ def same_file(left, right):
 
 def digest(path):
     hasher = hashlib.sha256()
-    with open(path, "rb") as handle:
+    with shared_replace.open_file(path) as handle:   # Never refuses the write-back's replace.
         for block in iter(lambda: handle.read(1 << 20), b""):
             hasher.update(block)
     return hasher.hexdigest()
@@ -322,31 +341,21 @@ def previous_path(asset):
 
 
 def read_stamp(asset):
-    """The digest of the asset file that the working file was last imported from or written to, or None."""
-    try:
-        with open(stamp_path(asset), encoding="utf-8") as handle:
-            value = json.load(handle).get("sha256")
-    except (OSError, ValueError, AttributeError):
-        return None
-    return value if isinstance(value, str) else None
+    return stamps.read(stamp_path(asset))
 
 
-def write_stamp(asset):
-    """Record the asset file's digest beside the working file, through a new private file (never through a link);
-    returns the digest."""
-    path, sha256 = stamp_path(asset), digest(asset.path)
-    temporary = "%s.%s.tmp" % (path, secrets.token_hex(4))
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(temporary, flags, 0o644)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            json.dump({"sha256": sha256, "asset": asset.ident}, handle)
-        os.replace(temporary, path)
-    except BaseException:
-        if os.path.exists(temporary):
-            os.remove(temporary)
-        raise
-    return sha256
+def write_stamp(asset, sha256):
+    return stamps.write(stamp_path(asset), asset.ident, sha256)
+
+
+# This process, as the writer its write-back children name in their stamps (``written_stamp``): save and link numbers
+# restart in every process, and a write-back child outlives an Angelo that quits while it runs, so a later Angelo's
+# save can carry the same numbers as a stamp an earlier one's child writes after it.
+WRITER = secrets.token_hex(16)
+
+
+def written_stamp(asset, save, link):
+    return stamps.written(stamp_path(asset), asset.ident, save, link, WRITER)
 
 
 def working_is_current(asset):
@@ -369,11 +378,20 @@ def baked_plan(window):
 
 
 def baked_for_save(say):
-    """What a glTF write-back of the saved scene assigns: ``baked_plan``'s ``used``. ``say(code, message)`` tells the
+    """What a glTF write-back of the saved scene assigns: ``baked_plan``'s ``used``, as ``[object, material, object's
+    library, material's library]`` (each library's file path, None for local data), so the write-back finds the
+    same object and material when a linked one shares a local one's name. ``say(code, message)`` tells the
     engine's editor, in English as the link's other status messages, which objects keep their own materials."""
+    import bpy
     found = baked_plan(None)
-    nearby = [name for name in found["stale"] if name in found.get("nearby", ())]
-    changed = [name for name in found["stale"] if name not in nearby]
+    updated = [name for name in found["stale"] if name in found.get("updated", ())]
+    nearby = [name for name in found["stale"] if name in found.get("nearby", ()) and name not in updated]
+    changed = [name for name in found["stale"] if name not in nearby and name not in updated]
+    if updated:
+        say("baked_stale_update", "%s: baked before this Angelo update, which now checks the exact pixels and files "
+                                  "each bake read, so their own materials are sent until their maps are baked again "
+                                  "(one bake is enough)"
+            % ", ".join(updated[:3]))
     if changed:
         say("baked_stale", "%s changed after its maps were baked, so it keeps its own materials; bake its maps "
                            "again to send them" % ", ".join(changed[:3]))
@@ -385,15 +403,23 @@ def baked_for_save(say):
         say("baked_packing", "%s keeps its own materials: its maps were baked with a packing glTF can't carry; "
                              "bake them with the glTF packing to send them"
             % ", ".join(name for name, _packing in found["packing"][:3]))
-    return found["used"]
+    objects = {obj.session_uid: obj for obj in bpy.context.scene.objects}
+    return [[obj.name, material.name, _library(obj), _library(material)]
+            for uid, material in found["substitutes"].items() if (obj := objects.get(uid)) is not None]
 
 
-def export(window, path, options):
+def _library(block):
+    library = getattr(block, "library", None)
+    return library.filepath if library is not None else None
+
+
+def export(window, path, options, export_id=EXPORT_ID):
     """Write the window's scene (``window`` None: the context's) as one .glb at ``path`` with ``options``, atomically;
     returns its size in bytes.
 
     Objects with a current baked material are written with it (``export_baked``); the save's write-back says which
-    were stale. Reads the scene only. Raises RuntimeError when the exporter writes nothing."""
+    were stale. ``export_id`` names the export to Angelo's glTF hooks (an adapter's ``LIVE_EXPORT_ID``: the web
+    link's live scenes carry each node's identity). Reads the scene only. Raises RuntimeError when the exporter writes nothing."""
     from . import export_baked
     from .web_export import _addon, run_exporter
     _addon()
@@ -403,13 +429,13 @@ def export(window, path, options):
     os.close(descriptor)
     try:
         settings = dict(options, filepath=scratch, check_existing=False, export_format="GLB",
-                        gltf_export_id=EXPORT_ID, will_save_settings=False, use_active_scene=True,
+                        gltf_export_id=export_id, will_save_settings=False, use_active_scene=True,
                         use_selection=False)
         with export_baked.active(baked):
             result = run_exporter(window, settings)   # Never moves the person out of Edit Mode.
         if "FINISHED" not in result or not os.path.getsize(scratch):
             raise RuntimeError("Blender's glTF exporter didn't write the file")
-        os.replace(scratch, path)
+        shared_replace.replace(scratch, path)
     except BaseException:
         if os.path.exists(scratch):
             os.remove(scratch)
@@ -425,17 +451,41 @@ def install_plugin(engine_adapter, project):
     target = os.path.join(project, *engine_adapter.PLUGIN_FOLDER)
     os.makedirs(os.path.dirname(target), exist_ok=True)
     name = os.path.basename(target)
-    staging = os.path.join(os.path.dirname(target), ".%s-%s" % (name, secrets.token_hex(6)))   # Hidden: skipped.
+    # Staged in the project's .angelo folder, which no engine imports: a copy Windows can't remove yet (an engine
+    # holding a file of it) is never a second plugin beside the real one, and the next install removes it.
+    working = _working_root(project)
+    beside = Path(os.path.dirname(target))
+    if os.stat(working).st_dev != os.stat(beside).st_dev:   # The plugin's folder on another volume (a junction or
+        working = beside                                    # a mount): staged beside it, so each move is a rename.
+    for left in working.glob(PLUGIN_STAGING + "*"):
+        user_copies.remove_tree(left)
+    staging = str(working / (PLUGIN_STAGING + secrets.token_hex(6)))
     os.mkdir(staging, 0o700)
+    kept = False
     try:
-        copy = os.path.join(staging, name)
+        copy, previous = os.path.join(staging, name), os.path.join(staging, "previous")
         # The person's permissions, never the bundle's: a read-only install's copy could not be moved into place.
         user_copies.copy_tree(engine_adapter.PLUGIN_SOURCE, copy,
                               ignore=shutil.ignore_patterns(*engine_adapter.PLUGIN_IGNORE))
         if os.path.isdir(target):
             user_copies.own(target)   # An older read-only copy moves aside too.
-            os.replace(target, os.path.join(staging, "previous"))
-        os.replace(copy, target)
+            shared_replace.replace(target, previous, shown=target)   # An engine holding a file of it: retried.
+        try:
+            shared_replace.replace(copy, target)
+        except OSError:   # The older copy goes back: a refused install never leaves the project without its plugin.
+            kept = os.path.isdir(previous) and not _moved_back(previous, target)
+            raise
     finally:
-        user_copies.remove_tree(staging)
+        if not kept:
+            user_copies.remove_tree(staging)
     return target
+
+
+def _moved_back(previous, target):
+    """Put the older plugin back after the new one was refused; False leaves it in the hidden staging folder."""
+    try:
+        shared_replace.replace(previous, target, shown=target)
+        return True
+    except OSError as error:
+        print("Angelo: the older engine plugin is kept in %s; it could not be put back (%s)" % (previous, error))
+        return False

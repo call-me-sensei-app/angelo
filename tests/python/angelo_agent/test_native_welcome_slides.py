@@ -11,6 +11,8 @@ button; the arrow keys mirror in a right-to-left language; every picture stays i
 ``test_blender_welcome_slides``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import types

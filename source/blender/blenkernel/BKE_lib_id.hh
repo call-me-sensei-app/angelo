@@ -534,6 +534,12 @@ enum {
  */
 void BKE_libblock_free_data_py(ID *id);
 /**
+ * (Angelo) Invalidate the Python wrappers that point into this ID's contents: its sub-data, custom
+ * properties and iterators, keeping the wrappers of the ID itself. For code that moves an ID's
+ * contents to another ID while the ID itself stays (#BKE_lib_id_swap).
+ */
+void BKE_libblock_py_sub_data_invalidate(ID *id);
+/**
  * Only free generic runtime data (ID::runtime).
  *
  * In most cases #BKE_libblock_free_data handles this, but in rare cases (currently in readfile,
@@ -541,7 +547,10 @@ void BKE_libblock_free_data_py(ID *id);
  */
 void BKE_libblock_free_runtime_data(ID *id);
 
-/** Free generic ID data, including the runtime and animation data, but not the python data. */
+/**
+ * Free generic ID data, including the runtime and animation data, and (Angelo) its Python
+ * wrappers (#BKE_libblock_free_data_py).
+ */
 void BKE_libblock_free_data(ID *id, bool do_id_user) ATTR_NONNULL();
 
 /**

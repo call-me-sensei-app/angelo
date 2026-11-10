@@ -8,6 +8,8 @@ created atomically only when sealing, a damaged key is set aside without blockin
 captures, and Restore says whether a key is unavailable or a record does not match. Synthetic bytes; Blender never opens them.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import os

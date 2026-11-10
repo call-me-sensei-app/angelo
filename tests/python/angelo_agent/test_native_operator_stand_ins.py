@@ -8,6 +8,8 @@ more calls in ten suites built ``self`` the same way). Every call ``<...>.ANGELO
 these suites passes a ``qa_operator.stand_in``, never a ``SimpleNamespace`` made in the call or bound to a name.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest

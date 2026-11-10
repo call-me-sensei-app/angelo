@@ -11,6 +11,8 @@ memory, within its budget. Blender's own bake memory (``bake_maps_steps.step_byt
 lives outside Python; its measurement is described there.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import time
@@ -209,6 +211,22 @@ class QueueTests(unittest.TestCase):
             self.drain(queue, time.monotonic() + 30)
         self.assertEqual(queue.held, 0)
         self.assertLessEqual(queue.peak, budget)
+
+    def test_the_arrays_a_bake_reads_back_move_out_of_its_reservation(self):
+        """Its reservation counts them (``step_bytes``): read, they belong to the target, never held twice while
+        the scratch image is freed; only what the reservation did not cover is added."""
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            queue = queue_module.WriteQueue(pool, 100)
+            queue.reserve_bake(70)
+            queue.hold_baked(0, 30)
+            self.assertEqual((queue.held, queue.peak, queue.baking), (70, 70, {0: 30}))
+            queue.release_bake()
+            self.assertEqual(queue.held, 30, "the scratch image's share is given back, the arrays stay")
+            queue.reserve_bake(20)
+            queue.hold_baked(0, 30)
+            self.assertEqual((queue.held, queue.baking), (60, {0: 60}), "beyond the reservation is added")
+            queue.release_bake()
+            self.assertEqual(queue.held, 60)
 
 
 class SetPeakTests(unittest.TestCase):

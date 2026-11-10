@@ -7,6 +7,8 @@ whose key was still None, test_blender_turn_recovery at Mac 1 baseline), so that
 ``bpy``, ``ui`` and ``chat_view`` are stand-ins; ``key`` and ``_wait`` are patched.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import time
 import types

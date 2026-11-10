@@ -11,7 +11,9 @@ plugin) it edits once the asset is open instead of after the first live scene, a
 editor to close the link instead of for a "reimported" report. With ``ANGELO_E2E_WAIT_PREVIEW=1`` (Unreal's live
 layer) it saves only once the editor has reported showing the edit live (status ``previewed``), so the editor's
 driver can check the live edit arrived before any save. With ``ANGELO_E2E_AGENT=1`` the agent's own tools do the push
-and the save (``engine_link_tool_host``: PUSH, SAVE, STATUS), and the run checks the editor acknowledged both.
+and the save (``engine_link_tool_host``: PUSH, SAVE, STATUS), and the run checks the editor acknowledged both. With
+``ANGELO_E2E_CAPTURE=1`` (an editor that can ``capture``: the web link's page) it asks the editor for a picture once the
+edit was shown (``engine_link_capture``, as ``angelo_view`` WEB does) and keeps it as ``capture.png``.
 """
 
 import json
@@ -29,6 +31,7 @@ LIMIT = float(os.environ.get("ANGELO_E2E_SECONDS", "150"))
 DURABLE = os.environ.get("ANGELO_E2E_DURABLE") == "1"
 WAIT_PREVIEW = os.environ.get("ANGELO_E2E_WAIT_PREVIEW") == "1"
 AGENT = os.environ.get("ANGELO_E2E_AGENT") == "1"
+CAPTURE = os.environ.get("ANGELO_E2E_CAPTURE") == "1"
 state = {"phase": "start", "steps": [], "checks": {}, "sent": []}
 
 
@@ -149,6 +152,12 @@ try:
                 and int(item.get("instances") or 0) >= 1 for item in engine_link._state["reports"])):
             if WAIT_PREVIEW:
                 state["checks"]["editor_previewed_before_save"] = True
+            if CAPTURE:
+                from angelo_agent import engine_link_capture
+                png, facts = engine_link_capture.capture()   # Raises with the reason when no picture comes.
+                (OUT / "capture.png").write_bytes(png)
+                state["capture"] = dict(facts, bytes=len(png))
+                state["checks"]["captured_the_page"] = png.startswith(b"\x89PNG") and facts["source"] == "link"
             state["export"] = export_facts()
             bpy.ops.wm.save_mainfile()
             step("saved")

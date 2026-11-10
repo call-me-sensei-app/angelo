@@ -63,12 +63,13 @@ Module                                    Responsibility
                                           and across processes.
 ``update_install.py``                     Handing over to the installer script; reading its result.
 ``update_helpers/``                       The installer scripts (``install_update_macos.sh``,
-                                          ``install_update_windows.cmd``), copied out before they run.
+                                          ``install_update_windows.cmd`` with ``other_copies_windows.ps1``),
+                                          copied out before they run.
 ``update_ready.py``                       The preparation worker, the card's live phase, retries, throttling.
 ``update_restart.py``                     Restart to Update: the work guard, the save prompt, the hand-over, quit;
                                           the next launch's result.
 ``work_guard.py``                         What a restart would interrupt (agent turns, previews, Flow runs,
-                                          generations, background jobs, renders, a tool in use).
+                                          generations, background jobs, Blender's jobs, a tool in use).
 ``crash_card.py``                         The "Angelo quit unexpectedly" dialog.
 ``whatsnew_card.py``                      What's New.
 ``update_ui.py``                          The worker, schedule, notices, top-bar and status-bar item, menus.
@@ -100,13 +101,15 @@ Four seconds after launch, once the window has settled (no layout change, no
 welcome screen pending or open, no interaction in progress), ``app_notices``:
 
 1. scans for a crash on a worker thread and shows the dialog for it;
-2. shows What's New after an update (never on a first launch, which has the
+2. says once where a newer Angelo moved the chats (``moved_state_notice``,
+   ``app_identity.rst``, "Going back to an earlier version");
+3. shows What's New after an update (never on a first launch, which has the
    welcome screen, nor for a version already shown);
-3. lets the update notice found by the network check through.
+4. lets the update notice found by the network check through.
 
-One card is visible at a time, by priority: crash dialog 100, What's New 50,
-result notices 30, update notice 10. The crash dialog and What's New are modal
-over the 3D view (the chat stays usable); the update notice and the result
+One card is visible at a time, by priority: crash dialog 100, the moved-chats
+notice 60, What's New 50, result notices 30, update notice 10. The crash dialog
+and What's New are modal over the 3D view (the chat stays usable); the update notice and the result
 notices sit in the 3D view's bottom-right corner and take only presses on
 themselves. A closed card's operator is woken by a timer so it ends at once
 (the timer is removed within half a second in any case). Timers, window events,
@@ -201,7 +204,19 @@ Location
 machine policy ``UpdateFeedURL`` replaces it with an organization's https
 mirror of the same signed file; ``ANGELO_UPDATE_FEED_URL`` does so for
 development and tests (the policy wins). The signature is required whichever
-address served the file, and the links inside are still checked.
+address served the file, and the links inside are still checked. With
+``UpdateFeedURL`` set, Angelo also downloads the installers and deltas from the
+mirror (``update_feed.install_source``): a file the feed names at
+``https://downloads.angelo.studio/<path>`` comes from ``<path>`` beside the
+mirrored ``stable.json``. For example, ``https://it.example/angelo/stable.json``
+gives ``https://it.example/angelo/1.0.10/Angelo-1.0.10.dmg``. The feed's size and
+SHA-256 and the installer's code signature are checked as for Angelo's own host.
+A mirror therefore copies each file at the same path, so a network that
+reaches only the mirror still updates. A mirror that holds only
+``stable.json`` still works: when the mirror answers that it doesn't have a
+file (403, 404 or 410), Angelo downloads it from the feed's own host, with the
+same checks. Any other failure (an interrupted transfer, a network error)
+keeps the partial download, which resumes from the mirror next time.
 
 Envelope
 --------
@@ -574,16 +589,48 @@ Reason             What runs                                                    
 ``flow``           a Generation Flow run                                               ``flow_host``
 ``generation``     a Generative Studio job                                             ``studio._jobs``
 ``job``            a background render, bake or export                                 ``job_manager``
-``render``         a render, preview render, bake, composite or export Blender runs    ``bpy.app``,
-                                                                                       ``_bpy._angelo_jobs``
+``render``         a render, bake, composite or export Blender runs (Ocean, Dynamic     ``_bpy._angelo_jobs.``
+                   Paint, fluid, point cache, light and Line Art bakes included)       ``running_work``
+``task``           any other job Blender runs for the person: a proxy build, tracking  ``_bpy._angelo_jobs.``
+                   or a camera solve, an import, a remesh, a UV pack...                ``running_work``
 ``interaction``    a modal tool or drag in a window (not the update card itself)       ``input_policy``
 ``unknown``        an owner could not be asked: never read as idle                     (fail closed)
 =================  ==================================================================  ====================
 
+Blender's own jobs come from ``_angelo_jobs.running_work``
+(``bpy_angelo_jobs_work.cc``): every window-manager job that runs or waits to
+run (suspended behind another), whoever owns it, whose type is someone's work.
+Every ``eWM_JobType`` is classified in one ``switch`` with no ``default``,
+compiled with the missing-enumerator warning as an error on Clang, GCC and
+MSVC, so a type Blender adds (a base move included) does not build until it is
+classified; ``test_native_work_guard`` reads the enum and the switch as text
+too. Only jobs that recompute what a relaunch recomputes by itself are not
+work: directory listings, asset library loads, material, icon and file
+previews, sequencer thumbnails, drag previews and sound waves, shader
+compilation, studio lights, bookmark checks and clip prefetch. Every other type
+counts, so a job nobody thought about stops the restart rather than being lost.
+The job check is Blender 5.3's ``WM_jobs_has_running(wm, owner, type)``
+(running or suspended, any owner), adopted early
+(``scripts/angelo/early_adoption.json``). A build without ``running_work``
+falls back to the closed lists (``bpy.app.is_job_running`` for renders, preview
+renders, bakes and composites; ``_angelo_jobs.progress`` for the point cache,
+geometry-nodes bake and export jobs).
+
 The reasons are read once a second on the main thread and cached for drawing.
 They are read again when the button is pressed and once more right before the
 installer starts. Another copy of the same app still running (its files would
-be replaced under it) stops the restart with a notice.
+be replaced under it) stops the restart with a notice. A copy counts when it
+runs this install's executable file, however it was started: Angelo compares
+files, not spellings (device and inode, links followed). On macOS each
+process is named by the file the kernel runs (libproc's ``proc_pidpath``, not
+``ps``, which reports the path or ``argv[0]`` it was started as), so a copy
+started through a symbolic link to the app or its executable, or by a relative
+path, is recognised and a copy of the app elsewhere is not; without libproc the
+``ps`` paths are resolved the same way, and a relative one counts by its file
+name (fail closed). On Windows each process's image path
+(``QueryFullProcessImageNameW``) is compared with ``Angelo.exe`` as a file
+(volume and file index), so a short (8.3) name, a junction or link to the
+install folder, a substituted drive or another letter case still matches.
 
 Restart to Update
 -----------------
@@ -593,12 +640,22 @@ Restart to Update
 1. the work guard and the other-copy check (above);
 2. the cheap check of the prepared update (``Preparer.still_valid``);
 3. unsaved changes: **"Save changes before restarting?"**, an Angelo card over
-   the 3D view naming the file and the images with unsaved pixels, with Save and
+   the 3D view naming the file, the images with unsaved pixels and asset
+   catalogs with unsaved changes (``_angelo_jobs.catalogs_unsaved``, the check
+   Blender's own quit dialog makes; the file's own line is left out when only
+   catalogs are unsaved in a saved file), with Save and
    Restart, Don't Save and Cancel. Save saves the images first
    (``image.save_all_modified``, which packs a generated or packed image into
    the file), then the file (``wm.save_mainfile``), as Blender's own
    quit-after-save does; an image that stays unsaved, or a save that fails,
-   stops the restart with a notice. The save's
+   stops the restart with a notice. Saving the file writes the loaded
+   libraries' modified catalogs (their ``save_post``) when Blender's "Save
+   modified asset catalogs" setting is on; the quit dialog's checkbox keeps its
+   last state for the session, so the restart turns it on for its own save
+   (``_angelo_jobs.catalogs_save_with_file``) and puts it back after, the File
+   Browser's save of an untitled file included. A catalog still unsaved after
+   the save (its library folder can't be written) stops the restart with a
+   notice. Don't Save discards them, as Blender's quit does. The save's
    own answer decides, as in Blender's quit-after-save: ``bpy.data.is_dirty``
    reads True until Blender handles the save's notifier, after the call. An untitled file opens the File
    Browser; the restart continues after ``save_post`` and stops on
@@ -621,11 +678,15 @@ Both scripts take every input from ``ANGELO_UPDATE_*`` environment variables
 (paths in any language arrive intact), run one at a time (``helper.lock``),
 wait for Angelo's process to end, verify the update once more, and write
 ``result.txt`` (``status`` installed, failed or aborted, the step, the
-version and, on Windows, Windows Installer's exit code) before they relaunch.
+version and, on Windows, Windows Installer's exit code, plus
+``reboot=required`` for 3010) before they relaunch.
 
 * **macOS** (``install_update_macos.sh``, ``/bin/sh``, absolute tool paths):
   waits up to ten minutes for the process to end (an exited process its parent
-  has not reaped counts as ended); stops if another copy runs from the bundle;
+  has not reaped counts as ended); stops if another copy runs from the bundle
+  (the executable compared as a file, links followed: ``ps`` names a process
+  by the path it was started as, a relative one is asked of ``lsof`` and, for
+  another user's process ``lsof`` cannot read, counts by its file name);
   copies the new bundle beside the old one first when it was staged on another
   volume; then two renames: the installed bundle into the update's folder
   (``previous.app``, or ``.Angelo.app.previous-<n>`` beside it on another
@@ -648,13 +709,22 @@ version and, on Windows, Windows Installer's exit code) before they relaunch.
   ``KEY``, ``TOKEN``, ``SECRET``, ``PASSWORD``, ``AUTH`` or similar part:
   ``open``'s command line is visible to every local user) and ``--args <file>``.
 * **Windows** (``install_update_windows.cmd``, run hidden by ``cmd /d /c``):
-  waits for the process by number and image name (``tasklist``), stops if this
-  user still runs an ``Angelo.exe``, checks the MSI's SHA-256 against the feed's
+  waits for the process by number and image name (``tasklist``), stops if
+  another copy of this install still runs (``other_copies_windows.ps1``, copied
+  out beside it: every process's executable compared with the installed one as
+  a file, by volume serial number and file index, so a copy started through a
+  link of another name, a short name or a junction counts and another install's
+  ``Angelo.exe`` does not; a process whose path cannot be read counts by name
+  when it is this user's or its owner is unknown; when PowerShell cannot answer,
+  any ``Angelo.exe`` of this user counts), checks the MSI's SHA-256 against the feed's
   again (``certutil``), then ``msiexec /i <msi> /qb!- /norestart ALLUSERS=2
   MSIINSTALLPERUSER=1 MSIRESTARTMANAGERCONTROL=Disable REBOOT=ReallySuppress
   INSTALL_ROOT="<install folder>" /l*v install.log`` (Windows Installer's own
   progress bar, no Cancel), waiting for another installation in progress (exit
-  code 1618) up to ten minutes. If Angelo has not quit after ten minutes, either
+  code 1618) up to ten minutes. Exit code 3010 (``ERROR_SUCCESS_REBOOT_REQUIRED``:
+  a file in use, such as the thumbnail handler Explorer holds, is replaced when
+  Windows next starts) is installed, recorded with ``reboot=required``. If Angelo
+  has not quit after ten minutes, either
   script stops without relaunching anything (Angelo itself stops an installer
   that did not report within 15 seconds). Windows Installer replaces the installation as
   one transaction, so a failed or interrupted install leaves the previous
@@ -670,7 +740,11 @@ The next launch
 
 * ``installed`` for the running version: the previous bundle and the update's
   folder are removed (only a folder the installer named, never the installed
-  app), and the failure count is reset;
+  app), and the failure count is reset. When Windows still has to finish it
+  (``update_install.needs_reboot``: ``reboot=required``, or exit code 3010 from
+  an installer script older than that line, as the running version's own copy
+  installs its update), "Angelo 1.1 is installed" says once that restarting
+  Windows finishes the update; it is a success, never a failure count;
 * ``failed`` for a newer version: "Angelo 1.1 could not be installed" (nothing
   was changed; it will try again, or download it), counted in
   ``updates.json``. After two failures in a row that version is offered as a
@@ -1026,13 +1100,29 @@ platform, the code requirement, unpacking, the fingerprint, the MSI's signer),
 ``test_native_update_flow`` (delta first then the full download, never a
 downgrade, only the downloads host, a ready update across a restart),
 ``test_native_update_install`` (the hand-over and the macOS installer script
-run for real: the wait, the swap, the rollback, another running copy),
+run for real: the wait, the swap, the rollback, another running copy started
+by its path, through links or by a relative path, and a copy elsewhere that is not one),
 ``test_native_update_cards`` (every phase and the save prompt on every
 region), ``test_native_update_ready`` (background preparation, throttling,
 retries, the restart's refusals, the save prompt, the hand-over, the next
-launch, the work guard) and ``test_native_update_release_tools`` (deltas and
+launch, the work guard), ``test_native_work_guard`` (every ``eWM_JobType``
+classified once, a missing case a compile error, Blender's jobs as ``render``
+or ``task``, the fallback without ``running_work``),
+``test_native_update_other_copies`` (other copies by file on both platforms,
+real processes started through links and relative paths, listed by libproc,
+on macOS, and the Windows script's identity check by its contract; it runs for
+real only in the Windows end-to-end update), ``test_native_update_restart_saves`` (asset catalogs in
+the save prompt, saved with the file and put back, a catalog that can't be
+written; the Windows reboot result told once) and
+``test_native_update_release_tools`` (deltas and
 ``automatic_install`` through ``sign_update_feed.py`` and
 ``publish_installers.py``).
+
+Background: ``run_native_suites.py --include test_blender_work_guard_jobs``
+starts a real Ocean bake and an Alembic import job, which no closed list names,
+and requires ``running_work`` and ``work_guard.reasons`` to report them (and
+``running_scene_jobs``, which holds the parallel sessions' live view and
+bindings, ``scene_jobs.py``).
 
 Window: ``run_native_suites.py --gui --include test_blender_update_crash``
 drives the real default startup with real mouse and key events against a
@@ -1078,13 +1168,3 @@ Installing updates:
   password.
 * Deltas exist for macOS only and carry the main executable whole (no binary
   diff yet).
-* An unsaved asset catalogue (Blender's own quit dialog checks those too) is not
-  part of the save prompt; save it from the Asset Browser first.
-* The work guard sees renders, bakes, composites and exports Blender reports,
-  Angelo's own jobs and agent work; Dynamic Paint and Ocean bakes and sequencer
-  proxy builds are not reported to it, and the restart stops them as a normal
-  quit would.
-* Windows Installer's exit code 3010 (a file in use, replaced at the next
-  reboot, such as the thumbnail handler Explorer holds) counts as installed.
-* Another copy of the app is recognised by the path it was started from; one
-  started through a symbolic link or a relative path may not be.

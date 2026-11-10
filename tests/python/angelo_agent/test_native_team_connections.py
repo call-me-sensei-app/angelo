@@ -10,6 +10,8 @@ polling), and the guarantee that a team connection is never written to
 connections.json. No real console, gateway or provider is contacted.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import base64
 import json
@@ -27,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from claude_protocol_fixtures import ClaudeAdapterFixture, NativeInitializeFixture, completed  # noqa: E402
+from platform_env import essential_environ  # noqa: E402
 from angelo_agent import gateway_capabilities, provider_registry, team_connections, team_endpoints  # noqa: E402
 from angelo_agent.connections import ConnectionStore  # noqa: E402
 from angelo_agent.generative import GenerationBinding, bind_team_generation  # noqa: E402
@@ -230,18 +233,30 @@ class ChildEnvironmentTests(unittest.TestCase):
         from angelo_agent.providers import claude_session
         launches = {mode: claude_session("claude", SimpleNamespace(turn_options=None, state={"provider": mode, "options": {}}))
                     for mode in ("claude_team", "claude_api", "claude_subscription")}
+        settings = {mode: json.loads(command[command.index("--settings") + 1]) for mode, (command, _) in launches.items()}
         for mode, (command, initialize) in launches.items():
             with self.subTest(mode=mode):
                 self.assertNotIn("--bare", command)
                 self.assertEqual(command[command.index("--tools") + 1], "WebSearch,WebFetch")
-                self.assertEqual((command, initialize), launches["claude_subscription"])
+                # Only the settings differ: a team session's WebFetch goes through its gateway (team_network).
+                at = command.index("--settings") + 1
+                base = launches["claude_subscription"][0]
+                self.assertEqual((command[:at] + command[at + 1:], initialize), (base[:at] + base[at + 1:],
+                                                                                 launches["claude_subscription"][1]))
+        self.assertEqual(settings["claude_api"], {"fastMode": False, "hooks": {}})
+        self.assertEqual(settings["claude_subscription"], {"fastMode": False, "hooks": {}})
+        self.assertIs(settings["claude_team"]["skipWebFetchPreflight"], True)
+        hook = settings["claude_team"]["hooks"]["PreToolUse"]
+        self.assertEqual([entry["matcher"] for entry in hook], ["WebFetch"])
+        self.assertEqual(hook[0]["hooks"][0]["command"], '"$ANGELO_HOOK_PYTHON" -I -S -B "$ANGELO_WEB_FETCH_HOOK"')
 
     def test_a_key_or_team_claude_launch_needs_its_own_angelo_profile(self):
         from angelo_agent.providers import profile_environment
         from angelo_agent.runtime_environment import require_angelo_profile
         api = "1b6f3c55-8d0e-4a8e-9b51-7f1f0a3c2d11"
         team = team_connections.connection_id(CONSOLE, "org-1", "user-1", "claude_team")
-        with tempfile.TemporaryDirectory() as state, patch.dict(os.environ, {"PATH": "/usr/bin"}, clear=True):
+        profile = essential_environ()
+        with tempfile.TemporaryDirectory() as state, patch.dict(os.environ, dict(profile, PATH="/usr/bin"), clear=True):
             for mode, identity in (("claude_api", api), ("claude_team", team)):
                 with self.subTest(mode=mode):
                     env = profile_environment(child_environment(mode, GRANT_KEY), mode, state, False, identity)
@@ -289,8 +304,7 @@ class ChildEnvironmentTests(unittest.TestCase):
         self.assertNotIn(NO_WEB_SEARCH, "".join(own["request"]["systemPrompt"]))
 
     def test_codex_team_modes_use_a_gateway_model_provider_with_the_key_only_in_the_environment(self):
-        # Windows finds the home folder only through its profile variables, so a cleared environment keeps them.
-        profile = {key: value for key, value in os.environ.items() if key.upper() in ("USERPROFILE", "LOCALAPPDATA", "APPDATA", "SYSTEMROOT")}
+        profile = essential_environ()
         decoding = patch.object(gateway_capabilities, "request_encodings", return_value=frozenset({"gzip", "zstd"}))
         with tempfile.TemporaryDirectory() as state, patch.dict(os.environ, dict(profile, PATH="/usr/bin"), clear=True), \
                 decoding:
@@ -315,7 +329,7 @@ class ChildEnvironmentTests(unittest.TestCase):
     def test_every_codex_launch_opens_without_a_date_and_team_routes_keep_zstd(self):
         # The date-free opening and the team route's zstd live in runtime_launch.codex_command, the one launch
         # path, so every Codex launch gets both.
-        profile = {key: value for key, value in os.environ.items() if key.upper() in ("USERPROFILE", "LOCALAPPDATA", "APPDATA", "SYSTEMROOT")}
+        profile = essential_environ()
         decoding = patch.object(gateway_capabilities, "request_encodings", return_value=frozenset({"zstd"}))
         team = sorted(m for m in TEAM_MODES if SPECS[m]["runtime"] == "codex")
         with tempfile.TemporaryDirectory() as state, patch.dict(os.environ, dict(profile, PATH="/usr/bin"), clear=True), \
@@ -510,8 +524,7 @@ class FakeGateway:
 class GatewayCapabilityTests(unittest.TestCase):
     """Team Codex requests are compressed only when the gateway itself says it decodes them (gateway_capabilities)."""
 
-    PROFILE = {key: value for key, value in os.environ.items()
-               if key.upper() in ("USERPROFILE", "LOCALAPPDATA", "APPDATA", "SYSTEMROOT")}
+    PROFILE = essential_environ()
     HEALTH = json.dumps({"ok": True, "release": "r1", "requestEncodings": ["gzip", "zstd"]}).encode()
 
     def setUp(self):

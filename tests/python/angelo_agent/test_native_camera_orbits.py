@@ -12,6 +12,8 @@ strongest of the other two at the cube. test_blender_camera_light_programs.py
 stages and commits a resolved orbit inside the Angelo binary.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import math

@@ -9,7 +9,8 @@ from bpy.types import Operator
 
 from .input_policy import modal_options
 from . import studio as core   # Rebound state (_enabled, _input_generation) is read through the module.
-from . import canvas_controls, chat_view as canvas, live_windows, scroll_input, studio_drag
+from . import canvas_controls, canvas_focus, chat_view as canvas, live_windows, scroll_input, studio_drag, studio_enter
+from . import text_keys
 from .studio_state import MULTILINE_FIELDS, error_text, refusable
 from .ui_text import n_
 from .studio import (  # noqa: E402 (studio imports this module after defining these)
@@ -39,8 +40,7 @@ class ANGELO_OT_studio_input(Operator):
             region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
             if region is not None and not (region.x <= event.mouse_x < region.x + region.width
                                            and region.y <= event.mouse_y < region.y + region.height):
-                if studio_drag.moved(context, window, area, region, state, event.mouse_x - region.x,
-                                     event.mouse_y - region.y):
+                if studio_drag.moved(context, window, area, region, state, *self.layout_point(state, region, event)):
                     return True
         return False
 
@@ -72,12 +72,12 @@ class ANGELO_OT_studio_input(Operator):
                 redraw()
             return {'PASS_THROUGH'}
         mouse = 'MOUSE' in event.type or event.type in {'TRACKPADPAN', 'TRACKPADZOOM', 'EVT_DROP'}
-        area = next((a for a in live_windows.areas(window) if is_studio(a) and a.x <= event.mouse_x < a.x + a.width
-                     and a.y <= event.mouse_y < a.y + a.height), None)
+        area = over = next((a for a in live_windows.areas(window) if is_studio(a)
+                            and a.x <= event.mouse_x < a.x + a.width and a.y <= event.mouse_y < a.y + a.height), None)
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS' and not area:
             self.focus_area = None
             for state in _views.values():
-                state["focus"] = None
+                state["field_focus"] = state["focus"] = None   # A click elsewhere ends editing and keyboard focus.
                 state.pop("popover", None)
             redraw()
         if area is None and not mouse and self.focus_area:
@@ -90,7 +90,8 @@ class ANGELO_OT_studio_input(Operator):
         region = next((r for r in area.regions if r.type == 'WINDOW'), None)
         if not region or (mouse and not (region.x <= event.mouse_x < region.x + region.width and region.y <= event.mouse_y < region.y + region.height)):
             return {'PASS_THROUGH'}
-        state, x, y = view(area), event.mouse_x - region.x, event.mouse_y - region.y
+        state = view(area)
+        x, y = self.layout_point(state, region, event)   # As the last draw laid things out (mirrored in Arabic).
         if event.type == 'EVT_DROP':
             defer_drop(window, area)
             return {'PASS_THROUGH'}
@@ -137,8 +138,8 @@ class ANGELO_OT_studio_input(Operator):
             area.tag_redraw()
             return {'RUNNING_MODAL'}   # Blender's asset drag has the pointer now.
         if event.type == 'MOUSEMOVE':
-            if self.dragging and state.get("focus"):
-                key = state["focus"]
+            if self.dragging and state.get("field_focus"):
+                key = state["field_focus"]
                 caret = point_to_caret(state, key, x, y)
                 state["caret"] = caret
                 state["selection"] = tuple(sorted((state.get("anchor", caret), caret)))
@@ -168,7 +169,7 @@ class ANGELO_OT_studio_input(Operator):
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             self.focus_area = area.as_pointer()
             target = next(((r, a, v) for r, a, v in reversed(state.get("hits", [])) if canvas.inside(r, x, y)), None)
-            state["focus"] = None
+            state["field_focus"] = state["focus"] = None   # A pointer click ends keyboard focus too.
             if target and target[1] == "asset" and studio_drag.available() and library().assets.get(target[2], {}).get("status") == "ready":
                 studio_drag.press(state, target[2], target[0], area, event, x, y)   # A drag or, on release, a click.
                 area.tag_redraw()
@@ -176,17 +177,25 @@ class ANGELO_OT_studio_input(Operator):
             if target:
                 rect, action, value = target
                 state["pressed"] = (action, value)   # The primary button's pressed look until the release.
-                with context.temp_override(window=window, area=area, region=region):
-                    refusable(state, lambda: click(bpy.context, state, action, value, rect))
+                self.activate(context, state, area, region, target)
                 if action == "focus":
                     state["caret"] = point_to_caret(state, value, x, y)
                     state["anchor"] = state["caret"]
                     self.dragging = True
             area.tag_redraw()
             return {'RUNNING_MODAL'}
+        taken = self.keyboard(context, state, area, region, event, over is not None)   # Tab focus (canvas_focus).
+        if taken is not None:
+            return taken
         # Native popup/file-picker dialogs own their keyboard events. The
         # studio relinquishes focus before invoking any native modal dialog.
-        key = state.get("focus")
+        key = state.get("field_focus")
+        if event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'RELEASE':
+            target = studio_enter.on_release(state, key)   # Return runs a field's primary action on its release.
+            if target is not None:
+                self.activate(context, state, area, region, target)   # As a click on its button.
+                area.tag_redraw()
+                return {'RUNNING_MODAL'}
         if not key or event.value != 'PRESS':
             return {'PASS_THROUGH'}
         modifier = event.ctrl or event.oskey
@@ -220,13 +229,12 @@ class ANGELO_OT_studio_input(Operator):
             else:
                 caret = max(0, caret - 1) if event.type == 'LEFT_ARROW' else min(len(value), caret + 1) if event.type == 'RIGHT_ARROW' else 0 if event.type == 'HOME' else len(value)
             state["selection"] = tuple(sorted((chosen[0] if chosen else previous, caret))) if event.shift else None
-        elif event.type in {'RET', 'NUMPAD_ENTER'}:
-            if key in MULTILINE_FIELDS:
+        elif event.type in {'RET', 'NUMPAD_ENTER'}:   # text_keys: Return acts, Shift+Return is a new line.
+            if studio_enter.on_return(state, key, key in MULTILINE_FIELDS, event.shift,
+                                      event.is_repeat) == text_keys.LINE:
                 insert = "\n"
-            else:
-                state["focus"] = None
         elif event.type == 'ESC':
-            state["focus"], state["selection"] = None, None
+            state["field_focus"], state["selection"] = None, None
             state.pop("prompt_dialog", None)
         elif event.unicode and not modifier and not event.alt:
             insert = event.unicode
@@ -244,6 +252,47 @@ class ANGELO_OT_studio_input(Operator):
         area.tag_redraw()
         return {'RUNNING_MODAL'}
 
+    def keyboard(self, context, state, area, region, event, pointer_over):
+        """Tab, the arrows, Return and Space on the Studio's controls (``canvas_focus``, in the order drawn), or None
+        to pass the event on. Studio is a console area, so Tab is its own: from the canvas while the pointer is over
+        it or a control is focused (otherwise it is the editor's under the pointer), and from a field being edited,
+        which it leaves for the next control. Tab landing on a field enters it as a click does; Return or Space runs a
+        control as its click (``activate``) on the key's release, so a held key never confirms Generate's dialog."""
+        field = state.get("field_focus")
+        if field is not None:
+            if event.type != 'TAB' or event.value != 'PRESS' or event.ctrl or event.oskey or event.alt:
+                return None   # The field's own keys (Return: ``studio_enter``).
+            state.update(field_focus=None, selection=None, focus=("focus", field))
+            state.pop("enter_armed", None)
+        elif state.get("focus") is None and state.get("armed") is None and not pointer_over:
+            return None
+        target = canvas_focus.key(event, state, area.tag_redraw, drawn=True, on_release=True, wrap=True,
+                                  enters=lambda key: key[0] == "focus", mirrored=state.get("mirror") is not None)
+        if target is None:
+            return None
+        hit = canvas_focus.focused_hit(state) if target else None
+        if hit is not None:
+            self.activate(context, state, area, region, hit)
+            if state.get("field_focus"):   # A field took the keyboard: its own outline shows, not the ring.
+                canvas_focus.leave(state)
+        area.tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    @staticmethod
+    def layout_point(state, region, event):
+        """The pointer in ``region`` as Studio's layout sees it: mirrored back about the axis its last draw mirrored
+        about (``state["mirror"]``, a right-to-left language), so hits, carets and scrolls match what is on screen."""
+        from . import canvas_rtl
+        return canvas_rtl.layout_x(event.mouse_x - region.x, state.get("mirror")), event.mouse_y - region.y
+
+    @staticmethod
+    def activate(context, state, area, region, target):
+        """Run a hit ``(rect, action, value)`` as its click, in the Studio's own area; a refusal becomes the notice
+        (``refusable``). A pointer press and Return on a field's primary action both go through here."""
+        rect, action, value = target
+        with context.temp_override(window=context.window, area=area, region=region):
+            refusable(state, lambda: click(bpy.context, state, action, value, rect))
+
 
 def ensure_input(window, area):
     from .input_policy import canvas_blocking, handler_running
@@ -257,11 +306,14 @@ def ensure_input(window, area):
 
 
 def point_to_caret(state, key, x, y):
+    """The caret nearest layout point (``x``, ``y``) in field ``key``, where its draw put each caret."""
+    from .studio_draw import _caret_x
     value = state[key]
     rect, rows, first = state.get("fields", {}).get(key, ((0, 0, 0, 0), ((value, 0),), 0))
     index = max(0, min(len(rows) - 1, first + int((rect[1] + rect[3] - 5 - y) / 19)))
     line, offset = rows[index]
-    caret = min(range(len(line) + 1), key=lambda i: abs(rect[0] + 11 + canvas.measure(line[:i], 13) - x))
+    mirrored = state.get("mirror") is not None
+    caret = min(range(len(line) + 1), key=lambda i: abs(rect[0] + 11 + _caret_x(line, i, mirrored) - x))
     return min(len(value), offset + caret)
 
 
@@ -269,7 +321,7 @@ def state_for(pointer):
     state = _views.get(int(pointer))
     if state is None:
         raise ValueError(n_("Media Studio has closed"))
-    state["focus"] = None
+    state["field_focus"] = None
     return state
 
 

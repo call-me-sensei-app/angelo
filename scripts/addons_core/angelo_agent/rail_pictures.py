@@ -148,8 +148,7 @@ def shown_share(target, offscreen, space, view, projection, view_layer, grow=0):
 
 
 def _artist_region(area, region):
-    """``(region_3d, width, height)`` of the artist's own view in ``area`` (the camera region of a quad view), or
-    None."""
+    """``(region_3d, width, height)`` of the artist's own view in ``area`` (a quad view's camera region), or None."""
     rv3d = getattr(area.spaces.active, "region_3d", None)
     if rv3d is None:
         return None
@@ -360,7 +359,8 @@ def refresh(now=None):
         if session_id == parallel_sessions.lead and not lead_shown(session_id):
             continue   # Still out of date: drawn once its own scene is shown again, its last picture kept meanwhile.
         host = _host() if session_id == parallel_sessions.lead else None
-        if host and not drawn_view.ready(session_id, host[1], _artist_region(*host[1:]), host[0].scene, now):
+        if host and not drawn_view.ready(session_id, host[1], _artist_region(*host[1:]), host[0].scene, now,
+                                         live_windows.covered(getattr(bpy.context, "window_manager", None))):
             continue   # The artist's view changed and its region has not drawn it yet: decided on that frame.
         since = parallel_sessions.stale.pop(session_id, now)
         if session_id == parallel_sessions.lead:

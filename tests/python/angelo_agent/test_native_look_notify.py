@@ -8,6 +8,8 @@ soon as no render job runs for the look's scene, and then stops; it never
 watches other jobs, and does nothing with ``ANGELO_LOOK_NOTIFY=0``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import unittest

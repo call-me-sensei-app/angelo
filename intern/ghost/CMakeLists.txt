@@ -10,9 +10,15 @@ set(INC
 set(INC_SYS
 )
 
+# Tests of the sources one platform branch below compiles, run only where it compiles them.
+set(GHOST_PLATFORM_TEST_SRC)
+
 set(SRC
   intern/GHOST_Buttons.cc
   intern/GHOST_CallbackEventConsumer.cc
+  intern/GHOST_ClipboardImage.cc
+  intern/GHOST_ClipboardImage_DIB.cc
+  intern/GHOST_ClipboardImage_ImBuf.cc
   intern/GHOST_Context.cc
   intern/GHOST_ContextNone.cc
   intern/GHOST_EventManager.cc
@@ -38,6 +44,7 @@ set(SRC
   GHOST_Types.hh
 
   intern/GHOST_Buttons.hh
+  intern/GHOST_ClipboardImage.hh
   intern/GHOST_Context.hh
   intern/GHOST_ContextNone.hh
   intern/GHOST_Debug.hh
@@ -152,12 +159,21 @@ elseif(WITH_GHOST_SDL)
   )
 elseif(APPLE AND NOT WITH_GHOST_X11)
   list(APPEND SRC
+    intern/GHOST_ClipboardImage_Cocoa.mm
     intern/GHOST_SystemCocoa.mm
     intern/GHOST_WindowCocoa.mm
 
+    intern/GHOST_ClipboardImage_Cocoa.hh
     intern/GHOST_SystemCocoa.hh
     intern/GHOST_WindowCocoa.hh
     intern/GHOST_WindowViewCocoa.hh
+  )
+  # vImage converts clipboard pictures to straight sRGB (`GHOST_ClipboardImage_Cocoa.mm`).
+  list(APPEND LIB
+    "-framework Accelerate"
+  )
+  list(APPEND GHOST_PLATFORM_TEST_SRC
+    intern/GHOST_ClipboardImage_Cocoa_test.mm
   )
 
   if(WITH_INPUT_NDOF)
@@ -638,3 +654,24 @@ if(WITH_XR_OPENXR)
 endif()
 
 blender_add_lib(bf_intern_ghost "${SRC}" "${INC}" "${INC_SYS}" "${LIB}")
+
+if(WITH_GTESTS)
+  # The readers of clipboard pictures. What goes through ImBuf is tested with the window manager
+  # (`wm_clipboard_image_test.cc`), so this suite needs no Blender kernel.
+  set(TEST_SRC
+    intern/GHOST_ClipboardImage_bitmap_test.cc
+    intern/GHOST_ClipboardImage_bmp_test.cc
+    intern/GHOST_ClipboardImage_transfer_test.cc
+    intern/GHOST_ClipboardImage_test.cc
+
+    intern/GHOST_ClipboardImage_test_dib.hh
+  )
+  list(APPEND TEST_SRC
+    ${GHOST_PLATFORM_TEST_SRC}
+  )
+  set(TEST_LIB
+    ${LIB}
+    PRIVATE bf_intern_ghost
+  )
+  blender_add_test_suite_lib(intern_ghost "${TEST_SRC}" "${INC}" "${INC_SYS}" "${TEST_LIB}")
+endif()

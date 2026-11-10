@@ -22,13 +22,15 @@ API:
 
 import re
 
-from .chat_titles import NATIVE, NOT_RUN, OTHER, delegate_title, studio_title, title_form
+from . import call_ended
+from .chat_titles import NATIVE, NOT_RUN_STATES, OTHER, delegate_title, not_run, studio_title, title_form
 from .legacy_names import current_tool_name
 from .ui_text import iface_, join, n_, plural_
 
 KINDS = ("read", "look", "search", "create", "edit", "delete", "material", "render", "script", "generate",
          "file", "job", "consult", "memory", "sculpt", "check", "plan", "work")
-STATUSES = ("running", "queued", "needs_you", "failed", "declined", "stopped", "reverted", "preview", "done")
+STATUSES = ("running", "queued", "needs_you", "failed", "declined", "stopped", "stopped_watching", "reverted",
+            "preview", "done", "expired")
 
 _KIND = {
     "angelo_inspect_scene": "read", "angelo_read_data": "read", "angelo_blend_file": "read",
@@ -118,10 +120,16 @@ _GENERIC = {"read": (n_("Looked at the scene"), n_("Looking at the scene"), n_("
             "work": (n_("Worked on the scene"), n_("Working on the scene"), n_("Work on the scene"))}
 _STATUS_LABELS = {"running": n_("Running"), "queued": n_("Queued"), "needs_you": n_("Needs you"),
                   "failed": n_("Failed"), "declined": n_("Declined"), "stopped": n_("Stopped"),
-                  "reverted": n_("Reverted"), "preview": n_("Preview"), "done": n_("Done")}
+                  "stopped_watching": n_("Stopped watching"), "reverted": n_("Reverted"), "preview": n_("Preview"), "done": n_("Done"),
+                  "expired": n_("Expired · nothing ran")}
 _TONES = {"running": "teal", "queued": "neutral", "needs_you": "amber", "failed": "coral", "declined": "neutral",
-          "stopped": "neutral", "reverted": "amber", "preview": "amber", "done": "teal"}
-_NOT_RUN = NOT_RUN   # A step that never ran by the person's choice or a stop: not a failure (chat_titles).
+          "stopped": "neutral", "stopped_watching": "amber", "reverted": "amber", "preview": "amber", "done": "teal", "expired": "neutral"}
+# The row chip's kit kind and label by status (chat_rows.chip): the neutral ones read as steps that did not run.
+CHIP = {"running": ("running", None), "queued": ("preview", n_("Queued")), "planned": ("preview", n_("Planned")),
+        "needs_you": ("needs_you", None), "declined": ("preview", n_("Declined")), "stopped": ("preview", n_("Stopped")),
+        "failed": ("failed", None), "reverted": ("needs_you", n_("Reverted")), "preview": ("preview", None),
+        "done": ("done", None), "stopped_watching": ("needs_you", n_("Stopped watching")), "expired": ("preview", _STATUS_LABELS["expired"])}
+_NOT_RUN = NOT_RUN_STATES   # A step stopped or declined, including watching submitted paid work.
 _EDITS = {"create", "edit", "delete", "material", "script", "sculpt", "generate"}
 _JOBS = {"job", "render"}
 _LOOKS = {"read", "look", "search", "check", "file", "memory", "consult"}
@@ -199,8 +207,11 @@ def step_status(message):
         return "needs_you"
     if status in {"queued", "running"}:
         return status
-    if result.get("error_code") in _NOT_RUN:
-        return _NOT_RUN[result["error_code"]]
+    if call_ended.status(message):   # The host ended it before anything ran (call_ended): never "failed".
+        return call_ended.status(message)
+    ended = not_run(message)   # A billed step whose provider may still finish: "stopped_watching" (chat_titles).
+    if ended:
+        return ended
     if status == "failed" or result.get("error") or result.get("script_error"):
         return "failed"
     if message.get("reverted"):
@@ -243,8 +254,9 @@ def group_title(messages, live):
         return plural_(count, "Working on the scene · {count} step", "Working on the scene · {count} steps")
     statuses = [step_status(message) for message in messages]
     ran = [(step_kind(message), status) for message, status in zip(messages, statuses)
-           if status not in _NOT_RUN.values()]   # A declined or stopped step did nothing to count.
-    failed, declined, stopped = (statuses.count(status) for status in ("failed", "declined", "stopped"))
+           if status not in _NOT_RUN and status != "expired"]
+    failed, declined, stopped, watching, expired = (statuses.count(status) for status in ("failed", "declined", "stopped",
+                                                                                           "stopped_watching", "expired"))
     edits = sum(kind in _EDITS and status != "failed" for kind, status in ran)
     looks = sum(kind in _LOOKS for kind, _status in ran)
     jobs = sum(kind in _JOBS for kind, _status in ran)
@@ -262,6 +274,10 @@ def group_title(messages, live):
         parts.append(plural_(declined, "{count} step declined", "{count} steps declined"))
     if stopped:
         parts.append(plural_(stopped, "{count} step stopped", "{count} steps stopped"))
+    if expired:
+        parts.append(plural_(expired, "{count} step expired", "{count} steps expired"))
+    if watching:   # The provider may still finish and charge for these (chat_titles.BILLED_TOOLS).
+        parts.append(plural_(watching, "Stopped watching {count} step", "Stopped watching {count} steps"))
     return join(parts) if parts else plural_(count, "Finished {count} step", "Finished {count} steps")
 
 

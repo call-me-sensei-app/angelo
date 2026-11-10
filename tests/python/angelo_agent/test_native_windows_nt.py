@@ -10,6 +10,8 @@ layouts with their legacy fallbacks, directory parsing and error mapping. Only a
 Windows run proves Windows' behaviour (doc/angelo/checkpoint_policy.rst).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ctypes
 import errno
 import struct
@@ -59,7 +61,7 @@ class FakeLibraries:
         return self.set_status.pop(0) if self.set_status else 0
 
     def _RtlNtStatusToDosError(self, status):
-        return 2
+        return 5 if status & 0xFFFFFFFF == nt.STATUS_DELETE_PENDING else 2   # ERROR_ACCESS_DENIED, as Windows maps it
 
     def _CreateFileW(self, path, access, share, security, disposition, flags, template):
         self.calls.append(("CreateFileW", path, access, share, disposition, flags))
@@ -179,6 +181,18 @@ class NtBindingTests(unittest.TestCase):
         self.libraries.create_status = [0xC0000034 - 2**32]   # STATUS_OBJECT_NAME_NOT_FOUND -> winerror 2
         with self.assertRaisesRegex(OSError, "Windows error 2"):
             self.api.open_at(DIRECTORY_FD, "missing", 1, 1, 0)
+
+    def test_a_name_being_deleted_is_absent_to_an_open_and_still_taken_to_a_create(self):
+        # Deleted while another handle holds it (SQLite removing its -shm as the last connection closes): NT answers
+        # STATUS_DELETE_PENDING, which Windows maps to "access denied". No open can reach it, so to one it is gone.
+        self.libraries.create_status = [nt.STATUS_DELETE_PENDING - 2**32]
+        with self.assertRaises(FileNotFoundError):
+            self.api.open_at(DIRECTORY_FD, "index.sqlite-shm", 1, aw.FILE_OPEN, 0)
+        for disposition in (aw.FILE_CREATE, aw.FILE_OPEN_IF):
+            self.libraries.create_status = [nt.STATUS_DELETE_PENDING - 2**32]
+            with self.subTest(disposition=disposition), self.assertRaisesRegex(OSError, "Windows error 5") as raised:
+                self.api.open_at(DIRECTORY_FD, "index.sqlite-shm", 1, disposition, 0)
+            self.assertNotIsInstance(raised.exception, FileNotFoundError)
 
     def test_rename_and_link_carry_the_target_directory_handle_and_name(self):
         self.api.rename_at(3, DIRECTORY_FD, "out.txt", replace=True)

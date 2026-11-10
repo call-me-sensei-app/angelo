@@ -14,6 +14,8 @@ the very tools each send carries. The PowerShell that joins them runs only on th
 contract here.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import shutil
@@ -30,6 +32,8 @@ SCRIPTS = HERE.parents[2] / "scripts/angelo"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 import shipped_sources  # noqa: E402
+sys.path.insert(0, str(HERE))
+from host_test_policy import environment_skip  # noqa: E402
 
 TOOLS = ("gcp_windows_validate.sh", "gcp_windows_source.sh", "gcp_windows_wait.sh", "source_tree.py", "source_extract.py",
          "source_send.py", "shipped_sources.py", "windows_source_send.ps1", "windows_cloud_bootstrap.ps1")
@@ -201,6 +205,8 @@ class LauncherFixture:
         return sorted(listed.decode("utf-8").split())
 
 
+@unittest.skipIf(os.name == "nt", environment_skip("the launcher (gcp_windows_*.sh) is bash, run from the macOS "
+                                                   "workstation; the VM side is checked by contract below"))
 @unittest.skipUnless(git_lfs_works(), "the launcher is bash with git and Git LFS, run from the workstation")
 class ConfirmedCommitTests(LauncherFixture, unittest.TestCase):
     def test_one_send_is_one_commit_even_when_head_moves_during_it(self):

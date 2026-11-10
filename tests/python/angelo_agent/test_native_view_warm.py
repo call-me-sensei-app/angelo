@@ -11,6 +11,8 @@ while the engine is cold, answers Solid for a material never asked for and after
 scene it was asked for, waits out the person's tool, and keeps the recovery barrier's evidence; the wiring is opt-in for the agent's tool only. The GUI probe measures the main loop.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

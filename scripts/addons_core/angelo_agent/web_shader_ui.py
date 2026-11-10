@@ -17,9 +17,9 @@ PROBLEMS = {"missing": n_("The shader file isn't there"), "tsl": n_("TSL web sha
             "too_large": n_("The shader file is larger than 256 KB"), "unreadable": n_("The shader file can't be read")}
 READ = n_("Read {count} uniforms from the shader file")
 # The built-ins' uniforms by name (a file's uniforms are its own names, shown as they are).
-LABELS = {"base_color": n_("Base Color"), "shadow_color": n_("Shadow Color"), "bands": n_("Bands"),
-          "outline": n_("Outline"), "rim_color": n_("Rim Color"), "rim_power": n_("Rim Power"),
-          "rim_strength": n_("Rim Strength"), "color": n_("Color"), "lines": n_("Scan Lines"), "speed": n_("Speed"),
+LABELS = {"base_color": n_("Base color"), "shadow_color": n_("Shadow color"), "bands": n_("Bands"),
+          "outline": n_("Outline"), "rim_color": n_("Rim color"), "rim_power": n_("Rim power"),
+          "rim_strength": n_("Rim strength"), "color": n_("Color"), "lines": n_("Scan lines"), "speed": n_("Speed"),
           "opacity": n_("Opacity"), "flicker": n_("Flicker")}
 
 

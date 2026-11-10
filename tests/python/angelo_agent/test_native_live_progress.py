@@ -10,6 +10,8 @@ A real user asked for a sign that a long think is "still going and not stuck"; a
 "Thinking" with nothing moving, and its opened row said only that the runtime supplied no summary.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import contextlib
 import re
@@ -182,7 +184,8 @@ class EveryStatusHasALabel(unittest.TestCase):
         self.assertEqual(missing, [], "label these in chat_titles.LIVE or list them in NOT_LIVE")
 
     def test_labels_are_what_the_live_row_shows(self):
-        for status in ("Waiting for a render", "Rendering a look", "Approval required"):
+        # No status says the chat waits for the person: its card does (approval_wait, test_native_approval_wait).
+        for status in ("Waiting for a render", "Rendering a look"):
             self.assertNotEqual(live_progress.phase(facts(status=status)), "Thinking", status)
 
 

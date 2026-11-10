@@ -20,6 +20,8 @@
 #  include <unistd.h>
 #endif
 
+#include "MEM_guardedalloc.h"
+
 #include "DNA_scene_types.h"
 #include "DNA_userdef_types.h"
 
@@ -625,7 +627,12 @@ TEST_F(WritefileDescriptorTest, IncompatibleOptionsRefuseBeforeMainPreparationOr
   const int descriptor = open_owned(path("options.blend"));
   ASSERT_GE(descriptor, 0);
   const std::string logical = path("logical.blend");
-  BlendThumbnail thumbnail{};
+  const uint8_t pixel[4] = {0, 0, 0, 0};
+  const int size[2] = {1, 1};
+  auto free_thumbnail = [](BlendThumbnail *thumbnail) { MEM_delete(thumbnail); };
+  std::unique_ptr<BlendThumbnail, decltype(free_thumbnail)> thumbnail(
+      BKE_main_thumbnail_from_buffer(nullptr, pixel, size), free_thumbnail);
+  ASSERT_NE(thumbnail.get(), nullptr);
   for (int option = 0; option < 11; option++) {
     SCOPED_TRACE(option);
     BlendFileWriteParams rejected = params();
@@ -653,7 +660,7 @@ TEST_F(WritefileDescriptorTest, IncompatibleOptionsRefuseBeforeMainPreparationOr
         rejected.is_copypaste_buffer = true;
         break;
       case 7:
-        rejected.thumb = &thumbnail;
+        rejected.thumb = thumbnail.get();
         break;
       case 8:
         rejected.compression_min_size = 1;

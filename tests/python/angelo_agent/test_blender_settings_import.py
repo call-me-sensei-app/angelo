@@ -36,6 +36,10 @@ Receipts: ``settings-import.json`` and one ``<phase>.json`` per phase, with the 
 account, network (``--offline-mode``) or real user folder is used.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import argparse
 import hashlib
 import json
@@ -107,6 +111,11 @@ def run_host():
                    ANGELO_STATE_DIR=str(home.parent / "state"), ANGELO_CONNECTIONS_DIR=str(home.parent / "accounts"),
                    ANGELO_LIBRARY_DIR=str(home.parent / "library"), ANGELO_FAKE_CLI_STATE=str(home.parent / "fake-cli"),
                    PATH=str(fake_bin) + os.pathsep + os.environ.get("PATH", ""))
+        # This prepared home is the launch's isolated profile (suite_isolation): marked as one, the launched app keeps
+        # it instead of relaunching into a fresh home that holds none of this fixture.
+        import provider_isolation
+        provider_isolation.prepare(home)
+        env = provider_isolation.isolated_environment(env, home, keep_home=True)
         env.update(extra or {})
         return env
 

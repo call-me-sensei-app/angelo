@@ -7326,7 +7326,7 @@ static bool bev_rebuild_polygon(BMesh *bm,
 static void bevel_rebuild_existing_polygons(BMesh *bm,
                                             BevelParams *bp,
                                             BMVert *v,
-                                            Set<BMFace *> &rebuilt_orig_faces,
+                                            VectorSet<BMFace *> &rebuilt_orig_faces,
                                             BMFace **r_rebuilt_face_0 = nullptr)
 {
   BMIter iter;
@@ -8424,8 +8424,12 @@ void BM_mesh_bevel(BMesh *bm,
     }
   }
 
-  /* Rebuild face polygons around affected vertices. */
-  Set<BMFace *> rebuilt_orig_faces;
+  /* Rebuild face polygons around affected vertices.
+   * Angelo: an ordered set, so the rebuilt faces are freed in the order they were found. The free
+   * order decides where the next elements are allocated, and so the element order of what a later
+   * operation adds; a pointer-hashed set's order followed heap addresses, which differ between
+   * processes (a grid's beveled vertices, then a triangulate, came out in another order). */
+  VectorSet<BMFace *> rebuilt_orig_faces;
   BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
     if (BM_elem_flag_test(v, BM_ELEM_TAG)) {
       bevel_rebuild_existing_polygons(bm, &bp, v, rebuilt_orig_faces);

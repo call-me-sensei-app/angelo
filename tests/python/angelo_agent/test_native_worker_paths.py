@@ -3,6 +3,8 @@
 """Host-only: a worker's deepest file paths (``worker_paths``), measured with the product's own writers, and the
 Windows refusal before a worker starts or its chat exists (support code WRK-PATH-TOO-LONG)."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 from pathlib import Path
 import sys

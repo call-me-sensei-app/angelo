@@ -15,7 +15,7 @@ import bpy
 from bpy.props import CollectionProperty, EnumProperty, FloatProperty, FloatVectorProperty, PointerProperty, \
     StringProperty
 
-from . import web_shader_spec as spec
+from . import change_keys, web_shader_spec as spec
 from .ui_text import n_
 
 KIND_ITEMS = (("NONE", n_("None"), n_("Export the material's nodes as they are")),
@@ -150,6 +150,9 @@ def sources(materials):
     return found
 
 
+KEYS = change_keys.ChangeKeys()   # The shader files a live reload watches.
+
+
 def signature(materials):
     """What a live reload watches: each web shader's kind, uniforms and its file's modification time."""
     parts = []
@@ -159,8 +162,10 @@ def signature(materials):
             continue
         stamp = None
         if settings.kind == "FILE":
-            try:
-                stamp = os.stat(file_path(settings, material)).st_mtime_ns
+            try:   # One key while the file is unchanged, in its clock's tick too (``change_keys``): one swap a save.
+                path = file_path(settings, material)
+                info = os.stat(path)
+                stamp = change_keys.key(info, path, info.st_mtime_ns, keys=KEYS, change=False, wait=False)
             except (OSError, ValueError):
                 stamp = None
         parts.append((material.name, settings.kind, settings.path, stamp, tuple(sorted(uniform_values(settings).items()))))

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Recovery fault matrix; native fixture separately proves actual file/scene effects."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from contextlib import nullcontext
 import copy
 from pathlib import Path
@@ -200,6 +202,36 @@ class CheckpointRestoreUITests(unittest.TestCase):
         self.assertFalse(self.active.rebound or self.other.rebound)
         self.active.checkpoints.restore_since.assert_not_called()
         self.assertEqual(self.active.state['messages'][-1]['restore_state'], 'not_applied')
+
+    def test_a_store_refusal_before_the_scene_opens_is_reported_in_the_person_s_language(self):
+        """A snapshot store refusal (a ``display_text.Text``: a clock set wrong, a volume that restamps at close) is
+        reported translated where shown; nothing was opened, and no other refusal changes."""
+        from angelo_agent import change_clock, checkpoint_store_text, display_text
+        reason = display_text.Text(checkpoint_store_text.CLOCK_AHEAD)
+        self.active.checkpoints.recovery_copy.side_effect = ValueError(reason)
+        with patch.object(flow.display_text, "shown", side_effect=lambda value: "shown: " + value):
+            self.assertEqual(flow.execute_restore(self.ui, self.operator), {'CANCELLED'})
+        self.operator.report.assert_called_with({'ERROR'}, "shown: " + checkpoint_store_text.CLOCK_AHEAD)
+        self.active.checkpoints.restore_since.assert_not_called()
+        # After the scene was replaced, the stored English diagnostic gives the clock's own reason instead: the
+        # person's sentence says the scene is unchanged (the Sculpt safety reload, through CheckpointRecovery.prepare).
+        ahead = change_clock.ClockAhead("The file's change time is ahead of the system clock")
+        try:
+            raise ValueError(reason) from ahead
+        except ValueError as refused:
+            self.assertEqual(flow._diagnostic(self.active, refused), str(ahead))
+        self.assertEqual(flow._diagnostic(self.active, OSError("disk gone")), "disk gone")
+        self.assertIn("_diagnostic(controller, error)", Path(flow.__file__).read_text(encoding="utf-8").split(
+            "def _reload_safety", 1)[1].split("\ndef ", 1)[0])
+
+    def test_a_refusal_for_the_person_after_the_safety_snapshot_stays_translatable_in_the_chat_row(self):
+        from angelo_agent import checkpoint_store_text, display_text
+        self.ui.bpy.ops.wm.open_mainfile.side_effect = ValueError(display_text.Text(checkpoint_store_text.CLOCK_AHEAD))
+        self.assertEqual(flow.execute_restore(self.ui, self.operator), {'CANCELLED'})
+        notice = self.active.state['messages'][-1]
+        self.assertEqual(notice['restore_state'], 'not_applied')
+        self.assertEqual(notice['i18n'][1]['error'], [checkpoint_store_text.CLOCK_AHEAD, {}], "translated whole")
+        self.assertIn(checkpoint_store_text.CLOCK_AHEAD, notice['text'], "the stored English sentence is whole")
 
     def test_view_refresh_error_is_postopen_partial_not_cancellation(self):
         self.ui.setup_chat_area.side_effect = OSError('Layout metadata could not be saved')

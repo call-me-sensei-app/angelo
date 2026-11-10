@@ -166,6 +166,8 @@ def update():
     """Where Angelo stands now: called on every signalled chat change (module docstring, "When it moves") and twice a
     second by ``chat_toggle``'s watch for the rest."""
     global _shown
+    from . import launcher_waiting
+    waiting_changed = launcher_waiting.refresh()
     if not enabled():
         if _shown:
             _redraw(_shown.values())
@@ -183,7 +185,7 @@ def update():
             shown[window.as_pointer()] = area.as_pointer()
         else:
             _opening.pop(window.as_pointer(), None)   # The chat is shown: the click did what it asked.
-    if shown != _shown:
+    if shown != _shown or waiting_changed:
         _redraw(set(_shown.values()) | set(shown.values()))
         for pointer in set(_shown) - set(shown):
             _leave(pointer)
@@ -263,6 +265,9 @@ def _idle():
 
 def _open(window):
     """Show the chat after this event (showing may move areas), and hide Angelo at once."""
+    from . import launcher_waiting
+    launcher_waiting.clear_hidden_hits()
+    launcher_waiting.select()
     pointer = window.as_pointer()
     _opening[pointer] = time.monotonic()
     _leave(pointer)
@@ -336,6 +341,9 @@ def _draw():
         except Exception as error:   # Local: marble_draw._failed would stop the chat's own wait animation.
             last_error = str(error)
             print("Angelo: chat launcher draw:", error)
+    from . import launcher_waiting
+    from .chat_guard import call
+    call("The hidden approval indicator", launcher_waiting.draw, window, region, cx, cy, radius, scale)
     if hover:
         if _view is None:
             from . import card_host
@@ -376,7 +384,8 @@ class ANGELO_OT_chat_launcher_input(Operator):
                 _leave(self.window)
                 _redraw([place[0]] if place else [])
             return {'PASS_THROUGH'}   # Not drawn yet, already opening, or a real tool holds the window.
-        over = inside(place, event.mouse_x, event.mouse_y)
+        from . import launcher_waiting
+        over = inside(place, event.mouse_x, event.mouse_y) or launcher_waiting.hit(window, event.mouse_x, event.mouse_y)
         if event.type in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE'}:
             if over != (self.window in _hover):
                 if over:

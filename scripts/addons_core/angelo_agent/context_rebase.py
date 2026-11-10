@@ -103,8 +103,8 @@ def handoff_start(messages):
     turn context observes; the last turn's results may not have reached the old
     context yet (a host-certified edit ends its turn without another round).
     """
-    from .request_rows import person_request
-    return next((index for index in range(len(messages) - 1, -1, -1) if person_request(messages[index])), 0)
+    from .request_rows import person_request_start   # A steer belongs to its request (steering).
+    return next((index for index in range(len(messages) - 1, -1, -1) if person_request_start(messages[index])), 0)
 
 
 def seed(messages, previews=()):

@@ -6,6 +6,8 @@ Dependency-free: reads only SVG/JSON sources (no Git LFS content), so it also
 runs in the host-test CI job.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import re

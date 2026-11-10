@@ -56,6 +56,13 @@ def _collaborator_instructions(tree):
     raise RuntimeError("delegation.py no longer assigns its instructions: update prompt_sources")
 
 
+def _initial_codex_tools(tool_specs, *, short_identifiers, deferred, allowed=None):
+    """Initial declarations only: deferLoading descriptions have not reached the model yet."""
+    tools = tool_specs.codex_tools(allowed, short_identifiers=short_identifiers, defer=deferred)
+    return [{key: value for key, value in tool.items() if key != "tools"}
+            if tool.get("type") == "namespace" else tool for tool in tools]
+
+
 def assemble(tree=ROOT):
     """``[(route, variant, text, tools)]`` for every route the tree can launch."""
     sys.path[:0] = [str(Path(tree) / "scripts/addons_core")]
@@ -76,13 +83,15 @@ def assemble(tree=ROOT):
     out.append(("collaborator-codex", "full plan",
                 providers.codex_instructions(short_identifiers=True, deferred=False, plan=True,
                                              allowed=tool_specs.COLLABORATOR_TOOLS) + collaborator,
-                tool_specs.dynamic_tools(tool_specs.COLLABORATOR_TOOLS)))
+                _initial_codex_tools(tool_specs, short_identifiers=True, deferred=False,
+                                     allowed=tool_specs.COLLABORATOR_TOOLS)))
     for short, deferred, plan, team in itertools.product((False, True), repeat=4):
         text = providers.codex_instructions(short_identifiers=short, deferred=deferred, plan=plan, team=team)
         route = "codex-%s-%s%s" % ("deferred" if deferred else "full", "plan" if plan else "chat", "" if short else "-long")
-        out.append((route, "team" if team else "personal", text, tool_specs.dynamic_tools()))
+        tools = _initial_codex_tools(tool_specs, short_identifiers=short, deferred=deferred)
+        out.append((route, "team" if team else "personal", text, tools))
         if not deferred and not plan:   # a third-party provider without web search appends its notice
-            out.append((route, "no web", text + providers.NO_WEB_SEARCH, tool_specs.dynamic_tools()))
+            out.append((route, "no web", text + providers.NO_WEB_SEARCH, tools))
     out.append(("voice", "voice", providers.INSTRUCTIONS, tool_specs.dynamic_tools()))
     # Every level set an app can be granted: a read-only app reads less (no task fact, fewer tools).
     for size in range(1, len(LEVELS) + 1):

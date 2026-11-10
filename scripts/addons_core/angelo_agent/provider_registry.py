@@ -13,7 +13,7 @@ from .ui_text import n_
 CODING = "CODING"
 GENAI = "GENAI"
 # Section titles and descriptions in Preferences > AI Providers (marked for translation, translated where drawn).
-GROUPS = ((CODING, n_("Coding Agents"), n_("Models that operate Angelo through the native agent runtime")),
+GROUPS = ((CODING, n_("Coding agents"), n_("Models that operate Angelo through the native agent runtime")),
           (GENAI, n_("Media generation"), n_("Image, 3D and video providers used by Media Studio and Generation Flows")))
 PROVIDER_NAMES = {"OPENAI": "OpenAI", "ANTHROPIC": "Anthropic", "XAI": "Grok / xAI",
                   "MINIMAX": "MiniMax", "KIMI": "Kimi / Moonshot", "GOOGLE": "Google Gemini",
@@ -237,6 +237,16 @@ def billing_kind(mode):
     return "API_KEY" if spec_for(mode)["method"] in {"API_KEY", TEAM} else "SUBSCRIPTION"
 
 
+# The words of a usage label (``account · model · billing · ...``): English on the call, in logs and in the worker
+# mirror; an approval card translates each where it draws the label (``studio_approvals.usage_line``).
+USAGE_SEPARATOR = " · "
+API_BILLING, TEAM_BILLING, SUBSCRIPTION = n_("API billing"), n_("Angelo team"), n_("Subscription")
+UNVERIFIED, STANDING_CONSENT, PRICE_UNKNOWN = n_("unverified access"), n_("standing consent"), n_("price unknown")
+SUBSCRIPTION_USAGE = n_("subscription usage")   # The AI Enhance label's (studio_host.enhancer).
+USAGE_WORDS = frozenset({API_BILLING, TEAM_BILLING, SUBSCRIPTION, UNVERIFIED, STANDING_CONSENT, PRICE_UNKNOWN,
+                         SUBSCRIPTION_USAGE})
+
+
 def billing_label(mode):
     method = spec_for(mode)["method"]
-    return {"API_KEY": "API billing", TEAM: "Angelo team"}.get(method, "Subscription")
+    return {"API_KEY": API_BILLING, TEAM: TEAM_BILLING}.get(method, SUBSCRIPTION)

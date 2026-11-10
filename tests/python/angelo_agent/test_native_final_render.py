@@ -8,6 +8,8 @@ name writes ``tree-final-j3.png``; without this rule the grader judged
 ``tree-final.png`` (the older render).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -167,15 +169,21 @@ class StatedPathTests(unittest.TestCase):
         import random
         import re
 
+        windows = os.name == "nt"
+
         def pattern(text, name):   # The scan as it was: quadratic on a long stretch without a space.
+            # As this machine spells a path: on Windows "\\" is a separator too and a drive starts a path.
+            start, run = ((r"(?:[A-Za-z]:[\\/]|~?[\\/])", r"[^\s\"'`<>|*?]") if windows
+                          else (r"~?/", r"[^\s\"'`<>|*?\\]"))
             found = []
-            for match in re.finditer(r"(~?/[^\s\"'`<>|*?\\]*%s)" % re.escape(name), text, re.IGNORECASE):
+            for match in re.finditer(r"(%s%s*%s)" % (start, run, re.escape(name)), text, re.IGNORECASE):
                 path = os.path.expanduser(match.group(1))
+                path = os.path.normpath(path) if windows else path
                 if path not in found:
                     found.append(path)
             return found[:50]
         pieces = ["/", "~", "a", " ", "\"", "'", "-", ".", "\\", "|", "\n", "x.png", "X.PNG", "tree-final.png",
-                  "Tree-Final.png", "tree-final", ".png", "~/"]
+                  "Tree-Final.png", "tree-final", ".png", "~/", "C:"]
         generator = random.Random(7)
         for _ in range(3000):
             text = "".join(generator.choice(pieces) for _ in range(generator.randint(0, 30)))
@@ -184,7 +192,8 @@ class StatedPathTests(unittest.TestCase):
 
     def test_a_stream_with_base64_images_is_read_whole(self):
         stream = "abc " + "A/b+" * 500000 + " saved to /w/tree-final.png."   # 2 MB without a space first.
-        self.assertEqual(oneshot_checks.mentioned_paths(stream, "tree-final.png"), ["/w/tree-final.png"])
+        self.assertEqual(oneshot_checks.mentioned_paths(stream, "tree-final.png"),
+                         [os.path.normpath("/w/tree-final.png")])   # As this machine spells it.
 
 
 class ReportTests(unittest.TestCase):

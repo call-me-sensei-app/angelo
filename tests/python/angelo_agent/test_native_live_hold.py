@@ -7,6 +7,8 @@ The in-Blender proofs are ``test_blender_live_view.py`` (the lease, framing, dra
 rail's GUI suite (a passing modal, typing with a corner card, a lost release, the lead's capture).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import types
 import unittest
@@ -181,7 +183,7 @@ class ExceptionTests(unittest.TestCase):
         self.assertIn('state.card.modal or getattr(state.card, "key_event", None)', body)
 
     def test_the_chat_keeps_typed_keys_over_a_corner_card(self):
-        source = (ADDON / "chat_view.py").read_text(encoding="utf-8")
+        source = (ADDON / "chat_input_blocked.py").read_text(encoding="utf-8")
         body = source[source.index("def over_overlay("):source.index("def clear_blocked_notice(")]
         self.assertIn("card_host.takes_keys(pointer)", body)
         self.assertNotIn("shown_on", body)

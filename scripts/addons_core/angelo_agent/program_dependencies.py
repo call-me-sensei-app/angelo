@@ -6,18 +6,21 @@ No evaluated geometry is retained or traversed. Pointer identities apply only
 to ID ownership; semantic RNA storage uses structural references, so Blender
 copy-on-write representation changes do not masquerade as artist edits."""
 
+import collections
 import hashlib
 import json
 import math
-from dataclasses import dataclass, field
 
 from . import exact_fence
 from .program_jobs import ProgramError
 from .refusal_codes import refusal_code, refusal_details
 from .program_fingerprint_packing import packed_attribute_values, packed_bytes_value
+# Re-exported: these moved out to keep this module within its size; callers import them from here.
+from .program_custom_values import _custom_properties, _uid  # noqa: F401
+from .program_stages import Stage, SuspendedStage  # noqa: F401
 from .scene_geometry import mesh_array
 # Re-exported: the walkers here, admission, commit and transfers read these declarations.
-from .rna_fields import _RNA_SKIP, ELEMENT_VIEWS, link_fields  # noqa: F401
+from .rna_fields import _RNA_SKIP, ELEMENT_VIEWS, link_fields, link_free_classifier, python_subtyped  # noqa: F401
 
 MAX_TOTAL_VERTICES = 1000000
 MAX_STAGE_IDS = 2048
@@ -36,8 +39,15 @@ def _bpy():
     return bpy
 
 
-def _uid(value):
-    return int(value.session_uid) if hasattr(value, "session_uid") else int(value.as_pointer())
+def link_free_types():
+    """rna_fields.link_free_classifier over this process's RNA types, asking Python's subclasses (which follow
+    registration): one per exact fence, or one per walk outside a fence (its memo then lives as long as the walk)."""
+    types = _bpy().types
+    build = lambda: link_free_classifier(types, python_subtyped(types, _PRIMED))
+    return build() if exact_fence.current() is None else exact_fence.check("link_free_types", (), build)
+
+
+_PRIMED = [False]  # bpy.types has built every class once (rna_fields.python_subtyped).
 
 
 def _data_collections():
@@ -50,53 +60,116 @@ def _main_ids():
     return {block.as_pointer(): block for collection in _data_collections() for block in collection}
 
 
-def _rna_values(value, *, depth=0, budget=None, seen=None):
+def _rna_values(value, *, budget=None):
     """Complete bounded RNA settings, not a truncating observation digest.
 
     ID pointers are identities; mutable dependency contents are separately
-    visited. Unsupported/deep settings fail preflight instead of claiming exact.
+    visited. Unsupported settings fail preflight instead of claiming exact.
     The resulting digest is private and never discloses source paths or scripts.
+
+    A flat table, breadth first: every non-ID struct is written where it is reached as ``{"rna_reference":
+    [identifier, ordinal]}``, its ordinal numbering the structs in the order they are first reached (the root 0); the
+    root's own settings are the result, and every other struct's settings are ``result["#structs"][ordinal - 1]``.
+    A struct is one (pointer, RNA type) pair: Blender returns several views over one pointer (``Object.display`` and
+    ``Object.light_linking`` are the Object itself, ``Object.collision`` shares ``Object.field``'s data,
+    ``World.mist_settings`` is the World), and each view's settings are its own. Every struct that holds ID properties
+    (a pose bone's or bone's custom properties, not only an ID's) records them under ``"#custom"``. ``#`` keys cannot
+    be RNA identifiers, so they never collide with a setting.
+    So the labelled struct graph is recoverable, and the result nests no deeper than one field's arrays however
+    deeply the structs nest: an armature's bone chains, bone collections nested under each other and reached through
+    a pose bone, node frames. Neither a struct's nesting nor a recursive consumer of the result (``json.dumps``,
+    ``hash_value``) bounds the walk any more; the item and packed budgets do (doc/angelo/native_coverage.rst,
+    "Dependency walk depth"). The queue holds a pending field (a struct or a collection, as fetched), never one entry
+    per element; each field is read once, when its holder is expanded, and a collection is iterated once, when
+    dequeued.
     """
-    if depth == 0 and seen is None and exact_fence.current() is None:
+    if exact_fence.current() is None:
         with exact_fence.fence():  # One table of each type's declarations for the whole walk.
-            return _rna_values(value, budget=budget, seen={})  # Off the main thread there is no fence.
-    if budget is None:
-        budget = fingerprint_budget()
-    if seen is None:
-        seen = {}
+            return _rna_values(value, budget=budget)  # Off the main thread there is no fence.
+    walk = _Walk(fingerprint_budget() if budget is None else budget, {})
+    holder = [None]
+    try:
+        _visit(value, 0, walk, holder, 0)
+        while walk.queue:
+            target, key, item = walk.queue.popleft()
+            if key is not None:  # A struct field, fetched when its holder was expanded.
+                _visit(item, 0, walk, target, key)
+                continue
+            for child in item:  # A collection: its elements are reached now, in order.
+                target.append(None)
+                _visit(child, 0, walk, target, len(target) - 1)
+    except (AttributeError, ReferenceError) as error:  # A freed or unreadable struct, as a field read would be.
+        raise ProgramError("A complete exact source precondition could not be read",
+                           code=refusal_code(error), details=refusal_details(error)) from error
+    if not walk.nodes:
+        return holder[0]
+    root = walk.nodes[0]
+    if len(walk.nodes) > 1:
+        root[_STRUCTS] = walk.nodes[1:]
+    return root
+
+
+_STRUCTS, _CUSTOM = "#structs", "#custom"  # Not RNA identifiers: never a setting's name.
+_NO_ID_PROPERTIES = set()  # RNA types that cannot hold ID properties (a per-type flag; their keys() raises).
+
+
+class _Walk:
+    __slots__ = ("budget", "seen", "queue", "nodes")
+
+    def __init__(self, budget, seen):
+        self.budget, self.seen, self.queue, self.nodes = budget, seen, collections.deque(), []
+
+
+def _visit(value, depth, walk, target, key):
+    """Write ``value``'s fingerprint to ``target[key]``: plain values inline, a struct as its ordinal (expanded into
+    the table when first reached, its struct and collection fields queued). ``depth`` is the nesting of arrays inside
+    one field's value, the only recursion left."""
+    budget = walk.budget
     budget[0] -= 1
     if budget[0] < 0 or depth > 16:
         raise ProgramError("Exact program preconditions exceed the bounded fingerprint budget", code='LIMIT_EXCEEDED')
     if not hasattr(value, "bl_rna"):
         if isinstance(value, (str, bool, int)) or value is None:
-            return value
+            target[key] = value
+            return
         if isinstance(value, bytes):
             # Angelo's native mesh positions/topology are already exact packed bytes.
             # Preserve every byte and the old per-byte work charge without
             # expanding half a million integer JSON/RNA recursion entries.
-            return packed_bytes_value(value, budget=budget)
+            target[key] = packed_bytes_value(value, budget=budget)
+            return
         if isinstance(value, float):
             if not math.isfinite(value):
                 raise ProgramError("Non-finite source values cannot be staged", code='VALIDATION')
-            return value
+            target[key] = value
+            return
         try:
             items = []
             for item in value:  # An array's elements: plain values are charged and checked as a call would.
-                items.append(_plain(item, depth + 1, budget) if type(item) in _PLAIN else
-                             _rna_values(item, depth=depth + 1, budget=budget, seen=seen))
-            return items
+                if type(item) in _PLAIN:
+                    items.append(_plain(item, depth + 1, budget))
+                else:
+                    items.append(None)
+                    _visit(item, depth + 1, walk, items, len(items) - 1)
+            target[key] = items
         except TypeError:
-            return str(value)
+            target[key] = str(value)
+        return
     bpy = _bpy()
-    pointer = value.as_pointer()
     rna = value.bl_rna
+    pointer = (value.as_pointer(), rna.identifier)   # A view over another view's data is its own struct.
+    seen = walk.seen
     if pointer in seen:
         # Attribute COW can relocate an unchanged RNA value array while making
         # a Mesh copy. Structural ordinals preserve alias/cycle information
         # without mistaking internal storage relocation for a manual edit.
-        return {"rna_reference": [rna.identifier, seen[pointer]]}
-    seen[pointer] = len(seen)
+        target[key] = {"rna_reference": [rna.identifier, seen[pointer]]}
+        return
+    ordinal = seen[pointer] = len(seen)
+    target[key] = {"rna_reference": [rna.identifier, ordinal]}
     result = {}
+    walk.nodes.append(result)
+    queue = walk.queue
     mesh, curves = isinstance(value, bpy.types.Mesh), isinstance(value, bpy.types.Curves)
     attribute = isinstance(value, bpy.types.Attribute)
     for name, kind in exact_fence.table("values", rna, _value_fields):
@@ -108,7 +181,8 @@ def _rna_values(value, *, depth=0, budget=None, seen=None):
                 elif isinstance(item, bpy.types.ID):
                     result[name] = [item.bl_rna.identifier, _uid(item)]
                 else:
-                    result[name] = _rna_values(item, depth=depth + 1, budget=budget, seen=seen)
+                    result[name] = None
+                    queue.append((result, name, item))
             elif kind == "COLLECTION":
                 # Mesh packed attributes contain all coordinates/topology/UVs.
                 if mesh and name in _MESH_PACKED:
@@ -118,29 +192,47 @@ def _rna_values(value, *, depth=0, budget=None, seen=None):
                 if curves and name in _CURVES_PACKED:
                     continue
                 if attribute and name == "data":
-                    packed = packed_attribute_values(value, item, budget=budget, skip_names=_RNA_SKIP,
-                                                     child_depth=depth + 1)
+                    packed = packed_attribute_values(value, item, budget=budget, skip_names=_RNA_SKIP, child_depth=1)
                     if packed is not None:
                         result[name] = packed
                         continue
-                result[name] = [_rna_values(child, depth=depth + 1, budget=budget, seen=seen) for child in item]
+                result[name] = []
+                queue.append((result[name], None, item))
             elif kind in _SCALAR_TYPES:
                 if type(item) in _PLAIN:  # _plain inline: most values are plain, and this loop is the hot path.
                     budget[0] -= 1
-                    if budget[0] < 0 or depth >= 16:
+                    if budget[0] < 0:
                         raise ProgramError("Exact program preconditions exceed the bounded fingerprint budget",
                                            code='LIMIT_EXCEEDED')
                     if type(item) is float and not math.isfinite(item):
                         raise ProgramError("Non-finite source values cannot be staged", code='VALIDATION')
                     result[name] = item
                 else:
-                    result[name] = _rna_values(item, depth=depth + 1, budget=budget, seen=seen)
+                    result[name] = None
+                    _visit(item, 1, walk, result, name)
         except (AttributeError, ReferenceError) as error:
             raise ProgramError("A complete exact source precondition could not be read",
                                code=refusal_code(error), details=refusal_details(error)) from error
-    if isinstance(value, bpy.types.ID):
-        result["custom_properties"] = _custom_properties(value, budget=budget, depth=depth + 1)
-    return result
+    custom = _id_properties(value, rna, budget)
+    if custom is not None:
+        result[_CUSTOM] = custom
+
+
+def _id_properties(value, rna, budget):
+    """The struct's ID properties (_custom_properties), or None for a type that cannot hold any."""
+    identifier = rna.identifier
+    if identifier in _NO_ID_PROPERTIES:
+        return None
+    try:
+        keys = value.keys()
+    except TypeError:  # "This type doesn't support IDProperties": the same for every struct of the type.
+        _NO_ID_PROPERTIES.add(identifier)
+        return None
+    except AttributeError:  # No mapping protocol at all (host stand-ins).
+        return None
+    if not len(keys):
+        return {}   # The common case, a node or socket without any: no second keys() call.
+    return _custom_properties(value, budget=budget, depth=1)
 
 
 _SCALAR_TYPES = frozenset({"BOOLEAN", "INT", "FLOAT", "STRING", "ENUM"})
@@ -168,66 +260,16 @@ def _value_fields(rna):
                  if not (prop.identifier in _RNA_SKIP or (prop.is_readonly and prop.identifier.startswith("is_"))))
 
 
-def _custom_properties(block, *, budget=None, depth=0):
-    """Exact custom values, bounded before ID-property group/array expansion."""
-    budget = [MAX_FINGERPRINT_ITEMS] if budget is None else budget
-
-    def charge(amount, level):
-        if level > 16 or amount > budget[0]:
-            raise ProgramError("Exact custom-property preconditions exceed the bounded fingerprint budget", code='LIMIT_EXCEEDED')
-        budget[0] -= amount
-
-    def clean(value, level):
-        charge(1, level)
-        if isinstance(value, dict) or hasattr(value, "to_dict"):
-            # IDPropertyGroup supports bounded mapping access. Do not call
-            # to_dict(), which materializes all descendants before admission.
-            count = len(value)
-            if count > budget[0]:
-                raise ProgramError("Exact custom-property group exceeds the bounded fingerprint budget", code='LIMIT_EXCEEDED')
-            result = {}
-            for key in value.keys():
-                charge(1, level + 1)
-                result[str(key)] = clean(value[key], level + 1)
-            return result
-        if isinstance(value, (list, tuple)) or hasattr(value, "to_list"):
-            count = len(value)
-            if count > budget[0]:
-                raise ProgramError("Exact custom-property array exceeds the bounded fingerprint budget", code='LIMIT_EXCEEDED')
-            return [clean(item, level + 1) for item in value]
-        if isinstance(value, str):
-            charge(len(value), level)
-            return value
-        if isinstance(value, float):
-            if not math.isfinite(value):
-                raise ProgramError("Non-finite custom-property source values cannot be staged", code='VALIDATION')
-            return value
-        if isinstance(value, (bool, int)) or value is None:
-            return value
-        if hasattr(value, "as_pointer"):
-            return [value.bl_rna.identifier, _uid(value)]
-        raise ProgramError("Unsupported custom property in an exact program input", code='UNSUPPORTED')
-
-    keys = block.keys()
-    if len(keys) > budget[0]:
-        raise ProgramError("Exact custom-property keys exceed the bounded fingerprint budget", code='LIMIT_EXCEEDED')
-    result = {}
-    for key in keys:
-        charge(1, depth)
-        result[str(key)] = clean(block[key], depth)
-    return result
-
-
-def _embedded_links(root, depth=0, visited=None):
+def _embedded_links(root):
     """RNA object links in modifiers, constraints, node sockets and drivers: [(holder, property, ID)].
 
     Inside an exact fence a datablock's links are walked once and the same
     list serves every later walk of the fence (exact_fence); otherwise, and for
     nested structs, this is the walk itself.
     """
-    memo = exact_fence.current() if depth == 0 and visited is None else None
+    memo = exact_fence.current()
     if memo is None:
-        return _walk_links(root, depth, visited)
+        return _walk_links(root)
     key = root.as_pointer()
     found = memo.links.get(key)
     if found is None:
@@ -235,38 +277,64 @@ def _embedded_links(root, depth=0, visited=None):
     return iter(found)
 
 
-def _walk_links(root, depth=0, visited=None):
+def _walk_links(root, budget=None):
+    """Every ID link of ``root`` and the structs it embeds, breadth first (see ``_rna_values``): a struct, one
+    (pointer, RNA type) pair, is expanded once and charged one item of ``budget`` (``[MAX_FINGERPRINT_ITEMS]`` per
+    walk, so the aggregate is that bound per datablock times MAX_STAGE_IDS, scaling with resident data). The queue
+    holds pending struct and collection fields as fetched; a collection is iterated once, when dequeued, unless its
+    item type can hold no link (rna_fields.link_free_classifier: a particle's hair keys). Nesting is not
+    bounded: the walk is iterative, the visited set ends it, the budget bounds its work, and its links are flat. An
+    exhausted budget refuses; the walk is never truncated."""
     bpy = _bpy()
-    if visited is None:
-        visited = set()
-    pointer = root.as_pointer() if hasattr(root, "as_pointer") else id(root)
-    if pointer in visited:
-        return
-    visited.add(pointer)
-    if depth > 14:
-        raise ProgramError("An input dependency graph is too deep to isolate completely", code='LIMIT_EXCEEDED')
-    mesh = isinstance(root, bpy.types.Mesh)  # Mesh collections are checked by their existing owners.
-    for name, kind, prop in exact_fence.table("links", root.bl_rna, link_fields):
-        if kind != "POINTER" and mesh:
+    visited = set()
+    budget = [MAX_FINGERPRINT_ITEMS] if budget is None else budget
+    queue = collections.deque()
+    free = link_free_types()
+
+    def reach(holder):
+        key = (holder.as_pointer(), holder.bl_rna.identifier) if hasattr(holder, "as_pointer") else id(holder)
+        if key in visited:
+            return False
+        visited.add(key)
+        budget[0] -= 1
+        if budget[0] < 0:
+            raise ProgramError("An input embeds more data than its bounded dependency walk reads", code='LIMIT_EXCEEDED')
+        return True
+
+    def expand(holder):
+        mesh = isinstance(holder, bpy.types.Mesh)  # Mesh collections are checked by their existing owners.
+        for name, kind, prop in exact_fence.table("links", holder.bl_rna, link_fields):
+            if kind != "POINTER" and mesh:
+                continue
+            item = getattr(holder, name, None)
+            if kind == "POINTER":  # The hot path: most fields are pointers, most of them empty.
+                if item is not None:
+                    if isinstance(item, bpy.types.ID):
+                        yield holder, prop, item
+                    elif hasattr(item, "bl_rna"):
+                        queue.append((False, item))
+            elif kind == "COLLECTION":
+                if not free(prop):
+                    queue.append((True, item))
+            else:
+                # IDS: an ID a collection holds (a curve's materials) is a link, as through a pointer. Walked as
+                # an embedded struct, a staged curve reached into a borrowed live material's tree. (A plain loop:
+                # a generator expression here would make holder and prop closure cells for every field.)
+                for child in item:
+                    if child is not None:
+                        yield holder, prop, child
+
+    if reach(root):
+        yield from expand(root)
+    while queue:
+        collection, item = queue.popleft()
+        if not collection:
+            if reach(item):
+                yield from expand(item)
             continue
-        item = getattr(root, name, None)
-        if kind == "POINTER":  # The hot path: most fields are pointers, most of them empty.
-            if item is not None:
-                if isinstance(item, bpy.types.ID):
-                    yield root, prop, item
-                elif hasattr(item, "bl_rna"):
-                    yield from _walk_links(item, depth + 1, visited)
-        elif kind == "COLLECTION":
-            for child in item:
-                if hasattr(child, "bl_rna"):
-                    yield from _walk_links(child, depth + 1, visited)
-        else:
-            # IDS: an ID a collection holds (a curve's materials) is a link, as through a pointer. Walked as
-            # an embedded struct, a staged curve reached into a borrowed live material's tree. (A plain loop:
-            # a generator expression here would make root and prop closure cells for every field.)
-            for child in item:
-                if child is not None:
-                    yield root, prop, child
+        for child in item:
+            if hasattr(child, "bl_rna") and reach(child):
+                yield from expand(child)
 
 
 def linked_once():
@@ -393,47 +461,6 @@ def _hash_closure(obj, budget):
                     raise ProgramError("Exact vertex-group preconditions exceed the bounded budget", code='LIMIT_EXCEEDED')
                 digest.update(json.dumps(groups, allow_nan=False, separators=(",", ":")).encode())
     return digest.hexdigest()
-
-
-@dataclass
-class Stage:
-    scene: object
-    collection: object
-    view_layer: object
-    binding: dict
-    context: object = None
-    objects: dict = field(default_factory=dict)
-    originals: dict = field(default_factory=dict)
-    owned_ids: list = field(default_factory=list)
-    changes: dict = field(default_factory=dict)
-    logical_names: dict = field(default_factory=dict)
-    bundle: str = ""
-    extras: dict = field(default_factory=dict)
-    # Live wrappers of the materials this resident stage borrows (stage_borrowing); never persisted.
-    borrowing: object = None
-
-    @property
-    def created_ids(self):
-        return self.context.created_ids if self.context else self.owned_ids
-
-
-@dataclass
-class SuspendedStage:
-    bundle: str
-    scene_name: str
-    binding: dict
-    object_names: dict
-    aliases: dict
-    changes: dict
-    logical_names: dict
-    topology_versions: dict = field(default_factory=dict)
-    node_bounds: dict = field(default_factory=dict)
-    node_metadata: dict = field(default_factory=dict)
-    extras: dict = field(default_factory=dict)
-    # One active job may own a closed graph in a separate native Main. Retained
-    # previews and inspection snapshots continue to own a file bundle instead.
-    native_owner: object = None
-    resident: object = None
 
 
 def _bpy_vector(value):

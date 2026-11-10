@@ -7,6 +7,8 @@ requests a shot queues, refusals before anything starts, a part refused after an
 every part has ended, to the click's callback and every registered receiver.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import unittest

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Main-thread scheduling, expiry, and durable failure-recovery regressions."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import json
 import sys
@@ -13,7 +15,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from angelo_agent import display_text, document_scene, ui_text, worker_consent_lead
+from angelo_agent import display_text, document_scene, ui_kit, ui_text, worker_consent_lead
 from angelo_agent import changes_popup, chat_changes, chat_guard  # noqa: E402
 from angelo_agent.chat_changes import scene_change_report
 from angelo_agent.controller import Controller, ToolDispatchBudget, pump_controller_tools
@@ -22,7 +24,7 @@ from angelo_agent.controller import Controller, ToolDispatchBudget, pump_control
 UI_NAMES = {"iface_": ui_text.iface_, "n_": ui_text.n_, "notice": ui_text.notice, "rpt_": ui_text.rpt_,
             "Text": display_text.Text, "shown": display_text.shown,
             "document_scene": document_scene,
-            "worker_consent_lead": worker_consent_lead}  # What ui.py imports at module level.
+            "worker_consent_lead": worker_consent_lead, "paragraph": ui_kit.paragraph}  # What ui.py imports at module level.
 
 
 def program():
@@ -407,7 +409,10 @@ class DispatchFixTests(unittest.TestCase):
                     "partial_changes_possible": True, "file_changes": {"written": ["mesh.obj"], "deleted": []},
                     "journaled": journaled,
                 }}]
-                operator.draw(None)
+                # Keep the real paragraph helper; replace only native font measurement.
+                with patch.dict(sys.modules, {"angelo_agent.chat_view": SimpleNamespace(
+                        wrap=lambda text, *_: [(text, 0)], _font=0)}):
+                    operator.draw(None)
                 self.assertIn("Operation failed; partial changes may remain.", labels)
                 self.assertIn("Written: mesh.obj", labels)
                 claim = "Restoring a snapshot reverts this file; Undo doesn't."
@@ -430,7 +435,9 @@ class DispatchFixTests(unittest.TestCase):
         self.controller.state["messages"] = [
             {"role": "activity", "name": "angelo_scene_delta", "result": {"changes": delta_rows}},
             {"role": "activity", "name": "angelo_set_transform", "result": {"changes": moved}}]
-        operator.draw(None)  # Previously raised TypeError on the delta's list-shaped "changes".
+        with patch.dict(sys.modules, {"angelo_agent.chat_view": SimpleNamespace(
+                wrap=lambda text, *_: [(text, 0)], _font=0)}):
+            operator.draw(None)  # Actual UI+paragraph, without native font measurement.
         self.assertIn("angelo_set_transform", labels)
         self.assertNotIn("angelo_scene_delta", labels)
         self.assertIn("~ Target · matrix", labels)

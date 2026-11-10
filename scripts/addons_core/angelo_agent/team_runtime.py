@@ -90,16 +90,26 @@ def apply_policy(env, mode):
 
 
 def apply_environment(env, mode, grant_key):
-    """Point a team mode's child at its gateway route with ``grant_key``; ``env`` is changed in place."""
+    """Point a team mode's child at its gateway route with ``grant_key``; ``env`` is changed in place.
+
+    The child reaches nothing else (``team_network``): its other connections are refused.
+    """
+    from . import team_network
+    from .team_endpoints import gateway_origin
     if mode not in TEAM_MODES:
         raise ValueError("Not a team connection")
-    if spec_for(mode)["runtime"] == "claude":
+    runtime = spec_for(mode)["runtime"]
+    if runtime == "claude":
         # Sent as x-api-key, which the gateway accepts for grant keys.
         env["ANTHROPIC_API_KEY"] = grant_key
         env["ANTHROPIC_BASE_URL"] = base_url(mode)
     elif grant_key:
         env[spec_for(mode)["env_key"]] = grant_key  # Codex reads it once at start, as Bearer.
-    return env
+    try:
+        host = gateway_origin().host
+    except ValueError as error:
+        raise RpcError(str(error)) from None
+    return team_network.apply(env, runtime, host)
 
 
 def coding_models(mode, grant_key):

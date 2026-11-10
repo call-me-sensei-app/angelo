@@ -12,10 +12,9 @@ from contextlib import ExitStack
 
 import gpu
 
-from . import card_draw, card_kit as kit, ui_kit
-from .providers_page_layout import PAGE_BG, TONES
+from . import card_draw, card_kit as kit, ui_kit, ui_tokens as tk
+from .providers_page_layout import tones
 
-TILE = (0.170, 0.184, 0.214, 1)
 
 
 def draw(view, plan, region_w, region_h, now=0.0):
@@ -26,7 +25,7 @@ def draw(view, plan, region_w, region_h, now=0.0):
             if kind != "text":
                 gpu.state.blend_set('ALPHA')
             if kind == "page_bg":
-                view.shape(0, 0, region_w, region_h, PAGE_BG, 0)
+                view.shape(0, 0, region_w, region_h, tk.DETAIL_FILL, 0)
             elif kind == "pbutton":
                 _button(view, *op[1:])
             elif kind == "iconbtn":
@@ -67,7 +66,7 @@ def _button(view, rect, label, style, state, size, icon):
     if style == "ghost":
         color = kit.TEXT if hover or pressed or focus else kit.MUTED
     if not enabled:
-        color = (kit.TEXT[0], kit.TEXT[1], kit.TEXT[2], 0.42)
+        color = tk.MUTED
     tw = ui_kit.measure(view, label, size)
     left = x + (w - tw - 18 * s) / 2
     drop = 1 if pressed else 0
@@ -82,14 +81,14 @@ def _icon_button(view, rect, name, state):
     if focus:
         card_draw._ring(view, rect, w / 2, s)
     if hover or pressed:
-        view.shape(x, y, w, h, (1, 1, 1, 0.14 if pressed else 0.08), w / 2)
+        view.shape(x, y, w, h, tk.veil(0.14 if pressed else 0.08), w / 2)
     color = kit.TEXT if hover or pressed or focus else kit.MUTED
     glyph(view, name, (x + 8 * s, y + 8 * s, 14 * s, 14 * s), color)
 
 
 def _chip(view, rect, label, tone, size, spinner, now):
     x, y, w, h = rect
-    color, soft = TONES[tone]
+    color, soft = tones()[tone]
     view.shape(x, y, w, h, soft, h / 2)
     s = size / 11.5
     tx = x + 9 * s
@@ -106,7 +105,7 @@ def _tile(view, rect, letter, name, dot):
     x, y, w, h = rect
     s = w / 40
     view.shape(x, y, w, h, kit.LINE, 12 * s)
-    view.shape(x + 1 * s, y + 1 * s, w - 2 * s, h - 2 * s, TILE, 11 * s)
+    view.shape(x + 1 * s, y + 1 * s, w - 2 * s, h - 2 * s, tk.PANEL_HOVER, 11 * s)
     if letter:
         size = 16 * s
         tw = ui_kit.measure(view, letter, size)
@@ -116,7 +115,7 @@ def _tile(view, rect, letter, name, dot):
     if dot:
         r = 5 * s
         view.shape(x + w - r * 1.4 - 1.5 * s, y - r * 0.6 - 1.5 * s, 2 * r + 3 * s, 2 * r + 3 * s, kit.PANEL, r + 1.5 * s)
-        view.shape(x + w - r * 1.4, y - r * 0.6, 2 * r, 2 * r, TONES.get(dot, TONES["muted"])[0], r)
+        view.shape(x + w - r * 1.4, y - r * 0.6, 2 * r, 2 * r, tones().get(dot, tones()["muted"])[0], r)
 
 
 def _switch(view, rect, on, state):
@@ -158,7 +157,7 @@ def _mark(view, rect):
     x, y, w, h = rect
     cx, cy, r = x + w / 2, y + h / 2, w / 2
     view.shape(x, y, w, h, kit.TEAL_SOFT, r)
-    view.shape(x + w * 0.14, y + h * 0.14, w * 0.72, h * 0.72, (0.169, 0.769, 0.749, 0.28), r * 0.72)
+    view.shape(x + w * 0.14, y + h * 0.14, w * 0.72, h * 0.72, tk.alpha(tk.TEAL, 0.28), r * 0.72)
     s = w / 72
     for (dx1, dy1, dx2, dy2, thick) in ((0, -16, 0, 16, 4.0), (-16, 0, 16, 0, 4.0), (-9, -9, 9, 9, 2.6), (-9, 9, 9, -9, 2.6)):
         view.stroke(cx + dx1 * s, cy + dy1 * s, cx + dx2 * s, cy + dy2 * s, kit.TEAL, thick * s)

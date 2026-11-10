@@ -22,7 +22,7 @@ from . import ai_render, card_kit as kit, ui_kit_field as field
 from .ui_text import iface_, n_
 
 WIDTH, CORNER_WIDTH = 520, 380
-TITLE = n_("AI render")
+TITLE = n_("AI Render")   # The feature's name, as its operator spells it.
 SUBTITLE = n_("Restyles the view through {camera}. The scene and its render engine stay as they are.")
 PLACEHOLDER = n_("Describe the look: watercolour storybook, soft morning light")
 STYLE, MODEL = n_("Style"), n_("Model")

@@ -40,20 +40,31 @@ namespace blender {
 /** \name Private Utility Functions
  * \{ */
 
-static void bpy_rna_context_temp_set_screen_for_window(bContext *C, wmWindow *win, bScreen *screen)
+/** Return an error before changing the workspace if switching screens is unavailable. */
+static const char *bpy_rna_context_temp_set_screen_for_window(bContext *C,
+                                                              wmWindow *win,
+                                                              bScreen *screen,
+                                                              const Main *restore_main = nullptr)
 {
-  if (screen == nullptr) {
-    return;
+  if (screen == nullptr || screen == WM_window_get_active_screen(win)) {
+    return nullptr;
   }
-  if (screen == WM_window_get_active_screen(win)) {
-    return;
+
+  /* Workspace switching also resolves the effective Main in the editor. */
+  const Main *context_main = CTX_data_main(C);
+  if (context_main == nullptr) {
+    return "Cannot switch screens when context blend_data is None";
   }
 
   WorkSpace *workspace;
-  BKE_workspace_layout_find_global(CTX_data_main(C), screen, &workspace);
+  const Main *bmain = restore_main ? restore_main : context_main;
+  if (BKE_workspace_layout_find_global(bmain, screen, &workspace) == nullptr) {
+    return "Screen has no workspace";
+  }
   /* Changing workspace instead of just screen as they are tied. */
   WM_window_set_active_workspace(C, win, workspace);
   WM_window_set_active_screen(win, workspace, screen);
+  return nullptr;
 }
 
 /**
@@ -61,7 +72,7 @@ static void bpy_rna_context_temp_set_screen_for_window(bContext *C, wmWindow *wi
  */
 static bool wm_check_screen_switch_supported(const bScreen *screen)
 {
-  if (screen->temp != 0) {
+  if (screen == nullptr || screen->temp != 0) {
     return false;
   }
   if (BKE_screen_is_fullscreen_area(screen)) {
@@ -72,6 +83,9 @@ static bool wm_check_screen_switch_supported(const bScreen *screen)
 
 static bool wm_check_window_exists(const Main *bmain, const wmWindow *win)
 {
+  if (bmain == nullptr) {
+    return false;
+  }
   for (wmWindowManager &wm : bmain->wm) {
     if (BLI_findindex(&wm.windows, win) != -1) {
       return true;
@@ -82,10 +96,7 @@ static bool wm_check_window_exists(const Main *bmain, const wmWindow *win)
 
 static bool wm_check_screen_exists(const Main *bmain, const bScreen *screen)
 {
-  if (BLI_findindex(&bmain->screens, screen) != -1) {
-    return true;
-  }
-  return false;
+  return bmain && (BLI_findindex(&bmain->screens, screen) != -1);
 }
 
 static bool wm_check_area_exists(const wmWindow *win, const bScreen *screen, const ScrArea *area)
@@ -242,6 +253,14 @@ static bool bpy_rna_context_temp_override_enter_ok_or_error(const BPyContextTemp
     }
   }
 
+  if (bmain == nullptr && ((self->ctx_temp.win_is_set && (win != nullptr)) ||
+                           (self->ctx_temp.screen_is_set && (screen != nullptr))))
+  {
+    PyErr_SetString(PyExc_TypeError,
+                    "Cannot override the window or screen when context blend_data is None");
+    return false;
+  }
+
   if (self->ctx_temp.screen_is_set && (screen != nullptr)) {
     if (win == nullptr) {
       PyErr_SetString(PyExc_TypeError, "Screen set with null window");
@@ -340,15 +359,18 @@ static bool bpy_rna_context_temp_override_scene_view_layer_ok_or_error(
                          " (a window or screen given in the same call drops the scene override: "
                          "give scene and view_layer in a nested temp_override)" :
                          "";
-  for (Scene &owner : bmain->scenes) {
-    if (BLI_findindex(&owner.view_layers, view_layer_ptr.data) != -1) {
-      PyErr_Format(PyExc_TypeError,
-                   "view_layer \"%s\" belongs to scene \"%s\", not to the context scene \"%s\"%s",
-                   static_cast<const ViewLayer *>(view_layer_ptr.data)->name,
-                   owner.id.name + 2,
-                   scene->id.name + 2,
-                   hint);
-      return false;
+  if (bmain != nullptr) {
+    for (Scene &owner : bmain->scenes) {
+      if (BLI_findindex(&owner.view_layers, view_layer_ptr.data) != -1) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "view_layer \"%s\" belongs to scene \"%s\", not to the context scene \"%s\"%s",
+            static_cast<const ViewLayer *>(view_layer_ptr.data)->name,
+            owner.id.name + 2,
+            scene->id.name + 2,
+            hint);
+        return false;
+      }
     }
   }
   PyErr_Format(PyExc_TypeError,
@@ -403,7 +425,13 @@ static PyObject *bpy_rna_context_temp_override_enter(BPyContextTempOverride *sel
      * there is nothing to do here. */
     if (win != nullptr) {
       self->ctx_temp_orig.screen = WM_window_get_active_screen(win);
-      bpy_rna_context_temp_set_screen_for_window(C, win, self->ctx_temp.screen);
+      if (const char *error = bpy_rna_context_temp_set_screen_for_window(
+              C, win, self->ctx_temp.screen))
+      {
+        PyErr_SetString(PyExc_TypeError, error);
+        CTX_py_state_pop(C, &self->py_state);
+        return nullptr;
+      }
     }
   }
 
@@ -451,9 +479,12 @@ static PyObject *bpy_rna_context_temp_override_exit(BPyContextTempOverride *self
 {
   bContext *C = self->context;
 
-  Main *bmain = CTX_data_main(C);
+  /* The override can hide blend_data, and a file read can replace Main. Check saved UI members
+   * against the current native document before restoring the outer Python state. */
+  Main *bmain = CTX_data_main_unoverridden(C);
 
   /* Manipulate the context (restore). */
+  bool screen_switch_failed = false;
   if (self->ctx_temp.screen_is_set) {
     if (self->ctx_temp_orig.screen && wm_check_screen_exists(bmain, self->ctx_temp_orig.screen)) {
       wmWindow *win = self->ctx_temp.win_is_set ? self->ctx_temp.win : self->ctx_init.win;
@@ -462,7 +493,8 @@ static PyObject *bpy_rna_context_temp_override_exit(BPyContextTempOverride *self
          * useful to support this, closing screens uses different and more involved logic
          * compared with switching between user managed screens, see: #117188. */
         if (wm_check_screen_switch_supported(WM_window_get_active_screen(win))) {
-          bpy_rna_context_temp_set_screen_for_window(C, win, self->ctx_temp_orig.screen);
+          screen_switch_failed = bpy_rna_context_temp_set_screen_for_window(
+                                     C, win, self->ctx_temp_orig.screen, bmain) != nullptr;
         }
       }
     }
@@ -515,6 +547,8 @@ static PyObject *bpy_rna_context_temp_override_exit(BPyContextTempOverride *self
   }
 
   /* Handle Screen. */
+  /* If the original screen could not be switched back, keep the active screen and its context. */
+  do_restore = do_restore && !screen_switch_failed;
   if (do_restore) {
     if (self->ctx_init.screen && !wm_check_screen_exists(bmain, self->ctx_init.screen)) {
       CTX_wm_screen_set(C, nullptr);
@@ -788,6 +822,7 @@ PyDoc_STRVAR(
     "      .. note:: Changing the screen has wider implications "
     "than other arguments as it will also change the works-space "
     "and potentially the scene (when pinned).\n"
+    "      A screen switch requires a non-None ``blend_data`` context member.\n"
     "\n"
     "   :type screen: :class:`bpy.types.Screen` | None\n"
     "   :param area: Area override or None.\n"

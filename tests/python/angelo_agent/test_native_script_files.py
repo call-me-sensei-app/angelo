@@ -17,6 +17,8 @@ names preferences or Angelo's add-on, and the same code sent as ``angelo_execute
 exactly what Angelo read, even when the file changes before dispatch. The card and Preferences show it.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import hashlib
 import json
@@ -40,10 +42,15 @@ from angelo_agent.managed_policy import Policy, with_organization  # noqa: E402
 from angelo_agent.team_view import org_policy  # noqa: E402
 import test_native_external_mcp as mcp_harness  # noqa: E402  (a module: its tests are not collected again here)
 from test_native_external_cli_host import Executor  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
 PROJECT = os.path.realpath("/tmp/angelo-project/scene.blend")
 BUILD = "result = 7\n"
+NO_FIFOS = environment_skip("FIFOs are POSIX; Windows has none to plant")
+# Script files and their approvals arrive only over the MCP transport, which Windows lacks (external_cli).
+NO_NOFOLLOW = environment_skip("O_NOFOLLOW is POSIX, and script files reach Angelo only over the Unix-socket MCP "
+                               "transport (Windows named pipe: a later phase)")
 
 
 class ReadScriptTests(unittest.TestCase):
@@ -68,13 +75,11 @@ class ReadScriptTests(unittest.TestCase):
             self.assertEqual(script_files.text_digest(script.text), script.sha256)
 
     def test_what_is_not_one_script_file_is_refused_with_why(self):
-        os.mkfifo(self.folder / "pipe")
         (self.folder / "folder").mkdir()
         cases = {
             "relative": ("build.py", "absolute"),
             "missing": (str(self.folder / "missing.py"), "can't open"),
             "a directory": (str(self.folder / "folder"), "not a regular file"),
-            "a FIFO, without waiting on it": (str(self.folder / "pipe"), "not a regular file"),
             "not UTF-8": (str(self.write("latin.py", b"name = '\xe9'\n")), "not UTF-8"),
             "empty": (str(self.write("empty.py", "  \n")), "empty"),
             "too long": (str(self.write("long.py", "#" * (script_files.MAX_CHARACTERS + 1))), "larger"),
@@ -87,7 +92,14 @@ class ReadScriptTests(unittest.TestCase):
         exactly = self.write("exact.py", "é" * script_files.MAX_CHARACTERS)
         self.assertEqual(len(script_files.read_script(str(exactly)).text), script_files.MAX_CHARACTERS)
 
-    @unittest.skipUnless(hasattr(os, "O_NOFOLLOW"), "O_NOFOLLOW is POSIX")
+    @unittest.skipUnless(hasattr(os, "mkfifo"), NO_FIFOS)
+    def test_a_fifo_is_refused_without_waiting_on_it(self):
+        os.mkfifo(self.folder / "pipe")
+        with self.assertRaises(script_files.ScriptFileError) as raised:
+            script_files.read_script(str(self.folder / "pipe"))
+        self.assertIn("not a regular file", str(raised.exception))
+
+    @unittest.skipUnless(hasattr(os, "O_NOFOLLOW"), NO_NOFOLLOW)
     def test_a_link_swapped_in_after_resolving_is_never_followed(self):
         target = self.write("real.py", "result = 1\n")
         link = self.folder / "swapped.py"
@@ -109,7 +121,8 @@ class StoreTests(unittest.TestCase):
         self.assertFalse(script_files.allowed("claude-code", PROJECT, "/work/build.py", "a" * 64))
         script_files.allow("claude-code", PROJECT, self.script)
         path = Path(self.state) / script_files.FILE
-        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        if os.name != "nt":   # Windows keeps only the read-only bit.
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
         saved = json.loads(path.read_text())
         self.assertEqual(saved["version"], 1)
         self.assertEqual([(e["app"], e["project"], e["path"], e["sha256"]) for e in saved["files"]],
@@ -136,20 +149,25 @@ class StoreTests(unittest.TestCase):
 
     def test_a_save_that_fails_changes_nothing_and_a_removal_still_ends_for_the_session(self):
         script_files.allow("claude-code", PROJECT, self.script)
-        with patch.object(script_files.os, "replace", side_effect=OSError("disk full")):
+        with patch.object(script_files.shared_replace, "replace", side_effect=OSError("disk full")) as replace:
             with self.assertRaises(OSError):
                 script_files.allow("codex", PROJECT, self.script)
             self.assertEqual([e["app"] for e in script_files.entries()], ["claude-code"])
             with self.assertRaises(OSError):
                 script_files.forget(app="claude-code")
+        self.assertEqual(replace.call_count, 2)
         self.assertEqual(script_files.entries(), [])
 
-    def test_a_fifo_or_link_at_the_approvals_file_never_blocks_and_holds_none(self):
+    @unittest.skipUnless(hasattr(os, "mkfifo"), NO_FIFOS)
+    def test_a_fifo_at_the_approvals_file_never_blocks_and_holds_none(self):
         """Break-it review L3: a FIFO there hung every check (the window's main thread)."""
         path = Path(self.state) / script_files.FILE
         os.mkfifo(path)
         self.assertEqual(script_files.entries(), [])
-        path.unlink()
+
+    @unittest.skipUnless(hasattr(os, "O_NOFOLLOW"), NO_NOFOLLOW)
+    def test_a_link_at_the_approvals_file_holds_none(self):
+        path = Path(self.state) / script_files.FILE
         target = Path(self.state) / "elsewhere.json"
         target.write_text(json.dumps({"version": 1, "files": [{"app": "a", "project": "p", "path": "/x",
                                                                 "sha256": "a" * 64}]}))
@@ -247,6 +265,7 @@ class SharedStoreTests(unittest.TestCase):
         self.assertIn("if _forget_script_files(DEFAULT_CLIENT[self.app]) is None:", page,
                       "the Forget button reports a removal it could not save")
 
+    @unittest.skipUnless(hasattr(os, "mkfifo"), NO_FIFOS)
     def test_the_apps_record_is_read_without_waiting_on_a_fifo(self):
         """Fresh break-it review FR-L2: AppRegistry.load runs on Angelo's main thread at every draw."""
         registry = AppRegistry(self.state)
@@ -285,7 +304,8 @@ class RecordingExecutor(Executor):
         return super().execute(name, arguments)
 
 
-@unittest.skipIf(sys.platform == "win32", "Needs the Unix-socket listener (Windows named pipe: a later phase)")
+@unittest.skipIf(sys.platform == "win32",
+                 environment_skip("Needs the Unix-socket listener (Windows named pipe: a later phase)"))
 class ScriptFileAppTests(unittest.TestCase):
     """End to end through the app's MCP server and Angelo's External conversation (test_native_external_mcp)."""
     tick, server, rpc, call, conversation = mcp_harness.AppTests.tick, mcp_harness.AppTests.server, mcp_harness.AppTests.rpc, mcp_harness.AppTests.call, mcp_harness.AppTests.conversation

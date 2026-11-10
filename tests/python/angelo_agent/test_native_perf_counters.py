@@ -6,6 +6,8 @@ No test is skipped on any platform: macOS checks real counters, other
 platforms check that counters are reported unavailable rather than zero.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ctypes
 from pathlib import Path
 import re

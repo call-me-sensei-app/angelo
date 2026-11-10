@@ -3,6 +3,8 @@
 """The top-bar suites click as a person does: pointer first, press a pass later; a shelf drag moves as a person's
 does: past the drag threshold still on the tile, then in small moves (qa_input, 1.0.5)."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import importlib.util
 import unittest

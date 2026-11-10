@@ -8,6 +8,8 @@ cost fields) leaves every figure the verdict decides by as it was. An input the 
 be read (an arm's results, a record, its wall clock or main-loop figures, the grades, and since Amendment F the task
 record that shows what the trial was sent) is named as missing evidence, and the verdict is incomplete and never ships.
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import json
 import unittest
 

@@ -195,14 +195,21 @@ class CodexThreadUsage:
         if method == "turn/completed" and isinstance(params, dict) and params.get("threadId") == thread_id:
             step = getattr(context, "record_model_step", None)  # The lead's own request only (request_recovery).
             if callable(step) and scope.matches(context, params, allow_cancelled=True, allow_completed=True):
-                step()  # Every tool call of the turn has resolved, whether or not the provider reported usage.
+                turn = params.get("turn") if isinstance(params.get("turn"), dict) else {}
+                step(turn.get("id"), ended=True)  # Every call of the turn has resolved, usage reported or not.
             return False
+        if method == "turn/modelRequestStarted":  # The bundled runtime: the turn sends its next model request.
+            if isinstance(params, dict) and params.get("threadId") == thread_id and scope.matches(context, params):
+                started = getattr(context, "record_request_started", None)  # The lead's own request only.
+                if callable(started):
+                    started(params.get("turnId"), params.get("request"))
+            return True
         if method == "thread/tokenUsage/updated":
             if isinstance(params, dict) and params.get("threadId") == thread_id:
                 if scope.matches(context, params):
                     step = getattr(context, "record_model_step", None)  # The lead's own request only.
                     if callable(step):
-                        step()  # Sent after every tool call of the response resolved (request_recovery).
+                        step(params.get("turnId"))  # Sent after every tool call of the response resolved.
                     # A model response's usage acknowledges its inputs. A thread-only
                     # update cannot attribute delivery to this particular turn.
                     last = (params.get("tokenUsage") or {}).get("last", {})

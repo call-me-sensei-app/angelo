@@ -7,6 +7,8 @@ temporary synthetic state, StudioPending capture spies and an in-memory RPC.
 There is no Blender, runtime subprocess, image decoding or model delivery here.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import queue
 import sys

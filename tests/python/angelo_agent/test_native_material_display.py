@@ -9,6 +9,8 @@ that creates, rewrites or brings in a material and leaves the display values Sol
 use neutral graphs and colours, none of them the recorded one.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest
@@ -462,6 +464,7 @@ def _calls(path):
 
 # Modules that bring materials in without a sync, and why (each a documented exemption, never silence).
 NO_SYNC = {
+    "blender_assets.py": "metadata inspection loads only into bpy.data.temp_data, never the artist Main",
     "worker_merge.py": "appends a worker's parts, whose materials that worker's own typed edits and scripts synced",
     "program_stage_bundle.py": "moves a stage between processes; it creates no material",
     "headless_preferences.py": "reads the person's preferences file; it brings no data in",
@@ -502,8 +505,26 @@ class WriterTests(unittest.TestCase):
             if not writes or path.name == "material_display_sync.py":
                 continue
             with self.subTest(module=path.name):
-                self.assertTrue("material_display_sync" in text or path.name in NO_SYNC,
+                self.assertTrue("material_display_sync" in text or path.name in NO_SYNC
+                                or (path.name == "blender_asset_import.py"
+                                    and "stamp_created" in _calls(path.name)),
                                 "%s makes or imports materials without material_display_sync" % path.name)
+
+    def test_stock_import_syncs_only_new_materials_with_added_policy(self):
+        source = ast.parse((ADDON / "asset_stock_import.py").read_text())
+        function = next(n for n in source.body if isinstance(n, ast.FunctionDef)
+                        and n.name == "_sync_created_materials")
+        namespace = {"__package__": "angelo_agent"}
+        exec(compile(ast.Module(body=[function], type_ignores=[]), "stock-sync", "exec"), namespace)
+        material = Material(shaded(principled((0.2, 0.3, 0.4, 1), roughness=0.1)))
+        material.id_type = "MATERIAL"
+        authored = Material(shaded(principled((0.1, 0.2, 0.3, 1))), colour=(0.6, 0.5, 0.4, 1))
+        authored.id_type = "MATERIAL"
+        other = type("Object", (), {"id_type": "OBJECT"})()
+        namespace["_sync_created_materials"]([material, authored, other])
+        self.assertEqual(material.diffuse_color, (0.2, 0.3, 0.4, 1.0))
+        self.assertEqual(authored.diffuse_color, (0.6, 0.5, 0.4, 1))
+        self.assertIn("_sync_created_materials", _calls("asset_stock_import.py"))
 
     def test_display_values_are_written_only_by_the_sync(self):
         for path in sorted(ADDON.glob("*.py")):

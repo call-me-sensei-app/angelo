@@ -19,6 +19,10 @@ Run through ``run_native_suites.py --gui --include test_blender_library``; check
 and ``phase == "complete"``; the timings are in ``measurements``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import gzip
 import hashlib
 import json
@@ -179,6 +183,8 @@ def centre(rect):
 
 
 def type_text(text):
+    # This suite covers the Angelo Library's own catalog: its source, not All (whose Return also searches Fab).
+    overlay()["source"] = "angelo"
     x, y = centre(overlay()["rects"]["pill"])
     for char in text:
         key = 'SPACE' if char == " " else char.upper()

@@ -10,6 +10,8 @@ keeps the regions that hide with it, has no unhide tab of its own, is shown in f
 shelf instance keeps its own collapsed state. The running app's proof is ``test_blender_media_shelf``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import types

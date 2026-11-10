@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Read adapter invariants: native copies, missing storage, and computed callbacks never invoked."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 from types import SimpleNamespace
 import unittest

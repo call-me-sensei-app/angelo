@@ -4,9 +4,11 @@
 
 Usage, from the repository root:
 
-    python3 tests/python/angelo_agent/run_host_tests.py [--max-skips N] [--timeout SECONDS] [TEST_FILE ...]
+    python3 tests/python/angelo_agent/run_host_tests.py [--max-skips N] [--timeout SECONDS] [--shard K/N] [TEST_FILE ...]
 
 With test files named (``test_native_*.py``, by name or path), only those run.
+``--shard K/N`` runs every Nth file of the sorted suite starting with the Kth,
+so N processes together run each file exactly once (CI's parallel jobs).
 While another run holds the machine's benchmark lock, the whole suite is
 refused and named files are rationed (``scripts/angelo/load_guard.py``): run
 single files that way, never in a loop of separate interpreters.
@@ -17,7 +19,14 @@ and jsonschema and passes --max-skips 0, so missing dependencies and any
 unclassified skip fail the build instead of silently reducing coverage.
 Every skip is listed with its reason. Host tests never replace the native
 and GUI suites run with the compiled Angelo binary.
+
+The whole run, like each host test file on its own, sees no real provider
+login: ``suite_isolation`` (first, below) gives the process a fresh HOME,
+CODEX_HOME and CLAUDE_CONFIG_DIR, Angelo's key store and bundled runtime off
+and no provider key variables (``provider_isolation``).
 """
+
+import suite_isolation  # noqa: F401  First: no real provider login in any host test (provider_isolation.py).
 
 import argparse
 import faulthandler
@@ -27,7 +36,7 @@ import sys
 import types
 import unittest
 
-from host_test_policy import is_environment_skip
+from host_test_policy import is_environment_skip, pending_reason
 
 HERE = Path(__file__).resolve().parent
 sys.path.append(str(HERE.parents[2] / "scripts/angelo"))   # Appended: shadows no test's import.
@@ -45,9 +54,19 @@ def _stand_in(name, value):
     spec; a C extension's own top-level helper module (Cython's cython_runtime) has none and is no stand-in."""
     if not isinstance(value, types.ModuleType):
         return True
-    if getattr(value, "__spec__", None) is not None:
+    if getattr(value, "__spec__", None) is not None or _part_of_a_real_module(value):
         return False
     return name.partition(".")[0] in BLENDER_MODULES or "." in name
+
+
+def _part_of_a_real_module(value):
+    """A C extension's own submodule (pyexpat.errors, also registered as xml.parsers.expat.errors): no spec, but the
+    attribute of the real, imported module its own name says it is. macOS loads pyexpat inside the first test that
+    reads XML, so without this every such test failed locally as leaving a stand-in; Linux CI has it loaded earlier."""
+    parent, _, attribute = getattr(value, "__name__", "").rpartition(".")
+    owner = sys.modules.get(parent) if parent else None
+    return (owner is not None and getattr(owner, "__spec__", None) is not None
+            and parent.partition(".")[0] not in BLENDER_MODULES and getattr(owner, attribute, None) is value)
 
 
 def _added(before):
@@ -99,6 +118,25 @@ class IsolatedResult(unittest.TextTestResult):
             self.addFailure(test, sys.exc_info())
 
 
+def _shard(text):
+    """``K/N`` -> (K, N), for argparse."""
+    index, _, count = text.partition("/")
+    try:
+        index, count = int(index), int(count)
+    except ValueError:
+        raise argparse.ArgumentTypeError("expected K/N, for example 2/4") from None
+    if not 1 <= index <= count:
+        raise argparse.ArgumentTypeError("K must be between 1 and N")
+    return index, count
+
+
+def skipped_module(name, reason):
+    """One skipped test standing for module ``name``, which raised SkipTest(``reason``) on import."""
+    def test(self):
+        raise unittest.SkipTest(reason)
+    return type(name, (unittest.TestCase,), {"test_module": test})("test_module")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Run Angelo's dependency-free host tests.")
     parser.add_argument("--max-skips", type=int, default=None,
@@ -107,14 +145,27 @@ def main(argv=None):
     parser.add_argument("--timeout", type=float, default=None,
                         help="after this many seconds print every thread's stack and exit, so a hung test names "
                              "itself instead of holding the machine")
+    parser.add_argument("--shard", type=_shard, default=None, metavar="K/N",
+                        help="run only the Kth of N equal slices of the suite's files (1 <= K <= N)")
     parser.add_argument("files", nargs="*", metavar="TEST_FILE", help="run only these test_native_*.py files")
     args = parser.parse_args(argv)
     names = [Path(name).name[:-3] if name.endswith(".py") else Path(name).name for name in args.files]
+    if args.shard:
+        if names:
+            parser.error("--shard slices the whole suite; name no test files with it")
+        index, count = args.shard
+        names = [path.stem for path in sorted(HERE.glob("test_native_*.py"))][index - 1::count]
     for name in names:
         if not name.startswith("test_native_") or not (HERE / (name + ".py")).is_file():
             parser.error("not a host test file in %s: %s" % (HERE, name))
-    what = "%d host test file(s)" % len(names) if names else "the whole host suite"
-    status = load_guard.refused(what, len(names) or None)
+    # A shard is a slice of the whole suite, so the lock refuses it like the suite instead of rationing its files.
+    if args.shard:
+        what, named = "shard %d/%d of the host suite" % args.shard, None
+    elif names:
+        what, named = "%d host test file(s)" % len(names), len(names)
+    else:
+        what, named = "the whole host suite", None
+    status = load_guard.refused(what, named)
     if status:
         return status
     if args.timeout:
@@ -127,7 +178,12 @@ def main(argv=None):
     os.environ.setdefault("ANGELO_JOURNAL_TOUCHES", "1")
     if names:
         sys.path.insert(0, str(HERE))
-        suite = unittest.defaultTestLoader.loadTestsFromNames(names)
+        suite = unittest.TestSuite()
+        for name in names:
+            try:
+                suite.addTest(unittest.defaultTestLoader.loadTestsFromNames([name]))
+            except unittest.SkipTest as skip:   # A module that skips itself (a platform it can't import on): one
+                suite.addTest(skipped_module(name, str(skip)))   # skipped test, as discovery reports it.
     else:
         suite = unittest.defaultTestLoader.discover(str(HERE), pattern="test_native_*.py", top_level_dir=str(HERE))
     # Every module puts the add-on's folder first on sys.path when imported, so one process ends discovery with
@@ -141,6 +197,10 @@ def main(argv=None):
     if result.skipped:
         print(f"Skips: {len(result.skipped) - len(unexpected)} expected environmental, "
               f"{len(unexpected)} unclassified.")
+    for test, _ in result.expectedFailures:
+        print(f"EXPECTED FAILURE {test.id()}: {pending_reason(test) or 'no windows_fix_pending reason'}")
+    if result.expectedFailures:
+        print(f"Expected failures: {len(result.expectedFailures)} (product fixes pending).")
     if not result.wasSuccessful():
         return 1
     if args.max_skips is not None and len(unexpected) > args.max_skips:

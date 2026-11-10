@@ -31,6 +31,9 @@ from typing import Optional, Tuple
 from native_suite_other_files import EXCLUDED, HELPERS  # noqa: F401  (part of this manifest)
 
 BACKGROUND, GUI, LIVE = "BACKGROUND", "GUI", "LIVE"
+# A LIVE suite that bills a real provider declares this opt-in: the caller's evaluation-account profile
+# (provider_isolation.OPT_IN; run_native_suites pins the suite's runtime profile to it).
+REAL_PROVIDERS = "ANGELO_TEST_REAL_PROVIDERS"
 CLASSES = (BACKGROUND, GUI, LIVE)
 DEFAULT_TIMEOUT = 300
 # The options naming a game-engine editor a suite starts. Every Angelo on the machine detects a running editor through
@@ -145,6 +148,26 @@ INSTALLED_HOST = ("Imports the app's installed host modules (bpy.utils.system_re
                   "validates the binary's bundled add-on, not this checkout's Python.")
 
 SUITES = (
+    Suite("test_blender_stock_asset_brush_dependencies.py", BACKGROUND,
+          "Load-only Brush: shared dependencies, Undo/Redo, branch pruning and rollback",
+          Report("stock-asset-brush-dependencies.json", require_complete_phase=True),
+          timeout=300, serial=True),
+
+    Suite("test_blender_stock_asset_recovery_gui.py", GUI,
+          "Actual context refusal, retained owner and explicit Asset Recovery sidebar action",
+          Report("stock-asset-recovery-gui.json", require_complete_phase=True),
+          timeout=240, serial=True),
+
+    Suite("test_blender_stock_asset_undo.py", BACKGROUND,
+          "Seven blend asset modes and GLB: dirty Before, one Undo/Redo, restore and save/reopen",
+          Report("stock-asset-undo.json", require_complete_phase=True), timeout=600, serial=True),
+
+    Suite("test_blender_report_untranslated.py", BACKGROUND,
+          "Report.message_untranslated in a Japanese interface: a plain report's message ID, a %s report's message ID "
+          "filled in English, empty for text translated before the report call and when nothing was translated",
+          Report("report-untranslated.json"), timeout=120,
+          notes="Saves and reopens one small .blend in its QA folder; a Python render engine raises translated and English errors."),
+
     Suite("test_blender_script_kit.py", BACKGROUND,
           "The reviewed-script kit: exact solids, cuts that refuse what they cannot prove, rows, self-checks",
           Report("results.json")),
@@ -169,6 +192,9 @@ SUITES = (
           Report("script-operator-time.json"), timeout=240, notes="No provider, account or network."),
     Suite("test_blender_script_parent_inverse.py", BACKGROUND,
           "A parent-inverse statement reads its parent's current matrix: the recorded car, fresh, keyed, many parts",
+          Report("results.json")),
+    Suite("test_blender_stage_weight_settings.py", BACKGROUND,
+          "A staged vertex group operator reads the person's Auto Normalize and Weight, compared with Blender directly",
           Report("results.json")),
     Suite("test_blender_script_api_removed.py", BACKGROUND,
           "The removed-API table against Blender's own RNA: removed names absent, replacements present",
@@ -207,15 +233,39 @@ SUITES = (
           "Voxel remesh guard: too small a size is refused at once from scripts, Sculpt Mode and the modifier, "
           "a fitting size runs near the estimate, a new modifier's size follows the object",
           Report("results.json"), timeout=420, notes="Runs one remesh of up to 10 million vertices (several GB)."),
+    Suite("test_blender_path_without_segment.py", BACKGROUND,
+          "A path whose points sit at one place: text on it keeps a finite, straight layout and texture space; "
+          "Spline IK and Follow Path on it pose finitely; text on a real path still bends",
+          Report("results.json"), notes="No provider, account or network."),
+    Suite("test_blender_ptcache_ownerless.py", BACKGROUND,
+          "A rigid body world's point cache (no owning object) from scripts: its disk cache stays in memory and "
+          "writes nothing, name/index/external and the ptcache operators are safe; an object's disk cache is unchanged",
+          Report("results.json"), options_env=("ANGELO_PTCACHE_CASE",), notes="No provider, account or network."),
     Suite("test_blender_evaluation_repeatable.py", BACKGROUND,
           "Re-evaluating an unchanged object gives the same bits wherever the heap puts its elements: two meshes "
           "under 25 modifier and geometry-node evaluators, Bevel's UV merge among them",
           Report("results.json"), notes="No provider, account or network."),
+    Suite("test_blender_bmesh_operator_order.py", BACKGROUND,
+          "BMesh operators give one element order across four processes: those that iterate a mapping slot "
+          "(extrude region and edges, spin, solidify, the UV sphere, bmesh.ops map results) or free and split "
+          "from a pointer set (bevel then triangulate, an uneven grid fill, Weld Edges into Faces), and a Float "
+          "boolean with a UV sphere cutter (stock 5.2 differed every run)",
+          Report("results.json"), timeout=600,
+          notes="Four child processes of the binary. No provider, account or network."),
     Suite("test_blender_metal_safe_list_exit.py", BACKGROUND,
           "Metal's buffer pool releases a safe-free list's chained chunks at exit: 24,576 GPU buffers freed just "
           "before quitting leave no unfreed memory",
           Report("results.json"), needs_opengl=True,   # gpu.init(): skipped where no GPU driver is (as every such suite).
           notes="Metal only; another backend writes a note and passes."),
+    Suite("test_blender_upstream_relations.py", BACKGROUND,
+          "ViewLayer.angelo_upstream from Python: the (status, records) tuple, records as session UID, ID type "
+          "and node type, NO_GRAPH, RELATIONS_STALE then OK, UNDECLARED_READS, NOT_MAIN_THREAD, an evaluated copy "
+          "refused; a generated Rigify rig and a mesh skinned to it, custom shapes never upstream, cost per call",
+          Report("results.json"), timeout=600, notes="Enables the bundled Rigify; no provider, account or network."),
+    Suite("test_blender_depsgraph_update_recalc.py", BACKGROUND,
+          "DepsgraphUpdate.angelo_recalc from real updates: selection reports SELECT, a location edit TRANSFORM, "
+          "a material setting SHADING, and no reported update has an empty set",
+          Report("results.json"), notes="No provider, account or network."),
     Suite("test_blender_cycles_device_default.py", BACKGROUND,
           "Cycles' scene device defaults to GPU (a saved CPU stays CPU) and Angelo lists devices in a child process",
           Report("results.json"), notes="Lists this machine's GPU devices in a child of the app; no render."),
@@ -368,6 +418,13 @@ SUITES = (
           Report("chat-cards.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
           notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer a turn with a limit result; no account or inference."),
+    Suite("test_blender_approval_wait.py", GUI,
+          "Waiting for approval is the card: Auto's why-line, nothing says it waits after decline, expiry or approve, "
+          "the pill and its double-click shield",
+          Report("approval-wait-gui.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="Stand-in claude CLI (fake_provider_cli.py) for the connection; steps requested as a provider's MCP "
+                "call requests them; the app's own tool pump; no account, network or inference."),
     Suite("test_blender_codex_turn_errors.py", GUI,
           "A Codex turn a throttle or usage limit ends: its notice card at once, one automatic resend, an idle chat",
           Report("codex-turn-errors.json", require_complete_phase=True), event_simulate=True, default_chat=True,
@@ -378,10 +435,35 @@ SUITES = (
           "Markdown replies, a streaming fence, a media tile, notice cards, the transcript scrollbar, Arabic, narrow, scale",
           Report("chat-replies.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           notes="Transcript rows set directly; no provider, account or network."),
+    Suite("test_blender_steering.py", GUI,
+          "Messages sent while a Claude turn runs: a steer read at the next round, three queued (removed, edited, "
+          "switched) sent as one request, a model chosen meanwhile taking over after the turn, Stop pausing until Send",
+          Report("steering.json", require_complete_phase=True), timeout=480, event_simulate=True, default_chat=True,
+          platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="The stand-in claude CLI (fake_provider_cli.py) plays scripted, held rounds; no account, network or "
+                "inference."),
+    Suite("test_blender_steering_codex.py", GUI,
+          "Steering a Codex turn: a native turn/steer when no call is outstanding, read before the reply naming it; "
+          "a steer waits while an approval holds the step and approves nothing",
+          Report("steering-codex.json", require_complete_phase=True), timeout=420, event_simulate=True,
+          default_chat=True,
+          platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="The stand-in codex app-server (fake_provider_cli.py) holds its call turns and keeps turn/steer; "
+                "no account, network or inference."),
+    Suite("test_blender_chat_history.py", GUI,
+          "10,000 activities: wheel through grouped/withdrawn pages to first/latest, append and resize",
+          Report("chat-history.json", require_complete_phase=True), timeout=420, event_simulate=True,
+          default_chat=True, notes="Synthetic transcript only; no provider/account/network."),
     Suite("test_blender_chat_scroll_caret.py", GUI,
           "A trackpad swipe moves the transcript as Blender's Outliner; caret, click and typing land on the drawn "
           "glyphs (wrapped, accented, Japanese, emoji) at three Resolution Scales",
           Report("chat-scroll-caret.json", require_complete_phase=True), timeout=420, event_simulate=True,
+          default_chat=True, notes="Transcript rows set directly; no provider, account or network."),
+    Suite("test_blender_composer_gui.py", GUI,
+          "A long draft scrolls in the composer (wheel, trackpad, scrollbar, click, typing, drag-select, paste; 1x, "
+          "1.5x, Arabic) and never the transcript; every text-field key of this platform's table, double and "
+          "triple clicks, the draft's own Undo, and the keys after a keyconfig preset reload",
+          Report("composer-gui.json", require_complete_phase=True), timeout=600, event_simulate=True,
           default_chat=True, notes="Transcript rows set directly; no provider, account or network."),
     Suite("test_blender_trusted_scripts.py", GUI,
           "Trusted scripts: exact review runs once, chat consent runs automatically, revoked or Read-only never runs",
@@ -425,6 +507,12 @@ SUITES = (
           options_env=("ANGELO_SCRIPT_STREAM_TIMING",),
           notes="The stand-in claude CLI (fake_provider_cli.py) streams a script plan at Opus 5.5's recorded pace; "
                 "imports the add-on from the checkout; no account, inference or script run."),
+    Suite("test_blender_hidden_wait.py", GUI,
+          "Hidden approval launcher and other-chat pointer, exact request reveals and opening input shields",
+          Report("hidden-wait.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          timeout=120, serial=True,
+          notes="Synthetic pending production ToolCalls, no tool queue or provider; actual window events and "
+                "screenshots plus separately tagged native placement contracts. Independent pixel review required."),
     Suite("test_blender_chat_waiting.py", GUI,
           "The chat's marble wait: carved while Claude plans, tapped by real progress, revealed when the plan "
           "arrives; frames capped and stopped with the turn; Reduce Motion; draw cost and pixels",
@@ -469,12 +557,13 @@ SUITES = (
           Report("compiled-gui.json", require_complete_phase=True), event_simulate=True,
           notes=INSTALLED_HOST),
     Suite("test_blender_chat_usage_live.py", LIVE, "The usage bar, card and live token count on two short real turns",
-          Report("chat-usage-live.json"), window=True, live_env=("ANGELO_QA_LIVE", "ANGELO_QA_USAGE_CONNECTIONS"),
+          Report("chat-usage-live.json"), window=True, live_env=("ANGELO_QA_LIVE", "ANGELO_QA_USAGE_CONNECTIONS", REAL_PROVIDERS),
           notes="Two read-only turns on the Claude subscription in a dedicated connection store; refuses any other."),
     Suite("test_blender_cross_provider_live.py", LIVE, "Real Codex and Claude handoff and delegation",
           Report("cross-provider-live.json"), window=False,
-          live_env=("ANGELO_QA_LIVE_BOTH", "ANGELO_QA_CLAUDE_STATE_DIR", "ANGELO_QA_CLAUDE_CONNECTION_ID"),
-          notes="Bills the user's own Codex and Claude subscriptions."),
+          live_env=("ANGELO_QA_LIVE_BOTH", "ANGELO_QA_CLAUDE_STATE_DIR", "ANGELO_QA_CLAUDE_CONNECTION_ID", REAL_PROVIDERS),
+          notes="Bills the evaluation-account Codex profile (ANGELO_TEST_REAL_PROVIDERS) and the Claude test "
+                "connection."),
     Suite("test_blender_derived_checks.py", BACKGROUND, "Derived program checks on real staged data and commits",
           Report("results.json")),
     Suite("test_blender_correction_schemas.py", BACKGROUND, "Invalid parameter schema feedback and corrected native actions",
@@ -507,8 +596,19 @@ SUITES = (
           "Orbit cameras read again at commit (moved, frame update, markers, deleted); context and quoted driver paths",
           Report("camera-guards.json")),
     Suite("test_blender_kept_values.py", BACKGROUND,
-          "Later material edits, unkeyed edits kept, in-program sharing refused early, key frame, UV map, drivers",
+          "Later material edits, unkeyed edits kept, in-program sharing refused early, key frame, UV map, drivers, "
+          "copies as Shift+D's",
           Report("kept-values.json")),
+    Suite("test_blender_commit_orphans.py", BACKGROUND,
+          "Data a commit's swaps replaced is freed (Undo/Redo restore it); shared, faked, pointed-at, linked kept",
+          Report("commit-orphans.json")),
+    Suite("test_blender_commit_orphans_production.py", BACKGROUND,
+          "The production commit (program_undo with the native bridge) frees what its swaps replaced, to a fixed "
+          "point; Undo/Redo; driver-held and deleted data kept and listed",
+          Report("commit-orphans-production.json")),
+    Suite("test_blender_driver_isolation.py", BACKGROUND,
+          "Drivers: a Python-defined destination and reads outside the stage refuse before staging evaluates",
+          Report("driver-isolation.json")),
     Suite("test_blender_kept_settings.py", BACKGROUND,
           "Settings a call leaves out stay: every typed modifier, constraint and Principled input against Blender's",
           Report("kept-settings.json"), timeout=900),
@@ -528,6 +628,39 @@ SUITES = (
           "The web World picture's key against every shader node type: each setting, nested data and value changes "
           "it, editor-only edits keep it, what can't be read is never reused after an edit",
           Report("results.json"), notes="No render, provider, account or network."),
+    Suite("test_blender_web_preview_key.py", BACKGROUND,
+          "The live web preview's key against every writable scene, render and colour-management setting: each "
+          "edit that changes the web export schedules a re-export, a selection doesn't; the key's cost",
+          Report("results.json"), timeout=240, notes="Writes temporary files only; no provider, account or network."),
+    Suite("test_blender_web_preview_bake.py", BACKGROUND,
+          "A live preview export made while the World's picture (a baked Sky, an HDRI) is being made carries the "
+          "picture the page shows, marked pending, never no light",
+          Report("results.json"), timeout=300, notes="Bakes one Sky twice in a background Angelo; no provider, "
+          "account or network."),
+    Suite("test_blender_web_link_delta.py", BACKGROUND,
+          "The web link's live frames with the real glTF exporter: unique stable keys (instances, bones), a one-object "
+          "change exports that object alone, digests that move only with what the page shows (shape keys, lights, "
+          "painted images), stubs for known images, removals, and full against delta export times",
+          Report("web-link-delta.json"), notes="Writes temporary files only; no provider, account or network."),
+    Suite("test_blender_web_link_changes.py", BACKGROUND,
+          "What the web link's live frames count as changed: pixel writes with no depsgraph update (the native "
+          "pixel revision, also while a check waits), data whose users only the depsgraph knows, and rewritten "
+          "tile, frame and renamed files reach the page on their own",
+          Report("web-link-changes.json"), notes="Writes temporary files only; no provider, account or network."),
+    Suite("test_blender_web_link_cost.py", BACKGROUND,
+          "What a web-link delta costs to decide as geometry-nodes instances grow (10k, 100k, 1M) beside a typical "
+          "scene: flat, never a walk of every instance",
+          Report("web-link-cost.json"), timeout=600,
+          notes="Writes temporary files only; no provider, account or network. Times are relative to each other."),
+    Suite("test_blender_image_source_revision.py", BACKGROUND,
+          "Image.angelo_source_revision: changes on reload, a new path, packing and unpacking, and a file changed "
+          "on disk read again after its buffers were freed; never on reading, re-reading an unchanged source, "
+          "freeing buffers, undo or a pixel edit; values never repeat",
+          Report("image-source-revision.json"), notes="Writes temporary files only; no provider, account or network."),
+    Suite("test_blender_engine_link_key.py", BACKGROUND,
+          "The engine link's live key against every writable scene and render setting, for each engine's live glTF "
+          "options: each edit that changes the live .glb schedules a live export, a selection doesn't; the key's cost",
+          Report("results.json"), timeout=300, notes="Writes temporary files only; no provider, account or network."),
     Suite("test_blender_web_export_gltfpack.py", BACKGROUND,
           "The web export's KTX2 route through a gltfpack stand-in: flags, the look and World picture put back "
           "after gltfpack, the budget, and the WebP fallback",
@@ -580,6 +713,9 @@ SUITES = (
           Report("object-management.json")),
     Suite("test_blender_animation_edits.py", BACKGROUND, "Key delete/configure, shape keys, NLA push-down, rollback and Undo",
           Report("animation-edits.json")),
+    Suite("test_blender_revision_deformers.py", BACKGROUND,
+          "Revisions follow every deformer object (RNA-pinned pointer set) across frames",
+          Report("revision-deformers.json")),
     Suite("test_blender_constraints.py", BACKGROUND, "Limit, Damped Track, Copy Transforms and Child Of constraints with Undo",
           Report("constraints.json")),
     Suite("test_blender_uv_tools.py", BACKGROUND, "Smart UV Project and Pack Islands with derived checks and Undo",
@@ -612,6 +748,10 @@ SUITES = (
           Report("generic-settings.json")),
     Suite("test_blender_commit_names.py", BACKGROUND, "Committed edits keep data, Action, material, node-group and World names",
           Report("commit-names.json")),
+    Suite("test_blender_stage_path_getters.py", BACKGROUND,
+          "Six actual RNA callback guards: getter, setter, transform and named-collection lookup stay untouched",
+          Report("results.json"), timeout=120,
+          notes="Requires the reviewed native RNA ABI; actual six-case counts and zero failures/errors/skips/soft passes are recorded."),
     Suite("test_blender_stage_id_hazards.py", BACKGROUND,
           "Staged copies: one per live material, free suffixed names, correctable ALL_USERS refusal, leftover data",
           Report("stage-id-hazards.json")),
@@ -633,6 +773,15 @@ SUITES = (
           "set graded without a model, on both benchmark sides' routes", Report("gate-answers.json")),
     Suite("test_blender_bones.py", BACKGROUND, "bone_set rest edits, Bone/PoseBone settings, pose commit, stale gates and Undo",
           Report("bones.json")),
+    Suite("test_blender_program_bone_depth.py", BACKGROUND, "Programs on deep hierarchies (humanoid rigs with fingers, "
+          "long chains, nested bone collections and node frames) bind, commit and undo; links equal the old walk's",
+          Report("bone-depth.json"), timeout=900),
+    Suite("test_blender_program_struct_views.py", BACKGROUND, "Programs see every RNA view of their inputs (collision, "
+          "display, field) and pose bones' and bones' ID properties; link-free collections; fingerprint timings",
+          Report("struct-views.json"), timeout=900),
+    Suite("test_blender_program_read_inputs.py", BACKGROUND, "Input admission: a mesh shared with an object in Edit "
+          "Mode or a dynamic-topology Sculpt session is refused at bind and at commit, naming that object",
+          Report("read-inputs.json")),
     Suite("test_blender_engine_skeleton.py", BACKGROUND, "The engine-skeleton check through angelo_skeleton_check's "
           "host route: Rigify's metarig and generated rig against Unreal, Unity and Godot (roles by layout, the DEF- "
           "prefix Unreal keeps), a skinned rig's influences, constraint, driver, scale and A-pose, the refusals, "
@@ -721,6 +870,11 @@ SUITES = (
           "nothing added",
           Report("parallel-merge-materials.json"), timeout=600,
           variants=WORKER_CHAT_HOST),
+    Suite("test_blender_parallel_merge_privacy.py", BACKGROUND,
+          "Nothing of a worker's own reaches the person's file through a merge: its Scene, the part file's Library, "
+          "weak references and paths into Angelo's private folders, checked in the saved file's bytes (saved and "
+          "unsaved lead, after Undo and Redo); private images, fonts and sounds packed, the person's own texture kept",
+          Report("parallel-merge-privacy.json"), timeout=300),
     Suite("test_blender_parallel_merge_instances.py", BACKGROUND,
           "Per-placement material swaps checked on everything a placement shows: collection instances, nested ones "
           "included, and particle instances; a swap every placement makes merges (Geometry Nodes or slot materials, "
@@ -833,6 +987,22 @@ SUITES = (
           Report("director-navigation.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
           notes="Stand-in claude/codex CLIs (fake_provider_cli.py) answer start-up sign-in checks; no account or inference."),
+    Suite("test_blender_update_quit_cancel_gui.py", GUI,
+          "Updater-owned delayed quit: invalid descriptor refuses; explicit revoke, rejected preflight, "
+          "capsule collection and synchronous requesting screen replacement each release writer and ordinary input",
+          Report("update-quit-cancel-gui.json", require_complete_phase=True), event_simulate=True, timeout=60,
+          notes="No installer, positive grant, browser, login or provider; actual compiled private updater hook required."),
+    Suite("test_blender_change_chip_details.py", GUI,
+          "Actual rendered Changes chip mouse click, popup screenshots and Escape preserve fixture scene and chat",
+          Report("change-chip-details.json", require_complete_phase=True), event_simulate=True, timeout=120,
+          platforms=("darwin",), platform_reason="Reviewed Mac-only isolated native mouse/screenshot fixture; Windows remains separately qualified",
+          notes="Structural result only; all39 names, legibility and Escape dismissal require independent review of three saved PNGs. No product callback patches or providers."),
+    Suite("test_blender_signin_reconnect.py", GUI,
+          "Expired sign-in notice clicks reconnect the exact profile with progress, Cancel and retry; Your team opens its actual owner",
+          Report("signin-reconnect.json", require_complete_phase=True), timeout=150,
+          event_simulate=True, default_chat=True, platforms=("darwin",),
+          platform_reason="Reviewed Mac-only offline fixture; actual Windows UI/account login remain separate",
+          notes="Final auth launch/browser intercepted; real owned team loopback listener is canceled without a code, no HTTP/provider call."),
     Suite("test_blender_first_run.py", GUI, "Empty chat connects in one step, then offers example prompts",
           Report("first-run.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           first_launch=True,
@@ -928,6 +1098,17 @@ SUITES = (
           "pixels, tooltip, a real click opens Media Studio on the 3D or Image tab (read from its window)",
           Report("asset-shelf-add.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           notes="Real default startup and simulated input; no CLI, account, network or inference."),
+    Suite("test_blender_essentials.py", GUI,
+          "Actual native executor: seven explicitly synthetic effect modes with dirty vertex/property/camera/light "
+          "preimages, one Undo, same-Main sequential imports and final saved-copy readback; "
+          "distinct real bundled Essentials modifier import, "
+          "Undo/Redo, Stop, stale targets and save/reopen without source files",
+          Report("essentials.json", require_complete_phase=True), timeout=300,
+          options_env=("ANGELO_QA_ESSENTIALS_ONLINE",),
+          notes="Requires the complete actual native asset owner; an unavailable owner is blocked, never PASS. "
+                "Synthetic generic-effect fixtures are not official catalog/acquisition proof. "
+                "Isolated profile; offline by default, no account or inference. Explicit online option additionally "
+                "tests the public Blender catalog, on-demand downloads, cache reuse and offline reuse."),
     Suite("test_blender_library.py", GUI,
           "The Angelo Library in Director against a loopback mirror: the search pill, typed search, a real drag of a "
           "model onto the ground (standing, with provenance), a timed warm-cache drop, a material dropped on the cube, "
@@ -1228,7 +1409,8 @@ SUITES = (
     Suite("test_blender_context_override_pair.py", BACKGROUND,
           "temp_override never pairs a scene with another scene's view layer: TypeError or the scene's own layer",
           Report("context-override-pair.json"), gui_superset=True,
-          notes="With --gui it adds Edit mode entered with a second window open (the scene dropped mid-operator)."),
+          notes="With --gui it checks live window restoration after blend_data=None and unavailable screen switches, "
+                "plus Edit mode entered with a second window open (the scene dropped mid-operator)."),
     Suite("test_blender_connect_surfaces.py", GUI, "Welcome card, showcase, welcome screen, AI Providers and its form offer "
           "every available subscription alike; Connect Claude from AI Providers",
           Report("connect-surfaces.json", require_complete_phase=True), event_simulate=True, default_chat=True,
@@ -1289,6 +1471,34 @@ SUITES = (
           "IDs still work",
           Report("removed-id-python-api.json"),
           notes="The USD hook case needs a build with USD; without it the report records \"not built\"."),
+    Suite("test_blender_temp_data_lifetime.py", BACKGROUND,
+          "Temporary BlendData has separate context and target references, survives either Python destruction "
+          "order as an invalidated wrapper, and rejects repeated entry or exit",
+          Report("temp-data-lifetime.json"),
+          notes="Upstream temp_data ownership/lifecycle regressions; no provider, account or network."),
+    Suite("test_blender_sub_data_wrappers.py", BACKGROUND,
+          "Held RNA and custom-property wrappers survive unrelated edits and reject stale sub-data; "
+          "exported numeric arrays keep their original storage until release",
+          Report("sub-data-wrappers.json"), timeout=900, notes="One child process per case."),
+    Suite("test_blender_sub_data_soak.py", BACKGROUND,
+          "Held live and retired sub-data wrappers across CPU renders, a bake, Python drivers and file reload",
+          Report("sub-data-soak.json"), timeout=900,
+          notes="Completed background jobs only; mid-job load and quit require the separate GUI gate."),
+    Suite("test_blender_sub_data_ui_lifetime.py", GUI,
+          "Live UI wrappers across maximize/restore and conversion callbacks; file load and quit during CPU renders",
+          Report("sub-data-ui-lifetime.json", require_complete_phase=True), timeout=360,
+          notes="Isolated factory scene; clean process exit also verifies that quit joined the render worker."),
+    Suite("test_blender_instance_alias_wrappers.py", BACKGROUND,
+          "Every wrapper and iterator of freed data raises ReferenceError: aliases, views, sub-structs, properties, "
+          "arrays and mathutils values, functions, custom properties and UI data, iterators over a freed ID or graph "
+          "(view_layer.depsgraph too), a depsgraph step's instance and object, evaluated data freed or replaced, "
+          "views across undo (stock 5.2 crashed or read freed memory); live ones still work",
+          Report("instance-alias-wrappers.json"), notes="One child process of the binary per case."),
+    Suite("test_blender_idprop_assignment_errors.py", BACKGROUND,
+          "A failing custom-property assignment raises and keeps the old value: an array item out of range (static "
+          "and ordinary), a longer buffer, an unencodable string, a mapping whose len() lies; nothing pending at "
+          "the next call (stock 5.2 left SystemError, overflowed the heap or crashed)",
+          Report("idprop-assignment-errors.json"), notes="One child process of the binary per case."),
     Suite("test_blender_native_suggestions.py", GUI, "Detected sign-ins suggested, never set up (stand-in status)",
           Report("native-suggestions.json", require_complete_phase=True), event_simulate=True,
           notes="Stand-in native status; never runs the Codex or Claude CLIs or reads a real profile."),
@@ -1351,6 +1561,11 @@ SUITES = (
           "Ten Sculpt and ten Object Mode Restores, each with icon and material preview jobs started in the same tick",
           Report("checkpoint-preview-jobs.json", require_complete_phase=True), serial=True, state_in_qa=True,
           notes="The runner's timeout is the hang watchdog for a read joining a preview job under the GIL."),
+    Suite("test_blender_work_guard_jobs.py", BACKGROUND,
+          "Restart to Update's work guard, the live view and bindings see a real Ocean bake and an Alembic import "
+          "job, which no closed list names; the asset catalog checks read and put back their setting",
+          Report("work-guard-jobs.json"),
+          notes="Needs Alembic (every release build has it); the jobs end when the process quits."),
     Suite("test_blender_checkpoint_preview_jobs_background.py", BACKGROUND,
           "Ten Restores and ten Python-started open_mainfile calls, each with preview jobs started first",
           Report("checkpoint-preview-jobs-background.json"), serial=True, needs_opengl=True,
@@ -1362,6 +1577,11 @@ SUITES = (
     Suite("test_blender_native_checkpoint_cold_recovery.py", GUI,
           "Native checkpoint capsule, cold reader, safety and load-handler conflicts",
           Report("native-checkpoint-cold-recovery.json"), serial=True),
+    Suite("test_blender_checkpoint_content_binding.py", BACKGROUND,
+          "Content binding: a same-size rewrite keeping the stamp refuses safety, pair and Restore; POST and hasher "
+          "admission; no API returns the binding",
+          Report("checkpoint-content-binding.json"), serial=True,
+          notes="Restores the factory scene per case; the Sculpt-gate case runs only in a WITH_GTESTS build."),
     Suite("test_blender_program_preview.py", GUI, "Preview pixels and artist-state restoration",
           Report("results.json")),
     Suite("test_blender_mirror_object.py", GUI, "Mirror origin identity, staged geometry, stale bindings, Undo and partial checks",
@@ -1417,8 +1637,8 @@ SUITES = (
                 "session-journal and native-read benchmarks one after another in background app processes. macOS only (instruction counters); fails closed elsewhere. "
                 "After a pass, perf_ratchet.py <receipt> --stamp records the measurement."),
     Suite("test_blender_shared_sessions.py", LIVE, "Real Codex resume with a fixture Claude lead",
-          Report("shared-sessions.json"), window=False, live_env=("ANGELO_QA_LIVE_CODEX",),
-          notes="Sends ordinary-tier requests on the user's own ChatGPT subscription."),
+          Report("shared-sessions.json"), window=False, live_env=("ANGELO_QA_LIVE_CODEX", REAL_PROVIDERS),
+          notes="Sends ordinary-tier requests on the evaluation-account ChatGPT profile (ANGELO_TEST_REAL_PROVIDERS)."),
     Suite("test_blender_snapshot_dedup.py", BACKGROUND, "Deduplicated snapshots: real captures, ingestion, exact restores",
           Report("snapshot-dedup.json")),
     Suite("test_blender_long_jobs.py", GUI, "Background jobs on Blender's own jobs: renders, bakes and exports with "
@@ -1470,6 +1690,32 @@ SUITES = (
           Report("baked-export-stale.json"), timeout=600,
           notes="Digests without bakes, plus one real Cycles CPU high-to-low bake at 64 pixels; no window, provider "
                 "or account. Scene files after the receipt run the same battery on them (held out)."),
+    Suite("test_blender_baked_export_hidden.py", BACKGROUND, "Baked materials and the viewport: hiding with the eye or "
+          "disabling in viewports (an instancer, a collection instance, a modified neighbour, a high-to-low source) "
+          "leaves a binding current, an edit to what a hidden object shows makes it stale, render visibility and "
+          "Show Instancer for renders count, and unsaved paint on every UDIM tile makes it stale (the native "
+          "reader, _bpy._angelo_digest)",
+          Report("baked-export-hidden.json"), timeout=600,
+          notes="Digests without bakes, four 4K UDIM tiles; no window, provider or account. Needs the built app's "
+                "native reader."),
+    Suite("test_blender_baked_export_buffers.py", BACKGROUND, "A baked material is current exactly when a bake now "
+          "reads the pixels its bake read: an image Cycles copies from memory (packed after its file was saved "
+          "over, a UDIM image with a generated tile, unsaved edits) and plain files, packed and generated images "
+          "across a Reload and a save and reopen, with real bakes (the native reader, _bpy._angelo_digest.pixels)",
+          Report("baked-export-buffers.json"), timeout=600,
+          notes="Real Cycles CPU emission bakes at 8 pixels; no window, provider or account. Needs the built app's "
+                "native reader."),
+    Suite("test_blender_saved_file.py", BACKGROUND, "A save's save_post handlers name the file it wrote as the save "
+          "identified it (os.stat's values), and a file put at the path after the rename is never "
+          "taken for the save", Report("saved-file.json"),
+          notes="Small .blend saves in a temporary folder; no window, provider or account. Needs the built app's "
+                "_bpy._angelo_saved."),
+    Suite("test_blender_image_read_files.py", BACKGROUND, "The file Blender reads for an image's frame, tile or "
+          "view: frame file names and frame numbers equal Blender's own, a sequence frame's or a view's file saved "
+          "again makes a baked material stale (another frame's doesn't), and the open file lists a tile set "
+          "without tile 1001 as present",
+          Report("image-read-files.json"), notes="Digests without bakes, 8-pixel PNGs; no window, provider or "
+                                                 "account."),
     Suite("test_blender_bake_maps_job.py", GUI, "The Bake Maps card and its job: the + menu row, the card on the "
           "selection, the job's progress in the corner, the Unreal preset's files, the baked material and Use, a "
           "stopped bake that leaves nothing behind, the main thread's longest gap and the GPU",
@@ -1629,6 +1875,16 @@ SUITES = (
           "empty hair object), DEPTH against Blender's ray cast, a 1,024 pair delivered, the GPU depth state put "
           "back, clip planes with a box out of frame and hair near the camera, every call read-only",
           Report("results.json"), timeout=300),
+    Suite("test_blender_goal_gui.py", GUI,
+          "A goal held across turns in Director Mode: the + menu's Goal row, the chip and its card, a real loop over "
+          "the stand-in codex (Angelo's round sent as its own request, two unchanged rounds end it stalled, nothing "
+          "more sent), a draft holding a round, Stop goal, and the chip and card in five languages",
+          Report("goal-gui.json", require_complete_phase=True), event_simulate=True, default_chat=True,
+          platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS, timeout=300),
+    Suite("test_blender_goal_measure.py", GUI, "A held goal's host measurement: a drawn reference disc against a "
+          "cube (pi / 4) and a sphere (0.95 or more), target rules resolved per measurement (an object added later, a "
+          "collection, one off camera, a frame-filling backdrop noted, Undo between rounds), SCENE checks bound to "
+          "current revisions, read-only and no file written, its time at 512 px", Report("results.json"), timeout=300),
     Suite("test_blender_view_outline.py", GUI, "Reference comparisons checked against Blender's own drawing and "
           "projection: OUTLINE matches itself, a known move and scale give Blender's projected offset and their "
           "ratio, hair silhouettes hold every projected strand point, cut-out and busy references, OVERLAY, "

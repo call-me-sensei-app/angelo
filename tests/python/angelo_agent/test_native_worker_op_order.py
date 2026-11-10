@@ -11,6 +11,8 @@
 Each interleaving is forced deterministically (gates, inline frames). No Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import threading
 import time
 import unittest

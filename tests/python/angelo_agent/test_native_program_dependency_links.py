@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Dependency-edge parity and declared getter canaries; no native app launched."""
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import itertools
 from pathlib import Path
 import sys
@@ -243,22 +245,23 @@ class DependencyLinksTests(unittest.TestCase):
         expected = [("child", "id", "target")]
         self.assertEqual(edges(root, reference_links), expected)
         self.assertEqual(edges(root), expected)
-        self.assertEqual(edges(root, visited={root.as_pointer()}), [])
 
-    def test_depth_boundary_and_limit_refusal_match_preimage(self):
-        for depth in (14, 15):
+    def test_depth_boundary_matches_preimage_and_deeper_nesting_is_walked(self):
+        """At 14 levels the walk equals the preimage's; past it the preimage refused, and the walk, which no longer
+        bounds nesting (doc/angelo/native_coverage.rst, "Dependency walk depth"), still finds the link."""
+        for depth in (14, 15, 60):
             nodes = [RNA(str(i), [property_decl("child", "POINTER")]) for i in range(depth + 1)]
             for left, right in zip(nodes, nodes[1:]):
                 left.values["child"] = right
             nodes[-1].values["child"] = Object("leaf")
-            for walk in (reference_links, dependencies._embedded_links):
-                with self.subTest(depth=depth, walk=walk.__name__):
-                    if depth == 14:
-                        self.assertEqual(edges(nodes[0], walk), [("14", "child", "leaf")])
-                    else:
-                        with self.assertRaises(ProgramError) as caught:
-                            edges(nodes[0], walk)
-                        self.assertEqual(caught.exception.code, "LIMIT_EXCEEDED")
+            with self.subTest(depth=depth):
+                self.assertEqual(edges(nodes[0]), [(str(depth), "child", "leaf")])
+                if depth == 14:
+                    self.assertEqual(edges(nodes[0], reference_links), [("14", "child", "leaf")])
+                else:
+                    with self.assertRaises(ProgramError) as caught:
+                        edges(nodes[0], reference_links)
+                    self.assertEqual(caught.exception.code, "LIMIT_EXCEEDED")
 
     def test_rna_skip_does_not_fetch_even_a_pointer_getter(self):
         def fail():

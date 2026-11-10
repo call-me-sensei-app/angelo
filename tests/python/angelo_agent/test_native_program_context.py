@@ -7,6 +7,8 @@ animation playback between approval and staging, the approved binding's frame no
 matched and the request ended with "The target changed after approval".
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import copy
 import hashlib

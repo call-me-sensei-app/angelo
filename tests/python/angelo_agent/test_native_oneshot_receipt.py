@@ -15,6 +15,8 @@ shapes here are the ones ``request_path`` documents:
   ``lookup``, ``api``, ``typed`` and ``script``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import sys
 import unittest

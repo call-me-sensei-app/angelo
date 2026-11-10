@@ -45,7 +45,9 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_fileops.h"
+#include "BLI_fileops.hh"
 #include "BLI_filereader.h"
+#include "BLI_hash_xxh3.hh"
 #include "BLI_linklist.h"
 #include "BLI_listbase.h"
 #include "BLI_math_base.h"
@@ -136,6 +138,7 @@
 #include "DEG_depsgraph_query.hh"
 #include "bmesh.hh"
 #include "intern/bmesh_log.hh"
+#include "BLI_checkpoint_budget.hh"
 #include "wm_checkpoint.hh"
 
 #include "RNA_access.hh"
@@ -607,11 +610,9 @@ static void wm_init_userdef(Main *bmain)
   /* Needed so loading a file from the command line respects user-pref #26156. */
   SET_FLAG_FROM_TEST(G.fileflags, U.flag & USER_FILENOUI, G_FILE_NO_UI);
 
-  /* Set the python auto-execute setting from user prefs. */
-  /* Enabled by default, unless explicitly enabled in the command line which overrides. */
-  if ((G.f & G_FLAG_SCRIPT_OVERRIDE_PREF) == 0) {
-    SET_FLAG_FROM_TEST(G.f, (U.flag & USER_SCRIPT_AUTOEXEC_DISABLE) == 0, G_FLAG_SCRIPT_AUTOEXEC);
-  }
+  SET_FLAG_FROM_TEST(G.f,
+                     G.autoexec_override.value_or((U.flag & USER_SCRIPT_AUTOEXEC_DISABLE) == 0),
+                     G_FLAG_SCRIPT_AUTOEXEC);
 
   /* Only reset "offline mode" if they weren't passes via command line arguments. */
   if ((G.f & G_FLAG_INTERNET_OVERRIDE_PREF_ANY) == 0) {
@@ -693,12 +694,12 @@ static int wm_read_exotic(const char *filepath)
 
 void WM_file_autoexec_init(const char *filepath)
 {
-  if (G.f & G_FLAG_SCRIPT_OVERRIDE_PREF) {
+  if (G.autoexec_override.has_value()) {
     return;
   }
-
   if (G.f & G_FLAG_SCRIPT_AUTOEXEC) {
-    if (BKE_autoexec_match(filepath, false, true)) {
+    /* Recovering a session that was never saved has no path to check. */
+    if ((filepath[0] != '\0') && BKE_autoexec_match(filepath, false, true)) {
       G.f &= ~G_FLAG_SCRIPT_AUTOEXEC;
     }
   }
@@ -1241,6 +1242,13 @@ static void wm_file_read_post(bContext *C,
                               const char *filepath,
                               const wmFileReadPost_Params *params)
 {
+  if (params->use_data) {
+    /* The document was replaced: the running work its owners registered for the quit and close-file
+     * confirmation ended with it. Cleared first, so a step below that stops early (a checkpoint
+     * install failing late) never leaves the old document's entries, and before the load-post
+     * handlers, where an owner may register again. A read that replaced nothing never gets here. */
+    WM_quit_activities_clear();
+  }
   if (!wm_checkpoint_read_post_live(C, *params)) { return; }
   wmWindowManager *wm = CTX_wm_manager(C);
   if (params->use_data && params->success) {
@@ -2051,9 +2059,9 @@ bool wm_homefile_read_ex(bContext *C,
   /* Options exclude each other. */
   BLI_assert((use_factory_settings && filepath_startup_override) == 0);
 
-  if ((G.f & G_FLAG_SCRIPT_OVERRIDE_PREF) == 0) {
-    SET_FLAG_FROM_TEST(G.f, (U.flag & USER_SCRIPT_AUTOEXEC_DISABLE) == 0, G_FLAG_SCRIPT_AUTOEXEC);
-  }
+  SET_FLAG_FROM_TEST(G.f,
+                     G.autoexec_override.value_or((U.flag & USER_SCRIPT_AUTOEXEC_DISABLE) == 0),
+                     G_FLAG_SCRIPT_AUTOEXEC);
 
   if (use_data) {
     if (reset_app_template) {
@@ -2888,6 +2896,9 @@ struct WMCheckpointCapture {
   Vector<bool> grid_authorities;
   std::string logical_path;
   bool pre_called = false, post_called = false, base_complete = false, runtime_complete = false;
+  /** Decided before the BASE writer runs (WM_checkpoint_capture_write). */
+  bool bind_base = false;
+  WMCheckpointContentBinding base_binding, runtime_binding;
   ~WMCheckpointCapture()
   {
     ed::sculpt_paint::undo::main_undo_state_free(snapshot);
@@ -2931,6 +2942,27 @@ static Object *checkpoint_object(Main &main, const uint32_t uid)
   return nullptr;
 }
 
+/** Whether a capture of ``main`` now can select Sculpt owners: an Object in Sculpt mode with a
+ * Sculpt session. The BASE content-binding gate and the owner snapshot below use this one
+ * predicate, so every capture that selects owners was decided bound before its writer ran. */
+static bool checkpoint_has_sculpt_runtime(const Main &main)
+{
+  for (const Object &object : main.objects) {
+    if ((object.mode & OB_MODE_SCULPT) && object.runtime->sculpt_session) {
+      return true;
+    }
+  }
+  return false;
+}
+
+#ifdef WITH_GTESTS
+static bool checkpoint_test_skip_sculpt_gate = false;
+void WM_checkpoint_test_skip_next_sculpt_gate()
+{
+  checkpoint_test_skip_sculpt_gate = true;
+}
+#endif
+
 static bool checkpoint_before_ids(Main &main,
                                   Span<ID *> /*included*/,
                                   const CheckpointWriteTokenLookup &tokens,
@@ -2941,11 +2973,12 @@ static bool checkpoint_before_ids(Main &main,
   if (!WM_checkpoint_capture_validate(capture) || &main != capture.main) {
     return false;
   }
-  bool has_runtime = false;
-  for (const Object &object : main.objects) {
-    has_runtime |= (object.mode & OB_MODE_SCULPT) && object.runtime->sculpt_session;
+  if (!checkpoint_has_sculpt_runtime(main)) { return true; }
+  if (!capture.bind_base) {
+    /* A Sculpt session appeared after the gate was decided: its pair could not be compared. */
+    BKE_report(reports, RPT_ERROR, "A Sculpt checkpoint owner has no BASE content binding");
+    return false;
   }
-  if (!has_runtime) { return true; }
   const char *error = nullptr;
   ed::sculpt_paint::checkpoint::CodecLimits limits{};
   if (!WM_checkpoint_memory_limits(limits, 0, reports)) { return false; }
@@ -2953,13 +2986,14 @@ static bool checkpoint_before_ids(Main &main,
       main, limits.max_backing_bytes, &error);
   if (error || !WM_checkpoint_capture_validate(capture)) {
     BKE_report(reports, RPT_ERROR, error ? error : "Checkpoint owner changed during snapshot");
-    return false;
+    return false;   /* A budget refusal was counted by the snapshot's own charge. */
   }
   if (!capture.snapshot) {
     return true; /* Final prepared writer state has no Sculpt companion. */
   }
   if (ed::sculpt_paint::undo::main_undo_state_memory_size(*capture.snapshot) > limits.max_backing_bytes) {
     BKE_report(reports, RPT_ERROR, "Selected Sculpt snapshot exceeds the admitted checkpoint RAM budget");
+    WM_checkpoint_budget_refused();
     return false;
   }
   const bool bound = ed::sculpt_paint::undo::main_undo_snapshot_objects(
@@ -3126,6 +3160,7 @@ class CheckpointExternalData {
 bool WM_checkpoint_capture_write(WMCheckpointCapture &capture,
                                  const char *logical_path,
                                  const int descriptor,
+                                 const bool bind_content,
                                  ReportList *reports)
 {
   if (!WM_checkpoint_capture_validate(capture) || capture.pre_called ||
@@ -3143,12 +3178,22 @@ bool WM_checkpoint_capture_write(WMCheckpointCapture &capture,
     return false;
   }
   capture.pre_called = true;
-  BKE_callback_exec_string(&main, logical_path, BKE_CB_EVT_SAVE_PRE);
+  {
+    /* Add-on handlers are not this capture's work: a budget refusal of theirs (another checkpoint)
+     * never makes this capture's failure a memory refusal (BLI_checkpoint_budget.hh). */
+    CheckpointBudgetCountPaused paused;
+    BKE_callback_exec_string(&main, logical_path, BKE_CB_EVT_SAVE_PRE);
+  }
   if (!WM_checkpoint_capture_validate(capture)) {
     return false;
   }
-  ed::asset::pre_save_assets(&main);
-  BKE_lib_override_library_main_operations_create(&main, true, nullptr);
+  {
+    /* Override diffing compares RNA, which can run add-on property getters: not this capture's work
+     * (BLI_checkpoint_budget.hh), like the handlers around it. */
+    CheckpointBudgetCountPaused paused;
+    ed::asset::pre_save_assets(&main);
+    BKE_lib_override_library_main_operations_create(&main, true, nullptr);
+  }
   /* Nor does it pack external files, whatever Automatically Pack Resources says: packing would
    * change the artist's live document. The snapshot references those files by the absolute
    * paths serialized below, as the live document references them, and its file flags keep the
@@ -3195,10 +3240,27 @@ bool WM_checkpoint_capture_write(WMCheckpointCapture &capture,
     hooks.before_local_ids = checkpoint_before_ids;
     hooks.after_local_ids = checkpoint_after_ids;
     hooks.include_id = checkpoint_include_id;
+    /* The gate, decided once before the writer (after SAVE_PRE and the edit flush above): bind
+     * when the caller will compare BASE, and whenever this capture can select Sculpt owners.
+     * An ordinary request on a fine-clock volume binds nothing and pays nothing. */
+    capture.bind_base = bind_content || checkpoint_has_sculpt_runtime(main);
+#ifdef WITH_GTESTS
+    if (std::exchange(checkpoint_test_skip_sculpt_gate, false)) {
+      capture.bind_base = bind_content;
+    }
+#endif
+    std::optional<XXH3_128Stream> base_content;
+    if (capture.bind_base) {
+      base_content.emplace();
+      hooks.content = &*base_content;
+    }
     success = path_summary.count_failed == 0 && WM_checkpoint_capture_validate(capture) &&
               BLO_write_checkpoint_to_descriptor(&main, logical_path, descriptor,
                                                  G.fileflags & ~G_FILE_COMPRESS,
                                                  &params, reports, hooks);
+    if (success && base_content) {
+      capture.base_binding = {base_content->finalize(), base_content->bytes(), true};
+    }
   }
   BKE_bpath_list_restore_for_checkpoint(&main, path_flags, path_backup);
   BKE_bpath_list_free(path_backup);
@@ -3209,6 +3271,12 @@ bool WM_checkpoint_capture_write(WMCheckpointCapture &capture,
 uint64_t WM_checkpoint_capture_owner_count(const WMCheckpointCapture &capture)
 {
   return uint64_t(capture.objects.size());
+}
+
+const WMCheckpointContentBinding &WM_checkpoint_capture_binding(const WMCheckpointCapture &capture,
+                                                                const WMCheckpointRole role)
+{
+  return role == WMCheckpointRole::Base ? capture.base_binding : capture.runtime_binding;
 }
 
 WMCheckpointContent *WM_checkpoint_capture_content(WMCheckpointCapture &capture, ReportList *reports)
@@ -3242,32 +3310,21 @@ bool WM_checkpoint_capture_runtime_write(WMCheckpointCapture &capture,
   encode_limits.max_file_bytes += uint64_t(existing);
   const char *error = nullptr;
   EncodeInfo encoded_info;
+  /* RUNTIME is bound whenever it is written: every pair is compared before it is published. */
+  XXH3_128Stream runtime_content;
   const bool encoded = companion_encode(capture.snapshot, capture.capture_id,
                                         capture.objects, capture.grids, encode_limits,
       [&](Span<std::byte> bytes) {
-        while (!bytes.is_empty()) {
-#ifdef WIN32
-          const int count = _write(descriptor, bytes.data(), uint(std::min<int64_t>(bytes.size(), INT_MAX)));
-#else
-          const auto count = write(descriptor, bytes.data(), size_t(bytes.size()));
-#endif
-          if (count < 0 && errno == EINTR) {
-            continue;
-          }
-          if (count <= 0) {
-            return false;
-          }
-          bytes = bytes.drop_front(count);
-        }
-        return true;
+        return WM_checkpoint_write_all(descriptor, bytes, &runtime_content, WM_checkpoint_descriptor_write);
       }, &error, &encoded_info);
   BLI_stat_t info;
   if (!encoded || !encoded_info.complete || encoded_info.capture_id != capture.capture_id ||
+      runtime_content.bytes() != encoded_info.file_bytes ||
       encoded_info.objects_num != capture.objects.size() || encoded_info.grids_num != capture.grids.size() ||
       BLI_fstat(descriptor, &info) != 0 || info.st_size <= 0 ||
       encoded_info.file_bytes != uint64_t(info.st_size) || !seal_encoded()) {
     BKE_report(reports, RPT_ERROR, error ? error : "Checkpoint companion output failed");
-    return false;
+    return false;   /* A budget refusal was counted by the encoder's own charge. */
   }
   auto decoded = companion_decode_prepare(uint64_t(info.st_size), capture.capture_id, limits,
       [&](const uint64_t offset, MutableSpan<std::byte> bytes) {
@@ -3287,7 +3344,7 @@ bool WM_checkpoint_capture_runtime_write(WMCheckpointCapture &capture,
       decoded->grids.size() != capture.grids.size())
   {
     BKE_report(reports, RPT_ERROR, error ? error : "Checkpoint companion verification failed");
-    return false;
+    return false;   /* A budget refusal was counted by the decoder's own charge. */
   }
   for (const int64_t i : capture.objects.index_range()) {
     const auto &actual = decoded->objects[i].binding;
@@ -3318,6 +3375,9 @@ bool WM_checkpoint_capture_runtime_write(WMCheckpointCapture &capture,
     }
   }
   capture.runtime_complete = WM_checkpoint_capture_validate(capture);
+  if (capture.runtime_complete) {
+    capture.runtime_binding = {runtime_content.finalize(), runtime_content.bytes(), true};
+  }
   return capture.runtime_complete;
 }
 
@@ -3328,6 +3388,9 @@ bool WM_checkpoint_capture_post(WMCheckpointCapture &capture, const bool success
   }
   capture.post_called = true;
   if (capture.pre_called) {
+    /* Add-on handlers (a failed capture's SAVE_POST_FAIL runs inside its counted scope): never this
+     * capture's budget refusals (BLI_checkpoint_budget.hh). */
+    CheckpointBudgetCountPaused paused;
     BKE_callback_exec_string(capture.main, capture.logical_path.c_str(),
                             success ? BKE_CB_EVT_SAVE_POST : BKE_CB_EVT_SAVE_POST_FAIL);
   }
@@ -3337,6 +3400,23 @@ bool WM_checkpoint_capture_post(WMCheckpointCapture &capture, const bool success
 void WM_checkpoint_capture_close(WMCheckpointCapture *capture)
 {
   delete capture;
+}
+
+/**
+ * Angelo: the document file a save wrote, as the save itself identified it (#BLO_write_file's
+ * `written`), while its `save_post` handlers run (#WM_angelo_saved_file); empty otherwise.
+ */
+static std::string wm_angelo_saved_path;
+static FileIdentity wm_angelo_saved_identity;
+
+bool WM_angelo_saved_file(std::string *r_path, FileIdentity *r_identity)
+{
+  if (!BLI_thread_is_main() || wm_angelo_saved_path.empty()) {
+    return false;
+  }
+  *r_path = wm_angelo_saved_path;
+  *r_identity = wm_angelo_saved_identity;
+  return true;
 }
 
 /**
@@ -3469,6 +3549,10 @@ static bool wm_file_write(bContext *C,
   blend_write_params.use_save_as_copy = use_save_as_copy;
   blend_write_params.use_durable = true;
   blend_write_params.thumb = thumb;
+  FileIdentity written{};
+  bool written_valid = false;
+  blend_write_params.written = &written;
+  blend_write_params.written_valid = &written_valid;
 
   const bool success = BLO_write_file(bmain, filepath, fileflags, &blend_write_params, reports);
 
@@ -3500,8 +3584,23 @@ static bool wm_file_write(bContext *C,
     }
   }
 
+  /* Its handlers name the file this save wrote by the identity the save took of it, never by a
+   * stat of `filepath` now, which could be a file another program put there since. A save inside
+   * a `save_post` handler (a backup add-on's copy) gives the handlers after it the outer save's
+   * again, unless it replaced the outer save's file: then the file at that path is this one's,
+   * known by this save's identity (or by none). */
+  const std::string outer_path = wm_angelo_saved_path;
+  const FileIdentity outer_identity = wm_angelo_saved_identity;
+  wm_angelo_saved_path = (success && written_valid) ? filepath : "";
+  wm_angelo_saved_identity = written;
   BKE_callback_exec_string(
       bmain, filepath, success ? BKE_CB_EVT_SAVE_POST : BKE_CB_EVT_SAVE_POST_FAIL);
+  const bool replaced_outer = success && !outer_path.empty() &&
+                              BLI_path_cmp_normalized(outer_path.c_str(), filepath) == 0;
+  if (!replaced_outer) {
+    wm_angelo_saved_path = outer_path;
+    wm_angelo_saved_identity = outer_identity;
+  }
 
   if (ibuf_thumb) {
     IMB_freeImBuf(ibuf_thumb);
@@ -3752,21 +3851,63 @@ void wm_open_init_load_ui(wmOperator *op, bool use_prefs)
   }
 }
 
-bool wm_open_init_use_scripts(wmOperator *op, bool use_prefs)
+/** How #wm_open_init_use_scripts resolves the default for "use_scripts". */
+enum class OpenTrust {
+  /** The default trust for the operator's "filepath" property. */
+  FilePath,
+  /** Keep the trust of the current session. */
+  CurrentSession,
+  /** The path this operator holds isn't the path the recovered file will have. */
+  Recover,
+};
+
+/**
+ * Return true if the script auto-execution should be cleared based on #WM_file_autoexec_init.
+ */
+[[nodiscard]] static bool wm_open_init_use_scripts(wmOperator *op, const OpenTrust source_of_trust)
 {
   PropertyRNA *prop = RNA_struct_find_property(op->ptr, "use_scripts");
-  bool use_scripts_autoexec_check = false;
-  if (!RNA_property_is_set(op->ptr, prop)) {
-    /* Use #G_FLAG_SCRIPT_AUTOEXEC rather than the userpref because this means if
-     * the flag has been disabled from the command line, then opening
-     * from the menu won't enable this setting. */
-    bool value = use_prefs ? ((U.flag & USER_SCRIPT_AUTOEXEC_DISABLE) == 0) :
-                             ((G.f & G_FLAG_SCRIPT_AUTOEXEC) != 0);
-
-    RNA_property_boolean_set(op->ptr, prop, value);
-    use_scripts_autoexec_check = true;
+  if (RNA_property_is_set(op->ptr, prop)) {
+    return false;
   }
-  return use_scripts_autoexec_check;
+
+  bool value = false;
+  switch (source_of_trust) {
+    case OpenTrust::FilePath: {
+      char filepath[FILE_MAX] = "";
+      if (PropertyRNA *prop_filepath = RNA_struct_find_property(op->ptr, "filepath")) {
+        RNA_property_string_get(op->ptr, prop_filepath, filepath);
+      }
+
+      if (filepath[0] == '\0') {
+        /* The file selector before a file is chosen, excluded paths are checked once it's set. */
+        value = G.autoexec_override.value_or((U.flag & USER_SCRIPT_AUTOEXEC_DISABLE) == 0);
+      }
+      else {
+        value = BKE_autoexec_default_trust_source(filepath,
+                                                  {
+                                                      .skip_overrides = false,
+                                                      .canonicalize = true,
+                                                      .strip_filename = true,
+                                                  });
+      }
+      break;
+    }
+    case OpenTrust::CurrentSession: {
+      /* Keep the trust of the current session rather than the preference. */
+      value = (G.f & G_FLAG_SCRIPT_AUTOEXEC) != 0;
+      break;
+    }
+    case OpenTrust::Recover: {
+      /* It may be in an excluded path so disable auto-execution,
+       * the user may still opt-in. */
+      value = G.autoexec_override.value_or(false);
+      break;
+    }
+  }
+
+  RNA_property_boolean_set(op->ptr, prop, value);
+  return true;
 }
 
 /** \} */
@@ -4346,6 +4487,9 @@ void WM_OT_read_homefile(wmOperatorType *ot)
   /* Omit poll to run in background mode. */
 }
 
+static std::string wm_close_file_activities_text();
+static void wm_generic_callback_free_user_data_idproperties(void *user_data);
+
 static wmOperatorStatus wm_read_factory_settings_invoke(bContext *C,
                                                         wmOperator *op,
                                                         const wmEvent * /*event*/)
@@ -4366,16 +4510,14 @@ static wmOperatorStatus wm_read_factory_settings_invoke(bContext *C,
     title = IFACE_("Load Factory Default Startup File and Preferences");
   }
 
+  const std::string message =
+      std::string(unsaved ?
+                      IFACE_("To make changes to Preferences permanent, use \"Save Preferences\".\n"
+                             "Warning: Your file is unsaved! Proceeding will abandon your changes.") :
+                      IFACE_("To make changes to Preferences permanent, use \"Save Preferences\".")) +
+      wm_close_file_activities_text();
   return WM_operator_confirm_ex(
-      C,
-      op,
-      title.c_str(),
-      unsaved ? IFACE_("To make changes to Preferences permanent, use \"Save Preferences\".\n"
-                       "Warning: Your file is unsaved! Proceeding will abandon your changes.") :
-                IFACE_("To make changes to Preferences permanent, use \"Save Preferences\"."),
-      IFACE_("Load"),
-      ui::AlertIcon::Warning,
-      false);
+      C, op, title.c_str(), message.c_str(), IFACE_("Load"), ui::AlertIcon::Warning, false);
 }
 
 void WM_OT_read_factory_settings(wmOperatorType *ot)
@@ -4522,7 +4664,7 @@ static wmOperatorStatus wm_open_mainfile__select_file_path_exec(bContext *C, wmO
 
   RNA_string_set(op->ptr, "filepath", blendfile_path);
   wm_open_init_load_ui(op, true);
-  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, true);
+  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, OpenTrust::FilePath);
   UNUSED_VARS(use_scripts_autoexec_check); /* The user can set this in the UI. */
   op->customdata = nullptr;
 
@@ -4547,7 +4689,7 @@ static wmOperatorStatus wm_open_mainfile__open(bContext *C, wmOperator *op)
 
   /* Re-use last loaded setting so we can reload a file without changing. */
   wm_open_init_load_ui(op, false);
-  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, false);
+  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, OpenTrust::CurrentSession);
 
   SET_FLAG_FROM_TEST(G.fileflags, !RNA_boolean_get(op->ptr, "load_ui"), G_FILE_NO_UI);
   SET_FLAG_FROM_TEST(G.f, RNA_boolean_get(op->ptr, "use_scripts"), G_FLAG_SCRIPT_AUTOEXEC);
@@ -4642,8 +4784,9 @@ static bool wm_open_mainfile_check(bContext * /*C*/, wmOperator *op)
 
   RNA_string_get(op->ptr, "filepath", filepath);
 
-  if ((U.flag & USER_SCRIPT_AUTOEXEC_DISABLE) == 0) {
-    if (BKE_autoexec_match(filepath, true, true) == true) {
+  /* Excluded paths can't be trusted, unless the command line overrides the preference. */
+  if (((U.flag & USER_SCRIPT_AUTOEXEC_DISABLE) == 0) && !G.autoexec_override.has_value()) {
+    if (BKE_autoexec_match(filepath, true, true)) {
       RNA_property_boolean_set(op->ptr, prop, false);
       is_untrusted = true;
     }
@@ -4735,6 +4878,7 @@ static wmOperatorStatus wm_revert_mainfile_invoke(bContext *C,
     message += "\n";
     message += IFACE_("Warning: There are unsaved external image(s).");
   }
+  message += wm_close_file_activities_text();
 
   return WM_operator_confirm_ex(C,
                                 op,
@@ -4754,7 +4898,7 @@ static wmOperatorStatus wm_revert_mainfile_exec(bContext *C, wmOperator *op)
   bool success;
   char filepath[FILE_MAX];
 
-  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, false);
+  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, OpenTrust::CurrentSession);
 
   SET_FLAG_FROM_TEST(G.f, RNA_boolean_get(op->ptr, "use_scripts"), G_FLAG_SCRIPT_AUTOEXEC);
 
@@ -4832,7 +4976,7 @@ static wmOperatorStatus wm_recover_last_session_impl(bContext *C,
 
 static wmOperatorStatus wm_recover_last_session_exec(bContext *C, wmOperator *op)
 {
-  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, true);
+  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, OpenTrust::Recover);
   return wm_recover_last_session_impl(C, op, use_scripts_autoexec_check);
 }
 
@@ -4849,9 +4993,7 @@ static wmOperatorStatus wm_recover_last_session_invoke(bContext *C,
                                                        wmOperator *op,
                                                        const wmEvent * /*event*/)
 {
-  /* Keep the current setting instead of using the preferences since a file selector
-   * doesn't give us the option to change the setting. */
-  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, false);
+  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, OpenTrust::Recover);
 
   if (wm_operator_close_file_dialog_if_needed(
           C, op, wm_recover_last_session_after_dialog_callback))
@@ -4890,7 +5032,7 @@ static wmOperatorStatus wm_recover_auto_save_exec(bContext *C, wmOperator *op)
   RNA_string_get(op->ptr, "filepath", filepath);
   BLI_path_canonicalize_native(filepath, sizeof(filepath));
 
-  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, true);
+  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, OpenTrust::Recover);
   SET_FLAG_FROM_TEST(G.f, RNA_boolean_get(op->ptr, "use_scripts"), G_FLAG_SCRIPT_AUTOEXEC);
 
   G.fileflags |= G_FILE_RECOVER_READ;
@@ -4914,15 +5056,40 @@ static wmOperatorStatus wm_recover_auto_save_exec(bContext *C, wmOperator *op)
   return OPERATOR_CANCELLED;
 }
 
+static void wm_recover_auto_save_after_dialog_callback(bContext *C, void *user_data)
+{
+  IDProperty *properties = static_cast<IDProperty *>(user_data);
+  wmOperatorType *ot = WM_operatortype_find("WM_OT_recover_auto_save", false);
+  PointerRNA props = RNA_pointer_create_discrete(nullptr, ot->srna, properties);
+  RNA_boolean_set(&props, "activities_confirmed", true);
+  WM_operator_name_call_with_properties(
+      C, "WM_OT_recover_auto_save", wm::OpCallContext::InvokeDefault, properties, nullptr);
+}
+
 static wmOperatorStatus wm_recover_auto_save_invoke(bContext *C,
                                                     wmOperator *op,
                                                     const wmEvent * /*event*/)
 {
+  /* Recovering replaces the document, so running work it would end is named first, before the
+   * file browser (#WM_quit_activity_set); the confirmation's Continue opens the browser. */
+  if (!G.background && WM_quit_activities_any() &&
+      !RNA_boolean_get(op->ptr, "activities_confirmed"))
+  {
+    const bool offer_save = (U.uiflag & USER_SAVE_PROMPT) &&
+                            wm_file_or_session_data_has_unsaved_changes(CTX_data_main(C),
+                                                                        CTX_wm_manager(C));
+    wmGenericCallback *callback = MEM_new<wmGenericCallback>(__func__);
+    callback->exec = wm_recover_auto_save_after_dialog_callback;
+    callback->user_data = IDP_CopyProperty(op->properties);
+    callback->free_user_data = wm_generic_callback_free_user_data_idproperties;
+    wm_close_file_dialog(C, callback, offer_save, false);
+    return OPERATOR_INTERFACE;
+  }
   char filepath[FILE_MAX];
 
   wm_autosave_location(filepath);
   RNA_string_set(op->ptr, "filepath", filepath);
-  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, true);
+  const bool use_scripts_autoexec_check = wm_open_init_use_scripts(op, OpenTrust::Recover);
   UNUSED_VARS(use_scripts_autoexec_check); /* The user can set this in the UI. */
   WM_event_add_fileselect(C, op);
 
@@ -4947,6 +5114,11 @@ void WM_OT_recover_auto_save(wmOperatorType *ot)
                                  FILE_SORT_TIME);
 
   wm_open_mainfile_def_property_use_scripts(ot);
+
+  /* Set by the close-file confirmation's Continue, so the browser then opens without asking again. */
+  PropertyRNA *prop = RNA_def_boolean(
+      ot->srna, "activities_confirmed", false, "Activities Confirmed", "");
+  RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
 }
 
 /** \} */
@@ -5761,12 +5933,6 @@ static void wm_block_autorun_warning_reload_with_scripts(bContext *C, ui::Block 
 
   popup_block_close(C, win, block);
 
-  /* Save user preferences for permanent execution. */
-  if ((U.flag & USER_SCRIPT_AUTOEXEC_DISABLE) == 0) {
-    WM_operator_name_call(
-        C, "WM_OT_save_userpref", wm::OpCallContext::ExecDefault, nullptr, nullptr);
-  }
-
   /* Load file again with scripts enabled.
    * The reload is necessary to allow scripts to run when the files loads. */
   wm_test_autorun_revert_action_exec(C);
@@ -5778,12 +5944,6 @@ static void wm_block_autorun_warning_enable_scripts(bContext *C, ui::Block *bloc
   Main *bmain = CTX_data_main(C);
 
   popup_block_close(C, win, block);
-
-  /* Save user preferences for permanent execution. */
-  if ((U.flag & USER_SCRIPT_AUTOEXEC_DISABLE) == 0) {
-    WM_operator_name_call(
-        C, "WM_OT_save_userpref", wm::OpCallContext::ExecDefault, nullptr, nullptr);
-  }
 
   /* Force a full refresh, but without reloading the file. */
   for (Scene &scene : bmain->scenes) {
@@ -5806,8 +5966,7 @@ static ui::Block *block_create_autorun_warning(bContext *C, ARegion *region, voi
   const char *title = RPT_(
       "For security reasons, automatic execution of Python scripts "
       "in this file was disabled:");
-  const char *message = RPT_("This may lead to unexpected behavior");
-  const char *checkbox_text = RPT_("Permanently allow execution of scripts");
+  const char *message = RPT_("This may lead to unexpected behavior. Allow at your own risk.");
 
   /* Measure strings to find the longest. */
   const uiStyle *style = ui::style_get_dpi();
@@ -5815,12 +5974,8 @@ static ui::Block *block_create_autorun_warning(bContext *C, ARegion *region, voi
   int text_width = int(BLF_width(style->widget.uifont_id, title, BLF_DRAW_STR_DUMMY_MAX));
   text_width = std::max(text_width,
                         int(BLF_width(style->widget.uifont_id, message, BLF_DRAW_STR_DUMMY_MAX)));
-  text_width = std::max(
-      text_width,
-      int(BLF_width(style->widget.uifont_id, checkbox_text, BLF_DRAW_STR_DUMMY_MAX) +
-          (UI_SCALE_FAC * 25.0f)));
 
-  const int dialog_width = std::max(int(400.0f * UI_SCALE_FAC),
+  const int dialog_width = std::max(int(500.0f * UI_SCALE_FAC),
                                     text_width + int(style->columnspace * 2.5));
   const short icon_size = 40 * UI_SCALE_FAC;
   ui::Layout &layout = *uiItemsAlertBox(
@@ -5831,11 +5986,6 @@ static ui::Block *block_create_autorun_warning(bContext *C, ARegion *region, voi
   uiItemL_ex(&col, title, ICON_NONE, true, false);
   uiItemL_ex(&col, G.autoexec_fail, ICON_NONE, false, true);
   col.label(message, ICON_NONE);
-
-  layout.separator();
-
-  PointerRNA pref_ptr = RNA_pointer_create_discrete(nullptr, RNA_PreferencesFilePaths, &U);
-  layout.prop(&pref_ptr, "use_scripts_auto_execute", UI_ITEM_NONE, checkbox_text, ICON_NONE);
 
   layout.separator(2.0f);
 
@@ -5875,7 +6025,7 @@ static ui::Block *block_create_autorun_warning(bContext *C, ARegion *region, voi
                            50,
                            UI_UNIT_Y,
                            nullptr,
-                           TIP_("Enable scripts"));
+                           TIP_("Run potentially unsafe scripts in this blend file"));
     button_func_set(but,
                     [block](bContext &C) { wm_block_autorun_warning_enable_scripts(&C, block); });
   }
@@ -5885,7 +6035,7 @@ static ui::Block *block_create_autorun_warning(bContext *C, ARegion *region, voi
   but = uiDefIconTextBut(block,
                          ui::ButtonType::But,
                          ICON_NONE,
-                         IFACE_("Ignore"),
+                         IFACE_("Continue Safely"),
                          0,
                          0,
                          50,
@@ -6054,9 +6204,24 @@ static void file_overwrite_detailed_info_show(ui::Layout &parent_layout, Main *b
       layout.separator(1.4f);
     }
 
-    layout.label(RPT_("This file is managed by the Angelo asset system. It can only be"),
-                 ICON_NONE);
-    layout.label(RPT_("saved as a new, regular file."), ICON_NONE);
+    /* One sentence for translators (never two halves), wrapped to the narrowest dialog that shows it
+     * (34 units, #block_create__close_file_dialog), so a longer translation is never clipped. The
+     * text column of #uiItemsAlertBox is the units' width less the column space and its icon padding
+     * (`5 * UI_SCALE_FAC`), and an icon-less left-aligned label insets its text by `U.pixelsize`
+     * (#widget_draw_text_icon); labels clip to exactly that width. */
+    const uiStyle *style = ui::style_get_dpi();
+    ui::fontstyle_set(&style->widget);
+    const int wrap_width = int(style->widget.points * 34 * UI_SCALE_FAC) - style->columnspace -
+                           int(5.0f * UI_SCALE_FAC) - int(U.pixelsize);
+    for (const StringRef line :
+         BLF_string_wrap(style->widget.uifont_id,
+                         RPT_("This file is managed by the Angelo asset system. It can only be saved "
+                              "as a new, regular file."),
+                         wrap_width,
+                         BLFWrapMode::Typographical | BLFWrapMode::HardLimit))
+    {
+      layout.label(line, ICON_NONE);
+    }
   }
 
   if (bmain->colorspace.is_missing_opencolorio_config) {
@@ -6402,9 +6567,139 @@ static void save_catalogs_when_file_is_closed_set_fn(bContext * /*C*/, void *arg
                                                            0);
 }
 
+/** What the close confirmation is for, decided by its caller (#wm_close_file_dialog). */
+struct CloseFileDialog {
+  wmGenericCallback *post_action;
+  /** The Save Prompt preference is on and something is unsaved: offer Save / Don't Save. */
+  bool offer_save;
+  /** Quitting (else reading another file): what the activities' heading and the go-ahead say. */
+  bool quitting;
+};
+
+static void close_file_dialog_free(void *arg)
+{
+  CloseFileDialog *dialog = static_cast<CloseFileDialog *>(arg);
+  WM_generic_callback_free(dialog->post_action);
+  MEM_delete(dialog);
+}
+
+/** The running activities that going ahead would end (#WM_quit_activities_foreach), if any, each
+ * translated and wrapped to the dialog's width (a long one never clips). */
+static void close_file_dialog_activities(ui::Layout &layout, const bool quitting)
+{
+  if (!WM_quit_activities_any()) {
+    return; /* They may have ended while the dialog was open: no empty heading. */
+  }
+  layout.separator();
+  layout.label(quitting ? RPT_("Quitting ends:") : RPT_("Closing this file ends:"), ICON_ERROR);
+  const uiStyle *style = ui::style_get_dpi();
+  /* Match the narrowest alert box's text column, as for the managed-file notice above.
+   * Icon-less activity labels need only their pixel inset; the heading carries the warning icon. */
+  const int width = int(style->widget.points * 34 * UI_SCALE_FAC) - style->columnspace -
+                    int(5.0f * UI_SCALE_FAC) - int(U.pixelsize);
+  WM_quit_activities_foreach([&](const StringRef /*key*/, const StringRef message) {
+    const std::string text(message);
+    const char *translated = IFACE_(text.c_str());
+    ui::fontstyle_set(&style->widget);
+    const Vector<StringRef> lines = BLF_string_wrap(
+        style->widget.uifont_id,
+        translated,
+        width,
+        BLFWrapMode::Typographical | BLFWrapMode::HardLimit);
+    for (const int64_t i : lines.index_range()) {
+      layout.label(std::string(lines[i]), ICON_NONE);
+    }
+  });
+}
+
+/** The activities that replacing the document ends, for a confirmation of its own (Revert, Load
+ * Factory Settings): an empty string when none runs, else a blank line, the heading and one
+ * translated line per activity. */
+static std::string wm_close_file_activities_text()
+{
+  if (G.background || !WM_quit_activities_any()) {
+    return "";
+  }
+  std::string text = std::string("\n\n") + RPT_("Closing this file ends:");
+  WM_quit_activities_foreach([&](const StringRef /*key*/, const StringRef message) {
+    const std::string line(message);
+    text += "\n";
+    text += IFACE_(line.c_str());
+  });
+  return text;
+}
+
+static void wm_block_file_close_go_ahead_button(ui::Block *block,
+                                                wmGenericCallback *post_action,
+                                                const bool quitting)
+{
+  /* "Quit" is the Operator context's message in Blender's catalogues. */
+  ui::Button *but = uiDefIconTextBut(block,
+                                     ui::ButtonType::But,
+                                     ICON_NONE,
+                                     quitting ? CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Quit") :
+                                                IFACE_("Continue"),
+                                     0,
+                                     0,
+                                     0,
+                                     UI_UNIT_Y,
+                                     nullptr,
+                                     "");
+  /* The discard path closes the popup before running the action, as a quit requires. */
+  button_func_set(but, wm_block_file_close_discard, block, post_action);
+  button_drawflag_disable(but, ui::BUT_TEXT_LEFT);
+}
+
+/** With nothing unsaved to offer: the activities that going ahead ends, and go ahead or Cancel. */
+static ui::Block *block_create__close_file_dialog_activities(bContext *C,
+                                                             ARegion *region,
+                                                             CloseFileDialog *dialog)
+{
+  ui::Block *block = block_begin(C, region, close_file_dialog_name, ui::EmbossType::Emboss);
+  block_flag_enable(
+      block, ui::BLOCK_KEEP_OPEN | ui::BLOCK_LOOP | ui::BLOCK_NO_WIN_CLIP | ui::BLOCK_NUMSELECT);
+  block_theme_style_set(block, ui::BLOCK_THEME_STYLE_POPUP);
+
+  ui::Layout &layout = *uiItemsAlertBox(block, 34, ui::AlertIcon::Warning);
+  uiItemL_ex(&layout,
+             dialog->quitting ? RPT_("Quit Angelo?") : RPT_("Close this file?"),
+             ICON_NONE,
+             true,
+             false);
+  close_file_dialog_activities(layout, dialog->quitting);
+  layout.separator(2.0f);
+
+#ifdef _WIN32
+  const bool windows_layout = true;
+#else
+  const bool windows_layout = false;
+#endif
+  ui::Layout &split = layout.split(0.5f, true);
+  split.scale_y_set(1.2f);
+  if (windows_layout) {
+    split.column(false);
+    wm_block_file_close_go_ahead_button(block, dialog->post_action, dialog->quitting);
+    split.column(false);
+    wm_block_file_close_cancel_button(block, dialog->post_action);
+  }
+  else {
+    split.column(false);
+    wm_block_file_close_cancel_button(block, dialog->post_action);
+    split.column(false);
+    wm_block_file_close_go_ahead_button(block, dialog->post_action, dialog->quitting);
+  }
+
+  block_bounds_set_centered(block, 14 * UI_SCALE_FAC);
+  return block;
+}
+
 static ui::Block *block_create__close_file_dialog(bContext *C, ARegion *region, void *arg1)
 {
-  wmGenericCallback *post_action = static_cast<wmGenericCallback *>(arg1);
+  CloseFileDialog *dialog = static_cast<CloseFileDialog *>(arg1);
+  if (!dialog->offer_save) {
+    return block_create__close_file_dialog_activities(C, region, dialog);
+  }
+  wmGenericCallback *post_action = dialog->post_action;
   Main *bmain = CTX_data_main(C);
 
   ui::Block *block = block_begin(C, region, close_file_dialog_name, ui::EmbossType::Emboss);
@@ -6498,6 +6793,9 @@ static ui::Block *block_create__close_file_dialog(bContext *C, ARegion *region, 
 
   BKE_reports_free(&reports);
 
+  /* What any button but Cancel ends besides the unsaved changes. */
+  close_file_dialog_activities(layout, dialog->quitting);
+
   layout.separator(2.0f);
 
   /* Buttons. */
@@ -6547,13 +6845,32 @@ static ui::Block *block_create__close_file_dialog(bContext *C, ARegion *region, 
   return block;
 }
 
-void wm_close_file_dialog(bContext *C, wmGenericCallback *post_action)
+wmWindow *wm_close_file_dialog_window(wmWindowManager *wm)
 {
-  if (!ui::popup_block_name_exists(CTX_wm_screen(C), close_file_dialog_name)) {
+  for (wmWindow &win : wm->windows) {
+    const bScreen *screen = WM_window_get_active_screen(&win);
+    if (screen && ui::popup_block_name_exists(screen, close_file_dialog_name)) {
+      return &win;
+    }
+  }
+  return nullptr;
+}
+
+void wm_close_file_dialog(bContext *C,
+                          wmGenericCallback *post_action,
+                          const bool offer_save,
+                          const bool quitting)
+{
+  /* Shown once at a time across every window: a quit key in one window and the system's quit
+   * request with another in context must not open a second confirmation. */
+  if (wm_close_file_dialog_window(CTX_wm_manager(C)) == nullptr) {
     save_images_when_file_is_closed = true;
 
-    ui::popup_block_invoke(
-        C, block_create__close_file_dialog, post_action, popup_block_wm_generic_callback_free);
+    CloseFileDialog *dialog = MEM_new<CloseFileDialog>(__func__);
+    dialog->post_action = post_action;
+    dialog->offer_save = offer_save;
+    dialog->quitting = quitting;
+    ui::popup_block_invoke(C, block_create__close_file_dialog, dialog, close_file_dialog_free);
   }
   else {
     WM_generic_callback_free(post_action);
@@ -6564,14 +6881,17 @@ bool wm_operator_close_file_dialog_if_needed(bContext *C,
                                              wmOperator *op,
                                              wmGenericCallbackFn post_action_fn)
 {
-  if (U.uiflag & USER_SAVE_PROMPT &&
-      wm_file_or_session_data_has_unsaved_changes(CTX_data_main(C), CTX_wm_manager(C)))
-  {
+  const bool offer_save = (U.uiflag & USER_SAVE_PROMPT) &&
+                          wm_file_or_session_data_has_unsaved_changes(CTX_data_main(C),
+                                                                      CTX_wm_manager(C));
+  /* New, Open, Revert and Recover end running work too (#WM_quit_activity_set): asked whatever
+   * the Save Prompt preference says, never in the background. */
+  if (offer_save || (!G.background && WM_quit_activities_any())) {
     wmGenericCallback *callback = MEM_new<wmGenericCallback>(__func__);
     callback->exec = post_action_fn;
     callback->user_data = IDP_CopyProperty(op->properties);
     callback->free_user_data = wm_generic_callback_free_user_data_idproperties;
-    wm_close_file_dialog(C, callback);
+    wm_close_file_dialog(C, callback, offer_save, false);
     return true;
   }
 

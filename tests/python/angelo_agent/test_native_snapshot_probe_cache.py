@@ -12,6 +12,8 @@ and that the worker's long passes pause for the main thread only where that
 is safe (``background_pauses``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile
@@ -19,15 +21,17 @@ import threading
 import time
 import unittest
 import uuid
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
 ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core"
 sys.path.insert(0, str(ADDON))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from host_test_policy import environment_skip  # noqa: E402
 from snapshot_fixtures import HISTORY_SCENE, build_history  # noqa: E402
-from angelo_agent import background_pauses, checkpoint_inventory, checkpoint_inventory_cache  # noqa: E402
+from angelo_agent import background_pauses, checkpoint_filesystem  # noqa: E402
+from angelo_agent import checkpoint_inventory, checkpoint_inventory_cache  # noqa: E402
 from angelo_agent import snapshot_accounting, snapshot_maintenance  # noqa: E402
 from angelo_agent import snapshot_retention, snapshot_store_writer  # noqa: E402
 from angelo_agent.checkpoint_policy import clean_policy  # noqa: E402
@@ -35,6 +39,13 @@ from angelo_agent.checkpoint_transactions import _transaction  # noqa: E402
 from angelo_agent.checkpoints import CheckpointStore  # noqa: E402
 from angelo_agent.snapshot_ingest import ingest_snapshot  # noqa: E402
 from angelo_agent.snapshot_store import SnapshotStore  # noqa: E402
+
+# Snapshots are anchored through POSIX descriptors or Windows handles; either backend runs these.
+ANCHORED = environment_skip("anchored storage required (POSIX descriptors or Windows handles)")
+# The probe keeps measurements on the POSIX descriptor backend only; Windows handles measure every record each probe
+# (checkpoint_inventory_cache.scan), so there the results still equal a fresh scan's but nothing is saved.
+CACHED = os.open in os.supports_dir_fd
+NOT_CACHED = environment_skip("the probe's measurement cache runs on the POSIX descriptor backend only")
 
 
 @contextmanager
@@ -54,7 +65,7 @@ def comparable(result):
     return result["checkpoints"], sorted(map(repr, result["issues"])), result["total_bytes"]
 
 
-@unittest.skipUnless(os.open in os.supports_dir_fd, "descriptor-relative storage required")
+@unittest.skipUnless(checkpoint_filesystem.anchored_files_supported(), ANCHORED)
 class ProbeCacheTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(prefix="angelo-probe-")
@@ -85,14 +96,19 @@ class ProbeCacheTests(unittest.TestCase):
     def root_path(self):
         return Path(self.root)
 
-    def test_an_unchanged_history_is_not_read_again_and_equals_a_fresh_scan(self):
+    def test_an_unchanged_history_probed_again_equals_a_fresh_scan(self):
+        self.probe()
+        result = self.probe()
+        self.assertEqual(comparable(result), comparable(self.fresh()))
+        self.assertIsNone(result["token"])
+
+    @unittest.skipUnless(CACHED, NOT_CACHED)
+    def test_an_unchanged_history_is_not_read_again(self):
         with measured() as first:
             self.probe()
         with measured() as second:
-            result = self.probe()
+            self.probe()
         self.assertEqual((len(first), len(second)), (30, 0))
-        self.assertEqual(comparable(result), comparable(self.fresh()))
-        self.assertIsNone(result["token"])
 
     def test_every_change_to_a_record_is_measured_again(self):
         self.probe()
@@ -147,7 +163,7 @@ class ProbeCacheTests(unittest.TestCase):
         self.assert_probe_is_fresh()
 
 
-@unittest.skipUnless(os.open in os.supports_dir_fd, "descriptor-relative storage required")
+@unittest.skipUnless(checkpoint_filesystem.anchored_files_supported(), ANCHORED)
 class GarbageCollectionTests(unittest.TestCase):
     """The per-capture cleanup recounts the store only when a dropped manifest can have left garbage."""
 
@@ -177,7 +193,7 @@ class GarbageCollectionTests(unittest.TestCase):
                 self.assertEqual(len(runs), 2)
 
 
-@unittest.skipUnless(os.open in os.supports_dir_fd, "descriptor-relative storage required")
+@unittest.skipUnless(checkpoint_filesystem.anchored_files_supported(), ANCHORED)
 class StoreBoundTests(unittest.TestCase):
     """A probe under its limits plans from an upper bound of the store's bytes; near them, from every manifest."""
 
@@ -215,7 +231,10 @@ class StoreBoundTests(unittest.TestCase):
 
     def test_a_damaged_manifest_is_an_accounting_issue_not_a_crash(self):
         import sqlite3
-        with sqlite3.connect(str(SnapshotStore(self.root).directory / "index.sqlite")) as connection:
+        # ``with connection`` only commits; closing() closes it. An unclosed connection can hold the index open until
+        # garbage collection, and Windows cannot remove an open file.
+        with closing(sqlite3.connect(str(SnapshotStore(self.root).directory / "index.sqlite"))) as connection, \
+                connection:
             connection.execute("UPDATE manifests SET chunk_ids = ? WHERE rowid = (SELECT MIN(rowid) FROM manifests)",
                                (b"not zlib",))
         inventory = self.store.inspect()

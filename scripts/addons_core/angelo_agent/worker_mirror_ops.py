@@ -31,12 +31,15 @@ import threading
 import time
 import uuid
 
+from . import request_rows
+from .display_text import Text
 from .ui_text import n_, notice
 
 ANSWER_SECONDS = 300.0   # How long an asynchronous op's answer may take (an approved script runs in a request).
 LEAD_ROWS = 32           # Error rows kept per mirror across reloads (the newest).
 SENDING = n_("Sending")
 SEND_REFUSED = n_("Your message was not sent, so it is back in the message box ({why}; support code {code}).")
+RETRY_REFUSED = n_("Your message was not sent ({why}; support code {code}).")
 OPTIONS_REFUSED = n_("This chat kept its settings: its worker did not apply the new ones ({why}; support code {code}).")
 WORKER_GONE = n_("This chat's worker ended before it answered.")
 NO_ANSWER = n_("This chat's worker did not answer.")
@@ -75,6 +78,10 @@ class Request:
         self.send, self.state, self.settled, self.sent_at = mirror.send_op, "queued", False, None
         self.before = None   # A callable run on the lane before the send; False refuses it (``ConsentNotBack``).
         self.stopped = False   # The person's Stop came after it left its lane (``withdraw``).
+        # Bind before a parked resume can refuse synchronously, not after submit returns.
+        receipt = getattr(mirror, "_send_submission", None)
+        if kind == "send" and receipt is not None and receipt.operation is None and receipt.current():
+            receipt.operation = self
 
 
 class Lane:
@@ -182,8 +189,11 @@ def reconcile():
             continue   # Already settled here (withdrawn, or its worker ended): a late answer changes nothing.
         if answer.get("ok") is True:
             request.settled = True
-            changed = _confirmed(request) or changed
+            changed = _confirmed(request, answer) or changed
         elif answer.get("timed_out") is True and _worker_alive(request):
+            receipt = getattr(request.mirror, "_send_submission", None)
+            if receipt is not None and receipt.operation is request:
+                receipt.unsupported()   # Unknown delivery, never a fabricated not-sent result.
             continue   # Unknown: the worker may still apply it; its own events (or its end) settle it.
         else:
             request.settled = True
@@ -198,10 +208,13 @@ def _worker_alive(request):
     return worker is not None and not worker_chat_lifecycle._process_ended(worker)
 
 
-def _confirmed(request):
+def _confirmed(request, answer=None):
     mirror = request.mirror
     if request.kind != "send" or getattr(mirror, "_sending", None) is not request:
         return False
+    from . import request_submissions
+    pair = ((answer.get("_epoch"), answer.get("_generation")) if isinstance(answer, dict) else None)
+    request_submissions.admit(mirror, request, pair)
     mirror._sending = None
     if mirror.status == SENDING:
         mirror.status = "Thinking"
@@ -214,6 +227,9 @@ def took(mirror):
     end before that answer, never puts it back where the person types (it ran)."""
     request = getattr(mirror, "_sending", None)
     if request is not None:
+        receipt = getattr(mirror, "_send_submission", None)
+        if receipt is not None and receipt.operation is request:
+            return   # An arbitrary own user frame is not a request-id-correlated Send acknowledgment.
         request.settled = True
         _confirmed(request)
 
@@ -248,11 +264,17 @@ def _refused(request, answer):
     if request.kind == "send":
         if getattr(mirror, "_sending", None) is not request:
             return False
+        receipt = getattr(mirror, "_send_submission", None)
+        if (receipt is not None and receipt.operation is request and request.state == "sent"
+                and (answer.get("timed_out") or answer.get("gone") or not isinstance(answer.get("error"), dict))):
+            receipt.unsupported()   # A transport loss after leaving is not proof the worker ran nothing.
+            mirror._sending = None
+            return True
         # The person's Stop reached the worker first, which refused the Send for it (``worker_chat_arrival``): it
         # never ran, so it ends as a Send withdrawn before it left does (interrupted, not sent), with no error row.
         stopped = request.stopped and isinstance(answer.get("error"), dict) and refusal(answer) == "CANCELLED"
-        return_unsent(mirror, request, stopped=stopped)
-        if not stopped:
+        retry = return_unsent(mirror, request, stopped=stopped, error=RuntimeError(Text(RETRY_REFUSED, why=text, code=code)))
+        if not stopped and not retry:
             add_row(mirror, "error", notice(SEND_REFUSED, why=text, code=code))
         return True
     if request.kind == "options":
@@ -261,28 +283,36 @@ def _refused(request, answer):
     return False   # Logged by ``why``.
 
 
-def return_unsent(mirror, request=None, stopped=False):
+def return_unsent(mirror, request=None, stopped=False, *, error=None):
     """The person's message the worker never ran goes back where they type, with its attachments (as the window's
     chat does for a message never sent), and the mirror's turn ends here: failed (a refusal says why in its own
     row), or, ``stopped`` by the person before it left, interrupted and not sent, as a window's chat ends a turn
     stopped before its message went (``Controller``: ``finished`` with ``interrupted`` and ``not_sent``)."""
     request = request or getattr(mirror, "_sending", None)
+    from . import request_submissions
+    receipt = getattr(mirror, "_send_submission", None)
+    retry = (request is not None and receipt is not None and receipt.operation is request
+             and request_submissions.not_sent(mirror, error or RuntimeError(Text(NOT_SENT))))
     mirror._sending = None
     if request is not None:
         request.settled = True
-    mine = getattr(mirror, "_host_request", None) is None and bool(getattr(mirror, "_turn_message", None))
-    if mine:
+    mine = request_rows.persons_send(mirror) and bool(getattr(mirror, "_turn_message", None))
+    from .chat_pending import give_back
+    if mine and not retry and not give_back(mirror):
         mirror.unsent_draft = mirror._turn_message
         if not mirror.attachments:
             mirror.attachments = [dict(reference) for reference in mirror.turn_attachments]
     mirror.busy, mirror.cancelled = False, False
+    from .chat_pending import turn_ended   # Never sent: what waits is paused, never sent by itself.
+    turn_ended(mirror, "interrupted" if stopped else "failed", cancelled=stopped, not_sent=True)
     mirror.status = "Interrupted" if stopped else "Failed"
     with mirror.lock:   # As a window's chat records a message never sent (``session_rail.turn_end``).
         mirror.turn_outcome = ("interrupted" if stopped else "failed", stopped, True,
                                len(mirror.state.get("messages") or []))
-    if stopped and mine:
+    if stopped and mine and not retry:
         add_row(mirror, "system", notice(NOT_SENT))
     mirror.version += 1
+    return retry
 
 
 def withdraw(mirror):
@@ -302,8 +332,17 @@ def worker_ended(mirror):
     """Its worker ended (``MirrorController._recovered``): a Send it never answered is settled now, never twice."""
     request = getattr(mirror, "_sending", None)
     if request is not None:
-        request.settled = True
-        mirror._sending = None
+        receipt = getattr(mirror, "_send_submission", None)
+        if receipt is not None and receipt.operation is request:
+            if request.state in {"queued", "preparing", "withdrawn"}:
+                return_unsent(mirror, request)
+            else:
+                receipt.unsupported()   # It left: a crashed worker may have executed it before its answer.
+                request.settled = True
+                mirror._sending = None
+        else:
+            request.settled = True
+            mirror._sending = None
 
 
 # The lead's own rows --------------------------------------------------------------------------------------------------

@@ -11,6 +11,8 @@ call, or a stand-in ``bpy`` with no ``ops``, gets nothing; both of the executor'
 operators are timed in ``test_blender_script_operator_time``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import contextlib
 import itertools
@@ -104,7 +106,8 @@ class ClockTests(unittest.TestCase):
         with timing.Clock(bpy):
             timed = ops._op_create_function("mesh", "primitive_cube_add")
             self.assertIsInstance(timed, timing._Timed)
-            unplaced = lambda text: re.sub(r" at 0x[0-9a-f]+", "", text)   # Each lookup makes a new callable.
+            # Each lookup makes a new callable; Windows prints its address in upper case.
+            unplaced = lambda text: re.sub(r" at 0x[0-9a-fA-F]+", "", text)
             self.assertEqual((timed.__doc__, unplaced(str(timed)), unplaced(repr(timed))),
                              (plain.__doc__, unplaced(str(plain)), unplaced(repr(plain))))
             import copy
@@ -213,6 +216,92 @@ class CountingTests(unittest.TestCase):
             for _call in range(4):
                 clock.call("mesh.primitive_cube_add", add, (), {})
         self.assertEqual(clock.outcome()["bpy_ops"]["cost"], timing.COST)
+
+    def test_a_cheap_call_just_before_an_adding_one_never_loses_its_objects(self):
+        """A loop alternating a call of the operator that adds nothing (or fails at once) with one that adds: before,
+        the cheap call turned the count off for the adding one, every time, and the cost note never came."""
+        objects, now = [], [0.0]
+        clock = timing.Clock(SimpleNamespace(data=SimpleNamespace(objects=objects)))
+        clock._active = True
+
+        def cheap():
+            now[0] += 0.0001
+
+        def add():
+            now[0] += 0.2
+            objects.append(1)
+        with mock.patch.object(timing.time, "perf_counter", side_effect=lambda: now[0]):
+            for _call in range(10):
+                clock.call("object.duplicate", add, (), {})
+                clock.call("object.duplicate", cheap, (), {})
+        self.assertAlmostEqual(clock.calls["object.duplicate"][2], 2.0)
+        self.assertEqual(clock.outcome()["bpy_ops"]["cost"], timing.COST)
+
+    def test_any_run_of_cheap_calls_between_adding_ones_never_loses_them(self):
+        """1.0.10 break-it: with eight or more cheap calls between adding ones, the decay alone stopped counting."""
+        for between in (1, 8, 50):
+            objects, now = [], [0.0]
+            clock = timing.Clock(SimpleNamespace(data=SimpleNamespace(objects=objects)))
+            clock._active = True
+
+            def cheap():
+                now[0] += 0.0001
+
+            def add():
+                now[0] += 0.2
+                objects.append(1)
+            with mock.patch.object(timing.time, "perf_counter", side_effect=lambda: now[0]):
+                for _call in range(10):
+                    clock.call("object.duplicate", add, (), {})
+                    for _cheap in range(between):
+                        clock.call("object.duplicate", cheap, (), {})
+            with self.subTest(between=between):
+                self.assertAlmostEqual(clock.calls["object.duplicate"][2], 2.0)
+
+    def test_an_operator_that_added_once_pays_at_most_its_budget_for_counts(self):
+        now = [0.0]
+
+        class Objects:
+            def __len__(self):
+                now[0] += 0.0005   # A large scene's walk.
+                return 40000
+
+        def add_once():
+            now[0] += 0.05
+
+        def cheap():
+            now[0] += 0.00001
+        clock = timing.Clock(SimpleNamespace(data=SimpleNamespace(objects=Objects())))
+        clock._active = True
+        with mock.patch.object(timing.time, "perf_counter", side_effect=lambda: now[0]):
+            clock.calls["mesh.primitive_cube_add"] = [0, 0.0, 0.0, timing.COUNTED_FROM, 0.0]
+            clock.call("mesh.primitive_cube_add", add_once, (), {})
+            clock.calls["mesh.primitive_cube_add"][2] = 0.05   # It added (a stand-in count cannot grow).
+            for _call in range(10000):
+                clock.call("mesh.primitive_cube_add", cheap, (), {})
+        row = clock.calls["mesh.primitive_cube_add"]
+        self.assertLessEqual(row[4], timing.COUNT_BUDGET * row[1] + 2 * 0.0005)
+
+    def test_after_a_slow_call_a_cheap_loop_stops_counting_within_a_few_calls(self):
+        reads, now = [], [0.0]
+
+        class Objects:
+            def __len__(self):
+                reads.append(1)
+                return 8000
+
+        def slow():
+            now[0] += 1.0
+
+        def cheap():
+            now[0] += 0.000001
+        clock = timing.Clock(SimpleNamespace(data=SimpleNamespace(objects=Objects())))
+        clock._active = True
+        with mock.patch.object(timing.time, "perf_counter", side_effect=lambda: now[0]):
+            clock.call("object.select_all", slow, (), {})
+            for _call in range(1000):
+                clock.call("object.select_all", cheap, (), {})
+        self.assertLessEqual(len(reads), 2 * 12, "log2(1 s / 1 ms) calls after the slow one, at most")
 
     def test_a_scene_whose_count_costs_more_raises_the_bar_for_counting(self):
         now = [0.0]

@@ -6,6 +6,8 @@ A real ``Controller`` (no provider, no Blender) finishes a request in the "worke
 in the "lead" folder, as Angelo's process would. Lead and worker share this process here, in two folders.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import unittest

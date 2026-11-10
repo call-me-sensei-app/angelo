@@ -17,8 +17,9 @@ from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntPropert
 from bpy.types import AddonPreferences, Menu, Operator
 
 from . import console, docking, preferences_ui, chat_popovers, chat_titles, chat_view, saved_keys_ui, state_paths, native_suggestions, team_account_ui
-from . import agent_runtime, runtime_bindings, document_identity, document_scene, external_ui, job_desktop_prefs, live_windows, parallel_setting, script_errors, text_layout, worker_consent_lead, worker_dispatch, worker_mirror_reader, worker_resume
-from . import changes_popup, chat_guard, chat_start_states, layout_hold, timer_jobs
+from . import agent_runtime, camera_preview_setting, runtime_bindings, document_identity, document_scene, external_ui, fab_preferences, job_desktop_prefs, live_windows, parallel_setting, script_errors, text_layout, worker_consent_lead, worker_dispatch, worker_mirror_reader, worker_resume
+from . import approval_wait, changes_popup, chat_guard, chat_pending, chat_start_states, conversations_ui, goal_loop, model_picker_ui, layout_hold, timer_jobs
+from .ui_kit import paragraph   # Dialog sentences wrap, so a longer translation is never clipped.
 from .pump_guard import keep_alive
 from .connection_access import (collaborators_allowed, connection_records, find_connection, gemini_text_binding,  # noqa: F401
                                 gemini_text_ready, generation_binding, generation_health, mode_key_usable,
@@ -30,14 +31,13 @@ from .blender_tools import BlenderExecutor, track_scene_changes
 from .controller import Controller, pump_controller_tools
 from .sessions import SessionCollection
 from .connections import ConnectionStore
-from .chat_settings import clean_options, selected_model
 from .catalogs import ModelCatalogs
 from .api_connections import ApiConnections, clean_key
 from .provider_registry import (CODING, GENAI, GROUPS, SPECS, MODE_BY_CONNECTION, plan_terms, billing_label, runtime_kind,
     HTTP_MODES, CUSTOM_PROVIDER_MODES, PROVIDER_NAMES, provider_items, methods, is_coding, is_team, spec_for)
 from .references import FILE_FILTER, FILE_TYPES
 from .storage import connection_directory as persistent_connection_directory
-from .display_text import Text, shown
+from .display_text import Text, error_message, shown
 from .ui_text import iface_, n_, notice, rpt_
 from .trusted_scripts_ui import (ANGELO_OT_trusted_scripts, ANGELO_MT_approval, ANGELO_OT_set_approval, always_allow_get,
                                  always_allow_set, draw_always_allow)
@@ -345,8 +345,8 @@ def connection_settings(mode, prefs=None, record=None):
     return settings
 
 
-def connection_available():
-    controller = get_controller()
+def connection_available(controller=None):   # The shown chat, or an explicit background/held chat.
+    controller = controller or get_controller()
     mode = controller.selection_provider
     pending = controller.selection_connection_id != controller.state.get("connection_id")
     if controller.connection_error and not pending:
@@ -471,6 +471,8 @@ def draw_ai_providers(layout, context):
     layout.separator()
     from . import external_host
     external_host.draw_preferences(layout, prefs)
+    from . import fab_ui
+    fab_ui.draw_preferences(layout, prefs)
 
 
 def draw_native_suggestions(layout, store):
@@ -486,7 +488,8 @@ def draw_native_suggestions(layout, store):
         row.operator("angelo.dismiss_native_suggestion", text="Dismiss").mode = suggestion["mode"]
 
 
-class ANGELO_Preferences(job_desktop_prefs.JobDesktopPreferences, parallel_setting.ParallelPreferences, AddonPreferences):
+class ANGELO_Preferences(fab_preferences.FabPreferences, job_desktop_prefs.JobDesktopPreferences, parallel_setting.ParallelPreferences,
+                         camera_preview_setting.CameraPreviewPreferences, AddonPreferences):
     bl_idname = __package__
     provider: EnumProperty(name="Connection", items=PROVIDERS, default="codex_subscription")
     codex_model: StringProperty(name="Codex model", default="")
@@ -527,8 +530,23 @@ class ANGELO_Preferences(job_desktop_prefs.JobDesktopPreferences, parallel_setti
         self.layout.label(text="Connections are in Preferences > AI Providers.")
         self.layout.prop(self, "helper_standing_consent")
         draw_always_allow(self.layout, self)
-        self.layout.prop(self, "experimental_voice")
+        draw_platform_preference(self.layout, self, "experimental_voice")
         self.layout.operator("angelo.settings", text="Open AI Providers", icon='PREFERENCES')
+
+
+NOT_ON_THIS_SYSTEM = n_("Coming to this system in a later update.")
+
+
+def draw_platform_preference(layout, owner, name):
+    """Preference ``name``, disabled with the reason where its feature isn't built for this system (platform_features)."""
+    from . import platform_features
+    if platform_features.preference_supported(name):
+        layout.prop(owner, name)
+        return
+    column = layout.column(align=True)
+    column.enabled = False
+    column.prop(owner, name)
+    column.label(text=iface_(NOT_ON_THIS_SYSTEM), translate=False, icon='INFO')
 
 
 _connection_provider_items = {group: provider_items(group) for group, _, _ in GROUPS}
@@ -565,8 +583,7 @@ def replace_connection_key(record, secret):
             if controller.provider:
                 threading.Thread(target=controller.provider.close, daemon=True).start()
             controller.provider = None
-            controller.api_key = secret
-            controller.models = []
+            controller.api_key, controller.models = secret, []
     catalogs().invalidate(identity)
     _api_connections.invalidate(identity)
     _memory_keys[identity] = secret
@@ -631,34 +648,34 @@ class ANGELO_OT_new_connection(Operator):
         if len(supported) > 1:
             identity.prop(self, "method")
         else:
-            identity.label(text="Connect with your own API key")
+            paragraph(identity, iface_("Connect with your own API key"), 420)
         layout.prop(self, "connection_name", text="Name (optional)")
         method = self.method if len(supported) > 1 else "API_KEY"
         if method == "API_KEY":
             layout.prop(self, "api_key", text="New API key" if self.connection_id else "API key")
             if self.connection_id:
-                layout.label(text="Leave the key blank to keep the current credential.")
+                paragraph(layout, iface_("Leave the key blank to keep the current credential."), 420)
             else:
-                layout.label(text="API usage is billed to your API account.")
+                paragraph(layout, iface_("API usage is billed to your API account."), 420)
             mode = MODE_BY_CONNECTION[(self.group, self.provider, method)]
             if mode == "codex_api":
-                layout.label(text="The Codex CLI stores this key in its own OS keyring.")
+                paragraph(layout, iface_("The Codex CLI stores this key in its own OS keyring."), 420)
             elif saved_keys_ui.available():
                 layout.prop(self, "remember_key")
-                layout.label(text=iface_("On: saved in {location} for this profile.", location=shown(saved_keys_ui.store_text().location)), translate=False)
-                layout.label(text="Off: memory only; enter it again after restarting.")
+                paragraph(layout, iface_("On: saved in {location} for this profile.", location=shown(saved_keys_ui.store_text().location)), 420)
+                paragraph(layout, iface_("Off: memory only; enter it again after restarting."), 420)
             else:
-                layout.label(text=shown(saved_keys_ui.unavailable_reason()), translate=False)
+                paragraph(layout, shown(saved_keys_ui.unavailable_reason()), 420)
             if mode in HTTP_MODES:
-                layout.label(text="Connection checks never generate content or consume inference tokens.")
+                paragraph(layout, iface_("Connection checks never generate content or consume inference tokens."), 420)
             if mode == "seedream_api":
-                layout.label(text="BytePlus Singapore key. Verification is deferred until generation.")
+                paragraph(layout, iface_("BytePlus Singapore key. Verification is deferred until generation."), 420)
         else:
             service = "ChatGPT" if self.provider == "OPENAI" else "Claude"
             mode = "codex_subscription" if self.provider == "OPENAI" else "claude_subscription"
             if not self.connection_id and _authentication.status.get(mode, "").startswith("Connected to "):
                 layout.prop(self, "reuse_existing")
-            layout.label(text=(iface_("Connect uses your existing native sign-in.") if self.reuse_existing and _authentication.status.get(mode, "").startswith("Connected to ") else iface_("Connect opens {service} sign-in in your browser.", service=service)) if not self.connection_id else iface_("Your subscription sign-in stays with its official runtime."), translate=False)
+            paragraph(layout, (iface_("Connect uses your existing native sign-in.") if self.reuse_existing and _authentication.status.get(mode, "").startswith("Connected to ") else iface_("Connect opens {service} sign-in in your browser.", service=service)) if not self.connection_id else iface_("Your subscription sign-in stays with its official runtime."), 420)
         if self.group == CODING:
             layout.separator()
             layout.prop(self, "advanced", text="Advanced", emboss=False, icon='TRIA_DOWN' if self.advanced else 'TRIA_RIGHT')
@@ -690,7 +707,7 @@ class ANGELO_OT_new_connection(Operator):
                 if record and connection_in_use(record["id"]):
                     raise RuntimeError(Text(n_("Stop this connection's active turns before replacing its API key")))
             except (ValueError, RuntimeError) as error:
-                self.report({'ERROR'}, shown(error.args[0]) if error.args and isinstance(error.args[0], Text) else str(error))
+                self.report({'ERROR'}, error_message(error))
                 return {'CANCELLED'}
         if record:
             record["name"] = self.connection_name.strip()[:64] or record["name"]
@@ -718,7 +735,7 @@ class ANGELO_OT_new_connection(Operator):
                 _authentication.start(mode, connection_settings(mode, record=record), state_directory(), login=True, identity=record["id"])
         except Exception as error:
             _authentication.status[record["id"]] = Text(n_("Not connected"))
-            self.report({'ERROR'}, str(error))
+            self.report({'ERROR'}, error_message(error))
         preferences_ui.redraw()
         return {'FINISHED'}
 
@@ -733,7 +750,7 @@ class ANGELO_OT_connection_use(Operator):
             choose_model_connection(get_controller(), self.connection_id)
             preferences_ui.redraw()
         except (RuntimeError, ValueError) as error:
-            self.report({'ERROR'}, shown(error.args[0]) if error.args and isinstance(error.args[0], Text) else str(error))
+            self.report({'ERROR'}, error_message(error))
             return {'CANCELLED'}
         return {'FINISHED'}
 
@@ -758,8 +775,8 @@ class ANGELO_OT_connection_menu(Operator):
                                      text=iface_(saved_keys_ui.store_text().load_label), translate=False).connection_id = record["id"]
             menu.layout.operator("angelo.connection_check", text="Refresh status").connection_id = record["id"]
             menu.layout.separator()
-            menu.layout.operator("angelo.connection_remove", text="Remove connection", icon='X').connection_id = record["id"]
-        context.window_manager.popup_menu(draw, title=record["name"])
+            menu.layout.operator("angelo.connection_remove", icon='X').connection_id = record["id"]
+        context.window_manager.popup_menu(draw, title=record["name"])  # i18n: the connection's own name
         return {'FINISHED'}
 
 
@@ -776,7 +793,7 @@ class ANGELO_OT_connection_check(Operator):
             try:
                 _api_connections.start(record, _memory_keys.get(record["id"], ""))
             except (RuntimeError, ValueError) as error:
-                self.report({'WARNING'}, str(error))
+                self.report({'WARNING'}, error_message(error))
             preferences_ui.redraw()
             return {'FINISHED'}
         if record["mode"] == "claude_api":
@@ -786,7 +803,7 @@ class ANGELO_OT_connection_check(Operator):
         try:
             _authentication.start(record["mode"], connection_settings(record["mode"], record=record), state_directory(), identity=identity)
         except RuntimeError as error:
-            self.report({'WARNING'}, str(error))
+            self.report({'WARNING'}, error_message(error))
         preferences_ui.redraw()
         return {'FINISHED'}
 
@@ -805,7 +822,7 @@ class ANGELO_OT_connection_load_key(Operator):
             # The one saved-key call allowed to show an OS prompt: the person asked for it.
             saved_keys_ui.load(record, interactive=True)
         except (RuntimeError, ValueError) as error:
-            self.report({'ERROR'}, shown(error.args[0]) if error.args and isinstance(error.args[0], Text) else str(error))
+            self.report({'ERROR'}, error_message(error))
             return {'CANCELLED'}
         preferences_ui.redraw()
         return {'FINISHED'}
@@ -826,7 +843,7 @@ class ANGELO_OT_connection_signin(Operator):
         try:
             _authentication.start(record["mode"], connection_settings(record["mode"], record=record), state_directory(), login=True, identity=identity)
         except Exception as error:
-            self.report({'ERROR'}, str(error))
+            self.report({'ERROR'}, error_message(error))
             return {'CANCELLED'}
         preferences_ui.redraw()
         return {'FINISHED'}
@@ -859,6 +876,11 @@ class ANGELO_OT_connection_remove(Operator):
 
     def execute(self, context):
         record = connections().records.get(self.connection_id)
+        catalogs().invalidate(self.connection_id)
+        try:   # Saved first: a refused save (its file held open) leaves it, its sign-in, chats and key as they were.
+            connections().remove(self.connection_id)
+        except OSError:   # ConnectionStore.save says why.
+            return self.report({'ERROR'}, rpt_("The connection was not saved")) or {'CANCELLED'}
         if record:
             _authentication.cancel(record["mode"] if record["reuse_native"] else record["id"])
         _api_connections.invalidate(self.connection_id)
@@ -868,14 +890,10 @@ class ANGELO_OT_connection_remove(Operator):
                 controller.stop()
                 if controller.provider:
                     threading.Thread(target=controller.provider.close, daemon=True).start()
-                controller.provider = None
-                controller.api_key = ""
-                controller.connection_error = True
+                controller.provider, controller.api_key, controller.connection_error = None, "", True
         _memory_keys.pop(self.connection_id, None)
         if record and saved_keys_ui.uses_saved_key(record):
             saved_keys_ui.forget(self.connection_id)
-        catalogs().invalidate(self.connection_id)
-        connections().remove(self.connection_id)
         runtime_bindings.retire_connection(self.connection_id)   # Every worker's children of it end, a closed chat's too.
         worker_consent_lead.changed()   # Its hosted chats' consent ends with the key.
         preferences_ui.redraw()
@@ -896,14 +914,14 @@ class ANGELO_OT_settings(Operator):
             bpy.ops.screen.userpref_show('INVOKE_DEFAULT')
             preferences_ui.redraw()
         except Exception as error:
-            self.report({'ERROR'}, str(error))
+            self.report({'ERROR'}, error_message(error))
             return {'CANCELLED'}
         return {'FINISHED'}
 
 
 class ANGELO_OT_api_key(Operator):
     bl_idname = "angelo.api_key"
-    bl_label = "API Key"
+    bl_label = "Enter API Key"
     key: StringProperty(name="API key", subtype="PASSWORD", options={'SKIP_SAVE'})
     mode: StringProperty(options={'SKIP_SAVE'})
 
@@ -912,7 +930,7 @@ class ANGELO_OT_api_key(Operator):
 
     def draw(self, context):
         self.layout.prop(self, "key")
-        self.layout.label(text="Never paste keys into chat. This field is not saved in a blend file.")
+        paragraph(self.layout, iface_("Never paste keys into chat. This field is not saved in a blend file."), 440)
 
     def execute(self, context):
         prefs = preferences()
@@ -955,7 +973,7 @@ class ANGELO_OT_copy_login(Operator):
             context.window_manager.clipboard = command
             self.report({'INFO'}, rpt_("Native sign-in command copied. Run it in Terminal, then return to chat."))
         except Exception as error:
-            self.report({'ERROR'}, str(error))
+            self.report({'ERROR'}, error_message(error))
             return {'CANCELLED'}
         return {'FINISHED'}
 
@@ -989,7 +1007,7 @@ class ANGELO_OT_native_signin(Operator):
             _authentication.start(self.mode, connection_settings(self.mode), get_controller().store.directory, login=True)
             preferences_ui.redraw()
         except Exception as error:
-            self.report({'ERROR'}, str(error))
+            self.report({'ERROR'}, error_message(error))
             return {'CANCELLED'}
         return {'FINISHED'}
 
@@ -1004,7 +1022,7 @@ class ANGELO_OT_check_signin(Operator):
             _authentication.start(self.mode, connection_settings(self.mode), get_controller().store.directory)
             preferences_ui.redraw()
         except Exception as error:
-            self.report({'ERROR'}, str(error))
+            self.report({'ERROR'}, error_message(error))
             return {'CANCELLED'}
         return {'FINISHED'}
 
@@ -1135,7 +1153,7 @@ class ANGELO_OT_open_chat(Operator):
         try:
             open_from_menu(context.window, self.side)
         except RuntimeError as error:
-            self.report({'ERROR'}, shown(error.args[0]) if error.args and isinstance(error.args[0], Text) else str(error))
+            self.report({'ERROR'}, error_message(error))
             return {'CANCELLED'}
         return {'FINISHED'}
 
@@ -1154,7 +1172,7 @@ class ANGELO_OT_dock_side(Operator):
         try:
             request_chat_dock(context.window, self.side)
         except RuntimeError as error:
-            self.report({'ERROR'}, shown(error.args[0]) if error.args and isinstance(error.args[0], Text) else str(error))
+            self.report({'ERROR'}, error_message(error))
             return {'CANCELLED'}
         return {'FINISHED'}
 
@@ -1261,35 +1279,31 @@ class ANGELO_OT_new_chat(Operator):
         try:
             create_session()
         except RuntimeError as error:
-            self.report({'ERROR'}, shown(error.args[0]) if error.args and isinstance(error.args[0], Text) else str(error))
+            self.report({'ERROR'}, error_message(error))
             return {'CANCELLED'}
         return {'FINISHED'}
 
 
 class ANGELO_OT_switch_session(Operator):
     bl_idname = "angelo.switch_session"
-    bl_label = "Switch Conversation"
+    bl_label = "Switch Chat"
     session_id: StringProperty(options={'SKIP_SAVE'})
 
     def execute(self, context):
         try:
             document_scene.select(show_session(self.session_id), main_window(), document_key())   # Its scene back.
         except (RuntimeError, ValueError) as error:
-            self.report({'ERROR'}, shown(error.args[0]) if error.args and isinstance(error.args[0], Text) else str(error))
+            self.report({'ERROR'}, error_message(error))
             return {'CANCELLED'}
         return {'FINISHED'}
 
 
 class ANGELO_MT_sessions(Menu):
-    bl_label = "Conversations"
+    bl_label = "Chats"
 
     def draw(self, context):
         current = get_controller()
-        self.layout.operator("angelo.new_chat", text="New Chat", icon='ADD')
-        self.layout.operator("angelo.project_brief", text="Project Brief", icon='TEXT')
-        self.layout.operator("angelo.performance_summary", text="Performance Summary", icon='TIME')
-        self.layout.operator("angelo.checkpoint_settings", text="Snapshot Settings", icon='PREFERENCES')
-        self.layout.operator("angelo.checkpoint_retention", text="Review Snapshot Retention", icon='TRASH')
+        self.layout.operator("angelo.new_chat", text="New Chat", icon='ADD')   # Chats only: tools are in Chat Settings.
         self.layout.separator()
         for record in _sessions.ordered():
             controller = _controllers.get(record["id"])
@@ -1312,203 +1326,9 @@ class ANGELO_OT_stop(Operator):
         controller = _controllers.get(self.session_id) if self.session_id else get_controller()
         if controller is None:
             return {'CANCELLED'}
-        from .stop_notice import stop_notice_for
-        stopped = stop_notice_for(controller)
-        worker_resume.stop(controller)   # The person's Stop also ends a lead's batch of workers (EVENT L-3).
+        from .stop_notice import person_stop
+        stopped = person_stop(controller)   # Its notice; a held goal and a lead's batch of workers end with it.
         controller.emit("message", {"role": "system", **stopped})
-        return {'FINISHED'}
-
-
-class ANGELO_OT_model_picker(Operator):
-    bl_idname = "angelo.model_picker"
-    bl_label = "Choose Model"
-    bl_description = "Models advertised by the selected provider runtime, not a hard-coded OpenAI model list"
-
-    def invoke(self, context, event):
-        if not connection_available() and not ready_connections():
-            return bpy.ops.angelo.settings()
-        if not get_controller().busy and connection_available():
-            prepare_controller()
-        controller = get_controller()
-        refresh_connected_models()
-        if not controller.models and not controller.models_loading:
-            controller.refresh_models()
-        if chat_view.show_popover(context, "models"):
-            return {'FINISHED'}
-        # Non-chat contexts retain Blender's accessible native menu fallback.
-        # The composer never uses this combined stock menu.
-        return bpy.ops.wm.call_menu('INVOKE_DEFAULT', name="ANGELO_MT_models")
-
-    def draw(self, context):
-        controller = get_controller()
-        layout = self.layout
-        layout.label(text="Model")
-        if controller.busy:
-            layout.label(text="Model and effort changes apply to the next turn.")
-        current = clean_options(controller.state.get("options"))["model"]
-        if controller.models_loading:
-            layout.label(text="Loading models from your connection…")
-        from .chat_popovers import model_rows
-        for row in model_rows(model_choices(controller), current, controller.selection_connection_id):
-            if row["kind"] == "provider":  # Provider and model names are data; the empty row is translated.
-                layout.separator()
-                layout.label(text=row["name"], translate=False)
-                continue
-            if row["kind"] == "empty":
-                layout.label(text=row["name"], translate=False)
-                continue
-            operator = layout.operator("angelo.select_model", text=row["name"] + (" · " + row["subtitle"] if row["kind"] != "default" and row["subtitle"] else ""), icon='CHECKMARK' if row["selected"] else 'NONE', translate=False)
-            if isinstance(row["value"], tuple):
-                operator.connection_id, operator.model = row["value"]
-            else:
-                operator.model = row["value"]
-        if controller.models_error:
-            for line in chat_view.wrap(controller.models_error[:400], 330, 12, chat_view._font):
-                layout.label(text=line[0])
-        layout.separator()
-        layout.operator("angelo.refresh_models", text="Refresh available models", icon='FILE_REFRESH')
-        if controller.selection_provider.startswith("claude_"):
-            layout.operator("angelo.custom_model", text="Enter native model ID…")
-        layout.separator()
-        model = selected_model(controller)
-        efforts = model["efforts"] if model and model["efforts"] else ["low", "medium", "high"]
-        layout.label(text="Reasoning effort · independent of Fast mode")
-        for effort in efforts:
-            layout.operator("angelo.set_effort", text=chat_popovers.effort_name(effort), translate=False, icon='CHECKMARK' if effort == clean_options(controller.state.get("options"))["effort"] else 'NONE').effort = effort
-
-
-class ANGELO_MT_models(Menu):
-    bl_label = "Model & Reasoning"
-
-    def draw(self, context):
-        ANGELO_OT_model_picker.draw(self, context)
-
-
-class ANGELO_OT_refresh_models(Operator):
-    bl_idname = "angelo.refresh_models"
-    bl_label = "Refresh Models"
-
-    def execute(self, context):
-        try:
-            if not get_controller().busy and connection_available():
-                prepare_controller()
-            if ready_connections():
-                refresh_connected_models(force=True)
-            else:
-                get_controller().refresh_models()
-        except Exception as error:
-            self.report({'ERROR'}, str(error))
-            return {'CANCELLED'}
-        return {'FINISHED'}
-
-
-class ANGELO_OT_select_model(Operator):
-    bl_idname = "angelo.select_model"
-    bl_label = "Select Model"
-    model: StringProperty(options={'SKIP_SAVE'})
-    connection_id: StringProperty(options={'SKIP_SAVE'})
-
-    @classmethod
-    def description(cls, context, properties):
-        return next((m["description"] for m in model_choices(get_controller()) if m["id"] == properties.model and (not properties.connection_id or m.get("connection_id") == properties.connection_id)), "Use the connection's default model")
-
-    def execute(self, context):
-        controller = get_controller()
-        identity = self.connection_id or controller.selection_connection_id
-        if identity:
-            try:
-                choose_model_connection(controller, identity, self.model)
-            except (RuntimeError, ValueError) as error:
-                self.report({'ERROR'}, shown(error.args[0]) if error.args and isinstance(error.args[0], Text) else str(error))
-                return {'CANCELLED'}
-            return {'FINISHED'}
-        if self.model and not any(m["id"] == self.model for m in controller.selection_models):
-            self.report({'ERROR'}, rpt_("Refresh the models available to this connection"))
-            return {'CANCELLED'}
-        try:
-            options = clean_options(controller.state.get("options"))
-            model = next((m for m in controller.selection_models if m["id"] == self.model), next((m for m in controller.selection_models if m["default"]), None))
-            effort = options["effort"]
-            if model and model["efforts"] and effort not in model["efforts"]:
-                effort = model["default_effort"] if model["default_effort"] in model["efforts"] else model["efforts"][0]
-            controller.set_options(model=self.model, fast=options["fast"] and bool(model and model["fast_tier"]), effort=effort)
-        except RuntimeError as error:
-            self.report({'ERROR'}, str(error))
-            return {'CANCELLED'}
-        return {'FINISHED'}
-
-
-class ANGELO_OT_custom_model(Operator):
-    bl_idname = "angelo.custom_model"
-    bl_label = "Native Claude Model ID"
-    model: StringProperty(name="Model", options={'SKIP_SAVE'})
-
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self, width=380)
-
-    def draw(self, context):
-        self.layout.prop(self, "model")
-        self.layout.label(text="Claude Code validates access; no automatic fallback.")
-
-    def execute(self, context):
-        controller = get_controller()
-        if not controller.selection_provider.startswith("claude_") or not self.model.strip():
-            return {'CANCELLED'}
-        try:
-            controller.set_options(model=self.model.strip(), fast=False)
-        except RuntimeError as error:
-            self.report({'ERROR'}, str(error))
-            return {'CANCELLED'}
-        return {'FINISHED'}
-
-
-class ANGELO_OT_set_effort(Operator):
-    bl_idname = "angelo.set_effort"
-    bl_label = "Set Reasoning Effort"
-    effort: StringProperty(options={'SKIP_SAVE'})
-
-    def execute(self, context):
-        try:
-            get_controller().set_options(effort=self.effort)
-        except RuntimeError as error:
-            self.report({'ERROR'}, str(error))
-            return {'CANCELLED'}
-        return {'FINISHED'}
-
-
-class ANGELO_OT_toggle_fast(Operator):
-    bl_idname = "angelo.toggle_fast"
-    bl_label = "Fast Mode"
-    bl_description = "Use the provider's paid lower-latency tier, when supported. This does not lower reasoning effort"
-
-    def invoke(self, context, event):
-        controller = get_controller()
-        if clean_options(controller.state.get("options"))["fast"]:
-            return self.execute(context)
-        model = selected_model(controller)
-        if not model or not model["fast_tier"]:
-            self.report({'INFO'}, rpt_("Choose a model with an available Fast tier in the model selector first"))
-            return bpy.ops.angelo.model_picker('INVOKE_DEFAULT')
-        return context.window_manager.invoke_props_dialog(self, width=420, confirm_text=iface_("Enable Fast"))
-
-    def draw(self, context):
-        self.layout.label(text="Fast mode uses the provider's lower-latency service tier.")
-        self.layout.label(text="It may consume additional quota or incur higher charges.")
-        if get_controller().selection_provider.startswith("claude_"):
-            self.layout.label(text="Claude subscriptions: paid usage credits, not included usage.")
-        self.layout.label(text="The provider controls eligibility and actual latency.")
-
-    def execute(self, context):
-        controller = get_controller()
-        options = clean_options(controller.state.get("options"))
-        model = selected_model(controller)
-        if not options["fast"] and (not model or not model["fast_tier"]):
-            return {'CANCELLED'}
-        try:
-            controller.set_options(fast=not options["fast"])
-        except RuntimeError as error:
-            self.report({'ERROR'}, str(error))
-            return {'CANCELLED'}
         return {'FINISHED'}
 
 
@@ -1543,7 +1363,7 @@ class ANGELO_OT_attach_reference(Operator):
             controller.attachments.extend(controller.references.import_images(paths, controller.attachments))
             controller.version += 1
         except (OSError, ValueError) as error:
-            self.report({'ERROR'}, str(error))
+            self.report({'ERROR'}, error_message(error))
             return {'CANCELLED'}
         return {'FINISHED'}
 
@@ -1569,13 +1389,18 @@ class ANGELO_OT_changes(Operator):
     def invoke(self, context, event):
         return context.window_manager.invoke_popup(self, width=460)
 
+    def execute(self, context):
+        # invoke_popup draws through Blender's operator-property UI, which requires an execute callback.
+        # This report is read-only; it does not register an Undo step or repeat a scene operation.
+        return {'FINISHED'}
+
     def draw(self, context):
         layout = self.layout
         layout.label(text="Native scene changes")
         # Only mutation reports: a scene delta's "changes" is a list of observation rows.
         messages = [m for m in get_controller().state["messages"] if chat_changes.recorded(m)]
         if not messages:
-            layout.label(text="No scene changes recorded in this conversation.")
+            paragraph(layout, iface_("No scene changes recorded in this chat."), 410)
         for message in messages[-20:]:
             box = layout.box()
             try:   # One report never stops the popup (chat_guard): it shows plainly, the rest as designed.
@@ -1586,8 +1411,8 @@ class ANGELO_OT_changes(Operator):
                     if part:
                         box.label(text=part[:160], translate=False)
         layout.separator()
-        layout.label(text="Operation read-backs, not a live diff after manual edits/Undo.")
-        layout.label(text="External effects are not tracked or undoable.")
+        paragraph(layout, iface_("Operation read-backs, not a live diff after manual edits/Undo."), 410)
+        paragraph(layout, iface_("External effects are not tracked or undoable."), 410)
 
 
 class ANGELO_OT_restore_checkpoint(Operator):
@@ -1606,7 +1431,7 @@ class ANGELO_OT_restore_checkpoint(Operator):
             return {'CANCELLED'}
         from .checkpoint_images import restore_review  # Read once here: the dialog redraws often.
         self._snapshot_review = restore_review(bpy, get_controller(), self.checkpoint_id)
-        return context.window_manager.invoke_props_dialog(self, width=500, confirm_text=iface_("Restore snapshot"))
+        return context.window_manager.invoke_props_dialog(self, width=500, confirm_text=iface_("Restore"))
 
     def draw(self, context):
         from .checkpoint_images import draw_restore  # What is restored, what is not, and the image pixels at stake.
@@ -1669,7 +1494,7 @@ class ANGELO_OT_approve(Operator):
             return {'FINISHED'}
         stage_only = call.name in {"angelo_scene_program", "angelo_apply_recipe"} and call.arguments.get("mode") == "PREVIEW"
         if not stage_only and call.name not in ((STUDIO_NAMES - {"angelo_studio_import_3d"}) | {"angelo_delegate", "angelo_set_workspace_mode"}) and not context.preferences.edit.use_global_undo:
-            controller.finish_tool(call, {"error": "Enable Blender's Global Undo before applying an agent scene change"})  # i18n: tool result returned to the model
+            controller.finish_tool(call, {"error_code": "UNSUPPORTED", "scene_changed": False, "refusal_details": {"final": True}, "error": "Enable Blender's Global Undo before applying an agent scene change"})  # i18n: tool result returned to the model
             return {'CANCELLED'}
         # Preparation and cooperative staging are not scene mutations. Only
         # the final commit/legacy execution operator owns the one Undo step.
@@ -1700,8 +1525,8 @@ class ANGELO_OT_apply_approved_tool(Operator):
         # This internal operator is never a second route around the approval
         # gate. execute_tool repeats document/precondition checks immediately.
         result = controller.execute_tool(call, BlenderExecutor(main_window()), document_key())
-        if isinstance(result, dict) and result.get("merge_waiting") is True:
-            return {'CANCELLED'}   # Nothing ran: the merge waits for its chat's own bound edit (merge_hold), no Undo step.
+        if isinstance(result, dict) and result.get("merge_waiting") is True or not call.executing:   # Only started_call sets it there.
+            return {'CANCELLED'}   # Nothing ran (a merge waiting for its chat's bound edit, merge_hold; a refusal before its start, stale_binding): no Undo step.
         return {'CANCELLED'} if isinstance(result, dict) and (result.get("main_data_restored") or result.get("document_replaced")) else {'FINISHED'}  # Main was reloaded (pixels/external effects may remain), or the script replaced the document (script_document): no Undo push.
 
 
@@ -1750,17 +1575,18 @@ class ANGELO_OT_multiline(Operator):
 
 
 class ANGELO_MT_chat(Menu):
-    bl_label = "Chat"
+    """The chat header's settings menu (its gear), in Director and Manual modes: AI Providers and the chat's tools."""
+    bl_label = "Chat Settings"
 
     def draw(self, context):
         layout = self.layout
-        row = layout.row()
-        row.enabled = not get_controller().busy
-        row.operator("angelo.new_chat", icon="FILE_NEW")
+        layout.operator("angelo.settings", text="AI Providers…", icon='PREFERENCES')
         layout.separator()
-        row = layout.row()
-        row.enabled = not get_controller().busy
-        row.operator("angelo.settings", text="Connection Settings", icon="PREFERENCES")
+        layout.operator("angelo.project_brief", text="Project Brief", icon='TEXT')
+        layout.operator("angelo.performance_summary", text="Performance Summary", icon='TIME')
+        layout.separator()
+        layout.operator("angelo.checkpoint_settings", text="Snapshot Settings", icon='PREFERENCES')
+        layout.operator("angelo.checkpoint_retention", text="Review Snapshot Retention", icon='TRASH')
 
 
 class ANGELO_MT_view(Menu):
@@ -1801,15 +1627,16 @@ def draw_header(self, context):
         layout.template_header()
     controller = get_controller()
     title = chat_titles.session_title(_sessions.records[controller.state["id"]])
-    layout.menu("ANGELO_MT_sessions", text=title[:36] + ("…" if len(title) > 36 else ""), translate=False)
+    # The title opens the chats popover on the canvas (conversations_popover); ANGELO_MT_sessions is its fallback.
+    layout.operator("angelo.conversations", text=title[:36] + ("…" if len(title) > 36 else ""), translate=False)
     layout.operator("angelo.new_chat", text="", icon='ADD')
     if not director.is_director(context.window):
         layout.menu("ANGELO_MT_view")
-    pending = next((call for call in controller.pending.values() if call.approval), None)  # Approved in the chat card only.
+    pending = approval_wait.awaiting(controller)  # Approved in the chat card only (the card's own call).
     if controller.busy:
         layout.operator("angelo.stop", text="", icon="CANCEL")
     layout.separator_spacer()
-    layout.operator("angelo.settings", text="", icon='PREFERENCES')
+    layout.menu("ANGELO_MT_chat", text="", icon='PREFERENCES')
     _header_states[context.area.as_pointer()] = (controller.status, controller.busy, pending.id if pending else None)
 
 
@@ -1818,12 +1645,14 @@ def pump():
     global _tool_pump_cursor
     from .memory_project_ui import pump as prepare_project_memory
     prepare_project_memory(sys.modules[__name__])
-    from . import always_allow, external_host, prewarm_ui, snapshot_service
+    from . import always_allow, external_host, prewarm_ui, references, snapshot_service
     always_allow.sync()  # Before any dispatch: a policy that arrives or lifts reaches the next script.
     worker_consent_lead.tick()  # Hosted worker chats: consent leases, and the kill of a turn Stop did not end.
     external_host.pump(sys.modules[__name__])
     snapshot_service.pump(sys.modules[__name__])
     prewarm_ui.pump(sys.modules[__name__])  # The next message's runtime starts while it is written.
+    if references.refresh_readers():
+        console.redraw_chats(_controllers.values())
     store = connections()
     previous = dict(store.records)
     if store.reload_if_changed():
@@ -1870,44 +1699,44 @@ def pump():
         preferences_ui.redraw()
     changes = _authentication.pump()
     if changes:
-        for identity, logged_in in changes:
+        for identity, logged_in, attempt in changes:
+            if _authentication.attempt(identity) != attempt: continue
             mode = _authentication.modes.get(identity, identity)
             record = connections().records.get(identity)
             status = _authentication.status.get(identity, "")
             if identity == mode and native_suggestions.usable(status):
-                # Discovery only suggests (draw_native_suggestions): no connection
-                # is created and no chat is bound. Chats already bound to a
-                # connection that reuses this sign-in load its models.
+                # Discovery only suggests; already-bound chats refresh their models.
                 record, waiting = native_suggestions.chats_to_refresh(connections(), _controllers.values(), mode, status)
                 for controller in waiting:
+                    if _authentication.attempt(identity) != attempt: break
                     controller.settings = connection_settings(mode, record=record)
                     controller.refresh_models()
+            if _authentication.attempt(identity) != attempt: continue
             from . import codex_runtime
             if not logged_in and mode.startswith("codex_") and (status == "Not connected"
                                                                 or status.startswith("Different native billing mode")):
-                # A status check found no ChatGPT account: no shared app-server keeps serving the old login.
-                codex_runtime.retire_connection(record["id"]) if record else codex_runtime.retire_login(
-                    codex_runtime.login_file({}))
+                codex_runtime.retire_connection(record["id"]) if record else codex_runtime.retire_login(codex_runtime.login_file({}))
+                if _authentication.attempt(identity) != attempt: continue
                 runtime_bindings.end_connection(record["id"]) if record else runtime_bindings.end_modes({mode})
             if logged_in:
-                if record:
-                    catalogs().invalidate(record["id"])
-                else:  # The default (reused native) login: no app-server of the mode keeps the old account.
-                    codex_runtime.retire_mode(mode)
+                catalogs().invalidate(record["id"]) if record else codex_runtime.retire_mode(mode)
+                if _authentication.attempt(identity) != attempt: continue
                 runtime_bindings.end_connection(record["id"]) if record else runtime_bindings.end_modes({mode})
-                # A sign-in may change the account. Preserve local histories,
-                # but never resume an old native thread under a new account.
-                for controller in _controllers.values():
-                    if record:
-                        controller.invalidate_runtime(record["id"])
+                if _authentication.attempt(identity) != attempt: continue
+                for controller in list(_controllers.values()):
+                    if _authentication.attempt(identity) != attempt: break
+                    if record: controller.invalidate_runtime(record["id"])
+                    if _authentication.attempt(identity) != attempt: break
                     if controller.state["provider"] == mode and (not record or controller.state.get("connection_id") == record["id"]):
                         if controller.provider:
                             threading.Thread(target=controller.provider.close, daemon=True).start()
-                        controller.provider = None
-                        controller.state["native_id"] = None
+                        if _authentication.attempt(identity) != attempt: break
+                        controller.provider, controller.state["native_id"] = None, None
                         controller.connection_error = False
                         controller.save()
-                _authentication.start(mode, connection_settings(mode, record=record), state_directory(), identity=identity)
+                if _authentication.attempt(identity) == attempt:
+                    _authentication.start(mode, connection_settings(mode, record=record), state_directory(), identity=identity,
+                                          continuation=attempt)
         console.redraw_chats(_controllers.values())  # A CLI found, signed in or out: the connect card changes.
         preferences_ui.redraw()
     held = _tools_wait(not live_windows.settled(bpy.context.window_manager)) or live_windows.screenless(main_window())
@@ -1923,7 +1752,7 @@ def pump():
                 from .editor_types import read_chat_draft, write_chat_draft
                 restore_unsent(controller, active=controller is _controller, spaces=[space for _, space in console_spaces()],
                                saved=_drafts, read=read_chat_draft, write=write_chat_draft)
-            controller.apply_next_connection()
+            chat_pending.when_idle(controller)   # A connection chosen during its turn, then its pending messages.
             identity = controller.state.get("connection_id")
             if catalog_changed and identity in catalog.entries:
                 controller.models = list(catalog.entries[identity])
@@ -1956,6 +1785,7 @@ def pump():
         prepare([_controller, *(target for target in controllers if target is not _controller)])
         refresh_connected_models()
         _sessions.save_if_due()
+        goal_loop.pump(sys.modules[__name__], held)   # A held goal's next round, once its chat is idle (goal_mode.rst).
         # A sign-in failure shows Connect in the chat (chat_welcome); Preferences never opens by itself.
         _controller.setup_required = False
         from . import quick_connect
@@ -1964,7 +1794,7 @@ def pump():
         for window in live_windows.windows(bpy.context.window_manager):
             for area in live_windows.areas(window):
                 if console.is_chat(area):
-                    pending = next((call for call in _controller.pending.values() if call.approval), None)
+                    pending = approval_wait.awaiting(_controller)
                     header_state = (_controller.status, _controller.busy, pending.id if pending else None)
                     if _header_states.get(area.as_pointer()) != header_state:
                         # Header layout is separate from Console textview redraws.
@@ -1975,10 +1805,10 @@ def pump():
                     if region:
                         with bpy.context.temp_override(window=window, area=area, region=region):
                             console.render(bpy.context)
-                        # Native editor selection can open chat in another
-                        # window without calling the compatibility operator.
-                        # Start its input handler here, never inside drawing.
+                        # Native editor selection can open chat in another window without calling the
+                        # compatibility operator. Start its input handler here, never inside drawing.
                         chat_view.ensure_input(window, area)
+        chat_view.composer_input.sweep(chat_view._views, bpy.context.window_manager)   # Areas no chat shows now.
     # A short timer interval lets Blender process input/redraws between native
     # operations without adding a full idle interval to every queued program.
     if any(worker_dispatch.dispatchable(c) for c in _controllers.values()):   # Never while a lane only waits.
@@ -1988,9 +1818,9 @@ def pump():
 
 
 @persistent
-def document_load_pre(_):
+def document_load_pre(filepath, *_args):
     global _document_serial
-    left = document_identity.leaving(sys.modules[__name__])   # Chats of this document wait for load_post to rebind.
+    left = document_identity.leaving(sys.modules[__name__], filepath if isinstance(filepath, str) else "")
     _document_serial = str(uuid.uuid4())
     from . import scene_queries, agent_workspace_ui, change_feed, view_cache, agent_target_labels
     scene_queries.invalidate()
@@ -2065,9 +1895,8 @@ CLASSES = [ANGELO_Preferences, ANGELO_OT_settings, ANGELO_OT_api_key, ANGELO_OT_
            ANGELO_OT_dismiss_native_suggestion,
            ANGELO_OT_use_connection, ANGELO_OT_native_signin, ANGELO_OT_check_signin, ANGELO_OT_cancel_signin, ANGELO_OT_open_chat,
            ANGELO_OT_dock_side, ANGELO_OT_pop_out, ANGELO_OT_return_dock, ANGELO_OT_new_chat,
-           ANGELO_OT_switch_session, ANGELO_MT_sessions,
-           ANGELO_OT_model_picker, ANGELO_MT_models, ANGELO_OT_refresh_models, ANGELO_OT_select_model, ANGELO_OT_custom_model,
-           ANGELO_OT_set_effort, ANGELO_OT_toggle_fast, ANGELO_MT_approval, ANGELO_OT_set_approval, ANGELO_OT_trusted_scripts,
+           ANGELO_OT_switch_session, ANGELO_MT_sessions, *conversations_ui.CLASSES,
+           *model_picker_ui.CLASSES, ANGELO_MT_approval, ANGELO_OT_set_approval, ANGELO_OT_trusted_scripts,
            ANGELO_OT_attach_reference, ANGELO_FH_references, ANGELO_OT_remove_reference, ANGELO_OT_changes, ANGELO_OT_restore_checkpoint,
            ANGELO_OT_stop, ANGELO_OT_approve, ANGELO_OT_apply_approved_tool, script_errors.grouped(ANGELO_OT_apply_approved_tool), ANGELO_OT_review_tool, ANGELO_OT_decline, ANGELO_OT_multiline,
            ANGELO_MT_chat, ANGELO_MT_view, *external_ui.CLASSES]
@@ -2153,9 +1982,10 @@ def register():
 
 def unregister():
     global _controller, _layout_timer, _sessions, _transient_preferences, _connections, _catalogs
-    from . import always_allow, external_host, script_files
+    from . import always_allow, external_host, references, script_files
     always_allow.detach()  # A disabled add-on keeps no consent; registering again reads the saved choice.
     script_files.detach()
+    references.refresh_readers(reset=True)
     external_host.shutdown()
     from . import worker_routing
     worker_routing.stop_all()   # Each worker exits when its connection closes; none outlives the add-on.

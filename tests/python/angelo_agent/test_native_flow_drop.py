@@ -10,6 +10,8 @@ point; a 3D model is refused with a reason. In any other node tree it adds one i
 for the contract the two share; ``test_blender_node_drop_targets`` drags in the running app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import shutil
 import sys

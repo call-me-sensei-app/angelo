@@ -6,6 +6,8 @@ No Blender, provider or network access. The native GUI fixture
 test_blender_view_observation.py proves actual pixels and artist-state safety.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import math
 from pathlib import Path

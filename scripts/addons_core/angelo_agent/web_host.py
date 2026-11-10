@@ -46,9 +46,18 @@ def _publish(controller, publication, output, report):
     try:
         publication.publish_file(output.name)
         written, published = publication.relative_output(), str(publication.published)
-    except BaseException:
-        publication.discard()
-        raise
+    except BaseException as error:
+        if not getattr(publication, "left_published", None):
+            publication.discard()   # Nothing of it stays published: an export is made again from the scene.
+            raise
+        # Moved files it couldn't move back stay published (job_output_links): named, and the rest kept, never lost.
+        from .job_manager import kept_outputs, unpublished_receipt
+        kept = kept_outputs(publication)
+        if kept is None:
+            publication.discard()
+        receipt = unpublished_receipt(publication, kept)
+        raise RefusalError("%s (%s)" % (receipt.pop("note"), error), code="CLEANUP_FAILED",
+                           details=receipt) from error
     publication.close()
     try:   # Report-only from here: the file is published, so a failure costs the preflight, never the export.
         _annotate(controller, report, published, written)

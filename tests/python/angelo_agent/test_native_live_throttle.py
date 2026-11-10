@@ -9,6 +9,8 @@ instead of "Ar Rail ×2". Every case here runs on a fake clock, at several paces
 that exposed it. Dependency-free: no Claude or Codex process, Blender or model.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import unittest

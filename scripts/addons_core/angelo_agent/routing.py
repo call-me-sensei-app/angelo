@@ -3,15 +3,16 @@
 """One host transcript, credential-scoped native contexts. No OAuth token access."""
 
 import json
-from . import document_offer, pending_delivery, request_path, request_recovery, ui_text
+from . import document_offer, pending_delivery, request_path, ui_text
 from .chat_settings import clean_options
 from .legacy_names import current_tool_name
+from .model_steps import ContextStepHooks
 from .provider_registry import CODING_MODES
 from .request_fences import DeliveryOwner, RequestFence
 from .tool_deadlines import revoke_turn_calls
 
 MODES = CODING_MODES
-TOOLSET_VERSION = 50  # 50: engine link tools; 49: engine preflight; 48: game-ready check; 47: angelo_skeleton_check; numbers follow merge order, no gaps; 46 (1.0.8): angelo_app_feature, FEATURES; 42: web.
+TOOLSET_VERSION = 53  # 53: explicit approved Fab version import through the existing library tools; 52: library sources, pagination and MCP exposure; 51: angelo_goal (goal mode); 50: engine link tools; 49: engine preflight; 48: game-ready check; 47: angelo_skeleton_check; numbers follow merge order, no gaps; 46 (1.0.8): angelo_app_feature, FEATURES; 42: web.
 # Toolset 40: the tool text that changed after 39 (agent_integration.rst, "Toolset 40").
 # Toolset 39 (agent_integration.rst, "Toolset 39"): what changed after 38:
 # angelo_view's IMAGE, UV and EDITOR pictures, WEIGHT and ATTRIBUTE shadings, render passes (group) and
@@ -233,73 +234,9 @@ def handoff(messages, start=0, limit=24000, *, identifiers=None, delta=False):
     committed program no check covered is one ``unverified`` entry too
     (``program_completion.unchecked_receipt``), which says nothing was verified.
     """
-    from .claude_outcomes import compact_receipt, terse_receipt
-    from .program_completion import handoff_currency, history_result_text, unchecked_receipt
-    from .model_results import model_result  # A Claude context reads results without the host's bookkeeping.
-    start = max(0, start)
-    certified, accepts, groups = _certified_rows(messages)
-    compact = identifiers is not None
-    currency = handoff_currency.Currency(identifiers, messages[start:]) if compact else None  # Superseded rows go.
-    merged = set()
-    entries = []
-    for index in range(start, len(messages)):
-        message = messages[index]
-        role = message.get("role")
-        if message.get("notice") is True or document_offer.person_only(message):
-            continue  # A host-only notice (ui_text.notice), or a file offer's card: the person's, never a model's.
-        if role in {"user", "assistant", "system", "error"} and (role != "assistant" or message.get("text")):
-            if compact and index in groups:
-                summarized = [row for row in groups[index]
-                              if current_tool_name(messages[row].get("tool")) in _SUMMARIZED_TOOLS]
-                if summarized and all(row in merged for row in summarized):
-                    continue  # Its certified results already carry their verified lines.
-            entry = {"role": role, "text": ui_text.model_text(message)[:6000]}   # A model_notice's own words.
-            if role == "user" and message.get("request_kind") == "native_preview_accept":
-                entry["request_kind"] = "human UI preview acceptance; no model request"
-            entries.append((entry, None))
-        elif role == "activity" and message.get("status") in {"completed", "failed"}:
-            # History saved before the rename names tools by their pre-rename names.
-            tool = current_tool_name(message.get("tool"))
-            result = message.get("result", {})
-            clean = message.get("status") == "completed" and not message.get("reverted")
-            entry = None
-            if compact and clean and (index in certified or index in accepts):
-                terse = terse_receipt(tool, result, accepted=index in accepts, currency=currency)
-                if terse is not None:
-                    entry = {"role": "tool_result", "tool": tool, **identifiers.compact(terse)}
-                    merged.add(index)
-            elif compact and clean:
-                unchecked = unchecked_receipt(tool, result, currency=currency)
-                if unchecked is not None:
-                    entry = {"role": "tool_result", "tool": tool, **identifiers.compact(unchecked)}
-            if entry is None:
-                receipt = compact_receipt(tool, result) if clean and index in certified else None
-                if receipt is not None:
-                    entry = {"role": "tool_result", "tool": tool, "receipt": receipt}
-                else:
-                    entry = {"role": "tool_result", "tool": tool, "result": history_result_text(result),
-                             "reverted": bool(message.get("reverted"))}
-                if compact:
-                    if "result" in entry:
-                        entry["result"] = history_result_text(model_result(tool, result), identifiers, currency)
-                    else:
-                        entry = identifiers.compact(entry)
-            entries.append((entry, message.get("call_id")))
-    separators = (",", ":") if compact else None
-    # Recent evidence wins when a conversation exceeds the transfer budget.
-    selected, call_ids, remaining = [], [], limit
-    for entry, call_id in reversed(entries):
-        encoded = json.dumps(entry, ensure_ascii=False, separators=separators)
-        if len(encoded) > remaining:
-            break
-        selected.append(encoded)
-        if isinstance(call_id, str):
-            call_ids.append(call_id)
-        remaining -= len(encoded) + 1
-    if not selected:
-        return "", frozenset()
-    header = HANDOFF_DELTA_HEADER if compact and delta else HANDOFF_HEADER
-    return header + "\n".join(reversed(selected)), frozenset(call_ids)
+    from .handoff_compose import compose
+    header = HANDOFF_DELTA_HEADER if identifiers is not None and delta else HANDOFF_HEADER
+    return compose(messages, start, limit, header=header, identifiers=identifiers)
 
 
 def shared_context(messages, start=0, limit=24000, *, memory_context=""):
@@ -312,7 +249,7 @@ def shared_context(messages, start=0, limit=24000, *, memory_context=""):
     return memory_context + handoff(messages, start, limit)[0]
 
 
-class RuntimeContext:
+class RuntimeContext(ContextStepHooks):  # ContextStepHooks: the lead request's model-step hooks (model_steps).
     """Immutable billing binding; next-message UI changes cannot alter this run."""
 
     def __init__(self, host, mode, settings, api_key, connection_id, epoch):
@@ -462,7 +399,6 @@ class RuntimeContext:
         self.program_completions.emit(kind, data)
 
     request_tool = pending_delivery.request_context_tool
-    record_model_step = request_recovery.record_model_step  # A Codex model response ended (provider_usage).
 
     def tool_expiry(self, call_id):
         """When the host expires the call ``request_tool(call_id)`` admitted (monotonic seconds); None once answered."""
@@ -471,10 +407,10 @@ class RuntimeContext:
                 return call.expires
         return None
 
-    def resolve_call(self, name, arguments):
-        """The host's short-identifier resolver for this context (identifiers.expand_call)."""
-        resolve = getattr(self.host, "resolve_call", None)
-        return resolve(name, arguments) if callable(resolve) else arguments
+    def resolve_call(self, name, arguments, *, step=None):
+        """The host's short-identifier resolver (identifiers.expand_call); ``step``: the step that wrote the call."""
+        resolve, written = getattr(self.host, "resolve_call", None), {} if step is None else {"step": step}
+        return resolve(name, arguments, **written) if callable(resolve) else arguments
 
     def compact_identifiers(self, value):
         compact = getattr(self.host, "compact_identifiers", None)

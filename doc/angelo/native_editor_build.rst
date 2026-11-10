@@ -76,6 +76,29 @@ Native integration
   (a full layout) and invokes the stock Node Editor asset-shelf poll from a timer
   to check this lifetime boundary. New Window creates just one editor and is not
   sufficient for the fixture's Properties/3D View assertions.
+* ``Image.angelo_source_revision`` (read-only, runtime, ``BKE_angelo_image_source.hh``)
+  changes on reload, source type, packing/unpacking and changed source-load evidence.
+  Still, sequence and UDIM loads record device, inode, size and modification/change
+  times from the same open descriptor passed to the decoder. Packed loads hash the
+  actual immutable bytes. Descriptor metadata is captured before decoding; the record
+  is committed after decoding with its effective color space, including an inferred
+  default. Resolving that default is not a source change on the next unchanged load.
+  Flags and effective color space are part of each load identity.
+  Re-reading an unchanged source, acquiring/freeing buffers, GPU texture rebuilds
+  and pixel edits do not advance it (``Image.angelo_pixel_revision`` counts edits,
+  never loads). Undo carries the load record with its pixel cache.
+  ``Image.angelo_source_loads_supported`` is false before a supported load, after
+  invalidation, on failed descriptor stat and for opaque movie decoders. A movie's
+  current path cannot identify the file retained by its decoder; ordinary movie
+  frame reads retain a stable unsupported record rather than fake path evidence.
+  The boolean describes attempted reads with witnesses, not successful decoding,
+  every frame/tile or generated pixels.
+  Metadata is change evidence, not exact byte identity: in-place writes, concurrent
+  writes and filesystem timestamp limits preclude a never-missed guarantee. Neither
+  property alone authorizes exact byte/pixel-sensitive work; consumers requiring
+  that guarantee must obtain independent content evidence or refuse unsupported work.
+  Covered by the ``angelo_image_source_test`` GTest and
+  ``test_blender_image_source_revision``.
 * The scratch launcher detects the native fork and does not replace its built-in
   branding menus with stock-binary preview menus.
 * Selecting chat in an ordinary editor slot can dock/pop out and return without

@@ -9,6 +9,8 @@ what it changes in the trial launch, the encoder's reuse and speed, and how
 the scorecard and report link the video and poster.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import json

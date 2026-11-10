@@ -7,6 +7,8 @@ profile with Blender stand-ins; no provider. Contract: doc/angelo/agent_chat.rst
 "Approvals", and doc/angelo/enterprise_policy.rst, ``RequireAskForEdits`` and ``AllowAutoApproval``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import shutil
 import sys
@@ -24,6 +26,7 @@ from angelo_agent.external_host import ExternalHost
 from angelo_agent.managed_policy import Policy, combine, with_organization
 from angelo_agent.sessions import read_transcript, SessionCollection, SessionStore
 from angelo_agent.team_view import org_policy
+from host_test_policy import environment_skip
 from test_native_dispatch_fixes import program, ui_class
 from test_native_external_cli_host import Environment
 
@@ -123,6 +126,9 @@ class NewChatDefaultTests(unittest.TestCase):
         self.assertEqual(view_policy.mode_of(SimpleNamespace(state={"options": {}})), "AUTO_BOUNDED", "a chat's default")
         self.assertEqual(view_policy.mode_of(SimpleNamespace(state={"options": {"approval": "ASK"}})), "ASK")
 
+    @unittest.skipIf(sys.platform == "win32", environment_skip(
+        "External apps connect only where the Unix-socket listener opens; Windows refuses Connect until its named "
+        "pipe (doc/angelo/external_mcp.rst), and an app's key file is checked by POSIX owner and mode"))
     def test_external_conversations_start_like_a_new_chat(self):
         """An app's conversation starts in Approve for me, as a new chat; policy can still force Ask."""
         root = Path(tempfile.mkdtemp(prefix="sapp-"))

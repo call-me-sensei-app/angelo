@@ -50,6 +50,13 @@ class ShaderCache {
 
   ShaderCache();
 
+  /**
+   * Schedule, in the shader workers, the shaders a Solid draw of \a v3d requests first: its
+   * lighting, clipping, X-ray, cavity, shadow and outline settings decide them as #SceneState does.
+   * None waits for them; a later `get()` finalizes or compiles as before.
+   */
+  void compile_async(const View3D &v3d, const RegionView3D *rv3d);
+
   gpu::Shader *prepass_get(eGeometryType geometry_type,
                            ePipelineType pipeline_type,
                            eLightingType lighting_type,

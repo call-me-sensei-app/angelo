@@ -13,6 +13,8 @@ draw cache's tension buffer with GPU subdivision, versioning of older files, the
 ``test_blender_tension_map.py`` and ``test_blender_tension_map_gui.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import sys
 import unittest

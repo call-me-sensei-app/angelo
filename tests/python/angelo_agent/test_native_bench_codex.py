@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Offline checks for the Codex side of the MCP vs Angelo benchmark: no process, network or account."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import json
@@ -16,6 +18,7 @@ for _path in (str(HERE.parents[2] / "scripts/addons_core"), str(HERE)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+import account_fixtures as fixtures  # noqa: E402
 import bench_mcp_codex as codex  # noqa: E402
 from angelo_agent.cli_runtime import CODEX_BUNDLE  # noqa: E402
 import bench_mcp_vs_angelo as bench  # noqa: E402
@@ -32,8 +35,6 @@ def event(method, **params):
 
 
 class CommandTests(unittest.TestCase):
-    @unittest.skipIf(sys.platform == "win32", "The comparison bench runs Blender MCP from a POSIX virtual "
-                     "environment (.venv/bin); it is a macOS benchmark")
     def test_the_blender_server_is_the_only_one_and_never_prompts(self):
         command = codex.codex_command(CONFIG, 39123)
         self.assertEqual(command[:4], ["/srv/codex", "app-server", "--listen", "stdio://"])
@@ -41,7 +42,9 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(pairs["approval_policy"], '"never"')
         self.assertEqual(pairs["sandbox_mode"], '"read-only"')
         self.assertEqual(pairs["mcp_servers.blender.default_tools_approval_mode"], '"approve"')
-        self.assertEqual(pairs["mcp_servers.blender.command"], '"/srv/mcp/.venv/bin/blender-mcp"')
+        # The virtualenv's entry point for this host (Scripts\\blender-mcp.exe on Windows), as a TOML string.
+        self.assertEqual(pairs["mcp_servers.blender.command"],
+                         json.dumps(codex.trial_base.server_executable(CONFIG["mcp_server_dir"])))
         self.assertIn('BLENDER_MCP_PORT="39123"', pairs["mcp_servers.blender.env"])
         self.assertNotIn("model_provider", pairs, "A billed run uses the account's own OpenAI provider")
         self.assertEqual({name for name in pairs if name.startswith("mcp_servers.")},
@@ -60,8 +63,10 @@ class CommandTests(unittest.TestCase):
     def test_environment_keeps_state_in_the_trial(self):
         with tempfile.TemporaryDirectory() as folder, mock.patch.dict("os.environ", {"OPENAI_API_KEY": "x",
                                                                                       "CODEX_HOME": "/elsewhere"}):
-            env = codex.environment(CONFIG, Path(folder))
-        self.assertEqual(env["CODEX_HOME"], "/srv/home")
+            home = Path(folder) / "codex-profile" / CONNECTION   # Each launch checks its profile's account.
+            fixtures.codex_sign_in(home)
+            env = codex.environment(dict(CONFIG, codex_home=str(home)), Path(folder))
+            self.assertEqual(env["CODEX_HOME"], str(home))
         self.assertEqual(env["CODEX_SQLITE_HOME"], str(Path(folder) / "codex-sqlite"))
         self.assertNotIn("OPENAI_API_KEY", env)
 
@@ -82,7 +87,7 @@ class PreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             home = Path(folder)
             self.assertTrue(any("not signed in" in p for p in codex.preflight(dict(CONFIG, codex_home=folder))))
-            (home / "auth.json").write_text("{}")
+            fixtures.codex_sign_in(home)   # The evaluation account's made-up claims (provider_accounts).
             (home / "config.toml").write_text('[mcp_servers.other]\ncommand = "x"\n')
             self.assertTrue(any("other" in p for p in codex.preflight(dict(CONFIG, codex_home=folder))))
             (home / "config.toml").write_text('model = "gpt-6-astra"\n')

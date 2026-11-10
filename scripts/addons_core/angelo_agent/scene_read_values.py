@@ -5,6 +5,7 @@
 No Blender IDs, document epochs or persistent caches are owned here."""
 
 import hashlib
+from .refusal_codes import coded
 import json
 import math
 import time
@@ -129,7 +130,7 @@ def revision_omission(error, *, closed_codes=None):
 def finite_number(value):
     value = float(value)
     if not math.isfinite(value):
-        raise SceneQueryError("Non-finite scene values cannot provide a trustworthy observation")
+        raise coded(SceneQueryError("Non-finite scene values cannot provide a trustworthy observation"), "UNSUPPORTED")
     return value
 
 

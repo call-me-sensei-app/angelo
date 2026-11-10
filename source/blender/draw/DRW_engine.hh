@@ -60,6 +60,17 @@ using DRW_ObjectFilterFn = bool (*)(Object *ob, void *user_data);
  */
 void DRW_draw_view(const bContext *C);
 /**
+ * Angelo: schedule the default viewport's overlay shaders to compile in the shader workers, as the
+ * overlay engine does at its first draw. The window manager calls it when the startup cover hides a
+ * viewport it does not render, so a first launch compiles them while its layout settles.
+ */
+void DRW_overlay_shaders_compile_async();
+/**
+ * Angelo: schedule, in the shader workers, the Workbench shaders a Solid draw of \a v3d requests
+ * first (nothing for another shading type). Called with #DRW_overlay_shaders_compile_async.
+ */
+void DRW_workbench_shaders_compile_async(const View3D *v3d, const RegionView3D *rv3d);
+/**
  * Draw render engine info.
  */
 void DRW_draw_region_engine_info(int xoffset, int *yoffset, int line_height);

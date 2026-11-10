@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "BLI_sys_types.h"
 #include "BLI_vector.hh"
 struct CLG_LogRef;
@@ -29,6 +31,7 @@ struct wmOperatorType;
 struct wmWindowManager;
 struct AngeloUndoCapture;
 struct CheckpointCaptureOwner;
+class BLOAssetSourcePaths;
 
 /** A main-thread, synchronous native commit scope. Failure leaves the Undo stack untouched. */
 AngeloUndoCapture *ED_angelo_undo_begin(bContext *C, const char **r_error, bool synchronize = false);
@@ -52,6 +55,27 @@ bool ED_angelo_undo_scope_operation_active(const AngeloUndoCapture *capture);
 bool ED_angelo_undo_scope_id_is_protected(const AngeloUndoCapture *capture, const ID *id);
 /** Free an abandoned scope, including its unpublished snapshot and nested-push guard. */
 void ED_angelo_undo_discard(AngeloUndoCapture *capture);
+/** Focused stock import transaction; no strict serializer/allocation-graph capability. */
+enum class AngeloAssetTransactionState { Active, Committed, Restored, RecoveryRequired, Abandoned };
+struct AngeloAssetTransactionResult {
+  AngeloAssetTransactionState state = AngeloAssetTransactionState::Active;
+  bool publication_known = true;
+  bool published = false;
+  bool restored = false;
+  bool closed = false;
+  bool recoverable = false;
+  const char *error = nullptr;
+};
+AngeloUndoCapture *ED_angelo_undo_stock_asset_begin(
+    bContext *,
+    const std::shared_ptr<const BLOAssetSourcePaths> &source_paths,
+    const char **error,
+    AngeloUndoCapture **pending_owner = nullptr);
+AngeloAssetTransactionResult ED_angelo_undo_stock_asset_finish(bContext *, AngeloUndoCapture *, bool keep);
+AngeloAssetTransactionResult ED_angelo_undo_stock_asset_recover(bContext *, AngeloUndoCapture *);
+AngeloAssetTransactionResult ED_angelo_undo_stock_asset_status(const AngeloUndoCapture *);
+bool ED_angelo_undo_stock_asset_close(AngeloUndoCapture *&);
+
 /** The exact loaded baseline makes this final Sculpt decode a no-op, even in another window. */
 bool ED_angelo_undo_has_restored_baseline(bContext *C, const UndoStep &sculpt_step);
 

@@ -11,6 +11,8 @@
   nothing.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import os
@@ -182,8 +184,9 @@ class ProducedTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             self.assertFalse(produced.shared(folder))                    # A folder of its own inside it is the side's.
 
-    @unittest.skipIf(os.name == "nt", "The one-shot eval harness runs on macOS: it reads POSIX paths from a reply")
     def test_what_a_run_wrote_whatever_it_is_called(self):
+        """On Windows too: the one-shot trials also run on the Windows VMs (windows_final_runs.ps1), where the path a
+        side names starts at a drive (oneshot_produced.STATED)."""
         now = time.time()
         with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as elsewhere:
             workspace = Path(folder, "state", "workspace")

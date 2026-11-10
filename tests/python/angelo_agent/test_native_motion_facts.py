@@ -8,6 +8,8 @@ frames after an edit; ``test_blender_motion_readback`` checks every value agains
 held-out rigs. These pin the pure parts on stand-ins. No Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from array import array

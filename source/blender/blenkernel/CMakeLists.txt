@@ -32,8 +32,12 @@ set(SRC
   intern/action_bones.cc
   intern/action_mirror.cc
   intern/addon.cc
+  intern/angelo_fcurve_digest.cc
+  intern/angelo_image_source.cc
   intern/angelo_legacy_names.cc
   intern/angelo_sculpt.cc
+  intern/angelo_stage_copies.cc
+  intern/angelo_stage_links.cc
   intern/anim_data.cc
   intern/anim_data_bmain_utils.cc
   intern/anim_path.cc
@@ -320,10 +324,13 @@ set(SRC
 
   BKE_action.hh
   BKE_addon.h
+  BKE_angelo_fcurve_digest.hh
+  BKE_angelo_image_source.hh
   BKE_angelo_job_deadline.hh
   BKE_angelo_job_progress.hh
   BKE_angelo_legacy_names.hh
   BKE_angelo_sculpt.hh
+  BKE_angelo_stage_links.hh
   BKE_anim_data.hh
   BKE_anim_path.h
   BKE_anim_visualization.h
@@ -427,6 +434,7 @@ set(SRC
   BKE_icons.hh
   BKE_id_hash.hh
   BKE_idprop.hh
+  BKE_idprop_buffer.hh
   BKE_idprop_hash.hh
   BKE_idtype.hh
   BKE_image.hh
@@ -758,6 +766,7 @@ add_dependencies(bf_blenkernel bf_rna)
 
 if(WITH_GTESTS)
   set(TEST_SRC
+    intern/angelo_fcurve_digest_test.cc
     intern/anim_data_test.cc
     intern/armature_deform_test.cc
     intern/armature_test.cc
@@ -774,6 +783,7 @@ if(WITH_GTESTS)
     intern/grease_pencil_test.cc
     intern/idprop_serialize_test.cc
     intern/idprop_test.cc
+    intern/angelo_image_source_test.cc
     intern/image_partial_update_test.cc
     intern/image_test.cc
     intern/key_test.cc
@@ -782,6 +792,7 @@ if(WITH_GTESTS)
     intern/lib_id_remapper_test.cc
     intern/lib_id_test.cc
     intern/lib_query_test.cc
+    intern/angelo_stage_links_test.cc
     intern/lib_remap_test.cc
     intern/main_test.cc
     intern/main_namemap_test.cc
@@ -789,6 +800,7 @@ if(WITH_GTESTS)
     intern/node_socket_value_iter_test.cc
     intern/path_templates_test.cc
     intern/pbvh_test.cc
+    intern/pointcache_test.cc
     intern/scene_test.cc
     intern/subdiv_ccg_test.cc
     intern/tracking_test.cc

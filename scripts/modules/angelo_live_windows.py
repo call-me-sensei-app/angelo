@@ -114,6 +114,15 @@ def prune(windows, pointers, still):
     return next((present[pointer] for pointer in pointers), None)
 
 
+def covered(manager):
+    """True while Angelo's native start-up cover is shown (``WindowManager.angelo_startup_cover``, alpha above 0). It
+    hides every area but the top and status bars, and the window manager does not render the viewports under it
+    (``wm_angelo_cover.cc``): a 3D view, image or node editor does not draw until it lifts, so a step that waits for
+    such a draw waits for the lift too, without counting that time against its own bound."""
+    cover = getattr(manager, "angelo_startup_cover", None)
+    return cover is not None and cover[3] > 0.0
+
+
 def screenless(window):
     """``window`` exists but has no screen right now (being created or closed); False for None."""
     return window is not None and window.screen is None

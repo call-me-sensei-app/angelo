@@ -27,6 +27,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import provider_isolation as isolation  # noqa: E402
 import scenario_specs as specs  # noqa: E402
 
 CRITERIA = {
@@ -173,6 +174,10 @@ def main(argv=None):
     parser.add_argument("--model", default="claude-opus-5-5")
     parser.add_argument("--seed", type=int, default=20261024)
     args = parser.parse_args(argv)
+    try:   # Its expected account only (ANGELO_TEST_CLAUDE_ACCOUNT; provider_accounts).
+        isolation.check_billed([("claude-profile", args.claude_config_dir)])
+    except isolation.Refusal as refusal:
+        parser.error(str(refusal))
     run = Path(args.run)
     test = specs.scenario_id(json.loads((run / "interleave.json").read_text())["task_set"])
     queue = list(items(run, test))

@@ -45,6 +45,11 @@ UNPACKED_FACTOR = {"macos": 4, "windows": 3}   # Free space kept for unpacking, 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,120}")
 
 
+# The answers that mean a mirror doesn't hold the file: only these fall back to the feed's own host. Any other
+# failure (an interrupted transfer, a network error) keeps the partial download for the mirror to resume next time.
+MIRROR_MISSING = frozenset({"http_403", "http_404", "http_410"})
+
+
 class PrepareError(Exception):
     """``code`` is stable (logs, tests, the card); ``transient`` failures are tried again at a later check."""
 
@@ -90,8 +95,13 @@ class Preparer:
     """One install's preparation. ``binary`` is the running executable (``bpy.app.binary_path``)."""
 
     def __init__(self, root, current, platform, binary, upgrade_code="", *, fetch=None,
-                 mac=update_stage_mac, win=update_stage_win, log=print):
+                 mac=update_stage_mac, win=update_stage_win, log=print, mirror=None):
         self.root, self.current, self.platform = Path(root), current, platform
+        if mirror is None:   # The machine policy's UpdateFeedURL mirror also serves the installers (install_source).
+            from . import managed_policy
+            policy = managed_policy.current()
+            mirror = "" if policy.update_feed_url == managed_policy.INVALID else policy.update_feed_url
+        self.mirror = mirror
         self.binary, self.upgrade_code = str(binary), upgrade_code
         self.family = update_install.family(platform)
         # Looked up now, not when the module loaded, so a fixture can stand in for the download.
@@ -151,6 +161,15 @@ class Preparer:
 
     def _fetch(self, entry, work, fallback, reserve, options):
         target = work / _file_name(entry.url, fallback)
+        source = update_feed.install_source(entry.url, self.mirror)   # The policy's mirror serves it, when set.
+        try:
+            return self.fetch(Expected(source, entry.sha256, entry.size), target, reserve=reserve, **options)
+        except DownloadError as error:
+            if source == entry.url or error.code not in MIRROR_MISSING:
+                raise PrepareError("download:" + error.code, error.transient) from None
+            # A mirror that copies only stable.json: the feed's own host, with the same checks.
+            self.log("Update mirror could not serve %s (%s); downloading from Angelo's host"
+                     % (_file_name(entry.url, fallback), error.code))
         try:
             return self.fetch(Expected(entry.url, entry.sha256, entry.size), target, reserve=reserve, **options)
         except DownloadError as error:

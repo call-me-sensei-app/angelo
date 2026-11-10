@@ -7,6 +7,7 @@
  */
 
 #include "GHOST_SystemWayland.hh"
+#include "GHOST_ClipboardImage.hh"
 #include "GHOST_Context.hh"
 #include "GHOST_Event.hh"
 #include "GHOST_EventButton.hh"
@@ -91,6 +92,7 @@
 
 #include <cstdlib> /* For `exit`. */
 #include <cstring>
+#include <memory>
 #include <mutex>
 
 #include <pthread.h> /* For setting the thread priority. */
@@ -1271,11 +1273,18 @@ struct GWL_Seat {
   std::mutex data_offer_copy_paste_mutex;
 
   /**
-   * Cache the result of #GHOST_SystemWayland::hasClipboardImage as checking the file
-   * header every time will be expensive, especially if this happens on redraw.
-   * Reset whenever the data offer changes.
+   * Image state is retained locally across clipboard reads: their Wayland round-trips can
+   * remove the seat. Only the main thread accesses transfer bytes; callbacks change the serial
+   * and reset the availability result under the server lock. Last-owner destruction is safe
+   * on either thread because no reader can then hold the state.
    */
-  std::optional<GHOST_TSuccess> data_offer_copy_paste_has_image = std::nullopt;
+  struct ClipboardImage {
+    /** Cached header check; invalidated with the offer. */
+    std::optional<GHOST_TSuccess> has_image = std::nullopt;
+    std::atomic<uint64_t> serial = 0;
+    GHOST_ClipboardTransfer transfer;
+  };
+  std::shared_ptr<ClipboardImage> clipboard_image = std::make_shared<ClipboardImage>();
 
   GWL_DataSource *data_source = nullptr;
   std::mutex data_source_mutex;
@@ -4378,7 +4387,8 @@ static void data_device_handle_selection(void *data,
     wl_data_offer_destroy(seat->data_offer_copy_paste->wl.id);
     delete seat->data_offer_copy_paste;
     seat->data_offer_copy_paste = nullptr;
-    seat->data_offer_copy_paste_has_image = std::nullopt;
+    seat->clipboard_image->has_image = std::nullopt;
+    seat->clipboard_image->serial++;
   }
   /* Clearing complete. */
 
@@ -4392,7 +4402,8 @@ static void data_device_handle_selection(void *data,
   GWL_DataOffer *data_offer = static_cast<GWL_DataOffer *>(wl_data_offer_get_user_data(id));
   /* Transfer ownership of the `data_offer`. */
   seat->data_offer_copy_paste = data_offer;
-  seat->data_offer_copy_paste_has_image = std::nullopt;
+  seat->clipboard_image->has_image = std::nullopt;
+  seat->clipboard_image->serial++;
 }
 
 static const wl_data_device_listener data_device_listener = {
@@ -7748,6 +7759,10 @@ static void gwl_registry_wl_seat_remove(GWL_Display *display, void *user_data, c
 {
   GWL_Seat *seat = static_cast<GWL_Seat *>(user_data);
 
+  /* Invalidate reads suspended in a round-trip before removing their seat. Their local shared
+   * owner keeps image state alive, but a removed seat must not supply the paste's result. */
+  seat->clipboard_image->serial++;
+
   /* First handle members that require locking.
    * While highly unlikely, it's possible they are being used while this function runs. */
   {
@@ -8709,6 +8724,23 @@ bool GHOST_SystemWayland::processEvents(bool waitForEvent)
     }
   }
 
+  /* A size probe can finish a paste without a read (for example, a refused image). Release
+   * that transfer after its selection changes, even if the next paste is text or never happens.
+   * The server lock protects the seat list's lifetime. Defer optional cleanup when busy so
+   * processEvents(false) preserves its non-blocking dispatch behavior. */
+  {
+#ifdef USE_EVENT_BACKGROUND_THREAD
+    std::unique_lock lock_server_guard{*server_mutex, std::try_to_lock};
+    if (lock_server_guard.owns_lock())
+#endif
+    {
+      for (GWL_Seat *seat : display_->seats) {
+        seat->clipboard_image->transfer.clear_if_selection_changed(
+            seat->clipboard_image->serial.load());
+      }
+    }
+  }
+
   if (getEventManager()->getNumEvents() > 0) {
     any_processed = true;
   }
@@ -9079,8 +9111,11 @@ GHOST_TSuccess GHOST_SystemWayland::hasClipboardImage() const
     return GHOST_kFailure;
   }
 
-  if (seat->data_offer_copy_paste_has_image.has_value()) {
-    return *seat->data_offer_copy_paste_has_image;
+  /* A URI transfer below can dispatch removal of this seat. */
+  const std::shared_ptr<GWL_Seat::ClipboardImage> image = seat->clipboard_image;
+  const uint64_t serial = image->serial.load();
+  if (image->has_image.has_value()) {
+    return *image->has_image;
   }
 
   GHOST_TSuccess result = GHOST_kFailure;
@@ -9111,12 +9146,50 @@ GHOST_TSuccess GHOST_SystemWayland::hasClipboardImage() const
     }
   }
 
-  seat->data_offer_copy_paste_has_image = result;
+  if (image->serial.load() != serial) {
+    return GHOST_kFailure;
+  }
+  image->has_image = result;
 
   return result;
 }
 
-uint *GHOST_SystemWayland::getClipboardImage(int *r_width, int *r_height) const
+/**
+ * The copy-paste offer's \a mime bytes for one paste: transferred once, then shared by the size
+ * probe and the read (#GWL_Seat::ClipboardImage::transfer).
+ */
+static const char *system_clipboard_get_for_paste(
+    GWL_Display *display,
+    const std::shared_ptr<GWL_Seat::ClipboardImage> &image,
+    const char *mime,
+    const bool nil_terminate,
+    size_t *r_data_len)
+{
+  return image->transfer.get_current(
+      image->serial, mime, r_data_len, [&](size_t *r_len) {
+        return system_clipboard_get(display, nil_terminate, mime, r_len);
+      });
+}
+
+/** The first path in the offer's `text/uri-list` (`malloc`, the caller frees it), or null. */
+static char *system_clipboard_first_path(
+    GWL_Display *display, const std::shared_ptr<GWL_Seat::ClipboardImage> &image)
+{
+  size_t data_len = 0;
+  const char *data = system_clipboard_get_for_paste(
+      display, image, ghost_wl_mime_text_uri_list, true, &data_len);
+  if (data == nullptr) {
+    return nullptr;
+  }
+  std::vector<std::string_view> uris = gwl_clipboard_uri_ranges(data, data_len);
+  if (uris.empty()) {
+    return nullptr;
+  }
+  const std::string_view &uri = uris.front();
+  return GHOST_URL_decode_alloc(uri.data(), uri.size());
+}
+
+blender::ImBuf *GHOST_SystemWayland::getClipboardImageBuffer() const
 {
 #ifdef USE_EVENT_BACKGROUND_THREAD
   std::lock_guard lock_server_guard{*server_mutex};
@@ -9127,55 +9200,75 @@ uint *GHOST_SystemWayland::getClipboardImage(int *r_width, int *r_height) const
     return nullptr;
   }
 
-  uint *rgba = nullptr;
+  /* Keep the transfer alive even if a clipboard round-trip removes the seat. */
+  const std::shared_ptr<GWL_Seat::ClipboardImage> image = seat->clipboard_image;
+  blender::ImBuf *ibuf = nullptr;
 
   GWL_DataOffer *data_offer = seat->data_offer_copy_paste;
   if (data_offer) {
-    blender::ImBuf *ibuf = nullptr;
-
     /* Check if the source offers a supported mime type.
      * This check could be skipped, because the paste option is not supposed to be enabled
      * otherwise. */
     if (data_offer->types.contains(ghost_wl_mime_img_png)) {
+      /* The bytes #getClipboardImageSize transferred for this paste, if it asked. */
       size_t data_len = 0;
-      char *data = system_clipboard_get(display_, false, ghost_wl_mime_img_png, &data_len);
-
+      const char *data = system_clipboard_get_for_paste(
+          display_, image, ghost_wl_mime_img_png, false, &data_len);
       if (data) {
         /* Generate the image buffer with the received data. */
         ibuf = blender::IMB_load_image_from_memory(
             (const uint8_t *)data, data_len, blender::ImBufFlags::ByteData, "<clipboard>");
-        free(data);
       }
     }
     else if (data_offer->types.contains(ghost_wl_mime_text_uri_list)) {
-      const bool nil_terminate = true;
-      size_t data_len = 0;
-      char *data = system_clipboard_get(
-          display_, nil_terminate, ghost_wl_mime_text_uri_list, &data_len);
-
-      if (data) {
-        std::vector<std::string_view> uris = gwl_clipboard_uri_ranges(data, data_len);
-        if (!uris.empty()) {
-          const std::string_view &uri = uris.front();
-          char *filepath = GHOST_URL_decode_alloc(uri.data(), uri.size());
-          ibuf = blender::IMB_load_image_from_filepath(filepath, blender::ImBufFlags::ByteData);
-          free(filepath);
-        }
-        free(data);
+      if (char *filepath = system_clipboard_first_path(display_, image)) {
+        ibuf = GHOST_ClipboardImage_file_load(filepath);
+        free(filepath);
       }
     }
+  }
+  /* The paste is read: its transferred bytes are not kept. */
+  image->transfer.clear();
 
-    if (ibuf) {
-      *r_width = ibuf->x;
-      *r_height = ibuf->y;
-      const size_t byte_count = size_t(ibuf->x) * size_t(ibuf->y) * 4;
-      rgba = (uint *)malloc(byte_count);
-      std::memcpy(rgba, ibuf->byte_data(), byte_count);
-      blender::IMB_freeImBuf(ibuf);
-    }
+  /* Float-only pixels (16-bit PNG, EXR, HDR) are converted to bytes. */
+  return GHOST_ClipboardImage_flatten(ibuf);
+}
+
+GHOST_TSuccess GHOST_SystemWayland::getClipboardImageSize(int *r_width, int *r_height) const
+{
+#ifdef USE_EVENT_BACKGROUND_THREAD
+  std::lock_guard lock_server_guard{*server_mutex};
+#endif
+
+  GWL_Seat *seat = gwl_display_seat_active_get(display_);
+  if (!seat) [[unlikely]] {
+    return GHOST_kFailure;
   }
 
-  return rgba;
+  /* A transfer can dispatch seat removal; no seat-owned state is used after it returns. */
+  const std::shared_ptr<GWL_Seat::ClipboardImage> image = seat->clipboard_image;
+  bool found = false;
+  GWL_DataOffer *data_offer = seat->data_offer_copy_paste;
+  if (data_offer) {
+    /* The offer #getClipboardImageBuffer reads: transferred once here and kept for that read,
+     * the size taken from the PNG's header before anything is decoded. */
+    if (data_offer->types.contains(ghost_wl_mime_img_png)) {
+      size_t data_len = 0;
+      const char *data = system_clipboard_get_for_paste(
+          display_, image, ghost_wl_mime_img_png, false, &data_len);
+      if (data) {
+        found = GHOST_ClipboardImage_png_size(
+            reinterpret_cast<const uint8_t *>(data), data_len, r_width, r_height);
+      }
+    }
+    else if (data_offer->types.contains(ghost_wl_mime_text_uri_list)) {
+      if (char *filepath = system_clipboard_first_path(display_, image)) {
+        found = GHOST_ClipboardImage_file_size(filepath, r_width, r_height);
+        free(filepath);
+      }
+    }
+  }
+  return found ? GHOST_kSuccess : GHOST_kFailure;
 }
 
 GHOST_TSuccess GHOST_SystemWayland::putClipboardImage(uint *rgba, int width, int height) const
@@ -9196,6 +9289,9 @@ GHOST_TSuccess GHOST_SystemWayland::putClipboardImage(uint *rgba, int width, int
   /* Load buffer into an #ImBuf and convert to PNG. */
   blender::ImBuf *ibuf = blender::IMB_allocFromBuffer(
       reinterpret_cast<uint8_t *>(rgba), nullptr, width, height, 32);
+  if (ibuf == nullptr) {
+    return GHOST_kFailure; /* Out of memory. */
+  }
   ibuf->ftype = blender::IMB_FTYPE_PNG;
   ibuf->foptions.quality = 15;
   blender::Vector<uint8_t> encoded = blender::IMB_save_image_to_buffer(
@@ -9208,9 +9304,13 @@ GHOST_TSuccess GHOST_SystemWayland::putClipboardImage(uint *rgba, int width, int
   /* Copy encoded buffer to data source. */
   GWL_SimpleBuffer *imgbuffer = &data_source->buffer_out;
   gwl_simple_buffer_free_data(imgbuffer);
-  imgbuffer->data_size = encoded.size();
-  char *data = static_cast<char *>(malloc(imgbuffer->data_size));
+  char *data = static_cast<char *>(malloc(encoded.size()));
+  if (data == nullptr) {
+    blender::IMB_freeImBuf(ibuf);
+    return GHOST_kFailure;
+  }
   std::memcpy(data, encoded.data(), encoded.size());
+  imgbuffer->data_size = encoded.size();
   imgbuffer->data = data;
 
   data_source->wl.source = wl_data_device_manager_create_data_source(

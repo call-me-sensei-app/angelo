@@ -9,6 +9,8 @@ Angelo's add-on makes passes ``import_options``, so a new import path cannot for
 unwelded morph file is in Blender's bundled importer. The real imports run in test_blender_gltf_morph_weld.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import json
 import shutil

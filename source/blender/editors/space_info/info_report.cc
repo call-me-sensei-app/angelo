@@ -330,6 +330,7 @@ static wmOperatorStatus report_delete_exec(bContext *C, wmOperator * /*op*/)
     if ((report->type & report_mask) && (report->flag & SELECT)) {
       BLI_remlink(&reports->list, report);
       MEM_delete(report->message);
+      MEM_delete(report->message_untranslated);
       MEM_delete(report);
     }
 

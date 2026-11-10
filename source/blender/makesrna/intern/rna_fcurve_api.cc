@@ -21,7 +21,9 @@
 #ifdef RNA_RUNTIME
 
 #  include <cstddef>
+#  include <cstring>
 
+#  include "BKE_angelo_fcurve_digest.hh"
 #  include "BKE_fcurve.hh"
 #  include "BKE_report.hh"
 
@@ -105,6 +107,16 @@ static void rna_FCurve_bake(ID *id,
   WM_main_add_notifier(NC_ANIMATION | ND_ANIMCHAN | NA_EDITED, nullptr);
 }
 
+/* Angelo: action_key_digest.py. Reads only: no update, no tag. */
+static void rna_FCurve_angelo_keys_digest(FCurve *fcu, bool selection, char *result)
+{
+  const std::optional<std::string> digest = BKE_angelo_fcurve_keys_digest(*fcu, selection);
+  /* 32 digits or "non-finite", with its terminator, in the 33-byte output (no BLI_string: its
+   * header is BLI_string.h on 5.2 and BLI_string.hh on 5.3). */
+  const char *text = digest ? digest->c_str() : "non-finite";
+  memcpy(result, text, strlen(text) + 1);
+}
+
 }  // namespace blender
 
 #else
@@ -185,6 +197,20 @@ void RNA_api_fcurves(StructRNA *srna)
                int(animrig::BakeCurveRemove::IN_RANGE),
                "Remove Options",
                "Choose which keys should be automatically removed by the bake");
+
+  /* Angelo: an exact digest of the keys and samples for the agent's revisions and program
+   * fingerprints (doc/angelo/native_coverage.rst, "Animation work bounds"). */
+  func = RNA_def_function(srna, "angelo_keys_digest", "rna_FCurve_angelo_keys_digest");
+  RNA_def_function_ui_description(
+      func,
+      "Exact digest of every key setting and sample, valid within this session; 'non-finite' "
+      "when a stored value is not finite");
+  RNA_def_boolean(
+      func, "selection", false, "Selection", "Include the select state of keys and samples");
+  parm = RNA_def_string(
+      func, "result", nullptr, 33, "Result", "32 hexadecimal digits, or 'non-finite'");
+  RNA_def_parameter_flags(parm, PROP_THICK_WRAP, ParameterFlag(0));
+  RNA_def_function_output(func, parm);
 }
 
 void RNA_api_drivers(StructRNA * /*srna*/)

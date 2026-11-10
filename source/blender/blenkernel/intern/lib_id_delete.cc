@@ -50,6 +50,11 @@ using namespace bke::id;
 
 void BKE_libblock_free_data(ID *id, const bool do_id_user)
 {
+  /* Angelo: every path that frees an ID's data releases its Python wrappers too. Some free an ID
+   * with this alone (an object's owned evaluated point cloud, curves, volume or grease pencil;
+   * the previous window manager), and their wrappers then read freed memory. */
+  BKE_libblock_free_data_py(id);
+
   if (id->properties) {
     IDP_FreeProperty_ex(id->properties, do_id_user);
     id->properties = nullptr;
@@ -444,6 +449,19 @@ void BKE_libblock_free_data_py(ID *id)
 #  endif
   if (id->py_instance) {
     BPY_DECREF_RNA_INVALIDATE(id->py_instance);
+    /* Angelo: released once; a later call (#BKE_libblock_free_data) is a no-op. */
+    id->py_instance = nullptr;
+  }
+#else
+  UNUSED_VARS(id);
+#endif
+}
+
+void BKE_libblock_py_sub_data_invalidate(ID *id)
+{
+#ifdef WITH_PYTHON
+  if (id->py_instance) {
+    BPY_rna_instance_dependents_invalidate(id->py_instance, true);
   }
 #else
   UNUSED_VARS(id);

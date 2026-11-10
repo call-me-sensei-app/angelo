@@ -9,6 +9,8 @@ and its receipt (``codex_connect.stamp_route``) follow that answer; an answer wi
 answer is the only way across: the worker's environment never carries ``ANGELO_AGENT_RUNTIME``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

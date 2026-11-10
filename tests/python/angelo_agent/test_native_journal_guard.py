@@ -12,6 +12,8 @@ an open name). R6: the 1.0.6 rehearsal's Windows suites failed every rewrite wit
 check handle held across the replace; the earlier model let a delete-sharing handle pass, so it never caught that.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import errno
 import os
 import stat
@@ -24,9 +26,15 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from angelo_agent import session_guard, session_journal, sessions, win32_replace  # noqa: E402
+from angelo_agent import session_guard, session_journal, sessions, shared_replace, win32_replace  # noqa: E402
 from angelo_agent import worker_journal_owner as owner  # noqa: E402
 from angelo_agent.sessions import SessionStore  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
+
+# The stand-in for a POSIX-semantics rename over a file a reader holds is this host's own os.replace, which only a
+# POSIX host lets replace an open file; on Windows the real rename is checked by windows_journal_replace_check.py.
+POSIX_RENAME_STAND_IN = unittest.skipIf(os.name == "nt", environment_skip(
+    "stands in for Windows' POSIX-semantics rename with a POSIX host's os.replace over an open file"))
 
 
 def _row(state, text):
@@ -266,7 +274,8 @@ class FakeWindows:
                                descriptor=lambda handle, _flags: handle, invalid=self.invalid)
 
     def patches(self, case):
-        for target, name, value in ((session_journal, "_WINDOWS", True), (session_journal, "_win32", self.api),
+        for target, name, value in ((session_journal, "_WINDOWS", True), (shared_replace, "_WINDOWS", True),
+                                    (session_journal, "_win32", self.api),
                                     (session_journal, "fcntl", None), (session_guard, "fcntl", None),
                                     (session_journal.os, "replace", self.replace),
                                     (win32_replace, "_posix", self.posix_replace), (win32_replace, "_logged", False),
@@ -383,6 +392,7 @@ class PosixWindowsTests(Case):
         self.windows.patches(self)
         super().setUp()
 
+    @POSIX_RENAME_STAND_IN
     def test_a_compaction_lands_while_a_reader_holds_the_file(self):
         reader = session_journal.open_shared(self.path)   # The mirror's read in progress.
         self.addCleanup(self.windows.let_go, reader)
@@ -393,6 +403,7 @@ class PosixWindowsTests(Case):
         self.assertEqual(session_journal.read(self.path)[1].records, 0)
         self.assertEqual(_texts(self.path), self.saved)
 
+    @POSIX_RENAME_STAND_IN
     def test_a_first_rewrite_after_a_load_lands_while_a_reader_holds_the_file(self):
         first = SessionStore(self.directory, str(uuid.uuid4()))   # A lead chat, saved, then opened again.
         state = first.load()

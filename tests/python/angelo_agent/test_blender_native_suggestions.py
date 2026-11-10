@@ -8,6 +8,10 @@ and Claude CLIs never run and no real profile, credential or Keychain is used.
 Run through ``run_native_suites.py --gui`` (needs ``--enable-event-simulate``).
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import os
@@ -92,7 +96,10 @@ def deliver_stand_in_status():
     for mode, status in STAND_IN.items():
         ui._authentication.modes[mode] = mode
         ui._authentication.running.add(mode)
-        ui._authentication.events.put((mode, status, False))
+        attempt = "stand-in-" + mode   # authentication.pump drops a result that is not the identity's current attempt.
+        with ui._authentication.lock:
+            ui._authentication._attempts[mode] = attempt
+        ui._authentication.events.put((mode, status, False, attempt, True))   # (identity, status, logged_in, attempt, drained)
 
 
 def offered():

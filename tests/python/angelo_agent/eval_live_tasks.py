@@ -124,7 +124,7 @@ LONG_SESSION_TASKS = 40
 MAX_LONG_SESSION_TASKS = 120
 # Scenario sets (scenario-<id>, scenario_specs) are multi-turn builds against reference images.
 TASK_SETS = (("default", "long", "delegation", "coverage", "survey", "survey-questions", "rig",
-              "engine-link-compare") + scenario_specs.TASK_SETS
+              "engine-link-compare", "steering") + scenario_specs.TASK_SETS
              + scenario_specs.ONESHOT_TASK_SETS)   # oneshot-<id>: one message, one turn (doc/angelo/oneshot_tests.rst).
 # The objects of the delegation set, by check alias: four 1 m cubes on the X axis.
 AUDIT_OBJECTS = {"$a": "Audit A", "$b": "Audit B", "$c": "Audit C", "$d": "Audit D"}
@@ -403,6 +403,9 @@ def tasks_for(task_set="default", count=LONG_SESSION_TASKS, version=None):
             import eval_quality_loop
             return eval_quality_loop.apply(tasks)
         return tasks
+    if task_set == "steering":   # A second message while the agent works (eval_steer).
+        import eval_steer
+        return eval_steer.tasks()
     if task_set == "engine-link-compare":   # The engine link tools against the script route (engine_link_compare).
         import engine_link_compare
         return engine_link_compare.tasks()

@@ -9,6 +9,8 @@ last lines, with the private folder, the home folder and the user name replaced,
 log. Contract: doc/angelo/external_mcp.rst, "Headless". A real process stands in for Angelo here.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import getpass
 import io
 import os
@@ -24,11 +26,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_cor
 from angelo_agent.headless_pipe import ChildProcess  # noqa: E402
 from angelo_agent.headless_session import (CHILD_OUTPUT, PRIVATE_PREFIX, HeadlessSession,  # noqa: E402
                                            HeadlessUnavailable)
+from host_test_policy import environment_skip  # noqa: E402
 
 HOME = os.path.expanduser("~")
 
 
-@unittest.skipIf(sys.platform == "win32", "Headless sessions are macOS and Linux for now")
+@unittest.skipIf(sys.platform == "win32", environment_skip("Headless sessions are macOS and Linux for now"))
 class ChildOutputTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="hco-"))

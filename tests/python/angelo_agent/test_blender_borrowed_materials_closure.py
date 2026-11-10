@@ -25,6 +25,10 @@ suite pins:
   evaluation and commits, where the owned-ID check alone would block.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 from pathlib import Path
@@ -188,6 +192,26 @@ def element_views_are_leaves():
     views += [drawing.curve_offsets, hair_data.attributes["position"].data, drawing.attributes["position"].data]
     holding = []
     for view in views:
+        try:
+            view[0].keys()
+            holding.append(view[0].bl_rna.identifier)
+        except TypeError:  # "this type doesn't support IDProperties"
+            pass
+    # A shape key's points are declared as UnknownType: check the real item types instead.
+    shape_types = (bpy.types.ShapeKeyPoint, bpy.types.ShapeKeyBezierPoint, bpy.types.ShapeKeyCurvePoint)
+    report["observed"]["element_views"]["shape_key_points_nested"] = [t.bl_rna.identifier for t in shape_types
+                                                                      if links_of(t.bl_rna)]
+    check("shape_key_points_are_leaves", not report["observed"]["element_views"]["shape_key_points_nested"])
+    keyed = D.meshes.new("Keyed Views")
+    keyed.from_pydata([(0, 0, 0), (1, 0, 0), (0, 1, 0)], [], [(0, 1, 2)])
+    keyed_object = D.objects.new("Keyed Views", keyed)
+    keyed_object.shape_key_add(name="Basis")
+    views.append(keyed.shape_keys.key_blocks[0].data)
+    curve_keyed = D.objects.new("Keyed Curve", D.curves.new("Keyed Curve", "CURVE"))
+    curve_keyed.data.splines.new("BEZIER")
+    curve_keyed.shape_key_add(name="Basis")
+    views.append(curve_keyed.data.shape_keys.key_blocks[0].data)
+    for view in views[-2:]:
         try:
             view[0].keys()
             holding.append(view[0].bl_rna.identifier)

@@ -172,7 +172,9 @@ def run_codex(args, model, prompt, folder, server):
         config += ["-c", "mcp_servers.%s.env.%s=%s" % (name, key, json.dumps(str(value)))]
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(("OPENAI", "CODEX", "ANGELO", "BLENDER", "PYTHON", "ANTHROPIC", "CLAUDE"))}
-    env["CODEX_HOME"] = args.codex_home
+    # A billed run's profile: the evaluation account only (a dry run's provider is fake).
+    import provider_isolation as isolation
+    env["CODEX_HOME"] = isolation.checked("codex-profile", args.codex_home, fake=getattr(args, "fake_url", None))
     if args.provider:
         env["PROBE_KEY"] = "sk-dry-run"
     started = time.monotonic()
@@ -223,7 +225,7 @@ def main():
         args.provider = ["-c", "model_provider=probe", "-c", "model_providers.probe.name=probe",
                          "-c", "model_providers.probe.base_url=" + json.dumps(url + "/v1"),
                          "-c", "model_providers.probe.env_key=PROBE_KEY", "-c", "model_providers.probe.wire_api=responses"]
-        args.codex_home = str(root / "dry-codex-home")
+        args.codex_home, args.fake_url = str(root / "dry-codex-home"), url
         Path(args.codex_home).mkdir(exist_ok=True)
     else:
         args.provider = []

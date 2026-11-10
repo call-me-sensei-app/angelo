@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Temporary profiles only; payloads test resource lifetime, never native recovery."""
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import json
 import os
 from pathlib import Path
@@ -18,6 +20,7 @@ from angelo_agent import checkpoints
 from angelo_agent.checkpoint_capture_pins import capture_is_active
 from angelo_agent.checkpoint_transactions import _transaction
 from fake_nt_files import FakeNtApi
+from host_test_policy import environment_skip
 
 SESSION = "00000000-0000-4000-8000-000000000001"
 OTHER = "00000000-0000-4000-8000-000000000002"
@@ -460,7 +463,8 @@ class CaptureOutputTests(unittest.TestCase):
             self.assertFalse(capture_is_active(self.root, *seen[0]))
 
 
-@unittest.skipIf(os.name == "nt", "POSIX stand-in; native Windows uses the base tests")
+@unittest.skipIf(os.name == "nt", environment_skip(
+    "the Windows API stand-in for POSIX hosts; native Windows runs the base tests on the real API"))
 class CaptureOutputFakeNtTests(CaptureOutputTests):
     def setUp(self):
         self.api = FakeNtApi()

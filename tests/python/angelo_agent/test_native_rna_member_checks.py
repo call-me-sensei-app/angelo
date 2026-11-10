@@ -13,6 +13,8 @@ tests unless Python itself puts ``m`` on ``X`` somewhere there (``bpy.types.X.m 
 ``.functions`` or an instance. A host stub has no RNA, so the source is read.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import unittest
 from pathlib import Path

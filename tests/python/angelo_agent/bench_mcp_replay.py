@@ -170,7 +170,9 @@ def main():
         output["mcp_server"] = server
         command = mcp.claude_command(config, config_path, server["tools"])
         output["claude_command"] = command
-        stream = mcp.ClaudeStream(command, mcp.clean_environment(CLAUDE_CONFIG_DIR=config["claude_config_dir"],
+        import provider_isolation as isolation   # The profile's account, checked before the first billed message.
+        stream = mcp.ClaudeStream(command, mcp.clean_environment(CLAUDE_CONFIG_DIR=isolation.checked(
+                                      "claude-profile", config["claude_config_dir"]),
                                                                  TMPDIR=folder / "tmp"), cwd, folder)
         usage = ClaudeProcessUsage()
         for index, message in enumerate(messages, 1):

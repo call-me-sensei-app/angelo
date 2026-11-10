@@ -15,6 +15,10 @@ Angelo binary: ``--background --factory-startup --disable-autoexec
 --python-exit-code 1``. No provider or paid call.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -146,6 +150,7 @@ def existing_system():
     """An existing system's settings: previewed on a private copy, accepted, then a per-system setting."""
     queries.invalidate()
     live = obj("Cube").particle_systems["QA Hair"].settings
+    live_uid, particles_before = live.session_uid, len(bpy.data.particles)
     arguments = program([op("particle_set", obj("Cube"), modifier="QA Hair", settings={"count": 300})],
                         writes=[obj("Cube")], mode="PREVIEW")
     result = settle(native.begin(window, "angelo_scene_program", arguments))
@@ -155,9 +160,11 @@ def existing_system():
     check("preview_accept_ready", settle(accepted).get("ready_to_commit"))
     check("preview_accept_commits", commit(accepted))
     settings = obj("Cube").particle_systems["QA Hair"].settings
-    replaced = [block for block in bpy.data.particles if block != settings]
+    # The settings it replaced are freed, not left without users (commit_orphans).
     check("accept_gives_the_system_its_edited_copy", settings.count == 300 and settings.name == "ParticleSettings"
-          and SOURCE not in settings.keys() and len(replaced) == 1 and replaced[0].users == 0)
+          and SOURCE not in settings.keys() and settings.session_uid != live_uid
+          and len(bpy.data.particles) == particles_before
+          and live_uid not in {block.session_uid for block in bpy.data.particles})
     job, _ = run(program([op("modifier_configure", obj("Cube"), type="PARTICLE_SYSTEM", modifier="QA Hair",
                              settings={"particle_system.seed": 7})], writes=[obj("Cube")]))
     check("per_system_setting_commits", commit(job) and passed(job)

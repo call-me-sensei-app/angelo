@@ -21,11 +21,28 @@ from .program_names import (CLAIMS, FORWARD, KEPT_ELSEWHERE, REPEATS, REQUESTED,
                             requested_names)
 from . import stage_names
 
+WEIGHT_SETTINGS = ("use_auto_normalize", "use_multipaint", "vertex_group_weight", "vertex_group_subset",
+                   "vertex_group_user")
+
 
 # Stage-only ID property naming the live material or node group a staged clone
 # copies. No kernel edits an existing material or node group, so commit maps
 # such clones back to their originals (program_identities._restore_source_identities).
 MATERIAL_SOURCE = "_angelo_stage_source_uid"
+
+
+def stage_scene_context(scene):
+    """The stage scene and its view layer as the context's, for writes to the stage scene's own settings.
+
+    Blender runs a scene setting's RNA update with the context's scene and view layer, not the scene written:
+    Auto Normalize, Multi-Paint and the vertex group subset tag the context view layer's active object for a
+    geometry update (``rna_Scene_update_active_object_data``), and the current frame syncs the context's sequencer
+    time. Written from the person's context, staging tagged the person's active object, so the next view-layer update
+    evaluated it again: a sculpted Multires object lost its fine-grid hiding, and with its grids in two windows the
+    evaluation moved the Sculpt editing authority and the commit refused (test_blender_program_sculpt_undo,
+    test_blender_sculpt_checkpoint_review, 1.0.10). The scene and view layer are given as one pair without a
+    window (``_override``). A plain override, not a generator: no scene is held across a yield (live_target)."""
+    return _bpy().context.temp_override(scene=scene, view_layer=scene.view_layers[0])
 
 
 class ProgramObjectsMixin:
@@ -42,13 +59,20 @@ class ProgramObjectsMixin:
         bpy = _bpy()
         suffix = uuid.uuid4().hex
         scene = bpy.data.scenes.new("__angelo_stage_" + suffix)
-        # A new scene takes the Auto-Keying preference (Blender's scene defaults): no staged operator keys.
-        scene.tool_settings.use_keyframe_insert_auto = False
+        with stage_scene_context(scene):
+            # A new scene takes the Auto-Keying preference (Blender's scene defaults): no staged operator keys.
+            scene.tool_settings.use_keyframe_insert_auto = False
+            # Vertex group operators read these from the scene they run in: the person's, never a new scene's
+            # defaults (Blender 5.3's turn Auto Normalize on, which would zero the other groups' weights).
+            for name in WEIGHT_SETTINGS:
+                setattr(scene.tool_settings, name, getattr(self.scene.tool_settings, name))
+            scene.frame_current = self.scene.frame_current
+            scene.frame_subframe = self.scene.frame_subframe
         collection = bpy.data.collections.new("__angelo_stage_objects_" + suffix)
         scene.collection.children.link(collection)
-        scene.frame_current = self.scene.frame_current
-        scene.frame_subframe = self.scene.frame_subframe
         scene[PROGRAM_STAGE[0]] = suffix
+        from .stage_routes import hold
+        hold(scene)  # Held until the complete routing check releases one evaluation.
         stage = Stage(scene, collection, scene.view_layers[0], binding, originals=binding["originals"],
                       owned_ids=[scene, collection], borrowing=borrowing)
         stage.extras[stage_names.STAGE] = suffix[:8]  # Copies take private names (stage_names), never "X.001".
@@ -79,10 +103,11 @@ class ProgramObjectsMixin:
                 self.record_collections(stage)  # A membership check reads these, never the private stage collection.
             if "visibility_set" in kinds or any(check.get("kind") == "visibility" for check in checks):
                 self.record_visibility(stage)
-            if binding.get("scene"):
-                self.copy_scene_settings(stage)
             from . import program_preimages
-            program_preimages.stage_scene_paths(self, stage)
+            with stage_scene_context(scene):   # The bound scene's settings, written on the stage scene.
+                if binding.get("scene"):
+                    self.copy_scene_settings(stage)
+                program_preimages.stage_scene_paths(self, stage)
             from .material_sharing import stage_property_facts
             stage_property_facts(stage)  # Bound users of the materials property_set writes in place, for the kernel.
             if kinds & {"node_edit", "material_principled", "shader_nodes"}:
@@ -319,12 +344,19 @@ class ProgramObjectsMixin:
             # A staged copy is animated although _plan saw no animation. Nothing has evaluated this new
             # stage yet, so nothing went through a borrowed slot: clone now, as for a program that borrows nothing.
             self.unborrow(stage)
+        from . import stage_links
+        stage_links.close(self, stage)  # Every other link names the stage too (reference copies), or it is refused.
+        if owns_animated(stage):
+            # Closing links can add an animated reference copy (a World reached by a custom pointer, for example).
+            # No evaluation has run yet: privatize borrowed slots, then close the new material copies too.
+            self.unborrow(stage)
+            stage_links.close(self, stage)
         from .action_kernels import StagedActionContext
         mapping = {obj.as_pointer(): stage.objects[handle] for handle, obj in stage.originals.items()}
         for block in tuple(stage.owned_ids):
             if isinstance(block, (_bpy().types.Scene, _bpy().types.Collection)):
                 continue  # Fresh stage container settings contain no source object links.
-            for holder, prop, dependency in _embedded_links(block):
+            for holder, prop, dependency in list(_embedded_links(block)):  # The whole walk before a write.
                 if isinstance(dependency, _bpy().types.Object):
                     private = mapping.get(dependency.as_pointer())
                     if private is None and not any(dependency == value for value in stage.objects.values()):
@@ -345,6 +377,7 @@ class ProgramObjectsMixin:
                                            owned_ids=stage.owned_ids, view_layer=stage.view_layer,
                                            scene_handles=(scene["handle"],) if scene else (), extras=stage.extras)
         stage.context.borrowing = stage.borrowing
+        stage.context.originals = stage.originals
         self._update_stage(stage)
 
 
@@ -353,7 +386,8 @@ class ProgramObjectsMixin:
         from .action_budget import assert_evaluated, assert_stage_budgets
         from .kept_values import kept_update
         assert_stage_budgets(stage.context)
-        kept_update(stage.context, stage.view_layer.update)  # Unkeyed values Blender keeps stay (kept_values).
+        from . import stage_routes
+        stage_routes.guarded(stage, lambda: kept_update(stage.context, stage.view_layer.update))
         assert_evaluated(stage.view_layer.depsgraph, stage.collection.objects)
 
 

@@ -7,9 +7,16 @@ its page folder, and tells the page when a new export is ready. The merge bakes 
 joins only static, unshared, unskinned nodes; the exporter's classes are stood in for by plain ones here.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
+import contextlib
+import errno
 import http.client
+import io
+import socket
 import struct
 import sys
+import threading
 import unittest
 from pathlib import Path
 
@@ -83,6 +90,107 @@ class PreviewServerTests(unittest.TestCase):
             connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
             connection.request("GET", "/")
             connection.getresponse()
+
+
+class PreviewServerLoadTests(unittest.TestCase):
+    """A page load while the server's accept thread can't run, and a browser that goes away mid-reply.
+
+    The accept thread needs Python's lock, which Blender's main thread keeps through the long C calls of an export
+    while a World bake loads every core; the browser meanwhile opens the page's files over many connections at once.
+    Every connection must wait in the backlog rather than be refused (Windows) or dropped (macOS, Linux)."""
+
+    PAGE_LOAD = 32       # Connections at once: a reload's modules, with room for a second reload and the stream.
+    CONNECT_S = 3.0      # Past macOS's and Linux's first SYN retry (1 s): a dropped connection times out.
+
+    def setUp(self):
+        self.server = PreviewServer()
+        self.addCleanup(self.server.close)
+        self.address = ("127.0.0.1", self.server.port)
+        self.host = "127.0.0.1:%d" % self.server.port
+
+    def request(self, name):
+        return ("GET /%s/%s HTTP/1.0\r\nHost: %s\r\n\r\n" % (self.server.token, name, self.host)).encode("ascii")
+
+    def hold_accepts(self):
+        """The accept loop stops after its next accept until ``release`` is set, as while the main thread exports."""
+        held, release = threading.Event(), threading.Event()
+        serve = self.server._server.process_request
+
+        def process_request(request, address):
+            held.set()
+            release.wait(30)
+            serve(request, address)
+        self.server._server.process_request = process_request
+        self.addCleanup(release.set)
+        return held, release
+
+    def test_a_page_load_is_never_refused_while_the_server_cannot_accept(self):
+        held, release = self.hold_accepts()
+        first = socket.create_connection(self.address, timeout=5)
+        self.addCleanup(first.close)
+        first.sendall(self.request("app.js"))
+        self.assertTrue(held.wait(5))
+        files = ["app.js", "look.js", "panel.js", "compare.js", "shaders.js", "app.css",
+                 "vendor/three/build/three.module.min.js", "report.json", ""]
+        outcomes = [None] * self.PAGE_LOAD
+
+        def load(index):
+            try:
+                sock = socket.create_connection(self.address, timeout=self.CONNECT_S)
+            except OSError as error:   # Refused (Windows) or timed out after dropped SYNs (macOS, Linux).
+                outcomes[index] = error
+                return
+            sock.settimeout(10)
+            sock.sendall(self.request(files[index % len(files)]))
+            outcomes[index] = sock
+        threads = [threading.Thread(target=load, args=(index,)) for index in range(self.PAGE_LOAD)]
+        for thread in threads:
+            thread.start()
+        for version in range(5):   # Re-exports land meanwhile.
+            self.server.publish(b"glTF-%d" % version, {"status": "ok"})
+        for thread in threads:
+            thread.join(self.CONNECT_S + 5)
+        release.set()
+        failed = [repr(item) for item in outcomes if not isinstance(item, socket.socket)]
+        for item in outcomes:
+            if isinstance(item, socket.socket):
+                self.addCleanup(item.close)
+        self.assertEqual(failed, [], "connections refused or dropped while the server could not accept")
+        for sock in [first] + outcomes:
+            reply = b""
+            while chunk := sock.recv(65536):
+                reply += chunk
+            self.assertTrue(reply.startswith(b"HTTP/1.0 200 "), reply[:80])
+
+    def test_an_aborted_reply_is_quiet_and_the_server_keeps_serving(self):
+        self.server.publish(b"g" * (32 << 20), {"status": "ok"})   # Larger than any socket buffer.
+        ended = threading.Event()
+        shutdown = self.server._server.shutdown_request
+
+        def shutdown_request(request):
+            shutdown(request)
+            ended.set()
+        self.server._server.shutdown_request = shutdown_request
+        printed = io.StringIO()
+        with contextlib.redirect_stderr(printed):
+            sock = socket.create_connection(self.address, timeout=5)
+            sock.sendall(self.request("scene.glb"))
+            self.assertTrue(sock.recv(1))   # The reply has started.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+            sock.close()                    # A reset, as a reload aborts the download (WinError 10053/10054).
+            self.assertTrue(ended.wait(10))
+        self.assertEqual(printed.getvalue(), "")
+        with socket.create_connection(self.address, timeout=5) as again:
+            again.sendall(self.request("report.json"))
+            self.assertTrue(again.recv(64).startswith(b"HTTP/1.0 200 "))
+
+    def test_only_a_browser_going_away_counts_as_aborted(self):
+        from angelo_agent.web_preview_server import aborted
+        for error in (ConnectionAbortedError(10053, "aborted"), BrokenPipeError(), ConnectionResetError(),
+                      TimeoutError(), OSError(errno.EPIPE, "pipe")):
+            self.assertTrue(aborted(error), error)
+        for error in (OSError(errno.EACCES, "denied"), ValueError("bad"), KeyError("x"), None):
+            self.assertFalse(aborted(error), error)
 
 
 # Stand-ins for the exporter's gltf2_io classes, with their constructor signatures.

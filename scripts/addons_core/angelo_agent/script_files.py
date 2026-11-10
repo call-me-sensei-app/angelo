@@ -31,6 +31,8 @@ import time
 import uuid
 from dataclasses import dataclass
 
+from . import change_clock, shared_replace
+
 FILE = "external-script-files.json"
 # angelo_execute_python's code limit (tool_specs): a longer file could never run as one script.
 MAX_CHARACTERS = 32768
@@ -65,6 +67,8 @@ def read_script(path):
     try:
         descriptor = os.open(real, flags)
     except OSError as error:
+        if os.path.isdir(real):   # Windows opens no folder as a file (access denied): name what it is.
+            raise ScriptFileError("%s is not a regular file" % path) from None
         raise ScriptFileError("Angelo can't open the script file %s: %s" % (path, error.strerror or error)) from None
     try:
         info = os.fstat(descriptor)
@@ -126,13 +130,15 @@ def _read(path):
     """``(entries, identity)`` of the file at ``path``: none, and None, when it is missing or unreadable."""
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
     try:   # Never waits on a FIFO or follows a link put at the name: only a regular file is read (fails closed).
-        descriptor = os.open(path, flags)
+        descriptor = shared_replace.open_shared(path, flags)   # Windows: sharing delete, so a save lands meanwhile.
     except OSError:
         return [], None
     try:
         info = os.fstat(descriptor)
         if not stat.S_ISREG(info.st_mode):
             return [], None
+        # A stat still in the clock's current tick (Windows) identifies nothing a later same-size write would not share.
+        identity = change_clock.cache_key(info, (info.st_ino, info.st_size, info.st_mtime_ns))
         with os.fdopen(os.dup(descriptor), "rb") as handle:
             data = handle.read(MAX_STORE + 1)
     except OSError:
@@ -141,7 +147,7 @@ def _read(path):
         os.close(descriptor)
     if len(data) > MAX_STORE:
         return [], None
-    return _parse(data.decode("utf-8", "replace")), (info.st_ino, info.st_size, info.st_mtime_ns)
+    return _parse(data.decode("utf-8", "replace")), identity
 
 
 MAX_STORE = 4 * 1024 * 1024
@@ -306,7 +312,7 @@ def _write(updated):
             json.dump({"version": 1, "files": updated}, handle, indent=1)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, _path)
+        shared_replace.replace(temporary, _path)   # The headless child reads it too: retried, else raised.
     except OSError:
         try:
             os.unlink(temporary)

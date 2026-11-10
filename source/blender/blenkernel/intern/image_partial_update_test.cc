@@ -378,4 +378,56 @@ TEST_F(ImagePartialUpdateTest, iterator)
   EXPECT_EQ(num_tiles_found, 4);
 }
 
+/* Angelo: `Image.angelo_pixel_revision` counts pixel writes, never a GPU texture rebuilt for
+ * another pass, layer, view or frame of the same pixels (break-it round 9, L1: two editors drawing
+ * two passes of one image counted on every redraw). */
+static uint64_t pixel_revision(const Image *image)
+{
+  return image->runtime->angelo_pixel_revision.load();
+}
+
+TEST_F(ImagePartialUpdateTest, angelo_pixel_revision_counts_each_pixel_write_once)
+{
+  const uint64_t start = pixel_revision(image);
+  BKE_image_partial_update_mark_full_update(image);
+  EXPECT_EQ(pixel_revision(image), start + 1);
+  rcti region;
+  BLI_rcti_init(&region, 10, 20, 40, 50);
+  BKE_image_partial_update_mark_region(image, image_tile, image_buffer, &region);
+  EXPECT_EQ(pixel_revision(image), start + 2);
+}
+
+TEST_F(ImagePartialUpdateTest, angelo_pixel_revision_ignores_drawing_another_pass_layer_or_frame)
+{
+  ePartialUpdateCollectResult result;
+  BKE_image_partial_update_collect_changes(image, partial_update_user);
+  const uint64_t start = pixel_revision(image);
+
+  /* A pass, then a layer, other than the GPU texture holds: rebuilt, not counted. */
+  ImageUser pass_user = {nullptr};
+  image->runtime->gpu_pass = 0;
+  pass_user.pass = 1;
+  BKE_image_ensure_gpu_texture(image, &pass_user);
+  EXPECT_EQ(pixel_revision(image), start);
+  result = BKE_image_partial_update_collect_changes(image, partial_update_user);
+  EXPECT_EQ(result, ePartialUpdateCollectResult::FullUpdateNeeded);
+  image->runtime->gpu_pass = 1;
+  image->runtime->gpu_layer = 0;
+  pass_user.layer = 1;
+  BKE_image_ensure_gpu_texture(image, &pass_user);
+  EXPECT_EQ(pixel_revision(image), start);
+
+  /* A frame other than the GPU texture holds. */
+  ImageUser frame_user = {nullptr};
+  image->runtime->gpuframenr = 3;
+  BKE_image_user_frame_calc(image, &frame_user, 1);
+  EXPECT_EQ(pixel_revision(image), start);
+  result = BKE_image_partial_update_collect_changes(image, partial_update_user);
+  EXPECT_EQ(result, ePartialUpdateCollectResult::FullUpdateNeeded);
+
+  /* A pixel write still counts, once. */
+  BKE_image_partial_update_mark_full_update(image);
+  EXPECT_EQ(pixel_revision(image), start + 1);
+}
+
 }  // namespace blender::bke::image::partial_update

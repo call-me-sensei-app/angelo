@@ -11,6 +11,8 @@ The real ``update_flow.Preparer`` and ``update_ready`` run here; only the downlo
 stood in for, and the staging holds still where a slow disk image would.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import os
 import shutil
@@ -29,6 +31,7 @@ import test_native_update_flow as flow_tests  # noqa: E402
 import test_native_update_lines as lines  # noqa: E402
 import test_native_update_ready as ready  # noqa: E402
 from angelo_agent import update_feed, update_flow, update_hold  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 
 WAIT = 10
 ADDONS = HERE.parents[2] / "scripts/addons_core"
@@ -72,7 +75,7 @@ class SlowMac(flow_tests.FakeMac):
             marker.write_text("first half")
             if hold is not None:
                 self.entered[version].set()
-                hold.wait(WAIT)
+                hold.wait()   # Only a release ends it (every test's cleanup releases): no clock decides "it waits".
             if not marker.is_file():
                 self.lost.append(version)
             marker.unlink(missing_ok=True)
@@ -433,7 +436,8 @@ class LockFileTests(unittest.TestCase):
         self.folder = Path(tempfile.mkdtemp()) / "updates" / "1.0.1"
         self.addCleanup(shutil.rmtree, self.folder.parent.parent, True)
 
-    @unittest.skipIf(update_hold.fcntl is None, "Windows deletes no file another handle has open")
+    @unittest.skipIf(update_hold.fcntl is None, environment_skip("Windows deletes no file another handle has open "
+                                                                 "(its branch: the test below)"))
     def test_a_lock_on_a_file_deleted_meanwhile_is_taken_again_and_never_waited_on_forever(self):
         real_stat, calls = os.stat, []
 

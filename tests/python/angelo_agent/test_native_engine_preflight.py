@@ -5,6 +5,8 @@ targets and formats its engine source covers and no other, every finding states 
 its source and versions, the name conventions match the engines' import code, the tools' arguments, and the tools'
 place in the families and the MCP levels."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import importlib
 import tempfile
@@ -398,6 +400,31 @@ class WebReadBackTests(unittest.TestCase):
         report.unlink()
         folder.rmdir()
 
+    def test_a_link_preflight_with_thousands_of_baked_objects_keeps_a_short_command_line(self):
+        """Windows refuses a command line past 32,767 characters: the spec goes in a file, whatever the scene."""
+        import json
+        import tempfile
+        import stat
+        import subprocess
+        from angelo_agent import engine_preflight_link
+        if sys.platform == "win32":   # Windows starts no "#!" script: Python runs the stand-in, its arguments as sent.
+            run = subprocess.run
+            self.enterContext(mock.patch.object(engine_preflight_link.subprocess, "run",
+                                                lambda command, **options: run([sys.executable, *command], **options)))
+        with tempfile.TemporaryDirectory() as folder:
+            log, binary = Path(folder, "call.json"), Path(folder, "Angelo")
+            binary.write_text("#!%s\nimport json, sys\nspec = json.load(open(sys.argv[-1], encoding='utf-8'))\n"
+                              "json.dump({'argv': sys.argv[1:], 'spec': spec}, open(%r, 'w'))\n" % (sys.executable, str(log)))
+            binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+            baked = [["Object.%05d" % index, "Baked.%05d" % index] for index in range(5000)]
+            engine_preflight_link.Runner(str(binary))._run(str(Path(folder, "a.blend")),
+                                                         {"folder": None, "report": str(Path(folder, "r.json")),
+                                                          "baked": baked})
+            call = json.loads(log.read_text())
+        self.assertEqual(call["spec"]["baked"], baked)
+        self.assertLess(len(" ".join(call["argv"])), 8192)   # The child's own code and its paths; never the list.
+        self.assertFalse(Path(call["argv"][-1]).exists())
+
     def test_a_replaced_link_preflight_leaves_no_folder(self):
         import tempfile
         from angelo_agent import engine_preflight_link
@@ -428,6 +455,51 @@ class WebReadBackTests(unittest.TestCase):
         self.assertIn("preflight", EVENT_OBSERVATION_KEYS)
         console = (ADDON / "console.py").read_text(encoding="utf-8")
         self.assertIn('turn.observation["preflight"]', console)
+
+
+class PreflightLoadIdentityTests(unittest.TestCase):
+    """The current path's stat cannot vouch for the scene Blender actually loaded from a different descriptor."""
+
+    def run_case(self, read_as, copied, changed=False):
+        from angelo_agent import document_file_identity, engine_preflight, private_roots
+        with tempfile.TemporaryDirectory() as folder:
+            blend, other, output = (Path(folder, name) for name in ("saved.blend", "other.blend", "export"))
+            blend.write_bytes(b"the original save")
+            other.write_bytes(b"another scene Blender read")
+            output.mkdir()
+            saved = blend.stat()
+            expected = [saved.st_dev, saved.st_ino, saved.st_size, saved.st_mtime_ns]
+            loaded = saved if read_as == "same" else other.stat()
+            native = None if read_as is None else (str(blend), loaded.st_dev, loaded.st_ino, loaded.st_size,
+                                                   loaded.st_mtime_ns, 0)
+            if changed:
+                other.replace(blend)
+            spec = {"blend_identity": expected, "scene_version": 7, "file": "copy.glb" if copied else None,
+                    "exporter": "gltf", "options": {}, "engine": "godot", "report": "report.json"}
+            fake = SimpleNamespace(data=SimpleNamespace(filepath=str(blend)), app=SimpleNamespace(background=True))
+            with mock.patch.dict(sys.modules, {"bpy": fake}), \
+                    mock.patch.object(document_file_identity, "_native", return_value=native), \
+                    mock.patch.object(private_roots, "allocate", return_value=output), \
+                    mock.patch.object(engine_preflight, "_export_to", return_value={"FINISHED"}) as exported, \
+                    mock.patch.object(engine_preflight, "after_writeback", return_value={"checked": True}) as checked:
+                result = engine_preflight.preflight_child(spec)
+            return result, checked.call_count, exported.call_count
+
+    def test_another_loaded_scene_is_not_the_original_save_even_when_its_path_is_restored(self):
+        for copied in (False, True):
+            with self.subTest(copied=copied):
+                self.assertEqual(self.run_case("other", copied), (None, 0, 0))
+
+    def test_a_load_without_descriptor_evidence_is_not_verified(self):
+        for copied in (False, True):
+            with self.subTest(copied=copied):
+                self.assertEqual(self.run_case(None, copied), (None, 0, 0))
+
+    def test_the_original_descriptor_and_unchanged_path_are_both_required(self):
+        for copied in (False, True):
+            with self.subTest(copied=copied):
+                self.assertEqual(self.run_case("same", copied), ({"checked": True}, 1, 0 if copied else 1))
+                self.assertEqual(self.run_case("same", copied, changed=True), (None, 0, 0))
 
 
 class SummaryTests(unittest.TestCase):

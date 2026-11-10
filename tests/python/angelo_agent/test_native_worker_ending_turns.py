@@ -16,6 +16,8 @@ told the ending's reason, not that the person cancelled (L-3). The binding is cl
 turn first (pinned below), so a new route cannot forget it.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import contextlib
 import io
@@ -90,7 +92,7 @@ class FailingProvider(Provider):
 
     def close(self):
         self.closing.set()
-        self.release.wait(5)
+        self.release.wait()   # Until released (its test's cleanup releases it): no clock ends "still closing".
 
 
 class BlockingProcess(Process):

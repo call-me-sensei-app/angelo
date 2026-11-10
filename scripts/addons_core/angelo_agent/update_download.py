@@ -27,7 +27,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import app_http
+from . import app_http, shared_replace
 from .app_http import NetworkError
 
 CHUNK = 256 * 1024
@@ -61,7 +61,7 @@ class Expected:
 
 def _digest_of(path, limit=None):
     digest, done = hashlib.sha256(), 0
-    with open(path, "rb") as handle:
+    with shared_replace.open_file(path) as handle:   # The download's own replace never refused by it.
         while limit is None or done < limit:
             chunk = handle.read(CHUNK if limit is None else min(CHUNK, limit - done))
             if not chunk:
@@ -201,7 +201,7 @@ def fetch(expected, target, *, stream=app_http.stream, progress=None, cancel=Non
     if digest.hexdigest() != expected.sha256:
         _discard(part)
         raise DownloadError("digest", "The downloaded file is not the release's file")
-    os.replace(part, target)
+    shared_replace.replace(part, target)   # Refused past its retries: raised, the verified part kept for a retry.
     _discard(part)
     return target
 

@@ -11,6 +11,8 @@ set ``ANGELO_BENCH_RECORDED_RUN`` to a recorded Claude head-to-head folder to
 check every request of it. No process, account or model is involved.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import sys

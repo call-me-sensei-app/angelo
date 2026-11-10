@@ -5,6 +5,8 @@ is quoted by ConvertTo-ProcessArgument and split back by the Windows command-lin
 MSVC runtime, which java.exe's launcher follows), and must come back as itself.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import shutil
 import subprocess
 import unittest

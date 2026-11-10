@@ -20,9 +20,11 @@ API (one line each; ``ui`` is a ``card_kit.UiState``, a ``canvas_controls`` stat
     outline(rect, radius, thickness, color)                       a rounded hairline (canvas_controls.ring)
     measure(view, text, size, mono=False) -> float                width in pixels of drawn text
     text(view, value, x, y, size, color, font=None, shaped=True)  view.text that keeps alpha blending on
+    section_label(view, value, x, y, color=None)                  a section's label over its controls (not capitals)
     blended(view) / @blending                                     every public draw function blends its own
                                                                   shapes, whatever the caller drew before
     draw_op(view, op, scale)                                      card_draw's dispatcher for ("kit", ...) ops
+    paragraph(layout, text, width, icon)                          a native dialog's sentence, wrapped (never clipped)
     register_hits(state, hits)        chat canvas: add a component's hits to state["hits"]; canvas_controls
                                       then tracks hover/press/Tab focus for them but draws no layer or ring
                                       of its own (the component does, from state_for(state, action, value))
@@ -184,6 +186,13 @@ def text(view, value, x, y, size, color, font=None, shaped=True):
     gpu.state.blend_set('ALPHA')
 
 
+def section_label(view, value, x, y, color=None):
+    """A section's label over its controls (Media Studio's "Prompt", "Folders", "Progress"): set apart from the hints
+    and field labels beside it by size and the stronger secondary colour, never by capitals, so every language shows
+    the label in its own case (localization.rst). ``value`` is already translated; colours are read as it draws."""
+    text(view, value, x, y, tk.TYPE_SMALL, tk.SUBTITLE if color is None else color)
+
+
 def text_middle(view, label, x, rect_y, rect_h, size, color, mono=False, shaped=True):
     """Text vertically centred in a band (blf's baseline sits ``0.36 * size`` below the centre line)."""
     text(view, label, x, rect_y + rect_h / 2 - 0.36 * size, size, color, view._mono if mono else view._font, shaped)
@@ -202,3 +211,17 @@ def draw_op(view, op, scale):
 def _ensure_loaded():
     """Import every kit module (each registers its components when imported)."""
     from . import ui_kit_controls, ui_kit_field, ui_kit_rows, ui_kit_select, ui_kit_status  # noqa: F401
+
+
+# Native dialogs (``invoke_props_dialog``/``invoke_popup``) lay a ``layout.label`` out on one line and clip it, so a
+# translated sentence (often 40% longer than the English) is cut. Every dialog sentence goes through ``paragraph``.
+DIALOG_TEXT_WIDTH = 440   # Unscaled pixels: fits a width=500 dialog with its margins; pass the dialog's own width.
+
+
+def paragraph(layout, text, width=DIALOG_TEXT_WIDTH, icon='NONE', size=12):
+    """``text`` (already translated) as measured, wrapped ``layout.label`` rows: one per line, never clipped.
+    Wrapped lines line up under the first one's text when it has an icon."""
+    from . import chat_view
+    indent = 'NONE' if icon == 'NONE' else 'BLANK1'
+    for index, line in enumerate(chat_view.wrap(text, width, size, chat_view._font) or (('', 0),)):
+        layout.label(text=line[0], translate=False, icon=icon if index == 0 else indent)

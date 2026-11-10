@@ -6,6 +6,8 @@ The worker's store and Angelo's stores share this process here; in the product t
 ``Controller`` (no provider, no Blender) writes the worker's journal records.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile

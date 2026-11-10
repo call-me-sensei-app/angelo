@@ -30,7 +30,7 @@ import threading
 import uuid
 from pathlib import Path
 
-from . import product_env, storage
+from . import product_env, shared_replace, storage
 from .protocol import RpcError
 
 FILE = "cache-affinity-secret"
@@ -59,7 +59,7 @@ def secret(environ=None, folder=None):
 
 def _read(path):
     try:
-        text = path.read_text(encoding="ascii").strip()
+        text = shared_replace.read_text(path, "ascii").strip()   # Sharing delete: never refuses a writer.
     except (OSError, UnicodeDecodeError):
         return None
     return bytes.fromhex(text) if _HEX.match(text) else None
@@ -83,9 +83,9 @@ def _stored(folder):
             found = _read(path)
             if found is not None:
                 return found
-            os.replace(temporary, path)  # Not a secret (a damaged file): this one replaces it.
+            shared_replace.replace(temporary, path)  # Not a secret (a damaged file): this one replaces it.
         except OSError:
-            os.replace(temporary, path)  # A file system without hard links.
+            shared_replace.replace(temporary, path)  # A file system without hard links.
         return value
     except OSError as error:
         return _process_only(folder, error.strerror or error, value)

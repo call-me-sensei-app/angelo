@@ -10,6 +10,8 @@ tagged as finished in quit.blend; ``leaving()`` read False again after the quit.
 of ``test_native_timer_jobs``, through the handlers the add-on registers.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from types import SimpleNamespace

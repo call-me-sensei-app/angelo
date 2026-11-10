@@ -12,6 +12,12 @@
 #include <cstdlib>
 #include <cstring>
 
+#ifdef _WIN32
+#  include <io.h>
+#else
+#  include <unistd.h>
+#endif
+
 #include "MEM_guardedalloc.h"
 
 #include "CLG_log.h"
@@ -77,6 +83,7 @@
 #include "WM_message.hh"
 #include "WM_types.hh"
 
+#include "WM_angelo_job_reports.hh"
 #include "wm.hh"
 #include "wm_cursors.hh"
 #include "wm_event_system.hh"
@@ -514,6 +521,8 @@ void WM_exit_ex(bContext *C, const bool do_python_exit, const bool do_user_exit_
     }
 
     WM_jobs_kill_all(wm);
+    /* Angelo: no ended job's reports outlive the session (#WM_angelo_job_reports.hh). */
+    wm::angelo::job_reports_clear();
 
     for (wmWindow &win : wm->windows) {
       CTX_wm_window_set(C, &win); /* Needed by operator close callbacks. */
@@ -728,6 +737,41 @@ void WM_exit(bContext *C, const int exit_code)
   }
 
   exit(exit_code);
+}
+
+void WM_exit_with_update_grant(bContext *C,
+                               const int descriptor,
+                               const char *frame,
+                               const int size)
+{
+  BLI_assert(!G.background && descriptor >= 0 && size > 0 && size <= 96);
+  /* Commit is now irrevocable. EXIT_PRE, quit-file writes, Python atexit and all
+   * other shutdown callbacks finish BEFORE any install authorization escapes.
+   * The channel and immutable frame are native-owned, not Python FileIO objects. */
+  WM_exit_ex(C, true, true);
+  int sent = 0;
+  while (sent < size) {
+#ifdef _WIN32
+    const int count = _write(descriptor, frame + sent, unsigned(size - sent));
+#else
+    const int count = int(::write(descriptor, frame + sent, size_t(size - sent)));
+#endif
+    if (count <= 0) {
+      break;  /* Nonblocking channel: no unbounded retry. Receiver rejects incomplete frames. */
+    }
+    sent += count;  /* Every successful iteration consumes bytes: at most 96 iterations. */
+  }
+#ifdef _WIN32
+  _close(descriptor);
+#else
+  ::close(descriptor);
+#endif
+  if (sent != size) {
+    fputs("Angelo update: authorization was not delivered; no installation is authorized\n", stderr);
+  }
+  /* Never return to ordinary UI with a complete or uncertain published frame.
+   * Process exit also closes any descriptor whose final close could not complete. */
+  exit(EXIT_SUCCESS);
 }
 
 void WM_script_tag_reload()

@@ -260,9 +260,10 @@ def recorded(output):
 
 
 def why_files(output):
-    """The run's ask-why replies, relative to the run folder."""
+    """The run's ask-why replies, relative to the run folder, spelled with ``/`` on every platform (they go into the
+    scorecard and the summary, which are compared across machines)."""
     output = Path(output)
-    return sorted(str(path.relative_to(output)) for pattern in ("*-trial-*/why.md", "*-trial-*/trial-*/qa/why.md")
+    return sorted(path.relative_to(output).as_posix() for pattern in ("*-trial-*/why.md", "*-trial-*/trial-*/qa/why.md")
                   for path in output.glob(pattern))
 
 

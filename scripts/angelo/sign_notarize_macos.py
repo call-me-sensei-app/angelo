@@ -140,7 +140,7 @@ def stage(app, out, runner):
             if name == ".DS_Store" or name.endswith(".pyc") or is_build_only(folder, name):
                 os.remove(path)
                 removed.append(path)
-    return target, [str(Path(p).relative_to(target)) for p in removed]
+    return target, [Path(p).relative_to(target).as_posix() for p in removed]
 
 
 def inventory(app):
@@ -301,7 +301,7 @@ def verify_signatures(app, plan, identity, runner):
     report["team"] = teams.pop() if teams else None
     report["entitlements"] = sorted(wanted)
     runtime = [path for path, kind in plan if kind == "agent_runtime"]
-    report["agent_runtime"] = {"files": sorted(str(path.relative_to(app)) for path in runtime),
+    report["agent_runtime"] = {"files": sorted(path.relative_to(app).as_posix() for path in runtime),
                                "entitlements": sorted(plistlib.loads(AGENT_RUNTIME_ENTITLEMENTS.read_bytes()))}
     report["app"] = signature_details(app, runner)
     gatekeeper = runner(["spctl", "--assess", "--type", "execute", "-vv", str(app)], check=False)

@@ -15,6 +15,7 @@
 #include "CLG_log.h"
 
 #include "MEM_guardedalloc.h"
+#include "MEM_lifetime.hh"
 
 /* Allow using deprecated functionality for .blend file I/O. */
 #define DNA_DEPRECATED_ALLOW
@@ -632,6 +633,14 @@ void BKE_id_material_append(Main *bmain, ID *id, Material *ma)
   }
 }
 
+/* Removing or shifting indexed slots can keep their matbits allocation alive. */
+static void object_material_slots_invalidate(Object *ob, const int first)
+{
+  if (ob->matbits && first < ob->totcol) {
+    mem_lifetime::invalidate(ob->matbits + first, size_t(ob->totcol - first));
+  }
+}
+
 Material *BKE_id_material_pop(Main *bmain, ID *id, int index_i)
 {
   short index = short(index_i);
@@ -640,6 +649,15 @@ Material *BKE_id_material_pop(Main *bmain, ID *id, int index_i)
   if (matar) {
     short *totcol = BKE_id_material_len_p(id);
     if (index >= 0 && index < (*totcol)) {
+      if (mem_lifetime::watch_count[0].load(std::memory_order_relaxed) != 0) {
+        BKE_main_lock(bmain);
+        for (Object &ob : bmain->objects) {
+          if (ob.data == id) {
+            object_material_slots_invalidate(&ob, index);
+          }
+        }
+        BKE_main_unlock(bmain);
+      }
       ret = (*matar)[index];
       id_us_min(id_cast<ID *>(ret));
 
@@ -1002,6 +1020,9 @@ void BKE_object_material_resize(Main *bmain, Object *ob, const short totcol, boo
   Material **newmatar;
   char *newmatbits;
 
+  if (totcol < ob->totcol) {
+    object_material_slots_invalidate(ob, totcol);
+  }
   if (do_id_user && totcol < ob->totcol) {
     for (int i = totcol; i < ob->totcol; i++) {
       id_us_min(id_cast<ID *>(ob->mat[i]));
@@ -1180,7 +1201,7 @@ static void object_material_assign(
      * intentionally ignore userpref (default to obdata). */
     bit = ob->matbits[act - 1];
   }
-  else if (assign_type == BKE_MAT_ASSIGN_USERPREF && ob->totcol && ob->actcol) {
+  else if (assign_type == BKE_MAT_ASSIGN_USERPREF && ob->actcol >= 1 && ob->actcol <= ob->totcol) {
     /* copy from previous material */
     bit = ob->matbits[ob->actcol - 1];
   }
@@ -1268,6 +1289,11 @@ void BKE_object_material_remap(Object *ob, const uint *remap)
   BLI_array_permute(ob->mat, ob->totcol, remap);
 
   if (ob->matbits) {
+    for (int i = 0; i < ob->totcol; i++) {
+      if (remap[i] != uint(i)) {
+        mem_lifetime::invalidate(ob->matbits + i, 1);
+      }
+    }
     BLI_array_permute(ob->matbits, ob->totcol, remap);
   }
 
@@ -1514,6 +1540,7 @@ bool BKE_object_material_slot_remove(Main *bmain, Object *ob)
         continue;
       }
       /* WATCH IT: do not use actcol from ob or from obt (can become zero) */
+      object_material_slots_invalidate(obt, actcol - 1);
       mao = obt->mat[actcol - 1];
       if (mao) {
         id_us_min(&mao->id);

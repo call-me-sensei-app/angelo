@@ -28,14 +28,26 @@ def _shapes():
     return shapes
 
 
+def _fitting():
+    from io_scene_gltf2.angelo_physics import fitting
+    return fitting
+
+
+def fits(obj):
+    """Whether ``obj``'s shape is a primitive fitted to its geometry (cheap: a poll may ask)."""
+    return obj.type in GEOMETRY and obj.angelo_physics.shape in _shapes().PRIMITIVES
+
+
 def fitted(obj):
-    """The shape ``obj``'s settings would fit to its geometry now (Blender axes), or None."""
-    settings = obj.angelo_physics
-    shapes = _shapes()
-    if obj.type not in GEOMETRY or settings.shape not in shapes.PRIMITIVES:
+    """The shape the export writes for ``obj``'s settings, fitted the way the export fits it (Blender axes), or None:
+    not a fitted primitive, or not measured yet (a timer measures it and redraws; nothing is measured in a draw)."""
+    if not fits(obj):
         return None
-    minimum, maximum = shapes.bounds(obj.bound_box)
-    return shapes.fit_bounds(settings.shape, minimum, maximum, settings.axis)
+    bounds = _fitting().cached_bounds(obj)
+    if bounds is None:
+        return None
+    settings = obj.angelo_physics
+    return _shapes().fit_bounds(settings.shape, *bounds, settings.axis)
 
 
 def _length(context, value):
@@ -68,8 +80,7 @@ def draw_settings(layout, context, obj, width=None):
                 if settings.shape != "SPHERE":
                     column.prop(settings, "height")
             column.prop(settings, "offset")
-        else:
-            fit = fitted(obj)
+        elif (fit := fitted(obj)) is not None:
             row = column.row()
             row.label(text=iface_(FITTED[fit.kind], x=_length(context, fit.size[0]), y=_length(context, fit.size[1]),
                                   z=_length(context, fit.size[2]), radius=_length(context, fit.radius),
@@ -115,11 +126,12 @@ class ANGELO_OT_game_physics_edit_fit(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return obj is not None and obj.type in GEOMETRY and fitted(obj) is not None
+        return obj is not None and fits(obj)
 
     def execute(self, context):
         obj = context.object
-        settings, fit = obj.angelo_physics, fitted(obj)
+        settings = obj.angelo_physics
+        fit = _fitting().fitted(obj, settings)   # Measured now, the way the export measures.
         settings.offset = fit.center
         if fit.kind == "BOX":
             settings.size = fit.size

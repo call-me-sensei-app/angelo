@@ -44,8 +44,18 @@ ACCESS_COMMENT = ("Saved by Angelo: your Angelo team sign-in's current 10-minute
 SIGN_IN_LABEL = "Angelo team sign-in"  # i18n: label of the OS item, a stable identifier
 TIMEOUT = 10.0
 UNREADABLE = n_("Couldn't read your saved Angelo sign-in ({problem}); sign in again.")
+SAVE_FAILED = n_("Angelo couldn't save your team sign-in in {store} ({problem}). You're still signed in in this "
+                 "window and Angelo tries again every minute; until then your other Angelo windows wait for it. If "
+                 "{store} is locked, unlock it; if your disk is full, free some space. Keep this window open until "
+                 "it's saved.")
 PROBLEMS = {"approval": n_("the key store needs your approval"), "denied": n_("access was denied"),
             "timeout": n_("the key store didn't respond")}
+READ_PROBLEMS = {"approval": n_("Couldn't read your saved Angelo sign-in because the key store needs your approval; sign "
+                           "in again."),
+            "denied": n_("Couldn't read your saved Angelo sign-in because access to it was denied; sign in again."),
+            "timeout": n_("Couldn't read your saved Angelo sign-in because the key store didn't respond; sign in "
+                          "again.")}
+UNREADABLE_ERROR = n_("Couldn't read your saved Angelo sign-in because of a key store error; sign in again.")
 # Fixed fallbacks of a failed call: ``Text``, so the account's problem line translates them where it is shown.
 STORE_BUSY = n_("The key store is busy")
 STORE_SILENT = n_("The key store didn't respond")
@@ -107,7 +117,10 @@ class TokenVault:
                 key_store.STORE_CALLS.release()
                 done.set()
 
-        threading.Thread(target=run, daemon=True, name="AngeloAccountStore").start()
+        try:
+            threading.Thread(target=run, daemon=True, name="AngeloAccountStore").start()
+        except RuntimeError:  # No thread to call it on (interpreter shutting down, thread limit): not called.
+            raise KeyStoreError("failed", Text(STORE_ERROR)) from None
         if not done.wait(self.timeout):
             raise KeyStoreError("timeout", Text(STORE_SILENT))
         error = outcome.get("error")
@@ -136,56 +149,45 @@ class TokenVault:
             return bool(self._call("erase"))
 
 
-_UNTRUSTED = object()  # ``last`` when the store may hold a stale token this process couldn't erase.
-
-
 class StoredSignIn:
-    """The refresh token in the store, and what this process last saw or put there.
+    """The refresh token in the store. Store failures never raise.
 
-    A stored token different from both this process's token and ``last``
-    means another Angelo window rotated the sign-in: that token is the live
-    one. Store failures never raise; ``write`` returns where the sign-in is
-    kept ("saved", "unreadable", "session" or "failed", ``AccountView.stored``).
+    ``write`` returns where the sign-in is kept ("saved", "unreadable",
+    "session" or "failed", ``AccountView.stored``) and, when it wasn't saved,
+    the problem in the person's words. A failed write deletes nothing: the
+    team account decides what may be presented (``team_refresh_marks``).
     """
 
     def __init__(self, vault):
         self.vault = vault
-        self._lock = threading.Lock()
-        self._last = None
+        self.failure_kind = ""  # The ``KeyStoreError`` kind of the last failed write ("timeout": it may land later).
 
-    def read(self, adopt=False):
-        """``(token or None, problem)``. ``adopt``: the token becomes what this process last saw (a restore)."""
+    @property
+    def shares(self):
+        """Whether other Angelo processes can read what this one stores."""
+        return self.vault is not None and not self.vault.reason
+
+    def read(self):
+        """``(token or None, problem)``: ``problem`` is the read failure in the person's words, else ""."""
         if self.vault is None:
             return None, ""
         try:
-            token = self.vault.read()
+            return self.vault.read(), ""
         except KeyStoreError as error:
-            problem = PROBLEMS.get(error.kind)
-            return None, Text(UNREADABLE, problem=Text(problem) if problem else error.message or Text(STORE_ERROR_SHORT))
-        if adopt and token:
-            with self._lock:
-                self._last = token
-        return token, ""
-
-    def renewed_elsewhere(self, stored, mine):
-        with self._lock:
-            return bool(stored) and self._last is not _UNTRUSTED and stored not in {mine, self._last}
+            if error.kind in READ_PROBLEMS:
+                return None, Text(READ_PROBLEMS[error.kind])
+            return None, Text(UNREADABLE, problem=error.message) if error.message else Text(UNREADABLE_ERROR)
 
     def write(self, token):
         if self.vault is None:
-            return "session"
+            return "session", ""
         try:
             readable = self.vault.write(token)
-        except KeyStoreError:
-            # Never leave an older, used token to be presented at the next launch;
-            # if even deleting fails, never adopt what the store holds this session.
-            if not self.delete():
-                with self._lock:
-                    self._last = _UNTRUSTED
-            return "session" if self.vault.reason else "failed"
-        with self._lock:
-            self._last = token
-        return "saved" if readable else "unreadable"
+        except KeyStoreError as error:
+            self.failure_kind = error.kind
+            return ("session" if self.vault.reason else "failed"), problem_text(error)
+        self.failure_kind = ""
+        return ("saved" if readable else "unreadable"), ""
 
     def delete(self):
         """True when the store holds no token afterwards."""
@@ -195,6 +197,10 @@ class StoredSignIn:
             self.vault.delete()
         except KeyStoreError:
             return False  # Signing in again replaces it; the console refuses a used token anyway.
-        with self._lock:
-            self._last = None
         return True
+
+
+def problem_text(error):
+    """A ``KeyStoreError`` in the person's words: the store's fixed message, never a secret."""
+    problem = PROBLEMS.get(error.kind)
+    return Text(problem) if problem else error.message or Text(STORE_ERROR_SHORT)

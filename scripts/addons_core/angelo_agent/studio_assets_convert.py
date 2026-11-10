@@ -23,6 +23,7 @@ from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # Its plain sibling module, not the add-on package.
 import material_display_sync  # noqa: E402
+import shared_replace  # noqa: E402  Every add-on replace: the Asset Browser may be reading the asset (Windows).
 import studio_assets_mesh  # noqa: E402
 
 PREVIEW = 256
@@ -181,7 +182,7 @@ def _save(item, targets):
             os.fsync(fd)
         finally:
             os.close(fd)
-        os.replace(temporary, item["blend"])
+        shared_replace.replace(temporary, item["blend"])   # Refused past its retries: this item fails, said.
         if os.name != "nt":   # The rename itself survives a crash once its folder is synced.
             try:
                 folder_fd = os.open(folder, os.O_RDONLY)
@@ -244,7 +245,7 @@ def main(argv):
         # Written after every item (and before its preview render), so an interrupted batch still reports it.
         with open(results_path + ".tmp", "w", encoding="utf-8") as handle:
             json.dump(results, handle)
-        os.replace(results_path + ".tmp", results_path)
+        shared_replace.replace(results_path + ".tmp", results_path)   # Read only once this process has ended.
     for item in batch:
         results[item["id"]] = write(item, scratch, lambda result, key=item["id"]: (results.__setitem__(key, result),
                                                                                     flush()))

@@ -7,6 +7,8 @@ folds case but not normalization (the 1.0.7 candidate on build4). These tests ch
 they run on (each spelling's answer is what ``os.path.samefile`` finds) and each known volume's rule as a model.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import shutil
 import sys

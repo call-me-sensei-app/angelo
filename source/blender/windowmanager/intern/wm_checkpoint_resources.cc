@@ -5,6 +5,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <optional>
 #ifdef WIN32
 #  include <windows.h>
 #elif defined(__APPLE__)
@@ -16,9 +17,12 @@
 #include "MEM_guardedalloc.h"
 #include "DNA_ID.h"
 #include "DNA_object_types.h"
+#include "BLI_assert.h"
+#include "BLI_checkpoint_budget.hh"
 #include "BLI_function_ref.hh"
 #include "BLI_listbase.h"
 #include "BLI_set.hh"
+#include "BLI_threads.h"
 #include "BKE_global.hh"
 #include "BKE_lib_query.hh"
 #include "BKE_main.hh"
@@ -54,6 +58,98 @@ static uint64_t checkpoint_available_memory()
 #endif
 }
 
+/** Set by #WMCheckpointMemoryOffset (main thread only): what every admission adds to the available RAM
+ * while a Restore's safety capture and its target are prepared in the overlapped order. */
+static int64_t checkpoint_memory_offset = 0;
+#ifdef WITH_GTESTS
+static std::optional<uint64_t> checkpoint_test_available;
+static size_t checkpoint_test_in_use = 0;
+#endif
+
+void WM_checkpoint_budget_refused()
+{
+  checkpoint_budget_refused();
+}
+
+uint64_t WM_checkpoint_budget_refusals()
+{
+  return checkpoint_budget_refusals();
+}
+
+int64_t WM_checkpoint_memory_offset_add(const int64_t a, const int64_t b)
+{
+  if (b > 0 && a > std::numeric_limits<int64_t>::max() - b) {
+    return std::numeric_limits<int64_t>::max();
+  }
+  if (b < 0 && a < std::numeric_limits<int64_t>::min() - b) {
+    return std::numeric_limits<int64_t>::min();
+  }
+  return a + b;
+}
+
+int64_t WM_checkpoint_memory_offset_of(const uint64_t value)
+{
+  return int64_t(std::min<uint64_t>(value, uint64_t(std::numeric_limits<int64_t>::max())));
+}
+
+/** ``available + offset``, clamped to ``[0, UINT64_MAX]``. */
+static uint64_t checkpoint_shifted(const uint64_t available, const int64_t offset)
+{
+  if (offset >= 0) {
+    return available > std::numeric_limits<uint64_t>::max() - uint64_t(offset) ?
+               std::numeric_limits<uint64_t>::max() :
+               available + uint64_t(offset);
+  }
+  /* -(offset + 1) + 1: the magnitude of INT64_MIN does not fit an int64_t. */
+  const uint64_t debit = uint64_t(-(offset + 1)) + 1;
+  return available > debit ? available - debit : 0;
+}
+
+uint64_t WM_checkpoint_available_memory()
+{
+#ifdef WITH_GTESTS
+  if (checkpoint_test_available) {
+    const size_t in_use = MEM_get_memory_in_use();
+    return in_use >= checkpoint_test_in_use ?
+               checkpoint_shifted(*checkpoint_test_available,
+                                  -WM_checkpoint_memory_offset_of(in_use - checkpoint_test_in_use)) :
+               checkpoint_shifted(*checkpoint_test_available,
+                                  WM_checkpoint_memory_offset_of(checkpoint_test_in_use - in_use));
+  }
+#endif
+  return checkpoint_available_memory();
+}
+
+bool WM_checkpoint_memory_model_active()
+{
+#ifdef WITH_GTESTS
+  return checkpoint_test_available.has_value();
+#else
+  return false;
+#endif
+}
+
+#ifdef WITH_GTESTS
+void WM_checkpoint_test_available_memory(const std::optional<uint64_t> available)
+{
+  BLI_assert(BLI_thread_is_main());
+  checkpoint_test_available = available;
+  checkpoint_test_in_use = MEM_get_memory_in_use();
+}
+#endif
+
+WMCheckpointMemoryOffset::WMCheckpointMemoryOffset(const int64_t offset)
+    : previous_(checkpoint_memory_offset)
+{
+  BLI_assert(BLI_thread_is_main());
+  checkpoint_memory_offset = WM_checkpoint_memory_offset_add(previous_, offset);
+}
+
+WMCheckpointMemoryOffset::~WMCheckpointMemoryOffset()
+{
+  checkpoint_memory_offset = previous_;
+}
+
 bool WM_checkpoint_memory_limits(ed::sculpt_paint::checkpoint::CodecLimits &limits,
                                  const uint64_t base_bytes, ReportList *reports,
                                  size_t *r_base_backing_bytes)
@@ -61,17 +157,22 @@ bool WM_checkpoint_memory_limits(ed::sculpt_paint::checkpoint::CodecLimits &limi
   /* Available OS RAM already excludes the current Main, prepared targets and retained safety
    * buffers. Leave half for other applications/allocator overhead; split the other half among
    * BASE expansion, codec backing/scratch and cold graph/PBVH + safety/initial-Undo staging.
-   * This is a finite caller policy, not a promise of successful OS allocation. */
-  const uint64_t available = checkpoint_available_memory();
+   * This is a finite caller policy, not a promise of successful OS allocation. Inside a
+   * #WMCheckpointMemoryOffset the RAM is read as the Restore order before the overlap saw it. */
+  const uint64_t available = checkpoint_shifted(WM_checkpoint_available_memory(), checkpoint_memory_offset);
   const uint64_t reserve = available / 2;
   const uint64_t base_reserve = reserve / 4;
   if (!reserve || base_bytes > base_reserve)
   {
     BKE_report(reports, RPT_ERROR, "Insufficient available RAM for complete checkpoint preparation and safety");
+    WM_checkpoint_budget_refused();
     return false;
   }
   const size_t codec = size_t(std::min<uint64_t>(reserve / 8, SIZE_MAX / 8));
-  if (!codec) { return false; }
+  if (!codec) {
+    WM_checkpoint_budget_refused();
+    return false;
+  }
   limits = {uint64_t(codec), codec, codec / 2};
   if (r_base_backing_bytes) { *r_base_backing_bytes = size_t(std::min<uint64_t>(base_reserve, SIZE_MAX)); }
   return true;
@@ -102,7 +203,11 @@ static bool checkpoint_ui_capture(Main &main, WMCheckpointContent &content,
   ID *id;
   FOREACH_MAIN_ID_BEGIN (&main, id) {
     if (checkpoint_retains_ui(*id)) {
-      if (count == INT64_MAX || size_t(count) >= limit / sizeof(WMCheckpointContent::RetainedUI)) {
+      if (count == INT64_MAX) {
+        return false;
+      }
+      if (size_t(count) >= limit / sizeof(WMCheckpointContent::RetainedUI)) {
+        WM_checkpoint_budget_refused();
         return false;
       }
       count++;
@@ -112,7 +217,10 @@ static bool checkpoint_ui_capture(Main &main, WMCheckpointContent &content,
   charged = 0;
   if (count > content.retained_ui.capacity()) {
     const int64_t capacity = std::max(count, content.retained_ui.capacity() * 2);
-    if (uint64_t(capacity) > limit / sizeof(WMCheckpointContent::RetainedUI)) { return false; }
+    if (uint64_t(capacity) > limit / sizeof(WMCheckpointContent::RetainedUI)) {
+      WM_checkpoint_budget_refused();
+      return false;
+    }
     charged = size_t(capacity) * sizeof(WMCheckpointContent::RetainedUI);
     content.retained_ui.reserve(count);
   }
@@ -193,8 +301,12 @@ class CheckpointRecalcRestore {
     bool admitted = true;
     foreach_owner(main, [&](ID *id) {
       if (!id || !admitted) { return; }
-      if (expected_ == std::numeric_limits<int64_t>::max() ||
-          size_t(expected_) >= limit / sizeof(Saved)) { admitted = false; return; }
+      if (expected_ == std::numeric_limits<int64_t>::max()) { admitted = false; return; }
+      if (size_t(expected_) >= limit / sizeof(Saved)) {
+        WM_checkpoint_budget_refused();
+        admitted = false;
+        return;
+      }
       expected_++;
     });
     if (!admitted) { return; }
@@ -202,7 +314,10 @@ class CheckpointRecalcRestore {
       /* BLI Vector reserve grows to max(requested, 2*capacity). Charge the whole fresh buffer,
        * including its overlap with inline storage; allocator overhead has a separate reserve. */
       const int64_t capacity = std::max(expected_, saved_.capacity() * 2);
-      if (uint64_t(capacity) > limit / sizeof(Saved)) { return; }
+      if (uint64_t(capacity) > limit / sizeof(Saved)) {
+        WM_checkpoint_budget_refused();
+        return;
+      }
       charged_ = size_t(capacity) * sizeof(Saved);
       saved_.reserve(expected_);
     }
@@ -233,7 +348,10 @@ static WMCheckpointContent *checkpoint_content_capture(
   content->sculpt = use_existing ? ed::sculpt_paint::undo::main_undo_state_retain(existing_sculpt) :
                                   ed::sculpt_paint::undo::main_undo_state_capture_checkpoint(
                                       main, limits.max_backing_bytes, &error);
-  if (error) { BKE_report(reports, RPT_ERROR, error); return nullptr; }
+  if (error) {
+    BKE_report(reports, RPT_ERROR, error);   /* A budget refusal was counted by its own charge. */
+    return nullptr;
+  }
   CheckpointRecalcRestore recalc(main, limits.max_backing_bytes);
   if (!recalc.valid()) {
     BKE_report(reports, RPT_ERROR, "Safety recalc witness could not be admitted within available RAM");
@@ -254,6 +372,9 @@ static WMCheckpointContent *checkpoint_content_capture(
     BKE_report(reports, RPT_ERROR, written == BlendMemFileWriteResult::BudgetExceeded ?
         "Safety MemFile witness could not be admitted within available RAM" :
         "Safety MemFile witness could not be serialized for verification");
+    if (written == BlendMemFileWriteResult::BudgetExceeded) {
+      WM_checkpoint_budget_refused();
+    }
     return nullptr;
   }
   return content.release();

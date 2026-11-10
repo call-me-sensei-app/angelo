@@ -8,6 +8,8 @@ and ``test_blender_headless_script_document`` prove the fix in a background Ange
 these tests pin the guard's rules and its wiring.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import types

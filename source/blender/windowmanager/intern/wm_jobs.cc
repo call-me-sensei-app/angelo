@@ -10,6 +10,7 @@
 
 #include <cstring>
 
+#include "DNA_ID.h"
 #include "DNA_windowmanager_types.h"
 
 #include "MEM_guardedalloc.h"
@@ -32,6 +33,7 @@
 
 #include "SEQ_prefetch.hh"
 
+#include "WM_angelo_job_reports.hh"
 #include "WM_api.hh"
 #include "WM_types.hh"
 #include "wm.hh"
@@ -160,7 +162,175 @@ struct wmJob {
    * data that the main thread might modify at the same time.
    */
   TicketMutex *main_thread_mutex;
+
+  /* Angelo: this job's own reports (#WM_angelo_job_reports.hh). Main thread only: the job's
+   * callbacks get only their custom data and #worker_status, never these. */
+  /** This job's type keeps its runs' reports; its owner is then a Scene. */
+  bool angelo_keeps_reports;
+  /** The owning Scene's #ID::session_uid, read when the job was made (never reused, kept across
+   * memfile Undo). */
+  uint32_t angelo_owner_session_uid;
+  /** The operator report list this run writes on its thread (#WM_jobs_reports_attach), or null. */
+  ReportList *angelo_attached_reports;
+  /** The list attached while a run still runs (a restart): the next run's, set as its attached list
+   * when that run is asked to start (#WM_jobs_start), like `customdata` becoming `run_customdata`. */
+  ReportList *angelo_pending_reports;
+  /** This run's ERROR and WARNING copies, made at the first one. */
+  wm::angelo::JobReportsCapture *angelo_capture;
 };
+
+/**
+ * Angelo: the job types whose runs keep their own reports: the table of `_bpy._angelo_jobs`
+ * (`bpy_angelo_jobs.cc`), each made with a Scene as its owner.
+ */
+static bool wm_job_angelo_keeps_reports(const eWM_JobType job_type)
+{
+  return ELEM(job_type,
+              WM_JOB_TYPE_RENDER,
+              WM_JOB_TYPE_OBJECT_BAKE,
+              WM_JOB_TYPE_POINTCACHE,
+              WM_JOB_TYPE_BAKE_GEOMETRY_NODES,
+              WM_JOB_TYPE_USD_EXPORT,
+              WM_JOB_TYPE_ALEMBIC_EXPORT,
+              WM_JOB_TYPE_OBJECT_SIM_FLUID);
+}
+
+/** Angelo: the job whose end callbacks run now (#wm_job_end), or null. Main thread only. */
+static wmJob *angelo_ending_job = nullptr;
+
+/**
+ * Angelo: the job whose `startjob` runs on this thread (#do_job_thread), or null. A task the job
+ * hands to other threads (a task pool) does not see it.
+ */
+static thread_local wmJob *angelo_thread_job = nullptr;
+
+ReportList *wm_jobs_thread_reports()
+{
+  return angelo_thread_job ? angelo_thread_job->worker_status.reports : nullptr;
+}
+
+void wm_jobs_angelo_report_moved(const Report &report, void *wm_job_v)
+{
+  wmJob *wm_job = static_cast<wmJob *>(wm_job_v);
+  if (!wm::angelo::job_report_type_kept(report.type)) {
+    return;
+  }
+  if (wm_job->angelo_capture == nullptr) {
+    wm_job->angelo_capture = MEM_new<wm::angelo::JobReportsCapture>(__func__);
+  }
+  wm_job->angelo_capture->add(report);
+}
+
+wmJob *wm_jobs_angelo_reports_owner(const wmWindowManager *wm, const ReportList *reports)
+{
+  if (wm == nullptr || !BLI_thread_is_main()) {
+    return nullptr;
+  }
+  for (wmJob &wm_job : wm->runtime->jobs) {
+    if (wm_job.angelo_keeps_reports &&
+        (wm_job.worker_status.reports == reports || wm_job.angelo_attached_reports == reports))
+    {
+      return &wm_job;
+    }
+  }
+  /* Reports its end callbacks put into the Info log (a fluid bake's #WM_global_reportf). */
+  if (angelo_ending_job && angelo_ending_job->angelo_keeps_reports) {
+    return angelo_ending_job;
+  }
+  return nullptr;
+}
+
+/**
+ * Angelo: the jobs with an attached operator list, so an operator being freed finds them without
+ * walking any window manager (one may be being freed itself). Main thread only.
+ */
+static Vector<wmJob *> &angelo_attached_jobs()
+{
+  static Vector<wmJob *> jobs;
+  return jobs;
+}
+
+/** List `wm_job` in #angelo_attached_jobs exactly while it has an attached or pending list. */
+static void wm_job_angelo_attached_update(wmJob *wm_job)
+{
+  Vector<wmJob *> &jobs = angelo_attached_jobs();
+  const bool needed = wm_job->angelo_attached_reports || wm_job->angelo_pending_reports;
+  const bool listed = jobs.contains(wm_job);
+  if (needed && !listed) {
+    jobs.append(wm_job);
+  }
+  else if (!needed && listed) {
+    jobs.remove_first_occurrence_and_reorder(wm_job);
+    if (jobs.is_empty()) {
+      jobs.clear_and_shrink();
+    }
+  }
+}
+
+static void wm_job_angelo_reports_unattach(wmJob *wm_job)
+{
+  wm_job->angelo_attached_reports = nullptr;
+  wm_job_angelo_attached_update(wm_job);
+}
+
+void wm_jobs_angelo_reports_detach(const ReportList *reports)
+{
+  if (reports == nullptr) {
+    return;
+  }
+  for (wmJob *wm_job : Vector<wmJob *>(angelo_attached_jobs())) {
+    if (wm_job->angelo_attached_reports == reports) {
+      wm_job->angelo_attached_reports = nullptr;
+    }
+    if (wm_job->angelo_pending_reports == reports) {
+      wm_job->angelo_pending_reports = nullptr;
+    }
+    wm_job_angelo_attached_update(wm_job);
+  }
+}
+
+void WM_jobs_reports_attach(wmJob *wm_job, ReportList *reports)
+{
+  BLI_assert(BLI_thread_is_main());
+  if (wm_job->running) {
+    /* A restart (#WM_jobs_customdata_set on a running job): the running run keeps its own list,
+     * this one is the next run's. */
+    wm_job->angelo_pending_reports = reports;
+  }
+  else {
+    wm_job->angelo_attached_reports = reports;
+  }
+  wm_job_angelo_attached_update(wm_job);
+}
+
+/**
+ * Angelo: at a run's end, once its data is freed (`run_free`, which may still report: a viewport
+ * render's write tasks), copy what is left in the operator's list (its `startjob` has returned),
+ * then store the run's reports, replacing the previous run's, also when there are none. When a
+ * new run was asked for meanwhile (\a restart_asked: `customdata` was set, read before a kill
+ * frees it), this run is no longer the latest, so nothing is stored: its record was erased when it
+ * started.
+ */
+static void wm_job_angelo_reports_end(wmJob *wm_job, const bool restart_asked)
+{
+  if (!wm_job->angelo_keeps_reports) {
+    return;
+  }
+  if (ReportList *attached = wm_job->angelo_attached_reports) {
+    BKE_reports_lock(attached);
+    for (const Report &report : attached->list) {
+      wm_jobs_angelo_report_moved(report, wm_job);
+    }
+    BKE_reports_unlock(attached);
+    wm_job_angelo_reports_unattach(wm_job);
+  }
+  if (!restart_asked) {
+    wm::angelo::job_reports_store(
+        wm_job->job_type, wm_job->angelo_owner_session_uid, wm_job->angelo_capture);
+  }
+  MEM_delete(wm_job->angelo_capture);
+  wm_job->angelo_capture = nullptr;
+}
 
 /* Main thread locking. */
 
@@ -255,6 +425,13 @@ wmJob *WM_jobs_get(wmWindowManager *wm,
     wm_job->worker_status.reports = MEM_new<ReportList>(__func__);
     BKE_reports_init(wm_job->worker_status.reports, RPT_STORE | RPT_PRINT);
     BKE_report_print_level_set(wm_job->worker_status.reports, RPT_WARNING);
+
+    if (owner && wm_job_angelo_keeps_reports(job_type)) {
+      const ID *owner_id = static_cast<const ID *>(owner);
+      BLI_assert(GS(owner_id->name) == ID_SCE);
+      wm_job->angelo_keeps_reports = true;
+      wm_job->angelo_owner_session_uid = owner_id->session_uid;
+    }
 
     wm_jobs_update_qos(wm);
   }
@@ -454,7 +631,20 @@ static void *do_job_thread(void *job_v)
 {
   wmJob *wm_job = static_cast<wmJob *>(job_v);
 
-  wm_job->startjob(wm_job->run_customdata, &wm_job->worker_status);
+  {
+    /* Angelo: this thread runs `wm_job` until `startjob` returns (#wm_jobs_thread_reports). */
+    struct ThreadJobScope {
+      explicit ThreadJobScope(wmJob *job)
+      {
+        angelo_thread_job = job;
+      }
+      ~ThreadJobScope()
+      {
+        angelo_thread_job = nullptr;
+      }
+    } scope(wm_job);
+    wm_job->startjob(wm_job->run_customdata, &wm_job->worker_status);
+  }
   wm_job->ready = true;
 
   return nullptr;
@@ -529,6 +719,17 @@ void WM_jobs_start(wmWindowManager *wm, wmJob *wm_job)
   else {
 
     if (wm_job->customdata && wm_job->startjob) {
+      /* Angelo: a new run is asked for. The previous run's reports are no longer the latest, so a
+       * reader never takes them for this run's (#WM_angelo_job_reports.hh; a running run's record
+       * was erased when it started), and a list attached during a restart becomes this run's. */
+      if (wm_job->angelo_keeps_reports) {
+        wm::angelo::job_reports_store(wm_job->job_type, wm_job->angelo_owner_session_uid, nullptr);
+      }
+      if (ReportList *pending = wm_job->angelo_pending_reports) {
+        wm_job->angelo_pending_reports = nullptr;
+        wm_job->angelo_attached_reports = pending;
+        wm_job_angelo_attached_update(wm_job);
+      }
       const double time_step = (wm_job->start_delay_time > 0.0) ? wm_job->start_delay_time :
                                                                   wm_job->time_step;
 
@@ -576,6 +777,11 @@ void WM_jobs_start(wmWindowManager *wm, wmJob *wm_job)
 static void wm_job_end(wmWindowManager *wm, wmJob *wm_job)
 {
   BLI_assert_msg(BLI_thread_is_main(), "wm_job_end should only be called from the main thread");
+  /* Angelo: reports the end callbacks move into the Info log are this job's
+   * (#wm_jobs_angelo_reports_owner); the run's reports are stored once its data is freed
+   * (#wm_job_free_run). Restored after: an end callback may end another job. */
+  wmJob *ending_outer = angelo_ending_job;
+  angelo_ending_job = wm_job;
   if (wm_job->endjob) {
     wm_job->endjob(wm_job->run_customdata);
   }
@@ -592,6 +798,23 @@ static void wm_job_end(wmWindowManager *wm, wmJob *wm_job)
 
   /* Ensure all reports have been moved to WM. */
   wm_jobs_reports_update(wm, wm_job);
+
+  angelo_ending_job = ending_outer;
+}
+
+/**
+ * Free a run's data as part of its end, then store the run's reports (#wm_job_angelo_reports_end):
+ * \a run_free may still write to the job's own lists (a viewport render's write tasks report into
+ * its attached operator list). Unlike the end callbacks, it is not the ending job: a report it
+ * puts straight into the Info log (a Python frame-change handler) is not the job's.
+ */
+static void wm_job_free_run(wmWindowManager *wm, wmJob *wm_job, const bool restart_asked)
+{
+  if (wm_job->run_free) {
+    wm_job->run_free(wm_job->run_customdata);
+  }
+  wm_jobs_reports_update(wm, wm_job);
+  wm_job_angelo_reports_end(wm_job, restart_asked);
 }
 
 static void wm_job_free(wmWindowManager *wm, wmJob *wm_job)
@@ -603,6 +826,10 @@ static void wm_job_free(wmWindowManager *wm, wmJob *wm_job)
   BLI_assert(wm_job->worker_status.reports->list.is_empty());
   BKE_reports_free(wm_job->worker_status.reports);
   MEM_delete(wm_job->worker_status.reports);
+  MEM_delete(wm_job->angelo_capture);
+  wm_job->angelo_attached_reports = nullptr;
+  wm_job->angelo_pending_reports = nullptr;
+  wm_job_angelo_attached_update(wm_job);
   MEM_delete(wm_job);
 
   wm_jobs_update_qos(wm);
@@ -635,11 +862,13 @@ static void wm_jobs_kill_job(wmWindowManager *wm, wmJob *wm_job)
   if (wm_job->wt) {
     WM_event_timer_remove(wm, wm_job->win, wm_job->wt);
   }
+  /* Angelo: a new run was asked for (a restart), read before its data is freed. */
+  const bool restart_asked = wm_job->customdata != nullptr;
   if (wm_job->customdata) {
     wm_job->free(wm_job->customdata);
   }
   if (wm_job->run_customdata) {
-    wm_job->run_free(wm_job->run_customdata);
+    wm_job_free_run(wm, wm_job, restart_asked);
   }
 
   /* Remove wm_job. */
@@ -799,8 +1028,8 @@ void wm_jobs_handle_finished(const bContext *C)
     wm_job_update(wm, job);
     wm_job_end(wm, &job);
 
-    /* Free owned data. */
-    job.run_free(job.run_customdata);
+    /* Free owned data. Angelo: then store the run's own reports. */
+    wm_job_free_run(wm, &job, job.customdata != nullptr);
     job.run_customdata = nullptr;
     job.run_free = nullptr;
 
@@ -867,6 +1096,32 @@ bool WM_jobs_has_running_type(const wmWindowManager *wm, int job_type)
       return true;
     }
   }
+  return false;
+}
+
+bool WM_jobs_has_running(const wmWindowManager *window_manager,
+                         const void *owner,
+                         const eWM_JobType type,
+                         const eWM_JobFlag exclude_flags)
+{
+  for (const wmJob &job : window_manager->runtime->jobs) {
+    if (owner && job.owner != owner) {
+      continue;
+    }
+
+    if (!ELEM(type, WM_JOB_TYPE_ANY, job.job_type)) {
+      continue;
+    }
+
+    if (job.flag & exclude_flags) {
+      continue;
+    }
+
+    if (job.running || job.suspended) {
+      return true;
+    }
+  }
+
   return false;
 }
 

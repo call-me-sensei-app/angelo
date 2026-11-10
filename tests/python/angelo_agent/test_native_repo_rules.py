@@ -3,6 +3,8 @@
 
 """Dependency-free checks for this checkout's own coding-agent instructions."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import unittest
 from pathlib import Path

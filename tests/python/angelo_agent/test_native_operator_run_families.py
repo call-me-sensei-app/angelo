@@ -8,6 +8,8 @@ test_blender_operator_run_families.py, test_blender_operator_run_objects.py
 and, with a second window open, test_blender_operator_run_windows.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import importlib
 import sys

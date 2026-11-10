@@ -13,6 +13,8 @@ running session takes the next turn's effort, ``claude_transport.apply_effort``)
 Each guard fails if effort is ever added to that key.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import json
 from pathlib import Path

@@ -17,6 +17,8 @@ draws with (``fixtures/menu_font_advances.json``):
   catalogue's word marks when a title has them.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import functools
 import json
 import math
@@ -305,7 +307,7 @@ class CrossingTests(unittest.TestCase):
         before = [disc, ("shape", (8.6, 8.6, 14.8, 14.8), ui_tokens.TEAL_SOFT),
                   ("stroke", (8, 15, 16, 1.4), ui_tokens.TEAL)]   # 1.0.8's web glyph: a solid disc.
         self.assertEqual(len(qa_plus_menu.invisible(before, ground)), 2)
-        after = [disc, ("shape", (8.6, 8.6, 14.8, 14.8), chat_add_menu.OPENING), ("stroke", (8, 15, 16, 1.4), ui_tokens.TEAL)]
+        after = [disc, ("shape", (8.6, 8.6, 14.8, 14.8), chat_add_menu.opening()), ("stroke", (8, 15, 16, 1.4), ui_tokens.TEAL)]
         self.assertEqual(qa_plus_menu.invisible(after, ground), [])
 
     def test_text_past_the_popups_sides_is_caught(self):

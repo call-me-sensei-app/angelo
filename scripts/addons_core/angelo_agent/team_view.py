@@ -35,6 +35,7 @@ class AccountView:
     usage: dict | None = None  # The person's own usage numbers (team_reads.usage), for the account menu.
     org_policy: dict | None = None  # The organization's app policy from the token answer (org_policy), or None.
     stored: str = ""          # "saved", "unreadable" (saved; this build can't read it), "session" or "failed"
+    save_problem: str = ""    # Why a rotated sign-in couldn't be saved while it is retried ("failed"), else "".
     sign_in_url: str = ""
     version: int = 0
 

@@ -7,6 +7,8 @@
  * \ingroup bke
  */
 
+#include <memory>
+
 #include "BLI_enum_flags.hh"
 #include "BLI_path_utils.hh"
 
@@ -16,6 +18,7 @@
 
 namespace blender {
 
+class BLOAssetSourcePaths;
 struct Main;
 struct UndoStep;
 struct UndoType;
@@ -150,6 +153,20 @@ bool BKE_undosys_restore_defer_editor_update(Main *bmain,
 struct UndoCaptureScope;
 UndoCaptureScope *BKE_undosys_capture_begin(Main *bmain, UndoStack *stack);
 bool BKE_undosys_capture_validate(const UndoCaptureScope *scope);
+bool BKE_undosys_capture_scope_active();
+void BKE_undosys_capture_stock_import_disable(UndoCaptureScope *);
+void BKE_undosys_capture_stock_import_enable(UndoCaptureScope *, const bContext *,
+                                            const void *wm, const void *window, int undo_depth,
+                                            const std::shared_ptr<const BLOAssetSourcePaths> &source_paths);
+bool BKE_undosys_capture_stock_import_admit(const bContext *, const void *wm,
+                                            const void *window, int undo_depth, const char *operator_id);
+/** Retire only the active stock transaction's new, ordinary unused IDs. Native begin
+ * UID receipts, exact context and held route are required; source Libraries additionally
+ * require their held filepath and internal-user policy. Baseline/live/root IDs stay protected. */
+bool BKE_undosys_capture_stock_id_remove_admit(const bContext *, Main *, const ID *);
+bool BKE_undosys_capture_restore_before(UndoCaptureScope *, bContext *, UndoStep *before,
+                                        UndoStep *read_barrier, bool *r_history_owns_before);
+
 bool BKE_undosys_capture_publish(UndoCaptureScope *scope, UndoStep *before, UndoStep *after);
 bool BKE_undosys_capture_finalize(UndoCaptureScope *scope, bContext *C);
 /** Release only; never calls callbacks, evaluates, or publishes history. */

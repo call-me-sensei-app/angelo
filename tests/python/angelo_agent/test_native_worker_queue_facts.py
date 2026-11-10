@@ -9,6 +9,8 @@ worker turns summed 2,444 s (median about 62 s) and nothing it read said what th
 measurements: none finished yet gives no number.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import time
 import unittest
 from unittest import mock

@@ -39,16 +39,18 @@ and scene rendered it.
 """
 
 import errno
+import stat
 from contextlib import ExitStack
 from pathlib import Path, PurePosixPath
 
 from . import checkpoint_filesystem as cf
 from . import job_outputs
 from . import job_render_outputs as render_outputs
+from .job_output_links import publish_entry
 from .job_output_names import candidates
 from .job_recovery_facts import _legacy, _usable, facts  # noqa: F401  (named here for callers)
-from .job_recovery_read import (_folder_state, _regular, _why, current_path, marker_is,  # noqa: F401
-                                published_names, staged_whole)
+from .job_recovery_read import (MOVED_NOTE, MoveNote, _folder_state, _regular, _why, current_path,  # noqa: F401
+                                marker_is, moved_earlier, moved_names, published_names, staged_whole)
 from .ui_text import n_
 
 KIND = "RENDER_ANIMATION"
@@ -67,6 +69,8 @@ UNREACHABLE = n_("The frames that finished are kept in the job's hidden folder, 
 UNLISTED = n_("Files the render's approval did not list were not published.")
 UNREAD = n_("The frames that finished are kept in the job's hidden folder, but some of its files couldn't be read now, "
             "so nothing was published yet. Angelo tries again when it next starts.")
+MOVED_ELSEWHERE = n_("The folder this render's finished frames were moved into is gone or was renamed; the rest it "
+                     "wrote is kept in its hidden folder beside the output.")
 LEFT_HIDDEN = n_("Angelo closed while this render ran. Its files were left as they were in the job's hidden folder "
                  "beside the output, because this version can't tell which of them are whole frames.")
 
@@ -137,7 +141,7 @@ def present_files(staging, plan, published=None):
                     folder = stack.enter_context(cf._private_child(folder, part))
             except (FileNotFoundError, ValueError):
                 continue   # A node folder never made, or a link: nothing in it is published.
-            for name in cf.list_names(folder):
+            for name in job_outputs._names(folder):
                 if _regular(folder, name, published, relative):
                     found.add(relative + "/" + name if relative else name)
     return found
@@ -158,9 +162,9 @@ def unlisted(staging, plan, start, end, present, step=1):
             except (FileNotFoundError, ValueError):
                 found.append(relative)   # A planned folder that is a link: nothing in it is published.
                 continue
-            for name in cf.list_names(folder):   # Unreadable: OSError, as in ``present_files``.
+            for name in job_outputs._names(folder):   # Unreadable: OSError, as in ``present_files``.
                 path = relative + "/" + name if relative else name
-                if not relative and (name == job_outputs.MARKER or name in folders):
+                if not relative and (name in (job_outputs.MARKER, MOVED_NOTE) or name in folders):
                     continue
                 if path not in present or path not in expected:   # A link, a shared file or a stray name.
                     found.append(path)
@@ -171,7 +175,7 @@ def discard(staging):
     """Remove a staging folder whose kept files are published, its marker last, so a crash midway leaves a folder
     the next start still knows as this job's."""
     try:
-        for name in cf.list_names(staging.folder):
+        for name in job_outputs._names(staging.folder):
             if name != job_outputs.MARKER:
                 job_outputs._remove(staging.folder, name, job_outputs._Budget(job_outputs.REMOVE_ALL))
     except (OSError, ValueError, job_outputs.OutputMoved):
@@ -192,9 +196,11 @@ def whole_frames(staging, plan, start, end, *, strict_last, last_only=False, pub
                   last_only=last_only, step=step)
 
 
-def _whole(staging, plan, start, end, present, *, strict_last, last_only=False, step=1):
+def _whole(staging, plan, start, end, present, *, strict_last, last_only=False, step=1, moved=(), published=None):
+    """``whole_frames`` on ``present``; ``moved``: those of them an earlier attempt moved into ``published``."""
     found = render_outputs.sort_files(plan, start, end, present, step)
-    torn = render_outputs.torn_frames(plan, found["frames"], present, lambda path: staged_whole(staging, path),
+    torn = render_outputs.torn_frames(plan, found["frames"], present,
+                                      lambda path: staged_whole(staging, path, published if path in moved else None),
                                       strict_last=strict_last, last_only=last_only)
     frames = [frame for frame in found["frames"] if frame not in torn]
     files = [path for frame in frames for path in render_outputs.frame_files(plan, frame, present)]
@@ -243,26 +249,54 @@ def publish(staging, files, into=None, announce=None):
 
 def _link_files(staging, target, files):
     linked = theirs = 0
-    for relative in files:
-        *folders, name = PurePosixPath(relative).parts
-        with ExitStack() as stack:
-            source, destination = staging.folder, target
-            for part in folders:
-                source = stack.enter_context(cf._private_child(source, part))
-                try:
-                    cf.make_directory(destination, part)
-                except FileExistsError:
-                    pass
-                destination = stack.enter_context(cf._private_child(destination, part))
-            try:
-                cf.link_into(source, name, destination, name)
-                linked += 1
-            except FileExistsError:
-                if job_outputs._entry_identity(destination, name) != job_outputs._entry_identity(source, name):
-                    theirs += 1   # Something else has the name: left as it is, never replaced.
-                else:
-                    linked += 1   # An earlier attempt's link: the very same file.
+    note, noted = MoveNote(staging), None
+    try:
+        for relative in files:
+            linked, theirs, noted = _link_file(staging, target, relative, note, noted, linked, theirs)
+    finally:
+        note.close()
     return linked, theirs
+
+
+def _link_file(staging, target, relative, note, noted, linked, theirs):
+    """One file of ``_link_files``: ``(linked, theirs, noted)`` after it (``noted``: ``MOVED_NOTE``'s names, read once
+    when a staged file is missing)."""
+    *folders, name = PurePosixPath(relative).parts
+    with ExitStack() as stack:
+        source, destination = staging.folder, target
+        for part in folders:
+            try:
+                if source is not None:
+                    source = stack.enter_context(cf._private_child(source, part))
+            except FileNotFoundError:
+                source = None   # Every file of it moved by an earlier attempt, and the folder gone since.
+            try:
+                cf.make_directory(destination, part)
+            except FileExistsError:
+                pass
+            destination = stack.enter_context(cf._private_child(destination, part))
+        try:
+            if source is None:
+                raise FileNotFoundError(errno.ENOENT, "Not in staging", relative)
+            # Linked, or moved where the volume has no links (FAT, exFAT): noted before the move.
+            publish_entry(source, name, destination, name, before_move=lambda: note(relative))
+            return linked + 1, theirs, noted
+        except FileNotFoundError:
+            noted = moved_names(staging) if noted is None else noted
+            if relative not in noted or not _published_here(destination, name):
+                raise
+            return linked + 1, theirs, noted   # An earlier attempt moved it here (``moved_earlier``).
+        except FileExistsError:
+            if job_outputs._entry_identity(destination, name) != job_outputs._entry_identity(source, name):
+                return linked, theirs + 1, noted   # Something else has the name: left as it is, never replaced.
+            return linked + 1, theirs, noted   # An earlier attempt's link: the very same file.
+
+
+def _published_here(folder, name):   # A regular file at the name: what ``moved_earlier`` counted.
+    try:
+        return stat.S_ISREG(cf.entry_info(folder, name).st_mode)
+    except FileNotFoundError:
+        return False
 
 
 def kept_receipt(plan, frames, total, files, linked, theirs, torn, *, single, note=KEPT):
@@ -324,16 +358,24 @@ def recover(record, save):
                     except (FileNotFoundError, ValueError):
                         published = None
                 present = present_files(staging, plan, published)
-                frames, files, torn, found = _whole(staging, plan, start, end, present, strict_last=True, step=step)
+                moved = moved_earlier(staging, plan, published, present, start, end, step)   # Volumes without links.
+                # Files an earlier attempt moved into a folder that is gone or renamed: their frames' rest is kept.
+                elsewhere = published is None and bool(moved_names(staging))
+                present |= moved
+                frames, files, torn, found = _whole(staging, plan, start, end, present, strict_last=True, step=step,
+                                                    moved=moved, published=published)
                 stray = [path for path in unlisted(staging, plan, start, end, present, step)
                          if path != saved.get("video")]   # A format MP4 job's own (partial) video: no stranger's.
             except OSError as error:   # Something can't be read now: nothing is published or removed.
                 staging.release()
                 return _later(record, save, UNREAD, error=_why(error))
-        if saved.get("legacy") and stray:
-            staging.release()   # Views or File Output files this version can't name: left exactly as they were.
+        if (saved.get("legacy") and stray) or (elsewhere and not frames):
+            # Files this version can't name, or none of its frames whole here while moved files are in a folder that
+            # is gone or renamed: left exactly as they were, named.
+            staging.release()
             detail.pop("staging", None)
-            record["receipt"] = {"note": LEFT_HIDDEN}
+            record["receipt"] = {"note": MOVED_ELSEWHERE if elsewhere and not frames else LEFT_HIDDEN,
+                                 "kept_folder": str(PurePosixPath(*staging.path.relative_to(root).parts))}
             save()
             return True
         if not frames and into is None:
@@ -364,7 +406,11 @@ def recover(record, save):
         requested = str(PurePosixPath(*output.relative_to(root).parts))
         if relative != requested:
             receipt["output"] = relative
-        discard(staging)   # Only now: every kept file is published.
+        if theirs or elsewhere:   # A name held another file, or moved files are elsewhere: staging kept, named.
+            receipt["kept_folder"] = str(PurePosixPath(*staging.path.relative_to(root).parts))
+            staging.release()
+        else:
+            discard(staging)   # Only now: every kept file is published.
     except BaseException:
         staging.release()
         raise

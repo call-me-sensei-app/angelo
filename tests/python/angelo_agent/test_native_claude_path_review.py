@@ -12,6 +12,8 @@ handle and isolated data (program_completion.live_rows, commit_facts), and
 four PlanReply/plan_progress edge cases.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import os
@@ -235,6 +237,14 @@ class UncheckedReceiptTests(unittest.TestCase):
         row = result["live_revisions"]["objects"][0]
         row.pop("object_revision")
         row["revision_omitted"] = {"reason": "BUDGET", "detail": "cooperative_post_commit_budget"}
+        oversized = self.entry(result)
+        self.assertEqual(oversized["role"], "handoff_omission")
+        self.assertTrue(oversized["work_exhausted"])
+        # A complete smaller stock receipt fits the same REAL 24000 work limit;
+        # no caller credit or production limit is increased to force inclusion.
+        result = {key: result[key] for key in ("checks", "status", "success", "final", "undoable")}
+        result["live_revisions"] = {"objects": [{"handle": HANDLE,
+                                                "revision_omitted": {"reason": "BUDGET"}}]}
         entry = self.entry(result)
         self.assertIn("unverified", entry, "precondition: classified as a clean unchecked commit")
         self.assertIn('"o1"', json.dumps(entry), "the created object's handle is lost from the handoff")

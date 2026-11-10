@@ -32,6 +32,7 @@ from array import array
 
 import bpy
 
+from .blend_file_paths import located, tile_file_path
 from .job_spec import DATA_MAPS, JobRequestError, check_resolution
 
 IMAGE_SUFFIXES = {"PNG": ".png", "JPEG": ".jpg", "OPEN_EXR": ".exr", "TARGA": ".tga", "TIFF": ".tif", "BMP": ".bmp",
@@ -55,19 +56,21 @@ def active_images(target):
         if node is None or node.bl_idname != "ShaderNodeTexImage" or node.image is None or not node.select:
             raise JobRequestError("Every material of %s needs an active, selected Image Texture node with an image to "
                                   "bake into; or pass image (the resource ID of a loaded image) or resolution (a new "
-                                  "image) and the job points the materials at it" % target.name)
+                                  "image) and the job points the materials at it" % target.name, code="VALIDATION")
         images.append(node.image)
     if not images:
-        raise JobRequestError("%s has no material to bake into; give it a material first" % target.name)
+        raise JobRequestError("%s has no material to bake into; give it a material first" % target.name,
+                              code="VALIDATION")
     return list(dict.fromkeys(images))
 
 
 def check_image(image):
     """Refuse an image a bake cannot write into as a still picture of this file."""
     if image.library is not None:
-        raise JobRequestError("The image %s is linked from another file; bake into an image of this file" % image.name)
+        raise JobRequestError("The image %s is linked from another file; bake into an image of this file" % image.name,
+                              code="UNSUPPORTED")
     if image.type not in {'IMAGE', 'UV_TEST'} or image.source not in {'FILE', 'GENERATED', 'TILED'}:
-        raise JobRequestError("%s is not a still image a bake can write into" % image.name)
+        raise JobRequestError("%s is not a still image a bake can write into" % image.name, code="UNSUPPORTED")
 
 
 def new_image_name(target, bake_type):
@@ -105,15 +108,15 @@ def check_target(window, target):
     """What Blender requires of the object baked onto, checked before its job starts."""
     try:
         if target.type != 'MESH' or not target.data.uv_layers or not target.data.polygons:
-            raise JobRequestError("Bake onto a mesh with faces and a UV map")
+            raise JobRequestError("Bake onto a mesh with faces and a UV map", code="VALIDATION")
     except ReferenceError:
-        raise JobRequestError("The object to bake onto was removed") from None
+        raise JobRequestError("The object to bake onto was removed", code="STALE_REVISION") from None
     active = window.view_layer.objects.active
     if target.mode != 'OBJECT' or (active is not None and active.mode != 'OBJECT'):
-        raise JobRequestError("Switch to Object Mode before baking")
+        raise JobRequestError("Switch to Object Mode before baking", code="VALIDATION")
     if not _in_view_layer(window.view_layer, target) or target.hide_render:
         raise JobRequestError("%s is excluded from the view layer or disabled in renders; a bake needs it enabled"
-                              % target.name)
+                              % target.name, code="VALIDATION")
 
 
 def check_sources(window, target, sources, cage):
@@ -122,23 +125,23 @@ def check_sources(window, target, sources, cage):
         for source in sources:
             if source.type not in SOURCE_TYPES:
                 raise JobRequestError("%s is not a mesh, curve, text, surface or metaball, so it can't be baked from"
-                                      % source.name)
+                                      % source.name, code="UNSUPPORTED")
             if not _in_view_layer(window.view_layer, source):  # Hidden is fine: Blender shows a source to its bake.
                 raise JobRequestError("%s is excluded from the view layer; include its collection to bake from it"
-                                      % source.name)
+                                      % source.name, code="VALIDATION")
         if cage is None:
             return
         if cage.type != 'MESH' or not _in_view_layer(window.view_layer, cage):
-            raise JobRequestError("The cage %s must be a mesh in the view layer" % cage.name)
+            raise JobRequestError("The cage %s must be a mesh in the view layer" % cage.name, code="VALIDATION")
         if sum(obj.name == cage.name for obj in bpy.data.objects) != 1:
             raise JobRequestError("Angelo finds a cage by its name, and %s names more than one object; rename it"
-                                  % cage.name)
+                                  % cage.name, code="VALIDATION")
         # Modifiers can change either mesh's faces; then only Blender's own check, in its job, can tell.
         if not cage.modifiers and not target.modifiers and _faces(cage) != _faces(target):
             raise JobRequestError("The cage %s must have the same faces as %s (a copy of it, moved or scaled to "
-                                  "enclose the sources)" % (cage.name, target.name))
+                                  "enclose the sources)" % (cage.name, target.name), code="VALIDATION")
     except ReferenceError:
-        raise JobRequestError("An object of this bake was removed") from None
+        raise JobRequestError("An object of this bake was removed", code="STALE_REVISION") from None
 
 
 def _faces(obj):
@@ -155,11 +158,13 @@ class TargetNodes:
         """The target's materials, each once (raises JobRequestError when the job could not point them at the image)."""
         found = list(dict.fromkeys(slot.material for slot in self.target.material_slots if slot.material is not None))
         if not found:
-            raise JobRequestError("Give %s a material first; a bake writes through its materials" % self.target.name)
+            raise JobRequestError("Give %s a material first; a bake writes through its materials" % self.target.name,
+                                  code="VALIDATION")
         for material in found:
             if material.library is not None or material.node_tree is None or not material.is_editable:
                 raise JobRequestError("The material %s is linked or has no nodes, so a job can't point it at the image; "
-                                      "leave image out to bake into its own active image" % material.name)
+                                      "leave image out to bake into its own active image" % material.name,
+                                      code="UNSUPPORTED")
         return found
 
     def apply(self):
@@ -276,7 +281,7 @@ def check_tiles(image):
     for tile in image.tiles:
         if tile.size[0] <= 0 or tile.size[1] <= 0:
             raise JobRequestError("Tile %d of the image %s has no pixels yet; fill or load it before baking"
-                                  % (tile.number, image.name))
+                                  % (tile.number, image.name), code="VALIDATION")
         check_resolution(tile.size[0], tile.size[1], "tile %d of the image %s" % (tile.number, image.name))
 
 
@@ -325,12 +330,8 @@ def covered_tiles(target, image, explicit):
 
 def _tile_path(image, number):
     """The file one tile of a UDIM image is stored in, or None when its path names no tile."""
-    path = image.filepath
-    if "<UDIM>" not in path and "<UVTILE>" not in path:
-        return None
-    column, row = (number - 1001) % 10 + 1, (number - 1001) // 10 + 1
-    path = path.replace("<UDIM>", str(number)).replace("<UVTILE>", "u%d_v%d" % (column, row))
-    return bpy.path.abspath(path, library=image.library)
+    path = tile_file_path(image.filepath, number)
+    return None if path is None else located(path, image.library, bpy.path.abspath)
 
 
 def restorable_tiles(image):

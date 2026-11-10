@@ -16,7 +16,7 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import live_windows
+from . import change_clock, live_windows
 from .memory_evidence import scope_token
 from .checkpoint_capture_state import require_capture_idle, scene_usable
 from .checkpoint_transactions import _transaction
@@ -112,6 +112,7 @@ def admit_saved_project(path, document, profile_id, *, loaded_project=None):
         info = os.fstat(handle.fileno())
         if not stat.S_ISREG(info.st_mode) or not 12 <= info.st_size <= MAX_PROJECT_BYTES:
             raise ValueError("Saved project is not a regular file within the continuity verification budget")
+        change_clock.settle(info)   # A later write changes the receipt's stamp, in the tick of the save too (Windows).
         header = handle.read(12)
         if not (header.startswith(b"BLENDER") or header.startswith(b"\x1f\x8b") or header.startswith(b"\x28\xb5\x2f\xfd")):
             raise ValueError("Saved project has no recognized Blender file header")

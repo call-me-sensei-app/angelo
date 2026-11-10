@@ -14,6 +14,7 @@ import os
 import time
 
 from .ui_text import n_, notice
+from . import request_rows
 
 FIRST_RETRY = 5.0
 MAX_RETRY = 60.0
@@ -86,7 +87,7 @@ def validate_retry(record, answer):
 
 def turn_binding(chat):
     """A save belongs to one request, even if a newer request already ended before its reply is handled."""
-    row = next((row for row in reversed(chat.state.get("messages") or ()) if row.get("role") == "user"), None)
+    row = next((row for row in reversed(chat.state.get("messages") or ()) if request_rows.starts_request(row)), None)
     return getattr(chat, "_request_generation", None), id(row)
 
 

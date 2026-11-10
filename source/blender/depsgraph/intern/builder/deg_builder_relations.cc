@@ -1894,6 +1894,38 @@ void DepsgraphRelationBuilder::build_driver(ID *id, FCurve *fcu)
     TimeSourceKey time_src_key;
     add_relation(time_src_key, driver_key, "TimeSrc -> Driver");
   }
+  /* Angelo: a Python expression beyond the simple subset can read any data, which no relation
+   * names (the simple-expression result is already cached by #driver_depends_on_time). */
+  if (driver->type == DRIVER_TYPE_PYTHON && !BKE_driver_has_simple_expression(driver)) {
+    mark_undeclared_reads(driver_key);
+  }
+}
+
+void DepsgraphRelationBuilder::mark_undeclared_reads(const OperationKey &key)
+{
+  if (OperationNode *node = find_node(key)) {
+    node->flag |= DEPSOP_FLAG_ANGELO_UNDECLARED_READS;
+  }
+}
+
+void DepsgraphRelationBuilder::mark_reads_owner_transform(const OperationKey &key)
+{
+  if (OperationNode *node = find_node(key)) {
+    node->flag |= DEPSOP_FLAG_ANGELO_READS_OWNER_TRANSFORM;
+  }
+}
+
+void DepsgraphRelationBuilder::record_path_read(const OperationKey &key,
+                                                const PointerRNA &root,
+                                                const char *path,
+                                                const PointerRNA &resolved)
+{
+  if (OperationNode *node = find_node(key)) {
+    if (!node->angelo_path_reads) {
+      node->angelo_path_reads = std::make_unique<Vector<AngeloPathRead>>();
+    }
+    node->angelo_path_reads->append({root, path, resolved.owner_id, resolved.type});
+  }
 }
 
 void DepsgraphRelationBuilder::build_driver_data(ID *id, FCurve *fcu)
@@ -2073,6 +2105,7 @@ void DepsgraphRelationBuilder::build_driver_variables(ID *id, FCurve *fcu)
           /* Ignore input dependency if we're driving properties of
            * the same ID, otherwise we'll be ending up in a cyclic
            * dependency here. */
+          mark_reads_owner_transform(driver_key);
           continue;
         }
         OperationKey target_key(target_id, NodeType::TRANSFORM, OperationCode::TRANSFORM_FINAL);
@@ -2147,14 +2180,23 @@ void DepsgraphRelationBuilder::build_driver_rna_path_variable(const OperationKey
 {
   RNAPathKey variable_exit_key(target_prop, rna_path, RNAPointerSource::EXIT);
   if (RNA_pointer_is_null(&variable_exit_key.ptr)) {
+    /* Angelo: no relation for a path that does not resolve now; evaluation resolves it again
+     * and may read what it names then. */
+    mark_undeclared_reads(driver_key);
     return;
   }
+  /* Angelo: the relation below follows what the path names now; the upstream query checks it
+   * still names that, whatever wrote to the data the path passes through. */
+  record_path_read(driver_key, target_prop, rna_path, variable_exit_key.ptr);
   if (is_same_bone_dependency(variable_exit_key, self_key) ||
       is_same_nodetree_node_dependency(variable_exit_key, self_key))
   {
     return;
   }
-  add_relation(variable_exit_key, driver_key, "RNA Target -> Driver");
+  if (add_relation(variable_exit_key, driver_key, "RNA Target -> Driver") == nullptr) {
+    /* Angelo: the path resolved but names no node, so no relation carries what it reads. */
+    mark_undeclared_reads(driver_key);
+  }
 
   /* It is possible that RNA path points to a property of a different ID than the target_id:
    * for example, paths like "data" on Object, "camera" on Scene.

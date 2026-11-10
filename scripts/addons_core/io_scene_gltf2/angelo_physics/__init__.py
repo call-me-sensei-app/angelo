@@ -13,7 +13,7 @@ agent's add-on isn't enabled in a background Angelo, which is how Godot imports 
 engine link writes a .glb back.
 """
 
-from . import props
+from . import fitting, props
 
 
 def export_extension():
@@ -28,7 +28,9 @@ def import_extension():
 
 def register():
     props.register()
+    fitting.register()
 
 
 def unregister():
+    fitting.unregister()
     props.unregister()

@@ -8,6 +8,7 @@
 
 #include "GHOST_System.hh"
 
+#include "GHOST_ClipboardImage.hh"
 #include "GHOST_EventManager.hh"
 #include "GHOST_TimerManager.hh"
 #include "GHOST_TimerTask.hh"
@@ -45,9 +46,21 @@ GHOST_TSuccess GHOST_System::hasClipboardImage() const
   return GHOST_kFailure;
 }
 
-uint *GHOST_System::getClipboardImage(int * /*r_width*/, int * /*r_height*/) const
+uint *GHOST_System::getClipboardImage(int *r_width, int *r_height) const
+{
+  /* Every platform reads the image once, in #getClipboardImageBuffer. */
+  return reinterpret_cast<uint *>(
+      GHOST_ClipboardImage_rgba_from_imbuf(getClipboardImageBuffer(), r_width, r_height));
+}
+
+blender::ImBuf *GHOST_System::getClipboardImageBuffer() const
 {
   return nullptr;
+}
+
+GHOST_TSuccess GHOST_System::getClipboardImageSize(int * /*r_width*/, int * /*r_height*/) const
+{
+  return GHOST_kFailure;
 }
 
 GHOST_TSuccess GHOST_System::putClipboardImage(uint * /*rgba*/,

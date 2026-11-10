@@ -16,7 +16,9 @@
 
 import json
 import os
+import uuid
 
+from . import shared_replace
 from .engine_detect import DISPLAY, ENGINES
 
 FILE_NAME = "engine-suggestions.json"
@@ -29,8 +31,7 @@ class Memory:
         self.path, self.suggested, self.readable = path, set(), True
         if path and os.path.exists(path):
             try:
-                with open(path, encoding="utf-8") as handle:
-                    value = json.load(handle)
+                value = json.loads(shared_replace.read_text(path))   # Sharing delete: never refuses a save.
                 self.suggested = {item for item in value.get("suggested", []) if item in ENGINES}
             except (OSError, ValueError, AttributeError):
                 self.readable = False   # Unknown history: suggest nothing rather than repeat a card.
@@ -53,14 +54,16 @@ class Memory:
         self.suggested.add(engine)
         if not self.path:
             return
-        temporary = self.path + ".tmp"
+        temporary = "%s.%s.tmp" % (self.path, uuid.uuid4().hex)   # Its own: another window may save at once.
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
-            with open(temporary, "w", encoding="utf-8") as handle:
+            with open(temporary, "x", encoding="utf-8") as handle:
                 json.dump({"suggested": sorted(self.suggested)}, handle)
-            os.replace(temporary, self.path)
-        except OSError:
-            pass   # Remembered for this session only.
+            shared_replace.replace(temporary, self.path)
+        except OSError as error:   # Remembered for this session only, and said.
+            print("Angelo: the engine suggestions shown could not be saved:", error)
+            if os.path.exists(temporary):
+                os.remove(temporary)
 
 
 def note(running, link_on):

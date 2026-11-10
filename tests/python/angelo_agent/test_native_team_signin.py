@@ -9,6 +9,8 @@ never stays in the address bar), which shows the outcome the app reports. These
 tests drive the real listener with real loopback requests.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import hashlib
 import socket

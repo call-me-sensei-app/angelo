@@ -280,12 +280,25 @@ def measured_sources(root=ROOT):
     return files + [Path(root) / "tests/python/angelo_agent" / name for name in MEASURED_HARNESS]
 
 
+def measured_bytes(path):
+    """A measured file's bytes, line endings normalized, without the isolation entry every benchmark starts with
+    (``provider_isolation.BLENDER_ENTRY``, after the docstring): it runs before any benchmark code, under the runner it
+    only checks the environment, and it moves no ceiling, so adding it to every file needed no restamp."""
+    data = path.read_bytes().replace(b"\r\n", b"\n")
+    sys.path.insert(0, str(HERE))
+    try:
+        from provider_isolation import BLENDER_ENTRY
+    finally:
+        sys.path.remove(str(HERE))
+    return data.replace(b"\n" + BLENDER_ENTRY.encode("utf-8"), b"", 1)
+
+
 def sources_digest(root=ROOT):
     """SHA-256 over the measured sources' paths and bytes (line endings normalized)."""
     digest = hashlib.sha256()
     for path in measured_sources(root):
         digest.update(path.relative_to(root).as_posix().encode("utf-8") + b"\0")
-        digest.update(path.read_bytes().replace(b"\r\n", b"\n") + b"\0")
+        digest.update(measured_bytes(path) + b"\0")
     return digest.hexdigest()
 
 

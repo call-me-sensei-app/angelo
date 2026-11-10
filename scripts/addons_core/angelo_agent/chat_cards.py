@@ -10,9 +10,11 @@ every hit on the canvas. A script's approval card also gets its Always allow
 scripts part here (``always_allow_rows``, ``draw_always_allow``).
 """
 
+import sys
+
 from .job_spec import PREVIEW
 from .legacy_names import current_tool_name
-from .ui_text import iface_, n_
+from .ui_text import iface_, n_, notice
 
 def job_record(message):
     """The live job record behind an ``angelo_job_start`` activity row, or a running look's, or None."""
@@ -131,41 +133,98 @@ def draw_always_allow(call_id, state, x, y, button=None):
     ``always_allow_button``'s ``(action, label)``; the default is Always allow
     scripts (``script_always_allow``). Only its look follows the card.
     """
-    from . import chat_card_draw, chat_view
-    from .card_kit import LINE, PANEL_HOVER, TEXT
+    from . import chat_card_draw, chat_view, ui_tokens as tk
     action, label = button or ("script_always_allow", iface_("Always allow scripts"))
     width = max(92, chat_card_draw._measure(label, 12) + 28)
-    chat_view.shape(x, y, width, 28, LINE, 8)
-    chat_view.shape(x + 1, y + 1, width - 2, 26, PANEL_HOVER, 7)
-    chat_view.text(label, x + 14, y + 9, 12, TEXT)
+    chat_view.shape(x, y, width, 28, tk.LINE, 8)
+    chat_view.shape(x + 1, y + 1, width - 2, 26, tk.PANEL_HOVER, 7)
+    chat_view.text(label, x + 14, y + 9, 12, tk.TEXT)
     state["hits"].append(((x, y, width, 28), action, call_id))
 
 
 def dispatch(context, controller, state, action, value):
-    """A flow, job or script card click, on the main thread."""
+    """A flow, job or script card click, or the pointer to a waiting approval card, on the main thread."""
+    if action == "approval_switch":
+        from . import launcher_waiting
+        launcher_waiting.select(value)
+        return
+    if action == "approval_reveal":   # approval_wait.draw_pointer: the next draw scrolls the card into view.
+        from . import approval_wait
+        approval_wait.reveal(state, controller)
+        return
+    from .review_again import shielded
+    if action in {"script_always_allow", "script_file_allow"} and shielded(value):
+        return   # A card asked again a moment ago: never a consent the person has not seen (review_again).
     if action == "script_always_allow":
         from .trusted_scripts_ui import always_allow_from_card
-        always_allow_from_card(context, controller, value)
-        return
+        return bool(always_allow_from_card(context, controller, value))
     if action == "script_file_allow":
         from .trusted_scripts_ui import script_file_allow_from_card
-        script_file_allow_from_card(context, controller, value)
-        return
+        return bool(script_file_allow_from_card(context, controller, value))
     if action.startswith("flow_"):
         from . import flow_chat
-        flow_chat.dispatch(context, controller, action, value)
-        return
+        return flow_chat.dispatch(context, controller, action, value)
     from . import job_ui
+    done = True
     if action == "job_cancel":
-        job_ui.manager().cancel(value, by="user")
-    elif action == "job_open":  # A moved output's button is disabled with its reason, never dispatched.
+        done = job_ui.manager().cancel(value, by="user") is not None
+    elif action == "job_open":  # A moved output's button is disabled with its reason; one moved since says so here.
         record = job_ui.manager().record(value)
-        if record is not None and job_ui.output_path(record) is not None:
+        done = record is not None and job_ui.output_path(record) is not None
+        if done:
             job_ui.open_output(record)
     elif action == "job_resume":   # A disabled one (another file open, say) is never dispatched.
         record = job_ui.manager().record(value)
-        if record is not None:
-            job_ui.resume(record, controller, context.window)
+        done = record is not None and job_ui.resume(record, controller, context.window) is not None
     elif action == "job_details":
         state.setdefault("expanded", set()).symmetric_difference_update({("job", value)})
     job_ui.redraw()
+    return done
+
+
+# A card button that did nothing says why in the chat, as an error notice row (``chat_notices``): one plain sentence
+# per button. An exception that carries Angelo's own translatable sentence (a ``display_text.Text``) says that one
+# instead; raw exception text is never shown (it is logged). ``controller.status`` is no channel for this: it is drawn
+# only while a turn runs.
+REFUSED = {
+    "open_studio": n_("Media Studio couldn't open here. Try again in a moment."),
+    "flow_toggle": n_("This run's steps can't be changed now: it is no longer waiting for your approval."),
+    "flow_stop": n_("This run's steps can't be changed now: it is no longer waiting for your approval."),
+    "flow_choose": n_("That result couldn't be chosen for its step. The flow may have changed since it ran."),
+    "flow_attach": n_("That image couldn't be attached. It may not be ready yet, or the message already holds "
+                      "as many files as it can."),
+    "flow_stop_run": n_("This run had already finished, so there was nothing to stop."),
+    "job_cancel": n_("This background job couldn't be stopped. It may have ended already."),
+    "job_open": n_("The file this job made couldn't be opened. It may have been moved or deleted."),
+    "job_resume": n_("The missing frames weren't rendered. Check the job's card, then try again."),
+    "script_always_allow": n_("Scripts weren't allowed: this script is no longer waiting, or a script is running "
+                              "right now."),
+    "script_file_allow": n_("This file wasn't allowed: its script is no longer waiting, or the approval couldn't be "
+                            "saved."),
+}
+NOTHING_HAPPENED = n_("That button couldn't do anything right now. Try again in a moment.")
+
+
+def refuse(controller, action, reason=None):
+    """Say in ``controller``'s chat why the card button ``action`` did nothing (``reason``: a ``display_text.Text``)."""
+    from .display_text import Text
+    body = (notice(reason.template, **reason.fields) if isinstance(reason, Text)
+            else notice(REFUSED.get(action, NOTHING_HAPPENED)))
+    controller.emit("message", {"role": "error", **body})
+
+
+def perform(controller, action, function):
+    """A card button's ``function()``: a falsy result is a refusal and an exception a failure; either is said in the
+    chat (``refuse``) whether or not a turn is running. Returns whether it did what its button says."""
+    from .display_text import Text
+    try:
+        done = function()
+    except Exception as error:   # noqa: BLE001 - every failure of a click is said, never only logged.
+        print("Angelo: the card button %s failed (%s: %s)" % (action, type(error).__name__, str(error)[:200]),   # i18n: a log line
+              file=sys.stderr)
+        first = error.args[0] if error.args else None
+        refuse(controller, action, first if isinstance(first, Text) else None)
+        return False
+    if not done:
+        refuse(controller, action)
+    return bool(done)

@@ -9,6 +9,8 @@ temporary files landed while the folder was being removed. At quit the same race
 The writers are held at a gate inside their write (a slow disk), so the order is forced, not hoped for.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile
@@ -26,7 +28,7 @@ for _path in (str(HERE.parents[2] / "scripts/addons_core"), str(HERE)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-from angelo_agent import telemetry, usage_meter, write_turn  # noqa: E402
+from angelo_agent import shared_replace, telemetry, usage_meter, write_turn  # noqa: E402
 from angelo_agent.controller import Controller  # noqa: E402
 from angelo_agent.write_turn import WriteTurn  # noqa: E402
 from test_native_usage_meter import receipt as usage_receipt  # noqa: E402
@@ -51,7 +53,7 @@ class FolderWrites:
         self.closed = False
         self.late = []   # (thread, call, name) after close returned
         self.lock = threading.Lock()
-        real_open, real_replace = os.open, os.replace
+        real_open, real_replace = os.open, shared_replace.replace
 
         def guarded(call, real):
             def wrapper(path, *args, **kwargs):
@@ -62,7 +64,7 @@ class FolderWrites:
                 return value
             return wrapper
         self.patches = [mock.patch.object(os, "open", guarded("open", real_open)),
-                        mock.patch.object(os, "replace", guarded("replace", real_replace))]
+                        mock.patch.object(shared_replace, "replace", guarded("replace", real_replace))]
 
     def _seen(self, call, path):
         thread = threading.current_thread()

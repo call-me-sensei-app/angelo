@@ -7,7 +7,10 @@ On the stand-in bpy of test_native_app_notices; preparation and the installer ar
 are test_native_update_flow and test_native_update_install). The real thing: the end-to-end updates.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
+import io
 import sys
 import tempfile
 import time
@@ -274,7 +277,9 @@ class PreparationTests(ReadyCase):
         self.assertEqual(self.ready.automatic(self.offer()), "failed")
 
 
-class RestartTests(ReadyCase):
+class RestartCase(ReadyCase):
+    """A prepared update and stood-in hand-over; the tests are in RestartTests (and test_native_update_restart_saves)."""
+
     def setUp(self):
         super().setUp()
         self.offer_ = self.offer()
@@ -283,7 +288,36 @@ class RestartTests(ReadyCase):
         self.prepared = self.ready._ready["1.1.0"]
         self.host = SimpleNamespace(closed=[], close=lambda how="done": self.host.closed.append(how), redraw=lambda: None)
         self.started, self.killed = [], []
-        process = SimpleNamespace(kill=lambda: self.killed.append(True))
+        process = SimpleNamespace(stdin=io.BytesIO(), returncode=None)
+        process.stdin.fileno = lambda: 123  # Fixture only: os.set_blocking is intercepted below.
+        process.poll = lambda: process.returncode
+        def kill():
+            self.killed.append(True)
+            process.returncode = 0
+        process.kill = kill
+        self.native_requests, self.native_states = [], {}
+        def request(fd, invocation, catalog_generation):
+            self.assertEqual(catalog_generation, 17)
+            owner = object()
+            self.native_requests.append((fd, invocation, owner))
+            self.native_states[owner] = "PENDING"
+            return owner
+        def revoke(owner):
+            self.native_states[owner] = "REVOKED"
+            return True
+        native = SimpleNamespace(_update_quit_protocol=lambda: 2,
+            _update_quit_catalog_generation=lambda: 17, _update_quit_request=request,
+            _update_quit_revoke=revoke, _update_quit_status=lambda owner: dict(schema=1,
+            phase=self.native_states[owner], channel_closed=self.native_states[owner] == "REVOKED"))
+        facade = mock.patch.object(self.restart, "_quit_native", return_value=native)
+        facade.start()
+        self.addCleanup(facade.stop)
+        blocking = mock.patch.object(self.restart.os, "set_blocking")
+        blocking.start()
+        self.addCleanup(blocking.stop)
+        for name in ("depsgraph_update_post", "load_pre", "save_pre", "undo_pre", "redo_pre"):
+            if not hasattr(self.n.bpy.app.handlers, name):
+                setattr(self.n.bpy.app.handlers, name, [])
         start = mock.patch.object(self.restart.update_install, "start",
                                   lambda request: self.started.append(request) or process)
         requirement = mock.patch.object(self.restart, "_requirement", lambda ready: 'identifier "test"')
@@ -301,22 +335,29 @@ class RestartTests(ReadyCase):
         self.restart.begin(self.offer_, self.prepared, self.host)
 
     def run_timers(self):
-        for function in list(self.bpy.app.timers.registered):
-            if function.__module__ != "angelo_agent.update_ui":
-                self.bpy.app.timers.registered.pop(function)
-                again = function()
-                if again is not None:
-                    self.bpy.app.timers.registered[function] = again
+        # First tick may request a kill; only a subsequent checked poll proves
+        # leader exit and restores Ready. No mocked kill return is exit evidence.
+        for _ in range(2):
+            for function in list(self.bpy.app.timers.registered):
+                if function.__module__ != "angelo_agent.update_ui":
+                    self.bpy.app.timers.registered.pop(function)
+                    again = function()
+                    if again is not None:
+                        self.bpy.app.timers.registered[function] = again
 
-    def quits(self):
-        return [op for op in self.n.record.operators if op[0] == "wm.quit_blender"]
+    def quit_requests(self):
+        # Native request is NOT a committed exit or an authorization frame.
+        self.assertEqual([op for op in self.n.record.operators if op[0] == "wm.quit_blender"], [])
+        return list(self.native_requests)
 
+
+class RestartTests(RestartCase):
     def test_nothing_happens_while_work_runs(self):
         self.reasons = ["agent"]
         self.press()
         self.assertEqual((self.started, self.queued()), ([], []))
 
-    def test_a_saved_file_hands_over_and_quits_once_the_installer_runs(self):
+    def test_a_saved_file_posts_one_owned_native_quit_after_exact_helper_readiness(self):
         self.bpy.data.filepath = "/work/castle.blend"
         self.press()
         request = self.started[0]
@@ -325,18 +366,31 @@ class RestartTests(ReadyCase):
         self.assertEqual(request.new, self.prepared.payload)
         self.assertEqual(self.ready.phase(self.offer_), "restarting")
         self.run_timers()
-        self.assertEqual(self.quits(), [], "never before the installer says it runs")
+        self.assertEqual(self.quit_requests(), [], "never before the installer says it runs")
         Path(self.prepared.work).mkdir(parents=True, exist_ok=True)
-        (Path(self.prepared.work) / "helper.ready").write_text("")
+        (Path(self.prepared.work) / "helper.ready").write_bytes((self.started[-1].invocation + "\n").encode("ascii"))
         self.run_timers()
-        self.assertEqual(len(self.quits()), 1)
+        self.assertEqual(len(self.quit_requests()), 1)
+
+    def test_work_that_began_while_the_installer_got_ready_stands_it_down(self):
+        self.bpy.data.filepath = "/work/castle.blend"
+        self.press()
+        self.assertEqual(self.ready.phase(self.offer_), "restarting")
+        self.reasons = ["activity"]   # e.g. a phone's capture started during the hand-over
+        Path(self.prepared.work).mkdir(parents=True, exist_ok=True)
+        (Path(self.prepared.work) / "helper.ready").write_bytes((self.started[-1].invocation + "\n").encode("ascii"))
+        self.run_timers()
+        self.assertEqual(self.quit_requests(), [], "never quits over work that began after the first check")
+        self.assertEqual(self.killed, [True], "the installer stands down, as on a timeout")
+        self.assertEqual(self.ready.phase(self.offer_), "ready")
+        self.assertTrue(self.queued("update"), "the update card says why the restart waits")
 
     def test_an_installer_that_never_starts_leaves_angelo_running(self):
         self.press()
         self.assertEqual(self.started[0].requirement, 'identifier "test"', "re-checked at swap time")
         with mock.patch.object(self.restart.time, "monotonic", return_value=time.monotonic() + 60):
             self.run_timers()
-        self.assertEqual(self.quits(), [])
+        self.assertEqual(self.quit_requests(), [])
         self.assertEqual(self.killed, [True], "a late installer never acts behind Angelo's back")
         self.assertEqual(self.ready.phase(self.offer_), "ready")
         self.assertIn("The update could not start", [c.title for c in self.queued("notice")])
@@ -360,7 +414,9 @@ class RestartTests(ReadyCase):
         self.assertEqual((len(saves), len(self.started)), (1, 1))
 
     def image(self, name, dirty=True):
-        return SimpleNamespace(name=name, is_dirty=dirty)
+        image = SimpleNamespace(name=name, is_dirty=dirty)
+        image.as_pointer = lambda: id(image)
+        return image
 
     def save_images_and_file(self, order):
         def save_images(*args, **kwargs):
@@ -455,7 +511,7 @@ class RestartTests(ReadyCase):
         self.shown("update_save").act("save", None, self.host)
         with mock.patch.object(self.restart.time, "monotonic", return_value=time.monotonic() + 5):
             self.run_timers()
-        self.assertEqual((self.started, self.quits()), ([], []))
+        self.assertEqual((self.started, self.quit_requests()), ([], []))
 
     def test_cancel_brings_the_update_card_back(self):
         self.bpy.data.is_dirty = True

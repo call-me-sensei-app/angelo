@@ -10,6 +10,8 @@ a moved or deleted install) by the same content rule. The adversarial review's p
 test_native_sealed_bundle_review.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import shutil
 import sys
@@ -19,6 +21,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 import machine_clock
+from host_test_policy import environment_skip
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
@@ -106,12 +109,17 @@ class BuildFolderTests(Case):
         self.assertTrue(inside.is_dir() and (outside / "keep.txt").exists())
 
     def test_a_folder_that_could_not_be_removed_is_not_reported(self):
-        if os.name == "nt" or os.geteuid() == 0:
-            self.skipTest("POSIX permissions as a normal user")
         current = self.build("62eb10e43a0c")
         locked = self.build("afaca1a036ca", used_days_ago=30)
-        (locked / "Applications").chmod(0o500)
-        self.addCleanup(lambda: (locked / "Applications").exists() and (locked / "Applications").chmod(0o700))
+        if os.name == "nt":
+            # Windows ignores a folder's read-only bit; a file another handle holds open cannot be deleted.
+            held = (locked / "Applications/Angelo.app/module.cpython-313.pyc").open("rb")
+            self.addCleanup(held.close)
+        else:
+            if os.geteuid() == 0:
+                self.skipTest(environment_skip("running as a user who can write anywhere"))
+            (locked / "Applications").chmod(0o500)
+            self.addCleanup(lambda: (locked / "Applications").exists() and (locked / "Applications").chmod(0o700))
         self.assertEqual(retention.prune(self.root, current), [])
         self.assertTrue(locked.exists())
 
@@ -163,7 +171,8 @@ class LinkedRootTests(Case):
         self.assertTrue((documents / "Old").exists())
 
 
-@unittest.skipIf(os.name == "nt", "Windows mirrors drop the drive letter; stale mirrors are pruned on POSIX only")
+@unittest.skipIf(os.name == "nt", environment_skip("Windows mirrors drop the drive letter; stale mirrors are pruned "
+                                                   "on POSIX only"))
 class StaleMirrorTests(Case):
     def current(self):
         """The current build's folder with only its mark: no mirror of a folder this machine may not have."""

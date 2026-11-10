@@ -10,6 +10,8 @@ the MCP launcher for external apps. A turn that still ends with a waiting step l
 last words. Fake clocks throughout; nothing sleeps.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import threading
@@ -22,7 +24,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import (claude_direct, codex_plan, external_mcp, providers, runtime_launch, session_rail,  # noqa: E402
-                          tool_deadlines, turn_end, worker_mirror_events)
+                          steering, tool_deadlines, turn_end, worker_mirror_events)
 from angelo_agent.controller import ToolDispatchBudget  # noqa: E402
 from angelo_agent.protocol import RpcError  # noqa: E402
 from angelo_agent.tool_deadlines import PROVIDER_GRACE_SECONDS, TURN_ENDED, provider_seconds, tool_seconds  # noqa: E402
@@ -56,6 +58,11 @@ class CodexCodeModeTests(unittest.TestCase):
         overrides = [value for flag, value in zip(command, command[1:]) if flag == "-c"]
         value = next(item.split("=", 1)[1] for item in overrides if item.startswith("code_mode_hold_dynamic_tools="))
         self.assertEqual(set(json.loads(value)), set(TOOL_MAP))
+        # Every tool also runs one call at a time on a runtime that would otherwise run them in parallel
+        # (agent_execution.rst, "Concurrent calls"): the host admits calls in the model's order, as on 0.163.
+        serial = next(item.split("=", 1)[1] for item in overrides
+                      if item.startswith(runtime_launch.SERIAL_TOOLS_KEY + "="))
+        self.assertEqual(set(json.loads(serial)), set(TOOL_MAP))
 
     def test_one_hold_outlasts_every_first_lifetime(self):
         """Past the runtime's ceiling a `wait` holds again; no first lifetime needs it (a started job's may)."""
@@ -293,7 +300,7 @@ class TurnEndTests(RevocationFixture):
         mirror = SimpleNamespace(busy=True, pending={"x": None}, _request_metrics=None, _worker_request=None,
                                  cancelled=False, lock=threading.Lock(), state={"messages": rows},
                                  _thinking_messages={}, _thinking_times={}, _host_request=None, _turn_message="",
-                                 thinking={}, status="")
+                                 thinking={}, status="", inbox=steering.Inbox(), version=0)   # A Controller's.
         worker_mirror_events.finish(mirror, {"status": "completed", "ended_unrun": True, "_epoch": 1, "_generation": 2})
         self.assertIs(mirror.ended_unrun, True)
         end, text = turn_end.lead_report(*session_rail.turn_end(rows, outcome=mirror.turn_outcome), mirror.ended_unrun)

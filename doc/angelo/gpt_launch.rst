@@ -130,7 +130,7 @@ experimental ``cacheAffinityKey`` (1-64 visible ASCII characters) on
 thread ID as ``prompt_cache_key`` and ``session-id`` and is persisted in the
 thread's rollout. Stock Codex ignores the field. Angelo returns to stock Codex
 once upstream ships the feature (openai/codex#21796). The build is pinned in
-``agent_runtime.json`` (Codex ``0.163.0``, the fork's commit, the
+``agent_runtime.json`` (Codex ``0.166.0``, the fork's commit, the
 feature and each platform's files); how it is built, checked, bundled, signed
 and licensed is in ``releasing.rst``, "Agent runtime".
 
@@ -174,9 +174,13 @@ and licensed is in ``releasing.rst``, "Agent runtime".
   ``turn/modelInputImages`` (the pictures each model request carried, by
   SHA-256) turns on content-proven picture delivery for that build's
   processes (``image_proof.py``; ``agent_execution.rst``, "How a request got
-  to its result"); the pinned build (1.0.8's hold-images fork) lists it, so
+  to its result"); the pinned build (since 1.0.8) lists it, so
   its Codex tool pictures are graded by content. A build that lists none keeps
-  them unconfirmed. The person's own Codex is never asked for one.
+  them unconfirmed. Listing ``turn/modelRequestStarted`` (since 1.0.10: the
+  turn announces each model request before building its input) lets the
+  recovery hold end a step at the next request, whether or not its usage was
+  reported (``agent_execution.rst``, ``request_started``). The person's own
+  Codex is never asked for one.
 * **Launch settings** (the pin's ``config_keys``). Listing
   ``runtime_launch.FORWARD_IMAGES_KEY`` (the fork's
   ``code_mode_forward_dynamic_tool_images``; the release checks refuse a build
@@ -187,7 +191,16 @@ and licensed is in ``releasing.rst``, "Agent runtime".
   instructions then say each such picture is shown automatically and
   ``image(url)`` is optional (``image_proof.codex_guidance``, +29 B; every
   other runtime keeps its text byte for byte). The person's own Codex never
-  gets the setting.
+  gets the setting. ``serial_dynamic_tools`` (``runtime_launch.SERIAL_TOOLS_KEY``,
+  every Angelo tool, since 1.0.10's 0.166 runtime) keeps Angelo's calls one at a
+  time as before 0.164 (``agent_execution.rst``, "Concurrent calls"); a Codex
+  without it ignores it.
+* **Request fields** (the pin's ``request_fields``). A build may add fields to
+  the parameters of a server request Angelo answers; the release checks find
+  each in the build's schema. ``DynamicToolCallParams.modelStep`` names the
+  model request that wrote a dynamic call and its exec cell, which the recovery
+  hold judges the call by (``agent_execution.rst``, ``record_call_step``); a
+  runtime without it keeps the step a call is checked in.
 * **First run.** Where Angelo carries the runtime, the connect card always
   offers ChatGPT (``first_run.built_in``) and never asks for a Codex CLI to be
   installed; Claude Code is still found as before.
@@ -591,8 +604,10 @@ Claude runs with a Codex runtime on both sides:
   ``~/.codex``).
 * One dedicated, signed-in ``CODEX_HOME`` for both sides, named
   ``.../codex-profile/<connection id>`` and never ``~/.codex``; its
-  ``config.toml`` may declare no MCP server. Preflight checks only that
-  ``auth.json`` exists. To sign it in once::
+  ``config.toml`` may declare no MCP server. Preflight reads only its
+  ``auth.json`` id_token's claims, which must name the dedicated evaluation
+  account (``provider_accounts.CODEX_ACCOUNT``; the tokens are never used or shown).
+  To sign it in once::
 
       CODEX_HOME=<dir>/codex-profile/<connection id> codex \
         -c cli_auth_credentials_store='"file"' login

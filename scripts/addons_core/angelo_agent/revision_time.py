@@ -9,9 +9,13 @@ a frame change, by the person or by the model's own script, stales exactly the b
 change with time (recorded: 16 still rocks of an Astra bridge trial were refused STALE_REVISION after the
 model's own ``frame_set(60)``).
 
-It is ``program_frames.frame_independent`` widened by one step: a parent, a Mirror or Array object and a camera's
-focus object are followed and must be still themselves (``frame_independent`` refuses any parent and does not
-look at modifier or focus objects). The approved-program frame rebind keeps using ``frame_independent``
+It is ``program_frames.frame_independent`` widened by one step: a parent and every Object a modifier or the
+object's data points at are followed and must be still themselves (``frame_independent`` refuses any parent).
+Those Objects come from Blender's RNA (``object_dependencies.object_pointers``), never a list of attribute names:
+a list of five names (Mirror and Array fields) left out every deformer's object, so an unparented mesh on an
+Armature, Lattice, Hook, Curve, Shrinkwrap, Cast, Simple Deform, Mesh Deform, Surface Deform or Screw object was
+"still" and its revision dropped the frame; keyed B-Bone pose values or a lattice's keyed shape key then deformed
+it from frame to frame under one exact revision (recorded on 1.0.9, 1.0.10 and main, 2026-11-05). The approved-program frame rebind keeps using ``frame_independent``
 (``native_programs.rebind``), so a still child of a still parent keeps its binding across a frame change made
 before its program, but a frame move between approval and staging still refuses it there (STALE_DEPENDENCY).
 One dependency walk could later serve both questions.
@@ -19,21 +23,27 @@ One dependency walk could later serve both questions.
 
 from .program_frames import FRAME_INDEPENDENT_MODIFIERS, FRAME_INDEPENDENT_TYPES, _animated, _graph_frame_independent
 from .program_frames import MAX_FRAME_SCAN_NODES
+from .object_dependencies import object_pointers
 
-# Object pointers of the allowed modifiers (Mirror, Array): the evaluated result follows those objects.
-_MODIFIER_OBJECTS = ("mirror_object", "offset_object", "start_cap", "end_cap", "curve")
 # Objects one answer may visit (the object, its parent chain and the objects its modifiers read).
 MAX_FRAME_SCAN_OBJECTS = 64
+# Types also judged, by the same rules, when another object follows them (a deformer's object): an armature, a
+# lattice or a curve that nothing animates, drives or constrains deforms the same at every frame. Judging them by
+# type alone made a mesh on a posed but unanimated character stale on every frame change.
+FOLLOWED_TYPES = FRAME_INDEPENDENT_TYPES | {"ARMATURE", "LATTICE", "CURVE"}
 
 
 def _read_objects(obj):
-    """The objects ``obj``'s evaluated state follows: its parent, its modifiers' objects, a camera's focus object."""
+    """The objects ``obj``'s evaluated state follows: its parent and every Object its modifiers and its data point
+    at, from RNA (a deformer's object, a Mirror or Array object, a Shrinkwrap target, a camera's focus object; a
+    Collection by its objects). The data is read without its collections, which are its geometry."""
     found = [obj.parent]
-    found += [getattr(modifier, name, None) for modifier in obj.modifiers for name in _MODIFIER_OBJECTS]
-    if obj.type == "CAMERA":
-        found.append(getattr(getattr(obj.data, "dof", None), "focus_object", None))
-    # Only objects: an Array's ``curve`` is an object, but other attributes of that name are not.
-    return [item for item in found if item is not None and hasattr(item, "modifiers") and hasattr(item, "parent")]
+    for modifier in obj.modifiers:
+        found += object_pointers(modifier)
+    if obj.data is not None:
+        found += object_pointers(obj.data, collections=False)
+    return [item for item in found if item is not None and item is not obj
+            and hasattr(item, "modifiers") and hasattr(item, "parent")]
 
 
 def still_in_pass(obj, memo):
@@ -60,15 +70,18 @@ def _group_still(tree, groups):
     return groups[key]
 
 
-def still(obj, _visited=None, groups=None):
-    """Conservatively, whether nothing about ``obj`` can change with the current frame.
+def still(obj, _visited=None, groups=None, followed=False):
+    """Conservatively, whether nothing about ``obj`` can change with the current frame (``followed``: as an object
+    another one follows, which also admits ``FOLLOWED_TYPES``).
 
     ``program_frames.frame_independent``'s rules (allowed object types and
     modifiers, time-free node graphs, no constraints, physics, particles,
     animation or drivers), with what the object follows judged the same way
-    instead of refused outright. An object it follows (its parent, whatever the parent type; a Mirror or
-    Array object; a camera's focus object) must be frame independent too, so a
-    child of a still parent is still and a child of an animated one is not.
+    instead of refused outright. An object it follows (its parent, whatever the parent type; any Object a
+    modifier or its data points at, ``_read_objects``) must be frame independent too, so a
+    child of a still parent is still and a child of an animated one is not. A followed Armature, Lattice or
+    Curve object is judged by the same rules (an armature's pose-bone constraints included), so a mesh on a
+    keyed rig or lattice keeps the frame and one on an unanimated rig does not.
     Constraints of any kind, physics, particles, other object types, any
     modifier outside the allowed set and any animation or driver make it
     dependent, as does visiting more than ``MAX_FRAME_SCAN_OBJECTS`` objects.
@@ -79,7 +92,10 @@ def still(obj, _visited=None, groups=None):
     if key in visited:  # A cycle adds no time of its own: each object's own check decides.
         return True
     visited.add(key)
-    if len(visited) > MAX_FRAME_SCAN_OBJECTS or obj.type not in FRAME_INDEPENDENT_TYPES or len(obj.constraints):
+    types = FOLLOWED_TYPES if followed else FRAME_INDEPENDENT_TYPES
+    if len(visited) > MAX_FRAME_SCAN_OBJECTS or obj.type not in types or len(obj.constraints):
+        return False
+    if obj.type == "ARMATURE" and _pose_constrained(obj, groups):
         return False
     if getattr(obj, "rigid_body", None) is not None or len(getattr(obj, "particle_systems", ())):
         return False
@@ -89,9 +105,22 @@ def still(obj, _visited=None, groups=None):
                 return False
         elif modifier.type not in FRAME_INDEPENDENT_MODIFIERS:
             return False
-    if not all(still(item, visited, groups) for item in _read_objects(obj)):
+    if not all(still(item, visited, groups, followed=True) for item in _read_objects(obj)):
         return False
     data = obj.data
     if _animated(getattr(data, "node_tree", None)):  # A light's own nodes (its strength, colour) keyed or driven.
         return False
     return not any(_animated(block) for block in (obj, data, getattr(data, "shape_keys", None)))
+
+
+def _pose_constrained(obj, groups):
+    """Whether any pose bone of an armature has a constraint, remembered per armature for the pass (``groups``): a
+    rig many meshes follow is scanned once."""
+    key = ("pose_constrained", obj.as_pointer() if hasattr(obj, "as_pointer") else id(obj))
+    if groups is not None and key in groups:
+        return groups[key]
+    pose = getattr(obj, "pose", None)
+    found = pose is not None and any(len(bone.constraints) for bone in pose.bones)
+    if groups is not None:
+        groups[key] = found
+    return found

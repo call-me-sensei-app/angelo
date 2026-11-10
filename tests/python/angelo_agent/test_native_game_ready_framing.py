@@ -9,6 +9,8 @@ to build the fix: extra geometry on every side, just past the frame, inside the 
 copies, a missing part, and a flipped shell; identical meshes stay a perfect match. IoU and the attribute differences
 are symmetric, so each case is also checked with the roles swapped."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

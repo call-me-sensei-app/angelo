@@ -9,6 +9,8 @@ message is steady deltas with no structural progress, a silent stream has none l
 fixture log database, bounded. Nothing here launches Angelo, a runtime or a provider.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import contextlib
 import io
@@ -28,6 +30,7 @@ from unittest.mock import patch
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[2] / "scripts/addons_core"))
+import account_fixtures  # noqa: E402  (made-up sign-ins, provider_accounts)
 import eval_abnormal_end as end  # noqa: E402
 import eval_live_agent  # noqa: E402
 import eval_stream_counts as stream  # noqa: E402
@@ -456,8 +459,8 @@ class TraceExportTests(unittest.TestCase):
         """``eval_live_agent.main`` (the Mac harness and the VM bench alike): the app died mid-task."""
         identity = ConnectionStore(self.root / "source").add("OPENAI", "SUBSCRIPTION")["id"]
         home = self.root / "bench" / "codex-profile" / identity
-        home.mkdir(parents=True)
-        (home / "auth.json").write_text("{}")   # Only its existence is checked.
+        # The evaluation account's made-up claims: only its id_token's claims are read.
+        account_fixtures.codex_sign_in(home)
         now = time.time()
         logs_database(home / "logs_2.sqlite", [(now - 30, "response.created", "thread-A"),
                                                (now - 29, "websocket: waiting for the next event", None)])

@@ -13,6 +13,8 @@ Covered:
   a newer live scene arrived after the save; ``ended`` and a broken link end it and restore the throttle.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import json
 import os
@@ -125,7 +127,9 @@ class LiveGlueTests(unittest.TestCase):
         self.assertTrue(native.live)
         editor._on_message({"type": "scene", "asset": package, "version": 3}, b"\x00glb-bytes")
         kind, shown_package, data, mode = native.calls[-1]
-        self.assertEqual((kind, shown_package, data, mode), ("show", package, b"\x00glb-bytes", 0o700))
+        self.assertEqual((kind, shown_package, data), ("show", package, b"\x00glb-bytes"))
+        if os.name != "nt":   # Windows keeps only the read-only bit; the folder is in the person's own temp folder.
+            self.assertEqual(mode, 0o700)
         self.assertEqual(self.client.sent[-1], {"type": "status", "asset": package, "code": "previewed",
                                                 "version": 3, "instances": 2})
         folder = editor.live._state["folder"]

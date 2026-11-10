@@ -8,6 +8,8 @@ took a blank Preferences reference; test_blender_studio_assets_gui's dialog fram
 ``WM_window_pixels_read`` takes the offscreen path there; the eyedropper's sample read is unchanged.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import unittest
 from pathlib import Path
 

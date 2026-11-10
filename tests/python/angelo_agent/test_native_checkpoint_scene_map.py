@@ -10,9 +10,12 @@ and, once orphaned, by the snapshot worker's maintenance; the folder is private 
 the links a Restore uses.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from contextlib import nullcontext
 import copy
 import json
+import os
 from pathlib import Path
 import stat
 import sys
@@ -163,7 +166,8 @@ class StorageTests(unittest.TestCase):
         record = self.snapshot()
         self.assertTrue(scene_map.save(self.store, record["id"], copy.deepcopy(MAP)))
         self.assertEqual(json.loads(self.path(record).read_text()), MAP)
-        self.assertEqual(stat.S_IMODE(self.path(record).stat().st_mode), 0o600)
+        if os.name != "nt":   # Windows keeps only a file's read-only bit.
+            self.assertEqual(stat.S_IMODE(self.path(record).stat().st_mode), 0o600)
         self.assertEqual(list(self.path(record).parent.iterdir()), [self.path(record)], "no temporary file left")
         self.assertEqual(scene_map.read(self.store, record["id"]), MAP)
         self.assertEqual({path.name for path in self.store.folder(record["id"]).iterdir()},

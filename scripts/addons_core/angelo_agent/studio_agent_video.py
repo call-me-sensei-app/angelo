@@ -11,6 +11,7 @@ billed before they pass. Model-facing text is English.
 
 from . import fal_models, flow_prices
 from .provider_registry import model_kind
+from .refusal_codes import coded
 
 VIDEO_OPTIONS = frozenset({"duration", "resolution", "aspect", "audio"})
 
@@ -36,7 +37,8 @@ def video_generation(agent, choice, args):
     from .fal_video import validate_any as validate
     supplied = args.get("options", {})
     if set(supplied) - VIDEO_OPTIONS:
-        raise ValueError("Video models take duration, resolution, aspect and audio; inspect the catalog")
+        raise coded(ValueError("Video models take duration, resolution, aspect and audio; inspect the catalog"),
+                    "VALIDATION")
     frames = [agent.reference(frame) for frame in args.get("frames", [])]
     inputs = {"first": frames[0] if frames else None, "last": frames[1] if len(frames) > 1 else None,
               "references": agent.references(args)}

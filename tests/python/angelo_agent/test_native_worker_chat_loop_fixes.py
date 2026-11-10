@@ -14,6 +14,8 @@ Each test is a break-it finding's proof turned around (review-concurrency F1, F2
   facts reach a mirror as the rounds and clock ``worker_facts`` reads.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import threading
 import time
 import unittest

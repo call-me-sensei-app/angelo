@@ -6,6 +6,8 @@ No sockets, Blender or provider. The allowlist tests prove that every tool
 outside the phase-1 read-only set is refused before any work is queued.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import io
 import json
 import os

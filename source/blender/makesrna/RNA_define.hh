@@ -32,6 +32,14 @@ namespace blender {
 
 struct Scene;
 
+/**
+ * Process-wide epoch for runtime RNA declaration lifetimes (not data values).
+ * Creation/removal/replacement invalidates all dependent plans conservatively.
+ * Atomic reads are safe on any thread; declaration mutation retains RNA's main-thread ownership.
+ * UINT64_MAX means exhausted: consumers must refuse cached declaration authority.
+ */
+uint64_t RNA_runtime_declaration_generation();
+
 BlenderRNA *RNA_create();
 /**
  * Create a container for RNA types that are defined at runtime (in contrast to the main global

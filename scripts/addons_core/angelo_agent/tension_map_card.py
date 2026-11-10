@@ -14,13 +14,13 @@ from . import card_kit as kit, tension_map_logic as logic
 from .ui_text import iface_, language, n_
 
 KIND = "tension_map"
-TITLE = n_("Tension map")
+TITLE = n_("Tension Map")
 MEASURING = n_("Measuring {names}")
 NO_MESH = n_("Select a mesh to measure its tension")
 SHOW = n_("Show on the 3D view")
 SHOW_CAPTION = n_("Blue is compressed, red is stretched")
 REST = n_("Rest shape")
-SHAPE_KEY = n_("Shape key")
+SHAPE_KEY = n_("Shape Key")   # The modifier's own property and option name (rna_modifier.cc).
 NO_SHAPE_KEYS = n_("This mesh has no shape keys")
 CAPTURE = n_("Capture rest shape")
 STRETCH = n_("Full red at stretch")

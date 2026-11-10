@@ -13,6 +13,7 @@ import { WebShaders } from "./shaders.js";
 import { setupPanel } from "./panel.js";
 import { Look } from "./look.js";
 import { setupCompare } from "./compare.js";
+import { ownPresses } from "./drag.js";
 
 const LIBS = "./vendor/three/examples/jsm/libs/";
 const $ = (id) => document.getElementById(id);
@@ -32,6 +33,7 @@ const look = new Look(renderer, scene);
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 2000);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
+ownPresses(canvas);   // Orbit, pan and dolly start no native drag, selection or autoscroll (drag.js).
 
 const draco = new DRACOLoader().setDecoderPath(LIBS + "draco/gltf/");   // WebAssembly: the bundled decoder.
 const ktx2 = new KTX2Loader().setTranscoderPath(LIBS + "basis/").detectSupport(renderer);

@@ -16,6 +16,8 @@ Threats pinned here, each with its own test:
 The lead side (sending, acknowledgement, Stop timing) is ``test_native_worker_consent_lead``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import unittest

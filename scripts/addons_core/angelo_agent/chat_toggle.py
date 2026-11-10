@@ -350,6 +350,9 @@ def _dock_when_drawn():
         _pending.pop(window.as_pointer(), None)
         chat_launcher.settled(window.as_pointer())
         return None
+    if live_windows.covered(bpy.context.window_manager):   # Covered 3D views do not draw: the wait starts at the lift.
+        _pending[window.as_pointer()] = (workspace, time.monotonic(), session)
+        return 0.05
     if ui._layout_timer is not None or (not tab_drawn(window, since) and time.monotonic() - since < SETTLE):
         return 0.05
     _pending.pop(window.as_pointer(), None)
@@ -408,6 +411,17 @@ _last_states = None
 _settle_wait = live_windows.Wait()   # The watch and the follow wait (bounded) while a window is between screens.
 
 
+def chat_shown():
+    """Whether a chat is shown now: a moving or popped chat is never mistaken for hidden. Read live once the watch has
+    started and no window is between screens (else the watch's last states): a toggle's own launcher update runs
+    before the next watch, which would otherwise leave the just-hidden chat's waiting card off the launcher."""
+    manager = bpy.context.window_manager
+    if _last_states is None or not live_windows.settled(manager):
+        return _last_states is None or any(state != "hidden" for state in _last_states)
+    every = live_windows.every_window(manager)
+    return any(chat_state(window, every)[0] != "hidden" for window in live_windows.windows(manager))
+
+
 def _watch():
     """Twice a second, for what notifies no one (Close Area, a window closing): when the chats' states change, the top
     bars redraw, corner Angelo moves (signalled changes move it at once) and the hint sees it (``chat_hint.observe``)."""
@@ -418,6 +432,9 @@ def _watch():
     states = tuple(chat_state(window, every)[0] for window in live_windows.windows(bpy.context.window_manager))
     if states != _last_states:
         _last_states = states
+        if states and all(state == "hidden" for state in states):
+            from . import launcher_waiting
+            launcher_waiting.clear_hidden_hits()
         redraw_top_bars()
     from . import chat_hint, ui
     try:

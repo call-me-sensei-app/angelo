@@ -5,6 +5,7 @@
 The library belongs to the app, not to a chat or .blend file. Create/Folders/Grid
 occupy separate columns; collapsing Create never overlays the Blender viewport.
 Only explicit Generate and Enhance confirmations can incur provider usage.
+In a right-to-left language the whole editor mirrors about its region (``canvas_rtl``), as the chat does.
 """
 
 import queue
@@ -15,33 +16,25 @@ import gpu
 
 from . import card_kit as kit, chat_view as canvas, live_windows, studio_views, ui_tokens as tokens
 from . import studio_workflow_ops, studio_workflow_run as workflow_run, studio_workflows as workflows
-from .studio_state import StudioLibrary, model_options, studio_layout, setup_text, top_row, FOLDER_ROWS, OPTION_LABELS
+from .studio_state import (StudioLibrary, model_options, notice_rows, studio_layout, setup_text, top_row, FOLDER_ROWS,
+                           OPTION_LABELS)
 from .studio_generation import StudioJobs
 from .provider_registry import PROVIDER_NAMES, SPECS
 from .references import ReferenceStore, MIME
 from .studio_previews import release_preview
+from .display_text import describe_error, shown
 from .ui_text import iface_, n_
 
 language_id = "angelo_genai"
 # Every colour is a shared design token (doc/angelo/studio_entry_points.rst, "Visual language"; the maintainer, 10-20:
-# Media Studio wears the same palette as every route into it). No literal colour in studio*.py (a host test pins it).
-BG = kit.CARD
-PANEL = kit.PANEL
-FIELD = kit.CARD
-LINE = kit.LINE
-HOVER = kit.PANEL_HOVER
-ACCENT = kit.TEAL                  # A fill: the primary button, the active tab, a progress bar. INK text on it.
-ACCENT_HOVER = kit.TEAL_HOVER
-ACCENT_PRESSED = kit.TEAL_PRESSED
-ACCENT_TEXT = kit.INK
-FOCUS = kit.FOCUS                  # A focused field's outline.
-SELECTED = kit.TEAL_SOFT           # A chosen chip (1:1, 2K), the active folder.
-TEXT = kit.TEXT
-MUTED = kit.MUTED
-GREEN = tokens.SUCCESS
-SCRIM = kit.SCRIM
+# Media Studio wears the same palette as every route into it), read where it is drawn, so Studio follows the theme
+# (ui_tokens.themed). Its own names forward to the roles for the modules that still read them from here.
+TOKEN_NAMES = {"BG": "CARD", "PANEL": "PANEL", "FIELD": "CARD", "LINE": "LINE", "HOVER": "PANEL_HOVER",
+               "ACCENT": "TEAL", "ACCENT_HOVER": "TEAL_HOVER", "ACCENT_PRESSED": "TEAL_PRESSED", "ACCENT_TEXT": "INK",
+               "FOCUS": "FOCUS", "SELECTED": "TEAL_SOFT", "TEXT": "TEXT", "MUTED": "MUTED", "GREEN": "SUCCESS",
+               "SCRIM": "SCRIM", "ERROR": "DANGER"}
+__getattr__ = tokens.forward(TOKEN_NAMES, __name__)
 POPUP_ROW = 43  # A popover entry's pitch, in pixels.
-ERROR = tokens.DANGER
 
 _views, _modals, _textures = {}, set(), {}
 _handler, _image_shader = None, None
@@ -159,55 +152,64 @@ def copy_as_script(context):
 
 def draw():
     global last_error, draw_count
-    area, region = bpy.context.area, bpy.context.region
-    if not _enabled or not is_studio(area) or region.type != 'WINDOW':
-        return
-    try:
-        state = view(area)
-        width, height = region.width, region.height
-        if width < 300 or height < 150:
-            canvas.shape(0, 0, width, height, BG)
-            canvas.text(iface_("Media Studio · widen this editor"), 12, max(10, height - 24), 11, TEXT)
+    with tokens.themed():   # Studio follows the interface theme (ui_kit.rst, "Light and dark").
+        area, region = bpy.context.area, bpy.context.region
+        if not _enabled or not is_studio(area) or region.type != 'WINDOW':
             return
-        if state["collapsed"] is None:
-            state["collapsed"] = width < 740
-        state["hits"], state["fields"] = [], {}
-        state["geometry"] = studio_layout(width, height, state["collapsed"])
-        gpu.state.blend_set('ALPHA')
-        canvas.shape(0, 0, width, height, BG)
-        # Measured in the interface language, left to right (a translation widens its tab, never cuts it).
-        tabs = [(kind, iface_(label)) for kind, label in TABS]
-        create = iface_("Create") if state["collapsed"] else iface_("Hide Create")
-        placed, end = top_row([(label, False, minimum, 8) for (_kind, label), minimum in zip(tabs, TAB_MINIMUMS)]
-                              + [(create, bool(state["collapsed"]), 112, 14)], canvas.measure)
-        for (kind, label), (x, w) in zip(tabs, placed):
-            button(state, (x, height - 45, w, 32), label, "tab", kind, active=state["kind"] == kind, primary=state["kind"] == kind)
-        x, w = placed[-1]
-        button(state, (x, height - 45, w, 32), create, "collapse", icon="plus" if state["collapsed"] else None)
-        state["tabs_end"] = end + 8
-        top_row_end(state, width, height)
-        workflow = state["kind"] == "WORKFLOW"   # Media Studio's Workflows tab (studio_workflows) draws its own columns.
-        for name, function in (("create", workflows.card if workflow else create_panel),
-                               ("folders", workflows.runs if workflow else folder_panel),
-                               ("assets", workflows.board if workflow else asset_grid)):
-            rect = state["geometry"][name]
-            if rect[2] > 0 and rect[3] > 0:
-                function(state, rect)
-        if state.get("notice"):
-            notice = canvas.elide(iface_(state["notice"]), max(100, width - 58), 11)
-            canvas.shape(14, 15, width - 28, 35, HOVER, 8)
-            canvas.text(notice, 26, 27, 11, TEXT)
-            canvas.icon("close", width - 31, 32)
-            hit(state, (width - 47, 15, 33, 35), "clear_notice")
-        popup(state, width, height)
-        expanded_prompt(state, width, height)
-        gpu.state.blend_set('NONE')
-        draw_count += 1
-    except Exception as error:
-        last_error = str(error)
-        print("Angelo Media Studio draw:", error)
-        gpu.state.scissor_test_set(False)
-        gpu.state.blend_set('NONE')
+        from . import canvas_rtl
+        try:
+            state = view(area)
+            width, height = region.width, region.height
+            canvas_rtl.begin(width)   # Mirrored in a right-to-left language; ``end`` in ``finally``.
+            state["mirror"] = canvas_rtl.axis()   # Input maps the pointer back with it (studio_input).
+            if width < 300 or height < 150:
+                canvas.shape(0, 0, width, height, tokens.CARD)
+                canvas.text(iface_("Media Studio · widen this editor"), 12, max(10, height - 24), 11, tokens.TEXT)
+                return
+            if state["collapsed"] is None:
+                state["collapsed"] = width < 740
+            state["hits"], state["fields"] = [], {}
+            state["geometry"] = studio_layout(width, height, state["collapsed"])
+            gpu.state.blend_set('ALPHA')
+            canvas.shape(0, 0, width, height, tokens.CARD)
+            # Measured in the interface language, left to right (a translation widens its tab, never cuts it).
+            tabs = [(kind, iface_(label)) for kind, label in TABS]
+            create = iface_("Create") if state["collapsed"] else iface_("Hide Create")
+            placed, end = top_row([(label, False, minimum, 8) for (_kind, label), minimum in zip(tabs, TAB_MINIMUMS)]
+                                  + [(create, bool(state["collapsed"]), 112, 14)], canvas.measure)
+            for (kind, label), (x, w) in zip(tabs, placed):
+                button(state, (x, height - 45, w, 32), label, "tab", kind, active=state["kind"] == kind, primary=state["kind"] == kind)
+            x, w = placed[-1]
+            button(state, (x, height - 45, w, 32), create, "collapse", icon="plus" if state["collapsed"] else None)
+            state["tabs_end"] = end + 8
+            top_row_end(state, width, height)
+            workflow = state["kind"] == "WORKFLOW"   # Media Studio's Workflows tab (studio_workflows) draws its own columns.
+            for name, function in (("create", workflows.card if workflow else create_panel),
+                                   ("folders", workflows.runs if workflow else folder_panel),
+                                   ("assets", workflows.board if workflow else asset_grid)):
+                rect = state["geometry"][name]
+                if rect[2] > 0 and rect[3] > 0:
+                    function(state, rect)
+            if state.get("notice"):   # The whole sentence, wrapped (studio_state.notice_rows), never cut to one line.
+                rows = notice_rows(shown(state["notice"]), lambda part: canvas.measure(part, 11), max(100, width - 58))
+                box = 21 + 14 * len(rows)
+                canvas.shape(14, 15, width - 28, box, tokens.PANEL_HOVER, 8)
+                for index, row in enumerate(rows):
+                    canvas.text(row, 26, 15 + box - 23 - index * 14, 11, tokens.TEXT)
+                canvas.icon("close", width - 31, 15 + box / 2 - 1)
+                hit(state, (width - 47, 15, 33, box), "clear_notice")
+            popup(state, width, height)
+            expanded_prompt(state, width, height)
+            focus_ring(state)   # The keyboard's ring, over everything drawn (studio_draw).
+            gpu.state.blend_set('NONE')
+            draw_count += 1
+        except Exception as error:
+            last_error = str(error)
+            print("Angelo Media Studio draw:", error)
+            gpu.state.scissor_test_set(False)
+            gpu.state.blend_set('NONE')
+        finally:
+            canvas_rtl.end()
 
 
 # Media Studio's Asset Browser library row (studio_draw.library_rows): action -> operator.
@@ -235,7 +237,7 @@ def top_row_end(state, width, height):
         if width - studio_to_flow.pill_width(lambda text, size: canvas.measure(text, size)) - 14 >= state.get("tabs_end", width):
             studio_to_flow.draw_pill(state, width, height, canvas=canvas)   # Its pill draws with the canvas's primitives.
     elif width > 600:
-        canvas.text(iface_("Local media library"), width - 144, height - 34, 11, MUTED)
+        canvas.text(iface_("Local media library"), width - 144, height - 34, 11, tokens.MUTED)
 
 
 def open_popup(state, action, anchor):
@@ -270,14 +272,14 @@ def click(context, state, action, value, rect):
     elif action.startswith("video_"):
         studio_video_ui.click(context, state, action, value, rect)
     elif action == "tab":
-        state.update(kind=value, create_scroll=0, grid_scroll=0, focus=None, selection=None)
+        state.update(kind=value, create_scroll=0, grid_scroll=0, field_focus=None, selection=None)
     elif action == "collapse":
         state["collapsed"] = not state["collapsed"]
-        state["focus"] = None
+        state["field_focus"] = None
     elif action == "focus":
-        state.update(focus=value, caret=len(state[value]), selection=None)
+        state.update(field_focus=value, caret=len(state[value]), selection=None)
     elif action in {"model", "quality", "background", "folder_picker"}:
-        state["focus"] = None
+        state["field_focus"] = None
         open_popup(state, action, rect)
     elif action in {"aspect", "resolution"}:
         state[action] = value
@@ -286,7 +288,7 @@ def click(context, state, action, value, rect):
     elif action == "folder":
         state.update(folder=value, grid_scroll=0)
     elif action in LIBRARY_ACTIONS:
-        state["focus"] = None
+        state["field_focus"] = None
         getattr(bpy.ops.angelo, LIBRARY_ACTIONS[action])('INVOKE_DEFAULT')
     elif action == "settings":
         bpy.ops.angelo.settings('INVOKE_DEFAULT')
@@ -318,10 +320,10 @@ def click(context, state, action, value, rect):
             state["enhanced"] = None
         state["prompt"] = state["expanded_prompt"]
         state.pop("prompt_dialog", None)
-        state["focus"] = None
+        state["field_focus"] = None
     elif action == "prompt_cancel":
         state.pop("prompt_dialog", None)
-        state["focus"] = None
+        state["field_focus"] = None
     elif action == "asset":
         bpy.ops.angelo.studio_asset('INVOKE_DEFAULT', asset_id=value, area_pointer=str(context.area.as_pointer()))
     elif action == "to_flow":
@@ -360,7 +362,7 @@ def defer_drop(window, area):
             try:
                 attach(view(target), [inserted[1:-1]])
             except (OSError, ValueError) as error:
-                view(target)["notice"] = str(error)
+                view(target)["notice"] = describe_error(error)
         redraw()
         return None
     bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, wp, finish), first_interval=.03)
@@ -405,8 +407,8 @@ def pump():
 # The split modules (their 500-line limit): imported last, as they import what is defined above. Every name
 # stays reachable as ``studio.<name>``.
 from .studio_draw import (  # noqa: E402,F401
-    asset_grid, button, create_panel, expanded_prompt, field, folder_panel, hit, label, library_rows, paragraph,
-    popup, thumbnail)
+    asset_grid, button, create_panel, expanded_prompt, field, focus_ring, folder_panel, heading, hit, label, library_rows,
+    paragraph, popup, thumbnail)
 from .studio_input import (  # noqa: E402,F401
     ANGELO_OT_studio_input, ensure_input, point_to_caret, state_for)
 from .studio_ops import (  # noqa: E402,F401

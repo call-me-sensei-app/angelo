@@ -912,6 +912,24 @@ bool popup_block_name_exists(const bScreen *screen, const StringRef name)
   return false;
 }
 
+Vector<std::string> popup_block_name_texts(const bScreen *screen, const StringRef name)
+{
+  Vector<std::string> texts;
+  for (const ARegion &region : screen->regionbase) {
+    for (const Block &block : region.runtime->uiblocks) {
+      if (block.name != name) {
+        continue;
+      }
+      for (const Button &but : block.buttons()) {
+        if (!but.str.empty()) {
+          texts.append(but.str);
+        }
+      }
+    }
+  }
+  return texts;
+}
+
 void popup_menu_close(const Block *block, const bool is_cancel)
 {
   popup_menu_retval_set(block, is_cancel ? RETURN_CANCEL : RETURN_OK, true);

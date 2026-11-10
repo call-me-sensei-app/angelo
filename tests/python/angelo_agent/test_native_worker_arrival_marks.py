@@ -14,6 +14,8 @@ Pinned here on the real reader thread (``WorkerHost._read``) with the real journ
 * a mark is judged as its application will judge it: a repeat, an older epoch or an unrelated grant refuses nothing.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import threading
 import time
 import types
@@ -58,15 +60,17 @@ class BlockedSaveFixture(ArrivalFixture):
         self.addCleanup(self.consent.gate.set)
         return chat
 
-    def block_journal_save(self, chat, seconds=10):
+    def block_journal_save(self, chat):
         """A provider thread's admission save (``tool_finalization.journal_tool``), blocked inside the chat's lock
-        for ``seconds`` or until released."""
+        until released (the test's cleanup releases it at the latest): no clock decides that it still holds the lock
+        when a check looks (a main thread stalled past a hold's limit found it over: test_native_held_preparation,
+        CI 41896025168)."""
         in_save, self.release = threading.Event(), threading.Event()
         real = chat.save
 
         def slow_save(**kwargs):
             in_save.set()
-            self.release.wait(seconds)
+            self.release.wait()
             return real(**kwargs)
         chat.save = slow_save
         self.addCleanup(self.release.set)
@@ -146,7 +150,7 @@ class ARevocationAndAStopDuringABlockedSave(BlockedSaveFixture):
 class ANarrowingDuringAFiveSecondSave(BlockedSaveFixture):
     def test_it_is_acknowledged_within_the_leads_deadline_and_nothing_autonomous_starts(self):
         chat = self.hosted({"auto": True, "scripts": "nonce-1"})
-        provider = self.block_journal_save(chat, seconds=5.0)
+        provider = self.block_journal_save(chat)   # A save that outlasts the lead's deadline, until freed.
         sent = Send(self.session, 2, {"auto": True}, True, time.monotonic())   # The lead's record of a revocation.
         self.frame(4, "chat.consent", epoch=2, grants={"auto": True})   # Withdraws the script grant only.
         answer = self.answer(4, timeout=ACK_SECONDS)

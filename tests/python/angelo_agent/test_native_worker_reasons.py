@@ -11,6 +11,8 @@
 The mirror is real (``test_native_worker_mirror.Fixture``); the worker's answers are fakes. No Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import sys
 import unittest

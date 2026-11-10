@@ -27,6 +27,8 @@ Needs jsonschema (CI installs it); dependency-free otherwise. Whether a model
 writes these forms is a live question these tests do not answer.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import math
 import re
@@ -63,6 +65,7 @@ POINTER_FIELDS = frozenset({"parent", "mirror_object", "operand", "object", "tar
                             "armature", "camera", "expected"})
 # Enums spelled other than as Blender identifiers (UPPER_CASE), each for its own reason.
 SPELLINGS = {
+    "source": "library backend identifiers (angelo, blender, fab), not Blender RNA enums",
     "property": "RNA property names (location, rotation_euler, scale)",
     "interpolation": "a node's own RNA items where Blender spells them so (TEX_IMAGE: Linear, Closest...)",
     "op": "node_edit's step verbs (add, link...), also accepted in upper case",

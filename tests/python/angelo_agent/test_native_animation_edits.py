@@ -6,6 +6,8 @@ Dependency-free; Actions are small channelbag stand-ins. Real Actions, shape
 keys, NLA, commit, rollback and Undo are covered by test_blender_animation_edits.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

@@ -322,6 +322,10 @@ def _footer(state, value, tree, shown, running, px, y, cw, draw=True):
                      (iface_("Open in Generation Flow"), "wf_edit", None, {"size": 11}))
     if stage in (wv.FILL, wv.SHEET):
         ready = bool(value["image"]) if value["template"] == "character-in-parts" else bool(state[INPUT_KEY].strip())
+        if draw and value["template"] != "character-in-parts":
+            # Return in the text template's description runs Make parts sheet (its approval first), or says why not.
+            from . import studio_enter, studio_draw
+            studio_enter.primary(state, INPUT_KEY, "wf_start", None, None if ready else studio_draw.NO_INPUT)
         return _pair(state, px, y, cw, (iface_("Edit in Generation Flow"), "wf_edit", None, {"size": 11}),
                      (iface_("Make parts sheet"), "wf_start", None, {"primary": True, "enabled": ready}))
     if stage == wv.REVIEW:

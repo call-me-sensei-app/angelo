@@ -9,7 +9,14 @@ seen late let the first samples in (9/10 on 744f498d0a6, 4/10 on d72ea2aa3ea). C
 released, leaving it releases and removes the handler, and two lints over the GUI suites: a suite whose checks
 expect a look to end "still preparing the scene" holds preparation, and a sub-second look budget written as
 ``view_render.X = constant`` is followed by a hold. The lints see this idiom, not every way to shrink a budget.
+
+The release check holds with no limit: with the default 60 s one it failed once on a Windows runner (CI 41896025168,
+shard 2/4, whose output around it took 57 s longer than passing runs of the same files): the main thread did not get
+to its "still held" check before the limit ended the hold. A check that a hold lasts until released depends on no
+clock; the limit has its own check, and a hold its limit ended fails the suite on leaving.
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import ast
 import importlib.util
@@ -54,7 +61,7 @@ class HeldPreparationTests(unittest.TestCase):
         return thread
 
     def test_the_render_waits_until_released(self):
-        with self.fx.HeldPreparation() as held:
+        with self.fx.HeldPreparation(limit=None) as held:   # Only release ends it: no clock decides this check.
             self.assertEqual(self.handlers.render_pre, [held._handler])
             self.assertEqual(self.hosted, [held._handler], "the fixture's own handler, never add-on Python")
             thread = self.render()
@@ -65,10 +72,11 @@ class HeldPreparationTests(unittest.TestCase):
             thread.join(5)
             self.assertFalse(thread.is_alive())
             self.assertEqual(held.threads, [False], "held on the render's thread, never the main one")
+            self.assertEqual(held.ended, ["released"])
         self.assertEqual(self.handlers.render_pre, [])
 
     def test_leaving_releases_and_removes_the_handler(self):
-        held = self.fx.HeldPreparation()
+        held = self.fx.HeldPreparation(limit=None)
         with held:
             thread = self.render()
             self.assertTrue(held.held.wait(5))
@@ -76,12 +84,24 @@ class HeldPreparationTests(unittest.TestCase):
         self.assertFalse(thread.is_alive(), "a suite that fails mid-hold never leaves a render waiting")
         self.assertEqual(self.handlers.render_pre, [])
 
-    def test_it_never_holds_longer_than_its_limit(self):
-        with self.fx.HeldPreparation(limit=0.2) as held:
-            thread = self.render()
-            thread.join(5)
-            self.assertFalse(thread.is_alive())
-            self.assertTrue(held.held.is_set())
+    def test_it_never_holds_longer_than_its_limit_and_then_fails_on_leaving(self):
+        held = self.fx.HeldPreparation(limit=0.2)
+        with self.assertRaisesRegex(AssertionError, "ended by its 0.2 s limit, not by release"):
+            with held:
+                thread = self.render()
+                thread.join(5)
+                ended = (thread.is_alive(), held.held.is_set(), list(held.ended))
+        self.assertEqual(ended, (False, True, ["limit"]))
+        self.assertEqual(self.handlers.render_pre, [], "the handler is removed all the same")
+
+    def test_a_suite_error_under_way_is_never_replaced_by_the_limit(self):
+        held = self.fx.HeldPreparation(limit=0.01)
+        with self.assertRaisesRegex(KeyError, "the suite's own"):
+            with held:
+                thread = self.render()
+                thread.join(5)
+                raise KeyError("the suite's own")
+        self.assertEqual(held.ended, ["limit"])
 
 
 def unheld_budgets(source):

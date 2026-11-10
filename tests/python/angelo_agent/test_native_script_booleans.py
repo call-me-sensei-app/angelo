@@ -6,6 +6,8 @@ Host stand-ins only. The real operator, solvers, evaluated meshes and the execut
 test_blender_script_booleans.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib.util
 import itertools
 import sys

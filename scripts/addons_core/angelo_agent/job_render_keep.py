@@ -95,7 +95,11 @@ class KeepFrames:
         if path != self.output:   # The name (or the earlier render's folder) was taken: never overwritten.
             receipt["output"] = str(PurePosixPath(*path.relative_to(self.workspace.root).parts))
         self.published = path
-        job_recovery.discard(staging)   # Only now: every kept file is published.
+        if theirs:   # A planned name held another file: the staged one under it is kept, named, never removed.
+            receipt["kept_folder"] = str(PurePosixPath(*staging.path.relative_to(self.workspace.root).parts))
+            job_recovery.release(staging)
+        else:
+            job_recovery.discard(staging)   # Only now: every kept file is published.
         sequence = self.request.get("sequence")
         if self.resume_into is not None and type(sequence) is list and len(sequence) == 2:
             # Counted once staging is gone (a published file has one name again); not said when the folder can't be

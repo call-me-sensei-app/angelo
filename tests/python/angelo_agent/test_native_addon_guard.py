@@ -6,6 +6,8 @@ Native suites test the add-on bundled in the app, never the checkout's: run agai
 change under test, a suite reports another add-on's result as this checkout's.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 from pathlib import Path
@@ -42,7 +44,7 @@ def write(root, files):
     for relative, text in files.items():
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        path.write_text(text, newline="\n")   # As a checkout holds them: an LFS pointer is never converted (-text).
 
 
 class Fixture(unittest.TestCase):
@@ -116,6 +118,19 @@ class CheckTests(Fixture):
             hashlib.sha256(image).hexdigest(), "0" * 64)})
         self.assertEqual(guard.check(binary, self.source)["differing"], ["addon/assets/banner.png: differs"])
 
+    def test_a_git_lfs_pointer_in_the_app_is_never_the_file(self):
+        # An app's add-on overlaid from a checkout made with GIT_LFS_SKIP_SMUDGE=1 holds pointer text where its images
+        # and .blend files belong: it cannot load them (IMB "unknown file-format"), so it is not the checkout's add-on.
+        import hashlib
+        image = bytes(range(256)) * 8
+        pointer = ("version https://git-lfs.github.com/spec/v1\noid sha256:%s\nsize %d\n"
+                   % (hashlib.sha256(image).hexdigest(), len(image)))
+        write(self.source / "scripts/addons_core/angelo_agent", {"assets/banner.png": pointer})
+        result = guard.check(self.app(addon=dict(ADDON, **{"assets/banner.png": pointer})), self.source)
+        self.assertFalse(result["matches"])
+        self.assertEqual(result["differing"], ["addon/assets/banner.png: a Git LFS pointer in the app, not the file"])
+        self.assertNotEqual(result["source"]["digest"], result["app"]["digest"])
+
     def test_a_binary_without_a_bundled_add_on_never_matches(self):
         result = guard.check(self.app(addon=None), self.source)
         self.assertFalse(result["matches"])
@@ -138,7 +153,7 @@ class RunnerTests(Fixture):
         launch.assert_not_called()
         self.assertFalse((self.root / "out").exists(), "No run folder: nothing ran")
         self.assertIn("Refused", text)
-        self.assertIn(str(guard.bundled_scripts(binary)), text)
+        self.assertIn(str(guard.bundled_scripts(binary.resolve())), text)   # The runner names the resolved app.
         self.assertIn(str(self.source), text)
         self.assertIn("addon/script_kit.py: differs", text)
         self.assertIn(guard.OVERRIDE, text)

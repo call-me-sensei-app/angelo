@@ -6,6 +6,8 @@ Pure summaries, the typed-plan loop with mocked rounds, and the real Controller
 with the unbilled stdio fixture: no Claude process, credentials or inference.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import sys

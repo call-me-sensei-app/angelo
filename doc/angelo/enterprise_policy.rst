@@ -68,6 +68,8 @@ Key                           Type           Default  Effect
 ``UpdateFeedURL``             string (URL)   —        An https address (no user name, query or other port) of
                                                       your own copy of Angelo's signed update file,
                                                       ``stable.json``. The signature is still required.
+                                                      Installers then download from the same paths
+                                                      beside it (``updates_and_reports.rst``).
 ``DisableCrashReporting``     boolean        false    true: no crash dialog, report or upload; the crash log
                                                       stays in the temporary folder.
 ============================  =============  =======  ============================================================
@@ -208,11 +210,44 @@ Angelo on ``http://127.0.0.1:<random port>/callback`` on the same computer.
 Network
 =======
 
-Angelo needs outbound HTTPS (port 443) to the console
-(``console.angelo.studio``) and the gateway (``gateway.angelo.studio``), or the
-origins your policy pins, and the loopback address 127.0.0.1 on the computer
-itself during sign-in (a local firewall must not block loopback connections).
-Personal connections, when allowed, also reach their providers directly.
+Angelo needs the loopback address 127.0.0.1 on the computer itself during
+sign-in (a local firewall must not block loopback connections) and outbound
+HTTPS (port 443) to these hosts, or the origins your policy pins. A network
+that allows only this list works for a team:
+
+==========================================  ====================================================
+Host                                        What for
+==========================================  ====================================================
+``gateway.angelo.studio``                   The team's AI traffic: model calls, generation
+                                            submit and status, WebFetch pages
+``console.angelo.studio``                   Sign-in, team reads, usage reports, the team
+                                            library, crash reports
+``angelo.studio``                           The update check (or your ``UpdateFeedURL`` mirror)
+``downloads.angelo.studio``                 Installers and update deltas (or the mirror)
+``assets.toonlab.io``, ``cdn.toonlab.io``   The Angelo Library
+Angelo's R2 storage host                    Team library files and re-hosted generation
+(``*.r2.cloudflarestorage.com``)            results, by short-lived signed links
+==========================================  ====================================================
+
+Large files never pass through the gateway: they download directly from these
+hosts. Generation results are the one exception to the list. By default they
+download from the provider's own servers (Tripo, Meshy, fal, BytePlus), whose
+hosts change and multiply. An organization whose network allows only the list
+turns on re-hosting in the console: the gateway then copies each result into
+Angelo's storage once and hands Angelo a signed link there, at the cost of a
+few seconds per result (the hosted gateway's "Re-hosted results").
+
+Personal connections, when allowed, also reach their providers directly. While
+the policy refuses personal connections, a saved personal key is not even
+checked against its provider.
+
+* **Coding agents on team connections reach only the gateway.** Claude Code
+  and Codex run behind a proxy setting that refuses every host but the
+  gateway, and Claude Code's optional traffic (telemetry, error reports,
+  update checks) is off. WebFetch's domain check and its page fetch go
+  through the gateway, which runs Anthropic's domain check and fetches the
+  page (``ai_providers.rst``, "Team connections reach only the gateway"). No
+  extra host needs to be allowed for them.
 
 * **TLS inspection.** Angelo verifies TLS with its bundled root certificates.
   A network that re-signs TLS with its own root needs that root in
@@ -227,8 +262,10 @@ Personal connections, when allowed, also reach their providers directly.
   HTTP proxy yet; a network that only allows outbound traffic through a proxy
   can't sign in. The update check and crash reports carry no credential and do
   follow the system proxy (``HTTPS_PROXY``/``NO_PROXY``, macOS network
-  settings, the Windows proxy setting; no PAC files). The coding agents honour
-  the standard ``HTTPS_PROXY`` and ``NO_PROXY`` variables.
+  settings, the Windows proxy setting; no PAC files). On personal
+  connections the coding agents honour the standard ``HTTPS_PROXY`` and
+  ``NO_PROXY`` variables. On team connections Angelo sets them itself, so the
+  agents reach the gateway directly, as Angelo does, and nothing else.
 * **Updates and crash reports** are described in ``updates_and_reports.rst``:
   what the update check sends (one request a day, no identifier), how to mirror
   the signed file for ``UpdateFeedURL``, and what a crash report contains.

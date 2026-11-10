@@ -70,7 +70,7 @@ class MirrorStore(SessionStore):
         self.hint = None          # The ``records`` count of the journal frame being read (None: read it whole).
         self.read_error = None    # The OSError of the last read, else None.
         self.whole_reads = self.tail_reads = 0
-        self._tail = None
+        self._tail, self._settle = None, True   # The first read, and any after ``forget``, settles (``_read_whole``).
         self._checked = {}        # id(raw row) -> [raw row, its check or None, whether it verified, copy handed out]
         self._encoded = {}        # id(raw result record) -> (the record, whether it encodes as the journal's JSON)
         self._entries = {}        # mutation ID -> (raw entry, its cleaned entry or None, whether the ID is valid)
@@ -105,8 +105,8 @@ class MirrorStore(SessionStore):
         return self._legacy
 
     def forget(self):
-        """Read the whole file next time (a hand-off, a recovery)."""
-        self._tail = None
+        """Read the whole file next time (a hand-off, a recovery), its identity settled."""
+        self._tail, self._settle = None, True
 
     def _journal(self, path):
         hint, self.hint, self.read_error = self.hint, None, None
@@ -127,7 +127,14 @@ class MirrorStore(SessionStore):
         self.whole_reads += 1
         with open(session_journal.open_shared(path), "rb") as handle:   # Its identity and bytes kept (delete shared).
             before = _identity(os.fstat(handle.fileno()))
-            raw, info = session_journal.read(path)
+            # The live reader of a hosted chat reads without a settle: nothing in Angelo writes the file then (a store
+            # loaded before the hand-off writes only after it loads again), its tail rests on (device, inode), size and
+            # the bytes before the offset, and main-thread loads wait on ``io``. Any other read settles: its identity
+            # is what a save after the hand-off or a recovery writes over (``session_guard``).
+            from . import worker_journal_owner
+            live = not self._settle and self.session_id is not None and worker_journal_owner.hosted(self.session_id)
+            raw, info = session_journal.read(path, settle=(lambda witness: witness) if live else None)
+            self._settle = False   # Only once a read succeeded: a failed one leaves the next read settling.
             after = _identity(session_journal.stat_of(path))   # As a descriptor reports it (Windows).
             offset = info.base_bytes + info.tail_bytes
             if before == after and not info.torn and offset > 0:

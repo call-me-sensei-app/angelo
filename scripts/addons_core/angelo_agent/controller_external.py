@@ -97,5 +97,5 @@ class ExternalRequests:
     def require_model_chat(self):
         """Raise for an External conversation: only its app's task (``send_external_task``) starts a model turn."""
         if self.external_client and not getattr(self, "_external_task", False):
-            raise RuntimeError(display_text.Text(ui_text.n_("External client conversation: approvals and Stop only. "
+            raise RuntimeError(display_text.Text(ui_text.n_("External client chat: approvals and Stop only. "
                                                             "Switch to another chat to talk to a model.")))

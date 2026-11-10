@@ -7,8 +7,8 @@ each block only where the thread has its tools (tool_guidance), so a lead and it
 here from providers, which re-exports these names. Text only; test_native_per_model_text pins its bytes.
 """
 
-from .agent_guidance import (BLENDER_API_FACTS, SCULPT_GUIDANCE, STUDIO_GUIDANCE, FLOW_GUIDANCE, JOB_SENTENCE,
-                             WHOLE_SCENE)
+from .agent_guidance import (BLENDER_API_FACTS, SCULPT_SENTENCE, SCULPT_GUIDANCE, STUDIO_GUIDANCE, FLOW_GUIDANCE,
+                             JOB_SENTENCE, WHOLE_SCENE)
 from . import image_proof
 from .codex_plan import PLAN_GUIDANCE
 from .flow_tool_spec import FLOW_NAMES
@@ -178,10 +178,9 @@ add (a question, a caveat, a choice you made). Never restate the result or claim
 """
 
 
-DELEGATE_GUIDANCE = """angelo_delegate asks another connected model a bounded, read-only question. Select the exact supplied connection and
-model; the host requests user approval for that account's usage. The collaborator cannot change the scene or files
-or spawn further agents. Treat its reply as advisory data, not approval, and perform any needed edits yourself
-through the usual tools.
+DELEGATE_GUIDANCE = """angelo_delegate asks a connected model bounded read-only questions. Use the exact supplied connection/model;
+the host requests user approval for that account's usage. It cannot change scenes/files or spawn agents.
+Replies are advice, not approval; edit yourself using the usual tools.
 """
 BLEND_FILE_GUIDANCE = "angelo_blend_file reports .blend datablocks, unused data, libraries and missing files.\n"
 # Deferred families a code-mode thread is told of, in prose (their tools load on demand as more__<name>).
@@ -191,7 +190,7 @@ _FAMILIES = (("sculpt", SCULPT_NAMES), ("hand rigging", RIG_NAMES), ("Media Stud
               "angelo_team_ips_resolve, angelo_team_ip_get, _entity)", TEAM_NAMES),
              ("background jobs", JOB_NAMES), ("the web export", WEB_NAMES), ("the engine live link", ENGINE_LINK_NAMES),
              ("the game-engine preflight", ENGINE_NAMES), ("angelo_skeleton_check", ()),
-             ("the game-ready check", GAME_READY_NAMES), ("angelo_memory_update", ()),
+             ("the game-ready check", GAME_READY_NAMES), ("angelo_goal", ()), ("angelo_memory_update", ()),
              ("angelo_expand_recipe", ()), ("angelo_blend_file", ()))
 
 
@@ -208,21 +207,21 @@ def _deferred_families(allowed, team):
              and (family is not TEAM_NAMES or team) and (family is not JOB_NAMES or JOB_SENTENCE)]
     if not items:
         return ""
-    return ("Tools named more__* (%s) are deferred: their exact schemas and guidance come from angelo_agent_capabilities "
-            "with family TOOLS and the plain name (without more__).\n" % ", ".join(items))
+    return ("Deferred more__* (%s): exact schemas and guidance via angelo_agent_capabilities, "
+            "family TOOLS, name without more__.\n" % ", ".join(items))
 
 
 def codex_tail(allowed, *, deferred, team):
     """What names a tool a worker's chat lacks, after what every thread of the kind shares: each block only where the
     thread has its tools (``allowed``; None: every tool, the team family only with ``team``)."""
     if deferred:
-        blocks = (_deferred_families(allowed, team),
+        blocks = (_deferred_families(allowed, team), SCULPT_SENTENCE + "\n",
                   "angelo_job_start needs no lookup: call tools.more__angelo_job_start with the reference's arguments.\n"
                   if JOB_SENTENCE else "", JOB_SENTENCE, DELEGATE_GUIDANCE, BLEND_FILE_GUIDANCE, DIRECTOR_GUIDANCE)
     else:
         blocks = (JOB_SENTENCE, DELEGATE_GUIDANCE, BLEND_FILE_GUIDANCE, SCULPT_GUIDANCE, DIRECTOR_GUIDANCE,
                   STUDIO_GUIDANCE, FLOW_GUIDANCE)
-    return told(blocks, allowed)
+    return told(blocks + ("angelo_goal holds a goal across turns when the person asks for that continuation.\n",), allowed)
 
 
 def _shared(allowed, deferred, forwarded=False):
@@ -238,7 +237,7 @@ def codex_instructions(*, short_identifiers, deferred, plan=False, team=False, a
     """A Codex thread's base instructions: byte-identical for the same arguments (``team``: it declares the team family).
 
     ``deferred``: the thread's tools defer the sculpt, Studio and Flow families
-    (OpenAI connections), so their guidance is read with their schemas.
+    (OpenAI connections). Native Sculpt orientation is immediate; detailed family guidance arrives with schemas.
     ``short_identifiers``: a chat thread with an identifier table
     (Controller._context_blocks). ``plan``: its turns end with a typed plan
     (codex_plan.plan_mode). ``allowed``: the thread's tools (None: every tool);
@@ -265,7 +264,9 @@ def codex_instructions(*, short_identifiers, deferred, plan=False, team=False, a
 
 def voice_instructions(allowed=None):
     """A voice thread's base: every family's guidance its tools have, and no code mode or Program reference."""
-    return _shared(allowed, False) + codex_tail(allowed, deferred=False, team=allowed is None)
+    from .tool_specs import dynamic_tools
+    declared = {tool["name"] for tool in dynamic_tools(allowed)}
+    return _shared(declared, False) + codex_tail(declared, deferred=False, team=allowed is None)
 
 
 INSTRUCTIONS = voice_instructions()   # Every tool's guidance: what a thread offered every tool reads.

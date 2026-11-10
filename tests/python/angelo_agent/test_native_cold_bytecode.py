@@ -10,6 +10,8 @@ Angelo's add-on loads through that loader. This checks the rule with real files:
 and one that never shipped.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import py_compile
 import shutil

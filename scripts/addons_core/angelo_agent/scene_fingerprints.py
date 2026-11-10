@@ -10,6 +10,7 @@ from .scene_read_values import (BudgetExceeded, SceneQueryError, hash_value, lab
                                 vector, session_uid, pointer, unreadable_revision)
 from .action_properties import OBJECT as _OBJECT_OWNER, PROPERTY_PATHS, plain
 from .generic_settings import foreign_ids, object_pointers
+from .refusal_codes import coded
 
 # Object settings property_set can write, so the observed revision binds them.
 OBJECT_SETTING_PATHS = tuple(path for path, spec in PROPERTY_PATHS.items() if spec[0] == _OBJECT_OWNER and spec[1] is None)
@@ -120,7 +121,18 @@ class ObjectFingerprinter:
             unsupported.append("curve_data_budget")
             return hash_value(None)
         work.take(items=MAX_CURVE_DATA_ITEMS - budget[0])
-        return hash_value(value)
+        return hash_value([value, self.shape_keys(obj, work)])
+
+    def shape_keys(self, obj, work):
+        """A lattice's or curve's shape keys and its shape-key display settings (``shape_key_state``); None with
+        no keys. The data's own RNA names its Key only by identity, so without this a key's value, mute or pin
+        changed what the object (and every mesh it deforms) evaluates to under one exact revision (recorded
+        2026-11-05). A mesh's keys are read with its geometry (scene_geometry)."""
+        from .shape_key_state import key_digest, owner_settings
+        key = getattr(obj.data, "shape_keys", None)
+        if key is None:
+            return None
+        return hash_value([owner_settings(obj), key_digest(key, obj.type, work)])
 
     def capture(self, window, obj, work, collections_of=None):
         """Small immutable field hashes plus allowlisted metadata; all mutable deps.
@@ -214,7 +226,7 @@ class ObjectFingerprinter:
             if obj.pose:
                 unsupported.extend("constraint:" + c.type for b in obj.pose.bones for c in b.constraints if c.type not in KNOWN_CONSTRAINTS)
             animation = {"object": self.metadata.animation(obj, work), "data": self.metadata.animation(obj.data, work) if obj.data else None,
-                         "shape_keys": self.metadata.animation(obj.data.shape_keys, work) if obj.type == "MESH" and obj.data.shape_keys else None,
+                         "shape_keys": self.metadata.animation(obj.data.shape_keys, work) if getattr(obj.data, "shape_keys", None) else None,
                          "materials": [self.metadata.animation(s.material, work) for s in obj.material_slots if s.material]}
             captured["animation"] = animation
             fields["animation"] = hash_value(animation)
@@ -251,7 +263,7 @@ class ObjectFingerprinter:
                                      "mesh_limitations": target_mesh.get("revision_limitations", []) if target_mesh else [],
                                      "rig": target_rig, "animation": self.metadata.animation(target, work),
                                      "data_animation": self.metadata.animation(target.data, work) if target.data else None,
-                                     "shape_key_animation": self.metadata.animation(target.data.shape_keys, work) if target.type == "MESH" and target.data.shape_keys else None,
+                                     "shape_key_animation": self.metadata.animation(target.data.shape_keys, work) if getattr(target.data, "shape_keys", None) else None,
                                      "materials": self.metadata.materials(target, work)})
                 if target_mesh:
                     unsupported.extend(target_mesh.get("revision_limitations", []))
@@ -280,7 +292,8 @@ class ObjectFingerprinter:
             complete = False
         unsupported.extend(_nested_limitations([captured, summary]))
         if epoch != self.current_epoch():
-            raise SceneQueryError("Document IDs were replaced during observation; search again")
+            raise coded(SceneQueryError("Document IDs were replaced during observation; search again"),
+                        "STALE_REVISION")
         exact = complete and not unsupported
         # Stillness only where a revision is given: a capture that is not exact keeps the frame.
         state_still = exact and _still(obj, work)
@@ -299,14 +312,15 @@ class ObjectFingerprinter:
         return state
 
     def lattice_data(self, obj, work, unsupported):
-        """A lattice cage: its writable settings and every point's deformed position (bounded)."""
+        """A lattice cage: its writable settings, every point's deformed position and its shape keys (bounded)."""
         points = obj.data.points
         if len(points) > 4096:
             unsupported.append("lattice_size")
             return None
         work.take(items=len(points) + 8)
         from .generic_settings import values as generic_values
-        return hash_value([generic_values(obj.data, lambda value: label(value.name)), [vector(p.co_deform) for p in points]])
+        return hash_value([generic_values(obj.data, lambda value: label(value.name)), [vector(p.co_deform) for p in points],
+                           self.shape_keys(obj, work)])
 
     def revision(self, window, obj, work):
         """The exact object_revision, or the ``SceneQueryError`` naming why it is not exact."""

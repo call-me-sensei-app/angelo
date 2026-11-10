@@ -4,6 +4,7 @@
 
 set(INC
   .
+  ../../depsgraph
   ../../makesrna
 )
 
@@ -26,6 +27,7 @@ set(SRC
   idprop_py_api.hh
   idprop_py_ui_api.hh
   imbuf_py_api.hh
+  py_capi_dependent.hh
   py_capi_rna.hh
   py_capi_utils.hh
   python_compat.hh
@@ -37,6 +39,7 @@ set(SRC
 set(LIB
   PRIVATE bf::blenkernel
   PRIVATE bf::blenlib
+  PRIVATE bf::depsgraph
   PRIVATE bf::dna
   PRIVATE bf::gpu
   PRIVATE bf::intern::clog

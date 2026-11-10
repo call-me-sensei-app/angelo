@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Isolated native save/restore test. No model, login or microphone is started."""
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import hashlib
 import os
 import sys

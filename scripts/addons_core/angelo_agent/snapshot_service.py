@@ -113,23 +113,24 @@ def _limits(summary):
     return ", ".join(parts)
 
 
-_FAILED = {"ingest": n_("Snapshot storage could not finish deduplicating a snapshot: {error}. Existing restore points stay available."),
-           "maintain": n_("Snapshot storage could not finish its cleanup: {error}. Existing restore points stay available.")}
-# Whole sentences keyed by (exactly one restore point, those captured before the latest git commit went first).
+_FAILED = {"ingest": n_("Snapshot storage could not finish packing a new snapshot: {error}. Existing snapshots stay available."),
+           "maintain": n_("Snapshot storage could not finish its cleanup: {error}. Existing snapshots stay available.")}
+# Whole sentences keyed by (exactly one snapshot, those captured before the latest git commit went first).
 _REMOVED = {
-    (True, False): n_("Snapshot limit applied: removed {count} oldest restore point ({size}). Their Restore links now show "
+    (True, False): n_("Snapshot limit applied: removed the oldest snapshot ({size}). Its Restore link now shows as "
                       "unavailable; limits are in Snapshot Settings."),
-    (True, True): n_("Snapshot limit applied: removed {count} oldest restore point ({size}), first those captured before the "
-                     "project's latest git commit. Their Restore links now show unavailable; limits are in Snapshot Settings."),
-    (False, False): n_("Snapshot limit applied: removed {count} oldest restore points ({size}). Their Restore links now show "
-                       "unavailable; limits are in Snapshot Settings."),
-    (False, True): n_("Snapshot limit applied: removed {count} oldest restore points ({size}), first those captured before the "
-                      "project's latest git commit. Their Restore links now show unavailable; limits are in Snapshot Settings."),
+    (True, True): n_("Snapshot limit applied: removed one snapshot ({size}), captured before the project's latest git "
+                     "commit. Its Restore link now shows as unavailable; limits are in Snapshot Settings."),
+    (False, False): n_("Snapshot limit applied: removed the {count} oldest snapshots ({size}). Their Restore links now "
+                       "show as unavailable; limits are in Snapshot Settings."),
+    (False, True): n_("Snapshot limit applied: removed {count} snapshots ({size}), first those captured before the "
+                      "project's latest git commit. Their Restore links now show as unavailable; limits are in Snapshot "
+                      "Settings."),
 }
-_PROTECTED = {True: n_("Snapshots remain over the limit ({limits}) because {count} restore point is protected: active "
-                       "requests, safety snapshots or required file-restore chains."),
-              False: n_("Snapshots remain over the limit ({limits}) because {count} restore points are protected: active "
-                        "requests, safety snapshots or required file-restore chains.")}
+_PROTECTED = {True: n_("Snapshots remain over the limit ({limits}) because one snapshot is protected: an active request, "
+                       "a safety snapshot or a file restore still needs it."),
+              False: n_("Snapshots remain over the limit ({limits}) because {count} snapshots are protected: active "
+                        "requests, safety snapshots or file restores still need them.")}
 
 
 def notice_text(event):
@@ -139,8 +140,8 @@ def notice_text(event):
     two notices for one event are joined into a plain English string.
     """
     if event["kind"] == "failed":
-        return Text(_FAILED.get(event["task"], n_("Snapshot storage could not finish a task: {error}. Existing restore "
-                                                  "points stay available.")), error=event["error"])
+        return Text(_FAILED.get(event["task"], n_("Snapshot storage could not finish a task: {error}. Existing snapshots "
+                                                  "stay available.")), error=event["error"])
     if event["kind"] != "maintained":
         return None
     summary = event["summary"]

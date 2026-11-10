@@ -7,6 +7,8 @@ gate figures the benchmark has always printed (``passed``, the pass rates) are
 asserted unchanged beside the contract's own totals.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import json

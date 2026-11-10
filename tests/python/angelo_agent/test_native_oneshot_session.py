@@ -6,6 +6,8 @@ Stand-ins replace the chat controller, the client streams and Blender; no
 process, account or model is involved.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -156,7 +158,9 @@ class SelfStartedContinuationTests(unittest.TestCase):
         text = (ADDON / "worker_resume.py").read_text(encoding="utf-8")
         self.assertIn("host_request=parts", text)
         controller = (ADDON / "controller.py").read_text(encoding="utf-8")
-        self.assertIn("def send(self, text, observation=None, *, recovery_evidence=None, host_request=None):", controller)
+        # host_kind names which of Angelo's own requests it is (a goal's round, the event: goal_mode.rst).
+        self.assertIn("def send(self, text, observation=None, *, recovery_evidence=None, host_request=None, host_kind=None,",
+                      controller)
 
 
 class ApprovalTests(unittest.TestCase):
@@ -283,8 +287,8 @@ class StillTests(unittest.TestCase):
             Path(elsewhere, "footbridge-final.png").rename(Path(elsewhere, "other.png"))
             self.assertFalse(oneshot_checks.evaluate_outputs(self.WANTED, [folder], None, elsewhere + os.sep)[0]["passed"])
 
-    @unittest.skipIf(os.name == "nt", "The one-shot eval harness runs on macOS: it reads POSIX paths from a reply")
     def test_a_path_the_side_stated_is_looked_at(self):
+        """In this machine's spelling: the one-shot sets run on the Windows head-to-head VMs too."""
         with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as elsewhere:
             still = Path(elsewhere, "footbridge-final.png")
             still.write_bytes(PNG)
@@ -298,10 +302,11 @@ class StillTests(unittest.TestCase):
             relative = "saved as footbridge-final.png in renders/"   # No absolute path: found by name instead.
             self.assertEqual(oneshot_checks.mentioned_paths(relative, "footbridge-final.png"), [])
             self.assertEqual(oneshot_checks.mentioned_paths("~/x/Footbridge-Final.PNG", "footbridge-final.png"),
-                             [os.path.expanduser("~/x/Footbridge-Final.PNG")])
+                             [str(Path(os.path.expanduser("~/x/Footbridge-Final.PNG")))])
             stream = Path(folder, "claude-stream.jsonl")
             stream.write_text(json.dumps({"message": {"content": [{"type": "text", "text": reply}]}}) + "\n")
-            self.assertIn(str(still), oneshot_mcp.said(folder, {"result": {"reply": "Done."}}))
+            said = oneshot_mcp.said(folder, {"result": {"reply": "Done."}})   # Its raw stream: JSON-escaped.
+            self.assertEqual(oneshot_checks.mentioned_paths(said, "footbridge-final.png"), [str(still)])
 
     def test_outputs_count_with_the_closed_checks(self):
         scene = {"success": True, "passed": 2, "total": 2, "results": [{"index": 0, "passed": True},

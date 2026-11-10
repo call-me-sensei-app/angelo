@@ -10,6 +10,8 @@ channel stops the sender without blocking anyone. ``note_reports`` finds the cha
 raises ``KeyError`` after its cubes committed; a context naming no chat notes nothing.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import threading
 import unittest

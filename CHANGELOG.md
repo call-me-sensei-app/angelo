@@ -9,6 +9,33 @@ The format is checked by `scripts/angelo/changelog.py` and described in
 [the updates and reports contract](doc/angelo/updates_and_reports.rst). Add the new release at the
 top; run `python3 scripts/angelo/changelog.py export` after editing.
 
+## 1.0.10 — 2026-11-07
+Based on Blender 5.2.3 LTS.
+
+Angelo 1.0.10 brings Blender Essentials and Fab assets into your library, adds PDF references, and makes account reconnection and long chat histories easier to use.
+
+### Highlights
+- Read earlier messages in long chats and return to the latest messages without losing your place.
+- Fewer crashes from add-ons and scripts that keep scene data while it changes.
+- Find Blender Essentials and Fab assets through the library tools, with approval before importing.
+- Attach PDFs as text references and inspect the objects changed by an agent action.
+
+### New
+- Search installed and online Blender Essentials for models, materials, worlds, node groups and brushes, then approve their use in your file.
+- Connect Fab, browse available GLB models and approve an exact download and import. Paid suggestions are off by default; Angelo never purchases assets or accepts license terms for you.
+- Asset imports capture your unsaved work first and publish success as one Undo step. If recovery cannot complete, Angelo keeps the recovery state and asks you to keep the document open.
+- Attach a PDF to give the agent its extractable text without installing a separate PDF reader. Protected or image-only PDFs explain when text cannot be read.
+
+### Improved
+- Reconnect a coding account from the affected chat, with cancellation and a retry tied to that chat and connection.
+- Open Scene Changes to see the names of added, removed and modified objects.
+
+### Fixed
+- Add-ons and scripts that keep removed modifiers, mesh elements, keyframes or custom properties report that the data was removed instead of reading old data or crashing.
+- Views of numeric custom-property arrays stay safe when a script resizes, replaces or removes the property.
+- Scripts can keep live UI data across layout changes without losing valid references.
+- Custom Python constructors report removed data safely when initialization changes the scene or unregisters a class.
+
 ## 1.0.9 — 2026-11-03
 Based on Blender 5.2.2 LTS.
 

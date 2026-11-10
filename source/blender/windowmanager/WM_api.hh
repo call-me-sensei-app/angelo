@@ -27,6 +27,7 @@
 #include "BLI_function_ref.hh"
 #include "BLI_math_vector_types.hh"
 #include "BLI_set.hh"
+#include "BLI_string_ref.hh"
 #include "BLI_sys_types.h"
 
 #include "WM_keymap.hh"
@@ -37,6 +38,7 @@ class GHOST_IContext;
 namespace blender {
 
 struct ARegion;
+struct FileIdentity;
 struct GPUViewport;
 struct ID;
 struct IDProperty;
@@ -155,6 +157,10 @@ void WM_exit_ex(bContext *C, bool do_python_exit, bool do_user_exit_actions);
  * argument set to false.
  */
 void WM_exit(bContext *C, int exit_code) ATTR_NORETURN;
+
+/** Private updater only: a prepared nonblocking pipe grant is published AFTER all exit callbacks and
+ * Python finalization. Takes descriptor ownership; no path returns to UI after this commit. */
+void WM_exit_with_update_grant(bContext *C, int descriptor, const char *frame, int size) ATTR_NORETURN;
 
 void WM_main(bContext *C) ATTR_NORETURN;
 
@@ -349,6 +355,11 @@ void WM_window_screen_rect_calc(const wmWindow *win, rcti *r_rect);
 void WM_angelo_startup_cover_set(const float color[4]);
 void WM_angelo_startup_cover_get(float r_color[4]);
 /**
+ * Angelo: true while the startup cover is shown and hides \a area (every area but the global top
+ * and status bars). A viewport region of such an area is not rendered until the cover lifts.
+ */
+bool WM_angelo_startup_cover_hides(const ScrArea *area);
+/**
  * Angelo: from now on this process keeps its document as a window does, also in background mode:
  * every file load starts the loaded document's own Undo history (first step "Original", never
  * another file's steps) and, like every save of the open file itself (not a copy), marks it saved;
@@ -362,6 +373,13 @@ bool WM_angelo_background_document_keep(bContext *C);
  * save of the open file itself. False, and nothing changes, in any other process.
  */
 bool WM_angelo_background_document_saved(bContext *C);
+/**
+ * Angelo: while a document save's `save_post` handlers run, the path it wrote and that file's
+ * identity as the save took it through a handle held across its rename
+ * (#BlendFileWriteParams::written); false otherwise (a failed save, or no identity could be
+ * taken).
+ */
+bool WM_angelo_saved_file(std::string *r_path, FileIdentity *r_identity);
 bool WM_window_is_main_top_level(const wmWindow *win);
 bool WM_window_is_fullscreen(const wmWindow *win);
 bool WM_window_is_maximized(const wmWindow *win);
@@ -904,6 +922,13 @@ void WM_global_report(eReportType type, const char *message);
  * See #WM_global_report for details.
  */
 void WM_global_reportf(eReportType type, const char *format, ...) ATTR_PRINTF_FORMAT(2, 3);
+/**
+ * Angelo: #WM_global_report for a message the caller already translated (its arguments too), with
+ * Blender's English beside it (#BKE_report_translated, #Report::message_untranslated).
+ */
+void WM_global_report_translated(eReportType type,
+                                 const char *message,
+                                 const char *message_untranslated);
 
 wmEvent *WM_event_add(wmWindow *win, const wmEvent *event_to_add) ATTR_NONNULL(1, 2);
 
@@ -1975,6 +2000,13 @@ void WM_jobs_timer(wmJob *wm_job,
                    unsigned int endnote,
                    void (*timer_step)(void *) = nullptr);
 void WM_jobs_delay_start(wmJob *wm_job, double delay_time);
+/**
+ * Angelo: the operator report list this job writes on its thread (a render's or a bake's
+ * `op->reports`, which the job manager never moves itself), so its ERROR and WARNING reports count
+ * as the job's own (#WM_angelo_job_reports.hh). Main thread; forgotten when the run ends or the
+ * operator is freed. Attached to a running job (a restart), it is the next run's list.
+ */
+void WM_jobs_reports_attach(wmJob *wm_job, ReportList *reports);
 
 using wm_jobs_start_callback = void (*)(void *custom_data, wmJobWorkerStatus *worker_status);
 void WM_jobs_callbacks(wmJob *wm_job,
@@ -2046,6 +2078,18 @@ void WM_jobs_kill_all_from_owner(wmWindowManager *wm, const void *owner) ATTR_NO
 bool WM_jobs_has_pending_or_running(const wmWindowManager *wm);
 bool WM_jobs_has_running(const wmWindowManager *wm);
 bool WM_jobs_has_running_type(const wmWindowManager *wm, int job_type);
+/**
+ * Checks if the given window manager has any running or suspended jobs of the given type and
+ * owner. If the given owner is nullptr, any owner can be matched. Additionally, jobs with a flag
+ * in the given exclude_flags will be ignored.
+ *
+ * Early adoption of Blender 5.3's function (16859984917c, scripts/angelo/early_adoption.json);
+ * 5.3 replaces the two above with it.
+ */
+bool WM_jobs_has_running(const wmWindowManager *window_manager,
+                         const void *owner,
+                         const eWM_JobType type,
+                         const eWM_JobFlag exclude_flags = {});
 
 void WM_job_main_thread_lock_acquire(wmJob *wm_job);
 void WM_job_main_thread_lock_release(wmJob *wm_job);
@@ -2072,9 +2116,18 @@ bool WM_clipboard_image_available();
 
 /**
  * Get image data from the clipboard.
- * \return The image or null when not found. Caller must free.
+ * \return The image or null when not found or it cannot be read or allocated. Caller must free.
  */
 ImBuf *WM_clipboard_image_get();
+
+/**
+ * Angelo: the size of the clipboard's image without decoding it (#GHOST_ISystem::
+ * getClipboardImageSize), so a caller can refuse an image too large to use before
+ * #WM_clipboard_image_get holds every pixel in memory (macOS, Windows, Wayland). False when there
+ * is no image, in a background session, or when the platform cannot tell without decoding: then
+ * only #WM_clipboard_image_get gives the size.
+ */
+bool WM_angelo_clipboard_image_size(int *r_width, int *r_height);
 
 /**
  * Put image data to the clipboard.
@@ -2286,6 +2339,43 @@ wmGenericCallback *WM_generic_callback_steal(wmGenericCallback *callback);
 void WM_generic_callback_free(wmGenericCallback *callback);
 
 void WM_generic_user_data_free(wmGenericUserData *wm_userdata);
+
+/* `wm_quit_activities.cc` */
+
+/**
+ * Running work that quitting, or replacing the document, would end (a live capture, an upload):
+ * the quit confirmation, the close-file confirmation and the document-replacing confirmations
+ * (Revert, Load Factory Settings, Recover Auto Save) list each one, so ending it is never silent.
+ * Process-wide and never written to a file; emptied once another document has replaced this one,
+ * right before its load-post handlers run (an owner may register again there). A failed read
+ * replaces nothing and keeps it. Main thread only.
+ *
+ * `key`: 1 to #WM_QUIT_ACTIVITY_KEY_MAX bytes of `[a-z0-9._-]`, starting with a letter or digit.
+ * Any caller may replace or remove any key: an owner re-asserts its own entry while its work runs.
+ * `message`: what ends, an English msgid translated where the dialog draws it (wrapped to the
+ * dialog's width; keep it to one line, about 60 characters: a wrapped line of visual-order Arabic
+ * reads bottom-up, as Blender's own wrapped labels do), at most #WM_QUIT_ACTIVITY_MESSAGE_MAX bytes
+ * of valid UTF-8 with no control or bidirectional-control characters and something that draws (not
+ * only White_Space or Default_Ignorable_Code_Point characters); an empty message removes the
+ * key. Returns false (nothing changes) for an invalid key or message, or a new key beyond
+ * #WM_QUIT_ACTIVITIES_MAX; replacing a key's message always works.
+ */
+bool WM_quit_activity_set(StringRef key, StringRef message);
+/** Whether any activity is registered. */
+bool WM_quit_activities_any();
+/** Each registered activity as (key, message), in the order they were first registered. */
+void WM_quit_activities_foreach(FunctionRef<void(StringRef key, StringRef message)> fn);
+/** Remove every activity (another file is being read). */
+void WM_quit_activities_clear();
+/**
+ * Test seam, only with `--enable-event-simulate`: what the operating system's quit request does
+ * (#GHOST_kEventQuitRequest: the macOS application menu or Dock), in the context window.
+ */
+void WM_quit_request_simulate(bContext *C);
+
+inline constexpr int WM_QUIT_ACTIVITIES_MAX = 16;
+inline constexpr int WM_QUIT_ACTIVITY_KEY_MAX = 64;
+inline constexpr int WM_QUIT_ACTIVITY_MESSAGE_MAX = 200;
 
 bool WM_region_use_viewport(ScrArea *area, ARegion *region);
 

@@ -28,9 +28,9 @@ from .ui_text import n_
 
 # The features Angelo ships, in menu order. A module that adds one registers it at its own register(); a feature
 # from another branch adds its id here with its registration (test_native_chat_destinations checks both).
-TOP_LEVEL = ("attach", "media_studio", "photo_to_3d", "library", "video_tools", "flows", "render_engine", "render_tools",
+TOP_LEVEL = ("attach", "goal", "media_studio", "photo_to_3d", "library", "video_tools", "flows", "render_engine", "render_tools",
              "workflows", "base_mesh", "hands", "select_through", "tension_map", "uv_checker", "engine_skeleton", "web_export",
-             "web_preview", "godot_link", "report_bug", "request_feature")
+             "web_preview", "godot_link", "apps_settings", "report_bug", "request_feature")
 # Features drawn inside a built-in group rather than as rows of their own (1.0.8: six Create rows for video and
 # rendering pushed the base meshes and Workflows below the fold). A member whose group is not registered is drawn at
 # the top level, so a feature is never hidden.
@@ -192,11 +192,139 @@ def _hands_feature():
                    lead_only=True, owner="chosen_tools")
 
 
+# Apps and settings (1.0.10): connecting an AI app to Angelo, team sign-in and the snapshot settings were reachable
+# only from Preferences, the status bar and the chat header's settings menu. One Share tile (it fills Share's empty
+# half-row, so the menu grows by nothing) opens their rows; each row shows the state its click changes.
+APPS_SETTINGS = n_("Apps and settings")
+APPS_SETTINGS_WHY = n_("Connect Claude Code or Codex, sign in to your Angelo team, or change snapshot settings")
+CONNECT_APP = n_("Connect {app}")   # The AI Providers card's button.
+CONNECT_APP_WHY = n_("{app} can then read and edit your scene; you approve its changes")
+APP_CONNECTED = n_("{app} is connected")
+APP_CONNECTED_WHY = n_("Disconnect it, or see the script files it may run, in AI Providers")
+APP_MISSING_WHY = n_("Not found on this computer; AI Providers has its setup to copy")
+NOT_ON_WINDOWS = n_("Coming to Windows in a later update.")   # The AI Providers card's words (external_ui gate).
+TEAM_SIGN_IN = n_("Sign in to Angelo Team")   # The sign-in operator's own label (team_account_ui).
+TEAM_SIGN_IN_WHY = n_("Use the AI providers and library your organization shares")
+PROVIDERS = n_("AI Providers…")
+PROVIDERS_WHY = n_("See what is connected, and change it")
+SNAPSHOT_SETTINGS = n_("Snapshot settings…")
+SNAPSHOT_SETTINGS_WHY = n_("Choose when snapshots are taken and how much disk space they may use")
+SNAPSHOT_REVIEW = n_("Remove old snapshots…")
+SNAPSHOT_REVIEW_WHY = n_("See which snapshots your limits would remove; nothing goes until you confirm")
+CONNECTED_APPS = ("claude_code", "codex")   # The apps Angelo sets up itself (external_ui.OFFERED).
+_registry_seen = {}   # The apps' states (``_app_states``), kept between draws.
+_INSTALL_CHECK = 2.0
+
+
+def _team_sign_in_offered():
+    """Whether the person is signed out of their Angelo team, the one state its sign-in button is offered in (the
+    status bar's rule: not while signed in, waiting for the browser, restoring or offline)."""
+    try:
+        from . import team_account_ui
+        from .team_view import SIGNED_OUT
+    except ImportError:   # Outside Blender (host tests): no team account.
+        return False
+    account = team_account_ui.account()
+    return account is not None and account.view().status == SIGNED_OUT
+
+
+def _app_states(now=None):
+    """{app: (state, last result)} for ``CONNECTED_APPS`` as the AI Providers card reads them: ``"connected"`` (in
+    the app registry), ``"found"`` (installed, so Connect can set it up) or ``"missing"`` (the card offers its setup
+    to copy instead); the result is the card's last Connect/Disconnect line, ``(ok, template, fields)``, or None.
+    Presentation only: actions re-admit their own connection state. A settled file witness may be reused until
+    the next install poll; coarse/racy witnesses are read afresh without waiting on the UI thread."""
+    try:
+        import os
+        import time
+        from . import change_clock, external_setup, external_ui, ui
+        from .external_clients import AppRegistry, DEFAULT_CLIENT
+    except ImportError:   # Outside Blender (host tests): nothing is connected.
+        return {app: ("found", None) for app in CONNECTED_APPS}
+    now = time.monotonic() if now is None else now
+    registry = AppRegistry(ui.state_directory())
+    stat = None
+    try:
+        stat = os.stat(registry.path)
+        key = change_clock.cache_key(stat, (str(registry.path), stat.st_dev, stat.st_ino,
+                                           stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size), change=True)
+    except OSError:
+        key = (str(registry.path), None)
+    polled = _registry_seen.get("when", -_INSTALL_CHECK)
+    poll_due = now - polled >= _INSTALL_CHECK
+    if _registry_seen.get("key") != key or poll_due:
+        records = registry.load() if stat is not None else {}
+        installed = {} if poll_due else dict(_registry_seen.get("installed", {}))
+        states = {}
+        for app in CONNECTED_APPS:
+            if DEFAULT_CLIENT[app] in records:
+                states[app] = "connected"
+            else:
+                if app not in installed:
+                    installed[app] = external_setup.installed(app)
+                states[app] = "found" if installed[app] else "missing"
+        _registry_seen.update(key=key, when=now if poll_due else polled, installed=installed, states=states)
+    return {app: (_registry_seen["states"][app], external_ui.results.get(app)) for app in CONNECTED_APPS}
+
+
+def _app_row(app, state, result, windows):
+    from .external_clients import APP_NAMES
+    name = {"app": APP_NAMES[app]}
+    failed = (result[1], result[2]) if result and not result[0] else None   # Why its settings were not changed.
+    row_id, label = "connect_" + app, (CONNECT_APP, name)
+    if windows:   # No named pipe yet: the card is off there, and the click gives the same reason.
+        return leaf("apps_settings", row_id, label, NOT_ON_WINDOWS, glyph="apps",
+                    operator="angelo.external_app_connect", properties=(("app", app),))
+    if state == "connected":   # Disconnecting, and the setup to copy after a failure, are on its card.
+        return leaf("apps_settings", row_id, (APP_CONNECTED, name), failed or APP_CONNECTED_WHY, glyph="apps",
+                    operator="angelo.settings")
+    if state == "missing":
+        return leaf("apps_settings", row_id, label, APP_MISSING_WHY, glyph="apps", operator="angelo.settings")
+    return leaf("apps_settings", row_id, label, failed or (CONNECT_APP_WHY, name), glyph="apps",
+                operator="angelo.external_app_connect", properties=(("app", app),))
+
+
+def _apps_settings_rows(chosen, fit_target, platform=None, states=None):
+    """Connect Claude Code / Codex (or, once connected, where to disconnect), team sign-in while signed out, AI
+    Providers (where each connection's details show), then the snapshot settings and their review."""
+    import sys
+    windows = (platform or sys.platform) == "win32"
+    if states is None:   # Windows needs no state: its rows only say the connection is coming.
+        states = {app: ("", None) for app in CONNECTED_APPS} if windows else _app_states()
+    rows = [_app_row(app, *states[app], windows) for app in CONNECTED_APPS]
+    if _team_sign_in_offered():
+        rows.append(leaf("apps_settings", "team_sign_in", TEAM_SIGN_IN, TEAM_SIGN_IN_WHY, glyph="apps",
+                         operator="angelo.team_sign_in"))
+    rows.append(leaf("apps_settings", "ai_providers", PROVIDERS, PROVIDERS_WHY, glyph="apps",
+                     operator="angelo.settings"))
+    rows.append(leaf("apps_settings", "snapshot_settings", SNAPSHOT_SETTINGS, SNAPSHOT_SETTINGS_WHY,
+                     operator="angelo.checkpoint_settings"))
+    rows.append(leaf("apps_settings", "snapshot_review", SNAPSHOT_REVIEW, SNAPSHOT_REVIEW_WHY,
+                     operator="angelo.checkpoint_retention"))
+    return rows
+
+
+def _goal_feature():
+    """A goal Angelo holds across turns (goal_mode.rst): a chip in the composer, started by the message it goes with.
+    Beside Attach (both are added to the message), so the grid gains no row in any language (chat_add_layout)."""
+    return Feature("goal", n_("Goal", "Angelo"), n_("Keep going until it's done: measured after every turn"), glyph="goal",
+                   order=1, section=ATTACH, action="popup_add_goal", placement="bar", lead_only=True,
+                   owner="goal_loop")
+
+
+def _apps_settings_feature():
+    return Feature("apps_settings", APPS_SETTINGS, APPS_SETTINGS_WHY, glyph="apps", order=53, section=n_("Share"),
+                   children=_apps_settings_rows, owner="chat_destinations")
+
+
 def register_builtins():
-    """The features this module and ``chosen_tools`` own (Blender-free); the rest register from their modules."""
+    """The features this module, ``chosen_tools`` and ``goal_loop`` own (Blender-free); the rest register from their
+    modules."""
     register(_attach_feature())
     register(_base_mesh_feature())
+    register(_goal_feature())
     register(_hands_feature())
+    register(_apps_settings_feature())
 
 
 register_builtins()

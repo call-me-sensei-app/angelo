@@ -4,6 +4,7 @@
 
 #include "GHOST_SystemCocoa.hh"
 
+#include "GHOST_ClipboardImage_Cocoa.hh"
 #include "GHOST_EventButton.hh"
 #include "GHOST_EventCursor.hh"
 #include "GHOST_EventDragnDrop.hh"
@@ -1475,62 +1476,30 @@ GHOST_TSuccess GHOST_SystemCocoa::handleWindowEvent(GHOST_TEventType eventType,
 }
 
 /**
- * Get the true pixel size of an NSImage object.
- * \param image: NSImage to obtain the size of.
- * \return Contained image size in pixels.
- */
-static NSSize getNSImagePixelSize(NSImage *image)
-{
-  /* Assuming the NSImage instance only contains one single image. */
-  @autoreleasepool {
-    NSImageRep *imageRepresentation = [[image representations] firstObject];
-    return NSMakeSize(imageRepresentation.pixelsWide, imageRepresentation.pixelsHigh);
-  }
-}
-
-/**
  * Convert an NSImage to an ImBuf.
  * \param image: NSImage to convert.
  * \return Pointer to the resulting allocated ImBuf. Caller must free.
  */
 static blender::ImBuf *NSImageToImBuf(NSImage *image)
 {
-  const NSSize imageSize = getNSImagePixelSize(image);
-  blender::ImBuf *ibuf = blender::IMB_allocImBuf(
-      imageSize.width, imageSize.height, blender::ImBufFlags::ByteData);
-
-  if (!ibuf) {
-    return nullptr;
-  }
-
   @autoreleasepool {
-    NSBitmapImageRep *bitmapImage = nil;
-    for (NSImageRep *representation in [image representations]) {
-      if ([representation isKindOfClass:[NSBitmapImageRep class]]) {
-        bitmapImage = (NSBitmapImageRep *)representation;
-        break;
-      }
-    }
-
-    if (bitmapImage == nil || bitmapImage.bitsPerPixel != 32 || bitmapImage.isPlanar ||
-        bitmapImage.bitmapFormat & (NSBitmapFormatAlphaFirst | NSBitmapFormatFloatingPointSamples))
-    {
+    int64_t width = 0, height = 0;
+    CGImageRef cg_image = GHOST_ClipboardImage_NSImage_drawing(image, &width, &height);
+    if (cg_image == nullptr) {
       return nullptr;
     }
-
-    uint8_t *ibuf_data = ibuf->byte_data_for_write();
-    uint8_t *bmp_data = (uint8_t *)bitmapImage.bitmapData;
-
-    /* Vertical Flip. */
-    for (int y = 0; y < imageSize.height; y++) {
-      const int row_byte_count = 4 * imageSize.width;
-      const int ibuf_off = (imageSize.height - y - 1) * row_byte_count;
-      const int bmp_off = y * row_byte_count;
-      memcpy(ibuf_data + ibuf_off, bmp_data + bmp_off, row_byte_count);
+    /* Converted straight into the image's pixels: the only copy of the picture. */
+    blender::ImBuf *ibuf = blender::IMB_allocImBuf(
+        uint(width), uint(height), blender::ImBufFlags::ByteData);
+    if (ibuf == nullptr) {
+      return nullptr;
     }
+    if (!GHOST_ClipboardImage_draw(cg_image, width, height, ibuf->byte_data_for_write())) {
+      blender::IMB_freeImBuf(ibuf);
+      return nullptr;
+    }
+    return ibuf;
   }
-
-  return ibuf;
 }
 
 /* NOTE: called from #NSWindow subclass. */
@@ -2281,100 +2250,26 @@ void GHOST_SystemCocoa::putClipboard(const char *buffer, bool selection) const
   }
 }
 
-static NSURL *NSPasteboardGetImageFile()
-{
-  NSURL *pasteboardImageFile = nil;
-
-  @autoreleasepool {
-    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
-    NSDictionary *pasteboardFilteringOptions = @{
-      NSPasteboardURLReadingFileURLsOnlyKey : @YES,
-      NSPasteboardURLReadingContentsConformToTypesKey : [NSImage imageTypes]
-    };
-
-    NSArray *pasteboardMatches = [pasteboard readObjectsForClasses:@[ [NSURL class] ]
-                                                           options:pasteboardFilteringOptions];
-
-    if (!pasteboardMatches || !pasteboardMatches.count) {
-      return nil;
-    }
-
-    pasteboardImageFile = [[pasteboardMatches firstObject] copy];
-  }
-
-  return [pasteboardImageFile autorelease];
-}
-
 GHOST_TSuccess GHOST_SystemCocoa::hasClipboardImage() const
 {
-  @autoreleasepool {
-    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
-    NSArray *supportedTypes = [NSArray
-        arrayWithObjects:NSPasteboardTypeFileURL, NSPasteboardTypeTIFF, NSPasteboardTypePNG, nil];
-
-    NSPasteboardType availableType = [pasteboard availableTypeFromArray:supportedTypes];
-
-    if (!availableType) {
-      return GHOST_kFailure;
-    }
-
-    /* If we got a file, ensure it's an image file. */
-    if ([pasteboard availableTypeFromArray:@[ NSPasteboardTypeFileURL ]] &&
-        NSPasteboardGetImageFile() == nil)
-    {
-      return GHOST_kFailure;
-    }
-  }
-
-  return GHOST_kSuccess;
+  return GHOST_ClipboardImage_pasteboard_has_image([NSPasteboard generalPasteboard]) ?
+             GHOST_kSuccess :
+             GHOST_kFailure;
 }
 
-uint *GHOST_SystemCocoa::getClipboardImage(int *r_width, int *r_height) const
+blender::ImBuf *GHOST_SystemCocoa::getClipboardImageBuffer() const
 {
-  if (!hasClipboardImage()) {
-    return nullptr;
-  }
-
   @autoreleasepool {
-    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
-
-    NSImage *clipboardImage = nil;
-    if (NSURL *pasteboardImageFile = NSPasteboardGetImageFile(); pasteboardImageFile != nil) {
-      /* Image file. */
-      clipboardImage = [[[NSImage alloc] initWithContentsOfURL:pasteboardImageFile] autorelease];
-    }
-    else {
-      /* Raw image data. */
-      clipboardImage = [[[NSImage alloc] initWithPasteboard:pasteboard] autorelease];
-    }
-
-    if (!clipboardImage) {
-      return nullptr;
-    }
-
-    blender::ImBuf *ibuf = NSImageToImBuf(clipboardImage);
-    const NSSize clipboardImageSize = getNSImagePixelSize(clipboardImage);
-
-    if (ibuf) {
-      const size_t byteCount = clipboardImageSize.width * clipboardImageSize.height * 4;
-      uint *rgba = (uint *)malloc(byteCount);
-
-      if (!rgba) {
-        blender::IMB_freeImBuf(ibuf);
-        return nullptr;
-      }
-
-      memcpy(rgba, ibuf->byte_data(), byteCount);
-      blender::IMB_freeImBuf(ibuf);
-
-      *r_width = clipboardImageSize.width;
-      *r_height = clipboardImageSize.height;
-
-      return rgba;
-    }
+    NSImage *image = GHOST_ClipboardImage_pasteboard_image([NSPasteboard generalPasteboard]);
+    return image ? NSImageToImBuf(image) : nullptr;
   }
+}
 
-  return nullptr;
+GHOST_TSuccess GHOST_SystemCocoa::getClipboardImageSize(int *r_width, int *r_height) const
+{
+  return GHOST_ClipboardImage_pasteboard_size([NSPasteboard generalPasteboard], r_width, r_height) ?
+             GHOST_kSuccess :
+             GHOST_kFailure;
 }
 
 GHOST_TSuccess GHOST_SystemCocoa::putClipboardImage(uint *rgba, int width, int height) const

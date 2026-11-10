@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Media Studio's Workflows tab: run stages, part rows and sheet outlines (studio_workflow_view), without Blender."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path
@@ -148,7 +150,11 @@ class StudioNamesTests(unittest.TestCase):
                         names.update(n.id for n in ast.walk(target) if isinstance(n, ast.Name))
             return names
         addon = ROOT / "scripts/addons_core/angelo_agent"
-        studio = top_level(ast.parse((addon / "studio.py").read_text()))
+        studio_tree = ast.parse((addon / "studio.py").read_text())
+        studio = top_level(studio_tree)
+        mapping = next(node.value for node in studio_tree.body if isinstance(node, ast.Assign)
+                       and any(isinstance(target, ast.Name) and target.id == "TOKEN_NAMES" for target in node.targets))
+        studio.update(ast.literal_eval(mapping))  # Public names forwarded to the current theme's real token roles.
         for name in ("studio_workflows.py", "studio_workflow_ops.py", "studio_workflow_run.py"):
             for function in ast.walk(ast.parse((addon / name).read_text())):
                 if not isinstance(function, ast.FunctionDef):

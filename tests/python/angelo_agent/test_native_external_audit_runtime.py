@@ -8,6 +8,8 @@ process or group: their pids are negative, ``RuntimeChild`` is patched with ``gr
 no signal (``test_native_runtime_bindings``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import threading

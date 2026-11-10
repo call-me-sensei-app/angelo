@@ -15,6 +15,8 @@ snapshot folder on every backend. They also pin that worker maintenance with
 nothing to do never takes the profile transaction the main thread needs.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import collections
 import json
 import os
@@ -31,6 +33,7 @@ sys.path.insert(0, str(ADDON))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from snapshot_fixtures import HISTORY_SCENE as SCENE, build_history  # noqa: E402
 from fake_nt_files import FakeNtApi  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 from angelo_agent import anchored_windows as aw, checkpoint_filesystem as cf  # noqa: E402
 from angelo_agent import snapshot_maintenance, snapshot_retention  # noqa: E402
 from angelo_agent import checkpoints as checkpoint_store  # noqa: E402
@@ -42,8 +45,12 @@ from angelo_agent.snapshot_ingest import ingest_snapshot  # noqa: E402
 from angelo_agent.snapshot_store import SnapshotStore  # noqa: E402
 
 COUNTED = ("open", "stat", "fstat", "listdir", "scandir", "mkdir", "replace", "unlink", "fsync")
-# POSIX descriptors, Windows handles (the host tests' NT stand-in) and legacy paths.
+# POSIX descriptors, Windows handles (the host tests' NT stand-in) and legacy paths; on Windows its real handles.
 BACKENDS = ("posix", "path") if os.name == "nt" else ("posix", "windows", "path")
+ANCHORED = environment_skip("anchored storage required (POSIX descriptors or Windows handles)")
+# The counter sees ``os`` calls; Windows' real backend calls NT through ctypes, counted here through the stand-in.
+COUNTS_OS_CALLS = environment_skip("counts os-level calls, which Windows' real handle backend does not make; its "
+                                   "work is counted through the fake_nt_files stand-in off Windows")
 
 
 @contextmanager
@@ -91,7 +98,7 @@ def backend(kind):
         yield None
 
 
-@unittest.skipUnless(os.open in os.supports_dir_fd, "descriptor-relative storage required")
+@unittest.skipUnless(cf.anchored_files_supported(), ANCHORED)
 class CaptureHistoryScalingTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="angelo-history-")
@@ -134,6 +141,7 @@ class CaptureHistoryScalingTests(unittest.TestCase):
                 work.append(counts)
         return work
 
+    @unittest.skipIf(os.name == "nt", COUNTS_OS_CALLS)
     def test_capture_work_is_the_same_with_10_and_1000_stored_snapshots(self):
         for kind in BACKENDS:
             with self.subTest(backend=kind):
@@ -171,7 +179,12 @@ class CaptureHistoryScalingTests(unittest.TestCase):
         foreign_chat = next(foreign.iterdir())
         chats = sorted((store.root / "checkpoints").iterdir())
         os.rename(chats[0], self.base / "moved-chat")
-        os.symlink(foreign_chat, chats[0], target_is_directory=True)
+        try:
+            os.symlink(foreign_chat, chats[0], target_is_directory=True)
+        except OSError:
+            if os.name != "nt":
+                raise
+            self.skipTest(environment_skip("Windows makes a symlink only with a privilege this user lacks"))
         snapshot = sorted(chats[1].iterdir())[0]
         os.rename(snapshot, self.base / "moved-snapshot")
         os.symlink(next(foreign_chat.iterdir()), snapshot, target_is_directory=True)
@@ -183,6 +196,7 @@ class CaptureHistoryScalingTests(unittest.TestCase):
                 self.assertEqual(sorted(("id" in issue, issue["session_id"]) for issue in linked),
                                  sorted([(False, chats[0].name), (True, chats[1].name)]))
 
+    @unittest.skipIf(os.name == "nt", COUNTS_OS_CALLS)
     def test_clock_written_elsewhere_is_validated_against_the_whole_history(self):
         store = self.profile(40)
         capture(store)
@@ -216,7 +230,7 @@ class CaptureHistoryScalingTests(unittest.TestCase):
             capture(store)
 
 
-@unittest.skipUnless(os.open in os.supports_dir_fd, "descriptor-relative storage required")
+@unittest.skipUnless(cf.anchored_files_supported(), ANCHORED)
 class MaintenanceProbeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="angelo-history-probe-")

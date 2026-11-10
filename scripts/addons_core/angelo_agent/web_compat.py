@@ -61,6 +61,10 @@ TEMPLATES = {
     "baked_stale_nearby": (WARN, n_("Something near object {subject} changed after its maps were baked, and its "
                                     "baked ambient occlusion saw it, so it exports with its own materials"),
                            n_("Bake its maps again (Bake Maps), then export")),
+    "baked_stale_update": (WARN, n_("Baked before this update: {subject}. Angelo now checks the exact pixels and "
+                                    "files each bake read, so these export with their own materials until their "
+                                    "maps are baked again (one bake is enough)"),
+                           n_("Bake their maps again (Bake Maps), then export")),
     "baked_packing": (WARN, n_("Object {subject}'s baked maps use the {packing} packing, which glTF can't carry, "
                                "so it exports with its own materials"),
                       n_("Bake its maps with the glTF packing for .glb and the web")),
@@ -234,7 +238,8 @@ def _look(look):
         out.append(_finding("display_curves"))
     if look.get("white_balance"):
         out.append(_finding("white_balance"))
-    if look.get("display", "sRGB") != "sRGB":
+    from .web_tone import srgb_display
+    if not srgb_display(look.get("display", "sRGB")):   # ACES's "sRGB - Display" is sRGB too.
         out.append(_finding("display_device", look["display"]))
     return out
 
@@ -252,9 +257,12 @@ def findings(facts):
     for obj in facts.get("objects", ()):
         out.extend(_object(obj))
     baked = facts.get("baked") or {}
-    nearby = set(baked.get("nearby", ()))
+    nearby, before = set(baked.get("nearby", ())), set(baked.get("updated", ()))
+    updated = [name for name in baked.get("stale", ()) if name in before]
+    if updated:   # Bound before this build's digest, which reads them as changed: one line for them all.
+        out.append(_finding("baked_stale_update", _names(updated, limit=3)))
     out.extend(_finding("baked_stale_nearby" if name in nearby else "baked_stale", name)
-               for name in baked.get("stale", ()))
+               for name in baked.get("stale", ()) if name not in updated)
     out.extend(_finding("baked_packing", name, packing=packing) for name, packing in baked.get("packing", ()))
     out.extend(_finding("baked_used", name, material=material) for name, material in baked.get("used", ()))
     for light in facts.get("lights", ()):

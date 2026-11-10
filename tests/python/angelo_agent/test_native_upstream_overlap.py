@@ -5,6 +5,8 @@
 moved and deleted files, functions changed on both sides or gone, RNA properties defined on both sides or removed
 under Angelo's uses, patches Angelo already carries, the version watch, and that it never blocks."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import json

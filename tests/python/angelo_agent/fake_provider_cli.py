@@ -25,9 +25,18 @@ this file under the app's own Python: ``<python> fake_provider_cli.py claude
   takes the next outcome of ``ANGELO_FAKE_CLI_CODEX_TURNS`` (a comma list kept
   in the state folder, so a restarted app-server continues it): ``rate`` (the
   RC4 gate's throttle, ``responseTooManyFailedAttempts`` HTTP 429), ``usage``
-  (``usageLimitExceeded``) or ``ok`` (an empty plan with the reply "Done.").
+  (``usageLimitExceeded``), ``ok`` (an empty plan with the reply "Done.") or
+  ``held`` (``ok`` once the suite releases ``codex_turn_hold``: the turn runs
+  for exactly as long as the suite needs, on any machine load). A suite scripts
+  the turns still to come with ``script_codex_turns``.
   It replies, then sends the turn's notifications in the order and shape codex
   0.162 does, and logs each request to ``<state>/codex-requests.jsonl``.
+  ``call`` and ``call_approval`` (steering, 1.0.10) run the turn on a thread of its own: it holds at
+  ``ANGELO_FAKE_CLI_CODEX_GATE`` (one hold per turn) so the suite can type, then makes one dynamic tool call
+  (``angelo_inspect_scene``, or a script that waits for the person's approval) and waits for Angelo's answer, as
+  Angelo's runtime holds a cell. ``turn/steer`` for the open turn is kept (logged) and read at the next model
+  request, as Codex does: each one's user item, with its ``clientUserMessageId`` as ``clientId``, then a reply
+  naming what it read ("Read: ..."); a steer for no open turn is refused "no active turn to steer".
 
 Sign-in is a marker file in the profile the real CLI would use
 (``CLAUDE_CONFIG_DIR`` or ``$HOME/.claude``; ``CODEX_HOME`` or
@@ -51,7 +60,9 @@ next steps", 2.5 s; test_blender_first_run's 1 s sign-in).
 
 import json
 import os
+import queue
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -71,6 +82,9 @@ CODEX_MODELS = [
      "inputModalities": ["text", "image"]},
 ]
 GATE_SECONDS = 120  # A gated stream goes on after this long without an acknowledgement (the suite has failed).
+# A hold's own limit (a gate or a login): GATE_SECONDS, or what ANGELO_FAKE_CLI_HOLD_SECONDS says ("inf": only a
+# release ends it). A host test that checks a hold lasts until released sets it, so no clock decides that check.
+HOLD_SECONDS = float(os.environ.get("ANGELO_FAKE_CLI_HOLD_SECONDS") or GATE_SECONDS)
 TURN_RESULTS = {
     "limit": "You've hit your session limit · resets 4:30pm (UTC)",
     "offline": "API Error: Connection error.",
@@ -116,9 +130,14 @@ def login(tool):
     return 0
 
 
+_SEND_LOCK = threading.Lock()   # A call turn writes from its own thread: one whole line at a time.
+
+
 def send(message):
-    sys.stdout.write(json.dumps(message) + "\n")
-    sys.stdout.flush()
+    line = json.dumps(message) + "\n"
+    with _SEND_LOCK:
+        sys.stdout.write(line)
+        sys.stdout.flush()
 
 
 def plan_fragments(plan, chars):
@@ -165,9 +184,20 @@ def round_events(events):
 
 
 def _write_atomically(path, text):
+    """Write ``path`` whole. The other side polls these files, opening each for a moment without delete sharing,
+    and Windows refuses a replace (even a POSIX-semantics one) while such a handle is open: retried for as long as
+    a poll could hold it, never past GATE_SECONDS."""
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(text, encoding="utf-8")
-    os.replace(temporary, path)
+    deadline = time.monotonic() + GATE_SECONDS
+    while True:
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:
+            if os.name != "nt" or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.005)
 
 
 def wait_for_gate(folder, fragment):
@@ -180,7 +210,7 @@ def wait_for_gate(folder, fragment):
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     _write_atomically(folder / "sent", str(fragment))
-    deadline = time.monotonic() + GATE_SECONDS
+    deadline = time.monotonic() + HOLD_SECONDS
     while time.monotonic() < deadline:
         try:
             if int((folder / "ack").read_text(encoding="utf-8")) >= fragment:
@@ -363,10 +393,22 @@ def next_codex_turn():
     return outcome
 
 
-def codex_turn(message, number):
+def script_codex_turns(outcomes, state=None):
+    """The outcomes of the next ``turn/start`` requests, replacing what is left of the queue (``next_codex_turn``).
+    Called between turns: the stand-in reads the queue when a turn starts."""
+    folder = Path(state) if state else _codex_state()
+    folder.mkdir(parents=True, exist_ok=True)
+    _write_atomically(folder / "codex-turns.json", json.dumps(list(outcomes)))
+
+
+def codex_turn_hold(state=None):
+    """The folder a ``held`` turn waits at, after its ``turn/started``, until the suite releases it (``release``)."""
+    return (Path(state) if state else _codex_state()) / "codex-turn-hold"
+
+
+def codex_turn(message, number, outcome):
     params = message.get("params") or {}
     thread, turn = params.get("threadId"), "fixture-turn-%d-%d" % (os.getpid(), number)
-    outcome = next_codex_turn()
     with open(_codex_state() / "codex-requests.jsonl", "a", encoding="utf-8") as handle:
         handle.write(json.dumps({"method": "turn/start", "time": time.time(), "turn": turn, "outcome": outcome,
                                  "input": params.get("input"), "plan": "outputSchema" in params}) + "\n")
@@ -385,11 +427,86 @@ def codex_turn(message, number):
         note("error", error=error, willRetry=False, turnId=turn)
         note("turn/completed", turn={"id": turn, "status": "failed", "error": error, "durationMs": 12})
         return
+    if outcome == "held":
+        hold_at = codex_turn_hold()
+        wait_for_gate(hold_at, _next_hold(hold_at))
     text = '{"reply":"Done.","operations":[]}' if "outputSchema" in params else "Done."
     item = {"type": "agentMessage", "id": "msg-" + turn, "text": text}
     note("item/started", turnId=turn, item=dict(item, text=""))
     note("item/agentMessage/delta", turnId=turn, itemId=item["id"], delta=text)
     note("item/completed", turnId=turn, item=item)
+    note("turn/completed", turn={"id": turn, "status": "completed", "error": None, "durationMs": 40})
+
+
+_OPEN = {"turn": None, "steers": [], "answers": {}}   # The call turn on its thread; steers it has not read yet.
+_OPEN_LOCK = threading.Lock()
+
+
+def _log_codex(entry):
+    with open(_codex_state() / "codex-requests.jsonl", "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(dict(entry, time=time.time())) + "\n")
+
+
+def codex_steer(message):
+    params = message.get("params") or {}
+    with _OPEN_LOCK:
+        accepted = _OPEN["turn"] is not None and params.get("expectedTurnId") == _OPEN["turn"]
+        if accepted:
+            _OPEN["steers"].append(params)
+    _log_codex({"method": "turn/steer", "accepted": accepted, "params": params})
+    send({"id": message["id"], "result": {"turnId": params.get("expectedTurnId")}} if accepted else
+         {"id": message["id"], "error": {"code": -32600, "message": "no active turn to steer"}})
+
+
+def codex_call_turn(message, number, outcome):
+    """A turn with one dynamic tool call, on its own thread (``call``/``call_approval``, the module's docstring)."""
+    params = message.get("params") or {}
+    thread, turn = params.get("threadId"), "fixture-turn-%d-%d" % (os.getpid(), number)
+    plan = "outputSchema" in params
+    with _OPEN_LOCK:
+        _OPEN["turn"], _OPEN["steers"] = turn, []
+    _log_codex({"method": "turn/start", "turn": turn, "outcome": outcome, "input": params.get("input"), "plan": plan})
+    send({"id": message["id"], "result": {"turn": {"id": turn, "status": "inProgress", "error": None, "items": []}}})
+
+    def note(method, **values):
+        send({"method": method, "params": dict(threadId=thread, **values)})
+    note("turn/started", turn={"id": turn, "status": "inProgress", "error": None})
+    user = {"type": "userMessage", "id": "user-" + turn, "clientId": None, "content": params.get("input") or []}
+    note("item/started", turnId=turn, item=user)
+    note("item/completed", turnId=turn, item=user)
+    gate = os.environ.get("ANGELO_FAKE_CLI_CODEX_GATE")
+    if gate:
+        wait_for_gate(gate, _next_hold(gate))   # The suite types its message while this turn works.
+    script = {"description": "Name the scene's objects.", "code": "result = [o.name for o in bpy.data.objects]"}
+    tool, arguments = (("angelo_execute_python", script) if outcome == "call_approval"
+                       else ("angelo_inspect_scene", {}))
+    answer, request = queue.Queue(), "fixture-call-%d" % number
+    with _OPEN_LOCK:
+        _OPEN["answers"][request] = answer
+    send({"id": request, "method": "item/tool/call", "params": {
+        "threadId": thread, "turnId": turn, "callId": "call-" + turn, "tool": tool, "arguments": arguments}})
+    try:
+        answered = answer.get(timeout=GATE_SECONDS)
+    except queue.Empty:
+        answered = None
+    _log_codex({"method": "tool/answered", "turn": turn, "answered": answered is not None})
+    with _OPEN_LOCK:   # The next model request reads the pending steers first, as Codex does.
+        steers, _OPEN["steers"] = _OPEN["steers"], []
+    texts = []
+    for index, steer in enumerate(steers):
+        item = {"type": "userMessage", "id": "steer-%s-%d" % (turn, index), "clientId": steer.get("clientUserMessageId"),
+                "content": steer.get("input") or []}
+        note("item/started", turnId=turn, item=item)
+        note("item/completed", turnId=turn, item=item)
+        texts += [part.get("text", "") for part in item["content"] if isinstance(part, dict)]
+    reply = ("Read: " + " | ".join(texts)) if texts else "Done."
+    text = json.dumps({"reply": reply, "operations": []}) if plan else reply
+    item = {"type": "agentMessage", "id": "msg-" + turn, "text": text}
+    note("item/started", turnId=turn, item=dict(item, text=""))
+    note("item/agentMessage/delta", turnId=turn, itemId=item["id"], delta=text)
+    note("item/completed", turnId=turn, item=item)
+    with _OPEN_LOCK:
+        _OPEN["turn"] = None
     note("turn/completed", turn={"id": turn, "status": "completed", "error": None, "durationMs": 40})
 
 
@@ -403,9 +520,22 @@ def codex_server():
         if "id" not in message:
             continue  # Notifications such as "initialized".
         method, params = message.get("method"), message.get("params") or {}
+        if method is None:   # Angelo's answer to a call turn's dynamic tool call.
+            with _OPEN_LOCK:
+                waiter = _OPEN["answers"].pop(message["id"], None)
+            if waiter is not None:
+                waiter.put(message)
+            continue
+        if method == "turn/steer":
+            codex_steer(message)
+            continue
         if method == "turn/start":
             turns += 1
-            codex_turn(message, turns)
+            outcome = next_codex_turn()
+            if outcome in ("call", "call_approval"):
+                threading.Thread(target=codex_call_turn, args=(message, turns, outcome), daemon=True).start()
+            else:
+                codex_turn(message, turns, outcome)
             continue
         if method == "thread/start":
             threads += 1

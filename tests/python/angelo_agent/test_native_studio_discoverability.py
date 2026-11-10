@@ -9,6 +9,8 @@ Media Studio slide opens it and the welcome fits, in English, German and French 
 ``test_native_first_run``'s; the running app's proof is ``test_blender_studio_discoverability``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import types
 import unittest

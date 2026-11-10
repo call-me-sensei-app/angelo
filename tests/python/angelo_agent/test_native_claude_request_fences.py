@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Deterministic Claude authority replacement at actual dispatch boundaries."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from dataclasses import FrozenInstanceError
 import threading
 from types import SimpleNamespace
@@ -64,7 +66,7 @@ class ClaudeRequestFenceTests(ClaudeAdapterFixture, unittest.TestCase):
     def test_run_captures_one_frozen_owner_for_every_model_and_native_call(self):
         dispatched = self.record_dispatch()
         owners = []
-        def plan(_native, _text, *, owner):
+        def plan(_native, _text, *, owner, steers=()):   # steers: the person's, carried by the round (steering).
             owners.append(owner)
             return {"reply": "Plan", "operations": [CUBE], "verify": False}
         actual = self.provider._native_call
@@ -91,9 +93,9 @@ class ClaudeRequestFenceTests(ClaudeAdapterFixture, unittest.TestCase):
 
     def test_replacement_just_before_model_turn_does_not_start_or_submit(self):
         actual = self.provider._turn
-        def paused(native_id, text, *, owner):
+        def paused(native_id, text, *, owner, steers=()):
             self.replace_request()
-            return actual(native_id, text, owner=owner)
+            return actual(native_id, text, owner=owner, steers=steers)
         self.provider._turn = paused
         self.assertEqual(self.provider.run(None, "Old request", observation={}), "interrupted")
         self.popen_mock.assert_not_called()

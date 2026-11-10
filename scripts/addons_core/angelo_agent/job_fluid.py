@@ -240,33 +240,39 @@ class FluidBakeRunner(Runner):
             modifier = fluid_modifier(target)
             linked = target.library is not None or target.override_library is not None
         except ReferenceError:
-            raise JobRequestError("The fluid domain to bake was removed") from None
+            raise JobRequestError("The fluid domain to bake was removed", code="STALE_REVISION") from None
         if modifier is None:
-            raise JobRequestError("%s is not a fluid domain" % target.name)
+            raise JobRequestError("%s is not a fluid domain" % target.name, code="VALIDATION")
         if linked:
-            raise JobRequestError("%s is linked from another file; a bake needs an object of this file" % target.name)
+            raise JobRequestError("%s is linked from another file; a bake needs an object of this file" % target.name,
+                                  code="UNSUPPORTED")
         if self.output is None:
-            raise JobRequestError("A fluid domain caches to disk: pass output (a new workspace folder) for its cache")
+            raise JobRequestError("A fluid domain caches to disk: pass output (a new workspace folder) for its cache",
+                                  code="VALIDATION")
         caches.blend_relative(self.output.parent)
         unsafe = plan.unsafe_path(str(self.output), windows=sys.platform == "win32")
         if unsafe is not None:
             raise JobRequestError("Mantaflow rewrites the folder name %r (it has < > : \" | ? * or a control "
-                                  "character), so its cache would land elsewhere; choose another output" % unsafe)
+                                  "character), so its cache would land elsewhere; choose another output" % unsafe,
+                                  code="VALIDATION")
         settings = modifier.domain_settings
         if settings.is_cache_baking_any or native().progress(self.scene, self.job_type) is not None:
-            raise JobRequestError("A fluid bake already runs in this scene; wait for it or stop it first")
+            raise JobRequestError("A fluid bake already runs in this scene; wait for it or stop it first",
+                                  code="WRITER_BUSY")
         if not modifier.show_viewport or target.hide_viewport or target.name not in self.window.view_layer.objects:
             raise JobRequestError("%s is disabled in the viewport or not in the view layer, so Angelo would bake "
-                                  "nothing; enable it first" % target.name)
+                                  "nothing; enable it first" % target.name, code="VALIDATION")
         # <output folder's parent>/.angelo-job-<id>/<modifier folder>, the id at most 10 characters.
         length = len(str(self.output.parent).encode("utf-8")) + len(".angelo-job-j123456789//") + len(
             modifier.name.encode("utf-8"))
         if length > MAX_DIRECTORY:
             raise JobRequestError("The cache folder's path would be %d bytes long; Angelo cuts a fluid cache path at "
-                                  "%d. Choose an output in a folder with a shorter path" % (length, MAX_DIRECTORY))
+                                  "%d. Choose an output in a folder with a shorter path" % (length, MAX_DIRECTORY),
+                                  code="LIMIT_EXCEEDED")
         size = _input_size(target)
         if min(size) <= 1e-6:
-            raise JobRequestError("%s has no size on one axis; a fluid domain needs a volume" % target.name)
+            raise JobRequestError("%s has no size on one axis; a fluid domain needs a volume" % target.name,
+                                  code="VALIDATION")
         kind = settings.domain_type
         self.cells = plan.grid(size, settings.resolution_max)
         noise = settings.noise_scale if kind == 'GAS' and settings.use_noise else 0
@@ -276,19 +282,21 @@ class FluidBakeRunner(Runner):
         if memory and self.estimate["memory"] > memory:
             needed = (target.name,) + self.cells + (plan.gib(self.estimate["memory"]), plan.gib(memory))
             raise JobRequestError("%s's %d×%d×%d grid needs about %.1f GiB of memory while it bakes (an estimate); "
-                                  "this computer has %.1f GiB. Ask the person to lower the domain's resolution" % needed)
+                                  "this computer has %.1f GiB. Ask the person to lower the domain's resolution" % needed,
+                                  code="LIMIT_EXCEEDED")
         self.frames = (settings.cache_frame_start, settings.cache_frame_end)
         count = check_frames(self.frames[0], self.frames[1], "the fluid domain's cache")
         check_work(self.request, 1, 1, 1, count)
         self.free = _free_space(self.output.parent)
         if self.free < plan.DISK_MARGIN:
             raise JobRequestError("Less than %d GiB is free on the disk that would hold the cache"
-                                  % (plan.DISK_MARGIN // plan.GiB))
+                                  % (plan.DISK_MARGIN // plan.GiB), code="LIMIT_EXCEEDED")
         domain_box = _world_box(target)
         flows = _flows(self.scene, target, settings)
         if not flows:
             raise JobRequestError("No %s flow object in the scene: nothing would enter %s, so the bake would be "
-                                  "empty" % ("liquid" if kind == 'LIQUID' else "smoke or fire", target.name))
+                                  "empty" % ("liquid" if kind == 'LIQUID' else "smoke or fire", target.name),
+                                  code="VALIDATION")
         self.outside = [obj.name for obj in flows if not _overlaps(_world_box(obj), domain_box)]
         self.flows = [obj.name for obj in flows]
         written = ["data"] + (["noise"] if noise else [])
@@ -306,7 +314,8 @@ class FluidBakeRunner(Runner):
         if files > MAX_ENTRIES - ENTRY_MARGIN:
             raise JobRequestError("A bake of %s's %s over frames %d to %d can write more files than a job publishes "
                                   "(%d); ask the person for a shorter frame range"
-                                  % (target.name, ", ".join(written), self.frames[0], self.frames[1], MAX_ENTRIES))
+                                  % (target.name, ", ".join(written), self.frames[0], self.frames[1], MAX_ENTRIES),
+                                  code="LIMIT_EXCEEDED")
         self.replay, self.earlier = settings.cache_type == REPLAY, settings.has_cache_baked_any
         # A domain a script left without a cache folder: Blender's Replay writes its frames beside the app's
         # working directory. A finished bake gives it the published folder, so this is a fact, not a refusal.

@@ -7,6 +7,14 @@ Three tiny ordinary-tier ChatGPT requests; no paid Fast, keys, file mutations,
 microphone or Claude inference. This cannot establish live Claude integration.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+# Real provider turns only on the evaluation-account profile the caller opts in with
+# (run_native_suites pins CODEX_HOME to it).
+assert os.environ.get("ANGELO_TEST_REAL_PROVIDERS"), \
+    "Bills a real provider: set ANGELO_TEST_REAL_PROVIDERS=eval-profile:<evaluation-account profile> (--allow-live)"
+
 import json
 import os
 import sys

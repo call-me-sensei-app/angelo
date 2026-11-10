@@ -5,7 +5,7 @@
 Angelo Agent Integration
 ************************
 
-Foundation: a direct Blender 5.2.2 LTS fork with project-owned native integration.
+Foundation: a direct Blender 5.2 LTS fork (5.2.3 from Angelo 1.0.10) with project-owned native integration.
 
 Architecture
 ============
@@ -330,7 +330,7 @@ Blender Tool Boundary
 =====================
 
 Blender Lab supplies an official MCP integration requiring a separate server and
-addon. Blender 5.2.2 core does not itself include an MCP server or provider login.
+addon. Blender 5.2 core does not itself include an MCP server or provider login.
 Read its exposure of Blender features as a reference, not a runtime dependency.
 Angelo uses no MCP execution, including an in-process MCP wrapper. Codex
 uses native dynamic callbacks; Claude uses a typed JSON plan over its native CLI.
@@ -434,6 +434,60 @@ it used (``Controller._select_model_context``). A model change resumes that
 model's own session with only the turns it missed, the same handoff a
 provider switch uses; each context keeps its own ledger, TTL and rebase
 state. Codex keeps one thread per connection.
+
+``routing.handoff`` uses ``handoff_json`` to encode exact primitive JSON with node
+and input-character credit derived from its caller's existing excerpt limit.
+It returns complete JSON or an explicit refusal, never a partial receipt;
+custom serializers and object formatting are not called. One output owner
+counts all final text, including headers and omission markers; removing an
+output segment does not refund inspection work. Construction, revision
+filtering, receipt projection and encoding use that same shared ledger.
+``Currency.observe_latest`` supplies the lazy owner's newest-first revision
+scan using the same credit. Each message publishes its revisions atomically;
+on refusal the caller must omit the older unexamined tail, since overlooking
+a newer revision must never make an older state appear current. ``Currency``
+retains its eager constructor for existing callers outside the lazy handoff.
+The ``handoff_history`` cursor charges filtered raw records too and
+keeps host-summary adjacency separate from saved result JSON. A group crossing
+the excerpt boundary or work cutoff cannot justify removing its summary.
+``handoff_projection`` prepares complete primitive copies and compact
+identifiers with the same work credit. It preserves the identifier owner's
+numbering order and refuses unsupported or incomplete graphs; it does not
+certify result evidence.
+The historical receipt reader checks positive predicates iteratively, using
+active enter/leave identities rather than copying ancestor sets. Exhaustion
+is an incomplete inspection, never a positive check or authority to certify.
+Exact dictionaries first undergo bounded string-key admission before keyed
+lookups: a custom colliding key can otherwise execute equality during ``get``.
+Admissions are not cached across mutable records. Key inspection consumes the
+same node and character credit as candidate construction and encoding.
+Receipt projection retains the existing compact and terse
+field inventories, positive-check predicates, fact counts and currency rules.
+Its labels and loops consume that same credit; refusal yields no partial
+receipt. A complete owned noncompact receipt needs only final JSON encoding;
+it does not repeat an identifier-copy pass when no identifier table exists.
+The central budget can fence off a caller-proven bound for final work while
+admission spends only the remaining credit above that fence. The one-way
+final-projection transition changes no remaining counter and refunds nothing.
+The admission phase retains complete unshortened primitive snapshots and
+reserves structural final-work bounds. Only the final phase allocates short
+identifiers, oldest first, against the complete admitted suffix's revision
+map. Full-result bounds retain all potentially stale rows and add their
+possible ``changed_since`` handles, the partial-verification excerpt member,
+fact encodings and outer result-text encoding. Fact-tail cut settling uses
+cached token lengths and assembles only the selected final tail. Rejected
+candidate inspection is spent; failure to fund another final bound leaves
+already-admitted recent candidates protected. Supported histories whose
+construction, encoding and final output fit the shared budget retain the
+existing formatting, chronological identifier order and revision decisions.
+Cutoffs explicitly report omitted candidates and unexamined raw records.
+If the requested suffix's revision scan is incomplete, a revision-bearing
+activity row without a known current observation or admitted latest commit
+causes that whole activity to be omitted. It cannot silently read as current
+or acquire a fabricated ``changed_since`` claim. This completeness boundary
+is the requested suffix, separate from the transcript-origin requirement for
+retiring a host summary. Successfully filtered non-program notice activities
+do not themselves prevent retiring an otherwise fully emitted merged group.
 
 Toolset 15 renamed every tool to its ``angelo_`` name
 (``routing.RENAMED_TOOLSET``). A native context recorded under an older toolset
@@ -761,7 +815,71 @@ material no copy shows is said (``swaps_not_shown``). Every refusal removes
 everything the merge added, so nothing was merged (``worker_materials``,
 ``worker_material_reach``, ``worker_material_swaps``;
 ``test_blender_parallel_merge_instances.py``,
-``test_blender_parallel_merge_materials.py``). A worker
+``test_blender_parallel_merge_materials.py``). Nothing of the worker's own
+reaches the person's file (``worker_merge_privacy``, ``worker_merge_paths``,
+run right after each part's append, before any copy, inside the merge's Undo
+step and rollback; break-it E2E-20 F-L-2 and its review BREAKIT-C7A, privacy):
+a Scene the part references (a driver target, an ID property) has its users
+remapped to the lead's scene and goes, with every datablock only it brought
+(its world, view layers, line styles); data the worker linked from one of
+Angelo's private folders is made local, users before what they use, and the
+part file's emptied Library and any such Library go (the person's own
+libraries stay linked); the weak library reference Blender writes on every
+reusable datablock (the part's absolute path, the person's home folder, in
+every save, Undo step and autosave) is cleared; and a path into one of
+Angelo's private folders, wherever a kept datablock holds it (Blender's own
+path walk, and every other string: a generated image's path, a point cache or
+Dynamic Paint folder, a node's string, a node modifier's input, an ID
+property), is cut to its file name. A file of the worker's (in a private folder,
+or packed in the part) is never kept as its own bytes, which can carry anything
+besides what Blender reads (a render's PNG holds the open file's path in a text
+chunk; a "sound" may be any file, since loading one never reads it;
+``worker_merge_media``, BREAKIT-C7A-5): an image of one file or generated, one
+view, is packed as its own decoded pixels, in place (a float buffer as scene
+linear, a data image as data; its path buffer written first, since its new
+buffer and every repack of an edit take that as the packed file's path); a
+sound is decoded and packed again as PCM WAV; a font, which cannot be written
+again (bytes after its tables are read by no one), is never kept, packed bytes
+under Blender's own font's name included (BREAKIT-C7A-6); anything else (a movie, a
+sequence, tiles, views, what Blender cannot decode, a cache folder) is not
+packed and named ``detached``, and bytes already packed that cannot be written
+again refuse the merge. The private folders are the file tools' own
+(``private_roots``, registered folders and families, and the part's folder),
+compared by folder identity, so a case, Unicode or link spelling is the same
+folder (a folder holding Angelo's owner file is one wherever it was moved);
+the chat's default workspace is not one, as for the file tools. In text, a
+path is found by any spelling of its folder (both Unicode forms, from the home
+folder, JSON-escaped, URL-encoded, any run of separators: doubled, mixed,
+URL-encoded either way (Windows' backslash is "%5C"), a "." folder, a detour
+through another folder and back, ``x/..``; the leading one is one separator, so
+a ``file://`` URL keeps its scheme), text and spellings folded alike
+(``str.casefold``, so a letter that folds to two, as "İ", matches), and ends
+after that spelling, never inside it (macOS's Application Support has a
+space); text is searched only where it holds a folder's own name, each
+spelling matched backwards from there, so a long text costs its length and its
+hits. Each path buffer is written whole first, since Blender saves a string's
+buffer with the bytes after its terminator, and so is each kept datablock's
+name. Then, by another rule, the kept datablocks are written with Blender's
+writer and each one's own bytes (raw arrays over 1 MiB, geometry, left out) and
+each packed file's bytes, whole, are searched in every view a text transport
+gives them (as written; percent- and form-encoding, HTML entities and
+backslash escapes undone until nothing changes; UTF-16 either way round),
+folded as the spellings are, for each base private folder's spellings and this
+merge's own folders' names, every path found decoded and decided by the same
+folder rule (``worker_merge_verify``): what the cleaning missed (a field
+Blender saves that no RNA reads, as a multi-view image's views, or a spelling
+it cannot cut in place) refuses the merge, with nothing added, a worker
+WorkSpace and its Screens included (fail closed). Residue (break-it
+BREAKIT-C7A-3 and -5): the writer's copies do not carry the old bytes of names
+other than a datablock's own (a modifier once named with a path), and bytes no
+text view reads (an encoding beyond text transports, as base64 or a compressed
+stream) are not searched, which is why a worker's own bytes are never kept.
+The answer's ``also_added`` lists the
+datablocks added besides objects and collections by kind, the objects whose
+Scene reference is now this scene's, the files packed or ``detached``, and the
+datablocks whose text was ``cleared`` (``test_blender_parallel_merge_privacy.py``:
+the saved file's bytes hold no private folder's name, saved and unsaved, after
+Undo and Redo). A worker
 merges only once its brief reached it and its turn ended, and a part merged
 into this scene merges again only when the merge says ``again`` (it adds its
 copies whatever the scene holds of it; break-it E2E-20 R4-M-2: the record
@@ -776,7 +894,13 @@ E2E-20 R5-M-2 and R5-L-1)
 (``parallel_sessions.PART_KEY``, a digest of the part file's path, so the
 person's file holds no path of theirs), so the fact survives save, open,
 Restore and Undo restore, and whatever is done to the merged objects (a deleted
-collection, a join), and an Undo of the merge takes it out,
+collection, a join), and an Undo of the merge takes it out; a part built
+before the lead's file changed (a Restore, an Undo restore, the file opened
+again: ``worker_ending.reloaded`` records every part file the lead had, held by
+anything or not) is refused (``worker_ending.PREDATES``, before ``again``),
+except that a part whose merge record the scene the person chose holds stays
+placeable with ``again`` (the maintainer's choice, 2026-11-05), and a part
+started after the change merges as usual,
 and the result names what a placement could not move exactly, what keys move later,
 a copy whose keys on only some channels would leave it in neither pose, and
 what it could not measure; a placed root keeps its rotation and scale channels
@@ -859,9 +983,18 @@ are Angelo's; the worker runs only the exact script approved there (its
 invocation digest) with its binding unchanged, as one Undo step in its own
 Blender, and saves its part after it, while Angelo's main thread never waits
 for it. A binding is taken from a settled scene (``program_context.settle``,
-for scripts and programs, never while a job evaluates the document's scene (a
-render, a bake, Angelo's point cache, geometry nodes and export jobs) or the
-interface is locked; material previews and compositing evaluate none of it): Blender evaluates a changed scene lazily, and a
+for scripts and programs, never while a job evaluates the document's scene or
+writes its data on its own thread, or the interface is locked: ``scene_jobs``,
+from ``_angelo_jobs.running_scene_jobs``, which classifies every Blender job
+type in a switch that does not build while a type is missing and counts
+running and waiting jobs of any owner; a render, any bake, an import or
+export, a remesh, a UV pack, tracking, and previews, which draw the view
+layer's own depsgraph for a scene or a pose; not compositing, which evaluates
+its own copy first, nor listings, caches and proxy builds, which only read.
+The live view's reads and pictures wait on the same answer
+(``parallel_sessions._held_now``). A build without the native classification
+keeps each caller's closed list. Tests: ``test_native_scene_jobs``, and a real
+Ocean bake and Alembic import in ``test_blender_work_guard_jobs``): Blender evaluates a changed scene lazily, and a
 background worker has no redraw to do it, so a refused staged program's
 pending update ran at the approve click's own evaluation and made every edit
 approved after it stale (pa-p1's live planter, 2026-10-25). Edits of the lead's
@@ -1537,6 +1670,16 @@ Codex instructions with the deferred families' list 26,037 -> 26,059 B (+22: "th
 declared in full (voice) unchanged at 108,654 B (voice threads never declare them, ``tool_specs.dynamic_tools``). A
 status answer stays under 2.5 KB with eight editors connected. No existing tool, kind or field changed; every call
 valid under 49 is still valid.
+
+Toolset 51 (1.0.10) adds the deferred ``angelo_goal`` (``goal_mode.rst``): a goal Angelo holds across turns, measured by
+the host after each and continued with Angelo's own request (``SET``, ``MEASURE``, ``STOP``). Measured over toolset
+50, compact JSON: Claude's plan schema 57,302 -> 57,316 B with parallel edit ON (57,232 -> 57,246 OFF; +14: the
+deferred name); Claude's instructions 14,246 -> 14,285 B (+39: "angelo_goal holds a goal across turns" after the
+native goal tools); Codex code-mode tools 100,681 -> 102,253 B OFF (+1,572: the declaration in the ``more``
+namespace); Codex instructions with the deferred families' list 26,059 -> 26,111 B (+13 there, +39 the same
+sentence); every tool declared in full (voice) unchanged at 108,654 B (voice threads hold no goal). The observation
+gains the ``held_goal`` state field only while a goal runs. No existing tool, kind or field changed; every call valid
+under 50 is still valid.
 
 Toolset 46 (Angelo 1.0.8, over 1.0.8's 45) lets the agent say where Angelo's features are and turn
 the engine live link on (``features.rst``, ``engine_link.rst``). ``angelo_agent_capabilities`` gains the
@@ -2861,11 +3004,25 @@ without a ChatGPT account (``retire_connection`` or, for the default login,
 running app-server keeps the login it started with, so a sign-out or account
 switch made outside Angelo (the Codex CLI or the ChatGPT app sharing the
 profile) shows only in the profile's login file: every connect compares that
-file's presence, device, inode, modification time and size with what they were
-when the process started (``codex_runtime.login_stamp``; one ``stat``, about 12
-µs, and the file is never read), and any change retires the process. Codex also
-rewrites the file when it refreshes its tokens (a profile used for five days of
-runs kept the same file); the next chat then starts a new process. A retired
+file's presence, device, inode, modification time, size and the SHA-256 of its
+bytes with what they were when the process started
+(``codex_login.login_stamp``: one read of a few kilobytes, a p50 of 36 µs and
+p99 of 55 µs for 4 KB on Mac 2). Codex writes the file in place (truncate,
+then write), and a same-size rewrite keeps every stat field within a coarse
+clock's tick (NTFS, FAT) or with its time put back, so its bytes decide. A file
+that is there but cannot be read (its permissions, a lock) is never compared:
+the connect refuses at once with ``codex_login.LoginUnreadable`` ("Angelo
+can't read Codex's sign-in file (auth.json in Codex's folder). Check that the
+file can be read, or sign in to Codex again, then send the message again."),
+which names no path, starts no process on a file it cannot read, retires none
+and makes no second attempt; the message goes back to the box. A running
+process is kept for its chats but admits no new one until the file can be
+read and compared again (a sign-in change made meanwhile changed its bytes and
+retires it then);
+retiring it would only start another process that reads the same file. A
+missing file is a sign-out. Any change retires the process. Codex also rewrites
+the file when it refreshes its tokens (a profile used for five days of runs kept
+the same file); the next chat then starts a new process. A retired
 process admits no new chat (``Runtime.lease`` refuses under the same lock as
 ``retire``) and closes when its last chat lets go, so no running turn is cut
 short first. A connect that raced a retirement, before its lease or during a
@@ -3803,3 +3960,23 @@ native assertions, crashes and allocator warnings fail the runner. A crash log's
 last 60 lines (home folder shown as ``~``) are appended to the suite's log and
 printed in the summary, so a remote run's crash names itself; when the suite's
 own process exited 0, the reason says a process it started crashed.
+
+Transcript scrollback
+====================
+
+The application transcript remains complete across provider context compaction,
+provider handoffs and session journal compaction/restart. Provider context bounds
+never define what the person can read. ``chat_history`` limits each layout pass
+to 160 displayed message rows. Wheel/trackpad scrolling past either page boundary
+opens an overlapping earlier/later page; First, Earlier, Later and Latest controls
+also navigate the stored transcript. Older pages retain their absolute start as
+new rows arrive. Switching conversations resets that editor to the latest page.
+Page offsets are display state only, bounded to one page and discarded with the
+editor; they never change saved messages, mutation IDs, approvals or tool evidence.
+
+Groups split by a display page are labelled More steps rather than reporting a
+partial count as the whole run. Open groups stay open across overlapping page
+fragments; only current-page member identities are retained. Only the page
+containing the actual transcript end can have the current live tail. First and
+Latest include the pixel position within a page, and releasing the scrollbar at
+a page endpoint opens the actual first/latest page.

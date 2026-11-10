@@ -6,6 +6,8 @@ A changed setting with a reported value is shown before and after; a change only
 named as unexplained beside it, never hidden by it (request_recovery).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import json
 import sys

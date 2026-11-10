@@ -7,6 +7,8 @@ The class: a 1.0.1 build was gated and signed with "## 1.0.1 — Unreleased", so
 never the repository's own CHANGELOG.md (a development line is allowed to be Unreleased).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 from pathlib import Path
 import subprocess
@@ -82,8 +84,10 @@ class ReleaseDatedTests(unittest.TestCase):
         self.assertIn("no readable version.label", release_dated.problems(root)[0])
 
     def test_the_command_line_fails_closed_and_the_release_builds_call_it(self):
-        run = lambda root: subprocess.run([sys.executable, "-I", "-B", str(RELEASE_CHECKS), "release-dated", str(root)],
-                                          capture_output=True, text=True)
+        # Both ends in UTF-8: -I ignores PYTHONUTF8, so a child left alone writes the ANSI code page on Windows while
+        # this process may read UTF-8, and its em dash then loses the whole stream.
+        run = lambda root: subprocess.run([sys.executable, "-I", "-B", "-X", "utf8", str(RELEASE_CHECKS),
+                                           "release-dated", str(root)], capture_output=True, encoding="utf-8")
         self.assertEqual(run(self.tree("1.0.1", [("1.0.1", "2026-10-20")])).returncode, 0)
         failed = run(self.tree("1.0.1", [("1.0.1", "Unreleased")]))
         self.assertEqual(failed.returncode, 1)

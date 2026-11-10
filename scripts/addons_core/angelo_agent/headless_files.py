@@ -11,8 +11,11 @@ the child both use it (doc/angelo/external_mcp.rst, "Headless").
 import hashlib
 import os
 import secrets
+import stat
 import time
 from pathlib import Path
+
+from . import change_clock, shared_replace
 
 SUFFIX = ".blend"
 OUTPUT_TAG = ".angelo-"
@@ -46,7 +49,7 @@ def check_source(value):
     if not real.is_file():
         raise FileProblem("Not a file: " + str(path))
     try:
-        with open(real, "rb") as handle:
+        with shared_replace.open_file(real) as handle:   # An earlier output place() may replace.
             head = handle.read(8)
     except OSError as error:
         raise FileProblem("The file cannot be read (%s)" % error.strerror) from None
@@ -64,12 +67,34 @@ def check_resume(source, value):
 
 
 def identity(path):
-    """What a change on disk changes: device, inode, size and modification time; None when it is gone."""
+    """What a change on disk changes: device, inode, size and modification time; None when it is gone.
+
+    Taken once the file system clock is past the file's stamp (``change_clock``), so a later same-size write changes
+    it even in the tick of the file's last write (Windows); a stamp ahead of the clock gives an identity no other
+    equals, which reads as a change (fail closed)."""
     try:
         info = os.stat(path)
     except OSError:
         return None
+    return settled_identity(info)
+
+
+def settled_identity(info):
+    """``identity`` of a stat taken already (``place``: of the bytes it wrote)."""
+    try:
+        change_clock.settle(info, change=False)
+    except change_clock.Unsettled:
+        return change_clock.unique()
     return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+
+
+def saved_identity(path):
+    """In a ``save_post`` handler: the ``identity`` of the file the running save wrote at ``path``, as the save
+    identified it (``document_file_identity.written``), never a stat of ``path`` after its rename, which could find
+    a version another program put there since; an identity no other equals (reads as changed) where it gave none."""
+    from . import document_file_identity
+    found = document_file_identity.written(str(path))
+    return settled_identity(found) if found is not None else change_clock.unique()
 
 
 def folder_writable(source):
@@ -119,6 +144,9 @@ def path_digest(path):
     return hashlib.sha256(("angelo-open-file/1\0" + real).encode("utf-8", "surrogatepass")).hexdigest()
 
 
+WINDOWS = os.name == "nt"   # Platform policy marker; delete-sharing reads permit rename.
+
+
 def place(staged, target):
     """Put the finished file ``staged`` (in a folder only this user can reach) at ``target`` in the shared folder.
 
@@ -126,11 +154,19 @@ def place(staged, target):
     hidden file this call creates with ``O_CREAT|O_EXCL|O_NOFOLLOW`` and writes through its descriptor, and that
     file is then renamed onto ``target``. A rename replaces a directory entry and never writes through a link, so
     whatever someone puts at either name, no other file is written.
+
+    Returns the ``identity`` of the bytes it wrote, never a stat of ``target`` after the rename, which could be of a
+    version another program wrote there since and would let a later save replace it unnoticed. A read handle held
+    across the rename identifies the same file afterwards, including on Windows (it shares delete) and volumes that
+    number a file by its directory entry. If permission denies that read, only an unchanged file number verifies
+    the fallback: a matching size and time never prove a different entry is the file written.
     """
     target = Path(target)
     temporary = target.with_name(".%s.%s.tmp" % (target.name, secrets.token_hex(6)))
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(temporary, flags, 0o666)
+    mine = os.fstat(descriptor)   # The file this call created: only it is ever removed again.
+    held = None
     try:
         with os.fdopen(descriptor, "wb") as handle, open(staged, "rb") as source:
             while True:
@@ -140,13 +176,43 @@ def place(staged, target):
                 handle.write(chunk)
             handle.flush()
             os.fsync(handle.fileno())
-        os.rename(temporary, target)
+            mine = os.fstat(handle.fileno())   # The file written, on its own handle: the name is checked against it.
+        try:   # Sharing delete on Windows lets the verified descriptor survive the rename there too.
+            held = shared_replace.open_shared(temporary, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
+                                              | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0))
+        except PermissionError:   # A umask can deny the owner read access; never guess a renumbered identity.
+            held = None
+        named = os.stat(temporary, follow_symlinks=False)
+        after = os.fstat(held) if held is not None else named
+        if any((info.st_dev, info.st_ino) != (mine.st_dev, mine.st_ino) or not stat.S_ISREG(info.st_mode)
+               for info in (after, named)):
+            raise FileProblem("The file being saved was replaced before it was put in place", "output_unwritable")
+        shared_replace.replace(temporary, target)   # A claimed placeholder is replaced, never followed.
+        placed = os.fstat(held) if held is not None else _renamed(target, after)
+        written = settled_identity(placed) if placed is not None else change_clock.unique()
     except BaseException:
         try:
-            os.unlink(temporary)
+            now = os.stat(temporary, follow_symlinks=False)
+            if (now.st_dev, now.st_ino) == (mine.st_dev, mine.st_ino):   # Never another program's file at the name.
+                os.unlink(temporary)
         except OSError:
             pass
         raise
+    finally:
+        if held is not None:
+            os.close(held)
+    return written
+
+
+def _renamed(target, before):
+    """Without a held descriptor, only the same regular-file number remains verifiable after a rename."""
+    try:
+        now = os.stat(target, follow_symlinks=False)
+    except OSError:
+        return None
+    if stat.S_ISREG(now.st_mode) and (now.st_dev, now.st_ino) == (before.st_dev, before.st_ino):
+        return before
+    return None
 
 
 def remove_empty(path):

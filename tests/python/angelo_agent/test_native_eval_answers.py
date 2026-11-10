@@ -7,6 +7,8 @@ answer, the right answer and the right answer with no observation that could
 support it. Nothing here starts Blender, a provider or a model.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from pathlib import Path
 import sys
 import unittest

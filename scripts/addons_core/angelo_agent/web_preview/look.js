@@ -97,6 +97,7 @@ export class Look {
     this.pmrem = new THREE.PMREMGenerator(renderer);
     this.studio = this.pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.world = null;   // { background, lighting, intensity } of the World the export carries.
+    this.waiting = false;   // The World's picture is still being made (the live preview exports it once it lands).
     this.settings = null;
     const saved = load();
     this.choice = { light: saved.light === "studio" ? "studio" : "world", background: saved.background !== false };
@@ -115,7 +116,11 @@ export class Look {
     renderer.outputColorSpace = look && look.outputColorSpace === THREE.LinearSRGBColorSpace
       ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace;
     const environment = look ? look.environment : undefined;
-    if (environment && environment.type === "pending") { this.update(); return; }   // Keep the World shown now.
+    // While the World's picture is being made the live preview carries the World it showed before, marked pending,
+    // and the page shows it as any World, so a page (re)loaded during the bake lights the scene as the open page
+    // did. With nothing shown before ({"type": "pending"}), the page keeps its World, else the studio lights it.
+    this.waiting = Boolean(environment && (environment.type === "pending" || environment.pending === true));
+    if (environment && environment.type === "pending") { this.update(); return; }
     this.disposeWorld();
     if (environment && environment.type === "color") {
       this.world = this.lit(flat(environment.color), environment.intensity);
@@ -143,10 +148,17 @@ export class Look {
     this.world = null;
   }
 
+  // The light the scene gets: the person's choice, or the Compare view's forced World. A file without a look
+  // (exported before 1.0.9) has no World to light it, nor has a page whose World's first picture is still being
+  // made: the studio, never nothing.
+  lighting() {
+    const chosen = this.forced ? "world" : this.settings ? this.choice.light : "studio";
+    return chosen === "world" && !this.world && this.waiting ? "studio" : chosen;
+  }
+
   // The person's choices (or the Compare view's forced World) onto the scene.
   update() {
-    // A file without a look (exported before 1.0.9) has no World to light it: the studio.
-    const light = this.forced ? "world" : this.settings ? this.choice.light : "studio";
+    const light = this.lighting();
     const shown = light === "world" && (this.forced ? Boolean(this.settings && this.settings.background)
       : this.choice.background && Boolean(this.settings ? this.settings.background : true));
     const scene = this.scene;
@@ -182,7 +194,7 @@ export class Look {
     const environment = this.settings && this.settings.environment;
     return { toneMapping: names[this.renderer.toneMapping] || "", exposure: this.renderer.toneMappingExposure,
       outputColorSpace: this.renderer.outputColorSpace, environment: this.world ? (environment || {}).type || "" : "",
-      light: this.forced ? "world" : this.settings ? this.choice.light : "studio",
+      light: this.lighting(), pending: this.waiting,
       background: Boolean(this.scene.background) };
   }
 }

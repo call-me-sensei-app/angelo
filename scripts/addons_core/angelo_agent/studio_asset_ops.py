@@ -234,8 +234,9 @@ class ANGELO_OT_studio_import_3d(Operator):
         try:
             asset = library().assets[self.asset_id]
             path = library().checked_file(asset, "model.glb")
+            from . import shared_replace
             from .studio_generation import checked_glb
-            checked_glb(path.read_bytes())
+            checked_glb(shared_replace.read_bytes(path))   # Sharing delete: never refuses a save of it.
             from .gltf_morph import import_options
             from . import material_display_sync as display
             materials = display.known()

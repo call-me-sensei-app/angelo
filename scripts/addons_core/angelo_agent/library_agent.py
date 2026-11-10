@@ -24,9 +24,9 @@ import shutil
 import threading
 import time
 
-from . import library_catalog, library_host, live_target, live_windows, private_roots
+from . import library_catalog, library_host, live_target, live_windows, private_roots, shared_replace
 from .library_spec import DEFAULT_RESULTS, IMPORT, MAX_PREVIEWS, SEARCH, compact, resolutions, validate_library
-from .refusal_codes import RefusalError, refusal_code, refusal_details
+from .refusal_codes import RefusalError, refusal_code, refusal_details, coded
 from .studio_agent import StudioPending
 from .team_library_files import ImportFailed, NotImported, Refused
 
@@ -112,7 +112,7 @@ def _previews(root, entries, folder, cancel):
         path = library_fetch.thumbnail(root, url)
         if path is None:
             continue
-        data = path.read_bytes()   # At most library_fetch.MAX_THUMB (2 MB).
+        data = shared_replace.read_bytes(path)   # At most MAX_THUMB (2 MB); another Angelo's fetch may replace it.
         suffix = _image_suffix(data[:12])
         if suffix is None:
             continue
@@ -140,7 +140,7 @@ class LibraryService:
 
     def __init__(self, controller, window):
         if controller is None:
-            raise RuntimeError("Angelo Library tools must be bound to an active chat.")
+            raise coded(RuntimeError("Angelo Library tools must be bound to an active chat."), "OWNERSHIP")
         self.controller, self.window = controller, window
 
     # Shared checks: main thread, catalog in memory, no network ---------------------------------------------------
@@ -207,6 +207,12 @@ class LibraryService:
         args = validate_library(name, arguments)
         if name != IMPORT:
             return None
+        if args['item_id'].startswith('fab:'):
+            from . import fab_library_agent
+            return fab_library_agent.precondition(self, args)
+        if args['item_id'].startswith('blender:'):
+            from . import blender_assets_agent
+            return blender_assets_agent.precondition(self, args)
         _lib, item = self._item(args)
         targets = self._targets(item, args)
         self._require_view()
@@ -222,9 +228,11 @@ class LibraryService:
 
     def _search_result(self, lib, args):
         limit = args.get("limit", DEFAULT_RESULTS)
-        items, total = lib.search(args["query"], args.get("kind"), limit, 0)
+        offset = args.get("offset", 0)
+        items, total = lib.search(args["query"], args.get("kind"), limit, offset)
         rows = [compact(item, library_catalog.item_bytes(item), lib.cached(item)) for item in items]
         result = {"query": args["query"], "total": total, "items": rows, "scene_changed": False}
+        result['next_offset'] = offset + len(rows) if offset + len(rows) < total else None
         if args.get("kind"):
             result["kind"] = args["kind"]
         if not rows:
@@ -232,6 +240,12 @@ class LibraryService:
         return result, items
 
     def _search(self, args):
+        if args.get('source') == 'fab':
+            from . import fab_library_agent
+            return fab_library_agent.search(self, args)
+        if args.get('source') == 'blender':
+            from . import blender_assets_agent
+            return blender_assets_agent.search(self, args)
         lib = library_host.library()
         lib.ensure_catalog()
         if lib.catalog is not None and not args.get("preview"):
@@ -291,6 +305,12 @@ class LibraryService:
         return dict(result, views=views, previews=[identity for identity, _path in found])
 
     def _import(self, args):
+        if args['item_id'].startswith('fab:'):
+            from . import fab_library_agent
+            return fab_library_agent.use(self, args)
+        if args['item_id'].startswith('blender:'):
+            from . import blender_assets_agent
+            return blender_assets_agent.use(self, args)
         lib, item = self._item(args)
         target_ids = [o.session_uid for o in self._targets(item, args)]
         self._require_view()

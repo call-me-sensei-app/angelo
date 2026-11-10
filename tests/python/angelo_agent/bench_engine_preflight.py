@@ -164,12 +164,15 @@ def link_arms(blend):
     target = OUT / "asset.glb"
     options = godot_options({})
     binary = bpy.app.binary_path
+    writeback_spec, preflight_spec = OUT / "writeback.json", OUT / "preflight.json"   # engine_link_writeback.child_spec
+    writeback_spec.write_text(json.dumps({"stamp": None, "target": str(target), "exporter": "gltf", "options": options,
+                                          "baked": []}))
+    preflight_spec.write_text(json.dumps({"engine": "godot", "report": str(OUT / "asset.preflight.json"),
+                                          "file": str(target), "exporter": "gltf", "options": options}))
     writeback = [binary, "--background", "--factory-startup", str(blend), "--python-exit-code", "1",
-                 "--python-expr", engine_link_writeback.CHILD, "--", "null", str(target), "gltf", json.dumps(options), "[]"]
-    spec = {"engine": "godot", "report": str(OUT / "asset.preflight.json"), "file": str(target), "exporter": "gltf",
-            "options": options}
+                 "--python-expr", engine_link_writeback.CHILD, "--", str(writeback_spec)]
     preflight = [binary, "--background", "--factory-startup", str(blend), "--python-exit-code", "1",
-                 "--python-expr", engine_preflight_link.CHILD, "--", json.dumps(spec)]
+                 "--python-expr", engine_preflight_link.CHILD, "--", str(preflight_spec)]
     child(writeback)
     child(preflight)   # Untimed warm-up of each.
     timings = {"writeback": [], "preflight_after": []}

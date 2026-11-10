@@ -20,7 +20,7 @@ import secrets
 import time
 from pathlib import Path
 
-from . import engine_rules
+from . import engine_rules, shared_replace
 
 TARGET_FOR_ENGINE = {"godot": "GODOT", "unity": "UNITY", "unreal": "UNREAL"}
 DEFAULT_FORMAT = {"GODOT": "GLB", "UNITY": "FBX", "UNREAL": "GLB", "WEB": "GLB"}
@@ -126,8 +126,14 @@ def report_path(asset):
     return str(Path(asset.project, WORKING_FOLDER, *parts[:-1], parts[-1] + REPORT_SUFFIX))
 
 
+_unwritten = {}   # {report path: the report this process could not write} (``write_report``).
+
+
 def write_report(path, report):
-    """Write ``report`` as JSON at ``path`` through a new private file, never through a link."""
+    """Write ``report`` as JSON at ``path`` through a new private file, never through a link. One that can't be
+    written is raised, and ``link_report`` in this process answers with it until a later report is written: a check
+    whose report Windows refused (its file held open) never reads as pending for good."""
+    _unwritten[path] = report
     if os.path.islink(path):
         raise OSError("The preflight report is a link")
     temporary = "%s.%s.tmp" % (path, secrets.token_hex(4))
@@ -136,24 +142,33 @@ def write_report(path, report):
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(report, handle, indent=1, sort_keys=True)
-        os.replace(temporary, path)
+        shared_replace.replace(temporary, path)   # The link-status tool reads it now and then: never refused.
     except BaseException:
         if os.path.exists(temporary):
             os.remove(temporary)
         raise
+    _unwritten.pop(path, None)
 
 
 def link_report(asset):
     """The last engine-link save's preflight of ``asset`` (an ``engine_link_assets.Asset``), or None before one."""
     path = report_path(asset)
-    if os.path.islink(path):
-        return None
-    try:
-        with open(path, encoding="utf-8") as handle:
-            report = json.load(handle)
-    except (OSError, ValueError):
-        return None
-    return report if isinstance(report, dict) else None
+    report = None
+    if not os.path.islink(path):
+        try:
+            report = json.loads(shared_replace.read_text(path))   # Sharing delete: the child's next report lands.
+        except (OSError, ValueError):
+            pass
+    report = report if isinstance(report, dict) else None
+    unwritten = _unwritten.get(path)
+    if unwritten is not None and (report is None or _when(report) < _when(unwritten)):
+        return unwritten   # Newer than the file: this process's report that Windows refused (``write_report``).
+    return report
+
+
+def _when(report):
+    when = report.get("saved_at")
+    return when if isinstance(when, (int, float)) else 0
 
 
 def after_writeback(target_file, exporter, options, engine, report_file, scene_version=None, digest=False,
@@ -214,10 +229,15 @@ def preflight_child(spec):
     a .blend asset, a private export with ``spec``'s exporter) and write the report to ``spec["report"]``."""
     import shutil
     import bpy
-    from . import export_snapshot, private_roots
+    from . import document_file_identity, export_snapshot, private_roots
     expected = spec.get("blend_identity")
-    if expected is not None and export_snapshot.identity(bpy.data.filepath) != expected:
-        return None   # Saved again since: that save's preflight follows and reports it.
+    if expected is not None:
+        # The command-line load already happened. A path restored after another file was read cannot vouch for
+        # the loaded scene: require the descriptor Blender read, as well as the current path's identity.
+        loaded = document_file_identity.loaded(bpy.data.filepath)
+        if (loaded is None or export_snapshot.identity_of(loaded) != expected
+                or export_snapshot.identity(bpy.data.filepath) != expected):
+            return None   # Unknown or changed: never report or export another loaded scene as this save.
     version = spec.get("scene_version")
     if spec.get("file"):
         return after_writeback(spec["file"], spec["exporter"], spec["options"], spec["engine"], spec["report"],

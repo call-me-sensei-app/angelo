@@ -14,6 +14,8 @@ material, and checked element by element (break-it P2-3). The in-Blender proofs 
 ``test_blender_parallel_merge.py`` and ``test_blender_parallel_merge_materials.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile
@@ -217,9 +219,9 @@ class AgainSeenTests(unittest.TestCase):
         self.assertIn("worker_approval.merge_message(args, worker_approval.merge_facts(chat_id))", source)
 
     def test_the_auto_decision_reads_it(self):
-        source = (Path(worker_merge.__file__).parent / "controller.py").read_text(encoding="utf-8")
-        self.assertIn('if call.name.endswith("start") else worker_merge.auto_merge_allowed\n'
-                      '            return allowed(self, call.arguments)', source)
+        # Auto's rule lives in auto_reasons (Controller._auto_bounded is its code being None).
+        source = (Path(worker_merge.__file__).parent / "auto_reasons.py").read_text(encoding="utf-8")
+        self.assertIn("return None if auto_merge_allowed(controller, call.arguments) else WORKER_MERGE_AGAIN", source)
 
 
 class Scene:

@@ -12,6 +12,8 @@ The release candidate's ``test_blender_worker_python@lanes`` (case save_as_and_u
 both journal checks on, which a host test has, and as since B1 review 2 a worker Blender in a native suite has too.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile

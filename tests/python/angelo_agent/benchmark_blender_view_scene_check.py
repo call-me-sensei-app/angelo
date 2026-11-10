@@ -50,6 +50,10 @@ collection, with the collector off while it runs, and counts the main thread's
 instructions, where the check runs (``perf_counters.read_thread_counts``).
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import argparse
 import gc
 import json
@@ -71,7 +75,7 @@ from angelo_agent import view_scene_check  # noqa: E402
 
 SCENES = ("small", "medium", "large")
 CASES = {"no_handlers": False, "handlers": True}
-# The settings a look writes and puts back itself (view_render.LookRunner._values): its restore reports them.
+# The settings a look writes and puts back itself (view_render_runner.LookRunner._values): its restore reports them.
 OWN = ("render.resolution_x", "render.resolution_y", "render.resolution_percentage", "render.filepath",
        "render.use_file_extension", "render.use_render_cache", "render.use_auto_generate_texture_cache")
 IMAGE_SIZE = 1024

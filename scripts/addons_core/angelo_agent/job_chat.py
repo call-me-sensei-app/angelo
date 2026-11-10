@@ -278,6 +278,10 @@ def details_text(record):
         lines.append(iface_("Files written: {count}", count=receipt["files"]))
     if receipt.get("kept"):
         lines.append(kept_text(receipt, sentence=True))
+    if receipt.get("kept_folder"):   # A publication that failed: what the job wrote, kept (job_manager.kept_outputs).
+        lines.append(iface_("Kept in: {folder}", folder=receipt["kept_folder"]))
+    if receipt.get("left_published"):   # Moved files a failed publication couldn't move back (Staging.unpublish).
+        lines.append(iface_("Left published: {files}", files=", ".join(receipt["left_published"])))
     if receipt.get("images"):
         lines.append(iface_("Images baked: {names}", names=", ".join(receipt["images"])))
     if receipt.get("caches"):

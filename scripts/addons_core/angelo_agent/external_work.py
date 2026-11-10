@@ -48,7 +48,7 @@ DOCUMENT_CHANGED = ("The open Blender file changed in Angelo; this call did not 
 class ExternalWork:
     """One open request of an app's calls; the provider stand-in ``DirectRequest`` calls into (module docstring)."""
 
-    def __init__(self, controller, label, app_name, allowed):
+    def __init__(self, controller, label, app_name, allowed, answers_held=False):
         self.controller, self.label = controller, label
         if getattr(controller, "_identifiers_route", None) != "external":
             # The app sees short handles (o<n>), as Angelo's own agent does: the tool schemas it reads are those of
@@ -61,6 +61,10 @@ class ExternalWork:
         self.direct = DirectRequest(self, context, self.owner, SelfChecks())
         self.last_activity = time.monotonic()
         self.closed = False
+        # Calls admitted whose answer has not gone out: a worker past ``left()`` is still in flight until it has. Counted
+        # out just before it goes: here, or by a host that holds answers for a save or reload (``answers_held``:
+        # ``HeadlessHost.finish_answers``, which also sends them before the next request is handled).
+        self._unanswered, self._unanswered_lock, self._answers_held = 0, threading.Lock(), answers_held
         self._script_file = threading.local()   # The ScriptFile an angelo_run_script_file call is running, per worker.
 
     # What DirectRequest calls on its provider ----------------------------------------------------------
@@ -109,11 +113,21 @@ class ExternalWork:
         never runs it again (``DirectRequest.admit``).
         """
         self.last_activity = time.monotonic()
-        if not self.direct.admit(key, respond):
+        counted = []
+
+        def answer(value):   # Never seen by a client while it still counts.
+            if counted and not self._answers_held:
+                self.count_out()
+            respond(value)
+        if not self.direct.admit(key, answer):
             return
+        with self._unanswered_lock:   # Before its worker starts: nothing can answer it yet.
+            self._unanswered += 1
+        counted.append(True)
         numbered = queue.SimpleQueue()   # Its place in the order (``arrived``), given once its thread has started.
 
         def work():
+            value = None
             try:
                 ticket = numbered.get()
                 if name == SCRIPT_FILE_TOOL:
@@ -125,13 +139,22 @@ class ExternalWork:
             finally:
                 self.direct.left()
                 self.last_activity = time.monotonic()
-            self.direct.answered(key, self._explained(value))
+                try:   # Answered whatever happened, so it never counts as in flight for good.
+                    value = self._explained(value if value is not None else _error(self.direct.why("it did not end")))
+                except Exception as error:  # noqa: BLE001
+                    value = _error(self.direct.why(error))
+                self.direct.answered(key, value)
         try:
             threading.Thread(target=work, daemon=True, name="AngeloExternalCall").start()
         except RuntimeError as error:   # No thread to run it: answered as not run, never numbered (``thread_start``).
             self.direct.answered(key, self._explained(_error(self.direct.why("it did not run: %s" % error))))
             return
         numbered.put(self.direct.arrived())
+
+    def count_out(self):
+        """One admitted call's answer is going out now (``answers_held``: the host calls this)."""
+        with self._unanswered_lock:
+            self._unanswered -= 1
 
     def _script_file_call(self, arguments, ticket):
         """``angelo_run_script_file``: read the file once (``script_files.read_script``) and run exactly that text as
@@ -170,8 +193,10 @@ class ExternalWork:
         return not self.direct.busy() and now - self.last_activity >= IDLE_SECONDS
 
     def finishable(self):
-        """Nothing of this request is still running or waiting in Angelo."""
-        return not self.direct.busy() and not self.context.tools_pending()
+        """Nothing of this request is still running or waiting in Angelo, and every answer has gone to the host."""
+        with self._unanswered_lock:
+            unanswered = self._unanswered
+        return not unanswered and not self.direct.busy() and not self.context.tools_pending()
 
     def close(self, why="the app finished"):
         """Main thread: end the request; the transcript gets the verified account of its edits."""

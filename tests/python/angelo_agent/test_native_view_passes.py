@@ -10,6 +10,8 @@ read through the private copy. ``rendered_view_case.FinishedCase`` supplies
 the stand-ins; ``view_exr`` reads files ``view_source_fakes.exr_bytes`` wrote.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

@@ -6,13 +6,13 @@ Both call what the agent's ``angelo_web_export`` calls (``web_export``, ``web_pr
 so a person and the agent get the same file. The full report (what doesn't carry over, with each fix) is on the
 preview page; the export reports its size budget in the status bar. While the World's picture is still being made
 the export waits for it as a modal operator: Blender keeps drawing and answering input, the status bar says so and
-Esc cancels (``web_export.pending_export``).
+Esc cancels (``web_export.pending_export``); an export written without its World says so last, as a warning.
 """
 
 import bpy
 from bpy_extras.io_utils import ExportHelper
 
-from . import input_policy, web_export, web_preview
+from . import input_policy, web_export, web_export_wait, web_preview
 from .ui_text import iface_, n_, rpt_
 
 MESH_ITEMS = (("AUTO", n_("Automatic"), n_("Meshopt when this build has it, else Draco, else uncompressed")),
@@ -126,6 +126,8 @@ class ANGELO_OT_web_export(bpy.types.Operator, ExportHelper):
         self.report({'INFO'}, rpt_(EXPORTED, size=_size(budget["bytes"]), triangles=budget["triangles"],
                                    calls=budget["draw_calls"], textures=budget["textures"]["count"],
                                    findings=len(report["findings"])))
+        for item in web_export_wait.left_out(report):   # Last, so the status bar shows it: the World is missing.
+            self.report({'WARNING'}, rpt_(item["message"], **item["params"]))
         return {'FINISHED'}
 
 

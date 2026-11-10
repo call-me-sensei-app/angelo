@@ -23,9 +23,11 @@ set(SRC
   ./intern/mallocn.cc
   ./intern/mallocn_guarded_impl.cc
   ./intern/mallocn_lockfree_impl.cc
+  ./intern/memory_lifetime.cc
   ./intern/memory_usage.cc
 
   MEM_guardedalloc.h
+  MEM_lifetime.hh
   MEM_safe_multiply.h
   ./intern/mallocn_inline.hh
   ./intern/mallocn_intern.hh
@@ -50,6 +52,7 @@ add_library(bf::intern::guardedalloc ALIAS bf_intern_guardedalloc)
 if(WITH_GTESTS)
   set(TEST_SRC
     tests/guardedalloc_alignment_test.cc
+    tests/guardedalloc_lifetime_test.cc
     tests/guardedalloc_overflow_test.cc
     tests/guardedalloc_safe_multiply_test.cc
     tests/guardedalloc_test_base.h

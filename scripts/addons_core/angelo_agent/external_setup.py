@@ -32,6 +32,7 @@ import tomllib
 import uuid
 from pathlib import Path
 
+from . import shared_replace
 from .external_clients import APP_NAMES, DEFAULT_CLIENT
 
 SERVER = "angelo"
@@ -110,7 +111,7 @@ def has_entry(app, home=None, environ=None, platform=None):
         return False
     if app == "codex":
         try:
-            return SERVER in (tomllib.loads(path.read_text(encoding="utf-8")).get("mcp_servers") or {})
+            return SERVER in (tomllib.loads(shared_replace.read_text(path)).get("mcp_servers") or {})
         except (OSError, UnicodeError, tomllib.TOMLDecodeError):
             return False
     data = _read_json(path, missing={})
@@ -183,7 +184,7 @@ def _run(run, argv, *, check=True, environ=None):
 
 def _read_text(path):
     try:
-        return path.read_text(encoding="utf-8")
+        return shared_replace.read_text(path)   # Sharing delete: never refuses a save of the app's settings.
     except FileNotFoundError:
         return ""
     except (OSError, UnicodeError) as error:
@@ -227,15 +228,21 @@ def _write(path, text):
         path = path.resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     previous = path.stat().st_mode & 0o777 if path.exists() else 0o600
-    if path.exists():
-        shutil.copy2(path, path.with_name(path.name + ".angelo-backup"))
+    if path.exists():   # The app may be reading it: read sharing delete, so neither refuses the other.
+        backup = path.with_name(path.name + ".angelo-backup")
+        backup.write_bytes(shared_replace.read_bytes(path))
+        shutil.copystat(path, backup)
     temporary = path.with_name("." + path.name + "." + uuid.uuid4().hex + ".tmp")
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), previous)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        handle.write(text)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0), previous)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        shared_replace.replace(temporary, path)   # The app itself may be reading it: tried again, else raised.
+    except BaseException:
+        temporary.unlink(missing_ok=True)   # Never a stray file left in the app's settings folder.
+        raise
 
 
 # Codex's TOML: only the [mcp_servers.angelo] table (and its sub-tables) is ever touched -------------

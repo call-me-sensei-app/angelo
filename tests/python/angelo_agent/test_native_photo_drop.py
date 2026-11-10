@@ -11,6 +11,8 @@ real drop depends on (the file handler takes every Blender image, the stock imag
 movies keep their own drop, the + menu entry). The real drop is ``test_blender_photo_drop_gui``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import unittest

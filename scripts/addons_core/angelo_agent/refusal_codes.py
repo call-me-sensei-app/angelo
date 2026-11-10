@@ -7,6 +7,7 @@ CODES = frozenset({
     "EXPIRED", "OWNERSHIP", "CANCELLED", "READ_ONLY", "DECLINED", "VALIDATION", "CHECK_FAILED",
     "UNSUPPORTED", "LIMIT_EXCEEDED", "INTERNAL_ERROR", "CLEANUP_FAILED", "WRITER_BUSY", "UNKNOWN",
     "RECOVERY_REQUIRED",
+    "NEEDS_GUI",   # A headless host refused a call that reached an approval card: nothing of it ran (headless_host).
 })
 STALE_CODES = frozenset({"STALE_SETTING", "STALE_REVISION", "STALE_DEPENDENCY", "STALE_CONTEXT"})
 CORRECTABLE_CODES = frozenset({"VALIDATION", "CHECK_FAILED", "UNSUPPORTED", "LIMIT_EXCEEDED"})
@@ -21,6 +22,17 @@ class RefusalError(ValueError):
         super().__init__(message)
         self.code = code
         self.details = dict(details) if isinstance(details, dict) else {}
+
+
+def coded(error, code, details=None):
+    """``error`` with a closed refusal code, its type and words kept: a deliberate refusal raised as a RuntimeError or
+    OSError, whose callers catch it by that type (``refusal_code`` reads it, as it reads ``RefusalError.code``)."""
+    if code not in CODES:
+        raise ValueError("Unknown refusal code")
+    error.refusal_code = code
+    if isinstance(details, dict):
+        error.details = dict(details)
+    return error
 
 
 def refusal_code(error):

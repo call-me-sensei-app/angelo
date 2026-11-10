@@ -8,10 +8,11 @@ receipt's device line are checked without Blender or a GPU. The wiring into both
 environment and the dry runs is checked on the harness sources. No Blender, client or model is started.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import json
 import os
-import stat
 import sys
 import tempfile
 import unittest
@@ -25,6 +26,7 @@ for _path in (str(HERE.parents[2] / "scripts/addons_core"), str(HERE)):
         sys.path.insert(0, _path)
 
 import bench_gpu  # noqa: E402
+from platform_env import stand_in_program  # noqa: E402
 
 T4 = ("Tesla T4", "OPTIX", "optix-0")
 
@@ -169,17 +171,13 @@ class Expected(unittest.TestCase):
             None, {bench_gpu.ENV: "require", bench_gpu.EXPECT_ENV: "T4"}))
 
 
-@unittest.skipIf(sys.platform == "win32", "a shell script stands in for Blender")
 class Probe(unittest.TestCase):
     """``probe`` runs the side's binary with bench_gpu.py; a script stands in for Blender's output."""
 
     def fake_blender(self, printed, code=0):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
-        binary = Path(folder.name, "blender")
-        binary.write_text("#!/bin/sh\nprintf '%%s\\n' %s\nexit %d\n" % (json.dumps(printed), code))
-        binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
-        return binary
+        return stand_in_program(Path(folder.name, "blender"), "print(%r)\nraise SystemExit(%d)\n" % (printed, code))
 
     def test_pass_fail_and_silence(self):
         line = bench_gpu.MARK + json.dumps({"device_line": "Cycles OPTIX: Tesla T4; scene device GPU"})

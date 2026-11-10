@@ -35,6 +35,10 @@ Run through ``run_native_suites.py --gui --include test_blender_first_run``;
 check ``first-run.json`` for ``success`` and ``phase == "complete"``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -417,7 +421,7 @@ def tick():
             if not wait(phase, lambda: flow and flow["phase"] == "signing_in" and fake_provider_cli.held(LOGIN_HOLD)):
                 return .1
             capture("first-run-3-claude-signing-in.png")
-            checks["sign_in_progress_shown_inline"] = ("welcome_cancel", "claude_subscription") in actions()
+            checks["sign_in_progress_shown_inline"] = ("welcome_cancel", ("claude_subscription", quick_connect.flow("claude_subscription")["token"])) in actions()
             fake_provider_cli.release(LOGIN_HOLD)
             os.environ.pop(fake_provider_cli.LOGIN_GATE, None)
             state["phase"] = "claude_ready"

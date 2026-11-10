@@ -6,6 +6,8 @@ import json
 import queue
 import subprocess
 import threading
+import uuid
+from typing import NamedTuple
 from pathlib import Path
 
 from .cli_runtime import launch, with_runtime_path
@@ -45,6 +47,12 @@ def metadata_status(mode, code, output):
     return "Connected to Claude" if code == 0 and data.get("loggedIn") and data.get("authMethod") in {"claude.ai", "oauth", "oauth_token"} else "Not connected"
 
 
+class AuthChange(NamedTuple):
+    identity: str
+    logged_in: bool
+    attempt: str
+
+
 class NativeAuthentication:
     def __init__(self):
         self.status = {}
@@ -54,71 +62,118 @@ class NativeAuthentication:
         self.lock = threading.Lock()
         self.closed = False
         self.modes = {}
+        self._attempts = {}
+        self._cancelled = {}
 
-    def start(self, mode, settings, state_dir, login=False, identity=None, api_key=""):
+    def attempt(self, identity):
+        """The current logical sign-in/status attempt; a completion recheck retains this owner."""
+        with self.lock:
+            return self._attempts.get(identity)
+
+    @staticmethod
+    def _drain(process):
+        if process is None:
+            return True
+        try:
+            if process.poll() is not None:
+                return True
+            process.terminate()
+            try:
+                process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate(timeout=5)
+        except Exception:
+            return False  # Retain the exact owner when process inspection/termination cannot prove its exit.
+        return process.poll() is not None
+
+    def start(self, mode, settings, state_dir, login=False, identity=None, api_key="", continuation=None):
         Path(state_dir).mkdir(parents=True, exist_ok=True, mode=0o700)
         command, env = native_auth_command(mode, settings, state_dir, login, bool(api_key))
         identity = identity or mode
-        self.modes[identity] = mode
         with self.lock:
             if identity in self.running or self.closed:
                 raise RuntimeError("A native sign-in/status check is already running")
+            if continuation is not None and (continuation != self._attempts.get(identity)
+                                             or self._cancelled.get(identity) == continuation):
+                raise RuntimeError("The sign-in attempt changed before its status recheck")
+            attempt = continuation if continuation is not None else uuid.uuid4().hex
+            self._attempts[identity] = attempt
+            self._cancelled.pop(identity, None)
+            self.modes[identity] = mode
             self.running.add(identity)
             self.status[identity] = "Saving API credential…" if api_key else "Complete sign-in in your browser…" if login else "Checking native sign-in…"
 
         def run():
-            process = None
+            process, status, logged_in = None, "Native runtime unavailable; check its executable path", False
             try:
-                # With no flags Codex opens its own ChatGPT browser flow;
-                # Claude's unmodified auth command handles its own browser flow. Cancelling or timing out
-                # never closes that browser (on Windows it joins the CLI's Job Object): keep_gui_programs.
-                process = launch(command, env=env, cwd=str(state_dir), stdin=subprocess.PIPE if api_key else subprocess.DEVNULL,
-                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, keep_gui_programs=True)
                 with self.lock:
-                    self.processes[identity] = process
-                    if self.closed:
-                        process.terminate()
-                output, _ = process.communicate(input=api_key + "\n" if api_key else None, timeout=600 if login else 30)
-                if login:
-                    status = "Sign-in complete. Refresh status to confirm." if process.returncode == 0 else "Sign-in did not complete. Retry or use the native Terminal command."
-                else:
-                    status = metadata_status(mode, process.returncode, output)
-                self.events.put((identity, status, login and process.returncode == 0))
+                    cancelled = self.closed or self._cancelled.get(identity) == attempt
+                if not cancelled:
+                    # Provider-owned browser flow; cancellation never closes a browser window.
+                    process = launch(command, env=env, cwd=str(state_dir), stdin=subprocess.PIPE if api_key else subprocess.DEVNULL,
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, keep_gui_programs=True)
+                    with self.lock:
+                        if self._attempts.get(identity) == attempt:
+                            self.processes[identity] = process
+                        if self.closed or self._cancelled.get(identity) == attempt:
+                            process.terminate()
+                    output, _ = process.communicate(input=api_key + "\n" if api_key else None, timeout=600 if login else 30)
+                    if login:
+                        status = "Sign-in complete. Refresh status to confirm." if process.returncode == 0 else "Sign-in did not complete. Retry or use the native Terminal command."
+                    else:
+                        status = metadata_status(mode, process.returncode, output)
+                    logged_in = login and process.returncode == 0
             except subprocess.TimeoutExpired:
-                process.terminate()
-                try:
-                    process.communicate(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.communicate()
-                self.events.put((identity, "Native sign-in/status check timed out", False))
+                status = "Native sign-in/status check timed out"
             except Exception:
-                self.events.put((identity, "Native runtime unavailable; check its executable path", False))
+                status = "Native runtime unavailable; check its executable path"
             finally:
+                drained = self._drain(process)
                 with self.lock:
-                    self.processes.pop(identity, None)
+                    if drained and self.processes.get(identity) is process:
+                        self.processes.pop(identity, None)  # Never remove a newer attempt's process.
+                    if self.closed or self._cancelled.get(identity) == attempt:
+                        status, logged_in = "Native sign-in/status check cancelled", False
+                    if not drained:
+                        status, logged_in = "Native sign-in/status check could not stop; restart Angelo", False
+                # A failed drain remains running/owned; it cannot trigger success or a new login.
+                self.events.put((identity, status, logged_in, attempt, drained))
 
         try:
             threading.Thread(target=run, daemon=True, name="AngeloNativeAuthentication").start()
-        except RuntimeError:   # No thread to check on (``thread_start``): a check that failed, said by ``pump``.
-            self.events.put((identity, "Native sign-in/status check couldn't start; retry", False))
+        except RuntimeError:
+            self.events.put((identity, "Native sign-in/status check couldn't start; retry", False, attempt, True))
+        return attempt
 
     def pump(self):
         changes = []
         while True:
             try:
-                mode, status, logged_in = self.events.get_nowait()
+                identity, status, logged_in, attempt, drained = self.events.get_nowait()
             except queue.Empty:
                 return changes
-            self.running.discard(mode)
-            self.status[mode] = status
-            changes.append((mode, logged_in))
+            with self.lock:
+                if self._attempts.get(identity) != attempt:
+                    continue  # A late result never changes a newer login's readiness or running state.
+                if self.closed or self._cancelled.get(identity) == attempt:
+                    status, logged_in = "Native sign-in/status check cancelled", False
+                if drained:
+                    self.running.discard(identity)
+                self.status[identity] = status
+            changes.append(AuthChange(identity, logged_in, attempt))
 
-    def cancel(self, mode):
+    def cancel(self, identity, *, attempt=None):
         with self.lock:
-            process = self.processes.get(mode)
+            current = self._attempts.get(identity)
+            if attempt is not None and attempt != current:
+                return False
+            if current is not None:
+                self._cancelled[identity] = current  # Also fences a queued thread before process publication.
+            process = self.processes.get(identity)
             if process and process.poll() is None:
                 process.terminate()
+            return current is not None or process is not None
 
     def close(self):
         with self.lock:

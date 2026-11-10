@@ -235,13 +235,11 @@ class GHOST_SystemCocoa : public GHOST_System {
    */
   GHOST_TSuccess hasClipboardImage() const override;
 
-  /**
-   * Get image data from the Clipboard
-   * \param r_width: the returned image width in pixels.
-   * \param r_height: the returned image height in pixels.
-   * \return pointer uint array in RGBA byte order. Caller must free.
-   */
-  uint *getClipboardImage(int *r_width, int *r_height) const override;
+  /** \copydoc #GHOST_ISystem::getClipboardImageBuffer */
+  blender::ImBuf *getClipboardImageBuffer() const override;
+
+  /** \copydoc #GHOST_ISystem::getClipboardImageSize */
+  GHOST_TSuccess getClipboardImageSize(int *r_width, int *r_height) const override;
 
   /**
    * Put image data to the Clipboard

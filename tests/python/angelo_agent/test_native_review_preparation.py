@@ -6,6 +6,8 @@ Pure host font stand-ins establish work ownership and output compatibility;
 the Blender fixture separately measures real BLF/GPU and event dispatch.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import copy
 import importlib
@@ -467,7 +469,7 @@ class CanvasTimerLifecycleTests(unittest.TestCase):
                                                       window_manager=SimpleNamespace(windows=[])))
         from angelo_agent import live_windows
         namespace = {"__package__": "angelo_agent", "bpy": bpy, "live_windows": live_windows, "_handler": None,
-                     "_enabled": False,
+                     "_enabled": False, "composer_input": SimpleNamespace(forget=Mock()),
                      "_input_generation": 0, "_views": {}, "_modals": set(), "_scroll": {},
                      "reload_fonts": Mock(), "draw": Mock(), "wrap": SimpleNamespace(cache_clear=Mock()),
                      "ANGELO_OT_chat_input": object, "gpu": SimpleNamespace(shader=SimpleNamespace(from_builtin=Mock()))}
@@ -490,6 +492,7 @@ class CanvasTimerLifecycleTests(unittest.TestCase):
             prepare.assert_called_once_with()
             marble.poll.assert_called_once_with()
             namespace["unregister"]()
+            namespace["composer_input"].forget.assert_called_once_with()
             marble.stop.assert_called_once_with()
             self.assertNotIn(callback, timers)
             console.draw_handler_remove.assert_called_once_with("draw-handler", "WINDOW")

@@ -74,6 +74,7 @@ WHY_WAIT = {
     "generation": n_("You can restart when the current generation finishes."),
     "job": n_("You can restart when the render, bake or export finishes."),
     "render": n_("You can restart when the render, bake or export finishes."),
+    "task": n_("You can restart when the current background task finishes."),
     "interaction": n_("You can restart when you finish using the current tool."),
     "unknown": n_("You can restart when Angelo finishes its current work."),
 }

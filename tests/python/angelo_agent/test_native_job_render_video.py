@@ -7,6 +7,10 @@ these tests hold the contract around it: what a request may ask, when the child 
 the MP4 is published only beside a complete set of frames and only when it is a whole file.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
+import json
+import os
 import struct
 import subprocess
 import sys
@@ -151,11 +155,11 @@ class Encoding(unittest.TestCase):
         return job_render_video.Encoder(["x"], dest, popen_writing(code, output))
 
     def test_a_clean_exit_with_a_whole_file(self):
-        line = (job_render_video.MARK + '{"file": "%s"}\n' % (self.folder / "anim.mp4")).encode()
+        line = (job_render_video.MARK + json.dumps({"file": str(self.folder / "anim.mp4")}) + "\n").encode()
         self.assertEqual(self.encoder(0, b"noise\n" + line, mp4()).result(), (True, ""))
 
     def test_every_other_ending_is_a_reason(self):
-        line = (job_render_video.MARK + '{"file": "%s"}\n' % (self.folder / "anim.mp4")).encode()
+        line = (job_render_video.MARK + json.dumps({"file": str(self.folder / "anim.mp4")}) + "\n").encode()
         self.assertIn("exit status 1", self.encoder(1, line, mp4()).result()[1])
         self.assertIn("did not name", self.encoder(0, b"no line\n", mp4()).result()[1])
         self.assertIn("did not name", self.encoder(0, job_render_video.MARK.encode() + b"{bad\n", mp4()).result()[1])
@@ -276,6 +280,8 @@ class Stopping(unittest.TestCase):
         ready = self.folder / ("ready-%s" % owner)
         encoder = job_render_video.Encoder([sys.executable, "-c", STUCK, str(ready)], self.folder / "anim.mp4",
                                            subprocess.Popen, owner=owner)
+        if os.name == "nt":  # terminate is TerminateProcess there, which no child ignores: one that outlives its
+            encoder.process.terminate = lambda: None   # stop (stuck in I/O) is played by a stop that does nothing.
         self.addCleanup(lambda: (encoder.process.kill(), encoder.process.wait(5), encoder.close()))
         limit = time.monotonic() + 10
         while not ready.exists() and time.monotonic() < limit:
@@ -285,8 +291,9 @@ class Stopping(unittest.TestCase):
 
     def ticks(self, until, first, limit=10):
         """The interface's timer loop: ``first`` on its first tick, ``reap`` on every tick; returns the tick times
-        and how long ``first`` held its tick."""
+        and how long ``first`` held its tick, with what the machine stole from the loop (``machine_clock``)."""
         times, held, end = [], None, time.monotonic() + limit
+        window = machine_clock.start(self)
         while time.monotonic() < end:
             times.append(time.monotonic())
             if held is None:
@@ -297,12 +304,13 @@ class Stopping(unittest.TestCase):
             if until():
                 break
             time.sleep(self.TICK)
-        return times, held
+        return times, machine_clock.Elapsed(held, window.stop().stolen)
 
     def assert_never_held(self, times, held):
-        self.assertLess(held, 0.1)
+        machine_clock.assert_within(self, held, 0.1)
         gaps = [after - before for before, after in zip(times, times[1:])]
-        self.assertLess(max(gaps), 0.25, "the interface stopped ticking")
+        machine_clock.assert_within(self, machine_clock.Elapsed(max(gaps), held.stolen), 0.25,
+                                    "the interface stopped ticking")
         self.assertGreater(times[-1] - times[0], 0.5)   # It ran past the kill, ticking all along.
 
     def test_a_stop_returns_at_once_and_the_child_is_killed_later(self):

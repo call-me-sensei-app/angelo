@@ -28,6 +28,17 @@ TIME_DEPENDENT_NODES = frozenset({
 
 
 MAX_FRAME_SCAN_NODES = 512
+# Socket types through which a node reads another datablock (an object's transform or geometry, a collection's
+# objects, an image sequence's frame). Any node with such an input reads state outside the graph, whatever its name:
+# Bone Info, Camera Info and Collection Children were missing from the list above (break-it review, 2026-11-05).
+ID_SOCKET_TYPES = frozenset({"OBJECT", "COLLECTION", "IMAGE"})
+
+
+def _reads_another_id(node):
+    """An input of such a type that is linked or holds a datablock (an empty, unlinked one reads nothing)."""
+    return any(getattr(socket, "type", None) in ID_SOCKET_TYPES
+               and (getattr(socket, "is_linked", True) or getattr(socket, "default_value", True) is not None)
+               for socket in getattr(node, "inputs", ()))
 
 
 def _animated(block):
@@ -45,7 +56,7 @@ def _graph_frame_independent(tree, seen, budget):
         return False
     for node in tree.nodes:
         budget[0] -= 1
-        if budget[0] < 0 or node.bl_idname in TIME_DEPENDENT_NODES:
+        if budget[0] < 0 or node.bl_idname in TIME_DEPENDENT_NODES or _reads_another_id(node):
             return False
         group = getattr(node, "node_tree", None)
         if group is not None and not _graph_frame_independent(group, seen, budget):

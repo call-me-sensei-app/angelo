@@ -22,6 +22,8 @@ import time
 import unicodedata
 from pathlib import Path
 
+from . import shared_replace   # Standard library only, as this module is.
+
 # Protocol 2 (2026-10-07) changed only the HMAC domain separators below to the
 # Angelo name; a protocol 1 peer gets ``incompatible`` instead of a failed proof.
 CLI_PROTOCOL = 2
@@ -187,7 +189,8 @@ def app_proof(key, server_nonce, client_nonce):
 def read_key(path):
     """An owner-only app key file, read without following a link: 32 bytes, or None when missing or unsafe."""
     try:
-        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        descriptor = shared_replace.open_shared(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) |
+                                                getattr(os, "O_NONBLOCK", 0))   # Windows: sharing delete.
     except OSError:
         return None
     try:

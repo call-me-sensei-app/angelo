@@ -1335,4 +1335,63 @@ TEST_F(AssetCatalogTest, write_replaces_link_at_writing_name)
   }
 }
 
+TEST_F(AssetCatalogTest, updater_catalog_generation_repeated_dirty_tag)
+{
+  TestableAssetCatalogService service(asset_library_root_);
+  service.tag_has_unsaved_changes();
+  const uint64_t discarded_baseline = catalog_edit_generation();
+  ASSERT_NE(0, discarded_baseline);
+  EXPECT_TRUE(service.has_unsaved_changes());
+  EXPECT_EQ(discarded_baseline, catalog_edit_generation());
+  service.tag_has_unsaved_changes();
+  EXPECT_TRUE(service.has_unsaved_changes());
+  EXPECT_NE(discarded_baseline, catalog_edit_generation());
+}
+
+TEST_F(AssetCatalogTest, updater_catalog_generation_create_rename_delete)
+{
+  TestableAssetCatalogService service(asset_library_root_);
+  uint64_t previous = catalog_edit_generation();
+  ASSERT_NE(0, previous);
+  const CatalogID id = service.create_catalog("updater/before")->catalog_id;
+  EXPECT_NE(previous, catalog_edit_generation());
+  previous = catalog_edit_generation();
+  service.update_catalog_path(id, "updater/after");
+  EXPECT_NE(previous, catalog_edit_generation());
+  previous = catalog_edit_generation();
+  service.prune_catalogs_by_id(id);
+  EXPECT_NE(previous, catalog_edit_generation());
+}
+
+TEST_F(AssetCatalogTest, updater_catalog_generation_undo_redo_load)
+{
+  TestableAssetCatalogService service(asset_library_root_);
+  service.load_from_disk();
+  service.undo_push();
+  service.create_catalog("updater/added");
+  uint64_t previous = catalog_edit_generation();
+  service.undo();
+  EXPECT_NE(previous, catalog_edit_generation());
+  previous = catalog_edit_generation();
+  service.redo();
+  EXPECT_NE(previous, catalog_edit_generation());
+  previous = catalog_edit_generation();
+  service.load_from_disk();
+  EXPECT_NE(previous, catalog_edit_generation());
+}
+
+TEST_F(AssetCatalogTest, updater_catalog_generation_inflight_replacement_refuses)
+{
+  const uint64_t before_callback = catalog_edit_generation();
+  ASSERT_NE(0, before_callback);
+  {
+    // The same scope wraps real service swaps, including retained old services.
+    const CatalogEditScope replacement;
+    EXPECT_EQ(0, catalog_edit_generation());
+  }
+  // A native delayed commit holding the pre-callback token must now refuse.
+  EXPECT_NE(before_callback, catalog_edit_generation());
+  EXPECT_NE(0, catalog_edit_generation());
+}
+
 }  // namespace blender::asset_system::tests

@@ -6,6 +6,8 @@ The real operators are exercised in Blender by ``test_blender_saved_keys.py``;
 here the glue and the operator source contracts run on any host OS.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import tempfile

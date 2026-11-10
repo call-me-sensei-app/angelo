@@ -35,7 +35,7 @@ import struct
 from ctypes import wintypes
 
 from .anchored_windows import (FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_LIST_DIRECTORY,
-    FILE_READ_ATTRIBUTES, FILE_TRAVERSE, SYNCHRONIZE)
+    FILE_OPEN, FILE_READ_ATTRIBUTES, FILE_TRAVERSE, SYNCHRONIZE)
 
 FILE_SHARE_ALL = 0x7
 FILE_SYNCHRONOUS_IO_NONALERT = 0x20
@@ -62,6 +62,7 @@ UNKNOWN_SURROGATE = 0x20000000   # A reparse point whose tag could not be read: 
 STATUS_INVALID_INFO_CLASS = 0xC0000003
 STATUS_INVALID_PARAMETER = 0xC000000D
 STATUS_INVALID_DEVICE_REQUEST = 0xC0000010
+STATUS_DELETE_PENDING = 0xC0000056
 STATUS_FILE_IS_A_DIRECTORY = 0xC00000BA
 STATUS_NOT_SUPPORTED = 0xC00000BB
 STATUS_NOT_SAME_DEVICE = 0xC00000D4
@@ -199,6 +200,11 @@ class NtFileApi:
                 self.dont_reparse = 0   # This Windows predates OBJ_DONT_REPARSE.
                 status, handle = retry, retry_handle
         if status < 0:
+            if (status & 0xFFFFFFFF) == STATUS_DELETE_PENDING and disposition == FILE_OPEN:
+                # Deleted while another handle keeps it open (SQLite removing its -wal or -shm as the last connection
+                # closes): no new handle can reach it, and it is gone once that handle closes. To an open it is
+                # absent, as an unlinked name is on POSIX; RtlNtStatusToDosError would call it access denied.
+                raise FileNotFoundError(errno.ENOENT, "The file is being deleted", name)
             self._raise(status, name)
         return self._descriptor(handle)
 

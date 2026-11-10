@@ -7,6 +7,8 @@ store relies on: segments concatenate to exactly the input bytes, and no input
 (legacy, compressed, truncated or corrupt) raises.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import io
 import sys
 import unittest

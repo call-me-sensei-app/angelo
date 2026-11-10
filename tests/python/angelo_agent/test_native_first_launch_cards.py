@@ -11,6 +11,8 @@ an import keeps them; Escape closes the list before it skips setup; the start pa
 order are checked by the GUI suites (``test_blender_first_run``, ``test_blender_start_panel``).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import unittest

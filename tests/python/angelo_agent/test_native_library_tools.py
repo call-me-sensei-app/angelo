@@ -3,14 +3,16 @@
 """The angelo_library_* tools: contract, placement, compact results and the host binding's refusals.
 
 * Validation is exact (unknown fields, bounds, handles, finite locations).
-* The family is deferred on Claude and behind Codex's deferLoading namespace, never in voice threads, collaborators,
-  connected apps or Auto; import is a scene edit with a card, search a read without one.
+* The family is deferred on Claude and behind Codex's deferLoading namespace, never in voice threads or
+  collaborators; connected MCP apps have scoped access. Import always shows a card, search needs none.
 * Search results are compact (ids and facts, no link or path) and wait for a loading catalog within a bound.
 * Refusals before the scene can change carry closed codes and ``scene_changed: false``.
 
 Dependency-free: ``library_host.library()`` is replaced with a small in-memory catalog (``library_catalog.Catalog``);
 nothing here reaches the network or Blender.
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import concurrent.futures
 import json
@@ -28,7 +30,8 @@ from angelo_agent import (library_agent, library_catalog, library_fetch, library
                           plan_schema, private_roots)
 from angelo_agent.approvals import approval_message  # noqa: E402
 from angelo_agent.controller import Controller  # noqa: E402
-from angelo_agent.external_clients import NEVER_FOR_APPS  # noqa: E402
+from angelo_agent.external_clients import (EDIT, READ, EDIT_TOOLS, HEADLESS_TOOLS, NEVER_FOR_APPS,  # noqa: E402
+                                          READ_TOOLS, WINDOW_ONLY_EDITS, tools_for)
 from angelo_agent.external_requests import PHASE1_READ_TOOLS  # noqa: E402
 from angelo_agent.library_spec import (IMPORT, LIBRARY_EFFECTS, LIBRARY_GUIDANCE, LIBRARY_NAMES,  # noqa: E402
                                        LIBRARY_TOOLS, SEARCH, compact)
@@ -181,12 +184,20 @@ class ContractTests(unittest.TestCase):
 
 
 class PlacementTests(unittest.TestCase):
-    def test_deferred_never_automatic_and_never_offered_outside_a_chat(self):
+    def test_deferred_never_automatic_and_scoped_to_chat_or_connected_apps(self):
         self.assertLessEqual(LIBRARY_NAMES, plan_schema.DEFERRED_TOOLS)
         self.assertFalse(LIBRARY_NAMES & BOUNDED_MUTATIONS, "an import always shows its card, Auto included")
         self.assertFalse(LIBRARY_NAMES & COLLABORATOR_TOOLS)
         self.assertFalse(LIBRARY_NAMES & PHASE1_READ_TOOLS)
-        self.assertLessEqual(LIBRARY_NAMES, NEVER_FOR_APPS)
+        self.assertFalse(LIBRARY_NAMES & NEVER_FOR_APPS)
+        self.assertIn(SEARCH, READ_TOOLS)
+        self.assertNotIn(IMPORT, READ_TOOLS)
+        self.assertIn(IMPORT, EDIT_TOOLS)
+        self.assertEqual(LIBRARY_NAMES & tools_for((READ,)), {SEARCH})
+        self.assertEqual(LIBRARY_NAMES & tools_for((READ, EDIT)), LIBRARY_NAMES)
+        self.assertIn(IMPORT, WINDOW_ONLY_EDITS)
+        self.assertNotIn(IMPORT, HEADLESS_TOOLS)
+        self.assertEqual(LIBRARY_NAMES & tools_for((READ, EDIT), headless=True), {SEARCH})
         self.assertFalse({t["name"] for t in dynamic_tools()} & LIBRARY_NAMES, "voice threads never declare it")
         self.assertFalse({t["name"] for t in dynamic_tools(frozenset(TOOL_MAP))} & LIBRARY_NAMES)
 

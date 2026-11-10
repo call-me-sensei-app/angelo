@@ -240,6 +240,20 @@ def installable(url):
     return (urlsplit(url).hostname or "").lower() in INSTALL_HOSTS
 
 
+def install_source(url, mirror=""):
+    """Where Angelo downloads the installable file the feed names at ``url``.
+
+    Angelo's own download host, or, with the policy's ``UpdateFeedURL`` mirror, the same path beside the mirrored
+    feed (``https://it.example/angelo/stable.json`` and ``/1.0.10/Angelo.dmg`` give
+    ``https://it.example/angelo/1.0.10/Angelo.dmg``), so a network that reaches only the mirror still updates. The
+    feed's size and SHA-256 and the installer's code signature are checked whichever host served it.
+    """
+    if not mirror or not installable(url):
+        return url
+    parts = urlsplit(url)
+    return mirror.rsplit("/", 1)[0] + "/" + parts.path.lstrip("/") + ("?" + parts.query if parts.query else "")
+
+
 def allowed_host(host, rule):
     """``rule`` ``.angelo.studio`` admits angelo.studio and its subdomains; ``github.com`` only itself."""
     if rule.startswith("."):

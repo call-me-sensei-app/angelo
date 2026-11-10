@@ -7,6 +7,10 @@ dropped influences, colour spaces, local paths) and that nothing it read stays i
 active object, the active collection or the frame. Background, local only; writes results.json under ANGELO_QA_DIR.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -609,6 +613,9 @@ def a_link_report_names_its_save_and_a_resaved_blend_writes_none():
         if os.path.exists(leftover):
             os.remove(leftover)
     bpy.ops.wm.save_as_mainfile(filepath=blend)
+    # As the background Angelo engine_preflight_link starts: it opens the saved file, and preflight_child vouches for
+    # the scene only through the identity of the file that load read (document_file_identity.loaded).
+    bpy.ops.wm.open_mainfile(filepath=blend)
     from angelo_agent import export_snapshot
     spec = {"engine": "godot", "report": report_file, "file": None, "exporter": "gltf",
             "options": engine_preflight.blend_import_profile("godot", {})[1], "scene_version": 7,

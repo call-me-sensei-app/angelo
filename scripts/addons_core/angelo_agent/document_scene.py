@@ -27,6 +27,8 @@ from .ui_text import n_
 # without workers has no tile). The composer wraps it whole (``chat_composer.hint_rows``).
 AWAY = n_("This chat works on scene '{scene}'. Switch to that scene to continue.")
 GONE = n_("This chat's scene is no longer in this file. Undo can bring it back; otherwise start a new chat.")
+# Another file was opened (``document_work.document_changed``): its notice card offers New chat (``chat_notices``).
+CHANGED = n_("This chat belongs to another file. Start a new chat to work on this one.")
 VOICE_AWAY = n_("Voice ended: the window shows another scene than this chat's.")
 WAITING = n_("A chat waits for its scene to be shown: {scenes}. Switch back to that scene, or stop the chat.")
 # Model-facing, English and facts only (break-it R3-M-2): the call left the window on another scene; it is back.
@@ -66,12 +68,17 @@ def scene_of(chat):
 
 
 def _why(chat, window, shown_key, translate):
-    """``translate``'s message for ``chat`` while its scene is not shown (AWAY, or GONE without its scene), or while a
-    restored chat waits for its own file (``document_identity.awaiting``), else None."""
+    """``translate``'s message for every state in which ``chat`` can't take the person's input, else None: a restored
+    chat waiting for its own file (``document_identity.awaiting``), a chat whose file another load replaced
+    (``CHANGED``), or one whose scene is not shown (AWAY, or GONE without its scene). The one source of the composer's
+    hint (``notice``), the refusal of a typed or spoken request (``refusal``, ``refuse``) and of a window action
+    (``refused``), so they never disagree (chat-surface audit: the hint said "Do anything" in a changed chat)."""
     from .document_offer import awaiting
     waiting = awaiting(chat, translate)
     if waiting is not None:
         return waiting
+    if getattr(chat, "document_invalid", False):
+        return translate(CHANGED)
     if window is None or shown_key is None or not away(chat, shown_key):
         return None
     scene = scene_of(chat)
@@ -92,13 +99,13 @@ def _shown(window=None, shown_key=None):
 
 
 def refusal(chat, window=None, shown_key=None):
-    """The one message a person's input to ``chat`` gets while its scene is not shown (``Text``), else None."""
+    """The one message a person's input to ``chat`` gets while it can't take it (``Text``, ``_why``), else None."""
     from .display_text import Text
     return _why(chat, *_shown(window, shown_key), Text) if chat is not None else None
 
 
 def notice(chat):
-    """The composer's words while ``chat``'s scene is not shown (display only, in the person's language), else None."""
+    """The composer's words while ``chat`` can't take input (display only, in the person's language), else None."""
     from .ui_text import iface_
     return _why(chat, *_shown(), iface_) if chat is not None else None
 

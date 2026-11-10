@@ -10,6 +10,8 @@ off to a later context and drawn when the row was opened. The call itself still
 runs with exactly what it was given.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import json
 import sys
@@ -156,9 +158,13 @@ class StopNoticeTests(ChatFixture, unittest.TestCase):
     def test_the_stop_operator_reads_the_notice_before_it_stops(self):
         tree = ast.parse((ROOT / "scripts/addons_core/angelo_agent/ui.py").read_text(encoding="utf-8"))
         operator = next(node for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and node.name == "ANGELO_OT_stop")
-        calls = [ast.unparse(node.func) for node in ast.walk(operator) if isinstance(node, ast.Call)]
+        self.assertIn("person_stop", [ast.unparse(node.func) for node in ast.walk(operator) if isinstance(node, ast.Call)])
+        tree = ast.parse((ROOT / "scripts/addons_core/angelo_agent/stop_notice.py").read_text(encoding="utf-8"))
+        stop = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "person_stop")
+        calls = [ast.unparse(node.func) for node in ast.walk(stop) if isinstance(node, ast.Call)]
         self.assertLess(calls.index("stop_notice_for"), calls.index("worker_resume.stop"))   # It stops the chat, and a
-        # lead's batch with it (the person's Stop, worker_resume.stop: break-it EVENT L-3).
+        # lead's batch with it (the person's Stop, worker_resume.stop: break-it EVENT L-3), and a held goal.
+        self.assertLess(calls.index("stop_notice_for"), calls.index("goal_controls.person_stopped"))
 
 
 if __name__ == "__main__":

@@ -334,11 +334,19 @@ class WorkerChatHost:
         text, attachments = request.get("text"), request.get("attachments") or []
         if not isinstance(text, str) or not isinstance(attachments, list):
             raise _refused("A message is text and a list of attachments")
+        from . import request_rows
+        try:   # Before staging attachments: unknown kinds leave the worker's composer alone.
+            request_rows.request_kind(request.get("host_kind"))
+        except ValueError as error:
+            raise _refused(str(error)) from None
         def start():
-            chat.attachments = [dict(reference) for reference in attachments if isinstance(reference, dict)]
-            chat.send(text, host_request=request.get("host_request"))
+            # Explicit request snapshots are admitted by Controller.send before any composer changes.
+            chat.send(text, host_request=request.get("host_request"), host_kind=request.get("host_kind"),
+                      references=[dict(reference) for reference in attachments if isinstance(reference, dict)])
         self.arrivals.send(chat, request, start)   # In the person's order with their Stops (C5).
-        return {"ok": True}
+        # Actual post-send identity, in the existing request-id-correlated answer. Display frames alone
+        # cannot prove which local Send started their turn. No authority or classification is added.
+        return {"ok": True, "_epoch": chat._epoch, "_generation": chat._request_generation}
 
     def _approve(self, chat, request):
         if chat.holding or chat.held:
@@ -451,13 +459,7 @@ class WorkerChatHost:
 
     def _checkpoint(self, chat):
         """A request snapshot of the part, into the chat's worker snapshot store (as ``WorkerHost.checkpoint``)."""
-        from .checkpoint_policy import clean_policy
-        policy = clean_policy(getattr(chat, "_turn_checkpoint_policy", None))
-        record = self.host.checkpoint({"root": str(chat.checkpoints.root), "session": chat.checkpoints.session_id,
-                                       "capture_mode": policy["capture_mode"], "purpose": "request"})
-        from . import snapshot_service
-        snapshot_service.after_capture(chat, record)
-        return record
+        return worker_chat_part.checkpoint(self, chat)
 
 
 OPS = frozenset({"open", "send", "approve", "decline", "stop", "options", "consent", "notice", "hold", "release",

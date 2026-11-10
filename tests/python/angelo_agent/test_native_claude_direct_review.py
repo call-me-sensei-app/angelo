@@ -6,6 +6,8 @@ Every test asserts the right behaviour; each failed on the route as first built 
 stand-ins only (claude_protocol_fixtures, the DirectFixture of test_native_claude_direct_tools).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import threading

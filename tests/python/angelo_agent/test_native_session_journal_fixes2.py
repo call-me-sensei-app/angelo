@@ -18,6 +18,8 @@ Each test here failed before its fix:
   itself (``note``, ``save_if_due``), not by ``ui.pump``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import errno
 import json
 import os
@@ -105,7 +107,8 @@ class KeptRedactionTests(unittest.TestCase):
         for line in redacted.splitlines():
             json.loads(line)
         self.assertEqual(store.path.read_bytes(), original, "never changed in place: the chat is its next save's")
-        self.assertEqual(stat.S_IMODE(copy.stat().st_mode), 0o600)
+        if os.name != "nt":   # Windows keeps only a read-only bit; its owner-only files are by ACL (windows_nt).
+            self.assertEqual(stat.S_IMODE(copy.stat().st_mode), 0o600)
         self.assertEqual(list(store.path.parent.glob("*.tmp")), [])
         controller.save()
         self.assertNotIn(KEY.encode(), store.path.read_bytes())

@@ -68,6 +68,7 @@ _PROGRAM_TOOLS = frozenset({"angelo_scene_program", "angelo_apply_recipe", "ange
 # whose refusals come before it sends, saves, asks or ends anything (engine_link_tool_host.execute).
 _UNCHANGED_WHEN_REFUSED = (_PROGRAM_TOOLS - {"angelo_accept_preview"} | {
     "angelo_apply_batch", "angelo_job_start", "angelo_job_cancel", "angelo_engine_link"})
+_STALE_WHEN_REFUSED = frozenset({"angelo_execute_python", "angelo_run_script_file"})   # Only a stale refusal: below.
 _MAX_CHECK_LINES = 32
 _MAX_SUMMARY_CHARS = 4000
 
@@ -480,18 +481,17 @@ def correctable_failure(operations, results):
                 and not TOOL_MAP.get(operation.get("tool"), {}).get("annotations", {}).get("readOnlyHint")):
             return None
     failed, tool = results[-1], operations[-1]["tool"]
-    # A cube/location batch qualifies only when its refusal says nothing ran
-    # (otherwise a batch refused at dispatch ended the request). A
-    # background-job call does too: refused at admission, by Blender at its
-    # start or as a cancel, it started nothing (job_host).
-    if tool not in _UNCHANGED_WHEN_REFUSED or not isinstance(failed, dict):
-        return None
+    # A cube/location batch qualifies only when its refusal says nothing ran (otherwise a batch refused at dispatch
+    # ended the request). A background-job call does too: refused at admission, at its start or as a cancel (job_host).
+    from .refusal_codes import CORRECTABLE_CODES, STALE_CODES, refusal_code
+    if tool not in _UNCHANGED_WHEN_REFUSED | _STALE_WHEN_REFUSED or not isinstance(failed, dict) or (
+            tool in _STALE_WHEN_REFUSED and (refusal_code(failed) not in STALE_CODES or failed.get("script_error"))):
+        return None   # A script: only a stale refusal before it ran (review_again); a raised script has its budget.
     error = failed.get("error")
     from .request_recovery import unchanged
     if (not isinstance(error, str) or not unchanged(failed) or failed.get("interrupted") or failed.get("expired")
             or failed.get("context_changed") or (failed.get("refusal_details") or {}).get("final") is True):
         return None   # final: nothing changed, and no corrected request could change the outcome now.
-    from .refusal_codes import CORRECTABLE_CODES, STALE_CODES, refusal_code
     code = refusal_code(failed)
     if code in STALE_CODES:  # Nothing changed; its recovery names the targets to read again (request_recovery).
         recovery = failed.get("recovery_requirements", failed.get("recovery"))

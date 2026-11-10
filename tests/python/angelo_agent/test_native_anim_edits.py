@@ -7,6 +7,8 @@ Real channelbags, commits, rollbacks and Undo are covered by
 test_blender_anim_keys.py and test_blender_anim_structure.py.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import math
 import sys
 import unittest

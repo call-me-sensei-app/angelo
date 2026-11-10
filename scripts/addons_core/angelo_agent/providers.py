@@ -22,9 +22,9 @@ from .provider_usage import (CodexThreadUsage, record_interrupted, record_runtim
 from .provider_registry import CUSTOM_PROVIDER_MODES, TEAM_MODES, runtime_kind, spec_for
 from .api_connections import check_connection
 from .runtime_launch import child_environment, codex_command, launch_binding, profile_environment  # noqa: F401 (re-exported)
-from . import agent_runtime, codex_bases, codex_connect, codex_runtime, request_path, runtime_environment, runtime_prewarm, unsent_loss
+from . import agent_runtime, codex_bases, codex_connect, codex_runtime, request_path, runtime_environment, runtime_prewarm, steering_delivery, unsent_loss
 from . import codex_attempts, codex_retry, debug_thinking, model_results, pump_guard, query_observations, team_runtime
-from . import image_proof
+from . import image_proof, web_search_access
 from . import claude_direct, claude_transport, plan_patch, recovery_reads, turn_activity, usage_windows, worker_news
 from .claude_transport import claude_session  # noqa: F401  (re-exported: the launch is built there)
 from .provider_errors import codex_error_text as _codex_error_text
@@ -90,6 +90,7 @@ class CodexProvider:
         self._transport_token = None
         self._usage = CodexThreadUsage()
         self._turn_model = None  # The model the active turn asked for, named in its usage.
+        self.steer_ready = False  # Whether this runtime takes the person's steers mid-turn (``_command``).
         # The active turn's host tool calls ({tool, arguments} resolved, result)
         # and its latest agent message, for the host's verified summary; on a
         # plan thread, the request's typed plans (codex_plan.PlanTurns).
@@ -119,6 +120,9 @@ class CodexProvider:
                                      controller.api_key, self.settings.get("native_profile"))
         if getattr(controller, "text_only", False):
             command += ["-c", 'web_search="disabled"']
+        # Steering needs Angelo's runtime: it holds a cell while Angelo answers a call, so a steer is read only
+        # between calls (steering_delivery). The person's own Codex gets queued messages instead.
+        self.steer_ready = agent_runtime.kind(executable) != "own"
         return command, env
 
     def start_prewarm(self, owner):
@@ -424,10 +428,13 @@ class CodexProvider:
             return
         if method == image_proof.METHOD:  # The pictures a model request carried, by content (its own turn scope).
             return image_proof.observe(self, context, params)
+        if context.cancelled and steering_delivery.echo(method, params) and self._scope.matches(context, params, allow_cancelled=True):
+            return steering_delivery.codex_event(context, method, params, self._plan)   # Codex has it, even after Stop.
         if not self._scope.matches(context, params, allow_cancelled=method == "turn/completed",
                                    allow_completed=method == "turn/completed"):
             return
         self._activity.touch()
+        steering_delivery.codex_event(context, method, params, self._plan)   # A steer the model read: its row, before its output.
         codex_retry.note(self, context, method, params)  # What the turn did; an ``error``'s text.
         if (method in {"item/agentMessage/delta", "item/reasoning/summaryTextDelta"}
                 or method in {"item/started", "item/completed"}
@@ -505,6 +512,8 @@ class CodexProvider:
             from .codex_delivery import dispatch_dynamic_call, refuse_foreign_call
             if not admitted:
                 return refuse_foreign_call(self, request_id, rpc, params)
+            with self._scope.lock:   # A call is the model's output: a steer it showed before was read.
+                steering_delivery.codex_event(context, method, params, self._plan)
             dispatch_dynamic_call(self, request_id, params, context, rpc, owner, token,
                                   pack=tool_content, record_result=request_path.record_codex_result)
         elif method in {"item/commandExecution/requestApproval", "item/fileChange/requestApproval"}:
@@ -680,7 +689,7 @@ class ClaudeProvider:
         return (claude_transport.launch_options(controller),   # Effort is set per turn (claude_transport.apply_effort).
                 getattr(controller, "base_instructions", CLAUDE_INSTRUCTIONS), getattr(controller, "instructions", ""),
                 None if allowed is None else frozenset(allowed),
-                tuple(getattr(controller, "native_tools", ("WebSearch", "WebFetch"))),
+                web_search_access.native_tools(controller),   # WebSearch leaves once the organization turned it off.
                 # A session keeps one TTL and one thinking display; a change needs a relaunch to apply.
                 getattr(controller, "prompt_cache_ttl", None), getattr(controller, "single_model", False),
                 debug_thinking.enabled(controller), claude_direct.enabled(controller))
@@ -760,7 +769,7 @@ class ClaudeProvider:
             return unavailable
         return answer[0]
 
-    def _turn(self, native_id, text, references=(), *, owner, direct=None):
+    def _turn(self, native_id, text, references=(), *, owner, direct=None, steers=()):
         """One model round: its plan (the typed-plan route), or with ``direct`` (claude_direct) the finished turn."""
         from .claude_outcomes import runtime_result_error
         from .json_position import after_give_up
@@ -810,6 +819,7 @@ class ClaudeProvider:
                 self._write({"type": "user", "session_id": native_id or "", "parent_tool_use_id": None,
                              "message": {"role": "user", "content": content}}, transport, owner=owner)
                 unsent_loss.written(context)   # Written: never sent twice, whatever ends the session next.
+                steering_delivery.shown(context, steers)   # The person's steers it carries: rows before its answer.
                 if self._current(owner, transport):
                     _record_runtime_round(context, claude=True)
             # A session that ended by itself right after the message still owes this request its disconnect error.
@@ -927,7 +937,13 @@ class ClaudeProvider:
             if not self._current(owner):
                 return "interrupted"
             references = context.turn_attachments if iteration == 0 else evidence.take_images()
-            plan = patches.apply(self._turn(context.state["native_id"] or native_id, prompt, references=references, owner=owner) if references else self._turn(context.state["native_id"] or native_id, prompt, owner=owner))
+            # The person's steers after every rewrite of this round's prompt (steering_delivery); read once answered.
+            asked, steers = steering_delivery.in_prompt(context, prompt) if iteration else (prompt, [])
+            plan = None
+            try:
+                plan = patches.apply(self._turn(context.state["native_id"] or native_id, asked, references=references, owner=owner, steers=steers) if references else self._turn(context.state["native_id"] or native_id, asked, owner=owner, steers=steers))
+            finally:
+                steering_delivery.settle(context, steers, plan is not None and self._current(owner))
             if not self._current(owner) or plan is None:
                 return "interrupted"
             if not executed and plan.get("conf") == "low" and getattr(context, "escalate_on_low_confidence", False):
@@ -1170,6 +1186,7 @@ class ClaudeProvider:
             for kind, data in turn.stream.events(event, turn.structured_outputs):
                 turn.controller.emit(kind, data)
             usage_windows.observe_claude_event(turn.controller, event)  # The plan's windows, for the usage meter.
+            turn.searches.observe(event)   # An organization that turned web search off (web_search_access).
             if event.get("type") == "result":
                 turn.result = event
                 turn.done.set()
@@ -1189,7 +1206,7 @@ class ClaudeProvider:
             return
         allowed = (turn is not None and turn.owns_request() and not turn.done.is_set()
                    and request.get("subtype") == "can_use_tool"
-                   and request.get("tool_name") in set(getattr(owner.controller, "native_tools", ("WebSearch", "WebFetch"))))
+                   and request.get("tool_name") in set(web_search_access.native_tools(owner.controller)))
         if allowed and request["tool_name"] == "WebFetch":
             from urllib.parse import urlparse
             import ipaddress

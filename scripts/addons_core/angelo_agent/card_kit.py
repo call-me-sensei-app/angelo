@@ -21,30 +21,17 @@ named placeholders.
 
 from dataclasses import dataclass, field
 
-# The welcome screen's palette (a host test pins these to welcome_screen.py).
-CARD = (0.090, 0.098, 0.118, 1)
-PANEL = (0.122, 0.133, 0.157, 1)
-PANEL_HOVER = (0.150, 0.163, 0.192, 1)
-LINE = (0.200, 0.215, 0.245, 1)
-TEXT = (0.950, 0.960, 0.970, 1)
-MUTED = (0.620, 0.650, 0.690, 1)
-TEAL = (0.169, 0.769, 0.749, 1)
-TEAL_SOFT = (0.169, 0.769, 0.749, 0.22)
-INK = (0.035, 0.055, 0.065, 1)
-SCRIM = (0.020, 0.024, 0.030, 0.66)
-# Added here: states and the warning accent.
-TEAL_HOVER = (0.24, 0.85, 0.82, 1)
-TEAL_PRESSED = (0.12, 0.60, 0.58, 1)
-LINE_HOVER = (0.27, 0.29, 0.33, 1)
-LINE_PRESSED = (0.15, 0.16, 0.19, 1)
-FOCUS = (0.62, 0.92, 0.90, 1)
-AMBER = (0.98, 0.72, 0.28, 1)
-AMBER_SOFT = (0.98, 0.72, 0.28, 0.20)
-EDGE = (1, 1, 1, 0.09)
+# The card palette is ui_tokens' (card code and its callers name it ``kit.CARD``): forwarded as it is read, so a card
+# drawn inside ``ui_tokens.themed()`` takes the theme's variant.
+from . import ui_tokens as tk
+
+
+__getattr__ = tk.forward({name: name for name in tk.COLOURS}, __name__)
+
 
 STYLES = ("primary", "secondary", "ghost", "destructive")   # destructive: coral, for delete/remove/sign out
 
-from .ui_kit_builder import KitBuilder  # noqa: E402  (after the palette: ui_tokens reads it from here)
+from .ui_kit_builder import KitBuilder  # noqa: E402
 
 
 @dataclass
@@ -148,9 +135,9 @@ class Builder(KitBuilder):
     def gap(self, pixels):
         self.y += pixels * self.s
 
-    def paragraph(self, text, size, color=MUTED, x=None, width=None, leading=1.5, mono=False):
+    def paragraph(self, text, size, color=None, x=None, width=None, leading=1.5, mono=False):
         """Wrapped text at the cursor; returns the number of lines."""
-        x = self.pad if x is None else x
+        x, color = self.pad if x is None else x, tk.MUTED if color is None else color
         lines = self.lines(text, width or self.inner, size * self.s, mono)
         height = size * self.s * leading
         for line in lines:
@@ -159,11 +146,12 @@ class Builder(KitBuilder):
             self.y += height
         return len(lines)
 
-    def heading(self, text, size=21, color=TEXT, x=None, width=None):
-        return self.paragraph(text, size, color, x, width, leading=1.3)
+    def heading(self, text, size=21, color=None, x=None, width=None):
+        return self.paragraph(text, size, tk.TEXT if color is None else color, x, width, leading=1.3)
 
-    def bullets(self, texts, size=13.5, color=MUTED, dot=TEAL):
+    def bullets(self, texts, size=13.5, color=None, dot=None):
         """Bulleted lines with a teal dot; the dot is drawn, not a glyph."""
+        dot = tk.TEAL if dot is None else dot
         indent = 20 * self.s
         for text in texts:
             top = self.y
@@ -230,7 +218,7 @@ class Builder(KitBuilder):
         self.items.append(("checkbox", self.pad, self.y, box, checked, action, value, enabled))
         for index, line in enumerate(lines):
             self.items.append(("text", line, self.pad + box + 12 * s, self.y + index * size * s * 1.45 + 1 * s,
-                               size * s, size * s * 1.45, TEXT if enabled else MUTED, False))
+                               size * s, size * s * 1.45, tk.TEXT if enabled else tk.MUTED, False))
         if enabled:
             self.hits.append((self.pad, self.y, self.inner, height, action, value))
             self.focus.append((action, value))
@@ -254,15 +242,15 @@ class Builder(KitBuilder):
         s, pad = self.s, 12 * self.s
         box_h, width, line_h = height * s, self.inner - 2 * pad - 10 * s, size * s * 1.5
         if isinstance(content, str):
-            rows = [(line, 0.0, MUTED, False) for line in self.lines(content, width, size * s, mono)]
+            rows = [(line, 0.0, tk.MUTED, False) for line in self.lines(content, width, size * s, mono)]
         else:
             rows, indent = [], 16 * s
             for style, value in content:
                 if style == "heading":
-                    rows += [("", 0.0, MUTED, False)] if rows else []
-                    rows += [(line, 0.0, TEXT, False) for line in self.lines(value, width, size * s, mono)]
+                    rows += [("", 0.0, tk.MUTED, False)] if rows else []
+                    rows += [(line, 0.0, tk.TEXT, False) for line in self.lines(value, width, size * s, mono)]
                 else:
-                    rows += [(line, indent, MUTED, index == 0)
+                    rows += [(line, indent, tk.MUTED, index == 0)
                              for index, line in enumerate(self.lines(value, width - indent, size * s, mono))]
         total = len(rows) * line_h + 2 * pad
         offset = max(0.0, min(self.ui.scroll.get(key, 0.0), max(0.0, total - box_h)))
@@ -352,8 +340,8 @@ class Builder(KitBuilder):
             track = rect(self.width - 12 * self.s, section["top"] + 4 * self.s, 4 * self.s, h - 8 * self.s)
             thumb_h = max(24 * self.s, track[3] * h / content)
             thumb_y = track[1] + (track[3] - thumb_h) * (1 - section["offset"] / max(1.0, content - h))
-            plan.ops.append(("shape", track, (1, 1, 1, 0.06), 2 * self.s))
-            plan.ops.append(("shape", (track[0], thumb_y, track[2], thumb_h), (1, 1, 1, 0.28), 2 * self.s))
+            plan.ops.append(("shape", track, tk.SCROLL_TRACK, 2 * self.s))
+            plan.ops.append(("shape", (track[0], thumb_y, track[2], thumb_h), tk.SCROLL_THUMB, 2 * self.s))
 
     # -- placing -------------------------------------------------------------------------------
     def height(self):
@@ -368,9 +356,10 @@ class Builder(KitBuilder):
             ops.append(("scrim", (0, 0, region[0], region[1])))
         for depth, alpha in ((9, 0.05), (5, 0.08), (2, 0.12)):
             d = depth * s
-            ops.append(("shape", (x0 - d, y_top - height - d - 2 * s, self.width + 2 * d, height + 2 * d), (0, 0, 0, alpha), 16 * s + d))
-        ops.append(("shape", (x0 - 1, y_top - height - 1, self.width + 2, height + 2), EDGE, 17 * s))
-        ops.append(("shape", plan.card, CARD, 16 * s))
+            ops.append(("shape", (x0 - d, y_top - height - d - 2 * s, self.width + 2 * d, height + 2 * d),
+                        tk.shade(alpha), 16 * s + d))
+        ops.append(("shape", (x0 - 1, y_top - height - 1, self.width + 2, height + 2), tk.EDGE, 17 * s))
+        ops.append(("shape", plan.card, tk.CARD, 16 * s))
 
         def rect(x, top, w, h):
             return (x0 + x, y_top - top - h, w, h)
@@ -393,7 +382,7 @@ class Builder(KitBuilder):
                 ops.append(("icon", name, rect(x, top, size, size)))
             elif kind == "rule":
                 _, x, top, w = item
-                ops.append(("shape", rect(x, top, w, 1 * s), LINE, 0))
+                ops.append(("shape", rect(x, top, w, 1 * s), tk.LINE, 0))
             elif kind == "button":
                 _, x, top, w, h, label, style, action, value, enabled, size = item
                 state = _state(ui, action, value, enabled)
@@ -414,9 +403,9 @@ class Builder(KitBuilder):
                 ops.append(("spinner", x0 + x, y_top - top, r, ui.time))
             elif kind == "bar":
                 _, x, top, w, h, fraction = item
-                ops.append(("shape", rect(x, top, w, h), PANEL, h / 2))
+                ops.append(("shape", rect(x, top, w, h), tk.PANEL, h / 2))
                 if fraction > 0:
-                    ops.append(("shape", rect(x, top, max(h, w * fraction), h), TEAL, h / 2))
+                    ops.append(("shape", rect(x, top, max(h, w * fraction), h), tk.TEAL, h / 2))
             elif kind == "kit":
                 _, name, x, top, w, h, params = item
                 ops.append(("kit", name, rect(x, top, w, h), dict(params, **self._kit_live(name, ui)),
@@ -434,7 +423,7 @@ class Builder(KitBuilder):
     def _place_scrollbox(self, plan, item, rect):
         _, key, x, top, w, h, rows, line_h, offset, size, mono, pad = item
         box = rect(x, top, w, h)
-        plan.ops.append(("shape", box, PANEL, 10 * self.s))
+        plan.ops.append(("shape", box, tk.PANEL, 10 * self.s))
         plan.ops.append(("clip", (box[0] + 1, box[1] + 1, box[2] - 2, box[3] - 2)))
         first = max(0, int((offset - pad) // line_h))
         last = min(len(rows), int((offset + h - pad) // line_h) + 2)
@@ -443,7 +432,7 @@ class Builder(KitBuilder):
             middle = box[1] + h - pad - index * line_h + offset - line_h / 2
             if dot:
                 r = 2.6 * self.s
-                plan.ops.append(("shape", (box[0] + pad + 4 * self.s - r, middle - r, 2 * r, 2 * r), TEAL, r))
+                plan.ops.append(("shape", (box[0] + pad + 4 * self.s - r, middle - r, 2 * r, 2 * r), tk.TEAL, r))
             if line:
                 plan.ops.append(("mono" if mono else "text", line, box[0] + pad + indent, middle - 0.36 * size, size, color))
         plan.ops.append(("unclip",))
@@ -453,8 +442,8 @@ class Builder(KitBuilder):
             track = (box[0] + w - 9 * self.s, box[1] + 6 * self.s, 4 * self.s, h - 12 * self.s)
             thumb_h = max(24 * self.s, track[3] * h / content)
             thumb_y = track[1] + (track[3] - thumb_h) * (1 - offset / max(1.0, content - h))
-            plan.ops.append(("shape", track, (1, 1, 1, 0.06), 2 * self.s))
-            plan.ops.append(("shape", (track[0], thumb_y, track[2], thumb_h), (1, 1, 1, 0.28), 2 * self.s))
+            plan.ops.append(("shape", track, tk.SCROLL_TRACK, 2 * self.s))
+            plan.ops.append(("shape", (track[0], thumb_y, track[2], thumb_h), tk.SCROLL_THUMB, 2 * self.s))
 
 
 # Where each item kind keeps its card-relative top (``Builder._moved``).

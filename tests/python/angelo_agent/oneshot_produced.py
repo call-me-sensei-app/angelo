@@ -38,6 +38,11 @@ _SUFFIX = r"\.(?:%s)" % "|".join(suffix[1:] for suffix in IMAGE_SUFFIXES)
 # A path as plain text ends at a blank; inside quotes (a script's string, a JSON value) it may hold blanks.
 STATED = re.compile(r"[\"']((?:~|/)[^\"'\n\\<>|*?]*%s)\\?[\"']|(?<![\w.~-])(~?/[^\s\"'`<>|*?\\]*%s)(?![A-Za-z0-9])"
                     % (_SUFFIX, _SUFFIX), re.IGNORECASE)
+WINDOWS = os.name == "nt"
+if WINDOWS:   # Also from a drive (C:\ or C:/) or ~\, with \ a separator (doubled in a JSON-escaped stream or script).
+    STATED = re.compile(r"[\"']((?:~|/|[A-Za-z]:[\\/])[^\"'\n<>|*?]*%s)\\?[\"']"
+                        r"|(?<![\w.~-])((?:~?/|~\\|[A-Za-z]:[\\/])[^\s\"'`<>|*?]*%s)(?![A-Za-z0-9])"
+                        % (_SUFFIX, _SUFFIX), re.IGNORECASE)
 MAX_DEPTH, MAX_ENTRIES, SLACK_S = 4, 20000, 2.0
 
 
@@ -46,6 +51,7 @@ def stated(text):
     found = []
     for match in STATED.finditer(str(text or "")):
         path = os.path.expanduser(match.group(1) or match.group(2))
+        path = path.replace("\\\\", "\\") if WINDOWS else path   # A JSON-escaped separator, as Windows reads it.
         if path not in found:
             found.append(path)
     return found[:200]

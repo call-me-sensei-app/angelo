@@ -28,13 +28,15 @@ def content(update):
     return True
 
 
-def matters(depsgraph, scene, view_layer, last_key):
+def matters(depsgraph, scene, view_layer, last_key, key=None):
     """(changed, key): whether ``depsgraph``'s updates change what an export of ``scene`` writes, and the scene key
-    to remember (hiding, renaming or a setting moved count; a selection does not)."""
+    to remember (hiding, renaming or a setting moved count; a selection does not). ``key`` (default ``scene_key``)
+    is the caller's own: everything its export reads from the scene itself, since an edit of that updates only the
+    scene, which ``content`` ignores."""
     if any(content(update) for update in depsgraph.updates):
         return True, last_key
-    key = scene_key(scene, view_layer)
-    return key != last_key, key
+    now = (key or scene_key)(scene, view_layer)
+    return now != last_key, now
 
 
 def busy(window):

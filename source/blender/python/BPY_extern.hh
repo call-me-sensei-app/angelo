@@ -26,6 +26,7 @@ struct ID;            /* DNA_ID.h */
 struct ListBase;      /* DNA_listBase.h */
 struct Object;        /* DNA_object_types.h */
 struct PathResolvedRNA;
+struct ScrArea;
 struct Text;              /* defined in DNA_text_types.h */
 struct bConstraint;       /* DNA_constraint_types.h */
 struct bConstraintOb;     /* DNA_constraint_types.h */
@@ -103,6 +104,19 @@ void BPY_driver_reset();
 void BPY_DECREF(void *pyob_ptr);
 
 void BPY_DECREF_RNA_INVALIDATE(void *pyob_ptr);
+/**
+ * Angelo: whether only the instance slot holding `pyob_ptr` (a shared `bpy_struct` wrapper)
+ * references it, so nothing outside could see it being reused for the struct's next contents.
+ */
+[[nodiscard]] bool BPY_rna_instance_is_unshared(void *pyob_ptr);
+/**
+ * Angelo: invalidate the wrappers and iterators depending on the shared wrapper `pyob_ptr`, but
+ * keep it: with `sub_data_only`, only those pointing into the struct's sub-data (its contents are
+ * replaced in place), else all (its slot is about to hold another struct's contents).
+ */
+void BPY_rna_instance_dependents_invalidate(void *pyob_ptr, bool sub_data_only);
+/** Mark Screen-owner associations after an area-data transfer. No Python/GIL/allocations. */
+void BPY_rna_ui_owners_changed(const ScrArea *area_a, const ScrArea *area_b);
 [[nodiscard]] bool BPY_context_member_get(bContext *C,
                                           const char *member,
                                           bContextDataResult *result);

@@ -16,7 +16,10 @@ code depends on other platforms (the manifest's ``platforms``) is skipped with
 its reason.
 
 Every suite gets fresh directories for HOME (and Windows' USERPROFILE, APPDATA
-and LOCALAPPDATA), TMPDIR/TMP/TEMP (Blender's recovery and crash files),
+and LOCALAPPDATA), CODEX_HOME and CLAUDE_CONFIG_DIR inside it, marked as a
+test's isolated profile (``provider_isolation``: the suite's own first import,
+``suite_isolation``, accepts it and isolates a suite started any other way),
+TMPDIR/TMP/TEMP (Blender's recovery and crash files),
 Blender's user resources, Angelo state/accounts/library and its QA receipts,
 and inherits only a small allowlist of the caller's environment, so neither
 real profiles nor provider keys reach it. The suites of every run share one
@@ -27,8 +30,13 @@ person's first launch does. ``ANGELO_DISABLE_KEYCHAIN=1``
 keeps the app memory-only in every suite, so none reads an OS key store or
 waits on its prompt (only the opt-in LIVE Keychain suite calls the macOS
 Keychain itself, prompt-free). ``ANGELO_AGENT_RUNTIME=off`` keeps an app that
-bundles its agent runtime on the stand-in CLIs; a LIVE suite runs the bundled
-runtime, or the caller's ``ANGELO_AGENT_RUNTIME``.
+bundles its agent runtime on the stand-in CLIs. A LIVE suite that bills a real
+provider declares ``ANGELO_TEST_REAL_PROVIDERS`` (``eval-profile:<path>``, the
+dedicated evaluation-account profile; never ~/.codex or ~/.claude, refused when invalid):
+it keeps the caller's home folders (the login Keychain), its runtime's profile
+is that one and the other's an empty folder, and it runs the bundled runtime
+or the caller's ``ANGELO_AGENT_RUNTIME``. The Keychain suite keeps the caller's
+home folders only; every other LIVE suite is isolated like the rest.
 A timed-out suite's process group is terminated on macOS/Linux; Windows attempts
 ``taskkill /T``. A worker that starts its own session is outside the Unix group.
 Such suites need a separately reviewed owner-marker supervisor and live cleanup
@@ -66,6 +74,7 @@ import native_suite_paths
 from native_suite_process import (_kill, _running, _session_options, _wait, evidence,  # noqa: F401 (re-exported)
                                    kill_running, run_all, run_plan)
 from native_suite_summary import human_summary, summarize  # summary.json and summary.txt
+import provider_isolation as isolation
 import qa_machine
 import qa_waits
 from angelo_agent import product_env  # Standard library only; imports no Blender module.
@@ -85,7 +94,9 @@ INHERITED_ENV = ("PATH", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TERM", "USER
 # Rollout switches every suite takes from the caller (non-secret, product_env spellings): a suite that declares
 # variants (``native_suite_manifest.Variant``) sets its own for each run instead, so the caller cannot pin one.
 SWITCH_ENV = ("ANGELO_WORKER_CHAT_HOST",)
-# LIVE suites use the caller's real provider CLI logins, which live under HOME (USERPROFILE on Windows).
+# A LIVE suite that declares one of these opt-ins keeps the caller's home folders: the login Keychain (its sign-in
+# items are keyed to the pinned CODEX_HOME/CLAUDE_CONFIG_DIR, never the person's own ~/.codex or ~/.claude).
+HOME_OPT_INS = (isolation.OPT_IN, isolation.KEYCHAIN_OPT_IN)
 LIVE_PROFILE_ENV = ("HOME", "CFFIXED_USER_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
                     "USERPROFILE", "APPDATA", "LOCALAPPDATA", "HOMEDRIVE", "HOMEPATH")
 # Below the output root, beside the run directories: the bytecode stays warm across runs, as it did when the
@@ -209,6 +220,11 @@ def build_environment(suite, directory, binary, base_env, log_path, report_path=
         # And a row changed in place without a touch fails it (session_writer.CHECK_TOUCHES): a pump's owed save
         # writes only rows new or touched. LIVE suites run as shipped (below).
         ANGELO_JOURNAL_TOUCHES="1")
+    # Both runtimes' profiles inside the private home, and the home marked as a test's isolated profile, so the
+    # suite's own entry (suite_isolation) accepts this environment instead of relaunching.
+    env.update({isolation.MARKER: str(home), "CODEX_HOME": str(home / ".codex"),
+                "CLAUDE_CONFIG_DIR": str(home / ".claude")})
+    isolation.prepare(home)
     if pycache is not None:
         env["PYTHONPYCACHEPREFIX"] = str(pycache)
     if not suite.default_chat:
@@ -225,22 +241,37 @@ def build_environment(suite, directory, binary, base_env, log_path, report_path=
         env.pop("ANGELO_JOURNAL_VERIFY")
         env.pop("ANGELO_JOURNAL_TOUCHES")
         env.pop("ANGELO_STRICT_CHANGE_REPORTS")   # As shipped: a drifting report reads normalized there.
-        for key in LIVE_PROFILE_ENV:
-            env.pop(key, None)
-            if key in base_env:
-                env[key] = base_env[key]
-        # The bundled agent runtime, or the caller's ANGELO_AGENT_RUNTIME (that spelling only: the variable is
-        # newer than the rename) for a build that bundles none.
-        env.pop("ANGELO_AGENT_RUNTIME", None)
-        if (runtime := base_env.get("ANGELO_AGENT_RUNTIME")) is not None:
-            env["ANGELO_AGENT_RUNTIME"] = runtime
+        if any(key in suite.live_env and caller_value(base_env, key) for key in HOME_OPT_INS):
+            for key in LIVE_PROFILE_ENV:
+                env.pop(key, None)
+                if key in base_env:
+                    env[key] = base_env[key]
         env.update({key: value for key in suite.live_env if (value := caller_value(base_env, key)) is not None})
+        profile = real_provider_profile(suite, base_env)
+        if profile is not None:
+            family, path = profile
+            env.update(isolation.real_provider_environment(env, family, path, home))
+            # The bundled agent runtime, or the caller's ANGELO_AGENT_RUNTIME (that spelling only: the variable is
+            # newer than the rename) for a build that bundles none.
+            env.pop("ANGELO_AGENT_RUNTIME", None)
+            if (runtime := base_env.get("ANGELO_AGENT_RUNTIME")) is not None:
+                env["ANGELO_AGENT_RUNTIME"] = runtime
     return env
+
+
+def real_provider_profile(suite, base_env):
+    """``(family, path)`` of the caller's evaluation-account opt-in for a LIVE suite that declares it, else None; raises
+    ``isolation.Refusal`` for an invalid one (``plan_suite`` turns it into a precondition)."""
+    if suite.kind != manifest.LIVE or isolation.OPT_IN not in suite.live_env:
+        return None
+    return isolation.opt_in_profile(base_env)
 
 
 def caller_value(base_env, key):
     """A LIVE opt-in value from the caller. A deprecated spelling of an ``ANGELO_`` name
     counts (product_env); the suite always receives it under its ``ANGELO_`` name."""
+    if key == isolation.OPT_IN:   # Exactly this name: no deprecated spelling opts a suite in to real providers.
+        return base_env.get(key)
     if key.startswith(product_env.PREFIX):
         return product_env.get(key[len(product_env.PREFIX):], base_env)
     return base_env.get(key)
@@ -272,10 +303,15 @@ def plan_suite(suite, run_dir, binary, base_env, gui=False, timeout_scale=1.0, m
     log_path = directory / "suite.log"
     qa_dir = isolated_paths(directory)["qa"]
     report_path = qa_dir / suite.report.path if suite.report else None
+    preconditions = []
+    try:
+        real_provider_profile(suite, base_env)
+    except isolation.Refusal as error:
+        preconditions.append(str(error))
+        base_env = {key: value for key, value in base_env.items() if key != isolation.OPT_IN}
     env = build_environment(suite, directory, binary, base_env, log_path, report_path,
                             pycache=Path(run_dir).parent / PYCACHE_FOLDER, profile=profile)
     env.update({qa_waits.SCALE_ENV: repr(float(timeout_scale)), qa_waits.FACTOR_ENV: repr(float(machine_factor))})
-    preconditions = []
     missing = [key for key in suite.live_env if caller_value(base_env, key) is None]
     if missing:
         preconditions.append("missing opt-in variables: " + ", ".join(missing))

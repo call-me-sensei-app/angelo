@@ -56,6 +56,7 @@ for _path in (str(ROOT / "scripts/addons_core"), str(HERE)):
         sys.path.insert(0, _path)
 
 import bench_addon_pin as addon_pin  # noqa: E402  (the add-on the trials import must be the app's)
+import provider_isolation as isolation  # noqa: E402  (the trials' evaluation-account opt-in: connection_opt_in)
 import bench_gpu  # noqa: E402  (the GPU test VMs' Cycles preference)
 import bench_workdirs as workdirs  # noqa: E402
 import eval_answers  # noqa: E402
@@ -180,7 +181,7 @@ def parse(argv):
 def benchmark_codex_profile(codex_home, connection_id, mode):
     """A validated dedicated Codex profile for one connection (never ``~/.codex``), as a string.
 
-    Only the sign-in file's existence is checked; it is never read.
+    Its sign-in file must exist; its account is checked by the opt-in (``provider_accounts``).
     """
     from angelo_agent.storage import valid_profile_directory
     if not mode.startswith("codex_"):
@@ -271,15 +272,16 @@ def isolated_connection(source_directory, connection_id, destination, *, allow_a
     # selected one. Each trial must run with exactly the selected connection.
     store.ignored_native_modes = set(MODES.values())
     store.save()
-    return {"id": connection_id, "name": record["name"], "mode": record["mode"], "reuse_native": record["reuse_native"]}
+    return {"id": connection_id, "name": record["name"], "mode": record["mode"], "reuse_native": record["reuse_native"],
+            "profile": None if record["reuse_native"] else record.get("native_profile")}
 
 
 # Blender's user folders a trial keeps inside its own folder (BLENDER_USER_CONFIG is the trial's ``config``).
 USER_FOLDERS = ("RESOURCES", "SCRIPTS", "DATAFILES", "EXTENSIONS")
 
 
-def trial_environment(folder, accounts, args, trial, state=None, *, keychain=False):
-    """``keychain``: an in-place API-key connection may read its own saved key."""
+def trial_environment(folder, accounts, args, trial, state=None, *, keychain=False, opt_in=None):
+    """``keychain``: an in-place API-key connection may read its own saved key. ``opt_in``: the real-provider opt-in."""
     from angelo_agent import product_env
     environment = dict(os.environ)
     for name in ("CONNECTIONS_DIR", "DISABLE_DEFAULT_CHAT", "DISABLE_KEYCHAIN"):
@@ -312,7 +314,8 @@ def trial_environment(folder, accounts, args, trial, state=None, *, keychain=Fal
     # "Folders"). HOME stays as the harness has it: subscription runtimes find their Keychain sign-in through it.
     for name in USER_FOLDERS:
         environment["BLENDER_USER_" + name] = str(folder / "blender-user" / name.lower())
-    return returning.environment(environment, args)   # --profile-dir: the profile's state and user folders.
+    environment = returning.environment(environment, args)   # --profile-dir: the profile's state and user folders.
+    return isolation.opt_in_environment(environment, opt_in, folder / "no-login") if opt_in else environment
 
 
 def demo_geometry():
@@ -336,7 +339,7 @@ def stable_state(args):
     return path
 
 
-def run_trial(binary, output, accounts, args, trial, task_count, *, keychain=False):
+def run_trial(binary, output, accounts, args, trial, task_count, *, keychain=False, opt_in=None):
     folder = output / ("trial-%02d" % trial)
     for name in ("config", "state", "qa"):
         (folder / name).mkdir(parents=True)
@@ -356,7 +359,7 @@ def run_trial(binary, output, accounts, args, trial, task_count, *, keychain=Fal
     with (folder / "run.log").open("w") as log:
         try:
             code = subprocess.run(command, cwd=ROOT, env=trial_environment(folder, accounts, args, trial, state,
-                                                                           keychain=keychain),
+                                                                           keychain=keychain, opt_in=opt_in),
                                   stdout=log, stderr=subprocess.STDOUT, timeout=timeout).returncode
         except subprocess.TimeoutExpired:
             code = "timeout"
@@ -458,10 +461,12 @@ def main(argv=None):
                       isolated_connection(args.source_connections_dir, args.connection_id,
                                           returning.accounts(args, output), allow_api_key=args.allow_api_key_connection,
                                           codex_home=args.codex_home))
-    except Refusal as refusal:
+        # Its dedicated profile (never ~/.codex or ~/.claude), signed in to the expected account (provider_accounts).
+        account = isolation.shown_account(opt_in := isolation.connection_opt_in(connection))
+    except (Refusal, isolation.Refusal) as refusal:
         print("REFUSED:", refusal, file=sys.stderr)
         return 2
-    print("CONNECTION", json.dumps(connection), flush=True)
+    print("CONNECTION", json.dumps(dict(connection, account=account)), flush=True)   # Id prefix, email domain only.
     if args.preflight_only:   # Every check of a billed start passed (binary, folder, connection copy); nothing sent.
         print("PREFLIGHT_OK", json.dumps({"output": str(output)}), flush=True)
         return 0
@@ -469,7 +474,7 @@ def main(argv=None):
     for trial in range(1, args.trials + 1):
         accounts = Path(connection["in_place"]) if connection.get("in_place") else returning.accounts(args, output)
         trials.append(run_trial(binary, output, accounts, args, trial, len(tasks),
-                                keychain=bool(connection.get("in_place"))))
+                                keychain=bool(connection.get("in_place")), opt_in=opt_in))
         print("TRIAL", trial, json.dumps({key: trials[-1].get(key) for key in ("success", "exit_code", "aborted")}),
               flush=True)
         if trials[-1].get("invalid") == limits.INVALID:

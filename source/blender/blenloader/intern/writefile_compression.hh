@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "BLI_fileops.hh"
+
 namespace blender {
 
 class WriteWrap {
@@ -17,6 +19,26 @@ class WriteWrap {
   virtual bool open(const char *filepath) = 0;
   virtual bool close() = 0;
   virtual bool write(const void *buf, size_t buf_len) = 0;
+  /**
+   * Angelo: the identity of the file the last #close closed, taken on its own descriptor once its
+   * data was written (and synced), just before the close: never a lookup of its name. False when
+   * there is none (no file closed, or it could not be asked).
+   */
+  virtual bool closed_identity(FileIdentity * /*r_identity*/) const
+  {
+    return false;
+  }
+  /**
+   * Angelo: the file the last #close closed, held (#BLI_file_identity_hold) by its name while its
+   * descriptor still kept it open, when the name held that same file; null otherwise, or when the
+   * writer was not asked to hold it. Ownership passes to the caller. `*r_other` is whether the
+   * name held another file then (another program's, put there during the write).
+   */
+  virtual void *take_closed_hold(bool *r_other)
+  {
+    *r_other = false;
+    return nullptr;
+  }
 
   /** Buffer output (only needed when output is not already buffered). */
   bool use_buf = true;
@@ -96,6 +118,16 @@ class MinimumSizeWriteWrap : public WriteWrap {
     }
     failed_ = !start_compression() || !compressed_.write(buf, size);
     return !failed_;
+  }
+
+  bool closed_identity(FileIdentity *r_identity) const override
+  {
+    /* Both writers write through the same raw file writer: it knows the file it closed last. */
+    return raw_.closed_identity(r_identity);
+  }
+  void *take_closed_hold(bool *r_other) override
+  {
+    return raw_.take_closed_hold(r_other);
   }
 
   bool close() override

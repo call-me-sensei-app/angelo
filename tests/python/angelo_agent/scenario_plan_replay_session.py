@@ -297,7 +297,7 @@ class ReplayClaude(ClaudeProvider):
     def close(self):
         pass
 
-    def _turn(self, native_id, text, references=(), *, owner):
+    def _turn(self, native_id, text, references=(), *, owner, direct=None, steers=()):   # providers.ClaudeProvider._turn
         context = owner.controller
         task = _task_for(text)
         if task is not None:

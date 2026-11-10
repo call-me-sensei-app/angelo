@@ -6,12 +6,15 @@
  * \ingroup bke
  */
 
+#include <atomic>
 #include <cfloat>
 #include <climits>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
+#include <unordered_map>
 
 #include <xxhash.h>
 
@@ -25,12 +28,14 @@
 #include "BLI_utildefines.h"
 
 #include "BKE_idprop.hh"
+#include "BKE_idprop_buffer.hh"
 #include "BKE_idprop_hash.hh"
 #include "BKE_lib_id.hh"
 
 #include "CLG_log.h"
 
 #include "MEM_guardedalloc.h"
+#include "MEM_lifetime.hh"
 
 #include "BLO_read_write.hh"
 
@@ -153,6 +158,7 @@ void IDP_SetIndexArray(IDProperty *prop, int index, IDProperty *item)
 
   IDProperty *old = GETPROP(prop, index);
   if (item != old) {
+    mem_lifetime::invalidate(old, sizeof(*old));
     idp_free_property_content_recurse(old, true, 0);
 
     memcpy(old, item, sizeof(IDProperty));
@@ -205,6 +211,7 @@ void IDP_ResizeIDPArray(IDProperty *prop, int newlen)
   if (newlen <= prop->totallen) {
     if (newlen < prop->len && prop->totallen - newlen < IDP_ARRAY_REALLOC_LIMIT) {
       for (int i = newlen; i < prop->len; i++) {
+        mem_lifetime::invalidate(GETPROP(prop, i), sizeof(IDProperty));
         IDP_ClearProperty(GETPROP(prop, i));
       }
 
@@ -257,8 +264,91 @@ static void idp_resize_group_array(
   }
 }
 
+/* A Python buffer consumer reads and writes the original allocation without consulting
+ * the exporter again. Track only exported storage, independent of the lifetime or address
+ * of the IDProperty (including properties moved by value). No Python or ID access on release. */
+namespace {
+struct ArrayExport {
+  size_t users = 0;
+  bool detached = false;
+};
+std::mutex array_exports_mutex;
+std::unordered_map<void *, ArrayExport> array_exports;
+std::atomic<bool> has_array_exports{false};
+}  // namespace
+
+void IDP_ArrayBuffer_acquire(void *data)
+{
+  if (data) {
+    std::lock_guard lock(array_exports_mutex);
+    ++array_exports[data].users;
+    has_array_exports.store(true, std::memory_order_relaxed);
+  }
+}
+
+void IDP_ArrayBuffer_release(void *data)
+{
+  if (!data) {
+    return;
+  }
+  bool free_storage = false;
+  {
+    std::lock_guard lock(array_exports_mutex);
+    const auto it = array_exports.find(data);
+    BLI_assert(it != array_exports.end());
+    if (--it->second.users == 0) {
+      free_storage = it->second.detached;
+      array_exports.erase(it);
+      has_array_exports.store(!array_exports.empty(), std::memory_order_relaxed);
+    }
+  }
+  if (free_storage) {
+    MEM_delete_void(data);
+  }
+}
+
+/* The property owns the block until this transfers ownership to the remaining exports. */
+static bool idp_array_detach(void *data)
+{
+  if (!has_array_exports.load(std::memory_order_relaxed)) {
+    return false;
+  }
+  std::lock_guard lock(array_exports_mutex);
+  const auto it = array_exports.find(data);
+  if (it == array_exports.end()) {
+    return false;
+  }
+  it->second.detached = true;
+  return true;
+}
+
+static bool idp_array_exported(void *data)
+{
+  if (!has_array_exports.load(std::memory_order_relaxed)) {
+    return false;
+  }
+  std::lock_guard lock(array_exports_mutex);
+  return array_exports.contains(data);
+}
+
 void IDP_ResizeArray(IDProperty *prop, int newlen)
 {
+  if (newlen != prop->len && prop->type == IDP_ARRAY && idp_array_exported(prop->data.pointer)) {
+    /* Even a shrink within capacity changes the logical end of the buffer. The property
+     * owns old_data throughout the copy; the last concurrent release can free it only
+     * after idp_array_detach hands it over. Only scalar numeric arrays are exported. */
+    const int capacity = idp_resize_grow_size_calc(newlen);
+    const size_t stride = idp_size_table[int(prop->subtype)];
+    void *old_data = prop->data.pointer;
+    prop->data.pointer = MEM_new_array_zeroed(size_t(capacity), stride, __func__);
+    memcpy(prop->data.pointer, old_data, size_t(std::min(newlen, prop->len)) * stride);
+    prop->len = newlen;
+    prop->totallen = capacity;
+    if (!idp_array_detach(old_data)) {
+      MEM_delete_void(old_data);
+    }
+    return;
+  }
   const bool is_grow = newlen >= prop->len;
 
   /* first check if the array buffer size has room */
@@ -288,7 +378,9 @@ static void IDP_FreeArray(IDProperty *prop, const bool do_id_user, const int rec
 {
   if (prop->data.pointer) {
     idp_resize_group_array(prop, 0, nullptr, do_id_user, recursion_depth);
-    MEM_delete_void(prop->data.pointer);
+    if (!idp_array_detach(prop->data.pointer)) {
+      MEM_delete_void(prop->data.pointer);
+    }
   }
 }
 

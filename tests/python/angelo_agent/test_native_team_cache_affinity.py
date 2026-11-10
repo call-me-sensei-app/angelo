@@ -11,6 +11,8 @@ checked once, then starts its text thread with the key; with no secret, on the p
 on resume no key is sent, and a process that fails the check is refused before any thread starts.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile

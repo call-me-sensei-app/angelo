@@ -79,6 +79,7 @@ import eval_gate  # noqa: E402
 import eval_live_tasks as live  # noqa: E402
 import eval_provider_limits as limits  # noqa: E402
 import gui_launch  # noqa: E402
+import provider_isolation as isolation  # noqa: E402
 from angelo_agent import product_env, session_journal  # noqa: E402  (standard library only)
 import oneshot_mcp  # noqa: E402
 import oneshot_metrics  # noqa: E402
@@ -405,6 +406,11 @@ def preflight(args):
         problems.append("--mcp-addon-dir has no blender_manifest.toml")
     if args.sides != "angelo" and not args.dry_run_mcp and not codex and not Path(args.claude_config_dir or "/nonexistent").is_dir():
         problems.append("--claude-config-dir does not exist: %s" % args.claude_config_dir)
+    elif args.sides != "angelo" and not args.dry_run_mcp and not codex:   # The MCP side's Claude account.
+        try:
+            isolation.check_billed([("claude-profile", args.claude_config_dir)])
+        except isolation.Refusal as refusal:
+            problems.append("--claude-config-dir: %s" % refusal)
     if args.sides != "angelo" and args.output:   # Where the MCP side's client would read project context.
         config = mcp_config(args, Path(args.output).resolve())
         problems += workdirs.problems(config["claude_cwd"], config["codex_home" if codex else "claude_config_dir"],

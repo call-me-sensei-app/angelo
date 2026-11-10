@@ -9,6 +9,8 @@ nothing (a Not now meant for the agent never refuses the engine); the card says 
 agent, or the connected app by its name.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import sys
 import types

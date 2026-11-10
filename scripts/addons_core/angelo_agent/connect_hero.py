@@ -44,7 +44,7 @@ import bpy
 from bpy.types import Operator
 
 from .input_policy import modal_options
-from . import canvas_controls, canvas_rtl, input_policy, live_windows, product_env
+from . import canvas_controls, canvas_rtl, input_policy, live_windows, product_env, ui_tokens as tk
 from .ui_text import iface_, n_
 
 ASSETS = Path(__file__).resolve().parent / "assets"
@@ -272,7 +272,7 @@ def _paint(region):
                   TEXT[:3] + (alpha,))
     lit = _state.get("hover") == ("explore", None)
     rect = plan["link_rect"]
-    colour = (canvas_controls.LINK_HOVER if lit else canvas_controls.LINK)[:3] + (alpha,)
+    colour = (tk.LINK_HOVER if lit else tk.LINK)[:3] + (alpha,)
     view.text(plan["link"], rect[0] + 6 * s, rect[1] + 7 * s, 14 * s, colour)
     view.stroke(rect[0] + 6 * s, rect[1] + 4 * s, rect[0] + rect[2] - 6 * s, rect[1] + 4 * s, colour, 1)
     if alpha >= 1:  # Focus ring and pressed state, as everywhere else on Angelo's canvases.

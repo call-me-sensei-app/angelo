@@ -7,6 +7,10 @@ machine-readable report go to ANGELO_QA_DIR. Events exercise the real native
 modal handler, not OS clicks in a user's Blender window.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import copy
 import hashlib
 import json
@@ -270,9 +274,9 @@ def tick():
             state["checks"]["default_has_one_checkmark_and_native_op_uses_custom_popup"] = True
             controller.models.extend([{**MODELS[1], "id": f"qa-{i}", "name": f"QA test model {i}"} for i in range(60)])
             show("models")
-            scroll_before = chat_view._scroll.get(controller.state["id"], 0)
+            scroll_before = chat_view._scroll.get((area_region()[0].as_pointer(), controller.state["id"]), 0)
             event('WHEELDOWNMOUSE')
-            assert source["popover"]["scroll"] == 58 and chat_view._scroll.get(controller.state["id"], 0) == scroll_before
+            assert source["popover"]["scroll"] == 58 and chat_view._scroll.get((area_region()[0].as_pointer(), controller.state["id"]), 0) == scroll_before
             redraw()
             event('END')
             assert source["popover"]["scroll"] == source["popover"]["layout"]["max_scroll"]
@@ -364,7 +368,10 @@ def tick():
             controller.apply_next_connection()
             assert controller.state["provider"] == "claude_subscription"
             assert controller.state["id"] == state["shared_chat"]["id"]
-            assert len(controller.state["messages"]) == state["shared_chat"]["message_count"]
+            # A choice made during a turn adds its one intentional system notice; the conversation itself is unchanged.
+            added = controller.state["messages"][state["shared_chat"]["message_count"]:]
+            assert len(added) <= 1 and all(m.get("role") == "system" and "takes over from your next message"
+                                           in m.get("text", "") for m in added), added
             assert area.spaces.active.history[-1].body == state["shared_chat"]["draft"]
             state["checks"]["both_provider_catalogs_in_one_native_picker"] = True
             state["checks"]["cross_provider_choice_queues_without_changing_current_request"] = True

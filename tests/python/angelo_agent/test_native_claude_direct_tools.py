@@ -7,6 +7,8 @@ host-served (SDK) MCP server, recorded against a fake Messages endpoint (doc/ang
 tools"). They prove what the host answers, not what a live model does with it.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import threading

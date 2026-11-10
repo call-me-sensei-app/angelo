@@ -7,8 +7,9 @@ worker Blender, and this (background) Angelo keeps a mirror (``worker_mirror``).
 
 * the chat is made as the lead makes a worker's chat (``worker_sessions._new_chat``: a mirror) and started on its part
   as a worker start does (``worker_routing.start``: bind, then ``chat.open``);
-* its model is the stand-in ``codex`` app-server (``hosted_codex_stand_in``) first on this Angelo's PATH: the lead's
-  ``RuntimeService`` launches it with its own command and environment and relays it to the provider in the worker;
+* its model is the stand-in ``codex`` app-server (``hosted_codex_stand_in``) first on this Angelo's PATH, with the
+  app's bundled runtime off (``stand_in.take_over``): the lead's ``RuntimeService`` launches it with its own command
+  and environment and relays it to the provider in the worker;
 * a tool call is the model's: the suite queues a scripted turn for the stand-in, then sends the chat a message as a
   person does (``MirrorController.send``, a ``chat.send``); the worker's provider receives ``item/tool/call``, its
   Controller admits and runs the call with the worker's executor, and the model gets the answer;
@@ -47,16 +48,14 @@ def install_stand_in(folder):
     """The stand-in model first on PATH for this Angelo (and the workers it starts); its scripts and logs in
     ``folder``. Idempotent; run before any worker starts."""
     folder = Path(folder)
-    if os.environ.get(stand_in.ENV) == str(folder):
+    if os.environ.get(stand_in.ENV) == str(folder) and os.environ.get(stand_in.RUNTIME) == "off":
         return folder
-    os.environ[stand_in.ENV] = str(folder)
     from angelo_agent import agent_runtime
     # A worker checks its runtime's version against the one IT resolves (the bundled runtime: the worker does not
     # inherit ANGELO_AGENT_RUNTIME, worker_process.worker_environment), not against the stand-in the lead launched:
     # defect D1 in the FE report. The stand-in reports the pinned version so the turn can run at all.
     os.environ[stand_in.ENV + "_VERSION"] = agent_runtime.PIN["version"]
-    os.environ["PATH"] = str(stand_in.install(folder / "bin")) + os.pathsep + os.environ.get("PATH", "")
-    return folder
+    return stand_in.take_over(os.environ, folder)   # Also where the suite was started without run_native_suites.
 
 
 def connect(lead):
@@ -260,9 +259,27 @@ class HostedWorkerChat:
             pump_lead([self.controller])
             if not self.controller.busy:   # Refused (answered at once, or reconciled later): nothing was sent.
                 rows = [m for m in self.controller.state.get("messages") or () if m.get("role") == "error"]
-                return str(rows[-1].get("text") if rows else "the worker did not take the message")
+                if rows:
+                    return str(rows[-1].get("text"))
+                if any(marker in str(row.get("text")) for row in self.model_log("turn_started")):
+                    return None   # Its whole turn ran between the look above and this pump (a loaded machine).
+                return self._untaken(marker)
             time.sleep(0.002)
         return None   # Still sending: the worker may yet take it (its turn's events then show it).
+
+    def _untaken(self, marker):
+        """Why a Send that nobody refused never reached the stand-in: what was looked for, and what ran instead."""
+        root, started = Path(os.environ[stand_in.ENV]), 0
+        try:
+            lines = (root / "lifetimes.jsonl").read_text(encoding="utf-8").splitlines()
+            started = sum(1 for line in lines if line.strip() and json.loads(line).get("event") == "start")
+        except (OSError, ValueError):
+            pass
+        replies = [m for m in self.controller.state.get("messages") or () if m.get("role") == "assistant"]
+        return ("the worker did not take the message: its turn ended unrefused, and the stand-in logged no "
+                "turn_started for %s in %s (stand-in processes started: %d; %s=%r; the chat's last reply: %r)"
+                % (marker, self.folder / "log.jsonl", started, stand_in.RUNTIME, os.environ.get(stand_in.RUNTIME),
+                   str(replies[-1].get("text"))[:200] if replies else None))
 
     def request(self, name, arguments, text=None, hold=None):
         """The model calls ``name`` in a new turn; ``(call id, answers)``, answered by ``pump``. ``hold``: its turn then

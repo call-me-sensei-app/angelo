@@ -36,11 +36,47 @@ to submit instead. Commit keeps its own check as the last line.
 
 ``check_deletions`` and ``check_frame_move`` are main thread only; they read
 live data and change nothing. ``releases`` and ``release_camera`` are pure.
+``check_dependency_limit`` distinguishes object-count overflow from a changed
+revision before another inferred dependency is observed; its optional script
+hint reads the exact current request's declaration, never a global fallback.
 """
 
 import copy
 
 from .program_jobs import ProgramError
+
+
+def _script_available(controller):
+    """A suggestion is scoped to the same live request and its actual declared tool rows."""
+    from .request_fences import DeliveryOwner, RequestFence
+    runtime = getattr(controller, "_runtime_context", None)
+    if runtime is None and getattr(controller, "host", None) is not None:
+        runtime = controller
+    host = getattr(runtime, "host", None)
+    fence, owner = getattr(runtime, "request_fence", None), getattr(runtime, "delivery_owner", None)
+    if (host is None or runtime is not getattr(host, "_runtime_context", None)
+            or getattr(host, "cancelled", True) or not isinstance(fence, RequestFence) or not fence.matches(host)
+            or not isinstance(owner, DeliveryOwner) or not owner.current(host)
+            or not hasattr(runtime, "allowed_tools")):
+        return False
+    from .tool_specs import declared, declared_dynamic
+    offered = declared_dynamic if getattr(runtime, "voice", None) is not None else declared
+    return any(tool["name"] == "angelo_execute_python" for tool in offered(runtime.allowed_tools))
+
+
+def check_dependency_limit(existing, declared, controller=None):
+    """Refuse the existing object bound before reading another dependency; no revision or admission is relaxed."""
+    from .program_spec import MAX_INPUT_OBJECTS
+    if existing < MAX_INPUT_OBJECTS:
+        return
+    text = ("This program's declared object input count is %s; dependencies add at least %s more. "
+            "A program binds at most %s objects including dependencies." %
+            (declared, existing + 1 - declared, MAX_INPUT_OBJECTS))
+    if declared > 1:
+        text += " Programs with fewer input objects can have smaller dependency sets."
+    if _script_available(controller):
+        text += " A reviewed angelo_execute_python script is another route for an edit spanning more objects."
+    raise ProgramError(text, code="LIMIT_EXCEEDED")
 
 
 def _last_camera(program, scene_handle):

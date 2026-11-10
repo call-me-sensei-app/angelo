@@ -231,7 +231,9 @@ def read_catalog_geometry(modifier, metadata, work):
         if kind == "GROUP_INPUT":
             inputs, outputs = {}, {binding["input"]: "GEOMETRY", "__extend__": "CUSTOM"}
         elif kind == "GROUP_OUTPUT":
-            output_id = next(s["identifier"] for s in interface if s["direction"] == "OUTPUT")
+            output_id = next((s["identifier"] for s in interface if s["direction"] == "OUTPUT"), None)
+            if output_id is None:
+                _unsupported("group_output")
             inputs, outputs = {output_id: "GEOMETRY", "__extend__": "CUSTOM"}, {}
         else:
             inputs, outputs = INPUT_TYPES[kind], OUTPUT_TYPES[kind]

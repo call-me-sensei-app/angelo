@@ -16,6 +16,10 @@ disposable instance with the exact Angelo binary: ``--background
 paid call.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -158,6 +162,7 @@ def material_edits():
     """Steps on a private copy across suspend/resume; commit keeps the material's name; one Undo and Redo."""
     cube = obj("Cube")
     live = cube.material_slots[0].material
+    live_uid = live.session_uid
     before, revision = native._fingerprint(cube), binding(cube)["revision"]
     bpy.ops.ed.undo_push(message="node_edit QA material baseline")
     queries.invalidate(window)
@@ -185,7 +190,8 @@ def material_edits():
           and abs(tree.nodes["Principled BSDF"].inputs["Metallic"].default_value - .25) < 1e-6
           and tree.nodes["Principled BSDF"].label == "Main" and not tree.nodes["Ramp"].select
           and any(link.from_node.name == "Ramp" and link.to_socket.name == "Roughness" for link in tree.links))
-    check("material_original_is_an_orphan", live.users == 0 and live.name != "QA Wood")
+    # The material the commit replaced is freed, not left without users (commit_orphans); Undo gives it back.
+    check("material_original_is_freed", live_uid not in {block.session_uid for block in bpy.data.materials})
     check("material_stays_bindable_with_frames", bindable(cube))
     check("material_revision_changed", queries.object_revision(window, cube) != revision)
     check("material_no_stage_residue", no_stages() and not native.runtime_is_staging())

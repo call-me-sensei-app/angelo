@@ -9,6 +9,8 @@ before any of its code runs, and lets every other add-on through; the window and
 unchanged; the startup module installs it only where it applies. Engine names are stand-ins.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import types

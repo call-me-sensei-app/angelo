@@ -22,6 +22,16 @@
 
 namespace blender {
 
+/** UTF-8 access with the same errors and C-string semantics as PyUnicode_AsUTF8.
+ * ASCII strings already store their UTF-8 bytes in place. */
+inline const char *PyC_UnicodeAsUTF8(PyObject *value)
+{
+  if (PyUnicode_Check(value) && PyUnicode_IS_ASCII(value)) {
+    return reinterpret_cast<const char *>(PyUnicode_1BYTE_DATA(value));
+  }
+  return PyUnicode_AsUTF8(value);
+}
+
 /** Useful to print Python objects while debugging. */
 void PyC_ObSpit(const char *name, PyObject *var);
 /**

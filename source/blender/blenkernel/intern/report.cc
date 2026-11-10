@@ -130,6 +130,7 @@ void BKE_reports_clear(ReportList *reports)
   while (report) {
     report_next = report->next;
     MEM_delete(report->message);
+    MEM_delete(report->message_untranslated);
     MEM_delete(report);
     report = report_next;
   }
@@ -159,6 +160,42 @@ void BKE_reports_move_to_reports(ReportList *reports_dst, ReportList *reports_sr
   BLI_movelisttolist(&reports_dst->list, &reports_src->list);
 }
 
+void BKE_reports_move_to_reports_ex(ReportList *reports_dst,
+                                    ReportList *reports_src,
+                                    void (*moved)(const Report &report, void *user_data),
+                                    void *user_data)
+{
+  BLI_assert(reports_dst);
+  if (!reports_src) {
+    return;
+  }
+
+  std::scoped_lock lock(*reports_src->lock, *reports_dst->lock);
+
+  if (moved) {
+    for (const Report &report : reports_src->list) {
+      moved(report, user_data);
+    }
+  }
+  BLI_movelisttolist(&reports_dst->list, &reports_src->list);
+}
+
+/**
+ * Angelo: a copy of `untranslated` for #Report::message_untranslated when translation changed the
+ * text, else null (the same pointer when nothing was translated, the same text when the catalog
+ * repeats the message ID).
+ */
+static const char *report_untranslated_dup(const char *translated, const char *untranslated)
+{
+  if (translated == untranslated || STREQ(translated, untranslated)) {
+    return nullptr;
+  }
+  const size_t size = strlen(untranslated) + 1;
+  char *copy = MEM_new_array_uninitialized<char>(size, "ReportMessageUntranslated");
+  memcpy(copy, untranslated, size);
+  return copy;
+}
+
 void BKE_report(ReportList *reports, eReportType type, const char *_message)
 {
   Report *report;
@@ -182,7 +219,37 @@ void BKE_report(ReportList *reports, eReportType type, const char *_message)
     message_alloc = MEM_new_array_uninitialized<char>(size_t(len) + 1, "ReportMessage");
     memcpy(message_alloc, message, sizeof(char) * (len + 1));
     report->message = message_alloc;
+    report->message_untranslated = report_untranslated_dup(message, _message);
     report->len = len;
+    report->session_uid = report_session_uid_counter_get_next();
+    BLI_addtail(&reports->list, report);
+  }
+}
+
+void BKE_report_translated(ReportList *reports,
+                           eReportType type,
+                           const char *message,
+                           const char *message_untranslated)
+{
+  if (BKE_reports_print_test(reports, type)) {
+    BKE_report_log(type, message, &LOG);
+    fflush(stdout); /* this ensures the message is printed before a crash */
+  }
+
+  if (reports && (reports->flag & RPT_STORE) && (type >= reports->storelevel)) {
+    std::scoped_lock lock(*reports->lock);
+
+    Report *report = MEM_new<Report>("Report");
+    report->type = type;
+    report->typestr = BKE_report_type_str(type);
+    const size_t len = strlen(message);
+    char *message_alloc = MEM_new_array_uninitialized<char>(len + 1, "ReportMessage");
+    memcpy(message_alloc, message, len + 1);
+    report->message = message_alloc;
+    report->message_untranslated = message_untranslated ?
+                                       report_untranslated_dup(message, message_untranslated) :
+                                       nullptr;
+    report->len = int(len);
     report->session_uid = report_session_uid_counter_get_next();
     BLI_addtail(&reports->list, report);
   }
@@ -211,6 +278,14 @@ void BKE_reportf(ReportList *reports, eReportType type, const char *_format, ...
     va_start(args, _format);
     report->message = BLI_vsprintfN(format, args);
     va_end(args);
+    /* Angelo: the untranslated format filled with the same arguments
+     * (#Report::message_untranslated), only when `RPT_` changed the format: an English interface
+     * formats once. */
+    if (format != _format && !STREQ(format, _format)) {
+      va_start(args, _format);
+      report->message_untranslated = BLI_vsprintfN(_format, args);
+      va_end(args);
+    }
 
     report->len = strlen(report->message);
     report->type = type;
@@ -224,7 +299,9 @@ void BKE_reportf(ReportList *reports, eReportType type, const char *_format, ...
 /**
  * Shared logic behind #BKE_reports_prepend & #BKE_reports_prependf.
  */
-static void reports_prepend_impl(ReportList *reports, const char *prepend)
+static void reports_prepend_impl(ReportList *reports,
+                                 const char *prepend,
+                                 const char *prepend_untranslated)
 {
   /* Caller must ensure. */
   BLI_assert(reports && reports->list.first);
@@ -238,6 +315,13 @@ static void reports_prepend_impl(ReportList *reports, const char *prepend)
     report.message = message;
     report.len += prefix_len;
     BLI_assert(report.len == strlen(message));
+    /* Angelo: extend the untranslated text when the report has one. Without one, the body's
+     * English is unknown (it may have been translated by its caller), so nothing is invented. */
+    if (report.message_untranslated) {
+      char *untranslated = BLI_string_joinN(prepend_untranslated, report.message_untranslated);
+      MEM_delete(report.message_untranslated);
+      report.message_untranslated = untranslated;
+    }
   }
 }
 
@@ -246,7 +330,7 @@ void BKE_reports_prepend(ReportList *reports, const char *prepend)
   if (!reports || !reports->list.first) {
     return;
   }
-  reports_prepend_impl(reports, RPT_(prepend));
+  reports_prepend_impl(reports, RPT_(prepend), prepend);
 }
 
 void BKE_reports_prependf(ReportList *reports, const char *prepend_format, ...)
@@ -254,13 +338,23 @@ void BKE_reports_prependf(ReportList *reports, const char *prepend_format, ...)
   if (!reports || !reports->list.first) {
     return;
   }
+  const char *format = RPT_(prepend_format);
   va_list args;
   va_start(args, prepend_format);
-  char *prepend = BLI_vsprintfN(RPT_(prepend_format), args);
+  char *prepend = BLI_vsprintfN(format, args);
   va_end(args);
+  /* Angelo: the untranslated prefix for #Report::message_untranslated, formatted only when `RPT_`
+   * changed the format. */
+  char *prepend_untranslated = nullptr;
+  if (format != prepend_format && !STREQ(format, prepend_format)) {
+    va_start(args, prepend_format);
+    prepend_untranslated = BLI_vsprintfN(prepend_format, args);
+    va_end(args);
+  }
 
-  reports_prepend_impl(reports, prepend);
+  reports_prepend_impl(reports, prepend, prepend_untranslated ? prepend_untranslated : prepend);
 
+  MEM_delete(prepend_untranslated);
   MEM_delete(prepend);
 }
 

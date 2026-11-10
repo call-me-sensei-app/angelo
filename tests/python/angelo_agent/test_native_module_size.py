@@ -11,12 +11,14 @@ plan validation, the runtime launch environment and the stream-event reader
 already were) lowers or removes its entry.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import unittest
 from pathlib import Path
 
 ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
 LIMIT = 500
-EXCEPTIONS = {"controller.py": 2620, "ui.py": 2250, "providers.py": 1388, "chat_view.py": 1292,
+EXCEPTIONS = {"controller.py": 2571, "ui.py": 2250, "providers.py": 1388, "chat_view.py": 1286,
               "sculpt.py": 753, "telemetry.py": 617, "identifiers.py": 540}
 
 

@@ -3,6 +3,8 @@
 """The engine-skeleton e2e runner's clean-up (skeleton_engine_e2e/run.py): Unreal's crash reporter, left running after
 the editor crashes on exit, is stopped by PID, and only the one writing under this run's folder."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib.util
 import shutil
 import subprocess
@@ -11,6 +13,8 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+
+from host_test_policy import environment_skip
 
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("skeleton_e2e_run", HERE / "skeleton_engine_e2e/run.py")
@@ -28,13 +32,16 @@ LISTING = """\
 """
 
 
+# The runner (``ps``, launchd's orphaned reporter, ``Unity.app``) runs on the macOS workstation only; its matching is
+# by this host's path spelling, which these macOS listings are.
+@unittest.skipIf(sys.platform == "win32", environment_skip("skeleton_engine_e2e/run.py is a macOS workstation tool "
+                                                           "(ps, launchd's CrashReportClient)"))
 class CrashReporterTests(unittest.TestCase):
     def test_only_this_runs_crash_reporter_is_matched(self):
         # Another run's (102), another Unreal's (103), a command that only names the reporter (104), the editor
         # itself (105) and a sibling folder sharing the prefix (106) are left alone.
         self.assertEqual(run.crash_reporters(MINE, LISTING), [101])
 
-    @unittest.skipUnless(sys.platform != "win32", "POSIX process listing")
     def test_a_stand_in_reporter_is_stopped_by_its_pid(self):
         scratch = Path(tempfile.mkdtemp()).resolve()
         folder = scratch / "run" / "h"

@@ -13,6 +13,8 @@ Here the same results pass through ``Controller.finish_tool``, its read path and
 failed (``mutation_started``) holds every scene mutation until its targets are read again.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import unittest

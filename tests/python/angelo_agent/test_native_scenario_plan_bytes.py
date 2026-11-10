@@ -17,6 +17,8 @@ Pure Python: plans are validated by the host's own resolver and validator
 over a scripted observation; nothing is staged.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import sys

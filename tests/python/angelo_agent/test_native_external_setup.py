@@ -6,6 +6,8 @@ Every test writes into a fresh temporary home; never the real ~/.codex, ~/.claud
 Contract: doc/angelo/external_mcp.rst, "Connecting an app".
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import shutil
 import sys
@@ -49,7 +51,7 @@ class SetupTests(unittest.TestCase):
         command, args = external_setup.server_command("codex", PYTHON, self.state)
         self.assertEqual(command, PYTHON)
         self.assertEqual(args[0], "-I")
-        self.assertTrue(args[1].endswith("scripts/angelo/angelo_mcp.py"))
+        self.assertEqual(Path(args[1]).parts[-3:], ("scripts", "angelo", "angelo_mcp.py"))   # A native path.
         self.assertEqual(args[2:], ["--client", "codex", "--state-dir", str(self.state)])
         self.assertTrue(Path(args[1]).is_file(), "the launcher ships next to the add-on")
 
@@ -74,6 +76,21 @@ class SetupTests(unittest.TestCase):
         self.assertNotIn("angelo", after["mcp_servers"])
         self.assertEqual(after["profiles"]["fast"]["model"], "x")
         self.assertFalse(self.disconnect("codex"))
+
+    def test_codex_lf_and_crlf_files_survive_repeated_connections(self):
+        path = self.home / ".codex" / "config.toml"
+        path.parent.mkdir()
+        for newline in ("\n", "\r\n"):
+            with self.subTest(newline=repr(newline)):
+                original = CODEX_BEFORE.replace("\n", newline).encode("utf-8")
+                path.write_bytes(original)
+                for _ in range(2):
+                    self.connect("codex")
+                    raw = path.read_bytes()
+                    self.assertNotIn(b"\r\r\n", raw)
+                    self.assertEqual(tomllib.loads(raw.decode())["profiles"]["fast"]["model"], "x")
+                self.assertTrue(self.disconnect("codex"))
+                self.assertNotIn("angelo", tomllib.loads(path.read_bytes().decode())["mcp_servers"])
 
     def test_codex_home_is_respected(self):
         self.environ = {"CODEX_HOME": str(self.home / "elsewhere")}

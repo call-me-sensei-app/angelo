@@ -19,6 +19,8 @@ takes the baton itself. Pinned here with real threads, ordered by events (a nega
 The in-Blender proof (a real lead script, a real worker) is ``test_blender_parallel_away.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import queue
 import sys
@@ -286,7 +288,7 @@ class AwayTests(unittest.TestCase):
         time.sleep(1.0)
         cpu, wall = time.process_time() - cpu, time.perf_counter() - wall
         self.assertEqual(wakes[0], 0)
-        self.assertLess(cpu / wall * 1000, 2.0)   # ms of CPU a second, the whole process.
+        machine_clock.assert_within(self, cpu / wall, 0.002, "seconds of the whole process's CPU a second")
         region = worker_dispatch.away(Lead())   # A short region with work: the clock's one wake, after it ended.
         worker_dispatch.back(region)
         time.sleep(worker_away.AWAY_AFTER * 4)

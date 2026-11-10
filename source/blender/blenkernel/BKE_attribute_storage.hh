@@ -37,6 +37,8 @@ enum class AttrStorageType : int8_t;
 /** Data and metadata for a single geometry attribute. */
 class Attribute {
  public:
+  ~Attribute();
+
   /**
    * Data for an attribute stored as a full contiguous array with a data type exactly matching the
    * attribute's type. The array referenced must match the size of the domain and the data type.
@@ -76,6 +78,10 @@ class Attribute {
   AttrType type_;
 
   DataVariant data_;
+  /* Runtime identity moves with the attributes, including bytewise ID swaps.
+   * Copies can share a buffer without sharing the lifetime of their RNA pointers. */
+  const AttributeStorageRuntime *storage_runtime_ = nullptr;
+  void invalidate_data() const;
 
  public:
   /**
@@ -303,11 +309,6 @@ inline AttrStorageType Attribute::storage_type() const
                 std::variant_alternative_t<int(AttrStorageType::Single), Attribute::DataVariant>,
                 Attribute::SingleData>);
   return AttrStorageType(data_.index());
-}
-
-inline void Attribute::assign_data(DataVariant &&data)
-{
-  data_ = std::move(data);
 }
 
 inline AttributeStorage::Iterator AttributeStorage::begin() const

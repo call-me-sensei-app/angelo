@@ -67,16 +67,20 @@ def current(space, rv3d, width, height, scene):
     return kept is not None and kept == (settings(space, rv3d, width, height, scene), _flat(rv3d.perspective_matrix))
 
 
-def ready(key, area, found, scene, now):
+def ready(key, area, found, scene, now, covered=False):
     """Whether ``key``'s picture through the view ``found`` (``(region_3d, width, height)`` of ``area``, or None: no
     view) may be decided now: no view, its matrices current, or its frame awaited ``WAIT`` already (asked about at
     least every ``RESUMED``; a wait left off longer starts again). Otherwise its regions are tagged, so the frame
-    that brings its matrices up to date comes, and the caller tries again."""
+    that brings its matrices up to date comes, and the caller tries again. ``covered``: Angelo's start-up cover is
+    up (``angelo_live_windows.covered``), under which no view draws, so that time is never counted against ``WAIT``."""
     if found is None or current(area.spaces.active, found[0], found[1], found[2], scene):
         _waiting.pop(key, None)
         return True
     began, asked = _waiting.get(key, (now, now))
-    began = now if now - asked > RESUMED else began   # A wait left off never lets a later change through at once.
+    if now - asked > RESUMED:
+        began = now   # A wait left off never lets a later change through at once.
+    elif covered:
+        began += now - asked   # Covered since it last asked: not time the view could have drawn in.
     if now - began >= WAIT:
         _waiting.pop(key, None)
         gave_up[0] += 1

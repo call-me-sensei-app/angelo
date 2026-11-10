@@ -3,6 +3,8 @@
 """The Angelo Library's index checks and local search (library_catalog.py), and the index builder's merge rules
 (scripts/angelo/library_index.py), on small hand-made catalogs. Host tests only."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import unittest

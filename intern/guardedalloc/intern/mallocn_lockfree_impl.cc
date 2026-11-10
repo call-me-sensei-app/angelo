@@ -15,6 +15,7 @@
 #include <sys/types.h>
 
 #include "MEM_guardedalloc.h"
+#include "MEM_lifetime.hh"
 #include "MEM_safe_multiply.h"
 
 /* Quiet warnings when dealing with allocated data written into the blend file.
@@ -164,6 +165,7 @@ void MEM_lockfree_freeN(void *vmemh, DestructorType destructor_type)
                             "CPP-style MEM_new or new\n");
   }
 
+  mem_lifetime::invalidate_allocation(vmemh, len);
   memory_usage_block_free(len);
 
   if (UNLIKELY(malloc_debug_memset && len)) {

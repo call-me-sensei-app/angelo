@@ -24,7 +24,9 @@ import sys
 import uuid
 from pathlib import Path
 
-from .studio_state import atomic_json, read_json
+from . import shared_replace
+from .studio_files import DAMAGED, read_own as _read_own, shared_read, write_if_unchanged
+from .studio_state import atomic_json
 from .ui_text import n_
 
 LIBRARY_NAME = "Angelo Media Studio"   # Product name, as "Media Studio" is in every catalogue (glossary).
@@ -41,6 +43,7 @@ PARENT_CATALOG = "3f1d2b6e-8a4c-4e0f-9b7d-5c6a1e2f3d44"
 CATS_FILE = "blender_assets.cats.txt"
 MANIFEST = "manifest.json"
 REGISTRATION = "registration.json"
+WRITTEN_NAMES = "catalog-names.json"   # {catalogue id: [lines Angelo wrote]}: any other line is the person's own.
 LOCK = ".sync.lock"
 
 
@@ -78,14 +81,14 @@ def catalog_kind(path, names=None):
     return None
 
 
-def catalog_text(names, existing=""):
+def catalog_text(names, existing="", chosen=None):
     """Blender's catalogue definition file: Angelo's parent catalogue (``TAB_PATH``) and its two children in
     ``names``' language, every other line kept.
 
     ``names`` maps a kind to its (translated) catalogue name. Catalogues the person adds in the Asset Browser
     (Blender saves them into this file) stay as they are.
     """
-    ours = _catalog_lines(names)
+    ours = chosen or _catalog_lines(names)
     kept = []
     for line in existing.splitlines():
         stripped = line.strip()
@@ -96,25 +99,67 @@ def catalog_text(names, existing=""):
     return "\n".join((*HEADER, *ours.values(), *kept)) + "\n"
 
 
-def write_catalogs(directory, names):
-    """Write the catalogue file when Angelo's lines differ (first run, another language); True when written."""
+def write_catalogs(directory, names, renamed=True):
+    """Write Angelo's catalogues in ``names``' language where the file lacks them; True when written. The file is
+    shared by every Angelo instance and the person: a catalogue the person renamed or moved in the Asset Browser
+    keeps its line, and with ``renamed`` False (this Angelo's language is the one it wrote last) so does one another
+    Angelo named in its own language (the two renamed each other's back and forth on every sync, moving the shelf's
+    tabs). Only a missing catalogue is added then. A file from before 1.0.10 has no ``WRITTEN_NAMES``: only a line
+    Angelo would write itself counts as Angelo's, and the record is written at that first sync even when the file
+    needs nothing. None when nothing was decided: the file or its record is there but cannot be read now (no
+    permission, a sync placeholder, a stale mount; the file holds the person's catalogues, and a line added without
+    its record would later read as the person's), or the file changed under this sync (a save in the Asset Browser;
+    ``studio_files``). A later sync tries again. Run under the folder's sync lock (``sync``)."""
     path = Path(directory) / CATS_FILE
     try:
-        existing = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError):
-        existing = ""
+        existing, stamp = shared_read(path)
+    except OSError:
+        return None   # Never rewritten from nothing (1.0.10 audit re-check).
     lines = {line.strip() for line in existing.splitlines()}
-    if "VERSION 1" in lines and set(_catalog_lines(names).values()) <= lines:
-        return False   # Blender may save the file with its own header; Angelo's lines are what matter.
-    text = catalog_text(names, existing)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
-    try:
-        temporary.write_text(text, encoding="utf-8")
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-    return True
+    ours = _catalog_lines(names)
+    present = {identity: next((line for line in lines if line.startswith(identity + ":")), None) for identity in ours}
+    record = Path(directory) / WRITTEN_NAMES
+    written, unreadable = _written_names(record)
+    recorded = written is not None
+    if unreadable:
+        return None   # Whose lines are whose is unknown, and nothing added now could be recorded.
+    if not recorded:
+        # Before 1.0.10 nothing was recorded. A line is Angelo's only when Angelo would write it itself, in this
+        # language or in English; any other name (the person's rename, or another language's) is kept as it is.
+        english = _catalog_lines({})
+        written = {identity: [line] for identity, line in present.items() if line in (ours[identity],
+                                                                                    english[identity])}
+    chosen = {}
+    for identity, line in ours.items():
+        now = present[identity]
+        angelos = now in (written.get(identity) or ())
+        chosen[identity] = line if now is None or (angelos and renamed) else now
+    changed = not ("VERSION 1" in lines and set(chosen.values()) <= lines)
+    # Blender may save the file with its own header; Angelo's lines are what matter.
+    if changed and not write_if_unchanged(path, catalog_text(names, existing, chosen), stamp):
+        return None
+    added = False
+    for identity, line in chosen.items():
+        if line == ours[identity] and line not in (written.get(identity) or ()):
+            written.setdefault(identity, []).append(line)
+            added = True
+    # Recorded on the first sync even when the file needed nothing: a later sync must know whose lines are whose.
+    if changed or added or not recorded:
+        atomic_json(record, written)
+    return changed
+
+
+def _written_names(path):
+    """``(record, unreadable)``: the lines Angelo recorded per catalogue, or None with no usable record (missing,
+    or not a record Angelo writes: rebuilt like a file from before 1.0.10). ``unreadable``: the file is there but
+    could not be read now."""
+    record = _read_own(path)
+    if record is None:
+        return None, True
+    if not isinstance(record, dict) or not record:   # Missing, or not a record Angelo writes: rebuilt.
+        return None, False
+    return {identity: [line for line in kept if isinstance(line, str)]
+            for identity, kept in record.items() if isinstance(kept, list)}, False
 
 
 def asset_name(prompt, limit=60):
@@ -265,7 +310,7 @@ def unclean_record(records):
         try:
             if path.stat().st_size > 1024 * 1024:
                 return path.name
-            value = json.loads(path.read_text(encoding="utf-8"))
+            value = json.loads(shared_replace.read_text(path))   # Sharing delete: never refuses a record's save.
             if not isinstance(value, dict) or str(uuid.UUID(value["id"])) != path.stem:
                 return path.name
         except (OSError, ValueError, UnicodeError, KeyError, TypeError, AttributeError):
@@ -348,11 +393,12 @@ def sync_lock(directory):
 
 def read_manifest(directory):
     """The manifest, whatever its size (``read_json`` caps records at 1 MiB; a capped manifest would read as empty
-    and every item would be written again on every scan)."""
-    try:
-        value = json.loads((Path(directory) / MANIFEST).read_text(encoding="utf-8"))
-    except (OSError, ValueError, UnicodeError):
-        value = {}
+    and every item would be written again on every scan); a damaged one reads as empty and is rebuilt. None when it
+    is there but cannot be read now: the caller writes nothing, since a manifest written from nothing forgets every
+    item (their files would never be removed)."""
+    value = _read_own(Path(directory) / MANIFEST)
+    if value is None:
+        return None
     return {k: v for k, v in value.items() if isinstance(v, dict)} if isinstance(value, dict) else {}
 
 
@@ -407,8 +453,15 @@ def registration_decision(libraries, directory, record):
 
 
 def read_registration(directory):
-    value = read_json(Path(directory) / REGISTRATION, {})
-    return value if isinstance(value, dict) else {}
+    """The library's on/off record (``{}`` when missing); None when it is there but cannot be read now, ``DAMAGED``
+    when it holds no record Angelo writes. Either may have held the person's Turn off, so neither counts as on: the
+    Preferences entry decides (``studio_assets_host.ensure_registered``) and writers halt meanwhile."""
+    value = _read_own(Path(directory) / REGISTRATION)
+    return value if value is None or isinstance(value, dict) else DAMAGED
+
+
+def registration_known(record):
+    return record is not None and record != DAMAGED
 
 
 def write_registration(directory, *, removed):

@@ -29,6 +29,9 @@ Engine      Adapter                     Kinds                    Status
 ``unreal``  ``unreal_link_assets``      .glb (source file)       Runs in UE 5.8.2 (headless, macOS): Python
                                                                  plugin saves; live with the C++ Angelo Link
                                                                  Live plugin (:doc:`unreal_link`)
+``web``     ``web_link_assets``         .glb                     A Three.js page through its Vite dev server's
+                                                                 plugin, the npm package ``@call-me-sensei/angelo``
+                                                                 (:doc:`web_link`)
 ==========  ==========================  =======================  ==============================================
 
 Adapters
@@ -111,14 +114,25 @@ Saving and working files
 * **A .blend** asset is Angelo's own file: saving it is the asset's save, and the editors hear ``saved``.
 * **Any other kind** is edited in a working .blend at ``<project>/.angelo/<path in the project>.blend``, imported
   from the asset when there is none or the asset changed since Angelo last read or wrote it (a digest beside it,
-  ``<working>.blend.json``; the older working file is kept as ``<name>.previous.blend`` and the card says so). Each
+  ``<working>.blend.json``; the older working file is kept as ``<name>.previous.blend`` and the card says so). The
+  digest is of the bytes read or written, taken before the import reads them and by the write-back child before its
+  replace (the stamp names the save, link and Angelo process it was written for), never of the asset file
+  afterwards: a version written to it meanwhile then reads as changed. Each
   save writes the asset back in a background Angelo reading the file just saved (``engine_link_writeback``, with
   the adapter's exporter: ``export_scene.gltf`` or ``export_scene.fbx``), as an engine's own .blend import does, so
   the exporter never changes the person's frame or pose; a glTF write-back, like the live scene, writes each object
   with a current baked material with it (:doc:`long_jobs`, "Baked materials at export"), and a save with an object
   that keeps its own instead sends ``baked_stale``, ``baked_stale_nearby`` (only something within its baked AO's
-  reach changed) or ``baked_packing`` status; the file is replaced in one step, keeping its permissions,
-  and the editors hear ``saved`` once it is written, or ``write_failed``. Nothing in ``.angelo`` is written through
+  reach changed), ``baked_stale_update`` (bound before an update that changed what the digest checks) or
+  ``baked_packing`` status; the file is replaced in one step, keeping its permissions,
+  and the editors hear ``saved`` once it is written, or ``write_failed``. The child opens the saved .blend itself
+  and writes only when the file its load read (identified on the descriptor Blender read it through,
+  ``_bpy._angelo_saved.read_file``) is the one the save wrote; otherwise ``write_failed`` says the file changed
+  after the save. A save that could not identify the file it wrote runs no child, and ``write_failed`` says so.
+  Both background children (the
+  write-back and the preflight) read their arguments from a private file removed when they end
+  (``engine_link_writeback.child_spec``), never from their command line: the baked list grows with the scene, and
+  Windows refuses a command line past 32,767 characters. Nothing in ``.angelo`` is written through
   a link. No engine imports the folder: it is hidden, and it holds a ``.gdignore`` for Godot.
 * **The engine preflight** of each save runs afterwards in another background Angelo (:doc:`engine_preflight`,
   "Engine-link saves"): report-only, started once the engine has the asset, written to
@@ -180,6 +194,10 @@ on Angelo's main thread (``engine_link_reads``):
   never receives a request sent to the one before. A resolve past its time is refused: OPEN with
   ``VALIDATION`` (name it as its engine does), an editor's request with code ``unreadable``, whose message each
   plugin shows.
+* **An editor's project is resolved once, when it authenticates**, on its connection's thread
+  (``engine_link_server.project_key``). Matching an editor to the linked asset's project (``serves``: every status
+  acknowledgement, close, broadcast and the tool's editor rows, all on the main thread) compares that stored value and
+  never reads the filesystem; a ``realpath`` there held one tick 5 to 10 s on a stalled drive in 1.0.9 testing.
 
 The agent
 =========
@@ -350,7 +368,9 @@ its engine when it authenticates.
   header of at most 64 KiB, then ``bytes`` bytes of payload (at most 512 MiB).
   Clients send only ``open``, ``close``, ``status`` and ``ping``, never a payload:
   a client's header that announces one ends the connection before any of it is
-  read.
+  read. The one exception is a capture Angelo asked for: a client that said it can
+  ``capture`` answers that request, before its deadline, with one PNG of at most
+  8 MiB (``LinkServer.capture``; :doc:`web_link`, "Captures").
   Angelo sends ``pending``, ``opened``, ``refused`` (with ``code`` and an English
   ``message``), ``scene`` (the .glb), ``saved``, ``ended`` (with ``reason``),
   ``closed``, ``status`` and ``pong``.

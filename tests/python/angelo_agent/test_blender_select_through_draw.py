@@ -15,6 +15,10 @@ drawing" objections with pixels, for vertex, edge and face select modes:
 The scene: an orthographic front view; cube A (2 m) at the origin hides cube B (1 m) behind it.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import math
 import os

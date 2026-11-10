@@ -11,6 +11,8 @@ and Ask and run, named, in Auto; after every look the document is compared
 is not known.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

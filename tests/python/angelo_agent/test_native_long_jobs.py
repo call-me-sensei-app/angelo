@@ -6,6 +6,8 @@ The Blender runners (``job_runners``) and the chat card in the running app are
 covered by ``test_blender_long_jobs.py`` and ``test_blender_job_card.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import sys

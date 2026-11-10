@@ -9,6 +9,8 @@
 Synthetic folders only.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 from pathlib import Path
@@ -23,6 +25,8 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import private_roots  # noqa: E402
 from angelo_agent.files import FileWorkspace  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from host_test_policy import environment_skip  # noqa: E402
 
 LIST = "retained-native-profiles.json"
 
@@ -96,6 +100,8 @@ class UnavailableMetadataTests(Fixture):
                 if damage == "unreadable":
                     os.chmod(listing, 0)
                     self.unlock_later(listing)
+                    if os.access(listing, os.R_OK):   # Windows keeps only the read-only bit; elevated users read all.
+                        self.skipTest(environment_skip("running as a user who can read a file with no permissions"))
                 roots = private_roots.private_roots(self.state, self.accounts, [], environ={})
                 self.assertFalse(roots.complete)
                 files = FileWorkspace(self.base, excluded=roots)

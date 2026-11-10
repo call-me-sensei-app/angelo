@@ -15,6 +15,8 @@
 /* --- bpy build options --- */
 #include "intern/rna_internal_types.hh"
 
+#include "../generic/py_capi_dependent.hh"
+
 namespace blender {
 
 #ifdef WITH_PYTHON_SAFETY
@@ -110,7 +112,8 @@ extern PyTypeObject pyrna_func_Type;
   } \
   (void)0
 
-#define PYRNA_STRUCT_IS_VALID(pysrna) (LIKELY(((BPy_StructRNA *)(pysrna))->ptr->type != NULL))
+#define PYRNA_STRUCT_IS_VALID(pysrna) \
+  (LIKELY(pyrna_struct_validity_check_only((BPy_StructRNA *)(pysrna)) == 0))
 #define PYRNA_PROP_IS_VALID(pysrna) (LIKELY(((BPy_PropertyRNA *)(pysrna))->ptr->type != NULL))
 
 /* 'in_weakreflist' MUST be aligned */
@@ -142,6 +145,13 @@ struct BPy_StructRNA {
   /** Needed in some cases if ptr.data is created on the fly, free when deallocating. */
   bool freeptr;
 #endif /* PYRNA_FREE_SUPPORT */
+
+  /**
+   * Angelo: as a shared wrapper (the one a struct's instance slot holds, e.g. #ID::py_instance),
+   * the head of the wrappers and iterators that must not outlive its struct; otherwise this
+   * wrapper's node in such a list. See "Dependent Wrappers" in `bpy_rna.cc`.
+   */
+  BPyRNA_DependentLink dependent;
 };
 
 struct BPy_PropertyRNA {
@@ -152,6 +162,9 @@ struct BPy_PropertyRNA {
 
   std::optional<PointerRNA> ptr;
   PropertyRNA *prop;
+
+  /** Angelo: invalidated with the struct that owns the property ("Dependent Wrappers"). */
+  BPyRNA_DependentLink dependent;
 };
 
 struct BPy_PropertyArrayRNA {
@@ -165,6 +178,7 @@ struct BPy_PropertyArrayRNA {
 
   std::optional<PointerRNA> ptr;
   PropertyRNA *prop;
+  BPyRNA_DependentLink dependent;
 
   /* END Must match #BPy_PropertyRNA. */
 
@@ -183,6 +197,17 @@ struct BPy_PropertyCollectionIterRNA {
 
   /* collection iterator specific parts */
   std::optional<CollectionPropertyIterator> iter;
+
+  /**
+   * Angelo: this iterator's node in the list of the shared wrapper whose struct owns the
+   * collection (#BPy_StructRNA::dependent); `owner_freed` once that struct was freed.
+   */
+  BPyRNA_DependentLink dependent;
+  mem_lifetime::Watch yielded_watch;
+  mem_lifetime::Watch cursor_watch;
+  bool owner_freed;
+  bool yielded_attribute_mode_sensitive;
+  bool cursor_attribute_mode_sensitive;
 };
 
 struct BPy_FunctionRNA {
@@ -198,6 +223,9 @@ struct BPy_FunctionRNA {
    * Storing this value is required by the Python C-API (PEP 590).
    */
   vectorcallfunc vectorcall;
+
+  /** Angelo: invalidated with the struct the function is bound to ("Dependent Wrappers"). */
+  BPyRNA_DependentLink dependent;
 };
 
 [[nodiscard]] StructRNA *srna_from_self(PyObject *self, const char *error_prefix);
@@ -298,6 +326,55 @@ void pyrna_context_init(bContext *C);
 void pyrna_context_clear(bContext *C);
 
 void pyrna_invalidate(BPy_DummyPointerRNA *self);
+/**
+ * Angelo: invalidate every dependent of `shared`, the wrapper a struct's instance slot holds,
+ * before the struct is freed (#BPY_DECREF_RNA_INVALIDATE). Requires the GIL.
+ */
+void pyrna_struct_dependents_invalidate(BPy_StructRNA *shared);
+/** Explicitly replace a persistent wrapper's pointer and rearm its lifetime watches. Requires the
+ * GIL. */
+void pyrna_struct_pointer_retarget(BPy_StructRNA *self, const PointerRNA &ptr);
+
+/** A Python conversion may remove its raw RNA destination before a setter commits. */
+class BPyRNA_ConversionGuard {
+  PointerRNA *ptr_;
+  struct Watches {
+    mem_lifetime::Watch data{};
+    mem_lifetime::Watch property{};
+    mem_lifetime::Watch owner{};
+    mem_lifetime::Watch type{};
+    bool attribute_mode_sensitive = false;
+    ~Watches();
+  };
+  std::optional<Watches> watches_;
+  void arm(PointerRNA &ptr, PropertyRNA *prop);
+  bool check_watched();
+
+ public:
+  BPyRNA_ConversionGuard(PointerRNA &ptr, PropertyRNA *prop, bool enabled = true) : ptr_(&ptr)
+  {
+    if (enabled) {
+      arm(ptr, prop);
+    }
+  }
+  ~BPyRNA_ConversionGuard() = default;
+  BPyRNA_ConversionGuard(const BPyRNA_ConversionGuard &) = delete;
+  BPyRNA_ConversionGuard &operator=(const BPyRNA_ConversionGuard &) = delete;
+  /** False with ReferenceError set when conversion removed the destination. */
+  bool check()
+  {
+    return (!watches_ && ptr_->type) || check_watched();
+  }
+};
+/** Snapshot nested input sequences before their numeric conversion can mutate them. New reference.
+ */
+PyObject *pyrna_array_snapshot(PyObject *seq, int dimensions);
+/**
+ * Angelo: invalidate the dependents of `shared` that point into its struct's sub-data (iterators,
+ * custom-property wrappers, wrappers of other data), keeping those of the struct itself, before
+ * its contents are replaced in place (an evaluated copy's update). Requires the GIL.
+ */
+void pyrna_struct_sub_data_dependents_invalidate(BPy_StructRNA *shared);
 
 [[nodiscard]] int pyrna_struct_validity_check_only(const BPy_StructRNA *pysrna);
 void pyrna_struct_validity_exception_only(const BPy_StructRNA *pysrna);

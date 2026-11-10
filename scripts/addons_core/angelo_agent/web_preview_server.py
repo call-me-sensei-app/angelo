@@ -11,6 +11,7 @@ scene. Threads never touch Blender: the main thread publishes each export with `
 """
 
 import base64
+import errno
 import hashlib
 import json
 import mimetypes
@@ -18,6 +19,7 @@ import re
 import secrets
 import socket
 import socketserver
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -31,6 +33,14 @@ MAX_FEEDBACK = 64 * 1024        # Bytes of the page's report on its web shaders.
 MAX_COMPARE = 4 * 1024          # Bytes of the page's camera when the person asks to compare (web_compare).
 PNG = b"\x89PNG\r\n\x1a\n"
 CONNECTION_TIMEOUT = 30.0
+# Connections the kernel holds until the accept thread takes them. That thread needs Python's lock, which Blender's
+# main thread keeps through long C calls (an export, an image encode) while a World bake loads every core, and a
+# browser opens a page's files over several connections at once. Past the backlog Windows refuses a connection
+# (ERR_CONNECTION_REFUSED) and macOS and Linux drop it for a second; socketserver's default is 5.
+BACKLOG = 128
+# A browser that reloads or closes the page aborts its requests: the reply's write then fails, which is no error.
+ABORTED = {errno.EPIPE, errno.ECONNRESET, errno.ECONNABORTED, errno.ESHUTDOWN, errno.ENOTCONN,
+           getattr(errno, "EPROTOTYPE", errno.EPIPE)}   # macOS: a write racing the peer's close.
 TYPES = {".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".html": "text/html",
          ".wasm": "application/wasm", ".json": "application/json", ".svg": "image/svg+xml", ".woff2": "font/woff2"}
 # The page's one inline script is its import map, allowed by its hash; WebAssembly decoders need wasm-unsafe-eval,
@@ -48,14 +58,26 @@ def page_policy(html):
     return POLICY % base64.b64encode(digest).decode("ascii")
 
 
+def aborted(error):
+    """True when ``error`` only says the browser went away (WinError 10053, EPIPE, ECONNRESET, a timeout)."""
+    return isinstance(error, (ConnectionError, TimeoutError)) or (
+        isinstance(error, OSError) and error.errno in ABORTED)
+
+
 class _Server(socketserver.ThreadingTCPServer):
     address_family = socket.AF_INET
     allow_reuse_address = False
     daemon_threads = True
+    request_queue_size = BACKLOG
 
     def __init__(self, preview):
         self.preview = preview
         super().__init__(("127.0.0.1", 0), _Handler)
+
+    def handle_error(self, request, client_address):
+        """One request's error ends that request only; an aborted connection says nothing, anything else is kept."""
+        if not aborted(sys.exc_info()[1]):
+            super().handle_error(request, client_address)
 
 
 class _Handler(BaseHTTPRequestHandler):

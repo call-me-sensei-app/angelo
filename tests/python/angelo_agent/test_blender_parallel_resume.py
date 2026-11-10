@@ -11,6 +11,10 @@ sends are recorded too. No provider or paid call. Run only in a disposable insta
 ``--background --factory-startup --disable-autoexec --python-exit-code 1``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -57,6 +61,9 @@ def run_checks():
     from angelo_agent import session_rail_input
     session_rail_input.register()
     ui.prepare_controller = lambda controller=None: None   # No connection here: nothing reaches a provider.
+    # The lead's send is recorded below, so it stands in for a lead that can send: the worker-done event fires only
+    # for a chat with a usable connection (worker_resume._connected, R2-L-7), which this disposable profile has not.
+    ui.connection_available = lambda controller=None: True
     made = worker_sessions._new_chat
 
     def recorded_chat(lead):
@@ -70,7 +77,7 @@ def run_checks():
     executor = BlenderExecutor(window)
     executor.studio_context = lead
 
-    def lead_send(text, observation=None, recovery_evidence=None, host_request=None):   # As Controller.send's row.
+    def lead_send(text, observation=None, recovery_evidence=None, host_request=None, host_kind=None):   # As Controller.send's row.
         parts = list(host_request or ())
         lead_sends.append({"text": text, "parts": parts, "observed": isinstance(observation, dict)})
         lead.emit("message", {"role": "user", "text": text, "request_kind": "angelo_event", "parts": parts})

@@ -32,6 +32,10 @@ test_blender_fluid_jobs``; check ``fluid-jobs.json`` for ``success`` and
 records the skip and succeeds.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import shutil
 import sys
 from pathlib import Path
@@ -243,9 +247,14 @@ def step(harness):
     elif phase == "p" and ended(ctx["p"]):
         record = ctx["p"]
         harness.state["publication_failure"] = {"status": record["status"], "reason": record["reason"]}
+        # A publication that fails keeps what the bake wrote (job_manager: the receipt names its kept staging folder).
+        hidden, kept = harness.hidden_left(), (record.get("receipt") or {}).get("kept_folder")
         check("a_failed_publication_puts_the_domain_back", record["status"] == "failed"
               and state("Smoke") == ctx["smoke_state"] and "_angelo_fluid_restore" not in domain("Smoke")
-              and not (PROJECT / "caches/unpublishable").exists() and harness.hidden_left() == [])
+              and not (PROJECT / "caches/unpublishable").exists() and bool(kept) and len(hidden) == 1
+              and Path(hidden[0]).name == Path(kept).name)
+        for left in hidden:   # Clean for the later checks, which expect no staging left behind.
+            shutil.rmtree(harness.workspace / left, ignore_errors=True)
         # A Replay domain whose person played it: its replay cache must survive a cancel and the next playback.
         smoke("Replay", 20.0, 'REPLAY', "//replay cache", 400)
         for frame in range(1, 6):

@@ -40,6 +40,57 @@ class Currency:
         shown = self.table.observed(handle, shown=True) if self.table is not None else None
         return shown if shown is not None else self.committed.get(handle)
 
+    def observe_latest(self, message, budget):
+        """Add one message, newest first, or refuse without publishing partial currency.
+
+        The lazy handoff owner must stop its older tail on refusal. Otherwise a
+        missing later revision could make an older result appear current. The
+        existing eager constructor remains available to its existing callers.
+        """
+        from .handoff_json import UNSUPPORTED, WORK_LIMIT, admit_mapping
+        if not budget.visit():
+            return WORK_LIMIT
+        if (reason := admit_mapping(message, budget)) is not None:
+            return reason
+        if not _literal(message.get("role"), "activity") or not _literal(message.get("status"), "completed"):
+            return None
+        result = message.get("result")
+        if result is None:
+            return None
+        if (reason := admit_mapping(result, budget)) is not None:
+            return reason
+        if not _literal(result.get("status"), "committed"):
+            return None
+        live = result.get("live_revisions")
+        if live is None:
+            return None
+        if (reason := admit_mapping(live, budget)) is not None:
+            return reason
+        if not _literal(live.get("status"), "COMMITTED"):
+            return None
+        rows = live.get("objects")
+        if rows is None:
+            return None
+        if type(rows) is not list:
+            return UNSUPPORTED
+        pending = {}
+        # A later duplicate within this message wins, as in own_commits.
+        for row in reversed(rows):
+            if not budget.visit():
+                return WORK_LIMIT
+            if (reason := admit_mapping(row, budget)) is not None:
+                return reason
+            handle, revision = row.get("handle"), row.get("object_revision")
+            if type(handle) is not str or type(revision) is not str:
+                return UNSUPPORTED
+            characters = len(handle) + len(revision)
+            if characters and not budget.scan(characters):
+                return WORK_LIMIT  # Check lengths before hashing any unbounded string.
+            pending.setdefault(handle, revision)
+        for handle, revision in pending.items():
+            self.committed.setdefault(handle, revision)
+        return None
+
     def earlier(self, handle):
         """The context's latest view of ``handle`` (this message's observation, else a persisted one), or None."""
         return self.table.observed(handle) if self.table is not None else None
@@ -49,6 +100,10 @@ class Currency:
         revision = row.get("object_revision")
         current = self.current(row.get("handle")) if isinstance(revision, str) else None
         return current is not None and current != revision
+
+
+def _literal(value, expected):
+    return type(value) is str and value == expected
 
 
 def receipt_rows(rows, currency=None):

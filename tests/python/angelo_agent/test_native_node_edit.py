@@ -7,6 +7,8 @@ rollback, Undo/Redo, preview equality and evaluation bounds run in the
 compiled app (test_blender_node_edit.py, test_blender_program_commit_effects.py).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

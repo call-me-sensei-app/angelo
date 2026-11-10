@@ -14,18 +14,21 @@ values before fields can hide such a refusal from the sweep, so a tool that limi
 registered in ``KIND_FIELDS`` with its table, where every pair is checked exactly. No Blender, no model.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
-from angelo_agent import job_spec  # noqa: E402
+from angelo_agent import goal_spec, job_spec  # noqa: E402
 from angelo_agent.tool_specs import TOOLS, validate_call  # noqa: E402
 
 DISCRIMINATORS = ("kind", "mode", "action", "operation")
 # Tools whose fields depend on their kind: (discriminator, {value: fields}, fields every value takes, statement).
 KIND_FIELDS = {
+    "angelo_goal": ("action", goal_spec.FIELDS, set(goal_spec.SHARED_FIELDS), goal_spec.fields_by_action()),
     "angelo_job_start": ("kind", job_spec.FIELDS, set(job_spec.SHARED_FIELDS), job_spec.fields_by_kind()),
 }
 # How the host words "this value doesn't take that field" (job_spec, rig_spec, anim_spec, anim_structure_spec).

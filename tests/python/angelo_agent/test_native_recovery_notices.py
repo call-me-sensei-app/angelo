@@ -9,6 +9,8 @@ automatically repeat recovery or earlier edits.") as the person's row, translate
 the notice. Finding C5: the Restore dialog had eight dense lines of internal terms.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import tempfile

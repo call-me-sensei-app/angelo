@@ -8,6 +8,8 @@ Authenticode hash must give the unsigned and the signed file the same digest, an
 Where PowerShell is installed (CI), the script's own function is checked against the reference on the same files.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import hashlib
 import shutil
 import struct
@@ -94,7 +96,10 @@ class ScriptTests(unittest.TestCase):
 
     def digests(self, *files):
         # As sign_windows.ps1 runs it: with Stop, a refusal ends the run (else a .NET exception ends only its statement).
-        command = "$ErrorActionPreference = 'Stop'; . '%s'; %s" % (
+        # The refusal's own message, unformatted: PowerShell's error view wraps it at the console width (a long temp
+        # folder splits its words) and colours it.
+        command = ("$ErrorActionPreference = 'Stop'; try { . '%s'; %s } catch { [Console]::Error.WriteLine("
+                   "$_.Exception.Message); exit 1 }") % (
             SCRIPT, "; ".join("Get-AuthenticodePeDigest '%s'" % path for path in files))
         done = subprocess.run([self.pwsh, "-NoProfile", "-NonInteractive", "-Command", command],
                               capture_output=True, text=True)

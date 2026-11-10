@@ -109,7 +109,9 @@ entry that states the measured size (doc/angelo/agent_integration.rst).
 # on first use. Without them the agent can't push, save or read a link the person turned on except by scripts.
 # Toolsets 47-50 were measured on their own branches; together, measured on 1.0.9's merged tree: 57,302 B ON, the sum
 # of their deltas over 1.0.8's 57,161 (+24 +26 +42 +49).
-PLAN_BUDGET_BYTES = 57310
+# Raised 57,310 -> 57,330 with toolset 51, measured 57,302 -> 57,316 B ON (57,232 -> 57,246 OFF, +14): the deferred
+# name angelo_goal (goal_mode.rst); its schema loads on first use, when a person asks for a goal.
+PLAN_BUDGET_BYTES = 57330
 # Claude's instructions with the plan.
 # Raised 10,680 -> 10,720: the background-job sentence took the instructions 10,617 -> 10,714 B
 # (+97, measured; long_jobs.rst, "Model-visible bytes").

@@ -26,27 +26,41 @@ def _config_path():
     return os.path.join(folder, "config.ocio")
 
 
-def facts(scene):
-    """The scene's colour management and the three.js settings nearest it."""
+def settings(scene):
+    """The scene's colour management as the export reads it: every value ``facts`` depends on, read from the scene
+    and nothing else. The live preview keys on it (``web_facts.scene_settings``), so a field read here is followed
+    by the preview without another change."""
     view = scene.view_settings
-    look = view.look if view.look not in ("", "None") else None
-    mapping = web_tone.measure(_config_path(), view.view_transform, look)
+    return {"view_transform": view.view_transform, "look": view.look if view.look not in ("", "None") else None,
+            "exposure": float(view.exposure), "gamma": float(view.gamma), "curves": bool(view.use_curve_mapping),
+            "white_balance": bool(getattr(view, "use_white_balance", False)),
+            "display": scene.display_settings.display_device}
+
+
+def facts(scene):
+    """The scene's colour management and the three.js settings nearest it. Reads the scene only through
+    ``settings``."""
+    read = settings(scene)
+    config = _config_path()
+    mapping = web_tone.measure(config, read["view_transform"], read["look"],
+                               web_tone.web_display(config, read["display"], read["view_transform"]))
     readable = mapping is not None
     if mapping is None:
         mapping = {"tone_mapping": web_tone.FALLBACK[0], "output": web_tone.FALLBACK[1], "difference": None}
-    return {"view_transform": view.view_transform, "look": look, "exposure": float(view.exposure),
-            "gamma": float(view.gamma), "curves": bool(view.use_curve_mapping),
-            "white_balance": bool(getattr(view, "use_white_balance", False)),
-            "display": scene.display_settings.display_device, "readable": readable,
-            "tone_mapping": mapping["tone_mapping"], "output": mapping["output"], "difference": mapping["difference"]}
+    return dict(read, readable=readable, tone_mapping=mapping["tone_mapping"], output=mapping["output"],
+                difference=mapping["difference"])
 
 
-def extras(look, world, environment):
+def extras(look, world, environment, standin=None):
     """The ``angelo_look`` scene extras: three.js renderer and scene settings, and where they came from.
 
     ``world`` is ``web_world.plan``'s description; ``environment`` its equirect (``web_environment``), with
     ``data`` the Radiance bytes the exporter stores in a bufferView (``bufferView`` in the file), or None for a
-    world that needs none, one still being made (``world["status"]`` "pending") or one that failed."""
+    world that needs none, one still being made (``world["status"]`` "pending") or one that failed.
+
+    ``standin`` (the live preview only): the environment the page shows now, as an earlier call wrote it (bytes
+    where the bufferView goes). A picture still being made is written as that environment marked ``pending``, so a
+    page loaded during the bake shows what the page showed before it; with none, ``{"type": "pending"}``."""
     result = {
         "version": VERSION,
         "toneMapping": look["tone_mapping"],
@@ -67,7 +81,8 @@ def extras(look, world, environment):
                                  "intensity": round(world.get("intensity", 1.0), 6),
                                  "source": "hdri" if kind == "IMAGE" else "baked"}
     elif kind in ("IMAGE", "BAKE") and world.get("status") == "pending":
-        result["environment"] = {"type": "pending"}   # The live preview publishes it once it is made.
+        # The live preview publishes it once it is made; meanwhile the World the page already shows stands in.
+        result["environment"] = dict(standin, pending=True) if standin else {"type": "pending"}
     else:
         result["environment"] = None   # No world: Blender renders no light from it and a black background.
     return {"angelo_look": result}

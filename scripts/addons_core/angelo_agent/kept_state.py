@@ -28,7 +28,7 @@ import os
 import stat
 from pathlib import Path
 
-from . import session_kept
+from . import session_kept, shared_replace
 
 NONE, OK, UNKNOWN, DAMAGED = "none", "ok", "unknown", "damaged"
 
@@ -36,13 +36,14 @@ NONE, OK, UNKNOWN, DAMAGED = "none", "ok", "unknown", "damaged"
 def read(path):
     """``(value, state)``: the file's JSON value and ``OK``; otherwise None and ``NONE``, ``UNKNOWN`` or ``DAMAGED``."""
     try:
-        data = Path(path).read_bytes()
+        data = shared_replace.read_bytes(path)   # Sharing delete: a writer's replace lands while this reads.
     except FileNotFoundError:
         return None, NONE
     except IsADirectoryError:
         return None, DAMAGED   # Something that is no file is at the name; a write's replace fails on it anyway.
     except OSError:
-        return None, UNKNOWN
+        # Windows opens a folder as "access denied", never IsADirectoryError: the same folder, the same state.
+        return None, DAMAGED if os.path.isdir(path) else UNKNOWN
     try:
         return json.loads(data), OK
     except (ValueError, RecursionError):

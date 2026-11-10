@@ -9,6 +9,8 @@ suite on Windows, 2026-10-23). A break-it review of an area-matching design foun
 ``bpy`` is a stand-in of windows, screens, areas and load handlers.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import sys
 import types

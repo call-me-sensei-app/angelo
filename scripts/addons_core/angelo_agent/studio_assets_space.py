@@ -127,7 +127,9 @@ def free(directory, active):
     with studio_assets.sync_lock(directory) as held:
         if not held:
             return None
-        if not studio_assets.read_registration(directory).get("removed"):
+        registration = studio_assets.read_registration(directory)
+        # Unreadable or damaged: this Angelo's own Turn off decides (another Angelo's Turn on can't be seen then).
+        if studio_assets.registration_known(registration) and not registration.get("removed"):
             return ON   # Turned on (here or by another Angelo) since it was asked: its writer is writing again.
         freed, count = 0, 0
         for path in angelo_files(directory):

@@ -249,8 +249,11 @@ exact key: None until the link numbers its saves); ``blend_identity`` (every rep
 (``export_snapshot.identity``: device, inode, size, modification time in nanoseconds), which tells every save apart,
 two saves at the same scene version and saves in other runs too; ``saved_at`` (every report) is the wall time it was written, since the link's versions restart
 with each launch: a report from an earlier run is older than any save of this one. The asset the write-back wrote is read from a private copy made when that write-back finished, so the next
-write-back over it never changes what is compared. The child opens the saved .blend and writes nothing when that file
-is no longer the one saved (its identity changed: a newer save's preflight follows). So a report whose
+write-back over it never changes what is compared. The saved .blend's descriptor-origin witness reaches the runner
+unchanged and is settled on that thread, so a coarse-volume step never blocks the UI or substitutes a later path stat.
+The child requires the native identity of the file Blender actually loaded (``_bpy._angelo_saved.read_file``) and the
+current path identity to match that save before reporting or exporting. Missing descriptor evidence or either mismatch
+writes nothing: a restored path cannot vouch for a different loaded scene. So a report whose
 ``scene_version`` is older than a save's is not that save's report: it is still running or covered by a newer one.
 
 For agents and apps
@@ -347,10 +350,28 @@ Everything else                        none                none                n
 The read-backs grow with the scene (they are imports); both run in a background Angelo, never on the path the agent
 or the engine waits for, never in the live web preview and never on the everyday path.
 
-The copy a read-back reads (``export_snapshot.take``, on the main thread once the file is written) is an APFS clone:
-0.11 ms for a 58.5 MB file and 0.14 ms for 3.8 MB (median of 15, Mac 2 M5 Max under the maintainer's load, so
-contended). Where the system has no clone (Windows, other volumes) it is a plain copy: 12.5 ms for 58.5 MB, 1.0 ms
-for 3.8 MB on the same machine.
+The copy a read-back reads (``export_snapshot.take``, on the main thread once the file is written) is an APFS clone
+on macOS: 0.11 ms for a 58.5 MB file and 0.14 ms for 3.8 MB (median of 15, Mac 2 M5 Max under the maintainer's load,
+so contended); a plain copy there took 12.5 ms and 1.0 ms. On Windows it is the system's own copy (``CopyFile2``),
+which clones the blocks on ReFS and Dev Drive volumes; elsewhere ``shutil.copyfile``. Measured with
+``bench_export_snapshot.py`` on 2026-11-04 on a GCP c2-standard-60 (Windows Server 2022, NTFS on a 300 GB pd-ssd:
+network-attached block storage, slower than the local SSD most people have, so the times are an upper estimate),
+files just written as an export leaves them, median of 5 in alternating order; ``take`` with 1.0.9's module
+(``shutil.copyfile``) between two runs with this one (``CopyFile2``), all three on one boot:
+
+=========  ==========================  =========================  ==========================
+File       1.0.9's take                take now (two runs)        A hard link (for scale)
+=========  ==========================  =========================  ==========================
+1 MB       6.3 ms                      6.1 and 6.6 ms             0.2 ms
+10 MB      14.0 ms                     10.8 and 10.8 ms           0.2 ms
+50 MB      37.3 ms                     24.4 and 24.3 ms           0.2 ms
+200 MB     124.6 ms                    72.1 and 71.7 ms           0.2 ms
+500 MB     294.6 ms                    160.9 and 161.7 ms         0.3 ms
+=========  ==========================  =========================  ==========================
+
+The production-size scene above writes a 58.5 MB .glb. The copy stays on the main thread: a copy in the background
+would race the next export, which Windows cannot publish over a file that is open (module docstring of
+``export_snapshot``); a hard link is free but shares later in-place writes, so it is no snapshot.
 
 **Tool results** (``engine_findings``), compact JSON bytes of the check's result for each target, the full findings
 with the earlier reading note against the grouped result, on scenes the preflight was never developed on: two Rigify
@@ -390,7 +411,9 @@ Limits
 * No rule changes an engine's import settings or project files: Angelo never edits ``project.godot``, ``.uproject``,
   ``Packages/manifest.json`` or ``.import`` and ``.meta`` files.
 * The link child's check that the .blend is still the one saved compares its identity (device, inode, size,
-  modification time). On a volume with coarse modification times (FAT and exFAT 2 s, HFS+ 1 s, some network
-  shares), a second save of the same size within one tick keeps the identity, so that child can describe the newer
-  file under the earlier save's ``save_key``; the newer save's own report follows. Hashing the .blend at save time
-  would close it, at the cost of main-thread work on every save.
+  modification time): the stat taken when the save was made, settled on the preflight's own thread once the
+  change clock has passed its stamp (``export_snapshot.settled_identity``, ``checkpoint_policy.rst`` "Differences
+  and limits"), since on a volume with coarse times (FAT and exFAT, HFS+, a network share) Blender's main thread
+  cannot wait out that step. A later same-size save then always changes it; one made inside the step of the
+  stamp itself, before the settle, keeps it, so that child can describe the newer file under the earlier save's
+  ``save_key``, and the newer save's own report follows.

@@ -14,6 +14,8 @@ Pinned, each across both sides at once (the lanes' own tests fake the other side
   a new one, and neither key reaches the worker (U13).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import threading

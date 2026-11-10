@@ -18,7 +18,7 @@ Results are compact English facts, never a path (doc/angelo/engine_link.rst, "Th
 
 STATUS, EDIT = "angelo_engine_link_status", "angelo_engine_link"
 ACTIONS = ("OPEN", "PUSH", "SAVE", "CLOSE")   # Enum values in Blender's identifier style.
-ENGINES = ("GODOT", "UNITY", "UNREAL")
+ENGINES = ("GODOT", "UNITY", "UNREAL", "WEB")   # WEB: a Three.js page through its dev server.
 MAX_ASSET, MAX_PROJECT = 1024, 200
 
 ENGINE_LINK_TOOLS = [
@@ -26,14 +26,14 @@ ENGINE_LINK_TOOLS = [
      "description": (
          "Read-only: the game engine live link the person turned on: engines running, connected editors, the linked "
          "asset, what was last pushed live and saved (and when), and each editor's acknowledgement (previewed, "
-         "reimported). Never turns the link on."),
+         "reimported). Never turns the link on. A linked Three.js page: angelo_view image WEB shows that page."),
      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
      "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}},
     {"name": EDIT,
      "description": (
          "Act on the engine link the person turned on; never turns it on. OPEN asks the person, on the card an "
-         "engine's Edit in Angelo shows, to open asset (as the engine names it, res://... or Assets/..., or its file "
-         "name) from a connected editor; engine and project pick one when several match. PUSH, SAVE and CLOSE act "
+         "engine's Edit in Angelo shows, to open asset (as the engine names it, res://..., Assets/... or a web "
+         "project's public/....glb, or its file name) from a connected editor; engine and project pick one when several match. PUSH, SAVE and CLOSE act "
          "on the linked asset, approved on a card: PUSH sends the live update now; SAVE saves it for the engine to "
          "re-import; CLOSE ends the link, the file stays open. PUSH and SAVE wait briefly for the editors' acknowledgement."),
      "inputSchema": {"type": "object", "properties": {

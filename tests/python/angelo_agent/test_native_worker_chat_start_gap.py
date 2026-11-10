@@ -9,6 +9,8 @@ started: it runs, and its result says what it changed, never that nothing ran. A
 stops it. Deterministic: each revocation is applied at an exact step, with the chat's real classes. No Blender.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

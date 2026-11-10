@@ -14,6 +14,8 @@ nothing merged on any timeout or death, and always releases; the worker's lease 
 answered on its reader thread; no credential or connections folder reaches a worker.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import queue
 import shutil
@@ -409,7 +411,7 @@ class MergeTests(Base):
         self.assertEqual(worker.ops(), ["chat.hold", "part.lease", "part.unlease", "chat.release"])
 
     def test_the_lead_merges_only_inside_the_guard_and_a_refusal_merges_nothing(self):
-        lead = SimpleNamespace(state={"id": "lead"})
+        lead, part = SimpleNamespace(state={"id": "lead"}), Path("/p/1.blend")
         events, refused = [], RefusalError("held", code="WRITER_BUSY")
 
         class Guard:
@@ -423,8 +425,8 @@ class MergeTests(Base):
             def __exit__(self, *exc):
                 events.append("released")
         with mock.patch.object(worker_sessions, "_started", {"lead": ["w1"]}), \
-                mock.patch.object(worker_sessions, "_parts", {"w1": (1, "Sofa", Path("/p/1.blend"))}), \
-                mock.patch.object(worker_sessions, "parts_of", lambda c: {1: (None, Path("/p/1.blend"))}), \
+                mock.patch.object(worker_sessions, "_parts", {"w1": (1, "Sofa", part)}), \
+                mock.patch.object(worker_sessions, "parts_of", lambda c: {1: (None, part)}), \
                 mock.patch.object(worker_sessions, "layouts_of", lambda c: {}), \
                 mock.patch.object(worker_merge_gate, "guard", Guard), \
                 mock.patch("angelo_agent.parallel_sessions.merging", lambda s: events.append("merging")), \
@@ -432,7 +434,7 @@ class MergeTests(Base):
                 mock.patch("angelo_agent.worker_merge.merge", lambda *a: events.append("merged")):
             with self.assertRaises(RefusalError):
                 worker_sessions._merge(lead, {"parts": [{"worker": 1}]}, None)
-        self.assertEqual(events, ["merging", ("guard", ["w1"], ["/p/1.blend"]), "failed"])
+        self.assertEqual(events, ["merging", ("guard", ["w1"], [str(part)]), "failed"])   # As the guard was given it.
 
     def test_another_read_of_a_live_part_takes_a_lease_and_one_not_granted_reads_nothing(self):
         worker = OpWorker("/p/1.blend", {"part.lease": {"ok": True, "lease": "L"}})

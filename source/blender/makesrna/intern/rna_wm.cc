@@ -1574,6 +1574,18 @@ static int rna_Report_message_length(PointerRNA *ptr)
   return report->len;
 }
 
+static void rna_Report_message_untranslated_get(PointerRNA *ptr, char *value)
+{
+  const Report *report = static_cast<const Report *>(ptr->data);
+  strcpy(value, report->message_untranslated ? report->message_untranslated : "");
+}
+
+static int rna_Report_message_untranslated_length(PointerRNA *ptr)
+{
+  const Report *report = static_cast<const Report *>(ptr->data);
+  return report->message_untranslated ? int(strlen(report->message_untranslated)) : 0;
+}
+
 static void rna_WindowManager_keyconfigs_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
 {
   wmWindowManager *wm = static_cast<wmWindowManager *>(ptr->data);
@@ -2991,6 +3003,18 @@ static void rna_def_report(BlenderRNA *brna)
   RNA_def_property_string_funcs(
       prop, "rna_Report_message_get", "rna_Report_message_length", nullptr);
   RNA_def_property_ui_text(prop, "Message", "Report message text");
+
+  /* Angelo: the message before translation (#Report::message_untranslated). */
+  prop = RNA_def_property(srna, "message_untranslated", PROP_STRING, PROP_NONE);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_string_funcs(prop,
+                                "rna_Report_message_untranslated_get",
+                                "rna_Report_message_untranslated_length",
+                                nullptr);
+  RNA_def_property_ui_text(prop,
+                           "Untranslated Message",
+                           "Report message text before translation, empty when the message was "
+                           "not translated or was translated before it was reported");
 }
 
 static void rna_def_windowmanager(BlenderRNA *brna)

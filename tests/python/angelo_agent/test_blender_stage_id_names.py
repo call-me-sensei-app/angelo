@@ -19,6 +19,10 @@ GUI factory startup with the exact Angelo binary (an Outliner must have drawn th
 paid request. Writes stage-id-names.json in ANGELO_QA_DIR.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import contextlib
 import json
 import os
@@ -93,8 +97,8 @@ def run(controller, label, arguments):
 def private_free(result):
     """No staged private name reaches the model: object copies, stage containers, or a suffixed World.
 
-    ``orphan_data`` names the replaced live World ("World.001") on purpose: data left without users."""
-    text = json.dumps({key: value for key, value in result.items() if key not in ("recovery", "orphan_data")},
+    ``orphan_data`` never names it either: the commit frees the World it replaced (commit_orphans)."""
+    text = json.dumps({key: value for key, value in result.items() if key != "recovery"},
                       default=str)
     return "__angelo_" not in text and "World.001" not in text
 
@@ -148,12 +152,19 @@ def castle(controller):
     check("c1_result_names_no_private_copy", private_free(first))
     deleted = [row["object"] for row in first["operation_results"] if row["kind"] == "object_delete"]
     check("c1_deleted_rows_name_the_objects", deleted == ["Camera", "Cube", "Light"])
+    # The deleted objects' data stays without users, as Blender's delete leaves it; the World the commit replaced
+    # with its edited copy is freed (commit_orphans), and Undo reads it back from the step before the commit.
     check("c1_the_result_names_the_data_left_without_users",
-          (first.get("orphan_data") or {}).get("names") == ["Camera", "Cube", "Light", "World.001"])
-    # By design the replaced World stays as orphan data until the file is saved (program_identities._adopt_names).
+          (first.get("orphan_data") or {}).get("names") == ["Camera", "Cube", "Light"])
     orphans = [item for item in bpy.data.worlds if item.users == 0]
     REPORT["orphan_worlds"] = [item.name for item in orphans]
-    check("c1_the_only_orphan_world_is_the_replaced_original", [item.session_uid for item in orphans] == [world_uid])
+    check("c1_the_replaced_world_is_freed", not orphans and world_uid not in {item.session_uid for item in bpy.data.worlds})
+    undo()
+    check("c1_undo_gives_the_replaced_world_back", window().scene.world is not None
+          and window().scene.world.name == "World" and len(bpy.data.worlds) == 1)
+    redo()
+    check("c1_redo_gives_the_edited_world_back", window().scene.world is not None
+          and window().scene.world.name == "World" and not [item for item in bpy.data.worlds if item.users == 0])
     second = run(controller, "c1_keep_and_cone", program([
         op("create_primitive", name="Castle Keep", alias="keep", primitive="CUBE", location=[0, 6, 12.5]),
         op("create_primitive", name="Castle Wall West", alias="west", primitive="CUBE", location=[-20, 0, 4.5]),

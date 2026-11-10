@@ -14,6 +14,10 @@ A real window and simulated input; fixture items (a model, two images; no provid
 Run through ``run_native_suites.py --gui --include test_blender_studio_item_menu`` on a build with the native drag.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import json
 import os
 import sys

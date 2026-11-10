@@ -7,6 +7,8 @@ Dependency-free: scripted stand-in runtimes, no process, account or network.
 The measured results used here are invented test data, not benchmark results.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import copy
 import json
 import sys

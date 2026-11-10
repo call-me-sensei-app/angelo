@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
 #include "CLG_log.h"
+#include "MEM_lifetime.hh"
 
 #include "BLI_array_utils.hh"
 #include "BLI_assert.h"
@@ -147,6 +148,38 @@ Attribute::SingleData Attribute::SingleData::from_default_value(const CPPType &t
   return from_value(default_value_for_type(type));
 }
 
+void Attribute::invalidate_data() const
+{
+  if (!mem_lifetime::has_scope(storage_runtime_)) {
+    return;
+  }
+  const CPPType &type = attribute_type_to_cpp_type(type_);
+  if (auto *array = std::get_if<ArrayData>(&data_)) {
+    mem_lifetime::invalidate_range(
+        array->data, type.size * size_t(array->size), storage_runtime_, true);
+  }
+  else {
+    mem_lifetime::invalidate_range(
+        std::get<SingleData>(data_).value, type.size, storage_runtime_, true);
+  }
+}
+
+Attribute::~Attribute()
+{
+  /* Attributes keep their C++ allocator; descriptor views observe this actual
+   * destructor, independently of their owner's current storage association. */
+  if (mem_lifetime::has_scope(this)) {
+    mem_lifetime::invalidate(this, sizeof(*this));
+  }
+  this->invalidate_data();
+}
+
+void Attribute::assign_data(DataVariant &&data)
+{
+  this->invalidate_data();
+  data_ = std::move(data);
+}
+
 Attribute::DataVariant &Attribute::data_for_write()
 {
   if (auto *data = std::get_if<Attribute::ArrayData>(&data_)) {
@@ -162,7 +195,7 @@ Attribute::DataVariant &Attribute::data_for_write()
     ArrayData new_data = ArrayData::from_uninitialized(type, data->size);
     array_utils::copy(GVArray::from_span({type, data->data, data->size}),
                       GMutableSpan(type, new_data.data, data->size));
-    *data = std::move(new_data);
+    this->assign_data(std::move(new_data));
   }
   else if (auto *data = std::get_if<Attribute::SingleData>(&data_)) {
     if (data->sharing_info->is_mutable()) {
@@ -170,7 +203,7 @@ Attribute::DataVariant &Attribute::data_for_write()
       return data_;
     }
     const CPPType &type = attribute_type_to_cpp_type(type_);
-    *data = SingleData::from_value(GPointer(type, data->value));
+    this->assign_data(SingleData::from_value(GPointer(type, data->value)));
   }
   return data_;
 }
@@ -190,7 +223,9 @@ AttributeStorage::AttributeStorage(const AttributeStorage &other)
   this->runtime = MEM_new<AttributeStorageRuntime>(__func__);
   this->runtime->attributes.reserve(other.runtime->attributes.size());
   for (const Attribute &attribute : other) {
-    this->runtime->attributes.add_new(std::make_unique<Attribute>(attribute));
+    auto copy = std::make_unique<Attribute>(attribute);
+    copy->storage_runtime_ = this->runtime;
+    this->runtime->attributes.add_new(std::move(copy));
   }
 }
 
@@ -209,6 +244,10 @@ AttributeStorage::AttributeStorage(AttributeStorage &&other)
   this->dna_attributes = nullptr;
   this->dna_attributes_num = 0;
   this->runtime = MEM_new<AttributeStorageRuntime>(__func__, std::move(*other.runtime));
+  for (Attribute &attr : *this) {
+    attr.invalidate_data();
+    attr.storage_runtime_ = this->runtime;
+  }
 }
 
 AttributeStorage &AttributeStorage::operator=(AttributeStorage &&other)
@@ -278,6 +317,7 @@ Attribute &AttributeStorage::add(std::string name,
   attribute.domain_ = domain;
   attribute.type_ = data_type;
   attribute.data_ = std::move(data);
+  attribute.storage_runtime_ = this->runtime;
   this->runtime->attributes.add_new(std::move(ptr));
   return attribute;
 }
@@ -559,6 +599,7 @@ void AttributeStorage::blend_read(BlendDataReader &reader)
     attribute->domain_ = *domain;
     attribute->type_ = AttrType(dna_attr.data_type);
     attribute->data_ = std::move(*data);
+    attribute->storage_runtime_ = this->runtime;
 
     if (!this->runtime->attributes.add(std::move(attribute))) {
       CLOG_ERROR(&LOG, "Ignoring attribute with duplicate name: \"%s\"", dna_attr.name);

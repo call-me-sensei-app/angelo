@@ -25,6 +25,7 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_listbase.h"
+#include "BLI_checkpoint_budget.hh"
 #include "BLI_map.hh"
 #include "BLI_math_vector.h"
 #include "BLI_pool.hh"
@@ -908,6 +909,7 @@ BMLogSnapshotRestore *BM_log_snapshot_restore_prepare_bounded(
   }
   const size_t charge = 65536 + count * 512 + entries_count * (sizeof(BMLogReplayEntry) * 4 + 512);
   if (used > limit || charge > limit - used) {
+    blender::checkpoint_budget_refused();
     bm_log_error_set(r_error, "History replay exceeds finite preallocation admission"); return nullptr;
   }
   used += charge;

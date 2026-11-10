@@ -56,11 +56,13 @@ def main():
     from angelo_agent.connections import ConnectionStore
     from angelo_agent.studio_enhance import check_native
     from eval_live_agent import isolated_connection
+    import provider_isolation as isolation
     labels = json.loads(Path(args.labels).read_text())["sheets"]
     work = Path(tempfile.mkdtemp(prefix="angelo-parts-check-"))
     store_dir = work / "connections"
     source = args.source_connections_dir or str(Path.home() / "Library/Application Support/Angelo Agent Test/connections")
-    isolated_connection(source, args.connection_id, store_dir, codex_home=args.codex_home)
+    # Never the person's own sign-in, and only a profile signed in to its expected account (provider_accounts).
+    isolation.connection_opt_in(isolated_connection(source, args.connection_id, store_dir, codex_home=args.codex_home))
     record = ConnectionStore(store_dir).records[args.connection_id]
     settings = {"codex_path": args.codex, "claude_path": args.claude, "model": record.get("model") or "",
                 "reuse_codex_login": record["reuse_native"], "reasoning": "low", "auth_directory": str(store_dir),

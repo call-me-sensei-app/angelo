@@ -19,14 +19,17 @@ import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
 from .input_policy import modal_options
-from . import canvas_controls, canvas_rtl, canvas_wrap, chat_card_draw, chat_cards, chat_composer, chat_welcome, text_layout
-from . import chat_rows  # Agent progress rows, work groups and host notices.
-from . import chat_blocks, chat_guard, chat_notices, chat_replies, chat_scrollbar, live_windows, marble_draw, scroll_input, ui_tokens
+from . import canvas_controls, canvas_rtl, canvas_wrap, chat_card_draw, chat_cards, chat_composer, chat_goal, chat_welcome, text_layout
+from . import approval_wait, chat_rows, chat_blocks, chat_history, chat_guard, chat_notices, review_again, chat_replies, chat_scrollbar, live_windows, marble_draw, scroll_input, ui_tokens
+from . import composer_input, composer_scroll  # The composer's keys, pointer and own scroll.
+from . import chat_pending, chat_start_states  # Pending messages; progress rows, work groups, notices.
+from . import canvas_focus, chat_key_arming, ui_tokens as tk
 from .ui_text import iface_, plural_
 from .chat_changes import change_counts, file_counts
 from .chat_titles import tool_title  # Re-exported: console and ui read titles through this module.
 from .chat_hit_testing import clip_rect, clipped_hits, release_active
 from .chat_drop import defer_console_drop  # Re-exported for window fixtures.
+from .chat_input_blocked import clear_blocked_notice, note_blocked_click, over_overlay  # The modal calls them.
 from .chat_composer import cursor_position, set_draft  # Re-exported: drop, quick connect and fixtures use them.
 
 _handler = None
@@ -44,14 +47,10 @@ _errors = {}   # area pointer -> its latest draw's failures (chat_guard), so one
 draw_count = 0
 draw_seconds = 0.0  # The last whole draw's time: marble_host keeps its redraws to a share of the main thread.
 
-BG = (0.094, 0.094, 0.094, 1)
-CARD = (0.205, 0.205, 0.205, 1)
-USER = (0.185, 0.185, 0.185, 1)
-TEXT = (0.95, 0.95, 0.95, 1)
-MUTED = (0.63, 0.63, 0.63, 1)
-LINE = (0.245, 0.245, 0.245, 1)
-POPOVER = (0.165, 0.165, 0.165, 1)
-BLUE = ui_tokens.TEAL  # Effort, Fast and progress accents: the brand teal (the name stays for its callers).
+# Colours are ui_tokens roles read as drawn (``themed``); old names forward for chat_guard and flow_menu.
+TOKEN_NAMES = {"BG": "CANVAS", "CARD": "RAISED", "USER": "BUBBLE", "TEXT": "TEXT", "MUTED": "MUTED",
+               "LINE": "HIGHLIGHT", "POPOVER": "MENU", "BLUE": "TEAL"}
+__getattr__ = tk.forward(TOKEN_NAMES, __name__)
 
 
 def shape(x, y, width, height, color, radius=0):
@@ -97,7 +96,7 @@ def measure(value, size=14, font=None, scale=None, shaped=True):
     return blf.dimensions(font, canvas_rtl.visual(value) if shaped else value)[0] / scale
 
 
-def text(value, x, y, size=14, color=TEXT, font=None, shaped=True):
+def text(value, x, y, size=14, color=None, font=None, shaped=True):
     font, scale = _font if font is None else font, _scale
     value = canvas_rtl.visual(value) if shaped else value
     width = measure(value, size, font, shaped=False) if canvas_rtl.mirrored() else 0  # Already shaped above.
@@ -105,7 +104,7 @@ def text(value, x, y, size=14, color=TEXT, font=None, shaped=True):
     with canvas_rtl.upright(x, width) as x, gpu.matrix.push_pop():   # Popped even when drawing raises.
         gpu.matrix.scale((1 / scale, 1 / scale))
         blf.position(font, x * scale, y * scale, 0)
-        blf.color(font, *color)
+        blf.color(font, *(tk.TEXT if color is None else color))
         blf.draw(font, value)
 
 
@@ -137,7 +136,8 @@ def inside(rect, x, y):
     return rect[0] <= x <= rect[0] + rect[2] and rect[1] <= y <= rect[1] + rect[3]
 
 
-def stroke(x1, y1, x2, y2, color=MUTED, thickness=1.2):
+def stroke(x1, y1, x2, y2, color=None, thickness=1.2):
+    color = tk.MUTED if color is None else color
     length = math.hypot(x2 - x1, y2 - y1)
     if not length:
         return
@@ -151,14 +151,15 @@ def stroke(x1, y1, x2, y2, color=MUTED, thickness=1.2):
     batch.draw(_shader)
 
 
-def icon(name, x, y, color=MUTED):
+def icon(name, x, y, color=None):
+    color = tk.MUTED if color is None else color
     if name == "plus":
         stroke(x - 5, y, x + 5, y, color, 1.5)
         stroke(x, y - 5, x, y + 5, color, 1.5)
     elif name in {"mic", "approval"}:
         if name == "mic":
             shape(x - 3, y - 1, 6, 10, color, 3)
-            shape(x - 1.7, y + 0.2, 3.4, 7.5, CARD, 1.7)
+            shape(x - 1.7, y + 0.2, 3.4, 7.5, tk.RAISED, 1.7)
             stroke(x - 5, y + 1, x - 5, y - 2, color)
             stroke(x - 5, y - 2, x - 2, y - 5, color)
             stroke(x - 2, y - 5, x + 2, y - 5, color)
@@ -251,9 +252,12 @@ def draw_popover(state, controller, width, height):
         from . import chat_add_menu, chosen_tools_host
         target = chosen_tools_host.fit_target(ui.main_window())
         return chat_add_menu.draw(_this_module(), state, controller, width, height, chosen_tools_host.shown_name(target))
-    if kind == "usage":
+    if kind in ("usage", "goal"):   # A card its own module draws (chat_usage; chat_goal, goal_mode.rst).
         from . import chat_usage
-        return chat_usage.draw(_this_module(), state, controller, width, height)
+        return (chat_usage if kind == "usage" else chat_goal).draw(_this_module(), state, controller, width, height)
+    if kind == "conversations":   # The header title's chats list (conversations_popover).
+        from . import conversations_popover
+        return conversations_popover.draw(_this_module(), state, controller, width, height)
     options = clean_options(controller.state.get("options"))
     model = selected_model(controller)
     fast_supported = supports_fast(model)
@@ -272,8 +276,8 @@ def draw_popover(state, controller, width, height):
     popup["scroll"] = geometry.get("scroll", 0)
     x, y, w, h = geometry["rect"]
     state["popup_rect"] = geometry["rect"]
-    shape(x, y, w, h, LINE, 15)
-    shape(x + 1, y + 1, w - 2, h - 2, POPOVER, 14)
+    shape(x, y, w, h, tk.HIGHLIGHT, 15)
+    shape(x + 1, y + 1, w - 2, h - 2, tk.MENU, 14)
     old_scissor = gpu.state.scissor_get()
     gpu.state.scissor_test_set(True)
     gpu.state.scissor_set(*_scissor(x + 1, y + 1, w - 2, h - 2))
@@ -284,23 +288,23 @@ def draw_popover(state, controller, width, height):
         if visible:
             state["popup_hits"].append((visible, action, value))
 
-    def centered(value, cx, baseline, size=13, color=TEXT):
+    def centered(value, cx, baseline, size=13, color=None):
         text(value, cx - measure(value, size) / 2, baseline, size, color)
 
     def hover(rect, action, value=None):
         if popup.get("hover") == (action, value):
-            shape(*rect, LINE, 10)
+            shape(*rect, tk.HIGHLIGHT, 10)
 
     busy_height = geometry["busy_height"]
     if kind == "models":
-        text(iface_("Select model"), x + 12, y + h - 22, 13, MUTED)
+        text(iface_("Select model"), x + 12, y + h - 22, 13, tk.MUTED)
         if busy_height:
-            text(iface_("Applies to your next message"), x + 12, y + h - 44, 11, MUTED)
+            text(iface_("Applies to your next message"), x + 12, y + h - 44, 11, tk.MUTED)
         popup["rows"] = rows
         sx, sy, sw, sh = search_rect = geometry["search_rect"]
-        shape(sx, sy, sw, sh, BG, 7)
+        shape(sx, sy, sw, sh, tk.CANVAS, 7)
         query = popup.get("query", "")
-        text(elide(query or iface_("Search models or providers"), sw - 18, 12), sx + 9, sy + 9, 12, TEXT if query else MUTED)
+        text(elide(query or iface_("Search models or providers"), sw - 18, 12), sx + 9, sy + 9, 12, tk.TEXT if query else tk.MUTED)
         hit(search_rect, "popup_search")
         lx, ly, lw, lh = geometry["list_rect"]
         gpu.state.scissor_set(*_scissor(lx, ly, lw, lh))
@@ -311,21 +315,21 @@ def draw_popover(state, controller, width, height):
             if row["kind"] == "provider":
                 action, value = "popup_group", row["value"]
                 hover(rect, action, value)
-                icon("chevron", rx + 11, ry + 14, MUTED)
-                text(elide(row["name"], rw - 60, 12), rx + 25, ry + 9, 12, MUTED)
-                text(str(row["count"]), rx + rw - 24, ry + 9, 11, MUTED)
+                icon("chevron", rx + 11, ry + 14, tk.MUTED)
+                text(elide(row["name"], rw - 60, 12), rx + 25, ry + 9, 12, tk.MUTED)
+                text(str(row["count"]), rx + rw - 24, ry + 9, 11, tk.MUTED)
                 bottom, top = max(ly, ry), min(ly + lh, ry + rh)
                 hit((rx, bottom, rw, top - bottom), action, value)
                 continue
             action, value = "popup_select_model", row["value"]
             if popup.get("hover") == (action, value) or (popup.get("keyboard") and popup.get("cursor") == i):
-                shape(rx, ry + 1, rw, rh - 2, LINE, 10)
+                shape(rx, ry + 1, rw, rh - 2, tk.HIGHLIGHT, 10)
             baseline = ry + rh - 22 if row["subtitle"] else ry + 9
             text(elide(row["name"], rw - 40, 13), rx + 8, baseline, 13)
             if row["subtitle"]:
-                text(elide(row["subtitle"], rw - 20, 12), rx + 8, baseline - 18, 12, MUTED)
+                text(elide(row["subtitle"], rw - 20, 12), rx + 8, baseline - 18, 12, tk.MUTED)
             if row["selected"]:
-                icon("check", rx + rw - 15, baseline + 5, TEXT)
+                icon("check", rx + rw - 15, baseline + 5, tk.TEXT)
             bottom, top = max(ly, ry), min(ly + lh, ry + rh)
             if row["kind"] != "empty":
                 hit((rx, bottom, rw, top - bottom), action, value)
@@ -333,40 +337,40 @@ def draw_popover(state, controller, width, height):
         if geometry["max_scroll"]:
             thumb_h = max(22, lh * lh / geometry["content_height"])
             thumb_y = ly + lh - thumb_h - (lh - thumb_h) * geometry["scroll"] / geometry["max_scroll"]
-            shape(x + w - 4, thumb_y, 2, thumb_h, MUTED, 1)
+            shape(x + w - 4, thumb_y, 2, thumb_h, tk.MUTED, 1)
         footer, pad = (x + 5, y + 3 + FOOTER_PAD, w - 10, 26), FOOTER_PAD   # Room under the last row, as above.
         hover(footer, "popup_refresh")
-        icon("reset", x + 17, y + 16 + pad, MUTED)
-        text(iface_("Refreshing…") if loading else iface_("Refresh models"), x + 30, y + 11 + pad, 12, MUTED)
+        icon("reset", x + 17, y + 16 + pad, tk.MUTED)
+        text(iface_("Refreshing…") if loading else iface_("Refresh models"), x + 30, y + 11 + pad, 12, tk.MUTED)
         hit(footer, "popup_refresh")
         if claude:
             footer = (x + 5, y + 31 + pad, w - 10, 26)
             hover(footer, "popup_custom_model")
-            text(iface_("Enter native model ID…"), x + 13, y + 40 + pad, 12, MUTED)
+            text(iface_("Enter native model ID…"), x + 13, y + 40 + pad, 12, tk.MUTED)
             hit(footer, "popup_custom_model")
         if notice:
             bottom = y + 35 + pad + (28 if claude else 0)
             for i, (line, _) in enumerate(wrap(str(notice), w - 24, 11, _font)[:2]):
-                text(line, x + 12, bottom + 16 - i * 14, 11, MUTED)
+                text(line, x + 12, bottom + 16 - i * 14, 11, tk.MUTED)
     elif kind == "controls":
         choices = effort_choices(model)
         current = effective_effort(model, options["effort"])
         title = effort_name(current) if choices else iface_("Reasoning")
-        centered(title, x + w / 2, y + h - 26, 14, BLUE if choices else MUTED)
+        centered(title, x + w / 2, y + h - 26, 14, tk.TEAL if choices else tk.MUTED)
         # Lightning is the Fast toggle. Neither effort nor reset enables it.
         if fast_supported:
-            icon("fast", x + 22, y + h - 20, BLUE if options["fast"] else MUTED)
+            icon("fast", x + 22, y + h - 20, tk.TEAL if options["fast"] else tk.MUTED)
             hit((x + 8, y + h - 34, 28, 28), "popup_fast")
-        icon("reset", x + w - 22, y + h - 20, MUTED)
+        icon("reset", x + w - 22, y + h - 20, tk.MUTED)
         if choices:
             hit((x + w - 36, y + h - 34, 28, 28), "popup_reset")
         label = elide(model_name(model) if model else options["model"] or iface_("Select model"), w - 50, 12)
         label_width = measure(label, 12)
-        text(label, x + (w - label_width - 10) / 2, y + h - 45, 12, MUTED)
-        icon("next", x + (w + label_width) / 2 + 3, y + h - 41, MUTED)
+        text(label, x + (w - label_width - 10) / 2, y + h - 45, 12, tk.MUTED)
+        icon("next", x + (w + label_width) / 2 + 3, y + h - 41, tk.MUTED)
         hit((x + 10, y + h - 56, w - 20, 24), "popup_models")
         if busy_height:
-            centered(iface_("Applies to your next message"), x + w / 2, y + h - 67, 11, MUTED)
+            centered(iface_("Applies to your next message"), x + w / 2, y + h - 67, 11, tk.MUTED)
         track = geometry["slider"]
         tx, ty, tw, th = track
         popup["animated"] = False
@@ -379,59 +383,59 @@ def draw_popover(state, controller, width, height):
             popup.update(slider_ratio=ratio, slider_time=now, animated=not reduce_motion)
             slider = slider_geometry(track, choices, current, ratio)
             popup["slider_draw"] = slider
-            shape(*track, LINE, th / 2)
-            shape(*slider["fill"], BLUE, th / 2)
+            shape(*track, tk.HIGHLIGHT, th / 2)
+            shape(*slider["fill"], tk.TEAL, th / 2)
             start, length = tx + 14, tw - 28
             for i, _ in enumerate(choices):
                 point = start + (i / (len(choices) - 1) if len(choices) > 1 else 0.5) * length
-                color = (0.8, 0.89, 1, 0.8) if point < slider["thumb_x"] else MUTED
+                color = tk.alpha(tk.ACCENT_MARK, 0.8) if point < slider["thumb_x"] else tk.MUTED
                 shape(point - 1, ty + th / 2 - 1, 2, 2, color, 1)
             for sx, sy, alpha in sparkles(track, slider["fill"][2], 0 if reduce_motion else now):
-                color = (0.83, 0.91, 1, alpha)
+                color = tk.alpha(tk.ACCENT_MARK, alpha)
                 stroke(sx - 1.2, sy, sx + 1.2, sy, color, 1.1)
                 stroke(sx, sy - 1.2, sx, sy + 1.2, color, 1.1)
-            shape(*slider["thumb"], TEXT, th / 2)
+            shape(*slider["thumb"], tk.TEXT, th / 2)
             hit(track, "popup_slider")
         else:
-            centered(iface_("Managed by this provider"), x + w / 2, ty + 9, 12, MUTED)
+            centered(iface_("Managed by this provider"), x + w / 2, ty + 9, 12, tk.MUTED)
     elif kind == "fast_confirm":
         text(iface_("Enable Fast mode?"), x + 14, y + h - 25, 14)
         explanation = (iface_("Claude Fast uses paid usage credits, not your subscription's included usage. Reasoning effort stays the same.") if claude
                        else iface_("Fast uses your connection's priority tier. Costs or quota usage can be higher. Reasoning effort stays the same."))
         for i, (line, _) in enumerate(wrap(explanation, w - 28, 12, _font)):
-            text(line, x + 14, y + h - 50 - i * 18, 12, MUTED)
+            text(line, x + 14, y + h - 50 - i * 18, 12, tk.MUTED)
         if busy_height:
-            text(iface_("Applies to your next message"), x + 14, y + 54, 11, MUTED)
+            text(iface_("Applies to your next message"), x + 14, y + 54, 11, tk.MUTED)
         button_width = (w - 38) / 2
         cancel = (x + 14, y + 13, button_width, 29)
         confirm = (x + 24 + button_width, y + 13, button_width, 29)
-        shape(*cancel, LINE, 10)
-        shape(*confirm, BLUE, 10)
+        shape(*cancel, tk.HIGHLIGHT, 10)
+        shape(*confirm, tk.TEAL, 10)
         centered(iface_("Cancel"), cancel[0] + button_width / 2, y + 22, 12)
-        centered(iface_("Enable Fast"), confirm[0] + button_width / 2, y + 22, 12)
+        centered(iface_("Enable Fast"), confirm[0] + button_width / 2, y + 22, 12, tk.INK)
         hit(cancel, "popup_cancel_fast")
         hit(confirm, "popup_enable_fast", popup.get("confirm_model"))
     elif kind == "approval":
-        text(iface_("Approvals"), x + 13, y + h - 25, 13, MUTED)
+        text(iface_("Approvals"), x + 13, y + h - 25, 13, tk.MUTED)
         for i, (mode, (name, _)) in enumerate(APPROVALS.items()):
             rect = (x + 5, y + h - 69 - i * 34, w - 10, 32)
             hover(rect, "popup_approval", mode)
             text(elide(iface_(name), w - 50, 13), x + 13, rect[1] + 10, 13)
             if options["approval"] == mode:
-                icon("check", x + w - 21, rect[1] + 15, TEXT)
+                icon("check", x + w - 21, rect[1] + 15, tk.TEXT)
             hit(rect, "popup_approval", mode)
         footer = iface_("Scripts run without asking in Auto.") if controller.always_allow_scripts else iface_("General Python always requires review.")
-        text(elide(footer, w - 26, 11), x + 13, y + 19, 11, MUTED)  # Always allow scripts (Preferences) in an Auto chat.
+        text(elide(footer, w - 26, 11), x + 13, y + 19, 11, tk.MUTED)  # Always allow scripts (Preferences) in an Auto chat.
         if busy_height:
-            text(iface_("Applies to queued / future changes"), x + 13, y + 36, 11, MUTED)
+            text(iface_("Applies to queued / future changes"), x + 13, y + 36, 11, tk.MUTED)
     gpu.state.scissor_set(*old_scissor)
     gpu.state.scissor_test_set(False)
     if kind == "controls" and fast_supported and popup.get("hover") == ("popup_fast", None) and time.monotonic() - popup.get("hover_time", 0) > 0.45:
         hint_y = y + h + 8 if y + h + 48 < height else max(8, y - 48)
         hint_width = min(w, 220)
-        shape(x, hint_y, hint_width, 40, LINE, 10)
+        shape(x, hint_y, hint_width, 40, tk.HIGHLIGHT, 10)
         text(iface_("Fast mode · On") if options["fast"] else iface_("Fast mode · Off"), x + 10, hint_y + 24, 12)
-        text(iface_("Priority tier · may cost more"), x + 10, hint_y + 9, 10, MUTED)
+        text(iface_("Priority tier · may cost more"), x + 10, hint_y + 9, ui_tokens.TYPE_MICRO, tk.MUTED)
         popup["tooltip_shown"] = True
 
 
@@ -442,10 +446,11 @@ def draw():
     area, region = bpy.context.area, bpy.context.region
     if not _enabled or not area or not region or not console.is_chat(area):
         return
-    if marble_frames.reuse(area, region):
-        return
-    with marble_frames.keep(area, region):
-        _draw_chat()
+    with tk.themed():   # Every colour below is the active theme's variant (ui_kit.rst).
+        if marble_frames.reuse(area, region):
+            return
+        with marble_frames.keep(area, region):
+            _draw_chat()
 
 
 def _draw_chat():
@@ -478,8 +483,10 @@ def _draw_chat():
         expanded = state.setdefault("expanded", set())
         line = area.spaces.active.history[-1] if area.spaces.active.history else None
         draft = line.body if line else ""
-        draft_lines = wrap(draft, max(40, width - 56), size, _font, ordered=False)
-        attachment_rows = math.ceil((len(controller.attachments) + len(getattr(controller, "chosen_tools", ()) or ())) / 2)
+        draft_lines = wrap(draft, chat_composer.hint_width(width), size, _font, ordered=False)
+        # The same wrapping for a draft edited between draws (composer_input), at this draw's scale.
+        state["draft_wrap"] = lambda value, w=chat_composer.hint_width(width), s=size, f=_font, k=_scale: _wrap(value, w, s, f, False, k)
+        attachment_rows = chat_composer.attachment_rows(controller)
         geometry = composer_layout(width, shown_rows := chat_composer.composer_rows(draft, draft_lines, controller, width, size, wrap, _font), attachment_rows)
         cx, composer_bottom, cw, composer_height = geometry["rect"]
         # Line spacing follows the reference, but respects native text-size changes.
@@ -488,31 +495,33 @@ def _draw_chat():
         changed_files, written_files, deleted_files = chat_guard.call("The file summary", file_counts, controller.state["messages"], default=(0, 0, 0))
         message_bottom = composer_bottom + composer_height + (66 if changed or changed_files else 28)
         gpu.state.blend_set('ALPHA')
-        shape(0, 0, width, height, BG)
+        shape(0, 0, width, height, tk.CANVAS)
+        scroll_key = chat_history.prepare_scroll(state, _scroll, area, controller.state["id"])
         blocks = chat_blocks.build(controller, ui, expanded, state, width, size, line_height, geometry["bubble_max_width"])
-        blocks = chat_guard.call("The chat's row groups", lambda: marble_draw.with_hero(chat_rows.group_blocks(blocks, expanded, controller.busy), controller), default=blocks)
+        blocks = chat_guard.call("The chat's row groups", lambda: marble_draw.with_hero(chat_history.group_blocks(blocks, expanded, controller.busy, state), controller), default=blocks)
         blocks = chat_guard.checked(list(blocks) + chat_blocks.cards(controller, area, workspace_cards, expanded, state, width,
                                     size, line_height, _flow_wrap, preview_available), width, size, line_height)
         reconnect = chat_welcome.reconnect_height(ui, width, size) if blocks and not ui.connection_available() else 0
-        message_bottom += reconnect  # The reconnect row sits between the transcript and the composer, never over rows.
+        tray = chat_pending.tray_height(controller, width, size, line_height, room := (height - message_bottom) * 0.4)
+        message_bottom += reconnect + tray  # The reconnect row and the pending tray: between transcript and composer.
         total = sum(block[3] for block in blocks)
         from . import chat_usage
-        bar = chat_usage.bar_height(controller, blocks, connected := ui.connection_available())  # The sticky bar's strip.
+        usage_bar = chat_usage.bar_height(controller, blocks, connected := ui.connection_available())
+        bar = usage_bar + chat_history.height(state)
         visible = max(40, height - bar - message_bottom - 20)
         identity = controller.state["id"]
-        scroll = _scroll.get(identity, 0)
-        previous = state.get("content_height", total) if state.get("session") == identity else total
-        if scroll > 0:
-            scroll += total - previous
-        scroll = max(0, min(scroll, max(0, total - visible)))
-        _scroll[identity] = scroll
+        scroll = _scroll.get(scroll_key, 0)
+        scroll = chat_history.scroll(state, blocks, scroll, max(0, total - visible), visible)
+        state["history_visible"] = visible
+        message_viewport = (0, int(message_bottom), width, max(0, height - bar - int(message_bottom)))
+        state["message_viewport"] = message_viewport
+        scroll = approval_wait.place(state, controller, blocks, scroll, visible)
+        scroll = _scroll[scroll_key] = state["history_scroll"] = max(0, min(scroll, max(0, total - visible)))
         state.update(session=identity, content_height=total, max_scroll=max(0, total - visible))
         top = message_bottom + max(total, visible) - scroll
         old_scissor = gpu.state.scissor_get()
         gpu.state.scissor_test_set(True)
         gpu.state.scissor_set(*_scissor(0, int(message_bottom), width, height - bar - int(message_bottom)))
-        message_viewport = (0, int(message_bottom), width, max(0, height - bar - int(message_bottom)))
-        state["message_viewport"] = message_viewport
         saved = chat_guard.saved_state()
         for role, message, rows, block_height, key, bubble_width in blocks:
             bottom = top - block_height
@@ -521,7 +530,7 @@ def _draw_chat():
                 try:   # One row never stops the chat from drawing (chat_guard): it draws plainly, the rest as designed.
                     if role == "user":
                         x = width - 16 - bubble_width
-                        shape(x, bottom + 40, bubble_width, block_height - 40, USER, 18)
+                        shape(x, bottom + 40, bubble_width, block_height - 40, tk.BUBBLE, 18)
                         y = top - line_height - 8
                         for value, _ in rows:
                             text(value.rstrip(), x + 16, y, size)
@@ -529,10 +538,12 @@ def _draw_chat():
                         if message.get("checkpoint"):
                             # Right-aligned by its own translated width: a fixed offset fitted English only and ran
                             # the longer translations to the edge or past it (1.0.8 dogfood, ja/de).
-                            label = iface_("Restore snapshot")
+                            label = iface_("Restore")   # Restores this message's snapshot (Restore Snapshot).
                             label_x, hit = restore_link(width, measure(label, 11))
-                            text(label, label_x, bottom + 15, 11, MUTED)
+                            text(label, label_x, bottom + 15, 11, tk.MUTED)
                             state["hits"].append(((hit[0], bottom + 4, hit[1], 28), "restore", message["checkpoint"]))
+                        elif (caption := chat_pending.steer_caption(message)) is not None:   # Read mid-turn: no Restore.
+                            text(caption, width - 16 - measure(caption, 11), bottom + 15, 11, tk.MUTED)
                     elif role in chat_rows.ROLES:
                         chat_rows.draw(role, message, rows, block_height, key, top, bottom, width, size, line_height, state)
                     elif role in {"native_preview", "native_job", "approval"}:
@@ -541,7 +552,8 @@ def _draw_chat():
                             "line_height": line_height, "band": (message_bottom, height), "draw_image": draw_native_preview})
                     elif role == "flow_approval":
                         from . import flow_chat, studio
-                        ops, _ = flow_chat.approval_layout(message["call"], 16, top, width - 32, _flow_wrap, line_height, message["details"])
+                        ops, _ = flow_chat.approval_layout(message["call"], 16, top, width - 32, _flow_wrap, line_height, message["details"],
+                                                          message.get("note", ""))
                         flow_chat.draw(ops, state["hits"], elide, shape, text, studio.thumbnail)
                     elif role == "approval_plain":
                         chat_guard.draw_approval(state, message["call"], message["approvable"], rows, top, bottom, size,
@@ -554,11 +566,11 @@ def _draw_chat():
                         icon("pencil", 22, top - 15)
                         y = top - line_height
                         for value, offset in rows:
-                            text(value.rstrip(), 40, y, size, MUTED)
+                            text(value.rstrip(), 40, y, size, tk.MUTED)
                             y -= line_height
                         if message.get("restore_checkpoint"):
                             label = iface_("Undo restore")
-                            text(label, 40, bottom + 4, 11, MUTED)
+                            text(label, 40, bottom + 4, 11, tk.MUTED)
                             state["hits"].append(((32, bottom, measure(label, 11) + 16, 24), "restore",
                                                   message["restore_checkpoint"]))
                 except Exception as error:   # noqa: BLE001
@@ -571,17 +583,19 @@ def _draw_chat():
             if (visible := clip_rect(rect, message_viewport)) is not None}
         gpu.state.scissor_set(*old_scissor)
         gpu.state.scissor_test_set(False)
-        if bar:
+        if usage_bar:
             chat_usage.draw_bar_safely(_this_module(), state, controller, width, height, connected)
+        chat_history.draw(_this_module(), state, width, height - usage_bar)
         waiting = not (connected or blocks)  # No account: the bar still navigates (+); its field waits (1.0.5).
         # Connect card, examples or a reconnect row; never Preferences by itself.
         if not blocks:
             chat_welcome.draw_empty(state, ui, width, height - bar, composer_bottom + composer_height + 8, size, connected)
         elif not connected:
-            chat_welcome.draw_reconnect_row(state, ui, width, message_bottom - reconnect + 8, size)
-        if changed or changed_files:
-            chat_card_draw.draw_changes_pill(state, width, composer_bottom + composer_height + 8, changed, changed_files,
-                                             added + written_files, removed + deleted_files)
+            chat_welcome.draw_reconnect_row(state, ui, width, message_bottom - tray - reconnect + 8, size)
+        if tray:   # The person's pending messages, pinned above the composer (chat_pending).
+            chat_pending.draw_tray(controller, state, width, message_bottom - tray, size, line_height, room)
+        chat_card_draw.draw_pills(state, width, composer_bottom + composer_height + 8, height - bar, changed,
+                                  changed_files, added + written_files, removed + deleted_files)
         if not waiting and state.pop("composer_hidden", False):
             state["focus_request"] = state["focused"] = True  # The field takes the keyboard once it can be used.
         if waiting:
@@ -590,7 +604,7 @@ def _draw_chat():
                            composer_height=composer_height, line=line, draft=draft, draft_lines=draft_lines, size=size,
                            line_height=line_height, width=width, attachment_rows=attachment_rows, connected=connected,
                            waiting=waiting)
-        _draw_blocked(state, width, composer_bottom + composer_height + 8)
+        chat_start_states.draw_blocked(sys.modules[__name__], state, width, composer_bottom + composer_height + 8)
         state["geometry"] = geometry
         state["hits"] = clipped_hits(state["hits"], (0, 0, width, height))
         state["hit_region"] = (region.width, region.height)
@@ -619,37 +633,29 @@ def _draw_chat():
         draw_seconds = time.perf_counter() - started
 
 
-def _draw_blocked(state, width, bottom):
-    """The notice for a click another tool held (``chat_start_states.blocked_card``), resting on ``bottom``."""
-    from . import chat_start_states, ui_kit_status
-    tools = chat_start_states.blocked_shown(state.get("blocked"), time.monotonic())
-    state["drawn_blocked"] = tools  # For window fixtures.
-    if not tools:
-        return
-    names = [bpy.app.translations.pgettext_iface(tool, "Operator") for tool in tools]  # Blender's own names.
-    card = chat_start_states.blocked_card(names)
-    inner = max(120, width - 32)
-    height, _ = ui_kit_status.notice(sys.modules[__name__], 16, 0, inner, 1.0, None, False, **card)
-    ui_kit_status.notice(sys.modules[__name__], 16, bottom + height, inner, 1.0, None, True, **card)
-
-
 def dispatch_action(context, controller, action, value):
     from . import console
     from .chat_settings import clean_options
     state = _views.get(context.area.as_pointer(), {})
-    if action == "copy":
+    if action == "history":
+        from . import chat_history
+        chat_history.move(state, value)
+        context.area.tag_redraw()
+    elif action == "copy":
         context.window_manager.clipboard = value
     elif action == "send":
         console.execute(bpy.context)
+    elif action.startswith("pending_"):   # A pending message's control (chat_pending).
+        chat_pending.act(controller, context.space_data, action, value)
     elif action in {"stop", "stop_native_job"}:
         bpy.ops.angelo.stop(session_id=controller.state["id"] if action == "stop" else value)
     elif action == "accept_native_preview":
         bpy.ops.angelo.accept_native_preview('INVOKE_DEFAULT', session_id=value[0], preview_id=value[1])
     elif action == "discard_native_preview":
         bpy.ops.angelo.discard_native_preview(session_id=value[0], preview_id=value[1])
-    elif action == "approve":
+    elif action == "approve":   # A card asked again since its press, or still shielded, takes no click (review_again).
         from .approval_review import approve_current_review
-        if approve_current_review(controller, value, state):
+        if review_again.mark_click(controller, value, state.pop("pressed_generation", None)) and approve_current_review(controller, value, state):
             bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=value, session_id=controller.state["id"])
     elif action == "decline":
         bpy.ops.angelo.decline(call_id=value, session_id=controller.state["id"])   # The card's own chat.
@@ -674,8 +680,8 @@ def dispatch_action(context, controller, action, value):
         show_popover(context, "approval")
     elif action == "attach":   # The + menu: attachments and tools the person chooses (chat_add_menu).
         show_popover(context, "add")
-    elif action == "usage":   # The usage meter's card (chat_usage).
-        show_popover(context, "usage")
+    elif action in ("usage", "goal", "goal_action"):   # The usage meter's card; the goal chip's card or pills (chat_goal).
+        chat_goal.act(controller, value) if action == "goal_action" else show_popover(context, action)
     elif action == "remove_chosen":
         controller.chosen_tools = [c for i, c in enumerate(getattr(controller, "chosen_tools", []) or []) if i != value]
         controller.version += 1
@@ -694,19 +700,20 @@ def dispatch_action(context, controller, action, value):
     elif action == "restore":
         bpy.ops.angelo.restore_checkpoint('INVOKE_DEFAULT', checkpoint_id=value)
     elif action == "open_studio":   # A notice's way to its result (chat_rows.OPEN_LABELS).
-        from . import studio_toggle
-        try:
-            studio_toggle.open_media_studio(value, context.window)
-        except (RuntimeError, ValueError) as error:
-            controller.status = str(error)[:200]
+        from . import studio_toggle   # A failure is said in the chat, idle or not (chat_cards.perform).
+        chat_cards.perform(controller, action, lambda: studio_toggle.open_media_studio(value, context.window))
     elif action == "flow_details":
         expanded = state.setdefault("expanded", set())
         expanded.symmetric_difference_update({("approval", value)})
-    elif action.startswith(("flow_", "job_", "script_")):
+    elif action.startswith(("approval_",)):
         try:
             chat_cards.dispatch(context, controller, state, action, value)
         except (ValueError, OSError, RuntimeError) as error:
             controller.status = str(error)[:200]
+    elif action.startswith(("flow_", "job_", "script_")):
+        chat_cards.perform(controller, action, lambda: chat_cards.dispatch(context, controller, state, action, value))
+    elif action.startswith("notice_"):   # A notice card's own pill (chat_notices).
+        chat_notices.dispatch(context, controller, state, action, value)
     elif action == "url":
         from .markdown_text import safe_url
         if safe_url(value):
@@ -722,9 +729,12 @@ def dispatch_popup(context, controller, state, action, value=None):
     if action.startswith("popup_add_"):
         from . import chat_add_menu
         chat_add_menu.dispatch(context, controller, state, action, value)
-    elif action.startswith("popup_usage_"):
+    elif action.startswith(("popup_usage_", "popup_goal_")):   # The usage card's and the goal card's own.
         from . import chat_usage
-        chat_usage.dispatch(context, controller, state, action, value)
+        (chat_usage if action.startswith("popup_usage_") else chat_goal).dispatch(context, controller, state, action, value)
+    elif action.startswith("popup_conversations_"):
+        from . import conversations_popover
+        conversations_popover.dispatch(context, controller, state, action, value)
     elif action == "popup_models":
         show_popover(context, "models")
     elif action == "popup_select_model":
@@ -803,7 +813,7 @@ def popover_event(context, controller, state, event, x, y):
                 popup["keyboard"] = False
         return True
     if event.type in scroll_input.SCROLL_EVENTS:
-        if popup["kind"] in {"models", "add"} and "layout" in popup:
+        if popup["kind"] in {"models", "add", "conversations"} and "layout" in popup:
             # Measured down from the list's top: the view moving up is a smaller scroll.
             delta = -scroll_input.view_up(event, 58, ui_scale())
             popup["scroll"] = max(0, min(popup["layout"]["max_scroll"], popup["scroll"] + delta))
@@ -847,6 +857,9 @@ def popover_event(context, controller, state, event, x, y):
             row = chat_add_menu.key(popup, event)
             if row is not None:
                 dispatch_popup(context, controller, state, row["action"], row["value"])
+        elif popup["kind"] == "conversations":
+            from . import conversations_popover
+            conversations_popover.key(context, controller, state, event)
         elif popup["kind"] == "models":
             from . import ui
             from .chat_popovers import model_rows
@@ -934,8 +947,9 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
     def release_keyboard(self):
         """No chat holds the keyboard any more: keys go to the editor under the pointer (the draft stays as typed)
         until a click in a composer, or the composer appearing, gives it back."""
-        self.focused_area = None
+        self.focused_area = self.just_sent = None
         for view in _views.values():
+            chat_key_arming.leave(view)
             view["focused"] = False
 
     @_kept_alive
@@ -954,12 +968,13 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         for chat in [a for a in areas if console.is_chat(a) and _views.get(a.as_pointer(), {}).pop("focus_request", False)]:
             self.focused_area, _views[chat.as_pointer()]["focused"] = chat.as_pointer(), True  # The composer appeared.
         self.focused_area = None if any([_views.get(a.as_pointer(), {}).pop("blur_request", False) for a in areas]) else self.focused_area  # A live view took the pointer.
-        from .input_policy import canvas_blocking, edits_field, follows_pointer, moves_focus, overlay_passes
+        from .input_policy import canvas_blocking, edits_field, follows_pointer, moves_focus, overlay_passes, sent_away
         if overlay_passes(event, context.window_manager):
             return {'PASS_THROUGH'}  # Timers, window events and the quit key, even while a picker is open.
         blocking = canvas_blocking(window)
         if blocking:
             self.dragging = False
+            composer_input.end_drag(_views)   # No drag outlives a blocking tool.
             if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
                 note_blocked_click(window, event, blocking)  # Never a silent click: the chat says what holds it.
             return {'PASS_THROUGH'}
@@ -968,6 +983,11 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             return {'PASS_THROUGH'}  # Keys over the welcome or a card are theirs (Tab, Return, Esc, a card's field).
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             self.dragging = False
+            if composer_input.end_drag(_views):   # Every drag ends, wherever the button went up (a bar's too).
+                for chat in (a for a in areas if console.is_chat(a)):
+                    chat.tag_redraw()
+                if self.pending_click is None:   # A pressed button still gets its release.
+                    return {'RUNNING_MODAL'}
         mouse_event = 'MOUSE' in event.type or event.type in {'TRACKPADPAN', 'TRACKPADZOOM', 'EVT_DROP'}
         popup_area = next((a for a in areas if console.is_chat(a) and _views.get(a.as_pointer(), {}).get("popover")), None)
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
@@ -986,7 +1006,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             area = popup_area  # A picker keeps keyboard focus even off hover.
         over_chat = any(console.is_chat(a) and a.x <= event.mouse_x < a.x + a.width and a.y <= event.mouse_y < a.y + a.height
                         for a in areas)
-        if not over_chat and moves_focus(event.type, event.value):
+        if not over_chat and (moves_focus(event.type, event.value) or sent_away(self, event, areas, console.is_chat)):
             self.release_keyboard()  # Orbiting, scrolling or a menu click elsewhere takes keyboard focus there.
         if not over_chat and not popup_area and (follows_pointer(event.type) or moves_focus(event.type, event.value)):
             return {'PASS_THROUGH'}  # Never take view navigation away from the editor under the pointer.
@@ -1013,14 +1033,17 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         if self.session != controller.state["id"]:
             self.session = controller.state["id"]
             self.pending_click = None
+            chat_key_arming.leave(state)   # A key armed in another chat cannot activate this chat's control.
             self.anchor, self.selected_all = None, False
             state["selection"] = None
+            composer_input.adopt(state, self.session)   # Another chat's draft: its own Undo and scroll, none of this one's.
         popup = state.get("popover")
         if popup and (popup["session"] != controller.state["id"] or popup["connection"] != controller.selection_connection_id):
             state.pop("popover", None)
         if state.get("popover"):
             self.pending_click = None
             self.dragging = False
+            composer_input.end_drag(_views)   # A picker opened mid-drag: the drag and its autoscroll end.
             with context.temp_override(window=window, area=area, region=region):
                 popover_event(bpy.context, controller, state, event, x, y)
             if not state.get("popover"):
@@ -1029,23 +1052,18 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             area.tag_redraw()
             return {'RUNNING_MODAL'}
 
-        def point_to_caret():
-            rows = state.get("draft_rows", [])
-            if not rows:
-                return 0
-            value, offset, _ = min(rows, key=lambda row: abs(row[2] - y))
-            size, drawn = state.get("font_size", 14), state.get("text_scale", scale)  # As the composer drew it.
-            plain = canvas_rtl.pointer_x(x, region.width / scale)  # The text field is never mirrored.
-            return offset + chat_composer.column_at(value, plain, size, drawn)
-
+        plain = canvas_rtl.pointer_x(x, region.width / scale)  # The composer's text field is never mirrored.
         if event.type == 'MOUSEMOVE' and self.dragging and area.spaces.active.history:
-            line = area.spaces.active.history[-1]
-            caret = point_to_caret()
-            set_draft(line, line.body, caret)
-            state["selection"] = tuple(sorted((self.anchor, caret)))
+            composer_input.drag(state, area.spaces.active.history[-1], plain, y, area.as_pointer())
             area.tag_redraw()
             return {'RUNNING_MODAL'}
-        if chat_scrollbar.handle(event, state, area, x, y, controller.state["id"], _scroll, scale):  # Bar, wheel, trackpad.
+        if composer_scroll.handle(event, state, area, plain, y, scale):   # The draft's wheel, trackpad and bar.
+            self.pending_click = None
+            if event.type == 'LEFTMOUSE' and event.value == 'PRESS':   # Its bar is the field's: editing goes on.
+                self.focused_area, state["focused"] = area.as_pointer(), True
+            return {'RUNNING_MODAL'}
+        from . import chat_history
+        if chat_scrollbar.handle(event, state, area, x, y, chat_history.scroll_key(area, controller.state["id"]), _scroll, scale):  # Bar, wheel, trackpad.
             self.pending_click = None
             return {'RUNNING_MODAL'}
         if event.type == 'MOUSEMOVE':
@@ -1063,26 +1081,25 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             # Composer input owns its visible surface, not transcript controls
             # that happen to have obsolete geometry beneath it.
             if inside(state.get("composer", (0, 0, 0, 0)), x, y) and area.spaces.active.history:
-                line = area.spaces.active.history[-1]
-                caret = point_to_caret()
-                set_draft(line, line.body, caret)
+                # Caret, word (double-click), paragraph (triple-click) or Shift's extension, on the scrolled rows.
+                caret = composer_input.press(state, area.spaces.active.history[-1], plain, y, time.monotonic(),
+                                             composer_input.double_click_seconds(context), event.shift)
                 self.focused_area = area.as_pointer()
                 state["focused"] = True
                 self.anchor, self.dragging = caret, True
                 self.pending_click = None
-                state["selection"] = None
                 self.selected_all = False
                 area.tag_redraw()
                 return {'RUNNING_MODAL'}
             hits = state.get("hits", []) if state.get("hit_region") == (region.width, region.height) else []
             for rect, action, value in hits:
-                if inside(rect, x, y):
+                if inside(rect, x, y) and canvas_controls.live((rect, action, value)):   # A lapsed shield: no hit.
                     # Activate on RELEASE like an ordinary desktop button. A
                     # popup created on PRESS inherits Blender's held-button
                     # menu gesture and incorrectly closes/selects on release.
                     self.pending_click = (rect, action, value, area.as_pointer())
                     if action == "approve":
-                        state["pressed_approval_review"] = state.get("approval_review")
+                        state["pressed_approval_review"], state["pressed_generation"] = state.get("approval_review"), (value, review_again.drawn(controller, value))
                     canvas_controls.press(area.tag_redraw, state, (rect, action, value))
                     return {'RUNNING_MODAL'}
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE' and self.pending_click:
@@ -1097,13 +1114,20 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
                     self.focused_area, state["focused"] = area.as_pointer(), True
                 area.tag_redraw()
             return {'RUNNING_MODAL'}
-        if event.value != 'PRESS' or not area.spaces.active.history:
+        if (event.value != 'PRESS' and not canvas_controls.releases(event, state)) or not area.spaces.active.history:
             return {'PASS_THROUGH'}
-        activate = canvas_controls.key(event, state, area.tag_redraw)
-        if activate is not None:
-            if activate:
-                with context.temp_override(window=window, area=area, region=region):
-                    dispatch_action(bpy.context, controller, *activate)
+        from .live_target import window_ref
+        held_window = window_ref(window)
+
+        def activate_control(action, value):
+            target = held_window()
+            if target is None:
+                return
+            with context.temp_override(window=target, area=area, region=region):
+                dispatch_action(bpy.context, controller, action, value)
+
+        handled = chat_key_arming.key(event, state, area.tag_redraw, controller, activate_control)
+        if handled is not None:
             return {'RUNNING_MODAL'}
         if event.type == 'ESC':
             # Escape ends editing, as in Blender's own text fields and a chat app's composer: the draft stays as typed
@@ -1112,6 +1136,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             # 3D view typed "z" instead of opening the shading pie (C11, 1.0.6 dogfood).
             self.selected_all, self.anchor, self.dragging = False, None, False
             state["selection"] = None
+            composer_input.end_drag(_views)   # A drag-select's autoscroll stops with it.
             self.release_keyboard()
             area.tag_redraw()
             return {'RUNNING_MODAL'}
@@ -1119,95 +1144,19 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             # The field waits (Tab, Return pick a connect option); its Console keymap must not type in (edits_field).
             return {'RUNNING_MODAL'} if over_chat and edits_field(event) else {'PASS_THROUGH'}
         line = area.spaces.active.history[-1]
-        value, caret = line.body, cursor_position(line)
-        selected = (0, len(value)) if self.selected_all else state.get("selection")
-        if selected and selected[0] == selected[1]:
-            selected = None
-        modifier = event.ctrl or event.oskey
-        insert = None
-        if modifier and event.type == 'A':
-            self.selected_all = True
-            state["selection"] = (0, len(value))
-        elif modifier and event.type in {'C', 'X'}:
-            if selected:
-                context.window_manager.clipboard = value[selected[0]:selected[1]]
-                if event.type == 'X':
-                    set_draft(line, value[:selected[0]] + value[selected[1]:], selected[0])
-                    self.selected_all = False
-                    state["selection"] = None
-        elif modifier and event.type == 'V':
-            insert = context.window_manager.clipboard.replace("\r\n", "\n")
-        elif event.type in {'RET', 'NUMPAD_ENTER'}:
-            if event.shift:
-                insert = "\n"
-            else:
-                with context.temp_override(window=window, area=area, region=region):
-                    console.execute(bpy.context)
-                self.selected_all = False
-                state["selection"] = None
-        elif event.type == 'BACK_SPACE':
-            set_draft(line, value[:selected[0]] + value[selected[1]:] if selected else value[:max(0, caret - 1)] + value[caret:], selected[0] if selected else max(0, caret - 1))
-            self.selected_all = False
+        self.selected_all = False   # Select all is a selection like any other (state["selection"]).
+        if event.type in {'RET', 'NUMPAD_ENTER'} and not event.shift:
+            with context.temp_override(window=window, area=area, region=region):
+                self.just_sent = (event.mouse_x, event.mouse_y) if 'FINISHED' in console.execute(bpy.context) else None
             state["selection"] = None
-        elif event.type == 'DEL':
-            set_draft(line, value[:selected[0]] + value[selected[1]:] if selected else value[:caret] + value[caret + 1:], selected[0] if selected else caret)
-            self.selected_all = False
-            state["selection"] = None
-        elif event.type in {'LEFT_ARROW', 'RIGHT_ARROW', 'UP_ARROW', 'DOWN_ARROW', 'HOME', 'END'}:
-            old_caret = caret
-            if event.type in {'UP_ARROW', 'DOWN_ARROW'}:
-                rows = state.get("draft_lines", ((value, 0),))
-                size, drawn = state.get("font_size", 14), state.get("text_scale", scale)  # As the composer drew it.
-                caret = chat_composer.vertical_caret(rows, caret, event.type == 'UP_ARROW', size, drawn)
-            else:
-                caret = max(0, caret - 1) if event.type == 'LEFT_ARROW' else min(len(value), caret + 1) if event.type == 'RIGHT_ARROW' else 0 if event.type == 'HOME' else len(value)
-            set_draft(line, value, caret)
-            if event.shift:
-                if not state.get("selection"):
-                    self.anchor = old_caret
-                state["selection"] = tuple(sorted((self.anchor, caret)))
-            else:
-                state["selection"] = None
-            self.selected_all = False
-        elif event.unicode and not modifier and not event.alt:
-            insert = event.unicode
-        else:
-            return {'PASS_THROUGH'}
-        if insert is not None:
-            if selected:
-                value, caret = value[:selected[0]] + value[selected[1]:], selected[0]
-            set_draft(line, value[:caret] + insert + value[caret:], caret + len(insert))
-            self.selected_all = False
-            state["selection"] = None
+        elif event.type in {'RET', 'NUMPAD_ENTER'}:   # Shift+Enter: a line of its own, one Undo step.
+            composer_input.insert(state, line, "\n", "newline", session=controller.state["id"], controller=controller)
+        elif not composer_input.key(event, state, line, context.window_manager, scale, session=controller.state["id"], controller=controller):
+            # The platform's text-field keys (composer_keys), typing, and the draft's own Undo; anything else, and
+            # Undo with no draft history, is Blender's, except what the Console keymap under the chat would type.
+            return {'RUNNING_MODAL'} if over_chat and edits_field(event) else {'PASS_THROUGH'}
         area.tag_redraw()
         return {'RUNNING_MODAL'}
-
-
-def note_blocked_click(window, event, blocking):
-    """A click on a chat while another tool holds this window's input: the chat shows which, and how to end it."""
-    from . import console
-    for area in live_windows.areas(window):
-        if console.is_chat(area) and area.x <= event.mouse_x < area.x + area.width and area.y <= event.mouse_y < area.y + area.height:
-            _views.setdefault(area.as_pointer(), {})["blocked"] = (tuple(blocking), time.monotonic())
-            area.tag_redraw()
-
-
-def over_overlay(window, event):
-    """Whether the pointer rests on the area the welcome screen or a card that takes keys is drawn over."""
-    from . import card_host, intro
-    for area in live_windows.areas(window):
-        if area.x <= event.mouse_x < area.x + area.width and area.y <= event.mouse_y < area.y + area.height:
-            pointer = area.as_pointer()
-            return (intro.is_open() and intro._open.get("area") == pointer) or card_host.takes_keys(pointer)
-    return False
-
-
-def clear_blocked_notice(window):
-    """The tool ended: its notice goes with the first event the chat takes again."""
-    from . import console
-    for area in live_windows.areas(window):
-        if console.is_chat(area) and _views.get(area.as_pointer(), {}).pop("blocked", None):
-            area.tag_redraw()
 
 
 def ensure_input(window, area):
@@ -1233,6 +1182,12 @@ def animate_popovers():
     marble_host.poll()  # Starts the marble wait's own timer when the drawn chat runs a turn.
     from .approval_review import prepare_canvas_reviews
     animated = prepare_canvas_reviews()
+    from . import chat_history
+    manager = bpy.context.window_manager
+    if live_windows.settled(manager):
+        # A screenless window's area inventory is unknown, not closed. Preserve its editor state until complete.
+        chat_history.prune(_views, _scroll, {area.as_pointer() for window in live_windows.every_window(manager)
+                                           for area in live_windows.areas(window)})
     reduce_motion = getattr(bpy.context.preferences.view, "use_reduce_motion", False)
     for window in live_windows.windows(bpy.context.window_manager):
         for area in live_windows.areas(window):
@@ -1288,4 +1243,5 @@ def unregister():
     _modals.clear()
     _views.clear()
     _scroll.clear()
+    composer_input.forget()
     wrap.cache_clear()

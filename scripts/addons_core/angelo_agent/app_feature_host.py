@@ -25,7 +25,8 @@ def _engine_link(window, request):
                                    "is taken); the person sees why", code="WRITER_BUSY")
         return {"feature": "engine_link", "on": True,
                 "next": "In Godot, Unity or Unreal Engine (with Angelo Link in the project), Edit in Angelo on a "
-                        "model opens it here; saving here updates it there."}
+                        "model opens it here; saving here updates it there. A Three.js page with "
+                        "@call-me-sensei/angelo in its Vite dev server asks the same way (Alt-click a tracked model)."}
     if window is None:
         raise RefusalError("This chat has no window to open the folder picker in", code="UNSUPPORTED")
     with bpy.context.temp_override(window=window):
@@ -33,7 +34,8 @@ def _engine_link(window, request):
     return {"feature": "engine_link", "folder_picker_open": True, "engine": request["engine"],
             "next": "The person chooses the project folder; Angelo copies Angelo Link there, turns the link on and "
                     "tells them the engine's last step (Godot: enable it in Project Settings > Plugins; Unreal: "
-                    "enable it in Edit > Plugins and restart; Unity loads it by itself)."}
+                    "enable it in Edit > Plugins and restart; Unity loads it by itself; WEB: Angelo copies nothing, "
+                    "puts the npm install command on the clipboard and names the Vite plugin to add)."}
 
 
 def execute(window, name, request):

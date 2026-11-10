@@ -34,6 +34,8 @@ viewport's (EEVEE's) look, since the temporary one targets Cycles only.
 Main thread only. Model-facing text is English.
 """
 
+from .refusal_codes import coded
+
 PREFIX = "Angelo Bake "
 OUTPUT_SOCKET = "Angelo Bake"
 SUMS = ("WEIGHT", "TRANSPARENCY")
@@ -305,7 +307,7 @@ class Graph:
             else:
                 value = self.scalar(inputs["Roughness"], tree) if "Roughness" in inputs else _grey(0.5)
         else:
-            raise ValueError("Not a material channel: %s" % channel)
+            raise coded(ValueError("Not a material channel: %s" % channel), "INTERNAL_ERROR")   # A host invariant.
         return self.multiply(tree, value, alpha)
 
     def group(self, node, socket, tree, channel):

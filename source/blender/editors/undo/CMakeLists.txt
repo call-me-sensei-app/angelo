@@ -14,12 +14,16 @@ set(INC_SYS
 
 set(SRC
   angelo_commit_rights.cc
+  angelo_recovery_observation.cc
+  angelo_asset_noundo_delta.cc
   angelo_undo.cc
   ed_undo.cc
   memfile_undo.cc
   undo_system_types.cc
 
   angelo_commit_rights.hh
+  angelo_recovery_observation.hh
+  angelo_asset_noundo_delta.hh
   undo_intern.hh
 )
 
@@ -49,6 +53,7 @@ add_dependencies(bf_editor_undo bf_rna)
 if(WITH_GTESTS)
   set(TEST_SRC
     angelo_checkpoint_undo_test.cc
+    angelo_recovery_observation_test.cc
   )
   set_source_files_properties(angelo_checkpoint_undo_test.cc PROPERTIES COMPILE_DEFINITIONS WITH_GTESTS)
   set(TEST_LIB

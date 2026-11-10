@@ -15,6 +15,8 @@ a new picture surface has to say where its texels come from. The Studio grid and
 their screenshots (1.0.8); this pins the class, not those two surfaces.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import unittest
 from pathlib import Path
@@ -38,6 +40,7 @@ STORED = {
     "firstlaunch_controls": ".blend preview pixels",
     "library_host": "Image.pixels of a PNG, JPEG or WebP thumbnail read as Non-Color",
     "library_overlay_draw": "library_host's thumbnail textures",
+    "fab_overlay": "library_host's thumbnail textures (Fab result and details pictures)",
     "native_preview_images": "Image.pixels of a PNG read as Non-Color",
     "providers_page_draw": "the welcome banner's pixels (welcome_screen)",
     "shelf_empty": "asset_shelf_add's icon texture",

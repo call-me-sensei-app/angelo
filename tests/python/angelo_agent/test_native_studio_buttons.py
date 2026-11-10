@@ -8,6 +8,8 @@ against a recording canvas (the module itself needs the running app's ``gpu``). 
 ``test_blender_studio_palette`` (the strip between Refresh and Import is plain background in every capture).
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import unittest
 from pathlib import Path
@@ -38,7 +40,8 @@ def button_function(canvas, hits):
     node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "button")
     names = {key: (0, 0, 0, 1) for key in ("ACCENT", "ACCENT_HOVER", "ACCENT_PRESSED", "SELECTED", "HOVER", "FIELD",
                                            "LINE", "ACCENT_TEXT", "TEXT", "MUTED")}
-    namespace = dict(names, canvas=canvas, hit=lambda state, rect, action, value: hits.append((rect, action)))
+    from angelo_agent import canvas_focus, ui_tokens
+    namespace = dict(names, canvas_focus=canvas_focus, tk=ui_tokens, canvas=canvas, hit=lambda state, rect, action, value: hits.append((rect, action)))
     exec(compile(ast.Module(body=[node], type_ignores=[]), str(SOURCE), "exec"), namespace)
     return namespace["button"]
 

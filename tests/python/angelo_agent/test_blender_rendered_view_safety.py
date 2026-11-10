@@ -30,6 +30,10 @@ Run through ``run_native_suites.py --gui --include test_blender_rendered_view_sa
 check ``rendered-view-safety.json`` for ``success`` and ``phase == "complete"``.
 """
 
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+
 import hashlib
 import os
 import sys

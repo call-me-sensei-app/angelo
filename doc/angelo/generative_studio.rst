@@ -605,6 +605,11 @@ order with the console's 2 px mint ring; Return or Space activates the focused
 control, and Escape or typing returns to the text field. A disabled control is
 registered with the reason (``canvas_controls.DISABLED``): the empty Send button
 and a run card's "Nothing selected" show the not-allowed pointer and say why.
+An inert hit (``canvas_controls.INERT``) takes a press and does nothing, with
+no layer, focus or hand, until the moment its value names; after it the hit is
+no hit at all (``canvas_controls.live``, read by ``hit_at`` and the chat's press
+loop): the chat's shield over an approval pointer just clicked
+(``agent_chat.rst``, "Approvals"). Only the chat canvas places one.
 Links (More options in Preferences, links in replies) brighten and underline
 instead of getting a layer. Layers follow each control's own corners and fill,
 recorded as the canvas draws its shapes.
@@ -1064,7 +1069,8 @@ release, writing first, menus), ``test_blender_media_drop.py`` (placement, the
 operators, the library off) and ``test_blender_media_drop_gui.py`` (real drags to
 every target, refusals, several at once, undo, from Media Studio's own window).
 
-``studio_assets.py`` plans (no Blender dependency); ``studio_assets_convert.py``
+``studio_assets.py`` plans (no Blender dependency; ``studio_files.py`` reads and
+writes the folder's files); ``studio_assets_convert.py``
 writes, in a background Blender (``-b --factory-startup``, priority lowered,
 40 items per process, each file written to a temporary name and moved into place);
 ``studio_assets_host.py`` registers and schedules. Registering the add-on compares
@@ -1112,9 +1118,42 @@ the person's work: while a render, bake or composite runs, an Angelo background 
 runs, or an agent turn is in progress (``studio_assets_host.host_busy``, read on the
 main thread every five seconds), it starts no batch and stops a running one; what
 it finished counts and the rest waits, never as a failure. Once the library is
-removed in Preferences, no Angelo instance writes to it. Known limits: two Angelo
-instances in different interface languages rename the two catalogues back and forth;
-changing ``ANGELO_LIBRARY_DIR`` (tests) leaves the earlier entry in Preferences.
+removed in Preferences, no Angelo instance writes to it. The catalogue file is shared
+by every Angelo instance: each writes the two catalogues' names in its interface
+language at its first sync and when its own language changes, and otherwise only a
+missing catalogue, so a second instance in another language keeps the names the first
+one wrote (the shelf finds its tabs by catalogue id, in any language). Only a line
+Angelo wrote is ever renamed: each sync records them in ``catalog-names.json``, so a
+catalogue the person renamed in the Asset Browser keeps its name. A library written
+before 1.0.10 has no record: there a line counts as Angelo's only when Angelo would
+write it itself (this language's name or English), any other name is kept as the
+person's, and the record is written at that first sync even when the file needs no
+change. A record Angelo could not have written (not JSON, not a map of lists) is
+rebuilt the same way. A file Angelo shares with the person or keeps for the library
+that is there but cannot be read now (no permission, a sync placeholder, a stale
+mount) is never written from nothing (``studio_files``): with the catalogue file or
+its record unreadable, the sync writes neither and this Angelo's language waits for a
+sync that can (the file holds the person's catalogues, and a line added without its
+record would later read as the person's); a catalogue file that is not UTF-8 keeps
+its bytes. With ``manifest.json`` unreadable the sync writes no asset and no
+manifest, and a drag drags the item's files instead (a manifest written from nothing
+forgets every item, so their copies would never be removed). A ``registration.json``
+that is unreadable or damaged may have held the person's Turn off, so it never counts
+as on: writers and drags halt, and the Preferences entry decides at startup (present:
+on, the record is written again as on, as for an entry that is back; absent: an
+unreadable record is read again every minute and a damaged one is written as off);
+Free up space then follows this Angelo's own Turn off. Blender saves the catalogue
+file by two renames (``cats`` to ``cats~``, then the new file to ``cats``), so a
+sync writes only over the file it read (its bytes, read again right before the
+write: a time stamp can't tell a same-size rewrite within one tick) and creates a file
+it read as missing only while it still is: a save in the Asset Browser during a sync
+is never overwritten, except when both of Blender's renames land between that re-read
+and Angelo's own rename (p99 0.2 ms for a 1 KB file and 1 ms for 100 KB on APFS, a
+few ms on FAT/exFAT; measured on Mac 2 under load). Then the person's newest catalogue
+edit is replaced; their earlier catalogues stay and Blender still holds the edit. No
+cheap fix closes it without a lock Blender doesn't take. Known limits: a line a 1.0.9 Angelo wrote in a third language
+cannot be told from the person's own name, so it is kept as written until the person
+renames it; and changing ``ANGELO_LIBRARY_DIR`` (tests) leaves the earlier entry in Preferences.
 
 Measured on Mac 2 (M5 Max, ``nice 15``, Angelo 5.2.2 binary, this add-on), half
 models and half images per library; "small" models are a 70 KB GLB, "provider-size"

@@ -7,6 +7,8 @@ comment, an attribute that 5.2 still has on another type (a channelbag's fcurves
 not. ``test_blender_script_api_notes.py`` checks every listed name against Blender 5.2 itself.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

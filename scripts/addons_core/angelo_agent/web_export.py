@@ -33,10 +33,12 @@ import time
 import bpy
 
 from . import export_baked, web_budget, web_compat, web_environment, web_facts, web_glb, web_look, web_world_key
+from . import shared_replace
 from .web_export_wait import EnvironmentPending, PendingExport
 from .ui_text import n_
 
 EXPORT_ID = "angelo_web"
+LINK_EXPORT_ID = "angelo_link_web"   # web_link_assets.LIVE_EXPORT_ID: the web link's live frames.
 GLTFPACK_SECONDS = 300
 _ACTIVE = {}   # The running web export's merge request and result, read by WebExportExtension.
 
@@ -66,11 +68,27 @@ class WebExportExtension:
         if shader is not None:
             gltf2_material.extras = dict(gltf2_material.extras or {}, **shader)
 
+    def gather_tree_filter_tag_hook(self, vtree, export_settings):
+        """The web link's live delta writes only the objects that changed (web_link_live.filter_tree)."""
+        if export_settings.get("gltf_export_id") == LINK_EXPORT_ID:
+            from . import web_link_live
+            web_link_live.filter_tree(vtree)
+
+    def gather_image_hook(self, gltf2_image, blender_image, blender_shader_sockets, export_settings):
+        """The web link names each image by its bytes and sends one the page has as a stub (web_link_live.image)."""
+        if export_settings.get("gltf_export_id") == LINK_EXPORT_ID:
+            from . import web_link_live
+            web_link_live.image(gltf2_image)
+
     def gather_mesh_materials_hook(self, materials, blender_object, export_settings):
         """Angelo's web and engine-link exports write an object with its current baked material (``export_baked``)."""
         export_baked.substitute(materials, blender_object, export_settings)
 
     def gather_scene_hook(self, gltf2_scene, blender_scene, export_settings):
+        if export_settings.get("gltf_export_id") == LINK_EXPORT_ID:   # Each node's key and role in a live frame.
+            from . import web_link_live
+            web_link_live.mark_nodes(export_settings["vtree"])
+            return
         if export_settings.get("gltf_export_id") != EXPORT_ID:
             return
         if _ACTIVE.get("extras"):   # The look; the World's picture becomes a bufferView like the exporter's own data.
@@ -253,7 +271,7 @@ def _draw_call_estimate(objects):
 
 def _inspect(window, scene, view_layer, request):
     """(settings, findings, facts, objects, baked) of an export of ``scene`` with ``request``: ``baked`` is the
-    ``export_baked.plan`` the export uses. Writes nothing."""
+    ``export_baked.plan`` the export uses. Writes nothing (a plan's later scheme record aside: ``export_baked``)."""
     settings, notes = resolve(request)
     with bpy.context.temp_override(window=window):
         depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -280,16 +298,18 @@ def check(window, scene, view_layer, request):
                          "draw_calls_before_merge": _draw_call_estimate(objects)}}
 
 
-def _environment(scene, world, require):
-    """(picture or None, its report, a finding or None) for ``world`` (``web_world.plan``). ``require``: raise
-    EnvironmentPending while the picture is still being made."""
+def _environment(scene, world, require, asked=None):
+    """(picture or None, its report, a finding or None) for ``world`` (``web_world.plan``). While the picture is still
+    being made: ``require`` True raises EnvironmentPending, False (the live preview) marks it pending, None (an
+    explicit export whose wait ran out) leaves it out, "failed" (``PendingExport`` adds the finding). ``asked``: as
+    ``web_environment.ensure``."""
     if world["kind"] not in ("IMAGE", "BAKE"):
         return None, {"kind": world["kind"]}, None
-    job = web_environment.ensure(scene, world, web_look._config_path())
+    job = web_environment.ensure(scene, world, web_look._config_path(), asked)
     if job.status == "pending":
         if require:
             raise EnvironmentPending(job)
-        return None, {"kind": world["kind"], "status": "pending"}, None
+        return None, {"kind": world["kind"], "status": "pending" if require is False else "failed"}, None
     if job.status == "failed":
         found = web_compat.finding("world_failed", world["name"], reason=job.error or "unknown")
         return None, {"kind": world["kind"], "status": "failed"}, found
@@ -298,12 +318,19 @@ def _environment(scene, world, require):
     return {"data": job.data, "width": job.width, "height": job.height}, report, None
 
 
-def export(window, scene, view_layer, path, request, require_environment=True, preflight=False):
+def export(window, scene, view_layer, path, request, require_environment=True, preflight=False, shown=None,
+           asked=None):
     """Write a web-ready .glb at ``path`` (a file that doesn't exist yet) and report it.
 
     ``require_environment`` (an explicit export): a World picture still being made raises EnvironmentPending and
     nothing is written; ``pending_export`` waits for it and calls again. False (the live preview): it is left out
-    and marked pending; the preview exports again once it lands (``web_environment.ready_since``).
+    and marked pending; the preview exports again once it lands (``web_environment.ready_since``). None (an explicit
+    export whose wait ran out): it is left out of the file for good (``web_export_wait``). ``asked``: when an explicit
+    export was asked; a bake that ran out of time before then is made again (``web_environment.ensure``).
+
+    ``shown`` (the live preview's own dict): ``shown["environment"]`` is the environment its page shows, which a
+    picture still being made is written as (``web_look.extras``'s ``standin``), so a page (re)loaded during a bake
+    gets the same lighting the open page keeps; every other export updates it to what it wrote.
 
     ``preflight``: also the engine preflight's WEB rules (under ``preflight``) and the scene's description for the
     read-back the caller starts in the background once the file is published (``_readback``: popped by ``web_host``,
@@ -311,10 +338,12 @@ def export(window, scene, view_layer, path, request, require_environment=True, p
     started = time.perf_counter()
     settings, findings, facts, _objects, baked = _inspect(window, scene, view_layer, request)
     settings = dict(settings)
-    picture, environment, failed = _environment(scene, facts["world"], require_environment)
+    picture, environment, failed = _environment(scene, facts["world"], require_environment, asked)
     if failed is not None:
         findings.insert(0, failed)
-    extras = web_look.extras(facts["look"], dict(facts["world"], status=environment.get("status")), picture)
+    pending = environment.get("status") == "pending"
+    extras = web_look.extras(facts["look"], dict(facts["world"], status=environment.get("status")), picture,
+                             standin=shown.get("environment") if shown is not None and pending else None)
     source = None
     if preflight:   # After the wait above: only the attempt that writes reads the rules.
         from . import engine_preflight
@@ -328,7 +357,9 @@ def export(window, scene, view_layer, path, request, require_environment=True, p
         with web_world_key.quiet():   # The exporter's own frame steps are no edit of the World.
             merged = _write(window, scene, view_layer, scratch, settings, baked, extras)
         budget = web_budget.measure(scratch)
-        os.replace(scratch, path)
+        shared_replace.replace(scratch, path)   # An engine or viewer holding the person's file: retried, else raised.
+        if shown is not None and not pending:   # Published now: what the page shows until another lands.
+            shown["environment"] = extras["angelo_look"]["environment"]
     except BaseException:
         for leftover in (scratch, scratch + ".unpacked.glb"):
             if os.path.exists(leftover):
@@ -351,6 +382,7 @@ def pending_export(window, scene, view_layer, path, request, preflight=False):
     that shows another scene now, ends the export with WebExportError. ``preflight``: as ``export``."""
     window_id = window.as_pointer() if window is not None else None
     scene_id, layer_name = scene.session_uid, view_layer.name
+    asked = time.monotonic()
 
     def write(require):
         found = next((item for item in bpy.data.scenes if item.session_uid == scene_id), None)
@@ -363,7 +395,8 @@ def pending_export(window, scene, view_layer, path, request, preflight=False):
             shown = live_windows.find(bpy.context.window_manager, window_id, live=False)
             if shown is None or shown.scene != found:
                 raise WebExportError(n_("The window was closed or shows another scene; export again"))
-        return export(shown, found, layer, path, request, require_environment=require, preflight=preflight)
+        return export(shown, found, layer, path, request, require_environment=require, preflight=preflight,
+                      asked=asked)
 
     return PendingExport(write, scene.world.name if scene.world is not None else "")
 

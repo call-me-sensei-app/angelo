@@ -11,6 +11,8 @@ one for 3D); 3D with a reference is the Image to 3D template's shape, filled in;
 ``test_blender_flow_menu``'s Turn into a flow phase.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import types
 import unittest

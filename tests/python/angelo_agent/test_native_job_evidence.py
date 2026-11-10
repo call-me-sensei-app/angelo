@@ -18,6 +18,8 @@ real Blender jobs is covered by the ``test_blender_production_*``,
 ``test_blender_udim_bakes`` and ``test_blender_disk_simulation`` suites.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import sys
 import tempfile

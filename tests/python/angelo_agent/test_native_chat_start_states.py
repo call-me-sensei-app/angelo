@@ -20,6 +20,8 @@ a class and tested here per state:
 ``test_blender_chat_start_states`` proves the same in the running app, with screenshots.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import importlib
 import sys
 import types
@@ -170,7 +172,7 @@ class ModelStateTests(unittest.TestCase):
         self.assertIsNone(states.model_problem(own, own, False, ""))
         self.assertIsNone(states.model_problem(own, own, True, "another connection failed"))
         self.assertEqual(states.default_label(own), "Default")
-        self.assertEqual(states.default_label([]), "Choose model")
+        self.assertEqual(states.default_label([]), "Choose a model")
         from angelo_agent.chat_popovers import model_rows
         self.assertTrue(model_rows(own, "")[0]["selected"], "the list's Default row is the one checked")
 
@@ -329,7 +331,7 @@ class WiringTests(unittest.TestCase):
         ensure = source.split("\ndef ensure_input(", 1)[1].split("\ndef ", 1)[0]
         self.assertNotIn("interaction_active", ensure, "the handler starts beside a running tool, passing its events")
         self.assertNotIn("canvas_blocking", ensure)
-        self.assertIn("_draw_blocked(state, width,", source)
+        self.assertIn("chat_start_states.draw_blocked(sys.modules[__name__], state, width,", source)   # Moved out (size pin).
 
     def test_the_chat_input_survives_a_failed_event_and_restarts_if_it_ended(self):
         source = self.read("chat_view.py")
@@ -347,7 +349,7 @@ class WiringTests(unittest.TestCase):
         source = self.read("chat_view.py")
         modal = source.split("    def modal(self, context, event):", 1)[1]
         self.assertLess(modal.index("over_overlay(window, event)"), modal.index("area = next("))
-        helper = source.split("\ndef over_overlay(", 1)[1].split("\ndef ", 1)[0]
+        helper = self.read("chat_input_blocked.py").split("\ndef over_overlay(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn('intro._open.get("area") == pointer', helper)
         self.assertIn("card_host.takes_keys(pointer)", helper)   # A modal card or one with a field (P1-3 H2).
 

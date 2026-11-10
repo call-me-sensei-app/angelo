@@ -15,6 +15,8 @@ the controller attaches for the model, and an image a view names is shared into 
 the limit comes from. The in-Blender proof (a real worker's view) is ``test_blender_parallel_workers``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import base64
 import os
 import sys
@@ -148,15 +150,39 @@ class ReferenceTests(unittest.TestCase):
             self.assertEqual([part.get("error", "") for part in context], ["This PDF has no extractable text", ""])
             self.assertEqual(context[1]["text_excerpt"], "A readable brief.")
 
-    def test_a_copy_that_fails_sends_the_brief_without_files(self):
+    def test_a_copy_that_fails_sends_the_brief_without_files_and_says_so(self):
         with tempfile.TemporaryDirectory() as root:
             lead_store = ReferenceStore(root, str(uuid.uuid4()))
             current = lead_store.import_images(files(root, 1))
             lead = SimpleNamespace(turn_attachments=current, references=lead_store, state={"messages": []})
             worker = SimpleNamespace(attachments=[], references=ReferenceStore(root, str(uuid.uuid4())))
-            with mock.patch.object(worker.references, "import_images", side_effect=OSError("No space left")):
-                self.assertEqual(worker_references.attach(worker, lead, worker_references.taken(lead)), "")
+            full = OSError(28, "No space left on device", str(Path(root, "references", "x.png")))
+            with mock.patch.object(worker.references, "import_images", side_effect=full):
+                sentence = worker_references.attach(worker, lead, worker_references.taken(lead))
+            self.assertEqual(sentence, '\n\nA file the person attached could not be sent with this part: '
+                                       '"picture-0.png" (No space left on device).')
+            self.assertNotIn(root, sentence)   # An OSError's text names the path; the brief never does.
             self.assertEqual(worker.attachments, [])
+
+    def test_one_file_that_cant_be_copied_leaves_the_others_attached(self):
+        """Before, one failed copy dropped every file of the brief, and nothing said so (release-1.0.9 review)."""
+        with tempfile.TemporaryDirectory() as root:
+            lead_store = ReferenceStore(root, str(uuid.uuid4()))
+            current = lead_store.import_images(files(root, 3))
+            lead = SimpleNamespace(turn_attachments=current, references=lead_store, state={"messages": []})
+            worker = SimpleNamespace(attachments=[], references=ReferenceStore(root, str(uuid.uuid4())))
+            real = worker.references.import_images
+            second = str(lead_store.checked_path(current[1]))
+            def copy(paths, existing=()):
+                if paths == [second]:
+                    raise ValueError("Images are limited to 20 MiB; other reference files to 20 MiB")
+                return real(paths, existing)
+            with mock.patch.object(worker.references, "import_images", side_effect=copy):
+                sentence = worker_references.attach(worker, lead, worker_references.taken(lead))
+            self.assertEqual([r["name"] for r in worker.attachments], ["picture-0.png", "picture-2.png"])
+            self.assertEqual(sentence, "\n\nThe images attached are the person's, sent with the request that started "
+                             'this part.\n\nA file the person attached could not be sent with this part: '
+                             '"picture-1.png" (Images are limited to 20 MiB; other reference files to 20 MiB).')
 
 
 class ViewTests(unittest.TestCase):

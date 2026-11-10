@@ -11,7 +11,11 @@ providers/available and the refresh token's OS-store item (through a fake
 backend; never a file). No real console or key store is used.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
+import contextlib
 import html
+import inspect
 import json
 import os
 import subprocess
@@ -85,21 +89,32 @@ class AccountCase(unittest.TestCase):
         managed_policy.reset(Policy())
         self.addCleanup(managed_policy.reset)
 
-    def account(self, vault=None, transport=http_transport, memory_only=False, grant_vault=None, lock_timeout=5):
+    def account(self, vault=None, transport=http_transport, memory_only=False, grant_vault=None, lock_timeout=5,
+                record=False):
+        """``record``: share the sign-in record in the test folder, as Angelo's processes do (team_refresh_marks)."""
         vault = None if memory_only else (self.vault if vault is None else vault)
+        extra = {"record_directory": self.folder.name} if record else {}
         account = TeamAccount(self.console.url, vault=vault, grant_vault=grant_vault, transport=transport,
                               process_lock=team_lock.factory(self.folder.name, lock_timeout),
-                              clock=self.clock.time, monotonic=self.clock.monotonic, policy=lambda: self.policy)
+                              clock=self.clock.time, monotonic=self.clock.monotonic, policy=lambda: self.policy,
+                              **extra)
         self.addCleanup(self.stop, account)
         return account
 
-    @staticmethod
-    def stop(account):
-        """Close ``account`` and wait for its worker: a task still running after the test would open the lock file
-        in the folder the test is removing (seen as "Directory not empty" on a loaded machine)."""
+    def stop(self, account):
+        """Close ``account`` and wait for every thread it started (``TeamAccount.join``: its worker and a quit's report
+        still sending): one still running after the test holds a lock file in the folder the test is removing, which
+        Windows refuses to delete (WinError 32) and POSIX reports as "Directory not empty" on a loaded machine."""
         account.close()
-        if account._worker is not None:
-            account._worker.join(10)
+        self.assertTrue(account.join(10), "a team account thread outlived its test")
+        refresh = sys.modules.get("angelo_agent.team_account_refresh")
+        if refresh is not None:  # A token a closed account handed off keeps a lock file open in the folder.
+            with refresh._handoff_lock:
+                entries = list(refresh._handoff.values())
+                refresh._handoff.clear()
+            for entry in entries:
+                if entry["holder"] is not None:
+                    entry["holder"].release()
 
     def sign_in(self, account, **callback):
         url = account.begin_sign_in(device="Test computer")
@@ -310,7 +325,10 @@ class RefreshTests(AccountCase):
                 account = self.account(vault=vault)
                 self.sign_in(account)
                 self.assertEqual(account.view().stored, "failed")
-                self.assertIn("delete", vault.calls)
+                if hasattr(account, "_pending_gen"):  # The older sign-in's token stays, never presented by this one.
+                    self.assertEqual(vault.token, "rt_stale_token_of_an_earlier_grant")
+                else:
+                    self.assertIn("delete", vault.calls)
                 before = len(self.console.refresh_requests())
                 self.clock.advance(600)
                 self.assertTrue(account.access_token())
@@ -536,8 +554,11 @@ class OrganizationPolicyTests(AccountCase):
         token = account._refresh_token
         self.clock.advance(600)
         account.access_token()
-        account._refresh_token = token  # Presenting a used token again: reuse detection.
-        account._access = ""
+        # Presenting a used token again (as a process whose record lost the mark, or an older build, would):
+        # reuse detection. This build never presents a token its record marks presented.
+        account._refresh_token, account._stored.vault.token, account._access = token, token, ""
+        if hasattr(account, "_record"):
+            account._record = type(account._record)(None, account.console_url)
         with self.assertRaises(SignInRequired):
             account.access_token()
         self.assertIn("used twice", account.view().message)
@@ -592,7 +613,12 @@ from test_native_team_account import FileVault
 import contextlib
 folder, console, locked = sys.argv[3], sys.argv[4], sys.argv[5] == "1"
 lock = team_lock.factory(folder, 30) if locked else contextlib.nullcontext
-account = TeamAccount(console, vault=FileVault(os.path.join(folder, "vault")), process_lock=lock, policy=Policy)
+import inspect
+# As Angelo's processes run: the shared sign-in record too (team_refresh_marks); the control runs without either.
+shared = locked and "record_directory" in inspect.signature(TeamAccount).parameters
+extra = {"record_directory": folder} if shared else {}
+account = TeamAccount(console, vault=FileVault(os.path.join(folder, "vault")), process_lock=lock, policy=Policy,
+                      **extra)
 while not os.path.exists(os.path.join(folder, "go")):
     time.sleep(0.005)
 account.restore()
@@ -605,37 +631,91 @@ print(json.dumps({"status": account.view().status}))
 
 
 class FileVault:
-    """A ``TokenVault`` stand-in that several test processes share (a file in a temporary folder)."""
+    """A ``TokenVault`` stand-in that several test processes share (a file in a temporary folder).
+
+    As in an OS key store, each call is whole across processes (a lock file beside the token) and fails only as
+    ``KeyStoreError``. Without the lock a rotation's replace fails on Windows while another process reads the file
+    (WinError 5), and the used token stays stored for the next process to present: reuse detection then ends the
+    sign-in for every process (host-tests run 41883033718, four children ``signed_out``).
+    """
 
     def __init__(self, path):
         self.path, self.reason = path, ""
 
-    def read(self):
+    @contextlib.contextmanager
+    def _call(self):
         try:
-            with open(self.path) as handle:
-                return handle.read() or None
-        except FileNotFoundError:
-            return None
+            with team_lock.held(os.path.dirname(self.path), 30, name=os.path.basename(self.path) + ".lock"):
+                yield
+        except OSError as error:  # team_lock.LockTimeout too.
+            raise KeyStoreError("failed", "The test vault failed (%s)" % type(error).__name__) from None
+
+    def read(self):
+        with self._call():
+            try:
+                with open(self.path) as handle:
+                    return handle.read() or None
+            except FileNotFoundError:
+                return None
 
     def write(self, token):
-        with open(self.path + ".tmp", "w") as handle:
-            handle.write(token)
-        os.replace(self.path + ".tmp", self.path)
-        return True
+        with self._call():
+            with open(self.path + ".tmp", "w") as handle:
+                handle.write(token)
+            os.replace(self.path + ".tmp", self.path)
+            return True
 
     def delete(self):
-        try:
-            os.remove(self.path)
-        except FileNotFoundError:
-            return False
-        return True
+        with self._call():
+            try:
+                os.remove(self.path)
+            except FileNotFoundError:
+                return False
+            return True
+
+
+class FileVaultTests(unittest.TestCase):
+    def test_a_write_waits_for_a_read_in_progress_as_an_os_store_does(self):
+        """A rotation never replaces the token while another caller has it open: on Windows that replace fails."""
+        with tempfile.TemporaryDirectory() as folder:
+            vault, results = FileVault(os.path.join(folder, "vault")), {}
+            vault.write("rt_old")
+            reading, release, real_open = threading.Event(), threading.Event(), open
+
+            def held_open(path, *args, **kwargs):
+                handle = real_open(path, *args, **kwargs)
+                if path == vault.path and threading.current_thread().name == "reader":
+                    reading.set()
+                    release.wait(10)  # The reader has the file open.
+                return handle
+            with unittest.mock.patch.dict(FileVault.read.__globals__, {"open": held_open}):
+                reader = threading.Thread(target=lambda: results.update(read=vault.read()), name="reader")
+                reader.start()
+                self.assertTrue(reading.wait(5))
+                writer = threading.Thread(target=lambda: results.update(write=vault.write("rt_new")), name="writer")
+                writer.start()
+                writer.join(1.0)
+                waited = writer.is_alive()
+                release.set()
+                reader.join(5)
+                writer.join(5)
+            self.assertTrue(waited, "the write replaced the token while a read had it open")
+            self.assertEqual((results.get("read"), results.get("write"), vault.read()), ("rt_old", True, "rt_new"))
+
+    def test_a_failure_is_a_key_store_error(self):
+        with tempfile.TemporaryDirectory() as folder:
+            vault = FileVault(os.path.join(folder, "missing", "vault"))
+            for call in (vault.read, lambda: vault.write("rt"), vault.delete):
+                with self.assertRaises(KeyStoreError):
+                    call()
 
 
 class MultiProcessRefreshTests(AccountCase):
     """Real Angelo processes restoring one stored sign-in at the same moment."""
 
     def race(self, locked, processes=4):
-        account = self.account(vault=FileVault(os.path.join(self.folder.name, "vault")))
+        record = locked and "record_directory" in inspect.signature(TeamAccount).parameters
+        account = self.account(vault=FileVault(os.path.join(self.folder.name, "vault")), record=record)
         self.sign_in(account)
         account.close()
         self.console.refresh_delay = 0.2
@@ -654,7 +734,7 @@ class MultiProcessRefreshTests(AccountCase):
         self.assertEqual(len(self.console.refresh_requests()), 4)
 
     def test_without_the_lock_the_same_race_trips_reuse_detection(self):
-        statuses = self.race(locked=False)  # Control: proves the test above can fail.
+        statuses = self.race(locked=False)  # Control, without the lock and the record: the test above can fail.
         self.assertIn("refresh token reuse", self.console.revoked.values())
         self.assertIn("signed_out", statuses)
 

@@ -6,6 +6,8 @@ The end-to-end relay is ``test_native_runtime_relay``; these pin each rule alone
 channel's descriptor handling.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import random
@@ -22,9 +24,12 @@ from angelo_agent import claude_direct, claude_transport  # noqa: E402
 from angelo_agent.claude_transport import claude_arguments, launch_values  # noqa: E402
 from angelo_agent.tool_specs import native_plan_schema  # noqa: E402
 from angelo_agent.protocol import RpcError  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from host_test_policy import environment_skip  # noqa: E402
 
 WORKSPACE = "/tmp/angelo-chat/workspace"
-POSIX_ONLY = unittest.skipIf(sys.platform == "win32", "Descriptor passing is POSIX")
+POSIX_ONLY = unittest.skipIf(sys.platform == "win32", environment_skip(
+    "Descriptor passing is POSIX; Windows relays over named pipes (WindowsRelayTests)"))
 
 
 def codex():
@@ -144,11 +149,14 @@ class ClaudeFilterTests(unittest.TestCase):
 class ClaudeLaunchTests(unittest.TestCase):
     def test_launch_values_round_trip_every_shape_the_provider_builds(self):
         for values in ({"tools": "WebSearch,WebFetch", "direct": False, "fast": False, "model": "", "effort": "low",
-                        "thinking": False, "resume": ""},
+                        "thinking": False, "resume": "", "gateway": False},
                        {"tools": "", "direct": True, "fast": True, "model": "claude-opus-5-5[1m]", "effort": "max",
-                        "thinking": True, "resume": "5f0c3a52-0d47-4d7e-9a8e-111111111111"}):
+                        "thinking": True, "resume": "5f0c3a52-0d47-4d7e-9a8e-111111111111", "gateway": False},
+                       {"tools": "WebSearch,WebFetch", "direct": False, "fast": False, "model": "", "effort": "high",
+                        "thinking": False, "resume": "", "gateway": True}):
             with self.subTest(values=values):
-                self.assertEqual(launch_values(claude_arguments("claude", values)[1:]), values)
+                self.assertEqual(launch_values(claude_arguments("claude", values)[1:]),
+                                 dict(values, hooks_blocked=False if values["gateway"] else None))
 
     def test_anything_else_is_refused(self):
         good = claude_arguments("claude", {"tools": "WebSearch", "direct": False, "fast": False, "model": "",

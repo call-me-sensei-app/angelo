@@ -104,7 +104,8 @@ def keep(private, folder, pid):
         target = Path(folder) / ("angelo-worker-%s-%s" % (pid, log.name))
         try:
             shutil.move(str(log), str(target))   # Its private folder may be on another volume than the report's.
-        except OSError:
+        except OSError as error:   # Said: the private folder (and this log with it) is removed next.
+            print("Angelo: a worker's crash log could not be kept:", error)
             continue
         return target
     return None

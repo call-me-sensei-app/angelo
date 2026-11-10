@@ -7,6 +7,8 @@ The "worker" here is a plain ``Controller`` on the same chat file, the single wr
 it, pumps and saves it as a worker's main loop does, and forwards what it pumped, then a journal frame, to the mirror.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import tempfile
@@ -22,6 +24,7 @@ sys.path.insert(0, str(ADDON.parent))
 import angelo_agent  # noqa: E402
 from angelo_agent import worker_consent_lead, worker_mirror, worker_mirror_ops  # noqa: E402
 from angelo_agent.controller import Controller, ToolDispatchBudget  # noqa: E402
+from channel_endpoints import endpoint  # noqa: E402
 from angelo_agent.worker_mirror import LocalWork, MirrorController, MirrorRefused  # noqa: E402
 
 TURN = {"_epoch": 0, "_generation": 1}
@@ -97,6 +100,22 @@ class Fixture(unittest.TestCase):
 
 
 class FullTurnTests(Fixture):
+    def test_host_request_classification_reaches_the_worker_transport(self):
+        for kind in ("angelo_event", "worker_brief"):
+            with self.subTest(kind=kind):
+                self.mirror.busy = False
+                self.mirror.send("host request", host_request=[], host_kind=kind)
+                fields = self.ops.calls[-1][2]
+                self.assertEqual(fields["host_kind"], kind)
+                self.assertEqual(fields["host_request"], [])
+
+        for kind in ("angelo_goal", "angelo_continue"):
+            self.mirror.busy = False
+            before = len(self.ops.calls)
+            with self.assertRaises(ValueError):
+                self.mirror.send("invalid host request", host_request=[], host_kind=kind)
+            self.assertEqual(len(self.ops.calls), before)
+
     def test_a_scripted_turn_streams_shows_a_card_routes_its_digest_and_ends_equal_to_the_file(self):
         self.lane()
         self.mirror.send("Make a chair")
@@ -195,6 +214,28 @@ class ActionTests(Fixture):
         self.assertEqual(self.mirror.unsent_draft, "Make a lamp")
         self.assertEqual(self.mirror.turn_outcome[:3], ("failed", False, True))
 
+    def test_pending_messages_the_worker_never_took_go_back_on_their_bubbles(self):
+        from angelo_agent.steering import PAUSED
+        for refuse in ("finished", "op"):
+            with self.subTest(refuse=refuse):
+                due = [self.mirror.inbox.hold("make it red")]
+                self.mirror.inbox.next_due()
+                picture = {"name": "a.png", "kind": "image", "bytes": 5, "path": "/nowhere/a.png"}
+                self.ops.answer = {"ok": False} if refuse == "op" else {"ok": True}
+                self.mirror.send("make it red", references=[picture], pending=due)   # dispatch_due's send.
+                self.assertEqual(self.mirror.turn_attachments, [picture], "Its own pictures, not the box's")
+                self.mirror.inbox.sent(due)
+                if refuse == "finished":
+                    self.frame("finished", {"status": "failed", "not_sent": True, "_epoch": 0, "_generation": 1})
+                    self.mirror.pump_events()
+                else:
+                    worker_mirror_ops.reconcile()
+                    self.ops.answer = {"ok": True}
+                self.assertEqual([(i.text, i.phase) for i in self.mirror.inbox.items()], [("make it red", PAUSED)])
+                self.assertFalse(self.mirror.unsent_draft, "Never also in the message box")
+                self.mirror.inbox.take(due[0].id)
+                self.mirror.busy = False
+
     def test_an_op_the_worker_did_not_accept_refuses_and_nothing_is_assumed(self):
         for answer in ({"error": "gone"}, {"ok": False}):   # A Send is answered later (worker_mirror_ops).
             self.ops.answer = answer
@@ -270,6 +311,39 @@ class ActionTests(Fixture):
         self.assertEqual(self.mirror.state["messages"][-1]["text"], "Shown.")
 
 
+class PendingTurnEndTests(Fixture):
+    """A worker-hosted chat's turn end pauses its waiting messages after Stop or a failure, as a window's chat does
+    (break-it round 3: the mirror never reached ``chat_pending.turn_ended``, so they sent by themselves)."""
+
+    def end_with(self, status):
+        from angelo_agent.steering import PAUSED, WAITING
+        self.mirror.send("Make a chair")
+        item = self.mirror.inbox.hold("and make it red", steerable=False)   # Hosted: queued.
+        if status == "interrupted":
+            self.mirror.stop()
+        self.frame("finished", dict({"status": status}, **TURN))
+        self.mirror.pump_events()
+        self.assertFalse(self.mirror.busy)
+        self.assertEqual(item.phase, WAITING if status == "completed" else PAUSED)
+
+    def test_after_stop_nothing_is_sent_by_itself(self):
+        self.end_with("interrupted")
+
+    def test_after_a_failure_nothing_is_sent_by_itself(self):
+        self.end_with("failed")
+
+    def test_after_a_normal_end_it_goes_out(self):
+        self.end_with("completed")
+
+    def test_a_send_the_worker_never_took_pauses_what_waits(self):
+        from angelo_agent.steering import PAUSED
+        self.ops.answer = {"ok": False}
+        self.mirror.send("hi")
+        item = self.mirror.inbox.hold("and then a lamp", steerable=False)
+        worker_mirror_ops.reconcile()
+        self.assertEqual((self.mirror.busy, item.phase), (False, PAUSED))
+
+
 class LocalWorkTests(Fixture):
     def test_work_a_chat_does_locally_refuses_and_nothing_runs(self):
         for name, args in (("request_tool", ("c", "angelo_create_cube", {}, print)), ("finish_tool", (None, {})),
@@ -331,9 +405,9 @@ class FanInTests(Fixture):
                 bad[0] = False
                 raise ValueError("a bad callback")   # One failure never ends the reader.
             got.append(body["data"]["n"])
-        client = worker_channel.Client(worker_channel.socket_endpoint(ours, 1 << 20, 1 << 20), on_event=on_event)
+        client = worker_channel.Client(endpoint(ours), on_event=on_event)
         self.addCleanup(client.close)
-        worker = worker_channel.socket_endpoint(theirs, 1 << 20, 1 << 20)
+        worker = endpoint(theirs)
         writer = Writer(theirs.makefile("wb", buffering=0), 1 << 20)
 
         def serve():

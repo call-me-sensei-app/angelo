@@ -15,6 +15,8 @@ Regression tests for the break-it reviews of 086452d1bdb (``release-1.0.6.noinde
 The worker side is faked: frames are what ``worker_chat_events`` sends, each tagged with its open's ``open_id``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import sys
 import unittest

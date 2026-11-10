@@ -10,6 +10,8 @@ A real tool (any other modal, and Angelo's holding tools) still defers auto-save
 ``test_blender_autosave_passive_modals`` proves it in the running app.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import re
 import sys

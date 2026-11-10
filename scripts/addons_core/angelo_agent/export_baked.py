@@ -23,14 +23,20 @@ bound objects, with one ``Reader`` per export. Main thread only.
 from contextlib import contextmanager
 
 import bpy
-from bpy.props import BoolProperty, CollectionProperty, PointerProperty, StringProperty
+from bpy.props import BoolProperty, CollectionProperty, IntProperty, PointerProperty, StringProperty
 
 from .export_baked_reads import Reader
 
 GLTF_PACKINGS = frozenset({"GLTF", "ORM", "SEPARATE"})   # Packings a glTF file carries as baked (bake_maps_spec).
-EXPORT_IDS = frozenset({"angelo_web", "angelo_link"})   # web_export.EXPORT_ID, engine_link_assets.EXPORT_ID.
-NONE = {"substitutes": {}, "used": [], "stale": [], "nearby": [], "packing": []}   # A plan that changes nothing (the option turned off).
+EXPORT_IDS = frozenset({"angelo_web", "angelo_link", "angelo_link_web"})   # web_export.EXPORT_ID,
+# engine_link_assets.EXPORT_ID and web_link_assets.LIVE_EXPORT_ID.
+NONE = {"substitutes": {}, "used": [], "stale": [], "nearby": [], "packing": [], "updated": []}   # The option off.
+# What a digest describes (``ANGELO_PG_baked.scheme``). 1 (1.0.10): the pixels a bake copies from memory and each
+# image's resolved path. A binding of an earlier scheme (0, unset) that reads as stale was made before that, so the
+# export names it once as the update's doing (``updated``) rather than as an edit.
+SCHEME = 1
 _SUBSTITUTES = {}   # session_uid -> baked material, while an Angelo export runs (``active``).
+_CURRENT = {}   # session_uid -> verified digest of a current binding of an earlier scheme, for ``_record``.
 
 
 # One object a high-to-low bake rendered from (``ANGELO_PG_baked.sources``).
@@ -49,6 +55,7 @@ class ANGELO_PG_baked(bpy.types.PropertyGroup):
     sources: CollectionProperty(type=ANGELO_PG_baked_source)
     cage: PointerProperty(type=bpy.types.Object)
     ao: BoolProperty()
+    scheme: IntProperty()   # ``SCHEME`` when bound; 0 for a binding made before 1.0.10.
 
 
 def binding(obj):
@@ -66,7 +73,7 @@ def bind(obj, material, digest_, packing, sources=(), cage=None, ao=False, own="
     settings.sources.clear()
     for source in sources:
         settings.sources.add().object = source
-    settings.cage, settings.ao = cage, bool(ao)
+    settings.cage, settings.ao, settings.scheme = cage, bool(ao), SCHEME
 
 
 def digest(obj, depsgraph, sources=(), cage=None, ao=False, reader=None):
@@ -84,10 +91,11 @@ def digests(obj, depsgraph, sources=(), cage=None, ao=False, reader=None):
 
 def plan(objects, depsgraph):
     """Which of ``objects`` export with their baked material: ``{"substitutes": {session_uid: material},
-    "used": [(object, material)], "stale": [object], "nearby": [object], "packing": [(object, packing)]}`` (names,
-    in the order given). ``nearby`` are the stale objects whose own inputs are unchanged: what changed is geometry
-    within their baked AO's reach."""
-    substitutes, used, stale, nearby, packing = {}, [], [], [], []
+    "used": [(object, material)], "stale": [object], "nearby": [object], "packing": [(object, packing)],
+    "updated": [object]}`` (names, in the order given). ``nearby`` are the stale objects whose own inputs are unchanged:
+    what changed is geometry within their baked AO's reach. ``updated`` are the stale objects bound before the digest's
+    current ``SCHEME``: an export says once that the update reads them as changed."""
+    substitutes, used, stale, nearby, packing, updated = {}, [], [], [], [], []
     reader = None
     for obj in objects:
         material = binding(obj) if obj.type == "MESH" else None
@@ -109,12 +117,35 @@ def plan(objects, depsgraph):
             now = own = None   # Unknown is stale: the export keeps the object's own materials and says so.
         if now != settings.digest:
             stale.append(obj.name)
-            if settings.own and own == settings.own:
+            if settings.scheme < SCHEME:
+                updated.append(obj.name)   # Before the nearby check: this update reads the AO's reach anew too.
+            elif settings.own and own == settings.own:
                 nearby.append(obj.name)
             continue
+        if settings.scheme < SCHEME and obj.library is None:
+            _CURRENT[obj.session_uid] = now   # Current under this scheme too: a later change is an edit (``_record``).
         substitutes[obj.session_uid] = material
         used.append((obj.name, material.name))
-    return {"substitutes": substitutes, "used": used, "stale": stale, "nearby": nearby, "packing": packing}
+    if _CURRENT and not bpy.app.timers.is_registered(_record):
+        bpy.app.timers.register(_record, first_interval=0.0)
+    return {"substitutes": substitutes, "used": used, "stale": stale, "nearby": nearby, "packing": packing,
+            "updated": updated}
+
+
+def _record():
+    """Record ``SCHEME`` on the bindings a plan found current although made before it: their digest already says what
+    a bake reads now, so a later change is the person's edit, said as such (``baked_stale``), never the update's.
+    After the plan, never inside it (an export's plan writes nothing), and as an ID property write: no depsgraph
+    update, so no live preview exports again for it."""
+    if bpy.app.is_job_running("RENDER") or bpy.app.is_job_running("OBJECT_BAKE"):
+        return 1.0   # A render reads the scene on its own thread: write once it ends.
+    pending = dict(_CURRENT)
+    _CURRENT.clear()
+    for obj in bpy.data.objects:   # Only the binding verified: an undo step may hold another with the same uid.
+        if (obj.session_uid in pending and obj.library is None and binding(obj) is not None
+                and obj.angelo_baked.digest == pending[obj.session_uid]):
+            obj.angelo_baked["scheme"] = SCHEME
+    return None
 
 
 @contextmanager

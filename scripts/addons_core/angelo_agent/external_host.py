@@ -19,7 +19,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import managed_policy, product_env
+from . import change_clock, managed_policy, product_env
 from .external_apps import ExternalApps
 from .external_records import WindowRecords
 from .external_clients import AppRegistry
@@ -130,6 +130,7 @@ class ExternalHost(ExternalApps, WindowRecords):
         # registry changes. Their open tool-call requests, tasks and task-status waiters (external_apps).
         self._apps, self._app_keys, self._apps_stamp = {}, {}, None
         self._work, self._tasks, self._waiters, self._calls, self._closing = {}, {}, [], {}, []
+        self._unobserved = set()   # Conversations an app moved to that it has not read yet (external_apps.MOVED).
 
     # Lifecycle ---------------------------------------------------------------
 
@@ -171,8 +172,8 @@ class ExternalHost(ExternalApps, WindowRecords):
         keys = sorted(registry.keys.iterdir()) if registry.keys.is_dir() else []
         for path in (registry.path, registry.keys, *keys):
             try:
-                info = path.stat()
-                stamps.append((info.st_mtime_ns, info.st_size, info.st_mode))
+                info = path.stat()   # A stat in the clock's current tick (Windows) is read again next tick.
+                stamps.append(change_clock.cache_key(info, (info.st_mtime_ns, info.st_size, info.st_mode)))
             except OSError:
                 stamps.append(None)
         if force or stamps != self._apps_stamp:
@@ -241,6 +242,7 @@ class ExternalHost(ExternalApps, WindowRecords):
                 return
             if not work.claim():
                 continue  # The waiter timed out first; abandoned work never runs.
+            self.finish_answers()   # Outside the handler's guard: an error there is the tick's, as in the loop.
             try:
                 handlers[work.kind](work)
             except Exception as error:
@@ -249,6 +251,11 @@ class ExternalHost(ExternalApps, WindowRecords):
                                f"({type(error).__name__}: {error})"})
                 if not isinstance(error, (OSError, ValueError, RuntimeError, InvocationGuardError)):
                     raise
+
+    def finish_answers(self):
+        """Main thread, before each request is handled: answers this host holds back go out first (``HeadlessHost``
+        saves or reloads after each edit before answering), so nothing is admitted while an earlier call's answer,
+        and what it does to the file, is still queued. Here answers go out from the call's worker: none are held."""
 
     def close_finished(self):
         for identity, fence in list(self._open.items()):
@@ -389,7 +396,8 @@ class ExternalHost(ExternalApps, WindowRecords):
         phase = record.get("phase") if isinstance(record, dict) else None
         call = controller.pending.get(key)
         if call is not None:
-            state = "executing" if call.executing else "approval" if call.approval else "queued"
+            from .worker_consent import awaiting_person   # The card's own predicate (approval_wait.awaiting).
+            state = "executing" if call.executing else "approval" if awaiting_person(call) else "queued"
             return {"id": call_id, "known": True, "state": state, "receipt_phase": phase}
         if record is not None:
             return {"id": call_id, "known": True, "state": "finished" if phase == "completed" else "interrupted",
@@ -401,9 +409,12 @@ class ExternalHost(ExternalApps, WindowRecords):
     def handle_session_new(self, work):
         label = work.client.label
         old = self.conversation(label, create=False)
+        if old is not None:
+            self.settle(old, rotating=True)   # Answered work the tick has not closed yet is not "in flight".
         if old is not None and (old.pending or old.busy):
             return self._reply(work, old, "busy", "The current External conversation still has calls in flight")
         previous = old.state["id"] if old is not None else None
+        self._unobserved.discard(previous)
         identity = self.create_conversation(label, previous=previous)
         if old is not None:
             old.emit("message", {"role": "system", **notice("`angelo session new` moved client '{label}' to "

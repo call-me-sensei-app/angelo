@@ -9,6 +9,8 @@ Flatpak detection reads sample ``/.flatpak-info`` files written to a
 temporary folder, never the host's own.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ctypes
 import sys
 import tempfile
@@ -82,10 +84,14 @@ class SelectionTests(unittest.TestCase):
             self.assertEqual(open_store({}, "darwin", False),
                              (None, "Keychain is unavailable on this Mac; keys stay in memory."))
 
-    @unittest.skipIf(sys.platform == "win32", "advapi32 exists on Windows")
     def test_windows_without_advapi32_stays_memory_only(self):
-        self.assertEqual(open_store({}, "win32", False),
-                         (None, "Credential Manager is unavailable on this computer; keys stay in memory."))
+        # advapi32 cannot load: Windows raises OSError; where ctypes has no WinDLL at all, an AttributeError.
+        unavailable = (None, "Credential Manager is unavailable on this computer; keys stay in memory.")
+        with mock.patch.object(ctypes, "WinDLL", side_effect=OSError(126, "The specified module could not be found"),
+                               create=True):
+            self.assertEqual(open_store({}, "win32", False), unavailable)
+        if not hasattr(ctypes, "WinDLL"):
+            self.assertEqual(open_store({}, "win32", False), unavailable)
 
     def test_linux_needs_a_session_bus_and_never_autolaunches_one(self):
         with mock.patch.object(secret_service_linux, "LibSecret", side_effect=AssertionError("loaded libsecret")):

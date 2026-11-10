@@ -4,6 +4,8 @@
 lead's resumed merge; a single-arm trial settles exactly as before. The trial ends when the lead's turn has ended and
 ``eval_parallel.settled`` holds (``eval_live_agent_session.on_running``); the count of events is reported only."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

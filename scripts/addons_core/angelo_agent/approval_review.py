@@ -268,9 +268,9 @@ def details_preparing(call, owner):
 def prepare_canvas_reviews():
     """Existing canvas timer hook; font calls remain on Blender's main thread."""
     import bpy
-    from . import chat_view, console, ui
+    from . import approval_wait, chat_view, console, ui
     controller = ui.get_controller()
-    call = next((call for call in controller.pending.values() if call.approval), None) if controller else None
+    call = approval_wait.awaiting(controller) if controller else None   # The call chat_blocks draws a card for.
     review = _current_review(call) if call is not None else None
     if review is None:
         if call is not None:

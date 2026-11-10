@@ -1458,7 +1458,7 @@ Import and export
    * - Summarize the open file: datablock counts with unused data, linked libraries, external files (packed, present, missing) and unresolved references
      - Native typed
      - ``angelo_blend_file`` (tool)
-     - H ``test_native_blend_file``; N ``test_blender_read_tools``
+     - H ``test_native_blend_file``, ``test_native_image_read_files``; N ``test_blender_read_tools``, ``test_blender_image_read_files``
      - Read-only, no approval; deferred. Files are named relative to the workspace or by base name, never by an absolute path (``scene_intelligence.rst``, "The file as a file").
    * - List the datablocks of another .blend in the file workspace without opening it
      - Native typed
@@ -1621,7 +1621,7 @@ estimates.
      - Current
    * - Claude plan schema (core plus deferred names)
      - 39,519 (about 20,480)
-     - 57,232 (about 29,654)
+     - 57,246 (about 29,661)
    * - Claude appended instructions
      - 8,875
      - 15,606
@@ -1630,7 +1630,7 @@ estimates.
      - 108,654 (about 56,297)
    * - Codex instructions
      - 13,077
-     - 15,857
+     - 15,774
    * - Action kinds: core, deferred
      - 7, 16
      - 7, 57
@@ -1674,6 +1674,77 @@ Lookup sizes, measured with ``coverage_prefix.py`` when each was added: kinds
 (``create_object``'s Grease Pencil variant adds 812); checks
 ``particle_values`` 500, ``fcurve_modifier`` 785, ``markers`` 635, ``nla``
 1,832, ``keyframes`` 1,103, ``node_graph`` 2,670 and ``curve_counts`` 545.
+
+Dependency walk depth
+=====================
+
+A program isolates its inputs completely before it stages anything. Three
+walks read every struct a mutable input datablock embeds:
+
+* ``program_dependencies._walk_links``, the ID links;
+* ``_rna_values``, the exact bind and commit fingerprint;
+* ``program_admission._walk_custom_links``, the custom-property links.
+
+All three are breadth first and iterative. A struct is expanded once, where it
+is first reached, and later paths to it are references. The two program walks'
+queues hold a pending struct or collection field, never one entry per element;
+the custom-link walk queues each element, since any holder may carry ID
+properties.
+
+None of them bounds nesting. A visited set ends each walk, its budget bounds its
+work, and none recurses: the links are flat, and the fingerprint is a flat table
+(every non-ID struct is written as ``{"rna_reference": [type, ordinal]}``, the
+root's settings are the result and every other struct's are
+``result["#structs"][ordinal - 1]``), so recursive consumers such as
+``json.dumps`` meet no deeper value than one field's arrays. Nesting inside one
+datablock's RNA can be deep even breadth first, because a walk may reach another
+datablock's structs only through a chain: an Object reaches its armature's bone
+collections through a pose bone's ``bone`` and then each collection's
+``parent``, as deep as they nest. The only remaining recursion, arrays inside
+one field's value (and ID-property groups), keeps its 16-level bound. Links
+between datablocks are walked separately and bounded by ``MAX_STAGE_IDS``.
+
+The link walk also charges one item per struct against the fingerprint budget
+(``MAX_FINGERPRINT_ITEMS``) and refuses "An input embeds more data than its
+bounded dependency walk reads". It never iterates a collection whose items can
+hold no ID link at any depth: an element view (``rna_fields.ELEMENT_VIEWS``: an
+F-Curve's keys and samples, hair points, a shape key's points) or a
+collection whose item type no registered RNA type derives from and declares only
+values and collections of such items (``rna_fields.link_free_classifier``: a
+particle's hair keys). A placeholder item type (``UnknownType``, as a shape key
+declares its points) is never proven free; a shape key's points are an element
+view instead. Those items still give every value to the fingerprint.
+
+Before this (to 1.0.10), the two program walks were depth first, so an
+armature's ``parent`` and ``children`` pointers reached a chain of n bones about
+n levels deep, though every bone is also in ``Armature.bones``. Every typed
+program on a rig with a chain of 11 or more bones was refused, which covered
+humanoids with fingers: a UE5 Mannequin-named rig (15 deep), Mixamo's (12),
+VRM's (12), an Auto-Rig Pro-style rig (14) and Rigify's metarig (21).
+Breadth first with the old 14- and 16-level bounds kept, sixteen nested bone
+collections still refused every program on their armature object.
+``test_blender_program_bone_depth`` proves these, with nested bone collections
+and nested node frames, against the old walk's links.
+
+Program struct identity
+=======================
+
+A struct, in all three walks, is one (pointer, RNA type) pair. Blender returns
+several views over one pointer: ``Object.display`` and ``Object.light_linking``
+are the Object itself, ``Object.collision`` shares ``Object.field``'s data, and
+``World.light_settings`` and ``World.mist_settings`` are the World. Identified by
+pointer alone (to 1.0.10), the second view read became a reference to the
+first, so its own settings were never fingerprinted or walked for links: a
+collision, display, light-linking or mist edit made between a program's bind and
+commit went unseen. One view reached twice is still one struct.
+
+Every struct that can hold ID properties records them under ``"#custom"`` (an
+ID's too). To 1.0.10 only IDs' were fingerprinted, so a pose bone's or bone's
+custom property, such as a rig's IK/FK switch that drivers read, could change
+between bind and commit unseen. Whether a type can hold them is RNA's per-type
+flag, asked once per type (``keys()`` raises for one that cannot). The table's
+``#`` keys are not RNA identifiers, so no setting, an add-on's included, can
+collide with them.
 
 Animation work bounds
 =====================
@@ -2664,11 +2735,13 @@ checkout, not from the app bundle.
 Known limitations
 =================
 
-* A commit's replaced originals stay in the file as orphan data until it is
-  saved or purged; typed programs have no purge, so the result names that data
-  and the materials only it uses (``orphan_data.held_only_by_them``, which a
-  save still writes) with the reviewed-script call that removes both
-  (``agent_execution.rst``, "Stage isolation"). Commit restores unmodified material and node-group clones
+* A commit frees the originals it replaced once no rollback can need them
+  (``commit_orphans``); a deleted object's data stays in the file as orphan data
+  until it is saved or purged, as after Blender's own delete. Typed programs have
+  no purge, so the result names that data and the materials only it uses
+  (``orphan_data.held_only_by_them``, which a save still writes) with the
+  reviewed-script call that removes both (``agent_execution.rst``, "Stage
+  isolation"). Commit restores unmodified material and node-group clones
   to their originals and gives swapped data, Actions and Worlds their original
   names when nothing else uses the originals, so a committed edit does not
   leave the object on suffixed copies (``Cube.001`` data, ``Material.001``, a

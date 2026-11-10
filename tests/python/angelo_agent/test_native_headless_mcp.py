@@ -9,8 +9,11 @@ profile, a fake executor, and a stand-in ``bpy`` whose ``wm`` operators write fi
 main-thread loop. Contract: doc/angelo/external_mcp.rst, "Headless".
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import io
 import json
+import inspect
 import os
 import shutil
 import stat
@@ -19,6 +22,7 @@ import tempfile
 import threading
 import time
 import unittest
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 import machine_clock
@@ -37,6 +41,7 @@ from angelo_agent.headless_session import (PRIVATE_PREFIX, HeadlessSession, chil
 from angelo_agent.external_requests import ClientRegistry
 from unittest.mock import patch
 from angelo_agent.managed_policy import Policy
+from host_test_policy import environment_skip
 from test_native_external_cli_host import Environment, Executor
 
 CUBE = {"name": "Box", "size": 1, "location": [0, 0, 0]}
@@ -54,6 +59,7 @@ class FakeBpy:
     def __init__(self, source):
         self.data = SimpleNamespace(filepath=str(source))
         self.saves, self.loads = [], []
+        self.on_load = None   # What the child's load_pre handler does at every load (HeadlessTests.start_child).
         self.ops = SimpleNamespace(wm=SimpleNamespace(save_as_mainfile=self._save_as, save_mainfile=self._save,
                                                       open_mainfile=self._open))
 
@@ -77,6 +83,8 @@ class FakeBpy:
 
     def _open(self, filepath, load_ui, use_scripts):
         assert load_ui is False and use_scripts is False
+        if self.on_load is not None:
+            self.on_load()
         self.data.filepath = filepath
         self.loads.append(filepath)
         return {"FINISHED"}
@@ -84,7 +92,7 @@ class FakeBpy:
 
 class FileRuleTests(unittest.TestCase):
     def setUp(self):
-        self.root = Path(tempfile.mkdtemp(prefix="shl-files-", dir="/tmp"))
+        self.root = Path(tempfile.mkdtemp(prefix="shl-files-"))
         self.addCleanup(shutil.rmtree, self.root, True)
 
     def test_only_an_absolute_readable_blend_opens(self):
@@ -116,7 +124,7 @@ class FileRuleTests(unittest.TestCase):
         os.chmod(folder, 0o555)
         self.addCleanup(os.chmod, folder, 0o755)
         if os.access(folder, os.W_OK):
-            self.skipTest("running as a user who can write anywhere")
+            self.skipTest(environment_skip("running as a user who can write anywhere"))
         with self.assertRaises(headless_files.FileProblem) as raised:
             headless_files.claim_output(source)
         self.assertEqual(raised.exception.code, "output_unwritable")
@@ -132,7 +140,12 @@ class FileRuleTests(unittest.TestCase):
     def test_the_open_file_digest_follows_the_real_path(self):
         source = blend(self.root / "scene.blend")
         link = self.root / "link.blend"
-        link.symlink_to(source)
+        try:
+            link.symlink_to(source)
+        except OSError:
+            if os.name != "nt":
+                raise
+            self.skipTest(environment_skip("Windows makes a symlink only with a privilege this user lacks"))
         self.assertEqual(headless_files.path_digest(link), headless_files.path_digest(source))
         self.assertIsNone(headless_files.path_digest(self.root / "missing.blend"))
 
@@ -158,7 +171,7 @@ class AllowListTests(unittest.TestCase):
                                         Path("/tmp/p"))
         self.assertNotIn("BLENDER_USER_SCRIPTS", environment)
         self.assertNotIn("PYTHONPATH", environment)
-        self.assertEqual(environment["ANGELO_STATE_DIR"], "/tmp/p/state", "never the person's own state")
+        self.assertEqual(environment["ANGELO_STATE_DIR"], str(Path("/tmp/p") / "state"), "never the person's own state")
         self.assertEqual(environment["LC_ALL"], "C")
 
     def test_a_file_name_holding_the_pipe_placeholders_reaches_the_child_unchanged(self):
@@ -185,6 +198,8 @@ class AllowListTests(unittest.TestCase):
                 env = child_environment({"ANGELO_QA_PROCESS_OWNER": owner}, Path("/tmp/p"))
                 self.assertEqual(env.get("ANGELO_QA_PROCESS_OWNER"), owner if owner == "a" * 32 else None)
 
+    @unittest.skipIf(os.name == "nt", environment_skip("the sweep (os.getuid, O_NONBLOCK) runs only where headless "
+                                                       "does: headless_session.SUPPORTED_PLATFORMS"))
     def test_a_folder_gone_mid_sweep_never_stops_the_sweep(self):
         """Break-it L2: a leftover folder that disappears while the sweep looks at it is skipped."""
         root = Path(tempfile.mkdtemp(prefix="shl-sweep-", dir="/tmp"))
@@ -212,6 +227,9 @@ class AllowListTests(unittest.TestCase):
                 self.assertNotIn(word, text, name)
 
 
+@unittest.skipIf(os.name == "nt", environment_skip("headless_pipe hands the child its pipes with pass_fds, which "
+                                                   "Windows lacks; headless runs on headless_session.SUPPORTED_PLATFORMS "
+                                                   "only"))
 class PipeTests(unittest.TestCase):
     """Real pipes and a real child process speaking the frames."""
 
@@ -292,7 +310,7 @@ class InThreadPopen:
         return process
 
 
-@unittest.skipIf(sys.platform == "win32", "Headless is macOS (and Linux) first")
+@unittest.skipIf(sys.platform == "win32", environment_skip("Headless is macOS (and Linux) first"))
 class HeadlessTests(unittest.TestCase):
     def setUp(self):
         managed_policy.reset(Policy())
@@ -328,6 +346,9 @@ class HeadlessTests(unittest.TestCase):
         self.child_env.make_controller = lambda identity: apply_window_approval(made(identity), approval)
         working = options.get("--working")   # The copy the launcher made; Blender opens it, never the source.
         self.bpy = FakeBpy(working or options["--file"])
+        # The real child's ``ui.document_load_pre``: every load is a new document key (the load serial), and no
+        # conversation is told (``document_identity.follow`` needs a window chat), so a reload is a document change.
+        self.bpy.on_load = lambda: setattr(self.child_env, "document", ("load-" + uuid.uuid4().hex, 1))
         host = HeadlessHost(self.child_env, source=options["--file"], label=options["--client"],
                             app=options["--app"], levels=options["--levels"].split(","), bpy=self.bpy,
                             working=working)
@@ -685,6 +706,38 @@ class HeadlessTests(unittest.TestCase):
         sweep_leftovers(self.root)
         self.assertFalse(dead.exists())
         self.assertTrue(live.exists())
+
+    def test_the_system_temporary_folder_is_listed_once_per_install_and_never_on_an_open(self):
+        """windows-11, 1.0.10: every headless open listed the whole temporary folder (573,000 entries, 83 s on Mac 2)."""
+        from angelo_agent import headless_session, headless_working_copy, private_roots
+        scratch, system = Path(tempfile.mkdtemp(dir=self.root)), Path(tempfile.mkdtemp(dir=self.root))
+        listed = []
+        real = Path.iterdir
+
+        def counted(folder):
+            listed.append(Path(folder))
+            return real(folder)
+        old = system / (PRIVATE_PREFIX + "old")
+        old.mkdir()
+        (old / "child.pid").write_text("999999999")
+        with patch.object(private_roots, "scratch_root", lambda *a: scratch), \
+                patch.object(headless_working_copy.tempfile, "gettempdir", lambda: str(system)), \
+                patch.object(Path, "iterdir", counted):
+            headless_working_copy.sweep(None, PRIVATE_PREFIX)
+            self.assertFalse(old.exists(), "an earlier build's leftover, once")
+            self.assertTrue((scratch / headless_working_copy.LEGACY_SWEPT).exists())
+            listed.clear()
+            headless_working_copy.sweep(None, PRIVATE_PREFIX)
+            self.assertEqual(listed, [scratch], "then only Angelo's own folder")
+        with patch.object(private_roots, "scratch_root", lambda *a: system), \
+                patch.object(headless_working_copy.tempfile, "gettempdir", lambda: str(system)), \
+                patch.object(Path, "iterdir", counted):
+            listed.clear()
+            headless_working_copy.sweep(None, PRIVATE_PREFIX)
+            self.assertEqual(listed, [], "a scratch root that fell back to the temporary folder is not listed")
+        source = inspect.getsource(headless_session.HeadlessSession._start)
+        self.assertIn("sweep_in_background(", source)
+        self.assertNotIn("sweep_leftovers(", source)
 
     def test_a_planted_fifo_or_link_never_stalls_or_steers_the_sweep(self):
         stuck = Path(tempfile.mkdtemp(prefix=PRIVATE_PREFIX, dir=self.root))

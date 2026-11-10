@@ -60,10 +60,11 @@ def bound_revision(read, handle):
     try:
         return read()
     except SceneQueryError as error:
-        if dict.get(BaseException.__getattribute__(error, "__dict__"), "refusal_code") is None:
-            raise
+        if dict.get(BaseException.__getattribute__(error, "__dict__"), "refusal_code") in (None, "UNKNOWN",
+                                                                                         "INTERNAL_ERROR"):
+            raise   # A fault, not a target that changed (scene_queries' main-thread check, refusal_codes.coded).
         raise ProgramError("The exact target changed and its revision can no longer be read (%s); the staged program "
-                           "was discarded, not applied" % str(error).partition(": ")[2][:200],
+                           "was discarded, not applied" % (str(error).partition(": ")[2] or str(error))[:200],
                            code="STALE_REVISION", details={"handles": [handle]}) from error
 
 

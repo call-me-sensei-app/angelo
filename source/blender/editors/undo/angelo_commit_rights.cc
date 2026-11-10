@@ -11,11 +11,13 @@
 
 #include "angelo_commit_rights.hh"
 
+#include <algorithm>
 #include <cstring>
 #include <utility>
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_listbase.h"
 #include "BLI_map.hh"
 #include "BLI_set.hh"
 #include "BLI_threads.h"
@@ -28,8 +30,10 @@
 #include "BKE_lib_id.hh"
 #include "BKE_lib_override.hh"
 #include "BKE_lib_query.hh"
+#include "BKE_context.hh"
 #include "BKE_main.hh"
 
+#include "ED_render.hh"
 #include "ED_undo.hh"
 
 #include "RNA_access.hh"
@@ -109,6 +113,9 @@ struct LiveIDs {
   Set<ID *> invalid_embedded_owners;
   Map<ID *, Vector<ID *>> never_null_users;
   Vector<IDLink> links;
+  /** Index into `links` by target: a proof reads only the links into its closure, so the proofs of one
+   * inventory never scan every link again. */
+  Map<ID *, Vector<int64_t>> links_by_target;
 
   explicit LiveIDs(Main *main)
   {
@@ -154,6 +161,14 @@ struct LiveIDs {
               IDWALK_DO_LIBRARY_POINTER);
     }
     FOREACH_MAIN_ID_END;
+    index_links();
+  }
+
+  void index_links()
+  {
+    for (const int64_t index : links.index_range()) {
+      links_by_target.lookup_or_add_default(links[index].target).append(index);
+    }
   }
 
   bool matches(const AngeloCommitIDIdentity &identity) const
@@ -174,10 +189,52 @@ static bool is_local_owned_id(const ID *id)
          !(id->tag & (ID_TAG_NO_MAIN | ID_TAG_NO_USER_REFCOUNT | ID_TAG_TEMP_MAIN));
 }
 
+/** The families a commit swaps for an edited copy: object data, its Key, Materials, node groups,
+ * Actions, particle settings and Worlds. */
+static bool replaceable_family(const short id_type)
+{
+  return ELEM(id_type, ID_ME, ID_CU_LEGACY, ID_MB, ID_LT, ID_CA, ID_LA, ID_AR, ID_GD_LEGACY, ID_GP) ||
+         ELEM(id_type, ID_CV, ID_PT, ID_VO, ID_SPK, ID_LP, ID_KE, ID_MA, ID_NT, ID_AC) ||
+         ELEM(id_type, ID_PA, ID_WO);
+}
+
+/** Local data of a replaceable family that nothing uses, nothing keeps and no asset library lists. */
+static bool unused_replaceable(const ID *id)
+{
+  return is_local_owned_id(id) && replaceable_family(GS(id->name)) && GS(id->name) != ID_KE &&
+         id->us == 0 && !(id->flag & ID_FLAG_FAKEUSER) && !ID_IS_ASSET(id);
+}
+
+/** Counted references from an ID to itself do not give another owner a claim on it. This is only
+ * candidate eligibility: the complete deletion proof below still checks every surviving outside link. */
+static bool self_unused_replaceable(Main *main, ID *id)
+{
+  if (!is_local_owned_id(id) || !replaceable_family(GS(id->name)) || GS(id->name) == ID_KE ||
+      id->us <= 0 || (id->flag & ID_FLAG_FAKEUSER) || ID_IS_ASSET(id))
+  {
+    return false;
+  }
+  int self_users = 0;
+  BKE_library_foreach_ID_link(
+      main,
+      id,
+      [&](LibraryIDLinkCallbackData *data) {
+        if (data->owner_id == id && *data->id_pointer == id && (data->cb_flag & IDWALK_CB_USER)) {
+          self_users++;
+        }
+        return IDWALK_RET_NOP;
+      },
+      nullptr,
+      IDWALK_READONLY | IDWALK_INCLUDE_UI | IDWALK_DO_INTERNAL_RUNTIME_POINTERS |
+          IDWALK_DO_LIBRARY_POINTER);
+  return self_users == id->us;
+}
+
 static bool purpose_allows(const ScopeIdentity &scope,
                            const AngeloCommitDeletePurpose purpose,
                            ID *id,
-                           const char **r_error)
+                           const char **r_error,
+                           const bool is_root)
 {
   if (ELEM(GS(id->name), ID_LI, ID_WM, ID_SCR, ID_WS) ||
       ED_angelo_undo_scope_id_is_protected(scope.capture, id))
@@ -197,6 +254,18 @@ static bool purpose_allows(const ScopeIdentity &scope,
        * caller supplies that approval; do not silently replace it with a local-only policy. */
       if (GS(id->name) != ID_OB) {
         *r_error = "Approved Object deletion cannot authorize another ID family";
+        return false;
+      }
+      break;
+    case AngeloCommitDeletePurpose::ReplacedData:
+    case AngeloCommitDeletePurpose::SelfReplacedData:
+      /* A Key joins only as its owner's cascade: the owner proved it unused, and the surviving-link
+       * check below refuses a Key anything else still points at. */
+      if (GS(id->name) == ID_KE ? !is_local_owned_id(id) :
+                                    !(unused_replaceable(id) ||
+                                      (purpose == AngeloCommitDeletePurpose::SelfReplacedData &&
+                                       is_root && self_unused_replaceable(scope.main, id)))) {
+        *r_error = "Replaced data must be local, unused, without a fake user or asset mark";
         return false;
       }
       break;
@@ -269,7 +338,9 @@ static bool prove_deletion(const ScopeIdentity &scope,
       *r_error = "The deletion cascade reaches ownership retained by the live result";
       return false;
     }
-    if (!purpose_allows(scope, purpose, id, r_error)) {
+    if (!purpose_allows(scope, purpose, id, r_error,
+                        purpose == AngeloCommitDeletePurpose::SelfReplacedData &&
+                            std::find(roots.begin(), roots.end(), identity_of(id)) != roots.end())) {
       return false;
     }
     if (live.invalid_embedded_owners.contains(id)) {
@@ -339,8 +410,15 @@ static bool prove_deletion(const ScopeIdentity &scope,
       }
     }
   }
-  for (const IDLink &link : live.links) {
-    if (!all_deleted.contains(link.target) || r_proof.main_ids.contains(link.owner)) {
+  Vector<int64_t> into;
+  for (ID *deleted : all_deleted) {
+    if (const Vector<int64_t> *indices = live.links_by_target.lookup_ptr(deleted)) {
+      into.extend(*indices);
+    }
+  }
+  for (const int64_t index : into) {
+    const IDLink &link = live.links[index];
+    if (r_proof.main_ids.contains(link.owner)) {
       continue;
     }
     /* Runtime/ownership hints are remappable. Any NEVER_NULL user was already included above
@@ -469,6 +547,67 @@ static bool engine_owner_editable(Main *main, Scene &scene, const char **r_error
   return true;
 }
 
+static void merge_proof(DeleteProof &r_into, const DeleteProof &proof)
+{
+  for (const AngeloCommitIDIdentity &identity : proof.identities) {
+    if (std::find(r_into.identities.begin(), r_into.identities.end(), identity) == r_into.identities.end()) {
+      r_into.identities.append(identity);
+    }
+  }
+  for (ID *id : proof.main_ids) {
+    r_into.main_ids.add(id);
+  }
+}
+
+static void prove_replaced_candidates(const ScopeIdentity &scope,
+                                      const Span<AngeloCommitIDIdentity> candidates,
+                                      const Span<AngeloCommitIDIdentity> authorized,
+                                      const LiveIDs &live,
+                                      DeleteProof &admitted,
+                                      Vector<AngeloCommitIDIdentity> &freeing,
+                                      Map<ID *, std::string> &refused,
+                                      const AngeloCommitDeletePurpose purpose = AngeloCommitDeletePurpose::ReplacedData)
+{
+  DeleteProof batch;
+  const char *error = nullptr;
+  /* A failed proof may have filled part of `batch`: only a complete one is admitted. */
+  if (prove_deletion(scope, purpose, candidates, authorized, {}, live,
+                     batch, &error))
+  {
+    admitted = std::move(batch);
+    freeing.extend(candidates);
+  }
+  else {
+    /* One root something else still points at refuses the whole proof: prove each on its own. */
+    Vector<AngeloCommitIDIdentity> alone;
+    for (const AngeloCommitIDIdentity &candidate : candidates) {
+      DeleteProof single;
+      const char *single_error = nullptr;
+      const AngeloCommitIDIdentity one[1] = {candidate};
+      if (prove_deletion(scope, purpose,
+                         Span<AngeloCommitIDIdentity>(one, 1), authorized, {}, live, single,
+                         &single_error))
+      {
+        merge_proof(admitted, single);
+        freeing.append(candidate);
+      }
+      else {
+        refused.add_overwrite(candidate.pointer, single_error ? single_error : "refused");
+        alone.append(candidate);
+      }
+    }
+    /* Roots that only point at each other refuse one by one: try those together before giving up. */
+    DeleteProof together;
+    const char *together_error = nullptr;
+    if (alone.size() > 1 && prove_deletion(scope, purpose, alone,
+                                           authorized, {}, live, together, &together_error))
+    {
+      merge_proof(admitted, together);
+      freeing.extend(alone);
+    }
+  }
+}
+
 }  // namespace
 
 struct AngeloCommitDeleteRight {
@@ -490,6 +629,13 @@ struct AngeloCommitEngineRight {
   bool forward_set = false;
   bool rollback_attempted = false;
 };
+
+static void kill_preview_jobs(bContext *C, Main *main)
+{
+  if (wmWindowManager *wm = CTX_wm_manager(C)) {
+    ED_preview_kill_jobs(wm, main);
+  }
+}
 
 AngeloCommitDeleteRight *ED_angelo_commit_delete_prepare(
     bContext *C,
@@ -519,6 +665,75 @@ AngeloCommitDeleteRight *ED_angelo_commit_delete_prepare(
   return right;
 }
 
+AngeloCommitDeleteRight *ED_angelo_commit_self_replaced_prepare(
+    bContext *C,
+    AngeloUndoCapture *capture,
+    const Span<AngeloCommitIDIdentity> roots,
+    const Span<AngeloCommitIDIdentity> authorized,
+    Vector<AngeloCommitIDIdentity> &r_eligible,
+    const char **r_error)
+{
+  r_eligible.clear();
+  ScopeIdentity scope;
+  if (!operation_scope(C, capture, scope, r_error)) {
+    return nullptr;
+  }
+  const LiveIDs live(scope.main);
+  Vector<AngeloCommitIDIdentity> candidates;
+  for (const AngeloCommitIDIdentity &root : roots) {
+    if (live.matches(root) &&
+        std::find(authorized.begin(), authorized.end(), root) != authorized.end() &&
+        self_unused_replaceable(scope.main, root.pointer) &&
+        std::find(candidates.begin(), candidates.end(), root) == candidates.end())
+    {
+      candidates.append(root);
+    }
+  }
+  DeleteProof proof;
+  Map<ID *, std::string> refused;
+  prove_replaced_candidates(scope, candidates, authorized, live, proof, r_eligible, refused,
+                            AngeloCommitDeletePurpose::SelfReplacedData);
+  if (r_eligible.is_empty()) {
+    return nullptr; /* A valid empty plan grants no identity takeover and no deletion. */
+  }
+  auto *right = MEM_new<AngeloCommitDeleteRight>(__func__);
+  right->scope = scope;
+  right->purpose = AngeloCommitDeletePurpose::SelfReplacedData;
+  right->roots = r_eligible;
+  right->authorized = authorized;
+  right->proof = std::move(proof);
+  return right;
+}
+
+bool ED_angelo_commit_delete_validate(bContext *C,
+                                      AngeloUndoCapture *capture,
+                                      const AngeloCommitDeleteRight &right,
+                                      const char **r_error)
+{
+  if (right.consumed) {
+    *r_error = "The native deletion right has already been consumed";
+    return false;
+  }
+  if (!same_scope(C, capture, right.scope, r_error)) {
+    return false;
+  }
+  kill_preview_jobs(C, right.scope.main);
+  if (!same_scope(C, capture, right.scope, r_error)) {
+    return false;
+  }
+  const LiveIDs live(right.scope.main);
+  DeleteProof proof;
+  if (!prove_deletion(right.scope, right.purpose, right.roots, right.authorized, right.keep,
+                       live, proof, r_error) || !proof_matches(right.proof, proof))
+  {
+    if (!*r_error) {
+      *r_error = "The native deletion closure changed after its right was prepared";
+    }
+    return false;
+  }
+  return true;
+}
+
 bool ED_angelo_commit_delete(bContext *C,
                              AngeloUndoCapture *capture,
                              AngeloCommitDeleteRight &right,
@@ -532,6 +747,13 @@ bool ED_angelo_commit_delete(bContext *C,
     return false;
   }
   right.consumed = true;
+  if (!same_scope(C, capture, right.scope, r_error)) {
+    return false;
+  }
+  /* Preview jobs render from originals on their own thread (a material's, a World's from a Properties
+   * area, an Object icon reading its data): stop every one, as memfile Undo does before it replaces IDs.
+   * Stopping a job can release the GIL, so the scope and the proof below are read after it. */
+  kill_preview_jobs(C, right.scope.main);
   if (!same_scope(C, capture, right.scope, r_error)) {
     return false;
   }
@@ -587,6 +809,172 @@ bool ED_angelo_commit_delete(bContext *C,
 void ED_angelo_commit_delete_free(AngeloCommitDeleteRight *right)
 {
   MEM_delete(right);
+}
+
+bool ED_angelo_commit_replaceable(bContext *C,
+                                  AngeloUndoCapture *capture,
+                                  const Span<AngeloCommitIDIdentity> holders,
+                                  Vector<AngeloCommitIDIdentity> &r_closure,
+                                  const char **r_error)
+{
+  ScopeIdentity scope;
+  if (!operation_scope(C, capture, scope, r_error)) {
+    return false;
+  }
+  Set<ID *> reached;
+  Vector<ID *> pending;
+  for (const AngeloCommitIDIdentity &holder : holders) {
+    /* One list lookup per holder, never a walk of Main: a commit that seals pays for what it holds. */
+    const ListBaseT<ID> *ids = which_libbase(scope.main, holder.id_type);
+    if (!ids || BLI_findindex(ids, holder.pointer) == -1 || !(identity_of(holder.pointer) == holder)) {
+      *r_error = "A replaceable holder is stale or not a Main ID";
+      return false;
+    }
+    if (reached.add(holder.pointer)) {
+      pending.append(holder.pointer);
+    }
+  }
+  r_closure.clear();
+  for (int64_t index = 0; index < pending.size(); index++) {
+    Vector<ID *> targets;
+    BKE_library_foreach_ID_link(
+        scope.main,
+        pending[index],
+        [&targets](LibraryIDLinkCallbackData *data) {
+          ID *target = *data->id_pointer;
+          if (target && (data->cb_flag & IDWALK_CB_USER) && !(data->cb_flag & IDWALK_CB_EMBEDDED) &&
+              !(target->flag & ID_FLAG_EMBEDDED_DATA))
+          {
+            targets.append(target);
+          }
+          return IDWALK_RET_NOP;
+        },
+        nullptr,
+        IDWALK_READONLY);
+    for (ID *target : targets) {
+      if (replaceable_family(GS(target->name)) && is_local_owned_id(target) && reached.add(target)) {
+        pending.append(target);
+        r_closure.append(identity_of(target));
+      }
+    }
+  }
+  return true;
+}
+
+
+bool ED_angelo_commit_free_replaced(bContext *C,
+                                    AngeloUndoCapture *capture,
+                                    const Span<AngeloCommitIDIdentity> roots,
+                                    const Span<AngeloCommitIDIdentity> authorized,
+                                    const int max_passes,
+                                    AngeloCommitFreeResult &r_result,
+                                    const char **r_error)
+{
+  r_result = {};
+  ScopeIdentity scope;
+  if (!operation_scope(C, capture, scope, r_error)) {
+    return false;
+  }
+  Vector<AngeloCommitIDIdentity> pending;
+  for (const AngeloCommitIDIdentity &root : roots) {
+    if (std::find(pending.begin(), pending.end(), root) == pending.end()) {
+      pending.append(root);
+    }
+  }
+  Map<ID *, std::string> refused;
+  while (!pending.is_empty()) {
+    if (r_result.passes == max_passes) {
+      r_result.unfinished = true;
+      break;
+    }
+    /* Preview jobs render from originals on their own thread: stop every one, as memfile Undo does before
+     * it replaces IDs. Stopping one can release the GIL, so the scope and this pass's inventory and proofs
+     * are read after it, and nothing runs between the proof and the free. */
+    kill_preview_jobs(C, scope.main);
+    if (!same_scope(C, capture, scope, r_error)) {
+      return false;
+    }
+    /* One inventory per pass serves every proof of the pass (links indexed by target). */
+    const LiveIDs live(scope.main);
+    Vector<AngeloCommitIDIdentity> candidates;
+    Vector<AngeloCommitIDIdentity> still;
+    for (const AngeloCommitIDIdentity &root : pending) {
+      if (!live.matches(root)) {
+        continue; /* Gone with an earlier pass's closure (or never live): only its identity is kept. */
+      }
+      still.append(root);
+      /* Only what the commit itself replaced: a root becomes a candidate once nothing uses it, which
+       * may follow the free of another replaced root (a replaced material only the replaced mesh used).
+       * Data the replaced blocks merely used is never a root: it stays, as after Blender's edit. */
+      if (std::find(authorized.begin(), authorized.end(), root) != authorized.end() &&
+          unused_replaceable(root.pointer))
+      {
+        candidates.append(root);
+      }
+    }
+    pending = std::move(still);
+    if (candidates.is_empty()) {
+      break;
+    }
+    r_result.passes++;
+    DeleteProof admitted;
+    Vector<AngeloCommitIDIdentity> freeing;
+    prove_replaced_candidates(scope, candidates, authorized, live, admitted, freeing, refused);
+    if (freeing.is_empty()) {
+      break; /* No progress: what is left stays, with its last refusal. */
+    }
+    Set<ID *> deleting;
+    for (const AngeloCommitIDIdentity &root : freeing) {
+      deleting.add(root.pointer);
+      refused.remove(root.pointer);
+    }
+    BKE_id_multi_delete(scope.main, deleting);
+    /* The kernel expands the set; its pointer values are safe to compare, never to read. */
+    for (ID *pointer : deleting) {
+      if (!admitted.main_ids.contains(pointer)) {
+        r_result.unexpected.append(reinterpret_cast<uintptr_t>(pointer));
+      }
+    }
+    r_result.removed.extend(admitted.identities);
+    if (!same_scope(C, capture, scope, r_error)) {
+      return false;
+    }
+    if (!r_result.unexpected.is_empty()) {
+      *r_error = "The kernel freed IDs outside the proven replaced-data closure";
+      return false;
+    }
+    Vector<AngeloCommitIDIdentity> next;
+    for (const AngeloCommitIDIdentity &root : pending) {
+      if (!deleting.contains(root.pointer)) {
+        next.append(root);
+      }
+    }
+    pending = std::move(next);
+  }
+  /* What is still in Main after all passes: one membership read, no link walk. */
+  Set<ID *> live;
+  ID *id;
+  FOREACH_MAIN_ID_BEGIN (scope.main, id) {
+    live.add(id);
+  }
+  FOREACH_MAIN_ID_END;
+  Vector<AngeloCommitIDIdentity> removed;
+  for (const AngeloCommitIDIdentity &identity : r_result.removed) {
+    if (live.contains(identity.pointer) && identity_of(identity.pointer) == identity) {
+      r_result.refused.append({identity, "The native deletion retained this ID"});
+    }
+    else {
+      removed.append(identity);
+    }
+  }
+  r_result.removed = std::move(removed);
+  for (const AngeloCommitIDIdentity &root : pending) {
+    const std::string *reason = refused.lookup_ptr(root.pointer);
+    if (reason && live.contains(root.pointer) && identity_of(root.pointer) == root) {
+      r_result.refused.append({root, *reason});
+    }
+  }
+  return true;
 }
 
 AngeloCommitEngineRight *ED_angelo_commit_engine_prepare(bContext *C,

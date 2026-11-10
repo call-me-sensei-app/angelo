@@ -10,6 +10,8 @@ a failure after the recovery scene opened changed the notice in place, unmarked 
 (B1) then skipped it, and a crash left ``pending`` on disk where the scene was in fact replaced.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import tempfile
 import unittest

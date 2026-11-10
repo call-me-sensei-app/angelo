@@ -242,6 +242,19 @@ GUIDES = (
           "Chat bar + menu > Create > Generation Flows (New, templates and saved flows).",
           "The angelo_flow_* tools (deferred: angelo_agent_capabilities TOOLS).",
           menu=("flows",), doc="generation_flows", heading="Generation Flows"),
+    Guide("goal", "Goal: keep going until it's done",
+          "Angelo holds a goal across turns: after each turn it measures it (an outline match against an attached "
+          "picture from one camera, scene checks, or the agent's own judgment) and continues the chat with the "
+          "result until it passes, stops making progress or its working-time or spend budget runs out.",
+          "Chat bar + menu > Goal (beside Attach): a goal chip in the composer, started by the message it goes "
+          "with; a click on the chip opens its card (threshold, budget, rounds), and its close glyph is Stop goal.",
+          "When the person asks for work to continue until a condition holds, angelo_goal (deferred) holds the goal "
+          "and states how it is measured.",
+          menu=("goal",), doc="goal_mode", heading="Goal mode",
+          examples=({"tool": "angelo_goal", "arguments": {"action": "SET", "objective": "Keep refining the model "
+                                                          "until its outline matches the attached picture"}},
+                    {"tool": "angelo_goal", "arguments": {"action": "STOP", "reason": "NEEDS_INPUT",
+                                                          "message": "Which of the two styles in the brief comes first?"}})),
     Guide("base_meshes", "Base meshes and hands",
           "Start from one of Angelo's base meshes, or have the agent start from a rig's hands with Angelo's hand "
           "tools.",

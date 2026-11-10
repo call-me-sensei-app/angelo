@@ -9,6 +9,7 @@ controls are its fal or BytePlus capability table (``studio_agent_video``); a fa
 from .provider_registry import GEMINI_IMAGE_CONTROLS
 from .studio_agent_video import kind_of, video_capabilities
 from .studio_state import ASPECTS
+from .refusal_codes import coded
 
 
 def capabilities(mode, model=""):
@@ -36,7 +37,8 @@ def capabilities(mode, model=""):
 def generation_options(mode, model, supplied):
     controls = capabilities(mode, model)
     if set(supplied) - (set(controls) - {"references_max", "references_min"}):
-        raise ValueError("This model does not support the requested Studio controls; inspect the catalog")
+        raise coded(ValueError("This model does not support the requested Studio controls; inspect the catalog"),
+                    "VALIDATION")
     defaults = {"polycount": 10000, "texture": True} if mode in {"tripo_api", "meshy_api", "fal_api"} else {"aspect": "1:1", "resolution": "2K"}
     if mode == "openai_images_api":
         defaults.update(quality="auto", background="auto", size="")
@@ -44,5 +46,5 @@ def generation_options(mode, model, supplied):
     for key, value in options.items():
         constraint = controls[key]
         if isinstance(constraint, list) and value not in constraint:
-            raise ValueError("This provider does not support that " + key)
+            raise coded(ValueError("This provider does not support that " + key), "VALIDATION")
     return options

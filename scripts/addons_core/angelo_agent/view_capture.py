@@ -9,7 +9,7 @@ Main ID is created; only the chat's private reference PNG is written, because
 that file is the existing provider image delivery path.
 
 ``draw_view3d`` takes its shading from a SpaceView3D, so one artist viewport's
-display settings are normalized for the duration of this call only. Nothing
+display settings are normalized for the duration of this call only (``view_viewport``). Nothing
 processes events or redraws between that change and its restoration in
 ``finally``; the add-on Python those writes run afterwards follows the
 approval mode (``view_policy``). MATERIAL is drawn as a viewport image render, in which EEVEE
@@ -21,7 +21,6 @@ does not either: ``view_weights`` draws the targets' weights at the same
 cameras (doc/angelo/view_sources.rst).
 """
 
-from collections import namedtuple
 import concurrent.futures
 import datetime
 import os
@@ -30,112 +29,23 @@ import time
 import bpy
 from mathutils import Matrix, Vector
 
-from . import (live_windows, object_bounds, scene_queries, view_cache, view_compare, view_free_camera, view_policy,
-               view_warm)
+from . import object_bounds, scene_queries, view_cache, view_compare, view_free_camera, view_policy, view_warm
 from .input_policy import tool_running
 from .view_framing import (AXIS_DIRECTIONS, axis_basis, basis_from_view_matrix, camera_matrix,
                            orthographic_fit, orthographic_projection, output_size, render_aspect, view_matrix)
 from .view_blur import EEVEE_LOOKS, NOT_DRAWN, own_offscreen_per_draw, scene_blurs
-from .view_looks import (BACKGROUND, BEST_EFFORT, EEVEE_SHADINGS, OVERLAY, SHADING, UV_CHECKER, UV_CHECKER_OFF,  # noqa: F401
+from .view_looks import (BACKGROUND, EEVEE_SHADINGS, OVERLAY, SHADING, UV_CHECKER, UV_CHECKER_OFF,  # noqa: F401
                          display_keys)
 from .view_png import encode_png
 from .view_spec import (ATTRIBUTE, DEPTH, FIT, LIT, MAX_PAIRS, RENDERED, SCENE_CAMERA, TOOL_NAME, WEIGHT,
                         framing_kind, validate_view)
+from .refusal_codes import coded
+# The drawing viewport (view_viewport); view_motion, view_warm and web_compare reach these through this module.
+from .view_viewport import DisplayOverrides, _draw_area, _view3d_areas, _viewport_state, window_region
 
 DRAWABLE = frozenset({"MESH", "CURVE", "SURFACE", "FONT", "META", "CURVES", "GREASEPENCIL",
                       "POINTCLOUD", "VOLUME"})
 MAX_FRAMING_INSTANCES = 50000
-_type_filters = None
-
-
-class DisplayOverrides:
-    """Normalize one viewport's display, then restore it in reverse order.
-
-    Each old value is read immediately before its own assignment, and equal
-    values are not written (no redundant RNA update, such as the geometry
-    re-tag that entering MATERIAL causes for objects in Sculpt Mode).
-    """
-
-    def __init__(self):
-        self._undo = []
-        self.unavailable = []
-
-    def apply(self, owner, settings):
-        for key, value in settings:
-            old = getattr(owner, key)
-            if not isinstance(old, (str, bool, int, float)):
-                old = tuple(old)
-            if old == value:
-                continue
-            try:
-                setattr(owner, key, value)
-            except TypeError:
-                if key not in BEST_EFFORT:
-                    raise
-                self.unavailable.append(key)
-                continue
-            self._undo.append((owner, key, old))
-
-    def restore(self):
-        errors = []
-        while self._undo:
-            owner, key, old = self._undo.pop()
-            try:
-                setattr(owner, key, old)
-            except Exception as error:  # Keep restoring the rest; report every failure.
-                errors.append(f"{key}: {error}")
-        if errors:
-            raise RuntimeError("Could not restore the artist's viewport display: " + "; ".join(errors))
-
-
-def _view3d_areas(window):
-    areas = [area for area in live_windows.areas(window) if area.type == "VIEW_3D"]
-    if not areas:
-        raise RuntimeError("Keep a visible 3D Viewport in the bound Blender window")
-    return areas
-
-
-def _draw_area(areas):
-    """Prefer a viewport whose temporary shading change has no side effects.
-
-    Leaving RENDERED restarts that viewport's render engine, local view and
-    local collections filter the drawn objects, and camera view lets EEVEE use
-    the camera's depth of field and render border.
-    """
-    def cost(area):
-        space = area.spaces.active
-        return (space.shading.type == "RENDERED", space.local_view is not None,
-                bool(space.use_local_collections), space.region_3d.view_perspective == "CAMERA")
-    return min(areas, key=cost)
-
-
-def _object_type_filters(space):
-    global _type_filters
-    if _type_filters is None:
-        _type_filters = tuple(sorted(p.identifier for p in space.bl_rna.properties
-                                     if p.identifier.startswith("show_object_viewport_")))
-    return tuple(bool(getattr(space, name)) for name in _type_filters)
-
-
-ViewportState = namedtuple("ViewportState", "local_view local_collections type_filters camera_view rendered")
-
-
-def _viewport_state(space, shading):
-    """Drawing-viewport state that is not normalized: part of the key and notes."""
-    state = ViewportState(space.local_view is not None, bool(space.use_local_collections),
-                          _object_type_filters(space), space.region_3d.view_perspective == "CAMERA",
-                          space.shading.type == "RENDERED")
-    notes = []
-    if state.local_view or state.local_collections:
-        notes.append({"code": "viewport_object_filter",
-                      "detail": "The only drawable 3D Viewport uses local view or local collections; hidden objects are omitted"})
-    if not all(state.type_filters):
-        notes.append({"code": "viewport_type_filter",
-                      "detail": "The drawing viewport hides some object types; those objects are omitted"})
-    if state.camera_view and shading in EEVEE_SHADINGS:
-        notes.append({"code": "viewport_in_camera_view",
-                      "detail": "EEVEE may apply the camera's depth of field or render border to this view"})
-    return state, notes
 
 
 def _targets(window, handles):
@@ -200,8 +110,8 @@ def _framing_points(window, objects):
         if obj.type not in DRAWABLE and not (instances.of(obj) or {}).get("bounds"):
             points.append(tuple(obj.matrix_world.translation))
     if not points:
-        raise RuntimeError("The targets are hidden or have no visible geometry, so there is nothing to frame. "
-                           "Choose visible targets, or SCENE_CAMERA or an earlier view_id")
+        raise coded(RuntimeError("The targets are hidden or have no visible geometry, so there is nothing to frame. "
+                                 "Choose visible targets, or SCENE_CAMERA or an earlier view_id"), "VALIDATION")
     return points, truncated
 
 
@@ -219,10 +129,11 @@ def _scene_camera(window, epoch, resolution):
     scene, depsgraph = window.scene, window.view_layer.depsgraph
     obj = scene.camera
     if obj is None or obj.type != "CAMERA":
-        raise RuntimeError("The scene has no active camera object; choose an axis or FIT view instead")
+        raise coded(RuntimeError("The scene has no active camera object; choose an axis or FIT view instead"),
+                    "VALIDATION")
     data = obj.data
     if data.type == "PANO":
-        raise RuntimeError("Panoramic scene cameras are not supported by native views")
+        raise coded(RuntimeError("Panoramic scene cameras are not supported by native views"), "UNSUPPORTED")
     aspect = render_aspect(scene.render)
     evaluated = obj.evaluated_get(depsgraph)
     world = evaluated.matrix_world.normalized()
@@ -285,7 +196,7 @@ def _plan_views(window, primary, checked, objects, targets, epoch, viewport, ref
 def _draw_all(window, area, shading, jobs, pool):
     """Draw every (index, camera, width, height, encode) job; return encode futures."""
     import gpu
-    space, region = area.spaces.active, next(r for r in area.regions if r.type == "WINDOW")
+    space, region = area.spaces.active, window_region(area)
     scene, layer = window.scene, window.view_layer
     overrides, offscreens, futures = DisplayOverrides(), {}, {}
     try:
@@ -388,7 +299,7 @@ def execute(window, args, references, controller=None, wait_shaders=False):
     wall, cpu = time.perf_counter(), time.process_time()
     checked = validate_view(TOOL_NAME, args)
     if references is None:
-        raise RuntimeError("Bind a conversation reference store before capturing views")
+        raise coded(RuntimeError("Bind a conversation reference store before capturing views"), "OWNERSHIP")
     if checked["shading"] == RENDERED:
         from . import view_render, view_split
         if checked["views"] != [SCENE_CAMERA]:   # The others drawn LIT (view_spec.rendered_split).
@@ -402,10 +313,10 @@ def execute(window, args, references, controller=None, wait_shaders=False):
         from . import view_motion
         return view_motion.execute(window, checked, references, controller)
     if tool_running(window):
-        raise RuntimeError("Finish the current Blender interaction before capturing a view")
+        raise coded(RuntimeError("Finish the current Blender interaction before capturing a view"), "WRITER_BUSY")
     areas = _view3d_areas(window)
     area = _draw_area(areas)
-    region = next(r for r in area.regions if r.type == "WINDOW")
+    region = window_region(area)
     with bpy.context.temp_override(window=window, area=area, region=region):
         # Evaluate already-tagged edits so bounds and pixels show current state.
         window.view_layer.update()
@@ -440,7 +351,8 @@ def execute(window, args, references, controller=None, wait_shaders=False):
             uncertainty.append({"code": "shaders_compiling",
                                 "detail": "Shader compilation was still pending after capture; some materials may show placeholders"})
         if scene_queries.document_epoch() != epoch:
-            raise RuntimeError("Document IDs were replaced during capture; search the scene and view again")
+            raise coded(RuntimeError("Document IDs were replaced during capture; search the scene and view again"),
+                        "STALE_REVISION")
     views = _write_views(references, plans, capture["encoded"], checked["shading"])
     # LIT also depends on the scene's colour management and film settings, which no depsgraph update reports.
     _remember(plans, views, capture["encoded"],

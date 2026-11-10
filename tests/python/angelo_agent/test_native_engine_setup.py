@@ -11,6 +11,9 @@ status card follows a vendor's licence (starting, sign in, ready with its editio
 operators. Engine and vendor names are stand-ins: the rules hold for any engine add-on.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
+import contextlib
 import os
 import sys
 import tempfile
@@ -49,6 +52,16 @@ def addon(folder, module, name, category="Render", body=""):
         name, category)
     (path / "__init__.py").write_text(info + body, encoding="utf-8")
     return path
+
+
+def no_links():
+    """Neither a symbolic link nor, on Windows, a directory junction can be made: ``link`` falls back to a copy."""
+    stack = contextlib.ExitStack()
+    stack.enter_context(mock.patch.object(engine_setup.os, "symlink", side_effect=OSError("no links")))
+    if sys.platform == "win32":
+        import _winapi
+        stack.enter_context(mock.patch.object(_winapi, "CreateJunction", side_effect=OSError("no junctions")))
+    return stack
 
 
 class Folder(unittest.TestCase):
@@ -206,14 +219,13 @@ class SetUpTests(Folder):
             Path(dst).mkdir()
             (Path(dst) / "half").write_text("", encoding="utf-8")
             raise OSError("disk full")
-        with mock.patch.object(engine_setup.os, "symlink", side_effect=OSError("no links")), \
-                mock.patch("shutil.copytree", partial), self.assertRaises(OSError):
+        with no_links(), mock.patch("shutil.copytree", partial), self.assertRaises(OSError):
             engine_setup.link(source, self.root / "copy")
         self.assertFalse((self.root / "copy").exists())
 
     def test_without_links_a_small_add_on_is_copied_and_a_large_one_refused(self):
         source = addon(self.root / "blender", "lux", "Lux")
-        with mock.patch.object(engine_setup.os, "symlink", side_effect=OSError("no links")):
+        with no_links():
             self.assertEqual(engine_setup.link(source, self.root / "copy"), "copy")
             self.assertTrue((self.root / "copy" / "__init__.py").is_file())
             with mock.patch.object(engine_setup, "MAX_COPY_BYTES", 4), self.assertRaises(OSError):
@@ -232,7 +244,7 @@ class SetUpTests(Folder):
             os.chmod(path, os.stat(path).st_mode & 0o7555)
         self.addCleanup(lambda: [os.chmod(path, os.stat(path).st_mode | 0o700) for path in [source, *source.rglob("*")]])
         target = self.root / "copy"
-        with mock.patch.object(engine_setup.os, "symlink", side_effect=OSError("no links")):
+        with no_links():
             self.assertEqual(engine_setup.link(source, target), "copy")
         for path in [target, *target.rglob("*")]:
             self.assertTrue(os.access(path, os.W_OK), str(path))

@@ -13,9 +13,14 @@ the shipped plugin installs into a project and replaces an older copy; a glTF sa
 and says which objects are stale, while FBX sends none.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
+import json
 import os
+import shutil
 import sys
 import tempfile
+import threading
 import time
 import types
 import unittest
@@ -32,7 +37,7 @@ def fake_bpy():
     bpy.types = types.ModuleType("bpy.types")
     bpy.types.__getattr__ = lambda name: type(name, (), {})
     handlers = SimpleNamespace(persistent=lambda function: function, depsgraph_update_post=[], load_post=[],
-                               save_post=[], exit_pre=[])
+                               save_post=[], exit_pre=[], undo_post=[], redo_post=[])
     timers = SimpleNamespace(registered=set())
     timers.register = lambda function, **kwargs: timers.registered.add(function)
     timers.unregister = timers.registered.discard
@@ -64,6 +69,12 @@ class FakeServer:
         self.sent, self.items = [], []
         self.info = {1: {"project": ""}, 2: {"project": ""}}
 
+
+    def lagging(self, client):   # LinkServer: a client that lost delta scenes (none here).
+        return False
+
+    def lagging_any(self):
+        return False
     def send(self, client, header, payload=b""):
         self.sent.append((client, header))
         return True
@@ -90,10 +101,11 @@ class FakeServer:
 
 class FakeWriteBack:
     def __init__(self):
-        self.requests, self.done, self.running, self.baked = [], [], False, []
+        self.requests, self.done, self.running, self.baked, self.saved = [], [], False, [], []
 
-    def request(self, key, blend, target, exporter, options, baked=(), stamp=None):
+    def request(self, key, blend, target, exporter, options, baked=(), stamp=None, saved=None):
         self.requests.append((key, blend, target, exporter, options))
+        self.saved.append(saved)
         self.baked.append(list(baked))
 
     def busy(self):
@@ -106,6 +118,8 @@ class FakeWriteBack:
 
 class LinkStateTests(unittest.TestCase):
     def setUp(self):
+        from save_identity_stand_in import stand_in_for_saves
+        stand_in_for_saves(self)   # Blender's save names the file it wrote (``_bpy._angelo_saved``): stood in.
         self.project = Path(tempfile.mkdtemp()).resolve()
         (self.project / "project.godot").write_text("config_version=5\n")
         for name in ("crate.glb", "crate.blend", "other.glb"):
@@ -189,7 +203,7 @@ class LinkStateTests(unittest.TestCase):
         # The first runs; the third replaced the queued second (WriteBack.request): each ends with its own key.
         for key in (self.writeback.requests[0][0], self.writeback.requests[2][0]):
             self.writeback.done.append((key, None))
-            with mock.patch.object(assets, "write_stamp"):
+            with mock.patch.object(assets, "written_stamp"):
                 engine_link._written()
             saved.append(self.server.last()["scene_version"])
         self.assertEqual(saved, [3, 7])
@@ -206,25 +220,188 @@ class LinkStateTests(unittest.TestCase):
         self.assertTrue(options["export_animations"], "the asset keeps its animations")
         self.assertFalse(any(header["type"] == "saved" for _client, header in self.server.sent), "not yet written")
         self.writeback.done.append((key, None))
-        with mock.patch.object(assets, "write_stamp") as stamp:
+        with mock.patch.object(assets, "written_stamp") as stamp:
             engine_link._written()
-            stamp.assert_called_once_with(asset)
+            stamp.assert_called_once_with(asset, key[1], key[2])   # The child's digest of this save, never a new one.
         self.assertEqual(self.server.last()["type"], "saved")
         BPY.data.filepath = str(self.project / "elsewhere.blend")
         engine_link._save_post(BPY.data.filepath)
         self.assertEqual(self.server.last()["reason"], "saved_elsewhere")
 
+    def test_a_write_back_s_stamp_names_the_bytes_written_not_a_later_write(self):
+        """Stat before read (release-1010 audit, re-check 2): the session once digested the asset again when the
+        write-back ended, so a version written to it after the child's replace (the engine, another program) was
+        stamped as Angelo's, and the next link opened the older working .blend as current for it."""
+        asset = self.link()
+        BPY.data.filepath = asset.editable
+        Path(asset.editable).parent.mkdir(parents=True, exist_ok=True)
+        Path(asset.editable).write_bytes(b"BLENDER working")
+        engine_link._save_post(asset.editable)
+        key = self.writeback.requests[0][0]
+        # What the child does: write the asset, then stamp the digest of those bytes for this save and link.
+        Path(asset.path).write_bytes(b"glb written by the write-back")
+        written = assets.digest(asset.path)
+        Path(assets.stamp_path(asset)).write_text(json.dumps({"sha256": written, "asset": asset.ident,
+                                                             "save": key[1], "link": key[2], "writer": assets.WRITER}))
+        Path(asset.path).write_bytes(b"glb saved by the engine after the replace")
+        self.writeback.done.append((key, None))
+        engine_link._written()
+        self.assertEqual(assets.read_stamp(asset), written)
+        self.assertFalse(assets.working_is_current(asset), "the engine's version is imported at the next link")
+        self.assertEqual(engine_link._state["facts"]["save"]["sha256"], written, "the preflight names the save's bytes")
+        self.assertEqual(self.server.last()["type"], "saved")
+
+    def test_a_write_back_whose_stamp_names_another_save_records_no_digest(self):
+        asset = self.link()
+        BPY.data.filepath = asset.editable
+        engine_link._save_post(asset.editable)
+        key = self.writeback.requests[0][0]
+        Path(assets.stamp_path(asset)).parent.mkdir(parents=True, exist_ok=True)
+        theirs = {"sha256": "b" * 64, "asset": asset.ident, "save": key[1], "link": key[2], "writer": "another Angelo"}
+        for stamp in ({"sha256": "b" * 64, "asset": asset.ident, "save": key[1] + 1, "link": key[2],
+                       "writer": assets.WRITER},   # A newer one.
+                      theirs,   # The same numbers, from a write-back child of an Angelo that quit while it ran.
+                      {"sha256": "b" * 64, "asset": asset.ident}):   # An older one: this child could not write its own.
+            with self.subTest(stamp=stamp):
+                Path(assets.stamp_path(asset)).write_text(json.dumps(stamp))
+                self.assertIsNone(assets.written_stamp(asset, key[1], key[2]))
+        self.writeback.done.append((key, None))
+        engine_link._written()
+        self.assertNotIn("sha256", engine_link._state["facts"]["save"])
+        self.assertEqual(json.loads(Path(assets.stamp_path(asset)).read_text())["sha256"], "b" * 64, "left as it is")
+
+    def test_a_write_back_that_read_a_later_file_is_left_to_the_newer_save_or_said(self):
+        """The child refuses a .blend that is not the save that asked (``engine_link_writeback.SUPERSEDED``): with a
+        newer save's write-back on its way that one reports, else the editors hear that nothing was written."""
+        from angelo_agent import engine_link_writeback
+        asset = self.link()
+        BPY.data.filepath = asset.editable
+        Path(asset.editable).parent.mkdir(parents=True, exist_ok=True)
+        Path(asset.editable).write_bytes(b"BLENDER as saved")
+        engine_link._save_post(asset.editable)
+        info = os.stat(asset.editable)
+        saved = self.writeback.saved[-1]   # The save's stat: the write-back settles it before its child reads.
+        self.assertEqual([saved.st_dev, saved.st_ino, saved.st_size, saved.st_mtime_ns],
+                         [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns])
+        self.writeback.running = True   # A newer save's write-back runs.
+        self.writeback.done.append((self.writeback.requests[-1][0], engine_link_writeback.SUPERSEDED))
+        engine_link._written()
+        self.assertFalse(any(header.get("code") == "write_failed" for _client, header in self.server.sent))
+        self.writeback.running = False  # Nothing follows (another program wrote the file): said.
+        engine_link._save_post(asset.editable)
+        self.writeback.done.append((self.writeback.requests[-1][0], engine_link_writeback.SUPERSEDED))
+        engine_link._written()
+        self.assertEqual(self.server.last()["code"], "write_failed")
+        self.assertIn("changed after Angelo saved it", self.server.last()["message"])
+
+    def test_a_save_that_named_no_file_writes_nothing_and_says_why(self):
+        """Release-1010 break-it (M6): a save that could not identify the file it wrote ran a child that always refused
+        it as superseded, and the editors heard that the file changed. Now no child runs, and they hear why."""
+        from angelo_agent import document_file_identity
+        asset = self.link()
+        BPY.data.filepath = asset.editable
+        Path(asset.editable).parent.mkdir(parents=True, exist_ok=True)
+        Path(asset.editable).write_bytes(b"BLENDER as saved")
+        requests = len(self.writeback.requests)
+        with mock.patch.object(document_file_identity, "written", lambda _path: None):
+            engine_link._save_post(asset.editable)
+        self.assertEqual(len(self.writeback.requests), requests, "no write-back child")
+        self.assertEqual(self.server.last()["code"], "write_failed")
+        self.assertIn("couldn't tell that the saved file is the one its save wrote", self.server.last()["message"])
+
+    def test_a_preflight_names_the_blend_as_saved_not_a_later_write(self):
+        """Stat before read (release-1010 re-check 2, L4): the saved .blend's identity was taken when the preflight was
+        requested, after the write-back ended, so a version written to the working .blend meanwhile was checked and
+        reported as the save."""
+        engine_preflight_link = engine_link.engine_link_saves.engine_preflight_link   # The one the link calls.
+        from angelo_agent import export_snapshot
+        asset = self.link()
+        BPY.data.filepath = asset.editable
+        Path(asset.editable).parent.mkdir(parents=True, exist_ok=True)
+        Path(asset.editable).write_bytes(b"BLENDER as the person saved it")
+        saved = export_snapshot.identity(asset.editable)
+        engine_link._save_post(asset.editable)
+        key = self.writeback.requests[0][0]
+        Path(asset.path).write_bytes(b"glb written by the write-back")
+        temporary = Path(asset.editable + ".other")
+        temporary.write_bytes(b"BLENDER written by another program, later")
+        os.replace(temporary, asset.editable)
+        specs = []
+        runner = SimpleNamespace(request=lambda blend, spec: specs.append(spec))
+        self.writeback.done.append((key, None))
+        owner = threading.get_ident()
+        settle, waited = export_snapshot.change_clock.settle, []
+
+        def settle_original(witness, *args, **kwargs):
+            if witness.st_ino == saved[1]:
+                self.assertNotEqual(threading.get_ident(), owner, "the UI never waits out the save's coarse step")
+                waited.append(witness)
+            return settle(witness, *args, **kwargs)
+
+        with mock.patch.object(BPY.app, "binary_path", sys.executable), \
+                mock.patch.object(engine_preflight_link, "_runner", runner), \
+                mock.patch.object(export_snapshot.change_clock, "settle", settle_original):
+            engine_link._written()
+            self.assertEqual(len(specs), 1, engine_link._state.get("error"))
+            self.assertEqual(specs[0]["blend_witness"].st_ino, saved[1], "the save's witness, never the later path")
+            self.assertEqual(waited, [], "request kept the raw saved witness")
+            with mock.patch.object(engine_preflight_link.subprocess, "run",
+                                   return_value=SimpleNamespace(returncode=0, stderr=b"")):
+                worker = threading.Thread(target=engine_preflight_link.Runner(sys.executable)._run,
+                                          args=(asset.editable, specs[0]))
+                worker.start()
+                worker.join(10)
+                self.assertFalse(worker.is_alive())
+        self.assertEqual(len(waited), 1, "the worker settled exactly the original save witness")
+        self.assertEqual(specs[0]["blend_identity"], saved)
+        self.assertNotEqual(specs[0]["blend_identity"], export_snapshot.identity(asset.editable))
+        shutil.rmtree(specs[0]["folder"], ignore_errors=True)
+
+    def test_an_imported_working_file_is_stamped_with_the_bytes_the_import_read(self):
+        """The import's stamp is taken before the import reads the asset: a write during the import makes the next
+        link import again, never open this working .blend as current for the newer file."""
+        with mock.patch.dict(sys.modules, {"bpy": BPY}):
+            from angelo_agent import engine_link_import
+        asset = godot_link_assets.resolve({"project": str(self.project), "asset": "res://crate.glb"})
+        Path(asset.path).write_bytes(b"glb as the import reads it")
+        read = assets.digest(asset.path)
+
+        def import_file(path, kind):
+            self.assertEqual(Path(path).read_bytes(), b"glb as the import reads it")
+            Path(path).write_bytes(b"glb the engine saved during the import")
+            return {"FINISHED"}
+
+        def save_as_mainfile(filepath, **_options):
+            Path(filepath).write_bytes(b"BLENDER working")
+            return {"FINISHED"}
+        stand_in = SimpleNamespace(ops=SimpleNamespace(wm=SimpleNamespace(
+            read_homefile=lambda **_options: {"FINISHED"}, save_as_mainfile=save_as_mainfile)))
+        with mock.patch.object(engine_link_import, "bpy", stand_in), \
+                mock.patch.object(engine_link_import, "import_file", import_file), \
+                mock.patch("angelo_agent.gltf_checks.check_file", lambda *_args, **_kwargs: None):
+            self.assertEqual(engine_link_import.working_file(asset, lambda _on: None), {"FINISHED"})
+        self.assertEqual(assets.read_stamp(asset), read)
+        self.assertFalse(assets.working_is_current(asset))
+
     def test_a_glb_save_sends_current_baked_materials_and_says_which_are_stale(self):
         asset = self.link()
         BPY.data.filepath = asset.editable
-        plan = {"substitutes": {}, "used": [("Crate", "Crate Baked")], "stale": ["Barrel", "Rock"], "nearby": ["Rock"],
-                "packing": [("Hull", "UNITY")]}
-        with mock.patch.object(assets, "baked_plan", return_value=plan) as planned:
+        material = SimpleNamespace(name="Crate Baked", library=None)
+        crate = SimpleNamespace(name="Crate", session_uid=7, library=SimpleNamespace(filepath="//props.blend"))
+        plan = {"substitutes": {7: material}, "used": [("Crate", "Crate Baked")], "stale": ["Barrel", "Rock", "Vase"],
+                "nearby": ["Rock"], "packing": [("Hull", "UNITY")], "updated": ["Vase"]}
+        scene = SimpleNamespace(objects=[crate, SimpleNamespace(name="Crate", session_uid=8, library=None)])
+        with mock.patch.object(assets, "baked_plan", return_value=plan) as planned, \
+                mock.patch.dict(sys.modules, {"bpy": SimpleNamespace(context=SimpleNamespace(scene=scene))}):
             engine_link._save_post(asset.editable)
         planned.assert_called_once_with(None)
-        self.assertEqual(self.writeback.baked, [[("Crate", "Crate Baked")]])
+        # By name and library: a linked Crate is the planned one, never the local Crate of the same name.
+        self.assertEqual(self.writeback.baked, [[["Crate", "Crate Baked", "//props.blend", None]]])
         said = {header["code"]: header["message"] for _client, header in self.server.sent if header["type"] == "status"}
-        self.assertEqual(set(said), {"baked_stale", "baked_stale_nearby", "baked_packing"})
+        self.assertEqual(set(said), {"baked_stale", "baked_stale_nearby", "baked_packing", "baked_stale_update"})
+        self.assertIn("Vase", said["baked_stale_update"])   # Bound before this update: said once, as its doing.
+        self.assertIn("before this Angelo update", said["baked_stale_update"])
+        self.assertNotIn("Vase", said["baked_stale"])
         self.assertIn("Barrel", said["baked_stale"])
         self.assertNotIn("Rock", said["baked_stale"])
         self.assertIn("Rock", said["baked_stale_nearby"])
@@ -287,6 +464,19 @@ class LinkStateTests(unittest.TestCase):
         engine_link._end("angelo")
         self.assertEqual([client for client, header in self.server.sent if header["type"] == "ended"], [1])
 
+    def test_the_main_thread_matches_an_editors_project_without_reading_a_folder(self):
+        """``serves`` runs on the main thread for every acknowledgement, close and broadcast; ``os.path.realpath``
+        there held one tick 5 to 10 s on a stalled drive (Mac 2, 1.0.9). The editor's project was resolved when it
+        authenticated (``engine_link_server.project_key``)."""
+        self.link()
+        with mock.patch.object(assets.os.path, "realpath", side_effect=AssertionError("a folder read, main thread")):
+            self.assertEqual(engine_link.editors(), 2)
+            engine_link._handle(1, {"type": "status", "asset": "res://crate.glb", "code": "previewed", "version": 1})
+            self.assertIn(1, engine_link._state["facts"]["editors"])   # Its acknowledgement was kept.
+            engine_link._handle(2, {"type": "close", "id": "8", "asset": "res://crate.glb"})
+        self.assertIsNone(engine_link.session())
+        self.assertEqual(sorted(client for client, header in self.server.sent if header["type"] == "ended"), [1, 2])
+
 
 class EngineRoutingTests(unittest.TestCase):
     """Requests from several engines on one listener (each named its engine when it authenticated)."""
@@ -321,7 +511,7 @@ class EngineRoutingTests(unittest.TestCase):
             def durable(asset, params):
                 return "fbx", {"params": params}
 
-        adapters = {"godot": godot_link_assets, "standin": StandIn}
+        adapters = self.adapters = {"godot": godot_link_assets, "standin": StandIn}
         patcher = mock.patch.object(assets, "adapter", side_effect=adapters.get)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -369,7 +559,7 @@ class EngineRoutingTests(unittest.TestCase):
         self.assertEqual(self.writeback.baked, [[]], "FBX binding is the engines' (no baked material is assigned)")
         self.server.sent.clear()
         self.writeback.done.append((self.writeback.requests[0][0], None))
-        with mock.patch.object(assets, "write_stamp"):
+        with mock.patch.object(assets, "written_stamp"):
             engine_link._written()
         self.assertEqual([(client, header["type"]) for client, header in self.server.sent], [(2, "saved")],
                          "Godot's editor of the same folder is another engine's")
@@ -382,13 +572,61 @@ class EngineRoutingTests(unittest.TestCase):
             export.assert_not_called()   # No editor of the stand-in shows live scenes: nothing is exported.
         self.server.info[2]["capabilities"] = ["durable", "live"]
 
-        def write(window, path, options):
+        def write(window, path, options, export_id=assets.EXPORT_ID):
             Path(path).write_bytes(b"glb")
         with mock.patch.object(assets, "export", side_effect=write), \
                 mock.patch.object(engine_link, "_followed", return_value=(None, None)), \
                 mock.patch.object(engine_link.scene_changes, "scene_key", return_value=None):
             self.assertEqual(engine_link.publish(None), 3)
         self.assertEqual([client for client, header in self.server.sent if header["type"] == "scene"], [2])
+
+    def test_a_web_pages_live_scene_is_exported_with_node_identity(self):
+        """The web adapter makes its own frames (web_link_live): the first one is whole, exported under its
+        ``LIVE_EXPORT_ID`` (the glTF hooks that key every node), and says so."""
+        from angelo_agent import web_link_assets, web_link_live
+        (self.project / "package.json").write_text("{}", encoding="utf-8")
+        (self.project / "a.glb").write_bytes(b"x")
+        asset = assets.Asset("web", str(self.project), "a.glb", str(self.project / "a.glb"), ".glb", "a.glb")
+        engine_link._state["session"] = {"asset": asset, "params": {}, "number": 7}
+        engine_link._state["folder"] = str(self.project)
+        self.server.info[2] = {"engine": "web", "project": str(self.project),
+                               "project_key": os.path.normcase(str(self.project)),   # As the server keys it.
+                               "capabilities": ["durable", "live", "capture"]}
+        used = []
+
+        def write(window, path, options, export_id=assets.EXPORT_ID):   # What the exporter and its hooks write.
+            used.append(export_id)
+            web_link_live._export.update(filtered=True, marked=True, objects={5}, owners={"5": 5})
+            node = {"name": "Chair", "extras": {web_link_live.KEY: "5", web_link_live.ROLE: web_link_live.CONTENT}}
+            Path(path).write_bytes(web_link_live.write_glb({"asset": {"version": "2.0"}, "nodes": [node]}, b""))
+        with mock.patch.object(assets, "export", side_effect=write), \
+                mock.patch.dict(self.adapters, {"web": web_link_assets}), \
+                mock.patch.object(web_link_live, "image_changes", lambda scene=None: set()), \
+                mock.patch.object(engine_link, "_followed", return_value=(None, None)), \
+                mock.patch.object(engine_link.scene_changes, "scene_key", return_value=None):
+            self.assertGreater(engine_link.publish(None), 0, engine_link._state["error"])
+        self.assertEqual(used, [web_link_assets.LIVE_EXPORT_ID])
+        [header] = [header for client, header in self.server.sent if header["type"] == "scene"]
+        self.assertEqual((header["kind"], header["asset"]), ("full", "a.glb"))
+
+    def test_a_web_link_asks_when_to_publish_only_while_nothing_is_pending(self):
+        """``web_link_live.due``: pixels written with no depsgraph update, or a due still-scene check, start a
+        publish (break-it round 8, M1; round 9, M1), and only while no edit waits."""
+        web = assets.Asset("web", str(self.project), "a.glb", str(self.project / "a.glb"), ".glb", "a.glb")
+        self.server.info[2] = {"engine": "web", "project": str(self.project),
+                               "project_key": os.path.normcase(str(self.project)),   # As the server keys it.
+                               "capabilities": ["durable", "live"]}
+        for asset, due, pending, expected in ((web, 7.0, None, 7.0), (web, 0.0, None, 0.0), (web, None, None, None),
+                                              (web, 7.0, -1.0, -1.0), (self.standin(), 7.0, None, None)):
+            with self.subTest(engine=asset.engine, due=due, pending=pending):
+                engine_link._state.update(session={"asset": asset, "params": {}}, dirty_at=pending)
+                with mock.patch.object(engine_link.web_link_live, "due", return_value=due) as asked, \
+                        mock.patch.object(engine_link, "_window", return_value=None), \
+                        mock.patch.object(engine_link, "_followed", return_value=(None, None)), \
+                        mock.patch.object(engine_link.scene_changes, "quiet_seconds", return_value=1e9):
+                    engine_link._tick()
+                self.assertEqual(engine_link._state["dirty_at"], expected)
+                self.assertEqual(asked.called, asset is web and pending is None)
 
     def standin(self):
         return assets.Asset("standin", str(self.project), "/Game/Crate", str(self.project / "crate.fbx"), ".fbx",

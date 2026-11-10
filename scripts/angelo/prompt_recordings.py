@@ -307,13 +307,57 @@ def request_recordings(path, openings):
 LISTING_END = "prompt-audit-listing-end"   # prompt_route_probe.LIST_TOOLS closes its listing with it
 
 
-def _retrieved(lines):
-    """``(entries, complete)``: what the model read from tool outputs in a probe's later requests.
+def _expanded_listing(value):
+    """Decode lossless interior rows/objects; retain older prefix/full-description forms."""
+    if not isinstance(value, dict) or not isinstance(value.get("tools"), list):
+        return None
+    if value.get("end") != LISTING_END:
+        return None
+    if "format" not in value:
+        shared = value.get("shared", "")
+        if set(value) - {"shared", "tools", "end"} or not isinstance(shared, str) or any(
+                not isinstance(tool, dict) or set(tool) != {"name", "description"}
+                or not isinstance(tool.get("name"), str)
+                or not isinstance(tool.get("description"), str) for tool in value["tools"]):
+            return None
+        entries = ([{"name": "(shared description prefix)", "description": shared}] if shared else [])
+        return entries + value["tools"]
+    if (set(value) != {"format", "shared", "count", "tools", "end"}
+            or value["format"] not in ("shared-interior-v1", "shared-interior-rows-v1") or not isinstance(value["shared"], str)
+            or type(value["count"]) is not int or value["count"] <= 0
+            or value["count"] != len(value["tools"])):
+        return None
+    entries, names = [], set()
+    for tool in value["tools"]:
+        if value["format"] == "shared-interior-rows-v1":
+            if not isinstance(tool, list) or len(tool) != 4:
+                return None
+            name, before, after, chars = tool
+        else:
+            if not isinstance(tool, dict) or set(tool) != {"name", "before", "after", "chars"}:
+                return None
+            name, before, after, chars = (tool[key] for key in ("name", "before", "after", "chars"))
+        if (not all(isinstance(part, str) for part in (name, before, after))
+                or not name or name in names or type(chars) is not int):
+            return None
+        description = before + value["shared"] + after
+        # JavaScript length counts UTF-16 code units, including a non-BMP character's pair.
+        if len(description.encode("utf-16-le", errors="surrogatepass")) // 2 != chars:
+            return None
+        names.add(name)
+        entries.append({"name": name, "description": description})
+    return entries
 
-    The probe's listing is ``{"shared": prefix, "tools": [{name, description}], "end": LISTING_END}`` (each
-    description without the prefix all of them share: Codex puts the server's instructions there); one without the end marker
-    (cut by the runtime's output cap) is not complete, so the audit reports it as truncated instead of judging
-    facts on part of it.
+
+def _retrieved(lines):
+    """Return complete descriptions from a canonical listing, never trust a cut/unknown form.
+
+    shared-interior-rows-v1 stores one exact common block and each tool's exact four-position
+    [name, before, after, UTF16chars] row, removing repeated field labels, not content. The older
+    shared-interior-v1 object form remains readable. The writer checks exact reconstruction
+    before emitting; the reader checks structure, count,
+    unique names, original character lengths and the end marker. Older shared-prefix and full
+    descriptions remain readable. An end marker surviving a runtime truncation is insufficient.
     """
     entries, complete, seen = [], True, False
     for line in lines:
@@ -328,11 +372,9 @@ def _retrieved(lines):
                     value = json.loads(text)
                 except (TypeError, ValueError):
                     value = None
-                if isinstance(value, dict) and isinstance(value.get("tools"), list):
-                    if value.get("shared"):   # the prefix every listed tool's description starts with, once
-                        entries.append({"name": "(shared description prefix)", "description": value["shared"]})
-                    entries += [entry for entry in value["tools"] if isinstance(entry, dict)]
-                    complete = complete and value.get("end") == LISTING_END
+                expanded = _expanded_listing(value)
+                if expanded is not None:
+                    entries += expanded
                 elif seen:
                     complete = False
     return entries, complete and seen

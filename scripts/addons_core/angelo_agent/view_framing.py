@@ -9,6 +9,8 @@ looks along -forward, exactly like a Blender camera object.
 
 import math
 
+from .refusal_codes import coded
+
 MARGIN = 1.15
 MIN_HALF_WIDTH = 0.001
 AXIS_DIRECTIONS = {
@@ -22,7 +24,7 @@ AXIS_DIRECTIONS = {
 def _normalized(vector):
     length = math.sqrt(sum(value * value for value in vector))
     if not math.isfinite(length) or length < 1e-12:
-        raise ValueError("Cannot frame along a zero or invalid direction")
+        raise coded(ValueError("Cannot frame along a zero or invalid direction"), "VALIDATION")
     return tuple(value / length for value in vector)
 
 
@@ -70,7 +72,7 @@ def orthographic_fit(points, basis, margin=MARGIN):
     right, up, forward = basis
     points = [tuple(float(v) for v in point) for point in points]
     if not points or any(len(point) != 3 or not all(math.isfinite(v) for v in point) for point in points):
-        raise ValueError("Framing needs finite world-space points")
+        raise coded(ValueError("Framing needs finite world-space points"), "INTERNAL_ERROR")
     xs = [_dot(point, right) for point in points]
     ys = [_dot(point, up) for point in points]
     zs = [_dot(point, forward) for point in points]
@@ -83,7 +85,7 @@ def orthographic_fit(points, basis, margin=MARGIN):
     distance = max(half_width * 4.0, near_extent + half_width)
     depth = max(half_width * 12.0, distance + far_extent + half_width)
     if not all(math.isfinite(v) for v in (*center, half_width, distance, depth)):
-        raise ValueError("Framing produced non-finite camera values")
+        raise coded(ValueError("Framing produced non-finite camera values"), "INTERNAL_ERROR")
     return center, half_width, distance, depth
 
 
@@ -117,7 +119,7 @@ def render_aspect(render):
 def output_size(resolution, aspect):
     """Pixel size whose longer side is ``resolution`` and whose ratio is ``aspect``."""
     if not math.isfinite(aspect) or aspect <= 0:
-        raise ValueError("Camera aspect must be positive and finite")
+        raise coded(ValueError("Camera aspect must be positive and finite"), "VALIDATION")
     if aspect >= 1:
         return resolution, max(1, round(resolution / aspect))
     return max(1, round(resolution * aspect)), resolution
@@ -155,7 +157,7 @@ def look_at_basis(location, look_at):
     forward = tuple(float(c) - float(t) for c, t in zip(location, look_at))
     length = math.sqrt(sum(value * value for value in forward))
     if not math.isfinite(length) or length < 1e-4:
-        raise ValueError("look_at must be a finite point at least 0.0001 from location")
+        raise coded(ValueError("look_at must be a finite point at least 0.0001 from location"), "VALIDATION")
     forward = tuple(value / length for value in forward)
     horizontal = math.hypot(forward[0], forward[1])
     right = (-forward[1] / horizontal, forward[0] / horizontal, 0.0) if horizontal > 1e-9 else (1.0, 0.0, 0.0)

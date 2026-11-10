@@ -7,6 +7,8 @@ Dependency-free. Every data folder is under a temporary fake HOME; the real
 The pre-rename names below are deliberate legacy fixtures.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import contextlib
 import io
 import json

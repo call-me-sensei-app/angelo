@@ -8,6 +8,10 @@
   game_physics.rst): a body's mesh on a ``<name>Mesh`` child, shapes directly below their body (a grandchild hoisted
   with its composed transform, an animated one left in place), compound triggers, collision-only meshes, capsules in
   the form Godot reads, scale baked into the dimensions;
+* a skinned mesh's shape fits the rest pose the file writes and is hoisted, a mesh on an animated bone keeps its
+  shape in place, and ``shape_indirect`` flags exactly the latter;
+* the Game Physics panel's fitted size and Edit Fitted Size equal the exported shape on both, also with a modifier
+  after the Armature modifier, measured outside the draw into a cache a pose keeps and a modifier or mesh change drops;
 * an export without physics has no OMI and creates no physics storage on any object;
 * the import reads it all back into the same settings and objects;
 * Godot name suffixes instead of OMI, the findings, and the web export's merge leaving physics alone.
@@ -16,6 +20,10 @@ Godot itself imports these files in ``test_blender_godot_physics_e2e``. Run only
 exact Angelo binary: ``--background --factory-startup --disable-autoexec --python-exit-code 1``. No provider,
 account, network request or paid call is involved.
 """
+
+import os, sys  # noqa: E401  The suite's own folder, for its first import:
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 
 import inspect
 import json
@@ -99,6 +107,21 @@ def nodes_by_name(document):
 def holder(nodes, name, role="Collider"):
     """The node carrying ``name``'s shape: its own, when the shape sits at its origin, else ``<name><role>``."""
     return nodes.get(name + role) or nodes[name]
+
+
+def scene_position(document, name):
+    """Where a node's origin is in the glTF scene, composed from its ancestors' TRS."""
+    from io_scene_gltf2.angelo_physics import shapes
+    nodes = document["nodes"]
+    parents = {child: index for index, node in enumerate(nodes) for child in node.get("children", ())}
+    index = next(i for i, node in enumerate(nodes) if node.get("name") == name)
+    matrix = None
+    while index is not None:
+        node = nodes[index]
+        local = shapes.compose(node.get("translation"), node.get("rotation"), node.get("scale"))
+        matrix = local if matrix is None else shapes.multiply(local, matrix)
+        index = parents.get(index)
+    return [matrix[row][3] for row in range(3)]
 
 
 def shape_of(document, node):
@@ -306,6 +329,129 @@ def findings():
     check("finding_no_mesh", ("no_mesh", "Probe") in found)
 
 
+def skinned_rig():
+    """Rig (kinematic body) > RigArmature, posed and keyed; Limb skinned to its bone with a box, Hat on the bone with
+    a sphere. Returns (armature, limb, hat)."""
+    empty_scene()
+    rig = mark(bpy.data.objects.new("Rig", None), body="KINEMATIC")
+    window.scene.collection.objects.link(rig)
+    rig.location = (3, 0, 0)   # Off the origin: the exporter writes skinned vertices in world space.
+    armature = bpy.data.objects.new("RigArmature", bpy.data.armatures.new("RigArmature"))
+    window.scene.collection.objects.link(armature)
+    armature.parent = rig
+    bpy.context.view_layer.objects.active = armature
+    bpy.ops.object.mode_set(mode="EDIT")
+    bone = armature.data.edit_bones.new("Arm")
+    bone.head, bone.tail = (0, 0, 0), (0, 0, 1)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    limb = mark(box("Limb", (0, 1, 0), size=(0.2, 0.2, 2), parent=armature), shape="BOX")
+    group = limb.vertex_groups.new(name="Arm")
+    group.add(list(range(len(limb.data.vertices))), 1.0, "REPLACE")
+    limb.modifiers.new("Armature", "ARMATURE").object = armature
+    pose = armature.pose.bones["Arm"]
+    pose.rotation_mode = "XYZ"
+    pose.rotation_euler = (math.pi / 2, 0, 0)   # The current pose lays the limb along Y; its rest is along Z.
+    pose.keyframe_insert("rotation_euler", frame=1)
+    hat = mark(box("Hat", size=(0.5, 0.5, 0.5), parent=armature), shape="SPHERE")
+    hat.parent_type, hat.parent_bone = "BONE", "Arm"
+    bpy.context.view_layer.update()
+    return armature, limb, hat
+
+
+def skinned_and_bone_parented():
+    """A skinned mesh's shape fits the rest pose the file writes and is hoisted under its body (only its skin moves,
+    not its node); a mesh on an animated bone keeps its shape on its own node; the findings flag only the latter."""
+    _armature, limb, _hat = skinned_rig()
+    corners = [tuple(corner) for corner in limb.bound_box]
+    check("skinned_fixture_is_posed", max(c[2] for c in corners) - min(c[2] for c in corners) < 1.0)
+    _path, document = export("skinned.glb")
+    nodes = nodes_by_name(document)
+    below = {document["nodes"][index]["name"] for index in nodes["Rig"].get("children", [])}
+    check("skinned_shape_hoisted_under_body", "LimbCollider" in below)
+    role, entry = shape_of(document, nodes["LimbCollider"])
+    report["skinned_collider"] = {"node": nodes["LimbCollider"], "shape": entry, "posed_bound_box": corners}
+    check("skinned_shape_fits_rest_pose", entry["type"] == "box" and close(entry["box"]["size"], (0.2, 2, 0.2), 1e-3)
+          and close(nodes["LimbCollider"].get("translation", (0, 0, 0)), (0, 0, -1), 1e-3))
+    check("bone_parented_shape_stays_on_its_node", "HatCollider" in [
+        document["nodes"][index]["name"] for index in nodes["Hat"].get("children", [])])
+    flagged = {item["subject"] for item in game_physics.scene_findings(window.scene)
+               if item["code"] == "shape_indirect"}
+    check("finding_flags_only_what_moves_in_its_body", flagged == {"Hat"})
+    # A convex hull points at the skinned mesh's vertices, which the file holds in world space and draws through the
+    # skin (here its bind is the identity): its node must sit at the scene's origin, wherever the body is.
+    limb.angelo_physics.shape = "CONVEX"
+    _path, document = export("skinned-hull.glb")
+    check("skinned_mesh_shape_sits_where_its_skin_draws", close(scene_position(document, "LimbCollider"), (0, 0, 0)))
+
+
+def panel_matches_export():
+    """The panel's fitted size and Edit Fitted Size are the export's fit (``fitting``), on a posed skinned mesh (also
+    with a modifier after its Armature modifier) and on a bone-parented one. The panel never measures in its draw: a
+    timer does, into a cache that a new pose keeps and a modifier or mesh change drops."""
+    from types import SimpleNamespace
+    from angelo_agent import game_physics_ui as ui
+    from io_scene_gltf2.angelo_physics import fitting, shapes
+    armature, limb, hat = skinned_rig()
+    fitting.clear()
+    check("panel_measures_outside_its_draw", ui.fitted(limb) is None and limb.session_uid in fitting._pending)
+    fitting._measure_pending()
+
+    def exported(name):
+        _path, document = export(name, export_apply=True)
+        nodes = nodes_by_name(document)
+        return nodes, shape_of(document, nodes["LimbCollider"])[1], shape_of(document, holder(nodes, "Hat"))[1]
+
+    limb_fit, hat_fit = ui.fitted(limb), ui.fitted(hat)
+    nodes, limb_entry, hat_entry = exported("panel.glb")
+    report["panel_fit"] = {"limb": repr(limb_fit), "hat": repr(hat_fit), "limb_entry": limb_entry, "hat_entry": hat_entry}
+    check("panel_shows_exported_skinned_size", limb_fit is not None and close(
+        shapes.swap_size(limb_fit.size, True), limb_entry["box"]["size"], 1e-4))
+    check("panel_shows_exported_bone_parented_size", hat_fit is not None and abs(
+        hat_fit.radius - hat_entry["sphere"]["radius"]) < 1e-4)
+    fitting.settle()   # The timer's turn (a background Angelo runs no timers): the export's switches undone.
+    check("cache_survives_an_export", limb.session_uid in fitting._cache)
+    seen = []
+
+    def record_updates(_scene, depsgraph):   # What the depsgraph says when only the pose changes.
+        seen.extend((type(item.id).__name__, item.id.name, item.is_updated_geometry) for item in depsgraph.updates)
+
+    bpy.app.handlers.depsgraph_update_post.append(record_updates)
+    try:
+        armature.pose.bones["Arm"].rotation_euler = (0.3, 0, 0)
+        bpy.context.view_layer.update()
+    finally:
+        bpy.app.handlers.depsgraph_update_post.remove(record_updates)
+    report["pose_updates"] = seen
+    fitting.settle()
+    check("cache_survives_a_pose_change", limb.session_uid in fitting._cache)
+    array = limb.modifiers.new("Array", "ARRAY")   # After the Armature modifier: the rest pose, arrayed along Z.
+    array.count, array.relative_offset_displace = 2, (0, 0, 1)
+    bpy.context.view_layer.update()
+    fitting.settle()
+    check("cache_drops_on_a_modifier_change", limb.session_uid not in fitting._cache and fitting.kind(limb) == "rest"
+          and limb.session_uid in fitting._pending)
+    fitting._measure_pending()
+    limb_fit = ui.fitted(limb)
+    nodes, limb_entry, _hat = exported("panel-array.glb")
+    check("panel_shows_exported_rest_with_modifiers", limb_fit is not None and close(limb_fit.size, (0.2, 0.2, 4), 1e-4)
+          and close(shapes.swap_size(limb_fit.size, True), limb_entry["box"]["size"], 1e-4))
+    auto_translation = nodes["LimbCollider"].get("translation", [0, 0, 0])
+    ui.ANGELO_OT_game_physics_edit_fit.execute(None, SimpleNamespace(object=limb))
+    nodes, manual_entry, _hat = exported("panel-manual.glb")
+    check("edit_fitted_size_keeps_the_exported_shape", limb.angelo_physics.fit == "MANUAL" and close(
+        manual_entry["box"]["size"], limb_entry["box"]["size"], 1e-4) and close(
+        nodes["LimbCollider"].get("translation", [0, 0, 0]), auto_translation, 1e-4))
+    limb.angelo_physics.fit = "AUTO"
+    ui.fitted(limb)
+    fitting._measure_pending()
+    for vertex in limb.data.vertices:
+        vertex.co.x *= 2
+    limb.data.update()
+    bpy.context.view_layer.update()
+    fitting.settle()
+    check("cache_drops_on_a_mesh_change", limb.session_uid not in fitting._cache)
+
+
 def web_merge_skips_physics():
     empty_scene()
     marked = mark(box("Marked"), shape="BOX")
@@ -326,6 +472,8 @@ def run_checks():
     import_round_trip(path)
     suffixes()
     findings()
+    skinned_and_bone_parented()
+    panel_matches_export()
     web_merge_skips_physics()
     check("no_stage_residue", no_stages() and not native.runtime_is_staging())
     report["success"] = True

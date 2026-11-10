@@ -47,6 +47,7 @@
 
 #include "BLT_translation.hh"
 
+#include "BKE_autoexec.hh"
 #include "BKE_blender_version.h"
 #include "BKE_context.hh"
 #include "BKE_global.hh"
@@ -427,13 +428,14 @@ static void wm_save_file_on_quit_dialog_callback(bContext *C, void * /*user_data
 
 /**
  * Call the confirm dialog on quitting. It's displayed in the context window so
- * caller should set it as desired.
+ * caller should set it as desired. `offer_save`: the Save Prompt preference is on and something
+ * is unsaved (otherwise only the running activities are listed, with Quit and Cancel).
  */
-static void wm_confirm_quit(bContext *C)
+static void wm_confirm_quit(bContext *C, const bool offer_save)
 {
   wmGenericCallback *action = MEM_new<wmGenericCallback>(__func__);
   action->exec = wm_save_file_on_quit_dialog_callback;
-  wm_close_file_dialog(C, action);
+  wm_close_file_dialog(C, action, offer_save, true);
 }
 
 void wm_quit_with_optional_confirmation_prompt(bContext *C, wmWindow *win)
@@ -444,15 +446,19 @@ void wm_quit_with_optional_confirmation_prompt(bContext *C, wmWindow *win)
    * here (this function gets called outside of normal event handling loop). */
   CTX_wm_window_set(C, win);
 
-  if (U.uiflag & USER_SAVE_PROMPT) {
-    if (wm_file_or_session_data_has_unsaved_changes(CTX_data_main(C), CTX_wm_manager(C)) &&
-        !G.background)
-    {
-      wm_window_raise(win);
-      wm_confirm_quit(C);
+  const bool offer_save = (U.uiflag & USER_SAVE_PROMPT) &&
+                          wm_file_or_session_data_has_unsaved_changes(CTX_data_main(C),
+                                                                      CTX_wm_manager(C));
+  /* Running work that quitting ends asks whatever the Save Prompt preference says: it is not
+   * unsaved data, and nothing else would tell the person it ends (#WM_quit_activity_set). */
+  if (!G.background && (offer_save || WM_quit_activities_any())) {
+    if (wmWindow *asking = wm_close_file_dialog_window(CTX_wm_manager(C))) {
+      /* The confirmation already asks in a window: bring that one forward, and nothing else. */
+      wm_window_raise(asking);
     }
     else {
-      wm_exit_schedule_delayed(C);
+      wm_window_raise(win);
+      wm_confirm_quit(C, offer_save);
     }
   }
   else {
@@ -460,6 +466,18 @@ void wm_quit_with_optional_confirmation_prompt(bContext *C, wmWindow *win)
   }
 
   CTX_wm_window_set(C, win_ctx);
+}
+
+void WM_quit_request_simulate(bContext *C)
+{
+  if ((G.f & G_FLAG_EVENT_SIMULATE) == 0) {
+    return;
+  }
+  wmWindowManager *wm = CTX_wm_manager(C);
+  wmWindow *win = CTX_wm_window(C) ? CTX_wm_window(C) : wm->runtime->winactive;
+  if (win) {
+    wm_quit_with_optional_confirmation_prompt(C, win);
+  }
 }
 
 /** \} */
@@ -2012,6 +2030,15 @@ static bool ghost_event_proc(const GHOST_IEvent *ghost_event, GHOST_TUserDataPtr
         PointerRNA props_ptr = WM_operator_properties_create_ptr(ot);
         RNA_string_set(&props_ptr, "filepath", path);
         RNA_boolean_set(&props_ptr, "display_file_selector", false);
+        /* There is no file selector to show the "Trusted Source" option, use its default. */
+        RNA_boolean_set(&props_ptr,
+                        "use_scripts",
+                        BKE_autoexec_default_trust_source(path,
+                                                          {
+                                                              .skip_overrides = false,
+                                                              .canonicalize = true,
+                                                              .strip_filename = true,
+                                                          }));
         WM_operator_name_call_ptr(C, ot, wm::OpCallContext::InvokeDefault, &props_ptr, nullptr);
         WM_operator_properties_free(&props_ptr);
 
@@ -2837,18 +2864,16 @@ ImBuf *WM_clipboard_image_get()
   if (G.background) {
     return nullptr;
   }
+  /* The platform decodes straight into the image: the only copy of its pixels. */
+  return g_system->getClipboardImageBuffer();
+}
 
-  int width, height;
-
-  uint8_t *rgba = reinterpret_cast<uint8_t *>(g_system->getClipboardImage(&width, &height));
-  if (!rgba) {
-    return nullptr;
+bool WM_angelo_clipboard_image_size(int *r_width, int *r_height)
+{
+  if (G.background) {
+    return false;
   }
-
-  ImBuf *ibuf = IMB_allocFromBuffer(rgba, nullptr, width, height, 4);
-  free(rgba);
-
-  return ibuf;
+  return bool(g_system->getClipboardImageSize(r_width, r_height));
 }
 
 bool WM_clipboard_image_set_byte_buffer(ImBuf *ibuf)

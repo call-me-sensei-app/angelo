@@ -8,6 +8,8 @@ double-quoted string, which PowerShell reads as a drive-qualified variable and r
 valid. ':' was not followed by a valid variable name character"). ``${commit}:`` is the spelling that works.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import re
 import unittest
 from pathlib import Path

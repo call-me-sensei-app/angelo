@@ -10,6 +10,8 @@
 
 #include <Python.h>
 
+#include "py_capi_dependent.hh"
+
 namespace blender {
 
 struct BPy_IDGroup_Iter;
@@ -51,18 +53,26 @@ struct BPy_IDProperty {
   struct ID *owner_id;     /* can be NULL */
   struct IDProperty *prop; /* must be second member */
   struct IDProperty *parent;
+  /**
+   * Angelo: invalidated (`prop` cleared) when the owner ID is freed, so the wrapper raises
+   * ReferenceError instead of reading freed memory (`bpy_rna.cc`, "Dependent Wrappers").
+   */
+  BPyRNA_DependentLink dependent;
 };
 
 struct BPy_IDArray {
   PyObject_HEAD
   struct ID *owner_id;     /* can be NULL */
   struct IDProperty *prop; /* must be second member */
+  /** Angelo: as #BPy_IDProperty::dependent. */
+  BPyRNA_DependentLink dependent;
 };
 
 struct BPy_IDGroup_Iter {
   PyObject_HEAD
   BPy_IDProperty *group;
   struct IDProperty *cur;
+  mem_lifetime::Watch cursor_watch;
   /** Use for detecting manipulation during iteration (which is not allowed). */
   int len_init;
   /** Iterate in the reverse direction. */
@@ -77,6 +87,8 @@ struct BPy_IDGroup_View {
   bool reversed;
 };
 
+/** Angelo: a new group wrapper, invalidated when `id` is freed (`id` may be null). */
+[[nodiscard]] PyObject *BPy_IDGroup_CreatePyObject(ID *id, IDProperty *prop, IDProperty *parent);
 [[nodiscard]] PyObject *BPy_Wrap_GetKeys(IDProperty *prop);
 [[nodiscard]] PyObject *BPy_Wrap_GetValues(ID *id, IDProperty *prop);
 [[nodiscard]] PyObject *BPy_Wrap_GetItems(ID *id, IDProperty *prop);
@@ -101,6 +113,13 @@ struct BPy_IDGroup_View {
 [[nodiscard]] bool BPy_IDProperty_Map_ValidateAndCreate(PyObject *key,
                                                         IDProperty *group,
                                                         PyObject *ob);
+/**
+ * Angelo: tag the depsgraph relations when `prop` holds a data-block pointer, itself or in any
+ * nested group or array. For a Python write that removes `prop` or changes the path to it (a
+ * driver path may resolve through it); call it before freeing. Main thread only, else nothing.
+ */
+void BPy_IDProperty_tag_relations_if_holds_id(const IDProperty *prop);
+
 void IDProp_Init_Types();
 
 [[nodiscard]] PyObject *BPyInit_idprop();

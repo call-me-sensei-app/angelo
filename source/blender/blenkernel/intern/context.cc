@@ -1308,6 +1308,11 @@ Main *CTX_data_main(const bContext *C)
   return C->data.main;
 }
 
+Main *CTX_data_main_unoverridden(const bContext *C)
+{
+  return C->data.main;
+}
+
 void CTX_data_main_set(bContext *C, Main *bmain)
 {
   C->data.main = bmain;

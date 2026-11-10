@@ -9,6 +9,8 @@ window's operators, pump, Undo and file loads route by chat. The in-Blender proo
 ``test_blender_parallel_workers.py``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import sys
 import tempfile
@@ -464,7 +466,8 @@ class WindowRoutingSourceTests(unittest.TestCase):
         self.assertIn("worker_dispatch.approve(controller, call)", approve)   # On the chat's lane (worker_dispatch).
         self.assertIn('if not getattr(c, "remote_executor", None)', _function("ui.py", "invalidate_workspace_state"))
         self.assertIn("worker_routing.stop_all()", _function("ui.py", "unregister"))
-        self.assertIn("worker_routing.deliver(controller", _function("console.py", "execute"))
+        self.assertIn("worker_routing.deliver(controller", _function("console.py", "submit"))   # Every send: execute and
+        self.assertIn("send_message(controller, text)", _function("console.py", "execute"))   # pending sends.
         self.assertIn("worker_routing.worker_snapshots(controller)", _function("checkpoint_restore_ui.py", "execute_restore"))
         self.assertIn("worker_routing.prepare_turn(controller", _function("voice_ui.py", "execute"))
 

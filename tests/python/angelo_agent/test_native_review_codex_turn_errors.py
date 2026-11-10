@@ -7,6 +7,8 @@ attacks a claim that held and keeps attacking it. ``RealCodex*`` drives the real
 against a local endpoint (``ANGELO_TEST_CODEX``; no account, network or inference) and is skipped without one.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import http.server
 import json
 import math

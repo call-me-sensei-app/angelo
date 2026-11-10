@@ -9,7 +9,9 @@ picture, which ``web_environment`` makes on a worker thread or in a background B
 nothing happens until the picture's job is done, then the export runs again, reading the scene afresh: an edit made
 meanwhile that changes the World waits for its own picture. Blender keeps drawing and answering input all along,
 and ``cancel`` (Esc, a stopped turn) ends the wait; the picture still lands for the next export. A picture not made
-after ``WAIT_SECONDS`` (a stalled worker) is left out: the export is written without it and a finding says why.
+after ``WAIT_SECONDS`` (a stalled worker) is left out: the export is written without it (``write(None)``: the file's
+World is none, never "pending"), its environment's status is "failed", a finding says why, and the person's status
+bar says so (``left_out``): an explicit export never drops the World quietly.
 """
 
 import time
@@ -17,6 +19,14 @@ import time
 from . import web_compat
 
 WAIT_SECONDS = 130.0   # web_environment.BAKE_SECONDS and a margin: a bake has ended, made or stopped, by then.
+
+
+WORLD_LEFT_OUT = frozenset({"world_failed", "world_missing"})   # Findings of a World the file goes without.
+
+
+def left_out(report):
+    """The findings of a written export that say its World was left out, and why."""
+    return [item for item in report.get("findings", ()) if item["code"] in WORLD_LEFT_OUT]
 
 
 class EnvironmentPending(Exception):
@@ -28,8 +38,9 @@ class EnvironmentPending(Exception):
 
 
 class PendingExport:
-    """``write(require)`` exports now and returns the report; with ``require`` it raises ``EnvironmentPending`` while
-    the picture is still being made. ``step`` returns the report once written, None while waiting."""
+    """``write(require)`` exports now and returns the report; with ``require`` True it raises ``EnvironmentPending``
+    while the picture is still being made, and with None (the wait ran out) it leaves that picture out. ``step``
+    returns the report once written, None while waiting."""
 
     def __init__(self, write, world_name="", wait_seconds=WAIT_SECONDS, clock=time.monotonic):
         self.write, self.world_name, self.clock = write, world_name, clock
@@ -50,12 +61,13 @@ class PendingExport:
         if self.job is not None and not self.job.done.is_set() and not overdue:
             return None
         try:
-            report = self.write(not overdue)
+            report = self.write(None if overdue else True)
         except EnvironmentPending as pending:
             self.job = pending.job
             return None
         report["waited_ms"] = round((self.clock() - self.started) * 1000.0, 1) if self.job is not None else 0.0
-        if overdue and report["settings"].get("environment", {}).get("status") == "pending":
+        environment = report["settings"].get("environment", {})
+        if overdue and environment.get("status") == "failed" and not left_out(report):
             report["findings"].insert(0, web_compat.finding(
                 "world_failed", self.world_name, reason="not made within %d s" % self.wait_seconds))
         return report

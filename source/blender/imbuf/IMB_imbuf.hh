@@ -143,7 +143,8 @@ ImBuf *IMB_allocFromBufferOwn(uint8_t *byte_buffer,
                               unsigned int channels);
 
 /**
- * Create a copy of a pixel buffer and wrap it to a new ImBuf
+ * Create a copy of a pixel buffer and wrap it to a new ImBuf.
+ * \return null when both buffers are null or the copy cannot be allocated.
  */
 ImBuf *IMB_allocFromBuffer(const uint8_t *byte_buffer,
                            const float *float_buffer,

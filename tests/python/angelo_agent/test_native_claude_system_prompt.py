@@ -9,6 +9,8 @@ unbilled on 2.1.292 and 2.1.301 with ``claude_prompt_probe.py``), so Angelo send
 test_native_per_model_text pins their bytes.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import itertools
 from pathlib import Path
 import sys

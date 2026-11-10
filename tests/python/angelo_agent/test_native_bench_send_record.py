@@ -13,6 +13,8 @@ earlier copy whole. What the verdict decides, and which current trials are check
 is still C6's, a current lost trial is never checked whatever its stamp (the maintainer: "only set-aside attempts read the
 stamp"), and a completed task's record is as before.
 """
+
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import contextlib
 import copy
 import io
@@ -32,6 +34,7 @@ for _path in (str(HERE.parents[2] / "scripts/addons_core"), str(HERE)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+import account_fixtures  # noqa: E402  (made-up sign-ins, provider_accounts)
 import bench_integrity  # noqa: E402
 import bench_messages  # noqa: E402
 import bench_mcp_vs_angelo as bench  # noqa: E402
@@ -156,6 +159,8 @@ class LauncherTests(unittest.TestCase):
         from angelo_agent.connections import ConnectionStore
         source = folder / "source"
         identity = ConnectionStore(source).add("OPENAI", "SUBSCRIPTION")["id"]
+        profile = source / "codex-profile" / identity   # Its dedicated profile, signed in (a fixture file).
+        account_fixtures.codex_sign_in(profile)   # The evaluation account's made-up claims.
         binary = folder / "Angelo"
         binary.write_text("#!/bin/sh\nexit 0\n")
         os.chmod(binary, 0o755)

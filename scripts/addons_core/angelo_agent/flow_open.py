@@ -145,6 +145,8 @@ def frame_when_drawn(window, tree):
         space = area.spaces.active if area is not None and area.type == 'NODE_EDITOR' else None
         if space is None or space.node_tree is None or space.node_tree.name != name:
             return None   # Closed, or showing another flow, which framed itself.
+        if live_windows.covered(bpy.context.window_manager):
+            return FRAME_TICK   # The start-up cover: the editor draws (sizing its nodes) once it lifts; not a try.
         region = next((r for r in area.regions if r.type == 'WINDOW'), None)
         seen.append((region.width, region.height) if region else (0, 0))
         drawn = all(node.dimensions[0] > 0 for node in space.node_tree.nodes)

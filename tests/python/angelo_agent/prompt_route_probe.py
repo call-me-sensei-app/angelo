@@ -48,16 +48,26 @@ EXTERNAL = "grok_api"   # Any third-party Codex mode: they share the full text (
 
 # What the fake model runs in an MCP client's first turn: Codex in code mode lists MCP tools only at run time
 # (exec's ALL_TOOLS), so the route's received text is what this returns (doc/angelo/prompt_audit.rst).
-# Codex prefixes a server's instructions to each of its tools' descriptions (about 5 KB each), and caps exec
-# output: the listing names Angelo's tools, states their shared prefix once and each one's own remainder, and
+# Codex places the server's instructions within each tool description (about 5 KB each), and caps exec
+# output: the listing names Angelo's tools, states an exact shared block once with each tool's before/after, and
 # closes with an end marker the reader requires, so a cut listing fails as truncated, never as a missing fact.
 LISTING_END = "prompt-audit-listing-end"
 LIST_TOOLS = (
     "const own = ALL_TOOLS.filter((tool) => tool.name.includes('angelo'));\n"
-    "let shared = own.length ? own[0].description || '' : '';\n"
-    "for (const tool of own) { while (!(tool.description || '').startsWith(shared)) shared = shared.slice(0, -1); }\n"
-    "text(JSON.stringify({shared: shared, tools: own.map((tool) => ({name: tool.name, "
-    "description: (tool.description || '').slice(shared.length)})), end: %s}));" % json.dumps(LISTING_END))
+    "if (!own.length || own.some((tool) => typeof tool.description !== 'string')) "
+    "throw new Error('Incomplete Angelo tool descriptions');\n"
+    "const blocks = own.map((tool) => new Set(tool.description.split('\\n\\n')));\n"
+    "let shared = '';\n"
+    "for (const block of blocks[0]) { "
+    "if (block.length > shared.length && blocks.every((parts) => parts.has(block))) shared = block; }\n"
+    "if (!shared) { shared = own[0].description; "
+    "for (const tool of own) { while (!tool.description.startsWith(shared)) shared = shared.slice(0, -1); } }\n"
+    "const tools = own.map((tool) => { const at = tool.description.indexOf(shared); "
+    "const before = tool.description.slice(0, at); const after = tool.description.slice(at + shared.length); "
+    "if (at < 0 || before + shared + after !== tool.description) throw new Error('Lossy tool listing'); "
+    "return [tool.name, before, after, tool.description.length]; });\n"
+    "text(JSON.stringify({format: 'shared-interior-rows-v1', shared, count: own.length, tools, end: %s}));"
+    % json.dumps(LISTING_END))
 
 
 def tool_call_stream(index, code):
@@ -281,7 +291,7 @@ def mcp_state(folder):
 
 def mcp_launcher(state, client, tree=ROOT):
     """Angelo's MCP server as a client launches it; tree: the source whose server to run (default this one)."""
-    return [sys.executable, "-I", str(Path(tree) / "scripts/angelo/angelo_mcp.py"), "--client", client,
+    return [sys.executable, "-I", "-B", str(Path(tree) / "scripts/angelo/angelo_mcp.py"), "--client", client,
             "--state-dir", str(state)]
 
 

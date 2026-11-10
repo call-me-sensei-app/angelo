@@ -4,6 +4,8 @@
 gcp_windows_validate.sh wait-off against a stand-in gcloud, and pins of the bootstrap's preparation deadline,
 heartbeat, disk cleanup and floor, and of windows_final_runs.ps1's session and grant rules."""
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import os
 import re
 import subprocess
@@ -12,8 +14,14 @@ import time
 import unittest
 from pathlib import Path
 
+from host_test_policy import environment_skip
+
 HERE = Path(__file__).resolve().parent
 SCRIPTS = HERE.parents[2] / "scripts/angelo"
+# gcp_windows_validate.sh drives the VM from the macOS workstation; its runs against a stand-in gcloud are checked
+# there and in the Linux host suite, never on Windows. The pins of its text run everywhere.
+WORKSTATION_ONLY = unittest.skipIf(os.name == "nt", environment_skip(
+    "gcp_windows_validate.sh is a bash launcher run from the macOS workstation, not on Windows"))
 
 
 def text(name):
@@ -85,6 +93,7 @@ esac
                             heartbeat=beat, env_extra=env)
         return ran, stops
 
+    @WORKSTATION_ONLY
     def test_a_hung_bench_is_stopped_at_its_stalled_step_not_at_its_maximum_run_time(self):
         """aids-sol-b 2026-10-21: a bench's preparation hung 8 h before its 4 h cap, silent (review: pilot-g). No
         deadline here: only the stall can stop it (a missed stall would hang the test until its timeout)."""
@@ -100,6 +109,7 @@ esac
         self.assertEqual(stops, [1])
         self.assertIn("no heartbeat", ran.stderr)
 
+    @WORKSTATION_ONLY
     def test_one_failed_heartbeat_read_never_stops_a_run(self):
         """census-directtools 2026-10-22: one empty read of a live heartbeat stopped a healthy dry run."""
         now = int(time.time())
@@ -112,6 +122,7 @@ esac
             self.assertIn("heartbeat unreadable this poll", ran.stderr)
             self.assertNotIn("STALLED", ran.stderr)
 
+    @WORKSTATION_ONLY
     def test_a_heartbeat_with_its_fields_on_one_line_still_reads(self):
         """The first live heartbeat (aids-sol-b, 2026-10-21) wrote its fields on one line (a comma binds tighter than
         + in PowerShell); the wait reads either form."""
@@ -125,6 +136,7 @@ esac
         self.assertIn("STALLED (2 of 2): no output for 60 minutes", ran.stderr)
         self.assertIn("== test: hangs", ran.stderr)
 
+    @WORKSTATION_ONLY
     def test_a_moving_bench_and_a_quiet_build_are_never_stopped_as_stalled(self):
         for heartbeat_age, progress_age, stages in ((60, 60, "bench"), (60, 3600, "release"), (None, 0, "bench")):
             sent_ago = 7200 if heartbeat_age is not None else 300   # No heartbeat yet, minutes after the send.
@@ -243,6 +255,7 @@ esac
                       text("windows_bootstrap_stages.ps1"))
         self.assertNotIn('icacls.exe $bench /grant "${benchUser}', runs)
 
+    @WORKSTATION_ONLY
     def test_a_sends_short_limit_goes_back_to_the_default_once_the_machine_is_off(self):
         """aids-sol-b 2026-10-22: a test send's 20 minute limit stayed on the machine after the send (a start refused
         for want of a GPU), where a later sender would have inherited it."""
@@ -261,6 +274,8 @@ esac
             subprocess.run(["bash", str(SCRIPTS / "gcp_windows_validate.sh"), "wait-off"], env=env,
                            capture_output=True, text=True, timeout=60)
             self.assertIn("--max-run-duration=8h", (fake / "scheduling").read_text())
+
+    def test_a_start_that_fails_restores_the_limit(self):
         gcp = text("gcp_windows_validate.sh")
         self.assertIn('g compute instances start "$NAME" --zone="$ZONE" || { restore_limit; exit 1; }', gcp)
 

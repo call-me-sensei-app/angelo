@@ -10,6 +10,8 @@ the Windows SDK (types, constants and the four calls the file makes). It proves 
 Windows, not its behaviour on NTFS or ReFS. The file's native branch is compiled the same way.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import shutil
 import subprocess
 import sys

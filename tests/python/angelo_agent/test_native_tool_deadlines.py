@@ -7,6 +7,8 @@ The Claude plan used to wait a flat 190 s for any native call while the host gav
 expiry. Time is a fake clock throughout; nothing sleeps.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import ast
 import inspect
 import sys

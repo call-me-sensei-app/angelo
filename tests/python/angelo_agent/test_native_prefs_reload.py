@@ -10,6 +10,8 @@ disabled Angelo (never turned back on), an earlier Angelo's settings import (``k
 Reload Scripts (no second entry). The running app is ``test_blender_prefs_and_quit``.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import sys
 import unittest
 from pathlib import Path

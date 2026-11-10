@@ -13,6 +13,8 @@ animation, drivers, constraints, physics, a time-dependent modifier, or an
 object it follows (parent, Mirror or Array object, focus object) that can.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -27,9 +29,41 @@ fingerprint_globals = queries._fingerprints.capture.__func__.__globals__
 metadata_globals = queries._metadata.settings.__func__.__globals__
 
 
+class _Prop(SimpleNamespace):
+    pass
+
+
+def _is_object(value):
+    """A fake object (it owns a ``parent``), judged without reading ``modifiers``, which may be computed."""
+    return isinstance(value, SimpleNamespace) and "parent" in vars(value)
+
+
+def _rna(owner):
+    """An RNA description of a fake struct, as Blender's ``bl_rna`` lists it: a Thing is an Object pointer, a
+    Struct a nested settings struct, anything else not a pointer (``object_dependencies.object_pointers``)."""
+    properties = []
+    for name, value in vars(owner).items():
+        if _is_object(value) or (value is None and name in getattr(owner, "_object_fields", ())):
+            properties.append(_Prop(identifier=name, type="POINTER", fixed_type=SimpleNamespace(identifier="Object")))
+        elif isinstance(value, Struct):
+            properties.append(_Prop(identifier=name, type="POINTER", fixed_type=SimpleNamespace(identifier="Struct")))
+    return SimpleNamespace(identifier=type(owner).__name__, properties=properties)
+
+
+class Struct(SimpleNamespace):
+    """A fake RNA struct (a modifier, a camera's data or its depth-of-field settings) whose pointers are typed."""
+
+    @property
+    def bl_rna(self):
+        return _rna(self)
+
+
 def modifier(kind, **values):
-    return SimpleNamespace(type=kind, name=kind, show_viewport=True, show_render=True,
-                           show_in_editmode=False, show_on_cage=False, **values)
+    """A fake modifier; every keyword that is an object (or None) is an Object pointer property of its RNA."""
+    item = Struct(type=kind, name=kind, show_viewport=True, show_render=True,
+                  show_in_editmode=False, show_on_cage=False, **values)
+    item._object_fields = tuple(name for name, value in values.items() if value is None or _is_object(value))
+    return item
 
 
 def nla_animated():
@@ -73,13 +107,15 @@ class FrameIndependentTests(unittest.TestCase):
             "a constraint": Thing(constraints=[SimpleNamespace(type="COPY_LOCATION")]),
             "an animated parent": Thing(parent=animated),
             "an animated grandparent": Thing(parent=Thing(parent=animated)),
-            "a bone parent": Thing(parent=Thing("ARMATURE"), parent_type="BONE"),
+            "a bone parent on a keyed rig": Thing(parent=Thing("ARMATURE", animation_data=nla_animated()),
+                                                  parent_type="BONE"),
+            "a bone parent on a rig with a pose constraint": Thing(parent=Thing("ARMATURE", pose=SimpleNamespace(
+                bones=[SimpleNamespace(constraints=[SimpleNamespace(type="IK")])])), parent_type="BONE"),
             "a time-dependent modifier": wave,
             "an animated mirror object": Thing(modifiers=[modifier("MIRROR", mirror_object=animated)]),
             "an array cap with a time-dependent modifier": Thing(modifiers=[modifier(
                 "ARRAY", offset_object=None, start_cap=wave, end_cap=None, curve=None)]),
-            "an animated focus object": Thing("CAMERA", data=SimpleNamespace(
-                dof=SimpleNamespace(focus_object=animated))),
+            "an animated focus object": Thing("CAMERA", data=Struct(dof=Struct(focus_object=animated))),
             "a keyed light node tree": Thing("LIGHT", data=SimpleNamespace(node_tree=SimpleNamespace(
                 animation_data=nla_animated(), nodes=[]))),
             "physics": Thing(rigid_body=object()),
@@ -88,6 +124,52 @@ class FrameIndependentTests(unittest.TestCase):
         for label, thing in cases.items():
             with self.subTest(label):
                 self.assertFalse(frame_independent(thing))
+
+    def test_every_deformer_object_is_followed(self):
+        """Each Object pointer a frame-independent modifier has in Blender's RNA (test_blender_revision_deformers
+        pins the set from bpy) carries its object's time dependence into the deformed mesh.
+
+        Recorded on 1.0.9, 1.0.10 and main (2026-11-05): an unparented mesh on a keyed rig's B-Bones or a lattice's
+        keyed shape key was "still", so its exact revision stayed the same while it deformed from frame to frame.
+        """
+        animated = Thing("EMPTY", data=None, animation_data=nla_animated())
+        still_empty = Thing("EMPTY", data=None)
+        pointers = {"ARMATURE": ("object",), "ARRAY": ("curve", "end_cap", "offset_object", "start_cap"),
+                    "CAST": ("object",), "CURVE": ("object",), "HOOK": ("object",), "LATTICE": ("object",),
+                    "MESH_DEFORM": ("object",), "MIRROR": ("mirror_object",), "SCREW": ("object",),
+                    "SHRINKWRAP": ("auxiliary_target", "target"), "SIMPLE_DEFORM": ("origin",),
+                    "SURFACE_DEFORM": ("target",)}
+        for kind, names in pointers.items():
+            for name in names:
+                with self.subTest(kind=kind, pointer=name):
+                    self.assertIn(kind, revision_time.FRAME_INDEPENDENT_MODIFIERS)
+                    self.assertFalse(frame_independent(Thing(modifiers=[modifier(kind, **{name: animated})])))
+                    self.assertTrue(frame_independent(Thing(modifiers=[modifier(kind, **{name: still_empty})])))
+        for kind in ("ARMATURE", "LATTICE", "CURVE"):
+            # A followed rig, lattice or curve is judged by the rules, not its type (audit-1010, 2026-11-05: by type,
+            # a mesh on a posed but unanimated character went stale on every frame change).
+            with self.subTest(deformer_type=kind):
+                still_target = Thing(kind, pose=SimpleNamespace(bones=[SimpleNamespace(constraints=[])]))
+                self.assertTrue(frame_independent(Thing(modifiers=[modifier(kind, object=still_target)])))
+                keyed = Thing(kind, animation_data=nla_animated())
+                self.assertFalse(frame_independent(Thing(modifiers=[modifier(kind, object=keyed)])))
+                keyed_data = Thing(kind, data=SimpleNamespace(animation_data=nla_animated()))
+                self.assertFalse(frame_independent(Thing(modifiers=[modifier(kind, object=keyed_data)])))
+                self.assertFalse(frame_independent(Thing(kind)), "as the object itself, the type still decides")
+        constrained = Thing("ARMATURE", pose=SimpleNamespace(bones=[SimpleNamespace(constraints=[object()])]))
+        self.assertFalse(frame_independent(Thing(modifiers=[modifier("ARMATURE", object=constrained)])))
+
+    def test_pointers_come_from_rna_not_attribute_names(self):
+        """A pointer no list names (a future Blender field) is followed because RNA types it as an Object."""
+        animated = Thing("EMPTY", data=None, animation_data=nla_animated())
+        self.assertFalse(frame_independent(Thing(modifiers=[modifier("SMOOTH", frobnicate=animated)])))
+        nested = Struct(target_settings=Struct(anchor=animated))
+        nested.type, nested.name = "SMOOTH", "Smooth"
+        self.assertFalse(frame_independent(Thing(modifiers=[nested])))
+        self.assertFalse(frame_independent(Thing("CAMERA", data=Struct(dof=Struct(other_object=animated)))))
+        # An attribute RNA does not type as an Object is not a dependency, whatever its name.
+        untyped = SimpleNamespace(type="SMOOTH", name="Smooth", object=animated, bl_rna=SimpleNamespace(properties=()))
+        self.assertTrue(frame_independent(Thing(modifiers=[untyped])))
 
     def test_a_reference_cycle_ends_and_a_long_chain_is_bounded(self):
         first, second = Thing(), Thing()

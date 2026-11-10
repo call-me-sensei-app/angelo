@@ -9,7 +9,8 @@ After a real scene load, independent failures are partial recovery, not no-ops.
 
 from pathlib import Path
 
-from . import checkpoint_images, live_windows, restored_document, ui_text
+from . import change_clock, checkpoint_images, checkpoint_store_text, display_text, live_windows, restored_document, \
+    ui_text
 from .document_scene import same_file
 from .checkpoint_review_ui import checkpoint_review, mark_scene_history as _mark_scene_history, restore_outcome
 from .restore_load_handlers import bundled as _bundled, owners as _handler_owners, resume as _resume_load_handlers, \
@@ -20,6 +21,21 @@ from .transcript_rows import changing
 
 def _error(controller, error):
     return controller.redact(str(error))
+
+
+def _reason(controller, error):
+    """A pre-open refusal's reason: a sentence for the person (a field-less ``display_text.Text``, as the snapshot
+    store's refusals are) stays translatable, in the error report and any chat row; else redacted English."""
+    first = error.args[0] if getattr(error, "args", None) else None
+    return first if isinstance(first, display_text.Text) and not first.fields else _error(controller, error)
+
+
+def _diagnostic(controller, error):
+    """After the scene was replaced, a stored English diagnostic: a sentence for the person (which says the scene is
+    unchanged) gives way to the clock's own reason it was raised from."""
+    first = error.args[0] if getattr(error, "args", None) else None
+    cause = error.__cause__ if isinstance(first, display_text.Text) else None
+    return _error(controller, cause if isinstance(cause, change_clock.Unsettled) else error)
 
 
 def _safety_notice(controller, selected, safety, unsaved):
@@ -83,7 +99,8 @@ def _reload_safety(ui, controller, native, safety, warnings, kept=None):
                 reloaded = native.reload_failed_restore(prepared) is True
                 record = owner.record
             else:  # Nothing was in Sculpt before Restore: its ordinary private copy is the document.
-                record, recovery = controller.checkpoints.recovery_copy(safety['id'])
+                with change_clock.awaited():   # After a failed install: waited out; its diagnostic stays English.
+                    record, recovery = controller.checkpoints.recovery_copy(safety['id'])
                 reloaded = 'FINISHED' in ui.bpy.ops.wm.open_mainfile(filepath=str(recovery), load_ui=False,
                                                                      use_scripts=False)
         if reloaded:
@@ -91,7 +108,7 @@ def _reload_safety(ui, controller, native, safety, warnings, kept=None):
             restored_document.adopt_or_say(warnings if kept is None else kept, controller.redact)
         return reloaded
     except Exception as error:
-        warnings.append('Reloading the safety snapshot failed: ' + _error(controller, error))  # i18n: stored diagnostic
+        warnings.append('Reloading the safety snapshot failed: ' + _diagnostic(controller, error))  # i18n: stored diagnostic
         return False
     finally:
         try:
@@ -234,7 +251,8 @@ def execute_restore(ui, operator):
             plan = controller.checkpoints.restore_plan(operator.checkpoint_id, recovery=recovery_owner)
         else:
             plan = controller.checkpoints.restore_plan(operator.checkpoint_id)
-            record, recovery = controller.checkpoints.recovery_copy(operator.checkpoint_id)
+            with checkpoint_store_text.awaited():   # The person waits for it: a coarse step is waited out, not refused.
+                record, recovery = controller.checkpoints.recovery_copy(operator.checkpoint_id)
         review = checkpoint_review(record, controller.state['messages'])
         never_held = (checkpoint_images.recorded_unsaved(controller.state['messages'], operator.checkpoint_id)
                       if review['scope'] == 'before_restore' else [])
@@ -264,8 +282,9 @@ def execute_restore(ui, operator):
                 raise RuntimeError('The complete protected safety checkpoint was not acknowledged')
         else:
             safety = ui.capture_checkpoint(controller, purpose='safety')
-        for _, _, item in plan:
-            controller.checkpoints.journal(safety['id'], Path(item['root']), item['path'], restore_entry=item)
+        with checkpoint_store_text.awaited():   # Each before-image the Restore puts back: waited out, not refused.
+            for _, _, item in plan:
+                controller.checkpoints.journal(safety['id'], Path(item['root']), item['path'], restore_entry=item)
         ui.remember_draft(controller)
         notice = _safety_notice(controller, operator.checkpoint_id, safety, unsaved)
         ui._restoring_snapshot = True
@@ -317,10 +336,9 @@ def execute_restore(ui, operator):
         release_safety()
         restored_document.adopt_or_say(warnings, controller.redact)   # The document open at the Restore, never the copy.
         try:
-            if recovery_owner is not None:
-                file_count = controller.checkpoints.restore_since(operator.checkpoint_id, plan, recovery=recovery_owner)
-            else:
-                file_count = controller.checkpoints.restore_since(operator.checkpoint_id, plan)
+            with change_clock.awaited():   # Each backup put back: waited out; a failure keeps its file progress.
+                since = {} if recovery_owner is None else {"recovery": recovery_owner}
+                file_count = controller.checkpoints.restore_since(operator.checkpoint_id, plan, **since)
         except Exception as error:
             file_progress = getattr(error, 'restored_files', None)
             if type(file_progress) is not int or not 0 <= file_progress <= len(plan):
@@ -437,10 +455,11 @@ def execute_restore(ui, operator):
             with changing(controller, notice):
                 notice.update(restore_state='not_applied', **ui_text.notice(
                     'The recovery scene was not opened: {error}\nThe protected safety snapshot is still available through Undo restore.',
-                    error=_error(controller, error)))
+                    error=_reason(controller, error)))
             controller.version += 1
             _save(controller)  # No scene was opened; the pre-open failure is reported below.
-        operator.report({'ERROR'}, _error(controller, error))
+        reason = _reason(controller, error)
+        operator.report({'ERROR'}, display_text.shown(reason) if isinstance(reason, display_text.Text) else reason)
         return {'CANCELLED'}
     finally:
         release_recovery()

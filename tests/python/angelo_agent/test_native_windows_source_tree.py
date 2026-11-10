@@ -11,6 +11,8 @@ HEAD and the index are provably the commit. These tests drive it, the launcher's
 exposing paths have: the class is any name, not those 12.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import io
 import os
 import shutil
@@ -28,6 +30,8 @@ SENDING = SCRIPTS / "gcp_windows_source.sh"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 import shipped_sources  # noqa: E402  (standard library only)
+sys.path.insert(0, str(HERE))
+from host_test_policy import environment_skip  # noqa: E402
 
 ENV = dict(os.environ, GIT_LFS_SKIP_SMUDGE="1", GIT_AUTHOR_NAME="Angelo Tests", GIT_AUTHOR_EMAIL="tests@angelo.invalid",
            GIT_COMMITTER_NAME="Angelo Tests", GIT_COMMITTER_EMAIL="tests@angelo.invalid", GIT_CONFIG_NOSYSTEM="1",
@@ -120,7 +124,7 @@ class SourceTreeTests(unittest.TestCase):
         for name in NAMES:
             self.assertEqual(Path(self.machine, name).read_bytes(), ("%s\n" % name).encode("utf-8"))
 
-    @unittest.skipIf(os.name == "nt", "the large-file archive is made on the Mac, with its tar")
+    @unittest.skipIf(os.name == "nt", environment_skip("the large-file archive is made on the Mac, with its tar"))
     def test_the_large_file_archive_made_with_tar_round_trips_too(self):
         listed = "".join(name + "\n" for name in NAMES)
         subprocess.run(["tar", "-czf", str(self.folder / "lfs.tar.gz"), "-T", "-"], cwd=self.repo, input=listed.encode(),
@@ -239,6 +243,7 @@ class SourceTreeTests(unittest.TestCase):
         self.assertEqual(outside.read_text(), "keep\n")
 
 
+@unittest.skipIf(os.name == "nt", environment_skip("the launcher's delta is bash and git, on the Mac"))
 @unittest.skipUnless(shutil.which("git") and shutil.which("bash"), "the launcher's delta is bash and git, on the Mac")
 class DeltaSendTests(unittest.TestCase):
     def test_a_delta_with_non_ascii_deletions_case_and_shape_changes_leaves_exactly_the_new_commit(self):
@@ -271,6 +276,8 @@ class DeltaSendTests(unittest.TestCase):
             self.assertEqual(Path(machine, "keep/照片 [1].png").read_bytes(), b"v2\n")
             self.assertFalse(Path(machine, "данные").exists(), "an emptied folder goes with its last file")
 
+
+class SendContractTests(unittest.TestCase):
     def test_every_send_unpacks_with_the_tool_never_tar_exe(self):
         boot = (SCRIPTS / "windows_cloud_bootstrap.ps1").read_text(encoding="utf-8")
         sending = SENDING.read_text(encoding="utf-8")

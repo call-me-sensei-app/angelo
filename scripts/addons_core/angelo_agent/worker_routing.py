@@ -39,6 +39,7 @@ import time
 import uuid
 from pathlib import Path
 
+from . import shared_replace
 from .ui_text import n_   # Marks the text for the catalogues; pure Python.
 
 REGISTRY = "worker-chats.json"   # In the state folder: which chats work on a worker's part, kept across restarts.
@@ -83,7 +84,7 @@ def registry(directory):
     key = str(Path(directory).resolve())
     if key not in _registries:
         try:
-            value = json.loads((Path(key) / REGISTRY).read_text(encoding="utf-8"))
+            value = json.loads(shared_replace.read_text(Path(key) / REGISTRY))   # Sharing delete (shared_replace).
         except (OSError, ValueError):
             value = {}
         _registries[key] = {k: v for k, v in value.items() if isinstance(k, str) and isinstance(v, str)} if (
@@ -94,11 +95,20 @@ def registry(directory):
 def _remember(controller, part):
     """Record the chat as a worker chat before it binds, so no restart can turn it into a chat on Angelo's file."""
     directory = Path(controller.store.directory)
-    chats = registry(directory)
-    chats[controller.state["id"]] = str(part)
+    chats, identity = registry(directory), controller.state["id"]
+    before = chats.get(identity)
+    chats[identity] = str(part)
     temporary = directory / (REGISTRY + ".%s.tmp" % uuid.uuid4().hex)
-    temporary.write_text(json.dumps(chats, sort_keys=True), encoding="utf-8")
-    os.replace(temporary, directory / REGISTRY)
+    try:
+        temporary.write_text(json.dumps(chats, sort_keys=True), encoding="utf-8")
+        shared_replace.replace(temporary, directory / REGISTRY)
+    except BaseException:   # Not recorded: this session's registry says what the file says (the bind is refused).
+        temporary.unlink(missing_ok=True)
+        if before is None:
+            chats.pop(identity, None)
+        else:
+            chats[identity] = before
+        raise
 
 
 class WorkerChatFiles:

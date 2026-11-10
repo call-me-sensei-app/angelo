@@ -16,6 +16,8 @@ from itertools import islice
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from . import change_clock
+from .stale_binding import same as same_binding
 from .chat_settings import clean_options
 from .files import MAX_FILE
 from .legacy_names import current_tool_name
@@ -116,6 +118,7 @@ def _fingerprint(path, maximum=MAX_FILE):
         stat = path.stat()
         if not path.is_file() or stat.st_size > maximum:
             raise ValueError("Memory evidence requires a regular scoped file within its existing host size limit")
+        change_clock.settle(stat, change=False)   # A later write changes it, in its last tick too (Windows).
         return (stat.st_ino, stat.st_size, stat.st_mtime_ns)
     except OSError:
         raise ValueError("Memory evidence is no longer available; attach or approve it again") from None
@@ -378,7 +381,7 @@ def execute(controller, name, arguments):
         _public_arguments(controller, args)
         call = _live_call(controller, args, executing=True)
         evidence, signature = _prepare(controller, args)
-        if call.precondition is not None and call.precondition != signature:
+        if call.precondition is not None and not same_binding(call.precondition, signature):
             raise ValueError("Memory/source state changed after review; inspect and approve a new exact patch")
         previous = controller.state
         updated = update_memory(previous, args, document,
