@@ -112,6 +112,10 @@ msgstr "ﻉﻭﺮﺸﻤﻟﺍ ﻲﻓ (GLSL (.glsl, .frag ءﺍﺰﺟﺃ ﻞﻠ�
 msgid "A GLSL fragment shader file in the project"
 msgstr "ﻉﻭﺮﺸﻤﻟﺍ ﻲﻓ GLSL ءﺍﺰﺟﺃ ﻞﻠﻈﻣ ﻒﻠﻣ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A GPT model's request to run a script now waits for your approval instead of being cancelled about 30 seconds after the card appears."
+msgstr ".ﺔﻗﺎﻄﺒﻟﺍ ﺭﻮﻬﻇ ﻦﻣ ﺔﻴﻧﺎﺛ 30 ﻮﺤﻧ ﺪﻌﺑ ﻰﻐﻠﻳُ ﻥﺃ ﻦﻣ ﻻًﺪﺑ ﻚﺘﻘﻓﺍﻮﻣ ﺮﻈﺘﻨﻳ ﻲﺠﻣﺮﺑ ﺺﻧ ﻞﻴﻐﺸﺘﻟ GPT ﺝﺫﻮﻤﻧ ﺐﻠﻃ ﺢﺒﺻﺃ"
+
 #. src: angelo_agent/flow_nodes.py
 msgid "A Subflow step needs a generation account"
 msgstr "ﺪﻴﻟﻮﺗ ﺏﺎﺴﺣ ﻰﻟﺇ ﻲﻋﺮﻔﻟﺍ ﻖﻓﺪﺘﻟﺍ ﺓﻮﻄﺧ ﺝﺎﺘﺤﺗ"
@@ -707,6 +711,14 @@ msgstr "«ﺓﺭﻮﺻ» ﺓﻮﻄﺨﻛ ﺓﺭﻮﺻ ﻞﻛ ﻒﺿﺃ"
 #. src: bpy.types.ANGELO_FH_movie_empty
 msgid "Add empty image"
 msgstr "ﺔﻏﺭﺎﻓ ﺓﺭﻮﺻ ﺔﻓﺎﺿﺇ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Add Fab models in FBX, OBJ, USD and .blend in one click, as with GLB, and apply Megascans surfaces as materials."
+msgstr ".ﺕﺎﻣﺎﺨﻛ Megascans ﺢﻄﺳﺃ ﻖﺒّﻃﻭ ،GLB ﻊﻣ ﺎﻤﻛ ﺓﺪﺣﺍﻭ ﺓﺮﻘﻨﺑ blend.ﻭ USDﻭ OBJﻭ FBX ﻎﻴﺼﺑ Fab ﺝﺫﺎﻤﻧ ﻒﺿﺃ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Add Fab models in FBX, OBJ, USD, USDZ, glTF and .blend formats in one click: their textures come along, the model is sized to your scene, and one Undo removes it."
+msgstr ".ﺓﺪﺣﺍﻭ ﻊﺟﺍﺮﺗ ﺔﻴﻠﻤﻋ ﻪﻠﻳﺰﺗﻭ ،ﻙﺪﻬﺸﻣ ﻰﻠﻋ ﺝﺫﻮﻤﻨﻟﺍ ﻢﺠﺣ ﻂﺒﻀﻳُﻭ ،ﺎﻬﺗﺍءﺎﺴﻛﺇ ﺎﻬﻌﻣ ﻲﺗﺄﺗ :ﺓﺪﺣﺍﻭ ﺓﺮﻘﻨﺑ blend.ﻭ glTFﻭ USDZﻭ USDﻭ OBJﻭ FBX ﻎﻴﺼﺑ Fab ﺝﺫﺎﻤﻧ ﻒﺿﺃ"
 
 #. src: angelo_agent/studio_video_ui.py
 msgid "Add first frame…"
@@ -1611,6 +1623,10 @@ msgstr "Angelo ({code}): {detail} ﻰﻟﺇ ﻝﻮﺧﺪﻟﺍ ﻞﻴﺠﺴﺗ �
 msgid "Angelo speaks 21 languages, including Arabic from right to left. Choose yours on first launch or in Preferences; Blender's menus and panels follow it too."
 msgstr ".ﻪﺗﺎﺣﻮﻟﻭ Blender ﻢﺋﺍﻮﻗ ﺎﻀًﻳﺃ ﺎﻬﻌﺒﺘﺗﻭ ؛ﺕﻼﻴﻀﻔﺘﻟﺍ ﻲﻓ ﻭﺃ ﻝﻭﻷﺍ ﻞﻴﻐﺸﺘﻟﺍ ﺪﻨﻋ ﻚﺘﻐﻟ ﺮﺘﺧﺍ .ﺭﺎﺴﻴﻟﺍ ﻰﻟﺇ ﻦﻴﻤﻴﻟﺍ ﻦﻣ ﺔﻴﺑﺮﻌﻟﺍ ﺎﻬﻨﻣ ،ﺔﻐﻟ Angelo 21 ﺙﺪﺤﺘﻳ"
 
+#. src: angelo_agent/safe_start_notice.py
+msgid "Angelo started without some add-ons"
+msgstr "ﺲﺑﺎﻘﻤﻟﺍ ﺾﻌﺑ ﻥﻭﺪﺑ Angelo ﺃﺪﺑ"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo starts 2.1× faster than 1.0.4 in the background and in about 40% less time with a window, close to stock Blender."
 msgstr ".ﻲﻠﺻﻷﺍ Blender ﻦﻣ ﺎﺒًﻳﺮﻗ ،ﺓﺬﻓﺎﻧ ﻊﻣ 40% ﻮﺤﻨﺑ ﻞﻗﺃ ﺖﻗﻭ ﻲﻓﻭ ،ﺔﻴﻔﻠﺨﻟﺍ ﻲﻓ 1.0.4 ﻦﻣ ×2.1 ﺭﺍﺪﻘﻤﺑ ﻉﺮﺳﺃ Angelo ﺃﺪﺒﻳ"
@@ -1868,6 +1884,10 @@ msgstr "ﺔﻴﻠﺒﻘﺘﺴﻤﻟﺍ / ﺓﺮﻈﺘﻨﻤﻟﺍ ﺕﺍﺮﻴ�
 #. src: angelo_agent/chat_view.py
 msgid "Applies to your next message"
 msgstr "ﺔﻴﻟﺎﺘﻟﺍ ﻚﺘﻟﺎﺳﺭ ﻰﻠﻋ ﻖﺒﻄﻨﻳ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Apply a Megascans surface or another Fab texture set to the selected objects as a ready material. With nothing selected, it is added to the file's asset library."
+msgstr ".ﻒﻠﻤﻟﺍ ﻝﻮﺻﺃ ﺔﺒﺘﻜﻣ ﻰﻟﺇ ﻑﺎﻀﺘُﻓ ،ءﻲﺷ ﺩﺪَّﺤﻳُ ﻢﻟ ﺍﺫﺇﻭ .ﺓﺰﻫﺎﺟ ﺔﻣﺎﺨﻛ ﺓﺩﺪﺤﻤﻟﺍ ﺕﺎﻨﺋﺎﻜﻟﺍ ﻰﻠﻋ Fab ﻦﻣ ﻯﺮﺧﺃ ﺕﺍءﺎﺴﻛﺇ ﺔﻋﻮﻤﺠﻣ ﻭﺃ Megascans ﺢﻄﺳ ﻖﺒّﻃ"
 
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "Apply inherited reflected scale explicitly before an Angelo sculpt pass"
@@ -2527,6 +2547,10 @@ msgstr "ﺲﺒﻘﻣ ﻰﻟﺇ ﺔﺟﺎﺣ ﻻ ،ﺞﻣﺪﻣ"
 msgid "Built on a copy of your scene"
 msgstr "ﻙﺪﻬﺸﻣ ﻦﻣ ﺔﺨﺴﻧ ﻰﻠﻋ ﻲﻨﺑُ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Built on Blender 5.2.4 LTS, with its fixes for Cycles, Grease Pencil, geometry nodes and the Sequencer."
+msgstr ".ﻞﺴﻠﺴﻤﻟﺍﻭ ﺔﻴﺳﺪﻨﻬﻟﺍ ﺪﻘﻌُﻟﺍﻭ ﺕﺎﻈﺣﻼﻣ ﻢﻠﻗﻭ Cycles ـﻟ ﻪﺗﺎﺣﻼﺻﺇ ﻊﻣ Blender 5.2.4 LTS ﻰﻠﻋ ﻲﻨﺒﻣ"
+
 #. src: angelo_agent/ui.py
 msgid "BytePlus Singapore key. Verification is deferred until generation."
 msgstr ".ﺪﻴﻟﻮﺘﻟﺍ ﻰﺘﺣ ﻖﻘﺤﺘﻟﺍ ﻞﺟﺆﻳُ .ﺓﺭﻮﻓﺎﻐﻨﺳ BytePlus ﺡﺎﺘﻔﻣ"
@@ -2795,6 +2819,10 @@ msgstr "ﻻ ﻡﺃ ﺖﻈﻔﺣُ ءﺍﻮﺳ ،(ﻦﻳﺰﺨﺘﻟﺍﻭ ،Pyth
 #. src: angelo_agent/chat_titles.py
 msgid "Changing an Angelo feature"
 msgstr "Angelo ﻲﻓ ﺓﺰﻴﻣ ﺮﻴﻴﻐﺗ ﺭٍﺎﺟ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Changing the denoiser's settings between Cycles renders no longer crashes or gives a wrongly denoised picture."
+msgstr ".ﺔﺌﻃﺎﺧ ءﺎﺿﻮﺿ ﺔﻟﺍﺯﺈﺑ ﺓﺭﻮﺻ ﻲﻄﻌﻳ ﻭﺃ ﻞﻄﻌﺘﻟﺍ ﺐﺒﺴﻳ Cycles ﻲﻓ ﺮﻴﻴﺼﺘﻟﺍ ﺕﺎﻴﻠﻤﻋ ﻦﻴﺑ Denoiser ﺕﺍﺩﺍﺪﻋﺇ ﺮﻴﻴﻐﺗ ﺪﻌﻳ ﻢﻟ"
 
 #. src: angelo_agent/flow_templates.py
 #. src: angelo_agent/studio_workflows.py
@@ -3999,6 +4027,10 @@ msgid "Cycles is not enabled"
 msgstr "ﻞﻌّﻔﻣ ﺮﻴﻏ Cycles"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Cycles no longer crashes on materials that combine displacement bump with emission, or while compiling its kernels."
+msgstr ".ﻪﺗﺍﻮﻧ ﺔﻤﺟﺮﺗ ءﺎﻨﺛﺃ ﻻﻭ ،ﺙﺎﻌﺒﻧﻻﺍ ﻊﻣ ﺔﺣﺍﺯﻹﺍ ءﻮﺘﻧ ﻊﻤﺠﺗ ﻲﺘﻟﺍ ﺕﺎﻣﺎﺨﻟﺍ ﻊﻣ ﻞﻄﻌﺘﻳ Cycles ﺪﻌﻳ ﻢﻟ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Cycles now renders on your GPU by default (Metal on Apple silicon), also when a script or the agent starts a render."
 msgstr ".ﺮﻴﻴﺼﺘﻟﺍ ﺔﻴﻠﻤﻋ ﻞﻴﻛﻮﻟﺍ ﻭﺃ ﺖﺒﻳﺮﻜﺳ ﺃﺪﺒﻳ ﺎﻣﺪﻨﻋ ﻰﺘﺣ ،(Apple silicon ﻰﻠﻋ Metal) ﺎﻴًﺿﺍﺮﺘﻓﺍ GPU ﻰﻠﻋ ﺮﻴّﺼﻳ Cycles ﺢﺒﺻﺃ"
 
@@ -4699,6 +4731,10 @@ msgstr "ﻙﺮﺤﻤﻟﺍ ﻊﻣ ﺮﺷﺎﺒﻤﻟﺍ ﻂﺑﺮﻟﺍ"
 #. src: angelo_agent/engine_link_ui.py
 msgid "Engine live link on"
 msgstr "ﻞﻴﻐﺸﺘﻟﺍ ﺪﻴﻗ ﻙﺮﺤﻤﻟﺍ ﻊﻣ ﺮﺷﺎﺒﻤﻟﺍ ﻂﺑﺮﻟﺍ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Engine live links update while you keep editing, not only after you stop: a web page shows a dragged or animated change about ten times a second, and a single edit in under 0.1 s instead of 0.4 s. Godot, Unity and Unreal update as fast as they show each change."
+msgstr ".ﺮﻴﻴﻐﺗ ﻞﻛ ﺎﻬﻨﻣ ﻞٌّﻛ ﺎﻬﺑ ﺽﺮﻌﻳ ﻲﺘﻟﺍ ﺔﻋﺮﺴﻟﺎﺑ Unrealﻭ Unityﻭ Godot ﺙﺪّﺤﺘﻳﻭ .ﺔﻴﻧﺎﺛ 0.4 ﻦﻣ ﻻًﺪﺑ ﺔﻴﻧﺎﺛ 0.1 ﻦﻣ ﻞﻗﺃ ﻲﻓ ﺩﺮﻔﻤﻟﺍ ﻞﻳﺪﻌﺘﻟﺍﻭ ،ﺔﻴﻧﺎﺜﻟﺍ ﻲﻓ ﺕﺍﺮﻣ ﺮﺸﻋ ﻮﺤﻧ ﻙﺮﺤﺘﻤﻟﺍ ﻭﺃ ﺏﻮﺤﺴﻤﻟﺍ ﺮﻴﻴﻐﺘﻟﺍ ﺐﻳﻮﻟﺍ ﺔﺤﻔﺻ ﺽﺮﻌﺗ :ﻂﻘﻓ ﻒﻗﻮﺘﻟﺍ ﺪﻌﺑ ﻻ ،ﺮﻳﺮﺤﺘﻟﺍ ﺔﻠﺻﺍﻮﻣ ءﺎﻨﺛﺃ ﻙﺮﺤﻤﻟﺍ ﻊﻣ ﺓﺮﺷﺎﺒﻤﻟﺍ ﻂﺑﺍﻭﺮﻟﺍ ﺙﺪّﺤﺘﺗ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Engine preflight for Godot, Unity, Unreal and the web: units, armature transforms, extra and leaf bones, constraints, actions, loop names, shading, hidden objects, local paths, collision names, bone weights and colour spaces, each with the engine version it was checked against."
@@ -6251,6 +6287,10 @@ msgstr ".ﺍﺪًﺑﺃ ﻚﺤﻴﺗﺎﻔﻣ ﻭﺃ ﻚﺗﺎﻔﻠﻣ ﻭﺃ �
 msgid "If a reply from the bundled Codex agent keeps streaming without finishing, Angelo now stops it within 10 minutes and, if nothing was changed yet, asks again once, instead of waiting up to 30 minutes."
 msgstr ".ﺔﻘﻴﻗﺩ 30 ﻰﺘﺣ ﺭﺎﻈﺘﻧﻻﺍ ﻦﻣ ﻻًﺪﺑ ،ﺪﻌﺑ ءﻲﺷ ﺮﻴﻐﺘﻳ ﻢﻟ ﺍﺫﺇ ﺓﺪﺣﺍﻭ ﺓﺮﻣ ﻯﺮﺧﺃ ﺓﺮﻣ ﺐﻠﻄﻳﻭ ،ﻖﺋﺎﻗﺩ 10 ﻝﻼﺧ ﻥﻵﺍ Angelo ﻪﻔﻗﻮﻳ ،ﻲﻬﺘﻨﻳ ﻥﺃ ﻥﻭﺩ ﺚﺒﻟﺍ ﻲﻓ ﻦﻤّﻀﻤﻟﺍ Codex ﻞﻴﻛﻭ ﺩﺭ ﺮﻤﺘﺳﺍ ﺍﺫﺇ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "If an add-on crashes Angelo while it starts, the next start opens with your add-ons turned off and names them, instead of crashing again."
+msgstr ".ﻯﺮﺧﺃ ﺓﺮﻣ ﻞﻄّﻌﺘﻳ ﻥﺃ ﻦﻣ ﻻًﺪﺑ ،ﺎﻫءﺎﻤﺳﺃ ﺮﻛﺬﻳﻭ ﺔﻠﻄّﻌﻣ ﺲﺑﺎﻘﻤﻟﺍﻭ ﺢﺘﻔﻳُ ﻲﻟﺎﺘﻟﺍ ﻞﻴﻐﺸﺘﻟﺍ ﻥﺈﻓ ،ﻪﻠﻴﻐﺸﺗ ءﺪﺑ ءﺎﻨﺛﺃ Angelo ﻞﻄّﻌﺗ ﻲﻓ ﺲﺑﺎﻘﻤﻟﺍ ﺪﺣﺃ ﺐﺒّﺴﺗ ﺍﺫﺇ"
+
 #. src: angelo_agent/activity_text.py
 msgid "If it's interrupted, Undo restore brings back the scene from before."
 msgstr ".ﻞﺒﻗ ﻦﻣ ﻥﺎﻛ ﺎﻤﻛ ﺪﻬﺸﻤﻟﺍ ﺪﻴﻌﻳ «ﺓﺩﺎﻌﺘﺳﻻﺍ ﻦﻋ ﻊﺟﺍﺮﺗ» ﻥﺈﻓ ،ﺔﻴﻠﻤﻌﻟﺍ ﺖﻌﻄﻘﻧﺍ ﺍﺫﺇ"
@@ -7149,6 +7189,10 @@ msgstr "ﺔﻄﺸﻧ ﺩﻮﻴﻗ"
 msgid "Live in {engine}: {asset}"
 msgstr "{engine}: {asset} ﻲﻓ ﺮﺷﺎﺒﻣ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Live links keep up while you edit: your web page shows a changing colour about ten times a second, not only once you stop."
+msgstr ".ﻂﻘﻓ ﻚﻔﻗﻮﺗ ﺪﻨﻋ ﻻ ،ﺔﻴﻧﺎﺜﻟﺍ ﻲﻓ ﺕﺍﺮﻣ ﺮﺸﻋ ﻮﺤﻧ ﺍﺮًﻴﻐﺘﻣ ﺎﻧًﻮﻟ ﺐﻳﻮﻟﺍ ﺔﺤﻔﺻ ﺽﺮﻌﺗ :ﻙﺮﻳﺮﺤﺗ ﺐﻛﺍﻮﺗ ﺓﺮﺷﺎﺒﻤﻟﺍ ﻂﺑﺍﻭﺮﻟﺍ"
+
 #. src: angelo_agent/live_view_draw.py
 msgid "Live view · {name} · Solid, simplified · look only, steer it in its chat"
 msgstr "ﻪﺘﺷﺩﺭﺩ ﻲﻓ ﻪﻬﺟّﻭﻭ ،ﻂﻘﻓ ﺓﺪﻫﺎﺸﻤﻠﻟ · ﻂﺴّﺒﻣ ،ﺐﻠﺻ · {name} · ﺮﺷﺎﺒﻣ ﺽﺮﻋ"
@@ -7261,6 +7305,10 @@ msgstr "ﺢﻄﺴﻟﺍ ﻰﻠﻋ ﺓﺎﺷﺮﻔﻟﺍ ﻑﺍﺪﻫﺃ ﺪﻳ�
 #. src: source/blender/editors/animation/anim_ops.cc
 msgid "Log the channel list info in the terminal. This operator is only available in debug builds of Angelo"
 msgstr "Angelo ﻦﻣ ﺢﻴﺤﺼﺘﻟﺍ ﺕﺍﺭﺍﺪﺻﺇ ﻲﻓ ﻂﻘﻓ ﺡﺎﺘﻣ ﻞﻣﺎﻌﻟﺍ ﺍﺬﻫ .ﺔﻴﻓﺮﻄﻟﺍ ﻲﻓ ﺕﺍﻮﻨﻘﻟﺍ ﺔﻤﺋﺎﻗ ﺕﺎﻣﻮﻠﻌﻣ ﻞﻴﺠﺴﺗ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Long chats send the agent less text: after most edits, your next message no longer repeats the full summary of the last edit."
+msgstr ".ﻞﻳﺪﻌﺗ ﺮﺧﻵ ﻞﻣﺎﻜﻟﺍ ﺺﺨﻠﻤﻟﺍ ﺭﺮﻜﺗ ﺔﻴﻟﺎﺘﻟﺍ ﻚﺘﻟﺎﺳﺭ ﺪﻌﺗ ﻢﻟ ،ﺕﻼﻳﺪﻌﺘﻟﺍ ﻢﻈﻌﻣ ﺪﻌﺑ :ﻞﻴﻛﻮﻟﺍ ﻰﻟﺇ ﻞﻗﺃ ﺎﺼًﻧ ﺔﻠﻳﻮﻄﻟﺍ ﺕﺎﺛﺩﺎﺤﻤﻟﺍ ﻞﺳﺮﺗ"
 
 #. src: angelo_agent/activity_text.py
 msgid "Look at a generation flow"
@@ -7528,6 +7576,10 @@ msgstr "ﺕﺎﻣﺎﺨﻟﺍ"
 #. src: angelo_agent/tension_map_card.py
 msgid "Materials read it with an Attribute node named \"{name}\" (EEVEE and Cycles)."
 msgstr ".(Cyclesﻭ {name}\" (EEVEE\" ﻢﺳﺎﺑ ﺔﻤﺳ ﺓﺪﻘﻌﺑ ﺩﺍﻮﻤﻟﺍ ﻩﺅﺮﻘﺗ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Matrix to Rotation gives the same result on the GPU as on the CPU, and Fillet Curve no longer creates huge positions at reversed corners."
+msgstr ".ﺔﺳﻮﻜﻌﻤﻟﺍ ﺎﻳﺍﻭﺰﻟﺍ ﺪﻨﻋ ﺔﻠﺋﺎﻫ ﻊﺿﺍﻮﻣ ﺊﺸﻨﻳ Fillet Curve ﺪﻌﻳ ﻢﻟﻭ ،CPU ﻰﻠﻋ ﺎﻤﻛ ﺎﻬﺴﻔﻧ ﺔﺠﻴﺘﻨﻟﺍ GPU ﻰﻠﻋ Matrix to Rotation ﻲﻄﻌﻳ"
 
 #. src: angelo_agent/chat_popovers.py
 #. src: angelo_agent/studio_state.py
@@ -9423,6 +9475,10 @@ msgstr "ﺖﺤﻨﻟﺍ ﻑﺪﻫ ﺰﻬّﺟ"
 msgid "Preparing coding-agent access…"
 msgstr "…ﺔﺠﻣﺮﺒﻟﺍ ﻞﻴﻛﻭ ﻝﻮﺻﻭ ﺰﻴﻬﺠﺗ ﺭٍﺎﺟ"
 
+#. src: angelo_agent/job_chat.py
+msgid "Preparing Cycles' render kernels: once after an update, it can take a few minutes"
+msgstr "ﻖﺋﺎﻗﺩ ﻊﻀﺑ ﻚﻟﺫ ﻕﺮﻐﺘﺴﻳ ﺪﻗﻭ ،ﺚﻳﺪﺤﺘﻟﺍ ﺪﻌﺑ ﺓﺪﺣﺍﻭ ﺓﺮﻣ :Cycles ﻲﻓ ﺮﻴﻴﺼﺘﻟﺍ ﻯﻮﻧ ﺮﻴﻀﺤﺗ ﺭٍﺎﺟ"
+
 #. src: angelo_agent/chat_card_draw.py
 msgid "Preparing details…"
 msgstr "…ﻞﻴﺻﺎﻔﺘﻟﺍ ﺰﻴﻬﺠﺗ ﺭٍﺎﺟ"
@@ -11039,6 +11095,10 @@ msgstr ".ﻩﺩﺍﺮﻴﺘﺳﺍ {engine} ﺪﻴﻌﻳﻭ ،{engine} ﻉﻭﺮ�
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Saving a .blend file can no longer overwrite another file through a symbolic link left at its temporary file name."
 msgstr ".ﻪﻈﻔﺣ ﺪﻨﻋ ﺮﺧﺁ ﺎﻔًﻠﻣ ﻝﺪﺒﺘﺴﻳ ﻥﺃ blend. ﻒﻠﻤﻟ ﺖﻗﺆﻤﻟﺍ ﻒﻠﻤﻟﺍ ﻢﺳﺍ ﻲﻓ ﻙﻭﺮﺘﻣ ﻱﺰﻣﺭ ﻂﺑﺍﺭ ﻥﺎﻜﻣﺈﺑ ﺪﻌﻳ ﻢﻟ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Saving data to a library file, blurring an image by a large amount and the Delaunay fill tool on an empty drawing no longer crash."
+msgstr ".ﻞﻄﻌﺘﻟﺍ ﻰﻟﺇ ﻱﺩﺆﻳ ﻍﺭﺎﻓ ﻢﺳﺭ ﻰﻠﻋ Delaunay ﺔﺌﺒﻌﺗ ﺓﺍﺩﺃ ﻭﺃ ،ﺮﻴﺒﻛ ﺭﺍﺪﻘﻤﺑ ﺓﺭﻮﺻ ﺐﻴﺒﻀﺗ ﻭﺃ ،ﺔﺒﺘﻜﻣ ﻒﻠﻣ ﻲﻓ ﺕﺎﻧﺎﻴﺒﻟﺍ ﻆﻔﺣ ﺪﻌﻳ ﻢﻟ"
 
 #. src: source/blender/windowmanager/intern/wm_files.cc
 msgid "Saving it with this version of Angelo (Blender %s) may cause loss of data."
@@ -13229,6 +13289,10 @@ msgid "The finished frames couldn't be published; they are kept for the next sta
 msgstr "ﻲﻟﺎﺘﻟﺍ ﻞﻴﻐﺸﺘﻟﺍ ﻰﺘﺣ ﺎﻬﺑ ﻆﻔﺘﺤﻳُ ؛ﺔﻠﻤﺘﻜﻤﻟﺍ ﺮﻃﻷﺍ ﺮﺸﻧ ﺭﺬّﻌﺗ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The first Cycles render after an update shows that render kernels are being prepared, no longer counts that one-time wait against the render's time limit, and keeps render time estimates accurate."
+msgstr ".ﺔﻘﻴﻗﺩ ﺮﻴﻴﺼﺘﻟﺍ ﺖﻗﻭ ﺕﺍﺮﻳﺪﻘﺗ ﻲﻘﺒﻳُﻭ ،ﺮﻴﻴﺼﺘﻠﻟ ﻲﻨﻣﺰﻟﺍ ﺪﺤﻟﺍ ﻦﻤﺿ ﺓﺪﺣﺍﻭ ﺓﺮﻣ ﺙﺪﺤﻳ ﻱﺬﻟﺍ ﺭﺎﻈﺘﻧﻻﺍ ﺍﺬﻫ ﺐﺴﺘﺤﻳ ﺪﻌﻳ ﻢﻟﻭ ،ﺮﻴﻀﺤﺘﻟﺍ ﺪﻴﻗ ﺮﻴﻴﺼﺘﻟﺍ ﻯﻮﻧ ﻥﺃ ﺮﻬﻈﻳُ ﺚﻳﺪﺤﺘﻟﺍ ﺪﻌﺑ Cycles ﻲﻓ ﺮﻴﻴﺼﺗ ﻝﻭﺃ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The first time a view shows one object with many new materials, or a new world, the window can still pause briefly while their shaders are set up. More of this moves to the background in 1.1."
 msgstr ".1.1 ﻲﻓ ﺔﻴﻔﻠﺨﻟﺍ ﻰﻟﺇ ﻚﻟﺫ ﻦﻣ ﺪﻳﺰﻤﻟﺍ ﻞﻘﺘﻨﻴﺳ .ﺎﻬﺗﻼﻠﻈﻣ ﺩﺍﺪﻋﺇ ءﺎﻨﺛﺃ ﺔًﻈﺤﻟ ﺓﺬﻓﺎﻨﻟﺍ ﻒﻗﻮﺘﺗ ﺪﻗ ،ﺍﺪًﻳﺪﺟ ﺎﻤًﻟﺎﻋ ﻭﺃ ،ﺓﺮﻴﺜﻛ ﺓﺪﻳﺪﺟ ﺕﺎﻣﺎﺨﺑ ﺎﻨًﺋﺎﻛ ﺎﻣ ﺽٌﺮﻋ ﺎﻬﻴﻓ ﺮﻬﻈﻳُ ﺓﺮﻣ ﻝﻭﺃ ﻲﻓ"
 
@@ -13353,6 +13417,10 @@ msgstr ".ﺎﻣًﺎﻤﺗ ﻥﺎﻛ ﺎﻤﻛ ﺽﺮﻋ ﺮﺧﺂﺑ ﻆﻔﺘ�
 #. src: bpy.types.RenderSettings.angelo_region_render:'NONE'
 msgid "The last render was not a region render over the render before it"
 msgstr "ﻪﻠﺒﻗ ﻱﺬﻟﺍ ﺽﺮﻌﻟﺍ ﻕﻮﻓ ﺔﻘﻄﻨﻣ ﺽَﺮﻋ ﺽﺮﻋ ﺮﺧﺁ ﻦﻜﻳ ﻢﻟ"
+
+#. src: angelo_agent/safe_start_notice.py
+msgid "The last start did not finish, so Angelo opened with only the add-ons that come with it. Left off: {names}. To turn one back on, enable it in Preferences > Add-ons. If Angelo then cannot start, it opens without it again."
+msgstr ".ﻪﻧﻭﺪﺑ ﻯﺮﺧﺃ ﺓﺮﻣ ﺢﺘﻔﻴُﺴﻓ ،Angelo ﻞﻴﻐﺸﺗ ﻚﻟﺫ ﺪﻌﺑ ﺭﺬّﻌﺗ ﺍﺫﺇ .ﺲﺑﺎﻘﻤﻟﺍ < ﺕﻼﻴﻀﻔﺘﻟﺍ ﻲﻓ ﻪﻠﻌّﻓ ،ﺎﻫﺪﺣﺃ ﻞﻴﻐﺸﺗ ﺓﺩﺎﻋﻹ .{names} :ﺔﻛﻭﺮﺘﻤﻟﺍ ﺲﺑﺎﻘﻤﻟﺍ .ﻂﻘﻓ ﻪﺑ ﺔﻘﻓﺮﻤﻟﺍ ﺲﺑﺎﻘﻤﻟﺎﺑ Angelo ﺢﺘﻓُ ﻚﻟﺬﻟ ،ﺮﻴﺧﻷﺍ ﻞﻴﻐﺸﺘﻟﺍ ﻞﻤﺘﻜﻳ ﻢﻟ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The lead's tile in the Sessions panel keeps its picture while you look at another scene, and shows the scene camera or your view only when the model fills the frame; otherwise it frames the model."
@@ -13835,6 +13903,10 @@ msgstr "ءﺍﺰﺟﻷﺍ ﻪﻌﻣ ﻡءَﻼﺗُ ﻢﺴﺟ ﻰﻠﻋ ﺔﻗ�
 #. src: bpy.types.ANGELO_FlowSplitSheetNode.slots_json
 msgid "The sheet's columns, left to right"
 msgstr "ﻦﻴﻤﻴﻟﺍ ﻰﻟﺇ ﺭﺎﺴﻴﻟﺍ ﻦﻣ ،ﺔﻗﺭﻮﻟﺍ ﺓﺪﻤﻋﺃ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Skin modifier no longer leaves holes, and Flatten works on vertices and edges without faces."
+msgstr ".ﺎﻬﻟ ﻪﺟﻭﺃ ﻻ ﻲﺘﻟﺍ ﻑﺍﻮﺤﻟﺍﻭ ﻁﺎﻘﻨﻟﺍ ﻰﻠﻋ ﺢﻄّﺳ ﺓﺍﺩﺃ ﻞﻤﻌﺗﻭ ،ﺎﺑًﻮﻘﺛ ﻙﺮﺘﻳ Skin ﻝﺪِّﻌﻣ ﺪﻌﻳ ﻢﻟ"
 
 #. src: source/blender/windowmanager/intern/wm_files.cc
 msgid "The snapshot from before the restore stays available."
@@ -16803,6 +16875,10 @@ msgstr "ﺏﻮﻠﻄﻣ ﺮﻴﻏ"
 msgid "on this computer"
 msgstr "ﺮﺗﻮﻴﺒﻤﻜﻟﺍ ﺍﺬﻫ ﻰﻠﻋ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On Windows, restarting from the crash dialog after Angelo crashed while starting now opens it with your add-ons turned off, instead of crashing again."
+msgstr ".ﻯﺮﺧﺃ ﺓﺮﻣ ﻞﻄﻌﺘﻳ ﻥﺃ ﻦﻣ ﻻًﺪﺑ ،ﺔﻠﻄّﻌﻣ ﺲﺑﺎﻘﻤﻟﺍﻭ ﻪﺤﺘﻔﺗ ﻪﻠﻴﻐﺸﺗ ءﺪﺑ ءﺎﻨﺛﺃ Angelo ﻞﻄﻌﺗ ﺪﻌﺑ ﻞﻄﻌﺘﻟﺍ ﺓﺬﻓﺎﻧ ﻦﻣ ﻞﻴﻐﺸﺘﻟﺍ ﺓﺩﺎﻋﺇ ﺖﺤﺒﺻﺃ ،Windows ﻰﻠﻋ"
+
 #. src: angelo_agent/skeleton_checks.py
 msgid "one root bone"
 msgstr "ﺓﺪﺣﺍﻭ ﺭﺬﺟ ﺔﻤﻈﻋ"
@@ -18210,6 +18286,10 @@ msgstr "Godot ءﺎﻤﺳﺃ ﻖﺣﺍﻮﻟ"
 msgctxt "Angelo"
 msgid "Grease Pencil"
 msgstr "ﺕﺎﻈﺣﻼﻣ ﻢﻠﻗ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Grease Pencil, curves and drawings loaded from damaged or older files are repaired instead of causing errors."
+msgstr ".ءﺎﻄﺧﺃ ﺐﺒﺴﺗ ﻥﺃ ﻦﻣ ﻻًﺪﺑ ﻡﺪﻗﺃ ﻭﺃ ﺔﻔﻟﺎﺗ ﺕﺎﻔﻠﻣ ﻦﻣ ﺔﻠﻤّﺤﻤﻟﺍ ﺕﺎﻣﻮﺳﺮﻟﺍﻭ ﺕﺎﻴﻨﺤﻨﻤﻟﺍﻭ ﺕﺎﻈﺣﻼﻣ ﻢﻠﻗ ﺕﺎﻧﺎﻴﺑ ﺢﻠَﺼﺗُ"
 
 #. src: angelo_agent/uv_checker_card.py
 msgctxt "Angelo"
@@ -22428,6 +22508,10 @@ msgctxt "plural:zero"
 msgid "Apply {count} scene edits"
 msgstr "ﺪﻬﺸﻤﻟﺍ ﻰﻠﻋ ﺕﻼﻳﺪﻌﺗ {count} ﻖﺒﻃ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Applying a transform keeps custom normals correct on mirrored or unevenly scaled meshes, and the agent can now apply transforms to imported meshes that have custom normals."
+msgstr ".Custom Normals ﺎﻬﻟ ﻲﺘﻟﺍ ﺓﺩﺭﻮﺘﺴﻤﻟﺍ ﺕﺎﻜﺒﺸﻟﺍ ﻰﻠﻋ ﺕﻻﻮﺤﺘﻟﺍ ﻖﻴﺒﻄﺗ ﻥﻵﺍ ﻞﻴﻛﻮﻟﺍ ﻊﻴﻄﺘﺴﻳﻭ ،ﻭٍﺎﺴﺘﻣ ﺮﻴﻏ ﻞﻜﺸﺑ ﺔﻤﺠّﺤﻤﻟﺍ ﻭﺃ ﺔﺴﻜﻌﻨﻤﻟﺍ ﺕﺎﻜﺒﺸﻟﺍ ﻲﻓ Custom Normals ﺔﺤﺻ ﻰﻠﻋ ﻆﻓﺎﺤﻳ ﻝﻮﺤﺘﻟﺍ ﻖﻴﺒﻄﺗ ﺢﺒﺻﺃ"
+
 #. src: angelo_agent/usage_view.py
 msgctxt "plural:zero"
 msgid "At least: {count} requests were not fully reported."
@@ -23215,6 +23299,10 @@ msgstr ".ﺖﻳﺎﺑ {bytes} ﻰﺼﻗﺃ ﺪﺤﺑ ؛ﺭﻮﻛﺬﻣ ﺮﻴﻏ
 #. src: angelo_agent/fab_ui.py
 msgid "Download: {bytes} bytes"
 msgstr "ﺖﻳﺎﺑ {bytes} :ﻞﻳﺰﻨﺘﻟﺍ"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Downloaded files are converted in a separate process that never runs their scripts or brings files from outside the download into your scene, so Angelo stays responsive."
+msgstr ".ﺔﺑﺎﺠﺘﺳﻻﺍ ﻊﻳﺮﺳ Angelo ﻰﻘﺒﻴﻓ ،ﻞﻳﺰﻨﺘﻟﺍ ﺝﺭﺎﺧ ﻦﻣ ﺕﺎﻔﻠﻣ ﻙﺪﻬﺸﻣ ﻰﻟﺇ ﺐﻠﺠﺗ ﻻﻭ ﺍﺪًﺑﺃ ﺔﻴﺠﻣﺮﺒﻟﺍ ﺎﻬﺻﻮﺼﻧ ﻞﻐّﺸﺗ ﻻ ﺔﻠﺼﻔﻨﻣ ﺔﻴﻠﻤﻋ ﻲﻓ ﺔﻟﺰّﻨﻤﻟﺍ ﺕﺎﻔﻠﻤﻟﺍ ﻝﻮَّﺤﺗُ"
 
 msgid "End voice"
 msgstr "ﺕﻮﺼﻟﺍ ءﺎﻬﻧﺇ"
@@ -24423,6 +24511,10 @@ msgstr "ﻞﺻﺃ ﺩﺍﺮﻴﺘﺳﺍ"
 msgid "Angelo 1.0.10 brings Blender Essentials and Fab assets into your library, adds PDF references, and makes account reconnection and long chat histories easier to use."
 msgstr ".ﺔﻠﻳﻮﻄﻟﺍ ﺔﺷﺩﺭﺪﻟﺍ ﺕﻼﺠﺳ ﻡﺍﺪﺨﺘﺳﺍﻭ ﺕﺎﺑﺎﺴﺤﻟﺍ ﻝﺎﺼﺗﺍ ﺓﺩﺎﻋﺇ ﻞﻬّﺴﻳﻭ ،PDF ﻊﺟﺍﺮﻣﻭ ﻚﺘﺒﺘﻜﻣ ﻰﻟﺇ Fabﻭ Blender Essentials ﻝﻮﺻﺃ Angelo 1.0.10 ﻒﻴﻀﻳ"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.11 adds Fab models in FBX, OBJ, USD and .blend, keeps live links in step while you edit, and moves to Blender 5.2.4 LTS."
+msgstr ".Blender 5.2.4 LTS ﻰﻟﺇ ﻞﻘﺘﻨﻳﻭ ،ﺮﻳﺮﺤﺘﻟﺍ ءﺎﻨﺛﺃ ﺔﻨﻣﺍﺰﺘﻣ ﺓﺮﺷﺎﺒﻤﻟﺍ ﻂﺑﺍﻭﺮﻟﺍ ﻲﻘﺒﻳُﻭ ،blend.ﻭ USDﻭ OBJﻭ FBX ﻎﻴﺼﺑ Fab ﺝﺫﺎﻤﻧ Angelo 1.0.11 ﻒﻴﻀﻳ"
+
 #. :src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Read earlier messages in long chats and return to the latest messages without losing your place."
 msgstr ".ﻚﻌﺿﻮﻣ ﻥﺍﺪﻘﻓ ﻥﻭﺩ ﻞﺋﺎﺳﺮﻟﺍ ﺙﺪﺣﺃ ﻰﻟﺇ ﺪﻋ ﻢﺛ ﺔﻠﻳﻮﻄﻟﺍ ﺕﺎﺷﺩﺭﺪﻟﺍ ﻲﻓ ﺔﻘﺑﺎﺴﻟﺍ ﻞﺋﺎﺳﺮﻟﺍ ﺃﺮﻗﺍ"
@@ -24537,8 +24629,8 @@ msgid "the Fab Standard License"
 msgstr "Fab Standard License"
 
 #. src: angelo_agent/fab_ui.py
-msgid "This asset has no GLB download on Fab, so Angelo can't add it yet."
-msgstr ".ﺪﻌﺑ ﻪﺘﻓﺎﺿﺇ Angelo ـﻟ ﻦﻜﻤﻳ ﻻ ﺍﺬﻟ ،Fab ﻰﻠﻋ GLB ﻞﻳﺰﻨﺗ ﻞﺻﻷﺍ ﺍﺬﻬﻟ ﺮﻓﻮﺘﻳ ﻻ"
+msgid "This asset has no download on Fab in a format Angelo can add yet."
+msgstr ".ﻪﺘﻓﺎﺿﺇ Angelo ـﻟ ﻦﻜﻤﻳ ﻖﻴﺴﻨﺘﺑ Fab ﻰﻠﻋ ﻞﻳﺰﻨﺗ ﺪﻌﺑ ﻞﺻﻷﺍ ﺍﺬﻬﻟ ﺮﻓﻮﺘﻳ ﻻ"
 
 #. src: angelo_agent/fab_ui.py
 msgid "This asset is paid. Buy it on Fab, then add it here."

@@ -55,17 +55,18 @@ agent-readiness, pre-change assessment, confidence, and validation rules.
   remaining risks, human/agent impact, and updated confidence per objective.
 - Blender suites run only via run_native_suites.py; tests never see real
   provider logins (isolated HOME/CODEX_HOME/CLAUDE_CONFIG_DIR by default; only
-  the billed eval harness opts in, with the evaluation-account profile). Every
-  suite and host test imports `suite_isolation` first (`provider_isolation.py`),
-  so a suite started by hand relaunches itself with that profile; the opt-in is
+  the billed eval harness opts in, with the evaluation-account profile). Every suite and
+  host test imports `suite_isolation` first (`provider_isolation.py`), so a
+  suite started by hand relaunches itself with that profile; the opt-in is
   `ANGELO_TEST_REAL_PROVIDERS=eval-profile:<path>`, never `~/.codex` or
   `~/.claude`. Before a billed start the account itself is read
-  (`provider_accounts.py`): a Codex profile's id_token claims must be the
-  dedicated evaluation account, and a Claude profile must match the account the
-  opt-in names
-  (`<path>|account=<email or UUID>`, or `ANGELO_TEST_CLAUDE_ACCOUNT` for the
-  benchmarks outside it; refused when none is named). Only an 8-character
-  account prefix and an email domain are ever shown.
+  (`provider_accounts.py`): each profile must match the account its caller
+  names, never one recorded in this repository: a Codex profile's id_token
+  claims the ChatGPT account (`<path>|account=<id prefix>|<email>`, or
+  `ANGELO_TEST_CODEX_ACCOUNT`), a Claude profile the Claude account
+  (`<path>|account=<email or UUID>`, or `ANGELO_TEST_CLAUDE_ACCOUNT`); refused
+  when none is named. Only an 8-character account prefix and an email domain
+  are ever shown.
 
 ## Actual Code Layout
 

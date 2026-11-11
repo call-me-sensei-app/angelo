@@ -29,7 +29,7 @@ import bpy
 
 from . import job_dispatch, job_manager, job_outputs, job_recovery, live_target
 from . import job_render_outputs as render_outputs
-from . import job_render_video, render_extensions, render_reach
+from . import job_render_child, job_render_video, render_extensions, render_reach
 from .job_manager import NOT_PUBLISHED, JobStartError
 from .job_render_keep import KeepFrames
 from .job_render_samples import SAMPLES  # The scene's sample count per engine; view_render reads it here.
@@ -214,7 +214,7 @@ class Runner:
         return self._discard("failed", reason, NOT_PUBLISHED)
 
 
-class RenderRunner(job_render_video.EncodePhase, KeepFrames, Runner):
+class RenderRunner(job_render_child.ChildPhase, job_render_video.EncodePhase, KeepFrames, Runner):
     """A still or an animation on Blender's render job.
 
     With an output folder of its own the job plans every file the render writes
@@ -366,7 +366,7 @@ class RenderRunner(job_render_video.EncodePhase, KeepFrames, Runner):
 
     @property
     def locks_interface(self):
-        return bool(self.scene.render.use_lock_interface)
+        return self.child is None and bool(self.scene.render.use_lock_interface)   # A child locks nothing here.
 
     def describe(self):
         return dict(self.facts)
@@ -399,6 +399,8 @@ class RenderRunner(job_render_video.EncodePhase, KeepFrames, Runner):
         self.overrides.apply(values, also_record=job_render_scene.FORMAT_DEPENDENTS)
         self.plan.check_paths(self.scene, self.start_frame)
         self.names = render_outputs.main_names(self.plan.outputs, self.start_frame, self.end_frame, self.step)
+        if job_render_child.begin(self):   # A heavy Cycles render: in a child Angelo, on a copy (job_render_route).
+            return
         with DisplayNone():
             self._invoke(bpy.ops.render.render, animation=True, frame_start=self.start_frame,
                          frame_end=self.end_frame, use_viewport=False)
@@ -416,7 +418,8 @@ class RenderRunner(job_render_video.EncodePhase, KeepFrames, Runner):
         if self.encoder is not None:   # Every frame is whole and the MP4 is being made (job_render_video).
             return job_render_video.poll(self)
         self._check_output_path()
-        progress = native().progress(self.scene, self.job_type)
+        progress = (job_render_child.progress(self) if self.child is not None
+                    else native().progress(self.scene, self.job_type))
         if progress is None:   # Blender's render ended: a format MP4 job encodes its frames before it finishes.
             return job_render_video.begin(self) if self.video else None
         done, views = self._frames_done(), max(1, len(self.plan.views))

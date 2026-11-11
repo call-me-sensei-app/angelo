@@ -36,7 +36,7 @@ import os
 import bpy
 import numpy
 
-from . import change_keys, export_baked_hidden as hidden
+from . import attribute_types, change_keys, export_baked_hidden as hidden
 from .blend_file_paths import node_file_places
 from .export_baked_images import READ_KEYS as KEYS, image_digest, image_key, image_path
 
@@ -60,13 +60,9 @@ VIEWED = frozenset({"Camera", "Window", "Reflection"})   # Texture Coordinate ou
 GEOMETRY_TYPES = frozenset({"MESH", "CURVE", "SURFACE", "FONT", "META", "CURVES", "POINTCLOUD"})
 RAYS = ("visible_camera", "visible_diffuse", "visible_glossy", "visible_transmission", "visible_volume_scatter",
         "visible_shadow", "is_holdout")
-# Attribute data types: (field, components, numpy type) for foreach_get.
-FIELDS = {"FLOAT": ("value", 1, numpy.float32), "INT": ("value", 1, numpy.int32),
-          "FLOAT_VECTOR": ("vector", 3, numpy.float32), "FLOAT_COLOR": ("color", 4, numpy.float32),
-          "BYTE_COLOR": ("color", 4, numpy.float32), "FLOAT2": ("vector", 2, numpy.float32),
-          "BOOLEAN": ("value", 1, bool), "INT8": ("value", 1, numpy.int32),
-          "INT16_2D": ("value", 2, numpy.int32), "INT32_2D": ("value", 2, numpy.int32),
-          "QUATERNION": ("value", 4, numpy.float32), "FLOAT4X4": ("value", 16, numpy.float32)}
+# Attribute data types: (field, components, numpy type) for foreach_get, from the shared table (attribute_types).
+FIELDS = {name: (prop, width, kind) for name, (prop, kind, width) in attribute_types.codes(
+    {"float": numpy.float32, "int": numpy.int32, "int8": numpy.int32, "bool": bool}).items()}
 
 
 def _text(value):

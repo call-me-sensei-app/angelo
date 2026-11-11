@@ -36,7 +36,7 @@ REASONS = {
     'METADATA_UNAVAILABLE': n_('Fab has not provided the details needed to add this asset.'),
     'SELECTION_REQUIRED': n_('Choose an asset and a version before adding it.'),
     'VARIANT_UNAVAILABLE': n_('This version is no longer available. Choose another version.'),
-    'UNSUPPORTED_FORMAT': n_("This asset has no GLB download on Fab, so Angelo can't add it yet."),
+    'UNSUPPORTED_FORMAT': n_("This asset has no download on Fab in a format Angelo can add yet."),
     'PURCHASE_REQUIRED': n_('This asset is paid. Buy it on Fab, then add it here.'),
     'ACQUISITION_REQUIRED': n_('Add this asset to your Fab library before importing it.'),
     'DOWNLOAD_PERMISSION_UNKNOWN': n_('Fab has not confirmed permission to download this asset.'),

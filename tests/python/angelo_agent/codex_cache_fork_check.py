@@ -154,7 +154,7 @@ class Session:
         try:
             self.rpc.process.wait(30)
         except Exception:
-            self.rpc.process.terminate()  # This check's own child only.
+            self.rpc.close()  # This check's own child only; waits for its exit (Windows locks an exiting process's files).
 
 
 def _turn_of(params):

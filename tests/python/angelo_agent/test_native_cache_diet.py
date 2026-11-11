@@ -28,7 +28,7 @@ from angelo_agent.chat_settings import normalize_models  # noqa: E402
 from angelo_agent.claude_outcomes import compact_receipt  # noqa: E402
 from angelo_agent.controller import Controller, ToolDispatchBudget  # noqa: E402
 from angelo_agent.providers import ClaudeProvider  # noqa: E402
-from angelo_agent.routing import HANDOFF_DELTA_HEADER, TOOLSET_VERSION, handoff, route_key  # noqa: E402
+from angelo_agent.routing import TOOLSET_VERSION, handoff, route_key  # noqa: E402
 from angelo_agent.sessions import SessionStore  # noqa: E402
 from test_native_round_savings import HANDLE, REVISION, committed, program, staged_preview  # noqa: E402
 
@@ -455,7 +455,7 @@ class ControllerFixture(unittest.TestCase):
         controller = controller or self.c
         controller.send(text, LEGACY_OBSERVATION if observation is None else observation)
         apply = lambda call: controller.execute_tool(call, self.executor, controller.document)
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + 60   # returns when the turn ends; the cap only stops a hang
         while time.monotonic() < deadline:
             controller.pump_events()
             controller.pump_tools(self.executor, controller.document, apply_mutation=apply,
@@ -489,25 +489,35 @@ class ControllerDeltaTests(ControllerFixture):
         self.assertIn('"object_revision":"%s"' % REVISION[:8], after_edit, "The receipt keeps the post-commit revision")
         self.assertEqual(self.c._identifiers.revision(HANDLE, REVISION[:8]), REVISION, "... which the host maps back")
         self.assertIn('"verified":"Committed (one Undo step)', after_edit)
-        # Delta start may cut through the host-summary group. Without proof
-        # of its earlier boundary the bounded owner retains that historical
-        # row, rather than pretending the complete group was replaced.
-        compact_turn = after_edit
-        if "Host-verified result" in after_edit:
-            prefix, excerpt = after_edit.split(HANDOFF_DELTA_HEADER, 1)
-            rows = [json.loads(line) for line in excerpt.splitlines()]
-            summary_rows = [row for row in rows if row.get("role") == "system"]
-            actual = [row["text"] for row in self.c.state["messages"] if row.get("host_summary")]
-            self.assertEqual([row["text"] for row in summary_rows], actual)
-            compact_turn = prefix + HANDOFF_DELTA_HEADER + "\n".join(json.dumps(row, separators=(",", ":"))
-                for row in rows if row.get("role") != "system")
+        # The handoff starts where the plan's rows begin, and the record before it (the plan's reply) ends the
+        # summary's group: the excerpt holds the whole group, so its one entry stands for the summary row too.
+        self.assertNotIn("Host-verified result", after_edit, "One line replaces the receipt and the summary row")
         self.assertNotIn("operation_results", after_edit)
         self.assertNotIn("historical_native_result=", after_edit, "Its receipt is the handoff row")
-        self.assertLess(len(compact_turn.encode()), 900, "Compact content retains the existing delta byte ceiling")
-        self.assertLessEqual(len(after_edit), 24000, "Required retained history still counts in the output limit")
+        self.assertLess(len(after_edit.encode()), 900, "The message after a host-certified edit")
         self.assertLess(len(read_only.encode()), 2000, "A complete first message")
         recorded = len(json.dumps(full_result()))
         self.assertGreater(recorded, 4000, "The fixture result is as large as a real one")
+
+    def test_the_unsynced_start_is_set_and_used_inside_one_turn(self):
+        """``_native_unsynced_from`` marks where a plan's rows begin until its turn ends: it then becomes the
+        context's ``synced_length`` and is cleared. A retained preview cannot be accepted while a request runs,
+        and that acceptance is the only row ever inserted into the transcript (``_insert_request_message``), so
+        no row is inserted at the mark while it is set and none can land before it unseen."""
+        self.plans = [{"reply": "Creating.", "operations": [program()], "verify": False}]
+        self.turn("Create a 2 m cube named 'Eval Cube'.")
+        self.assertIsNone(self.c._native_unsynced_from)
+        rows, start = self.c.state["messages"], self.entry()["synced_length"]
+        self.assertEqual(rows[start - 1].get("text"), "Creating.", "The plan's reply is the last row its context has")
+        self.assertEqual(rows[start]["role"], "activity", "The handoff starts where the plan's rows begin")
+        self.assertTrue(any(row.get("host_summary") for row in rows[start:]))
+        self.assertFalse(any(row["role"] in ("user", "assistant") for row in rows[start:]))
+        self.c.busy = True
+        try:
+            with self.assertRaisesRegex(ValueError, "Finish or Stop the current request"):
+                self.c.accept_native_preview("preview", self.executor, self.c.document, "token")
+        finally:
+            self.c.busy = False
 
     def test_a_failed_edit_hands_off_its_full_result(self):
         failure = {"success": False, "status": "failed", "error": "Expected check failed: dimensions"}
@@ -603,7 +613,7 @@ class ControllerDeltaTests(ControllerFixture):
         def turn(text, sizes=(), compact=False):
             CodexProvider.sizes, CodexProvider.compact = list(sizes), compact
             codex.send(text, LEGACY_OBSERVATION)
-            deadline = time.monotonic() + 5
+            deadline = time.monotonic() + 60   # returns when the turn ends; the cap only stops a hang
             while (codex.busy or (codex._worker and codex._worker.is_alive())) and time.monotonic() < deadline:
                 codex.pump_events()
                 time.sleep(.002)

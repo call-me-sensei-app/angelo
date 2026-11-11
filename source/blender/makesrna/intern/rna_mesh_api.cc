@@ -181,16 +181,35 @@ static void rna_Mesh_normals_split_custom_set_from_vertices(Mesh *mesh,
   DEG_id_tag_update(&mesh->id, 0);
 }
 
+/* Angelo: tangent-space custom normals are stored relative to each corner's fan of faces, whose angles a
+ * non-uniform matrix changes and whose winding a mirroring one (or a flip) reverses (#121831). Both functions
+ * work on them as free normals, which are vectors (transformed by the inverse transpose, and kept as they are
+ * by a flip), and store them in tangent space again: a script's transform() followed by flip_normals() keeps the
+ * shading, as Blender's Apply does since 8306860f963. Free custom normals are unchanged by this. */
 static void rna_Mesh_transform(Mesh *mesh, const float mat[16], bool shape_keys)
 {
+  const bool tangent_space_normals = bke::mesh_custom_normals_are_tangent_space(*mesh);
+  if (tangent_space_normals) {
+    bke::mesh_custom_normals_to_free(*mesh);
+  }
   bke::mesh_transform(*mesh, float4x4(mat), shape_keys);
+  if (tangent_space_normals) {
+    bke::mesh_custom_normals_to_tangent_space(*mesh);
+  }
 
   DEG_id_tag_update(&mesh->id, 0);
 }
 
 static void rna_Mesh_flip_normals(Mesh *mesh)
 {
+  const bool tangent_space_normals = bke::mesh_custom_normals_are_tangent_space(*mesh);
+  if (tangent_space_normals) {
+    bke::mesh_custom_normals_to_free(*mesh);
+  }
   bke::mesh_flip_faces(*mesh, IndexMask(mesh->faces_num));
+  if (tangent_space_normals) {
+    bke::mesh_custom_normals_to_tangent_space(*mesh);
+  }
   BKE_mesh_tessface_clear(mesh);
   BKE_mesh_runtime_clear_geometry(mesh);
   DEG_id_tag_update(&mesh->id, 0);

@@ -16,6 +16,8 @@ import argparse
 import fnmatch
 import hashlib
 import json
+import os
+import ssl
 import sys
 import urllib.parse
 import urllib.request
@@ -30,9 +32,32 @@ def raw_url(repo, commit, path):
     return RAW % (repo, commit, urllib.parse.quote(path))
 
 
+# System CA bundles (macOS and most Linux, Debian/Ubuntu, Fedora/RHEL); Windows' default context reads its own store.
+CA_BUNDLES = ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt")
+
+
+def ssl_context(bundles=CA_BUNDLES, create=ssl.create_default_context):
+    """A verifying context with CA certificates loaded: Angelo's bundled Python (the native runner's) ships none of
+    its own, so its default context failed every download. certifi first when installed, else the system bundle;
+    verification is never turned off (with no bundle at all the download fails its certificate check)."""
+    context = create()
+    if context.cert_store_stats().get("x509_ca"):
+        return context
+    try:
+        import certifi
+        bundles = (certifi.where(),) + tuple(bundles)
+    except ImportError:
+        pass
+    for bundle in bundles:
+        if os.path.isfile(bundle):
+            context.load_verify_locations(cafile=bundle)
+            break
+    return context
+
+
 def get(url):
     request = urllib.request.Request(url, headers={"User-Agent": "angelo-heldout-fetch"})
-    with urllib.request.urlopen(request, timeout=120) as response:
+    with urllib.request.urlopen(request, timeout=120, context=ssl_context()) as response:
         return response.read()
 
 

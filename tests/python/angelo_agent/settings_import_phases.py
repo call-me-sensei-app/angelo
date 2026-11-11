@@ -415,6 +415,7 @@ def finish(error=None):
         report["error"] = error.replace("Traceback (most recent", "Trace (most recent")   # The host scans for it.
     report["success"] = not error and bool(report["checks"]) and all(report["checks"].values())
     report["failed_checks"] = [name for name, ok in report["checks"].items() if not ok]
+    report["finished"] = True   # The process reached its own end (a crashing launch never does).
     (OUT / (PHASE + ".json")).write_text(json.dumps(report, indent=2, default=str))
     print("ANGELO_SETTINGS_IMPORT_PHASE", json.dumps({"phase": PHASE, "success": report["success"]}), flush=True)
     bpy.ops.wm.quit_blender()

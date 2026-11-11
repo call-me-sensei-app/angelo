@@ -60,6 +60,8 @@ def register():
     document_identity.register()   # The document's saved id (save_pre) and a failed load (load_post_fail).
     from . import restored_document   # Only a file under the state folder's checkpoints is a Restore's working copy.
     restored_document.set_state_root(ui.state_directory())
+    from . import fab_convert
+    fab_convert.register()   # The Fab converter child is this app: its binary, read on the main thread.
     from . import tool_specs
     tool_specs.refresh_worker_count()   # The start tool's count, now that Workers at once is readable (parallel_setting).
     # Registered here, not in ui.py (pinned at its size by test_native_module_size).

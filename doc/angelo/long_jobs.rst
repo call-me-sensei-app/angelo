@@ -57,6 +57,12 @@ Module                        Responsibility
                               the greatest value of an inherited animated setting. Pure.
 ``render_reach.py``           Compositor File Output nodes and the other scenes a Sequencer's
                               scene strips render. Pure.
+``job_render_route.py``       Which agent renders run in a child Angelo, and the memory projection
+                              (see `Renders in a separate process`_).
+``job_render_child.py``       That child: the copy of the scene, its process, the watchdog thread
+                              (stop, budget, memory) and ``RenderRunner``'s ``ChildPhase``.
+``render_child.py``           Runs inside that child: the parent's Cycles devices, the render, its
+                              device and memory reports. Never imported.
 ``job_render_video.py``       Format MP4: the encode phase after a complete render, the child
                               Angelo's command, the MP4 completeness check (see
                               `Video output`_).
@@ -462,7 +468,13 @@ The budget is enforced where the job runs, not only by the main thread:
   budget and checks that its own break check stopped it, that the person's
   render afterwards and a render under another scene's passed deadline run to
   their end, and that a texture bake is stopped by its deadline and its image
-  put back.
+  put back. The production job suites' shared harness
+  (``production_jobs_harness``) counts no time Cycles reports as loading its
+  render kernels against a phase or the suite timeout, up to
+  ``KERNEL_LOAD_CAP_S`` per load. The runner adds that cap to those suites' kill
+  timeout, and each receipt records ``kernel_load_s``. The first run on a new
+  Cycles version compiles its Metal kernels cold, which took longer than one
+  phase on 5.3 (``test_native_kernel_load``).
 * **Cycles' Metal BVH build reads its cancel.** Its throttler waits
   (``BVHMetalBuildThrottler::acquire`` and ``wait_for_all``,
   ``intern/cycles/device/metal/bvh.mm``) used to sleep until every earlier
@@ -520,18 +532,138 @@ The budget is enforced where the job runs, not only by the main thread:
   or when Cycles' persistent data keeps the scene between frames (review
   round 3 modelled 4.8-8.3x). Either way the estimate is a fact, not a
   limit.
-* **Limits.** The main thread can still be held up while the GPU is starved
-  (Blender's Metal presentation waits for the GPU), so the interface may be
-  slow until the render ends; the render now ends. Running agent renders in a
-  separate process, which ends the GPU work too, is the 1.1 design (backlog).
-  Found by a 4K, 512-sample island render (1.0.3, 2026-10-22) that waited
-  hours in ``build_TLAS`` with the machine's memory exhausted.
+* **Limits.** A render inside the application shares the interface's GPU and
+  memory: on a starved GPU the main thread is held up (Blender's Metal
+  presentation waits for the GPU), and a stop never frees GPU work already
+  queued. Heavy agent renders therefore run in a separate process (`Renders
+  in a separate process`_). Found by a 4K, 512-sample island render (1.0.3,
+  2026-10-22) that waited hours in ``build_TLAS`` with the machine's memory
+  exhausted.
 
 Stop asks Blender's job to stop at its next break check, as Escape does
 (``_angelo_jobs.stop``); nothing is freed or killed. Measured stop latency on the
 fixture scenes (``test_blender_long_jobs``, Apple M-series CPU, two suites in
 parallel): animation render 0.3-3.0 s (mid-sample), texture bake 1.3-1.9 s,
 physics bake 0.5 s, simulation bake 0.3 s, Alembic export 0.3 s.
+
+Renders in a separate process
+-----------------------------
+
+An agent's heavy Cycles still or animation on Metal renders in a child Angelo
+on a copy of its scene (``job_render_route``, ``job_render_child``,
+``render_child.py``), so ending it ends its process, and with it the GPU work
+it queued and the memory it held.
+
+* **Why, measured** (2026-11-04, a 21.6M-triangle scene of 3001 separate
+  meshes at 1920x1080, 4096 samples, stopped after 20 s; every run counted):
+
+  =====================  ============================  ========================
+  Mac 1 (M4 Pro, Metal)  in the app (3 runs)           in a child (3 runs)
+  =====================  ============================  ========================
+  frame p95 / max        42-67 / 86-126 ms             25-33 / 34-45 ms
+  frames over 50 ms      72-108 (4-7 in every second)  0
+  Cancel to its end      0.93-1.95 s                   0.08-0.13 s
+  memory after Cancel    2.4 GB above idle, kept       all of it back in 0.25 s
+  =====================  ============================  ========================
+
+  The interface idles at 8.3 ms a frame. Inside one process the app's frames
+  wait behind the render's GPU work; a separate process gets its own share of
+  the GPU. Stopped during its BVH build the app keeps 1.0 GB, the child
+  nothing. On a Tesla T4 (OptiX, an OpenGL or a Vulkan interface) the app's
+  frames were unaffected during the same render (p95 within 1 ms of idle),
+  Cancel freed the GPU memory within 3.5 s and kept 0.9 GB of host memory, and
+  a child cost 1.6 s (a light scene) to 3.3 s (this one) per render. So the
+  child route is for the backends in ``CHILD_BACKENDS`` (Metal); OptiX and CUDA
+  render in the app, HIP and oneAPI too until measured. What was measured, and
+  so the limit of the rule: the T4 drew the interface itself (the interface's
+  renderer was the Tesla T4); a consumer NVIDIA or AMD card driving a display
+  under Windows or Linux is not measured.
+* **Which renders.** ``RENDER_STILL`` and ``RENDER_ANIMATION`` on Cycles on a
+  ``CHILD_BACKENDS`` GPU whose estimate is at least ``MIN_ESTIMATE_S``, or,
+  without an estimate, whose work (megapixels x samples x frames x views) is
+  at least ``MIN_WORK``. Looks (``RENDER_PREVIEW``), region renders, EEVEE
+  and Workbench, the CPU, and the person's own F12 render in the application,
+  as before. So does a render the copy cannot reproduce
+  (``job_render_route.process_state``, in every scene the render evaluates:
+  those it renders and their background sets): one that runs add-on or
+  script Python (``render_extensions``), driver Python, or a render handler
+  of a bundled add-on other than Cycles (the child starts with factory
+  settings and auto-execution off), one whose images hold pixels not saved
+  (of any kind, packed or not, used by something other than a brush or the
+  interface), one that uses a render or Viewer result as a texture, and one
+  with state a copy does not carry: Geometry Nodes simulations, bakes and
+  import nodes (their relative paths), point caches neither baked into the
+  file nor external (a disk cache's default folder is named after the
+  .blend), fluid domains. The child gets every Cycles preference this app
+  has (devices, MetalRT, kernel optimization, ...). The record keeps
+  ``process`` (``child`` or ``app``) and, for ``app``, ``process_why``: local
+  facts, never sent to a model. ``ANGELO_RENDER_PROCESS=child`` or ``app``
+  decides the route for tests and measurements (never past what a copy
+  cannot reproduce).
+* **The copy.** At the job's start, with its own settings applied (its
+  output paths lead into its staging folder), edit modes are flushed as F12
+  does and the scene with everything it reaches is written with
+  ``bpy.data.libraries.write`` (no save handlers run, every path absolute)
+  into a private ``angelo-render-`` folder in Angelo's scratch root. The
+  person's settings are put back at once: their scene is theirs while the
+  child renders, an edit meanwhile never reaches the picture, and Lock
+  Interface locks nothing. The folder goes when the job ends; one a crash
+  left is removed at a later start once it is an hour old (the child reads
+  its copy once, at its start). The copy's time is ``snapshot_s``.
+* **The child.** This app's binary with ``--background --factory-startup
+  --disable-autoexec --offline-mode`` on the copy; Cycles uses the devices
+  this app's preferences enable (and ``--cycles-device`` when the app was
+  given one). It reports the device its session really used after each frame
+  (a fallback at render time is said; never a render of this process
+  meanwhile), each frame's start and peak memory, and its end; Blender's own status lines give the progress. The frames,
+  their names, staging, publication, the MP4 encode and the recovery of
+  finished frames after a crash are the application's, unchanged; a stopped
+  child's last frame is checked as strictly as an early end's. It ends itself
+  within 0.5 s of the app's end (a crash included), the app kills every child
+  when it quits (measured: gone 0.02 s after the app exited), and the list of
+  children survives Reload Scripts.
+* **The watchdog.** Two threads per child, never the main thread: one reads
+  its lines, the other enforces the stop (terminate; on Windows its whole Job
+  Object), a kill ``STOP_SECONDS`` later if it has not ended, the time budget
+  on its own clock (recorded as ``time_budget``; the scene's deadline is not
+  set, so the person's F12 of the same scene never reads it), and memory:
+  when the system is about to run out (macOS: critical memory pressure,
+  ``kern.memorystatus_vm_pressure_level``; Windows and Linux: available
+  physical memory under the reserve, a tenth of memory and at least 2 GB)
+  while the child itself uses at least the reserve (macOS: physical
+  footprint, GPU memory included; Windows: private bytes), it is stopped and
+  the job fails with the numbers, keeping an animation's finished frames. None of these applies once the child has reported its
+  render's end: Blender's teardown never costs a finished render its output.
+  A child that ends with another exit status fails the job with it and, where
+  the status says, its kind (killed by the system, crashed, its script
+  failed); its last lines stay on the local record (``process_tail``). Cancel
+  never touches Blender's render job in the app, which may be the person's
+  F12. After Reload Scripts the child of the job that was running still ends
+  at its budget or when the app quits, but no card can cancel it (as an
+  in-app render after a reload, which Escape stops).
+* **Memory before the start.** A Cycles render of a scene whose last
+  finished render on the same device peaked at ``P`` MB is projected at ``P``
+  plus ``PER_PIXEL_BYTES`` per pixel added (less per pixel removed), up to
+  Cycles' 2048 x 2048 tile; samples add nothing. Measured (T4, 2026-11-04):
+  1411 MiB of geometry, 16.5 MiB per megapixel, the same at 16 and 128
+  samples. So a projection moves a scene's peak by at most 64 MB, and cannot
+  foresee a shortage the scene's last render did not show; it is kept on the
+  record (``projected_peak_mb``, local) and never refuses a render (break-it
+  review round 2: a refusal could only fire at the margin, on renders that
+  fit). The watchdog enforces memory while the child renders.
+* **Cost.** A child pays for writing the copy (on the main thread), starting
+  the process and loading the copy; its scene sync is what the app would do
+  too. Measured on Mac 1 (M4 Pro, Metal; real jobs, both routes forced, three
+  of each, alternated): a light still (1280x720, 256 samples) took 0.77 s in
+  the app and 1.55 s in a child; the 21.6M-triangle scene's took 3.37-3.96 s
+  and 4.90-6.12 s, its copy 0.19-0.67 s. On the T4 a child cost 1.6 s (light)
+  to 3.3 s (heavy). ``MIN_ESTIMATE_S`` (20 s) keeps the worst Metal cost to
+  about a tenth of a render; ``MIN_WORK`` (6,000 megapixel-samples) is at least
+  20 s at the fastest light-scene rate measured (the M4 Pro's, about 306
+  megapixel-samples a second), so a render without an estimate goes to a
+  child only when it is surely long. Renders under these still stall the
+  interface in the app on Metal (the light scene's stills: up to 9 frames over
+  50 ms in 3-4 s), the price of not paying a child's start for them.
 
 What a job changes
 ------------------

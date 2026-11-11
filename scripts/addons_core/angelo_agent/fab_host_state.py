@@ -5,7 +5,7 @@ import copy
 import uuid
 
 from .fab_catalog import FabError, MAX_RESULTS, MAX_VARIANTS, thumb_url
-from .team_library_files import MAX_BYTES
+from .fab_formats import BY_CODE, MAX_DOWNLOAD, RANK
 
 
 def initial(generation=None, *, available=False):
@@ -99,15 +99,20 @@ def lookup(result):
     for row in variants:
         if type(row) is not dict or type(row.get('id')) is not str or not 0 < len(row['id']) <= 128:
             raise FabError('INVALID_METADATA')
-        if row['id'] in seen or row.get('format') != 'glb':
+        if row['id'] in seen or row.get('format') not in BY_CODE:
             raise FabError('INVALID_METADATA')
         seen.add(row['id'])
         display = row.get('label') or row.get('quality')
         size = row.get('bytes')
-        if size is not None and (type(size) is not int or not 0 < size <= MAX_BYTES['model']):
+        if size is not None and (type(size) is not int or not 0 < size <= MAX_DOWNLOAD):
             raise FabError('INVALID_METADATA')
-        choices.append(dict(id=row['id'], label=version_label(display), format='glb', supported=True,
-                            reason_code=None, size_bytes=size, maximum_bytes=MAX_BYTES['model']))
+        choices.append(dict(id=row['id'], label=version_label(display), format=row['format'],
+                            kind=BY_CODE[row['format']].kind, supported=True,
+                            reason_code=None, size_bytes=size, maximum_bytes=MAX_DOWNLOAD))
+    # Add to scene takes the first choice. A listing with a texture set is a surface or decal (Fab gives models none:
+    # 2026-11-11 sample), so its material comes first; otherwise the cheapest path (a converted GLB imports without
+    # the converter), then the format table's order. Within a format, the listing's own order.
+    choices.sort(key=lambda choice: (choice['kind'] != 'material', RANK[choice['format']]))
     # What the person can act on comes first: buy it, or add it to their Fab library.
     reason = (None if ready else 'LICENSE_UNVERIFIED' if result['download_permission'] == 'terms_required'
               else 'PURCHASE_REQUIRED' if entitlement == 'purchase_required'

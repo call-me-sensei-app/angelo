@@ -130,6 +130,10 @@ PLAIN = {
         "Snapshot files: on Windows a WindowsDirectory opens them sharing read, write and delete (windows_nt "
         "FILE_SHARE_ALL); the other branches are POSIX, where no reader refuses a replace.",
     ("engine_link_stamps.py", "write"): _OWN_NEW,
+    ("fab_convert.py", "_write_new"): _OWN_NEW,
+    ("fab_convert.py", "cached"):
+        "Copies download.bin into its own work folder while holding fab_cache's transfer lock, the only owner that "
+        "replaces download.bin; the copy is a new file in a folder nothing else writes.",
     ("engine_preflight.py", "write_report"): _OWN_NEW,
     ("engine_preflight.py", "after_writeback"):
         "In the preflight child: a copy of the asset made for that child alone; nothing replaces it.",

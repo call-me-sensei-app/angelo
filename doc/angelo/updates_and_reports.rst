@@ -895,7 +895,13 @@ it was killed. ``test_blender_crash_handler`` (BACKGROUND, macOS and Linux)
 crashes real background children seven ways (main thread with the GIL, a
 worker without it, a fault inside the handler, held ``stdout`` and ``stderr``
 locks, SIGBUS, a main-thread stack overflow) and checks each log reads and each
-process ends within the watchdog bound. It never aborts on purpose:
+process ends within the watchdog bound. Just before each crash the child records
+who handles every crash signal (``native``, or ``SIG_DFL`` when no handler is
+installed), so a run that leaves no log says whether the handler was there:
+runs of 2026-11-08 and 11-09 on one Mac left no log and no handler output in
+every case, with 1.0.9 and 1.0.10 alike, and the same apps passed on both Macs
+afterwards (directly and through the runner), so the cause was that launch
+environment, not the log writer. It never aborts on purpose:
 ``test_native_no_deliberate_abort`` forbids SIGABRT in every script and test,
 with no exemption, because on macOS an abort shows a system dialog that stops
 automation. SIGABRT logging is proven on Windows (build4: an abort writes the
@@ -1027,7 +1033,11 @@ Release notes and What's New
 
 ``CHANGELOG.md`` is the single source, written for people, and strictly
 checked by ``scripts/angelo/changelog.py``: newest first, one entry per
-``MAJOR.MINOR.PATCH`` (only the newest may be ``Unreleased``), the line
+``MAJOR.MINOR.PATCH`` (each release line, ``MAJOR.MINOR``, may have one
+``Unreleased`` entry, its newest: 1.0.x gets fixes beside 1.1.x, so a 1.0.x fix
+and the next minor can be pending at once; a release build refuses any undated
+entry, ``release_dated.py``, and What's New and the feed pick an entry by its
+exact version), the line
 ``Based on Blender X.Y.Z[ LTS].`` under each heading, a summary of at most 300
 characters, 1 to 5 Highlights of at most 140 (any release; a small one lists only what changed), and the sections New, Improved,
 Fixed, For IT administrators and Known issues, in that order, with plain-text

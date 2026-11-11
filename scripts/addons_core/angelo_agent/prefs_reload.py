@@ -15,7 +15,9 @@ While the add-on is registered, ``install`` wraps both functions for the session
   any open card stay as they are. Every other add-on is disabled, as in Blender.
 * ``reset_all`` lists Angelo's add-on in the new preferences before enabling what they list. A new entry carries no
   settings, so factory preferences reset Angelo's own add-on preferences to their defaults, and saved preferences
-  that list it bring back the saved ones. Everything else follows the new preferences, as in Blender.
+  that list it bring back the saved ones. Everything else follows the new preferences, as in Blender. The enabling
+  runs inside ``angelo_safe_start.enabling``: a native crash in an add-on it loads makes the next launch start
+  without third-party add-ons (doc/angelo/app_identity.rst, "A start that did not finish").
 
 Left alone on purpose: quitting (``_exit_pre`` takes the wrappers out first, so Blender's exit unregisters the add-on
 and its chats are saved), Reload Scripts (it disables and enables each listed add-on itself) and a person disabling
@@ -98,12 +100,22 @@ def _reset_all(**options):
         for name in _names:
             if name not in addons and (_holding or _enabled(name)):
                 addons.new().module = name   # No settings yet: the add-on's own defaults.
-    _blender[1](**options)
+    with _safe_start_enabling():
+        _blender[1](**options)
     for listener in list(READ_LISTENERS):
         try:
             listener()
         except Exception as error:  # noqa: BLE001 - one listener never stops the read or the others.
             print("Angelo: a preference-read listener failed:", error)
+
+
+def _safe_start_enabling():
+    """``angelo_safe_start.enabling()`` (scripts/modules), or nothing where that module is not on the path."""
+    try:
+        import angelo_safe_start
+    except ImportError:
+        return contextlib.nullcontext()
+    return angelo_safe_start.enabling()
 
 
 def _exit_pre(*_args):

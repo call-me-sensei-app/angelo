@@ -5,6 +5,7 @@
 from array import array
 import hashlib
 from itertools import islice
+from . import attribute_types
 from .refusal_codes import coded
 from .scene_read_values import BudgetExceeded, SceneQueryError, all_finite, count_nonzero, dump, label
 
@@ -26,6 +27,10 @@ MESH_ATTRIBUTE_SOURCES = {
     # MeshPolygon.use_smooth is the inverse of sharp_face; absent means smooth.
     ("FACE", "use_smooth"): ("sharp_face", "BOOLEAN", "value", 1, True),
 }
+# How each attribute type's values are read exactly: (property, array code, width), from the shared table
+# (attribute_types). A type it does not read makes every program targeting the mesh refuse
+# (``unread_mesh_attribute_type``): STRING. The codes are the revision's bytes: they never change.
+ATTRIBUTE_READS = attribute_types.codes({"float": "f", "int": "i", "int8": "b", "bool": "b"})
 _INVERT_FLAGS = bytes([1, 0]) + bytes(range(2, 256))
 
 
@@ -242,11 +247,7 @@ class GeometryReader:
                 if name in captured_attrs or name.startswith(".pn."):
                     continue
                 digest.update(dump([name, attribute.domain, attribute.data_type]).encode("utf-8"))
-                properties = {"FLOAT": ("value", "f", 1), "INT": ("value", "i", 1), "INT8": ("value", "b", 1),
-                              "BOOLEAN": ("value", "b", 1), "FLOAT_VECTOR": ("vector", "f", 3), "FLOAT2": ("vector", "f", 2),
-                              "FLOAT_COLOR": ("color", "f", 4), "BYTE_COLOR": ("color", "f", 4), "QUATERNION": ("value", "f", 4),
-                              "INT32_2D": ("value", "i", 2), "FLOAT4X4": ("value", "f", 16)}
-                spec = properties.get(attribute.data_type)
+                spec = ATTRIBUTE_READS.get(attribute.data_type)
                 if spec:
                     self.read(attribute.data, *spec, work, digest, packed=True)
                 else:

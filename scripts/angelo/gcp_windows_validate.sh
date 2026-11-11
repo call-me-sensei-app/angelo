@@ -352,6 +352,15 @@ bench() {
   [[ -n "$claude_version" && -n "$codex_version" ]] || {
     echo "Set ANGELO_BENCH_CLAUDE_VERSION and ANGELO_BENCH_CODEX_VERSION (the versions the Mac runs use)." >&2; exit 2; }
   [[ "$only" != *,* ]] || { echo "ANGELO_BENCH_ONLY: separate globs with spaces" >&2; exit 2; }
+  # The ChatGPT account the billed runs must use, named by the operator's kit (never in this repository): the machine
+  # exports it to every run (windows_final_runs.ps1), and each billed start refuses another (provider_accounts).
+  local codex_account="${ANGELO_TEST_CODEX_ACCOUNT:?set ANGELO_TEST_CODEX_ACCOUNT to <account id prefix>|<email> (the release kit exports it)}"
+  [[ "$codex_account" != *,* && "$codex_account" != *=* ]] || { echo "ANGELO_TEST_CODEX_ACCOUNT holds no , or =" >&2; exit 2; }
+  # The Claude account a billed Claude step must use (an email or account UUID), named the same way; optional here
+  # (a ChatGPT-only send has none), refused by each billed Claude start without it. Written on every send, empty
+  # when unset, so a value an earlier send left in the metadata never carries over.
+  local claude_account="${ANGELO_TEST_CLAUDE_ACCOUNT:-}"
+  [[ "$claude_account" != *,* && "$claude_account" != *=* ]] || { echo "ANGELO_TEST_CLAUDE_ACCOUNT holds no , or =" >&2; exit 2; }
   work="$(mktemp -d)"
   python3 "$ROOT/tests/python/angelo_agent/final_runs_mcp.py" bundle --runtime "$runtime" --into "$work/mcp-runtime.tar.gz" >/dev/null
   # prep also brings the full-feature build to this commit (the 'release' stage, incremental) unless an MSI is the
@@ -373,6 +382,8 @@ bench() {
     echo "  then: wait-off (the run's DONE or FAILED, then confirm the VM is TERMINATED, stopping it if not)"
     rm -rf "$work"; return 0
   fi
+  EXTRA_META+=",angelo-bench-codex-account=$codex_account"   # After the dry run's listing: it never prints the email.
+  EXTRA_META+=",angelo-bench-claude-account=$claude_account"   # The same: never printed.
   local vm
   vm="$(g compute instances describe "$NAME" --zone="$ZONE" --format='value(status)' 2>/dev/null || echo MISSING)"
   [[ "$vm" == TERMINATED || "$vm" == STOPPED ]] || { echo "The VM is $vm: another run may be using it. Wait for it to power off first." >&2; exit 1; }

@@ -175,7 +175,7 @@ def finish(error=None):
 
 def tick():
     try:
-        from angelo_agent import approval_wait, chat_toggle, launcher_waiting, ui
+        from angelo_agent import approval_wait, chat_toggle, launcher_waiting, live_windows, ui
         assert time.monotonic() - started < 100, "Fixture time bound"
         phase = state["phase"]
         if phase == "boot":
@@ -198,6 +198,13 @@ def tick():
             controllers.append(b)
             pending(b, "hidden-wait-b")
             ui.show_session(a.state["id"])
+            # The chat is hidden before the toggle's watch (chat_toggle._watch, 1 s after register, then twice a
+            # second) has seen it, as a fast start does: 1.0.11's round (116c309e9f6) hid it 2.0 s in and the
+            # launcher left the active chat's card off. The watch waits until the check; it runs again after.
+            if bpy.app.timers.is_registered(chat_toggle._watch):
+                bpy.app.timers.unregister(chat_toggle._watch)
+                state["watch_paused"] = True
+            chat_toggle._last_states = None
             with bpy.context.temp_override(window=window()):
                 bpy.ops.angelo.toggle_chat()
             state["phase"] = "hidden"
@@ -206,8 +213,19 @@ def tick():
             rect = launcher_waiting._rects.get(window().as_pointer())
             if not wait(chat_toggle.chat_state(window(), bpy.context.window_manager.windows)[0] == "hidden" and rect):
                 return .1
+            # What the launcher listed and why (ask-why): every chat in ui's order, its card and whether it waits.
+            state["observed"]["hidden_launcher"] = {
+                "items": [list(item[:2]) for item in launcher_waiting._items],
+                "active": ui._sessions.active, "fixture": [c.state["id"] for c in controllers],
+                "chats": [[identity, c is next((f for f in controllers if f.state["id"] == identity), None),
+                           getattr(approval_wait.awaiting(c), "id", None)] for identity, c in ui._controllers.items()],
+                "chat_shown": chat_toggle.chat_shown(), "last_states": list(chat_toggle._last_states or ()),
+                "settled": live_windows.settled(bpy.context.window_manager),
+                "windows": [[w.as_pointer(), w.screen is not None] for w in bpy.context.window_manager.windows]}
             check("hidden_active_card_discoverable", launcher_waiting.first()[0] == controllers[0].state["id"],
                   "window-draw")
+            if state.pop("watch_paused", False):
+                bpy.app.timers.register(chat_toggle._watch, first_interval=0.5, persistent=True)
             from angelo_agent import external_ui
             external_ui.refresh(ui)
             check("status_bar_tracks_hidden_local_card", external_ui._shown["local"][:2] ==

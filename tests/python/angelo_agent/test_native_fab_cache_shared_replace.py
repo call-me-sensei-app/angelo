@@ -13,6 +13,9 @@ from unittest.mock import patch
 import team_library_fixtures as fixtures
 import ntfs_sharing
 from angelo_agent import fab_cache, shared_replace
+from angelo_agent.fab_formats import BY_CODE
+
+GLB = BY_CODE['glb']
 
 
 class FabCacheSharedFiles(unittest.TestCase):
@@ -29,12 +32,12 @@ class FabCacheSharedFiles(unittest.TestCase):
         yield iter([self.payload])
 
     def test_publication_replaces_both_names_while_delete_sharing_readers_hold_old_files(self):
-        asset, receipt = self.folder / 'asset.glb', self.folder / 'receipt.json'
+        asset, receipt = self.folder / 'download.bin', self.folder / 'receipt.json'
         asset.write_bytes(b'old payload')
         receipt.write_text('old receipt')
         with shared_replace.open_file(asset) as held_asset, shared_replace.open_file(receipt) as held_receipt:
             with patch.object(shared_replace, 'replace', wraps=shared_replace.replace) as replaced:
-                path, digest = fab_cache._download(self.folder, self.variant, self.stream, lambda: None, None)
+                path, digest = fab_cache._download(self.folder, self.variant, GLB, self.stream, lambda: None, None)
             self.assertEqual([call.args[1] for call in replaced.call_args_list], [asset, receipt])
             self.assertTrue(all(call.kwargs == {'told': False} for call in replaced.call_args_list))
             self.assertEqual(held_asset.read(), b'old payload')
@@ -46,7 +49,7 @@ class FabCacheSharedFiles(unittest.TestCase):
         self.assertEqual(self.sharing.pauses, [])
 
     def test_cache_receipt_and_digest_readers_allow_replacement_and_close_their_handles(self):
-        path, digest = fab_cache._download(self.folder, self.variant, self.stream, lambda: None, None)
+        path, digest = fab_cache._download(self.folder, self.variant, GLB, self.stream, lambda: None, None)
         receipt = self.folder / 'receipt.json'
         replacement_asset, replacement_receipt = self.folder / 'new-asset', self.folder / 'new-receipt'
         replacement_asset.write_bytes(self.payload)

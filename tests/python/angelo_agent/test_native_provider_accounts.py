@@ -33,14 +33,18 @@ import bench_mcp_codex  # noqa: E402
 import bench_parallel_grade  # noqa: E402
 import codex_cache_fork_check  # noqa: E402
 
-SECRETS = (fixtures.ACCESS, fixtures.REFRESH, fixtures.EVAL_ACCOUNT_ID, fixtures.OTHER_ID, fixtures.OTHER_EMAIL,
-           fixtures.CLAUDE_UUID, fixtures.CLAUDE_EMAIL, "someone@", "jack@")
+SECRETS = (fixtures.ACCESS, fixtures.REFRESH, fixtures.EVAL_ACCOUNT_ID, fixtures.EVAL_ACCOUNT_EMAIL, fixtures.OTHER_ID,
+           fixtures.OTHER_EMAIL, fixtures.CLAUDE_UUID, fixtures.CLAUDE_EMAIL, "someone@", "eval-account@")
 
 
 class Folder(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="accounts-"))
         self.addCleanup(lambda: __import__("shutil").rmtree(self.root, ignore_errors=True))
+        # The expected ChatGPT account, named outside the repository as a kit does (here the made-up fixture's).
+        patcher = mock.patch.dict("os.environ", {accounts.CODEX_ACCOUNT_ENV: fixtures.CODEX_EXPECTED})
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def refused(self, call, *args, contains=""):
         with self.assertRaises(accounts.AccountRefusal) as raised:
@@ -57,12 +61,68 @@ class Codex(Folder):
         super().setUp()
         self.profile = self.root / "codex-profile" / str(uuid.uuid4())
 
-    def test_the_eval_account_passes_by_its_account_id_and_shows_only_its_prefix_and_domain(self):
+
+class CodexExpectedAccount(Folder):
+    """The expected ChatGPT account comes from outside the repository, as Claude's does, and a missing one refuses."""
+
+    def setUp(self):
+        super().setUp()
+        self.profile = self.root / "codex-profile" / str(uuid.uuid4())
+        fixtures.codex_sign_in(self.profile)
+
+    def test_the_repository_names_no_expected_codex_account(self):
+        self.assertFalse(hasattr(accounts, "CODEX_ACCOUNT"), "the expected account is named outside the repository")
+        self.assertEqual("ANGELO_TEST_CODEX_ACCOUNT", accounts.CODEX_ACCOUNT_ENV)
+
+    def test_no_expected_account_refuses_before_reading_the_profile(self):
+        with mock.patch.dict("os.environ", {}, clear=False):
+            import os
+            os.environ.pop(accounts.CODEX_ACCOUNT_ENV, None)
+            self.refused(accounts.codex_account, self.profile, contains=accounts.CODEX_ACCOUNT_ENV)
+        for empty in ("", "  ", "|eval-account@example.com"):
+            with self.subTest(expected=empty):
+                self.refused(accounts.codex_account, self.profile, empty)
+
+    def test_a_prefix_alone_or_a_prefix_and_its_email_pass(self):
+        self.assertEqual(accounts.codex_account(self.profile, "e7a1c0de"),
+                         {"account_id": "e7a1c0de", "email_domain": "example.com"})
+        self.assertTrue(accounts.codex_account(self.profile, fixtures.CODEX_EXPECTED))
+        self.assertTrue(accounts.codex_account(self.profile, "E7A1C0DE|EVAL-ACCOUNT@example.com"))   # Case-blind.
+
+    def test_another_prefix_or_email_refuses_without_showing_either(self):
+        self.refused(accounts.codex_account, self.profile, "0badc0de", contains="another ChatGPT account")
+        self.refused(accounts.codex_account, self.profile, "e7a1c0de|someone@example.com", contains="another email")
+
+    def test_a_malformed_expected_account_refuses(self):
+        for value in ("e7a1", "not-hex!", "e7a1c0de|no-at-sign", "e7a1c0de|a@b|c"):
+            with self.subTest(value=value):
+                self.refused(accounts.codex_account, self.profile, value)
+
+    def test_the_billed_opt_in_needs_the_expected_codex_account(self):
+        connection = {"id": "c", "profile": str(self.profile)}
+        with self.assertRaises(isolation.Refusal) as raised:
+            isolation.connection_opt_in(connection, environ={})
+        self.assertIn(accounts.CODEX_ACCOUNT_ENV, str(raised.exception))
+        self.assertNotIn("eval-account@", str(raised.exception))
+        value = isolation.connection_opt_in(connection, environ={accounts.CODEX_ACCOUNT_ENV: fixtures.CODEX_EXPECTED})
+        self.assertEqual(value, "%s:%s%s%s" % (isolation.OPT_IN_KIND, self.profile, isolation.ACCOUNT_FIELD,
+                                               fixtures.CODEX_EXPECTED))
+        self.assertEqual(fixtures.CODEX_EXPECTED, isolation.codex_expected({isolation.OPT_IN: value}))
+        self.assertIsNone(isolation.claude_expected({isolation.OPT_IN: value}),
+                          "a Codex opt-in's account field is the Codex account, never taken for a Claude one")
+
+    def test_a_store_reads_each_familys_expected_account_from_its_own_variable(self):
+        environ = {accounts.CODEX_ACCOUNT_ENV: "e7a1c0de", accounts.CLAUDE_ACCOUNT_ENV: fixtures.CLAUDE_EMAIL}
+        self.assertEqual("e7a1c0de", isolation.codex_expected(environ))
+        self.assertEqual(fixtures.CLAUDE_EMAIL, isolation.claude_expected(environ))
+        self.assertEqual("", isolation.codex_expected({}))
+
+    def test_eval_account_passes_by_its_account_id_and_shows_only_its_prefix_and_domain(self):
         fixtures.codex_sign_in(self.profile)
         self.assertEqual(accounts.codex_account(self.profile),
-                         {"account_id": "7684a4d7", "email_domain": "hyperbond.studio"})
-        fixtures.codex_sign_in(self.profile, email=None, stored=None)   # The account id decides; no email needed.
-        self.assertEqual(accounts.codex_account(self.profile), {"account_id": "7684a4d7"})
+                         {"account_id": "e7a1c0de", "email_domain": "example.com"})
+        fixtures.codex_sign_in(self.profile, email=None, stored=None)   # The account id decides when no email is named.
+        self.assertEqual(accounts.codex_account(self.profile, "e7a1c0de"), {"account_id": "e7a1c0de"})
 
     def test_an_email_alone_never_decides(self):
         # One email signs in to several ChatGPT accounts (a team workspace): without its account id, Codex's account
@@ -71,7 +131,7 @@ class Codex(Folder):
         self.refused(accounts.codex_account, self.profile, contains="no ChatGPT account id")
         fixtures.codex_sign_in(self.profile, id_token=fixtures.jwt({"https://api.openai.com/profile": {
             "email": fixtures.EVAL_ACCOUNT_EMAIL}}), stored=None)
-        self.refused(accounts.codex_account, self.profile, contains="email_domain hyperbond.studio")
+        self.refused(accounts.codex_account, self.profile, contains="email_domain example.com")
 
     def test_another_account_is_refused_even_with_eval_accounts_email(self):
         fixtures.codex_sign_in(self.profile, fixtures.OTHER_ID, fixtures.EVAL_ACCOUNT_EMAIL)   # A team workspace.
@@ -234,8 +294,8 @@ class OptInWiring(Folder):
     def test_the_connection_line_shows_the_account_prefix_and_domain_only(self):
         profile = self.root / "codex-profile" / str(uuid.uuid4())
         fixtures.codex_sign_in(profile)
-        value = "%s:%s" % (isolation.OPT_IN_KIND, profile)
-        self.assertEqual(isolation.shown_account(value), {"account_id": "7684a4d7", "email_domain": "hyperbond.studio"})
+        value = "%s:%s%s%s" % (isolation.OPT_IN_KIND, profile, isolation.ACCOUNT_FIELD, fixtures.CODEX_EXPECTED)
+        self.assertEqual(isolation.shown_account(value), {"account_id": "e7a1c0de", "email_domain": "example.com"})
         with self.assertRaises(isolation.Refusal) as raised:   # Never the value back: its field is an email.
             isolation.opt_in_profile({isolation.OPT_IN: "evaluation:%s|account=%s" % (profile, fixtures.CLAUDE_EMAIL)})
         self.assertNotIn(fixtures.CLAUDE_EMAIL, str(raised.exception))
@@ -289,6 +349,7 @@ class Harnesses(Folder):
         A + "bench_workdirs.py": "working folders only",
         A + "claude_prompt_probe.py": "fresh profile, local endpoint", A + "claude_direct_probe.py": "dummy key",
         A + "codex_image_prefix_probe.py": "fresh profile, local endpoint", A + "codex_fork_probe.py": "fresh profile",
+        A + "approval_hold_probe.py": "fresh profile, local endpoint",
         A + "codex_stale_call_probe.py": "fresh profile, local endpoint", A + "codex_opening_check.py": "fresh profile",
         A + "codex_prompt_probe.py": "fresh profile, local endpoint", A + "prompt_route_probe.py": "dummy key",
         A + "eval_trace_export.py": "reads a finished trial's trace store; sends nothing",

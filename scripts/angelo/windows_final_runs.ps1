@@ -69,6 +69,9 @@ function Get-Meta([string]$Name, [string]$Default = "") {
     }
     $Default
 }
+# The billed runs' expected accounts, sent in metadata by the operator's kit (never in this repository); every run inherits them.
+$codexAccount = "$(Get-Meta 'angelo-bench-codex-account' '')".Trim(); if ($codexAccount) { $env:ANGELO_TEST_CODEX_ACCOUNT = $codexAccount }
+$claudeAccount = "$(Get-Meta 'angelo-bench-claude-account' '')".Trim(); if ($claudeAccount) { $env:ANGELO_TEST_CLAUDE_ACCOUNT = $claudeAccount }
 function Refresh-Path {
     $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
 }

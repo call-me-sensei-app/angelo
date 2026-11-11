@@ -605,8 +605,10 @@ Claude runs with a Codex runtime on both sides:
 * One dedicated, signed-in ``CODEX_HOME`` for both sides, named
   ``.../codex-profile/<connection id>`` and never ``~/.codex``; its
   ``config.toml`` may declare no MCP server. Preflight reads only its
-  ``auth.json`` id_token's claims, which must name the dedicated evaluation
-  account (``provider_accounts.CODEX_ACCOUNT``; the tokens are never used or shown).
+  ``auth.json`` id_token's claims, which must name the evaluation account as the run's
+  machine names it (``ANGELO_TEST_CODEX_ACCOUNT=<account id prefix>|<email>``,
+  exported by the release kit or bench launcher; never recorded in the
+  repository; the tokens are never used or shown).
   To sign it in once::
 
       CODEX_HOME=<dir>/codex-profile/<connection id> codex \

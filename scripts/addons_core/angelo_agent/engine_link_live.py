@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The engine link's live frames: export the linked scene and send it to the editors that show live scenes. Main
-thread (``engine_link`` calls ``publish`` once the scene has been still; doc/angelo/engine_link.rst).
+thread (``engine_link`` calls ``publish`` when ``engine_link_cadence`` says a frame is due; doc/angelo/engine_link.rst).
 
 Every engine gets the whole scene as one .glb, except one whose adapter makes its own frames (``live_frames``): the
 web sends only the objects that changed (``web_link_live``). The bookkeeping is the same for all: one version per
@@ -11,7 +11,7 @@ publish, the export's time, a failed export's notice, and what was pushed for th
 import os
 import time
 
-from . import engine_link_assets as assets, engine_link_facts as facts
+from . import engine_link_assets as assets, engine_link_cadence as cadence, engine_link_facts as facts
 
 
 def _whole_scene(link, window, path, found, base):
@@ -57,21 +57,28 @@ def publish(window, link):
         if timed is None or timed():   # A background check's time never lengthens the wait for the next edit.
             state["last_ms"] = (time.perf_counter() - started) * 1000.0
         state["scene"] = engine_link.scene_key(*engine_link._followed(window))
+        state["exported_at"] = time.monotonic()   # The cadence's gap runs from here (engine_link_cadence).
     if not frames:
         return 0
     state["version"] += 1
     sent = size = 0
     server = state["server"]
+    shown = {client: info for client, info in engine_link.clients().items() if assets.serves(asset, info, True)}
+    answering = set()   # The acknowledging editors this version reached: the next frame waits for their answers.
     for clients, fields, body in frames:
         header = dict({"type": "scene", "asset": asset.ident, "version": state["version"],
                        "export_ms": round(state["last_ms"], 1)}, **fields)
         if clients is None:
             reached = engine_link._broadcast(asset, header, body, live=True)
+            targets = set(shown) if reached else set()
         else:
-            reached = sum(bool(server.send(client, header, body)) for client in clients) if server else 0
+            targets = {client for client in clients if server is not None and server.send(client, header, body)}
+            reached = len(targets)
+        answering |= {client for client in targets if facts.ACKS in assets.capabilities(shown.get(client, {}))}
         sent += reached
         size += len(body) if reached else 0
     facts.pushed(state["facts"], state["version"], size, state["last_ms"], sent)
-    if server is not None and server.lagging_any():   # A page lost frames it was behind on: a full one follows.
-        state["dirty_at"] = time.monotonic()
+    state["awaiting"] = frozenset(answering)
+    if server is not None and server.lagging_any():   # A page lost frames it was behind on: a full one, at once.
+        state["dirty_at"] = cadence.FORCED
     return size

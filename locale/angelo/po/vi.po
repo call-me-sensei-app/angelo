@@ -110,6 +110,10 @@ msgstr "Một fragment shader GLSL (.glsl, .frag) trong dự án"
 msgid "A GLSL fragment shader file in the project"
 msgstr "Một tệp fragment shader GLSL trong dự án"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A GPT model's request to run a script now waits for your approval instead of being cancelled about 30 seconds after the card appears."
+msgstr "Yêu cầu chạy script của mô hình GPT giờ sẽ chờ bạn phê duyệt thay vì bị hủy khoảng 30 giây sau khi thẻ xuất hiện."
+
 #. src: angelo_agent/flow_nodes.py
 msgid "A Subflow step needs a generation account"
 msgstr "Bước luồng con cần một tài khoản sinh tạo"
@@ -705,6 +709,14 @@ msgstr "Thêm mỗi hình ảnh thành một bước Hình Ảnh"
 #. src: bpy.types.ANGELO_FH_movie_empty
 msgid "Add empty image"
 msgstr "Thêm ảnh trống"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Add Fab models in FBX, OBJ, USD and .blend in one click, as with GLB, and apply Megascans surfaces as materials."
+msgstr "Thêm mô hình Fab ở định dạng FBX, OBJ, USD và .blend chỉ với một cú nhấp, như với GLB, và áp dụng bề mặt Megascans làm vật liệu."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Add Fab models in FBX, OBJ, USD, USDZ, glTF and .blend formats in one click: their textures come along, the model is sized to your scene, and one Undo removes it."
+msgstr "Thêm mô hình Fab ở định dạng FBX, OBJ, USD, USDZ, glTF và .blend chỉ với một cú nhấp: kết cấu đi kèm, mô hình được chỉnh kích thước theo cảnh của bạn và một lần Hoàn Tác sẽ xóa nó."
 
 #. src: angelo_agent/studio_video_ui.py
 msgid "Add first frame…"
@@ -1609,6 +1621,10 @@ msgstr "Đăng nhập Angelo thất bại ({code}): {detail}"
 msgid "Angelo speaks 21 languages, including Arabic from right to left. Choose yours on first launch or in Preferences; Blender's menus and panels follow it too."
 msgstr "Angelo hỗ trợ 21 ngôn ngữ, bao gồm tiếng Ả Rập viết từ phải sang trái. Chọn ngôn ngữ của bạn ở lần khởi chạy đầu tiên hoặc trong Cài Đặt Sở Thích; menu và bảng của Blender cũng dùng ngôn ngữ đó."
 
+#. src: angelo_agent/safe_start_notice.py
+msgid "Angelo started without some add-ons"
+msgstr "Angelo đã khởi động mà không có một số trình bổ sung"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo starts 2.1× faster than 1.0.4 in the background and in about 40% less time with a window, close to stock Blender."
 msgstr "Angelo khởi động nhanh hơn 1.0.4 tới 2.1× khi chạy nền và mất ít hơn khoảng 40% thời gian khi có cửa sổ, gần bằng Blender gốc."
@@ -1866,6 +1882,10 @@ msgstr "Áp dụng cho các thay đổi đang chờ / sau này"
 #. src: angelo_agent/chat_view.py
 msgid "Applies to your next message"
 msgstr "Áp dụng cho tin nhắn tiếp theo của bạn"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Apply a Megascans surface or another Fab texture set to the selected objects as a ready material. With nothing selected, it is added to the file's asset library."
+msgstr "Áp dụng một bề mặt Megascans hoặc bộ kết cấu Fab khác cho các đối tượng đã chọn dưới dạng vật liệu sẵn dùng. Khi không chọn gì, nó được thêm vào thư viện tài nguyên của tệp."
 
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "Apply inherited reflected scale explicitly before an Angelo sculpt pass"
@@ -2525,6 +2545,10 @@ msgstr "Tích hợp sẵn, không cần trình bổ sung"
 msgid "Built on a copy of your scene"
 msgstr "Được tạo trên một bản sao của cảnh"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Built on Blender 5.2.4 LTS, with its fixes for Cycles, Grease Pencil, geometry nodes and the Sequencer."
+msgstr "Xây dựng trên Blender 5.2.4 LTS, với các bản sửa lỗi cho Cycles, Bút Chì Dầu, các nút hình học và Trình Phối Hình."
+
 #. src: angelo_agent/ui.py
 msgid "BytePlus Singapore key. Verification is deferred until generation."
 msgstr "Khóa BytePlus Singapore. Việc xác minh được hoãn đến khi sinh tạo."
@@ -2793,6 +2817,10 @@ msgstr "Thay đổi mỗi khi điểm ảnh của hình ảnh thay đổi (vẽ,
 #. src: angelo_agent/chat_titles.py
 msgid "Changing an Angelo feature"
 msgstr "Đang thay đổi một tính năng Angelo"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Changing the denoiser's settings between Cycles renders no longer crashes or gives a wrongly denoised picture."
+msgstr "Thay đổi cài đặt bộ khử nhiễu giữa các lần kết xuất Cycles không còn gây sự cố hay cho ra ảnh khử nhiễu sai."
 
 #. src: angelo_agent/flow_templates.py
 #. src: angelo_agent/studio_workflows.py
@@ -3997,6 +4025,10 @@ msgid "Cycles is not enabled"
 msgstr "Cycles chưa được bật"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Cycles no longer crashes on materials that combine displacement bump with emission, or while compiling its kernels."
+msgstr "Cycles không còn gặp sự cố với vật liệu kết hợp bump dời hình với phát xạ, hoặc khi biên dịch các kernel."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Cycles now renders on your GPU by default (Metal on Apple silicon), also when a script or the agent starts a render."
 msgstr "Cycles giờ mặc định kết xuất trên GPU của bạn (Metal trên Apple silicon), kể cả khi tập lệnh hoặc tác nhân bắt đầu kết xuất."
 
@@ -4697,6 +4729,10 @@ msgstr "Liên kết trực tiếp engine"
 #. src: angelo_agent/engine_link_ui.py
 msgid "Engine live link on"
 msgstr "Liên kết trực tiếp với engine đang bật"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Engine live links update while you keep editing, not only after you stop: a web page shows a dragged or animated change about ten times a second, and a single edit in under 0.1 s instead of 0.4 s. Godot, Unity and Unreal update as fast as they show each change."
+msgstr "Liên kết trực tiếp engine cập nhật khi bạn tiếp tục chỉnh sửa, không chỉ sau khi dừng: trang web hiển thị thay đổi được kéo hoặc tạo hoạt ảnh khoảng mười lần mỗi giây, và một lần chỉnh sửa trong chưa đến 0,1 s thay vì 0,4 s. Godot, Unity và Unreal cập nhật nhanh như tốc độ chúng hiển thị từng thay đổi."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Engine preflight for Godot, Unity, Unreal and the web: units, armature transforms, extra and leaf bones, constraints, actions, loop names, shading, hidden objects, local paths, collision names, bone weights and colour spaces, each with the engine version it was checked against."
@@ -6249,6 +6285,10 @@ msgstr "Nếu Angelo thoát đột ngột, lần khởi chạy tiếp theo sẽ 
 msgid "If a reply from the bundled Codex agent keeps streaming without finishing, Angelo now stops it within 10 minutes and, if nothing was changed yet, asks again once, instead of waiting up to 30 minutes."
 msgstr "Nếu câu trả lời từ tác nhân Codex đi kèm cứ tiếp tục truyền mà không kết thúc, giờ Angelo sẽ dừng nó trong vòng 10 phút và, nếu chưa có gì thay đổi, hỏi lại một lần, thay vì chờ tới 30 phút."
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "If an add-on crashes Angelo while it starts, the next start opens with your add-ons turned off and names them, instead of crashing again."
+msgstr "Nếu một trình bổ sung làm Angelo gặp sự cố khi khởi động, lần khởi động tiếp theo sẽ mở với các trình bổ sung của bạn đã tắt và nêu tên chúng, thay vì lại gặp sự cố."
+
 #. src: angelo_agent/activity_text.py
 msgid "If it's interrupted, Undo restore brings back the scene from before."
 msgstr "Nếu bị gián đoạn, “Hoàn tác khôi phục” đưa cảnh trở về như trước."
@@ -7147,6 +7187,10 @@ msgstr "Ràng buộc đang hoạt động"
 msgid "Live in {engine}: {asset}"
 msgstr "Trực tiếp trong {engine}: {asset}"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Live links keep up while you edit: your web page shows a changing colour about ten times a second, not only once you stop."
+msgstr "Liên kết trực tiếp theo kịp khi bạn chỉnh sửa: trang web của bạn hiển thị màu đang thay đổi khoảng mười lần mỗi giây, không chỉ khi bạn dừng lại."
+
 #. src: angelo_agent/live_view_draw.py
 msgid "Live view · {name} · Solid, simplified · look only, steer it in its chat"
 msgstr "Xem trực tiếp · {name} · Lập Thể, giản lược · chỉ xem, hãy điều khiển trong cuộc trò chuyện của nó"
@@ -7259,6 +7303,10 @@ msgstr "Đang định vị các mục tiêu đầu bút trên bề mặt"
 #. src: source/blender/editors/animation/anim_ops.cc
 msgid "Log the channel list info in the terminal. This operator is only available in debug builds of Angelo"
 msgstr "Thông báo thông tin danh sách kênh trong thiết bị đầu cuối. Thao tác này chỉ khả dụng trong bản dựng có tính năng điều tra gỡ lỗi của Angelo mà thôi"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Long chats send the agent less text: after most edits, your next message no longer repeats the full summary of the last edit."
+msgstr "Các cuộc trò chuyện dài gửi ít văn bản hơn cho tác nhân: sau hầu hết các lần chỉnh sửa, tin nhắn tiếp theo của bạn không còn lặp lại toàn bộ bản tóm tắt của lần chỉnh sửa trước."
 
 #. src: angelo_agent/activity_text.py
 msgid "Look at a generation flow"
@@ -7526,6 +7574,10 @@ msgstr "Vật liệu"
 #. src: angelo_agent/tension_map_card.py
 msgid "Materials read it with an Attribute node named \"{name}\" (EEVEE and Cycles)."
 msgstr "Vật liệu đọc nó bằng nút Thuộc Tính tên \"{name}\" (EEVEE và Cycles)."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Matrix to Rotation gives the same result on the GPU as on the CPU, and Fillet Curve no longer creates huge positions at reversed corners."
+msgstr "Matrix to Rotation cho cùng kết quả trên GPU như trên CPU, và Vê Tròn Đường Cong không còn tạo vị trí cực lớn ở các góc đảo ngược."
 
 #. src: angelo_agent/chat_popovers.py
 #. src: angelo_agent/studio_state.py
@@ -9421,6 +9473,10 @@ msgstr "Đã chuẩn bị mục tiêu điêu khắc"
 msgid "Preparing coding-agent access…"
 msgstr "Đang chuẩn bị truy cập cho tác nhân lập trình…"
 
+#. src: angelo_agent/job_chat.py
+msgid "Preparing Cycles' render kernels: once after an update, it can take a few minutes"
+msgstr "Đang chuẩn bị kernel kết xuất của Cycles: một lần sau khi cập nhật, có thể mất vài phút"
+
 #. src: angelo_agent/chat_card_draw.py
 msgid "Preparing details…"
 msgstr "Đang chuẩn bị chi tiết…"
@@ -11037,6 +11093,10 @@ msgstr "Lưu tập tin đang mở, giống Tập Tin > Lưu. Sau đó Angelo ghi
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Saving a .blend file can no longer overwrite another file through a symbolic link left at its temporary file name."
 msgstr "Khi lưu tập tin .blend, một liên kết tượng trưng để lại tại tên tập tin tạm của nó không còn có thể ghi đè lên một tập tin khác."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Saving data to a library file, blurring an image by a large amount and the Delaunay fill tool on an empty drawing no longer crash."
+msgstr "Lưu dữ liệu vào tệp thư viện, làm mờ ảnh ở mức lớn và công cụ tô Delaunay trên bản vẽ trống không còn gây sự cố."
 
 #. src: source/blender/windowmanager/intern/wm_files.cc
 msgid "Saving it with this version of Angelo (Blender %s) may cause loss of data."
@@ -13227,6 +13287,10 @@ msgid "The finished frames couldn't be published; they are kept for the next sta
 msgstr "Không thể xuất bản các khung hình đã hoàn tất; chúng được giữ lại cho lần khởi động tới"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The first Cycles render after an update shows that render kernels are being prepared, no longer counts that one-time wait against the render's time limit, and keeps render time estimates accurate."
+msgstr "Lần kết xuất Cycles đầu tiên sau khi cập nhật cho biết các kernel kết xuất đang được chuẩn bị, không còn tính thời gian chờ một lần đó vào giới hạn thời gian kết xuất, và giữ cho ước tính thời gian kết xuất chính xác."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The first time a view shows one object with many new materials, or a new world, the window can still pause briefly while their shaders are set up. More of this moves to the background in 1.1."
 msgstr "Lần đầu một khung nhìn hiển thị một đối tượng có nhiều vật liệu mới, hoặc một thế giới mới, cửa sổ vẫn có thể khựng lại một chút trong khi shader của chúng được chuẩn bị. Phần lớn hơn của việc này sẽ chuyển sang chế độ nền trong 1.1."
 
@@ -13351,6 +13415,10 @@ msgstr "Lần kết xuất trước được giữ nguyên hoàn toàn."
 #. src: bpy.types.RenderSettings.angelo_region_render:'NONE'
 msgid "The last render was not a region render over the render before it"
 msgstr "Lần kết xuất trước không phải là bản kết xuất vùng đè lên lần trước đó"
+
+#. src: angelo_agent/safe_start_notice.py
+msgid "The last start did not finish, so Angelo opened with only the add-ons that come with it. Left off: {names}. To turn one back on, enable it in Preferences > Add-ons. If Angelo then cannot start, it opens without it again."
+msgstr "Lần khởi động trước chưa hoàn tất, vì vậy Angelo chỉ mở với các trình bổ sung đi kèm. Đã bỏ qua: {names}. Để bật lại một trình bổ sung, hãy bật nó trong Cài Đặt Sở Thích > Trình Bổ Sung. Nếu sau đó Angelo không thể khởi động, nó sẽ lại mở mà không có trình bổ sung đó."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The lead's tile in the Sessions panel keeps its picture while you look at another scene, and shows the scene camera or your view only when the model fills the frame; otherwise it frames the model."
@@ -13833,6 +13901,10 @@ msgstr "Bảng không có cơ thể để khớp các bộ phận"
 #. src: bpy.types.ANGELO_FlowSplitSheetNode.slots_json
 msgid "The sheet's columns, left to right"
 msgstr "Các cột của bảng, từ trái sang phải"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Skin modifier no longer leaves holes, and Flatten works on vertices and edges without faces."
+msgstr "Bộ điều chỉnh Da không còn để lại lỗ, và Dát Phẳng hoạt động trên điểm đỉnh và cạnh không có mặt."
 
 #. src: source/blender/windowmanager/intern/wm_files.cc
 msgid "The snapshot from before the restore stays available."
@@ -16801,6 +16873,10 @@ msgstr "không bắt buộc"
 msgid "on this computer"
 msgstr "trên máy tính này"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On Windows, restarting from the crash dialog after Angelo crashed while starting now opens it with your add-ons turned off, instead of crashing again."
+msgstr "Trên Windows, khởi động lại từ hộp thoại sự cố sau khi Angelo gặp sự cố lúc khởi động giờ sẽ mở Angelo với các trình bổ sung của bạn đã tắt, thay vì lại gặp sự cố."
+
 #. src: angelo_agent/skeleton_checks.py
 msgid "one root bone"
 msgstr "một xương gốc"
@@ -18208,6 +18284,10 @@ msgstr "Hậu Tố Tên Godot"
 msgctxt "Angelo"
 msgid "Grease Pencil"
 msgstr "Bút Chì Dầu"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Grease Pencil, curves and drawings loaded from damaged or older files are repaired instead of causing errors."
+msgstr "Bút Chì Dầu, đường cong và bản vẽ tải từ tệp bị hỏng hoặc cũ hơn được sửa chữa thay vì gây lỗi."
 
 #. src: angelo_agent/uv_checker_card.py
 msgctxt "Angelo"
@@ -22426,6 +22506,10 @@ msgctxt "plural:zero"
 msgid "Apply {count} scene edits"
 msgstr ""
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Applying a transform keeps custom normals correct on mirrored or unevenly scaled meshes, and the agent can now apply transforms to imported meshes that have custom normals."
+msgstr "Áp dụng biến hóa giữ pháp tuyến tùy chỉnh đúng trên lưới được phản chiếu hoặc co giãn không đều, và tác nhân giờ có thể áp dụng biến hóa cho lưới nhập vào có pháp tuyến tùy chỉnh."
+
 #. src: angelo_agent/usage_view.py
 msgctxt "plural:zero"
 msgid "At least: {count} requests were not fully reported."
@@ -23213,6 +23297,10 @@ msgstr "Không nêu kích thước tải xuống; tối đa {bytes} byte."
 #. src: angelo_agent/fab_ui.py
 msgid "Download: {bytes} bytes"
 msgstr "Tải xuống: {bytes} byte"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Downloaded files are converted in a separate process that never runs their scripts or brings files from outside the download into your scene, so Angelo stays responsive."
+msgstr "Tệp tải xuống được chuyển đổi trong một tiến trình riêng, không bao giờ chạy script của tệp hay đưa tệp từ bên ngoài bản tải xuống vào cảnh của bạn, nên Angelo vẫn phản hồi nhanh."
 
 msgid "End voice"
 msgstr "Kết thúc giọng nói"
@@ -24424,6 +24512,10 @@ msgstr "Nhập tài nguyên"
 msgid "Angelo 1.0.10 brings Blender Essentials and Fab assets into your library, adds PDF references, and makes account reconnection and long chat histories easier to use."
 msgstr "Angelo 1.0.10 đưa Blender Essentials và tài nguyên Fab vào thư viện, thêm tham chiếu PDF và giúp kết nối lại tài khoản, dùng lịch sử trò chuyện dài dễ hơn."
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.11 adds Fab models in FBX, OBJ, USD and .blend, keeps live links in step while you edit, and moves to Blender 5.2.4 LTS."
+msgstr "Angelo 1.0.11 thêm mô hình Fab ở định dạng FBX, OBJ, USD và .blend, giữ liên kết trực tiếp theo kịp khi bạn chỉnh sửa và chuyển sang Blender 5.2.4 LTS."
+
 # Machine-produced; pending native review.
 #. :src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Read earlier messages in long chats and return to the latest messages without losing your place."
@@ -24553,8 +24645,8 @@ msgid "the Fab Standard License"
 msgstr "Fab Standard License"
 
 #. src: angelo_agent/fab_ui.py
-msgid "This asset has no GLB download on Fab, so Angelo can't add it yet."
-msgstr "Tài nguyên này không có bản tải GLB trên Fab, nên Angelo chưa thể thêm."
+msgid "This asset has no download on Fab in a format Angelo can add yet."
+msgstr "Tài nguyên này chưa có bản tải trên Fab ở định dạng mà Angelo có thể thêm."
 
 #. src: angelo_agent/fab_ui.py
 msgid "This asset is paid. Buy it on Fab, then add it here."

@@ -32249,7 +32249,7 @@ msgstr "Base"
 
 
 msgid "OpenGL"
-msgstr "OpenCL"
+msgstr "OpenGL"
 
 
 msgid "Space of the input normal"

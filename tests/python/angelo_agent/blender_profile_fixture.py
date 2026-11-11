@@ -12,7 +12,9 @@ through the exported ``ED_screen_user_menu_*`` functions, in a 3D view.
 with preferences and a config folder of its own, an extension standing in for Blender's MCP add-on (with its user
 folder), an asset library, a Quick Favorites entry, an operator preset, an app template, a startup script, a MatCap,
 bookmarks, a recent file, a saved startup scene and the folder an early Angelo build left in Blender's ``config``.
-``--variant broken`` adds an add-on that is enabled in the preferences but fails to register. Writes
+``--variant broken`` adds an add-on that is enabled in the preferences but fails to register. ``--variant crashing``
+enables, beside the Switcher Tool, an add-on that crashes natively as it loads wherever ``ANGELO_QA_CRASH_ON_LOAD``
+is set (never in this fixture's own process), as Blender 5.3 #166395 and #166397 describe. Writes
 ``profile.json`` (what was made) beside the folder; never touches anything outside ``BLENDER_USER_RESOURCES`` and
 the fixture folder.
 """
@@ -127,6 +129,20 @@ def unregister():
     pass
 '''
 
+CRASHING = '''bl_info = {"name": "Crash On Load", "blender": (4, 2, 0), "category": "Development"}
+
+
+def register():
+    import os
+    if os.environ.get("ANGELO_QA_CRASH_ON_LOAD") == "1":
+        import ctypes
+        ctypes.string_at(0)   # A native crash: no Python error handler sees it.
+
+
+def unregister():
+    pass
+'''
+
 PRESET = '''import bpy
 op = bpy.context.active_operator
 op.size = 3.5
@@ -175,6 +191,18 @@ def build(window):
         addon_utils.enable("switcher_tool", default_set=True)
         prefs.addons.new().module = "broken_tool"   # Enabled in Blender's preferences; fails wherever it loads.
         made["addons"] = ["switcher_tool", "broken_tool"]
+        return
+    if VARIANT == "crashing":
+        assert os.environ.get("ANGELO_QA_CRASH_ON_LOAD") != "1", "the fixture enables it; only Angelo's launches crash"
+        write("scripts/addons/switcher_tool/__init__.py", ADDON)
+        write("scripts/addons/crash_on_load/__init__.py", CRASHING)
+        bpy.utils.refresh_script_paths()
+        addon_utils.modules(refresh=True)
+        for module in ("switcher_tool", "crash_on_load"):
+            errors = []
+            addon_utils.enable(module, default_set=True, handle_error=errors.append)
+            assert addon_utils.check(module) == (True, True) and not errors, (module, errors)
+        made["addons"] = ["switcher_tool", "crash_on_load"]
         return
     prefs.edit.undo_steps = 77
     prefs.view.show_tooltips_python = True

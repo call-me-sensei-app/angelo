@@ -120,7 +120,7 @@ def main(argv=None):
             while time.monotonic() < deadline and "turn/completed" not in events[seen:]:
                 time.sleep(.05)
     finally:
-        rpc.process.terminate()
+        rpc.close()   # Waits for the exit: Windows keeps an exiting process's files locked (its state database).
     report = {"codex": args.codex, "model": args.model, "requests": len(fake.bodies),
               "pairs": [dict(compare(fake.bodies[i - 1], fake.bodies[i]), pair=[i - 1, i]) for i in range(1, len(fake.bodies))],
               "stderr_tail": rpc.stderr_tail[-5:]}

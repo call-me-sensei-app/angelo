@@ -10,12 +10,27 @@ def _point(window, args):
     return tuple(args.get('location', window.scene.cursor.location))
 
 
+def _targets(service, variant, args):
+    """A texture set's meshes: the named handles, else the selected meshes (none: the file's asset library)."""
+    from .refusal_codes import RefusalError
+    if variant.kind != 'material':
+        if 'objects' in args:
+            raise RefusalError('objects names a texture set\'s meshes only; leave it out for this model.',
+                               code='VALIDATION')
+        return None
+    if 'objects' in args:
+        return tuple(service._targets({'kind': 'texture'}, args))
+    return None
+
+
 def precondition(service, args):
     fab_native_job.ready()
     service._require_view()
     host = fab_host.owner()
     session = host.current_session()
-    return fab_approval.Binding(session, session.selection(args['item_id'], args['variant_id']),
+    selection = session.selection(args['item_id'], args['variant_id'])
+    _targets(service, selection[1], args)   # Refuse wrong or unusable objects before the approval card.
+    return fab_approval.Binding(session, selection,
                                generation=host.ticket()[0], controller=service.controller,
                                item_id=args['item_id'], variant_id=args['variant_id'],
                                scene=service.window.scene.session_uid, location=_point(service.window, args))
@@ -53,7 +68,8 @@ def use(service, args):
     point = _point(service.window, args)
     expected = fab_approval.executing(service, session=session, generation=host.ticket()[0], args=args,
                                      scene=service.window.scene.session_uid, location=point)
-    return fab_native_job.start(host, service.window, args['item_id'], args['variant_id'], expected, point)
+    return fab_native_job.start(host, service.window, args['item_id'], args['variant_id'], expected, point,
+                                targets=_targets(service, expected[1], args))
 
 
 def human_use(host, window, area, region, item_id, variant_id, *, at=None):

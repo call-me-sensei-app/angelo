@@ -106,6 +106,48 @@ class IconTests(unittest.TestCase):
         self.assertNotIn("context.window.screen", execute)
 
 
+class ShownTests(unittest.TestCase):
+    """``chat_shown``: whether the person can see a chat now, read live whenever no window is between screens.
+
+    1.0.11 GUI round (116c309e9f6): test_blender_hidden_wait's hidden-chat check found the other chat's card first on
+    the launcher. The run (2.0 s, against 4.1-4.9 s) hid the chat before the watch's first pass (1 s after register),
+    and ``chat_shown`` answered "shown" from the watch's empty cache though every window was readable, so the hidden
+    active chat's card was left off (``approval_wait.unseen``). 1.0.10's fix (dbf92320c91) read live only once the
+    watch had run."""
+
+    def shown(self, windows, last):
+        manager = SimpleNamespace(windows=windows)
+        with mock.patch.object(toggle, "bpy", SimpleNamespace(context=SimpleNamespace(window_manager=manager))), \
+                mock.patch.object(toggle, "_last_states", last), \
+                mock.patch.object(toggle.console, "is_chat", lambda a: a.chat):
+            return toggle.chat_shown()
+
+    def test_a_hidden_chat_reads_hidden_before_the_watch_has_run(self):
+        self.assertFalse(self.shown([window(area(False))], None))
+
+    def test_a_hidden_chat_reads_hidden_whatever_the_watch_last_saw(self):
+        for last in (("docked",), ("popped",), ("hidden",)):
+            with self.subTest(last=last):
+                self.assertFalse(self.shown([window(area(False))], last))
+
+    def test_a_docked_chat_reads_shown_whatever_the_watch_last_saw(self):
+        for last in (None, ("hidden",), ("docked",)):
+            with self.subTest(last=last):
+                self.assertTrue(self.shown([window(area(False), area(True))], last))
+
+    def test_a_popped_chat_reads_shown(self):
+        self.assertTrue(self.shown([window(area(False)), window(area(True))], ("hidden", "hidden")))
+
+    def test_a_window_between_screens_keeps_the_last_answer_and_never_guesses_hidden(self):
+        changing = [window(area(False)), SimpleNamespace(screen=None)]
+        self.assertTrue(self.shown(changing, None), "nothing known yet: it could hold the chat")
+        self.assertTrue(self.shown(changing, ("docked",)))
+        self.assertFalse(self.shown(changing, ("hidden",)))
+
+    def test_no_window_shows_no_chat(self):
+        self.assertFalse(self.shown([], None))
+
+
 class TooltipTests(unittest.TestCase):
     def test_says_what_a_click_does(self):
         operator = toggle.ANGELO_OT_toggle_chat

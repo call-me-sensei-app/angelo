@@ -6,7 +6,15 @@
 attributes of the ``angelo_agent`` package, and ``from angelo_agent import x`` reads the package's attribute before
 sys.modules: a later test would bind a module bound to this test's stand-ins while another import of the same name
 loads a fresh one (two classes of one exception: test_native_web_export_wait's VALIDATION read as UNKNOWN in the
-full suite). Here every add-on module is imported fresh and the package is put back as it was.
+full suite). ``import_against_stand_ins`` imports every add-on module fresh and puts the package back as it was.
+
+A suite whose tests then call code that imports more of the add-on as it runs (``engine_link.publish`` imports
+``engine_link_live``) needs those to be the very modules it drove, so it keeps what it imported instead: ``snapshot``
+before its own ``mock.patch.dict`` block, ``imported_since`` inside it, ``settle`` after it. Each module the block
+imported is then either the same object again in sys.modules (it holds no stand-in ``bpy``) or unreachable (it holds
+it: its package attribute goes too). Without it a later ``import angelo_agent.x`` made a second ``x`` beside the one
+other modules held: two ``engine_link_facts``, two process ids, and test_native_engine_link_save_report failed after
+test_native_engine_link_state (a Windows shard, 2026-11-11; the same order fails on 1.0.10).
 """
 
 import importlib
@@ -32,3 +40,26 @@ def import_against_stand_ins(bpy, names):
     for name, value in before.items():
         setattr(package, name, value)
     return imported
+
+
+def snapshot():
+    """sys.modules as it is now, for ``imported_since``."""
+    return dict(sys.modules)
+
+
+def imported_since(before, package="angelo_agent"):
+    """The package's modules in sys.modules now that weren't there, as these objects, at ``before``."""
+    return {name: module for name, module in sys.modules.items()
+            if name.startswith(package + ".") and before.get(name) is not module}
+
+
+def settle(found, stand_in_bpy, package="angelo_agent"):
+    """After the block: each module in ``found`` is importable as the same object again, or not reachable at all."""
+    parent = sys.modules.get(package)
+    for name, module in found.items():
+        if getattr(module, "bpy", None) is stand_in_bpy:
+            attribute = name.rsplit(".", 1)[1]
+            if parent is not None and getattr(parent, attribute, None) is module:
+                delattr(parent, attribute)
+        else:
+            sys.modules.setdefault(name, module)

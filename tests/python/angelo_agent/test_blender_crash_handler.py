@@ -54,6 +54,7 @@ STARTUP_CAP_S = 180   # Until the child says it is about to crash.
 
 PRELUDE = r'''
 import ctypes, sys, threading, time
+CRASH_SIGNALS = ("SIGSEGV", "SIGBUS", "SIGILL", "SIGFPE", "SIGTRAP")
 libc = ctypes.CDLL(None)
 def stream(name):
     symbol = {"stdout": "__stdoutp", "stderr": "__stderrp"}[name] if sys.platform == "darwin" else name
@@ -67,6 +68,14 @@ def hold_lock(name):
     threading.Thread(target=run, daemon=True).start()
     locked.wait(30)
 def about_to_crash():
+    import faulthandler, json, signal
+    # Who handles each crash signal now: "native" is a handler installed outside Python (Angelo's), SIG_DFL none.
+    # So a crash that leaves no log says whether the handler was there at all (judge: HANDLER_STATE).
+    def who(handler):
+        return "native" if handler is None else getattr(handler, "name", "python")
+    state = {name: who(signal.getsignal(getattr(signal, name))) for name in CRASH_SIGNALS}
+    state["faulthandler"] = faulthandler.is_enabled()
+    sys.stdout.write("HANDLER_STATE " + json.dumps(state) + "\n")
     sys.stdout.write("ABOUT_TO_CRASH\n")
     sys.stdout.flush()
 '''
@@ -211,10 +220,26 @@ def run_case(binary, name, root):
             "logs": logs, "partials": sorted(str(path.name) for path in tmp.rglob("*.crash.txt.partial"))}
 
 
+def handler_state(stdout):
+    """The child's ``HANDLER_STATE`` line just before it crashed (``about_to_crash``), or None."""
+    for line in stdout.splitlines():
+        if line.startswith("HANDLER_STATE "):
+            try:
+                return json.loads(line[len("HANDLER_STATE "):])
+            except ValueError:
+                return None
+    return None
+
+
 def judge(name, result, crash_log):
     """The case's checks, each (name, passed, detail)."""
     expected = EXPECTED_SIGNALS.get(name, {signal.SIGSEGV})
+    state = handler_state(result["stdout"])
+    installed = bool(state) and all(value == "native" for key, value in state.items() if key != "faulthandler")
     checks = [("reached the crash", result["marked"], result["stdout"][-2000:] + result["stderr"][-2000:]),
+              # 1.0.9 and 1.0.10's runs of 2026-11-08/09 on Mac 1 left no log and no handler output in any case,
+              # and never said why: a handler missing at the crash is the environment, not the log writer.
+              ("a native crash handler was installed at the crash", installed, state),
               ("ended without hanging", not result["hung"], result["end_seconds"]),
               ("ended within %d s" % END_BOUND_S,
                result["end_seconds"] is not None and result["end_seconds"] <= END_BOUND_S, result["end_seconds"]),

@@ -28,7 +28,7 @@ class Stop:
 def observed():
     return {'state':'observed','listing_id':ID,'title':'Synthetic Rug','author':'Synthetic Publisher',
             'license_label':'Standard License','library_state_label':'Saved in My Library',
-            'rows':[{'ordinal':0,'filename':'synthetic_low.glb','format':'glb','quality_label':'Low quality',
+            'rows':[{'ordinal':0,'filename':'synthetic_low.glb','group':'Converted Files','format':'glb','quality_label':'Low quality',
                      'quality_aria':'This product is of _low. quality','display_size':'3.89 MB',
                      'button_type':'button','button_aria':page.BUTTON_ARIA,'button_disabled':False}]}
 

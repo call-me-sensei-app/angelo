@@ -32,6 +32,9 @@ def _struct(reference):
     return reference._obj
 
 
+ACCESS_DENIED = 0xC0000022   # STATUS_ACCESS_DENIED: a real refusal, never a deletion
+
+
 class FakeLibraries:
     """ntdll and kernel32 functions recording their ctypes arguments."""
 
@@ -39,7 +42,9 @@ class FakeLibraries:
         self.calls, self.create_status, self.set_status, self.next_handle = [], [], [], 0x100
         self.directory_pages, self.final, self.long_paths, self.error = [], "\\\\?\\C:\\work\\notes.md", {}, 0
         self.tag_info, self.basic_attributes = True, 0x20   # False: a FAT volume (no FileAttributeTagInfo)
-        for name in ("NtCreateFile", "NtSetInformationFile", "RtlNtStatusToDosError", "CreateFileW", "ReOpenFile",
+        self.anchor_handle, self.reopen_handle, self.last_status = 0x55, 0x56, 0   # last_status: the TEB's NTSTATUS
+        for name in ("NtCreateFile", "NtSetInformationFile", "RtlNtStatusToDosError", "RtlGetLastNtStatus",
+                     "CreateFileW", "ReOpenFile",
                      "CloseHandle", "GetFinalPathNameByHandleW", "GetLongPathNameW", "GetFileInformationByHandleEx",
                      "SetFileInformationByHandle"):
             setattr(self, name, CFunction(getattr(self, "_" + name)))
@@ -61,15 +66,19 @@ class FakeLibraries:
         return self.set_status.pop(0) if self.set_status else 0
 
     def _RtlNtStatusToDosError(self, status):
-        return 5 if status & 0xFFFFFFFF == nt.STATUS_DELETE_PENDING else 2   # ERROR_ACCESS_DENIED, as Windows maps it
+        denied = (nt.STATUS_DELETE_PENDING, 0xC0000123, ACCESS_DENIED)   # 0xC0000123: STATUS_FILE_DELETED
+        return 5 if status & 0xFFFFFFFF in denied else 2   # ERROR_ACCESS_DENIED, as Windows maps all three
+
+    def _RtlGetLastNtStatus(self):
+        return self.last_status - 2**32 if self.last_status & 0x80000000 else self.last_status
 
     def _CreateFileW(self, path, access, share, security, disposition, flags, template):
         self.calls.append(("CreateFileW", path, access, share, disposition, flags))
-        return 0x55
+        return self.anchor_handle
 
     def _ReOpenFile(self, handle, access, share, flags):
         self.calls.append(("ReOpenFile", handle, access, share, flags))
-        return 0x56
+        return self.reopen_handle
 
     def _CloseHandle(self, handle):
         self.calls.append(("CloseHandle", handle))
@@ -184,14 +193,43 @@ class NtBindingTests(unittest.TestCase):
 
     def test_a_name_being_deleted_is_absent_to_an_open_and_still_taken_to_a_create(self):
         # Deleted while another handle holds it (SQLite removing its -shm as the last connection closes): NT answers
-        # STATUS_DELETE_PENDING, which Windows maps to "access denied". No open can reach it, so to one it is gone.
-        self.libraries.create_status = [nt.STATUS_DELETE_PENDING - 2**32]
-        with self.assertRaises(FileNotFoundError):
-            self.api.open_at(DIRECTORY_FD, "index.sqlite-shm", 1, aw.FILE_OPEN, 0)
-        for disposition in (aw.FILE_CREATE, aw.FILE_OPEN_IF):
-            self.libraries.create_status = [nt.STATUS_DELETE_PENDING - 2**32]
-            with self.subTest(disposition=disposition), self.assertRaisesRegex(OSError, "Windows error 5") as raised:
-                self.api.open_at(DIRECTORY_FD, "index.sqlite-shm", 1, disposition, 0)
+        # STATUS_DELETE_PENDING, or STATUS_FILE_DELETED once the removal has completed under the open (Windows VM,
+        # 8f9e9453a98: 2 in ~37,800 closes of the last WAL connection), and maps both to "access denied". No open can
+        # reach either, so to one the name is gone.
+        for status in (nt.STATUS_DELETE_PENDING, 0xC0000123):
+            self.libraries.create_status = [status - 2**32]
+            with self.subTest(status=hex(status)), self.assertRaises(FileNotFoundError):
+                self.api.open_at(DIRECTORY_FD, "index.sqlite-wal", 1, aw.FILE_OPEN, 0)
+            for disposition in (aw.FILE_CREATE, aw.FILE_OPEN_IF):
+                self.libraries.create_status = [status - 2**32]
+                with self.subTest(status=hex(status), disposition=disposition), \
+                        self.assertRaisesRegex(OSError, "Windows error 5") as raised:
+                    self.api.open_at(DIRECTORY_FD, "index.sqlite-wal", 1, disposition, 0)
+                self.assertNotIsInstance(raised.exception, FileNotFoundError)
+
+    def test_win32_opens_map_a_deleted_file_like_an_nt_open(self):
+        # ReOpenFile and CreateFileW report only winerror 5 for a deleted file; the thread's last NTSTATUS says which
+        # it was, and goes through the same mapping as an NtCreateFile status. A real refusal stays an error.
+        opens = {"reopen": lambda: self.api.reopen(3, 1), "anchor": lambda: self.api.open_anchor("C:\\")}
+        for which, open_file in opens.items():
+            for status, error, absent in ((nt.STATUS_DELETE_PENDING, 5, True), (0xC0000123, 5, True),
+                                          (ACCESS_DENIED, 5, False), (0xC0000123, 32, False)):
+                self.libraries.anchor_handle = self.libraries.reopen_handle = nt.INVALID_HANDLE_VALUE
+                self.libraries.last_status, self.libraries.error = status, error
+                with self.subTest(which, status=hex(status), error=error), self.assertRaises(OSError) as raised:
+                    open_file()
+                self.assertEqual(isinstance(raised.exception, FileNotFoundError), absent)
+                if not absent:   # Its own Win32 error (winerror exists only on Windows; the fake names it).
+                    self.assertIn("Windows error %d" % error, str(raised.exception))
+
+    def test_a_deleted_file_is_still_an_error_to_a_change_of_it(self):
+        # Only an open of an existing name treats a deletion as absence; a rename, link or delete of a handle whose
+        # file is being deleted fails as before.
+        for change in (lambda: self.api.rename_at(3, DIRECTORY_FD, "out.txt", replace=True),
+                       lambda: self.api.link_at(3, DIRECTORY_FD, "new.txt"), lambda: self.api.delete(3)):
+            self.libraries.set_status = [nt.STATUS_DELETE_PENDING - 2**32] * 2
+            with self.subTest(change=change), self.assertRaisesRegex(OSError, "Windows error 5") as raised:
+                change()
             self.assertNotIsInstance(raised.exception, FileNotFoundError)
 
     def test_rename_and_link_carry_the_target_directory_handle_and_name(self):

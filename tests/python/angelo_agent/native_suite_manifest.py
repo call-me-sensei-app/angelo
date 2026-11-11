@@ -36,6 +36,10 @@ BACKGROUND, GUI, LIVE = "BACKGROUND", "GUI", "LIVE"
 REAL_PROVIDERS = "ANGELO_TEST_REAL_PROVIDERS"
 CLASSES = (BACKGROUND, GUI, LIVE)
 DEFAULT_TIMEOUT = 300
+# The longest one load of Cycles' render kernels may take in a production job suite (production_jobs_harness): a
+# cold Metal compile on a new Cycles version took longer than a phase (1.1 render_deadline). Such loads count against
+# neither the suite's phases nor its timeout, and the runner extends its kill timeout by this much.
+KERNEL_LOAD_CAP_S = 900
 # The options naming a game-engine editor a suite starts. Every Angelo on the machine detects a running editor through
 # the process table (engine_detect) and shows its one-time suggestion card, so such a suite runs alone (serial): run
 # beside test_blender_chat_start_states, a headless Godot put "Godot is open" over its window (1.0.8 re-cut).
@@ -110,8 +114,12 @@ class Suite:
                                      # resources inside ANGELO_QA_DIR, so the runner nests them there
     extra_args: Tuple[str, ...] = ()  # additional Blender arguments before --python
     timeout: int = DEFAULT_TIMEOUT
+    kernel_load_cap: int = 0         # seconds of Cycles kernel loading its harness discounts (KERNEL_LOAD_CAPPED);
+                                     # the runner adds them to the kill timeout
     live_env: Tuple[str, ...] = ()   # opt-in variables a LIVE suite reads from the caller
     options_env: Tuple[str, ...] = ()  # non-secret options any suite may take from the caller (languages ...)
+    inputs: Tuple[str, ...] = ()     # machine inputs (native_suite_inputs.RESOLVERS): resolved by the runner into
+                                     # their option variable, or the suite is skipped with the reason
     platforms: Tuple[str, ...] = ()  # sys.platform values the suite's code can run on; empty: every platform
     platform_reason: str = ""        # why it cannot run elsewhere (the runner's skip reason)
     variants: Tuple[Variant, ...] = ()  # each a separate run (``expand``), named ``<suite>@<variant>``
@@ -266,6 +274,11 @@ SUITES = (
           "DepsgraphUpdate.angelo_recalc from real updates: selection reports SELECT, a location edit TRANSFORM, "
           "a material setting SHADING, and no reported update has an empty set",
           Report("results.json"), notes="No provider, account or network."),
+    Suite("test_blender_upstream_fix_backports.py", BACKGROUND,
+          "Blender fixes taken from upstream main ahead of the base release: a kept Cycles session renders what a "
+          "new one does after the denoiser's guiding passes change",
+          Report("results.json"), notes="Renders 64 to 96 pixel pictures in Cycles on the CPU. No provider, account or "
+          "network."),
     Suite("test_blender_cycles_device_default.py", BACKGROUND,
           "Cycles' scene device defaults to GPU (a saved CPU stays CPU) and Angelo lists devices in a child process",
           Report("results.json"), notes="Lists this machine's GPU devices in a child of the app; no render."),
@@ -338,7 +351,7 @@ SUITES = (
     Suite("test_blender_godot_link_e2e.py", BACKGROUND,
           "Godot live link end to end: a .glb and a .blend asset through Angelo -b and a headless Godot editor",
           Report("fixture/report.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
-          options_env=("ANGELO_QA_GODOT",), serial=True, platforms=("darwin",),
+          inputs=("godot",), options_env=("ANGELO_QA_GODOT",), serial=True, platforms=("darwin",),
           platform_reason="The harness writes Godot's macOS editor-settings path; the plugin itself is cross-platform.",
           timeout=600, notes="Host-Python driver; needs Godot 4.4+ (ANGELO_QA_GODOT)."),
     Suite("test_blender_game_physics_gui.py", GUI,
@@ -348,21 +361,23 @@ SUITES = (
           "Game physics end to end: held-out models marked in Angelo and imported by real Godot editors, headless; "
           ".blend files through Angelo as Godot's Blender",
           Report("fixture/report.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
-          options_env=("ANGELO_QA_GODOT", "ANGELO_QA_PHYSICS_ASSETS"), serial=True, platforms=("darwin",),
+          inputs=("godot", "physics_heldout"), options_env=("ANGELO_QA_GODOT", "ANGELO_QA_PHYSICS_ASSETS"),
+          serial=True, platforms=("darwin",),
           platform_reason="The harness writes Godot's macOS editor-settings path for the .blend imports.",
-          timeout=900, notes="Host-Python driver; needs Godot 4.4+ editors (ANGELO_QA_GODOT, several joined by ':') and "
-                             "a folder of held-out .glb models (ANGELO_QA_PHYSICS_ASSETS)."),
+          timeout=900, notes="Host-Python driver; needs Godot 4.4+ editors (ANGELO_QA_GODOT, several joined by ':'; "
+                             "default /Applications/Godot.app) and held-out .glb models (ANGELO_QA_PHYSICS_ASSETS; "
+                             "default: the pinned set, fetched into the runner's cache by native_suite_inputs)."),
     Suite("test_blender_godot_link_gui.py", GUI,
           "Godot live link in Director: + menu, request card variants, Open, status bar, live edit to a headless Godot",
           Report("godot-link-gui.json", require_complete_phase=True), default_chat=True,
-          options_env=("ANGELO_QA_GODOT",), serial=True, platforms=("darwin",),
+          inputs=("godot",), options_env=("ANGELO_QA_GODOT",), serial=True, platforms=("darwin",),
           platform_reason="The harness writes Godot's macOS editor-settings path; the plugin itself is cross-platform.",
           timeout=420),
     Suite("test_blender_engine_suggest_gui.py", GUI,
           "Feature discovery in Director: + menu engine rows, a real headless Godot detected, the one-time suggestion "
           "card, the agent's note and FEATURES lookup, angelo_app_feature, Unity/Unreal plugin installs, the picker",
           Report("engine-suggest-gui.json", require_complete_phase=True), default_chat=True,
-          options_env=("ANGELO_QA_GODOT",), serial=True, platforms=("darwin",),
+          inputs=("godot",), options_env=("ANGELO_QA_GODOT",), serial=True, platforms=("darwin",),
           platform_reason="Detects a real Godot editor through macOS's process table (Windows' reader is host-tested).",
           timeout=420),
     Suite("test_blender_about_card.py", GUI, "About Angelo card from the Angelo menu: text, links, Close; en, ar, large scale",
@@ -518,6 +533,7 @@ SUITES = (
           "arrives; frames capped and stopped with the turn; Reduce Motion; draw cost and pixels",
           Report("chat-waiting.json", require_complete_phase=True), event_simulate=True, default_chat=True,
           platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS, timeout=300, serial=True,
+          options_env=("ANGELO_QA_WAIT_EXTRA_SHARE",),   # The loop-rate check's positive control; never in a round.
           notes="The stand-in claude CLI (fake_provider_cli.py) streams thinking lines and a castle plan at "
                 "Opus 5.5's recorded pace, held at each moment the suite observes until it has seen it "
                 "(fake_provider_cli.hold); imports the add-on from the checkout; no account or inference."),
@@ -711,6 +727,9 @@ SUITES = (
           Report("modifier-stack.json")),
     Suite("test_blender_object_management.py", BACKGROUND, "Rename, duplicate, delete, apply transforms, origin, collections",
           Report("object-management.json")),
+    Suite("test_blender_custom_normals_transform.py", BACKGROUND,
+          "Custom normals survive the typed apply, Mesh.transform() with flip_normals() and Blender's Apply",
+          Report("custom-normals.json"), needs_opengl=True),   # A Workbench render of the shading before and after.
     Suite("test_blender_animation_edits.py", BACKGROUND, "Key delete/configure, shape keys, NLA push-down, rollback and Undo",
           Report("animation-edits.json")),
     Suite("test_blender_revision_deformers.py", BACKGROUND,
@@ -1109,6 +1128,15 @@ SUITES = (
                 "Synthetic generic-effect fixtures are not official catalog/acquisition proof. "
                 "Isolated profile; offline by default, no account or inference. Explicit online option additionally "
                 "tests the public Blender catalog, on-demand downloads, cache reuse and offline reuse."),
+    Suite("test_blender_fab_formats.py", GUI,
+          "Every Fab format after its download, in the default window: content check and the sandboxed converter on a "
+          "worker while the main thread ticks, the native append of the clean .blend (FBX, OBJ, glTF, USD, .blend "
+          "models; a texture set on the selected cube and in the asset library), packed textures, no Text block or "
+          "Python driver, one Undo, a reused conversion on the second add, times and a screenshot per format",
+          Report("fab-formats.json", require_complete_phase=True), timeout=900, default_chat=True,
+          options_env=("ANGELO_QA_FAB_SAMPLES",),
+          notes="Samples generated by Blender's own exporters in a background Angelo; ANGELO_QA_FAB_SAMPLES adds real "
+                "Fab downloads (local files). No Fab account, browser or network: the download itself is not tested."),
     Suite("test_blender_library.py", GUI,
           "The Angelo Library in Director against a loopback mirror: the search pill, typed search, a real drag of a "
           "model onto the ground (standing, with provenance), a timed warm-cache drop, a material dropped on the cube, "
@@ -1651,6 +1679,17 @@ SUITES = (
           Report("render-deadline.json", require_complete_phase=True), timeout=600,
           notes="Real Cycles GPU renders and a bake on small scenes (fails when no GPU is listed); stand-in "
                 "conversation, no provider or account."),
+    Suite("test_blender_render_child.py", GUI, "Heavy Cycles render jobs run in a child Angelo on a copy of the scene: "
+          "the person's settings back and edits never reaching the picture, Cancel and the time budget ending the "
+          "process from the watchdog, the person's F12 untouched, a stopped animation's frames kept",
+          Report("render-child.json", require_complete_phase=True), timeout=900,
+          notes="Real Cycles renders (the GPU when one is listed) on small scenes; stand-in conversation, no "
+                "provider or account."),
+    Suite("test_blender_render_kernels.py", GUI, "A first Cycles render that compiles its kernels: a short budget is "
+          "not spent on the compile, the card says so, the next estimate leaves it out, a child render shares the cache",
+          Report("render-kernels.json", require_complete_phase=True), timeout=900,
+          notes="Real Cycles renders (the GPU when one is listed). Proves the compile path only when run cold: an app "
+                "copy with its own bundle id and a fresh HOME."),
     Suite("test_blender_job_restore.py", BACKGROUND, "What a job changes for itself is put back exactly: constrained "
           "settings, settings found by name, a bake's material node and new image, also from a file saved meanwhile",
           Report("job-restore.json")),
@@ -1938,6 +1977,14 @@ SUITES = (
           notes="Deterministic: builds the address coincidence the real trigger leaves to the allocator. "
                 "stress_blender_world_redo.py repeats the real Redo."),
 )
+# The suites on production_jobs_harness, which discounts Cycles' kernel loads (test_native_kernel_load keeps it whole).
+KERNEL_LOAD_CAPPED = ("test_blender_disk_simulation.py", "test_blender_fluid_jobs.py", "test_blender_fluid_varied.py",
+                      "test_blender_job_desktop.py", "test_blender_mantaflow.py", "test_blender_production_bakes.py",
+                      "test_blender_production_renders.py", "test_blender_render_child.py",
+                      "test_blender_render_deadline.py", "test_blender_render_deliverables.py",
+                      "test_blender_render_kernels.py", "test_blender_render_samples.py", "test_blender_shot_video.py", "test_blender_udim_bakes.py")
+SUITES = tuple(replace(suite, kernel_load_cap=KERNEL_LOAD_CAP_S) if suite.script in KERNEL_LOAD_CAPPED else suite
+               for suite in SUITES)
 
 
 

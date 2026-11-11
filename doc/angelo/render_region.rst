@@ -204,8 +204,8 @@ Validation
   kept; after an agent's look in its own slot, the size the job checks is unchanged and a region renders over the
   person's slot; the scene's Render Region settings restored; a plain render after reads ``NONE``. It also measures
   the seam: the mean change on the region's 2-pixel inner edge against the rest of the region. It is
-  ``needs_opengl`` (its EEVEE cases need a GPU; ``test_native_suite_opengl`` holds every suite that renders EEVEE to
-  that), and it prints ``ANGELO_RR_STEP`` before every step; ``render_region_probe.py`` runs it per variant, with stock
+  ``needs_opengl`` (its EEVEE cases need a GPU; ``test_native_suite_opengl`` holds every suite that renders with
+  EEVEE, Workbench or ``render.opengl`` to that), and it prints ``ANGELO_RR_STEP`` before every step; ``render_region_probe.py`` runs it per variant, with stock
   controls, to place a crash.
 * Window, Director (the default view): ``test_blender_render_region`` (render window pill, drag, the last render on
   screen during the region render, the card, bit-identical outside, Revert, a stopped region render keeps the last render).

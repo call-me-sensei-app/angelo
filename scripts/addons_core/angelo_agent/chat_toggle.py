@@ -412,11 +412,13 @@ _settle_wait = live_windows.Wait()   # The watch and the follow wait (bounded) w
 
 
 def chat_shown():
-    """Whether a chat is shown now: a moving or popped chat is never mistaken for hidden. Read live once the watch has
-    started and no window is between screens (else the watch's last states): a toggle's own launcher update runs
-    before the next watch, which would otherwise leave the just-hidden chat's waiting card off the launcher."""
+    """Whether the person can see a chat now: read live whenever no window is between screens, whether or not the
+    watch has run yet; while one is, the watch's last answer (and "shown" before it has one: that window could hold
+    the chat). A moving or popped chat is never mistaken for hidden. A toggle's own launcher update runs before the
+    next watch, and a fast start can hide the chat before the watch's first pass (1.0.11 round, 116c309e9f6): a
+    cached answer there would leave the just-hidden chat's waiting card off the launcher."""
     manager = bpy.context.window_manager
-    if _last_states is None or not live_windows.settled(manager):
+    if not live_windows.settled(manager):
         return _last_states is None or any(state != "hidden" for state in _last_states)
     every = live_windows.every_window(manager)
     return any(chat_state(window, every)[0] != "hidden" for window in live_windows.windows(manager))

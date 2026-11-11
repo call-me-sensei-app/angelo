@@ -10,7 +10,7 @@
   },
   "fork": {
     "branch": "angelo/rust-v0.166.0-call-steps",
-    "commit": "0ffcb4dbb1e2e310dd375d50911ea667c22f2210",
+    "commit": "2dfdc4c72e3b497b2c463bce3631eec05475cb3c",
     "repository": "https://github.com/call-me-sensei-app/codex",
     "_public_commit": "public_commit and public_tag: the published branch's head (the same tree as commit, the one the bundled codex was built from) and its tag, added once the maintainer publishes the branch."
   },

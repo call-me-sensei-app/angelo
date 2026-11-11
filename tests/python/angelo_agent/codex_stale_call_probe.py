@@ -151,7 +151,7 @@ def run_case(case, root, raw=False):
         result["model_requests_total"] = len(fake.bodies)
         result["process_alive"] = rpc.process.poll() is None
     finally:
-        rpc.process.terminate()
+        rpc.close()   # Waits for the exit: Windows keeps an exiting process's files locked (its state database).
     result.update(log=log, stderr_tail=rpc.stderr_tail[-3:])
     (out / "result.json").write_text(json.dumps(result, indent=1))
     return result

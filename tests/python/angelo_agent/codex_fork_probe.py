@@ -113,7 +113,7 @@ class App:
         try:
             self.rpc.process.wait(30)
         except Exception:
-            self.rpc.process.terminate()  # The probe's own child only.
+            self.rpc.close()  # The probe's own child only; waits for its exit (Windows locks an exiting process's files).
 
 
 def same_process(app, count):

@@ -7,7 +7,8 @@ The feed builder refuses an undated entry too, but only after the gates and sign
 first, for any version:
 
 * the identity's version (``scripts/modules/angelo_identity.json`` version.label) has a CHANGELOG.md entry with a date;
-* the newest CHANGELOG.md entry is dated (nothing newer than the release is pending in it);
+* the newest CHANGELOG.md entry is dated (nothing newer than the release is pending in it), and so is every other:
+  each release line may hold a pending entry (changelog.py), and the app lists every entry the release ships;
 * the bundled ``release_notes.json`` is exactly the export of that CHANGELOG.md (so it carries the same date).
 
 Standard library only.
@@ -48,6 +49,10 @@ def problems(source):
     if releases and releases[0]["date"] is None and releases[0]["version"] != version:
         found.append("CHANGELOG.md's newest entry, %s, is Unreleased: a release of %s must not ship it"
                      % (releases[0]["version"], version))
+    for other in releases[1:]:
+        if other["date"] is None and other["version"] != version:
+            found.append("CHANGELOG.md's entry %s is Unreleased: a release of %s must not ship it"
+                         % (other["version"], version))
     try:
         bundled = (source / NOTES).read_text(encoding="utf-8")
     except OSError as error:

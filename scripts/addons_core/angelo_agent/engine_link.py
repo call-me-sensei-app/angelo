@@ -11,9 +11,10 @@ live where the editor can show it. Main thread; every engine through its adapter
   code ``engine``). It never opens anything by itself: it is held as ``pending`` and the person answers it in Angelo
   (``engine_link_ui``'s card), because opening replaces Angelo's open file. ``accept`` opens the asset's .blend, or
   imports the asset into its working .blend.
-* **While linked**, every change to the followed scene (the person's, the agent's) is exported after the scene has
-  been still (``scene_changes``) and sent to the editors of that engine and project that show live scenes
-  (capability ``live``), which show it in place of the asset's instances without touching their scene. **Saving**
+* **While linked**, every change to the followed scene (the person's, the agent's) is exported and sent to the
+  editors of that engine and project that show live scenes (capability ``live``), which show it in place of the
+  asset's instances without touching their scene: at once after a pause, at a steady cadence while changes go on,
+  and always the last one (``engine_link_cadence``); never while ``scene_changes.busy``. **Saving**
   in Angelo is the durable step: a .blend is saved, any other kind is written back with the adapter's exporter;
   every editor of the project is told to re-import either way.
 * The link ends when another file is opened, the file is saved elsewhere, the editor asks, or the link stops.
@@ -29,23 +30,23 @@ import time
 
 import bpy
 
-from . import (engine_link_assets as assets, engine_link_facts as facts, engine_link_import, engine_link_saves,
+from . import (engine_link_assets as assets, engine_link_cadence as cadence, engine_link_facts as facts,
+               engine_link_import, engine_link_saves,
                engine_link_protocol as protocol, engine_link_reads as reads, gltf_scene_reads, live_windows,
                private_roots, scene_changes, web_link_live)
 
-POLL_SECONDS = 0.1
-QUIET_SECONDS = 0.35       # Stillness before a live export.
-MAX_QUIET_SECONDS = 10.0
-SHARE = 3.0
+POLL_SECONDS = 0.1         # engine_link_cadence.MIN_GAP_SECONDS is this tick.
 REQUEST_SECONDS = 600.0    # A request nobody answered expires.
 
 _MODULE = sys.modules[__name__]   # This module, whose state the live frames read (engine_link_live.publish).
 hooks = {"request": None, "withdraw": None, "changed": None}   # engine_link_ui's card and redraws.
 _state = {"server": None, "token": None, "record": None, "pending": None, "session": None, "opening": None,
-          "dirty_at": None, "exporting": False, "last_ms": 0.0, "scene": None, "folder": None, "window": None,
+          "dirty_at": None, "exporting": False, "last_ms": 0.0, "exported_at": None, "awaiting": frozenset(),
+          "scene": None, "folder": None, "window": None,
           "version": 0, "reports": [], "error": None, "writing": False, "edit_notice": False,
           "writeback": None, "facts": facts.new(), "saves": 0, "links": 0}
 # facts: the linked asset's pushes, saves and acknowledgements; saves, links: numbered once per process (break-it F3).
+# dirty_at, exported_at, awaiting: engine_link_cadence's (when a change waits, the last export, who owes an answer).
 
 
 class LinkBusy(RuntimeError):
@@ -177,7 +178,7 @@ def _handle(client, header, info=None, lookup=None, seq=None):   # engine_link_r
     if kind == "status":
         if header.get("code") == "resync":   # A web page's delta didn't fit what it shows: a full frame now.
             web_link_live.resync(client)
-            _state["dirty_at"] = 0.0
+            _state["dirty_at"] = cadence.FORCED
             return
         _state["reports"] = (_state["reports"] + [dict(header, client=client)])[-20:]
         if _state["session"] is not None and _state["server"] is not None:
@@ -208,7 +209,7 @@ def _handle(client, header, info=None, lookup=None, seq=None):   # engine_link_r
         return
     if linked is not None and linked["asset"] == asset:   # Already open: this editor joins and gets it now.
         _reply(client, {"type": "opened", "id": request_id, "asset": asset.ident})
-        _state["dirty_at"] = 0.0
+        _state["dirty_at"] = cadence.FORCED
         return
     old = _state["pending"]
     if seq is not None and seq < _state.get("card_seq", 0):   # Sent before one that had a card, read later (10-N2b).
@@ -310,8 +311,9 @@ def _begin(window):
     asset = opening["asset"]
     params = assets.adapter(asset.engine).import_params(asset)
     _state["links"] = _state.get("links", 0) + 1   # Each link's number: an approval binds one (engine_link_tool_host).
-    _state.update(session={"asset": asset, "params": params, "number": _state["links"]}, dirty_at=0.0,
-                  facts=facts.new(), scene=None, window=window.as_pointer() if window else None, last_ms=0.0)
+    _state.update(session={"asset": asset, "params": params, "number": _state["links"]}, dirty_at=cadence.FORCED,
+                  facts=facts.new(), scene=None, window=window.as_pointer() if window else None, last_ms=0.0,
+                  exported_at=None, awaiting=frozenset())
     if opening["client"] is None:   # The agent's request: every editor of the project links, as one that asked would.
         _broadcast(asset, {"type": "opened", "asset": asset.ident})
     else:
@@ -380,7 +382,8 @@ def _on_depsgraph(scene, depsgraph):
         return
     changed, _state["scene"] = scene_changes.matters(depsgraph, scene, view_layer, _state["scene"], key=scene_key)
     if changed:
-        _state["dirty_at"] = time.monotonic()
+        if _state["dirty_at"] is None:   # The oldest unsent change: later ones go in the same frame.
+            _state["dirty_at"] = time.monotonic()
         if _state["session"]["asset"].engine == "web":   # The web's frames hold only what changed.
             web_link_live.note(depsgraph)
 
@@ -403,8 +406,8 @@ def _tick():
         _state["dirty_at"] = web_link_live.due(_followed(_window())[0])   # Pixels with no update, or a due check.
     dirty_at = _state["dirty_at"]
     if _state["session"] is not None and dirty_at is not None:
-        quiet = scene_changes.quiet_seconds(_state["last_ms"], QUIET_SECONDS, SHARE, MAX_QUIET_SECONDS)
-        if time.monotonic() - dirty_at >= quiet:
+        if cadence.due(time.monotonic(), dirty_at, _state["exported_at"], _state["last_ms"],
+                       cadence.waiting_since(_state, clients())):
             window = _window()
             if window is not None and window.screen is None:
                 return live_windows.RETRY_S   # Between screens: the export waits for it (the scene stays dirty).

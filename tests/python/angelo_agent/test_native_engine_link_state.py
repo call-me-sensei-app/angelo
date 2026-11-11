@@ -28,6 +28,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import addon_stand_in_import as stand_ins
+
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 
@@ -51,17 +53,13 @@ def fake_bpy():
 
 
 BPY = fake_bpy()
+_BEFORE = stand_ins.snapshot()
 with mock.patch.dict(sys.modules, {"bpy": BPY}):
     from angelo_agent import engine_link, engine_link_assets as assets, engine_link_facts, godot_link_assets  # noqa
-# patch.dict restores sys.modules on leaving; an already imported package keeps the attributes, so drop the ones bound
-# to the stand-in bpy too: no later test reuses them.
-# The adapters hold no bpy: keep the modules imported above, so the link's adapter lookup returns these same ones.
-sys.modules.setdefault("angelo_agent.engine_link_assets", assets)
-sys.modules.setdefault("angelo_agent.godot_link_assets", godot_link_assets)
-for _name in ("engine_link", "engine_link_import", "scene_changes"):
-    _package = sys.modules.get("angelo_agent")
-    if _package is not None and getattr(getattr(_package, _name, None), "bpy", None) is BPY:
-        delattr(_package, _name)
+    _IMPORTED = stand_ins.imported_since(_BEFORE)
+# Each module imported above is the same object again for later suites, or unreachable if it holds the stand-in bpy
+# (addon_stand_in_import.settle: two engine_link_facts made test_native_engine_link_save_report fail after this suite).
+stand_ins.settle(_IMPORTED, BPY)
 
 
 class FakeServer:
@@ -623,7 +621,7 @@ class EngineRoutingTests(unittest.TestCase):
                 with mock.patch.object(engine_link.web_link_live, "due", return_value=due) as asked, \
                         mock.patch.object(engine_link, "_window", return_value=None), \
                         mock.patch.object(engine_link, "_followed", return_value=(None, None)), \
-                        mock.patch.object(engine_link.scene_changes, "quiet_seconds", return_value=1e9):
+                        mock.patch.object(engine_link.cadence, "due", return_value=False):
                     engine_link._tick()
                 self.assertEqual(engine_link._state["dirty_at"], expected)
                 self.assertEqual(asked.called, asset is web and pending is None)

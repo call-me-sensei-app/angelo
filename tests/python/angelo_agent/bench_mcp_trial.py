@@ -47,6 +47,7 @@ import eval_diagnostics
 import eval_gate
 import eval_grading
 import provider_isolation as isolation
+import provider_accounts
 import eval_live_tasks as live
 import gui_launch
 import eval_provider_limits as limits
@@ -65,6 +66,7 @@ KEEP_ENV = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CT
             # Windows: without these a child Python, Node or Blender cannot start or find its profile folders.
             "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "USERPROFILE", "USERNAME",
             "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "PROGRAMFILES", "HOMEDRIVE", "HOMEPATH")
+EXPECTED_ACCOUNT_ENV = (provider_accounts.CODEX_ACCOUNT_ENV, provider_accounts.CLAUDE_ACCOUNT_ENV)   # clean_environment
 MCP_PROBE_STDERR = "mcp-server-stderr.log"   # probe_mcp_server: the server's own stderr, beside the probe.
 WINDOW = ("--window-geometry", "60", "60", "1400", "900")   # The Angelo harness's geometry.
 
@@ -82,6 +84,12 @@ def clean_environment(**extra):
     # Where the run's scenario references are (scenario_specs.REFERENCES_ENV): the test's own data, the same for
     # both sides. Dropped, a moved root made every child refuse before its first message (Windows dev run, 22:28).
     environment.update({key: os.environ[key] for key in ("ANGELO_SCENARIO_REFERENCES",) if key in os.environ})
+    # The expected accounts a billed child checks its profile against (provider_accounts: an account id prefix and an
+    # email, or a Claude email or UUID; never a credential). The operator's kit names them; they select no account
+    # and change no request, and without them every billed child refuses before its first message
+    # (eval_live_agent's connection_opt_in reads its own environment). Dropped, every billed gate step of a
+    # Windows release run was refused at trial 1 (2026-11-11).
+    environment.update({key: os.environ[key] for key in EXPECTED_ACCOUNT_ENV if key in os.environ})
     # A non-secret QA owner lets the outer slot stop its own orphaned children.
     # It never selects an account or changes a request; malformed markers drop.
     owner = os.environ.get("ANGELO_QA_PROCESS_OWNER", "")

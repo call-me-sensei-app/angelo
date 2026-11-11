@@ -19,7 +19,9 @@ and the website's /releases page, so its format is strict and checked::
     - …
 
 Rules: newest release first; versions are MAJOR.MINOR.PATCH and strictly
-descending; only the newest entry may be ``Unreleased``; every release names
+descending; each release line (MAJOR.MINOR) may have one ``Unreleased`` entry,
+its newest, so a 1.0.x fix and the next minor can be pending at once (a release
+build still ships no undated entry: release_dated.py); every release names
 the Blender it is built on; every bullet is one line of plain text for people
 (no markup, no links, no issue numbers); a release needs a summary and
 Highlights. Notes are written for users, not engineers: what you can do, what
@@ -137,8 +139,15 @@ def validate(releases):
         raise ChangelogError("releases must be newest first, each version once")
     for index, release in enumerate(releases):
         where = release["version"]
-        if release["date"] is None and index:
-            raise ChangelogError("%s: only the newest release may be Unreleased" % where)
+        line = versions[index][:2]
+        if release["date"] is None:
+            # 1.0.x keeps getting fixes beside 1.1.x: each MAJOR.MINOR line may have one pending entry, its newest.
+            newer = [r for r, v in zip(releases[:index], versions[:index]) if v[:2] == line]
+            if any(r["date"] is None for r in newer):
+                raise ChangelogError("%s: one Unreleased entry per release line (%d.%d)" % ((where,) + line))
+            if newer:
+                raise ChangelogError("%s: Unreleased below %s, a dated release of its own line"
+                                     % (where, newer[-1]["version"]))
         if not release["blender"]:
             raise ChangelogError("%s: needs 'Based on Blender X.Y.Z.' under its heading" % where)
         if not release["summary"]:

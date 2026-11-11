@@ -10,6 +10,7 @@ They read the preferences and ``device``'s decision only, so ``facts``/``shown``
 thread. ``device`` re-exports every name here.
 """
 
+import math
 import sys
 
 _rates = {}          # Device text -> [(seconds, work, setup, (scene uid, frames))] of its recent renders (``observe``).
@@ -148,6 +149,11 @@ FIT_MIN_SPREAD = 1.0   # The least time between the two fitted renders. A job's 
                        # that grows with work (see ``fitted``).
 
 
+def _seconds(value):
+    """A recorded number of seconds, or 0 for anything else (a negative, NaN or infinite value included)."""
+    return float(value) if isinstance(value, (int, float)) and math.isfinite(value) and value > 0 else 0.0
+
+
 def observe(record):
     """Remember a finished Cycles render's pace on its device (job_ui: every ended job): its seconds, work, the time
     before its first progress when the job saw it (``detail["first_progress_s"]``, job_manager), and what it rendered
@@ -158,6 +164,13 @@ def observe(record):
         return
     size, seconds = work(detail), record["ended"] - record["started"]
     setup = detail.get("first_progress_s")
+    # A one-time kernel compile (the first render after an update: angelo_render_device.kernels) is no part of the
+    # render's pace: left in, the next estimate charged it again, per frame for an animation.
+    # Only the part before its first progress is the setup's (a load after it is no preparation: break-it F9).
+    compiled, before = (_seconds(detail.get(key)) for key in ("kernel_compile_s", "kernel_compile_setup_s"))
+    seconds -= min(compiled, seconds)
+    if isinstance(setup, (int, float)):
+        setup -= min(before, compiled, setup)
     setup = setup if isinstance(setup, (int, float)) and 0 <= setup < seconds else None
     if size and seconds > 0:
         kept = [entry for entry in _rates.get(detail["device"], []) if isinstance(entry, tuple) and len(entry) == 4]

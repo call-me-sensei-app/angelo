@@ -255,14 +255,54 @@ def regions_drawn(window, frame, count=10):
     return {key: round(value / count, 2) for key, value in sorted(counts.items())}
 
 
-def paired_shares(samples):
+def burn(share, interval):
+    """Busy the calling (main) thread for ``share`` of ``interval`` while the animation is on; the timer's next
+    interval. A positive control: work the marble's frames do not account for."""
+    from angelo_agent import marble_host
+    if marble_host.enabled:
+        until = time.perf_counter() + share * interval
+        while time.perf_counter() < until:
+            pass
+    return interval
+
+
+def _ordered(samples):
+    return sorted([(begin[0], True, rate) for (begin, _), rate in zip(samples[True], rates(samples[True]))]
+                  + [(begin[0], False, rate) for (begin, _), rate in zip(samples[False], rates(samples[False]))])
+
+
+def paired_shares(samples, null=False):
     """``1 - rate_on / rate_off`` for each "on" window against the mean of the "off" windows beside it in time,
-    so a drift in machine load cancels; ``samples`` are ``Windows.samples``."""
-    windows = sorted([(begin[0], True, rate) for (begin, _), rate in zip(samples[True], rates(samples[True]))]
-                     + [(begin[0], False, rate) for (begin, _), rate in zip(samples[False], rates(samples[False]))])
-    shares = []
+    so a drift in machine load cancels; ``samples`` are ``Windows.samples``. ``null``: each "off" window against
+    the "off" windows beside it instead (two places away), the same measure where nothing differs: this run's own
+    noise."""
+    windows, shares = _ordered(samples), []
     for index, (_, on, rate) in enumerate(windows):
-        beside = [windows[k][2] for k in (index - 1, index + 1) if 0 <= k < len(windows) and not windows[k][1]]
-        if on and beside:
+        steps = (index - 2, index + 2) if null else (index - 1, index + 1)
+        beside = [windows[k][2] for k in steps if 0 <= k < len(windows) and not windows[k][1]]
+        if on != null and beside:
             shares.append(1 - rate / (sum(beside) / len(beside)))
     return shares
+
+
+# Two-sided Student's t at 0.001 by degrees of freedom: the band a disagreement must leave before it counts, so a
+# run fails by chance about once in a thousand (the GUI round is held to zero failures).
+_T_0001 = {3: 12.924, 4: 8.610, 5: 6.869, 6: 5.959, 7: 5.408, 8: 5.041, 9: 4.781, 10: 4.587, 11: 4.437, 12: 4.318,
+           13: 4.221, 14: 4.140, 15: 4.073, 16: 4.015, 17: 3.965, 18: 3.922, 19: 3.883, 20: 3.850}
+
+
+def agreement(samples, composed):
+    """Whether the loop rate's share of the main thread agrees with ``composed`` (the share built from one frame's
+    CPU time, the gate) within this run's own noise: the median of the "on" windows' shares against ``composed``,
+    by the noise of the "off" windows against each other in the same run (``paired_shares(null=True)``). The
+    window-to-window spread is the main loop's own (Blender's other main-thread work), alone or beside other
+    suites; a fixed band failed about one run in twelve on Mac 1 (1.0.11 round)."""
+    shares, nulls = paired_shares(samples), paired_shares(samples, null=True)
+    share = median(shares) if shares else None
+    noise = statistics.stdev(nulls) if len(nulls) >= 4 else None
+    critical = _T_0001.get(min(len(nulls) - 1, 20)) if noise is not None else None
+    # The standard error of a median is about 1.2533 times that of a mean.
+    band = critical * 1.2533 * noise / len(shares) ** 0.5 if critical and shares else None
+    agrees = band is not None and abs(share - composed) <= band
+    return {"share": share, "composed": composed, "difference": None if share is None else share - composed,
+            "noise": noise, "band": band, "windows": len(shares), "null_windows": len(nulls), "agrees": agrees}

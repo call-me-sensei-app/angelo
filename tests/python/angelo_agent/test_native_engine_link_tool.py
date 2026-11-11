@@ -27,6 +27,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import addon_stand_in_import as stand_ins
+
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -56,6 +58,7 @@ def fake_bpy():
 BPY = fake_bpy()
 SUGGEST = types.ModuleType("angelo_agent.engine_suggest_ui")
 SUGGEST.facts = lambda: {"running": ["Godot"], "installed": [], "live_link_on": True}
+_BEFORE = stand_ins.snapshot()
 with mock.patch.dict(sys.modules, {"bpy": BPY, "angelo_agent.engine_suggest_ui": SUGGEST}):
     from angelo_agent import (engine_link, engine_link_agent, engine_link_assets as assets,  # noqa: E402
                               engine_link_facts as facts,
@@ -65,13 +68,13 @@ with mock.patch.dict(sys.modules, {"bpy": BPY, "angelo_agent.engine_suggest_ui":
                                                     validate_engine_link)
     from angelo_agent.refusal_codes import RefusalError  # noqa: E402
     PACKAGE = sys.modules["angelo_agent"]
-sys.modules.setdefault("angelo_agent.engine_link_assets", assets)
-sys.modules.setdefault("angelo_agent.godot_link_assets", godot_link_assets)
-for _name in ("engine_link", "engine_link_agent", "engine_link_import", "scene_changes", "engine_link_tool_host",
-              "engine_link_tool_approvals", "engine_suggest_ui"):
-    _package = sys.modules.get("angelo_agent")
-    if _package is not None and getattr(getattr(_package, _name, None), "bpy", None) is BPY:
-        delattr(_package, _name)
+    _IMPORTED = stand_ins.imported_since(_BEFORE)
+    _IMPORTED.pop("angelo_agent.engine_suggest_ui", None)   # The stand-in, never a module to keep.
+# Each module imported above is the same object again for later suites, or unreachable if it holds the stand-in bpy
+# (addon_stand_in_import.settle). The stand-in engine_suggest_ui's package attribute goes too.
+stand_ins.settle(_IMPORTED, BPY)
+if getattr(PACKAGE, "engine_suggest_ui", None) is SUGGEST:
+    delattr(PACKAGE, "engine_suggest_ui")
 
 
 class FakeServer:

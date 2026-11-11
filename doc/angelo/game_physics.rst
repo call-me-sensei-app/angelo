@@ -263,8 +263,10 @@ Validation
   wrapped to the panel's and the popup's width), the + menu row, and Edit
   Fitted Size.
 * ``test_blender_godot_physics_e2e`` (host-Python driver, ``ANGELO_QA_GODOT``
-  with one or more Godot editors joined by ``:``, ``ANGELO_QA_PHYSICS_ASSETS``
-  a folder of held-out .glb models, ``--timeout`` per Angelo or Godot step):
+  with one or more Godot editors joined by ``:``, else Godot's default install;
+  ``ANGELO_QA_PHYSICS_ASSETS`` a folder of held-out .glb models, else the pinned
+  set below, fetched and checked into a cache; ``--timeout`` per Angelo or Godot
+  step; the runner skips it, with the reason, when neither can be had):
   every model is marked with each body and shape by one rule and exported, two
   also go to Godot as .blend files that Godot imports through the Angelo under
   test as its Blender; Godot imports the project headless and a GDScript dump

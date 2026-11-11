@@ -375,11 +375,13 @@ class PlanTests(unittest.TestCase):
                                               "ANGELO_QA_GROUNDING"),
             "test_blender_route_parity": ("ANGELO_ROUTE_PARITY_RECORD",),
             "test_blender_essentials": ("ANGELO_QA_ESSENTIALS_ONLINE",),
+            "test_blender_fab_formats": ("ANGELO_QA_FAB_SAMPLES",),
             "test_blender_godot_link_e2e": ("ANGELO_QA_GODOT",),
             "test_blender_render_region_perf": ("ANGELO_RR_BENCH_VARIANT", "ANGELO_RR_BENCH_REPS"),
             "test_blender_godot_link_gui": ("ANGELO_QA_GODOT",),
             "test_blender_engine_suggest_gui": ("ANGELO_QA_GODOT",),
             "test_blender_godot_physics_e2e": ("ANGELO_QA_GODOT", "ANGELO_QA_PHYSICS_ASSETS"),
+            "test_blender_chat_waiting": ("ANGELO_QA_WAIT_EXTRA_SHARE",),   # Its loop-rate check's positive control.
         }
         self.assertEqual(expected, {suite.name: suite.options_env for suite in with_options})
         for suite in with_options:
@@ -469,12 +471,12 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(plan["env"]["ANGELO_RUNTIME_QA_DIR"], str(plan["qa"]))
 
     def eval_account(self):
-        """The caller's evaluation-account Codex profile (a fixture sign-in with the evaluation account's made-up
-        claims), opted in."""
-        profile = (Path(self.temp.name) / "bench" / "eval-account" / "codex-profile"
-                   / "477256f3-ae52-456f-bbd3-429db527d2ef")
+        """The caller's evaluation-account Codex profile (a fixture sign-in with the evaluation account's made-up claims), opted in."""
+        profile = Path(self.temp.name) / "bench" / "eval-account" / "codex-profile" / "477256f3-ae52-456f-bbd3-429db527d2ef"
         account_fixtures.codex_sign_in(profile)
-        self.base["ANGELO_TEST_REAL_PROVIDERS"] = "eval-profile:" + str(profile)
+        # The opt-in names the expected ChatGPT account (the fixture's), as connection_opt_in writes it.
+        self.base["ANGELO_TEST_REAL_PROVIDERS"] = ("eval-profile:" + str(profile) + runner.isolation.ACCOUNT_FIELD
+                                                   + account_fixtures.CODEX_EXPECTED)
         return profile
 
     def test_live_suites_use_caller_profile_and_opt_in_only(self):
@@ -900,6 +902,14 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(self.main((fake_suite("fake_pass"),), "--include", "nothing")[0], 2)
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(runner.main(["--binary", "relative/Angelo"], suites=(), base_env={}), 2)
+
+
+def setUpModule():   # Billed starts here check the fixture evaluation account, named as a kit names the real one.
+    account_fixtures.name_account_2()
+
+
+def tearDownModule():
+    account_fixtures.unname_account_2()
 
 
 if __name__ == "__main__":

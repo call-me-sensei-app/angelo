@@ -71,6 +71,13 @@ started = time.monotonic()
 draws, frames, ravens, marks = [], [], [], {}  # Marble draws (seconds since sent, kind, record); (seconds, timer frames).
 holds = None  # The running phase's stand-in holds (rounds.Holds).
 WATCH = 2.2  # Seconds a building wait's frame rate is watched, the stand-in held throughout.
+# Alternating one-second windows of the loop rate: thirty give the median and its noise enough samples that a
+# disagreement of a few percent counts at the 0.001 level (chat_waiting_measure.agreement).
+RATE_WINDOWS = 30
+# A positive control for that check, never set in a round: this share of the main thread is spent while the
+# animation runs, outside every frame (so the composed share cannot see it); the check must then fail. Its band is
+# this run's noise (1.8-8.4 % over Mac 1's recorded runs), so 0.15 is caught in each.
+EXTRA_SHARE = float(os.environ.get("ANGELO_QA_WAIT_EXTRA_SHARE") or 0)
 
 
 def window():
@@ -357,8 +364,12 @@ def measure(controller, checks):
     if "loop" not in marks:
         marks.update(loop=gauge.LoopRate(), stats=dict(marble_frames.stats), stats_at=t)
         marks["loop"].start()
-    reading = lambda: (marks["loop"].count, marble_host.frames, marble_host.tick_seconds)  # noqa: E731
-    if not gauge.alternate(marks, "rate", reading, 1.5, 10, t):
+        if EXTRA_SHARE:   # The positive control: main-thread work while the animation runs that no frame shows.
+            bpy.app.timers.register(lambda: gauge.burn(EXTRA_SHARE, 0.05) if "orbit" not in marks else None,
+                                    first_interval=0.05)
+    reading = lambda: (marks["loop"].count, marble_host.frames, marble_host.tick_seconds,  # noqa: E731
+                       gauge.thread_cpu())   # The main thread's own CPU time: a wall-clock rate moves with load.
+    if not gauge.alternate(marks, "rate", reading, 1.5, RATE_WINDOWS, t):
         return .02
     cache_probe.assert_inactive()
     if "orbit" not in marks:
@@ -428,9 +439,15 @@ def measure(controller, checks):
                                                   "frames": len(values)} for flag, values in orbit.items()},
         orbit_marble_frames_on=orbit_frames_on, orbit_pauses=marks["paused"], orbit_pause_reason=marks["pause_reason"],
         frame_cost=marks["frame"], kept_picture_differs=marks["picture"], frames_kept_vs_full=stats)
+    agreement = gauge.agreement(marks["rate"].samples, composed)
+    observed["loop_rate_agreement"] = {key: round(value, 4) if isinstance(value, float) else value
+                                       for key, value in agreement.items()}
+    # How much of each window the main thread ran (its CPU time over the window): preemption by other work.
+    observed["loop_rate_window_ran"] = [[on, round((end[1][3] - begin[1][3]) / max(1e-9, end[0] - begin[0]), 3)]
+                                        for on in (True, False) for begin, end in marks["rate"].samples[on]]
     medians = observed["orbit_frame_ms"]
     checks["5_the_wait_takes_at_most_2_percent_of_the_main_thread"] = composed <= 0.02
-    checks["5_and_the_loop_rate_agrees_within_its_noise"] = share is not None and share <= 0.03
+    checks["5_and_the_loop_rate_agrees_within_its_noise"] = agreement["agrees"]   # This run's own noise.
     own = stats["reused_seconds"] * 1000 / max(1, stats["reused"])  # The frame's own draw: the picture and marks.
     observed["marble_frame_own_draw_ms"] = round(own, 4)
     checks["5_a_marble_frame_draws_in_under_half_a_millisecond"] = 0 < own <= 0.5

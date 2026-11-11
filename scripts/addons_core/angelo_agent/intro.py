@@ -121,6 +121,17 @@ def schedule_first_launch(startup=False):
     bpy.app.timers.register(open_when_ready, first_interval=.3)
 
 
+def startup_done():
+    """Whether Angelo's start-up has run what it owes this launch: the default layout and the card that follows the
+    splash (``angelo_safe_start`` waits for this before a start counts as completed)."""
+    import sys
+    from . import splash_setup
+    layout = sys.modules.get("angelo_default_layout")
+    layout_owed = bool(layout and getattr(layout, "running", lambda: False)())
+    scheduled = _timer is not None and bpy.app.timers.is_registered(_timer)
+    return not (layout_owed or scheduled or splash_setup.pending())
+
+
 def file_loaded():
     """After a file load (the default layout's ``load_post``). Blender drops non-persistent timers on a load, this
     module's scheduling with them, and ``card_host`` closes a visible card as lost: forget the dropped timer so the

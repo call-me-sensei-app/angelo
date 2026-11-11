@@ -16,6 +16,7 @@ Needs Godot 4.4 or newer: ``ANGELO_QA_GODOT`` (default ``/Applications/Godot.app
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+import native_suite_inputs  # noqa: E402  The Godot editor every Godot suite defaults to.
 
 import json
 import os
@@ -32,7 +33,7 @@ OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angel
 OUT.mkdir(parents=True, exist_ok=True)
 os.environ.update(ANGELO_STATE_DIR=str(OUT / "state"), ANGELO_CONNECTIONS_DIR=str(OUT / "accounts"),
                   ANGELO_LIBRARY_DIR=str(OUT / "library"), ANGELO_LINK_RECORD=str(OUT / "link-record.json"))
-GODOT = os.environ.get("ANGELO_QA_GODOT") or "/Applications/Godot.app/Contents/MacOS/Godot"
+GODOT = os.environ.get("ANGELO_QA_GODOT") or native_suite_inputs.default_godot()
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 product_env.clear("DISABLE_DEFAULT_CHAT")
 from angelo_agent import card_host, chat_destinations, director, engine_link, engine_link_ui, ui  # noqa: E402
@@ -241,11 +242,11 @@ def tick():
             state["edit_version"] = engine_link._state["version"]
             return go("in_edit_mode")
         if phase == "in_edit_mode":
-            # The notice follows the change once the scene has been quiet for a time scaled by the last export's own
-            # cost (scene_changes.quiet_seconds, at most MAX_QUIET_SECONDS): wait for it, never a fixed 2 s that a
-            # slow export on a loaded machine outlasted (1.0.8). The version is read once it has come.
+            # The notice follows the change once the gap after the last export has passed, scaled by that export's
+            # own cost (engine_link_cadence.gap_seconds, at most MAX_GAP_SECONDS): wait for it, never a fixed 2 s that
+            # a slow export on a loaded machine outlasted (1.0.8). The version is read once it has come.
             if not engine_link._state["edit_notice"]:
-                assert time.monotonic() - editor["since"] < engine_link.MAX_QUIET_SECONDS + 20, \
+                assert time.monotonic() - editor["since"] < engine_link.cadence.MAX_GAP_SECONDS + 20, \
                     "Godot was never told about Edit Mode"
                 return 0.2
             state["checks"]["edit_mode_holds_live_exports"] = engine_link._state["version"] == state["edit_version"]
@@ -255,8 +256,8 @@ def tick():
             return go("left_edit_mode")
         if phase == "left_edit_mode":
             if engine_link._state["version"] <= state["edit_version"]:
-                # A safety cap past the product's longest quiet wait (it equalled it, leaving no time for the export).
-                assert time.monotonic() - editor["since"] < engine_link.MAX_QUIET_SECONDS + 20, \
+                # A safety cap past the product's longest gap (it equalled it, leaving no time for the export).
+                assert time.monotonic() - editor["since"] < engine_link.cadence.MAX_GAP_SECONDS + 20, \
                     "no export after leaving Edit Mode"
                 return 0.2
             state["checks"]["leaving_edit_mode_exports"] = bpy.data.objects["AngeloAdded"].mode == "OBJECT"

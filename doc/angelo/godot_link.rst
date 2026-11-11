@@ -166,9 +166,11 @@ export; the engine when lights do; the scene's custom properties when extras do
 count anyway). A setting a live export never reads (the
 frame rate: it has no animation) exports nothing (``test_native_engine_link_key``,
 ``test_blender_engine_link_key``). It
-exports once the scene has been still for 0.35 s and at least three times the last
-export's duration (at most 10 s), never during a drag, a brush stroke, playback, a
-background job or Edit Mode. Edit Mode's changes reach the mesh when the person
+exports at the first change after a pause, then at a steady cadence while changes go
+on (at most every 0.1 s, and three times the last export's duration apart, at most
+10 s; each frame waits for Godot's answer to the last, up to 1 s), and always the
+last change (:doc:`engine_link`, "Cadence"); never during a viewport drag, a brush
+stroke, playback, a background job or Edit Mode. Edit Mode's changes reach the mesh when the person
 leaves it, and the export follows then; Godot is told once per stay ("Angelo is in
 Edit Mode; Godot updates when you leave it"). Sculpt and the paint modes export as
 they go. No export changes the person's mode (``web_export.run_exporter``):

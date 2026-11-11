@@ -186,6 +186,7 @@ class JobManager:
         try:
             # The budget also stops it from its own thread (a held-up main thread too); best effort.
             job_deadline.arm(record, getattr(runner, "scene", None))
+            job_deadline.reset_kernels()   # Its render's kernel compile only, never an earlier render's.
             runner.start()
         except Exception as error:
             if isinstance(error, (JobStartError, JobRequestError)):
@@ -230,7 +231,8 @@ class JobManager:
         from . import job_deadline
         job_deadline.observe_memory(record, runner)
         if state is None:
-            if job_deadline.ended_by_budget(record):   # Its break check read the deadline: said as a stop.
+            # Its break check read the deadline, or a child render's watchdog ended it at its budget: a stop.
+            if job_deadline.ended_by_budget(record) or getattr(runner, "budget_fired", False) is True:
                 record.update(status="stopping", reason="time_budget", eta_s=None)
             stopped = record["status"] == "stopping"
             try:
@@ -276,10 +278,13 @@ class JobManager:
             return
         progress = min(1.0, max(0.0, float(state.get("progress") or 0.0)))
         elapsed = now - (record["started"] or now)
+        job_deadline.observe_kernels(record, runner, elapsed)   # A one-time kernel compile: credited, said.
         record["progress"] = progress
         if progress > 0 and record["started"] and "first_progress_s" not in record["detail"]:
             # Before it: the render's setup (kernel load, scene sync, BVH), which estimates do not scale.
             record["detail"]["first_progress_s"] = round(elapsed, 3)
+            if record["detail"].get("kernel_compile_s"):   # Of that setup, the compile (facts.observe; break-it F9).
+                record["detail"]["kernel_compile_setup_s"] = record["detail"]["kernel_compile_s"]
         for key in ("frames_done", "frames_total"):
             if key in state:
                 record["detail"][key] = state[key]
@@ -289,7 +294,7 @@ class JobManager:
             # While its MP4 is made the frames are done, and the encode's length isn't known from them.
             record["eta_s"] = (elapsed * (1 - progress) / progress if not state.get("encoding")
                                and progress >= ETA_MIN_PROGRESS and elapsed >= ETA_MIN_SECONDS else None)
-            if elapsed > record["request"]["minutes"] * 60:
+            if elapsed > job_deadline.budget_s(record):   # Its minutes, plus a kernel compile (capped).
                 self.cancel(record["id"], by="time_budget")
                 return
         self.store.save(throttle=PROGRESS_SAVE_SECONDS)
@@ -344,8 +349,12 @@ def _device_used(record, runner):
     detail = record["detail"]
     if detail.get("engine") != "CYCLES" and record["kind"] not in {"BAKE_TEXTURE", "BAKE_MAPS"}:
         return   # Only Cycles renders and texture bakes have a Cycles session of their own.
-    from . import render_device_session
-    used = render_device_session.used_since(getattr(runner, "device_mark", None), getattr(runner, "scene_uid", None))
+    from . import job_render_child, render_device_session
+    if getattr(runner, "child", None) is not None:   # A child reports its own; this process's sessions (the person's
+        used = job_render_child.device_used(runner)  # F12 meanwhile) are never the job's.
+    else:
+        used = render_device_session.used_since(getattr(runner, "device_mark", None),
+                                                getattr(runner, "scene_uid", None))
     if used is None:
         return
     from . import render_device

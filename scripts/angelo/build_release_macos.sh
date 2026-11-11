@@ -103,6 +103,17 @@ python3 "$SOURCE/scripts/angelo/release_checks.py" source-clean "$SOURCE"
 python3 "$SOURCE/scripts/angelo/release_checks.py" release-dated "$SOURCE"
 python3 "$SOURCE/scripts/angelo/release_checks.py" agent-runtime "$AGENT_RUNTIME" --platform macos
 AGENT_RUNTIME="$(cd "$AGENT_RUNTIME" && pwd)"  # CMake records an absolute path.
+# Launched with Angelo's flags, the runtime holds a code-mode cell while an Angelo call waits for the person, so the
+# model is never handed "Script running" under an approval card (1.0.10 cancelled one 31 s after it appeared). Offline
+# and unbilled; a skip means the test never ran on this runtime, so it fails here too.
+HOLD_LOG="$(mktemp -t angelo-approval-hold)"
+if ! ANGELO_TEST_CODEX="$AGENT_RUNTIME/codex" python3 "$SOURCE/tests/python/angelo_agent/test_native_codex_approval_hold.py" -v \
+    >"$HOLD_LOG" 2>&1 || grep -q "skipped" "$HOLD_LOG"; then
+  cat "$HOLD_LOG" >&2
+  echo "The agent runtime in $AGENT_RUNTIME does not hold a waiting call (test_native_codex_approval_hold.py)." >&2
+  exit 1
+fi
+rm -f "$HOLD_LOG"
 
 cmake -S "$SOURCE" -B "$BUILD" -G Ninja \
   -C "$SOURCE/build_files/cmake/config/blender_release.cmake" \

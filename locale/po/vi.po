@@ -50925,7 +50925,7 @@ msgstr "OpenGL hoặc DirectX"
 
 
 msgid "OpenGL"
-msgstr "OpenCL"
+msgstr "OpenGL"
 
 
 msgid "Normal map uses OpenGL convention, with Y axis in the green channel pointing up"

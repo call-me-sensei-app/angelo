@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 import re
 
 from .fab_catalog import FabError, Item, MAX_VARIANTS, QUALITIES, Variant, text, token
-from .team_library_files import MAX_BYTES
+from .fab_formats import BY_CODE, MAX_DOWNLOAD
 
 
 @dataclass(frozen=True, repr=False, slots=True)
@@ -26,7 +26,7 @@ class BrowserChoice:
     def __post_init__(self):
         token(self.local_id)
         token(self.control_id)
-        if self.format != 'glb':
+        if self.format not in BY_CODE:
             raise FabError('UNSUPPORTED')
         text(self.filename, 255)
         if (self.filename in ('.', '..') or any(c in '/\\' or ord(c) == 127
@@ -36,7 +36,7 @@ class BrowserChoice:
         if self.quality is not None and self.quality not in QUALITIES:
             raise FabError('INVALID_METADATA')
         if self.exact_bytes is not None and (type(self.exact_bytes) is not int
-                                             or not 0 < self.exact_bytes <= MAX_BYTES['model']):
+                                             or not 0 < self.exact_bytes <= MAX_DOWNLOAD):
             raise FabError('LIMIT_EXCEEDED')
         if self.publisher_revision is not None:
             token(self.publisher_revision)
@@ -66,8 +66,10 @@ class ListingObservation:
                 or type(self.offers) is not tuple or len(self.offers) > 8
                 or self.entitlement == 'download_available' and self.access not in ('owned', 'free')):
             raise FabError('INVALID_METADATA')
+        kinds = {BY_CODE[c.format].kind for c in self.choices}
         return Item.parse(dict(id=self.identity, title=self.title, author=self.author, license=self.license,
-                               access=self.access, kind='model', variants=[c.variant() for c in self.choices],
+                               access=self.access, kind='material' if 'material' in kinds else 'model',
+                               variants=[c.variant() for c in self.choices],
                                offers=list(self.offers)))
 
 
@@ -87,7 +89,7 @@ class CompletedDownload:
     def resolved_variant(self, selected):
         if (type(self.choice) is not BrowserChoice or selected.browser_choice != self.choice
                 or type(self.size) is not int
-                or not 0 < self.size <= MAX_BYTES['model']
+                or not 0 < self.size <= MAX_DOWNLOAD
                 or self.choice.exact_bytes is not None and self.size != self.choice.exact_bytes
                 or type(self.sha256) is not str or not re.fullmatch('[0-9a-f]{64}', self.sha256)):
             raise FabError('CORRUPT')

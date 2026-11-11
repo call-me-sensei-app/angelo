@@ -61,7 +61,7 @@ from pathlib import Path
 
 import bpy
 
-from . import job_render_samples, scene_queries, view_cache, view_picture, view_scene_check
+from . import job_render_samples, scene_queries, view_cache, view_picture, view_render_timing, view_scene_check
 from .input_policy import tool_running
 from .job_runners import SAMPLES as SAMPLE_PATHS, native
 from .job_spec import PREVIEW, JobRequestError, native_jobs_available
@@ -77,7 +77,7 @@ from .view_spec import RENDER_REQUEST_SECONDS, RENDER_SAMPLES, RENDER_SECONDS, R
 from .refusal_codes import coded, refusal_code
 
 MINIMUM_SECONDS = 15   # A look does not start with less of its request's budget left.
-HEAVY_PREPARATION = 10  # Seconds of preparation from which a result says that LIT is the way to iterate.
+from .view_render_timing import HEAVY_PREPARATION  # noqa: E402,F401  (its suites read it here)
 SAMPLE_SECONDS = 20    # A look whose first sample came late still renders samples for this long.
 GRACE_SECONDS = 45     # The pending call outlives the budget by the stop latency and the finish.
 NO_CAMERA = ("The scene has no active camera, and a RENDERED look renders the scene camera. Add or choose a "
@@ -86,6 +86,7 @@ NO_CAMERA = ("The scene has no active camera, and a RENDERED look renders the sc
 OTHER_JOBS = ("POINTCACHE", "BAKE_GEOMETRY_NODES", "USD_EXPORT", "ALEMBIC_EXPORT")
 
 _spent = {}    # conversation id -> (request, seconds of looks that request has rendered)
+_exempted = {}  # conversation id -> (request, seconds of kernel compile its looks were not charged; at most a cap)
 _pending = {}  # job id -> RenderPending, until its job ends
 
 
@@ -224,11 +225,30 @@ def ended(manager, record):
     pending = _pending.pop(record["id"], None)
     if pending is None:
         return
-    request, spent = _spent.get(pending.context["session"], (None, 0.0))
-    spent = spent if request == pending.context["request"] else 0.0
-    _spent[pending.context["session"]] = (pending.context["request"], spent + pending.runner.seconds)
+    session, current = pending.context["session"], pending.context["request"]
+    request, spent = _spent.get(session, (None, 0.0))
+    spent = spent if request == current else 0.0
+    request, exempted = _exempted.get(session, (None, 0.0))
+    exempted = exempted if request == current else 0.0
+    # Not its kernel compile (view_render_timing): a one-time cost, never the request's look budget; at most one cap
+    # of it over the request's looks, so looks that always compile still run out (break-it F3).
+    # Taken now: the result is composed later (_pump_events), after a queued job's start reset the watch (r2 R3).
+    pending.compiled = _look_compile(pending.runner, record["detail"].get("engine") == "CYCLES")
+    this = view_render_timing.exempt(pending.compiled[0], exempted)
+    _exempted[session] = (current, exempted + this)
+    _spent[session] = (current, spent + max(0.0, pending.runner.seconds - this))
     if pending.closed:
         pending.discard()
+
+
+def _look_compile(runner, cycles):
+    """``(compiled, before)``: the look's kernel load before its first sample, for both. Only that is the render's
+    kernel load (break-it F9, r2 R1): after it, Cycles' status can carry a view layer's name while it denoises."""
+    if not cycles:
+        return 0.0, 0.0
+    began, first = getattr(runner, "began", None), runner.first_sample
+    before = view_render_timing.compiled_s(until=began + first if began is not None and first is not None else None)
+    return before, before
 
 
 class RenderPending(StudioPending):
@@ -244,7 +264,10 @@ class RenderPending(StudioPending):
         super().__init__(self._poll_job, self._stop)
         self.manager, self.record, self.runner = manager, record, runner
         self.references, self.context = references, context
-        self.timeout = record["request"]["minutes"] * 60 + GRACE_SECONDS
+        # Never before its job's budget, which a Cycles kernel compile extends (job_deadline.budget_s; break-it F3).
+        self.timeout = view_render_timing.look_timeout(record["request"]["minutes"], GRACE_SECONDS,
+                                                       record["detail"].get("engine") == "CYCLES")
+        self.compiled = None   # (compiled, before), taken as its job ended (``ended``).
 
     def _poll_job(self):
         return _result(self) if self.record["status"] in TERMINAL else None
@@ -338,15 +361,12 @@ def _outcome(pending):
         rendered.update(samples=samples, scene_samples=context["scene_samples"])
         if complete or engine != "CYCLES":  # Cycles denoises as a render ends: whether a stopped one was is not known.
             rendered["denoised"] = engine == "CYCLES"
-    took = "It took %s s" % round(runner.seconds, 1)
-    if runner.first_sample is not None:
-        # Why it took that long, so the model can choose: preparation is the scene's, sampling the look's.
-        prepare = round(runner.first_sample, 1)
-        rendered.update(prepare_seconds=prepare, sampling_seconds=round(max(0.0, runner.seconds - runner.first_sample), 1))
-        took += ": %s s preparing the scene for rendering and %s s sampling" % (prepare, rendered["sampling_seconds"])
-        if prepare >= HEAVY_PREPARATION:
-            took += (". Preparation does not depend on the picture's size or samples, so every look of this scene "
-                      "costs about as much: iterate with LIT (seconds) and render at checkpoints")
+    # Why it took that long, so the model can choose: a one-time kernel compile, the scene's preparation, sampling.
+    compiled = pending.compiled if pending.compiled is not None else _look_compile(runner, engine == "CYCLES")
+    timing = view_render_timing.look_timing(runner.seconds, runner.first_sample, *compiled)
+    took = timing.pop("took")
+    timing.pop("spent_s")
+    rendered.update(timing)
     request, spent = _spent.get(context["session"], (None, 0.0))
     rendered["request_seconds_left"] = max(0, round(RENDER_REQUEST_SECONDS - (spent if request == context["request"] else 0.0)))
     note = ("An actual %s render of %s, as F12 renders it (scene lights, world, volumes, compositing, render-level "

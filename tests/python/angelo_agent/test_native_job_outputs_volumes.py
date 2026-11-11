@@ -477,6 +477,64 @@ def _hdiutil(*arguments):
     return subprocess.run(["hdiutil", *arguments], capture_output=True, text=True, timeout=120)
 
 
+_METADATA = (b"com.angelo.test.provenance", b"1")
+
+
+def _set_metadata(path):
+    """Give ``path`` an extended attribute, as macOS's provenance (com.apple.provenance) gives every file and folder a
+    shipped, notarized Angelo writes: on FAT and exFAT the volume then keeps it in a real AppleDouble ``._`` partner."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    name, value = _METADATA
+    if libc.setxattr(os.fsencode(str(path)), name, value, len(value), 0, 0x0001) != 0:   # XATTR_NOFOLLOW
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error), str(path))
+
+
+def _set_metadata_fd(descriptor):
+    libc = ctypes.CDLL(None, use_errno=True)
+    name, value = _METADATA
+    if libc.fsetxattr(descriptor, name, value, len(value), 0, 0) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+
+
+def provenance_on(device):
+    """Patches that mark each folder and file created on ``device`` at its creation, as provenance does: the product
+    records a staging folder's partner when it makes the folder, and a partner that appears later is foreign."""
+    real_mkdir, real_open = os.mkdir, os.open
+
+    def mark(descriptor):
+        if os.fstat(descriptor).st_dev == device:
+            _set_metadata_fd(descriptor)
+
+    def mkdir(path, mode=0o777, *, dir_fd=None):
+        real_mkdir(path, mode, dir_fd=dir_fd)
+        descriptor = real_open(path, os.O_RDONLY, dir_fd=dir_fd)
+        try:
+            mark(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def open_(path, flags, mode=0o777, *, dir_fd=None):
+        descriptor = real_open(path, flags, mode, dir_fd=dir_fd)
+        if flags & os.O_CREAT and not os.path.basename(os.fsdecode(path)).startswith("._"):
+            try:
+                mark(descriptor)
+            except BaseException:
+                os.close(descriptor)
+                raise
+        return descriptor
+
+    # The wrappers stand where the real functions are registered (``os.open in os.supports_dir_fd``, ...).
+    sets = {}
+    for registry in ("supports_dir_fd", "supports_fd", "supports_follow_symlinks", "supports_effective_ids"):
+        current = getattr(os, registry)
+        added = {wrapper for real, wrapper in ((real_mkdir, mkdir), (real_open, open_)) if real in current}
+        sets[registry] = current | added
+    return [patch.object(os, "mkdir", mkdir), patch.object(os, "open", open_)] + [
+        patch.object(os, registry, value) for registry, value in sets.items()]
+
+
 class OnVolume(Scenarios):
     """Each test on a small disk image of ``file_system``, attached without Finder and detached in cleanup."""
     file_system = None
@@ -484,7 +542,10 @@ class OnVolume(Scenarios):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(prefix="angelo-volume-")
         self.addCleanup(temp.cleanup)
-        image, mount = Path(temp.name) / "volume.dmg", Path(temp.name) / "mount"
+        # Resolved, as the folder below does: a person's volume mounts at /Volumes/<name>, never below macOS's /var
+        # symlink, and snapshot storage refuses a directory link (checkpoint_filesystem).
+        folder = Path(temp.name).resolve()
+        image, mount = folder / "volume.dmg", folder / "mount"
         mount.mkdir()
         made = _hdiutil("create", "-quiet", "-size", "32m", "-fs", self.file_system, "-volname", "ANGELOTEST",
                         str(image))
@@ -497,18 +558,36 @@ class OnVolume(Scenarios):
                         or _hdiutil("detach", "-quiet", "-force", str(mount)))
         self.root = mount / "workspace"
         self.root.mkdir()
+        # Whether this process's own writes already carry metadata the volume keeps in ._ partners: a notarized,
+        # downloaded Angelo's do (provenance); a development build's interpreter (macOS 26.6, Mac 2) writes none.
+        probe = self.root / "probe"
+        probe.write_bytes(b"")
+        self.native_metadata = (self.root / "._probe").exists()
+        probe.unlink()
+        if (self.root / "._probe").exists():
+            (self.root / "._probe").unlink()
+        if not self.native_metadata:
+            for patcher in provenance_on(self.root.stat().st_dev):
+                patcher.start()
+                self.addCleanup(patcher.stop)
         with cf._private_directory(self.root) as folder:
             observed = job_output_links.volume_info(folder)
         expected = {'ExFAT': 'exfat', 'MS-DOS': 'msdos', 'HFS+': 'hfs', 'APFS': 'apfs'}[self.file_system]
         self.assertEqual(observed['kind'], expected)
         PAIR_OBSERVATIONS.append(dict(test=self.id(), volume=observed))
 
+    def put(self, path, data):
+        """Write a file the way the shipped app does: with metadata unless this process already writes it."""
+        path.write_bytes(data)
+        if not self.native_metadata and not path.name.startswith("._"):
+            _set_metadata(path)
+
 
 
 class PairedScenarios:
     def test_paired_metadata_moves_with_payload_but_marker_is_never_payload(self):
         staging = self.staging('renders/anim', 'pair')
-        (staging.path / 'frame.png').write_bytes(b'frame-data')
+        self.put((staging.path / 'frame.png'), b'frame-data')
         source = staging.path / '._frame.png'
         self.assertTrue(source.is_file(), 'actual metadata exists on the mounted volume')
         before = source.read_bytes()
@@ -534,12 +613,12 @@ class PairedScenarios:
     def test_destination_only_foreign_partner_is_preserved_when_source_has_none(self):
         staging = self.staging('exports/asset.bin', 'foreign-pair')
         payload = staging.path / 'asset.bin'
-        payload.write_bytes(b'payload')
+        self.put(payload, b'payload')
         companion = staging.path / '._asset.bin'
         if companion.exists():
             companion.unlink()  # Explicit fixture vector: source has no metadata; never a production remedy.
         foreign = self.root / 'exports/._asset.bin'
-        foreign.write_bytes(b'foreign-not-AppleDouble')
+        self.put(foreign, b'foreign-not-AppleDouble')
         before = foreign.read_bytes()
         published = staging.publish_file('asset.bin')
         self.assertNotEqual(published, self.root / 'exports/asset.bin')
@@ -551,7 +630,7 @@ class PairedScenarios:
     def test_unknown_or_unpaired_staging_metadata_is_preserved_and_refuses(self):
         staging = self.staging('renders/anim', 'unknown-pair')
         foreign = staging.path / '._orphan'
-        foreign.write_bytes(b'foreign-unpaired')
+        self.put(foreign, b'foreign-unpaired')
         with self.assertRaises((ValueError, OSError)):
             staging.publish_folder()
         self.assertEqual(foreign.read_bytes(), b'foreign-unpaired')
@@ -561,9 +640,9 @@ class PairedScenarios:
 
     def test_malformed_paired_metadata_is_preserved_before_mutation(self):
         staging = self.staging('renders/anim', 'malformed-pair')
-        (staging.path / 'frame.png').write_bytes(b'frame-data')
+        self.put((staging.path / 'frame.png'), b'frame-data')
         metadata = staging.path / '._frame.png'
-        metadata.write_bytes(b'malformed-foreign-metadata')
+        self.put(metadata, b'malformed-foreign-metadata')
         with self.assertRaises((ValueError, OSError)):
             staging.publish_folder()
         self.assertEqual((staging.path / 'frame.png').read_bytes(), b'frame-data')
@@ -575,7 +654,7 @@ class PairedScenarios:
     def test_successful_main_move_without_partner_completion_is_not_success(self):
         staging = self.staging('exports/asset.bin', 'partial-pair')
         payload = staging.path / 'asset.bin'
-        payload.write_bytes(b'payload')
+        self.put(payload, b'payload')
         metadata = (staging.path / '._asset.bin').read_bytes()
         real = exclusive_rename.rename
         injected = []
@@ -605,7 +684,7 @@ class PairedScenarios:
     def test_existing_staging_partner_refuses_creation_without_touching_foreign_bytes(self):
         (self.root / 'exports').mkdir()
         foreign = self.root / 'exports/._.angelo-job-existing-pair'
-        foreign.write_bytes(b'foreign-staging-partner')
+        self.put(foreign, b'foreign-staging-partner')
         with self.assertRaises((ValueError, OSError, job_manager.JobStartError)):
             self.staging('exports/asset.bin', 'existing-pair')
         self.assertEqual(foreign.read_bytes(), b'foreign-staging-partner')
@@ -614,11 +693,11 @@ class PairedScenarios:
     def test_replaced_staging_partner_refuses_cleanup_before_payload_removal(self):
         staging = self.staging('exports/asset.bin', 'staging-pair')
         payload = staging.path / 'asset.bin'
-        payload.write_bytes(b'kept-payload')
+        self.put(payload, b'kept-payload')
         target = staging.path.parent / ('._' + staging.name)
         original = target.read_bytes()
         other = staging.path.parent / 'other-staging-metadata'
-        other.write_bytes(original)
+        self.put(other, original)
         old = target.stat().st_ino
         os.replace(other, target)
         self.assertNotEqual(target.stat().st_ino, old)
@@ -628,11 +707,11 @@ class PairedScenarios:
 
     def test_late_destination_partner_before_move_is_preserved(self):
         staging = self.staging('exports/asset.bin', 'late-pair')
-        (staging.path / 'asset.bin').write_bytes(b'payload')
+        self.put((staging.path / 'asset.bin'), b'payload')
         foreign = self.root / 'exports/._asset.bin'
         called = []
         def collision():
-            foreign.write_bytes(b'late-foreign')
+            self.put(foreign, b'late-foreign')
             called.append(True)
         with self.assertRaises(FileExistsError):
             job_output_links.publish_entry(staging.folder, 'asset.bin', staging.parent, 'asset.bin',
@@ -645,12 +724,12 @@ class PairedScenarios:
 
     def test_replaced_published_companion_blocks_rollback_and_preserves_foreign_bytes(self):
         staging = self.staging('exports/asset.bin', 'swapped-pair')
-        (staging.path / 'asset.bin').write_bytes(b'payload')
+        self.put((staging.path / 'asset.bin'), b'payload')
         published = staging.publish_file('asset.bin')
         target = published.parent / ('._' + published.name)
         original = target.read_bytes()
         other = published.parent / 'other-metadata'
-        other.write_bytes(original)
+        self.put(other, original)
         old = target.stat().st_ino
         os.replace(other, target)
         self.assertNotEqual(target.stat().st_ino, old, 'a different actual file owns the companion name')

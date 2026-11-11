@@ -6,8 +6,9 @@ VFX audit A2. On Blender's own render job, through the real executor:
 
 * a multilayer OpenEXR (DWAA, half float) of two view layers with Depth, Normal
   and Cryptomatte passes, named ``sh010_v003.###`` on the scene's frame step of
-  2: exactly frames 1, 3 and 5, each file whole, holding every layer's passes
-  and the scene's codec, and the approval says so;
+  2: exactly frames 1, 3 and 5, each file whole, holding every layer's passes,
+  the scene's codec on its colour passes and lossless ZIP on its data passes
+  (Blender 5.2.4's rule for a lossy DWA codec), and the approval says so;
 * a 16-bit TIFF still in the scene's own format, named with its suffix;
 * the scene's own plain file name used as the frame pattern when no name is
   given, as F12 names it;
@@ -50,25 +51,37 @@ from angelo_agent import job_frame_check, job_render_scene, job_settings  # noqa
 harness = Harness("ANGELO_RENDER_DELIVERABLES", "render-deliverables.json", "/tmp/angelo-render-deliverables-qa",
                   timeout=420)
 ctx = harness.ctx
-DWAA = 8   # OpenEXR's compression code (ImfCompression.h).
+# OpenEXR's compression codes (ImfCompression.h).
+ZIP, DWAA, DWAB = 3, 8, 9
+# Blender's colour passes (RE_RenderPassIsColor): channel ids made of these letters, case-sensitive. Every other pass
+# is data (Depth Z, Normal XYZ, Vector XYZW, Cryptomatte's lowercase rgba, ...).
+COLOR_LETTERS = frozenset("RGBA")
 
 
-def exr_channels(path):
-    """Channel names and compression of a single- or multi-part OpenEXR, read from its header."""
+def exr_parts(path):
+    """``[(part name, channel names, compression)]`` of a single- or multi-part OpenEXR, read from its headers."""
     data = Path(path).read_bytes()
     read = lambda offset, count: data[offset:offset + count]   # noqa: E731
     (version,) = struct.unpack("<i", read(4, 4))
     headers, _end = job_frame_check._exr_headers(read, len(data), version)
-    names, codecs = [], set()
+    parts = []
     for header in headers:
-        raw = header["channels"][1]
-        position = 0
+        raw, position, names = header["channels"][1], 0, []
         while raw[position:position + 1] != b"\0":
             end = raw.index(b"\0", position)
             names.append(raw[position:end].decode())
             position = end + 1 + 16
-        codecs.add(header["compression"][1][0])
-    return names, codecs
+        name = header.get("name", (None, b""))[1].rstrip(b"\0").decode(errors="replace")
+        parts.append((name, names, header["compression"][1][0]))
+    return parts
+
+
+def expected_codec(channels, scene_codec):
+    """The codec Blender writes a part with: the scene's, except that a data pass is kept lossless (ZIP) when the
+    scene's codec is lossy DWA (Blender 5.2.4, 35528c4c39f "Fix #51231": data passes were degraded by DWA)."""
+    letters = {channel.rsplit(".", 1)[-1] for channel in channels}
+    is_color = all(len(letter) == 1 and letter in COLOR_LETTERS for letter in letters)
+    return ZIP if not is_color and scene_codec in (DWAA, DWAB) else scene_codec
 
 
 def person_settings(scene):
@@ -118,12 +131,18 @@ def step(harness):
         whole = [job_frame_check.whole(lambda o, c, d=(folder / n).read_bytes(): d[o:o + c],
                                        (folder / n).stat().st_size, ".exr") for n in names]
         check("every_file_whole", bool(names) and all(answer is True for answer in whole))
-        channels, codecs = exr_channels(folder / names[0]) if names else ([], set())
+        parts = exr_parts(folder / names[0]) if names else []
+        channels = [channel for _name, part_channels, _codec in parts for channel in part_channels]
         ctx["channels"] = channels[:40]
+        ctx["codecs"] = {name: codec for name, _channels, codec in parts}
         check("every_layer_and_pass_in_one_file", all(any(name.startswith(prefix) for name in channels) for prefix in
                                                       ("ViewLayer.Depth", "FG.Depth", "ViewLayer.Normal",
                                                        "FG.Normal", "ViewLayer.CryptoObject", "FG.CryptoObject")))
-        check("the_scenes_codec", codecs == {DWAA})
+        # The scene's DWAA on every colour part, ZIP on every data part (Depth, Normal, Cryptomatte here), judged by
+        # each part's own channels; the file has both kinds, so neither half is vacuous.
+        expected = {name: expected_codec(part_channels, DWAA) for name, part_channels, _codec in parts}
+        check("the_scenes_codec", bool(parts) and ctx["codecs"] == expected
+              and {DWAA, ZIP} <= set(expected.values()))
         check("receipt_names_the_pattern", any(entry.get("file") == "sh010_v003.###.exr"
                                                for entry in record["receipt"].get("outputs", [])))
         check("person_settings_unchanged", person_settings(scene) == ctx["person"] and job_settings.TAG not in scene)

@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Angelo Contributors
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Approved Fab preparation and stock GLB import inside the native asset Undo transaction."""
+"""Approved Fab preparation and import inside the native asset Undo transaction.
+
+A self-contained GLB goes through Blender's stock glTF importer (``asset_stock_import.apply_glb``); every other
+format arrives as the converter's clean .blend (``fab_convert``) and is appended like a Blender Essentials asset
+(``blender_asset_import.apply_item``). A texture set's material goes on the selected editable meshes, or into this
+file's asset library when none is selected."""
 import time
 
 from . import live_target
@@ -26,21 +31,50 @@ def ready():
 
 def _row(prepared):
     item, proof = prepared.item, prepared.payload_proof
-    return {'id': 'fab:' + item.identity, 'name': item.title, 'kind': 'model', 'origin': 'fab',
-            'license': item.license, 'author': item.author,
-            'file': {'relative': proof.relative, 'path': proof.path, 'size': proof.size, 'sha256': proof.sha256}}
+    row = {'id': 'fab:' + item.identity, 'name': item.title, 'kind': 'model', 'origin': 'fab',
+           'license': item.license, 'author': item.author,
+           'file': {'relative': proof.relative, 'path': proof.path, 'size': proof.size, 'sha256': proof.sha256}}
+    conversion = prepared.facts.get('conversion') if isinstance(prepared.facts, dict) else None
+    if conversion is not None:
+        row.update(kind='material' if conversion['id_type'] == 'MATERIAL' else 'model',
+                   id_type=conversion['id_type'], datablock=conversion['name'])
+    return row
 
 
-def _result(facts, row):
+def payload_format(row):
+    return 'blend' if row['file']['relative'] == 'asset.blend' else 'glb'
+
+
+def material_targets(window):
+    """The editable meshes selected now: where a texture set's material goes (none: the file's asset library)."""
+    layer = window.view_layer
+    return tuple(obj for obj in window.scene.objects if obj.type == 'MESH' and obj.select_get(view_layer=layer)
+                 and obj.library is None and obj.data.library is None)
+
+
+def held_targets(scene, identities):
+    """The chosen meshes again, by identity; refuses when one was deleted or changed kind meanwhile."""
+    found = {obj.session_uid: obj for obj in scene.objects if obj.session_uid in identities}
+    if len(found) != len(identities) or any(found[uid].type != 'MESH' for uid in identities):
+        raise NotImported('A chosen mesh changed before import.')
+    return tuple(found[uid] for uid in identities)
+
+
+def _result(facts, row, targets=()):
     from .scene_queries import object_handle
     if (not isinstance(facts, dict) or type(facts.get('schema')) is not int or facts['schema'] != 1
             or facts.get('source') != 'fab'
             or facts.get('item_id') != row['id']):
         raise RuntimeError('Native Fab result is unavailable')
-    return dict(success=True, item_id=row['id'], source='fab', title=row['name'], kind='model',
-                license=row['license'], author=row['author'], blender_undoable=True,
-                objects=[{'handle': object_handle(o), 'name': o.name, 'type': o.type} for o in facts['objects']],
-                changes=facts['changes'], object_count=facts['object_count'])
+    objects = facts['objects'] if row['kind'] == 'model' else targets
+    result = dict(success=True, item_id=row['id'], source='fab', title=row['name'], kind=row['kind'],
+                  license=row['license'], author=row['author'], blender_undoable=True,
+                  objects=[{'handle': object_handle(o), 'name': o.name, 'type': o.type} for o in objects],
+                  changes=facts['changes'], object_count=len(objects), usage=facts.get('usage'))
+    for key in ('scaled_to_scene', 'placed_beside'):
+        if key in facts:
+            result[key] = facts[key]
+    return result
 
 
 class RetiredImport:
@@ -81,13 +115,17 @@ class RetiredImport:
         return True
 
 
-def start(host, window, item_id, variant_id, expected, point):
+def start(host, window, item_id, variant_id, expected, point, targets=None):
     from .library_agent import LibraryPending, _finish_failure
     ready()
     if host.active_import is not None or host.retired_import is not None:
         raise FabError('UNAVAILABLE')
     session = host.current_session()
     held_window, held_scene = live_target.window_ref(window), live_target.scene_ref(window.scene)
+    # A texture set's meshes are chosen now (named, else selected), and found again by identity at import.
+    material = expected[1].kind == 'material'
+    target_ids = tuple(o.session_uid for o in (targets if targets is not None else material_targets(window))) \
+        if material else ()
     deadline = time.monotonic() + 900
     state = {'prepared': None, 'payload': None, 'row': None, 'result': None, 'entered': False}
     job = host.submit_agent(lambda current, stop: current.prepare(item_id, variant_id, expected=expected, cancel=stop),
@@ -106,7 +144,8 @@ def start(host, window, item_id, variant_id, expected, point):
             if state['prepared'] is None:
                 state['prepared'] = value
                 state['row'] = _row(value)
-                state['payload'] = AssetCommit(state['row'], deadline=deadline, payload_format='glb')
+                state['payload'] = AssetCommit(state['row'], deadline=deadline,
+                                               payload_format=payload_format(state['row']))
                 job = host.submit_agent(lambda current, stop: state['payload'].seal_payload(state['row'], stop), import_owner=pending)
                 return None
             import bpy
@@ -120,10 +159,11 @@ def start(host, window, item_id, variant_id, expected, point):
                 raise NotImported('The approved 3D Viewport is no longer available.')
             # Stock effects start only after AssetCommit's native dirty-before capture.
             with bpy.context.temp_override(window=window, area=area, region=region):
+                targets = held_targets(scene, target_ids) if target_ids else ()
                 state['entered'] = True
                 state['result'] = state['prepared'].consume(lambda _item, _facts:
-                    state['payload'].finish(bpy.context, state['row'], point=point,
-                                           format_result=lambda facts: _result(facts, state['row'])))
+                    state['payload'].finish(bpy.context, state['row'], point=point, targets=targets,
+                                           format_result=lambda facts: _result(facts, state['row'], targets)))
         except Exception as error:
             if state['entered']:
                 state['result'] = _finish_failure(error)

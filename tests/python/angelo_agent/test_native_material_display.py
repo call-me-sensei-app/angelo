@@ -472,6 +472,8 @@ NO_SYNC = {
     "script_rename_watch.py": "wraps a script's own libraries.load to watch names; the script pass syncs what it brings",
     "engine_reimport.py": "reads an export back for the preflight and removes every data block it made: nothing stays",
     "web_world_bake.py": "renders a copy of the World in another background Blender; the file gets nothing",
+    "fab_convert_child.py": "converts a Fab download into a clean .blend in a background child; the app's own append "
+                            "(blender_asset_import.apply_item, stamp_created) syncs every material it brings",
 }
 
 

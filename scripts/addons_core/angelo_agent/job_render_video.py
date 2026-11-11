@@ -254,7 +254,9 @@ def _schedule():
 def writing(owner):
     """Whether a child of job ``owner`` still runs: it may still write into the job's staging folder, so that folder
     is neither published nor removed yet (``EncodePhase.abandon``, ``job_render_keep``, ``job_ui._keep_pending``)."""
-    return owner is not None and any(encoder.owner == owner and encoder.running() for encoder in list(_running))
+    from . import job_render_child   # Or its render child (job_render_child), which writes the frames there.
+    return owner is not None and (any(encoder.owner == owner and encoder.running() for encoder in list(_running))
+                                  or job_render_child.writing(owner))
 
 
 def _end_all():

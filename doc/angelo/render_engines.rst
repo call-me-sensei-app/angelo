@@ -180,6 +180,17 @@ registers, and a commercial V-Ray that cannot get its licence exits after about 
   engine, so a render there of a scene set to an add-on's engine uses EEVEE without saying so. Python cannot read the
   stored engine name; closing it needs that name from the application (a read-only RNA property).
 
+Machines without a GPU
+----------------------
+
+Angelo is not built for a machine without a GPU, and such a machine never reaches a render: a windowed Angelo refuses
+to start there, with Blender's own "Unsupported Graphics Card Configuration" dialog (OpenGL 4.3 or newer required),
+so no person ever starts the background children above. A background Angelo does start, and a Workbench or EEVEE
+render in it ends Blender with an access violation (a read of address 0, after Vulkan and then the software WGL
+fallback fail) instead of reporting an error; a factory-startup Workbench still with no Angelo code does the same
+(build3, 2026-11-11, offset 0x4790B0 in Angelo.exe). The windowless native suites that render on the GPU are therefore
+``needs_opengl`` and skipped on the GPU-less Windows builders (``test_native_suite_opengl``).
+
 V-Ray for Blender
 -----------------
 

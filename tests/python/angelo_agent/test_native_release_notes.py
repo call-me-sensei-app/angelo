@@ -72,7 +72,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(changelog.document(changelog.parse(document(entry("1.0.2"))))["releases"][0]["title"], "Angelo 1.0.2")
 
     def test_structure_is_enforced(self):
-        self.refused(document(entry("1.0.0", "Unreleased"), entry("0.9.0", "Unreleased")), "only the newest")
+        self.refused(document(entry("1.0.1", "Unreleased"), entry("1.0.0", "Unreleased")), "one Unreleased entry")
         self.refused(document(entry("1.0.0"), entry("1.1.0")), "newest first")
         self.refused(document(entry("1.0.0"), entry("1.0.0")), "newest first")
         self.refused(document(entry().replace("A summary of the release.\n", "")), "needs a summary")
@@ -130,6 +130,53 @@ class ParserTests(unittest.TestCase):
                 changelog.feed_fields(changelog.parse(document(entry())), "9.9.9")
 
 
+class ReleaseLineTests(unittest.TestCase):
+    """Two release lines in flight at once (1.0.x keeps getting fixes beside 1.1.x): at most one Unreleased entry per
+    MAJOR.MINOR line, each line's Unreleased entry is that line's newest, and versions stay strictly descending."""
+
+    refused = ParserTests.refused
+
+    def test_each_line_may_have_its_own_unreleased_entry(self):
+        releases = changelog.validate(changelog.parse(document(
+            entry("1.1.0", "Unreleased"), entry("1.0.11", "Unreleased"), entry("1.0.10"), entry("1.0.9"))))
+        self.assertEqual([(r["version"], r["date"]) for r in releases],
+                         [("1.1.0", None), ("1.0.11", None), ("1.0.10", "2026-10-20"), ("1.0.9", "2026-10-20")])
+        changelog.validate(changelog.parse(document(entry("2.0.0", "Unreleased"), entry("1.1.1"),
+                                                    entry("1.0.12", "Unreleased"), entry("1.0.11"))))
+
+    def test_two_unreleased_entries_in_one_line_are_refused(self):
+        self.refused(document(entry("1.1.0", "Unreleased"), entry("1.0.12", "Unreleased"),
+                              entry("1.0.11", "Unreleased")), "1.0.11: one Unreleased entry per release line")
+        self.refused(document(entry("1.1.1", "Unreleased"), entry("1.1.0", "Unreleased")), "one Unreleased entry")
+
+    def test_an_unreleased_entry_below_a_dated_one_of_its_line_is_refused(self):
+        self.refused(document(entry("1.0.12"), entry("1.0.11", "Unreleased")),
+                     "1.0.11: Unreleased below 1.0.12, a dated release of its own line")
+        self.refused(document(entry("1.1.0", "Unreleased"), entry("1.0.12"), entry("1.0.11", "Unreleased")),
+                     "dated release of its own line")
+
+    def test_entries_stay_newest_first_across_lines(self):
+        self.refused(document(entry("1.0.11", "Unreleased"), entry("1.1.0", "Unreleased")), "newest first")
+        self.refused(document(entry("1.1.0", "Unreleased"), entry("1.0.10"), entry("1.0.11", "Unreleased")),
+                     "newest first")
+
+    def test_the_feed_fields_and_whats_new_pick_each_lines_entry(self):
+        releases = changelog.validate(changelog.parse(document(
+            entry("1.1.0", "Unreleased"), entry("1.0.11", "Unreleased"), entry("1.0.10"))))
+        self.assertEqual(changelog.feed_fields(releases, "1.0.11")["title"], "Angelo 1.0.11")
+        self.assertEqual(changelog.feed_fields(releases, "1.1.0")["title"], "Angelo 1.1")
+        with tempfile.TemporaryDirectory() as folder:
+            source, out = Path(folder, "CHANGELOG.md"), Path(folder, "release_notes.json")
+            source.write_text(document(entry("1.1.0", "Unreleased"), entry("1.0.11", "Unreleased"), entry("1.0.10")),
+                              encoding="utf-8")
+            self.assertEqual(changelog.main(["export", "--source", str(source), "--out", str(out)]), 0)
+            shipped = release_notes.load(out)
+            for running in ("1.0.11", "1.1.0"):
+                with self.subTest(running=running):
+                    notes, remember = release_notes.whats_new("1.0.10", running, shipped)
+                    self.assertEqual((notes.version, notes.date, remember), (running, "", running))
+
+
 class RepositoryChangelogTests(unittest.TestCase):
     def test_the_changelog_is_valid_and_the_bundled_json_is_current(self):
         releases = changelog.load()
@@ -183,7 +230,9 @@ class WhatsNewTests(unittest.TestCase):
         self.assertEqual(release_notes.whats_new("1.0.0", "1.0.0", notes), (None, "1.0.0"))
         shown, remember = release_notes.whats_new("0.9.0", "1.0.0", notes)
         self.assertEqual((shown.version, remember), ("1.0.0", "1.0.0"))
-        self.assertEqual(release_notes.whats_new("1.0.0", "1.1.0", notes), (None, "1.1.0"))   # No entry for 1.1.0 yet.
+        # A version past every shipped entry (a tree may already hold the next minor's notes) has none to show.
+        unlisted = "%d.0.0" % (int(notes[0].version.split(".")[0]) + 1)
+        self.assertEqual(release_notes.whats_new("1.0.0", unlisted, notes), (None, unlisted))
 
     def test_a_downgrade_keeps_the_highest_seen_version(self):
         self.assertEqual(release_notes.whats_new("1.2.0", "1.1.0", ()), (None, "1.2.0"))

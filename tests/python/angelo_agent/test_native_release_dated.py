@@ -68,6 +68,19 @@ class ReleaseDatedTests(unittest.TestCase):
         found = release_dated.problems(self.tree("1.0.1", [("1.0.2", "Unreleased"), ("1.0.1", "2026-10-20")]))
         self.assertTrue(any("newest entry, 1.0.2, is Unreleased" in p for p in found), found)
 
+    def test_two_release_lines_build_only_dated_notes(self):
+        # 1.0.x keeps getting fixes beside 1.1.x, so a tree may hold two Unreleased entries, one per line
+        # (changelog.py); a release build still ships no undated entry of either line.
+        both = [("1.1.0", "Unreleased"), ("1.0.11", "Unreleased"), ("1.0.10", "2026-11-07")]
+        found = release_dated.problems(self.tree("1.0.11", both))
+        self.assertTrue(any("still says 1.0.11 is Unreleased" in p for p in found), found)
+        self.assertTrue(any("newest entry, 1.1.0, is Unreleased" in p for p in found), found)
+        found = release_dated.problems(self.tree("1.1.0", [("1.1.0", "2026-12-01"), ("1.0.12", "Unreleased"),
+                                                           ("1.0.11", "2026-11-11")]))
+        self.assertTrue(any("1.0.12 is Unreleased: a release of 1.1.0 must not ship it" in p for p in found), found)
+        self.assertEqual(release_dated.problems(self.tree("1.1.0", [("1.1.0", "2026-12-01"), ("1.0.12", "2026-11-20"),
+                                                                    ("1.0.11", "2026-11-11")])), [])
+
     def test_the_bundled_notes_must_be_the_current_export(self):
         root = self.tree("1.0.1", [("1.0.1", "2026-10-20")])
         notes = root / release_dated.NOTES

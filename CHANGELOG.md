@@ -9,6 +9,38 @@ The format is checked by `scripts/angelo/changelog.py` and described in
 [the updates and reports contract](doc/angelo/updates_and_reports.rst). Add the new release at the
 top; run `python3 scripts/angelo/changelog.py export` after editing.
 
+## 1.0.11 — 2026-11-11
+Based on Blender 5.2.4 LTS.
+
+Angelo 1.0.11 adds Fab models in FBX, OBJ, USD and .blend, keeps live links in step while you edit, and moves to Blender 5.2.4 LTS.
+
+### Highlights
+- Add Fab models in FBX, OBJ, USD and .blend in one click, as with GLB, and apply Megascans surfaces as materials.
+- Built on Blender 5.2.4 LTS, with its fixes for Cycles, Grease Pencil, geometry nodes and the Sequencer.
+- Live links keep up while you edit: your web page shows a changing colour about ten times a second, not only once you stop.
+
+### New
+- Add Fab models in FBX, OBJ, USD, USDZ, glTF and .blend formats in one click: their textures come along, the model is sized to your scene, and one Undo removes it.
+- Apply a Megascans surface or another Fab texture set to the selected objects as a ready material. With nothing selected, it is added to the file's asset library.
+- Downloaded files are converted in a separate process that never runs their scripts or brings files from outside the download into your scene, so Angelo stays responsive.
+
+### Improved
+- Engine live links update while you keep editing, not only after you stop: a web page shows a dragged or animated change about ten times a second, and a single edit in under 0.1 s instead of 0.4 s. Godot, Unity and Unreal update as fast as they show each change.
+- Long chats send the agent less text: after most edits, your next message no longer repeats the full summary of the last edit.
+
+### Fixed
+- Applying a transform keeps custom normals correct on mirrored or unevenly scaled meshes, and the agent can now apply transforms to imported meshes that have custom normals.
+- If an add-on crashes Angelo while it starts, the next start opens with your add-ons turned off and names them, instead of crashing again.
+- On Windows, restarting from the crash dialog after Angelo crashed while starting now opens it with your add-ons turned off, instead of crashing again.
+- A GPT model's request to run a script now waits for your approval instead of being cancelled about 30 seconds after the card appears.
+- The first Cycles render after an update shows that render kernels are being prepared, no longer counts that one-time wait against the render's time limit, and keeps render time estimates accurate.
+- Cycles no longer crashes on materials that combine displacement bump with emission, or while compiling its kernels.
+- Changing the denoiser's settings between Cycles renders no longer crashes or gives a wrongly denoised picture.
+- Matrix to Rotation gives the same result on the GPU as on the CPU, and Fillet Curve no longer creates huge positions at reversed corners.
+- Grease Pencil, curves and drawings loaded from damaged or older files are repaired instead of causing errors.
+- Saving data to a library file, blurring an image by a large amount and the Delaunay fill tool on an empty drawing no longer crash.
+- The Skin modifier no longer leaves holes, and Flatten works on vertices and edges without faces.
+
 ## 1.0.10 — 2026-11-07
 Based on Blender 5.2.3 LTS.
 

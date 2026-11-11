@@ -46,7 +46,7 @@ HEADLESS_PREFIX = "angelo-headless-"   # headless_session: a headless session's 
 SCRATCH_PREFIXES = ("angelo-assets-", "angelo-flow-drop-", "angelo-split-", "angelo-save-", "angelo-native-preview-",
                     "angelo-kept-", "angelo-team-", "angelo-web-preview-", "angelo-world-light-",
                     "angelo-observations-", "angelo-engine-link-", "angelo-library-", "angelo-preflight-",
-                    "angelo-web-world-", "angelo-merge-check-")
+                    "angelo-web-world-", "angelo-merge-check-", "angelo-render-")
 FAMILIES = ((WORKER_PREFIX, None), (LEGACY_WORKER_PREFIX, None), (HEADLESS_PREFIX, None),
             (FAB_BROWSER_PREFIX, None)) + tuple(
     (prefix, None) for prefix in SCRATCH_PREFIXES)

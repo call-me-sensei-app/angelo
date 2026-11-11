@@ -16,6 +16,7 @@
        files byte for byte, OpenAI's signatures kept, --version, the app-server schema and initialize);
      then the MSI's codex keeps a chat's request prefix (test_native_codex_prefix_stability.py with ANGELO_TEST_CODEX,
      the install folder's codex.exe proven equal to the MSI's; a skip fails the check);
+     then the MSI's codex holds a call that waits for the person (test_native_codex_approval_hold.py, the same way);
      then the seal check on the build's install folder (release_launch_checks.py seal --install): a headless
      launch with the add-on and both kinds of child Python must leave it unchanged, before any suite runs it;
      then the app must report clang-cl's flags, its images lld-link's headers (release_checks.py windows-toolset);
@@ -185,6 +186,24 @@ Test-Check "release: the MSI's codex keeps a chat's request prefix (test_native_
     if ($code -ne 0) { throw "exit $code (prefix-stability.log)" }
     if ((Get-Content $log -Raw) -match "skipped") { throw "the test was skipped: it must run on the MSI's codex.exe (prefix-stability.log)" }
     "codex.exe $($have.Substring(0, 12)): every request keeps the earlier one, pictures included"
+}
+Test-Check "release: the MSI's codex holds a call that waits for the person (test_native_codex_approval_hold.py)" {
+    # Required at every cut against the exact bundled runtime: launched with Angelo's flags (instant interrupt off),
+    # a code-mode cell stays open while an Angelo call is unanswered, so the model is never handed "Script running"
+    # and cannot end its turn under an approval card (1.0.10 cancelled one 31 s after it appeared).
+    if (-not $buildOk -or -not (Test-Path $exe)) { throw "no full build" }
+    $runtime = Get-Content (Join-Path $ResultsDir "agent-runtime-check.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    if (-not $runtime.passed) { throw "the agent runtime check did not pass" }
+    $codex = Join-Path (Split-Path $exe) "agent-runtime\codex.exe"
+    $have = (Get-FileHash -LiteralPath $codex -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($have -ne $runtime.files."codex.exe") { throw "$codex is $have, not the MSI's codex.exe $($runtime.files.'codex.exe')" }
+    $log = Join-Path $ResultsDir "approval-hold.log"
+    $env:ANGELO_TEST_CODEX = $codex
+    try { $code = Invoke-Logged $log "`"$python`" `"$(Join-Path $tests 'test_native_codex_approval_hold.py')`" -v" }
+    finally { Remove-Item env:ANGELO_TEST_CODEX -ErrorAction SilentlyContinue }
+    if ($code -ne 0) { throw "exit $code (approval-hold.log)" }
+    if ((Get-Content $log -Raw) -match "skipped") { throw "the test was skipped: it must run on the MSI's codex.exe (approval-hold.log)" }
+    "codex.exe $($have.Substring(0, 12)): a call answered late reaches the model finished"
 }
 Test-Check "release: a launch writes nothing in the install folder (release_launch_checks.py seal)" {
     if (-not $buildOk -or -not (Test-Path $exe)) { throw "no full build" }

@@ -28,7 +28,7 @@ ID='05d847c0-7ab9-435c-8ca6-d18216b01c17';GUID='selected-guid'
 
 
 def listing_row(ordinal, filename='actual-low.glb'):
-    return dict(ordinal=ordinal, filename=filename, format='glb', quality_label='Low quality',
+    return dict(ordinal=ordinal, filename=filename, group='Converted Files', format='glb', quality_label='Low quality',
                 quality_aria='This product is of _low. quality', display_size='1 KB',
                 button_type='button', button_aria=BUTTON_ARIA, button_disabled=False)
 
@@ -48,7 +48,7 @@ class SelectedTests(unittest.TestCase):
  @contextmanager
  def fixture(self,*,cancel=False,allow_error=False,deny_error=False,file_error=False,payload=b'12345678'):
   events=[];stop=threading.Event();account=AccountObservation('account', 'profile', 'runtime')
-  row=SimpleNamespace(control_fingerprint=ROW.control_fingerprint, disabled=False,
+  row=SimpleNamespace(control_fingerprint=ROW.control_fingerprint, disabled=False, format=ROW.format,
                       filename=ROW.filename, quality_label=ROW.quality_label)
   page=SimpleNamespace(listing_id=PAGE.listing_id,title=PAGE.title,author=PAGE.author,
                        library_state_label=PAGE.library_state_label,license_label=PAGE.license_label,choices=(row,))

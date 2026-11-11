@@ -201,7 +201,7 @@ def listing_from_page(page):
  if page.license_label not in licenses:raise BrowserUnavailable('LISTING_PROOF_UNAVAILABLE')
  if not 1<=len(page.choices)<=MAX_VARIANTS:raise BrowserUnavailable('LISTING_PROOF_UNAVAILABLE')
  quality={'High quality':'high','Medium quality':'medium','Low quality':'low'}
- choices=tuple(BrowserChoice(item_id,row.control_fingerprint,row.control_fingerprint,'glb',row.filename,
+ choices=tuple(BrowserChoice(item_id,row.control_fingerprint,row.control_fingerprint,row.format,row.filename,
                             quality.get(row.quality_label))for row in page.choices if not row.disabled)
  if not choices:raise BrowserUnavailable('LISTING_PROOF_UNAVAILABLE')
  owned=page.library_state_label=='Saved in My Library'

@@ -97,7 +97,8 @@ def main():
         own = own_version(app)
         for name, document in feeds(own, arguments.later, arguments.line).items():
             with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as work:
-                result = read_with(app, name, document, seed, keys, work)
+                # Resolved: the app's home there must have no symlink above it (macOS's /var), as a person's has none.
+                result = read_with(app, name, document, seed, keys, str(Path(work).resolve()))
             ok = judge(name, result, own, arguments.later, arguments.line)
             passed = passed and ok
             report.append({"app": own, "feed": name, "pass": ok, "result": result})

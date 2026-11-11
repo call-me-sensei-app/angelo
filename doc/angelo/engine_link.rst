@@ -94,12 +94,39 @@ An editor whose auth frame lists the capability ``acks`` tells Angelo what it di
 
 Angelo keeps them per editor (``engine_link_facts``) only from an editor of the linked asset's engine and project,
 about that asset by its name, bounded (eight editors; numbers 0 to 2^53, text 200 characters), and drops an editor's
-when it leaves. They are the editor's report, never authority: Angelo shows them to the agent and changes nothing on
-them. An editor without ``acks`` may still send some (Unity's and Unreal's plugins sent ``reimported`` before
+when it leaves. They are the editor's report, never authority: Angelo shows them to the agent and changes nothing in
+the scene or the files on them; they only pace live frames (Cadence, below), for at most a second each. An editor without ``acks`` may still send some (Unity's and Unreal's plugins sent ``reimported`` before
 ``acks`` existed); they are kept, and one without ``save`` counts for the newest save whose asset was written before
 it arrived, but nothing waits for such an editor. Plugins: Godot (``previewed``, ``preview_failed``, ``reimported``),
 Unity (all four) and Unreal (all four; ``previewed`` with the Angelo Link Live plugin) send them from Angelo 1.0.9's
 plugins; an older copy in a project acknowledges less until it is updated (Add Angelo Link to the project again).
+
+Cadence
+-------
+
+When live frames go (``engine_link_cadence``, from the link's 0.1 s tick, ``engine_link._tick``), the same for every
+engine:
+
+* **At once after a pause**: the first change after the scene was still goes at the next tick (the leading edge).
+* **Steadily while changes go on**: a dragged value, a fade, an agent's animation or a run of edits goes out at most
+  once per *gap* after the last export ended, each frame holding every change made since the one before (nothing
+  queues in Angelo). The gap is at least half a tick, so a cheap frame goes at every tick (10 a second), and at least
+  three times the last export's time, at most 10 s, so the exports take at most about a quarter of the main thread
+  however large the scene.
+* **The last change always goes**: no change waits for a pause that never comes, and none is left unsent.
+* **Editors set the pace too**: while an editor that acknowledges (``acks``) and got the last frame hasn't answered it,
+  no new frame goes, for up to 1 s. A page or engine slower than Angelo gets the newest state when it is ready
+  instead of a queue of old frames, so it never falls further behind while the edits go on. An editor that left owes
+  nothing.
+* **Forced frames go at once**, whatever the gap or the answers: the link's first frame, an editor that joins, a
+  web page that asks for a whole frame (``resync``) and a page that fell behind (``LinkServer.lagging``).
+* **Never while** ``scene_changes.busy``: a modal tool (a viewport drag, a brush stroke), playback, a render or bake
+  job, Edit Mode; the frame follows when it ends. A value dragged on a button (a slider, the colour picker) is no
+  modal tool (``Window.modal_operators`` lists operators, not a button's handler), so it updates as it moves.
+
+Before 1.0.11 a frame went only after the scene had been still for 0.35 s (or three times the last export): a 3 s
+fade reached the page as one jump, 0.4 s after it ended. Measured on the same machine and scene, the web link
+(:doc:`web_link`, "Cadence") now shows every step of such a fade and a single edit in under 0.1 s.
 
 What an editor says about itself
 --------------------------------

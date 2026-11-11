@@ -104,8 +104,9 @@ class ToolNameTests(unittest.TestCase):
         # 48 the deferred angelo_game_ready_check (game_ready_check.rst); 49 the deferred engine preflight
         # (engine_preflight.rst); 50 the deferred angelo_engine_link_status and angelo_engine_link (engine_link.rst,
         # "The agent"); 51 the core angelo_goal (goal_mode.rst).
-        # 52 adds Essentials library sources/pagination/MCP; 53 adds explicit approved Fab imports.
-        self.assertEqual((TOOLSET_VERSION, RENAMED_TOOLSET), (53, 15))
+        # 52 adds Essentials library sources/pagination/MCP; 53 adds explicit approved Fab imports; 54 Fab variants in
+        # every format the converter reads and objects for Fab texture sets (fab_formats.rst).
+        self.assertEqual((TOOLSET_VERSION, RENAMED_TOOLSET), (54, 15))
 
     def test_pre_rename_names_are_readable_but_never_executable(self):
         for name in TOOL_MAP:

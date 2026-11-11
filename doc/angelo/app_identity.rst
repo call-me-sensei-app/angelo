@@ -181,6 +181,57 @@ Blender's folders:
   (``--platform``/``--home`` select it for tests). A user who had set
   ``BLENDER_USER_CONFIG`` or ``BLENDER_USER_RESOURCES`` has nothing to migrate.
 
+A start that did not finish
+---------------------------
+
+A third-party add-on that crashes natively as it loads ends the process before any Python error handling sees it
+(Blender 5.3 #166395 Hair Tool, #166397). Once preferences that enable it are saved (the setup card's settings import
+copies them, or the person enabled it), every later launch would end the same way and the app would never open
+again. So a launch that finds a start that never completed enables only the add-ons that ship with Angelo
+(``scripts/modules/angelo_safe_start.py``, wired by the startup module ``scripts/startup/angelo_start_guard.py``,
+which Blender registers before it enables add-ons):
+
+* **The start record.** Each launch in a window keeps one file per process in ``<config>/angelo-start``, created
+  exclusively and locked (``flock``; on Windows ``msvcrt.locking`` of one byte past the record, since a Windows lock
+  refuses reads of what it covers) from before the first add-on loads until its start completes. The operating system drops the lock when the process ends, however it ends. A later launch that
+  can lock a record with a complete entry has found a start that never completed. A record still locked names its
+  process, host and boot: when that process is gone (the system can release a dead process's lock a moment late),
+  the record is found all the same; while it runs, the launch waits for it to end, at most 2.5 seconds for all
+  records together, since a crashed process may still be ending (on Windows the crash dialog's Restart starts the
+  next launch while the crashed one ends). A lock that goes while its process still runs is a start that completed,
+  never a crash; one still held after the wait belongs to an instance still starting, so two instances start side
+  by side. A held record from another host or boot (a settings folder shared over a network, a sandbox with its own
+  process ids) is never judged by its process id, only left alone. A completing start empties its record before
+  its lock goes, so a removal held up by another reader leaves nothing that reads as a crash; a found record that
+  cannot be removed yet is marked found, never found twice. A record cut short is no crash, and goes once a minute
+  old.
+  *Known limitation (1.0.11):* on Windows the crashed process keeps its record locked while its crash dialog is
+  open. A launch started from elsewhere while the dialog is still open (not from its Restart), or one that finds
+  the crashed process still ending after the 2.5-second wait, opens normally, and the launch after the crashed
+  process has ended opens safely. The whole-class fix, the crash handler releasing the record's lock before it
+  shows the dialog, is planned for the next release.
+* **Completed** means Angelo's start-up has run what it owes this launch (``intro.startup_done``: the layout and the
+  card that follows the splash) and the window has run two seconds more; or three minutes have passed. A crash
+  after that is not a crash at start. A quit before it ends the record too, except on a launch that left add-ons
+  off and has not yet saved them off: that record stays, so the next launch leaves them off again.
+* **Add-ons enabled later in the session.** Blender enables add-ons again on every preference read: the setup
+  card's settings import and the one in File > Defaults (which copy the preferences first), Revert to Saved
+  Preferences, factory preferences, an application template. ``prefs_reload`` runs that step inside
+  ``angelo_safe_start.enabling``, which holds a record through it and two seconds after, so a crash there makes
+  the next launch start the same safe way.
+* **What is left off.** Every third-party add-on, before Blender enables any: a user add-on or a user extension.
+  Angelo's add-ons, Blender's hidden core ones and system extensions load as always. The preferences are saved
+  without them once the start completes, and one notice (``angelo_agent.safe_start_notice``, its own card kind,
+  translated) names them by their own names and says how to turn one back on (Preferences > Add-ons). One
+  that crashes again is left off again on the next launch.
+* **Where it does nothing.** ``--background`` runs and ``--factory-startup`` keep no record. A normal start costs
+  one small file created, locked, written and removed, and a half-second timer for its first seconds.
+
+``test_blender_settings_import``'s ``crashing`` group proves it end to end: a stock Blender folder enables an
+add-on that crashes natively as it loads; the setup card's import ends in that crash, the next launch opens with
+it off and the notice, and the one after opens normally with it still off. ``test_native_safe_start.py`` holds
+the record's state machine.
+
 Going back to an earlier version
 --------------------------------
 

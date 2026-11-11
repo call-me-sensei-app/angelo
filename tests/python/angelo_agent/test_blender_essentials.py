@@ -362,11 +362,27 @@ def scenario():
     checks['deleted_target_refused'] = True
     # Current product failure/restore is exercised through a real reserved-property collision
     # above. No monkeypatch of library_import.assign or native fault engine is credited.
+    # Only drivers that run Python are refused (blender_asset_import.needs_python): a simple expression is
+    # evaluated by Blender itself and imports, as a Fab rig's does (doc/angelo/fab_formats.rst).
+    simple = OUT / 'simple-driver.blend'
+    with bpy.data.temp_data() as data:
+        block = data.objects.new('Simple driver fixture', None)
+        block.asset_mark()
+        block.driver_add('location', 0).driver.expression = 'frame * 0.5'
+        data.libraries.write(str(simple), {block})
+    with bpy.data.temp_data() as data:   # The import's own inspection, on the file read into private data.
+        with data.libraries.load(str(simple), link=False) as (source, target):
+            target.objects = list(source.objects)
+        for library in list(data.libraries):   # As the import's _append: the source Library an append leaves.
+            if not any(block.library == library for block in blender_asset_import.ids(data).values()):
+                data.libraries.remove(library)
+        blender_asset_import._inspect(data)   # Raises Refused if refused.
+    checks['simple_driver_passes_inspection'] = True
     unsafe = OUT / 'unsafe.blend'
     with bpy.data.temp_data() as data:
         block = data.objects.new('Driver fixture', None)
         block.asset_mark()
-        block.driver_add('location', 0).driver.expression = '1.0'
+        block.driver_add('location', 0).driver.expression = 'bpy.context.scene.frame_current * 1.0'
         data.libraries.write(str(unsafe), {block})
     file = {'path': str(unsafe), 'relative': unsafe.name, 'size': unsafe.stat().st_size,
             'sha256': hashlib.sha256(unsafe.read_bytes()).hexdigest(), 'url': ''}
@@ -383,7 +399,7 @@ def scenario():
     # Inspection is inside the native scope. Its Refused exception is wrapped as
     # verified-restored ImportFailed; that response intentionally has no code.
     assert (type(result) is dict
-            and result.get('error') == ('This asset contains drivers; it was not imported. '
+            and result.get('error') == ('This asset contains drivers that run Python; it was not imported. '
                                        'The prior state was restored.')
             and result.get('scene_changed') is False and 'error_code' not in result
             and ('success' not in result or result['success'] is False)

@@ -566,7 +566,8 @@ class AggregateTests(unittest.TestCase):
             self.assertEqual(launched[0]["ANGELO_CONNECTIONS_DIR"], str(output.resolve() / "accounts"))
             # The trial opts in with the connection's dedicated profile only (provider_isolation.connection_opt_in).
             profile = source.absolute() / "codex-profile" / identity
-            self.assertEqual(launched[0]["ANGELO_TEST_REAL_PROVIDERS"], "eval-profile:%s" % profile)
+            self.assertEqual(launched[0]["ANGELO_TEST_REAL_PROVIDERS"], "eval-profile:%s|account=%s"
+                             % (profile, account_fixtures.CODEX_EXPECTED))
             self.assertEqual(launched[0]["CODEX_HOME"], str(profile))
             self.assertTrue(isolation.satisfied(launched[0]), "the trial's driver never relaunches")
             native = ConnectionStore(source).records[identity]
@@ -582,6 +583,14 @@ class AggregateTests(unittest.TestCase):
             report = json.loads((output / "eval-live-agent.json").read_text())
             self.assertEqual(report["messages_sent"], 1)
             self.assertEqual(report["connection"]["id"], identity)
+
+
+def setUpModule():   # Billed starts here check the fixture evaluation account, named as a kit names the real one.
+    account_fixtures.name_account_2()
+
+
+def tearDownModule():
+    account_fixtures.unname_account_2()
 
 
 if __name__ == "__main__":

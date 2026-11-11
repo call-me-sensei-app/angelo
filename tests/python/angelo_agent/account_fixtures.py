@@ -7,8 +7,27 @@ import base64
 import json
 from pathlib import Path
 
-EVAL_ACCOUNT_ID = "7684a4d7-1111-4111-8111-111111111111"   # The evaluation account's real prefix, a made-up rest.
-EVAL_ACCOUNT_EMAIL = "jack@hyperbond.studio"
+# The evaluation account as a fixture: made up, prefix and email both. The real account is never in the repository: a billed run
+# names it outside it (provider_accounts.CODEX_ACCOUNT_ENV, or the opt-in's |account= field).
+EVAL_ACCOUNT_ID = "e7a1c0de-1111-4111-8111-111111111111"
+EVAL_ACCOUNT_EMAIL = "eval-account@example.com"
+CODEX_EXPECTED = "e7a1c0de|" + EVAL_ACCOUNT_EMAIL   # The value a kit exports as ANGELO_TEST_CODEX_ACCOUNT.
+CODEX_ENV = {"ANGELO_TEST_CODEX_ACCOUNT": CODEX_EXPECTED}   # provider_accounts.CODEX_ACCOUNT_ENV, as a kit sets it.
+_named = []
+
+
+def name_account_2():
+    """``setUpModule`` of a test whose billed starts check the fixture evaluation account: names it in this process's
+    environment, as the release kit or bench launcher names the real one (``tearDownModule``: ``unname_account_2``)."""
+    from unittest import mock
+    patcher = mock.patch.dict("os.environ", CODEX_ENV)
+    patcher.start()
+    _named.append(patcher)
+
+
+def unname_account_2():
+    while _named:
+        _named.pop().stop()
 OTHER_ID = "0badc0de-2222-4222-8222-222222222222"
 OTHER_EMAIL = "someone@example.com"
 CLAUDE_EMAIL = "claude-tests@example.org"

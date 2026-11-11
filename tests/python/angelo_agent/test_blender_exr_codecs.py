@@ -175,14 +175,13 @@ def plain_matrix(scene, folder):
 
 
 def render_layers(scene):
-    """A tiny render with Depth, Normal and Cryptomatte passes (Cycles on the CPU when the build has it)."""
-    if hasattr(scene, "cycles"):
-        scene.render.engine = "CYCLES"
-        scene.cycles.device = "CPU"
-        scene.cycles.samples = 1
-        scene.cycles.use_denoising = False
-    else:
-        scene.render.engine = "BLENDER_EEVEE"
+    """A tiny render with Depth, Normal and Cryptomatte passes, on Cycles' CPU device (no GPU: the suite runs on
+    machines without OpenGL). Every Angelo build has Cycles."""
+    assert hasattr(scene, "cycles"), "this build has no Cycles; every Angelo build does"
+    scene.render.engine = "CYCLES"
+    scene.cycles.device = "CPU"
+    scene.cycles.samples = 1
+    scene.cycles.use_denoising = False
     scene.render.resolution_x, scene.render.resolution_y, scene.render.resolution_percentage = WIDTH, HEIGHT, 100
     layer = scene.view_layers[0]
     layer.use_pass_z = layer.use_pass_normal = layer.use_pass_cryptomatte_object = True

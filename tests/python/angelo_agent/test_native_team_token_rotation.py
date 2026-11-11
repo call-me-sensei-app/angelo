@@ -17,9 +17,11 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
@@ -66,6 +68,22 @@ class FlakyFileVault(FileVault):
         return super().delete()
 
 
+def read_settled(path, seconds=10.0):
+    """The text of ``path``, which the other process just renamed into place (its command or its answer). On Windows
+    a file that has just appeared can refuse an open for a moment, ``PermissionError``, while the rename's or a
+    scanner's handle still holds it (the case ``shared_replace`` retries for the product's own files): read again
+    until it opens, for at most ``seconds``, then raise what the open raised."""
+    deadline = time.monotonic() + seconds
+    while True:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                return handle.read()
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.01)
+
+
 # One Angelo process, driven by command files: ``<name>.<n>.cmd`` in, ``<name>.<n>.out`` (JSON) back.
 _CHILD = """
 import inspect, json, os, sys, threading, time
@@ -75,7 +93,7 @@ from angelo_agent.managed_policy import Policy
 from angelo_agent.team_account import TeamAccount
 from angelo_agent.team_errors import TeamError
 from test_native_team_account import FileVault
-from test_native_team_token_rotation import FlakyFileVault
+from test_native_team_token_rotation import FlakyFileVault, read_settled
 folder, console, name = sys.argv[3], sys.argv[4], sys.argv[5]
 extra = {"record_directory": folder} if "record_directory" in inspect.signature(TeamAccount).parameters else {}
 account = TeamAccount(console, vault=FlakyFileVault(os.path.join(folder, "vault"), name),
@@ -88,7 +106,7 @@ while True:
         if not os.path.isdir(folder):
             sys.exit(0)
         time.sleep(0.01)
-    command = open(command_path).read().strip()
+    command = read_settled(command_path).strip()
     result = "ok"
     if command == "restore":
         account.restore()
@@ -167,7 +185,7 @@ class RotationFailureTests(AccountCase):
             self.assertIsNone(self.children[name].poll(), "%s exited before answering %r" % (name, command))
             self.assertLess(time.monotonic(), deadline, "%s didn't answer %r" % (name, command))
             time.sleep(0.01)
-        return json.loads(out.read_text())
+        return json.loads(read_settled(out))
 
     def break_store(self, name, *calls):
         for call in calls:
@@ -442,6 +460,47 @@ class SingleProcessTests(AccountCase):
         self.assertEqual(vault.token, "rt_newer_token_saved_by_the_other_process")
         self.assertFalse(account._record.holder.held, "the holder lock is released")
 
+
+
+class SettledReadTests(unittest.TestCase):
+    """Windows VM CI, job 7132233ac38a-20261111050549-p2: a child read its command file the moment the parent's
+    rename made it appear and got ``PermissionError`` (errno 13): on Windows a file that has just appeared can refuse
+    an open while the rename's or a scanner's handle still holds it, the case ``shared_replace`` retries for the
+    product's own files. The child then exited and the test failed as "p3 exited before answering". Both sides of
+    the command-file exchange read through ``read_settled``."""
+
+    def refusing(self, path, refusals):
+        real, left = open, [refusals]
+
+        def flaky(file, *args, **kwargs):
+            if os.fspath(file) == os.fspath(path) and left[0]:
+                left[0] -= 1
+                raise PermissionError(13, "The process cannot access the file because it is being used by another "
+                                          "process", os.fspath(path))
+            return real(file, *args, **kwargs)
+        return mock.patch("builtins.open", flaky), left
+
+    def test_a_file_that_refuses_its_first_opens_is_read_once_it_opens(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder, "p3.1.cmd")
+            path.write_text("refresh")
+            patcher, left = self.refusing(path, 3)
+            with patcher:
+                self.assertEqual(read_settled(path), "refresh")
+            self.assertEqual(left, [0])
+
+    def test_a_refusal_that_outlasts_its_time_is_raised(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder, "p3.1.cmd")
+            path.write_text("refresh")
+            patcher, _left = self.refusing(path, 10 ** 6)
+            with patcher, self.assertRaises(PermissionError):
+                read_settled(path, seconds=0.05)
+
+    def test_both_sides_of_the_exchange_read_through_it(self):
+        source = Path(__file__).read_text(encoding="utf-8")
+        self.assertIn("command = read_settled(command_path).strip()", _CHILD)
+        self.assertIn("return json.loads(read_settled(out))", source)
 
 if __name__ == "__main__":
     unittest.main()

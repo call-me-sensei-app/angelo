@@ -46,8 +46,9 @@ two notifications, one request field and more detail to one kind of error messag
     runs is still waiting for the answer to a listed tool as its yield time ends, Codex keeps waiting for it
     instead of handing the model a "still running" result to poll with wait. It hands over the result once
     the code finishes, new output arrives, the code yields with no such call outstanding, the turn is
-    interrupted or steered, or after 35 minutes. Unlisted tools, Codex's own tools and a yield the code asks
-    for itself (yield_control()) are unchanged.
+    interrupted or steered, or after 35 minutes. It holds whether or not Codex's instant interrupt is on
+    (Angelo turns it off, so a steer waits for the next model request either way). Unlisted tools, Codex's
+    own tools and a yield the code asks for itself (yield_control()) are unchanged.
   * code_mode_forward_dynamic_tool_images, a setting listing app tools whose results can carry pictures. In
     code mode, a listed tool's pictures reach the model even when the JavaScript the model runs does not
     pass them on with image(): each is added to the code's next result, once per turn; a picture the code
@@ -78,7 +79,7 @@ also refreshes their compiled-in Mozilla trust anchors; their source-level progr
 
 The modified source is the branch angelo/rust-v0.166.0-call-steps of
 https://github.com/call-me-sensei-app/codex, a fork of https://github.com/openai/codex based on the tag
-rust-v0.166.0: commit 0ffcb4dbb1e2e310dd375d50911ea667c22f2210. Rebuilt executables use that source plus a reviewed
+rust-v0.166.0: commit 2dfdc4c72e3b497b2c463bce3631eec05475cb3c. Rebuilt executables use that source plus a reviewed
 Cargo.lock overlay that normalizes only local workspace versions to the already-declared 0.166.0.
 No external dependency is changed by that overlay. ANGELO.md at the root of
 that branch describes the changes and their tests.

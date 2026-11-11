@@ -36,6 +36,7 @@ import bench_parallel_report as report  # noqa: E402
 import eval_live_tasks as live  # noqa: E402
 import eval_send_record as send_record  # noqa: E402
 import test_native_bench_send_record as stamped  # noqa: E402  (its send and its launcher with a fake app)
+import account_fixtures  # noqa: E402  (made-up sign-ins, provider_accounts)
 
 NAME = send_record.NAME
 def send(path, task_set="default", completed=()):
@@ -196,6 +197,14 @@ class WriteTests(unittest.TestCase):
         left.write_text("{\"trials\": [")
         send_record.write(self.path, {"trials": [5]})
         self.assertEqual(sorted(path.name for path in self.path.parent.iterdir()), [NAME])
+
+
+def setUpModule():   # Its launcher's billed start checks the fixture evaluation account, named as a kit names the real one.
+    account_fixtures.name_account_2()
+
+
+def tearDownModule():
+    account_fixtures.unname_account_2()
 
 
 if __name__ == "__main__":

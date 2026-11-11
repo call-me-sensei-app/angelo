@@ -54,7 +54,7 @@ RENAME_REPLACE_IF_EXISTS, RENAME_POSIX_SEMANTICS, RENAME_IGNORE_READONLY = 0x1, 
 DISPOSITION_DELETE, DISPOSITION_POSIX_SEMANTICS, DISPOSITION_IGNORE_READONLY = 0x1, 0x2, 0x10
 SETTABLE_ATTRIBUTES = 0x1 | 0x2 | 0x4 | 0x20 | 0x100 | 0x1000 | 0x2000
 FILE_ATTRIBUTE_NORMAL = 0x80
-ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_NO_MORE_FILES = 2, 3, 18
+ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_ACCESS_DENIED, ERROR_NO_MORE_FILES = 2, 3, 5, 18
 ERROR_INVALID_FUNCTION, ERROR_NOT_SUPPORTED, ERROR_INVALID_PARAMETER = 1, 50, 87
 _NO_TAG_INFO = {ERROR_INVALID_FUNCTION, ERROR_NOT_SUPPORTED, ERROR_INVALID_PARAMETER}   # FAT, exFAT
 UNKNOWN_SURROGATE = 0x20000000   # A reparse point whose tag could not be read: treated as a link.
@@ -67,10 +67,15 @@ STATUS_FILE_IS_A_DIRECTORY = 0xC00000BA
 STATUS_NOT_SUPPORTED = 0xC00000BB
 STATUS_NOT_SAME_DEVICE = 0xC00000D4
 STATUS_NOT_A_DIRECTORY = 0xC0000103
+STATUS_FILE_DELETED = 0xC0000123
 STATUS_REPARSE_POINT_ENCOUNTERED = 0xC000050B
 # A file system without the extended class (FAT, some network redirectors) answers one of these.
 _NO_EXTENDED_CLASS = {STATUS_INVALID_INFO_CLASS, STATUS_INVALID_PARAMETER, STATUS_NOT_SUPPORTED,
                       STATUS_INVALID_DEVICE_REQUEST}
+# A file whose deletion is pending (another handle still open) or completed under the open: no open can reach it.
+# SQLite removing its -wal or -shm as the last connection closes gives both (STATUS_FILE_DELETED: Windows VM,
+# 8f9e9453a98, 2 in ~37,800 closes); RtlNtStatusToDosError calls either access denied.
+_DELETED = {STATUS_DELETE_PENDING, STATUS_FILE_DELETED}
 
 
 class UNICODE_STRING(ctypes.Structure):
@@ -101,7 +106,8 @@ NTDLL_FUNCTIONS = (
      ctypes.c_void_p, wintypes.ULONG]),
     ("NtSetInformationFile", _NTSTATUS, [wintypes.HANDLE, ctypes.POINTER(IO_STATUS_BLOCK), ctypes.c_void_p,
      wintypes.ULONG, ctypes.c_int]),
-    ("RtlNtStatusToDosError", wintypes.ULONG, [_NTSTATUS]))
+    ("RtlNtStatusToDosError", wintypes.ULONG, [_NTSTATUS]),
+    ("RtlGetLastNtStatus", _NTSTATUS, []))
 KERNEL32_FUNCTIONS = (
     ("CreateFileW", wintypes.HANDLE, [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
      wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]),
@@ -135,8 +141,15 @@ class NtFileApi:
         self.dont_reparse = OBJ_DONT_REPARSE
 
     # -- errors -------------------------------------------------------------
-    def _raise(self, status, name=None):
+    def _raise(self, status, name=None, *, opening=False):
+        """The one NTSTATUS mapping, for every ntdll call and the Win32 opens (``_win32_open_error``).
+
+        ``opening``: an open of an existing name (FILE_OPEN, OPEN_EXISTING, a reopen). To one, a file being deleted
+        or deleted under it is absent, as an unlinked name is on POSIX; a create, rename, link or delete still fails.
+        """
         status &= 0xFFFFFFFF
+        if opening and status in _DELETED:
+            raise FileNotFoundError(errno.ENOENT, "The file is being deleted", name)
         special = {STATUS_REPARSE_POINT_ENCOUNTERED: (OSError, errno.ELOOP, "A link was not followed"),
                    STATUS_NOT_A_DIRECTORY: (NotADirectoryError, errno.ENOTDIR, "Not a directory"),
                    STATUS_FILE_IS_A_DIRECTORY: (IsADirectoryError, errno.EISDIR, "Is a directory"),
@@ -152,6 +165,15 @@ class NtFileApi:
     def _win32_error(self, name=None):
         code = self.last_error()
         raise OSError(0, self.format_error(code), name, code)
+
+    def _win32_open_error(self, name=None):
+        """A failed Win32 open of an existing file. Its access denied may be a deleted file, which the thread's last
+        NTSTATUS (set by that failure) names; that status then goes through ``_raise`` like an NtCreateFile one."""
+        if self.last_error() == ERROR_ACCESS_DENIED:
+            status = self.ntdll.RtlGetLastNtStatus() & 0xFFFFFFFF
+            if status in _DELETED:
+                self._raise(status, name, opening=True)
+        self._win32_error(name)
 
     def _handle(self, fd):
         return self.os_handle(fd)
@@ -176,7 +198,7 @@ class NtFileApi:
                                            SYNCHRONIZE, FILE_SHARE_ALL, None, OPEN_EXISTING,
                                            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, None)
         if handle is None or handle == INVALID_HANDLE_VALUE:
-            self._win32_error(anchor)
+            self._win32_open_error(anchor)
         return self._descriptor(handle)
 
     def _create(self, directory, name, access, disposition, options, attributes):
@@ -200,19 +222,14 @@ class NtFileApi:
                 self.dont_reparse = 0   # This Windows predates OBJ_DONT_REPARSE.
                 status, handle = retry, retry_handle
         if status < 0:
-            if (status & 0xFFFFFFFF) == STATUS_DELETE_PENDING and disposition == FILE_OPEN:
-                # Deleted while another handle keeps it open (SQLite removing its -wal or -shm as the last connection
-                # closes): no new handle can reach it, and it is gone once that handle closes. To an open it is
-                # absent, as an unlinked name is on POSIX; RtlNtStatusToDosError would call it access denied.
-                raise FileNotFoundError(errno.ENOENT, "The file is being deleted", name)
-            self._raise(status, name)
+            self._raise(status, name, opening=disposition == FILE_OPEN)
         return self._descriptor(handle)
 
     def reopen(self, fd, access):
         """The same file opened again without FILE_OPEN_REPARSE_POINT (for data reparse points)."""
         handle = self.kernel32.ReOpenFile(self._handle(fd), access, FILE_SHARE_ALL, 0)
         if handle is None or handle == INVALID_HANDLE_VALUE:
-            self._win32_error()
+            self._win32_open_error()
         return self._descriptor(handle)
 
     # -- queries ------------------------------------------------------------

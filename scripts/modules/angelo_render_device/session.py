@@ -231,6 +231,8 @@ def register():
         render_device._listeners.append(_refresh_viewports)
     if reset not in bpy.app.handlers.load_factory_preferences_post:
         bpy.app.handlers.load_factory_preferences_post.append(reset)
+    from . import kernels
+    kernels.register()   # A first render's kernel compile, timed from Cycles' own status (here and in a child).
     early()
 
 
@@ -241,6 +243,8 @@ def unregister():
             bpy.app.timers.unregister(timer)
     if reset in bpy.app.handlers.load_factory_preferences_post:
         bpy.app.handlers.load_factory_preferences_post.remove(reset)
+    from . import kernels
+    kernels.unregister()
     if _refresh_viewports in render_device._listeners:
         render_device._listeners.remove(_refresh_viewports)
     render_device.close()

@@ -11,9 +11,10 @@ connection or release acceptance. Actual product-account sign-in, selected downl
 native import/Undo and combined-application validation remain open gates. No build or
 working-live-Fab claim follows from the offline host checks.
 
-Fab files are not added to the public Angelo catalog or redistributed. The initial
-format is a self-contained GLB model, at most 256 MiB. PBR surface sets and other
-formats remain future work with their own fixtures.
+Fab files are not added to the public Angelo catalog or redistributed. A listing is
+added from any Download row in a format Angelo reads, at most 256 MiB: a converted GLB,
+FBX, ``.blend``, OBJ, glTF, USD/USDZ, or a PBR texture set. Detection, unpacking, the
+sandboxed converter and texture sets are in :doc:`fab_formats`.
 
 Cached human interface and agent tools
 -------------------------------------
@@ -85,15 +86,18 @@ Cache receipts detect corruption, not a publisher signature or license grant.
 Stock import and native Undo
 ----------------------------
 
-The Fab path uses the same ``blender_asset_commit.AssetCommit`` with
-``payload_format="glb"`` and the ordinary native asset transaction. Global Undo must be
+The Fab path uses the same ``blender_asset_commit.AssetCommit`` and the ordinary native
+asset transaction: ``payload_format="glb"`` for a converted GLB, ``"blend"`` for the
+converter's clean ``.blend`` of every other format (:doc:`fab_formats`). Global Undo must be
 enabled and Undo Steps above zero before approval/download. The shared transaction
 capabilities and begin/finish/status/close/recover/pending methods must be present;
 a missing contract refuses before download or scene mutation.
 
 The worker prepares a verified private payload copy. Main captures a fresh native
 before image, then calls Blender's stock glTF importer inside that scope through
-``asset_stock_import.apply_glb``. The adapter checks actual new objects, packed images,
+``asset_stock_import.apply_glb``, or appends the clean ``.blend`` through
+``blender_asset_import.apply_item``. A texture set's material goes on the selected
+editable meshes, or into the file's asset library when none is selected. The adapter checks actual new objects, packed images,
 placement and provenance, and rejects executable data before native publication.
 Nested Undo pushes are suppressed; a successful import publishes one native Undo step.
 The original approval/scene binding and ``PreparedImport.consume`` Session/cache lease

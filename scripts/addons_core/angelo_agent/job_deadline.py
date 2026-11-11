@@ -15,6 +15,8 @@ job is recorded as stopped by its budget only when its break check returned true
 record, so a finished render says what it used. A build without these native entries keeps the timer alone.
 """
 
+import math
+
 # The agent's looks (RENDER_PREVIEW) are not here: their budget ends them once they have samples to show, which
 # the manager decides (view_render), not a hard stop.
 DEADLINE_KINDS = {"RENDER_STILL": "RENDER", "RENDER_ANIMATION": "RENDER", "RENDER_REGION": "RENDER",
@@ -94,6 +96,12 @@ def observe_memory(record, runner):
     detail = record["detail"]
     if detail.get("engine") != "CYCLES" and record["kind"] not in CYCLES_KINDS:
         return
+    from . import job_render_child
+    peak = job_render_child.peak_mb(runner)
+    if isinstance(peak, int) and peak > detail.get("peak_memory_mb", 0):   # A child reports its own renderer's.
+        detail["peak_memory_mb"] = peak
+    if getattr(runner, "child", None) is not None:
+        return   # This scene's Render here holds no stats of the child's render.
     native = _native()
     scene = getattr(runner, "scene", None)
     if native is None or not hasattr(native, "render_stats") or scene is None:
@@ -132,3 +140,86 @@ def catch_up(runner):
     runner.progress = max(runner.progress, min(1.0, progress))
     if runner.first_sample is None and since_first is not None:
         runner.first_sample = min(runner.seconds, max(0.0, runner.seconds - since_first))
+
+
+# A one-time Cycles kernel compile (angelo_render_device.kernels) is credited to a job's budget, at most its cap: the
+# first render after an update compiles for minutes, and a short budget the agent chose was spent on it.
+COMPILE_PHASE = ("Cycles is loading or compiling its render kernels, once after an update or on a new GPU; it can "
+                 "take a few minutes and is not counted against the time budget")
+
+
+def reset_kernels():
+    """A job starts: the kernel watch is its render's from here (an earlier render's compile is never credited to it,
+    break-it F1). Called before the runner starts its render (``JobManager._start``)."""
+    try:
+        from angelo_render_device import kernels
+    except ImportError:
+        return
+    kernels.WATCH.reset()
+
+
+def kernel_state(record, runner):
+    """``(loading, compile_s)`` of a running Cycles render job's render: its child's (job_render_child), else this
+    application's (``kernels.WATCH``). None for any other job: a Cycles bake says no render stats, so it has no compile
+    of its own to credit, and is never credited another render's (break-it F1, F7)."""
+    detail = record["detail"]
+    if detail.get("engine") != "CYCLES" or record["kind"] in CYCLES_KINDS:
+        return None
+    own = getattr(runner, "kernels", None)
+    if callable(own):
+        return own()
+    child = getattr(runner, "child", None)
+    if child is not None:
+        return child.kernels()
+    try:
+        from angelo_render_device import kernels
+    except ImportError:
+        return None
+    return kernels.WATCH.loading(), kernels.WATCH.compile_s()
+
+
+def budget_s(record):
+    """The job's budget in seconds: its minutes, plus the kernel compile its render paid, credited up to the cap."""
+    from angelo_render_device import kernels
+    return float(record["request"]["minutes"]) * 60 + kernels.credited(record["detail"].get("kernel_compile_s"))
+
+
+def observe_kernels(record, runner, elapsed):
+    """Record the running job's kernel compile (``kernels_loading``, ``kernel_compile_s``) and move its deadline by the
+    credit: the native deadline of a render here, the watchdog of a child's. Best effort, as ``arm``."""
+    state = kernel_state(record, runner)
+    if state is None:
+        return
+    detail = record["detail"]
+    if "first_progress_s" in detail:
+        # Only what came before its first progress is the render's kernel load: Cycles' status text can carry a view
+        # layer's name while it denoises and finishes, and a name can be the status itself (r2 re-review R1).
+        detail["kernels_loading"] = False
+        return
+    loading, seconds = bool(state[0]), float(state[1] or 0.0)
+    if not math.isfinite(seconds) or seconds < 0:   # Never a value the store or the model can't take (break-it F10).
+        loading, seconds = False, 0.0
+    detail["kernels_loading"] = loading
+    if seconds > 0:
+        detail["kernel_compile_s"] = round(seconds, 1)
+    else:
+        detail.pop("kernel_compile_s", None)
+    from angelo_render_device import kernels
+    credit = kernels.credited(seconds)
+    if abs(credit - detail.get("deadline_credit_s", 0.0)) < 1.0:
+        return   # The deadline moves in whole seconds: no native call for every poll.
+    detail["deadline_credit_s"] = credit
+    child = getattr(runner, "child", None)
+    if child is not None and callable(getattr(child, "credit", None)):
+        child.credit(credit)
+    elif detail.get(ARMED) and record["kind"] in DEADLINE_KINDS and record["status"] == "running":
+        # Never once the deadline fired: setting one clears the fired flag, and the stop would read as a finish
+        # (break-it F6).
+        native = _native()
+        if native is not None and not native.deadline_fired():
+            rearm(getattr(runner, "scene", None), DEADLINE_KINDS[record["kind"]], max(0.1, budget_s(record) - elapsed))
+
+
+def kernel_note(detail):
+    """What the agent is told while the render compiles its kernels (model-facing English), else ""."""
+    return COMPILE_PHASE if detail.get("kernels_loading") else ""

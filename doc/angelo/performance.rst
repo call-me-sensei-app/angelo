@@ -2736,6 +2736,33 @@ folder (``angelo-trial-NN-transcript.jsonl`` plus ``angelo-trial-NN/``).
 into one call; ``replay_turn_context.replay_trial(..., rebase_at=(N,))``
 rebuilds turn N as a rebased first message.
 
+**The summary row in a follow-up.** The merged entry replaces the host's
+summary row only when the handoff holds the summary's whole group. From the
+lazy handoff of 1.0.10 until this fix that was proven only at the transcript's
+origin, so every follow-up, whose handoff starts where the last plan's rows
+begin, sent both. Recorded follow-up messages of one 40-task chat (medians,
+characters; the gate's long set, effort low):
+
+.. csv-table::
+   :header: "Chat", "Handoff block", "Whole message", "Summary beside the merged entry"
+
+   "Opus 5.5, 1.0.4 (2026-10-22, Mac 1)", "206", "604", "0 of 31"
+   "Opus 5.5, 1.0.11 ``e1d956ec1ef`` (Windows gate machine)", "479", "924", "31 of 31"
+   "GPT-6.1-Sol, 1.1 rehearsal ``fafa88b4502`` (2026-11-04, Windows gate machine)", "267", "856", "0 of 22"
+   "GPT-6.1-Sol, 1.0.11 ``e1d956ec1ef`` (Windows gate machine)", "677", "1,051", "22 of 22"
+
+The Sol chat reached 41.6k input tokens on 1.0.11 against 39.6k on the
+rehearsal build. The record before the handoff's start now proves the group
+whole (``History.closed_before_start``; ``agent_integration.rst``). Not yet
+measured live on a build with the fix.
+
+The saving applies to a follow-up after a turn that ran one plan. After a turn
+of several plans with no reply between them the summary is still sent, as
+before. In the 1.0.11 gate (``e1d956ec1ef``) that was 1 of 127 turns that
+committed an edit on Opus 5.5 (a rejected plan and its correction) and none of
+127 on GPT-6.1-Sol and on GPT-6 Astra; the gate has no scene, where turns of
+several requests are usual, so their share there is not measured.
+
 **Adding to the contract.** The identifier contract lives in
 ``identifiers.py`` and ``agent_integration.rst`` ("Short identifiers"); message
 composition in ``context_ledger.py``, ``routing.handoff`` and

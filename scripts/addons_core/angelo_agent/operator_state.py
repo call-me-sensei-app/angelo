@@ -29,13 +29,12 @@ from array import array
 import hashlib
 import json
 
+from . import attribute_types
+
 # Object settings operators change besides the data (shape-key and material slot operators set them).
 POSE_CHANNELS = ("location", "rotation_quaternion", "rotation_euler", "rotation_axis_angle", "scale")
 OBJECT_INDEXES = ("active_material_index", "active_shape_key_index", "show_only_shape_key", "use_shape_key_edit_mode")
-_ATTRIBUTE_LAYOUT = {"FLOAT": ("value", "f", 1), "INT": ("value", "i", 1), "INT8": ("value", "i", 1),
-                     "BOOLEAN": ("value", "b", 1), "FLOAT_VECTOR": ("vector", "f", 3), "FLOAT2": ("vector", "f", 2),
-                     "FLOAT_COLOR": ("color", "f", 4), "BYTE_COLOR": ("color", "f", 4), "QUATERNION": ("value", "f", 4),
-                     "INT32_2D": ("value", "i", 2), "INT16_2D": ("value", "i", 2), "FLOAT4X4": ("value", "f", 16)}
+_ATTRIBUTE_LAYOUT = attribute_types.codes({"float": "f", "int": "i", "int8": "i", "bool": "b"})   # The shared table.
 
 
 def _read(collection, prop, code, width):

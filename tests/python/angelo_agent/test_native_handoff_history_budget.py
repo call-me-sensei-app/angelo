@@ -77,6 +77,62 @@ class HistoryBudget(unittest.TestCase):
         self.assertEqual(groups.observe(1, activity(), budget).reason, WORK_LIMIT)
         self.assertIsNone(groups.end(reached_origin=True))
 
+    @staticmethod
+    def taken(messages, start, credit=1000):
+        history = History(messages, start, HandoffBudget(credit))
+        while history.take() is not None:
+            pass
+        return history
+
+    def test_the_record_before_start_can_prove_the_excerpt_holds_the_whole_group(self):
+        group = [activity(), {"role": "system", "host_summary": True}]
+        passed_over = [{"role": "thinking"}, {"role": "system", "notice": True}]
+        for before in ([{"role": "user"}], [{"role": "assistant"}], [{"role": "user", "withdrawn": True}],
+                       [activity(), {"role": "system", "host_summary": True}], [{"role": "user"}] + passed_over,
+                       passed_over):   # Only passed-over records back to the origin.
+            with self.subTest(before=before):
+                self.assertTrue(self.taken(before + group, len(before)).closed_before_start())
+
+    def test_an_activity_before_start_means_the_group_began_outside_the_excerpt(self):
+        group = [activity(), {"role": "system", "host_summary": True}]
+        for before in ([activity()], [{"role": "user"}, activity(), {"role": "thinking"}],
+                       [activity(notice=True)], [activity("angelo_scene_search"), {"role": "system", "notice": True}],
+                       [{"role": "activity", "tool": 7}], [{"role": "activity"}]):   # Its tool is never read.
+            with self.subTest(before=before):
+                self.assertFalse(self.taken(before + group, len(before)).closed_before_start())
+
+    def test_looking_before_start_waits_for_the_whole_excerpt_and_is_charged_like_it(self):
+        group = [activity(), {"role": "system", "host_summary": True}]
+        messages = [{"role": "user"}] + [{"role": "thinking"}] * 50 + group
+        unread = History(messages, 51, HandoffBudget(1000))
+        unread.take()
+        self.assertFalse(unread.closed_before_start(), "A record of the excerpt is still unread")
+        self.assertEqual(unread.budget.nodes_left, 999, "... and nothing before start was looked at")
+        history = self.taken(messages, 51)
+        before = history.budget.nodes_left
+        self.assertTrue(history.closed_before_start())
+        self.assertLessEqual(history.budget.nodes_left, before - 2 * 51, "A visit and a key admission for each record")
+        short = self.taken(messages, 51, credit=40)
+        self.assertFalse(short.closed_before_start(), "Exhausted work proves nothing")
+        self.assertFalse(self.taken([{"role": "user"}, {"role": "thinking"}] + group, 2, credit=2).closed_before_start())
+
+    def test_an_unsupported_record_before_start_proves_nothing_and_runs_no_callback(self):
+        class Collision:
+            def __hash__(self):
+                return hash("role")
+            def __eq__(self, other):
+                raise AssertionError("custom equality")
+        class Custom(dict):
+            def get(self, *args):
+                raise AssertionError("custom get")
+        group = [activity(), {"role": "system", "host_summary": True}]
+        for before in ({Collision(): "user"}, Custom(role="user"), "user", None, {"role": 7}, {}):
+            with self.subTest(before=type(before).__name__):
+                self.assertFalse(self.taken([before] + group, 1).closed_before_start())
+        huge = self.taken([{"role": "user", "k" * 100000: True}] + group, 1)   # A key longer than the work left.
+        self.assertFalse(huge.closed_before_start())
+        self.assertTrue(huge.budget.exhausted)
+
     def test_exact_dict_custom_key_cannot_run_equality_during_role_lookup(self):
         class Collision:
             def __hash__(self):

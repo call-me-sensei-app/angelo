@@ -69,6 +69,7 @@ sys.path.append(str(ROOT / "scripts/angelo"))   # load_guard; appended, so it sh
 import gui_launch
 import load_guard
 import native_addon_guard as addon_guard
+import native_suite_inputs as suite_inputs
 import native_suite_manifest as manifest
 import native_suite_paths
 from native_suite_process import (_kill, _running, _session_options, _wait, evidence,  # noqa: F401 (re-exported)
@@ -323,7 +324,7 @@ def plan_suite(suite, run_dir, binary, base_env, gui=False, timeout_scale=1.0, m
         preconditions.append("needs --output under %s" % required)
     return {"suite": suite, "directory": directory, "profile": profile, "window": window, "log": log_path, "qa": qa_dir,
             "report": report_path, "env": env, "command": build_command(suite, binary, window, qa_dir),
-            "timeout": suite.timeout * timeout_scale, "preconditions": preconditions}
+            "timeout": (suite.timeout + suite.kernel_load_cap) * timeout_scale, "preconditions": preconditions}
 
 
 def binary_info(binary):
@@ -415,6 +416,10 @@ def main(argv=None, suites=manifest.SUITES, base_env=None, launch=subprocess.Pop
     output_root.mkdir(parents=True, exist_ok=True)
     run_dir = Path(tempfile.mkdtemp(prefix="angelo-native-suites-", dir=str(output_root)))
     base_env = dict(os.environ) if base_env is None else base_env
+    # Machine inputs (an engine editor, pinned held-out models): resolved once, or the suite is a counted skip.
+    input_values, unavailable = suite_inputs.resolve(selected, base_env, output_root)
+    skipped = skipped + [(suite, unavailable[suite.name]) for suite in selected if suite.name in unavailable]
+    selected = [suite for suite in selected if suite.name not in unavailable]
     started = time.time()
     started_at = datetime.datetime.fromtimestamp(started).isoformat(timespec="seconds")
     settings = {"binary": binary_info(binary), "source_root": str(ROOT), "source_revision": source_revision(),
@@ -423,7 +428,8 @@ def main(argv=None, suites=manifest.SUITES, base_env=None, launch=subprocess.Pop
                 "includes": args.include, "excludes": args.exclude, "timeout_scale": args.timeout_scale,
                 "bundled_addon": bundled, "machine_factor": qa_machine.resolve(args.machine_factor, binary)}
     factor = settings["machine_factor"]["factor"]
-    plans = [plan_suite(suite, run_dir, binary, base_env, args.gui, args.timeout_scale, factor) for suite in selected]
+    plans = [plan_suite(suite, run_dir, binary, dict(base_env, **input_values[suite.name]), args.gui,
+                        args.timeout_scale, factor) for suite in selected]
     print("Running %d native suite(s) with %d job(s); output %s" % (len(plans), settings["jobs"], run_dir), flush=True)
     interrupted = False
     try:

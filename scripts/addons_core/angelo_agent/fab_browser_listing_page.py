@@ -17,6 +17,11 @@ from urllib.parse import urlsplit
 
 from .fab_browser_process import BrowserUnavailable
 from .fab_catalog import thumb_url
+from .fab_formats import FORMATS, for_label
+
+# Every row label the format table answers to: a format group's name ("FBX", "Blender", "Texture Set") or, in the
+# Converted Files group, the row's real format ("glb", "usdz").
+SUPPORTED_LABELS = frozenset(label for row in FORMATS for label in row.labels)
 
 MAX_LISTINGS, MAX_SCAN, MAX_TEXT = 20, 4000, 240
 ORIGIN = 'https://www.fab.com'
@@ -152,7 +157,8 @@ def _search_script(limit, query):
 
 MAX_ROWS = 24
 MAX_LABEL = 240
-BUTTON_ARIA = 'Download Converted Files asset'
+CONVERTED = 'converted files'
+BUTTON_ARIA = 'Download Converted Files asset'   # A converted file's row button (its group is Converted Files).
 NOT_READY_REASONS = frozenset({'LISTING_BODY_MISSING', 'LISTING_DIALOG_MISSING', 'LISTING_ROWS_MISSING',
                                'LISTING_GLB_MISSING', 'LISTING_LICENSE_MISSING'})
 LISTING_PAGE_REASONS = frozenset({'LISTING_LABEL_RELATION', 'LISTING_MODAL_HEADING', 'LISTING_TITLE_COUNT',
@@ -170,6 +176,7 @@ _QUALITIES = {
 # No generated class/id values are fixed here. aria-labelledby is resolved, not treated as stable identity.
 # Work is a finite DOM-node/text inspection budget, not an OS allocation or elapsed-time guarantee.
 OBSERVE_LISTING_JS = r"""(() => {
+ const SUPPORTED=SUPPORTED_LABELS;
  const reject=state=>({state});
  const waiting=(reason,dialogs=0,rows=0,render={visibility:['visible','hidden','prerender'].includes(document.visibilityState)?document.visibilityState:'other',raw_dialogs:0,hidden_dialogs:0,opacity_zero_dialogs:0})=>({state:'not_ready',reason,
   ready:['loading','interactive','complete'].includes(document.readyState)?document.readyState:'other',
@@ -251,42 +258,40 @@ OBSERVE_LISTING_JS = r"""(() => {
   const author=text(sellers[0]);if(!author)throw 'LISTING_SELLER_COUNT';
   const titles=all.filter(n=>{spend();return modal.contains(n)&&n.tagName==='H3'&&visible(n);});
   if(titles.length!==1||text(titles[0])!==title)throw 'LISTING_MODAL_TITLE';
-  const groupHeads=all.filter(n=>{spend();return modal.contains(n)&&n.tagName==='H5'&&visible(n)&&
-    text(n).toLowerCase()==='converted files';});
-  if(groupHeads.length===0)throw 'LISTING_NO_GLB';
-  if(groupHeads.length!==1)throw 'LISTING_CONVERTED_GROUP';
-  const group=groupHeads[0].parentElement;
-  const regions=[...group.children].filter(n=>{spend();return n.tagName==='DIV'&&n.getAttribute('role')==='region'&&visible(n);});
-  if(regions.length!==1)throw 'LISTING_CONVERTED_REGION';
-  const region=regions[0], rh=labelled(region,group,'region');
-  if(!group.contains(rh)||text(rh).toLowerCase()!=='converted files')throw 'LISTING_CONVERTED_REGION';
-  const lis=all.filter(n=>{spend();return n.tagName==='LI'&&region.contains(n)&&visible(n);});
+  // Every row of the modal: one per downloadable file, in "Included formats" lists or their per-format groups.
+  // A row names its format in its badge ("Listing <title> includes the <Name> format") and its button
+  // ("Download <Name> asset"); Converted Files rows say their real format (glb, gltf, usdz) in the badge text.
+  const lis=all.filter(n=>{spend();return n.tagName==='LI'&&modal.contains(n)&&visible(n);});
   if(!lis.length)return waiting('LISTING_ROWS_MISSING',1,0,render);if(lis.length>24)throw 'scan_limit';
-  const rows=[];
+  const prefix='Listing '+title+' includes the ',rows=[];
   for(let ordinal=0;ordinal<lis.length;ordinal++){
    const li=lis[ordinal], parts=all.filter(n=>{spend();return li.contains(n)&&visible(n);});
    if(parts.length>80)throw 'scan_limit';
-   const badges=parts.filter(n=>{spend();return n.tagName==='DIV'&&n.getAttribute('aria-label')===
-     'Listing '+title+' includes the Converted Files format';});
+   const badges=parts.filter(n=>{spend();const a=n.getAttribute('aria-label')||'';return n.tagName==='DIV'&&
+     a.startsWith(prefix)&&a.endsWith(' format');});
    if(badges.length!==1)throw 'LISTING_ROW_BADGE';
-   const format=text(badges[0],32).toLowerCase();if(format!=='glb')continue;
+   const group=badges[0].getAttribute('aria-label').slice(prefix.length,-' format'.length);
+   if(!group||group.length>40)throw 'LISTING_ROW_BADGE';
+   const format=text(badges[0],32).toLowerCase();
+   if(!SUPPORTED.includes(group.toLowerCase()==='converted files'?format:group.toLowerCase()))continue;
    const leaves=parts.filter(n=>{spend();return n.tagName==='DIV'&&n.childElementCount===0;});
    const leafText=leaves.map(n=>text(n));
-   const files=leafText.filter(s=>/\.glb$/i.test(s)&&!/[\\/:]/.test(s));
+   const files=leafText.filter(s=>/^[^\\/:]{1,200}\.[A-Za-z0-9]{1,8}$/.test(s)&&!/^\d+(?:\.\d{1,3})? (?:KB|MB|GB)$/.test(s));
    const sizes=leafText.filter(s=>/^\d+(?:\.\d{1,3})? (?:KB|MB|GB)$/.test(s));
    if(files.length!==1||sizes.length!==1)throw 'LISTING_ROW_FILE_SIZE';
    const quality=parts.filter(n=>{spend();return n.tagName==='DIV'&&
      /^This product is of _(?:high|mid|low)\. quality$/.test(n.getAttribute('aria-label')||'');});
    if(quality.length>1)throw 'LISTING_ROW_QUALITY';
    const buttons=parts.filter(n=>{spend();return n.tagName==='BUTTON'&&
-     n.getAttribute('type')==='button'&&n.getAttribute('aria-label')==='Download Converted Files asset';});
+     n.getAttribute('type')==='button'&&n.getAttribute('aria-label')==='Download '+group+' asset';});
    if(buttons.length!==1)throw 'LISTING_ROW_DOWNLOAD_CONTROL';
-   rows.push({ordinal,filename:files[0],format,quality_label:quality.length?text(quality[0],64):null,
+   rows.push({ordinal,filename:files[0],group,format,quality_label:quality.length?text(quality[0],64):null,
      quality_aria:quality.length?quality[0].getAttribute('aria-label'):null,display_size:sizes[0],
-     button_type:'button',button_aria:'Download Converted Files asset',
+     button_type:'button',button_aria:'Download '+group+' asset',
      button_disabled:buttons[0].disabled===true||buttons[0].getAttribute('aria-disabled')==='true'});
   }
-  if(!rows.length)return waiting('LISTING_GLB_MISSING',1,lis.length,render);
+  // Rows but none in a format Angelo reads (only Unreal, Unity, Maya...): this listing cannot be added.
+  if(!rows.length)throw 'LISTING_NO_GLB';
   const ccby=/^Creative Commons Attribution \(CC BY 4\.0\)( \(CC-BY\))?$/;
   const licenses=all.filter(n=>{spend();return modal.contains(n)&&n.tagName==='A'&&visible(n)&&(text(n)==='Standard License'||ccby.test(text(n)));});
   if(licenses.length>1)throw 'LISTING_LICENSE_AMBIGUOUS';
@@ -302,7 +307,7 @@ OBSERVE_LISTING_JS = r"""(() => {
   if(e==='LISTING_LABEL_RELATION'&&labelFailure)return {state:'site_changed',reason:e,relation:labelFailure};
   return reasons.includes(e)?{state:'site_changed',reason:e}:reject('site_changed');
  }
-})()"""
+})()""".replace('SUPPORTED_LABELS', json.dumps(sorted(SUPPORTED_LABELS)))
 
 
 class ListingObservationUnavailable(ValueError):
@@ -323,6 +328,8 @@ class ChoiceObservation:
     display_size: str
     disabled: bool
     control_fingerprint: str
+    group: str = 'Converted Files'   # The row's format group as Fab names it ("FBX", "Blender", "Converted Files").
+    badge: str = 'glb'               # The row's badge text ("fbx", "glb"; empty for an icon-only badge).
 
 
 @dataclass(frozen=True, slots=True)
@@ -404,7 +411,7 @@ def parse_listing_observation(value, *, expected_listing_id):
     if type(rows) is not list or not 0 < len(rows) <= MAX_ROWS:
         raise ListingObservationUnavailable('OBSERVATION_LIMIT')
     choices, names, ordinals = [], set(), set()
-    row_keys = {'ordinal', 'filename', 'format', 'quality_label', 'quality_aria', 'display_size',
+    row_keys = {'ordinal', 'filename', 'group', 'format', 'quality_label', 'quality_aria', 'display_size',
                 'button_type', 'button_aria', 'button_disabled'}
     for row in rows:
         _mapping(row, row_keys)
@@ -412,11 +419,18 @@ def parse_listing_observation(value, *, expected_listing_id):
         if type(ordinal) is not int or not 0 <= ordinal < MAX_ROWS or ordinal in ordinals:
             raise ListingObservationUnavailable('CHOICE_AMBIGUOUS')
         filename = _text(row['filename'])
-        if any(c in filename for c in '/\\:') or not filename.lower().endswith('.glb') or filename in names:
+        group = _text(row['group'], 40)
+        badge = row['format']
+        if type(badge) is not str or len(badge) > 32:
+            raise ListingObservationUnavailable('OBSERVATION_SHAPE')
+        # Fab's converted files name their real format in the badge; an included format is its group.
+        fmt = for_label(badge if group.lower() == CONVERTED else group)
+        if fmt is None:
+            raise ListingObservationUnavailable('OBSERVATION_SHAPE')
+        if any(c in filename for c in '/\\:') or (group, fmt.code, filename) in names:
             raise ListingObservationUnavailable('CHOICE_AMBIGUOUS')
-        if (type(row['format']) is not str or row['format'] != 'glb' or
-                type(row['button_type']) is not str or row['button_type'] != 'button' or
-                type(row['button_aria']) is not str or row['button_aria'] != BUTTON_ARIA or
+        if (type(row['button_type']) is not str or row['button_type'] != 'button' or
+                type(row['button_aria']) is not str or row['button_aria'] != 'Download %s asset' % group or
                 type(row['button_disabled']) is not bool):
             raise ListingObservationUnavailable('OBSERVATION_SHAPE')
         quality, aria = row['quality_label'], row['quality_aria']
@@ -431,10 +445,11 @@ def parse_listing_observation(value, *, expected_listing_id):
         size = _text(row['display_size'], 32)
         if not _SIZE.fullmatch(size):
             raise ListingObservationUnavailable('OBSERVATION_SHAPE')
-        identity = [expected_listing_id, 'Download', 'converted files', ordinal, filename, 'glb', quality, size,
-                    'button', BUTTON_ARIA]
+        identity = [expected_listing_id, 'Download', group.lower(), ordinal, filename, fmt.code, quality, size,
+                    'button', row['button_aria']]
         fingerprint = hashlib.sha256(json.dumps(identity, ensure_ascii=True, separators=(',', ':')).encode()).hexdigest()
-        choices.append(ChoiceObservation(ordinal, filename, 'glb', quality, size, row['button_disabled'], fingerprint))
+        choices.append(ChoiceObservation(ordinal, filename, fmt.code, quality, size, row['button_disabled'],
+                                         fingerprint, group, badge))
         ordinals.add(ordinal)
-        names.add(filename)
+        names.add((group, fmt.code, filename))
     return ListingObservation(expected_listing_id, title, author, license_label, library, tuple(choices))

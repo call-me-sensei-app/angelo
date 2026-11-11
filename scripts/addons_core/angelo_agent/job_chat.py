@@ -173,6 +173,8 @@ def progress_text(record):
     percent = int(100 * float(record.get("progress") or 0))
     if status == "running" and detail.get("encoding"):
         return iface_("Making the MP4 from {count} frames…", count=detail.get("frames_total", 0))
+    if status == "running" and detail.get("kernels_loading"):   # A one-time compile (job_deadline.observe_kernels).
+        return iface_("Preparing Cycles' render kernels: once after an update, it can take a few minutes")
     if status == "running":
         parts = []
         if detail.get("frames_total", 0) > 1:

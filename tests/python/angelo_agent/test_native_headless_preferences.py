@@ -562,7 +562,7 @@ class OwnAddonTests(unittest.TestCase):
                "shot_capture_ui", "codex_runtime", "session_rail_input", "timer_jobs", "layout_hold", "document_identity",
                "render_engines", "ai_render_card", "bake_maps_card", "render_region", "photo_drop", "library_ui",
                "tension_map", "uv_checker", "skeleton_check_ui", "engine_suggest_ui", "director_select_through",
-               "feedback_ui")
+               "feedback_ui", "change_clock", "restored_document", "tool_specs", "write_turn", "fab_convert")
 
     def run_add_on(self, background, environ):
         calls = []
@@ -603,7 +603,7 @@ class OwnAddonTests(unittest.TestCase):
                              "web_export_ui.register",
                              "shot_capture_ui.register", "photo_drop.register", "tension_map.register",
                              "uv_checker.register", "skeleton_check_ui.register", "engine_suggest_ui.register",
-                             "director_select_through.register"):
+                             "director_select_through.register", "fab_convert.register"):
                 self.assertIn(expected, registered, environ)
             for expected in ("shelf_empty.unregister", "web_export_ui.unregister", "shot_capture_ui.unregister",
                              "ui.unregister", "refused_saves.unregister", "photo_drop.unregister", "tension_map.unregister", "uv_checker.unregister",
@@ -616,6 +616,17 @@ class OwnAddonTests(unittest.TestCase):
         registered, unregistered = self.run_add_on(True, {"ANGELO_HEADLESS": "0"})
         self.assertIn("ui.register", registered)
         self.assertIn("ui.unregister", unregistered)
+
+    def test_every_module_register_reaches_is_stubbed(self):
+        """A module register() imports but this list misses runs for real against the stub bpy (VM CI 6d0728a:
+        fab_convert read bpy.app.binary_path)."""
+        import ast
+        tree = ast.parse((Path(angelo_agent.__file__)).read_text(encoding="utf-8"))
+        reached = {alias.name for function in tree.body if isinstance(function, ast.FunctionDef)
+                   and function.name in ("register", "unregister") for node in ast.walk(function)
+                   if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module is None
+                   for alias in node.names}
+        self.assertEqual(sorted(reached - set(self.MODULES)), [])
 
     def test_the_headless_child_registers_nothing(self):
         self.assertEqual(self.run_add_on(True, {"ANGELO_HEADLESS": "1"}), ([], []))

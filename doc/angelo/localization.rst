@@ -121,9 +121,12 @@ target). Blender's loader (``blentranslation/intern/messages.cc``) already accep
 list of domains; ``BLT_lang_set`` passes ``blender`` and ``angelo`` and
 ``BLT_pgettext`` asks them in that order. Consequences: Blender's wording wins for a
 message both define (Cancel, Preferences); Angelo's catalogue fills the gaps, including
-languages Blender has translated only partly; Blender's catalogues are never edited, so
-an upstream catalogue update merges without conflict; Python and C++ read the same
-files. Only ``WITH_INTERNATIONAL=ON`` builds translate: ``blender_release.cmake`` (and so
+languages Blender has translated only partly; Blender's catalogues are not extended, so
+an upstream catalogue update merges with few conflicts. The one kind of edit is a correction
+of a translation that tells the user something wrong (an Angelo catalogue cannot override
+it, since Blender's answers first): each is pinned by
+``tests/python/angelo_agent/test_native_blender_catalogue_fixes.py`` so an upstream refresh
+cannot undo it, and offered upstream. Python and C++ read the same files. Only ``WITH_INTERNATIONAL=ON`` builds translate: ``blender_release.cmake`` (and so
 ``build_release_macos.sh``) sets it, the lite development build does not.
 
 Runtime
@@ -234,7 +237,7 @@ Limits (all documented, none silent)
   ``locale/languages``: Hindi 4%, Thai 5%, Dutch 7%, Indonesian 21%, Arabic 23%, German
   35%). Blender's menus and editors stay English where Blender has no translation;
   Angelo's own text is complete in all 20. Blender's catalogues are Blender's to
-  complete upstream; Angelo does not fork them.
+  complete upstream; Angelo only corrects wrong translations in them (see above).
 * Blender-native widgets (menus, Preferences, the Properties editor, operator dialogs)
   are not mirrored by Blender; they draw Angelo's Arabic shaped and in visual order,
   left-aligned. A native label too long for its widget is clipped on the right, which

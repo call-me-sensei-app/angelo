@@ -31,6 +31,11 @@ Phases (``--native-phase``, one window process each):
    import from the notice puts Angelo's own preferences back exactly and removes what came over.
 6. ``upgrade``: an earlier Angelo version's folder (and a Blender one) exist: the card offers "Use my earlier Angelo
    settings" from Angelo 5.1, and Blender's own import (``preferences.copy_prev``) runs with Angelo kept enabled.
+7. ``crashing-import``, ``crashing-safe`` and ``crashing-restart`` (group ``crashing``; doc/angelo/app_identity.rst,
+   "A start that did not finish"): Blender's folder enables an add-on that crashes natively as it loads in Angelo
+   (``ANGELO_QA_CRASH_ON_LOAD``). The setup card's import must end in that crash; the next launch must open with
+   every third-party add-on off and one notice naming them; the one after must open normally with them still off.
+   Every launch of the group runs (and is reported) whatever an earlier one did.
 
 Receipts: ``settings-import.json`` and one ``<phase>.json`` per phase, with the PNGs beside them. No provider,
 account, network (``--offline-mode``) or real user folder is used.
@@ -51,6 +56,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 EXPECTED_FAILURE = "Broken Tool fails to register (fixture)"
+GROUPS = {"switcher": 2, "fresh": 1, "broken": 2, "menu": 1, "upgrade": 1, "crashing": 3}   # Launches per group.
+CRASH = {"ANGELO_QA_CRASH_ON_LOAD": "1"}   # The crashing group's add-on crashes in each of its launches.
 
 
 def fingerprint(root):
@@ -84,7 +91,7 @@ def run_host():
     parser.add_argument("--out", required=True)
     parser.add_argument("--blender", default=os.environ.get("ANGELO_QA_STOCK_BLENDER"),
                         help="stock Blender for the fixture folder (default: --binary, start-up off)")
-    parser.add_argument("--groups", default="switcher,fresh,broken,menu,upgrade",
+    parser.add_argument("--groups", default=",".join(GROUPS),
                         help="comma list of phase groups to run (default: all; the receipt fails unless all ran)")
     args = parser.parse_args()
     out = Path(args.out).resolve()
@@ -145,8 +152,9 @@ def run_host():
             raise AssertionError("The Blender fixture folder was not made: " + str(made.get("error")))
         return home
 
-    def phase(name, home, sandbox, allowed_failure=False):
-        env = environment(home, {"ANGELO_QA_DIR": str(out)})
+    def phase(name, home, sandbox, allowed_failure=False, extra=None, crashes=False, keep_going=False):
+        """One window launch. ``crashes``: it must end in the native crash, after the phase recorded its steps."""
+        env = environment(home, dict(extra or {}, ANGELO_QA_DIR=str(out)))
         folder = blender_folder(home, env)
         before = fingerprint(folder) if folder.exists() else None
         command = [str(binary), "--disable-autoexec", *gui_launch.window_flags(), "--window-geometry", "60", "60",
@@ -156,15 +164,21 @@ def run_host():
         with output.open("w") as log:
             result = subprocess.run(command, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=240)
         text = output.read_text(errors="replace")
-        data = json.loads((out / (name + ".json")).read_text())
+        receipt = out / (name + ".json")
+        data = json.loads(receipt.read_text()) if receipt.exists() else {"phase": name, "error": "no receipt"}
         findings = [f for f in native_suite_checks.scan_log(text)
                     if not (allowed_failure and f["kind"] == "python_traceback" and EXPECTED_FAILURE in f["line"])]
-        host = {"exit_code_zero": result.returncode == 0, "no_unexpected_failures_in_output": not findings,
-                "blenders_folder_unchanged": before is None or fingerprint(folder) == before}
+        host = {"blenders_folder_unchanged": before is None or fingerprint(folder) == before}
+        if crashes:   # The receipt holds the steps up to the click; the process never reached its own end.
+            host.update(ended_in_a_crash=result.returncode != 0 and not data.get("finished"),
+                        reached_the_crashing_step=bool(data.get("checks")) and all(data["checks"].values()))
+        else:
+            host.update(exit_code_zero=result.returncode == 0, no_unexpected_failures_in_output=not findings)
+            host["phase_passed"] = bool(data.get("success"))
         data.update(exit_code=result.returncode, findings=findings, host=host)
-        data["success"] = bool(data.get("success")) and all(host.values())
+        data["success"] = all(host.values())
         report["phases"].append(data)
-        if not data["success"]:
+        if not data["success"] and not keep_going:
             raise AssertionError("Phase failed: %s %s %s" % (name, json.dumps(host), data.get("error")))
 
     def upgrade():
@@ -199,7 +213,25 @@ def run_host():
             phase("menu", home, "menu")
         if "upgrade" in groups:
             upgrade()
-        report["success"] = len(report["phases"]) == 7 and all(item["success"] for item in report["phases"])
+        if "crashing" in groups:
+            home = make_profile("crashing", "crashing")
+            for name, crashes in (("crashing-import", True), ("crashing-safe", False), ("crashing-restart", False)):
+                phase(name, home, "crashing", extra=CRASH, crashes=crashes, keep_going=True)
+            # The import's native crash left Blender's crash log, as a person's would. It is this group's evidence,
+            # kept beside the receipts under a name the suite runner does not read as a crash of this run
+            # (native_suite_checks.find_crash_logs reads every *.crash.txt in the suite's folder).
+            logs = sorted((out / "crashing").rglob("*.crash.txt"))
+            kept = []
+            for log in logs:
+                target = out / ("crashing-" + log.name.replace(".crash.txt", ".crash-log.txt"))
+                log.rename(target)
+                kept.append(target.name)
+            report["crashing_logs_kept"] = kept
+            imported = next(item for item in report["phases"] if item.get("phase") == "crashing-import")
+            imported["host"]["left_a_native_crash_log"] = bool(kept)
+            imported["success"] = all(imported["host"].values())
+        expected = sum(GROUPS.values())
+        report["success"] = len(report["phases"]) == expected and all(item["success"] for item in report["phases"])
     finally:
         (out / "settings-import.json").write_text(json.dumps(report, indent=2, default=str))
         print(json.dumps({"success": report["success"], "phases": [(p["phase"], p["success"]) for p in report["phases"]]}))
@@ -216,5 +248,6 @@ if "--native-phase" not in sys.argv:
 
 sys.path.insert(0, str(HERE))
 import settings_import_phases  # noqa: E402  (the in-app half: Blender only)
+import settings_import_crash_phases  # noqa: E402,F401  (adds the crashing group's phases)
 
 settings_import_phases.start()

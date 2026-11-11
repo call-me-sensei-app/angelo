@@ -48,7 +48,9 @@ class ResultPictureTests(unittest.TestCase):
 class AddToLibraryTests(unittest.TestCase):
     def test_not_in_the_library_says_add_it_before_permission_unknown(self):
         from angelo_agent.fab_browser_listing_owner import listing_from_page
-        row = SimpleNamespace(disabled=False, control_fingerprint='c' * 32, filename='chair.glb', quality_label=None)
+        from angelo_agent.fab_browser_listing_page import ChoiceObservation
+        row = ChoiceObservation(ordinal=0, filename='chair.glb', format='glb', quality_label=None, display_size='',
+                                disabled=False, control_fingerprint='c' * 32)
         page = SimpleNamespace(listing_id=LISTING, title='Chair', author='Maker', license_label='Standard License',
                                choices=(row,), library_state_label=None)
         observed = listing_from_page(page)

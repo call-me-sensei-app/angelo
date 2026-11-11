@@ -400,6 +400,9 @@ def context_entry(record, *, position=None):
         entry["frames"] = "%d/%d" % (detail.get("frames_done", 0), detail["frames_total"])
     if detail.get("encoding") and record["status"] in {"running", "stopping"}:   # Its MP4 (job_render_video).
         entry["phase"] = "encoding the MP4"
+    elif detail.get("kernels_loading") and record["status"] in {"running", "stopping"}:   # job_deadline.observe_kernels
+        from .job_deadline import kernel_note
+        entry["phase"] = kernel_note(detail)
     for key in ("device", "device_why") + (() if record["status"] in TERMINAL else ("estimate_s",)):
         if detail.get(key):   # A Cycles render's device as it started, and why when that is the CPU (render_device).
             entry[key] = detail[key]
@@ -408,6 +411,8 @@ def context_entry(record, *, position=None):
             entry["seconds"] = round(record["ended"] - record["started"], 1)
         if detail.get("peak_memory_mb"):   # What its Cycles render used at most (job_deadline.observe_memory).
             entry["peak_memory_mb"] = detail["peak_memory_mb"]
+        if detail.get("kernel_compile_s"):   # Of its seconds, a one-time kernel compile (not counted in its budget).
+            entry["kernel_compile_s"] = detail["kernel_compile_s"]
         outputs = output_entries(receipt)
         for key in ("files", "images", "caches", "kept", "kept_folder", "left_published", "sequence", "missing",
                     "unexpected", "unrestored", "video", "video_error", "note", "facts"):   # facts: per target, what a texture set's PNGs can't hold.

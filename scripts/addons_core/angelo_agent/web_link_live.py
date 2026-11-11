@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The web link's live frames: only the objects that changed (doc/angelo/web_link.rst, "Live frames"). Main thread.
 
-The page keeps every object it already has; a live update must never rebuild the developer's scene. So after each
-still period Angelo exports only the objects whose data changed since the last frame (a **delta**), and the page
-touches only those:
+The page keeps every object it already has; a live update must never rebuild the developer's scene. So for each
+frame (when ``engine_link_cadence`` says one is due) Angelo exports only the objects whose data changed since the last
+frame (a **delta**), and the page touches only those:
 
 * **What changed** comes from the depsgraph (``note``): every object it re-evaluated, plus the users of a mesh,
   material, image, node group or other data it updated, in the original objects and in what the depsgraph evaluated

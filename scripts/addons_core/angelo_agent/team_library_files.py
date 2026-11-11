@@ -310,8 +310,15 @@ def _check_fbx(path, size):
     return {"textures": totals["textures"]}
 
 
-def _fbx_nodes(handle, record, start, stop, depth, totals):
-    """Walk one node list in ``[start, stop)``, up to its closing null record."""
+_FBX_TEXTURES = (b"Texture", b"Video")
+
+
+def _fbx_nodes(handle, record, start, stop, depth, totals, paths=None):
+    """Walk one node list in ``[start, stop)``, up to its closing null record.
+
+    ``paths``: the list a Texture or Video node's own path children report their values into. Blender's FBX importer
+    (``import_fbx.blen_read_texture_image``) opens RelativeFilename, else FileName, else Filename, and with none of
+    them non-empty it opens the node's NAME as the path: that name is then checked like a path (re-review r3 G1)."""
     if depth > MAX_FBX_DEPTH:
         raise Refused("This FBX file nests too deeply.")
     position = start
@@ -327,15 +334,20 @@ def _fbx_nodes(handle, record, start, stop, depth, totals):
         properties = position + record.size + name_length
         if properties + length > end:
             raise Refused("This FBX file is malformed.")
-        _fbx_properties(handle, name, count, properties, properties + length, totals)
+        texture = name in _FBX_TEXTURES
+        strings, own = ([] if texture else None), ([] if texture else None)
+        _fbx_properties(handle, name, count, properties, properties + length, totals, strings, paths)
         if properties + length < end:
-            _fbx_nodes(handle, record, properties + length, end, depth + 1, totals)
+            _fbx_nodes(handle, record, properties + length, end, depth + 1, totals, own)
+        if texture and not any(own):
+            for value in strings:   # Its name ("Name\x00\x01Class") is the path the importer opens.
+                _check_fbx_path(value.split(b"\x00\x01", 1)[0], network_only=bool(totals.get("paths_only")))
         position = end
     if depth:
         raise Refused("This FBX file is truncated.")
 
 
-def _fbx_properties(handle, name, count, start, stop, totals):
+def _fbx_properties(handle, name, count, start, stop, totals, strings=None, paths=None):
     handle.seek(start)
     for _ in range(count):
         code = handle.read(1)
@@ -354,7 +366,9 @@ def _fbx_properties(handle, name, count, start, stop, totals):
             if totals["decoded"] > MAX_DECODED or handle.tell() + compressed > stop:
                 raise Refused("This FBX file decodes to more than %d MB, or is malformed; it wasn't imported."
                               % (MAX_DECODED // MiB))
-            if encoding == 1:
+            if totals.get("paths_only"):
+                handle.seek(compressed, os.SEEK_CUR)
+            elif encoding == 1:
                 _bounded_inflate(handle.read(compressed), declared)
             elif encoding == 0 and compressed == declared:
                 handle.seek(compressed, os.SEEK_CUR)
@@ -367,13 +381,18 @@ def _fbx_properties(handle, name, count, start, stop, totals):
             length = struct.unpack("<I", raw)[0]
             if handle.tell() + length > stop:
                 raise Refused("This FBX file is malformed.")
-            if name == b"Content" and code == ord("R") and length > 0:
+            if name == b"Content" and code == ord("R") and length > 0 and not totals.get("paths_only"):
                 data = handle.read(min(length, HEADER_BYTES))
                 handle.seek(length - len(data), os.SEEK_CUR)
                 totals["textures"] += 1
                 check_embedded_image(data, "A texture embedded in this FBX file", totals)
             elif name in _FBX_PATHS and code == ord("S"):
-                _check_fbx_path(handle.read(length))
+                value = handle.read(length)
+                _check_fbx_path(value, network_only=bool(totals.get("paths_only")))
+                if paths is not None:
+                    paths.append(value)
+            elif strings is not None and code == ord("S"):
+                strings.append(handle.read(length))
             else:
                 handle.seek(length, os.SEEK_CUR)
         else:
@@ -382,11 +401,35 @@ def _fbx_properties(handle, name, count, start, stop, totals):
         raise Refused("This FBX file is malformed.")
 
 
-def _check_fbx_path(raw):
+def _check_fbx_path(raw, network_only=False):
+    """A texture path never names another computer or a device; for a lone downloaded file it never climbs out of
+    its folder either (``network_only``: a reader that unpacked a whole folder relinks the rest itself)."""
     text = raw.decode("utf-8", "replace")
-    if ".." in re.split(r"[\\/]", text):
+    if _network_or_device(text):
+        raise Refused("This FBX file points at a file on another computer or a device; it wasn't imported.")
+    if not network_only and ".." in re.split(r"[\\/]", text):
         raise Refused("This FBX file points at files outside its folder; it wasn't imported. Embed the textures "
                       "(or save as GLB).")
+
+
+def _network_or_device(text):
+    """Not a local file path's shape (``untrusted_paths.local_form``): opening it on Windows could try SMB sign-in
+    (sending the person's NTLM hash) or reach a device. Checked from the text alone."""
+    from .untrusted_paths import local_form
+    return not local_form(text)
+
+
+def fbx_paths_checked(path):
+    """Only that no texture path of a binary FBX names another computer or a device, without judging embedded images
+    or inflating arrays: for a file another reader opens in its own process with its folder (the Fab converter)."""
+    size = os.path.getsize(path)
+    with open(path, "rb") as handle:
+        header = handle.read(27)
+        version = struct.unpack_from("<I", header, 23)[0] if len(header) == 27 else 0
+        if not 7100 <= version <= 7700:
+            raise Refused("FBX version %s isn't supported; export FBX 7.1 to 7.7 (binary) or GLB." % version)
+        record = struct.Struct("<QQQB" if version >= 7500 else "<IIIB")
+        _fbx_nodes(handle, record, 27, size, 0, {"decoded": 0, "nodes": 0, "textures": 0, "paths_only": True})
 
 
 def _bounded_inflate(data, declared):

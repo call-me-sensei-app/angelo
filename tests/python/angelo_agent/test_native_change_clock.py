@@ -43,6 +43,9 @@ SECOND = 10_000_000
 TIMES = {"st_mtime_ns", "st_ctime_ns", "st_mtime", "st_ctime", "st_birthtime", "st_birthtime_ns", "st_change_time"}
 # Each Angelo function that reads a stat time without the helper, and why it needs none (the audit of 2026-11-04).
 NEEDS_NONE = {
+    "modules/angelo_start_records.py:_examine":
+        "an unlocked start record's age decides only whether a record cut short (older than INCOMPLETE_AGE, 60 s) is "
+        "removed; a coarse clock delays that removal by its tick, never misreads a change",
     "addons_core/angelo_agent/blender_asset_index.py:wait_for_file":
         "polling optimization only: verified rehashes the expected SHA-256 before every success and append",
     "addons_core/angelo_agent/__init__.py:_stamp_time": "reload detection for addon_utils, compared once at enable",
@@ -76,6 +79,8 @@ NEEDS_NONE = {
     "addons_core/angelo_agent/files.py:FileWorkspace._execute":
         "a failed delete's diagnosis, after the before-image copy settled the file (copy_stable_file)",
     "addons_core/angelo_agent/headless_working_copy.py:sweep": "an age (a day) for leftovers",
+    "addons_core/angelo_agent/job_render_child.py:sweep":
+        "an age (an hour) for render copies crashed apps left; a child reads its copy once, at its start",
     "addons_core/angelo_agent/job_store.py:copy_output":
         "its copy is copy_stable_file's, which settles the opened file before the first read",
     "addons_core/angelo_agent/launcher_records.py:claim_stale":

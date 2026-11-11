@@ -388,7 +388,9 @@ Enter prepared the chat's connection under the running request.
     no Angelo call is outstanding: when the last one is answered, or at once if none was. Codex reads pending input
     only when its next model request starts, after every tool output, and Angelo's runtime holds a code-mode cell
     while one of Angelo's calls is unanswered, so nothing runs while it is read. ``features.instant_interrupt`` is
-    set off. The person's own Codex (not Angelo's runtime) has no hold: its messages queue.
+    set off; the runtime holds without it (1.0.10's did not, and a turn ended under an approval card), which every
+    cut proves on the bundled runtime (``test_native_codex_approval_hold.py``). The person's own Codex (not Angelo's
+    runtime) has no hold: its messages queue.
   - A Codex plan's correction turn carries them as Claude's rounds do; Claude's opt-in direct tools, voice, a
     connected app's task, Angelo's own event turn and a worker-hosted chat's turn take none (they queue).
 
@@ -1191,7 +1193,10 @@ reveal target is dropped; the opening click shield still lasts through its first
 viewport draw, even if the original card has finished or been replaced.
 The waiting list is refreshed by the existing pump/watch, never by drawing. It
 reads whether a chat is shown now (``chat_toggle.chat_shown``), so the chat just
-hidden lists its own card at once, never after the next watch.
+hidden lists its own card at once, never after the next watch. That is a live
+read whenever no window is between screens, even before the toggle's watch has
+run once (a fast start hides the chat before it does); only while a window is
+between screens does it use the watch's last answer.
 
 Attachments and drops
 =====================

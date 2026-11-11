@@ -707,3 +707,18 @@ flow-state key the extractor picked up; it is translated like "Stopped".
   English. vi: "alpha" is Blender's "độ đục" (opacity). zh-TW: "live tool row" is 即時工具列, which may read as a toolbar.
 * hi: "Normal" is नॉर्मल in the channel list (Blender's सामान्य reads as "ordinary").
 * "Signed in from Angelo" was rephrased as "setup and sign-in happen from Angelo" in id, it, pt and pt-BR.
+
+## 1.0.11 release notes: choices to check
+
+* Blender's names in these lines (Grease Pencil, the Sequencer, Undo, Fillet Curve, the Skin modifier, Flatten,
+  Delaunay) follow Blender's default-context wording where its catalogue has one. Some of those words read oddly as
+  feature names: de Flatten is "Glätten" (smooth), pt and pt-BR Skin is "Cobertura", ru Flatten is "Выравнивание". Check
+  them against what the running app shows. "Matrix to Rotation" stays English in every language, because no catalogue
+  translates that node.
+* vi: Blender's catalogue renders Delaunay as "Trì Hoãn" (delay), a mistranslation, so the line keeps "Delaunay".
+  Blender's Japanese, Polish, Russian and Simplified Chinese transliterations (ドロネー, Delaunaya, Делоне, 德洛内) are used.
+* Live link follows the Engine Live Link label of each catalogue (fr lien direct, ru живая связь, sv livelänk, zh 实时链接).
+* Numbers: the seconds keep their values, with the language's decimal separator (0,1 s in de, es, fr, id, it, nl, pl, pt,
+  pt-BR, sv, vi; 0,1 sn in tr; 0,1 с in ru; 0.1 s in hi) and the unit word where the language writes one (ja, ko, zh,
+  zh-TW 秒/초; th and ar write out "second"). "About ten times a second" is written as a numeral (10) in ja, ko, zh and zh-TW.
+* Megascans stays as written; "texture set" is translated as a common noun (Blender has no label for it).

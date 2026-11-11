@@ -897,6 +897,21 @@ with the fix:
 * ``56a6f5b4ac4`` Fix: Mesh: Uninitialized attributes when adding elements (by Tibo Stans)
 * ``050e8f2277b`` Fix #165230: Regression: rendering to the current directory broken (by Sybren A. Stüvel)
 
+Angelo 1.0.11 carries this fix from Blender's main branch (5.4), which upstream had not backported to 5.2 or 5.3,
+taken with ``test_blender_custom_normals_transform.py`` failing on 1.0.11 and passing with it:
+
+* ``8306860f963`` Fix #121831: Applying non-uniform or negative scale breaks custom split normals (by Tariq-Sulley)
+
+Upstream fixed only Blender's Apply operator. Angelo extends it to ``Mesh.transform()`` and ``Mesh.flip_normals()``
+(``rna_mesh_api.cc``), which the agent's ``transform_apply`` and scripts bake through, and keeps free custom normals
+free in all three (the operator would have stored them in tangent space).
+
+Angelo 1.0.11 also carries this fix from Blender's main branch (5.4), which upstream had not backported to 5.2 or
+5.3, taken with ``test_blender_upstream_fix_backports.py`` failing without it (a render in a kept session differed
+from the same render in a new one after the denoiser's passes changed) and passing with it:
+
+* ``a78e8dccb9c`` Fix #166217: Cycles: Crashes changing denoisers (by Brecht Van Lommel)
+
 Agent runtime
 =============
 
@@ -943,6 +958,13 @@ with ``cargo build --target x86_64-pc-windows-msvc --release --bin codex
 ``.pdb`` files apart, never bundled. Only ``codex-command-runner.exe`` remains
 OpenAI's unchanged signed release asset of the pinned tag, checked against its
 published SHA-256 and valid signature.
+
+1.0.11 pins fork commit ``2dfdc4c72e3b497b2c463bce3631eec05475cb3c``: 1.0.10's commit plus the hold of a
+code-mode cell in a step without an instant-interrupt token (Angelo launches with instant interrupt off, so
+1.0.10's runtime never held a waiting call). The change is in ``codex-core`` alone, with no dependency or lock
+change; build every pinned executable from this commit as usual. Every release stage runs
+``test_native_codex_approval_hold.py`` on the exact
+bundled ``codex`` (``build_release_macos.sh``, ``windows_release_validate.ps1``), and a skip fails it.
 
 The 1.0.10 trust refresh uses fork commit
 ``0ffcb4dbb1e2e310dd375d50911ea667c22f2210``, webpki-roots 1.0.11 and unchanged

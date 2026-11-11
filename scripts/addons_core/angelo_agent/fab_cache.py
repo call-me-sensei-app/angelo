@@ -1,10 +1,15 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Account-scoped, bounded Fab GLB cache. Blocking worker code; no network client and no bpy.
+"""Account-scoped, bounded Fab download cache. Blocking worker code; no network client and no bpy.
 
 The account adapter supplies a context-managed byte stream only AFTER current authorization. A local SHA-256
 receipt detects later corruption; it is not a publisher signature or evidence of ownership. All file names are
 ours, never Fab text. Use the public library's leases/trim but never its public-host download allowlist.
+
+A self-contained GLB is the payload itself (``asset.glb``). Every other format of ``fab_formats`` is unpacked
+(``fab_archive``) and converted by a sandboxed background Blender (``fab_convert``) into ``asset.blend``: the only
+file the app then reads. The conversion is cached beside the download under its own receipt (download digest and
+converter version), so adding the same file again starts no converter; the unpacked files are removed at once.
 """
 
 import hashlib
@@ -16,7 +21,7 @@ import stat
 import tempfile
 import threading
 
-from . import library_fetch, shared_replace, team_library_files
+from . import fab_formats, library_fetch, shared_replace, team_library_files
 from .fab_catalog import FabError
 
 CHUNK = 1024 * 1024
@@ -61,7 +66,7 @@ def _digest(path, size, check):
 
 
 def _cached(folder, variant, check):
-    path, record = folder / 'asset.glb', folder / 'receipt.json'
+    path, record = folder / 'download.bin', folder / 'receipt.json'
     try:
         _regular(record)
         if record.stat().st_size > 1024:
@@ -90,11 +95,23 @@ def _directory(path):
             raise FabError('CACHE_UNAVAILABLE')
 
 
-def _inspect(path):
-    facts = team_library_files.inspect(str(path), 'model')
-    if facts['format'] != 'glb':
+def _inspect(path, fmt):
+    """Reject content that is not the chosen format before it is published to the cache."""
+    with shared_replace.open_file(path) as handle:
+        head = handle.read(65536)
+    try:
+        kind = fab_formats.sniff(head, path.stat().st_size)
+    except fab_formats.Unsupported:
+        raise FabError('UNSUPPORTED') from None
+    if fmt.direct:
+        facts = team_library_files.inspect(str(path), 'model')
+        if facts['format'] != 'glb':
+            raise FabError('UNSUPPORTED')
+        return {'model': path, 'format': 'glb', 'maps': {}}
+    if not ((fmt.archive and kind == 'zip') or (fmt.bare and kind in fmt.members)
+            or (fmt.code == 'usd' and kind == 'usdz')):
         raise FabError('UNSUPPORTED')
-    return {'model': path, 'format': 'glb', 'maps': {}}
+    return {'format': fmt.code, 'container': 'zip' if kind == 'zip' else 'file', 'content': kind}
 
 
 def prepare(root, account_scope, item, variant, stream, check, progress=None):
@@ -116,14 +133,24 @@ def prepare(root, account_scope, item, variant, stream, check, progress=None):
         check()
         _directory(folder.parent)
         _directory(folder)
+        fmt = fab_formats.BY_CODE.get(variant.format)
+        if fmt is None:
+            raise FabError('UNSUPPORTED')
         cached = _cached(folder, variant, check)
         hit = cached is not None
-        path, digest = cached if hit else _download(folder, variant, stream, check, progress)
-        facts = _inspect(path)
+        path, digest = cached if hit else _download(folder, variant, fmt, stream, check, progress)
+        facts = _inspect(path, fmt)
         check()
+        if fmt.direct:
+            proof = PayloadProof(path, variant.size, digest)
+        else:
+            from . import fab_convert
+            converted, size, sealed, result = fab_convert.cached(folder, path, digest, fmt, facts, item, check, progress)
+            facts = dict(facts, model=converted, conversion=result)
+            proof = PayloadProof(converted, size, sealed, 'asset.blend')
         os.utime(folder, None)
         library_fetch.trim(folder.parent, CACHE_BYTES)
-        return facts, lease, hit, PayloadProof(path, variant.size, digest)
+        return facts, lease, hit, proof
     except BaseException:
         lease.release()
         raise
@@ -132,7 +159,7 @@ def prepare(root, account_scope, item, variant, stream, check, progress=None):
             _transfer_lock.release()
 
 
-def _download(folder, variant, stream, check, progress):
+def _download(folder, variant, fmt, stream, check, progress):
     fd, temporary = tempfile.mkstemp(prefix='.download-', suffix='.part', dir=folder)
     temp = Path(temporary)
     receipt = None
@@ -153,13 +180,13 @@ def _download(folder, variant, stream, check, progress):
             if done != variant.size:
                 raise FabError('CORRUPT')
         check()
-        _inspect(temp)  # Reject malformed, external-reference or oversized decoded content before publication.
+        _inspect(temp, fmt)  # Reject malformed, external-reference, oversized or other-format content first.
         check()
         fd, name = tempfile.mkstemp(prefix='.receipt-', suffix='.part', dir=folder)
         receipt = Path(name)
         with os.fdopen(fd, 'w', encoding='utf8') as handle:
             json.dump({'bytes': done, 'sha256': digest.hexdigest()}, handle)
-        path = folder / 'asset.glb'
+        path = folder / 'download.bin'
         shared_replace.replace(temp, path, told=False)
         shared_replace.replace(receipt, folder / 'receipt.json', told=False)
         return path, digest.hexdigest()

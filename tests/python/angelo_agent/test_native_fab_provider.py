@@ -250,7 +250,7 @@ class FabTests(unittest.TestCase):
         self.assert_code('CANCELLED', lambda: self.prepare(cancel=stop))
         self.assertEqual(self.client.closed, 1)
         self.assertEqual(list(self.root.rglob('*.part')), [])
-        self.assertEqual(list(self.root.rglob('asset.glb')), [])
+        self.assertEqual(list(self.root.rglob('download.bin')), [])
         self.assertEqual(library_fetch.held(), {})
 
     def test_signout_during_transfer_and_before_consumption_blocks_import(self):
@@ -291,14 +291,14 @@ class FabTests(unittest.TestCase):
                 self.client.payload = payload
                 with self.assertRaises(FabError):
                     self.prepare()
-                self.assertEqual(list(self.root.rglob('asset.glb')), [])
+                self.assertEqual(list(self.root.rglob('download.bin')), [])
                 self.assertEqual(list(self.root.rglob('*.part')), [])
 
     def test_external_reference_with_matching_size_is_refused_by_format_checks(self):
         self.client.payload = f.glb({'asset': {'version': '2.0'}, 'images': [{'uri': 'file:///secret.png'}]})
         self.client.rows = [metadata(len(self.client.payload))]
         self.assert_code('CORRUPT', self.prepare)
-        self.assertEqual(list(self.root.rglob('asset.glb')), [])
+        self.assertEqual(list(self.root.rglob('download.bin')), [])
 
     def test_link_in_cache_is_refused_and_target_not_touched(self):
         with self.prepare() as prepared:

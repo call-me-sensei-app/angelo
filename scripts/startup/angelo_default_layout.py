@@ -310,6 +310,11 @@ def _cover_draw():
 
 
 # -- Blender's startup splash until the add-on takes it over --------------------------------------------------------
+def running():
+    """Whether the start-up timer still runs; it hands over to ``intro.schedule_first_launch`` as it ends."""
+    return _timer is not None and bpy.app.timers.is_registered(_timer)
+
+
 def startup_pending():
     """Angelo's add-on is about to load, and its startup card will follow Blender's splash.
 

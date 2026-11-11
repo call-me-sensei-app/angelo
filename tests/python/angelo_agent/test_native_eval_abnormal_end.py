@@ -491,5 +491,13 @@ class TraceExportTests(unittest.TestCase):
         self.assertEqual(len(lines_of(output / "trial-01" / trace.TRACE_FILE)), 2)
 
 
+def setUpModule():   # Billed starts here check the fixture evaluation account, named as a kit names the real one.
+    account_fixtures.name_account_2()
+
+
+def tearDownModule():
+    account_fixtures.unname_account_2()
+
+
 if __name__ == "__main__":
     unittest.main()

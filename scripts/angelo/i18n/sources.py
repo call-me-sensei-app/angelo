@@ -55,7 +55,7 @@ bake_maps_card bake_maps_text
 render_region render_region_card render_region_draw render_region_pills
 tension_map tension_map_card tension_map_logic
 skeleton_report_card skeleton_check_ui skeleton_menu
-version_carry_over_ui
+version_carry_over_ui safe_start_notice
 conversations conversations_delete conversations_layout conversations_popover conversations_ui model_picker_ui
 agent_target_labels surface_focus
 

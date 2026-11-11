@@ -7,11 +7,12 @@
         --out DIR [--godot GODOT ...] [--assets FOLDER_OF_GLB] [--timeout SECONDS]
 
 ``godot_physics_e2e/angelo_side.py`` marks every model in ``--assets`` (``ANGELO_QA_PHYSICS_ASSETS``: held-out
-models this feature was not developed on, such as a free CC0 kit) with each body and shape by one rule, and exports
-them; two of them also go in as .blend files, which Godot imports through the Angelo under test as its Blender (a
-background Angelo). Each Godot editor (``--godot``, repeatable; ``ANGELO_QA_GODOT``, several joined by the path
-separator) imports the project headless and ``godot_physics_e2e/dump_physics.gd`` reports what it built. The checks
-compare that with what each variant asked for, independently of Angelo's own arithmetic:
+models this feature was not developed on, by default the CC0 set ``heldout_assets.json`` pins, fetched and checked into
+a cache by ``native_suite_inputs``) with each body and shape by one rule, and exports them; two of them also go in as
+.blend files, which Godot imports through the Angelo under test as its Blender (a background Angelo). Each Godot editor
+(``--godot``, repeatable; ``ANGELO_QA_GODOT``, several joined by the path separator; else Godot's default install)
+imports the project headless and ``godot_physics_e2e/dump_physics.gd`` reports what it built. The checks compare
+that with what each variant asked for, independently of Angelo's own arithmetic:
 
 * each variant's root is the body Godot makes for its type (RigidBody3D with the mass, AnimatableBody3D, Area3D,
   StaticBody3D), every mesh survived, every shape is a CollisionShape3D directly below the body and is the chosen
@@ -29,6 +30,8 @@ HOME and Godot's settings are private to the run. Standard library only.
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+import native_suite_inputs  # noqa: E402  Its Godot editors and held-out models.
+import qa_waits  # noqa: E402  The runner's --timeout-scale.
 
 import argparse
 import json
@@ -36,13 +39,18 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent / "godot_physics_e2e"
 SHAPE_CLASSES = {"BOX": "BoxShape3D", "SPHERE": "SphereShape3D", "CAPSULE": "CapsuleShape3D",
                  "CYLINDER": "CylinderShape3D", "CONVEX": "ConvexPolygonShape3D", "TRIMESH": "ConcavePolygonShape3D"}
 PROJECT = '[application]\n\nconfig/name="Angelo physics E2E"\n'
-TIMEOUT = 600
+TIMEOUT = 600   # Seconds per Angelo or Godot step, times the runner's --timeout-scale (qa_waits).
+
+
+def step_timeout(environ=None):
+    return TIMEOUT * qa_waits.timeout_scale(environ)
 
 
 def near(a, b, relative=2e-3, absolute=2e-3):
@@ -181,18 +189,23 @@ def main(argv=None):
     parser.add_argument("--godot", action="append", help="a Godot 4.4+ editor; repeat for several versions "
                         "(default: ANGELO_QA_GODOT, several joined by %r)" % os.pathsep)
     parser.add_argument("--assets", default=os.environ.get("ANGELO_QA_PHYSICS_ASSETS"),
-                        help="a folder of held-out .glb models (default: ANGELO_QA_PHYSICS_ASSETS)")
+                        help="a folder of held-out .glb models (default: ANGELO_QA_PHYSICS_ASSETS, else the pinned "
+                        "set, fetched into a cache)")
     parser.add_argument("--blends", type=int, default=2, help="models also imported as .blend through Angelo")
-    parser.add_argument("--timeout", type=int, default=TIMEOUT, help="seconds each Angelo or Godot step may take "
-                        "(default %(default)s; a large asset set or a loaded machine needs more)")
+    parser.add_argument("--timeout", type=float, default=step_timeout(), help="seconds each Angelo or Godot step may "
+                        "take (default %d x the runner's --timeout-scale; a large asset set or a loaded machine needs "
+                        "more)" % TIMEOUT)
     args = parser.parse_args(argv)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    godots = args.godot or [item for item in os.environ.get("ANGELO_QA_GODOT", "").split(os.pathsep) if item]
-    missing = [item for item in godots if not os.path.isfile(item)]
-    if not godots or missing or not args.assets or not list(Path(args.assets).glob("*.glb")):
-        report = {"success": False, "error": "Set ANGELO_QA_GODOT (Godot 4.4+ editors) and ANGELO_QA_PHYSICS_ASSETS "
-                                             "(a folder of .glb models)", "missing": missing}
+    # The runner resolved both (native_suite_inputs); started by hand, the same resolution runs here.
+    given = dict(os.environ, **({native_suite_inputs.GODOT_ENV: os.pathsep.join(args.godot)} if args.godot else {}),
+                 **({native_suite_inputs.PHYSICS_ASSETS_ENV: args.assets} if args.assets else {}))
+    try:
+        godots = native_suite_inputs.godot_editors(given)
+        args.assets = native_suite_inputs.physics_assets(given, tempfile.gettempdir())
+    except native_suite_inputs.Unavailable as error:
+        report = {"success": False, "error": str(error)}
     else:
         made = out / "made"
         made.mkdir(exist_ok=True)

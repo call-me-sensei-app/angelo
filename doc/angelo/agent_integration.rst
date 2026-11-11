@@ -449,7 +449,20 @@ a newer revision must never make an older state appear current. ``Currency``
 retains its eager constructor for existing callers outside the lazy handoff.
 The ``handoff_history`` cursor charges filtered raw records too and
 keeps host-summary adjacency separate from saved result JSON. A group crossing
-the excerpt boundary or work cutoff cannot justify removing its summary.
+the excerpt boundary or work cutoff cannot justify removing its summary. A
+group that begins exactly at the excerpt's start is whole, and the record
+before the start proves it (``History.closed_before_start``): read backward
+past thinking and notice records only, an activity there means the group
+began earlier, and any other record, or the transcript's origin, ends it. The
+records looked at are admitted and charged like records of the excerpt;
+exhausted work or an unsupported record proves nothing. Only a compact handoff
+looks (a long-form one keeps every row), and only after it read every record
+of the excerpt. A follow-up's handoff starts where the last plan's rows begin
+(``Controller._native_unsynced_from``), so the certified result of a turn that
+ran one plan reaches the next message as its one merged entry. A turn that ran
+several plans with no reply between them still sends the summary: the earlier
+plan's activity rows lie before the start and belong to the same group, so the
+entries shown are not all the summary covers.
 ``handoff_projection`` prepares complete primitive copies and compact
 identifiers with the same work credit. It preserves the identifier owner's
 numbering order and refuses unsupported or incomplete graphs; it does not
@@ -485,8 +498,8 @@ If the requested suffix's revision scan is incomplete, a revision-bearing
 activity row without a known current observation or admitted latest commit
 causes that whole activity to be omitted. It cannot silently read as current
 or acquire a fabricated ``changed_since`` claim. This completeness boundary
-is the requested suffix, separate from the transcript-origin requirement for
-retiring a host summary. Successfully filtered non-program notice activities
+is the requested suffix, separate from the proof retiring a host summary needs
+(the transcript's origin, or a start the preceding record closes). Successfully filtered non-program notice activities
 do not themselves prevent retiring an otherwise fully emitted merged group.
 
 Toolset 15 renamed every tool to its ``angelo_`` name

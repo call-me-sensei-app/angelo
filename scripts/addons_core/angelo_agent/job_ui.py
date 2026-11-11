@@ -118,8 +118,9 @@ def _changed(record):
 def _finished(record):
     global _recent
     # Its depsgraph updates ran on the job's thread and were not tracked: an unknown edit for every reader.
-    from . import blender_tools, render_device, scene_queries
+    from . import blender_tools, job_render_route, render_device, scene_queries
     render_device.observe(record)   # A finished Cycles render's pace on its device: the next one's estimate.
+    job_render_route.observe(record)   # And its peak memory: the next one's projection.
     scene_queries.invalidate(window=True)
     blender_tools.note_unknown_change()
     if record["kind"] == PREVIEW:  # A look: its own tool call reports it; no notice, record or status-bar entry.

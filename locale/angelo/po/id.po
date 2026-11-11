@@ -110,6 +110,10 @@ msgstr "Fragment shader GLSL (.glsl, .frag) di proyek"
 msgid "A GLSL fragment shader file in the project"
 msgstr "Berkas fragment shader GLSL di proyek"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "A GPT model's request to run a script now waits for your approval instead of being cancelled about 30 seconds after the card appears."
+msgstr "Permintaan model GPT untuk menjalankan skrip kini menunggu persetujuan Anda, alih-alih dibatalkan sekitar 30 detik setelah kartu muncul."
+
 #. src: angelo_agent/flow_nodes.py
 msgid "A Subflow step needs a generation account"
 msgstr "Langkah subalur memerlukan akun pembuatan"
@@ -705,6 +709,14 @@ msgstr "Tambahkan setiap gambar sebagai langkah Gambar"
 #. src: bpy.types.ANGELO_FH_movie_empty
 msgid "Add empty image"
 msgstr "Tambahkan gambar kosong"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Add Fab models in FBX, OBJ, USD and .blend in one click, as with GLB, and apply Megascans surfaces as materials."
+msgstr "Tambahkan model Fab dalam FBX, OBJ, USD, dan .blend dengan satu klik, seperti GLB, dan terapkan permukaan Megascans sebagai bahan."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Add Fab models in FBX, OBJ, USD, USDZ, glTF and .blend formats in one click: their textures come along, the model is sized to your scene, and one Undo removes it."
+msgstr "Tambahkan model Fab dalam format FBX, OBJ, USD, USDZ, glTF, dan .blend dengan satu klik: teksturnya ikut, ukuran model disesuaikan dengan adegan Anda, dan satu Urungkan menghapusnya."
 
 #. src: angelo_agent/studio_video_ui.py
 msgid "Add first frame…"
@@ -1609,6 +1621,10 @@ msgstr "Gagal masuk ke Angelo ({code}): {detail}"
 msgid "Angelo speaks 21 languages, including Arabic from right to left. Choose yours on first launch or in Preferences; Blender's menus and panels follow it too."
 msgstr "Angelo tersedia dalam 21 bahasa, termasuk bahasa Arab dari kanan ke kiri. Pilih bahasa Anda saat pertama kali membuka aplikasi atau di Preferensi; menu dan panel Blender juga mengikutinya."
 
+#. src: angelo_agent/safe_start_notice.py
+msgid "Angelo started without some add-ons"
+msgstr "Angelo dimulai tanpa beberapa tambahan"
+
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Angelo starts 2.1× faster than 1.0.4 in the background and in about 40% less time with a window, close to stock Blender."
 msgstr "Angelo mulai 2.1× lebih cepat daripada 1.0.4 di latar belakang dan sekitar 40% lebih singkat dengan jendela, mendekati Blender standar."
@@ -1866,6 +1882,10 @@ msgstr "Berlaku untuk perubahan dalam antrean / mendatang"
 #. src: angelo_agent/chat_view.py
 msgid "Applies to your next message"
 msgstr "Berlaku untuk pesan Anda berikutnya"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Apply a Megascans surface or another Fab texture set to the selected objects as a ready material. With nothing selected, it is added to the file's asset library."
+msgstr "Terapkan permukaan Megascans atau set tekstur Fab lainnya ke objek terpilih sebagai bahan siap pakai. Jika tidak ada yang dipilih, permukaan itu ditambahkan ke pustaka aset file."
 
 #. src: source/blender/editors/sculpt_paint/mesh/sculpt.cc
 msgid "Apply inherited reflected scale explicitly before an Angelo sculpt pass"
@@ -2525,6 +2545,10 @@ msgstr "Bawaan, tanpa perlu tambahan"
 msgid "Built on a copy of your scene"
 msgstr "Dibuat pada salinan adegan Anda"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Built on Blender 5.2.4 LTS, with its fixes for Cycles, Grease Pencil, geometry nodes and the Sequencer."
+msgstr "Dibangun di atas Blender 5.2.4 LTS, dengan perbaikannya untuk Cycles, Pensil Grease, geometry nodes, dan Sequencer."
+
 #. src: angelo_agent/ui.py
 msgid "BytePlus Singapore key. Verification is deferred until generation."
 msgstr "Kunci BytePlus Singapura. Verifikasi ditunda hingga pembuatan."
@@ -2793,6 +2817,10 @@ msgstr "Berubah setiap kali piksel gambar berubah (melukis, piksel yang ditulis 
 #. src: angelo_agent/chat_titles.py
 msgid "Changing an Angelo feature"
 msgstr "Mengubah fitur Angelo"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Changing the denoiser's settings between Cycles renders no longer crashes or gives a wrongly denoised picture."
+msgstr "Mengubah pengaturan Denoiser di antara render Cycles tidak lagi menyebabkan mogok atau gambar yang salah dihilangkan noise-nya."
 
 #. src: angelo_agent/flow_templates.py
 #. src: angelo_agent/studio_workflows.py
@@ -3997,6 +4025,10 @@ msgid "Cycles is not enabled"
 msgstr "Cycles tidak diaktifkan"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Cycles no longer crashes on materials that combine displacement bump with emission, or while compiling its kernels."
+msgstr "Cycles tidak lagi mogok pada bahan yang menggabungkan bump displacement dengan emisi, atau saat mengompilasi kernelnya."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Cycles now renders on your GPU by default (Metal on Apple silicon), also when a script or the agent starts a render."
 msgstr "Cycles kini merender di GPU Anda secara default (Metal di Apple silicon), juga saat skrip atau agen memulai render."
 
@@ -4697,6 +4729,10 @@ msgstr "Tautan Langsung Engine"
 #. src: angelo_agent/engine_link_ui.py
 msgid "Engine live link on"
 msgstr "Tautan langsung engine aktif"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Engine live links update while you keep editing, not only after you stop: a web page shows a dragged or animated change about ten times a second, and a single edit in under 0.1 s instead of 0.4 s. Godot, Unity and Unreal update as fast as they show each change."
+msgstr "Tautan langsung engine diperbarui saat Anda terus mengedit, tidak hanya setelah berhenti: halaman web menampilkan perubahan yang diseret atau dianimasikan sekitar sepuluh kali per detik, dan satu suntingan dalam kurang dari 0,1 s, bukan 0,4 s. Godot, Unity, dan Unreal diperbarui secepat mereka menampilkan setiap perubahan."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Engine preflight for Godot, Unity, Unreal and the web: units, armature transforms, extra and leaf bones, constraints, actions, loop names, shading, hidden objects, local paths, collision names, bone weights and colour spaces, each with the engine version it was checked against."
@@ -6249,6 +6285,10 @@ msgstr "Jika Angelo keluar secara tak terduga, peluncuran berikutnya akan member
 msgid "If a reply from the bundled Codex agent keeps streaming without finishing, Angelo now stops it within 10 minutes and, if nothing was changed yet, asks again once, instead of waiting up to 30 minutes."
 msgstr "Jika balasan dari agen Codex bawaan terus mengalir tanpa selesai, Angelo kini menghentikannya dalam 10 menit dan, jika belum ada yang berubah, meminta sekali lagi, alih-alih menunggu hingga 30 menit."
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "If an add-on crashes Angelo while it starts, the next start opens with your add-ons turned off and names them, instead of crashing again."
+msgstr "Jika tambahan membuat Angelo mogok saat dimulai, permulaan berikutnya terbuka dengan tambahan Anda dinonaktifkan dan menyebutkan namanya, alih-alih mogok lagi."
+
 #. src: angelo_agent/activity_text.py
 msgid "If it's interrupted, Undo restore brings back the scene from before."
 msgstr "Jika terputus, “Urungkan pemulihan” mengembalikan adegan seperti sebelumnya."
@@ -7147,6 +7187,10 @@ msgstr "Pembatas aktif"
 msgid "Live in {engine}: {asset}"
 msgstr "Langsung di {engine}: {asset}"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Live links keep up while you edit: your web page shows a changing colour about ten times a second, not only once you stop."
+msgstr "Tautan langsung mengikuti saat Anda mengedit: halaman web Anda menampilkan warna yang berubah sekitar sepuluh kali per detik, tidak hanya setelah Anda berhenti."
+
 #. src: angelo_agent/live_view_draw.py
 msgid "Live view · {name} · Solid, simplified · look only, steer it in its chat"
 msgstr "Tampilan langsung · {name} · Padat, disederhanakan · hanya untuk dilihat, arahkan di obrolannya"
@@ -7259,6 +7303,10 @@ msgstr "Sedang mencari target kuas di permukaan"
 #. src: source/blender/editors/animation/anim_ops.cc
 msgid "Log the channel list info in the terminal. This operator is only available in debug builds of Angelo"
 msgstr "Catat info daftar kanal di terminal. Operator ini hanya tersedia di build debug Angelo"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Long chats send the agent less text: after most edits, your next message no longer repeats the full summary of the last edit."
+msgstr "Obrolan panjang mengirim lebih sedikit teks ke agen: setelah sebagian besar suntingan, pesan Anda berikutnya tidak lagi mengulang ringkasan lengkap suntingan terakhir."
 
 #. src: angelo_agent/activity_text.py
 msgid "Look at a generation flow"
@@ -7526,6 +7574,10 @@ msgstr "Bahan"
 #. src: angelo_agent/tension_map_card.py
 msgid "Materials read it with an Attribute node named \"{name}\" (EEVEE and Cycles)."
 msgstr "Material membacanya dengan node Atribut bernama \"{name}\" (EEVEE dan Cycles)."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Matrix to Rotation gives the same result on the GPU as on the CPU, and Fillet Curve no longer creates huge positions at reversed corners."
+msgstr "Matrix to Rotation memberi hasil yang sama di GPU seperti di CPU, dan Fillet Curve tidak lagi membuat posisi yang sangat besar di sudut terbalik."
 
 #. src: angelo_agent/chat_popovers.py
 #. src: angelo_agent/studio_state.py
@@ -9421,6 +9473,10 @@ msgstr "Menyiapkan target pahat"
 msgid "Preparing coding-agent access…"
 msgstr "Menyiapkan akses agen pengodean…"
 
+#. src: angelo_agent/job_chat.py
+msgid "Preparing Cycles' render kernels: once after an update, it can take a few minutes"
+msgstr "Menyiapkan kernel render Cycles: sekali setelah pembaruan, ini bisa memakan waktu beberapa menit"
+
 #. src: angelo_agent/chat_card_draw.py
 msgid "Preparing details…"
 msgstr "Menyiapkan detail…"
@@ -11037,6 +11093,10 @@ msgstr "Menyimpan berkas yang terbuka, seperti Berkas > Simpan. Lalu Angelo menu
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Saving a .blend file can no longer overwrite another file through a symbolic link left at its temporary file name."
 msgstr "Saat menyimpan berkas .blend, tautan simbolik yang tertinggal di nama berkas sementaranya tidak bisa lagi menimpa berkas lain."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Saving data to a library file, blurring an image by a large amount and the Delaunay fill tool on an empty drawing no longer crash."
+msgstr "Menyimpan data ke file pustaka, mengaburkan gambar dalam jumlah besar, dan alat isi Delaunay pada gambar kosong tidak lagi mogok."
 
 #. src: source/blender/windowmanager/intern/wm_files.cc
 msgid "Saving it with this version of Angelo (Blender %s) may cause loss of data."
@@ -13227,6 +13287,10 @@ msgid "The finished frames couldn't be published; they are kept for the next sta
 msgstr "Bingkai yang selesai tidak dapat diterbitkan; bingkai disimpan hingga Angelo dimulai lagi"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The first Cycles render after an update shows that render kernels are being prepared, no longer counts that one-time wait against the render's time limit, and keeps render time estimates accurate."
+msgstr "Render Cycles pertama setelah pembaruan menunjukkan bahwa kernel render sedang disiapkan, tidak lagi menghitung penantian satu kali itu dalam batas waktu render, dan menjaga perkiraan waktu render tetap akurat."
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The first time a view shows one object with many new materials, or a new world, the window can still pause briefly while their shaders are set up. More of this moves to the background in 1.1."
 msgstr "Saat pertama kali sebuah tampilan menampilkan satu objek dengan banyak bahan baru, atau dunia baru, jendela masih dapat berhenti sejenak selagi shader-nya disiapkan. Lebih banyak dari proses ini pindah ke latar belakang di 1.1."
 
@@ -13351,6 +13415,10 @@ msgstr "Render terakhir disimpan persis seperti semula."
 #. src: bpy.types.RenderSettings.angelo_region_render:'NONE'
 msgid "The last render was not a region render over the render before it"
 msgstr "Render terakhir bukan render wilayah di atas render sebelumnya"
+
+#. src: angelo_agent/safe_start_notice.py
+msgid "The last start did not finish, so Angelo opened with only the add-ons that come with it. Left off: {names}. To turn one back on, enable it in Preferences > Add-ons. If Angelo then cannot start, it opens without it again."
+msgstr "Proses mulai sebelumnya tidak selesai, jadi Angelo dibuka hanya dengan tambahan bawaannya. Tidak dimuat: {names}. Untuk mengaktifkan salah satunya lagi, aktifkan di Preferensi > Tambahan. Jika Angelo kemudian tidak dapat dimulai, Angelo akan dibuka lagi tanpanya."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "The lead's tile in the Sessions panel keeps its picture while you look at another scene, and shows the scene camera or your view only when the model fills the frame; otherwise it frames the model."
@@ -13833,6 +13901,10 @@ msgstr "Lembar tidak memiliki tubuh untuk menyesuaikan bagian"
 #. src: bpy.types.ANGELO_FlowSplitSheetNode.slots_json
 msgid "The sheet's columns, left to right"
 msgstr "Kolom lembar, dari kiri ke kanan"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "The Skin modifier no longer leaves holes, and Flatten works on vertices and edges without faces."
+msgstr "Pengubah Skin tidak lagi meninggalkan lubang, dan Flatten berfungsi pada titik dan tepi tanpa face."
 
 #. src: source/blender/windowmanager/intern/wm_files.cc
 msgid "The snapshot from before the restore stays available."
@@ -16801,6 +16873,10 @@ msgstr "tidak diwajibkan"
 msgid "on this computer"
 msgstr "di komputer ini"
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "On Windows, restarting from the crash dialog after Angelo crashed while starting now opens it with your add-ons turned off, instead of crashing again."
+msgstr "Di Windows, memulai ulang dari dialog mogok setelah Angelo mogok saat dimulai kini membukanya dengan tambahan Anda dinonaktifkan, alih-alih mogok lagi."
+
 #. src: angelo_agent/skeleton_checks.py
 msgid "one root bone"
 msgstr "satu tulang akar"
@@ -18208,6 +18284,10 @@ msgstr "Akhiran Nama Godot"
 msgctxt "Angelo"
 msgid "Grease Pencil"
 msgstr "Pensil Grease"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Grease Pencil, curves and drawings loaded from damaged or older files are repaired instead of causing errors."
+msgstr "Pensil Grease, kurva, dan gambar yang dimuat dari file rusak atau lama diperbaiki alih-alih menimbulkan galat."
 
 #. src: angelo_agent/uv_checker_card.py
 msgctxt "Angelo"
@@ -22426,6 +22506,10 @@ msgctxt "plural:zero"
 msgid "Apply {count} scene edits"
 msgstr ""
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Applying a transform keeps custom normals correct on mirrored or unevenly scaled meshes, and the agent can now apply transforms to imported meshes that have custom normals."
+msgstr "Menerapkan transformasi menjaga Custom Normals tetap benar pada mesh yang dicerminkan atau diskalakan tidak merata, dan agen kini dapat menerapkan transformasi pada mesh impor yang memiliki Custom Normals."
+
 #. src: angelo_agent/usage_view.py
 msgctxt "plural:zero"
 msgid "At least: {count} requests were not fully reported."
@@ -23213,6 +23297,10 @@ msgstr "Ukuran unduhan tidak disebutkan; paling banyak {bytes} byte."
 #. src: angelo_agent/fab_ui.py
 msgid "Download: {bytes} bytes"
 msgstr "Unduhan: {bytes} byte"
+
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Downloaded files are converted in a separate process that never runs their scripts or brings files from outside the download into your scene, so Angelo stays responsive."
+msgstr "File unduhan dikonversi dalam proses terpisah yang tidak pernah menjalankan skripnya atau membawa file dari luar unduhan ke adegan Anda, sehingga Angelo tetap responsif."
 
 msgid "End voice"
 msgstr "Akhiri suara"
@@ -24424,6 +24512,10 @@ msgstr "Impor Aset"
 msgid "Angelo 1.0.10 brings Blender Essentials and Fab assets into your library, adds PDF references, and makes account reconnection and long chat histories easier to use."
 msgstr "Angelo 1.0.10 menghadirkan Blender Essentials dan aset Fab ke pustaka, menambahkan referensi PDF, serta memudahkan penyambungan ulang akun dan penggunaan riwayat obrolan panjang."
 
+#. src: scripts/addons_core/angelo_agent/assets/release_notes.json
+msgid "Angelo 1.0.11 adds Fab models in FBX, OBJ, USD and .blend, keeps live links in step while you edit, and moves to Blender 5.2.4 LTS."
+msgstr "Angelo 1.0.11 menambahkan model Fab dalam FBX, OBJ, USD, dan .blend, menjaga tautan langsung tetap sinkron saat Anda mengedit, dan beralih ke Blender 5.2.4 LTS."
+
 # Machine-produced; pending native review.
 #. :src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Read earlier messages in long chats and return to the latest messages without losing your place."
@@ -24553,8 +24645,8 @@ msgid "the Fab Standard License"
 msgstr "Fab Standard License"
 
 #. src: angelo_agent/fab_ui.py
-msgid "This asset has no GLB download on Fab, so Angelo can't add it yet."
-msgstr "Aset ini tidak memiliki unduhan GLB di Fab, jadi Angelo belum dapat menambahkannya."
+msgid "This asset has no download on Fab in a format Angelo can add yet."
+msgstr "Aset ini belum memiliki unduhan di Fab dalam format yang dapat ditambahkan Angelo."
 
 #. src: angelo_agent/fab_ui.py
 msgid "This asset is paid. Buy it on Fab, then add it here."

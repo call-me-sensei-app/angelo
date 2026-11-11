@@ -103,7 +103,7 @@ def blender_version(blender):
     try:
         with tempfile.TemporaryDirectory(prefix="angelo-scenario-version-") as scratch:
             output = subprocess.run([blender, "--version"], capture_output=True, text=True, timeout=60,
-                                    env=isolated_environment(scratch)).stdout
+                                    env=isolated_environment(Path(scratch).resolve())).stdout
     except (OSError, subprocess.TimeoutExpired) as error:
         return "unavailable: %s" % error
     return " ".join(line.strip() for line in output.splitlines()[:3])

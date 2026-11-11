@@ -53,8 +53,11 @@ class KeepFrames:
             finished = render_outputs.sort_files(plan, self.start_frame, self.end_frame, present, self.step)["frames"]
             early = not stopped and len(finished) < self.total
             # A plain render that ran here can be torn only at its last frame (a failed write stops the render).
+            # A child render that was ended (terminated or killed) can die mid-write, not only at a break check: its
+            # last frame is checked as strictly as an early end's (break-it review 2026-11-04, F6).
+            strict = early or getattr(self, "child", None) is not None
             frames, files, torn, found = job_recovery._whole(staging, plan, self.start_frame, self.end_frame,
-                                                             present, strict_last=early, last_only=not self.plan.nodes,
+                                                             present, strict_last=strict, last_only=not self.plan.nodes,
                                                              step=self.step)
             stray = job_recovery.unlisted(staging, plan, self.start_frame, self.end_frame, present, self.step)
             # Its own MP4 is published below when whole; a partial one (a stopped encoder) is no stranger's file.

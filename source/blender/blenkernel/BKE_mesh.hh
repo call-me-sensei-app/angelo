@@ -291,6 +291,16 @@ void mesh_set_custom_normals_normalized(Mesh &mesh, MutableSpan<float3> corner_n
 void mesh_set_custom_normals_from_verts(Mesh &mesh, MutableSpan<float3> vert_normals);
 void mesh_set_custom_normals_from_verts_normalized(Mesh &mesh, MutableSpan<float3> vert_normals);
 
+/** Convert tangent-space custom normals to free custom normals. */
+void mesh_custom_normals_to_free(Mesh &mesh);
+/** Convert free custom normals to tangent-space custom normals. */
+void mesh_custom_normals_to_tangent_space(Mesh &mesh);
+/**
+ * Angelo: whether the custom normals are stored in tangent space (relative to each corner's fan of faces), which
+ * a non-uniform or mirroring change of the geometry breaks. Free normals are vectors and transform as such.
+ */
+bool mesh_custom_normals_are_tangent_space(const Mesh &mesh);
+
 /** \} */
 
 /* -------------------------------------------------------------------- */

@@ -268,5 +268,13 @@ class McpStartupTests(unittest.TestCase):
         self.assertEqual(stream.mcp_status, "failed")
 
 
+def setUpModule():   # Billed starts here check the fixture evaluation account, named as a kit names the real one.
+    fixtures.name_account_2()
+
+
+def tearDownModule():
+    fixtures.unname_account_2()
+
+
 if __name__ == "__main__":
     unittest.main()

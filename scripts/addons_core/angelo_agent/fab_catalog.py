@@ -3,8 +3,8 @@
 """Fab metadata admitted by the future account transport, never a public mirrored index.
 
 This is Angelo's internal contract, NOT a claimed Fab API response schema. No URLs, credentials or paths are
-accepted into it. Only self-contained GLB models are enabled in this first slice; other formats need their own
-live proof. See doc/angelo/fab.rst. Catalog text is untrusted data, never agent instructions.
+accepted into it. A variant's format is a row of ``fab_formats.FORMATS`` (GLB, FBX, .blend, OBJ, glTF, USD models
+and PBR texture sets). See doc/angelo/fab.rst and doc/angelo/fab_formats.rst. Catalog text is untrusted data, never agent instructions.
 """
 
 from dataclasses import dataclass
@@ -13,7 +13,7 @@ from decimal import Decimal
 import uuid
 from urllib.parse import urlsplit
 
-from .team_library_files import MAX_BYTES
+from .fab_formats import BY_CODE, MAX_DOWNLOAD
 
 QUALITIES = ('low', 'medium', 'high', 'raw')
 MAX_RESULTS, MAX_VARIANTS = 20, 16
@@ -30,7 +30,8 @@ class FabError(RuntimeError):
         'EXPIRED': 'The Fab session or asset selection expired. Search again before importing.',
         'UNAVAILABLE': 'Fab is unavailable. Try again later.',
         'INVALID_METADATA': 'Fab returned unsupported or incomplete asset metadata.',
-        'UNSUPPORTED': 'This Fab file is not a supported self-contained GLB model.',
+        'UNSUPPORTED': 'This Fab file is not in a format Angelo can add (GLB, FBX, .blend, OBJ, glTF, USD or a '
+                       'texture set).',
         'LIMIT_EXCEEDED': 'This Fab request exceeds the supported size or result limit.',
         'CANCELLED': 'The Fab request was stopped; nothing was imported.',
         'CORRUPT': 'The Fab file failed validation; nothing was imported.',
@@ -61,6 +62,15 @@ class Variant:
     quality: str | None
     size: int | None
     browser_choice: object = None
+    parsed_format: str = 'glb'   # A transport record's format; a browser choice carries its own.
+
+    @property
+    def format(self):
+        return self.browser_choice.format if self.browser_choice is not None else self.parsed_format
+
+    @property
+    def kind(self):
+        return BY_CODE[self.format].kind
 
     @classmethod
     def parse(cls, row):
@@ -70,22 +80,23 @@ class Variant:
             if type(choice) is not BrowserChoice or row != choice.variant():
                 raise FabError('INVALID_METADATA')
             return row
-        if not isinstance(row, dict) or row.get('format') != 'glb' or row.get('quality') not in QUALITIES:
+        if not isinstance(row, dict) or row.get('format') not in BY_CODE or row.get('quality') not in QUALITIES:
             raise FabError('INVALID_METADATA')
         size = row.get('size')
-        if type(size) is not int or not 0 < size <= MAX_BYTES['model']:
+        if type(size) is not int or not 0 < size <= MAX_DOWNLOAD:
             raise FabError('LIMIT_EXCEEDED')
-        return cls(token(row.get('id')), token(row.get('revision')), row['quality'], size)
+        return cls(token(row.get('id')), token(row.get('revision')), row['quality'], size,
+                   parsed_format=row['format'])
 
     def compact(self):
-        row = {'id': self.identity, 'format': 'glb'}
+        row = {'id': self.identity, 'format': self.format, 'kind': self.kind}
         if self.quality is not None:
             row['quality'] = self.quality
         if self.size is not None:
             row['bytes'] = self.size
         if self.browser_choice is not None:
             row.update(identity_scope='local_choice', exact_size_known=self.size is not None,
-                       maximum_bytes=MAX_BYTES['model'])
+                       maximum_bytes=MAX_DOWNLOAD)
         return row
 
 
@@ -145,7 +156,7 @@ class Item:
                 raise ValueError
         except (ValueError, TypeError, AttributeError):
             raise FabError('INVALID_METADATA') from None
-        if row.get('license') not in ('Fab Standard', 'CC-BY-4.0') or row.get('kind') != 'model':
+        if row.get('license') not in ('Fab Standard', 'CC-BY-4.0') or row.get('kind') not in ('model', 'material'):
             raise FabError('INVALID_METADATA')
         variants = row.get('variants')
         if not isinstance(variants, list) or not 1 <= len(variants) <= MAX_VARIANTS:
@@ -163,12 +174,18 @@ class Item:
         return cls(identity, text(row.get('title'), 120), text(row.get('author'), 120), row['license'],
                    variants, access, offers, thumb_url(row.get('thumb')))
 
+    @property
+    def kind(self):
+        """'material' when a variant is a texture set (Fab offers one only on surfaces and decals), else 'model'."""
+        return 'material' if any(variant.kind == 'material' for variant in self.variants) else 'model'
+
     def needs_purchase_suggestion(self):
         # Unknown access stays hidden by default: a missing price/entitlement is never assumed free.
         return self.access not in ('owned', 'free')
 
     def compact(self):
-        row = {'id': 'fab:' + self.identity, 'title': self.title, 'author': self.author, 'source': 'fab', 'kind': 'model',
+        row = {'id': 'fab:' + self.identity, 'title': self.title, 'author': self.author, 'source': 'fab',
+               'kind': self.kind,
                'license': self.license, 'attribution_required': self.license == 'CC-BY-4.0',
                'access': self.access, 'variants': [variant.compact() for variant in self.variants]}
         if self.thumb:

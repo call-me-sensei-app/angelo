@@ -150,6 +150,8 @@ EXCLUDED = {
     "test_codex_external_local.py": "Host-Python test that drives the installed Codex CLI; explicit only.",
     "codex_prompt_probe.py": "Unbilled probe of the installed Codex CLI's request bytes (fake local endpoint); explicit only.",
     "codex_image_prefix_probe.py": "Unbilled probe: whether a dynamic tool's picture keeps a Codex chat's request prefix (fake local endpoint); explicit only.",
+    "approval_hold_probe.py": "Unbilled probe: whether a codex launched with Angelo's flags holds a cell while a call "
+                              "waits for the person (fake local endpoint); test_native_codex_approval_hold.py runs it.",
     "codex_cache_fork_check.py": "Prompt-cache A/B of prediction-mode forks against fresh Codex threads; unbilled "
                                  "dry run by default, BILLED only with --authorize-billed-run; explicit only.",
     "codex_fork_probe.py": "Unbilled probe of prediction-mode forks across Codex app-server processes (fake local "
@@ -205,6 +207,7 @@ EXCLUDED = {
 # Imported fixture/helper modules and host runners: not entry points.
 HELPERS = frozenset({
     "essentials_dirty_undo.py",
+    "fab_formats_samples.py",   # test_blender_fab_formats: Fab-format samples written by Blender's own exporters.
     "hosted_worker_chat.py", "hosted_codex_stand_in.py", "hosted_rail_turns.py",
     "pump_blocking.py",   # The worker suites' pump checks: time a UI pump spends blocked, not its wall time.
     "concurrent_edit_oracle.py", "concurrent_edit_payload.py", "concurrent_edit_runtime.py",
@@ -217,7 +220,7 @@ HELPERS = frozenset({
     "runtime_identity.py",   # eval_live_agent plan.agent_runtime: which Codex file a live eval's app runs
     "agent_runtime_fixtures.py", "animation_fakes.py", "external_app_env.py", "bench_mcp_codex.py", "bench_mcp_grading.py", "bench_mcp_report.py", "bench_mcp_trial.py",
     "bench_mcp_scenario.py", "bench_cold_warm.py", "bench_integrity.py",
-    "coverage_prefix.py", "crash_fixtures.py", "settings_import_phases.py", "prefs_quit_phases.py",
+    "coverage_prefix.py", "crash_fixtures.py", "settings_import_phases.py", "settings_import_crash_phases.py", "prefs_quit_phases.py",
     "first_launch_frames_phases.py", "first_launch_frames_probe.py", "cold_bytecode.py", "splash_frames.py",
     "popup_pixels.py",
     "claude_code_errors.py", "claude_protocol_fixtures.py", "eval_agent_tasks.py", "eval_live_tasks.py",
@@ -239,7 +242,7 @@ HELPERS = frozenset({
     "fresh_shader.py",   # shader code new in every run, for timings that claim an uncompiled shader
     "fake_team_library.py", "fake_usage_reports.py", "team_host_fence.py", "gui_launch.py", "headless_page.py", "identity_fixtures.py", "long_jobs_fixtures.py",
     "long_session_cost_model.py", "long_session_timers.py", "loopback_server.py", "macos_window.py", "measured_results.py", "notices_fakes.py",
-    "native_addon_guard.py", "native_suite_checks.py", "native_suite_manifest.py", "native_suite_other_files.py",
+    "native_addon_guard.py", "native_suite_checks.py", "native_suite_inputs.py", "native_suite_manifest.py", "native_suite_other_files.py",
     "native_suite_paths.py", "native_suite_process.py",
     "native_suite_summary.py",
     "operator_run_qa.py",
@@ -287,7 +290,7 @@ HELPERS = frozenset({
     "ntfs_sharing.py",   # Windows' file sharing on any host: a held reader refuses a replace (shared_replace tests).
     "save_identity_stand_in.py",   # A save naming the file it wrote, stood in (document, engine link, headless).
     "script_pixel_fixtures.py", "script_review_fixtures.py", "sculpt_undo_admission_cases.py",
-    "addon_stand_in_import.py",   # host tests: add-on modules imported against a stand-in bpy, the package put back
+    "addon_stand_in_import.py",   # host tests: add-on modules imported against a stand-in bpy, put back or settled
     "prune_installed_addon.py",   # the release stage's host step before its native suites (stale installed add-on files)
     "run_native_suites.py", "snapshot_fixtures.py", "strict_plan_vectors.py", "team_library_fixtures.py",
     "token_accounting.py", "turn_recovery_fixtures.py", "translation_cards.py", "update_crash_gui.py", "update_crash_scenes.py", "update_fixtures.py",

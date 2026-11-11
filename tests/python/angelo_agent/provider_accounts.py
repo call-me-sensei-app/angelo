@@ -10,7 +10,7 @@ it).
 
 * A Codex profile (``codex-profile/<uuid>``, its ``CODEX_HOME``): the claims of ``auth.json``'s ``tokens.id_token``, a
   JWT whose payload alone is decoded, with no signature check. Its ``chatgpt_account_id``
-  (``https://api.openai.com/auth``) is required and must start with ``CODEX_ACCOUNT["account_id_prefix"]``: one email
+  (``https://api.openai.com/auth``) is required and must start with the expected account's id prefix: one email
   can sign in to several ChatGPT accounts (a team workspace), so an email alone never decides (every current id_token
   carries the account id Codex bills). ``tokens.account_id`` must agree when present. The sign-in must be the file
   Codex reads (its ``config.toml`` names no other credential store) and hold no API key Codex would bill instead.
@@ -35,14 +35,16 @@ malformed claims refuse.
 import base64
 import json
 import os
+import re
 import time
 import uuid
 from pathlib import Path
 
-# The dedicated evaluation account: the ChatGPT account every ChatGPT eval bills, never the maintainer's main one.
-# The one place it is named.
-CODEX_ACCOUNT = {"account_id_prefix": "7684a4d7", "email": "jack@hyperbond.studio"}
+# The evaluation account, the ChatGPT account every ChatGPT eval bills (never the maintainer's main one), is named outside the
+# repository, as Claude's expected account is: <account id prefix>[|<email>], from the release kit or bench machine.
+CODEX_ACCOUNT_ENV = "ANGELO_TEST_CODEX_ACCOUNT"
 CLAUDE_ACCOUNT_ENV = "ANGELO_TEST_CLAUDE_ACCOUNT"   # The expected Claude account (email or account UUID).
+CODEX_PREFIX = re.compile(r"^[0-9a-f]{8}[0-9a-f-]*$")   # A chatgpt_account_id is a UUID: at least its first 8.
 AUTH_CLAIMS = "https://api.openai.com/auth"
 PROFILE_CLAIMS = "https://api.openai.com/profile"
 CODEX_SIGN_IN = "auth.json"
@@ -156,10 +158,27 @@ def codex_credentials_store(profile):
     return value if value is None else str(value)
 
 
+def expected_codex(value):
+    """The expected ChatGPT account named by ``value``: ``<account id prefix>`` or ``<prefix>|<email>`` (the opt-in's
+    ``|account=`` field or ``CODEX_ACCOUNT_ENV``). Raises ``AccountRefusal`` when it names none or is malformed; the
+    message never repeats the value (it holds an email)."""
+    text = str(value or "").strip()
+    prefix, _, email = text.partition("|")
+    prefix, email = prefix.strip().lower(), email.strip()
+    if not prefix:
+        raise AccountRefusal("a Codex profile needs its expected account named (%s=<account id prefix>|<email>, or "
+                             "the opt-in's |account= field)" % CODEX_ACCOUNT_ENV)
+    if not CODEX_PREFIX.match(prefix):
+        raise AccountRefusal("the expected Codex account is not a ChatGPT account id prefix (8 or more hex characters)")
+    if email and (email.count("@") != 1 or "|" in email or not all(email.split("@"))):
+        raise AccountRefusal("the expected Codex account's email is malformed")
+    return {"account_id_prefix": prefix, "email": email.lower() or None}
+
+
 def codex_account(profile, expected=None):
-    """``summary`` of the Codex profile's account; raises ``AccountRefusal`` unless it is ``expected``
-    (``CODEX_ACCOUNT`` by default)."""
-    expected = CODEX_ACCOUNT if expected is None else expected
+    """``summary`` of the Codex profile's account; raises ``AccountRefusal`` unless it is ``expected`` (``expected_codex``
+    of the value, ``CODEX_ACCOUNT_ENV`` in this process's environment when None; refused when neither names one)."""
+    expected = expected_codex(os.environ.get(CODEX_ACCOUNT_ENV) if expected is None else expected)
     store = codex_credentials_store(profile)
     if store not in (None, "file"):
         raise AccountRefusal("its config.toml keeps the sign-in in the %r credential store, not the auth.json this "
@@ -181,9 +200,11 @@ def codex_account(profile, expected=None):
                              % (_shown(account_id, email), _shown(_text(stored)) if _text(stored) else "none"))
     if not account_id:   # An email can sign in to several ChatGPT accounts: never decided by it alone.
         raise AccountRefusal("its id_token names no ChatGPT account id (%s)" % _shown(None, email))
-    if not account_id.startswith(expected["account_id_prefix"]):
-        raise AccountRefusal("signed in to another ChatGPT account (%s; expected account %s)"
-                             % (_shown(account_id, email), expected["account_id_prefix"]))
+    if not account_id.lower().startswith(expected["account_id_prefix"]):
+        raise AccountRefusal("signed in to another ChatGPT account (%s; not the expected account)"
+                             % _shown(account_id, email))
+    if expected["email"] and (email or "").lower() != expected["email"]:
+        raise AccountRefusal("signed in with another email (%s; not the expected account's)" % _shown(account_id, email))
     return summary(account_id, email)
 
 
@@ -244,7 +265,7 @@ def _store_files(store):
     return ([main] if main.exists() else []) + kept
 
 
-def store_accounts(store, claude_expected=None):
+def store_accounts(store, claude_expected=None, codex_expected=None):
     """``{"connections": [summary, ...]}`` of every subscription connection in the connection store ``store``; raises
     ``AccountRefusal`` for one that reuses the person's own sign-in or is not signed in to its expected account."""
     store = Path(store)
@@ -280,19 +301,19 @@ def store_accounts(store, claude_expected=None):
             if not os.path.isdir(profile):
                 raise AccountRefusal("%s's %s connection has no profile folder to check" % (path.name, mode))
             try:
-                found.append(verify(family, profile, claude_expected))
+                found.append(verify(family, profile, claude_expected, codex_expected))
             except AccountRefusal as error:
                 raise AccountRefusal("its %s connection %s" % (mode, error)) from None
     return {"connections": found}
 
 
-def verify(family, profile, expected=None):
+def verify(family, profile, expected=None, codex_expected=None):
     """``summary`` of the account ``profile`` (``family``: ``codex-profile``, ``claude-profile``, or None for a
     connection store) reaches; raises ``AccountRefusal`` unless it is the expected one. ``expected`` names the expected
-    Claude account; a Codex profile's is always the evaluation account (``CODEX_ACCOUNT``)."""
+    Claude account, ``codex_expected`` the expected ChatGPT one (``expected_codex``; ``CODEX_ACCOUNT_ENV`` when None)."""
     if family == "codex-profile":
-        return codex_account(profile)
+        return codex_account(profile, codex_expected)
     if family == "claude-profile":
         return claude_account(profile, expected)
-    return store_accounts(profile, expected)
+    return store_accounts(profile, expected, codex_expected)
 

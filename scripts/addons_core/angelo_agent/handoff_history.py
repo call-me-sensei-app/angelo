@@ -4,6 +4,9 @@
 
 Only a closed group can justify removing its summary. An unfinished group at
 the excerpt boundary or a work refusal never says all its activities merged.
+A group that begins exactly at the excerpt's start is closed by the record
+before it (``History.closed_before_start``): a follow-up's handoff starts where
+the last plan's rows begin, so that is the common case.
 The caller owns a stable transcript snapshot on the existing request path.
 """
 
@@ -11,6 +14,11 @@ from dataclasses import dataclass
 
 from .handoff_json import UNSUPPORTED, WORK_LIMIT, admit_mapping
 from .legacy_names import current_tool_name
+
+
+def _passed_over(role, message):
+    """Thinking and notice records neither join a summary's group nor end it."""
+    return role == "thinking" or message.get("notice") is True
 
 
 class History:
@@ -39,6 +47,29 @@ class History:
             self.reason = UNSUPPORTED
             return index, None
         return index, row
+
+    def closed_before_start(self):
+        """Whether the records before ``start`` end a summary group still open there.
+
+        Read backward as ``HostSummaries`` reads: a thinking or notice record is
+        passed over, an activity means the group began before the excerpt, and
+        any other record, or the transcript's origin, ends the group. Only after
+        every record of the excerpt was taken; each record looked at is admitted
+        and charged like one inside it. Exhausted work or an unsupported record
+        proves nothing.
+        """
+        if self.reason is not None or self.unexamined:
+            return False
+        for index in range(self.start - 1, -1, -1):
+            message = self.messages[index]
+            if not self.budget.visit() or admit_mapping(message, self.budget) is not None:
+                return False
+            role = message.get("role")
+            if type(role) is not str or role == "activity":
+                return False
+            if not _passed_over(role, message):
+                return True
+        return True
 
 
 @dataclass(frozen=True)
@@ -87,7 +118,7 @@ class HostSummaries:
                 return Certification(reason=WORK_LIMIT)
             self.rows.append(index)
             return Certification(certified=True, accepted=current_tool_name(tool) == "angelo_accept_preview")
-        if role == "thinking" or message.get("notice") is True:
+        if _passed_over(role, message):
             return Certification()
         closed = self._close()
         if role == "system" and message.get("host_summary") is True:
@@ -100,5 +131,9 @@ class HostSummaries:
         return group
 
     def end(self, *, reached_origin):
-        """Only transcript origin proves a final group complete; ``start`` alone does not."""
+        """Close the last group only on proof that the excerpt holds all of it.
+
+        The proof is the transcript's origin, or a start whose preceding records
+        end the group (``History.closed_before_start``). ``start`` alone is none.
+        """
         return self._close() if reached_origin and not self.refused else None

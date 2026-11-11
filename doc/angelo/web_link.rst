@@ -143,10 +143,47 @@ instead of exporting the whole scene); ``web_link/angelo-live/PROTOCOL.md`` §1.
   checked like a delta.
 * **Measured** (``test_blender_web_link_delta``, Mac 2, contended, 2026-11-04): in a scene of 120 boxes, a skinned
   mesh and two collection instances, a one-box colour change exported in 5.4 ms (median of 15) and 2,096 bytes,
-  a whole frame in 155.9 ms and 234,644 bytes.
+  a whole frame in 155.9 ms and 234,644 bytes (Mac 1, 2026-11-11: 6.2 ms and 451 ms; "Cadence" below).
 * **Other engines** still get the whole scene. The same keys and digests could serve them: Godot's preview and
   Unity's and Unreal's live layers each build a whole glTF today, and would need a node-level patch path in their
   plugins before a delta saves them anything. Not changed yet.
+
+Cadence
+========
+
+Frames go at the first change after a pause, then at most once a tick (0.1 s) while changes go on, each waiting for
+the page's ``previewed`` of the one before (up to 1 s), and always the last change (:doc:`engine_link`, "Cadence").
+The tick is the floor because both ends cost far less than it (Mac 1, M4 Pro, 2026-11-11):
+
+* **Angelo's export** of a delta: a one-box colour change in the 120-box scene above, 6.2 ms median (p75 6.5,
+  5.9 to 7.1; 15 runs, ``test_blender_web_link_delta``, the 1.0.10 app); the sample asset's colour change, 4.2 ms
+  median over 33 frames. A whole frame of the 120-box scene took 451 ms, so its gap is 1.35 s: whole frames keep to
+  a quarter of the main thread.
+* **The page** (``e2e/bench.mjs``, SDK 0.1.1, headless Chrome on SwiftShader, Angelo's real link server): from the
+  frame leaving the server to the page's ``previewed``, a colour delta took 1.3 to 2.5 ms median (one object to
+  250k triangles) and a whole frame 2.5 to 20.6 ms median, p75 at most 22.5 ms (20 objects with two 2K textures).
+
+So a cheap delta costs about 6% of the main thread at ten frames a second, and a page answers each well inside a tick;
+a slower page or engine paces the frames itself through its answers.
+
+**Measured in the app** (the 1.0.10 app, and the same app with this cadence's three files, on one machine; the
+e2e sample page in a visible Chrome; Angelo fades the sample's ``metal`` material grey to green over 3 s, one change
+every 0.1 s, after two single edits; three takes each; each colour timed when Angelo set it and when the page's
+animation frame first showed it, on one wall clock):
+
+==========================================  ==========================  ============================
+                                            Before (1.0.10)             Cadence (1.0.11)
+==========================================  ==========================  ============================
+A single edit after a pause, on the page    0.391 to 0.409 s            0.077 to 0.088 s
+The fade's last step, on the page           0.391 to 0.408 s            0.075 to 0.085 s
+The fade's 29 inner steps the page showed   0, 0, 0                     29, 29, 28
+Their lag (median; max)                     none shown                  0.077 to 0.087 s; 0.112 s
+Page updates during the fade (interval)     none                        0.100 s median, 0.175 s max
+==========================================  ==========================  ============================
+
+A step the page didn't show was not lost: two of Angelo's changes fell in one tick and went in one frame. The lag
+within a tick depends on when the change lands in it: from about the export and transfer (under 10 ms) to a tick
+more.
 
 The page
 ========

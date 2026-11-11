@@ -33,6 +33,9 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
+# The runtime under test, read before the imports below: test_native_team_account sets ANGELO_AGENT_RUNTIME to
+# ``off`` for the native suites' stand-in CLIs, which put the person's own Codex under this probe.
+RUNTIME = os.environ.get("ANGELO_AGENT_RUNTIME")
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[2] / "scripts/addons_core"))
 sys.path.insert(0, str(HERE))
@@ -169,6 +172,10 @@ def run(out):
     managed_policy.reset(Policy())
     recorder = Recorder()
     environ = {"ANGELO_GATEWAY_URL": recorder.url, "ANGELO_CACHE_KEY_TRACE": "1"}
+    if RUNTIME is not None:
+        environ["ANGELO_AGENT_RUNTIME"] = RUNTIME
+    else:
+        os.environ.pop("ANGELO_AGENT_RUNTIME", None)   # The bundled runtime, as a person's app runs it.
     plan = [  # name, member, email, org, console secret
         ("A1", "11111111-1111-4111-8111-111111111111", "ana@northwind.example", ORG_ID, SECRET),
         ("B1", "22222222-2222-4222-8222-222222222222", "ben@northwind.example", ORG_ID, SECRET),

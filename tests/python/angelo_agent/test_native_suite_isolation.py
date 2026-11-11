@@ -66,7 +66,9 @@ def person_home(root):
 
 def hand_environment(home, **extra):
     """The environment of a suite started by hand from that person's shell."""
-    env = platform_env.essential_environ(PATH=os.environ.get("PATH", ""), **SECRETS, **extra)
+    # A billing machine's shell names the expected ChatGPT account (the fixture's here), as its kit exports it.
+    env = platform_env.essential_environ(PATH=os.environ.get("PATH", ""), **SECRETS,
+                                         **dict(fixtures.CODEX_ENV, **extra))
     env.update(platform_env.home_environ(home))
     env.update(CODEX_HOME=str(home / ".codex"), CLAUDE_CONFIG_DIR=str(home / ".claude"))
     tmp = Path(home).parent / "tmp"
@@ -265,8 +267,8 @@ class OptIn(unittest.TestCase):
         self.home = person_home(self.root)
         self.people = {self.home}
 
-    def value(self, path):
-        return {isolation.OPT_IN: "%s:%s" % (isolation.OPT_IN_KIND, path)}
+    def value(self, path):   # On a billing machine, beside the kit's expected ChatGPT account (the fixture's).
+        return dict(fixtures.CODEX_ENV, **{isolation.OPT_IN: "%s:%s" % (isolation.OPT_IN_KIND, path)})
 
     def test_never_the_persons_own_sign_in_nor_a_folder_holding_the_home(self):
         for path in (self.home / ".codex", self.home / ".claude", self.home, self.root, self.home / ".codex" / "x"):
@@ -314,7 +316,8 @@ class OptIn(unittest.TestCase):
         fixtures.codex_sign_in(codex)
         with mock.patch.object(isolation, "homes", return_value=self.people):
             self.assertEqual(isolation.connection_opt_in({"id": "c", "reuse_native": False, "profile": str(codex)}),
-                             "%s:%s" % (isolation.OPT_IN_KIND, codex))
+                             "%s:%s%s%s" % (isolation.OPT_IN_KIND, codex, isolation.ACCOUNT_FIELD,
+                                            fixtures.CODEX_EXPECTED))   # Its account, as the kit names it.
             store = self.root / "api-key-store"
             store.mkdir()
             self.assertEqual(isolation.connection_opt_in({"id": "k", "reuse_native": False, "in_place": str(store)}),
@@ -405,6 +408,14 @@ class OptIn(unittest.TestCase):
                 self.assertFalse(isolation.satisfied(dict(worker, **change), self.people))
         self.assertNotIn(isolation.MARKER, worker_process.worker_environment(hand_environment(self.home),
                                                                              self.root / "private", sys.platform))
+
+
+def setUpModule():   # Billed starts here check the fixture evaluation account, named as a kit names the real one.
+    fixtures.name_account_2()
+
+
+def tearDownModule():
+    fixtures.unname_account_2()
 
 
 if __name__ == "__main__":

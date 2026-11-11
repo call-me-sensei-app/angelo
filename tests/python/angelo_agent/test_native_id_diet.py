@@ -22,6 +22,8 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import context_ledger, identifiers  # noqa: E402
+from angelo_agent.handoff_history import History  # noqa: E402
+from angelo_agent.handoff_json import HandoffBudget  # noqa: E402
 from angelo_agent.identifiers import IdentifierError, IdentifierTable, expand_call  # noqa: E402
 from angelo_agent.plan_schema import plan_arguments  # noqa: E402
 from angelo_agent.program_spec import validate_program  # noqa: E402
@@ -391,6 +393,118 @@ class CompactSuffixTests(unittest.TestCase):
         merged = len(text.splitlines()[-1])
         receipt_and_summary = sum(map(len, handoff(self.certified_rows())[0].splitlines()[-2:]))
         self.assertLess(merged, receipt_and_summary * 0.75)
+
+    @staticmethod
+    def entries(text):
+        return [json.loads(line) for line in text.split(":\n", 1)[1].splitlines()]
+
+    def test_a_follow_ups_handoff_merges_the_summary_when_the_record_before_it_ends_the_group(self):
+        """The next message's handoff starts where the plan's rows begin (``Controller._native_unsynced_from``).
+
+        The record before that start ends the summary's group: the plan's reply, or the person's message past
+        any thinking and notice rows. The excerpt then holds the whole group. Recorded on 1.0.11 (e1d956ec1ef,
+        the gate's long chats): every certified follow-up carried the summary row beside its merged entry, 31
+        of 31 on Opus 5.5 and 22 of 22 on GPT-6.1-Sol, where 1.0.4 and the 2026-11-04 build sent the entry alone.
+        """
+        rows = self.certified_rows()
+        whole = self.entries(handoff(rows, identifiers=IdentifierTable(), delta=True)[0])
+        thinking, notice = {"role": "thinking", "text": "private"}, {"role": "system", "text": "Saved.", "notice": True}
+        for before in (rows[:2],                         # after the plan's reply
+                       rows[:1],                         # a plan without a reply
+                       rows[:1] + [thinking, notice],    # thinking and notices neither join the group nor end it
+                       [thinking]):                      # nothing else back to the transcript's origin
+            with self.subTest(before=[row["role"] for row in before]):
+                text, ids = handoff(before + rows[2:], start=len(before), identifiers=IdentifierTable(), delta=True)
+                self.assertEqual(self.entries(text), whole[-1:], "The one merged entry a whole-transcript handoff gives")
+                self.assertNotIn("Host-verified result", text)
+                self.assertEqual(ids, {"c1"})
+
+    def test_a_handoff_that_starts_inside_a_group_keeps_the_summary_row(self):
+        """Where the entries shown are not all the summary covers, or say less than it, the row stays."""
+        rows = self.certified_rows()
+        earlier, thinking = activity("c0", {"objects": []}, tool="angelo_scene_search"), {"role": "thinking", "text": "private"}
+        for before in (rows[:2] + [earlier], rows[:2] + [earlier, thinking]):   # An activity of the group is not shown.
+            with self.subTest(before=[row["role"] for row in before]):
+                text, _ = handoff(before + rows[2:], start=len(before), identifiers=IdentifierTable(), delta=True)
+                self.assertIn("Host-verified result", text)
+                self.assertIn('"verified":"Committed (one Undo step)', text)
+        for result in (dict(committed(), success=False, status="failed", error="Expected check failed"),
+                       dict(committed(), partial_changes_possible=True)):   # No merged line: the full result and the row.
+            text, _ = handoff(self.certified_rows(result), start=2, identifiers=IdentifierTable(), delta=True)
+            self.assertIn('"result":"', text)
+            self.assertIn("Host-verified result", text)
+        self.assertIn("Host-verified result", handoff(rows, start=2)[0], "A long-form handoff keeps every row")
+
+    def test_a_scan_stopped_on_the_excerpts_oldest_record_keeps_the_summary(self):
+        """The scan can stop on the excerpt's oldest record without reading it (no credit to reserve its final
+        work). That record may be an activity of the summary's group, so the record before the start proves
+        nothing then: only a scan that read every record of the excerpt may ask it."""
+        rows = [{"role": "user", "text": "Create both"}, activity("c1", committed()), activity("c2", committed()), SUMMARY]
+        take, reserve, taken = History.take, HandoffBudget.reserve_final, []
+
+        def taking(history):
+            row = take(history)
+            taken[:] = [row[0]] if row else []
+            return row
+
+        def refuse_at_the_start(budget, nodes, characters):   # c1, index 1, is the excerpt's oldest record.
+            return False if taken == [1] else reserve(budget, nodes, characters)
+        with patch.object(History, "take", taking), patch.object(HandoffBudget, "reserve_final", refuse_at_the_start):
+            text, ids = handoff(rows, start=1, identifiers=IdentifierTable(), delta=True)
+        entries = self.entries(text)
+        self.assertEqual((entries[0]["role"], entries[0]["unexamined_transcript_records"]), ("handoff_omission", 1))
+        self.assertIn("Host-verified result", text, "c1 was never read, so its group is not known to be whole")
+        self.assertEqual(ids, {"c2"})
+
+    def test_a_long_form_handoff_never_looks_before_its_start(self):
+        """Only a compact handoff can leave a summary row out, so only it reads the record before the start."""
+        rows = self.certified_rows()
+        with patch.object(History, "closed_before_start", side_effect=AssertionError("looked before the start")) as look:
+            self.assertIn("Host-verified result", handoff(rows, start=2)[0])
+            look.assert_not_called()
+        with patch.object(History, "closed_before_start", return_value=True) as look:
+            handoff(rows, start=2, identifiers=IdentifierTable(), delta=True)
+            look.assert_called_once_with()
+
+    def test_a_start_that_is_not_a_follow_ups_is_judged_by_the_same_rule(self):
+        """Another context's cursor (a provider or model switch hands off from its own ``synced_length``) can fall
+        anywhere: at the origin, on a group's first row, between turns, on a summary row or inside a group.
+
+        The origin and the first group's first row are checked on a transcript with one certified result. On the
+        longer one those two starts put three certified results in the excerpt, and its oldest then keeps its
+        summary, on the origin path this rule does not touch as well (VM CI job 9d0594865751-20261112022321)."""
+        first, second = dict(SUMMARY, text=SUMMARY["text"] + " First."), dict(SUMMARY, text=SUMMARY["text"] + " Second.")
+        opening = [{"role": "user", "text": "Create it"}, {"role": "assistant", "text": "Creating."},
+                   activity("c1", committed()), first]
+        one_result = opening + [{"role": "user", "text": "What did that make?"}, {"role": "assistant", "text": "A cube."}]
+        two_turns = opening + [{"role": "user", "text": "Twice more"}, activity("c2", committed()),
+                               activity("c3", committed()), second]
+
+        def kept(rows, start):
+            text, _ = handoff(rows, start=start, identifiers=IdentifierTable(), delta=True)
+            return [word for word in ("First.", "Second.") if word in text]
+        for rows, start, summaries, why in (
+                (one_result, 0, [], "the whole transcript"),
+                (one_result, 2, [], "on the group's first row, a later turn after it"),
+                (one_result, 3, ["First."], "on a summary whose activity is not shown"),
+                (two_turns, 3, ["First."], "on a summary whose activity is not shown, a later group after it"),
+                (two_turns, 4, [], "between turns"), (two_turns, 5, [], "on the second group's first row"),
+                (two_turns, 6, ["Second."], "inside the second group: c2 is not shown"),
+                (two_turns, 7, ["Second."], "on the second summary: neither activity is shown")):
+            with self.subTest(rows=len(rows), start=start, why=why):
+                self.assertEqual(kept(rows, start), summaries)
+
+    def test_records_before_the_start_that_prove_nothing_keep_the_summary_and_a_complete_handoff(self):
+        rows = self.certified_rows()
+        too_large = dict(rows[0], **{"k" * 100000: True})   # Its keys cannot be admitted within the work left.
+        text, ids = handoff([too_large] + rows[2:], start=1, identifiers=IdentifierTable(), delta=True)
+        self.assertEqual([entry["role"] for entry in self.entries(text)], ["tool_result", "system"])
+        self.assertIn("Host-verified result", text)
+        self.assertEqual(ids, {"c1"})
+        odd = {"role": "activity", "tool": 7, "status": "completed", "result": {}}   # An activity, whatever its tool.
+        text, _ = handoff(rows[:2] + [odd] + rows[2:], start=3, identifiers=IdentifierTable(), delta=True)
+        self.assertIn("Host-verified result", text)
+        self.assertIn('"verified":"Committed (one Undo step)', text)
 
     def test_a_clean_commit_no_check_covered_is_one_unverified_entry(self):
         """Regression: a cube created without an alias or checks was handed off whole (2,231 characters), and each

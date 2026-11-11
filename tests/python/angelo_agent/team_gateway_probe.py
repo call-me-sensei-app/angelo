@@ -196,7 +196,7 @@ def probe_codex(out, gateway):
         except Exception as error:  # noqa: BLE001 - recorded, not fatal.
             outcome["compact"] = "thread/compact/start failed: %s" % str(error)[:200]
     finally:
-        rpc.process.terminate()
+        rpc.close()   # Waits for the exit: Windows keeps an exiting process's files locked (its state database).
     outcome["stderr_tail"] = rpc.stderr_tail[-5:]
     return outcome
 

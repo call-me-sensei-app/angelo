@@ -38,7 +38,7 @@ def _tool(name, description, properties, required=(), readonly=True):
 
 
 LIBRARY_TOOLS = [
-    _tool("search", "Search assets: source='fab' searches the connected Fab account under its paid-suggestion preference, returning exact GLB variant ids; requires a nonempty query, no previews or offsets. source='blender' searches bundled and enabled Online Essentials (models, materials, "
+    _tool("search", "Search assets: source='fab' searches the connected Fab account under its paid-suggestion preference, returning exact variant ids, each with its format (glb, fbx, blend, obj, gltf, usd or a surface texture set); requires a nonempty query, no previews or offsets. source='blender' searches bundled and enabled Online Essentials (models, materials, "
           "worlds, node groups and brushes); the default source='angelo' searches the Angelo Library, powered by ToonLab: "
           "free ready-made models, PBR texture sets, HDRI "
           "environments and VFX sprites. kind must belong to the selected source. Words match asset metadata; "
@@ -60,7 +60,7 @@ LIBRARY_TOOLS = [
           "objects, worlds replace the scene world, object/collection assets keep authored transforms plus location. "
           "For a Geometry Nodes modifier asset, objects applies it as a modifier; omit objects to load a node group "
           "or brush into the file without connecting or activating it. resolution is not used for Blender assets. "
-          "Fab ids require the exact variant_id from a source=\"fab\" search; current account access, observed license and download permission are rechecked before a self-contained GLB download. Nothing in the files runs.", {
+          "Fab ids require the exact variant_id from a source=\"fab\" search; current account access, observed license and download permission are rechecked before the download. A Fab model of any format arrives as one placed collection; a Fab texture set becomes one material on objects (default: the selected meshes; with none, it joins the file's asset library). Nothing in the files runs.", {
               "variant_id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_-]+$"},
               "item_id": {"type": "string", "minLength": 1, "maxLength": 300},
               "resolution": {"type": "string", "enum": list(RESOLUTIONS)},
@@ -90,7 +90,8 @@ Use angelo_blender_api to inspect the installed API before proposing that code. 
 tool. A loaded_datablock result means available in the file, not connected or activated. Do not claim otherwise.
 For Fab use source='fab' with a nonempty query to search the connected account. Suggest paid assets remains the person's preference;
 never use public browsing to bypass it. Import requires item_id plus the exact variant_id from that search.
-Fab supports self-contained GLB models only; no resolution, objects, preview or pagination. Unknown size is
+Fab variants are GLB, FBX, .blend, OBJ, glTF and USD models and surface texture sets; a GLB variant imports fastest
+(no conversion). objects applies only to a Fab texture set; no resolution, preview or pagination. Unknown size is
 bounded by the displayed maximum, not an estimate. Current download permission and observed license are
 rechecked; a historical terms page is not proof of current EULA acceptance. Importing a free Fab asset that is not
 yet in the person's Fab library adds it there (its license accepted for them, as the person allowed); never buy one: a
@@ -167,8 +168,8 @@ def validate_library(name, arguments):
         source = args.get('source', 'angelo')
         raise ValueError("source=%s supports kind: %s" % (source, ', '.join(SOURCE_KINDS[source])))
     fab = name == IMPORT and args['item_id'].startswith('fab:')
-    if fab and ('variant_id' not in args or any(k in args for k in ('resolution', 'objects'))):
-        raise ValueError('Fab imports require variant_id and do not accept resolution or objects')
+    if fab and ('variant_id' not in args or 'resolution' in args):
+        raise ValueError('Fab imports require variant_id and do not accept resolution')
     if name == IMPORT and not fab and 'variant_id' in args:
         raise ValueError('variant_id applies only to Fab imports')
     if name == SEARCH and args.get('source') == 'fab' and not args['query'].strip():

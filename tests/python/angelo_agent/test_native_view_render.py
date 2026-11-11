@@ -17,6 +17,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
@@ -196,6 +197,26 @@ class RenderTests(LookCase):
         self.assertIsNone(self.manager.active())
         self.assertEqual(self.manager.store.records, {}, "a look leaves no job record")
         self.assertEqual(context_entries(self.manager.store, "chat", now=self.clock()), {})
+
+    def test_a_looks_result_keeps_its_compile_when_a_later_job_resets_the_watch(self):
+        # The result is composed after the job ended (_pump_events); a queued job's start resets the watch meanwhile
+        # (r2 re-review R3). The look's compile is taken as it ended, and its result says it.
+        from angelo_render_device import kernels
+        watch = kernels.Watch(self.clock)
+        with mock.patch.object(kernels, "WATCH", watch):
+            pending = self.begin()
+            watch.stats(kernels.LOADING_STATUS)
+            self.clock.now += 30.0
+            watch.stats("Sample 1/32")
+            self.blender.progress = 0.4
+            self.manager.poll()
+            self.clock.now += 6.0
+            self.blender.end()
+            self.manager.poll()
+            watch.reset()   # A queued job started before the result was composed.
+            result = pending.poll()
+        self.assertEqual(result["rendered"]["kernel_compile_s"], 30.0)
+        self.assertIn("30.0 s loading or compiling Cycles' render kernels", result["note"])
 
     def test_a_scene_with_fewer_samples_keeps_its_own(self):
         self.blender.scene.cycles.samples = 8

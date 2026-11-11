@@ -27,6 +27,10 @@ import sys
 import time
 from pathlib import Path
 
+# This suite proves the deadline of a render inside the application; a heavy still would otherwise run in a child
+# Angelo (job_render_route), whose own watchdog keeps its budget (test_blender_render_child).
+os.environ["ANGELO_RENDER_PROCESS"] = "app"
+
 import addon_utils
 import bpy
 

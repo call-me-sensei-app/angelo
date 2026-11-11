@@ -20,6 +20,44 @@ import bpy
 
 MAX_STOP_SECONDS = 15.0  # Cycles stops between samples; simulation bakes between frames.
 PHASE_SECONDS = 150
+# Cycles loading its render kernels is not a stalled phase: a cold compile (a new Cycles version or a fresh machine;
+# Metal on 5.3 took longer than a phase, 1.1 render_deadline) counts against neither a phase nor the suite timeout, up
+# to this cap per load. The runner extends such a suite's kill timeout by the same amount (Suite.kernel_load_cap).
+from native_suite_manifest import KERNEL_LOAD_CAP_S  # noqa: E402
+# Cycles' status while it loads kernels (Scene::load_kernels, MetalDevice::is_ready): both end with this phrase.
+KERNEL_LOADING = "render kernels"
+KERNEL_LOADING_NOTE = "(may take a few minutes the first time)"
+
+
+class KernelLoadClock:
+    """Seconds Cycles spent loading render kernels, from the render_stats texts it reports meanwhile."""
+
+    def __init__(self):
+        self.since, self.total, self.loads = None, 0.0, []
+
+    @staticmethod
+    def loading(text):
+        text = str(text)
+        return KERNEL_LOADING in text and KERNEL_LOADING_NOTE in text
+
+    def observe(self, text, now, phase):
+        if self.loading(text):
+            if self.since is None:
+                self.since, self.phase = now, phase
+        elif self.since is not None:
+            self.close(now)
+
+    def close(self, now):
+        seconds = now - self.since
+        self.total += seconds
+        self.loads.append({"phase": self.phase, "seconds": round(seconds, 1)})
+        self.since = None
+
+    def loading_for(self, now):
+        return now - self.since if self.since is not None else 0.0
+
+    def seconds(self, now):
+        return self.total + self.loading_for(now)
 
 
 class Harness:
@@ -36,6 +74,12 @@ class Harness:
         self.ctx = {"facts": {}, "approvals": {}}
         self.samples = {}
         self.started = self.entered = time.monotonic()
+        self.kernels, self.entered_kernels = KernelLoadClock(), 0.0
+        persistent = getattr(bpy.app.handlers, "persistent", lambda function: function)
+        from angelo_agent import render_extensions
+        # The fixture's own measurement, never add-on Python: unmarked, it kept every suite's renders in the app.
+        bpy.app.handlers.render_stats.append(render_extensions.host_handler(persistent(
+            lambda stats, *args: self.kernels.observe(stats, time.monotonic(), self.state["phase"]))))
         self.controller = SimpleNamespace(files=FileWorkspace(self.workspace), state={"id": "suite-chat"},
                                           executing_call=SimpleNamespace(id="call-1"))
 
@@ -129,13 +173,18 @@ class Harness:
     def go(self, phase):
         self.state["phase"] = phase
         self.entered = time.monotonic()
+        self.entered_kernels = self.kernels.seconds(self.entered)
 
     def finish(self, error=None):
         if error:
             self.state.update(phase="failed", success=False, error=str(error), traceback=traceback.format_exc())
         else:
             self.state.update(phase="complete", success=bool(self.state["checks"]) and all(self.state["checks"].values()))
-        self.state["elapsed_seconds"] = round(time.monotonic() - self.started, 1)
+        now = time.monotonic()
+        if self.kernels.since is not None:
+            self.kernels.close(now)
+        self.state["elapsed_seconds"] = round(now - self.started, 1)
+        self.state["kernel_load_s"], self.state["kernel_loads"] = round(self.kernels.total, 1), self.kernels.loads
         self.report.write_text(json.dumps(self.state, indent=2, default=str))
         print(self.marker, json.dumps({"success": self.state["success"], "phase": self.state["phase"]}), flush=True)
         bpy.ops.wm.quit_blender()
@@ -148,8 +197,15 @@ class Harness:
 
         def tick():
             try:
-                assert time.monotonic() - self.started < self.timeout, "The suite timed out in " + self.state["phase"]
-                if time.monotonic() - self.entered > PHASE_SECONDS:
+                now = time.monotonic()
+                loading = self.kernels.loading_for(now)
+                if loading > KERNEL_LOAD_CAP_S:
+                    raise AssertionError("Cycles was still loading render kernels after %d s in phase %s "
+                                         "(KERNEL_LOAD_CAP_S)" % (loading, self.state["phase"]))
+                waited = self.kernels.seconds(now)   # Kernel loads count against neither bound, up to the cap.
+                assert now - self.started - min(waited, KERNEL_LOAD_CAP_S) < self.timeout, \
+                    "The suite timed out in " + self.state["phase"]
+                if now - self.entered - (waited - self.entered_kernels) > PHASE_SECONDS:
                     raise AssertionError("Phase %s did not advance in %d s" % (self.state["phase"], PHASE_SECONDS))
                 self.sample()
                 return step(self)

@@ -115,7 +115,8 @@ class CallSiteTests(unittest.TestCase):
                 ("asset_stock_import.py", None, "apply_glb", "check_file", "self_contained=True"),
                 ("engine_link_import.py", None, "working_file", "check_file", "self_contained=False"),
                 ("studio_host.py", None, "import_glb", "checked_glb", None),
-                ("studio_asset_ops.py", "ANGELO_OT_studio_import_3d", "execute", "checked_glb", None)):
+                ("studio_asset_ops.py", "ANGELO_OT_studio_import_3d", "execute", "checked_glb", None),
+                ("fab_convert_child.py", None, "import_model", "check_file", "self_contained=False")):
             with self.subTest(module=name):
                 calls = self.calls(name, function, owner)
                 checked, imported = self.first(calls, check), self.first(calls, "gltf", "read_homefile", "import_glb")
@@ -137,7 +138,8 @@ class CallSiteTests(unittest.TestCase):
         """A new import_scene.gltf call joins one of the checked paths (or this list, with its check)."""
         known = {"studio_assets_mesh.py", "engine_link_import.py", "studio_host.py", "studio_asset_ops.py",
                  "team_library_import.py", "library_import.py", "asset_stock_import.py",
-                 "engine_reimport.py"}   # The preflight's read-back: gltf_checks.check_file before the importer.
+                 "engine_reimport.py",   # The preflight's read-back: gltf_checks.check_file before the importer.
+                 "fab_convert_child.py"}   # The Fab converter child: check_file in import_model, above.
         found = {p.name for p in ADDON.glob("*.py") if "import_scene.gltf(" in p.read_text(encoding="utf-8")}
         self.assertEqual(found - known, set())
 

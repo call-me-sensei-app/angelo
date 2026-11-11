@@ -17,6 +17,7 @@ Needs Godot 4.4 or newer: ``ANGELO_QA_GODOT`` (default ``/Applications/Godot.app
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+import native_suite_inputs  # noqa: E402  The Godot editor every Godot suite defaults to.
 
 import json
 import os
@@ -34,7 +35,7 @@ OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angel
 OUT.mkdir(parents=True, exist_ok=True)
 os.environ.update(ANGELO_STATE_DIR=str(OUT / "state"), ANGELO_CONNECTIONS_DIR=str(OUT / "accounts"),
                   ANGELO_LIBRARY_DIR=str(OUT / "library"), ANGELO_LINK_RECORD=str(OUT / "link-record.json"))
-GODOT = os.environ.get("ANGELO_QA_GODOT") or "/Applications/Godot.app/Contents/MacOS/Godot"
+GODOT = os.environ.get("ANGELO_QA_GODOT") or native_suite_inputs.default_godot()
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 product_env.clear("DISABLE_DEFAULT_CHAT")
 from angelo_agent import (app_feature_host, capabilities_host, card_host, chat_destinations, director,  # noqa: E402

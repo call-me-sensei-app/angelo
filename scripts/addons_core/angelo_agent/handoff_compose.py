@@ -121,7 +121,7 @@ def compose(messages, start, limit, *, header, identifiers=None):
     currency = Currency(identifiers) if compact else None
     candidates, groups, failed, unexamined, exhausted = [], {}, set(), 0, False
     ineligible, required_summary_rows = set(), set()
-    admitted_records = 0
+    admitted_records, scanned = 0, False
     while (taken := history.take()) is not None:
         index, message = taken
         if message is None:
@@ -165,9 +165,18 @@ def compose(messages, start, limit, *, header, identifiers=None):
             # currency record, even when its refusal was an unsupported type.
             unexamined, exhausted = history.unexamined, error.args[0] == WORK_LIMIT or budget.exhausted
             break
+    else:
+        scanned = True   # No record of the excerpt stopped the scan.
     if history.reason is not None:
         unexamined, exhausted = max(unexamined, history.unexamined), budget.exhausted
-    last = adjacency.end(reached_origin=history.start == 0 and history.cursor < 0)
+    # The last group is whole at the transcript's origin, or when the record before the excerpt ends it: a
+    # follow-up's handoff starts where the last plan's rows begin (Controller._native_unsynced_from). Only a
+    # compact handoff leaves a summary out, so only it looks, and only after reading every record of the excerpt:
+    # a scan stopped on the oldest one has not seen whether that record belongs to the group.
+    whole = history.start == 0 and history.cursor < 0
+    if not whole and compact and scanned and adjacency.summary is not None:
+        whole = history.closed_before_start()
+    last = adjacency.end(reached_origin=whole)
     if last is not None:
         groups[last.summary] = last
     budget.begin_final_projection()

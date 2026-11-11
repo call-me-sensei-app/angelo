@@ -60,9 +60,10 @@ def _append(data, row):
     with data.libraries.load(row['file']['path'], assets_only=True, link=False, recursive=True) as (source, target):
         if source.libraries and row['origin'] != 'bundled':
             raise Refused('This asset depends on another .blend file; it was not imported.')
-        if row['name'] not in getattr(source, collection):
+        name = row.get('datablock', row['name'])   # A Fab conversion names its datablock; Essentials use the title.
+        if name not in getattr(source, collection):
             raise Refused('The selected asset is no longer in this file. Search again.')
-        setattr(target, collection, [row['name']])
+        setattr(target, collection, [name])
     block = getattr(target, collection)[0]
     if block is None:
         raise Refused('Blender did not load the selected asset.')
@@ -102,6 +103,12 @@ def _inspect_packed_image(image):
                       'a separately saved source asset before importing it.')
 
 
+def needs_python(driver):
+    """A driver Blender evaluates with Python: a scripted expression outside its own simple-expression evaluator.
+    Averaging, sum, minimum, maximum and simple expressions never call Python, with or without Auto Run."""
+    return driver.type == 'SCRIPTED' and not driver.is_simple_expression
+
+
 def _inspect(data):
     """Reject executable/external dependencies before any asset enters the artist's Main or dependency graph."""
     for block in ids(data).values():
@@ -119,10 +126,10 @@ def _inspect(data):
                 if modifier.type == 'MESH_CACHE' and modifier.filepath:
                     raise Refused('This asset uses an external Mesh Cache file. Bake the geometry '
                                   'into a separately saved source asset before importing it.')
-        for owner in (block, getattr(block, 'node_tree', None)):
+        for owner in (block, getattr(block, 'node_tree', None), getattr(block, 'shape_keys', None)):
             animation = getattr(owner, 'animation_data', None)
-            if animation and animation.drivers:
-                raise Refused('This asset contains drivers; it was not imported.')
+            if animation and any(needs_python(curve.driver) for curve in animation.drivers):
+                raise Refused('This asset contains drivers that run Python; it was not imported.')
             for node in getattr(owner, 'nodes', ()):
                 if node.bl_idname == 'ShaderNodeScript':
                     raise Refused('This asset contains a script shader; it was not imported.')
@@ -156,7 +163,7 @@ def apply_item(context, row, *, point=None, targets=()):
     kind = row['kind']
     if kind == 'node_group' and targets and not (facts['node_type'] == 'GeometryNodeTree' and facts['is_modifier']):
         raise NotImported('Only a Geometry Nodes modifier asset can be applied to objects. Omit objects to load it.')
-    if kind == 'material' and not targets:
+    if kind == 'material' and not targets and row['origin'] != 'fab':
         raise NotImported('Choose at least one editable mesh for this material.')
     if any(obj.type != 'MESH' or obj.library or obj.data.library for obj in targets):
         raise NotImported('A chosen editable mesh changed before import.')
@@ -179,11 +186,18 @@ def apply_item(context, row, *, point=None, targets=()):
         if not objects or any(obj.as_pointer() not in created for obj in objects):
             raise RuntimeError('Blender did not create the selected model objects.')
         offset = Vector(point) if point is not None else context.scene.cursor.location.copy()
-        for obj in objects:
-            if obj.parent not in objects:
-                obj.location += offset
+        if row['origin'] == 'fab':
+            # A Fab file carries its publisher's placement and units: stand it at the point, sized like the scene.
+            library_import._stand(objects, offset)
+            from . import scene_fit
+            fitted = scene_fit.fit(objects, context.scene, offset)
+            moved = point is None and scene_fit.beside(objects, context.scene)
+        else:
+            for obj in objects:
+                if obj.parent not in objects:
+                    obj.location += offset
         usage = 'placed_model'
-    elif kind == 'material':
+    elif kind == 'material' and targets:
         if library_import.assign(targets, block) != len(targets):
             raise RuntimeError('Not all chosen meshes accepted the material.')
         if any(not obj.material_slots or obj.material_slots[obj.active_material_index].material != block
@@ -207,9 +221,20 @@ def apply_item(context, row, *, point=None, targets=()):
         block.use_fake_user = True
         if not block.use_fake_user:
             raise RuntimeError('The loaded asset was not retained in this file.')
+        if kind == 'material':
+            # A Fab texture set with nothing selected joins this file's asset library (Asset Browser, Current File).
+            block.asset_mark()
+            usage = 'material_in_library'
+    if row['origin'] == 'fab' and usage != 'material_in_library':
+        block.asset_clear()   # Marked only so the converted file could be appended: placed or applied, not a library item.
     from .asset_stock_import import stamp_created, readback
     stamp_created(created.values(), row, primary=block)
     context.view_layer.update()
     result = readback(row, block, objects, modifiers, usage)
     result['changes'] = scene_diff(before_scene, scene_signature(context.scene))
+    if row['origin'] == 'fab' and kind == 'model':
+        if fitted != 1.0:
+            result['scaled_to_scene'] = round(fitted, 4)
+        if moved:
+            result['placed_beside'] = True
     return result

@@ -20,6 +20,7 @@ to the run, so neither the person's Godot settings nor their Angelo are touched.
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+import native_suite_inputs  # noqa: E402  The Godot editor every Godot suite defaults to.
 
 import argparse
 import json
@@ -36,7 +37,7 @@ ROOT = HERE.parents[3]
 ADDON = ROOT / "scripts/addons_core/angelo_agent/godot_addon/angelo_link"
 DRIVER = HERE / "driver_addon/angelo_link_e2e"
 SECONDS = 180
-GODOT = os.environ.get("ANGELO_QA_GODOT") or "/Applications/Godot.app/Contents/MacOS/Godot"
+GODOT = os.environ.get("ANGELO_QA_GODOT") or native_suite_inputs.default_godot()
 
 MAKE_ASSETS = """
 import bpy, sys

@@ -23,13 +23,13 @@ Opt-ins, each explicit and named:
 
 * ``ANGELO_TEST_REAL_PROVIDERS=eval-profile:<path>``: only the billed eval harness sets it (``eval_live_agent``
   derives it from its validated connection), and the LIVE suites take it from the caller. ``<path>`` is the dedicated
-  profile the run bills (``.../codex-profile/<uuid>`` signed in to the evaluation account,
-  ``.../claude-profile/<uuid>``, or the dedicated connection store an API-key or team run uses in place); never the
-  person's ``~/.codex`` or ``~/.claude``, never empty, never a folder holding the home (``opt_in_profile``). Before the
-  process runs, every account it can bill is read and must be the expected one (``provider_accounts``): the opted-in
-  profile's (a Codex profile's id_token claims against the evaluation account; a Claude profile's ``.claude.json``
-  against the account the opt-in names, ``<path>|account=<email or account UUID>``, required for any Claude profile)
-  and that of every subscription
+  profile the run bills (``.../codex-profile/<uuid>`` signed in to the evaluation account, ``.../claude-profile/<uuid>``, or the
+  dedicated connection store an API-key or team run uses in place); never the person's ``~/.codex`` or ``~/.claude``,
+  never empty, never a folder holding the home (``opt_in_profile``). Before the process runs, every account it can
+  bill is read and must be the expected one (``provider_accounts``): the opted-in profile's (a Codex profile's
+  id_token claims against the ChatGPT account the opt-in names, ``<path>|account=<id prefix>|<email>``, or
+  ``ANGELO_TEST_CODEX_ACCOUNT``; a Claude profile's ``.claude.json`` against the account the opt-in names,
+  ``<path>|account=<email or account UUID>``; each required, and named only outside the repository) and that of every subscription
   connection in its connection store (``ANGELO_CONNECTIONS_DIR``; an empty one when the caller names none, so the
   person's own store is never reached). HOME stays the caller's (the login Keychain);
   ``CODEX_HOME``/``CLAUDE_CONFIG_DIR`` are pinned to the profile and an empty folder, so a connection that reuses a
@@ -163,12 +163,30 @@ def shown_account(value):
     return opt_in_account({OPT_IN: value})
 
 
+def _account_field(environ):
+    """``(family, field)``: the opt-in profile's family (``codex-profile``, ``claude-profile`` or None) and its
+    ``|account=`` field ("" when it has none). The field names the expected account of that profile's family."""
+    path, _, field = (environ.get(OPT_IN) or "").partition(":")[2].partition(ACCOUNT_FIELD)
+    path = Path(path.strip()) if path.strip() else None
+    family = path.parent.name if path is not None and _is_uuid(path.name) and path.parent.name in PROFILE_ENV else None
+    return family, field.strip()
+
+
 def claude_expected(environ):
-    """The expected Claude account: the opt-in's ``|account=`` field, else ``CLAUDE_ACCOUNT_ENV`` (the harnesses
-    outside the opt-in); None when neither names one."""
-    value = environ.get(OPT_IN) or ""
-    field = value.partition(":")[2].partition(ACCOUNT_FIELD)[2].strip()
+    """The expected Claude account: the opt-in's ``|account=`` field (unless the opt-in is a Codex profile, whose
+    field is its own account), else ``CLAUDE_ACCOUNT_ENV`` (the harnesses outside the opt-in); None when neither."""
+    family, field = _account_field(environ)
+    field = "" if family == "codex-profile" else field
     return field or (environ.get(provider_accounts.CLAUDE_ACCOUNT_ENV) or "").strip() or None
+
+
+def codex_expected(environ):
+    """The expected ChatGPT account (``<account id prefix>[|<email>]``): a Codex opt-in's ``|account=`` field, else
+    ``CODEX_ACCOUNT_ENV``; "" when neither names one, which ``provider_accounts`` refuses (never a default)."""
+    family, field = _account_field(environ)
+    if family == "codex-profile" and field:
+        return field
+    return (environ.get(provider_accounts.CODEX_ACCOUNT_ENV) or "").strip()
 
 
 def check_billed(profiles=(), stores=(), environ=None):
@@ -179,7 +197,8 @@ def check_billed(profiles=(), stores=(), environ=None):
     for family, path in profiles:
         _dedicated(Path(path).expanduser().absolute(), homes(environ), "%s profile" % family)
         try:
-            provider_accounts.verify(family, Path(path).expanduser(), claude_expected(environ))
+            provider_accounts.verify(family, Path(path).expanduser(), claude_expected(environ),
+                                     codex_expected(environ))
         except provider_accounts.AccountRefusal as error:
             raise Refusal("%s %s: %s" % (family, path, error)) from None
     for store in stores:
@@ -218,7 +237,8 @@ def verify_store(store, environ):
     billed process uses and any further one a LIVE suite bills (``test_blender_cross_provider_live``); raises
     ``Refusal``."""
     try:
-        return provider_accounts.store_accounts(Path(store).expanduser(), claude_expected(environ))
+        return provider_accounts.store_accounts(Path(store).expanduser(), claude_expected(environ),
+                                                codex_expected(environ))
     except provider_accounts.AccountRefusal as error:
         raise Refusal("the connection store %s: %s" % (store, error)) from None
 
@@ -234,8 +254,7 @@ def _opt_in(environ, home_folders=None):
     if "|" in text:   # A misspelt field: never echoed, it may hold an email.
         raise Refusal("%s's only field after the path is %s<email or account UUID>" % (OPT_IN, ACCOUNT_FIELD))
     if kind != OPT_IN_KIND or not separator or not text.strip():   # Never the value: its |account= is an email.
-        raise Refusal("%s must be %s:<absolute path of the evaluation-account profile>, not %r"
-                      % (OPT_IN, OPT_IN_KIND, text))
+        raise Refusal("%s must be %s:<absolute path of the evaluation-account profile>, not %r" % (OPT_IN, OPT_IN_KIND, text))
     path = Path(text)
     if path.parent.name in PROFILE_ENV and not _is_uuid(path.name):
         raise Refusal("%s names a %s folder that is not a connection's (<uuid>): %s" % (OPT_IN, path.parent.name, text))
@@ -249,7 +268,7 @@ def _opt_in(environ, home_folders=None):
     if sign_in and not (path / sign_in).is_file():
         raise Refusal("%s is not signed in (run: CODEX_HOME=%s codex login)" % (OPT_IN, path))
     try:   # The account it reaches, read now: a folder can have been re-signed into another account.
-        account = provider_accounts.verify(family, path, claude_expected(environ))
+        account = provider_accounts.verify(family, path, claude_expected(environ), codex_expected(environ))
     except provider_accounts.AccountRefusal as error:
         raise Refusal("%s %s: %s" % (OPT_IN, path, error)) from None
     return family, str(path), account
@@ -309,10 +328,10 @@ def real_provider_environment(environ, family, profile, home):
 def connection_opt_in(connection, environ=None):
     """A billed run's ``OPT_IN`` value from its connection (``eval_live_agent.isolated_connection``, ``team_connection``
     or a kept returning-user copy): ``eval-profile:`` and the connection's dedicated profile (``--codex-home``'s
-    evaluation-account Codex profile, a Claude connection's own ``claude-profile/<id>``, or the dedicated store an
-    API-key or team run uses in place). A Claude profile's expected account comes from
-    ``provider_accounts.CLAUDE_ACCOUNT_ENV`` in ``environ`` (refused when absent); a Codex profile's is the evaluation
-    account (``provider_accounts.CODEX_ACCOUNT``).
+    evaluation-account Codex profile, a Claude connection's own ``claude-profile/<id>``, or the dedicated store an API-key or
+    team run uses in place). A Claude profile's expected account comes from ``provider_accounts.CLAUDE_ACCOUNT_ENV``
+    in ``environ``, a Codex profile's from ``provider_accounts.CODEX_ACCOUNT_ENV`` (the evaluation account, named outside the
+    repository); each is refused when absent and rides in the opt-in's ``|account=`` field.
 
     The only opt-in a test process gets to a real provider login, so it never falls back to the person's own sign-in:
     a connection that reuses the native ``~/.codex`` or ``~/.claude`` (on the maintainer's machines, the main account)
@@ -322,14 +341,21 @@ def connection_opt_in(connection, environ=None):
     profile = connection.get("in_place") or connection.get("profile")
     if connection.get("reuse_native") or not profile:
         raise Refusal("Connection %s reuses the person's own native sign-in (~/.codex or ~/.claude: the main account). "
-                      "Billed runs use a dedicated profile: --codex-home with the evaluation-account Codex profile, "
-                      "or a connection with its own profile" % connection.get("id"))
+                      "Billed runs use a dedicated profile: --codex-home with the evaluation-account Codex profile, or a "
+                      "connection with its own profile" % connection.get("id"))
     value = "%s:%s" % (OPT_IN_KIND, Path(profile).absolute())
-    expected = (os.environ if environ is None else environ).get(provider_accounts.CLAUDE_ACCOUNT_ENV, "").strip()
-    if Path(profile).parent.name == "claude-profile" and not expected:
-        raise Refusal("A billed Claude run needs its expected account: set %s to the account's email or UUID"
-                      % provider_accounts.CLAUDE_ACCOUNT_ENV)
-    if expected:   # Any Claude profile the run reaches (its own, or a subscription in a store it uses in place).
+    environ = os.environ if environ is None else environ
+    if Path(profile).parent.name == "codex-profile":   # Its field is the Codex account (codex_expected).
+        expected = (environ.get(provider_accounts.CODEX_ACCOUNT_ENV) or "").strip()
+        if not expected:
+            raise Refusal("A billed ChatGPT run needs its expected account: set %s to <account id prefix>|<email>"
+                          % provider_accounts.CODEX_ACCOUNT_ENV)
+    else:
+        expected = (environ.get(provider_accounts.CLAUDE_ACCOUNT_ENV) or "").strip()
+        if Path(profile).parent.name == "claude-profile" and not expected:
+            raise Refusal("A billed Claude run needs its expected account: set %s to the account's email or UUID"
+                          % provider_accounts.CLAUDE_ACCOUNT_ENV)
+    if expected:   # Its own account, and any Claude profile a store it uses in place reaches.
         value += ACCOUNT_FIELD + expected
     opt_in_profile({OPT_IN: value})
     return value
@@ -413,11 +439,13 @@ def in_blender():
 def new_home(environ):
     """A new isolated home: inside the suite's ``ANGELO_QA_DIR`` when set (kept as evidence), else a temporary folder
     removed when the process ends. Returns ``(home, remove_afterwards)``."""
+    # Resolved: a person's home has no symlink above it, but macOS's temporary folder sits below /var (a symlink to
+    # /private/var), and Angelo's planted-link guards (the Fab browser's scratch root) refuse a folder below one.
     qa = environ.get("ANGELO_QA_DIR")
     if qa:
         Path(qa).mkdir(parents=True, exist_ok=True)
-        return Path(tempfile.mkdtemp(prefix="test-profile-", dir=qa)) / "home", False
-    return Path(tempfile.mkdtemp(prefix="angelo-test-profile-")) / "home", True
+        return Path(os.path.realpath(tempfile.mkdtemp(prefix="test-profile-", dir=qa))) / "home", False
+    return Path(os.path.realpath(tempfile.mkdtemp(prefix="angelo-test-profile-"))) / "home", True
 
 
 def relaunch(env, argv=None, binary=None, call=subprocess.call):

@@ -298,7 +298,7 @@ def resume_status(command, env, cwd, identity):
     except Exception as error:  # The probe reports what the runtime answered.
         return str(error)[:300]
     finally:
-        rpc.process.terminate()
+        rpc.close()   # Waits for the exit: Windows keeps an exiting process's files locked (its state database).
 
 
 def main(argv=None):
@@ -391,7 +391,7 @@ def main(argv=None):
             for text in (first, "Second message: thanks."):
                 run_turn(thread, text)
     finally:
-        rpc.process.terminate()
+        rpc.close()   # Waits for the exit: Windows keeps an exiting process's files locked (its state database).
     summary = {"variant": args.variant, "task": args.task, "model": args.model, "team": args.team, "turns": turns,
                "requests": [dict(summarize(raw, thread), affinity_headers=headers["values"])
                             for raw, headers in zip(fake.bodies, fake.headers)], "tool_calls": calls,

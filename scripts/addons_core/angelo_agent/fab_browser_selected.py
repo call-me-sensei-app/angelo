@@ -12,7 +12,7 @@ from .fab_browser_download import SelectedDownload
 from .fab_catalog import Item
 from . import fab_browser_platform as platform_owner
 from .fab_browser_selected_control import click
-from .team_library_files import MAX_BYTES
+from .fab_formats import MAX_DOWNLOAD
 
 @contextmanager
 def open_selected(connection,approved_item,choice,expected_account,stop=None,maximum_bytes=None):
@@ -25,7 +25,7 @@ def open_selected(connection,approved_item,choice,expected_account,stop=None,max
  if (type(approved_item)is not Item or type(choice)is not BrowserChoice
      or approved_item.identity!=choice.listing_id or choice.variant() not in approved_item.variants):
   raise BrowserUnavailable('DOWNLOAD_SELECTION_CHANGED')
- if type(maximum_bytes)is not int or not 0<maximum_bytes<=MAX_BYTES['model']:raise BrowserUnavailable('DOWNLOAD_LIMIT')
+ if type(maximum_bytes)is not int or not 0<maximum_bytes<=MAX_DOWNLOAD:raise BrowserUnavailable('DOWNLOAD_LIMIT')
  Landing,CompletedFile=platform_owner.file_types()
  if not connection._lock.acquire(blocking=False):raise BrowserUnavailable('BUSY')
  browser=None;landing=None;file=None;tracker=None;terminal=False;enabled=False;transfer=None;cleaned=False;success=False

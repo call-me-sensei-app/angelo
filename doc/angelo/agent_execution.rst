@@ -3401,7 +3401,11 @@ the location through what stays; it resets only the applied channels and flips
 the faces when that matrix mirrors, as Corrective Flip Normals does. A mirrored
 scale applied alone keeps the rotation channels exactly; rebuilding the basis
 from a decomposition would turn scale (-2, 1, 1) into a 180-degree rotation,
-which a keyed rotation flips back on the next frame. Changes to the live
+which a keyed rotation flips back on the next frame. Custom normals keep their
+shading through a stretching or mirroring bake: ``Mesh.transform()`` and
+``Mesh.flip_normals()`` carry tangent-space normals through free ones
+(``rna_mesh_api.cc``, extending upstream's 8306860f963; ``releasing.rst``;
+``test_blender_custom_normals_transform.py``). Changes to the live
 scene's structure are staged as intents in the stage's ``extras`` and carried
 out by commit inside the Undo operator, each journaled for rollback: renames
 (a taken name fails instead of being suffixed), linked duplicates pointed at
@@ -5823,6 +5827,18 @@ Windows does not open) and the three suites that put POSIX shell-wrapper
 stand-ins for ``claude``/``codex`` on PATH (chat cards, Director navigation,
 first run).
 
+A suite that needs something from the machine besides the app names it in the
+manifest's ``inputs`` (``native_suite_inputs``): a Godot editor
+(``ANGELO_QA_GODOT``, else Godot's default install) for the four Godot suites,
+and the held-out models of ``godot_physics_e2e/heldout_assets.json``
+(``ANGELO_QA_PHYSICS_ASSETS``, else the pinned set, downloaded once and checked
+by sha256 into ``angelo-native-inputs`` beside the runs). The runner resolves
+each input once and passes it to the suite as that variable. An input the
+machine cannot provide makes the suite a skip whose reason says what is missing
+and how to provide it: never a failure (1.0.10's runs reported the physics
+suite FAILED on every Mac with Godot installed, for want of the models) and
+never a pass.
+
 A suite may declare variants (``native_suite_manifest.Variant``): each is a run
 of its own, named ``<suite>@<variant>``, with the variant's environment set
 over the caller's, and a suite's own name selects all of its variants. Every
@@ -5890,10 +5906,12 @@ else stops the process. A folder's name never proves its account (a browser
 sign-in signs in whatever account the browser holds), so before the process
 runs every account it can bill is read, locally and without a signature check
 or network (``provider_accounts.py``): a Codex profile's ``auth.json``
-id_token claims must name the dedicated evaluation account
-(``chatgpt_account_id`` prefix, else the email; its ``config.toml`` keeps the
-sign-in in that file, and it holds no API
-key); a Claude profile's ``.claude.json`` ``oauthAccount`` must match the
+id_token claims must name the ChatGPT account its caller names
+(``<path>|account=<account id prefix>|<email>``, or ``ANGELO_TEST_CODEX_ACCOUNT``
+for the harnesses outside the opt-in; required, since the repository records no
+account: the ``chatgpt_account_id`` prefix decides, and a named email must
+match too; its ``config.toml`` keeps the sign-in in that file, and it holds no
+API key); a Claude profile's ``.claude.json`` ``oauthAccount`` must match the
 account the opt-in names (``<path>|account=<email or account UUID>``, required,
 since nothing records which Claude account is right); and so must every
 subscription connection in the process's connection store

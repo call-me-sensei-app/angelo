@@ -3,8 +3,8 @@
 """When a followed scene changed in a way an export can see, and when re-exporting it is allowed. Main thread.
 
 Shared by the live previews that re-export a scene after each change (``web_preview``, ``engine_link``): a
-``depsgraph_update_post`` handler asks ``matters``; a timer re-exports once the scene has been still for
-``quiet_seconds`` and nothing is ``busy``.
+``depsgraph_update_post`` handler asks ``matters``; a timer re-exports while nothing is ``busy``, ``web_preview`` once
+the scene has been still for ``quiet_seconds``, ``engine_link`` at its cadence (``engine_link_cadence``).
 """
 
 import bpy

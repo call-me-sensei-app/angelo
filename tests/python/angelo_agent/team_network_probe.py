@@ -252,7 +252,7 @@ def run_codex(executable, out):
             time.sleep(.05)
         time.sleep(3)
     finally:
-        rpc.process.terminate()
+        rpc.close()   # Waits for the exit: Windows keeps an exiting process's files locked (its state database).
     report = {"runtime": "codex", "proxy_saw": recorder.seen, "gateway_requests": len(fake.bodies),
               "completed": "turn/completed" in events}
     report["passed"] = not recorder.seen and report["completed"] and report["gateway_requests"] > 0
