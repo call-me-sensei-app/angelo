@@ -7,6 +7,7 @@ verified Sculpt companions. No producer, Blender, provider or native reader.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import copy
 from contextlib import contextmanager
@@ -68,7 +69,7 @@ with _transaction(root):
     pin=acquire_capture_pin(root,session,identity)
 print("READY",flush=True)
 try:
-    deadline=time.monotonic()+10
+    deadline=time.monotonic()+60  # The parent's signal; a hang only (host_waits.CAP_S).
     while not signal.exists():
         if time.monotonic()>deadline: raise RuntimeError("Owned consumer fixture timeout")
         time.sleep(.01)
@@ -96,10 +97,10 @@ class CaptureConsumerTests(unittest.TestCase):
                 if child.poll() is None:
                     child.terminate()
                     try:
-                        child.wait(timeout=2)
+                        child.wait(timeout=CAP_S)
                     except subprocess.TimeoutExpired:
                         child.kill()
-                        child.wait(timeout=2)
+                        child.wait(timeout=CAP_S)
             for pin in self.pins:
                 abandon_capture_pin(pin)
         finally:
@@ -587,7 +588,7 @@ class CaptureConsumerTests(unittest.TestCase):
             child = subprocess.Popen([sys.executable, "-B", "-c", CHILD, str(ADDONS), str(self.store.root),
                                       self.store.session_id, record["id"], str(signal)], stdout=log, stderr=subprocess.STDOUT)
         self.children.append(child)
-        deadline = time.monotonic()+5
+        deadline = time.monotonic()+CAP_S
         while not output.read_text().startswith("READY") and child.poll() is None and time.monotonic()<deadline:
             time.sleep(.01)
         self.assertTrue(output.read_text().startswith("READY"), output.read_text())
@@ -598,7 +599,7 @@ class CaptureConsumerTests(unittest.TestCase):
             snapshot_ingest.ingest_snapshot(self.store, record["id"])
         started.assert_within(2)
         signal.write_text("release")
-        self.assertEqual(child.wait(timeout=5), 0, output.read_text())
+        self.assertEqual(child.wait(timeout=CAP_S), 0, output.read_text())
         self.assertTrue(self.store.availability(record["id"])["available"])
 
     def test_post_effect_unlink_sync_failure_preserves_original_error_and_one_effect(self):

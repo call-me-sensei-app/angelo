@@ -67,6 +67,7 @@ class FakeConsole:
         self.org_name, self.email, self.member = org_name, email, True
         self.role = "member"  # The access token's ``role`` claim ("owner", "admin" or "member").
         self.cache_affinity_secret = None  # The newer contract's providers ``cacheAffinitySecret`` (64 hex), or none.
+        self.custom_endpoints = None  # providers/available ``customEndpoints`` (the organization's model servers).
         # The newer console contract: the
         # organization's app policy in token answers (all five fields, ``readAppPolicy``) and a machine-readable
         # ``error_reason`` on every ``invalid_grant``. None/False: production today. ``app_policy`` sets the first
@@ -245,6 +246,8 @@ class FakeConsole:
                     if match.group(1) != token_org or not console.member:  # Non-members and other orgs: 404.
                         return self._api_error(404, "NOT_FOUND", "Organization not found.")
                     data = {"providers": console.providers + ["unknown-provider"]}
+                    if console.custom_endpoints is not None:
+                        data["customEndpoints"] = console.custom_endpoints
                     if console.cache_affinity_secret and "generate" in entry_scopes:  # The app's token only.
                         data["cacheAffinitySecret"] = console.cache_affinity_secret
                     return self._send(200, {"data": data})

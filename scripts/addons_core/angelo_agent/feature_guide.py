@@ -181,6 +181,18 @@ GUIDES = (
                     {"tool": "angelo_library_import", "arguments": {"item_id": "tl-chair-01"}}),
           menu=("library",), doc="library", heading="Angelo Library", requires=("angelo.library_open",),
           suggest="Before building or generating a common prop, material or sky from scratch."),
+    Guide("download", "Files from the web",
+          "Brings one file from an https link (a texture, model, HDRI, image or sound) into the project's "
+          "assets/downloads folder (an unsaved file's own temporary folder until it is saved) after the person approves it on a card; its type is checked from its bytes and it "
+          "is never opened, run or imported by the download.",
+          "Ask in the chat with the link; a card names the website, the size limit and the folder. Free ready-made "
+          "assets: chat bar + menu > Create > Angelo Library.",
+          "angelo_download (deferred; a card in Ask and in Auto), then import the returned path. Agent scripts have "
+          "no network: never fetch a URL in a script (urllib, requests, sockets); it fails.",
+          examples=({"tool": "angelo_download", "arguments": {"url": "https://example.com/textures/brick_4k.png",
+                                                               "kind": "texture", "name": "Brick wall"}},),
+          menu=("library",), doc="downloads", heading="Files from the web",
+          suggest="The person gives a link to a file, or a script would otherwise download something."),
     Guide("bake_maps", "Bake every map at once",
           "Bakes all of a material's maps (colour, roughness, normal...) in one job, packed separately or for glTF, "
           "Unreal or Unity.",
@@ -255,6 +267,17 @@ GUIDES = (
                                                           "until its outline matches the attached picture"}},
                     {"tool": "angelo_goal", "arguments": {"action": "STOP", "reason": "NEEDS_INPUT",
                                                           "message": "Which of the two styles in the brief comes first?"}})),
+    Guide("learn", "Learn: how to do a step yourself",
+          "Shows how a person does by hand what Angelo's typed steps did, once the person turns it on for a chat; "
+          "it is off by default and then shows nothing. With it on, the steps of the latest request open with a card: "
+          "the command, the keys bound to it, where it is in the menus, the settings Angelo used and the mode it "
+          "needs; opening an earlier step shows its card too. Angelo reads these from the running app, so they are "
+          "the person's own keymap and interface language, which may differ from Blender's defaults.",
+          "Chat bar + menu > Learn (at the bottom of the menu) > Teach me as you work, for that chat.",
+          "No tool: it is the person's own view setting, and Angelo builds each card from a step already made with "
+          "angelo_scene_program. A scripted step has no card. Nothing here changes what the agent is sent.",
+          menu=("learn",), doc="learn_mode", heading="Learn: how to do it yourself", requires=("angelo.learn",),
+          suggest="When the person asks how to do by hand something Angelo did or can do."),
     Guide("base_meshes", "Base meshes and hands",
           "Start from one of Angelo's base meshes, or have the agent start from a rig's hands with Angelo's hand "
           "tools.",

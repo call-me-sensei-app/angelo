@@ -20,9 +20,9 @@
 #include "uri_convert.hh"
 #include "utfconv.hh"
 
-#include "BLI_string.h"
+#include "BLI_string.hh"
 
-#include "BLI_system.h" /* Own include. */
+#include "BLI_system.hh" /* Own include. */
 
 /* GetVersionEx is deprecated and also tends to lie about much of the information
  * it gives you. We should deal with that one day, but today is not that day. For
@@ -645,12 +645,7 @@ void BLI_windows_exception_show_dialog(const char *filepath_crashlog,
 
   TASKDIALOGCONFIG config = {0};
   const TASKDIALOG_BUTTON buttons[] = {{IDRETRY, L"Restart"},
-#if 0
-    /* This lead to a large influx of low quality reports on the tracker,
-     * and has been disabled for that reason, we can re-enable this when
-     * a better workflow has been established. */
-    {IDOK, L"Report a Problem"},
-#endif
+                                       {IDOK, L"Report a Problem"},
                                        {IDHELP, L"View Crash Log"},
                                        {IDCLOSE, L"Close"}};
 

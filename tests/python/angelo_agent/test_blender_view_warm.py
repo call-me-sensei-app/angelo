@@ -15,6 +15,11 @@
   them back: a Solid picture of the whole scene and every object's visibility read the same before and after, after a
   draw that raised (an object that is no object), and after the scene was evaluated again.
 
+Needs a hardware GPU (the runner's ``hardware_gpu`` input, ``native_suite_inputs``): the compile-ahead timing is a
+GPU shader compiler's behaviour, and on a software renderer (llvmpipe on a GPU-less Linux VM) the draw itself is
+the cost, so the ratio turns around. The runner skips the suite there with that reason; the report names the
+renderer it ran on (``ANGELO_QA_GPU_RENDERER``, or the one Blender names when started by hand).
+
 Run: ``--background --factory-startup --disable-autoexec --python-exit-code 1``.
 """
 
@@ -46,7 +51,8 @@ import _bpy  # noqa: E402
 from angelo_agent import rail_pictures  # noqa: E402
 
 live = _bpy._angelo_live
-report = {"checks": {}, "readings": {}, "binary": bpy.app.binary_path}
+report = {"checks": {}, "readings": {}, "binary": bpy.app.binary_path,
+          "gpu_renderer": os.environ.get("ANGELO_QA_GPU_RENDERER") or gpu.platform.renderer_get()}
 VIEW = Matrix.Translation((0.0, 0.0, -12.0))
 LENS = rail_pictures.perspective(0.9, 1.0, 0.1, 100.0)
 

@@ -261,6 +261,8 @@ if sys.platform == "win32":
     # some DLL files may be found that are not blenders and may not even be the right version
     # causing compatibility issues.
     os.environ["OIIO_LOAD_DLLS_FROM_PATH"] = "0"
+    # The same for OSL's Python package (oslquery), which otherwise adds every PATH entry too.
+    os.environ["OSL_LOAD_DLLS_FROM_PATH"] = "0"
 
 # MaterialX libraries, append if already specified.
 materialx_libs_dir = os.path.abspath(os.path.join(shared_lib_dir, "materialx", "libraries"))

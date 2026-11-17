@@ -617,7 +617,14 @@ start takes up to 16 parts. On Windows, whose paths hold at most 259 characters
 says which folder, with ``WRK-PATH-TOO-LONG``; a launch checks again. The names
 are short by construction (``angw-*``, a ``s`` state folder, 12 random hex for a
 journal's temporary file), so a person's profile leaves over 80 characters to
-spare. At most the worker limit (Workers at once, below) run at
+spare. A worker runs unconfined and saves its part where it is told, so what it
+runs never comes from Python state a script could change: its start reads
+Angelo's own executable from C (``bpy.app.binary_path``) and takes the worker
+script beside the add-on's own file and the module's own process start, never a
+``WorkerProcess``'s attributes; and its part is checked with
+``owned_paths.require_writable`` (``worker_routing.launch`` and again at the
+start), so a part C refuses starts no worker and makes nothing
+(``test_native_worker_launch_inputs``). At most the worker limit (Workers at once, below) run at
 once, counted as live worker processes: its description states this launch's limit,
 where it comes from, and that parts past it wait their turn; ``worker_queue``
 queues them and starts each, in order, as a place frees. A worker is done once
@@ -804,7 +811,8 @@ Layers, Composite, Viewer, group input and output, reroutes and frames, and the
 colour and math nodes: Bright/Contrast, Color Balance, Color Correction, RGB and
 Hue curves, Exposure, Gamma, Hue/Saturation, Invert, Mix, RGB to BW, Alpha Over,
 Set Alpha, RGB, Value, Math, Separate and Combine Color, Color Ramp, Clamp, Map
-Range), nested groups included. Anything else (another engine, Workbench's
+Range), nested groups included, in every compositor effect enabled for render
+(Blender 5.3's stack, ``compositor_stack``). Anything else (another engine, Workbench's
 other colourings, a blur, glare, denoise, normalize, levels, tonemap, ID Mask,
 Cryptomatte or image node, a Sequencer strip) refuses, as "Scene 'X' has
 renders that use <setting>". The scene's compositor is judged by this list
@@ -835,7 +843,26 @@ step and rollback; break-it E2E-20 F-L-2 and its review BREAKIT-C7A, privacy):
 a Scene the part references (a driver target, an ID property) has its users
 remapped to the lead's scene and goes, with every datablock only it brought
 (its world, view layers, line styles); data the worker linked from one of
-Angelo's private folders is made local, users before what they use, and the
+Angelo's private folders, and data it linked packed into its file from any
+file (Blender's packed linked data, which every save writes whole: then
+cleaned and checked as local data, BREAKIT-C7A-11 H1), is made local, users
+before what they use (one that cannot be refuses the merge; one Blender copies,
+since linked data still used it, has every local user moved to the copy, so a
+cycle is made local whole, BREAKIT-C7A-12 M2; a library override of such data
+becomes plain local data, since an override of local data is a corrupt file,
+BREAKIT-C7A-12 M1; packed linked fonts and Volumes follow the rules for fonts
+and Volumes below, whoever made the library). Packed data that only data
+linked, not packed, from the person's own libraries uses (an Essentials node
+group their asset uses, which Blender packs by default) cannot be made local
+and refuses the merge, saying so. Plain Blender 5.3 crashed on Redo after an
+Undo that took such data back, with no Angelo code (a plain append, or the
+person linking the asset themselves; BREAKIT-C7A-13 M1). Angelo 2.0.0 fixes
+that crash, and ``test_blender_redo_packed_linked_tracking`` keeps it fixed
+(red if the packed case or its control crashes again); the merge's refusal
+stays in 2.0.0 as defense in depth, and lifting it is on the 2.1.0 backlog. Making local costs one walk of the file per
+pass and per copy moved, not per copy in every pass (BREAKIT-C7A-13 L1); each
+override cleared rebuilds Blender's override hierarchy (about 6 s for 200
+overrides in a 12,000-datablock file). The
 part file's emptied Library and any such Library go (the person's own
 libraries stay linked); the weak library reference Blender writes on every
 reusable datablock (the part's absolute path, the person's home folder, in
@@ -851,42 +878,116 @@ chunk; a "sound" may be any file, since loading one never reads it;
 view, is packed as its own decoded pixels, in place (a float buffer as scene
 linear, a data image as data; its path buffer written first, since its new
 buffer and every repack of an edit take that as the packed file's path); a
-sound is decoded and packed again as PCM WAV; a font, which cannot be written
+sound is decoded and packed again as 24-bit FLAC, streamed, so memory stays
+flat however long it is (BREAKIT-C7A-9 M2; one whose file Blender cannot pack,
+2 GB, or the disk cannot hold is not kept); a font, which cannot be written
 again (bytes after its tables are read by no one), is never kept, packed bytes
 under Blender's own font's name included (BREAKIT-C7A-6); anything else (a movie, a
 sequence, tiles, views, what Blender cannot decode, a cache folder) is not
-packed and named ``detached``, and bytes already packed that cannot be written
-again refuse the merge. The private folders are the file tools' own
+packed and named ``detached`` (as is an image larger than Blender's generated images,
+65536 pixels a side, or whose decoded pixels would be larger than Blender packs,
+checked before its pixels are read, BREAKIT-C7A-9 M2; a re-encoded
+image keeps its own file name as its path, BREAKIT-C7A-7 L4), and bytes
+already packed that cannot be written again refuse the merge: a packed Volume
+always does, as Blender cannot remove a Volume's packed bytes (BREAKIT-C7A-7
+L5). The private folders are the file tools' own
 (``private_roots``, registered folders and families, and the part's folder),
 compared by folder identity, so a case, Unicode or link spelling is the same
 folder (a folder holding Angelo's owner file is one wherever it was moved);
 the chat's default workspace is not one, as for the file tools. In text, a
 path is found by any spelling of its folder (both Unicode forms, from the home
-folder, JSON-escaped, URL-encoded, any run of separators: doubled, mixed,
+folder (``~``, ``~user``), through any environment variable whose value is the
+folder, one it is in or one inside it (``$V``, ``${V}``, ``%V%``, ``$env:V``,
+``${env:V}``, the variables read
+from the environment, BREAKIT-C7A-9 M1), by its 8.3 short name on Windows,
+JSON-escaped,
+URL-encoded, any run of separators: doubled, mixed,
 URL-encoded either way (Windows' backslash is "%5C"), a "." folder, a detour
 through another folder and back, ``x/..``; the leading one is one separator, so
 a ``file://`` URL keeps its scheme), text and spellings folded alike
 (``str.casefold``, so a letter that folds to two, as "İ", matches), and ends
 after that spelling, never inside it (macOS's Application Support has a
-space); text is searched only where it holds a folder's own name, each
-spelling matched backwards from there, so a long text costs its length and its
-hits. Each path buffer is written whole first, since Blender saves a string's
+space; where a path ends is tried at each space, quote or bracket while the
+rest of a folder's name or a later ``..`` folder could take it out of the
+default workspace, each folder decided once, so a line of many paths costs its
+length, review H-C); text is searched only where it holds a folder's own name,
+each spelling matched backwards from there, a detour read over the names the
+text resolves to (".." and "." resolved once for the whole text, so each place
+reads only its spelling's own folders and a line of alternating ``x/..`` costs
+its length, port review SHOULD 1), so a long text costs its length and its hits (a
+value larger than 4 MiB is cleaned a window at a time, only where its names
+are, so memory is the value and its result, BREAKIT-C7A-9 L1, L2). A path
+relative to a .blend (Blender's ``//`` starting a token) is decided by where it
+resolves, from the part's folder and from the person's saved file's, outside
+the part folders themselves (where the cleaning's own ``//`` + file name points).
+Not read, as residuals: a ``//`` path while the person's file has never been
+saved, decided from the part's folder only (it has no other folder yet, and a
+rule that refused every ``//..`` would refuse ordinary relative paths), UTF-32 text, a home folder's name in a legacy code page
+(cp1252 and the like), administrative shares (``\\localhost\C$\...``), a
+path mixing 8.3 and long names within it, and a symbolic link to a private
+folder named in text by the link's own path (a file path property is resolved
+and compared by folder identity, so a link there is caught). Each path buffer is written whole first, since Blender saves a string's
 buffer with the bytes after its terminator, and so is each kept datablock's
-name. Then, by another rule, the kept datablocks are written with Blender's
-writer and each one's own bytes (raw arrays over 1 MiB, geometry, left out) and
-each packed file's bytes, whole, are searched in every view a text transport
-gives them (as written; percent- and form-encoding, HTML entities and
-backslash escapes undone until nothing changes; UTF-16 either way round),
+name. Then, by another rule, once per merge, every datablock the merge keeps or
+makes (each part's own collection, and a mirrored collection and an object copy
+for each further placement) and what a save writes for them besides (a kept
+linked datablock's placeholder with its Library, an archive library's parent)
+are written as Save writes them, and only those, to a file in a private folder
+of Angelo's (C's ``_bpy._angelo_saved.write_only`` over
+``BlendFileWriteParams::only_ids``: the save's own writer over the same
+datablocks, never copies of them, which rebuild what they copy: a modifier's
+name without the bytes after its terminator, a collection exporter without its
+path, BREAKIT-C7A-9 H1; the Edit or Sculpt Mode data of an object written, or
+whose data is, is flushed first as a save does, never the person's own objects,
+whose edits stay theirs and cost nothing; the linked data's direct or indirect
+status is set from every local datablock, as a save sets it; no save handler or
+callback runs, nothing is packed, no thumbnail is made, no path remapped;
+refused to a confined script and off the main thread). Its cost is the part's,
+never the person's file: on Linux (c2d-highcpu-56) 2 ms and a 176 KB copy with
+1 or 3 GB of the person's own data open, where writing their whole file took
+4.8 s and 1.2 GB, and 14.5 s and 3.5 GB, for every merge; too little disk for it
+refuses the merge, saying so. Each kept datablock's own bytes, every block whatever its size, packed files
+included (BREAKIT-C7A-7 H1), are read streamed (``worker_merge_scan``: a chunk at
+a time, searched in C for each folder's last name and own folders' names, by
+their letters no transport escapes, in any ASCII case, as UTF-8 and UTF-16;
+only the bytes around a place found are read as text, wider until they hold
+the context the folder rule reads, so memory is bounded and time linear in the
+file, BREAKIT-C7A-7 L2; a place that lacks that context within 8 MiB either
+side fails closed; a name in another script is searched in every chunk's
+text) in every view a text transport gives them (as written and as UTF-16
+either way round, each with percent- and form-encoding (a "+" a space only in
+a run holding a percent escape), HTML entities and backslash escapes (JSON's,
+a shell's ``\ ``, bytes as ``\xc3`` or ``\303``) undone until nothing changes),
 folded as the spellings are, for each base private folder's spellings and this
 merge's own folders' names, every path found decoded and decided by the same
 folder rule (``worker_merge_verify``): what the cleaning missed (a field
 Blender saves that no RNA reads, as a multi-view image's views, or a spelling
 it cannot cut in place) refuses the merge, with nothing added, a worker
-WorkSpace and its Screens included (fail closed). Residue (break-it
-BREAKIT-C7A-3 and -5): the writer's copies do not carry the old bytes of names
-other than a datablock's own (a modifier once named with a path), and bytes no
+WorkSpace and its Screens included (fail closed); so does a kept datablock
+holding a ``PackedFile`` the merge did not write again itself, found by the
+file's own DNA wherever its owner keeps it (a geometry-nodes bake packed by
+the worker, BREAKIT-C7A-9 H2); every datablock is told by its kind and name
+together, and a linked one, packed in the file or not, is never taken for a
+kept one of the same name (BREAKIT-C7A-10 H1, M2). What a save writes for the
+merge besides its local datablocks is read the same way: each kept linked
+datablock's placeholder (its name, which links it, so no merge can cut it: a
+mesh named after a private file in a library the worker wrote into the chat's
+workspace refuses the merge) and each Library the merge added (BREAKIT-C7A-14
+H1). Residue (break-it
+BREAKIT-C7A-3, -5 and -9): bytes no
 text view reads (an encoding beyond text transports, as base64 or a compressed
-stream) are not searched, which is why a worker's own bytes are never kept.
+stream) are not searched, which is why a worker's own bytes are never kept;
+nor is a spelling only deliberate obfuscation makes (a folder's own letters
+escaped, or replaced by look-alikes that fold to them, as "ſ" for "s"; escapes
+nested more than four deep; an encoding no text transport of paths uses: UTF-32,
+quoted-printable, RTF's ``\'xx``, an escaped ASCII separator as C octal
+``\057``, JavaScript's ``\u{2f}``, CSS's ``\2f``, Python's ``\N{...}``), nor a
+path a program assembles from parts (``Path.home() / "Library"``), nor a
+name cut short by a 63-byte buffer before its private folder; a shell's
+``${V:-default}``; a variable of one or two letters alone, as ``$S``, which
+the cleaning cuts but the check does not read). A kept
+datablock the written file does not hold, or a file whose DNA cannot be read,
+counts as a leak (fail closed).
 The answer's ``also_added`` lists the
 datablocks added besides objects and collections by kind, the objects whose
 Scene reference is now this scene's, the files packed or ``detached``, and the
@@ -1450,8 +1551,12 @@ operator returns at once. Once every answer is in, the pump applies the merge
 again through its approval route, and its reads and scene merge run on the
 main thread inside the Undo operator as before, then everything is released
 without waiting. The holds share one ``HOLD_SECONDS`` deadline and the leases
-one ``LEASE_WAIT``, never one per chat. A refusal, a worker that ends, or no
-answer in time fails the merge with nothing merged (WRITER_BUSY), releases what
+one ``LEASE_WAIT``, never one per chat. A worker whose process ended, or that
+Angelo is stopping (its connection closed) and whose process ends within the
+leases' time, leaves its part to read without a lease: a merge right after one
+that stopped its workers was refused (``stopped_within``). A refusal, a worker
+that ends mid-hold, or no answer in time fails the merge with nothing merged
+(WRITER_BUSY), releases what
 was granted (a hold answered late releases itself), and tells the lead's chat
 why with a support code. A release is sent only after the request it ends was
 answered or given up on, and a later hold of the same chat only after it. A
@@ -1521,7 +1626,12 @@ which ``angelo_read_reference``, a worker chat's own tool, reads further; a file
 whose text cannot be read says why in its own entry and never fails the turn,
 in any chat), the person's own messages in the lead's chat up to the part's
 start (``worker_request``), and the schemas the lead looked up
-(``worker_schemas``). The messages are taken when the part starts, as the files
+(``worker_schemas``). The first message is sent as a worker's brief
+(``host_kind`` ``worker_brief``, ``request_rows.WORKER_BRIEF``): it takes the
+files Angelo staged for it, never counts as the person's own words (task memory
+takes no URL from it, break-it R2-L-6), and never goes back to a composer
+unsent. Every chat send but the person's Enter names whose it is
+(``test_native_request_whose.py`` reads every send site). The messages are taken when the part starts, as the files
 are: every row of the person's own typing (``request_rows.own_words``: never a
 row Angelo made, a connected app's task or an image-only send's stand-in
 text), oldest first, because a request is often several messages and the
@@ -1542,7 +1652,16 @@ legs and an upholstered seat the person never asked for, and the grade marked
 that worker's dining chairs down for exactly those). Cost, per worker's first
 request, uncached since it follows the part's own brief: the messages, about
 3k tokens at Town's size and at most about 6k; each image about 1.6k; each
-document's excerpt up to about 3k (12,000 characters). Each worker copies the
+document's excerpt up to about 3k (12,000 characters). The messages and schemas
+are the same for every worker of a start, but a prompt cache does not serve them
+to the later workers in either order: in a live A/B on GPT 6.1 Sol (2026-11-04,
+the parallel chess one-shot, one trial per arm, ChatGPT subscription), with the
+messages and schemas moved ahead of the part, every worker's first request read
+the same 23,168 cached tokens (the static prefix) as with the part first, about
+6,500 uncached in both. The first workers' requests leave within a second of
+each other, before any of them is cached, and a worker that started 97 s later
+with 3,521 characters in common with the first got no more. The part therefore
+stays first (``bench_result_brief_bytes.py`` measures the bytes). Each worker copies the
 files it is given into its own references (at most four, 20 MiB each, on the
 main thread at its brief). Like every model-visible text it states facts and leaves
 the way of building to the model: no clause of the family's texts, lead's or
@@ -1682,7 +1801,10 @@ code-mode tools 104,768 -> 106,135 B ON (99,314 -> 100,681 OFF; +1,367: the two 
 Codex instructions with the deferred families' list 26,037 -> 26,059 B (+22: "the engine live link"); every tool
 declared in full (voice) unchanged at 108,654 B (voice threads never declare them, ``tool_specs.dynamic_tools``). A
 status answer stays under 2.5 KB with eight editors connected. No existing tool, kind or field changed; every call
-valid under 49 is still valid.
+valid under 49 is still valid. In the same toolset (1.1, the 1.0.9 audit's result bytes): ``angelo_game_ready_check``'s
+``measured`` keeps only the sentences for the kinds of fact its result holds (``game_ready_check.rst``, "What each
+fact measures"; 2,886 B on every result before; 617 B for the mesh alone, 2,518 B with LODs, reductions and a
+collider). No declaration, schema, kind or argument changed; every call valid before is still valid.
 
 Toolset 51 (1.0.10) adds the deferred ``angelo_goal`` (``goal_mode.rst``): a goal Angelo holds across turns, measured by
 the host after each and continued with Angelo's own request (``SET``, ``MEASURE``, ``STOP``). Measured over toolset
@@ -1693,6 +1815,40 @@ namespace); Codex instructions with the deferred families' list 26,059 -> 26,111
 sentence); every tool declared in full (voice) unchanged at 108,654 B (voice threads hold no goal). The observation
 gains the ``held_goal`` state field only while a goal runs. No existing tool, kind or field changed; every call valid
 under 50 is still valid.
+
+Toolset 55 (2.0.0) states a script's length limit where the agent decides. ``angelo_execute_python``'s description,
+and an app's script-file tool's, gain one sentence built from ``script_store.MAX_CODE`` ("A script holds at most
+32,768 characters; split longer work into steps."), the one place the number is written: the schema's
+``maxLength``, the validation, the patch builder and the script-file reader read it. Reason: the runtimes' plan
+schema carries no length limits (``test_native_schema_limits``). Claude's plan gives a script's code a target
+instead ("Under 27000 characters", ``plan_schema.SCRIPT_TARGETS``, unchanged here: the tools Claude is always
+sent carry no descriptions, so the new sentence is not among them); Codex's declarations and an app's tools said
+nothing, so there an agent met the limit only as a refusal after it had written the whole script. On every side
+that refusal named no way on (a showcase run, 2026-11-14). A refusal for length now says the size, the limit and
+how to proceed (``script_store.over_limit``: split the work into steps,
+or keep bulk data in a file the script reads), in a script sent in full, a patch that grows one past the limit and
+a script file. The limit itself is unchanged; every call valid under 54 is still valid. Measured
+(``coverage_prefix.py``, Blender's Python 3.13, 2026-11-15, before and after on the same tree):
+``angelo_execute_python``'s description 892 to 964 bytes and the script-file tool's 512 to 560; Codex's declared
+tools 108,654 to 108,726 bytes (56,297 to 56,335 tokens), in code mode 104,117 to 104,189 bytes (53,947 to
+53,984 tokens; with parallel edit on 109,571 to 109,643 bytes); Claude's plan schema and both instruction texts
+unchanged (57,246, 14,328 and 15,774 bytes). ``DECLARED_TOOLS_BUDGET_BYTES`` moves 108,660 to 108,740 for it
+(``plan_budgets.py``): 72 cached bytes a request against a whole script written and refused.
+
+Toolset 55 (Angelo 2.0.0, over 54) adds the deferred ``angelo_download`` (``downloads.rst``): agent scripts have no
+network, so one file from an ``https`` link reaches the project's ``assets/downloads`` (or an unsaved file's own
+folder) only through this tool, after a card in Ask and in Auto. Measured over toolset 54, ``coverage_prefix.py``,
+compact JSON: Claude's plan schema 57,316 -> 57,334 B with parallel edit ON (57,246 -> 57,264 OFF; +18: the deferred
+name); Claude's instructions unchanged (14,328 B); Codex code-mode tools 109,571 -> 110,782 B ON (104,117 -> 105,328
+OFF; +1,211: the declaration in the ``more`` namespace); Codex's strict plan schema 37,127 -> 37,141 B (+14: the
+name); Codex instructions with the deferred families' list 26,108 -> 26,119 B with the plan and the team (28,421 ->
+28,432 B without them; +11: "downloads" in the list); every tool
+declared in full (voice) unchanged at 108,654 B (voice threads never declare it: a card names the host, size and
+folder, which a spoken turn would not show). ``angelo_agent_capabilities`` ``FEATURES`` gains its entry
+(``feature_guide``). No existing tool, kind or field changed; every call valid under 54 is still valid.
+
+Both changes are toolset 55, as 44 and 45 were both of two branches: nothing shipped with either alone.
+Each paragraph above measures its own change over 54.
 
 Toolset 46 (Angelo 1.0.8, over 1.0.8's 45) lets the agent say where Angelo's features are and turn
 the engine live link on (``features.rst``, ``engine_link.rst``). ``angelo_agent_capabilities`` gains the
@@ -3082,7 +3238,10 @@ before it is used when the chat's model, effort or tools change before its
 first message (the prepared variant is then not the one the chat uses) or no
 chat of the launch opens a new thread; that base is remembered for the next
 launch like any other. A remembered base is resumed,
-never warmed again. A warm-up that was sent and made no base is not sent again
+never warmed again. Saving one waits out a moment's holder of the file on
+Windows for up to 1.9 s (``shared_replace.PATIENT_ATTEMPTS``): the save is not
+tried again, and a base that is not saved is warmed, and paid for, again by
+the next launch. A warm-up that was sent and made no base is not sent again
 by that process, and is remembered as a failure of its scope and variant
 (``codex_bases.json``), so no launch warms that variant again, at connect or
 after a chat's turn, for a while: a day (``FAILURE_BACKOFF_SECONDS``) after a

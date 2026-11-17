@@ -32,8 +32,9 @@ import tomllib
 import uuid
 from pathlib import Path
 
-from . import shared_replace
+from . import owned_paths, shared_replace
 from .external_clients import APP_NAMES, DEFAULT_CLIENT
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 SERVER = "angelo"
 CODEX_TOOL_TIMEOUT = 900   # external_mcp.CALL_DEADLINE: a call may wait that long for the person.
@@ -56,8 +57,14 @@ def server_command(app, python, state_directory, name=None):
 
 
 def snippet(app, python, state_directory, name=None):
-    """The JSON to paste into any MCP app's settings (``mcpServers`` form)."""
+    """What to paste into the app's MCP settings, in the form its settings take (Copy setup break-it review N4): a
+    ``[mcp_servers.angelo]`` table for Codex's config.toml, VS Code's ``servers`` with ``"type": "stdio"``, and the
+    ``mcpServers`` JSON every other app takes. It names the client and Angelo's state folder, never a key."""
     command, args = server_command(app, python, state_directory, name)
+    if app == "codex":
+        return _codex_with("", command, args)
+    if app == "vscode":
+        return json.dumps({"servers": {SERVER: {"type": "stdio", "command": command, "args": args}}}, indent=2)
     return json.dumps({"mcpServers": {SERVER: {"command": command, "args": args}}}, indent=2)
 
 
@@ -74,7 +81,17 @@ def _app_support(home, platform):
 
 
 def settings_file(app, home=None, environ=None, platform=None):
-    """Where the app keeps its MCP servers (None for Claude Code, whose own CLI edits them)."""
+    """Where the app keeps its MCP servers (None for Claude Code, whose own CLI edits them). The process's own (no
+    ``home``/``environ`` given: the operating system's home folder and Angelo's environment, never Python state) is
+    vouched for (``owned_paths.vouch``): Connect may write it, and the file a link there leads to unless a script
+    made that link (C's change record)."""
+    if home is None and environ is None:
+        found = settings_file(app, None, os.environ, platform)
+        if found is not None:
+            owned_paths.vouch(found)
+            if found.is_symlink() and not owned_paths.script_made(found):   # The person's link (dotfiles), never
+                owned_paths.vouch(found.resolve())                          # one a script put there.
+        return found
     environ = os.environ if environ is None else environ
     platform = sys.platform if platform is None else platform
     if app == "codex":
@@ -148,6 +165,9 @@ def connect(app, python, state_directory, *, name=None, home=None, environ=None,
     return "Added Angelo to %s. Restart %s to load it." % (APP_NAMES[app], APP_NAMES[app])
 
 
+connect = _grant_guard.entry(connect)
+
+
 def disconnect(app, *, home=None, environ=None, platform=None, run=subprocess.run, which=shutil.which):
     """Remove only the ``angelo`` entry; True when one was removed."""
     if app == "claude_code":
@@ -172,6 +192,9 @@ def disconnect(app, *, home=None, environ=None, platform=None, run=subprocess.ru
     data[key] = {name: value for name, value in data[key].items() if name != SERVER}
     _write(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     return True
+
+
+disconnect = _grant_guard.entry(disconnect)   # Never a script's: ACCOUNT_OPERATORS.
 
 
 def _run(run, argv, *, check=True, environ=None):
@@ -226,14 +249,22 @@ def _write(path, text):
     """
     if path.is_symlink():
         path = path.resolve()
+    owned_paths.require_writable(path)   # The file really written (a link's target), before anything is made beside it.
     path.parent.mkdir(parents=True, exist_ok=True)
     previous = path.stat().st_mode & 0o777 if path.exists() else 0o600
     if path.exists():   # The app may be reading it: read sharing delete, so neither refuses the other.
-        backup = path.with_name(path.name + ".angelo-backup")
-        backup.write_bytes(shared_replace.read_bytes(path))
-        shutil.copystat(path, backup)
-    temporary = path.with_name("." + path.name + "." + uuid.uuid4().hex + ".tmp")
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0), previous)
+        # A new file renamed onto the backup's name: a rename never writes through a link (or a hard link a script
+        # put at that name), where writing the name in place would truncate whatever it leads to.
+        copy = Path(owned_paths.create_beside(path, "." + path.name + "." + uuid.uuid4().hex + ".backup"))
+        try:
+            copy.write_bytes(shared_replace.read_bytes(path))
+            shutil.copystat(path, copy)
+            os.replace(copy, path.with_name(path.name + ".angelo-backup"))
+        finally:
+            copy.unlink(missing_ok=True)
+    temporary = Path(owned_paths.create_beside(path, "." + path.name + "." + uuid.uuid4().hex + ".tmp"))
+    os.chmod(temporary, previous)
+    descriptor = os.open(temporary, os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0))
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
@@ -312,4 +343,3 @@ def _codex_with(text, command, args):
              "startup_timeout_sec = 30", "tool_timeout_sec = %d" % CODEX_TOOL_TIMEOUT]
     base = _codex_without(text)
     return base + ("\n" if base else "") + "\n".join(block) + "\n"
-

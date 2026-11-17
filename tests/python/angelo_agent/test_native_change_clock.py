@@ -13,6 +13,7 @@ function, with the reason it needs none.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import os
@@ -43,9 +44,21 @@ SECOND = 10_000_000
 TIMES = {"st_mtime_ns", "st_ctime_ns", "st_mtime", "st_ctime", "st_birthtime", "st_birthtime_ns", "st_change_time"}
 # Each Angelo function that reads a stat time without the helper, and why it needs none (the audit of 2026-11-04).
 NEEDS_NONE = {
+    "addons_core/angelo_agent/endpoint_catalog.py:_signature":
+        "keys a cache of a runtime executable's bundled model catalog by path, size and time; a runtime is replaced "
+        "whole by an install or update (new size and time), never rewritten in place within a clock tick",
     "modules/angelo_start_records.py:_examine":
         "an unlocked start record's age decides only whether a record cut short (older than INCOMPLETE_AGE, 60 s) is "
         "removed; a coarse clock delays that removal by its tick, never misreads a change",
+    "addons_core/angelo_agent/carry_over_moves.py:decide":
+        "orders two different files of two version folders by age to choose which stays; never a file against "
+        "itself across time",
+    "addons_core/angelo_agent/carry_over_moves.py:_contains":
+        "two version folders no Angelo writes during the carry-over (carry_over_processes): equal size and time "
+        "there is a copy2 copy or the same file, never a write in the clock's tick",
+    "addons_core/angelo_agent/carry_over_moves.py:Mover.copy_across":
+        "the copy was compared byte for byte with its source first; the after-stat only catches a person's later "
+        "edit of a folder no Angelo writes during the carry-over",
     "addons_core/angelo_agent/blender_asset_index.py:wait_for_file":
         "polling optimization only: verified rehashes the expected SHA-256 before every success and append",
     "addons_core/angelo_agent/__init__.py:_stamp_time": "reload detection for addon_utils, compared once at enable",
@@ -301,7 +314,7 @@ class ChangeClockTests(unittest.TestCase):
                 seen = []
                 worker = threading.Thread(target=lambda: seen.append(change_clock._freezes_ui()))
                 worker.start()
-                worker.join(5)
+                worker.join(CAP_S)
                 self.assertEqual(seen, [False], "a thread never freezes the UI")
 
     def test_a_step_the_person_waits_for_is_waited_out_on_the_ui_thread(self):
@@ -316,7 +329,7 @@ class ChangeClockTests(unittest.TestCase):
                 seen = []
                 worker = threading.Thread(target=lambda: seen.append(getattr(change_clock._awaited, "depth", 0)))
                 worker.start()
-                worker.join(5)
+                worker.join(CAP_S)
                 self.assertEqual(seen, [0], "another thread is not inside it")
                 fat = NOW - NOW % (2 * SECOND)
                 self.on_volume(2 * SECOND)
@@ -376,7 +389,7 @@ class ChangeClockTests(unittest.TestCase):
         def information(name):
             asked.append(name)
             if name.startswith("slow"):
-                release.wait(10)
+                release.wait(CAP_S)
             return (len(name), 0)
         with patch.object(change_clock, "_answers", {}), \
                 patch.object(change_clock, "_volume_names", return_value=["slow1", "slow22", "slow333", "fast"]), \
@@ -495,7 +508,7 @@ class ChangeClockTests(unittest.TestCase):
 
     def test_no_settle_waits_for_a_listing(self):
         release = threading.Event()
-        self.volumes(steps_of=lambda: (release.wait(10), {})[1])
+        self.volumes(steps_of=lambda: (release.wait(CAP_S), {})[1])
         self.addCleanup(release.set)
         witness = stat(NOW - SECOND, NOW - SECOND)
         witness.st_dev = 0x7777
@@ -510,7 +523,7 @@ class ChangeClockTests(unittest.TestCase):
 
         def information(name):
             if name == "slow":
-                release.wait(10)
+                release.wait(CAP_S)
             return answers[name]
         with patch.object(change_clock, "_answers", {}), \
                 patch.object(change_clock, "_volume_names", return_value=["slow", "fat", "ntfs-twin"]), \

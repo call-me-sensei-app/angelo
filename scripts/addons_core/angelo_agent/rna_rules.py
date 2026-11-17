@@ -73,12 +73,13 @@ DENIED_STRUCTS = frozenset({"ToolSettings", "AnimData", "Library", "IDOverrideLi
                             # bone_set path writes only the bone it names.
                             "Bone", "PoseBone", "EditBone"})
 FILE_SUBTYPES = frozenset({"FILE_PATH", "DIR_PATH", "FILE_NAME", "BYTE_STRING", "PASSWORD"})
-# Python-defined settings admitted one by one: Cycles' scene render settings as Blender 5.2 defines them
-# (cycles/properties.py). Writing one of CYCLES_PLAIN runs no Python: it has no get, set or update callback and
-# its enum items are a constant. The three in CYCLES_PASS_UPDATE have Cycles' own update_render_passes, which
-# asks the view layer to rebuild its render-pass list and nothing else. test_blender_cycles_settings.py audits
-# the installed definitions against this, and settings_revision covers every admitted setting.
-# Not admitted: preview_pause (its callback redraws an editor area), shading_system (turns on Open Shading
+# Python-defined settings admitted one by one: Cycles' scene render settings as Blender 5.3 defines them
+# (cycles/properties.py). Writing one of CYCLES_PLAIN runs no Python: it has no callback of any kind (update, get,
+# set, get_transform, set_transform, poll) and its enum items are a constant. The three in CYCLES_PASS_UPDATE
+# have Cycles' own update_render_passes, which asks the view layer to rebuild its render-pass list and nothing
+# else. test_blender_render_setup.py audits the installed definitions against this, and settings_revision covers
+# every admitted setting.
+# Not admitted: preview_pause (5.3 deprecates it; its set_transform warns), shading_system (turns on Open Shading
 # Language script nodes), sampling_pattern, denoiser and preview_denoiser (enum items computed from the
 # preferences and the device list), dicing_camera (a pointer with a poll callback), bake_type (bake setup) and
 # the debug_ switches. Cycles settings of materials, lights, objects, view layers and the World stay refused.
@@ -90,7 +91,8 @@ CYCLES_PLAIN = tuple("""
     min_light_bounces min_transparent_bounces caustics_reflective caustics_refractive blur_glossy
     denoising_prefilter denoising_quality denoising_input_passes denoising_use_gpu use_preview_denoising
     preview_denoising_prefilter preview_denoising_quality preview_denoising_input_passes
-    preview_denoising_start_sample preview_denoising_use_gpu use_deterministic_guiding guiding_distribution_type
+    preview_denoising_start_sample preview_denoising_use_gpu preview_denoising_upscale_quality
+    use_deterministic_guiding guiding_distribution_type
     guiding_directional_sampling_type use_surface_guiding surface_guiding_probability use_volume_guiding
     guiding_training_samples volume_guiding_probability use_guiding_direct_light use_guiding_mis_weights
     guiding_roughness_threshold max_bounces diffuse_bounces glossy_bounces transmission_bounces volume_bounces

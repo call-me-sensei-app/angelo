@@ -22,14 +22,15 @@
 #include "DNA_scene_types.h" /* min/max frames */
 #include "DNA_userdef_types.h"
 
-#include "BLI_fileops.h"
-#include "BLI_math_vector.h"
+#include "BLI_angelo_writers.hh"
+#include "BLI_fileops.hh"
+#include "BLI_math_vector_c.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_rect.h"
-#include "BLI_string.h"
-#include "BLI_task.h"
-#include "BLI_time.h"
-#include "BLI_utildefines.h"
+#include "BLI_rect.hh"
+#include "BLI_string.hh"
+#include "BLI_task_c.hh"
+#include "BLI_time.hh"
+#include "BLI_utildefines.hh"
 
 #include "BLT_translation.hh"
 
@@ -341,7 +342,7 @@ static wmOperatorStatus reload_exec(bContext *C, wmOperator * /*op*/)
   }
 
   WM_jobs_kill_type(CTX_wm_manager(C), nullptr, WM_JOB_TYPE_CLIP_PREFETCH);
-  BKE_movieclip_reload(CTX_data_main(C), clip);
+  DEG_id_tag_update(&clip->id, ID_RECALC_SOURCE);
 
   WM_event_add_notifier(C, NC_MOVIECLIP | NA_EDITED, clip);
 
@@ -1339,7 +1340,7 @@ static uchar *proxy_thread_next_frame(ProxyQueue *queue,
     }
 
     const size_t size = BLI_file_descriptor_size(file);
-    if (UNLIKELY(ELEM(size, 0, size_t(-1)))) {
+    if (ELEM(size, 0, size_t(-1))) [[unlikely]] {
       close(file);
       return nullptr;
     }
@@ -1377,11 +1378,10 @@ static void proxy_task_func(TaskPool *__restrict pool, void *task_data)
 
     ibuf = IMB_load_image_from_memory(mem,
                                       size,
-                                      ImBufFlags::ByteData | ImBufFlags::MultiLayer |
-                                          ImBufFlags::AlphaDetect,
+                                      ImBufFlags::ByteData | ImBufFlags::AlphaDetect,
                                       "proxy frame",
                                       nullptr,
-                                      data->clip->colorspace_settings.name);
+                                      &data->clip->colorspace_settings);
 
     BKE_movieclip_build_proxy_frame_for_ibuf(
         data->clip, ibuf, nullptr, cfra, data->build_sizes, data->build_count, false);
@@ -1468,6 +1468,8 @@ static void proxy_startjob(void *pjv, wmJobWorkerStatus *worker_status)
 {
   ProxyJob *pj = static_cast<ProxyJob *>(pjv);
   MovieClip *clip = pj->clip;
+  /* Angelo: what this clip's proxy files are written from (BLI_angelo_writers.hh). */
+  const angelo_writers::InputScope inputs(BKE_movieclip_angelo_proxy_inputs(clip));
 
   short size_flag;
   int build_sizes[4], build_count = 0;
@@ -1509,6 +1511,7 @@ static void proxy_endjob(void *pjv)
   }
 
   if (pj->proxy_builder) {
+    const angelo_writers::InputScope inputs(BKE_movieclip_angelo_proxy_inputs(pj->clip));
     MOV_proxy_builder_finish(pj->proxy_builder, pj->stop);
     pj->proxy_builder = nullptr;
   }
@@ -1552,6 +1555,8 @@ static wmOperatorStatus clip_rebuild_proxy_exec(bContext *C, wmOperator * /*op*/
   pj->clip_flag = MovieClipFlag(clip->flag & MCLIP_PROXY_FLAGS);
 
   if (clip->anim) {
+    /* Angelo: the proxy files open here (BLI_angelo_writers.hh). */
+    const angelo_writers::InputScope inputs(BKE_movieclip_angelo_proxy_inputs(clip));
     pj->proxy_builder = MOV_proxy_builder_start(clip->anim,
                                                 IMB_Proxy_Size(clip->proxy.build_size_flag),
                                                 clip->proxy.quality,
@@ -1694,7 +1699,7 @@ void CLIP_OT_view_ndof(wmOperatorType *ot)
 static wmOperatorStatus clip_prefetch_modal(bContext *C, wmOperator * /*op*/, const wmEvent *event)
 {
   /* no running blender, remove handler and pass through */
-  if (0 == WM_jobs_test(CTX_wm_manager(C), CTX_wm_area(C), WM_JOB_TYPE_CLIP_PREFETCH)) {
+  if (!WM_jobs_has_running(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_CLIP_PREFETCH)) {
     return OPERATOR_FINISHED | OPERATOR_PASS_THROUGH;
   }
 

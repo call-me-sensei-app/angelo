@@ -109,6 +109,14 @@ def frame_reason(bound, current):
             % (_frame_label(bound), _frame_label(current)))
 
 
+PROGRAM_TOOLS = frozenset({"angelo_scene_program", "angelo_apply_recipe"})   # Their approval binds a program.
+
+
+def binding_change(name, before, after):
+    """``precondition_change`` for a tool whose approval binds a program, else None (``BlenderExecutor``)."""
+    return precondition_change(before, after) if name in PROGRAM_TOOLS else None
+
+
 def precondition_change(before, after):
     """Classify two ``angelo_scene_program`` preconditions; None when equal or not program bindings.
 

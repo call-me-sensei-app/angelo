@@ -54,7 +54,7 @@ os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_CONNECTIONS_DIR=str(OU
                   ANGELO_STATE_DIR=str(OUT / "state"))
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # Its sibling rendered_view_fixtures.
-from angelo_agent import scene_queries, view_cache  # noqa: E402
+from angelo_agent import scene_queries, view_cache, view_warm  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor, track_scene_changes  # noqa: E402
 from angelo_agent.providers import tool_content  # noqa: E402
 from angelo_agent.references import ReferenceStore  # noqa: E402
@@ -225,9 +225,13 @@ def wireframe_and_material():
     result = yield from view({"targets": [ctx["hero"]], "views": ["FRONT"], "shading": "MATERIAL"})
     pixels = decode(result["views"][0]["path"])
     green = int(((pixels[:, :, 1] > pixels[:, :, 0] + 40) & (pixels[:, :, 1] > pixels[:, :, 2] + 40)).sum())
+    # What the view's shaders_compiling note is judged by: the scene's own (materials, missing, queued); the flags
+    # beside it are Blender's, up on Vulkan for any pipeline a draw of the frame built.
+    shaders = view_warm.state(ctx["window"], ctx["area"])
     report["material_first"] = {"green_pixels": green, "foreground": foreground(pixels), "timing": result["timing"],
                                 "uncertainty": result["uncertainty"], "jobs_before": jobs_before,
-                                "jobs_after": bpy.app.is_job_running("SHADER_COMPILATION")}
+                                "jobs_after": bpy.app.is_job_running("SHADER_COMPILATION"),
+                                "scene_shaders": list(shaders[:3]) if shaders is not None else None}
     check("material_fresh_shader_drawn_on_first_capture", green > 20000)
     check("material_not_uncertain", not result["uncertain"])
     check("material_artist_state_unchanged", artist_state() == ctx["before"])

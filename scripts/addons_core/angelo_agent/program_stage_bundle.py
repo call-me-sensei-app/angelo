@@ -9,7 +9,7 @@ Methods resolve those named dependencies at call time; this base owns no resourc
 
 import contextlib
 
-from . import stage_bundle_folder
+from . import owned_paths, stage_bundle_folder
 from .program_jobs import ProgramError
 
 
@@ -92,7 +92,7 @@ class ProgramStageBundleMixin:
             storage._bpy().data.libraries.write(str(bundle), {stage.scene}, path_remap="ABSOLUTE", fake_user=False,
                                        compress=storage.STAGE_BUNDLE_COMPRESSION,
                                        _compression_min_size=storage.STAGE_BUNDLE_COMPRESSION_MIN_SIZE)
-            storage.os.chmod(bundle, 0o600)
+            storage.os.chmod(owned_paths.require_writable(bundle), 0o600)
             descriptor.bundle = str(bundle)
             self._remove_stage_ids(stage, keep=set())
             if stage.bundle:

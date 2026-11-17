@@ -19,6 +19,7 @@ import traceback
 import bpy
 from bpy.types import Operator
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import card_host, live_windows, settings_import as si, settings_import_apply as apply, settings_import_card as words
 from .ui_text import iface_, n_, rpt_
 
@@ -57,6 +58,9 @@ def _run_import(source, keymap_choices=None, offer_undo=True):
     last_outcome = outcome
     card_host.request(_notice(outcome, offer_undo))
     return outcome
+
+
+_run_import = grant_guard.entry(_run_import)
 
 
 def after_setup(source, keymap_choices, welcome):
@@ -176,7 +180,7 @@ class ANGELO_OT_undo_settings_import(Operator):
 def draw_menu(self, context):
     layout = self.layout
     layout.separator()
-    layout.operator_context = 'EXEC_DEFAULT'
+    layout.operator_context = 'INVOKE_DEFAULT'   # The person's click on the item (grant_guard), never a dialog.
     layout.operator(ANGELO_OT_import_blender_settings.bl_idname, icon='IMPORT')
     if apply.can_undo():
         layout.operator(ANGELO_OT_undo_settings_import.bl_idname, icon='LOOP_BACK')
@@ -200,3 +204,8 @@ def unregister():
             menu.remove(draw_menu)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
+
+
+grant_guard.guard(ANGELO_OT_import_blender_settings)   # Only the person's click grants (grant_guard).
+# Undo copies files into Angelo's startup and add-on folders too: the same grant (the inventory review, M2).
+grant_guard.guard(ANGELO_OT_undo_settings_import)

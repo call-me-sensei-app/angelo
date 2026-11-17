@@ -65,7 +65,7 @@ blend = out / "work.blend"
 bpy.ops.wm.save_as_mainfile(filepath=str(blend), copy=True)
 found = engine_link_assets.baked_plan(None)
 truth["plan"] = {"used": found["used"], "stale": found["stale"], "packing": found["packing"]}
-writer = engine_link_writeback.WriteBack(bpy.app.binary_path)
+writer = engine_link_writeback.WriteBack()
 writer.request("link", str(blend), str(out / "link.glb"), "gltf", dict(engine_link_assets.GLTF_DURABLE),
                baked=found["used"])
 done, started = [], time.monotonic()

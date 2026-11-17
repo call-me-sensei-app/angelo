@@ -3,6 +3,7 @@
 """Stable discovery/measurement tools for the native agent execution layer."""
 
 import re
+from . import read_only
 
 CAPABILITY_FAMILIES = ('SUMMARY', 'ACTIONS', 'QUERIES', 'CHECKS', 'RECIPES', 'TOOLS', 'FEATURES')
 # Every family takes names, as its schema offers: exact schemas of only those items, QUERIES of scene query tools,
@@ -61,10 +62,13 @@ EXECUTION_TOOLS = [
 EXECUTION_NAMES = frozenset(tool['name'] for tool in EXECUTION_TOOLS)
 
 
+EXECUTION_SCHEMAS = read_only.frozen({tool['name']: tool['inputSchema'] for tool in EXECUTION_TOOLS})   # As registered, read only: an agent script's change to a spec's dict reaches no check (read_only).
+
+
 def validate_execution(name, args):
     if not isinstance(name,str) or name not in EXECUTION_NAMES or not isinstance(args,dict):
         raise ValueError('Unknown execution discovery tool or invalid arguments')
-    schema=next(tool['inputSchema'] for tool in EXECUTION_TOOLS if tool['name']==name)
+    schema=EXECUTION_SCHEMAS[name]
     if set(args)-set(schema['properties']) or set(schema['required'])-set(args):
         raise ValueError('Unexpected or missing execution discovery argument')
     if name == 'angelo_blender_api':

@@ -37,14 +37,14 @@ show, and play it only while the showcase is visible and its window active.
 
 import time
 import traceback
-from array import array
 from pathlib import Path
 
 import bpy
 from bpy.types import Operator
 
 from .input_policy import modal_options
-from . import canvas_controls, canvas_rtl, input_policy, live_windows, product_env, ui_tokens as tk
+from . import (brand_picture, canvas_controls, canvas_rtl, input_policy, live_windows, product_env,
+               ui_tokens as tk)
 from .ui_text import iface_, n_
 
 ASSETS = Path(__file__).resolve().parent / "assets"
@@ -55,7 +55,7 @@ EXPLORE = n_("Explore the empty scene")
 FADE_SECONDS = 0.35
 BACKDROP = (0.090, 0.098, 0.118, 1)  # welcome_screen.CARD
 TEXT, MUTED, MINT = (0.953, 0.925, 0.886, 1), (0.74, 0.70, 0.64, 1), (0.631, 0.957, 0.839, 1)
-_state = {}  # window, area, pixels, size, texture, fading_since, hover, pressed, focus, plan, token
+_state = {}  # window, area, fading_since, hover, pressed, focus, plan, token
 _dismissed = False
 _handler = _timer = _shader = None
 shown = 0  # Times the showcase appeared this session; window fixtures read it.
@@ -80,22 +80,9 @@ def is_shown():
     return bool(_state)
 
 
-def _load():
-    image = None
-    try:
-        image = bpy.data.images.load(str(still(MEDIA[0])), check_existing=False)
-        image.colorspace_settings.name = 'Non-Color'  # Drawn as stored, like the welcome banner.
-        width, height = image.size
-        if not width or not height:
-            raise ValueError("The showcase still did not decode")
-        pixels = array('f', [0]) * (width * height * 4)
-        image.pixels.foreach_get(pixels)
-        return pixels, (width, height)
-    except (OSError, RuntimeError, ValueError):
-        return None, None  # A missing asset leaves the backdrop and text, never an error.
-    finally:
-        if image is not None:
-            bpy.data.images.remove(image)
+# Read when the showcase appears, on the GPU from its first draw (the float copy dropped then), let go when it is
+# released. Drawn as stored, like the welcome banner; a missing asset leaves the backdrop and text, never an error.
+SHOWCASE = brand_picture.Picture(still(MEDIA[0]))
 
 
 def _target(window):
@@ -112,9 +99,9 @@ def _alpha():
 
 def _show(ui, window, area):
     global _handler, shown
-    pixels, size = _load()
+    SHOWCASE.show("showcase")
     _state.clear()
-    _state.update(window=window.as_pointer(), area=area.as_pointer(), pixels=pixels, size=size, texture=None,
+    _state.update(window=window.as_pointer(), area=area.as_pointer(),
                   fading_since=None, hover=None, pressed=None, focus=None, plan=None, token=object())
     if _handler is None:
         _handler = bpy.types.SpaceView3D.draw_handler_add(_draw, (), 'WINDOW', 'POST_PIXEL')
@@ -136,7 +123,8 @@ def _release():
     if _handler is not None:
         bpy.types.SpaceView3D.draw_handler_remove(_handler, 'WINDOW')
         _handler = None
-    _state.clear()  # Drops the pixels and the GPU texture; the input handler sees it and finishes.
+    _state.clear()  # The input handler sees it and finishes.
+    SHOWCASE.hide("showcase")   # Drops the GPU texture (and any pixels not yet drawn).
 
 
 def _redraw():
@@ -241,16 +229,13 @@ def _paint(region):
     import gpu
     from gpu_extras.batch import batch_for_shader
     alpha, s = _alpha(), bpy.context.preferences.system.ui_scale
-    plan = layout(view, region.width, region.height, s, _state["size"])
+    plan = layout(view, region.width, region.height, s, SHOWCASE.size)
     _state["plan"] = plan
     gpu.state.blend_set('ALPHA')
     view.shape(0, 0, region.width, region.height, BACKDROP[:3] + (alpha,))
     x, y, w, h = plan["image"]
-    if _state["pixels"] is not None:
-        if _state["texture"] is None:
-            width, height = _state["size"]
-            _state["texture"] = gpu.types.GPUTexture((width, height), format='RGBA16F', data=gpu.types.Buffer(
-                'FLOAT', [width * height * 4], _state["pixels"]))
+    texture = SHOWCASE.texture(gpu)   # Made from the read pixels at the first draw, which drops them.
+    if texture is not None:
         if _shader is None:
             _shader = gpu.shader.from_builtin('IMAGE_COLOR')
         with canvas_rtl.upright(x, w) as ix:  # A picture is never mirrored.
@@ -258,7 +243,7 @@ def _paint(region):
             batch = batch_for_shader(_shader, 'TRIS', quad, indices=[(0, 1, 2), (0, 2, 3)])
             gpu.state.blend_set('ALPHA')
             _shader.bind()
-            _shader.uniform_sampler("image", _state["texture"])
+            _shader.uniform_sampler("image", texture)
             _shader.uniform_float("color", (1, 1, 1, alpha))
             batch.draw(_shader)
     radius = 16 * s
@@ -311,6 +296,7 @@ def _chat_has_focus():
 
 class ANGELO_OT_connect_hero(Operator):
     """Input for the showcase: its link, and nothing reaching the hidden empty scene behind it"""
+    bl_description = ""   # No tooltip. Blender shows a class docstring as one; this one is a note for developers.
     bl_idname = "angelo.connect_hero"
     bl_label = "Showcase"
     bl_options = {'INTERNAL'} | modal_options(bl_idname)   # Auto-save never waits for it (input_policy).

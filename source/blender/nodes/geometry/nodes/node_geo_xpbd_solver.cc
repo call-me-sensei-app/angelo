@@ -2,6 +2,9 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
+#include <fmt/format.h>
+
+#include "BKE_bvh.hh"
 #include "BKE_bvhutils.hh"
 #include "BKE_curves.hh"
 #include "BKE_geometry_fields.hh"
@@ -13,9 +16,9 @@
 #include "BKE_mesh_sample.hh"
 #include "BKE_pointcloud.hh"
 
-#include "BLI_math_geom.h"
+#include "BLI_math_geom_c.hh"
 #include "BLI_stack.hh"
-#include "BLI_string_utf8.h"
+#include "BLI_string_utf8.hh"
 #include "BLI_virtual_array_range_spans.hh"
 
 #include "DNA_curves_types.h"
@@ -34,6 +37,8 @@
 #include "GEO_xpbd_constraint_rod_stretch_shear.hh"
 
 #include "NOD_geo_tag_filter.hh"
+
+#include "node_xpbd_friction.hh"
 #include "NOD_geometry_nodes_bundle.hh"
 #include "NOD_geometry_nodes_list.hh"
 #include "NOD_geometry_nodes_physics_bundles.hh"
@@ -283,7 +288,7 @@ struct CrossEdgeLengthConstraintUsage {
 
 struct StaticMeshInfo {
   const Mesh *mesh;
-  bke::BVHTreeFromMesh corner_tris_bvh;
+  const bke::bvh::Tree *corner_tris_bvh;
   bke::BVHTreeFromMesh edges_bvh;
 };
 
@@ -294,7 +299,7 @@ struct DeformingMeshInfo {
    * This contains one bvh tree per substep. A future optimization could be to not build
    * independent BVH trees for each mesh because the are usually very similar.
    */
-  Vector<bke::BVHTreeFromMesh> substep_corner_tris_bvh_trees;
+  Vector<const bke::bvh::Tree *> substep_corner_tris_bvh_trees;
   Vector<bke::BVHTreeFromMesh> substep_edges_bvh_trees;
 };
 
@@ -591,8 +596,6 @@ class XpbdSolverStep {
   ConstraintsInfo constraints_;
   Array<ChunkData> chunks_data_;
 
-  Mutex field_evaluators_mutex_;
-
   Result result_;
   Mutex warnings_mutex_;
   VectorSet<std::pair<NodeWarningType, std::string>> warnings_;
@@ -703,11 +706,10 @@ class XpbdSolverStep {
     /* Ensure the order is deterministic. */
     std::ranges::sort(paths);
     for (const StringRef path : paths) {
-      GeometrySetData geo_set_data;
-      geo_set_data.path = path;
-      geo_set_data.geometry = std::move(*world_.lookup_path_for_write_ptr<GeometrySet>(path));
-      if (geo_set_data.geometry.has_bundle()) {
-        const Bundle &bundle_in_geo = *geo_set_data.geometry.bundle();
+      GeometrySet &geometry = *world_.lookup_path_for_write_ptr<GeometrySet>(path);
+      Set<std::string> tags;
+      if (geometry.has_bundle()) {
+        const Bundle &bundle_in_geo = *geometry.bundle();
         if (const std::optional<GListPtr> tags_list_ptr = bundle_in_geo.lookup_path<GListPtr>(
                 "tags"))
         {
@@ -715,14 +717,19 @@ class XpbdSolverStep {
             const GList &tags_list = **tags_list_ptr;
             if (tags_list.cpp_type().is<std::string>()) {
               tags_list.typed<std::string>().foreach(
-                  [&](const std::string &tag) { geo_set_data.tags.add(tag); });
+                  [&](const std::string &tag) { tags.add(tag); });
             }
           }
         }
       }
-      if (!tag_filter_matches(geometry_tag_filter_, geo_set_data.tags)) {
+      if (!tag_filter_matches(geometry_tag_filter_, tags)) {
         continue;
       }
+
+      GeometrySetData geo_set_data;
+      geo_set_data.path = path;
+      geo_set_data.geometry = std::move(geometry);
+      geo_set_data.tags = std::move(tags);
       geometries_.geometry_sets.append(std::move(geo_set_data));
     }
 
@@ -951,14 +958,14 @@ class XpbdSolverStep {
                                       ExternalEdgeContacts &r_edge_contacts)
   {
     const Mesh *mesh;
-    const bke::BVHTreeFromMesh *corner_tris_bvh;
+    const bke::bvh::Tree *corner_tris_bvh;
     const bke::BVHTreeFromMesh *edges_bvh;
     Span<float3> prev_vert_positions;
     if (is_deforming) {
       BLI_assert(std::holds_alternative<DeformingMeshInfo>(collider.mesh));
       const auto &deforming_mesh = std::get<DeformingMeshInfo>(collider.mesh);
       mesh = deforming_mesh.substep_meshes[substep.current_i + 1];
-      corner_tris_bvh = &deforming_mesh.substep_corner_tris_bvh_trees[substep.current_i];
+      corner_tris_bvh = deforming_mesh.substep_corner_tris_bvh_trees[substep.current_i];
       edges_bvh = &deforming_mesh.substep_edges_bvh_trees[substep.current_i];
       prev_vert_positions = deforming_mesh.substep_meshes[substep.current_i]->vert_positions();
     }
@@ -966,7 +973,7 @@ class XpbdSolverStep {
       BLI_assert(std::holds_alternative<StaticMeshInfo>(collider.mesh));
       const auto &static_mesh = std::get<StaticMeshInfo>(collider.mesh);
       mesh = static_mesh.mesh;
-      corner_tris_bvh = &static_mesh.corner_tris_bvh;
+      corner_tris_bvh = static_mesh.corner_tris_bvh;
       edges_bvh = &static_mesh.edges_bvh;
     }
     const Span<float3> vert_positions = mesh->vert_positions();
@@ -1122,16 +1129,14 @@ class XpbdSolverStep {
         BLI_assert(math::is_unit(math::cross(edge_direction_local, edge_normal_local)));
 
         /* Use geometric average as edge friction coefficient. */
-        const float static_friction = math::sqrt(
-            math::square(this->compute_contact_friction(geo_data.static_frictions[point0],
-                                                        collider.friction)) +
-            math::square(this->compute_contact_friction(geo_data.static_frictions[point1],
-                                                        collider.friction)));
-        const float dynamic_friction = math::sqrt(
-            math::square(this->compute_contact_friction(geo_data.dynamic_frictions[point0],
-                                                        collider.friction)) +
-            math::square(this->compute_contact_friction(geo_data.dynamic_frictions[point1],
-                                                        collider.friction)));
+        const float static_friction = this->compute_contact_friction(
+            geo_data.static_frictions[point0],
+            geo_data.static_frictions[point1],
+            collider.friction);
+        const float dynamic_friction = this->compute_contact_friction(
+            geo_data.dynamic_frictions[point0],
+            geo_data.dynamic_frictions[point1],
+            collider.friction);
 
         const int contact_i = r_edge_contacts.point_pairs.append_and_get_index({point0, point1});
         r_edge_contacts.point_radii.append({radius_local0, radius_local1});
@@ -1197,27 +1202,24 @@ class XpbdSolverStep {
 
   std::optional<ClosestMeshFaceContact> get_closest_mesh_face_contact(
       const float3 &sample_pos,
-      const bke::BVHTreeFromMesh &corner_tris_bvh,
+      const bke::bvh::Tree &corner_tris_bvh,
       const Span<int3> corner_tris,
       const Span<int> corner_verts,
       const Span<float3> vert_positions,
       const float max_distance) const
   {
-    BVHTreeNearest nearest{};
-    nearest.index = -1;
-    nearest.dist_sq = pow2f(max_distance);
-    BLI_bvhtree_find_nearest(corner_tris_bvh.tree,
-                             sample_pos,
-                             &nearest,
-                             corner_tris_bvh.nearest_callback,
-                             (void *)&corner_tris_bvh);
-    if (nearest.index == -1) {
+    const std::optional<bke::bvh::ClosestPointResult> nearest = corner_tris_bvh.closest_point(
+        sample_pos, max_distance);
+    if (!nearest) {
       return std::nullopt;
     }
-    const int tri_i = nearest.index;
+    const int tri_i = nearest->index;
     const int3 &tri = corner_tris[tri_i];
-    const float3 &contact_pos = float3(nearest.co);
-    const float3 &contact_nor = float3(nearest.no);
+    const float3 &contact_pos = float3(nearest->position);
+    const float3 contact_nor = math::normal_tri(
+        vert_positions[corner_verts[corner_tris[tri_i][0]]],
+        vert_positions[corner_verts[corner_tris[tri_i][1]]],
+        vert_positions[corner_verts[corner_tris[tri_i][2]]]);
     const float3 bary_coords = bke::mesh_surface_sample::compute_bary_coord_in_triangle(
         vert_positions, corner_verts, tri, contact_pos);
     const float3 direction_to_mesh = contact_pos - sample_pos;
@@ -1232,6 +1234,10 @@ class XpbdSolverStep {
     return ClosestMeshFaceContact{contact_pos, contact_nor, bary_coords, is_inside, tri_i};
   }
 
+  /**
+   * \note This uses the legacy BVH tree because it ray-casts against the edge BVH with a ray that
+   * has a radius. bvh::Tree doesn't yet support this.
+   */
   std::optional<ClosestMeshEdgeContact> get_closest_mesh_edge_contact(
       const float3 &sample_pos0,
       const float3 &sample_pos1,
@@ -1298,7 +1304,7 @@ class XpbdSolverStep {
   }
 
   bool is_inside_ray_using_rays(const float3 &pos,
-                                const bke::BVHTreeFromMesh &bvh,
+                                const bke::bvh::Tree &bvh,
                                 const float3 &approx_ray_direction) const
   {
     /* Shoot rays in the approximate direction of where the nearest point is. This is a heuristic
@@ -1310,13 +1316,11 @@ class XpbdSolverStep {
          math::normalize(approx_ray_direction_normalized + float3{-0.140f, 0.151f, -0.126f})}};
     int inside_count = 0;
     for (const float3 &dir : dirs) {
-      BVHTreeRayHit hit{};
-      hit.index = -1;
-      hit.dist = FLT_MAX;
-      BLI_bvhtree_ray_cast(bvh.tree, pos, dir, 0.0f, &hit, bvh.raycast_callback, (void *)&bvh);
-      if (hit.index != -1) {
-        const float3 dir = float3(hit.co) - pos;
-        const bool is_inside = math::dot(dir, float3(hit.no)) > 0.0f;
+      const bke::bvh::Ray ray(pos, dir);
+      const std::optional<bke::bvh::RayHit> hit = bvh.ray_intersect(ray);
+      if (hit) {
+        const float3 dir = hit->position(ray) - pos;
+        const bool is_inside = math::dot(dir, math::normalize(hit->normal)) > 0.0f;
         inside_count += is_inside ? 1 : -1;
         if (std::abs(inside_count) >= 2) {
           break;
@@ -1436,10 +1440,10 @@ class XpbdSolverStep {
                                                                           const bool deforming)
   {
     if (!deforming || !prev_mesh) {
-      return StaticMeshInfo{&mesh, mesh.bvh_corner_tris(), mesh.bvh_edges()};
+      return StaticMeshInfo{&mesh, &mesh.bvh_tris(), mesh.bvh_edges_legacy()};
     }
     if (mesh.verts_num != prev_mesh->verts_num) {
-      return StaticMeshInfo{&mesh, mesh.bvh_corner_tris(), mesh.bvh_edges()};
+      return StaticMeshInfo{&mesh, &mesh.bvh_tris(), mesh.bvh_edges_legacy()};
     }
     const int verts_num = mesh.verts_num;
     DeformingMeshInfo result;
@@ -1454,7 +1458,7 @@ class XpbdSolverStep {
         IndexRange(substeps_ + 1), std::max(1024 / verts_num, 1), [&](const IndexRange range) {
           TLS &tls = tls_.local();
           for (const int mesh_i : range) {
-            const float mix_factor = (mesh_i - 1) / float(substeps_) *
+            const float mix_factor = mesh_i / float(substeps_) *
                                          (interpolation_end_ - interpolation_begin_) +
                                      interpolation_begin_;
             const Mesh *substep_mesh = nullptr;
@@ -1480,8 +1484,8 @@ class XpbdSolverStep {
             result.substep_meshes[mesh_i] = substep_mesh;
             if (mesh_i > 0) {
               /* The bvh tree is not needed for the first substep. */
-              result.substep_corner_tris_bvh_trees[mesh_i - 1] = substep_mesh->bvh_corner_tris();
-              result.substep_edges_bvh_trees[mesh_i - 1] = substep_mesh->bvh_edges();
+              result.substep_corner_tris_bvh_trees[mesh_i - 1] = &substep_mesh->bvh_tris();
+              result.substep_edges_bvh_trees[mesh_i - 1] = substep_mesh->bvh_edges_legacy();
             }
           }
         });
@@ -2022,7 +2026,7 @@ class XpbdSolverStep {
         const int face1_dir = face1_verts[(face1_i1 + 1) % face1_size] == edge_v0 ? 1 : -1;
         /* Some corners may be ignored if they if both faces have a different number of
          * corners. */
-        const int cross_edge_num = std::max(face0_size, face1_size) - 2;
+        const int cross_edge_num = std::min(face0_size, face1_size) - 2;
         for (const int i : IndexRange(cross_edge_num)) {
           const int cross_edge_v0 = face0_verts[mod_i(face0_i0 - face0_dir * (i + 1), face0_size)];
           const int cross_edge_v1 = face1_verts[mod_i(face1_i1 - face1_dir * (i + 1), face1_size)];
@@ -2210,19 +2214,19 @@ class XpbdSolverStep {
       const PinPositionConstraint &constraint =
           constraints_.pin_position_constraints[constraint_usage.constraint_i];
 
-      /* Detect hard pinned points. */
-      for (const int pin_i : constraint_usage.points.index_range()) {
+      const IndexRange pin_range = unique_sorted_indices::find_content_range<int>(
+          constraint_usage.points, chunk.points_range);
+      if (pin_range.is_empty()) {
+        continue;
+      }
+
+      /* Detect hard pinned points in this chunk. */
+      for (const int pin_i : pin_range) {
         const int point_i = constraint_usage.points[pin_i];
         const float compliance = constraint_usage.compliances[pin_i];
         if (compliance <= 0.0f) {
           geo_data.is_hard_pinned[point_i] = true;
         }
-      }
-
-      const IndexRange pin_range = unique_sorted_indices::find_content_range<int>(
-          constraint_usage.points, chunk.points_range);
-      if (pin_range.is_empty()) {
-        continue;
       }
       chunk_data.pin_position_constraints.append({constraint_usage_i, pin_range});
       chunk_data.static_constraints.append(&tls.scope.construct<xpbd::PinPositionConstraintSet>(
@@ -2469,11 +2473,11 @@ class XpbdSolverStep {
           this->simulate__update_velocities__chunk(chunk_i, solver_refs_i);
         });
         this->simulate__velocity_solve(solver_refs_i);
-        this->parallel_for_each_chunk(16, [&](const int chunk_i) {
-          this->simulate__ensure_final_data_in_outputs__chunk(chunk_i);
-        });
         solver_refs_i = 1 - solver_refs_i;
       }
+      this->parallel_for_each_chunk(16, [&](const int chunk_i) {
+        this->simulate__ensure_final_data_in_outputs__chunk(chunk_i);
+      });
     }
 
     return Result{math::sqrt(average_error_squared)};
@@ -2644,6 +2648,8 @@ class XpbdSolverStep {
     ChunkData &chunk_data = chunks_data_[chunk_i];
     chunk_data.external_face_contacts.lambdas_normal.fill(0.0f);
     chunk_data.external_face_contacts.lambdas_friction.fill(0.0f);
+    chunk_data.external_edge_contacts.lambdas_normal.fill(0.0f);
+    chunk_data.external_edge_contacts.lambdas_friction.fill(0.0f);
     for (xpbd::ConstraintSet *constraint : chunk_data.static_constraints) {
       constraint->reset_forces();
     }
@@ -2919,7 +2925,14 @@ class XpbdSolverStep {
 
   float compute_contact_friction(const float point_friction, const float collider_friction) const
   {
-    return math::sqrt(point_friction * collider_friction);
+    return xpbd_friction::contact_friction(point_friction, collider_friction);
+  }
+
+  float compute_contact_friction(const float point0_friction,
+                                 const float point1_friction,
+                                 const float collider_friction) const
+  {
+    return xpbd_friction::contact_friction(point0_friction, point1_friction, collider_friction);
   }
 
   float get_max_search_distance(const float delta_time)
@@ -3002,7 +3015,8 @@ class XpbdSolverStep {
   PointCloud *write_back__plane_contacts(const IndexRange mesh_colliders_range,
                                          const OffsetIndices<int> points_by_chunk)
   {
-    PointCloud *pointcloud = BKE_pointcloud_new_nomain(points_by_chunk.total_size());
+    PointCloud *pointcloud = BKE_pointcloud_new_nomain(PointCloudType::Points,
+                                                       points_by_chunk.total_size());
     MutableAttributeAccessor attributes = pointcloud->attributes_for_write();
     bke::SpanAttributeWriter<int> geometries_writer =
         attributes.lookup_or_add_for_write_only_span<int>("geometry", AttrDomain::Point);
@@ -3082,7 +3096,8 @@ class XpbdSolverStep {
   PointCloud *write_back__edge_contacts(const IndexRange mesh_colliders_range,
                                         const OffsetIndices<int> points_by_chunk)
   {
-    PointCloud *pointcloud = BKE_pointcloud_new_nomain(points_by_chunk.total_size());
+    PointCloud *pointcloud = BKE_pointcloud_new_nomain(PointCloudType::Points,
+                                                       points_by_chunk.total_size());
     MutableAttributeAccessor attributes = pointcloud->attributes_for_write();
     bke::SpanAttributeWriter<int> geometries_writer =
         attributes.lookup_or_add_for_write_only_span<int>("geometry", AttrDomain::Point);
@@ -3225,7 +3240,7 @@ class XpbdSolverStep {
           collider_map_path,
           BundleItemSocketValue{
               bke::node_socket_type_find_static(SOCK_STRING),
-              bke::SocketValueVariant::From(GList::from_container(std::move(collider_paths)))});
+              bke::SocketValueVariant::from(GList::from_container(std::move(collider_paths)))});
     }
   }
 

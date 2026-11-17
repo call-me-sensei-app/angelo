@@ -15,8 +15,8 @@
 #include "DNA_windowmanager_types.h"
 #include "RNA_types.hh"
 
-#include "BLI_listbase.h"
-#include "BLI_string.h"
+#include "BLI_listbase.hh"
+#include "BLI_string.hh"
 
 #include "../generic/py_capi_rna.hh"
 #include "../generic/py_capi_utils.hh"
@@ -24,6 +24,7 @@
 
 #include "BPY_extern.hh"
 #include "bpy_capi_utils.hh"
+#include "bpy_angelo_guard_confine.hh"
 #include "bpy_operator_function.hh"
 #include "bpy_rna.hh" /* for setting argument properties & type method `get_rna_type`. */
 
@@ -307,6 +308,15 @@ static std::optional<wmOperatorStatus> bpy_op_fn_call_impl(const char *opname,
           &ptr, kw, false, "Converting py args to operator properties:");
     }
 
+    /* A confined agent script's operator (doc/angelo/script_confinement.rst): programs, installs, preferences and
+     * grants are refused, and so is any path into Angelo's private or startup folders. */
+    if (error_val == 0) {
+      if (const char *refusal = BPY_angelo_guard_operator_refusal(C, ot, &ptr)) {
+        BPY_angelo_guard_raise(refusal, opname_as_py(opname, opname_buf));
+        error_val = -1;
+      }
+    }
+
     if (error_val == 0) {
       ReportList *reports;
 
@@ -314,6 +324,9 @@ static std::optional<wmOperatorStatus> bpy_op_fn_call_impl(const char *opname,
 
       /* Own so these don't move into global reports. */
       BKE_reports_init(reports, RPT_STORE | RPT_OP_HOLD | RPT_PRINT_HANDLED_BY_OWNER);
+
+      /* Angelo: a confined script stays confined inside its operator, where the GIL is released. */
+      const bool held = BPY_angelo_guard_hold();
 
 #ifdef BPY_RELEASE_GIL
       /* release GIL, since a thread could be started from an operator
@@ -325,6 +338,9 @@ static std::optional<wmOperatorStatus> bpy_op_fn_call_impl(const char *opname,
 #endif
 
         retval = WM_operator_call_py(C, ot, context, &ptr, reports, is_undo);
+        if (held) {
+          BPY_angelo_guard_release();
+        }
 
 #ifdef BPY_RELEASE_GIL
         /* regain GIL */
@@ -387,7 +403,7 @@ static std::optional<wmOperatorStatus> bpy_op_fn_call_impl(const char *opname,
 static PyObject *bpy_op_fn_call(BPyOpFunction *self, PyObject *args, PyObject *kwargs)
 {
   bContext *C = BPY_context_get();
-  if (UNLIKELY(C == nullptr)) {
+  if (C == nullptr) [[unlikely]] {
     PyErr_SetString(PyExc_RuntimeError, "Context is None, cannot call an operator");
     return nullptr;
   }
@@ -827,7 +843,13 @@ PyObject *pyop_create_function(PyObject * /*self*/, PyObject *args)
 {
   const char *op_mod_str, *op_fn_str;
 
-  if (!PyArg_ParseTuple(args, "ss", &op_mod_str, &op_fn_str)) {
+  if (!PyArg_ParseTuple(args,
+                        "s" /* `module` */
+                        "s" /* `operator` */
+                        ":create_function",
+                        &op_mod_str,
+                        &op_fn_str))
+  {
     return nullptr;
   }
 

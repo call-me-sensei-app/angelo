@@ -7,6 +7,7 @@ query is bounded and operates on the executor's bound scene/view layer.
 """
 
 import re
+from . import read_only
 
 MAX_PAGE = 100
 OBJECT_TYPES = ("MESH", "CURVE", "SURFACE", "META", "FONT", "ARMATURE", "LATTICE",
@@ -93,7 +94,7 @@ SCENE_TOOLS.append(_tool(
     "camera, units, World) with the scene handle and exact revision that bind property_set and world_configure.",
     {}))
 SCENE_NAMES = frozenset(t["name"] for t in SCENE_TOOLS)
-_SCHEMAS = {t["name"]: t["inputSchema"] for t in SCENE_TOOLS}
+SCENE_SCHEMAS = read_only.frozen({t["name"]: t["inputSchema"] for t in SCENE_TOOLS})   # As registered, read only.
 
 
 def _text(value, allow_empty=False):
@@ -114,7 +115,7 @@ def validate_scene(name, args):
     """Validate standalone too; do not depend on the outer executor validator."""
     if type(name) is not str or name not in SCENE_NAMES or type(args) is not dict:
         raise ValueError("Unknown scene query or non-object arguments")
-    schema = _SCHEMAS[name]
+    schema = SCENE_SCHEMAS[name]
     if len(args) > len(schema["properties"]) or set(args) - set(schema["properties"]) or set(schema["required"]) - set(args):
         raise ValueError("Unexpected or missing scene query argument")
     if name == "angelo_scene_settings":

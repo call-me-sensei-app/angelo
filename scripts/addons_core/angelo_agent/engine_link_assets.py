@@ -24,8 +24,9 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import engine_link_reads as reads, engine_link_stamps as stamps, shared_replace, user_copies
+from . import engine_link_reads as reads, engine_link_stamps as stamps, owned_paths, shared_replace, user_copies
 from .engine_link_facts import listing as _listing
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 # An install's copy and the plugin it replaces, then gone: in WORKING_FOLDER, or hidden beside the plugin's folder
 # when that is on another volume (install_plugin).
@@ -210,6 +211,7 @@ def inside(project, relative, refused, ident, kinds):
         raise AssetError("kind", ident, refused["kind"])
     if not path.is_file():
         raise AssetError("missing", ident, refused["missing"])
+    owned_paths.vouch(path)   # The editor named it, checked inside its project: Angelo may write it back (C).
     return root, path, parts
 
 
@@ -293,7 +295,8 @@ def _working_root(project):
 def ensure_working_folder(asset):
     """Create the project's .angelo folder with a .gdignore and a README. Raises OSError when the folder, or the working
     file, is a link or leads out of the project (a cloned project can't make Angelo write elsewhere)."""
-    folder = Path(asset.project, WORKING_FOLDER)
+    owned_paths.require_writable(asset.path)   # An asset an editor named (``inside``): its project is a linked one.
+    folder = Path(owned_paths.make_dir_beside(asset.project, WORKING_FOLDER, 0o777))   # Made by C, Angelo's.
     working = Path(working_path(asset))
     current = folder
     for part in (None,) + working.parent.relative_to(folder).parts:   # Checked before anything is made in it.
@@ -446,6 +449,7 @@ def export(window, path, options, export_id=EXPORT_ID):
 def install_plugin(engine_adapter, project):
     """Copy the adapter's bundled plugin into ``project`` (``PLUGIN_FOLDER``), replacing an older copy in one step.
     Raises AssetError ("not_project") or OSError; returns the folder."""
+    owned_paths.require_writable(project)
     if not engine_adapter.is_project(project):
         raise AssetError("not_project", "", engine_adapter.REFUSED["not_project"])
     target = os.path.join(project, *engine_adapter.PLUGIN_FOLDER)
@@ -479,6 +483,9 @@ def install_plugin(engine_adapter, project):
         if not kept:
             user_copies.remove_tree(staging)
     return target
+
+
+install_plugin = _grant_guard.entry(install_plugin)
 
 
 def _moved_back(previous, target):

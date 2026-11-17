@@ -90,6 +90,10 @@ class ComposerCase(caret_tests.StubbedCanvas):
         from angelo_agent import composer_input
         for name in ("_HISTORIES", "_SCROLLS"):   # Kept module-wide: none from another test.
             self.patch(composer_input, name, type(getattr(composer_input, name, {}))())
+        # The composer's draw attaches the window's input method (composer_ime._ATTACHED, module-wide too): a pointer
+        # left there made a later test's composer_ime.clear() import the real bpy (Linux one-process suite, 1.1).
+        from angelo_agent import composer_ime
+        self.patch(composer_ime, "_ATTACHED", {})
         self.line = Line()
         self.area = Area(self.line, int(self.WIDTH * self.SCALE), int(800 * self.SCALE))
         self.state = {"focused": True}
@@ -169,9 +173,10 @@ class ComposerCase(caret_tests.StubbedCanvas):
 
     def draw(self, blink_on=True):
         """The composer as ``chat_view._draw_chat`` lays it out and draws it: rows, shapes and text recorded."""
-        from angelo_agent import chat_composer
+        from angelo_agent import chat_composer, composer_ime
         from angelo_agent.chat_layout import composer_layout
-        view, width, draft = self.view, self.WIDTH, self.line.body
+        shown_ime = composer_ime.preview(self.state, self.line)   # As chat_view._draw_chat: a composition inline.
+        view, width, draft = self.view, self.WIDTH, shown_ime.value if shown_ime else self.line.body
         view._scale = self.SCALE
         draft_lines = view.wrap(draft, chat_composer.hint_width(width), SIZE, 7, ordered=False)
         shown = chat_composer.composer_rows(draft, draft_lines, self.controller, width, SIZE, view.wrap, 7)

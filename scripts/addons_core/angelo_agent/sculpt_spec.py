@@ -43,7 +43,12 @@ POINT = {"type": "object", "properties": {"position": VECTOR, "pressure": {"type
          "required": ["position", "pressure"], "additionalProperties": False}
 
 
+_WRITERS = []   # The tools defined writing, recorded as each is defined.
+
+
 def tool(name, description, properties, readonly):
+    if not readonly:
+        _WRITERS.append(name)
     return {"name": name, "description": description,
             "inputSchema": {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False},
             "annotations": {"readOnlyHint": readonly, "destructiveHint": not readonly, "openWorldHint": False}}
@@ -83,6 +88,7 @@ PASS_SCHEMA["properties"].update(
     region={"type":"string", "maxLength":64})
 STEP_SCHEMA = {"type":"object", "properties":{k:v for k,v in PASS_SCHEMA['properties'].items() if k not in {'object','mesh_revision'}},
                "required":[k for k in PASS_SCHEMA['required'] if k not in {'object','mesh_revision'}], "additionalProperties":False}
+STEP_FIELDS, STEP_REQUIRED = frozenset(STEP_SCHEMA['properties']), frozenset(STEP_SCHEMA['required'])   # As registered.
 VIEW_SCHEMA = next(t["inputSchema"] for t in SCULPT_TOOLS if t["name"] == "angelo_sculpt_view")
 VIEW_SCHEMA['properties'].update(framing_reference={"type":"string", "maxLength":36}, region={"type":"string", "maxLength":64})
 SCULPT_TOOLS.extend([
@@ -102,7 +108,7 @@ SCULPT_TOOLS.extend([
                         'pixel':{'type':'array','minItems':2,'maxItems':2,'items':{'type':'number','minimum':0,'maximum':1}}},'required':['region','pixel'],'additionalProperties':False}}}, True),
 ])
 SCULPT_NAMES = frozenset(t["name"] for t in SCULPT_TOOLS)
-SCULPT_MUTATIONS = frozenset(t['name'] for t in SCULPT_TOOLS if not t['annotations']['readOnlyHint'])
+SCULPT_MUTATIONS = frozenset(_WRITERS)   # As defined: no decision reads a spec's annotations (tool_specs).
 
 
 def number(value, low, high):
@@ -137,7 +143,7 @@ def validate_sculpt(name, args):
         result['steps'] = []
         total = 0
         for step in args['steps']:
-            if not isinstance(step, dict) or set(step)-set(STEP_SCHEMA['properties']) or set(STEP_SCHEMA['required'])-set(step):
+            if not isinstance(step, dict) or set(step)-STEP_FIELDS or STEP_REQUIRED-set(step):
                 raise ValueError('Unexpected or missing sculpt program control')
             checked = validate_sculpt('angelo_sculpt_batch', dict(step, object=obj, mesh_revision=args['mesh_revision']))
             total += sum(map(len, resample_paths(checked['paths'], checked['radius']*checked['spacing']*min(p.get('radius_scale',1) for path in checked['paths'] for p in path), grab=checked['brush'] in ANCHORED)))

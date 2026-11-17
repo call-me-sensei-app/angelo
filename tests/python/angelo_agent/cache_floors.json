@@ -1,97 +1,181 @@
 {
   "cells": {
-    "claude_subscription|claude-opus-5-5|default": {
-      "later_floor": 0.93,
-      "later_median": 0.985,
-      "later_min": 0.9844,
-      "later_steps": 4
+    "macos|claude_subscription|claude-opus-5-5|default": {
+      "session_chats": 70,
+      "session_floor": 0.91,
+      "session_median": 0.9802,
+      "session_min": 0.9663
     },
-    "claude_subscription|claude-opus-5-5|default/approval-ask": {
-      "later_floor": 0.93,
-      "later_median": 0.986,
-      "later_min": 0.9859,
-      "later_steps": 4
+    "macos|claude_subscription|claude-opus-5-5|default/approval-ask": {
+      "session_chats": 13,
+      "session_floor": 0.93,
+      "session_median": 0.9847,
+      "session_min": 0.9828
     },
-    "claude_subscription|claude-opus-5-5|long": {
-      "later_floor": 0.93,
-      "later_median": 0.9867,
-      "later_min": 0.9843,
-      "later_steps": 8
+    "macos|claude_subscription|claude-opus-5-5|long": {
+      "session_chats": 56,
+      "session_floor": 0.93,
+      "session_median": 0.9879,
+      "session_min": 0.9802
     },
-    "claude_subscription|claude-opus-5-5|survey-questions": {
-      "later_floor": 0.92,
-      "later_median": 0.9798,
-      "later_min": 0.9761,
-      "later_steps": 4
+    "macos|claude_subscription|claude-opus-5-5|survey-questions": {
+      "session_chats": 14,
+      "session_floor": 0.91,
+      "session_median": 0.9742,
+      "session_min": 0.9693
     },
-    "codex_subscription|gpt-6-astra|default": {
-      "first_floor": 0.88,
-      "first_median": 0.9374,
-      "first_min": 0.9372,
-      "first_steps": 4,
-      "later_floor": 0.93,
-      "later_median": 0.9816,
-      "later_min": 0.9814,
-      "later_steps": 4
+    "macos|codex_subscription|gpt-6-astra|default": {
+      "session_chats": 60,
+      "session_floor": 0.73,
+      "session_median": 0.9743,
+      "session_min": 0.7825
     },
-    "codex_subscription|gpt-6-astra|default/approval-ask": {
-      "later_floor": 0.93,
-      "later_median": 0.9833,
-      "later_min": 0.983,
-      "later_steps": 4
+    "macos|codex_subscription|gpt-6-astra|default/approval-ask": {
+      "session_chats": 10,
+      "session_floor": 0.91,
+      "session_median": 0.9804,
+      "session_min": 0.9604
     },
-    "codex_subscription|gpt-6-astra|long": {
-      "first_floor": 0.88,
-      "first_median": 0.9422,
-      "first_min": 0.9374,
-      "first_steps": 4,
-      "later_floor": 0.93,
-      "later_median": 0.9839,
-      "later_min": 0.9831,
-      "later_steps": 8
+    "macos|codex_subscription|gpt-6-astra|long": {
+      "session_chats": 44,
+      "session_floor": 0.9,
+      "session_median": 0.9819,
+      "session_min": 0.954
     },
-    "codex_subscription|gpt-6-astra|survey-questions": {
-      "later_floor": 0.92,
-      "later_median": 0.9777,
-      "later_min": 0.9763,
-      "later_steps": 4
+    "macos|codex_subscription|gpt-6-astra|survey-questions": {
+      "session_chats": 11,
+      "session_floor": 0.9,
+      "session_median": 0.9691,
+      "session_min": 0.9531
     },
-    "codex_subscription|gpt-6.1-sol|default": {
-      "first_floor": 0.89,
-      "first_median": 0.9437,
-      "first_min": 0.9406,
-      "first_steps": 4,
-      "later_floor": 0.91,
-      "later_median": 0.981,
-      "later_min": 0.9683,
-      "later_steps": 4
+    "macos|codex_subscription|gpt-6.1-sol|default": {
+      "session_chats": 60,
+      "session_floor": 0.75,
+      "session_median": 0.9743,
+      "session_min": 0.8077
     },
-    "codex_subscription|gpt-6.1-sol|default/approval-ask": {
-      "later_floor": 0.92,
-      "later_median": 0.9823,
-      "later_min": 0.9718,
-      "later_steps": 4
+    "macos|codex_subscription|gpt-6.1-sol|default/approval-ask": {
+      "session_chats": 10,
+      "session_floor": 0.91,
+      "session_median": 0.9805,
+      "session_min": 0.9611
     },
-    "codex_subscription|gpt-6.1-sol|long": {
-      "first_floor": 0.89,
-      "first_median": 0.9421,
-      "first_min": 0.94,
-      "first_steps": 4,
-      "later_floor": 0.91,
-      "later_median": 0.9797,
-      "later_min": 0.9608,
-      "later_steps": 8
+    "macos|codex_subscription|gpt-6.1-sol|long": {
+      "session_chats": 44,
+      "session_floor": 0.88,
+      "session_median": 0.9812,
+      "session_min": 0.9347
     },
-    "codex_subscription|gpt-6.1-sol|survey-questions": {
-      "later_floor": 0.91,
-      "later_median": 0.9734,
-      "later_min": 0.9656,
-      "later_steps": 4
+    "macos|codex_subscription|gpt-6.1-sol|survey-questions": {
+      "session_chats": 11,
+      "session_floor": 0.82,
+      "session_median": 0.9621,
+      "session_min": 0.8793
+    },
+    "windows|claude_subscription|claude-opus-5-5|default": {
+      "session_chats": 40,
+      "session_floor": 0.92,
+      "session_median": 0.9802,
+      "session_min": 0.9795
+    },
+    "windows|claude_subscription|claude-opus-5-5|default/approval-ask": {
+      "session_chats": 8,
+      "session_floor": 0.93,
+      "session_median": 0.9831,
+      "session_min": 0.9812
+    },
+    "windows|claude_subscription|claude-opus-5-5|long": {
+      "session_chats": 29,
+      "session_floor": 0.93,
+      "session_median": 0.9878,
+      "session_min": 0.9834
+    },
+    "windows|claude_subscription|claude-opus-5-5|survey-questions": {
+      "session_chats": 8,
+      "session_floor": 0.92,
+      "session_median": 0.9733,
+      "session_min": 0.9707
+    },
+    "windows|codex_subscription|gpt-6-astra|default": {
+      "session_chats": 50,
+      "session_floor": 0.73,
+      "session_median": 0.9761,
+      "session_min": 0.783
+    },
+    "windows|codex_subscription|gpt-6-astra|default/approval-ask": {
+      "session_chats": 9,
+      "session_floor": 0.91,
+      "session_median": 0.9803,
+      "session_min": 0.9635
+    },
+    "windows|codex_subscription|gpt-6-astra|long": {
+      "session_chats": 36,
+      "session_floor": 0.9,
+      "session_median": 0.9833,
+      "session_min": 0.9545
+    },
+    "windows|codex_subscription|gpt-6-astra|survey-questions": {
+      "session_chats": 9,
+      "session_floor": 0.89,
+      "session_median": 0.9744,
+      "session_min": 0.9409
+    },
+    "windows|codex_subscription|gpt-6.1-sol|default": {
+      "session_chats": 50,
+      "session_floor": 0.73,
+      "session_median": 0.9788,
+      "session_min": 0.7895
+    },
+    "windows|codex_subscription|gpt-6.1-sol|default/approval-ask": {
+      "session_chats": 9,
+      "session_floor": 0.73,
+      "session_median": 0.9709,
+      "session_min": 0.7811
+    },
+    "windows|codex_subscription|gpt-6.1-sol|long": {
+      "session_chats": 36,
+      "session_floor": 0.76,
+      "session_median": 0.9803,
+      "session_min": 0.8139
+    },
+    "windows|codex_subscription|gpt-6.1-sol|survey-questions": {
+      "session_chats": 9,
+      "session_floor": 0.9,
+      "session_median": 0.9716,
+      "session_min": 0.9598
     }
   },
   "margin": 0.05,
-  "rule": "per cell (route mode | model | variant): the lowest step value across the passing gate campaigns in sources (calls 2+: token-weighted over the step's later turns except its lowest one; first call: median of the step's keyed chats after the first), minus 5 percentage points, rounded down to a whole percent",
+  "rule": "per cell (platform | route mode | model | variant): the lowest judged share (cached over input tokens over a chat's measured calls; a step's first chat of the cell without its first turn) of any chat across the passing gate campaigns in sources, minus 5 percentage points, rounded down to a whole percent",
   "sources": [
+    {
+      "campaign": "release-1.0.0-final-gate/campaign-astra",
+      "checkout": "b820d8aa74e",
+      "platform": "macos",
+      "steps": [
+        "gate-astra-default"
+      ]
+    },
+    {
+      "campaign": "release-1.0.0-final-gate/campaign-sol",
+      "checkout": "b820d8aa74e",
+      "platform": "macos",
+      "steps": [
+        "gate-sol-default"
+      ]
+    },
+    {
+      "campaign": "release-1.0.0-final-gate-3/campaign-astra",
+      "checkout": "8c7e88b413b",
+      "platform": "macos",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
     {
       "campaign": "release-1.0.0-final-gate-3/campaign-opus",
       "checkout": "8c7e88b413b",
@@ -117,8 +201,8 @@
       ]
     },
     {
-      "campaign": "release-1.0.0-final-gate-3/campaign-astra",
-      "checkout": "8c7e88b413b",
+      "campaign": "release-1.0.0-final-gate-6/campaign-astra",
+      "checkout": "096b2bd3714",
       "platform": "macos",
       "steps": [
         "gate-astra-default",
@@ -153,10 +237,39 @@
       ]
     },
     {
-      "campaign": "release-1.0.0-final-gate-6/campaign-astra",
-      "checkout": "096b2bd3714",
+      "campaign": "release-1.0.0-rc3/campaign",
+      "checkout": "f6335d90ef7",
       "platform": "macos",
       "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey"
+      ]
+    },
+    {
+      "campaign": "release-1.0.0-rc5/campaign",
+      "checkout": "52e02077fd4",
+      "platform": "macos",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask",
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask",
         "gate-astra-default",
         "gate-astra-long",
         "smoke-astra-gate7",
@@ -165,8 +278,30 @@
       ]
     },
     {
-      "campaign": "release-1.0.1-gate-c196a74455d/campaign-opus",
-      "checkout": "c196a74455d",
+      "campaign": "release-1.0.0-rc6/campaign",
+      "checkout": "3092c5ccba4",
+      "platform": "macos",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask",
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask",
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.0-rc8/campaign",
+      "checkout": "afaca1a036c",
       "platform": "macos",
       "steps": [
         "gate-opus-default",
@@ -177,20 +312,8 @@
       ]
     },
     {
-      "campaign": "release-1.0.1-gate-c196a74455d/campaign-sol",
-      "checkout": "c196a74455d",
-      "platform": "macos",
-      "steps": [
-        "gate-sol-default",
-        "gate-sol-long",
-        "smoke-sol-gate7",
-        "smoke-sol-survey",
-        "smoke-sol-ask"
-      ]
-    },
-    {
-      "campaign": "release-1.0.1-gate-c196a74455d/campaign-astra",
-      "checkout": "c196a74455d",
+      "campaign": "release-1.0.1-gate-ea5674f4ca3/campaign-astra",
+      "checkout": "ea5674f4ca3",
       "platform": "macos",
       "steps": [
         "gate-astra-default",
@@ -201,8 +324,8 @@
       ]
     },
     {
-      "campaign": "release-1.0.1-gate-6c3742e5b21/campaign-opus",
-      "checkout": "6c3742e5b21",
+      "campaign": "release-1.0.1-gate-ea5674f4ca3/campaign-opus",
+      "checkout": "ea5674f4ca3",
       "platform": "macos",
       "steps": [
         "gate-opus-default",
@@ -213,8 +336,8 @@
       ]
     },
     {
-      "campaign": "release-1.0.1-gate-6c3742e5b21/campaign-sol",
-      "checkout": "6c3742e5b21",
+      "campaign": "release-1.0.1-gate-ea5674f4ca3/campaign-sol",
+      "checkout": "ea5674f4ca3",
       "platform": "macos",
       "steps": [
         "gate-sol-default",
@@ -225,8 +348,8 @@
       ]
     },
     {
-      "campaign": "release-1.0.1-gate-6c3742e5b21/campaign-astra",
-      "checkout": "6c3742e5b21",
+      "campaign": "release-1.0.2-gate-b499d5ec419/campaign-astra",
+      "checkout": "b499d5ec419",
       "platform": "macos",
       "steps": [
         "gate-astra-default",
@@ -234,6 +357,546 @@
         "smoke-astra-gate7",
         "smoke-astra-survey",
         "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.2-gate-b499d5ec419/campaign-opus",
+      "checkout": "b499d5ec419",
+      "platform": "macos",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.2-gate-b499d5ec419/campaign-sol",
+      "checkout": "b499d5ec419",
+      "platform": "macos",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.3-gate-b39986283b1/campaign-opus",
+      "checkout": "b39986283b1",
+      "platform": "macos",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.3-gate-cafdf57a103/campaign-astra",
+      "checkout": "cafdf57a103",
+      "platform": "macos",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.3-gate-cafdf57a103/campaign-opus",
+      "checkout": "cafdf57a103",
+      "platform": "macos",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.3-gate-cafdf57a103/campaign-sol",
+      "checkout": "cafdf57a103",
+      "platform": "macos",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.3-gate-de7481b15b3/campaign-opus",
+      "checkout": "de7481b15b3",
+      "platform": "macos",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.4-gate-05af4cbff6b/campaign-astra",
+      "checkout": "05af4cbff6b",
+      "platform": "macos",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.4-gate-05af4cbff6b/campaign-opus",
+      "checkout": "05af4cbff6b",
+      "platform": "macos",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.4-gate-05af4cbff6b/campaign-sol",
+      "checkout": "05af4cbff6b",
+      "platform": "macos",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.4-gate-4fcc2ddd62b/campaign-astra",
+      "checkout": "4fcc2ddd62b",
+      "platform": "macos",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.4-gate-4fcc2ddd62b/campaign-opus",
+      "checkout": "4fcc2ddd62b",
+      "platform": "macos",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.4-gate-4fcc2ddd62b/campaign-sol",
+      "checkout": "4fcc2ddd62b",
+      "platform": "macos",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.4-gate-db5a49fc152/campaign-astra",
+      "checkout": "db5a49fc152",
+      "platform": "macos",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.4-gate-db5a49fc152/campaign-opus",
+      "checkout": "db5a49fc152",
+      "platform": "macos",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "release-1.0.4-gate-db5a49fc152/campaign-sol",
+      "checkout": "db5a49fc152",
+      "platform": "macos",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-50e3fd72a385",
+      "checkout": "42d31e3d07a",
+      "platform": "windows",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-50e3fd72a385",
+      "checkout": "42d31e3d07a",
+      "platform": "windows",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-50e3fd72a385",
+      "checkout": "42d31e3d07a",
+      "platform": "windows",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-50e3fd72a385",
+      "checkout": "42d31e3d07a",
+      "platform": "windows",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-50e3fd72a385",
+      "checkout": "42d31e3d07a",
+      "platform": "windows",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-8b1dfda8869c",
+      "checkout": "db5a49fc152",
+      "platform": "windows",
+      "steps": [
+        "gate-astra-long"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-50e3fd72a385",
+      "checkout": "42d31e3d07a",
+      "platform": "windows",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-8b1dfda8869c",
+      "checkout": "db5a49fc152",
+      "platform": "windows",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-9a61b7a04606",
+      "checkout": "db5a49fc152",
+      "platform": "windows",
+      "steps": [
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-50e3fd72a385",
+      "checkout": "42d31e3d07a",
+      "platform": "windows",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-8b1dfda8869c",
+      "checkout": "db5a49fc152",
+      "platform": "windows",
+      "steps": [
+        "gate-sol-long"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-8b1dfda8869c",
+      "checkout": "db5a49fc152",
+      "platform": "windows",
+      "steps": [
+        "gate-sol-default",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-8b1dfda8869c",
+      "checkout": "db5a49fc152",
+      "platform": "windows",
+      "steps": [
+        "gate-astra-default",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-50e3fd72a385",
+      "checkout": "42d31e3d07a",
+      "platform": "windows",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-8b1dfda8869c",
+      "checkout": "db5a49fc152",
+      "platform": "windows",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-41ff97451e08",
+      "checkout": "04c90edbe54",
+      "platform": "windows",
+      "steps": [
+        "gate-astra-default"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-41ff97451e08",
+      "checkout": "04c90edbe54",
+      "platform": "windows",
+      "steps": [
+        "gate-sol-default"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-41ff97451e08",
+      "checkout": "04c90edbe54",
+      "platform": "windows",
+      "steps": [
+        "gate-opus-default"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-3a3933688c7b",
+      "checkout": "93639c827ca",
+      "platform": "windows",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-2aa7e55fb3a6",
+      "checkout": "ecc0fb83091",
+      "platform": "windows",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-2aa7e55fb3a6",
+      "checkout": "ecc0fb83091",
+      "platform": "windows",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-2aa7e55fb3a6",
+      "checkout": "ecc0fb83091",
+      "platform": "windows",
+      "steps": [
+        "gate-opus-default",
+        "gate-opus-long",
+        "smoke-opus-gate7",
+        "smoke-opus-survey",
+        "smoke-opus-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-665131a4466c",
+      "checkout": "555b307aae8",
+      "platform": "windows",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-665131a4466c",
+      "checkout": "555b307aae8",
+      "platform": "windows",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-472443408988",
+      "checkout": "6c569e94ae1",
+      "platform": "windows",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-8b3f6f749c7e",
+      "checkout": "85b41b5d198",
+      "platform": "windows",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-8b3f6f749c7e",
+      "checkout": "85b41b5d198",
+      "platform": "windows",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-54818dabcb09",
+      "checkout": "aa30e2b2ffc",
+      "platform": "windows",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-54818dabcb09",
+      "checkout": "aa30e2b2ffc",
+      "platform": "windows",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-38e3e1013a56",
+      "checkout": "d6c86c99b19",
+      "platform": "windows",
+      "steps": [
+        "gate-astra-default",
+        "gate-astra-long",
+        "smoke-astra-gate7",
+        "smoke-astra-survey",
+        "smoke-astra-ask"
+      ]
+    },
+    {
+      "campaign": "campaign/campaign-msi-38e3e1013a56",
+      "checkout": "d6c86c99b19",
+      "platform": "windows",
+      "steps": [
+        "gate-sol-default",
+        "gate-sol-long",
+        "smoke-sol-gate7",
+        "smoke-sol-survey",
+        "smoke-sol-ask"
       ]
     }
   ]

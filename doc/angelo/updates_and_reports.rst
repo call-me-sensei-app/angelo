@@ -152,6 +152,26 @@ https (http only to this computer, for tests), follows at most 5 redirects
 without a downgrade, and reads at most 256 KiB within twice the 15-second
 timeout.
 
+What the server keeps
+---------------------
+
+The app adds nothing for this, so every version is counted the same way.
+``angelo.studio`` counts the requests for the feed, a 304 included, to learn
+roughly how many copies of Angelo are in use each day and which versions and
+systems they run. For each check from Angelo it logs the UTC day, the version,
+OS family and CPU read from the ``User-Agent``, the answer (200 or 304) and a
+keyed hash of the network address. The hash's key changes every UTC day, so one
+day's hashes don't match another's. The address and the full ``User-Agent`` are
+not logged; a request from anything other than Angelo is only added to a daily
+total.
+
+The numbers are estimates: a studio behind one address counts once, an address
+that changes counts more than once, and a check that is turned off, or that goes
+to a mirrored ``UpdateFeedURL``, is never seen. Anyone can imitate a check, so a
+sudden jump needs a second look. Turning off Check Automatically stops the
+automatic requests (a manual check is counted like any other);
+``DisableUpdateCheck`` stops them all.
+
 What the person sees
 --------------------
 
@@ -329,7 +349,7 @@ visible and nothing moves without the person's Update, so it is independent of
 ``automatic_install``. A person who chose Stay before it was turned on is asked
 once more::
 
-    python3 scripts/angelo/sign_update_feed.py recommend --line 1.1 \
+    python3 scripts/angelo/sign_update_feed.py recommend --line 2.0 \
       --previous published-stable.json --out payload.json     # --off to take it back
 
 then sign and verify as for any feed. It changes that flag, the sequence and the
@@ -993,6 +1013,106 @@ Every control (buttons, the checkbox, the disclosure, the close button) has a
 rest, hover (lighter), pressed (darker, label one pixel down), keyboard-focus
 (a ring) and, where it applies, disabled look. Card text is laid out with the
 chat's fonts and wraps; the card shrinks as a whole in a small 3D view.
+
+A crash in the graphics driver
+------------------------------
+
+Blender 5.3 moves every Windows x64 preference file to Vulkan, upgraders included (1.0.x drew with OpenGL). When the
+crash Angelo found was in the graphics driver while this launch draws with Vulkan (``crash_gpu.offers_opengl``:
+the crashed thread or the faulting module is the Vulkan loader, a driver's ``nvoglv``, ``amdvlk``, ``atio6axx``,
+``igvk`` or ``ig*icd`` module, or Blender's own Vulkan backend), the dialog's question says so and offers
+**Restart with OpenGL** above its buttons. It answers the crash as Close does, chooses OpenGL in Preferences >
+System, saves the preferences, starts Angelo again and quits. A crash the dialog does not ask about (reports turned
+off by policy, never, waiting for the service, or sent automatically) gets one corner notice with the same button
+instead (``crash_ui._offer_opengl``, its own card kind). The person switches back in Preferences > System.
+``test_native_crash_gpu.py``; the Windows GUI proof is gcp-kit's crash-card run on a T4 VM.
+
+A Vulkan start that never drew a frame
+--------------------------------------
+
+The offer above needs a launch that gets as far as its interface. A driver that accepts Vulkan and then crashes while
+Angelo starts never gives it one: every launch dies the same way, for an updater and for a new install alike
+(upstream #166510, older Intel graphics after a driver update; Blender's own fallback only covers a device that
+says it cannot do what Vulkan needs). So the start itself is watched, natively, before the GPU is touched
+(``wm_angelo_gpu_startup.cc``):
+
+* A window launch that sets out to draw with Vulkan writes ``angelo-gpu-startup.txt`` in the configuration folder
+  (``vulkan starting <process id>``) when the preferences are read and keeps the file open for itself alone. When a
+  frame has been presented, or Angelo exits by itself after the GPU is initialized (the person quits, a script
+  ends the process with any status), it empties the record and lets go of it. On Windows it then removes the
+  file; on Linux the empty file stays, because removing a name there asks no holder and could take the record of
+  a launch that had just begun.
+* A launch that finds a record whose launch is gone knows Vulkan did not start on this machine. It draws with
+  OpenGL, sets the preference to OpenGL (Preferences > System shows what is used; the usual save on exit keeps it),
+  shows Blender's own alert *Failed to load using Vulkan, using OpenGL instead* and rewrites the record to
+  ``vulkan failed``.
+* **Which deaths count.** While the GPU is initialized, and in the main loop before the first presented frame.
+  Not while start-up scripts run, from Python's start to the main loop's: the record says ``vulkan starting <id>
+  scripts`` then. A third-party add-on that crashes as it loads is the safe start's (``app_identity.rst``, "A start
+  that did not finish"), the long first start of a new version (the settings carry-over) is not the GPU's, and a
+  script on the command line that ends the process is automation. One death in that time does count: a crash on
+  any thread but the main one, where scripts and add-ons run. Vulkan's submission thread and the driver's own
+  threads work on while scripts run, and their crash is the GPU's.
+* **A crash is marked at once.** On Windows the crash dialog keeps the crashed process alive, and its Restart
+  starts the next launch meanwhile. The crash handler therefore rewrites the record to ``vulkan crashed`` (or
+  empties it, for a crash that is the scripts' own) and lets go of the file before the dialog, as the safe start
+  marks its record.
+* **Who is gone** is decided by who can open the file, never by a process id: the operating system ends a
+  process's hold when the process ends, however it ends, and an id used again by another process cannot hide a
+  failed start. A launch that finds the file held by another process waits up to 2.5 s for it (a killed process's
+  hold goes in the system's own time), unless the record says that launch is running its scripts. Still held, or
+  not openable for another reason (an access rule, a lock service that is down), the file is read without being
+  taken. A record that says crashed or failed is never held by a live launch, which rewrites it first; so it is
+  believed whoever holds the file (another program, a child process that outlived its launch): OpenGL, and
+  nothing is written. Any other content is no evidence: another launch is still starting, and this one goes on
+  with Vulkan, unwatched.
+* **The failed record stays**, in the launch that learned of the failure and in every later one: a preference file
+  read later (settings imported from an earlier version are moved to Vulkan by Blender's versioning; factory
+  preferences) is turned to OpenGL as long as the record says failed. Only the launch that learned of the failure
+  shows the alert; later ones use OpenGL with a line in the log. Only choosing Vulkan in Preferences > System (or a
+  script setting ``preferences.system.gpu_backend``) removes the record; the next launch then tries Vulkan, watched
+  as before. After a driver update that is what a person does to try again. The record is not a setting:
+  importing an earlier version's settings leaves it behind (``settings_import.PREVIOUS_LEFT_OUT``).
+* ``--gpu-backend`` on the command line is never overridden and leaves no record. Background launches are not
+  watched. macOS has one backend and nothing to fall back to.
+
+What this does not do, stated plainly:
+
+* **It cannot tell why a counted start died.** A death while the GPU is initialized, or in the main loop before
+  the first frame, reads as a failed Vulkan start whatever caused it: a driver crash, but also the person ending a
+  start by force then, a power cut, or a window that starts minimized on Windows (it presents no frame; closing
+  it normally is fine, but logging off or ending it from Task Manager before it is first shown leaves the record).
+  Such a death flips the machine to OpenGL once, the alert says so, and the person chooses Vulkan again in
+  Preferences > System.
+* **A driver crash on the main thread while start-up scripts run is missed**, by the rule above: an add-on that
+  draws or compiles a shader as it registers, and the driver crashing inside that call. So is a death in that
+  time that is no crash (the process is ended from outside). The crash log of #166510 holds no Python frames,
+  which fits a crash that is counted, on the main thread outside that time or on another thread at any time;
+  without the hardware this is not proven.
+* **A native crash on a thread an add-on started while it loads counts as the GPU's**, the other side of the
+  same rule: one fallback to OpenGL, with the alert.
+* **A crash after the first frame** stays with the offer above.
+* **OpenGL itself is broken on the hardware of #166510.** On those older Intel graphics Blender 5.3's OpenGL draws
+  garbled interface text (upstream #166428, open, no fix yet). There the fallback gives an app that starts and
+  whose text is hard to read; without it the app does not start at all.
+* **An explicit OpenGL choice made in 1.0.x cannot be kept as such.** Its stored value is the 1.0.x default, so the
+  two honest behaviours are: every earlier preference file moves to Vulkan, as in Blender (shipped), or every
+  earlier file keeps its backend and only new installs start with Vulkan. One constant chooses,
+  ``ANGELO_EARLIER_PREFERENCES_KEEP_GPU_BACKEND`` (``versioning_angelo_gpu_backend.hh``); its rule is tested for
+  both values (``versioning_angelo_gpu_backend_test.cc``). The one line that applies it in
+  ``versioning_userdef.cc`` is compiled out on macOS and no suite starts from a preference file older than 5.3,
+  so that line is checked by reading only. The watch above is needed under either.
+
+``wm_angelo_gpu_startup_test.cc`` covers the rule, the record's text and its file (who holds it, emptied before it
+is let go, the crash handler's write, a file that cannot be opened), what a crash leaves by phase and thread, how
+a thread is told from another, and a record that cannot be taken. No CI job builds the GTests on Windows; the
+first twelve and the three of ``versioning_angelo_gpu_backend_test.cc`` were built and run there once by hand, on
+the first Windows GTest build (2026-11-14, a Windows Server VM), and all run on macOS with every proof.
+``test_blender_gpu_startup_fallback`` runs twenty-one real launches on a machine with both backends (Windows,
+Linux). Three of them crash natively: inside the first frame's draw, and while the start-up script runs, on the
+main thread and on another. One meets a failed record whose file another program holds. Each crash leaves
+Blender's crash log, which the suite keeps beside its receipts (``native_crash.keep_crash_logs``): the suite
+runner counts any ``*.crash.txt`` left in a suite's folder as a crash of the run.
 
 The crash-report endpoint
 -------------------------

@@ -9,6 +9,7 @@ the result's words, and Angelo's own add-on staying unregistered in the child. T
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import platform_env
 
 import json
 import os
@@ -43,16 +44,18 @@ class FolderTests(unittest.TestCase):
     def test_the_window_default_folder_from_the_account_never_an_apps_variable(self):
         environ = {"HOME": "/h", "CFFIXED_USER_HOME": "/fixed", "BLENDER_USER_CONFIG": "/evil",
                    "BLENDER_USER_RESOURCES": "/evil", "XDG_CONFIG_HOME": "/evil"}
+        from angelo_agent.cli_client import BLENDER_SERIES as series   # This build's per-version folder.
         self.assertEqual(preferences.person_config_directory(environ, "darwin"),
-                         Path("/fixed/Library/Application Support/Angelo/5.2/config"))
-        self.assertEqual(preferences.person_config_directory(environ, "linux"), Path("/h/.config/angelo/5.2/config"))
+                         Path("/fixed/Library/Application Support/Angelo", series, "config"))
+        self.assertEqual(preferences.person_config_directory(environ, "linux"), Path("/h/.config/angelo", series, "config"))
 
     @HEADLESS_ONLY
     def test_macos_ignores_home_as_blenders_lookup_does(self):
+        from angelo_agent.cli_client import BLENDER_SERIES as series   # This build's per-version folder.
         import pwd
         account = pwd.getpwuid(os.getuid()).pw_dir
         self.assertEqual(preferences.person_config_directory({"HOME": "/elsewhere"}, "darwin"),
-                         Path(account) / "Library/Application Support/Angelo/5.2/config",
+                         Path(account, "Library/Application Support/Angelo", series, "config"),
                          "macOS: Blender's lookup ignores HOME, so the launcher does too")
 
 
@@ -555,14 +558,16 @@ class OwnAddonTests(unittest.TestCase):
     startup; the full add-on must not run there. The early return is inert in a window: pinned for every branch."""
 
     MODULES = ("tls_distrust", "data_migration", "product_env", "state_migration", "console", "studio", "ui",
-               "about_card", "app_notices", "font_watch", "job_ui", "refused_saves", "prefs_reload", "pycache_retention",
+               "about_card", "app_notices", "font_watch", "job_ui", "edit_tool_status", "refused_saves", "prefs_reload",
+               "pycache_retention",
                "settings_import_ui", "studio_assets_host", "asset_shelf_add", "chat_launcher", "chat_toggle",
                "media_shelf", "studio_toggle", "shelf_empty", "export_baked", "web_export_ui", "web_shader_ui",
                "engine_link_ui", "game_physics_ui", "media_shelf_cover",
                "shot_capture_ui", "codex_runtime", "session_rail_input", "timer_jobs", "layout_hold", "document_identity",
                "render_engines", "ai_render_card", "bake_maps_card", "render_region", "photo_drop", "library_ui",
                "tension_map", "uv_checker", "skeleton_check_ui", "engine_suggest_ui", "director_select_through",
-               "feedback_ui", "change_clock", "restored_document", "tool_specs", "write_turn", "fab_convert")
+               "feedback_ui", "change_clock", "restored_document", "tool_specs", "write_turn", "fab_convert",
+               "version_carry_over", "learn_ui", "script_confinement_blender", "grant_hints")
 
     def run_add_on(self, background, environ):
         calls = []
@@ -573,7 +578,7 @@ class OwnAddonTests(unittest.TestCase):
         saved = dict(os.environ)
         with patch.dict(sys.modules, {"bpy": fake, "_console_angelo": None, "_console_angelo_genai": None,
                                       **{"angelo_agent." + name: stub for name, stub in stubs.items()}}), \
-                patch.dict(os.environ, environ, clear=True):
+                platform_env.cleared(environ):
             missing = object()
             before = {name: getattr(angelo_agent, name, missing) for name in stubs}
             for name, stub in stubs.items():
@@ -598,18 +603,22 @@ class OwnAddonTests(unittest.TestCase):
             for expected in ("tls_distrust.install", "timer_jobs.register", "layout_hold.register", "ui.register",
                              "document_identity.register",
                              "app_notices.register",
-                             "job_ui.register", "refused_saves.register", "pycache_retention.schedule", "studio_assets_host.register",
+                             "job_ui.register", "edit_tool_status.register", "refused_saves.register",
+                             "pycache_retention.schedule", "studio_assets_host.register",
                              "shelf_empty.register", "export_baked.register", "web_shader_ui.register",
                              "web_export_ui.register",
                              "shot_capture_ui.register", "photo_drop.register", "tension_map.register",
                              "uv_checker.register", "skeleton_check_ui.register", "engine_suggest_ui.register",
-                             "director_select_through.register", "fab_convert.register"):
+                             "director_select_through.register", "fab_convert.register", "learn_ui.register",
+                             "version_carry_over.carry_over_on_startup"):
                 self.assertIn(expected, registered, environ)
             for expected in ("shelf_empty.unregister", "web_export_ui.unregister", "shot_capture_ui.unregister",
-                             "ui.unregister", "refused_saves.unregister", "photo_drop.unregister", "tension_map.unregister", "uv_checker.unregister",
+                             "ui.unregister", "refused_saves.unregister", "photo_drop.unregister",
+                             "tension_map.unregister", "uv_checker.unregister", "edit_tool_status.unregister",
                              "skeleton_check_ui.unregister",
                              "codex_runtime.close_all", "layout_hold.unregister", "timer_jobs.unregister",
-                             "engine_suggest_ui.unregister", "director_select_through.unregister"):
+                             "engine_suggest_ui.unregister", "director_select_through.unregister",
+                             "learn_ui.unregister"):
                 self.assertIn(expected, unregistered, environ)
 
     def test_a_background_process_without_the_variable_registers_normally(self):

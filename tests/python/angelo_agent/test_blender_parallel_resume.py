@@ -68,7 +68,7 @@ def run_checks():
 
     def recorded_chat(lead):
         chat = made(lead)
-        chat.send = lambda text, observation=None, recovery_evidence=None, chat=chat: sent.setdefault(
+        chat.send = lambda text, observation=None, recovery_evidence=None, host_kind=None, chat=chat: sent.setdefault(
             chat.state["id"], []).append(text)
         return chat
     worker_sessions._new_chat = recorded_chat
@@ -115,7 +115,7 @@ def run_checks():
             primitive("CYLINDER", name + " Body", "body", radius=0.1, depth=0.2, location=[0, 0, 0.1])]))
         call = built.wait_for_approval(key, answers)
         with bpy.context.temp_override(window=window):
-            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=session_id)
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=session_id)
         result = built.wait(answers)
         chat.close_external_read(built.fence)
         check(name + "_builds_its_part", result.get("status") == "committed", result)
@@ -158,7 +158,7 @@ def run_checks():
 
     def apply(target, call):
         with bpy.context.temp_override(window=window):
-            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
     deadline = time.perf_counter() + 60
     while not answers and time.perf_counter() < deadline:
         lead.pump_events()
@@ -216,7 +216,7 @@ def run_checks():
 
     def unseen(target, call):   # The approve operator for an automatic call only: a card would wait for the person.
         with bpy.context.temp_override(window=window):
-            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
     deadline = time.perf_counter() + 60
     while not answers and time.perf_counter() < deadline:
         lead.pump_events()

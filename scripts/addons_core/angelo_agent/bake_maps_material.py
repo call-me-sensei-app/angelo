@@ -20,6 +20,7 @@ from pathlib import Path
 
 import bpy
 
+from . import color_spaces
 from .bake_maps_spec import DIRECTX
 
 GAP = 300.0
@@ -41,7 +42,7 @@ def _image(folder, entries, name, colour, image_format):
         image.colorspace_settings.is_data = True
         image.alpha_mode = 'CHANNEL_PACKED'   # A packed map's A is data (smoothness), never alpha.
     elif image_format != "OPEN_EXR":   # An OpenEXR colour map holds scene-linear values, Angelo's default for it.
-        image.colorspace_settings.name = "sRGB"
+        color_spaces.mark_srgb(image.colorspace_settings)
     return image
 
 

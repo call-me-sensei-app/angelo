@@ -2,11 +2,17 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
+/** \file
+ * \ingroup bke
+ */
+
+#include "BKE_angelo_writer_inputs.hh"
 #include "BKE_bake_geometry_nodes_modifier.hh"
 #include "BKE_bake_geometry_nodes_modifier_pack.hh"
 #include "BKE_library.hh"
 #include "BKE_main.hh"
 #include "BKE_packedFile.hh"
+#include "BKE_path_templates.hh"
 #include "BKE_report.hh"
 
 #include "DNA_modifier_types.h"
@@ -16,13 +22,14 @@
 
 #include "BLI_fileops.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 
 #include "DEG_depsgraph.hh"
 
 namespace blender::bke::bake {
 
 static Vector<NodesModifierBakeFile> pack_files_from_directory(const StringRefNull directory,
+                                                               const StringRef required_suffix,
                                                                ReportList *reports)
 {
   if (!BLI_is_dir(directory.c_str())) {
@@ -39,7 +46,7 @@ static Vector<NodesModifierBakeFile> pack_files_from_directory(const StringRefNu
     const direntry &dir_entry = dir_entries[i];
     const StringRefNull dir_entry_path = dir_entry.path;
     const StringRefNull name = dir_entry.relname;
-    if (FILENAME_IS_CURRPAR(name.c_str())) {
+    if (FILENAME_IS_CURRPAR(name.c_str()) || !name.endswith(required_suffix)) {
       continue;
     }
     NodesModifierBakeFile bake_file;
@@ -55,14 +62,15 @@ static Vector<NodesModifierBakeFile> pack_files_from_directory(const StringRefNu
 
 NodesModifierPackedBake *pack_bake_from_disk(const BakePath &bake_path, ReportList *reports)
 {
+  /* Other files in this directory are not frames, see #find_sorted_meta_files. */
   const Vector<NodesModifierBakeFile> meta_bake_files = pack_files_from_directory(
-      bake_path.meta_dir, reports);
+      bake_path.meta_dir, ".json", reports);
   if (meta_bake_files.is_empty()) {
     return nullptr;
   }
 
   const Vector<NodesModifierBakeFile> blob_bake_files = pack_files_from_directory(
-      bake_path.blobs_dir, reports);
+      bake_path.blobs_dir, "", reports);
 
   NodesModifierPackedBake *packed_bake = MEM_new<NodesModifierPackedBake>(__func__);
   packed_bake->meta_files_num = meta_bake_files.size();
@@ -91,8 +99,12 @@ bool unpack_bake_to_disk(const NodesModifierPackedBake &packed_bake,
       return false;
     }
     fstream fs(file_path, std::ios::out | std::ios::binary);
-    fs.write(static_cast<const char *>(bake_file.packed_file->data), bake_file.packed_file->size);
-    if (fs.bad()) {
+    if (bake_file.packed_file) {
+      fs.write(static_cast<const char *>(bake_file.packed_file->data),
+               bake_file.packed_file->size);
+    }
+    fs.close();
+    if (fs.fail()) {
       BKE_reportf(reports, RPT_ERROR, "Cannot write file: %s", file_path);
       return false;
     }
@@ -139,24 +151,9 @@ PackGeometryNodesBakeResult pack_geometry_nodes_bake(Main &bmain,
   return PackGeometryNodesBakeResult::Success;
 }
 
-static bool directory_is_empty(const StringRefNull path)
-{
-  direntry *entries = nullptr;
-  const int entries_num = BLI_filelist_dir_contents(path.c_str(), &entries);
-  BLI_SCOPED_DEFER([&]() { BLI_filelist_free(entries, entries_num); });
-  for (const int i : IndexRange(entries_num)) {
-    const direntry &entry = entries[i];
-    if (FILENAME_IS_CURRPAR(entry.relname)) {
-      continue;
-    }
-    return false;
-  }
-  return true;
-}
-
 static bool disk_bake_exists(const bke::bake::BakePath &path)
 {
-  return !directory_is_empty(path.meta_dir);
+  return !find_sorted_meta_files(path.meta_dir).is_empty();
 }
 
 UnpackGeometryNodesBakeResult unpack_geometry_nodes_bake(Main &bmain,
@@ -176,25 +173,47 @@ UnpackGeometryNodesBakeResult unpack_geometry_nodes_bake(Main &bmain,
 
   DEG_id_tag_update(&object.id, ID_RECALC_GEOMETRY);
 
+  /* Angelo: a path resolved first, and the bake's own folder changed to a local one only once the confinement allows
+   * the unpack: a refused unpack leaves the bake exactly as it was (the re-read of cf5befe2877, M2's class). */
+  struct Resolved {
+    bake::BakePath path;
+    std::optional<std::string> local_directory; /* Adopted as the bake's folder when the unpack may go ahead. */
+  };
   auto prepare_local_path = [&]() {
     const std::string directory = bake::get_default_node_bake_directory(
         bmain, object, nmd, bake.id);
-    bake.flag |= NODES_MODIFIER_BAKE_CUSTOM_PATH;
-    MEM_SAFE_DELETE(bake.directory);
-    bake.directory = BLI_strdup(directory.c_str());
     const char *base_path = ID_BLEND_PATH(&bmain, &object.id);
     char absolute_dir[FILE_MAX];
     STRNCPY(absolute_dir, directory.c_str());
     BLI_path_abs(absolute_dir, base_path);
-    return bake::BakePath::from_single_root(absolute_dir);
+    return Resolved{bake::BakePath::from_single_root(absolute_dir), directory};
   };
   auto prepare_original_path = [&]() {
     if (const std::optional<bake::BakePath> bake_path = bake::get_node_bake_path(
             bmain, object, nmd, bake.id))
     {
-      return *bake_path;
+      return Resolved{*bake_path, std::nullopt};
     }
     return prepare_local_path();
+  };
+  auto adopt = [&](const Resolved &resolved) {
+    if (resolved.local_directory) {
+      bake.flag |= NODES_MODIFIER_BAKE_CUSTOM_PATH;
+      MEM_SAFE_DELETE(bake.directory);
+      bake.directory = BLI_strdup(BKE_path_template_escape(*resolved.local_directory).c_str());
+    }
+  };
+  /* Angelo: unpacking removes and writes the bake's folders, named by data (a script may have set the modifier's
+   * folder): judged by what names them first (BLI_angelo_writers.hh; the re-read of 0a0d4e95743, MUST-3). */
+  auto angelo_refused = [&](const bake::BakePath &bake_path) {
+    const AngeloWriterInputs inputs = BKE_angelo_bake_inputs(object, nmd);
+    for (const std::string *folder : {&bake_path.meta_dir, &bake_path.blobs_dir}) {
+      if (const char *refusal = angelo_writers::refusal_folder(folder->c_str(), inputs)) {
+        BKE_reportf(reports, RPT_ERROR, "%s: '%s'", refusal, folder->c_str());
+        return true;
+      }
+    }
+    return false;
   };
   auto delete_bake_on_disk = [&](const bake::BakePath &bake_path) {
     BLI_delete(bake_path.meta_dir.c_str(), true, true);
@@ -212,7 +231,12 @@ UnpackGeometryNodesBakeResult unpack_geometry_nodes_bake(Main &bmain,
 
   switch (how) {
     case PF_USE_ORIGINAL: {
-      const bake::BakePath bake_path = prepare_original_path();
+      const Resolved resolved = prepare_original_path();
+      const bake::BakePath &bake_path = resolved.path;
+      if (angelo_refused(bake_path)) {
+        return UnpackGeometryNodesBakeResult::Error;
+      }
+      adopt(resolved);
       if (!disk_bake_exists(bake_path)) {
         delete_bake_on_disk(bake_path);
         if (!bake::unpack_bake_to_disk(*bake.packed, bake_path, reports)) {
@@ -223,7 +247,12 @@ UnpackGeometryNodesBakeResult unpack_geometry_nodes_bake(Main &bmain,
       return finalize_on_success();
     }
     case PF_WRITE_ORIGINAL: {
-      const bake::BakePath bake_path = prepare_original_path();
+      const Resolved resolved = prepare_original_path();
+      const bake::BakePath &bake_path = resolved.path;
+      if (angelo_refused(bake_path)) {
+        return UnpackGeometryNodesBakeResult::Error;
+      }
+      adopt(resolved);
       delete_bake_on_disk(bake_path);
       if (!bake::unpack_bake_to_disk(*bake.packed, bake_path, reports)) {
         return UnpackGeometryNodesBakeResult::Error;
@@ -232,7 +261,12 @@ UnpackGeometryNodesBakeResult unpack_geometry_nodes_bake(Main &bmain,
       return finalize_on_success();
     }
     case PF_USE_LOCAL: {
-      const bake::BakePath bake_path = prepare_local_path();
+      const Resolved resolved = prepare_local_path();
+      const bake::BakePath &bake_path = resolved.path;
+      if (angelo_refused(bake_path)) {
+        return UnpackGeometryNodesBakeResult::Error;
+      }
+      adopt(resolved);
       if (!disk_bake_exists(bake_path)) {
         delete_bake_on_disk(bake_path);
         if (!bake::unpack_bake_to_disk(*bake.packed, bake_path, reports)) {
@@ -243,7 +277,12 @@ UnpackGeometryNodesBakeResult unpack_geometry_nodes_bake(Main &bmain,
       return finalize_on_success();
     }
     case PF_WRITE_LOCAL: {
-      const bake::BakePath bake_path = prepare_local_path();
+      const Resolved resolved = prepare_local_path();
+      const bake::BakePath &bake_path = resolved.path;
+      if (angelo_refused(bake_path)) {
+        return UnpackGeometryNodesBakeResult::Error;
+      }
+      adopt(resolved);
       delete_bake_on_disk(bake_path);
       if (!bake::unpack_bake_to_disk(*bake.packed, bake_path, reports)) {
         return UnpackGeometryNodesBakeResult::Error;

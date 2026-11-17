@@ -22,7 +22,7 @@ from bpy.props import EnumProperty
 from bpy.types import Operator, Menu
 from bpy.app.handlers import persistent
 
-from . import director_layout, layout_hold, live_windows, timer_jobs
+from . import director_layout, layout_hold, live_windows, save_failure, timer_jobs
 from .director_layout import is_director, configure, build, restore
 from .studio_state import read_json, atomic_json
 from .input_policy import layout_blocking
@@ -83,7 +83,9 @@ def request_mode(window, mode, *, persist=True):
                 try:
                     atomic_json(mode_path(), {"mode": mode})
                 except OSError as error:
-                    ui.get_controller().emit("message", {"role": "error", **notice("Mode changed, but the preference could not be saved: {error}", error=str(error))})
+                    # Why and what to do, translated with the row: never the system's text, which holds the
+                    # settings folder's path (save_failure).
+                    ui.get_controller().emit("message", {"role": "error", **notice("Mode changed, but the preference could not be saved: {error}", error=save_failure.cause(error))})
             return None
         except Exception as error:
             last_error = str(error)
@@ -125,6 +127,7 @@ class ANGELO_OT_director_toggle(Operator):
 
 class ANGELO_OT_director_toggle_viewport(Operator):
     """1.0's Ctrl+Option+D over the 3D view (``shortcuts.DIRECTOR_VIEWPORT``): never shown, so never in search."""
+    bl_description = ""   # No tooltip. Blender shows a class docstring as one; this one is a note for developers.
     bl_idname = "angelo.director_toggle_viewport"
     bl_label = "Toggle Director Mode"
     bl_options = {'INTERNAL'}

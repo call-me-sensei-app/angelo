@@ -28,11 +28,12 @@ import time
 import uuid
 from pathlib import Path
 
-from . import launcher_records, shared_replace
+from . import launcher_records, owned_paths, shared_replace
 from .external_cli_protocol import read_key, valid_label
 from .team_org_policy import STRICTEST, read_regular
 from .team_view import org_policy
-from .tool_specs import BOUNDED_MUTATIONS, TOOL_MAP, WITHHELD_TOOLS
+from .tool_specs import BOUNDED_MUTATIONS, READ_ONLY_TOOLS, TOOL_MAP, WITHHELD_TOOLS
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 # What the person can allow per app. Reading is always on: an app that may do nothing cannot be useful.
 READ, EDIT, PYTHON, TASKS = "read", "edit", "python", "tasks"
@@ -60,21 +61,22 @@ READ_TOOLS = frozenset({
 })
 # Typed, bounded scene edits (each one Undo step), background jobs (renders, bakes, exports; always a card), the
 # web export (a .glb in the workspace, never over a file; the loopback preview), the engine preflight's typed fixes
-# (always a card, one Undo step) and acting on an engine link the person turned on (push, save, close; turning it on
-# stays angelo_app_feature's, never an app's).
+# (always a card, one Undo step), acting on an engine link the person turned on (push, save, close; turning it on
+# stays angelo_app_feature's, never an app's) and a download into assets/downloads (always the window's card).
 # Generation Flows are Media Studio work (paid generation), not scene edits; a merge of parallel workers' parts is
 # the lead chat's own (worker_merge), never a connected app's.
 EDIT_TOOLS = frozenset(BOUNDED_MUTATIONS - {"angelo_flow_build", "angelo_flow_choose", "angelo_workers_start",
                                             "angelo_workers_merge"}) | {"angelo_job_start", "angelo_web_export",
                                                                         "angelo_web_preview", "angelo_engine_fix",
-                                                                        "angelo_engine_link", "angelo_library_import"}
+                                                                        "angelo_engine_link", "angelo_library_import",
+                                                                        "angelo_download"}
 PYTHON_TOOLS = frozenset({"angelo_execute_python"})
 # A connected app's script file (external_work, script_files): offered with the python level, never an Angelo tool.
 SCRIPT_FILE_TOOL = "angelo_run_script_file"
 LEVEL_TOOLS = {READ: READ_TOOLS, EDIT: EDIT_TOOLS, PYTHON: PYTHON_TOOLS, TASKS: frozenset()}
 
 # A tool annotation change must not silently widen what reading allows.
-if any(not TOOL_MAP[name]["annotations"]["readOnlyHint"] for name in READ_TOOLS - WITHHELD_TOOLS):
+if any(name not in READ_ONLY_TOOLS for name in READ_TOOLS - WITHHELD_TOOLS):
     raise RuntimeError("The external read level may contain only read-only tools")
 if not (READ_TOOLS | EDIT_TOOLS | PYTHON_TOOLS) <= set(TOOL_MAP) | WITHHELD_TOOLS:
     raise RuntimeError("An external level names a tool Angelo does not have")
@@ -100,7 +102,7 @@ NEVER_FOR_APPS = frozenset(name for name in TOOL_MAP if name.startswith(("angelo
 # project; Python and accepting a preview need a person's review (an app's preview acceptance always opens the human
 # review in the window).
 WINDOW_ONLY_EDITS = frozenset({"angelo_job_start", "angelo_web_export", "angelo_web_preview", "angelo_engine_fix",
-                               "angelo_engine_link", "angelo_library_import"})
+                               "angelo_engine_link", "angelo_library_import", "angelo_download"})
 HEADLESS_TOOLS = frozenset((READ_TOOLS | EDIT_TOOLS) - WINDOW_ONLY_EDITS - {"angelo_job_cancel", "angelo_accept_preview"})
 if not EDIT_TOOLS - WINDOW_ONLY_EDITS <= BOUNDED_MUTATIONS:
     raise RuntimeError("Headless edits may contain only the Auto lane's bounded typed edits")
@@ -132,6 +134,7 @@ OWED = launcher_records.OWED
 def _write_new(temporary, encoding, write, target):
     """Fill the new owner-only file ``temporary`` with ``write(handle)``, then replace ``target`` with it (readers
     share delete, ``shared_replace``); on any failure the temporary file is removed and the error raised."""
+    owned_paths.require_writable(target), owned_paths.require_writable(temporary)   # C first, for both names.
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
         with os.fdopen(descriptor, "w", encoding=encoding) as handle:
@@ -170,6 +173,9 @@ def write_access(state_directory, allowed, claimed=(), intent=0.0):
     strictest = {"version": 1, "allow_local_cli": False, "intent": intent}
     record = launcher_records.weigh(root, ACCESS_FILE, record, claimed, launcher_records.stricter_access, strictest)
     launcher_records.write(root, ACCESS_FILE, record, [path for path, _other in claimed])
+
+
+write_access = _grant_guard.entry(write_access, widens="allowed")
 
 
 def read_access(state_directory):
@@ -241,7 +247,7 @@ class AppRegistry:
         return output
 
     def _save(self, apps):
-        self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(self.root).mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(self.root, 0o700)
         temporary = self.path.with_name("clients." + uuid.uuid4().hex + ".tmp")
         _write_new(temporary, "utf-8", lambda handle: json.dump(
@@ -256,7 +262,7 @@ class AppRegistry:
         name = name or DEFAULT_CLIENT[app]
         if not valid_label(name):
             raise ValueError("Use a client name of 1-32 characters from [A-Za-z0-9._-]")
-        self.keys.mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(self.keys).mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(self.keys, 0o700)
         key = self.keys / name
         temporary = key.with_name("." + name + "." + uuid.uuid4().hex + ".tmp")
@@ -283,6 +289,7 @@ class AppRegistry:
         apps = self.load()
         known = apps.pop(name, None) is not None
         try:
+            owned_paths.require_writable(self.keys)
             (self.keys / name).unlink()
         except FileNotFoundError:
             pass
@@ -312,3 +319,7 @@ class AppRegistry:
             if key is not None:
                 output[name] = (frozenset(record["levels"]), key)
         return output
+
+
+_grant_guard.entry_methods(AppRegistry, "connect", "set_levels")
+_grant_guard.entry_methods(AppRegistry, "disconnect")   # Never a script's: ACCOUNT_OPERATORS.

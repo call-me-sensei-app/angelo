@@ -24,18 +24,24 @@ Phases (``--native-phase``, one window process each):
    chosen, and the result notice follows the welcome; Quick Favorites are opened and captured.
 2. ``restart``: the same home again. Everything persisted, the startup script ran, the start panel shows.
 3. ``none``: no Blender folder. The row explains and cannot be turned on; the menu entry is disabled.
-4. ``broken`` and ``broken-restart``: an enabled add-on that fails to register. One calm line names it; startup and
-   the agent are unaffected, then and on the next launch.
+4. ``broken`` and ``broken-restart`` (``settings_import_broken_phases``): an enabled add-on that sets things up and
+   then fails to register. The import's notice counts it; it stays enabled, what it set up stays
+   usable, and the failed add-ons' card names it with Turn off; startup and the agent are unaffected. The next start
+   names it again; a click on Turn off removes it from the preferences and saves them (``angelo_addon_failures``);
+   the start after has it off, nothing of it loaded and no card (``broken-turned-off``).
 5. ``menu``: an existing Angelo user (saved preferences) imports from File > Defaults: the confirmation card
    (English and Arabic, captured) says where from, what it replaces, what it keeps and the backup; Import; then Undo
    import from the notice puts Angelo's own preferences back exactly and removes what came over.
-6. ``upgrade``: an earlier Angelo version's folder (and a Blender one) exist: the card offers "Use my earlier Angelo
-   settings" from Angelo 5.1, and Blender's own import (``preferences.copy_prev``) runs with Angelo kept enabled.
-7. ``crashing-import``, ``crashing-safe`` and ``crashing-restart`` (group ``crashing``; doc/angelo/app_identity.rst,
-   "A start that did not finish"): Blender's folder enables an add-on that crashes natively as it loads in Angelo
-   (``ANGELO_QA_CRASH_ON_LOAD``). The setup card's import must end in that crash; the next launch must open with
-   every third-party add-on off and one notice naming them; the one after must open normally with them still off.
-   Every launch of the group runs (and is reported) whatever an earlier one did.
+6. ``upgrade``: an earlier Angelo version's folder (and a Blender one) exist: an update, so no setup card shows; the
+   earlier settings come over on their own (Blender's own import, ``preferences.copy_prev``, with Angelo kept enabled) and
+   one notice says the update is ready (``version_carry_over_ui``).
+7. ``crashing-import``, ``crashing-safe``, ``crashing-restart``, ``crashing-start`` and ``crashing-start-safe``
+   (group ``crashing``; doc/angelo/app_identity.rst, "A start that did not finish"): Blender's folder enables an
+   add-on that crashes natively as it loads in Angelo (``ANGELO_QA_CRASH_ON_LOAD``). The setup card's import must end
+   in that crash; the next launch must open with every third-party add-on off and one notice leading with it; the
+   one after must open normally with them still off, and enables it again. The normal start after that must crash
+   as it enables add-ons (before any phase runs), and the next launch must lead its notice with it again. Every
+   launch of the group runs (and is reported) whatever an earlier one did.
 
 Receipts: ``settings-import.json`` and one ``<phase>.json`` per phase, with the PNGs beside them. No provider,
 account, network (``--offline-mode``) or real user folder is used.
@@ -46,6 +52,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
 
 import argparse
+import crash_dialog
 import hashlib
 import json
 import os
@@ -56,7 +63,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 EXPECTED_FAILURE = "Broken Tool fails to register (fixture)"
-GROUPS = {"switcher": 2, "fresh": 1, "broken": 2, "menu": 1, "upgrade": 1, "crashing": 3}   # Launches per group.
+GROUPS = {"switcher": 2, "fresh": 1, "broken": 3, "menu": 1, "upgrade": 1, "crashing": 5}   # Launches per group.
 CRASH = {"ANGELO_QA_CRASH_ON_LOAD": "1"}   # The crashing group's add-on crashes in each of its launches.
 
 
@@ -153,7 +160,8 @@ def run_host():
         return home
 
     def phase(name, home, sandbox, allowed_failure=False, extra=None, crashes=False, keep_going=False):
-        """One window launch. ``crashes``: it must end in the native crash, after the phase recorded its steps."""
+        """One window launch. ``crashes``: it must end in the native crash, after the phase recorded its steps;
+        ``"at start"``: before any phase ran (as Blender enables the add-ons), so with no receipt."""
         env = environment(home, dict(extra or {}, ANGELO_QA_DIR=str(out)))
         folder = blender_folder(home, env)
         before = fingerprint(folder) if folder.exists() else None
@@ -161,21 +169,26 @@ def run_host():
                    "1440", "900", "--offline-mode", "--python", str(Path(__file__).resolve()),
                    "--", "--native-phase", name, "--fixture-root", str(out), "--sandbox", str(sandbox)]
         output = out / (name + ".out")   # Not *.log: the broken add-on's traceback is expected (checked below).
-        with output.open("w") as log:
-            result = subprocess.run(command, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=240)
+        with output.open("w") as log:   # On Windows a windowed crash waits on its dialog until it is closed.
+            process = subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT)
+            returncode, dialog = crash_dialog.wait(
+                process, 240, record=lambda window: crash_dialog.record(window, out / (name + "-crash-dialog.png")))
+        result = subprocess.CompletedProcess(command, returncode)
         text = output.read_text(errors="replace")
         receipt = out / (name + ".json")
         data = json.loads(receipt.read_text()) if receipt.exists() else {"phase": name, "error": "no receipt"}
         findings = [f for f in native_suite_checks.scan_log(text)
                     if not (allowed_failure and f["kind"] == "python_traceback" and EXPECTED_FAILURE in f["line"])]
         host = {"blenders_folder_unchanged": before is None or fingerprint(folder) == before}
-        if crashes:   # The receipt holds the steps up to the click; the process never reached its own end.
+        if crashes == "at start":   # Blender enables add-ons before it runs --python: no phase, no receipt.
+            host.update(ended_in_a_crash=result.returncode != 0, crashed_before_any_phase=not receipt.exists())
+        elif crashes:   # The receipt holds the steps up to the click; the process never reached its own end.
             host.update(ended_in_a_crash=result.returncode != 0 and not data.get("finished"),
                         reached_the_crashing_step=bool(data.get("checks")) and all(data["checks"].values()))
         else:
             host.update(exit_code_zero=result.returncode == 0, no_unexpected_failures_in_output=not findings)
             host["phase_passed"] = bool(data.get("success"))
-        data.update(exit_code=result.returncode, findings=findings, host=host)
+        data.update(exit_code=result.returncode, findings=findings, host=host, crash_dialog=dialog)
         data["success"] = all(host.values())
         report["phases"].append(data)
         if not data["success"] and not keep_going:
@@ -208,6 +221,7 @@ def run_host():
             home = make_profile("broken", "broken")
             phase("broken", home, "broken", allowed_failure=True)
             phase("broken-restart", home, "broken", allowed_failure=True)
+            phase("broken-turned-off", home, "broken")
         if "menu" in groups:
             home = make_profile("menu", "full")
             phase("menu", home, "menu")
@@ -215,7 +229,8 @@ def run_host():
             upgrade()
         if "crashing" in groups:
             home = make_profile("crashing", "crashing")
-            for name, crashes in (("crashing-import", True), ("crashing-safe", False), ("crashing-restart", False)):
+            for name, crashes in (("crashing-import", True), ("crashing-safe", False), ("crashing-restart", False),
+                                  ("crashing-start", "at start"), ("crashing-start-safe", False)):
                 phase(name, home, "crashing", extra=CRASH, crashes=crashes, keep_going=True)
             # The import's native crash left Blender's crash log, as a person's would. It is this group's evidence,
             # kept beside the receipts under a name the suite runner does not read as a crash of this run
@@ -230,7 +245,7 @@ def run_host():
             imported = next(item for item in report["phases"] if item.get("phase") == "crashing-import")
             imported["host"]["left_a_native_crash_log"] = bool(kept)
             imported["success"] = all(imported["host"].values())
-        expected = sum(GROUPS.values())
+        expected = sum(GROUPS.get(group, 0) for group in groups)   # The launches of the groups chosen (--groups).
         report["success"] = len(report["phases"]) == expected and all(item["success"] for item in report["phases"])
     finally:
         (out / "settings-import.json").write_text(json.dumps(report, indent=2, default=str))
@@ -248,6 +263,7 @@ if "--native-phase" not in sys.argv:
 
 sys.path.insert(0, str(HERE))
 import settings_import_phases  # noqa: E402  (the in-app half: Blender only)
+import settings_import_broken_phases  # noqa: E402,F401  (adds the broken group's phases)
 import settings_import_crash_phases  # noqa: E402,F401  (adds the crashing group's phases)
 
 settings_import_phases.start()

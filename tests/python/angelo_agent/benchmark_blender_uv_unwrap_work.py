@@ -33,6 +33,8 @@ sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import action_mesh  # noqa: E402
 from angelo_agent.action_kernels import StagedActionContext, apply_operation  # noqa: E402
 from angelo_agent.action_operator_spec import WORK_BOUNDS  # noqa: E402
+from angelo_agent import action_operator_spec  # noqa: E402
+import sealed_tables  # noqa: E402
 
 
 def stage():
@@ -79,7 +81,8 @@ def main():
     parser.add_argument("--json")
     parser.add_argument("--sizes", default="5000,20000,80000")
     args = parser.parse_args(argv)
-    WORK_BOUNDS["uv.unwrap"] = float("inf")  # Measure the unwrap, not the bound that refuses it.
+    # Measure the unwrap, not the bound that refuses it (the table is sealed: replaced, never edited).
+    sealed_tables.start(action_operator_spec, "WORK_BOUNDS", {**WORK_BOUNDS, "uv.unwrap": float("inf")})
     if hasattr(action_mesh, "UNWRAP_BOUND"):
         action_mesh.UNWRAP_BOUND = float("inf")
     rows = []

@@ -68,6 +68,8 @@ class ToolCall:
     chat_id: str = ""  # The chat that asked for it: what its card reads is that chat's own (worker_approval).
     merge_waits: bool = False  # An approved merge stopped at its run behind its chat's own bound edit (merge_hold).
     binds_after_merge: bool = False  # A′: an edit not bound yet, waiting for its chat's earlier merge (merge_hold).
+    tool_waits: bool = False  # Stopped at its run while the person's editing tool ran; the pump runs it after (edit_tool_hold).
+    waited_for_tool: str = ""  # The person's tool it waited for, told to the model in its result (edit_tool_hold.noted).
     # The model step that wrote it, when its runtime names one (model_steps.record_call_step: a yielded
     # Codex exec cell's later call keeps its cell's step); None: the step it is checked in. Host-only.
     model_step: object = None
@@ -246,3 +248,17 @@ def expire_media_job(controller, call):
         return False
     controller.finish_tool(call, result if result is not None else dict(stood, expired=True))
     return True
+
+
+def native_job_status(self, call_id):
+    """A detached progress descriptor; never expose backend/stage RNA IDs (``Controller.native_job_status``)."""
+    from .request_recovery import recovery_value
+    call = self.pending.get(call_id)
+    job = self.native_jobs.get(call_id)
+    if call is None or not call.staging:
+        return {}
+    progress = recovery_value(getattr(job, "progress", {})) if job else {}
+    return {"call_id": call.id, "state": "COMMITTING" if call.committing else "READY_TO_COMMIT" if job and job.ready_to_commit else "RUNNING" if job else "QUEUED",
+            "stage_id": getattr(job, "id", ""), "progress": progress,
+            "arguments": recovery_value(getattr(job, "program", call.arguments)),
+            "summary": "Isolated staged work; no live changes until the undo-enabled commit", "scene_changed": False}

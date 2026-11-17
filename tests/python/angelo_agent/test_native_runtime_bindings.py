@@ -157,7 +157,8 @@ class ClaimStaysWithinItsBinding(Case):
         self.assertIn("from .runtime_bindings import retire_connection as retire_codex_runtimes",
                       (root / "controller.py").read_text(encoding="utf-8"))
         sign_out = (root / "team_account_ui.py").read_text(encoding="utf-8")
-        self.assertIn("end_modes(TEAM_MODES)", sign_out[sign_out.index("_account.sign_out()"):])
+        # The organization's connections (team modes and its custom endpoints) end with the sign-out.
+        self.assertIn("end_organization()", sign_out[sign_out.index("_account.sign_out()"):])
 
     def test_the_fingerprint_is_never_the_key(self):
         bound = runtime_bindings.binding(chat())

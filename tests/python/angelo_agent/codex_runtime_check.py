@@ -297,7 +297,9 @@ def main(argv=None):
     for name in ("state", "home", "workspace"):
         (out / name).mkdir(parents=True, exist_ok=True)
     executable = providers.find_executable("codex", CODEX_BUNDLE if Path(CODEX_BUNDLE).exists() else "")
-    settings = {"codex_path": executable, "model": args.model, "reasoning": "low", "auth_directory": str(out / "state")}
+    from angelo_agent.cli_runtime import choose   # Preferences' pick: launches read it, never settings.
+    choose(codex_path=executable)
+    settings = {"model": args.model, "reasoning": "low", "auth_directory": str(out / "state")}
     patches, fake = [], None
     if args.authorize_billed_run:
         if not args.connection_id or not args.codex_home:

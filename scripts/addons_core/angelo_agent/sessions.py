@@ -9,18 +9,18 @@ import time
 import uuid
 from pathlib import Path
 from .chat_settings import APPROVAL_VERSION, migrate_saved_approval, migrated, stored_options
-from . import state_paths
-from .routing import CONTEXT_SEPARATOR, MODES, RENAMED_TOOLSET, TOOLSET_VERSION, valid_slot
+from . import approval_modes, owned_paths, state_paths
+from .provider_registry import is_coding_mode
+from .routing import CONTEXT_SEPARATOR, RENAMED_TOOLSET, TOOLSET_VERSION, valid_slot
 from .task_memory import new_memory, clean_memory
 from .invocations import new_invocations, clean_invocations, migrate_invocations
-from . import context_ledger, document_identity, identifiers, kept_state, session_journal, session_kept, session_validation
+from . import context_ledger, document_identity, identifiers, kept_state, session_journal, session_kept, session_saveable, session_validation
 from .journal_checks import enabled, first_difference
 from .session_guard import GuardedWriter
 from .runtime_environment import PROMPT_CACHE_TTLS
 from .ui_text import n_, notice
 
-# The title of a conversation with no request yet; stored in English and translated where it is shown.
-UNTITLED = n_("New chat")
+UNTITLED = n_("New chat")  # The title of a conversation with no request yet; stored in English and translated where it is shown.
 # Host tests and native suites (journal_checks.enabled): every save then reads its file back and requires it to
 # reproduce the state a whole-file save would have written (session_journal, session_writer). Off in the product.
 VERIFY_JOURNAL = enabled("ANGELO_JOURNAL_VERIFY")
@@ -49,7 +49,7 @@ def clean_runtime_sessions(value):
             base, separator, slot = identity.partition(CONTEXT_SEPARATOR)
             if separator and not valid_slot(slot):
                 continue
-            if base not in MODES:
+            if not is_coding_mode(base):
                 uuid.UUID(base)
             if not isinstance(raw, dict):
                 continue
@@ -85,7 +85,7 @@ def clean_runtime_sessions(value):
 
 
 def clean_next_route(value):
-    if not isinstance(value, dict) or value.get("provider") not in MODES:
+    if not isinstance(value, dict) or not is_coding_mode(value.get("provider")):
         return None
     try:
         identity = str(uuid.UUID(value["connection_id"]))
@@ -128,7 +128,7 @@ class SessionStore:
 
     def __init__(self, directory, session_id=None):
         self.directory = Path(directory)
-        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(self.directory).mkdir(parents=True, exist_ok=True, mode=0o700)
         self.session_id = str(uuid.UUID(session_id)) if session_id else None
         if self.session_id:
             folder = self.directory / "sessions"
@@ -146,17 +146,17 @@ class SessionStore:
         self._memory = (None, None, None)
 
     def _pre_rename_profile(self):
-        """This profile's identity in the pre-rename state folder, whose chats state_migration moved here."""
-        legacy = state_paths.legacy_sibling(self.directory)
-        return str(legacy) if legacy is not None else None
+        """This profile's identities in the folders its chats were moved here from: the pre-rename folder
+        (state_migration) and earlier Blender versions' folders (version_carry_over)."""
+        return tuple(str(folder.resolve()) for folder in state_paths.earlier_state_folders(self.directory))
 
     def new(self, provider="codex_subscription"):
-        return {"version": 1, "id": self.session_id or str(uuid.uuid4()), "provider": provider,
+        return approval_modes.held({"version": 1, "id": self.session_id or str(uuid.uuid4()), "provider": provider,
                 "native_id": None, "context_slot": None, "connection_id": None, "model": "", "options": stored_options({}),
                 "approval_version": APPROVAL_VERSION,
                 "toolset_version": TOOLSET_VERSION, "runtime_sessions": {}, "next_route": None, "document_file": None,
                 "messages": [], "results": {}, "invocations": new_invocations(),
-                "task_memory": new_memory(self._profile()), "updated": time.time()}
+                "task_memory": new_memory(self._profile()), "updated": time.time()})   # A new chat's Auto, in C.
 
     def load(self):
         """The chat as saved, verified; or an unverified history whose mutation IDs are closed.
@@ -187,6 +187,7 @@ class SessionStore:
     _journal = staticmethod(lambda path: session_journal.read(path)[0])   # ``_read``'s parts; MirrorStore overrides them
     _rows, _results, _ledger = map(staticmethod, (session_validation.messages, _clean_result_payloads, clean_invocations))
     _profile = lambda self: str(self.directory.resolve())   # noqa: E731 - this profile's folder (MirrorStore: once)
+    _carried_chats = lambda self: state_paths.carried_chats(self.directory)   # noqa: E731 (version_carry_over)
 
     def _rehydrated(self, memory, **kept):   # The read's task memory as a restart rehydrates it (MirrorStore keeps it)
         return clean_memory(memory, profile_id=self._profile(), rehydrating=True,
@@ -205,12 +206,19 @@ class SessionStore:
             verified_header = session_validation.header(raw, state, session_id=self.session_id)
             if state["toolset_version"] < RENAMED_TOOLSET:
                 state["native_id"] = None  # Never resume a pre-rename native context (routing.RENAMED_TOOLSET).
+            moved = self._carried_chats().get(state["id"])
+            if moved is not None and isinstance(raw.get("updated"), (int, float)) and raw["updated"] < moved:
+                # Started in the earlier version's working folder, to which a native CLI keys its sessions
+                # (Claude Code cannot resume one from another folder): a fresh context gets the whole history.
+                raw = dict(raw, native_id=None, runtime_sessions={})
+                state["native_id"] = None
             state["messages"], verified_messages = self._rows(raw["messages"])
             state["results"] = raw.get("results", {})
             external = any(isinstance(m, dict) and m.get("request_kind") == "external_session" for m in state["messages"][:2])
             options, state["approval_version"] = migrate_saved_approval(raw.get("options"), raw.get("approval_version"),
                                                                         external=external)
             state["options"] = stored_options(options)  # The person's choice; policy applies when it is read.
+            approval_modes.held(state)   # As saved by Angelo (a private file), held in C for Auto to read.
             state["runtime_sessions"] = clean_runtime_sessions(raw.get("runtime_sessions"))
             # The current native context; its native ID is state["native_id"].
             state["context_slot"] = raw.get("context_slot") if valid_slot(raw.get("context_slot")) else None
@@ -255,7 +263,7 @@ class SessionStore:
         """
         fields = [(key, state[key]) for key in ("version", "id", "provider", "native_id", "connection_id", "model",
                                                 "updated")]
-        fields.append(("options", stored_options(state.get("options"))))  # Never a policy-forced Ask.
+        fields.append(("options", approval_modes.as_held(state)))  # Never a policy-forced Ask; Auto only as C holds it.
         if migrated(state.get("approval_version")):
             fields.append(("approval_version", state["approval_version"]))
         fields += [("toolset_version", state.get("toolset_version", TOOLSET_VERSION)),
@@ -280,6 +288,7 @@ class SessionStore:
             self._memory = (memory, profile, cleaned)
         return cleaned
 
+    @session_saveable.held
     def save(self, state, *, changes_only=False):
         """Make ``state`` durable: append what changed, or rewrite the file when that cannot describe it.
 
@@ -287,7 +296,7 @@ class SessionStore:
         touched since the last write (``session_writer``); a rewrite is whole either way.
 
         Raises on failure, leaving the file as it was or with a torn last record (a load ignores it; the next save
-        rewrites the file whole). A value that cannot be saved (not finite JSON, not UTF-8) raises before any write.
+        rewrites it whole). A value the file cannot hold is made saveable in ``state`` (``session_saveable.held``).
         """
         with self._writer.lock:
             self._refuse_unkept()
@@ -303,6 +312,7 @@ class SessionStore:
             self._rewrite(state, fields)
             return self._verified(state, fields)
 
+    @session_saveable.held
     def compact(self, state):
         """Rewrite the whole file from ``state`` now (chat close): one base line, readable by every build."""
         with self._writer.lock:
@@ -411,7 +421,7 @@ class SessionCollection:
 
     def __init__(self, directory):
         self.directory = Path(directory)
-        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(self.directory).mkdir(parents=True, exist_ok=True, mode=0o700)
         self.path = self.directory / "conversations.json"
         self.records = {}
         self.active = None

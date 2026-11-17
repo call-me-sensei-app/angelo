@@ -9,6 +9,7 @@ real ``$TMPDIR/angelo-<uid>`` directory or a real profile.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import itertools
 import shutil
@@ -128,7 +129,7 @@ class ExternalHostTests(unittest.TestCase):
             result["value"] = cli_client.run(cli_client.build_request(options), self.state, label, 20)
             done.set()
         threading.Thread(target=run, daemon=True).start()
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + CAP_S
         while not done.is_set() and time.monotonic() < deadline:
             self.tick()
             time.sleep(0.005)
@@ -226,7 +227,7 @@ class ExternalHostTests(unittest.TestCase):
             threads.append(threading.Thread(target=run, daemon=True))
         for thread in threads:
             thread.start()
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + CAP_S
         while len(controller.pending) < 3 and time.monotonic() < deadline:
             self.host.pump()  # Admit all three before dispatching any.
             time.sleep(0.005)
@@ -249,14 +250,14 @@ class ExternalHostTests(unittest.TestCase):
             result["value"] = cli_client.run(cli_client.build_request(options), self.state, "agent", 20)
             done.set()
         threading.Thread(target=run, daemon=True).start()
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + CAP_S
         while not controller.pending and time.monotonic() < deadline:
             self.host.pump()  # Admit, but never dispatch the queued read.
             time.sleep(0.005)
         self.assertTrue(controller.pending)
         self.env.requested = False
         self.host.pump()
-        self.assertTrue(done.wait(10))
+        self.assertTrue(done.wait(CAP_S))
         self.assertEqual(result["value"]["code"], "unavailable")
         self.assertFalse(controller.busy or controller.pending)
         self.assertEqual(self.executor.calls, ["angelo_inspect_scene"])

@@ -26,8 +26,10 @@ Standard library only; no bpy. Called only on worker threads.
 import json
 from urllib.parse import quote, urlencode
 
+from . import net_integrity
 from .provider_errors import sanitize
-from .team_errors import NotSent, SIGN_IN_AGAIN, SignInRequired, TeamError, Unanswered, retry_after_seconds
+from .team_errors import (NotSent, SIGN_IN_AGAIN, SignInRequired, TeamError, Unanswered, retry_after_seconds,
+                          untrusted_text)
 from .team_http import http_transport, json_object
 
 ADMIN = "Ask a team admin if you need access."
@@ -111,9 +113,11 @@ class TeamLibraryClient:
             if body is not None:
                 headers["Content-Type"] = "application/json"  # Bearer POSTs send JSON (contract 2026-10-08).
             try:
-                status, answer, data = self._transport(method, self.account.console_url + path, headers, body)
-            except NotSent:
-                raise TeamError("Couldn't reach %s. Check your network and try again." % self.account.console_url) from None
+                url = net_integrity.checked(self.account.console_url) + path   # Only a console Angelo named.
+                status, answer, data = self._transport(method, url, headers, body)
+            except NotSent as error:
+                raise TeamError(untrusted_text(self.account.console_url) if error.untrusted else
+                                "Couldn't reach %s. Check your network and try again." % self.account.console_url) from None
             except Unanswered:
                 raise TeamError("The Angelo console didn't answer completely (the network dropped, or the answer "
                                 "was larger than Angelo reads at once). Try again, or ask for less.") from None

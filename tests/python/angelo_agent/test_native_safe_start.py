@@ -27,11 +27,11 @@ import suite_isolation  # noqa: F401  First: this test never sees a real provide
 
 import ast
 import json
+import math
 import os
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import unittest
 from pathlib import Path
@@ -44,35 +44,43 @@ from host_test_policy import environment_skip  # noqa: E402
 MODULES = str(ROOT / "scripts/modules")
 
 
-LIVE = ("hold", "end-soon", "complete-soon", "unlock-soon")
+LIVE = ("hold", "end-when-told", "complete-when-told", "unlock-when-told")
 
 
 def child(folder, then):
-    """Start a record in another process; ``then`` is 'finish', 'die' (ended mid-start), 'hold' (still starting),
-    'end-soon' (a crashed start still ending: it holds its record and dies half a second later, as a process whose
-    crash dialog's Restart started the next launch does; reaped at once, as its parent reaps it), 'complete-soon' (a
-    live start that completes 0.4 s later and keeps running) or 'unlock-soon' (a live owner whose lock goes 0.3 s
-    later and whose record goes 0.3 s after that: a removal another process held up)."""
-    code = ("import os, sys, time; sys.path.insert(0, %r); import angelo_safe_start as s\n"
+    """Start a record in another process; ``then`` is 'finish', 'die' (ended mid-start), 'hold' (still starting), or
+    one that acts when ``tell`` says so, never after a sleep of its own (a busy machine then decided whether it acted
+    inside the launch's wait): 'end-when-told' (a crashed start still ending: it holds its record and dies, as a
+    process whose crash dialog's Restart started the next launch does), 'complete-when-told' (a live start that
+    completes, says DONE and keeps running) or 'unlock-when-told' (a live owner whose lock goes, says UNLOCKED, and
+    whose record goes when told again: a removal another process held up)."""
+    code = ("import os, sys; sys.path.insert(0, %r); import angelo_safe_start as s\n"
             "held = s.begin(%r)\n"
             "print('BEGUN', flush=True)\n"
             "then = %r\n"
             "if then == 'finish':\n    held.release()\n"
             "elif then == 'die':\n    os._exit(3)\n"
-            "elif then == 'end-soon':\n    time.sleep(0.5); os._exit(3)\n"
-            "elif then == 'complete-soon':\n    time.sleep(0.4); held.release(); sys.stdin.readline()\n"
-            "elif then == 'unlock-soon':\n"
-            "    handle = held._handle; time.sleep(0.3); s._unlock(handle); time.sleep(0.3); handle.close()\n"
-            "    held.path.unlink(); sys.stdin.readline()\n"
+            "elif then == 'end-when-told':\n    sys.stdin.readline(); os._exit(3)\n"
+            "elif then == 'complete-when-told':\n"
+            "    sys.stdin.readline(); held.release(); print('DONE', flush=True); sys.stdin.readline()\n"
+            "elif then == 'unlock-when-told':\n"
+            "    handle = held._handle; sys.stdin.readline(); s._unlock(handle); print('UNLOCKED', flush=True)\n"
+            "    sys.stdin.readline(); handle.close(); held.path.unlink()\n"
             "else:\n    sys.stdin.readline(); held.release()\n") % (MODULES, str(folder), then)
     process = subprocess.Popen([sys.executable, "-I", "-c", code], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                text=True)
     assert process.stdout.readline().strip() == "BEGUN"
     if then not in LIVE:
         process.wait(timeout=30)
-    if then == "end-soon":   # Reaped the moment it ends, as a crashed app's parent reaps it: no zombie stays alive.
-        threading.Thread(target=process.wait, daemon=True).start()
     return process
+
+
+def tell(process, answer=None):
+    """Have a 'when-told' child act now, and wait for its word (``answer``) that it did."""
+    process.stdin.write("\n")
+    process.stdin.flush()
+    if answer is not None:
+        assert process.stdout.readline().strip() == answer
 
 
 def dead_pid():
@@ -117,6 +125,23 @@ class WaitClock:
     def sleep(self, seconds):
         self.now += seconds
         self.naps += 1
+
+
+class ActingClock(WaitClock):
+    """A ``WaitClock`` on whose naps the other process acts: ``acts`` maps a nap's number to what happens then, and
+    the nap returns only once it has happened. The code under test is then always inside its wait when the other
+    process ends, completes or unlocks, however fast or slow either runs: the late worker is forced, never hoped
+    for."""
+
+    def __init__(self, acts):
+        super().__init__()
+        self.acts = dict(acts)
+
+    def sleep(self, seconds):
+        super().sleep(seconds)
+        act = self.acts.pop(self.naps, None)
+        if act is not None:
+            act()
 
 
 def finish(process):
@@ -201,13 +226,20 @@ class HeldRecordTests(Folder):
     (on Windows the crash dialog's Restart starts the next launch before the crashed process ends). The launch waits a
     bounded moment for the lock to go, takes a record whose owner is gone, and leaves a live start alone."""
 
-    def test_a_crashed_start_that_ends_half_a_second_later_is_found(self):
-        ending = child(self.folder, "end-soon")
-        try:
-            found = safe.interrupted(self.folder)
-        finally:
+    def test_a_crashed_start_that_ends_during_the_wait_is_found(self):
+        ending = child(self.folder, "end-when-told")
+
+        def end():   # Reaped the moment it ends, as a crashed app's parent reaps it: no zombie stays alive.
+            tell(ending)
             ending.wait(timeout=30)
+        clock = ActingClock({2: end})
+        try:
+            found = safe.interrupted(self.folder, clock=clock, sleep=clock.sleep)
+        finally:
+            if ending.poll() is None:
+                end()
         self.assertEqual([record["pid"] for record in found], [ending.pid])
+        self.assertEqual(clock.naps, 2, "found at the first look after its owner ended, inside the wait")
         self.assertEqual(list(self.folder.glob("*" + safe.SUFFIX)), [])
         self.assertEqual(safe.interrupted(self.folder), [], "found once")
 
@@ -263,20 +295,30 @@ class HeldRecordTests(Folder):
 
     def test_a_live_start_that_completes_during_the_wait_is_not_a_crash(self):
         """The owner releases its record while a launch waits on it: a healthy start, never one that crashed."""
-        completing = child(self.folder, "complete-soon")
+        completing = child(self.folder, "complete-when-told")
+        clock = ActingClock({2: lambda: tell(completing, "DONE")})
         try:
-            self.assertEqual(safe.interrupted(self.folder, wait=2.0), [])
+            self.assertEqual(safe.interrupted(self.folder, wait=2.0, clock=clock, sleep=clock.sleep), [])
         finally:
+            if clock.acts:
+                tell(completing, "DONE")
             finish(completing)
+        self.assertEqual(clock.naps, 2, "it completed inside the wait, and the wait ended with it")
         self.assertEqual(safe.interrupted(self.folder), [])
 
     def test_a_live_owner_whose_lock_goes_before_its_record_is_not_a_crash(self):
         """Its lock goes, its record a moment later (a removal another reader held up): the owner still runs."""
-        owner = child(self.folder, "unlock-soon")
+        owner = child(self.folder, "unlock-when-told")
+        clock = ActingClock({2: lambda: tell(owner, "UNLOCKED")})
         try:
-            self.assertEqual(safe.interrupted(self.folder, wait=2.0), [])
+            self.assertEqual(safe.interrupted(self.folder, wait=2.0, clock=clock, sleep=clock.sleep), [])
+            self.assertEqual(clock.naps, 2, "its lock went inside the wait, and the wait ended with it")
+            self.assertEqual(len(list(self.folder.glob("*" + safe.SUFFIX))), 1, "a live owner's record stays")
         finally:
-            finish(owner)
+            if clock.acts:
+                tell(owner, "UNLOCKED")
+            finish(owner)   # Told again: its record goes, and it ends.
+        self.assertEqual(list(self.folder.glob("*" + safe.SUFFIX)), [])
 
     def test_a_released_record_reads_as_no_crash_even_if_it_cannot_be_removed(self):
         """Release empties the record while still holding it: a removal another process holds up leaves nothing that
@@ -307,20 +349,24 @@ class HeldRecordTests(Folder):
             self.skipTest(environment_skip("no boot identity on this platform: the host decides"))
         path = write_record(self.folder, dead_pid(), boot="another-boot")
         holder = lock_holder(path)
+        clock = WaitClock()
         try:
-            self.assertEqual(safe.interrupted(self.folder, wait=1.0), [])
+            self.assertEqual(safe.interrupted(self.folder, wait=1.0, clock=clock, sleep=clock.sleep), [])
         finally:
             finish(holder)
+        self.assertEqual(clock.naps, 0, "not waited for")
 
     def test_a_record_naming_no_valid_process_is_left_alone_and_the_scan_goes_on(self):
         crashed = child(self.folder, "die")   # Found in the same scan, whatever the others hold.
         holders = [lock_holder(write_record(self.folder, pid)) for pid in (2 ** 70, 0, -5, True, "7", 1.5)]
+        clock = WaitClock()
         try:
-            found = safe.interrupted(self.folder, wait=0.5)
+            found = safe.interrupted(self.folder, wait=0.5, clock=clock, sleep=clock.sleep)
         finally:
             for holder in holders:
                 finish(holder)
         self.assertEqual([record["pid"] for record in found], [crashed.pid])
+        self.assertEqual(clock.naps, 0, "a record that names no process is not waited for")
 
     def test_a_mark_whose_record_went_is_removed(self):
         self.folder.mkdir(parents=True)
@@ -329,12 +375,61 @@ class HeldRecordTests(Folder):
         self.assertEqual(safe.interrupted(self.folder), [])
         self.assertFalse(mark.exists())
 
+    def test_a_record_its_crashed_process_marked_is_found_while_still_held(self):
+        """Windows: the crashed process lives on (its crash dialog is open) and still holds its record; its crash
+        handler marked it crashed, so a launch made meanwhile finds it at once and leaves the add-ons off."""
+        running = child(self.folder, "hold")   # Alive and holding, as a crashed process under its dialog.
+        try:
+            path = next(self.folder.glob("*" + safe.SUFFIX))
+            path.with_name(path.name + safe.CRASHED_MARK).write_bytes(b"")   # What crash_mark_start_record makes.
+            clock = WaitClock()
+            found = safe.interrupted(self.folder, wait=2.0, clock=clock, sleep=clock.sleep)
+        finally:
+            finish(running)
+        self.assertEqual([record["pid"] for record in found], [running.pid])
+        self.assertEqual(clock.naps, 0, "no wait: the crash is known")
+        self.assertEqual(safe.interrupted(self.folder), [], "found once")
+        self.assertEqual(sorted(p.name for p in self.folder.iterdir()), [], "record and marks gone")
+
+    def test_a_crashed_mark_whose_record_went_is_removed(self):
+        self.folder.mkdir(parents=True)
+        mark = self.folder / ("123-abc%s%s" % (safe.SUFFIX, safe.CRASHED_MARK))
+        mark.write_bytes(b"")
+        self.assertEqual(safe.interrupted(self.folder), [])
+        self.assertFalse(mark.exists())
+
+    def test_the_crash_handler_is_told_the_newest_held_record_of_this_process(self):
+        first = safe.begin(self.folder)
+        self.assertEqual(os.environ[safe.RECORD_ENV], "%d|%s" % (os.getpid(), first.path))
+        second = safe.begin(self.folder)   # A preference read's record while one is held.
+        self.assertEqual(os.environ[safe.RECORD_ENV], "%d|%s" % (os.getpid(), second.path))
+        second.release()
+        self.assertEqual(os.environ[safe.RECORD_ENV], "%d|%s" % (os.getpid(), first.path))
+        first.close()
+        self.assertNotIn(safe.RECORD_ENV, os.environ)
+
+    def test_the_crash_handler_marks_the_record_the_module_names_before_its_dialog(self):
+        """creator_signals.cc reads the module's variable and makes the module's mark, for this process only, before
+        the crash dialog (the process lives on while it is open)."""
+        source = (ROOT / "source/creator/creator_signals.cc").read_text(encoding="utf-8")
+        marker = source[source.index("static void crash_mark_start_record()"):]
+        marker = marker[:marker.index("\n}\n")]
+        self.assertIn('L"%s"' % safe.RECORD_ENV, marker)
+        self.assertIn('L"%%ls%s"' % safe.CRASHED_MARK, marker)
+        self.assertIn("GetCurrentProcessId()", marker)
+        handler = source[source.index("windows_exception_handler(EXCEPTION_POINTERS"):]
+        self.assertLess(handler.index("crash_mark_start_record();"), handler.index("BLI_windows_exception_show_dialog("))
+        branch = handler[:handler.index("BLI_windows_exception_show_dialog(")]
+        self.assertGreater(branch.index("crash_mark_start_record();"), branch.index("if ((!G.background)"))
+
     def test_its_own_record_is_never_found(self):
         mine = safe.begin(self.folder)
+        clock = WaitClock()
         try:
-            self.assertEqual(safe.interrupted(self.folder, wait=0.2), [])
+            self.assertEqual(safe.interrupted(self.folder, wait=0.2, clock=clock, sleep=clock.sleep), [])
         finally:
             mine.release()
+        self.assertEqual(clock.naps, 0, "its own record is not waited for")
 
     def test_alive_knows_a_running_process_from_a_gone_one(self):
         self.assertTrue(safe._alive(os.getpid()))
@@ -493,7 +588,54 @@ class LeftOffTests(unittest.TestCase):
             self.assertTrue(shipped("not_installed"), "nothing to load: an absent add-on is never named")
 
 
+def rounding_readings():
+    """Clock readings at which adding a duration rounds: a float's spacing doubles at each power of two, so a reading
+    just under one (and any reading under two seconds) plus the settle time is not exactly that much later. A
+    monotonic clock counts seconds since boot: about two seconds of every doubling of uptime are such readings."""
+    readings = [0.3, 0.7, 1.1, 1.9]
+    for power in range(2, 24):   # 4 seconds to 97 days of uptime.
+        readings += [2.0 ** power - safe.SETTLE_SECONDS + inside for inside in (0.1, 0.3, 0.7, 1.1, 1.3, 1.9)]
+    return readings
+
+
+def reading_that_rounds_short(duration):
+    """A reading, past a minute of uptime, from which ``reading + duration`` reads back as less than ``duration``
+    later."""
+    return next(at for at in rounding_readings() if at > 60.0 and (at + duration) - at < duration)
+
+
 class CompletionTests(unittest.TestCase):
+    def test_the_settle_time_ends_at_its_own_instant_at_every_clock_reading(self):
+        """The flake of 2026-11-14 (VM CI win-4, ``test_a_read_that_finishes_lets_its_record_go_after_settling``):
+        the check subtracted the reading it settled from and compared with the settle time, so at a reading where
+        the sum rounds, the instant ``settled + SETTLE_SECONDS`` itself read as too early (or one float before it as
+        late enough). The settle time ends at that instant, whatever the reading."""
+        short = long = 0
+        for at in rounding_readings():
+            end = at + safe.SETTLE_SECONDS
+            short, long = short + (end - at < safe.SETTLE_SECONDS), long + (end - at > safe.SETTLE_SECONDS)
+            with self.subTest(settled_at=at):
+                done = safe.Completion.settling(at)
+                self.assertFalse(done.step(math.nextafter(end, 0.0), False))
+                self.assertTrue(done.step(end, False))
+                start, ready = safe.Completion(started=at - 1.0), at   # A start whose start-up is done at ``at``.
+                self.assertFalse(start.step(ready, True))
+                self.assertFalse(start.step(math.nextafter(end, 0.0), False))
+                self.assertTrue(start.step(end, False))
+        self.assertGreater(short, 10, "no reading here rounds short: the test would prove nothing")
+        self.assertGreater(long, 10, "no reading here rounds long: the test would prove nothing")
+
+    def test_the_longest_start_ends_at_its_own_instant_at_every_clock_reading(self):
+        for at in rounding_readings():
+            end = at + safe.LONGEST_START
+            with self.subTest(started_at=at):
+                done = safe.Completion(started=at)
+                self.assertFalse(done.step(math.nextafter(end, 0.0), False))
+                self.assertIsNone(done.ready_at, "one float before the longest start is not it")
+                self.assertFalse(done.step(end, False))
+                self.assertEqual(done.ready_at, end, "the longest start ends at its own instant")
+                self.assertTrue(done.step(end + safe.SETTLE_SECONDS, False))
+
     def test_complete_a_moment_after_angelos_start_up_is_done(self):
         done = safe.Completion(started=100.0)
         self.assertFalse(done.step(101.0, ready=False))
@@ -566,6 +708,24 @@ class SessionTests(Folder):
             "assert not list(s.Path(%r).glob('*.start'))\n"
             "assert saved == [], 'nothing was left off: nothing to save'\n"
             "print('OK')\n") % (str(self.folder), str(self.folder)))
+        self.assertEqual((code, output.strip()), (0, "OK"))
+
+    def test_a_read_that_finishes_at_a_reading_that_rounds_settles_at_its_own_instant(self):
+        """The same read as above with the session's clock at a reading where the settle time's sum rounds short:
+        what a machine's uptime decided on VM CI is decided here, the same way on every platform and run."""
+        at = reading_that_rounds_short(safe.SETTLE_SECONDS)
+        code, output = in_session(self.config, (
+            "s.start(bpy); s.stop()\n"
+            "s.time.monotonic = lambda: %r\n"
+            "with s.enabling():\n    pass\n"
+            "done = s._state['completion']\n"
+            "assert done.ready_at == %r, done.ready_at\n"
+            "assert (done.ready_at + s.SETTLE_SECONDS) - done.ready_at < s.SETTLE_SECONDS, 'it rounds no more'\n"
+            "assert not done.step(done.ready_at + s.SETTLE_SECONDS - 0.1, False)\n"
+            "assert done.step(done.ready_at + s.SETTLE_SECONDS, False)\n"
+            "s._completed()\n"
+            "assert not list(s.Path(%r).glob('*.start'))\n"
+            "print('OK')\n") % (at, at, str(self.folder)))
         self.assertEqual((code, output.strip()), (0, "OK"))
 
     def test_a_read_during_the_start_keeps_the_starts_own_record(self):

@@ -14,7 +14,7 @@
 #include "BLI_checkpoint_budget.hh"
 #include "BLI_map.hh"
 #include "BLI_set.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 #include "DNA_object_types.h"
 #include "bmesh.hh"
 #include "intern/bmesh_snapshot_io.hh"

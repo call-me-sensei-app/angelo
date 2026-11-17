@@ -125,7 +125,8 @@ def tick():
             state['checks'][key + '_brand_banner_drawn'] = about_card.banner_ready() and any(
                 op[0] == 'paint' for op in plan.ops)
             if key == 'en':
-                state['checks']['en_says_based_on_blender'] = any(t.startswith('Based on Blender 5.2') for t in shown)
+                state['checks']['en_says_based_on_blender'] = any(
+                    t.startswith('Based on Blender %d.%d' % tuple(bpy.app.version[:2])) for t in shown)
                 state['checks']['offers_every_link_and_close'] = {
                     'whatsnew', 'credits', 'license', 'site', 'blender', 'close'} <= set(actions(plan))
                 # No donation link (maintainer, 2026-11-01); Blender's credits, licence and site stay.

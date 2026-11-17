@@ -30,7 +30,7 @@ import queue
 import subprocess
 import threading
 
-from . import thread_start
+from . import owned_paths, thread_start
 
 TIMEOUT_SECONDS = 600
 # The child's refusal when the .blend it read is not the save that asked for it (``saved``): the file was written
@@ -135,8 +135,7 @@ if stamp:
 class WriteBack:
     """Background write-backs of linked assets. ``request`` from the main thread; ``finished`` reports them there."""
 
-    def __init__(self, binary):
-        self._binary = binary
+    def __init__(self):
         self._lock = threading.Lock()
         self._running = None      # The caller's key of the write-back running (engine_link: its save).
         self._again = None        # (key, blend, target, exporter, options, baked, stamp): the newest during one.
@@ -182,10 +181,11 @@ class WriteBack:
         try:
             with child_spec({"stamp": stamp, "target": target, "exporter": exporter, "options": options,
                              "baked": list(baked), "saved": _expected(saved), "superseded": SUPERSEDED,
-                             "blend": blend}) as spec:
+                             "blend": blend}, writes=(target, (stamp or {}).get("path"))) as spec:
                 # The child opens the .blend itself, between two stats of it (``CHILD``), never from its arguments.
-                command = [self._binary, "--background", "--factory-startup", "--python-exit-code", "1",
+                command = [angelo_binary(), "--background", "--factory-startup", "--python-exit-code", "1",
                            "--python-expr", CHILD, "--", spec]
+                owned_paths.require_runnable(command[0])
                 completed = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                            timeout=TIMEOUT_SECONDS, env=_child_environment())
             if completed.returncode != 0:
@@ -219,11 +219,16 @@ def _expected(saved):
 
 
 @contextlib.contextmanager
-def child_spec(values):
+def child_spec(values, *, writes):
     """A background child's arguments as a JSON file in a private folder, removed when the child has ended; yields
     its path, the one argument the child reads. Lists like ``baked`` grow with the scene, and a command line has a
-    limit (32,767 characters on Windows), so nothing unbounded goes there."""
-    from . import private_roots
+    limit (32,767 characters on Windows), so nothing unbounded goes there. ``writes``: every file the child writes
+    outside its own private folder. The child runs where C answers yes (no script region ever began there), so C is
+    asked here, about the paths as Python state holds them now: ``PermissionError`` and no child when one is refused."""
+    from . import owned_paths, private_roots
+    for path in writes:
+        if path is not None:
+            owned_paths.require_writable(path)
     # A folder Windows can't remove yet (an antivirus scan holding spec.json) is left to its family, private: the
     # child's outcome stands, never a write-back that worked reported as failed (1.0.10 break-it).
     with private_roots.TemporaryDirectory("angelo-engine-link-", ignore_cleanup_errors=True) as folder:
@@ -231,6 +236,14 @@ def child_spec(values):
         with open(path, "x", encoding="utf-8") as handle:
             json.dump(values, handle)
         yield path
+
+
+def angelo_binary():
+    """The program a background child is: this Angelo's own executable, read from C (``bpy.app.binary_path``) as the
+    child starts, never a path an object of Angelo's holds, which a script could change in place to have Angelo start
+    another program outside the confinement."""
+    import bpy
+    return bpy.app.binary_path
 
 
 def _child_environment():

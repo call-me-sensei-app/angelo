@@ -14,6 +14,7 @@ The in-Blender proof is ``test_blender_worker_pool.py``.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import shutil
@@ -105,12 +106,15 @@ class SwitchTests(unittest.TestCase):
             listeners.append(seen)
             return made
 
-        def popen(command, **_options):
+        def start(command, _options, _platform):   # The worker's process start, stood in for.
             launched.append(command)
             return Process()
-        worker = worker_process.WorkerProcess(Path(temporary) / "a" / "part.blend", binary="/app/Angelo",
-                                              script="/s/h.py", environ={}, platform="darwin", popen=popen,
-                                              listener=listener, temporary=temporary)
+        for patcher in (mock.patch.object(worker_process, "start_process", start),
+                        mock.patch.object(worker_process, "default_binary", lambda: Path("/app/Angelo"))):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        worker = worker_process.WorkerProcess(Path(temporary) / "a" / "part.blend", environ={}, platform="darwin",
+                                              listener=listener, temporary=temporary, killpg=lambda *_args: None)
         self.addCleanup(worker.stop)
         return worker, listeners, Path(temporary)
 
@@ -157,7 +161,7 @@ class SwitchTests(unittest.TestCase):
         time.sleep(0.05)
         self.assertTrue(second.is_alive())   # It waits for the launch, never launches beside it.
         gate.set()
-        thread.join(5), second.join(5)
+        thread.join(CAP_S), second.join(CAP_S)
         self.assertEqual(len(launched), 1)
         self.assertEqual((worker.serving, worker.how), (root / "b" / "part.blend", "switched"))
         self.assertEqual([r["op"] for r in seen[0]], ["switch_part"])
@@ -260,7 +264,7 @@ class PoolTests(unittest.TestCase):
 
     def settle(self):
         for entry in worker_pool._pool:
-            self.assertTrue(entry["done"].wait(5))
+            self.assertTrue(entry["done"].wait(CAP_S))
 
     def test_a_leads_lookup_of_its_workers_launches_them_ahead_in_the_free_places_only(self):
         worker_pool.looked_up(self.lead, {"family": "TOOLS", "names": ["angelo_view"]})
@@ -310,13 +314,13 @@ class PoolTests(unittest.TestCase):
         self.assertEqual((len(worker_pool._pool), item["worker"] in self.launched[:4]), (4, False))
         part = item["worker"].part
         worker_sessions._launch(item)
-        item["thread"].join(5)
+        item["thread"].join(CAP_S)
         self.assertIs(item["worker"], self.launched[0])
         self.assertEqual((item["worker"].part, len(worker_pool._pool)), (part, 3))
         self.assertEqual(item["worker"].part.parent.parent.name, "lead")
         reused = dict(item, worker=FakeWorker(), thread=None)
         worker_sessions._launch(reused, take=False)
-        reused["thread"].join(5)
+        reused["thread"].join(CAP_S)
         self.assertNotIn(reused["worker"], self.launched)
         self.assertEqual(len(worker_pool._pool), 3)
 
@@ -333,7 +337,7 @@ class PoolTests(unittest.TestCase):
         self.assertEqual(len(worker_pool._pool), 3)
         gate.set()
         for thread in list(worker_pool._stopping):
-            thread.join(5)
+            thread.join(CAP_S)
         self.assertEqual([w.stopped for w in self.launched], [0, 0, 0, 1])
         worker_pool.yield_place()   # Its place is free now: the next newest may yield.
         self.assertEqual(len(worker_pool._pool), 2)
@@ -344,7 +348,7 @@ class PoolTests(unittest.TestCase):
         self.lead.busy = False   # The turn ended without a start.
         self.assertIsNone(worker_pool.tick())
         for thread in list(worker_pool._stopping):
-            thread.join(5)
+            thread.join(CAP_S)
         self.assertEqual([w.stopped for w in self.launched], [1, 1, 1, 1])
         self.launched.clear()
         self.lead.busy = True
@@ -378,7 +382,7 @@ class PoolTests(unittest.TestCase):
         with mock.patch.object(worker_pool, "tick", side_effect=RuntimeError("boom")):
             self.assertIsNone(worker_pool._timer())
         for thread in list(worker_pool._stopping):
-            thread.join(5)
+            thread.join(CAP_S)
         self.assertEqual(([w.stopped for w in self.launched], worker_pool._pool), ([1, 1, 1, 1], []))
 
 

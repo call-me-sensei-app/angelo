@@ -40,6 +40,16 @@ def main() -> int:
         sys.stderr.write('Failed to clean up old package files: ' + str(ex) + '\n')
         return 1
 
+    # Angelo: never package a diagnostic build made without the agent-script confinement
+    # (CMake ANGELO_GUARD_DIAG_NO_INSTALL; the macOS and Windows release stages refuse it in builder_paths' scan).
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "scripts", "angelo"))
+    import builder_paths
+    diagnostic = builder_paths.diagnostic_files(install_dir)
+    if diagnostic:
+        sys.stderr.write('Refusing to package a diagnostic build without the agent-script confinement '
+                         '(ANGELO_GUARD_DIAG_NO_INSTALL): ' + ', '.join(diagnostic[:10]) + '\n')
+        return 1
+
     # create temporary package dir
     try:
         shutil.copytree(install_dir, package_dir)

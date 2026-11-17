@@ -15,12 +15,12 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_dynstr.h"
-#include "BLI_fileops.h"
-#include "BLI_listbase.h"
-#include "BLI_string.h"
+#include "BLI_dynstr.hh"
+#include "BLI_fileops.hh"
+#include "BLI_listbase.hh"
+#include "BLI_string.hh"
 #include "BLI_string_utils.hh"
-#include "BLI_utildefines.h"
+#include "BLI_utildefines.hh"
 
 #include "BLT_translation.hh"
 
@@ -125,7 +125,7 @@ void BKE_reports_clear(ReportList *reports)
 
   std::scoped_lock lock(*reports->lock);
 
-  report = static_cast<Report *>(reports->list.first);
+  report = reports->list.first();
 
   while (report) {
     report_next = report->next;
@@ -304,7 +304,7 @@ static void reports_prepend_impl(ReportList *reports,
                                  const char *prepend_untranslated)
 {
   /* Caller must ensure. */
-  BLI_assert(reports && reports->list.first);
+  BLI_assert(reports && reports->list.first());
 
   std::scoped_lock lock(*reports->lock);
 
@@ -327,7 +327,7 @@ static void reports_prepend_impl(ReportList *reports,
 
 void BKE_reports_prepend(ReportList *reports, const char *prepend)
 {
-  if (!reports || !reports->list.first) {
+  if (!reports || !reports->list.first()) {
     return;
   }
   reports_prepend_impl(reports, RPT_(prepend), prepend);
@@ -335,7 +335,7 @@ void BKE_reports_prepend(ReportList *reports, const char *prepend)
 
 void BKE_reports_prependf(ReportList *reports, const char *prepend_format, ...)
 {
-  if (!reports || !reports->list.first) {
+  if (!reports || !reports->list.first()) {
     return;
   }
   const char *format = RPT_(prepend_format);
@@ -403,7 +403,7 @@ char *BKE_reports_string(ReportList *reports, eReportType level)
   DynStr *ds;
   char *cstring;
 
-  if (!reports || !reports->list.first) {
+  if (!reports || !reports->list.first()) {
     return nullptr;
   }
 

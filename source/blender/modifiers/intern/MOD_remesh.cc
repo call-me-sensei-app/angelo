@@ -8,9 +8,9 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_math_base.h"
+#include "BLI_math_base_c.hh"
 #include "BLI_mutex.hh"
-#include "BLI_utildefines.h"
+#include "BLI_utildefines.hh"
 
 #include "BLT_translation.hh"
 
@@ -36,7 +36,7 @@
 #include <cstring>
 
 #ifdef WITH_MOD_REMESH
-#  include "BLI_math_vector.h"
+#  include "BLI_math_vector_c.hh"
 
 #  include "dualcon.h"
 #endif
@@ -130,21 +130,23 @@ static Mesh *modify_mesh(ModifierData *md, const ModifierEvalContext *ctx, Mesh 
   RemeshModifierData *rmd = (RemeshModifierData *)md;
   Mesh *result;
 
+  /* Angelo: an error passes the mesh through. Since Blender 5.3 (1422f044cbf) the modifier stack
+   * replaces the mesh with the result, so a null one would empty the object. */
   if (rmd->mode == MOD_REMESH_VOXEL) {
     /* OpenVDB modes. */
     if (rmd->voxel_size == 0.0f) {
       BKE_modifier_set_error(ctx->object, md, "Zero voxel size cannot be solved");
-      return nullptr;
+      return mesh;
     }
     result = BKE_mesh_remesh_voxel(mesh, rmd->voxel_size, rmd->adaptivity, 0.0f, ctx->object, md);
     if (result == nullptr) {
-      return nullptr;
+      return mesh;
     }
   }
   else {
     if (rmd->scale == 0.0f) {
       BKE_modifier_set_error(ctx->object, md, "Zero scale cannot be solved");
-      return nullptr;
+      return mesh;
     }
 
     DualConOutput *output;

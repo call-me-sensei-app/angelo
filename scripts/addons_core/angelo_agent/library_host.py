@@ -13,8 +13,7 @@ thumbnails streams in. Draw callbacks only read: ``texture(item)`` answers what 
   error)`` on the main thread; the caller imports (``library_import``). ``prefetch`` starts the same download early
   (a drag's first move), so a drop on a warm cache imports at once.
 
-bpy is imported lazily; the state works without it for tests.
-"""
+bpy is imported lazily; the state works without it for tests."""
 
 import collections
 import concurrent.futures
@@ -23,7 +22,8 @@ import threading
 import time
 from pathlib import Path
 
-from . import fab_host, library_catalog, library_fetch
+from . import guard_work
+from . import color_spaces, fab_host, library_catalog, library_fetch, edit_tool_hold
 from .team_library_files import Refused
 
 REFRESH_SECONDS = 6 * 3600
@@ -86,7 +86,7 @@ class Library:
                 self._offer(document)
             self._results.put(("refreshed", None))
         except library_fetch.FetchError as error:
-            self._results.put(("refresh_failed", str(error)))
+            self._results.put(("refresh_failed", library_fetch.reported(error)))
         except Exception as error:   # noqa: BLE001 (any failure leaves the library usable and a retry possible)
             self._results.put(("refresh_failed", "The library couldn't be read (%s)." % type(error).__name__))
         finally:
@@ -226,6 +226,8 @@ class Library:
                 if path is not None:
                     self._pending_loads.append(url)
             elif kind == "fetched":
+                from . import grant_gestures
+                grant_gestures.landed()   # A fetched asset is imported (or refused) now.
                 done, future = value
                 error = None if future.cancelled() else future.exception()
                 try:
@@ -329,42 +331,16 @@ class Transfer:
                 future.set_result(shared.result())
 
 
-class DaemonPool:
+class DaemonPool(guard_work.Pool):
     """A few daemon worker threads: unlike ``ThreadPoolExecutor``'s, the interpreter never waits for them at exit, so
-    quitting Blender never waits on a library download."""
+    quitting Blender never waits on a library download. They run only ``guard_work`` items (a script's work runs
+    confined, doc/angelo/script_confinement.rst)."""
 
     def __init__(self, workers, name):
-        self._jobs = queue.Queue()
-        for index in range(workers):
-            threading.Thread(target=self._work, name="%s-%d" % (name, index), daemon=True).start()
-
-    def submit(self, function, *args):
-        future = concurrent.futures.Future()
-        self._jobs.put((future, function, args))
-        return future
-
-    def _work(self):
-        while True:
-            job = self._jobs.get()
-            if job is None:
-                return
-            future, function, args = job
-            if not future.set_running_or_notify_cancel():
-                continue
-            try:
-                future.set_result(function(*args))
-            except BaseException as error:   # noqa: BLE001 (the caller reads it from the future)
-                future.set_exception(error)
+        super().__init__(workers, name, daemon=True)
 
     def shutdown(self):
-        while True:
-            try:
-                future, _function, _args = self._jobs.get_nowait()
-            except (queue.Empty, TypeError):
-                break
-            future.cancel()
-        for _ in range(16):
-            self._jobs.put(None)
+        super().shutdown(wait=False, cancel_futures=True)
 
 
 def _gpu_thumbnail(bpy, gpu, path):
@@ -373,7 +349,7 @@ def _gpu_thumbnail(bpy, gpu, path):
     image = None
     try:
         image = bpy.data.images.load(str(path), check_existing=False)
-        image.colorspace_settings.name = 'Non-Color'   # The stored values, drawn as they are (draw_texture_2d).
+        color_spaces.mark_stored(image.colorspace_settings)   # The stored values, drawn as they are (draw_texture_2d).
         width, height = image.size
         if not (1 <= width <= 4096 and 1 <= height <= 4096):
             return None
@@ -435,16 +411,17 @@ def _spin_step():   # True once per tenth of a second: the spinner's next dot.
     return changed
 
 
+@edit_tool_hold.ticked   # The spinner keeps turning; imports and downloads landing wait (break-it review 3 S9).
 def _tick():
     from . import fab_ui
     # The spinner's next dot at 10 Hz, only while Fab works (no snapshot copy on an idle tick).
     spin = (fab_host.busy() or bool(fab_ui._PENDING) or bool(fab_ui._AUTO)) and _spin_step()
-    if fab_host.pump() | fab_ui.resume_pending() | spin:
+    if (not (held := edit_tool_hold.running()) and fab_host.pump() | fab_ui.resume_pending()) | spin:
         from . import library_overlay, preferences_ui
         library_overlay.redraw_all()
         preferences_ui.redraw()
-    if _library is not None:
-        _library.pump()
+    _library.pump() if _library is not None and not held else (   # Held: a Fab import or a download waits.
+        held and (spin or _library is not None and _library.busy()) and edit_tool_hold.note_waiting())
     return TICK if fab_host.needs_pump() or (_library is not None and _library.busy()) else None
 
 
@@ -475,6 +452,11 @@ def _fab(method, *args, **kwargs):
 
 
 def fab_connect(window):
+    """Start connecting Fab (a sign-in): only in a C grant scope, which the person's own ticketed click opens (the
+    Connect button, or a search they clicked while disconnected), never from a key, a timer or a script."""
+    from . import grant_authority
+    if not grant_authority.granting():
+        return -1
     return _fab('connect')
 
 
@@ -498,3 +480,7 @@ def fab_select(window, item_id, variant_id, *, expected_generation, expected_req
 def fab_use(window, area, region, item_id, variant_id, *, expected_generation, expected_request_id, at=None):
     return _fab('use', window, area, region, item_id, variant_id, expected_generation=expected_generation,
                 expected_request_id=expected_request_id, at=at)
+
+
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
+fab_connect = _grant_guard.entry(fab_connect)   # A Fab sign-in (the grant inventory, v210-features).

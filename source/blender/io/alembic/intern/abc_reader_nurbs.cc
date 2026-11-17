@@ -15,7 +15,7 @@
 #include "DNA_curve_types.h"
 #include "DNA_object_types.h"
 
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 
 #include "BLT_translation.hh"
 
@@ -175,19 +175,19 @@ void AbcNurbsReader::readObjectData(Main *bmain, const Alembic::Abc::ISampleSele
 
     ICompoundProperty user_props = schema.getUserProperties();
 
-    if (has_property(user_props, "enpoint_u")) {
+    if (has_property(user_props, ABC_NURBS_ENDPOINT_U_PROPNAME)) {
       nu->flagu |= CU_NURB_ENDPOINT;
     }
 
-    if (has_property(user_props, "enpoint_v")) {
+    if (has_property(user_props, ABC_NURBS_ENDPOINT_V_PROPNAME)) {
       nu->flagv |= CU_NURB_ENDPOINT;
     }
 
-    if (has_property(user_props, "cyclic_u")) {
+    if (has_property(user_props, ABC_NURBS_CYCLIC_U_PROPNAME)) {
       nu->flagu |= CU_NURB_CYCLIC;
     }
 
-    if (has_property(user_props, "cyclic_v")) {
+    if (has_property(user_props, ABC_NURBS_CYCLIC_V_PROPNAME)) {
       nu->flagv |= CU_NURB_CYCLIC;
     }
 

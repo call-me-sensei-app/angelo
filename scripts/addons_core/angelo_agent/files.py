@@ -9,10 +9,10 @@ import sys
 import uuid
 from pathlib import Path
 
-from . import anchored_windows, change_clock, private_conventions, private_roots
+from . import anchored_windows, change_clock, private_conventions, private_roots, script_confinement, storage
 from .private_conventions import subtree_mounts  # noqa: F401 - file tools' name for it
 from .checkpoint_filesystem import (_file_info, _open_directory_at, _open_file, _private_directory,
-    _replace_file, _unlink_file, assert_directory_identity, directory_info, entry_info,
+    _replace_file, _unlink_file, assert_directory_identity, directory_info, entry_info, entry_name,
     iter_names, publish_new_file, require_anchored_files, same_file, sync_directory)
 from .file_transactions import journaled_file_effect
 
@@ -77,6 +77,7 @@ def _canonical_path(descriptor):
 
 def _open_child(folder, name, create):
     """One verified child folder of an open folder: a POSIX descriptor, or a Windows handle (``anchored_windows``)."""
+    entry_name(name)   # One entry of the open folder: never a path through it.
     if isinstance(folder, anchored_windows.WindowsDirectory):
         handle = anchored_windows._open_component(folder.api, folder.fd, name, create)
         return anchored_windows.WindowsDirectory(handle, folder.path / name, folder.api)
@@ -154,6 +155,8 @@ class FileWorkspace:
         self.convention = private_conventions.Convention()
         self.canonical = private_conventions.canonical(self.root)
         self.own = self._is_own(own)
+        if self.own:   # Agent scripts use the chat's own workspace as the file tools do.
+            script_confinement.open_folder(self.root, storage.NATIVE_PROFILE_FAMILIES)
 
     @property
     def lexical(self):

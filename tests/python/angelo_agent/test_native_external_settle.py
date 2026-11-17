@@ -20,6 +20,7 @@ the next request is handled (break-it reviews M1 and M-A, 2026-11-05). Contract:
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import contextlib
 import json
@@ -118,10 +119,10 @@ class WindowTests(unittest.TestCase):
         gate, answered = threading.Event(), claude_direct.DirectRequest.answered
 
         def held(direct, key, value):   # The read's answer is not out yet.
-            gate.wait(10)
+            gate.wait(CAP_S)
             answered(direct, key, value)
         (read, read_out), (edit, edit_out) = self.server(), self.server()
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + CAP_S
         with patch.object(claude_direct.DirectRequest, "answered", held):
             read.dispatch({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                            "params": {"name": "angelo_inspect_scene", "arguments": {}}})
@@ -189,6 +190,16 @@ class WindowTests(unittest.TestCase):
         self.assertFalse(old.busy)
         self.assertIn(MOVED, json.dumps(self.call("angelo_inspect_scene")), "the app's next tool call is told")
 
+    def test_a_call_refused_before_it_ran_never_holds_up_the_next_call(self):
+        """Break-it review 2026-11-13, finding 2: in the window too, a script file call refused before it reached the
+        request's order never ended its turn, so the request's next call waited for good."""
+        refused = self.call(SCRIPT_FILE_TOOL, {"file": str(Path(self.state) / "missing.py")})
+        self.assertTrue(refused["isError"], refused)
+        self.assertIn("nothing ran", json.dumps(refused))
+        answer = self.rpc("tools/call", {"name": "angelo_inspect_scene", "arguments": {}}, timeout=10)
+        self.assertIsNotNone(answer, "the next call was answered")
+        self.assertFalse(answer["result"]["isError"], answer)
+
     def test_an_answer_on_its_way_to_the_host_is_still_in_flight(self):
         """Between a call's worker leaving the request and its answer going out, the request is not finishable: a
         request closed or rotated then could be followed by work the late answer (headless: its reload) undoes."""
@@ -197,11 +208,11 @@ class WindowTests(unittest.TestCase):
         gate, answers, answered = threading.Event(), [], work.direct.answered
 
         def late(key, value):   # A worker pre-empted right after ``left()``.
-            gate.wait(10)
+            gate.wait(CAP_S)
             answered(key, value)
         with patch.object(work.direct, "answered", late):
             work.submit(("call", "late"), "angelo_inspect_scene", {}, answers.append)
-            deadline = time.monotonic() + 10
+            deadline = time.monotonic() + CAP_S
             while (work.direct.busy() or not self.executor.calls.count("angelo_inspect_scene") == 2) \
                     and time.monotonic() < deadline:
                 self.tick()
@@ -339,6 +350,167 @@ class HeadlessTests(unittest.TestCase):
             result = self.call("angelo_inspect_scene")
         self.assertFalse(result["isError"], result)
         self.assertEqual(order[:2], ["answered", "handled"])
+
+    def test_a_later_call_sent_together_never_runs_before_an_earlier_calls_reload(self):
+        """Agent-B2 (Devin audit, 2026-11-13; doc/angelo/external_mcp.rst): without the window an answer waits for its
+        save or reload (``finish_answers``). A later call of the same request ran as soon as the earlier call's worker
+        ended, so its edit could run before that reload, which then undid it while its answer said it was saved."""
+        self.approve()
+        self.open()
+        host, wm = self.host, self.bpy.ops.wm
+        saving, after_call, loaded = wm.save_as_mainfile, type(host).after_call, self.bpy.on_load
+        failing, reloads = [], []
+
+        def after(tool, current, value):   # The script's save fails, so its answer reloads the last saved state.
+            failing.append(tool == SCRIPT_FILE_TOOL)
+            try:
+                return after_call(host, tool, current, value)
+            finally:
+                failing.pop()
+
+        def save(**options):
+            return {"CANCELLED"} if failing and failing[-1] else saving(**options)
+
+        def on_load():   # How many of the later call's edits had run at each reload.
+            reloads.append(self.executor.calls.count("angelo_create_cube"))
+            loaded()
+        wm.save_as_mainfile, self.bpy.on_load = save, on_load
+        try:
+            with patch.object(host, "after_call", after):
+                out = self.sent_together((SCRIPT_FILE_TOOL, {"file": str(self.script)}),
+                                         ("angelo_create_cube", {"name": "Again", "size": 1, "location": [2, 0, 0]}),
+                                         ran=lambda: self.executor.calls.count("angelo_create_cube"))
+        finally:
+            wm.save_as_mainfile, self.bpy.on_load = saving, loaded
+        self.assertEqual(sorted(out), [1, 2], "both calls were answered")
+        self.assertIn("reloaded", self.text(out[1]), "the script's save failed: the last saved state again")
+        self.assertEqual(reloads, [0], "no later call's edit ran before the earlier call's reload")
+        edits = self.executor.calls.count("angelo_create_cube")
+        if out[2]["isError"]:
+            self.assertEqual(edits, 0, "a call that says it did not run did not run")
+        else:
+            self.assertEqual(edits, 1)
+            self.assertIn("Saved as", self.text(out[2]), "its edit is in the saved file")
+
+    def test_a_call_refused_before_it_ran_never_holds_up_the_calls_sent_with_it(self):
+        """A script file call refused before it reached the request's order (no such file) never ended its turn, so
+        a call sent with it waited for good (found with Agent-B2, 2026-11-13)."""
+        self.open()
+        out = self.sent_together((SCRIPT_FILE_TOOL, {"file": str(self.root / "work" / "missing.py")}),
+                                 ("angelo_inspect_scene", {}), ran=lambda: False)
+        self.assertEqual(sorted(out), [1, 2], "the call sent with it was answered too")
+        self.assertIn("nothing ran", self.text(out[1]))
+
+    def sent_together(self, first, second, ran, during=None):
+        """``first`` and ``second`` ((tool, arguments)) sent in one batch, as an MCP client does: the server runs each
+        on its own thread, and ``second`` is admitted to the request while ``first``'s answer is still on its way to
+        the host (its worker pre-empted). That answer is held until ``ran()`` or for half a second after ``second``
+        was admitted. Returns {1: first's answer, 2: second's} for the calls answered within the cap (only a call stuck
+        behind a turn never ended reaches it)."""
+        host, out = self.host, {}
+        gate, held_keys, answered = threading.Event(), [], claude_direct.DirectRequest.answered
+
+        def held(direct, key, value):
+            if not held_keys:
+                held_keys.append(key)
+                gate.wait(CAP_S)
+            answered(direct, key, value)
+
+        def send(identity, tool, arguments):
+            out[identity] = self.server.call(identity, {"name": tool, "arguments": arguments})
+        threads = [threading.Thread(target=send, args=(1, *first), daemon=True),
+                   threading.Thread(target=send, args=(2, *second), daemon=True)]
+        deadline = time.monotonic() + CAP_S
+        try:
+            with patch.object(claude_direct.DirectRequest, "answered", held):
+                threads[0].start()
+                while not held_keys and time.monotonic() < deadline:   # The first call ended; its answer is held.
+                    self.tick()
+                    time.sleep(0.003)
+                threads[1].start()
+                settle = None
+                while time.monotonic() < deadline:
+                    self.tick()
+                    time.sleep(0.003)
+                    work = next(iter(host._work.values()), None)
+                    if settle is None and work is not None and work.direct._tickets >= 2:
+                        settle = time.monotonic() + 0.5   # window: fixed, the later call cannot run, so no signal
+                        if during is not None:
+                            during(work)
+                    if ran() or (settle is not None and time.monotonic() >= settle):
+                        break
+                gate.set()
+                while any(thread.is_alive() for thread in threads) and time.monotonic() < deadline:   # Stuck: cap.
+                    self.tick()
+                    time.sleep(0.003)
+        finally:
+            gate.set()
+        return dict(out)
+
+    def test_a_call_sent_while_a_script_saved_as_another_file_never_reloads_before_that_scripts_answer(self):
+        """Break-it review 2026-11-13, finding 1 (predates Agent-B2): admission reloaded the session's file whenever
+        Blender had another open, also while an earlier call that caused it was still unanswered. The script's own
+        answer then found its file open again, saved and said "Saved as" while its edits were gone; it must say the
+        script saved as another file (FOREIGN_FILE), the reload being its own."""
+        self.approve()
+        self.open()
+        self.executor.on_run = lambda: setattr(self.bpy.data, "filepath", str(self.folder / "other.blend"))
+        out = self.sent_together((SCRIPT_FILE_TOOL, {"file": str(self.script)}), ("angelo_inspect_scene", {}),
+                                 ran=lambda: False)
+        self.assertEqual(sorted(out), [1, 2])
+        self.assertIn("opened or saved as another file", self.text(out[1]))
+        self.assertNotIn("Saved as", self.text(out[1]), "never a save of the reloaded file in its name")
+
+    def test_a_replay_while_a_turn_is_held_neither_ends_it_nor_misses_the_answer(self):
+        """Break-it review 2026-11-13, finding 3: the launcher asks again under the same call ID every 25 s. A replay
+        delivered while the call's answer is held gets that answer and never ends the call's turn."""
+        self.open()
+        host, replies, seen = self.host, [], {}
+
+        def replay(work):   # The first call delivered again while its answer is held.
+            label = host.client.label
+            first = next(key for key, record in host._calls.items() if record["work"] is work and key[0] == label)
+            payload = {"id": first[1], "tool": "angelo_create_cube",
+                       "arguments": {"name": "Box", "size": 1, "location": [0, 0, 0]}}
+            again = SimpleNamespace(client=host.client, payload=payload, admitted=False, complete=replies.append)
+            host._again(again, host._calls[first], payload)
+            seen["cubes"] = self.executor.calls.count("angelo_create_cube")
+        out = self.sent_together(("angelo_create_cube", {"name": "Box", "size": 1, "location": [0, 0, 0]}),
+                                 ("angelo_create_cube", {"name": "Again", "size": 1, "location": [2, 0, 0]}),
+                                 ran=lambda: False, during=replay)
+        self.assertEqual(sorted(out), [1, 2])
+        self.assertEqual(seen["cubes"], 1, "the replay did not end the held turn: the second call had not run")
+        self.assertEqual(len(replies), 1, "the replay got the call's answer")
+        self.assertTrue(replies[0]["call"]["replayed"])
+        self.assertEqual(self.executor.calls.count("angelo_create_cube"), 2, "each call ran once")
+        self.assertTrue(all(work.finishable() for work in host._work.values()), "nothing left counted as in flight")
+
+    def test_a_failed_script_that_ended_its_request_reloads_before_any_call_sent_with_it_runs(self):
+        """Break-it review 2026-11-13, finding 3: a failed script ends its request and reloads (RELOADED); a call sent
+        with it never runs before that reload."""
+        self.approve()
+        self.open()
+
+        def fail():
+            raise RuntimeError("on purpose")
+        self.executor.on_run = fail
+        reloads, loaded = [], self.bpy.on_load
+
+        def on_load():
+            reloads.append(self.executor.calls.count("angelo_create_cube"))
+            loaded()
+        self.bpy.on_load = on_load
+        try:
+            out = self.sent_together((SCRIPT_FILE_TOOL, {"file": str(self.script)}),
+                                     ("angelo_create_cube", {"name": "Again", "size": 1, "location": [2, 0, 0]}),
+                                     ran=lambda: self.executor.calls.count("angelo_create_cube"))
+        finally:
+            self.bpy.on_load = loaded
+        self.assertEqual(sorted(out), [1, 2])
+        self.assertIn("reloaded", self.text(out[1]))
+        self.assertTrue(reloads and reloads[0] == 0, "no call sent with it ran before its reload")
+        if not out[2]["isError"]:
+            self.assertIn("Saved as", self.text(out[2]), "a call that ran after the reload is saved")
 
     def test_a_failed_edit_reloads_only_when_it_ended_its_request(self):
         """A request the host closed since (a sweep, a rotation) is not one this call ended: nothing to reload."""

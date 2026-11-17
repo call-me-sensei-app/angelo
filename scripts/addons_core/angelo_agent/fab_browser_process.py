@@ -8,7 +8,7 @@ accepted. Chrome is an external, person-installed dependency; nothing downloads 
 """
 import json
 import os
-from . import private_roots
+from . import essential_environment, owned_paths, private_roots
 from .fab_browser_ownership import ProcessOwner, browser_bundle, OwnershipUnavailable, snapshot, identity
 from .fab_browser_diagnostics import write_record
 
@@ -24,6 +24,14 @@ import time
 
 MAX_MESSAGE = 2 * 1024 * 1024
 
+
+
+def browser_environment(windows, environ=None, **values):
+    """The browser's environment: the OS's own variables (essential_environment), the display on Linux, the home
+    drive on Windows, and ``values``."""
+    extra = ("HOMEDRIVE", "HOMEPATH", "LC_ALL") if windows else ("LC_ALL", "DISPLAY", "WAYLAND_DISPLAY",
+                                                                  "XDG_RUNTIME_DIR")
+    return essential_environment.environment(extra, environ, "win32" if windows else "darwin", **values)
 
 class BrowserUnavailable(RuntimeError):
     """Closed failures: never expose Chrome protocol responses or credential-bearing navigation URLs."""
@@ -156,7 +164,7 @@ class BrowserProcess:
                     refused = BrowserUnavailable('PROFILE_UNAVAILABLE', reason=error.code)
                     refused.owner = self
                     raise refused from None
-            os.chmod(self.profile, 0o700)
+            os.chmod(owned_paths.require_writable(self.profile), 0o700)
             self._profile_identity = (self.profile.stat().st_dev, self.profile.stat().st_ino)
         except BaseException as error:
             if profile_lease is None:
@@ -190,9 +198,8 @@ class BrowserProcess:
                          '--disable-renderer-backgrounding']
             args += ['--no-first-run','--no-default-browser-check','--new-window',
                      'https://www.fab.com/' if self._manual_login else 'about:blank']
-            env = {key: value for key, value in os.environ.items()
-                   if key in ('HOME', 'PATH', 'LANG', 'LC_ALL', 'DISPLAY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR')}
-            env['ANGELO_FAB_PROCESS_OWNER'] = self._marker
+            env = browser_environment(False, ANGELO_FAB_PROCESS_OWNER=self._marker)
+            owned_paths.require_runnable(program)
             self._pid = os.posix_spawn(program, args, env, file_actions=actions, setpgroup=0)
             self._owner = ProcessOwner(self._pid, self._marker, program, str(self.profile))
             reason = None
@@ -448,6 +455,10 @@ class BrowserProcess:
                 info = self.profile.lstat()
                 if (info.st_dev, info.st_ino) != self._profile_identity or not stat.S_ISDIR(info.st_mode):
                     raise BrowserUnavailable('PROFILE_CHANGED')
+                from . import owned_paths
+                if not owned_paths.owned(self.profile):   # Only the profile Angelo made (owned_paths).
+                    raise BrowserUnavailable('PROFILE_CHANGED')
+                owned_paths.disown(self.profile)
                 shutil.rmtree(self.profile)
                 self.profile = None
                 private_roots.prune()

@@ -12,7 +12,7 @@
 #include "DNA_windowmanager_types.h"
 
 #include "BLI_path_utils.hh"
-#include "BLI_string_utf8_symbols.h"
+#include "BLI_string_utf8_symbols.hh"
 
 #include "BLT_translation.hh"
 
@@ -34,10 +34,11 @@
 
 #  include "DNA_userdef_types.h"
 
-#  include "BLI_listbase.h"
-#  include "BLI_math_vector.h"
-#  include "BLI_string.h"
-#  include "BLI_string_utf8.h"
+#  include "BLI_listbase.hh"
+#  include "BLI_vector.hh"
+#  include "BLI_math_vector_c.hh"
+#  include "BLI_string.hh"
+#  include "BLI_string_utf8.hh"
 
 #  include "BKE_keyconfig.h"
 #  include "BKE_main.hh"
@@ -98,6 +99,17 @@ static const EnumPropertyItem event_timer_type_items[] = {
 
 static const EnumPropertyItem event_textinput_type_items[] = {
     {KM_TEXTINPUT, "TEXTINPUT", 0, "Text Input", ""},
+    {0, nullptr, 0, nullptr, nullptr},
+};
+
+/* Angelo: an input method's composition, as `Event.type` reports it (#rna_Event_type_itemf), so a
+ * script's own text field can show and commit it (#wmIMEOwnerType::Script, Window.ime_composition).
+ * Kept out of #rna_enum_event_type_items, the key-map's list: no key press makes one, so a key-map
+ * item is never bound to one (test_blender_keymap_event_types). */
+static const EnumPropertyItem event_ime_type_items[] = {
+    {WM_IME_COMPOSITE_START, "IME_COMPOSITE_START", 0, "IME Composition Start", ""},
+    {WM_IME_COMPOSITE_EVENT, "IME_COMPOSITE_EVENT", 0, "IME Composition", ""},
+    {WM_IME_COMPOSITE_END, "IME_COMPOSITE_END", 0, "IME Composition End", ""},
     {0, nullptr, 0, nullptr, nullptr},
 };
 
@@ -648,7 +660,10 @@ const EnumPropertyItem rna_enum_wm_report_items[] = {
 
 #ifdef RNA_RUNTIME
 
+#  include <algorithm>
+
 #  include "BLI_string_utils.hh"
+#  include "BLI_time.hh"
 
 #  include "WM_api.hh"
 
@@ -679,8 +694,7 @@ static wmOperator *rna_OperatorProperties_find_operator(PointerRNA *ptr)
   wmWindowManager *wm = id_cast<wmWindowManager *>(ptr->owner_id);
 
   IDProperty *properties = static_cast<IDProperty *>(ptr->data);
-  for (wmOperator *op = static_cast<wmOperator *>(wm->runtime->operators.last); op; op = op->prev)
-  {
+  for (wmOperator *op = wm->runtime->operators.last(); op; op = op->prev) {
     if (op->properties == properties) {
       return op;
     }
@@ -718,10 +732,21 @@ static int rna_Operator_name_length(PointerRNA *ptr)
   return strlen(op->type->name);
 }
 
+/* Angelo: seconds since the operator last kept a person's input; negative when it never has
+ * (`wm_angelo_consumed_input.cc`). An age, not a time: Python has no access to this clock. */
+static float rna_Operator_consumed_input_age_get(PointerRNA *ptr)
+{
+  const wmOperator *op = static_cast<const wmOperator *>(ptr->data);
+  if ((op->flag & OP_HAS_CONSUMED_INPUT) == 0) {
+    return -1.0f;
+  }
+  return float(std::max(0.0, BLI_time_now_seconds() - op->consumed_input_time));
+}
+
 static bool rna_Operator_has_reports_get(PointerRNA *ptr)
 {
   wmOperator *op = static_cast<wmOperator *>(ptr->data);
-  return (op->reports && op->reports->list.first);
+  return (op->reports && op->reports->list.first());
 }
 
 static PointerRNA rna_Operator_layout_get(PointerRNA *ptr)
@@ -885,7 +910,7 @@ static PointerRNA rna_Event_ndof_motion_get(PointerRNA *ptr)
 #  else
   UNUSED_VARS(ptr);
 #  endif
-  return PointerRNA_NULL;
+  return {};
 }
 
 static PointerRNA rna_Event_xr_get(PointerRNA *ptr)
@@ -897,7 +922,7 @@ static PointerRNA rna_Event_xr_get(PointerRNA *ptr)
   return RNA_pointer_create_with_parent(*ptr, RNA_XrEventData, actiondata);
 #  else
   UNUSED_VARS(ptr);
-  return PointerRNA_NULL;
+  return {};
 #  endif
 }
 
@@ -943,7 +968,7 @@ static void rna_Window_scene_set(PointerRNA *ptr, PointerRNA value, ReportList *
 {
   wmWindow *win = static_cast<wmWindow *>(ptr->data);
 
-  if (value.data == nullptr) {
+  if (!value) {
     return;
   }
 
@@ -993,7 +1018,7 @@ static void rna_Window_workspace_set(PointerRNA *ptr, PointerRNA value, ReportLi
   if (WM_window_is_temp_screen(win)) {
     return;
   }
-  if (value.data == nullptr) {
+  if (!value) {
     return;
   }
 
@@ -1034,7 +1059,7 @@ static void rna_Window_screen_set(PointerRNA *ptr, PointerRNA value, ReportList 
   if (screen->temp) {
     return;
   }
-  if (value.data == nullptr) {
+  if (!value) {
     return;
   }
 
@@ -1087,6 +1112,120 @@ static bool rna_Window_support_hdr_color_get(PointerRNA *ptr)
   return WM_window_support_hdr_color(win);
 }
 
+/* Angelo: the window's input method state, for a script's own text field
+ * (#bke::wmIMEOwnerType::Script). Offsets are characters, as Python indexes a string.
+ * A build without IME reports no session and no composition. */
+#  ifdef WITH_INPUT_IME
+static const wmIMEData *rna_Window_ime_data(PointerRNA *ptr)
+{
+  return static_cast<const wmWindow *>(ptr->data)->runtime->ime_data;
+}
+
+/** A byte offset GHOST reports into the composition as a character offset; -1 stays unknown. */
+static int rna_Window_ime_column(const wmIMEData *data, const int byte_offset)
+{
+  if (data == nullptr || byte_offset < 0) {
+    return -1;
+  }
+  const size_t clamped = std::min(size_t(byte_offset), data->composite.size());
+  return int(BLI_strnlen_utf8(data->composite.c_str(), clamped));
+}
+
+static StringRef rna_Window_ime_text(PointerRNA *ptr, const bool result)
+{
+  const wmIMEData *data = rna_Window_ime_data(ptr);
+  if (data == nullptr) {
+    return {};
+  }
+  return result ? StringRef(data->result) : StringRef(data->composite);
+}
+#  else
+static StringRef rna_Window_ime_text(PointerRNA * /*ptr*/, const bool /*result*/)
+{
+  return {};
+}
+#  endif
+
+static int rna_Window_ime_owner_get(PointerRNA *ptr)
+{
+#  ifdef WITH_INPUT_IME
+  const wmWindow *win = static_cast<const wmWindow *>(ptr->data);
+  if (win->runtime->ime_owner) {
+    return int(*win->runtime->ime_owner) + 1;
+  }
+#  else
+  UNUSED_VARS(ptr);
+#  endif
+  return 0;
+}
+
+static bool rna_Window_is_ime_composing_get(PointerRNA *ptr)
+{
+#  ifdef WITH_INPUT_IME
+  return static_cast<const wmWindow *>(ptr->data)->runtime->ime_data_is_composing;
+#  else
+  UNUSED_VARS(ptr);
+  return false;
+#  endif
+}
+
+static void rna_Window_ime_composition_get(PointerRNA *ptr, char *value)
+{
+  rna_Window_ime_text(ptr, false).copy_unsafe(value);
+}
+
+static int rna_Window_ime_composition_length(PointerRNA *ptr)
+{
+  return int(rna_Window_ime_text(ptr, false).size());
+}
+
+static void rna_Window_ime_result_get(PointerRNA *ptr, char *value)
+{
+  rna_Window_ime_text(ptr, true).copy_unsafe(value);
+}
+
+static int rna_Window_ime_result_length(PointerRNA *ptr)
+{
+  return int(rna_Window_ime_text(ptr, true).size());
+}
+
+static int rna_Window_ime_composition_cursor_get(PointerRNA *ptr)
+{
+#  ifdef WITH_INPUT_IME
+  const wmIMEData *data = rna_Window_ime_data(ptr);
+  return data ? rna_Window_ime_column(data, data->cursor_pos) : -1;
+#  else
+  UNUSED_VARS(ptr);
+  return -1;
+#  endif
+}
+
+static void rna_Window_ime_composition_selection_get(PointerRNA *ptr, int *values)
+{
+#  ifdef WITH_INPUT_IME
+  const wmIMEData *data = rna_Window_ime_data(ptr);
+  values[0] = data ? rna_Window_ime_column(data, data->sel_start) : -1;
+  values[1] = data ? rna_Window_ime_column(data, data->sel_end) : -1;
+#  else
+  UNUSED_VARS(ptr);
+  values[0] = values[1] = -1;
+#  endif
+}
+
+static void rna_Window_ime_caret_get(PointerRNA *ptr, int *values)
+{
+#  ifdef WITH_INPUT_IME
+  const wmWindow *win = static_cast<const wmWindow *>(ptr->data);
+  const bool script = win->runtime->ime_owner == bke::wmIMEOwnerType::Script;
+  for (int i = 0; i < 4; i++) {
+    values[i] = script ? win->runtime->ime_script_rect[i] : 0;
+  }
+#  else
+  UNUSED_VARS(ptr);
+  values[0] = values[1] = values[2] = values[3] = 0;
+#  endif
+}
+
 static bool rna_Window_modal_handler_skip(CollectionPropertyIterator * /*iter*/, void *data)
 {
   const wmEventHandler_Op *handler = static_cast<wmEventHandler_Op *>(data);
@@ -1133,7 +1272,7 @@ static PointerRNA rna_KeyMapItem_properties_get(PointerRNA *ptr)
   }
 
   // return RNA_pointer_create_with_parent(*ptr, RNA_OperatorProperties, op->properties);
-  return PointerRNA_NULL;
+  return {};
 }
 
 static int rna_wmKeyMapItem_map_type_get(PointerRNA *ptr)
@@ -1196,6 +1335,28 @@ static void rna_wmKeyMapItem_keymodifier_set(PointerRNA *ptr, int value)
   }
 }
 
+/** Angelo: every event type, the input method's composition included (#event_ime_type_items). */
+static const EnumPropertyItem *rna_Event_type_itemf(bContext * /*C*/,
+                                                    PointerRNA * /*ptr*/,
+                                                    PropertyRNA * /*prop*/,
+                                                    bool * /*r_free*/)
+{
+  /* Built once: a script reads `event.type` on every event. */
+  static const Vector<EnumPropertyItem> items = [] {
+    Vector<EnumPropertyItem> all;
+    for (const EnumPropertyItem *item = rna_enum_event_type_items; item->identifier; item++) {
+      all.append(*item);
+    }
+    all.append(RNA_ENUM_ITEM_SEPR);
+    for (const EnumPropertyItem *item = event_ime_type_items; item->identifier; item++) {
+      all.append(*item);
+    }
+    all.append({0, nullptr, 0, nullptr, nullptr});
+    return all;
+  }();
+  return items.data();
+}
+
 static const EnumPropertyItem *rna_KeyMapItem_type_itemf(bContext * /*C*/,
                                                          PointerRNA *ptr,
                                                          PropertyRNA * /*prop*/,
@@ -1225,16 +1386,16 @@ static const EnumPropertyItem *rna_KeyMapItem_propvalue_itemf(bContext * /*C*/,
                                                               PropertyRNA * /*prop*/,
                                                               bool * /*r_free*/)
 {
-  wmWindowManager *wm = static_cast<wmWindowManager *>(G_MAIN->wm.first);
+  wmWindowManager *wm = G_MAIN->wm.first();
   wmKeyConfig *kc;
   wmKeyMap *km;
 
-  for (kc = static_cast<wmKeyConfig *>(wm->runtime->keyconfigs.first); kc; kc = kc->next) {
-    for (km = static_cast<wmKeyMap *>(kc->keymaps.first); km; km = km->next) {
+  for (kc = wm->runtime->keyconfigs.first(); kc; kc = kc->next) {
+    for (km = kc->keymaps.first(); km; km = km->next) {
       /* only check if it's a modal keymap */
       if (km->modal_items) {
         wmKeyMapItem *kmi;
-        for (kmi = static_cast<wmKeyMapItem *>(km->items.first); kmi; kmi = kmi->next) {
+        for (kmi = km->items.first(); kmi; kmi = kmi->next) {
           if (kmi == ptr->data) {
             return static_cast<const EnumPropertyItem *>(km->modal_items);
           }
@@ -1374,7 +1535,7 @@ static PointerRNA rna_wmKeyConfig_preferences_get(PointerRNA *ptr)
     return RNA_pointer_create_with_parent(*ptr, kpt_rt->rna_ext.srna, kpt->prop);
   }
   else {
-    return PointerRNA_NULL;
+    return {};
   }
 }
 
@@ -1622,6 +1783,12 @@ static PointerRNA rna_WindowManager_xr_session_state_get(PointerRNA *ptr)
   return RNA_pointer_create_with_parent(*ptr, RNA_XrSessionState, state);
 }
 
+static PointerRNA rna_WindowManager_undo_stack_get(PointerRNA *ptr)
+{
+  wmWindowManager *wm = static_cast<wmWindowManager *>(ptr->data);
+  return RNA_pointer_create_with_parent(*ptr, RNA_UndoStack, wm->runtime->undo_stack);
+}
+
 #  ifdef WITH_PYTHON
 
 static bool rna_operator_poll_cb(bContext *C, wmOperatorType *ot)
@@ -1669,7 +1836,7 @@ static wmOperatorStatus rna_operator_exec_cb(bContext *C, wmOperator *op)
 
   RNA_parameter_list_free(&list);
 
-  if (UNLIKELY(has_error)) {
+  if (has_error) [[unlikely]] {
     /* A modal handler may have been added, ensure this is removed, see: #113479. */
     WM_event_remove_modal_handler_all(op, false);
   }
@@ -1726,7 +1893,7 @@ static wmOperatorStatus rna_operator_invoke_cb(bContext *C, wmOperator *op, cons
 
   RNA_parameter_list_free(&list);
 
-  if (UNLIKELY(has_error)) {
+  if (has_error) [[unlikely]] {
     /* A modal handler may have been added, ensure this is removed, see: #113479. */
     WM_event_remove_modal_handler_all(op, false);
   }
@@ -1983,7 +2150,7 @@ static bool rna_Operator_unregister(Main *bmain, StructRNA *type)
   ui::refresh_for_srna_unregister(bmain, ot->srna);
   ui::refresh_for_srna_unregister(bmain, type);
   /* update while blender is running */
-  wm = static_cast<wmWindowManager *>(bmain->wm.first);
+  wm = bmain->wm.first();
   if (wm) {
     WM_operator_stack_clear(wm);
 
@@ -2287,6 +2454,40 @@ static void rna_def_operator_common(StructRNA *srna)
       "Has Reports",
       "Operator has a set of reports (warnings and errors) from last execution");
 
+  /* Angelo: what the operator's modal handler has done with a person's input, set by the event
+   * system (`wm_angelo_consumed_input.cc`). Upstream keeps the runtime bits of #wmOperator.flag
+   * under `Operator.options`; these are here, in the properties `Operator` and `Macro` share,
+   * because a macro is the modal handler's operator for its steps and `Macro` has no options. */
+  prop = RNA_def_property(srna, "has_answered_input", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "flag", OP_HAS_ANSWERED_INPUT);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(
+      prop,
+      "Has Answered Input",
+      "The operator's modal handler has been given a keyboard, mouse, trackpad, tablet, NDOF or "
+      "XR controller event and has returned, whatever its result. Until then nothing is known "
+      "about what the operator does with input");
+
+  prop = RNA_def_property(srna, "has_consumed_input", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "flag", OP_HAS_CONSUMED_INPUT);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(
+      prop,
+      "Has Consumed Input",
+      "The operator's modal handler has kept a keyboard, mouse, trackpad, tablet, NDOF or XR "
+      "controller event from every later handler (a result without PASS_THROUGH, or "
+      "RUNNING_MODAL with PASS_THROUGH). Stays set while the operator exists; an operator that "
+      "passes every input event through never has it");
+
+  prop = RNA_def_property(srna, "consumed_input_age", PROP_FLOAT, PROP_TIME_ABSOLUTE);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_float_funcs(prop, "rna_Operator_consumed_input_age_get", nullptr, nullptr);
+  RNA_def_property_ui_text(
+      prop,
+      "Consumed Input Age",
+      "Seconds since the operator's modal handler last kept an input event; negative while it "
+      "never has");
+
   /* Registration */
   prop = RNA_def_property(srna, "bl_idname", PROP_STRING, PROP_NONE);
   RNA_def_property_string_sdna(prop, nullptr, "type->idname");
@@ -2562,6 +2763,8 @@ static void rna_def_event(BlenderRNA *brna)
   RNA_def_property_enum_sdna(prop, nullptr, "type");
   RNA_def_property_enum_items(prop, rna_enum_event_type_items);
   RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_UI_EVENTS);
+  RNA_def_property_enum_funcs(prop, nullptr, nullptr, "rna_Event_type_itemf");
+  RNA_def_property_flag(prop, PROP_ENUM_NO_CONTEXT); /* The list needs no context. */
   RNA_def_property_clear_flag(prop, PROP_EDITABLE);
   RNA_def_property_ui_text(prop, "Type", "");
 
@@ -2569,6 +2772,8 @@ static void rna_def_event(BlenderRNA *brna)
   RNA_def_property_enum_sdna(prop, nullptr, "prev_type");
   RNA_def_property_enum_items(prop, rna_enum_event_type_items);
   RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_UI_EVENTS);
+  RNA_def_property_enum_funcs(prop, nullptr, nullptr, "rna_Event_type_itemf");
+  RNA_def_property_flag(prop, PROP_ENUM_NO_CONTEXT); /* The list needs no context. */
   RNA_def_property_clear_flag(prop, PROP_EDITABLE);
   RNA_def_property_ui_text(prop, "Previous Type", "");
 
@@ -2832,6 +3037,14 @@ static void rna_def_window(BlenderRNA *brna)
   RNA_def_property_flag(prop, PROP_CONTEXT_UPDATE);
   RNA_def_property_update(prop, 0, "rna_Window_scene_update");
 
+  prop = RNA_def_property(srna, "global_areas", PROP_COLLECTION, PROP_NONE);
+  RNA_def_property_collection_sdna(prop, nullptr, "global_areas.areabase", nullptr);
+  RNA_def_property_struct_type(prop, "Area");
+  RNA_def_property_ui_text(prop,
+                           "Areas",
+                           "Areas at the edges of the window that are not part of the flexible "
+                           "screen layout (such as top and status bar)");
+
   prop = RNA_def_property(srna, "workspace", PROP_POINTER, PROP_NONE);
   RNA_def_property_flag(prop, PROP_NEVER_NULL);
   RNA_def_property_struct_type(prop, "WorkSpace");
@@ -2912,6 +3125,67 @@ static void rna_def_window(BlenderRNA *brna)
                                     nullptr,
                                     nullptr);
   RNA_def_property_ui_text(prop, "Modal Operators", "A list of currently running modal operators");
+
+  /* Angelo: the input method (IME) state, read by a script's own text field. */
+  static const EnumPropertyItem ime_owner_items[] = {
+      {0, "NONE", 0, "None", "No input method session"},
+      {1, "REGION", 0, "Region", "The editor under the pointer has it"},
+      {2, "BUTTON", 0, "Button", "A text field being edited has it"},
+      {3, "SCRIPT", 0, "Script", "A text field a script draws has it (Window.ime_attach)"},
+      {0, nullptr, 0, nullptr, nullptr},
+  };
+  prop = RNA_def_property(srna, "ime_owner", PROP_ENUM, PROP_NONE);
+  RNA_def_property_enum_items(prop, ime_owner_items);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_enum_funcs(prop, "rna_Window_ime_owner_get", nullptr, nullptr);
+  RNA_def_property_ui_text(prop, "IME Owner", "What has the window's input method session");
+
+  prop = RNA_def_property(srna, "is_ime_composing", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_boolean_funcs(prop, "rna_Window_is_ime_composing_get", nullptr);
+  RNA_def_property_ui_text(prop,
+                           "IME Composing",
+                           "An input method is composing text: its keys edit the composition");
+
+  prop = RNA_def_property(srna, "ime_composition", PROP_STRING, PROP_NONE);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_string_funcs(
+      prop, "rna_Window_ime_composition_get", "rna_Window_ime_composition_length", nullptr);
+  RNA_def_property_ui_text(
+      prop, "IME Composition", "The text the input method is composing, not yet committed");
+
+  prop = RNA_def_property(srna, "ime_composition_cursor", PROP_INT, PROP_NONE);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_int_funcs(prop, "rna_Window_ime_composition_cursor_get", nullptr, nullptr);
+  RNA_def_property_ui_text(prop,
+                           "IME Composition Cursor",
+                           "The caret in the composition, in characters (-1 when not reported)");
+
+  prop = RNA_def_property(srna, "ime_composition_selection", PROP_INT, PROP_NONE);
+  RNA_def_property_array(prop, 2);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_int_funcs(prop, "rna_Window_ime_composition_selection_get", nullptr, nullptr);
+  RNA_def_property_ui_text(
+      prop,
+      "IME Composition Selection",
+      "The segment being converted, start and end in characters (-1 when not reported)");
+
+  prop = RNA_def_property(srna, "ime_caret", PROP_INT, PROP_NONE);
+  RNA_def_property_array(prop, 4);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_int_funcs(prop, "rna_Window_ime_caret_get", nullptr, nullptr);
+  RNA_def_property_ui_text(prop,
+                           "IME Caret",
+                           "Where a script's text field placed the input method: x, y, width, "
+                           "height in window pixels (zeros when no script has the session)");
+
+  prop = RNA_def_property(srna, "ime_result", PROP_STRING, PROP_NONE);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_string_funcs(
+      prop, "rna_Window_ime_result_get", "rna_Window_ime_result_length", nullptr);
+  RNA_def_property_ui_text(prop,
+                           "IME Result",
+                           "Text the input method committed with the current IME_COMPOSITE_EVENT");
 
   RNA_api_window(srna);
 }
@@ -3074,6 +3348,13 @@ static void rna_def_windowmanager(BlenderRNA *brna)
                                     nullptr);
   RNA_def_property_ui_text(prop, "Key Configurations", "Registered key configurations");
   rna_def_wm_keyconfigs(brna, prop);
+
+  prop = RNA_def_property(srna, "undo_stack", PROP_POINTER, PROP_NONE);
+  RNA_def_property_struct_type(prop, "UndoStack");
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(prop, "Undo Stack", "Read-only access to the undo stack");
+  RNA_def_property_pointer_funcs(
+      prop, "rna_WindowManager_undo_stack_get", nullptr, nullptr, nullptr);
 
   prop = RNA_def_property(srna, "xr_session_settings", PROP_POINTER, PROP_NONE);
   RNA_def_property_pointer_sdna(prop, nullptr, "xr.session_settings");
@@ -3345,6 +3626,7 @@ static void rna_def_keyconfig(BlenderRNA *brna)
   RNA_def_property_enum_items(prop, rna_enum_event_value_items);
   RNA_def_property_ui_text(prop, "Value", "");
   RNA_def_property_update(prop, 0, "rna_KeyMapItem_update");
+  RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_UI_EVENTS);
 
   prop = RNA_def_property(srna, "direction", PROP_ENUM, PROP_NONE);
   RNA_def_property_enum_sdna(prop, nullptr, "direction");

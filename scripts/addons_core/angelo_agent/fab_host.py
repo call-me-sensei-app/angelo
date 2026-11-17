@@ -5,13 +5,12 @@
 Only explicit person commands open a browser. Browser/profile/metadata/download work
 runs through one worker. The main-thread pump alone publishes public snapshots and
 creates the Session from a verified transport. A human Done acknowledgement is not
-account proof; missing account/download/native producers remain unavailable.
-"""
+account proof; missing account/download/native producers remain unavailable."""
 from functools import partial
 import threading
 import uuid
 
-from . import fab_failure_report, fab_host_state as records, fab_login_transition as login
+from . import fab_failure_report, fab_host_state as records, fab_login_transition as login, grant_gestures
 from .fab_catalog import FabError
 from .fab_host_jobs import Job, Stop, Worker
 
@@ -417,6 +416,7 @@ class Host:
         if self.import_pending is not None:
             result = self.import_pending.poll()
             if result is not None:
+                grant_gestures.landed()   # A Fab import came into the scene.
                 self.import_pending.cancel()
                 self.import_pending = None
                 self.view['reason_code'] = None if result.get('success') is True else 'IMPORT_FAILED'

@@ -12,6 +12,7 @@ Each interleaving is forced deterministically (gates, inline frames). No Blender
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import threading
 import time
@@ -26,7 +27,7 @@ from angelo_agent import worker_values
 from angelo_agent.refusal_codes import RefusalError
 
 
-def wait_for(predicate, seconds=2.0):
+def wait_for(predicate, seconds=CAP_S):
     deadline = time.monotonic() + seconds
     while not predicate() and time.monotonic() < deadline:
         time.sleep(0.001)
@@ -46,7 +47,7 @@ class LaneOrder(unittest.TestCase):
     def test_a_stop_while_the_send_waits_in_its_before_hook_withdraws_it(self):
         gate, lane = threading.Event(), ops.Lane()
         request = ops.Request(self.mirror, "chat.send", "send", {})
-        request.before = lambda: gate.wait(5)   # ``resume_later``: the consent acknowledgement it waits for.
+        request.before = lambda: gate.wait(CAP_S)   # ``resume_later``: the consent acknowledgement it waits for.
         lane.submit(request)
         self.assertTrue(wait_for(lambda: request.state == "preparing"))
         self.assertTrue(lane.withdraw(request))   # The person's Stop: nothing has been written yet.
@@ -57,7 +58,7 @@ class LaneOrder(unittest.TestCase):
 
     def test_once_its_frame_is_written_a_stop_no_longer_withdraws_it_and_marks_it_stopped(self):
         gate, lane = threading.Event(), ops.Lane()
-        self.mirror.send_op = lambda *a, **k: gate.wait(5) and {"ok": True}
+        self.mirror.send_op = lambda *a, **k: gate.wait(CAP_S) and {"ok": True}
         request = ops.Request(self.mirror, "chat.send", "send", {})
         lane.submit(request)
         self.assertTrue(wait_for(lambda: request.state == "sent"))
@@ -159,7 +160,7 @@ class MirrorStopOfASentSend(MirrorFixture):
         encoded = worker_values.encode_error(RefusalError("stopped first", code="CANCELLED"))
         worker = Worker()
         self.open_on(worker)
-        self.mirror.send_op = lambda *a, **k: gate.wait(5) and {"error": encoded}
+        self.mirror.send_op = lambda *a, **k: gate.wait(CAP_S) and {"error": encoded}
         ops.bind(spawn=lambda run: threading.Thread(target=run, daemon=True).start())
         self.mirror.send("go")
         self.assertTrue(wait_for(lambda: self.mirror._sending.state == "sent"))

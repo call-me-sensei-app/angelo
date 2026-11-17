@@ -345,6 +345,7 @@ class Harnesses(Folder):
         A + "provider_isolation.py": "the isolation itself", A + "provider_accounts.py": "the check itself",
         A + "run_native_suites.py": "isolated profiles; the opt-in is checked", A + "run_host_tests.py": "isolated",
         A + "native_suite_other_files.py": "a classification list", A + "eval_live_tasks.py": "task definitions",
+        A + "confinement_attacks.py": "no provider: a temporary home whose CLI homes it unsets, attacks only",
         A + "final_runs_load.py": "machine load only", A + "bench_mcp_method.py": "method text",
         A + "bench_workdirs.py": "working folders only",
         A + "claude_prompt_probe.py": "fresh profile, local endpoint", A + "claude_direct_probe.py": "dummy key",
@@ -352,6 +353,7 @@ class Harnesses(Folder):
         A + "approval_hold_probe.py": "fresh profile, local endpoint",
         A + "codex_stale_call_probe.py": "fresh profile, local endpoint", A + "codex_opening_check.py": "fresh profile",
         A + "codex_prompt_probe.py": "fresh profile, local endpoint", A + "prompt_route_probe.py": "dummy key",
+        A + "gemini_prompt_probe.py": "fresh CODEX_HOME and HOME, local endpoint, dummy key",
         A + "eval_trace_export.py": "reads a finished trial's trace store; sends nothing",
         A + "fake_provider_cli.py": "the stand-in CLI", A + "scenario_dry_run.py": "fake models",
         A + "long_session_replay.py": "a scripted runtime", A + "parallel_dry_run.py": "a scripted model",
@@ -366,11 +368,14 @@ class Harnesses(Folder):
         A + "test_blender_signin_reconnect.py": "auth launch and subprocess intercepted; loopback-only team owner, HTTP refuses",
         A + "test_blender_change_chip_details.py": "every process denied; startup status probes only attributed, never run",
         A + "windows_cli_checks.py": "auth status only",
+        A + "grant_inventory.py": "reads the add-on's source only; CODEX_HOME appears in an operator's reason text",
         A + "update_carry_over_phases.py": "records each sign-in's status command and profile; sends no model request",
         A + "live_genai_smoke.py": "media providers' own API keys (pay per use), no coding subscription",
         A + "live_flow_smoke.py": "media providers' own API keys (pay per use), no coding subscription",
         A + "live_media_smoke.py": "media providers' own API keys (pay per use), no coding subscription",
-        "scripts/angelo/release_checks.py": "a fresh CODEX_HOME for --version"}
+        "scripts/angelo/release_checks.py": "a fresh CODEX_HOME for --version",
+        "scripts/angelo/runtime_wires.py": "offline debug models in release_checks' fresh CODEX_HOME",
+        "scripts/angelo/runtime_capabilities.py": "offline features list in release_checks' fresh CODEX_HOME"}
 
     def test_every_file_that_could_bill_is_classified_and_calls_its_check(self):
         root = HERE.parents[2]

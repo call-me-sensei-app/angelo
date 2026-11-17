@@ -11,7 +11,7 @@
 #include "CLG_log.h"
 
 #include "BLI_array.hh"
-#include "BLI_utildefines.h"
+#include "BLI_utildefines.hh"
 
 #include "DNA_collection_types.h"
 #include "DNA_object_types.h"
@@ -141,6 +141,19 @@ static void foreach_libblock_remap_callback_apply(ID *id_owner,
   /* Get the new_id pointer. When the mapping is violating never null we should use a nullptr
    * pointer otherwise the incorrect users are decreased and increased on the same instance. */
   ID *new_id = violates_never_null ? nullptr : *id_ptr;
+
+  /* Angelo: a pointer changed in place, with or without an undo step of its own; memfile undo
+   * reads the owner again rather than reuse it as the step it comes from stored it. Cleaning up
+   * an ID's pointers as it is freed records not that ID but the owner it points back at (a shape
+   * key's mesh), whose own pointer at it was cleared by its caller. */
+  if (id_remap_data->bmain != nullptr && new_id != old_id) {
+    if (id_remap_data->type != ID_REMAP_TYPE_CLEANUP) {
+      BKE_main_memfile_undo_id_changed_in_place(id_remap_data->bmain, id_owner);
+    }
+    else if ((cb_flag & IDWALK_CB_LOOPBACK) != 0) {
+      BKE_main_memfile_undo_id_changed_in_place(id_remap_data->bmain, old_id);
+    }
+  }
 
   if (!is_indirect && new_id) {
     new_id->runtime->remap.status |= ID_REMAP_IS_LINKED_DIRECT;
@@ -383,7 +396,7 @@ static void libblock_remap_data_postprocess_object_update(Main *bmain,
   }
 
   if (old_ob == nullptr) {
-    for (Object *ob = static_cast<Object *>(bmain->objects.first); ob != nullptr;
+    for (Object *ob = bmain->objects.first(); ob != nullptr;
          ob = static_cast<Object *>(ob->id.next))
     {
       if (ob->type == OB_MBALL && BKE_mball_is_basis(ob)) {
@@ -392,7 +405,7 @@ static void libblock_remap_data_postprocess_object_update(Main *bmain,
     }
   }
   else {
-    for (Object *ob = static_cast<Object *>(bmain->objects.first); ob != nullptr;
+    for (Object *ob = bmain->objects.first(); ob != nullptr;
          ob = static_cast<Object *>(ob->id.next))
     {
       if (ob->type == OB_MBALL && BKE_mball_is_basis_for(ob, old_ob)) {
@@ -637,9 +650,7 @@ static void libblock_remap_foreach_idpair(ID *old_id, ID *new_id, Main *bmain, i
     case ID_PT:
     case ID_VO:
       if (new_id) { /* Only affects us in case obdata was relinked (changed). */
-        for (Object *ob = static_cast<Object *>(bmain->objects.first); ob;
-             ob = static_cast<Object *>(ob->id.next))
-        {
+        for (Object *ob = bmain->objects.first(); ob; ob = static_cast<Object *>(ob->id.next)) {
           libblock_remap_data_postprocess_obdata_relink(bmain, ob, new_id);
         }
       }

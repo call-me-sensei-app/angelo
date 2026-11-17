@@ -45,6 +45,7 @@ from test_native_external_cli_host import Executor  # noqa: E402
 from host_test_policy import environment_skip  # noqa: E402
 
 ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
+HERE = Path(__file__).resolve().parent
 PROJECT = os.path.realpath("/tmp/angelo-project/scene.blend")
 BUILD = "result = 7\n"
 NO_FIFOS = environment_skip("FIFOs are POSIX; Windows has none to plant")
@@ -52,6 +53,9 @@ NO_FIFOS = environment_skip("FIFOs are POSIX; Windows has none to plant")
 NO_NOFOLLOW = environment_skip("O_NOFOLLOW is POSIX, and script files reach Angelo only over the Unix-socket MCP "
                                "transport (Windows named pipe: a later phase)")
 
+
+import angelo_guard_twin  # noqa: E402
+angelo_guard_twin.stand_in_for_the_person(globals())   # Its tests set consents as the person does (grant_authority).
 
 class ReadScriptTests(unittest.TestCase):
     def setUp(self):
@@ -82,7 +86,8 @@ class ReadScriptTests(unittest.TestCase):
             "a directory": (str(self.folder / "folder"), "not a regular file"),
             "not UTF-8": (str(self.write("latin.py", b"name = '\xe9'\n")), "not UTF-8"),
             "empty": (str(self.write("empty.py", "  \n")), "empty"),
-            "too long": (str(self.write("long.py", "#" * (script_files.MAX_CHARACTERS + 1))), "larger"),
+            "too long": (str(self.write("long.py", "#" * (script_files.MAX_CHARACTERS + 1))),
+                         "longer than 32,768 characters (it has 32,769). Split the work into steps"),
             "no path": ("", "absolute path"),
         }
         for label, (path, words) in cases.items():
@@ -200,8 +205,9 @@ class SharedStoreTests(unittest.TestCase):
     def another_instance(self, code):
         """Run ``code`` against the same state folder in a separate interpreter (another Angelo instance)."""
         import subprocess
-        program = ("import sys; sys.path.insert(0, %r); from angelo_agent import script_files as s; "
-                   "s.attach(%r); %s" % (str(ADDON.parent), self.state, code))
+        program = ("import sys; sys.path.insert(0, %r); sys.path.insert(0, %r); import angelo_guard_twin as t; "
+                   "t._here.harness = 1; from angelo_agent import script_files as s; "   # The person there too.
+                   "s.attach(%r); %s" % (str(ADDON.parent), str(HERE), self.state, code))
         subprocess.run([sys.executable, "-I", "-c", program], check=True, timeout=60)
 
     def test_a_removal_in_another_instance_applies_here_and_is_never_written_back(self):
@@ -262,7 +268,7 @@ class SharedStoreTests(unittest.TestCase):
         registry.connect("claude_code")
         self.assertEqual(len(script_files.entries()), 1)
         page = (ADDON / "external_ui.py").read_text(encoding="utf-8")
-        self.assertIn("if _forget_script_files(DEFAULT_CLIENT[self.app]) is None:", page,
+        self.assertIn("if _forget_script_files(_client(self.app, self.client)) is None:", page,
                       "the Forget button reports a removal it could not save")
 
     @unittest.skipUnless(hasattr(os, "mkfifo"), NO_FIFOS)
@@ -528,7 +534,7 @@ class CardAndPreferencesTests(unittest.TestCase):
         handler = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "script_file_allow_from_card")
         self.assertIn("agent_script_running()", ast.unparse(handler))
         disconnect = (ADDON / "external_ui.py").read_text()
-        self.assertIn("AppRegistry(_state()).disconnect(DEFAULT_CLIENT[self.app])   # Forgets its script files too.",
+        self.assertIn("registry.disconnect(name)   # Forgets its script files too.",
                       disconnect)   # AppRegistry.disconnect forgets them (SharedStoreTests).
         page = (ADDON / "providers_page_external.py").read_text()
         self.assertIn('"mcp_forget_scripts": "external_app_forget_scripts"', page)

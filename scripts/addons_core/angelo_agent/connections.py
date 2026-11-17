@@ -17,14 +17,16 @@ import copy
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from . import kept_state, managed_policy, shared_replace
+from . import kept_state, managed_policy, owned_paths, shared_replace
 from .provider_registry import CODING, MODE_BY_CONNECTION, TEAM, spec_for
 from .storage import valid_profile_directory
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 MODES = {("OPENAI", "SUBSCRIPTION"): "codex_subscription", ("OPENAI", "API_KEY"): "codex_api",
          ("ANTHROPIC", "SUBSCRIPTION"): "claude_subscription", ("ANTHROPIC", "API_KEY"): "claude_api"}
 FIELDS = ("id", "name", "provider", "method", "mode", "model", "reuse_native")
 FIELDS += ("group", "native_profile")
+FIELDS += ("key_from",)   # The connection whose API key this one uses (shared_keys), or None for its own key.
 READ_ATTEMPTS = 3          # Reads of the file while its signature keeps moving under them (``reload``).
 _UNSTABLE = ("unstable",)  # The signature of a read the file kept changing under: no stat's signature equals it.
 
@@ -34,6 +36,7 @@ def metadata_lock(directory, name="connections.lock"):
     # Account edits are tiny, infrequent transactions. Serialize independent
     # app instances so stale stores cannot erase each other's connections.
     # ``team-account.lock`` serializes team sign-in renewals the same way.
+    owned_paths.require_writable(directory)
     with open(Path(directory) / name, "a+b") as handle:
         if os.name == "nt":
             import msvcrt
@@ -54,6 +57,16 @@ def metadata_lock(directory, name="connections.lock"):
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+def _key_from(value, identity):
+    """A stored ``key_from`` as a connection id, or None (absent, malformed or the record itself). Whether the
+    link still holds (its source exists, owns a key, is of the same key family) is ``shared_keys.source_of``'s."""
+    try:
+        source = str(uuid.UUID(value)) if isinstance(value, str) else None
+    except ValueError:
+        return None
+    return source if source != identity else None
+
+
 def _parsed(raw):
     """``(records, active, ignored native modes)`` of a ``connections.json`` value; raises for a value of the wrong
     shape. A broken entry is left out, never every later account."""
@@ -71,6 +84,7 @@ def _parsed(raw):
             entry.update(group=group, id=identity,
                          reuse_native=bool(record.get("reuse_native")) and record["mode"] in MODES.values())
             entry["native_profile"] = valid_profile_directory(record.get("native_profile"), identity, record["mode"])
+            entry["key_from"] = _key_from(record.get("key_from"), identity)
             records[identity] = entry
         except (ValueError, TypeError, KeyError, AttributeError):
             continue
@@ -80,7 +94,7 @@ def _parsed(raw):
 class ConnectionStore:
     def __init__(self, directory):
         self.directory = Path(directory)
-        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(self.directory).mkdir(parents=True, exist_ok=True, mode=0o700)
         self.path = self.directory / "connections.json"
         self.records = {}
         self.active = None
@@ -92,6 +106,9 @@ class ConnectionStore:
         self._baseline = {}
         self._baseline_ignored = set()
         self._baseline_active = None
+        # This instance's own saves, counted: what shows the connections follows them (ui.pump), as it follows
+        # another instance's through reload_if_changed, which a save of its own never reports.
+        self.revision = 0
         self.reload()
 
     def reload(self):
@@ -164,7 +181,7 @@ class ConnectionStore:
         record = {"id": str(uuid.uuid4()), "provider": provider, "method": method, "mode": mode,
                   "name": name.strip()[:64] or default, "model": model.strip(), "group": group,
                   "reuse_native": bool(reuse_native) and mode in MODES.values()}
-        record["native_profile"] = None
+        record["native_profile"], record["key_from"] = None, None
         self.records[record["id"]] = record
         if reuse_native:
             self.ignored_native_modes.discard(mode)
@@ -263,6 +280,7 @@ class ConnectionStore:
                 if os.path.exists(temporary):
                     os.unlink(temporary)
             kept_state.remove_copies(latest._kept)   # Their accounts are in the file now.
+            self.revision += 1
             self.reload()
 
     def import_metadata(self, source_directory):
@@ -283,3 +301,7 @@ class ConnectionStore:
         self.ignored_native_modes |= source.ignored_native_modes
         self.save()
         return imported
+
+
+_grant_guard.entry_methods(ConnectionStore, "add")
+_grant_guard.entry_methods(ConnectionStore, "remove")   # Never a script's: ACCOUNT_OPERATORS.

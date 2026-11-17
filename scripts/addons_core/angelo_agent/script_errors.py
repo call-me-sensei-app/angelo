@@ -103,16 +103,17 @@ _SNAPSHOT_RESTORE = re.compile(r"\bpre-request (snapshot|checkpoint)", re.IGNORE
 RESTORED = ("Blender Undo reloaded Main data from the restore point the host made immediately before this script. "
             "Pixel buffers and external effects remain unverified: this is partial recovery. Earlier handles are stale. "
             + INTERFACE_NOTE + " ")
-NO_POINT = ("Blender was in %s, where Undo holds only that mode's own data, so the host could make no restore point "
-            "and undid nothing.")
+# "May": on 5.3 one Undo can also take back data outside the mode (mixed Undo, 69f5d770c4f; live check 9).
+NO_POINT = ("Blender was in %s, where Undo may hold only that mode's own data, so the host could make no restore "
+            "point and undid nothing.")
 NO_HISTORY = "Blender's Undo history held no restore point, so the host undid nothing."
 OWN_HISTORY = "The script used the Undo history or loaded a file itself, so the host undid nothing."
 PIXELS = ("The script wrote or could write image pixels or image files, which Blender's Undo does not restore, so the "
           "host undid nothing.")
 NOT_REACHED = "Blender's Undo did not reach the host's restore point, so the host put back what the script left."
 DIFFERENT = "The restore point did not read back as the scene before the script, so the host put back what the script left."
-NOT_UNDOABLE = ("Blender is in %s, where Undo holds only that mode's own data: what this script changed elsewhere is "
-                "not an Undo step.")
+NOT_UNDOABLE = ("Blender is in %s, where Undo may hold only that mode's own data: what this script changed elsewhere "
+                "may not be an Undo step.")
 UNDO_UNVERIFIED = "Script Undo history is unverified."
 UNDO_UNAVAILABLE = "Undo is currently unavailable; script history is unverified."
 
@@ -265,6 +266,10 @@ def grouped(operator, name=APPLY_SCRIPT):
     A sibling with the same ``execute``, not a subclass: registering a
     subclass of a registered operator takes the Python class from its parent.
     """
+    from . import grant_guard
+    if operator.bl_idname in grant_guard.REGISTRY:   # Guarded as its operator is, in Python and in C (grant_guard).
+        grant_guard.REGISTRY["angelo." + name] = grant_guard.REGISTRY[operator.bl_idname]
+        grant_guard.register_in_c("angelo." + name, grant_guard.REGISTRY[operator.bl_idname])
     return type("ANGELO_OT_" + name, operator.__bases__, {
         "bl_idname": "angelo." + name, "bl_label": STEP, "bl_options": {"UNDO_GROUPED"},
         "execute": operator.execute, "__annotations__": dict(operator.__annotations__)})

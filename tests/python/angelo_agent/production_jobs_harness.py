@@ -24,6 +24,10 @@ PHASE_SECONDS = 150
 # Metal on 5.3 took longer than a phase, 1.1 render_deadline) counts against neither a phase nor the suite timeout, up
 # to this cap per load. The runner extends such a suite's kill timeout by the same amount (Suite.kernel_load_cap).
 from native_suite_manifest import KERNEL_LOAD_CAP_S  # noqa: E402
+# A render in a child process compiles there: its texts never reach this app's render_stats, only the job's record does
+# (kernel_compile_s, job_deadline.observe_kernels). That compile is credited as the product credits the job's budget
+# (angelo_render_device.kernels.credited: at most kernels.CAP_S per job), so a child compiling past the cap still fails
+# its phase; a compile seen both ways (an in-app render's) counts once.
 # Cycles' status while it loads kernels (Scene::load_kernels, MetalDevice::is_ready): both end with this phrase.
 KERNEL_LOADING = "render kernels"
 KERNEL_LOADING_NOTE = "(may take a few minutes the first time)"
@@ -75,6 +79,7 @@ class Harness:
         self.samples = {}
         self.started = self.entered = time.monotonic()
         self.kernels, self.entered_kernels = KernelLoadClock(), 0.0
+        self.job_compile, self.entered_job_compile = {}, 0.0   # Job id: its credited compile (job_compile_seconds).
         persistent = getattr(bpy.app.handlers, "persistent", lambda function: function)
         from angelo_agent import render_extensions
         # The fixture's own measurement, never add-on Python: unmarked, it kept every suite's renders in the app.
@@ -153,6 +158,18 @@ class Harness:
         if record is not None:
             self.samples.setdefault(record["id"], []).append(round(record["progress"], 4))
 
+    def observe_job_compile(self):
+        """The running job's kernel compile as its record reports it, credited by the product's rule (one job runs at a
+        time; an ended job's last value stays)."""
+        from angelo_render_device import kernels
+        record = self.jobs().active()
+        if record is not None:
+            credited = kernels.credited((record.get("detail") or {}).get("kernel_compile_s"))
+            self.job_compile[record["id"]] = max(credited, self.job_compile.get(record["id"], 0.0))
+
+    def job_compile_seconds(self):
+        return sum(self.job_compile.values())
+
     def progress_ok(self, record, label):
         """Progress stayed in 0..1 and only grew; the receipt keeps how many samples were seen and their maximum."""
         values = self.samples.get(record["id"], [])
@@ -174,6 +191,7 @@ class Harness:
         self.state["phase"] = phase
         self.entered = time.monotonic()
         self.entered_kernels = self.kernels.seconds(self.entered)
+        self.entered_job_compile = self.job_compile_seconds()
 
     def finish(self, error=None):
         if error:
@@ -185,6 +203,7 @@ class Harness:
             self.kernels.close(now)
         self.state["elapsed_seconds"] = round(now - self.started, 1)
         self.state["kernel_load_s"], self.state["kernel_loads"] = round(self.kernels.total, 1), self.kernels.loads
+        self.state["job_kernel_compile_s"] = {job: round(seconds, 1) for job, seconds in self.job_compile.items()}
         self.report.write_text(json.dumps(self.state, indent=2, default=str))
         print(self.marker, json.dumps({"success": self.state["success"], "phase": self.state["phase"]}), flush=True)
         bpy.ops.wm.quit_blender()
@@ -202,10 +221,13 @@ class Harness:
                 if loading > KERNEL_LOAD_CAP_S:
                     raise AssertionError("Cycles was still loading render kernels after %d s in phase %s "
                                          "(KERNEL_LOAD_CAP_S)" % (loading, self.state["phase"]))
+                self.observe_job_compile()
                 waited = self.kernels.seconds(now)   # Kernel loads count against neither bound, up to the cap.
-                assert now - self.started - min(waited, KERNEL_LOAD_CAP_S) < self.timeout, \
+                compiled = self.job_compile_seconds()   # A job's own compile (a child's), already capped per job.
+                assert now - self.started - min(max(waited, compiled), KERNEL_LOAD_CAP_S) < self.timeout, \
                     "The suite timed out in " + self.state["phase"]
-                if now - self.entered - (waited - self.entered_kernels) > PHASE_SECONDS:
+                credit = max(waited - self.entered_kernels, compiled - self.entered_job_compile)
+                if now - self.entered - credit > PHASE_SECONDS:
                     raise AssertionError("Phase %s did not advance in %d s" % (self.state["phase"], PHASE_SECONDS))
                 self.sample()
                 return step(self)

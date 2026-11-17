@@ -239,6 +239,10 @@ def _draw():
     line, problem = status(tree)
     running = bool(tree is not None and flow_host.active_runs(tree.name))
     paint(state, region, chat_view.ui_scale(), tree, line, problem, running)
+    from . import grant_guard   # Its controls as C's regions: a press on Run mints its ticket (``flow.run``).
+    from .ui_text import is_rtl
+    grant_guard.canvas_regions(window, region, "flow:%d" % area.as_pointer(), state["hits"], 1.0, is_rtl(),
+                               prefix="flow.")
     if window.as_pointer() not in _inputs:
         _start_input(window)
 
@@ -399,6 +403,7 @@ def act(window, area, region, hit):
 
 class ANGELO_OT_flow_window_input(Operator):
     """Clicks on a flow window's bar and start page (internal)."""
+    bl_description = ""   # No tooltip. Blender shows a class docstring as one; this one is a note for developers.
     bl_idname = "angelo.flow_window_input"
     bl_label = "Flow Window Bar"
     bl_options = {'INTERNAL'} | modal_options(bl_idname)   # Auto-save never waits for it (input_policy).
@@ -437,8 +442,9 @@ class ANGELO_OT_flow_window_input(Operator):
             pressed, self.pressed = self.pressed, None
             state["pressed"] = None
             area.tag_redraw()
-            if hit and pressed == (area.as_pointer(), hit):
-                act(window, area, region, hit)
+            if hit and pressed == (area.as_pointer(), hit):   # Run grants: in the scope of the person's press on it.
+                from . import grant_guard
+                grant_guard.ticketed("flow.", hit[0], hit[1], act, window, area, region, hit)
             return {'RUNNING_MODAL'}
         return {'PASS_THROUGH'}
 

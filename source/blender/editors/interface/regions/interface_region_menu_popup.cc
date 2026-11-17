@@ -19,11 +19,11 @@
 #include "DNA_userdef_types.h"
 
 #include "BLI_hash.hh"
-#include "BLI_listbase.h"
-#include "BLI_math_vector.h"
-#include "BLI_rect.h"
-#include "BLI_string_utf8.h"
-#include "BLI_utildefines.h"
+#include "BLI_listbase.hh"
+#include "BLI_math_vector_c.hh"
+#include "BLI_rect.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_utildefines.hh"
 
 #include "BKE_context.hh"
 #include "BKE_report.hh"
@@ -690,8 +690,7 @@ void popup_block_invoke_ex(bContext *C,
   status.item(" ", ICON_NONE);
 
   popup_handlers_add(C, &window->runtime->modalhandlers, handle, 0);
-  block_active_only_flagged_buttons(
-      C, handle->region, static_cast<Block *>(handle->region->runtime->uiblocks.first));
+  block_active_only_flagged_buttons(C, handle->region, handle->region->runtime->uiblocks.first());
   WM_event_add_mousemove(window);
 }
 
@@ -729,8 +728,7 @@ void popup_block_ex(bContext *C,
   status.item(" ", ICON_NONE);
 
   popup_handlers_add(C, &window->runtime->modalhandlers, handle, 0);
-  block_active_only_flagged_buttons(
-      C, handle->region, static_cast<Block *>(handle->region->runtime->uiblocks.first));
+  block_active_only_flagged_buttons(C, handle->region, handle->region->runtime->uiblocks.first());
   WM_event_add_mousemove(window);
 }
 
@@ -849,8 +847,6 @@ void popup_block_template_confirm_op(Layout *layout,
                                    UI_UNIT_Y,
                                    nullptr,
                                    "");
-    button_retval_set(but, 1);
-
     return but;
   };
 
@@ -912,6 +908,23 @@ bool popup_block_name_exists(const bScreen *screen, const StringRef name)
   return false;
 }
 
+bool popup_region_from_operator(const bScreen *screen, const ARegion *region)
+{
+  /* Walk up parent popups, e.g. a popover opened from an operator dialog. Parents may
+   * already be closed, as with a context menu opened from a popover. */
+  while (region && BLI_findindex(&screen->regionbase, region) != -1) {
+    const Block *block = region->runtime->uiblocks.first();
+    if (!(block && block->handle)) {
+      return false;
+    }
+    if (block->handle->popup_op) {
+      return true;
+    }
+    region = block->handle->ctx_region_popup;
+  }
+  return false;
+}
+
 Vector<std::string> popup_block_name_texts(const bScreen *screen, const StringRef name)
 {
   Vector<std::string> texts;
@@ -928,6 +941,48 @@ Vector<std::string> popup_block_name_texts(const bScreen *screen, const StringRe
     }
   }
   return texts;
+}
+
+static void append_button_places(const ARegion &region, Vector<PopupButtonPlace> &places)
+{
+  for (const Block &block : region.runtime->uiblocks) {
+    for (const Button &but : block.buttons()) {
+      rctf rect;
+      block_to_window_rctf(&region, &block, &rect, &but.rect);
+      PopupButtonPlace place;
+      place.block = block.name;
+      place.text = but.str;
+      place.operator_idname = but.optype ? but.optype->idname : "";
+      place.xmin = rect.xmin;
+      place.ymin = rect.ymin;
+      place.xmax = rect.xmax;
+      place.ymax = rect.ymax;
+      place.armed = but.angelo_armed;
+      places.append(std::move(place));
+    }
+  }
+}
+
+Vector<PopupButtonPlace> popup_button_places(const bScreen *screen)
+{
+  Vector<PopupButtonPlace> places;
+  for (const ARegion &region : screen->regionbase) {
+    append_button_places(region, places);
+  }
+  return places;
+}
+
+Vector<PopupButtonPlace> area_button_places(const bScreen *screen)
+{
+  Vector<PopupButtonPlace> places;
+  for (const ScrArea &area : screen->areabase) {
+    for (const ARegion &region : area.regionbase) {
+      if (region.runtime->visible) { /* A hidden region keeps its last blocks: never a target. */
+        append_button_places(region, places);
+      }
+    }
+  }
+  return places;
 }
 
 void popup_menu_close(const Block *block, const bool is_cancel)

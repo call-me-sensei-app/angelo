@@ -87,6 +87,8 @@ def create_directory(folder, name, private):
     in the held, owner-only folder ``private`` (on the same file system), opened there and moved into place by
     ``rename``; where that rename is unsupported, it is made in place (``_made_in_place``, the module docstring)."""
     from . import anchored_windows
+    from .owned_paths import entry_name
+    entry_name(name)   # One entry of the anchored folder: never a path through it.
     if isinstance(folder, anchored_windows.WindowsDirectory):
         info = folder.make_directory(name)
         return info.st_dev, info.st_ino

@@ -45,7 +45,7 @@
 #include <xxhash.h>
 
 #include "BLI_math_matrix_types.hh"
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 #include "BLI_vector.hh"
 
 #include "BKE_duplilist.hh"
@@ -273,7 +273,7 @@ static PyObject *digest_holds(PyObject * /*self*/, PyObject *py_image)
   if (image == nullptr) {
     return nullptr;
   }
-  const bool holds = BKE_image_has_loaded_ibuf(image) || image->anims.first != nullptr || image->rr != nullptr;
+  const bool holds = BKE_image_has_loaded_ibuf(image) || image->anims.first() != nullptr || image->rr != nullptr;
   return PyBool_FromLong(holds);
 }
 
@@ -324,7 +324,7 @@ static PyObject *digest_packed(PyObject * /*self*/, PyObject *py_image)
 static int visibility_when_shown(const Object &ob, const eEvaluationMode mode)
 {
   int visibility = OB_VISIBLE_SELF;
-  if (ob.particlesystem.first) {
+  if (ob.particlesystem.first()) {
     visibility |= OB_VISIBLE_INSTANCES | OB_VISIBLE_PARTICLES;
   }
   else if (ob.transflag & OB_DUPLI) {

@@ -19,6 +19,10 @@
 #  include <unistd.h>
 #endif
 
+/* First: glog (in the testing header) does not compile once `windows.h` has defined `ERROR`, and
+ * `BLI_filereader.hh` below includes it on Windows (`BLI_winstuff.hh`). */
+#include "testing/testing.h"
+
 #include "DNA_ID.h"
 #include "DNA_genfile.h"
 #include "DNA_sdna_types.h"
@@ -29,8 +33,6 @@
 #include "BLO_metadata_scan.hh"
 
 #include "../intern/metadata_scan_reader.hh"
-
-#include "testing/testing.h"
 
 namespace blender::tests {
 namespace {
@@ -176,7 +178,7 @@ static Bytes seekable_zstd(const Bytes &bytes)
 
 class MetadataScan : public testing::Test {
  protected:
-  SDNA *dna_ = nullptr;
+  std::unique_ptr<SDNA> dna_;
 
   void SetUp() override
   {
@@ -186,7 +188,7 @@ class MetadataScan : public testing::Test {
   }
   void TearDown() override
   {
-    DNA_sdna_free(dna_);
+    dna_.reset();
   }
 
   Bytes fixture(bool geometry = false, const Bytes *custom_dna = nullptr)
@@ -195,7 +197,7 @@ class MetadataScan : public testing::Test {
     Bytes bytes(header, header + sizeof(header) - 1);
     const char subversion[] = "  42";
     block(bytes, BLO_CODE_GLOB, 0, subversion, 4);
-    const int id_struct = DNA_struct_find_index_without_alias(dna_, "ID");
+    const int id_struct = DNA_struct_find_index_without_alias(dna_.get(), "ID");
     for (int i = 0; i < 6; i++) {
       ID id{};
       std::snprintf(id.name, sizeof(id.name), "OBItem%d", i);
@@ -210,7 +212,7 @@ class MetadataScan : public testing::Test {
     Library library{};
     std::strcpy(library.id.name, "LILibrary");
     std::strcpy(library.filepath, "//dependency.blend");
-    block(bytes, ID_LI, DNA_struct_find_index_without_alias(dna_, "Library"), &library,
+    block(bytes, ID_LI, DNA_struct_find_index_without_alias(dna_.get(), "Library"), &library,
           sizeof(library));
     if (geometry) {
       const Bytes discarded(2 * 1024 * 1024, 0);
@@ -277,7 +279,7 @@ TEST_F(MetadataScan, PlainReadWindowsServeBlocksAcrossTheirBorders)
   const char header[] = "BLENDER17-01v0520";
   Bytes bytes(header, header + sizeof(header) - 1);
   block(bytes, BLO_CODE_GLOB, 0, "  42", 4);
-  const int id_struct = DNA_struct_find_index_without_alias(dna_, "ID");
+  const int id_struct = DNA_struct_find_index_without_alias(dna_.get(), "ID");
   /* A DATA block ending exactly at `end`, which must leave room for its own header. */
   const auto data_until = [&](const int64_t end) {
     const int64_t payload = end - int64_t(bytes.size()) - int64_t(sizeof(LargeBHead8));
@@ -385,8 +387,8 @@ TEST_F(MetadataScan, FooterOverflowProbeReportsOnlyOneExtraByteAndNoMetadata)
 
 TEST_F(MetadataScan, MissingIdSchemaIsInvalidWithoutNativeOffsetLookup)
 {
-  const int id_index = DNA_struct_find_index_without_alias(dna_, "ID");
-  const char *name = dna_->types[dna_->structs[id_index]->type_index];
+  const int id_index = DNA_struct_find_index_without_alias(dna_.get(), "ID");
+  const char *name = dna_->types[dna_->structs[id_index]->type_index].data();
   Bytes changed(reinterpret_cast<const char *>(DNAstr),
                 reinterpret_cast<const char *>(DNAstr) + DNAlen);
   changed[size_t(name - dna_->data)] = 'Z';
@@ -426,6 +428,26 @@ TEST_F(MetadataScan, BorrowedDescriptorStaysOpenAndCursorIsRestored)
   EXPECT_EQ(file.position(), 3);
   const auto again = BLO_metadata_scan_from_descriptor(file.get(), test_request(), test_limits());
   EXPECT_EQ(again.status, BLOMetadataScanStatus::OK);
+}
+
+/* Windows' C runtime ends the process when asked about a descriptor that is negative, out of
+ * range or closed: the scan refuses each before any such call. It is a file that could not be
+ * read (what `fstat` reports off Windows), never a damaged file or a bad request. */
+TEST_F(MetadataScan, DescriptorThatIsNotOpenIsRefused)
+{
+  int closed = -1;
+  {
+    TemporaryDescriptor file(gzip(fixture(true)));
+    ASSERT_GE(file.get(), 0);
+    closed = file.get();
+  }
+  for (const int descriptor : {-1, closed, 1 << 20}) {
+    const auto result = BLO_metadata_scan_from_descriptor(
+        descriptor, test_request(), test_limits());
+    EXPECT_EQ(result.status, BLOMetadataScanStatus::IO_ERROR) << descriptor;
+    EXPECT_EQ(result.message, "Descriptor is not open") << descriptor;
+    EXPECT_TRUE(result.types.empty());
+  }
 }
 
 TEST_F(MetadataScan, CancellationClearsPartialResultsAndKeepsDescriptorOwnedByCaller)

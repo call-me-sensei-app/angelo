@@ -12,10 +12,11 @@
 
 #include "BLI_map.hh"
 #include "BLI_span.hh"
-#include "BLI_time.h"
+#include "BLI_time.hh"
 #include "BLI_vector.hh"
 
 #include "GPU_capabilities.hh"
+#include "GPU_compile_ahead.hh"
 #include "GPU_context.hh"
 #include "GPU_pass.hh"
 #include "GPU_vertex_format.hh"
@@ -49,8 +50,10 @@ struct GPUPass {
 
   uint64_t compilation_timestamp = 0;
 
-  /** Hint that an optimized variant of this pass should be created.
-   *  Based on a complexity heuristic from pass code generation. */
+  /**
+   * Hint that an optimized variant of this pass should be created.
+   * Based on a complexity heuristic from pass code generation.
+   */
   bool should_optimize = false;
   bool is_optimization_pass = false;
 
@@ -78,6 +81,9 @@ struct GPUPass {
       compilation_handle = GPU_shader_async_compilation(base_info, compilation_priority());
     }
     else {
+      /* Angelo: compiled by the thread that asked (#GPUPipelineStats::shaders_waited), as below where a queued pass
+       * is asked for without deferral. */
+      gpu::pipeline_stats_shader_waited();
       shader = GPU_shader_create_from_info(base_info);
       finalize_compilation();
     }
@@ -231,21 +237,34 @@ class GPUPassCache {
     GPU_shader_compiler_resume();
   }
 
-  void add(eGPUMaterialEngine engine,
-           GPUCodegen &codegen,
-           bool deferred_compilation,
-           bool is_optimization_pass)
+  /**
+   * Add a pass for the generated code, the caller becomes its user. Another thread may have added
+   * a pass for the same code since #get didn't find it, then that pass is used instead.
+   */
+  GPUPass *add_or_get(eGPUMaterialEngine engine,
+                      GPUCodegen &codegen,
+                      bool deferred_compilation,
+                      bool is_optimization_pass)
   {
     std::lock_guard lock(mutex_);
 
-    passes_[engine][is_optimization_pass].add(
-        codegen.hash_get(),
-        std::make_unique<GPUPass>(codegen.create_info,
-                                  deferred_compilation,
-                                  is_optimization_pass,
-                                  codegen.should_optimize_heuristic()));
+    Map<uint32_t, std::unique_ptr<GPUPass>> &passes = passes_[engine][is_optimization_pass];
+    if (std::unique_ptr<GPUPass> *pass = passes.lookup_ptr(codegen.hash_get())) {
+      return acquire(*pass->get(), deferred_compilation);
+    }
+    /* A new pass has the caller as user already. */
+    auto pass = std::make_unique<GPUPass>(codegen.create_info,
+                                          deferred_compilation,
+                                          is_optimization_pass,
+                                          !is_optimization_pass &&
+                                              codegen.should_optimize_heuristic());
+    codegen.create_info = nullptr;
+    GPUPass *result = pass.get();
+    passes.add_new(codegen.hash_get(), std::move(pass));
+    return result;
   };
 
+  /** Find the pass for the hash of the generated code, the caller becomes its user. */
   GPUPass *get(eGPUMaterialEngine engine,
                size_t hash,
                bool allow_deferred,
@@ -253,12 +272,25 @@ class GPUPassCache {
   {
     std::lock_guard lock(mutex_);
     std::unique_ptr<GPUPass> *pass = passes_[engine][is_optimization_pass].lookup_ptr(hash);
-    if (!allow_deferred && pass && pass->get()->status == GPU_PASS_QUEUED) {
-      pass->get()->finalize_compilation();
-    }
-    return pass ? pass->get() : nullptr;
+    return pass ? acquire(*pass->get(), allow_deferred) : nullptr;
   }
 
+ private:
+  /**
+   * Add a user while the mutex is locked, so that the garbage collection doesn't free a pass that
+   * has no users yet.
+   */
+  static GPUPass *acquire(GPUPass &pass, bool allow_deferred)
+  {
+    if (!allow_deferred && pass.status == GPU_PASS_QUEUED) {
+      gpu::pipeline_stats_shader_waited();
+      pass.finalize_compilation();
+    }
+    pass.refcount++;
+    return &pass;
+  }
+
+ public:
   void update()
   {
     std::lock_guard lock(mutex_);
@@ -300,6 +332,7 @@ void GPU_pass_ensure_its_ready(GPUPass *pass)
   if (pass->status == GPU_PASS_QUEUED) {
     std::lock_guard lock(g_cache->get_mutex());
     if (pass->status == GPU_PASS_QUEUED) {
+      gpu::pipeline_stats_shader_waited();
       pass->finalize_compilation();
     }
   }
@@ -356,6 +389,20 @@ GPUPass *GPU_generate_pass(GPUMaterial *material,
 {
   gpu_node_graph_prune_unused(graph);
 
+  GPUCodegen codegen(material, graph, debug_name);
+  codegen.generate_material_props();
+  codegen.extract_uniform_list();
+
+  if (optimize_graph) {
+    /* The optimized version of the shader should not re-generate a UBO.
+     * For the builtin uniforms (i.e. cryptomatte), the non-optimized-pass UBO will be reused.
+     * Ensure that inputs are sorted the same way so that the UBO declaration still match.  */
+    codegen.sort_uniform_inputs();
+  }
+  else {
+    codegen.generate_uniform_buffer();
+  }
+
   /* If Optimize flag is passed in, we are generating an optimized
    * variant of the GPUMaterial's GPUPass. */
   if (optimize_graph) {
@@ -366,23 +413,14 @@ GPUPass *GPU_generate_pass(GPUMaterial *material,
    * shader. */
   gpu_node_graph_finalize_uniform_attrs(graph);
 
-  GPUCodegen codegen(material, graph, debug_name);
   codegen.generate_graphs();
-  codegen.generate_cryptomatte();
 
   GPUPass *pass = nullptr;
-
-  if (!optimize_graph) {
-    /* The optimized version of the shader should not re-generate a UBO.
-     * The UBO will not be used for this variant. */
-    codegen.generate_uniform_buffer();
-  }
 
   /* Cache lookup: Reuse shaders already compiled. */
   pass = g_cache->get(engine, codegen.hash_get(), deferred_compilation, optimize_graph);
 
   if (pass) {
-    pass->refcount++;
     return pass;
   }
 
@@ -394,10 +432,7 @@ GPUPass *GPU_generate_pass(GPUMaterial *material,
   finalize_source_cb(thunk, material, &codegen.output);
 
   codegen.create_info->finalize();
-  g_cache->add(engine, codegen, deferred_compilation, optimize_graph);
-  codegen.create_info = nullptr;
-
-  return g_cache->get(engine, codegen.hash_get(), deferred_compilation, optimize_graph);
+  return g_cache->add_or_get(engine, codegen, deferred_compilation, optimize_graph);
 }
 
 /** \} */

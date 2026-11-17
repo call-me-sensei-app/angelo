@@ -33,9 +33,10 @@ import time
 import bpy
 
 from . import export_baked, web_budget, web_compat, web_environment, web_facts, web_glb, web_look, web_world_key
-from . import shared_replace
+from . import owned_paths, shared_replace
 from .web_export_wait import EnvironmentPending, PendingExport
 from .ui_text import n_
+from . import owned_paths
 
 EXPORT_ID = "angelo_web"
 LINK_EXPORT_ID = "angelo_link_web"   # web_link_assets.LIVE_EXPORT_ID: the web link's live frames.
@@ -120,6 +121,9 @@ def run_exporter(window, settings):
     the condition under which it switches nothing. Edit Mode keeps its changes outside the mesh, where the exporter
     can't read them: the exporter switches as it always does and the objects go back into Edit Mode afterwards (the
     live previews never export then: ``scene_changes.busy``). ``window`` None: the plain context."""
+    owned_paths.require_writable(settings.get("filepath"))
+    from . import edit_tool_hold
+    edit_tool_hold.refuse_under("An export")   # Last line: every route to it waits first.
     override = {} if window is None else {"window": window}
     with bpy.context.temp_override(**override):
         editing = [obj for obj in bpy.context.objects_in_mode or () if obj.mode == "EDIT"]
@@ -224,6 +228,7 @@ def _run_gltfpack(binary, source, target, settings):
     if not settings["merge"]:
         command.append("-kn")     # Keep every named node, as merge=false promises.
     try:
+        owned_paths.require_runnable(binary)   # Never one a script wrote (C's change record); refused: not packed.
         subprocess.run(command, check=True, timeout=GLTFPACK_SECONDS, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
@@ -234,6 +239,7 @@ def _run_gltfpack(binary, source, target, settings):
 def _write(window, scene, view_layer, path, settings, baked, extras=None):
     """Run the exporter into ``path`` with ``baked`` (``export_baked.plan``) and the scene ``extras``; returns the
     merge result. Raises WebExportError."""
+    owned_paths.require_writable(path)
     objects = web_facts.exported_objects(scene, view_layer, settings["selection_only"])
     _ACTIVE.clear()
     _ACTIVE.update(merge=settings["merge"], static=static_names(objects).__contains__,
@@ -246,7 +252,9 @@ def _write(window, scene, view_layer, path, settings, baked, extras=None):
         if "FINISHED" not in result or not os.path.isfile(target):
             raise WebExportError(n_("Blender's glTF exporter didn't write the file; see the Info log"))
         if textures == "KTX2":
-            packed = _run_gltfpack(gltfpack_path(), target, path, settings)
+            binary = gltfpack_path()   # The person's glTF preference (C refuses a script's change to it) or PATH.
+            with owned_paths.vouched_during([binary] if binary else [], folder=False):
+                packed = _run_gltfpack(binary, target, path, settings)
             if packed:
                 os.remove(target)
                 if extras:   # gltfpack keeps no extras and rewrites every buffer: set them again.

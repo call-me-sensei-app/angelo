@@ -10,6 +10,7 @@ ends with a typed plan, ``thread/fork`` answers Angelo's cache-affinity probe as
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import os
@@ -75,7 +76,7 @@ class Child:
         self.write({"id": self.ids, "method": method, "params": params})
         return self.wait(lambda m: m.get("id") == self.ids and "method" not in m)
 
-    def wait(self, predicate, timeout=10):
+    def wait(self, predicate, timeout=CAP_S):
         deadline = time.monotonic() + timeout
         with self.lock:
             while True:
@@ -89,7 +90,7 @@ class Child:
 
     def close(self):
         self.process.stdin.close()
-        self.process.wait(10)
+        self.process.wait(CAP_S)
         self.process.stdout.close()
 
 
@@ -114,8 +115,7 @@ class StandInTests(unittest.TestCase):
 
     def log(self, chat, kind):
         path = self.root / chat / "log.jsonl"
-        rows = [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
-        return [row for row in rows if row["kind"] == kind]
+        return [row for row in (stand_in.read_rows(path) if path.exists() else []) if row["kind"] == kind]
 
     def completed(self, turn):
         return self.child.wait(lambda m: m.get("method") == "turn/completed" and m["params"]["turn"]["id"] == turn)
@@ -180,6 +180,41 @@ class StandInTests(unittest.TestCase):
         turn = self.turn("chat-d")
         self.assertEqual(self.completed(turn)["params"]["turn"]["status"], "completed")
         self.assertEqual(self.log("chat-d", "tool_result"), [])
+
+
+APPENDER = """import sys, threading
+sys.path.insert(0, sys.argv[1])
+import hosted_codex_stand_in as stand_in
+def rows(thread):
+    for number in range(int(sys.argv[4])):
+        stand_in.append_row(sys.argv[2], {"writer": sys.argv[3], "thread": thread, "number": number, "pad": "x" * 300})
+threads = [threading.Thread(target=rows, args=(index,)) for index in range(4)]
+[thread.start() for thread in threads]
+[thread.join() for thread in threads]
+"""
+
+
+class LogTests(unittest.TestCase):
+    """The stand-in's logs have several writers: its message reader and its turn thread in each process, every
+    process at the root. Each row must read back whole, on Windows too (its C runtime emulates append)."""
+
+    def test_rows_appended_at_once_by_threads_of_several_processes_read_back_whole(self):
+        folder = Path(tempfile.mkdtemp())
+        path, here = folder / "log.jsonl", str(Path(__file__).resolve().parent)
+        writers = [subprocess.Popen([sys.executable, "-c", APPENDER, here, str(path), str(index), "200"])
+                   for index in range(3)]
+        self.assertEqual([writer.wait(timeout=120) for writer in writers], [0, 0, 0])
+        rows = stand_in.read_rows(path)
+        self.assertEqual(len(rows), 3 * 4 * 200)
+        self.assertEqual({(row["writer"], row["thread"], row["number"]) for row in rows},
+                         {(str(w), t, n) for w in range(3) for t in range(4) for n in range(200)})
+
+    def test_a_row_still_being_written_is_left_for_the_next_read(self):
+        path = Path(tempfile.mkdtemp()) / "log.jsonl"
+        stand_in.append_row(path, {"kind": "request"})
+        with open(path, "ab") as handle:
+            handle.write(b'{"kind": "tool_res')
+        self.assertEqual(stand_in.read_rows(path), [{"kind": "request"}])
 
 
 class InstallTests(unittest.TestCase):
@@ -305,8 +340,8 @@ class HostedBatchRuntimeTests(unittest.TestCase):
             chat.rows.append({"kind": "tool_result", "id": identity, "success": True, "sent_ns": 10 + n,
                               "answered_ns": 20 + n})
             chat.results[identity] = {"success": True, "result": {"job_id": "j%d" % n, "start_ns": 12 + n}}
-        self.assertTrue(runtime.finished.wait(5))
-        self.assertTrue(runtime.join(5))
+        self.assertTrue(runtime.finished.wait(CAP_S))
+        self.assertTrue(runtime.join(CAP_S))
         self.assertEqual(runtime.errors, [])
         events = runtime.events(timeout=1)
         self.assertEqual([(e["job_id"], e["admitted_ns"], e["answered_ns"]) for e in events],
@@ -315,7 +350,7 @@ class HostedBatchRuntimeTests(unittest.TestCase):
         failing.chat.rows.append({"kind": "tool_result", "id": None, "success": False})
         failing.start()
         failing.chat.rows[0]["id"] = failing.receipts[0]["call_id"]
-        self.assertTrue(failing.finished.wait(5))
+        self.assertTrue(failing.finished.wait(CAP_S))
         self.assertIn("Native batch failed", failing.errors[0])
 
 

@@ -12,6 +12,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -27,6 +28,7 @@ import final_runs as runs  # noqa: E402
 import final_runs_load as quiet  # noqa: E402
 import final_runs_mcp  # noqa: E402
 import final_runs_plan as plan  # noqa: E402
+import final_runs_report as runs_report  # noqa: E402
 from host_test_policy import environment_skip  # noqa: E402
 
 # The Windows VM launcher (scripts/angelo/gcp_windows_validate.sh) runs from the workstation, which drives the VM.
@@ -34,7 +36,8 @@ WORKSTATION_BASH = unittest.skipIf(os.name == "nt" or not shutil.which("bash"), 
     "The launcher is a bash script run from the macOS workstation (or Linux CI), not the Windows VM"))
 
 
-CONNECTIONS = {"claude": "11111111-1111-4111-8111-111111111111", "chatgpt": "22222222-2222-4222-8222-222222222222"}
+CONNECTIONS = {"claude": "11111111-1111-4111-8111-111111111111", "chatgpt": "22222222-2222-4222-8222-222222222222",
+               "gemini": "33333333-3333-4333-8333-333333333333"}   # Gemini: an API-key account (plan.API_KEY_ACCOUNTS).
 
 
 def config(folder, **extra):
@@ -44,29 +47,32 @@ def config(folder, **extra):
     exe.write_text("binary")
     (candidate / runs.RECEIPT).write_text(json.dumps({"executable": str(exe), "executable_sha256": runs.digest(exe)}))
     return dict({"platform": "macos", "output": str(folder), "candidate": str(candidate), "connections_dir": "/conn",
-                 "connections": dict(CONNECTIONS), "codex_home": "/codex-profile/x", "stock_blender": "/Blender", "mcp_server_dir": "/mcp",
+                 "connections": dict(CONNECTIONS), "codex_home": "/codex-profile/x", "api_key_dirs": {"gemini": "/gemini"},
+                 "stock_blender": "/Blender", "mcp_server_dir": "/mcp",
                  "mcp_addon_dir": "/addon", "codex": "/codex", "claude": "", "python": "/py", "load_threshold": 6.0,
                  "pilot": {"dir": "/pilot", "configs": {"sol": "/pilot/configs/sol.json",
                                                         "astra": "/pilot/configs/astra.json"}}}, **extra)
 
 
 class OrderTests(unittest.TestCase):
-    def test_gates_come_first_and_cover_the_three_models_at_their_bars(self):
+    def test_gates_come_first_and_cover_every_gated_model_at_its_bar(self):
         steps = plan.campaign("macos")
         gates = [s for s in steps if s["phase"] == "gate"]
         self.assertEqual(steps[:len(gates)], gates)
         self.assertEqual(sorted({s["model"] for s in gates}), ["claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol"])
-        prompts = {s["id"]: plan.estimate(s)["prompts"] for s in gates}
-        for model in ("sol", "opus", "astra"):
+        windows = [s for s in plan.campaign("windows") if s["phase"] == "gate"]   # Carbon's gate: the Windows MSI's.
+        self.assertEqual(sorted({s["model"] for s in windows} - {s["model"] for s in gates}), ["gemini-4-carbon"])
+        prompts = {s["id"]: plan.estimate(s)["prompts"] for s in gates + windows}
+        for model in plan.GATED:
             self.assertEqual(prompts["gate-%s-default" % model], 30)
             self.assertEqual(prompts["gate-%s-long" % model], 120)
             self.assertEqual(prompts["smoke-%s-gate7" % model], 7)
             self.assertEqual(prompts["smoke-%s-survey" % model], 8)
             # The gate runs in Auto; one trial of the default set checks Ask.
-            ask = next(s for s in gates if s["id"] == "smoke-%s-ask" % model)
+            ask = next(s for s in windows if s["id"] == "smoke-%s-ask" % model)
             self.assertEqual((prompts[ask["id"]], ask["tool"], ask["task_set"]), (6, "bench", "default"))
             self.assertEqual(ask["args"][ask["args"].index("--angelo-approval") + 1], "ask")
-            self.assertFalse(any("--angelo-approval" in s["args"] for s in gates if not s["id"].endswith("-ask")),
+            self.assertFalse(any("--angelo-approval" in s["args"] for s in windows if not s["id"].endswith("-ask")),
                              "the rest in Auto")
 
     def test_models_cover_their_task_sets(self):
@@ -85,7 +91,7 @@ class OrderTests(unittest.TestCase):
             self.assertIn("--returning-user", next(s for s in steps if s["id"] == "returning-%s-default" % model)["args"])
         windows = plan.campaign("windows")
         self.assertFalse([s for s in windows if s["tool"] == "pilot"], "The pilot adapter is macOS only")
-        self.assertEqual(len(windows), 52)
+        self.assertEqual(len(windows), 57, "52 and Carbon's five gate steps, Windows only")
 
     def test_accounts_alternate_and_the_heaviest_runs_come_last(self):
         h2h = [s for s in plan.campaign("macos") if s["phase"] == "h2h"]
@@ -289,7 +295,7 @@ class CheckpointTests(unittest.TestCase):
     def test_a_nearly_used_chatgpt_window_waits_for_its_reset(self):
         steps = [self.steps["gate-sol-default"], self.steps["gate-opus-default"]]
         calls, clock = [], [1000.0]
-        windows = iter([(96.0, 5000.0), (2.0, 9000.0)])
+        windows = iter([(96.0, 5000.0, False), (2.0, 9000.0, False)])
 
         def fake_step(step, config, campaign_dir, state, deadline=None):
             calls.append(step["id"])
@@ -302,6 +308,36 @@ class CheckpointTests(unittest.TestCase):
             self.assertEqual(runs.run({}, self.folder, steps, sleep=lambda s: clock.__setitem__(0, clock[0] + s)), 0)
         self.assertEqual(calls, ["gate-opus-default", "gate-sol-default"], "Claude ran while ChatGPT's window reset")
         self.assertGreaterEqual(clock[0], 5000.0)
+
+    def test_a_used_window_the_accounts_credits_pay_past_runs_at_once(self):
+        steps = [self.steps["gate-sol-default"], self.steps["gate-opus-default"]]
+        calls, clock = [], [1000.0]
+
+        def fake_step(step, config, campaign_dir, state, deadline=None):
+            calls.append(step["id"])
+            state["steps"].setdefault(step["id"], {"trials": {}})
+            return "done"
+        with mock.patch.object(runs, "run_step", side_effect=fake_step), \
+                mock.patch.object(runs, "chatgpt_window", return_value=(100.0, 5000.0, True)), \
+                mock.patch.object(runs.time, "time", side_effect=lambda: clock[0]), \
+                mock.patch.object(runs.quiet, "load", return_value=[1, 1, 1]):
+            self.assertEqual(runs.run({}, self.folder, steps, sleep=lambda s: clock.__setitem__(0, clock[0] + s)), 0)
+        self.assertEqual(calls, ["gate-sol-default", "gate-opus-default"])
+        self.assertLess(clock[0], 5000.0, "it waited for a reset its credits made unnecessary")
+        rows = [json.loads(line) for line in (self.folder / runs.JOURNAL).read_text().splitlines()]
+        self.assertEqual([row.get("credits_cover") for row in rows if row["event"] == "chatgpt_window"], [True])
+
+    def test_the_window_reading_says_whether_credits_pay_past_it(self):
+        def read(**rate_limits):
+            limits = dict({"primary": {"usedPercent": 100, "resetsAt": 5000}}, **rate_limits)
+            with mock.patch.object(runs_report, "headroom", return_value={"chatgpt": {"rateLimits": limits}}):
+                return runs_report.chatgpt_window({"codex": "/codex", "codex_home": "/home"})
+        paid = {"hasCredits": True, "unlimited": False, "balance": "52119.4"}
+        self.assertEqual(read(credits=paid), (100.0, 5000.0, True))
+        self.assertEqual(read(credits={"hasCredits": False, "unlimited": True}), (100.0, 5000.0, True))
+        self.assertEqual(read(credits={"hasCredits": False, "unlimited": False}), (100.0, 5000.0, False))
+        self.assertEqual(read(credits=paid, spendControlReached=True), (100.0, 5000.0, False))
+        self.assertEqual(read(), (100.0, 5000.0, False))
 
     def test_the_head_to_head_waits_for_every_gate_at_its_bar(self):
         gate, h2h = self.steps["gate-sol-default"], self.steps["h2h-sol-default"]
@@ -472,6 +508,57 @@ class RerunAndStopTests(unittest.TestCase):
         entry = json.loads((self.folder / runs.JOURNAL).read_text().splitlines()[-1])
         self.assertEqual((entry["load_guard"], entry["at_start"]["load"]), ("ignored", [40, 30, 30]))
 
+    def test_a_live_eval_step_keeps_the_codex_rollouts_its_trial_wrote(self):
+        """The gate7 and survey smokes run ``eval_live_agent.py`` directly, so nothing copied their Codex chats'
+        per-request records: the 1.0.11 gate (e1d956ec1ef) brought back the gate and ask steps' rollouts, which the
+        bench copies for each of its trials, and none of these two steps'. A step with no Codex chat copies none."""
+        profile = self.folder / "codex-profile"
+        sessions = profile / "sessions" / "2026" / "11" / "12"
+        sessions.mkdir(parents=True)
+        (sessions / "rollout-earlier-step.jsonl").write_text("{}\n")
+        os.utime(sessions / "rollout-earlier-step.jsonl", (time.time() - 3600,) * 2)
+
+        def trial(name):
+            def wait():   # The trial's chat writes its rollout while the step runs.
+                (sessions / name).write_text('{"type":"session_meta"}\n')
+                os.utime(sessions / name, (time.time() + 1,) * 2)
+                return 0
+            return mock.Mock(pid=4242, wait=mock.Mock(side_effect=wait))
+        for step_id, written, kept in (("smoke-sol-survey", "rollout-sol.jsonl", ["rollout-sol.jsonl"]),
+                                       ("smoke-opus-survey", "rollout-not-this-steps.jsonl", None)):
+            step, folder = self.steps[step_id], self.folder / step_id
+            with self.subTest(step=step_id), \
+                    mock.patch.object(runs.quiet, "wait_quiet", return_value=0), \
+                    mock.patch.object(runs.quiet, "check", return_value={"quiet": True, "load": [1, 1, 1]}), \
+                    mock.patch.object(runs.quiet, "Sampler") as sampler, \
+                    mock.patch.object(runs.subprocess, "Popen", return_value=trial(written)):
+                sampler.return_value.__enter__.return_value.summary.return_value = {"contended": False}
+                runs.run_unit(step, dict(self.config, codex_home=str(profile)), self.folder, folder, ["true"])
+                copied = folder / "angelo-trial-01-rollouts"   # The bench's name for a trial's rollouts; one trial.
+                self.assertEqual(sorted(path.name for path in copied.iterdir()) if copied.is_dir() else None, kept)
+                entry = json.loads((self.folder / runs.JOURNAL).read_text().splitlines()[-1])
+                self.assertEqual(entry.get("rollouts"), kept)
+
+    def test_a_rollout_copy_that_fails_is_journaled_and_the_trial_still_counts(self):
+        step, folder = self.steps["smoke-sol-survey"], self.folder / "smoke-sol-survey"
+
+        def finish():
+            folder.mkdir()
+            (folder / "eval-live-agent.json").write_text(json.dumps({"trials": [{"success": True}]}))
+            return 0
+        with mock.patch.object(runs.quiet, "wait_quiet", return_value=0), \
+                mock.patch.object(runs.quiet, "check", return_value={"quiet": True, "load": [1, 1, 1]}), \
+                mock.patch.object(runs.quiet, "Sampler") as sampler, \
+                mock.patch.object(runs.subprocess, "Popen",
+                                  return_value=mock.Mock(pid=4242, wait=mock.Mock(side_effect=finish))), \
+                mock.patch.object(bench, "copy_codex_rollouts", side_effect=PermissionError("profile is read-protected")):
+            sampler.return_value.__enter__.return_value.summary.return_value = {"contended": False}
+            code, new, _load = runs.run_unit(step, self.config, self.folder, folder, ["true"])
+        self.assertEqual((code, new), (0, ["angelo-1"]))
+        entry = json.loads((self.folder / runs.JOURNAL).read_text().splitlines()[-1])
+        self.assertEqual(entry["rollouts_error"], "PermissionError: profile is read-protected")
+        self.assertNotIn("rollouts", entry)
+
     def test_a_pilot_entry_is_counted_in_its_steps_folder(self):
         step = self.steps["pilot-sol-duplication"]
         folder, entry = self.folder / step["id"], runs.pilot_entries(step)[0]
@@ -593,6 +680,78 @@ class PrepareConnectionsTests(unittest.TestCase):
             (Path(prepared["codex_profile"]) / "config.toml").write_text('cli_auth_credentials_store = "keyring"\n')
             with self.assertRaises(SystemExit):
                 runs.prepare_connections(store)
+
+
+class ScopeTests(unittest.TestCase):
+    """A campaign of steps without an MCP side needs no stock Blender or MCP side (cut-12's Windows gates, 2026-11-04:
+    every gate VM's preparation failed on stock Blender 5.3.0, not yet published, which no gate step runs)."""
+
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.root = Path(folder.name)
+        self.candidate = Path(config(self.root)["candidate"])
+        for name in ("conn", "codex-home", "Blender", "mcp-server", "mcp-addon", "gemini"):
+            (self.root / name).mkdir()
+
+    def init(self, campaign, *extra):
+        argv = ["init", "--output", str(self.root / campaign), "--candidate", str(self.candidate), "--platform", "windows",
+                "--connections-dir", str(self.root / "conn"), "--claude-connection", CONNECTIONS["claude"],
+                "--chatgpt-connection", CONNECTIONS["chatgpt"], "--codex-home", str(self.root / "codex-home"),
+                "--gemini-connection", CONNECTIONS["gemini"], "--gemini-connections-dir", str(self.root / "gemini")]
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            return runs.main(argv + list(extra))
+
+    def test_needs_names_the_mcp_side_only_for_steps_that_run_it(self):
+        gates = plan.select(plan.campaign("windows"), ["gate-sol-*", "smoke-sol-*"])
+        self.assertEqual([s["id"] for s in gates], ["gate-sol-default", "gate-sol-long", "smoke-sol-gate7",
+                                                    "smoke-sol-survey", "smoke-sol-ask"])
+        self.assertFalse(plan.mcp_side(gates))
+        self.assertTrue(plan.mcp_side(plan.select(plan.campaign("windows"), ["h2h-sol-default"])))
+        self.assertTrue(plan.mcp_side(plan.campaign("windows")), "no glob: every step, the head-to-heads included")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(plan.main(["needs", "--platform", "windows", "--only", "gate-astra-*"]), 0)
+        self.assertEqual(json.loads(out.getvalue())["mcp_side"], False)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(plan.main(["needs", "--only", "no-such-step"]), 2, "a glob that selects nothing is refused")
+
+    def test_a_gates_only_campaign_needs_no_stock_blender_or_mcp_side(self):
+        self.init("gates", "--only", "gate-sol-*", "--only", "smoke-sol-*")
+        saved = json.loads((self.root / "gates" / runs.CONFIG).read_text())
+        self.assertEqual((saved["scope"], saved["mcp_side"], saved["stock_blender"]),
+                         (["gate-sol-*", "smoke-sol-*"], False, ""))
+
+    def test_a_campaign_with_an_mcp_side_still_needs_it(self):
+        for campaign, extra in (("everything", ()), ("h2h", ("--only", "h2h-sol-*"))):
+            with self.assertRaises(SystemExit) as refused:
+                self.init(campaign, *extra)
+            self.assertIn("stock_blender, mcp_server_dir, mcp_addon_dir", str(refused.exception))
+        self.init("complete", "--stock-blender", str(self.root / "Blender"), "--mcp-server-dir",
+                  str(self.root / "mcp-server"), "--mcp-addon-dir", str(self.root / "mcp-addon"))
+        self.assertTrue(json.loads((self.root / "complete" / runs.CONFIG).read_text())["mcp_side"])
+
+    def test_a_gates_only_campaign_refuses_a_selection_that_runs_the_mcp_side(self):
+        self.init("gates", "--only", "gate-sol-*", "--only", "smoke-sol-*")
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            self.assertEqual(runs.main(["plan", "--output", str(self.root / "gates"), "--only", "h2h-sol-default"]), 2)
+        self.assertIn("set up for Angelo's side alone", err.getvalue())
+        self.assertIn("h2h-sol-default run the MCP side", err.getvalue())
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runs.main(["plan", "--output", str(self.root / "gates"), "--only", "gate-sol-*"]), 0)
+
+    def test_the_windows_preparation_installs_the_mcp_side_only_when_a_selected_step_runs_it(self):
+        text = (Path(__file__).resolve().parents[3] / "scripts/angelo/windows_final_runs.ps1").read_text()
+        prepare = text[text.index("function Prepare-Bench"):text.index("if ($Setup)")]
+        needs, gate = prepare.index('"needs", "--platform", "windows"'), prepare.index("if ($needs.mcp_side) {")
+        self.assertLess(needs, gate)
+        self.assertLess(gate, prepare.index("$stock = Install-StockBlender"))
+        self.assertLess(gate, prepare.index("$mcp = Install-McpRuntime"))
+        self.assertIn('foreach ($glob in $Only) { $needsArgs += @("--only", $glob) }', prepare)
+        self.assertIn('$bundle $candidateMsi $candidateSha $sources @((Get-Meta "angelo-bench-only" "")', text)
+        self.assertIn('if ($facts.stock_blender) { $initArgs += @("--stock-blender"', text)
+        self.assertIn('foreach ($glob in @($facts.only)) { if ($glob) { $initArgs += @("--only", $glob) } }', text)
 
 
 class McpRuntimeTests(unittest.TestCase):
@@ -762,7 +921,7 @@ class WindowsStageTests(unittest.TestCase):
         bench = (self.scripts / "windows_final_runs.ps1").read_text()
         self.assertIn("angelo-release-build.json", bench, "The candidate is the release stage's build of this commit")
         self.assertIn("if ($env:USERNAME -ne $benchUser -or", bench)
-        self.assertIn("Remove-LocalUser -Name $benchUser", bench[bench.index("== session:"):])
+        self.assertIn("Remove-BenchUser $benchUser", bench[bench.index("== session:"):])
         self.assertIn("--authorize-billed-runs", bench[bench.index('if ($Mode -eq "run")'):])
         self.assertNotIn("auth.json", bench, "The stage never names a credential file")
 
@@ -809,9 +968,16 @@ class WindowsBenchSetupTests(unittest.TestCase):
         self.assertIn('$Accounts -contains "claude"', sign_in)
         self.assertIn('@("--account", $_)', sign_in, "a ChatGPT-only machine checks that account only")
         self.assertNotIn("Start-Process -FilePath $exe", sign_in, "no browser sign-in inside Angelo on the machine")
-        for name, user in (("windows_final_runs.ps1", "$benchUser"), ("windows_bootstrap_stages.ps1", "$guiUser")):
-            self.assertIn('Where-Object { $_.LocalPath -like "C:\\Users\\%s*" -and -not $_.Loaded }' % user, self.text(name),
-                          "an earlier throwaway user's profile (its sign-ins) is removed")
+        self.assertEqual(self.text("windows_final_runs.ps1").count("Remove-BenchUser $benchUser"), 2,
+                         "the stage removes the bench user at its start and its end (windows_bench_tools.ps1)")
+        self.assertIn('Where-Object { $_.LocalPath -like "C:\\Users\\$guiUser*" -and -not $_.Loaded }',
+                      self.text("windows_bootstrap_stages.ps1"), "an earlier throwaway user's profile is removed")
+        # The bench user's (Remove-BenchUser): its own profiles only, each once Windows has unloaded it, then removed;
+        # one still loaded loses its credential vaults (what each piece does, not one line's spelling).
+        removal = self.text("windows_bench_tools.ps1").split("function Remove-BenchUser", 1)[1]
+        for piece in ('$_.LocalPath -like "C:\\Users\\$User*"', "Where-Object { -not $_.Loaded } | Remove-CimInstance",
+                      "Where-Object { $_.Loaded }", "Microsoft\\Credentials"):
+            self.assertIn(piece, removal, "an earlier throwaway user's profile (its sign-ins) is removed")
 
     def test_the_vm_tree_is_its_commit_file_for_file(self):
         receive = self.text("source_send.py")

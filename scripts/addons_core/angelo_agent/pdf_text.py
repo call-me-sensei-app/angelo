@@ -31,7 +31,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import pdf_darwin_watchdog, pdf_process_limits, pdf_process_output
+from . import essential_environment, owned_paths, pdf_darwin_watchdog, pdf_process_limits, pdf_process_output
 
 VENDOR = Path(__file__).with_name("vendor")
 READER = VENDOR / "pypdf-6.21.2-py3-none-any.pyz"
@@ -43,7 +43,6 @@ MAX_CHARS = 1000000        # As for a text attachment (references._file_text).
 BUDGET = 20                # Seconds of page reading before the worker answers with the pages it has.
 MEMORY_BYTES = 1024 * 1024 * 1024  # Hard AS/Job ceiling on Linux/Windows; sampled footprint trigger on Darwin.
 SECONDS = 30               # The child's hard deadline.
-ENVIRONMENT = ("PATH", "SYSTEMROOT", "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL")
 
 # What the worker says went wrong -> what the model is told (never pypdf's own text, which can hold paths).
 CODES = {
@@ -67,6 +66,11 @@ class Unreadable(ValueError):
     def __init__(self, code):
         self.code = code if code in CODES else "read"
         super().__init__(CODES[self.code])
+
+
+def worker_environment():
+    """The reader's environment: the OS's own variables only (essential_environment), never the person's others."""
+    return essential_environment.environment(("LC_ALL",))
 
 
 def interpreter():
@@ -94,10 +98,12 @@ def extract(path):
     if not available():
         raise OSError(MISSING_ERROR)
     import subprocess
+    argv = command(path)
+    owned_paths.require_runnable(argv[0])   # Never a program from state (C).
     try:
         output = pdf_process_output.run(
-            command(path), memory_bytes=MEMORY_BYTES, output_bytes=6 * MAX_CHARS + 4096, timeout=SECONDS,
-            env={name: os.environ[name] for name in ENVIRONMENT if name in os.environ})
+            argv, memory_bytes=MEMORY_BYTES, output_bytes=6 * MAX_CHARS + 4096, timeout=SECONDS,
+            env=worker_environment())
     except pdf_darwin_watchdog.FootprintExceeded:
         raise Unreadable("limit") from None
     except (pdf_process_limits.ResourceLimitUnavailable, pdf_darwin_watchdog.AccountingUnavailable):

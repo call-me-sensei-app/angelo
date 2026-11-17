@@ -13,6 +13,7 @@ is safe (``background_pauses``).
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import sys
@@ -303,7 +304,7 @@ class BackgroundPauseTests(unittest.TestCase):
                         background_pauses.pause()
         thread = threading.Thread(target=work)
         thread.start()
-        thread.join(10)
+        thread.join(CAP_S)
         return clock
 
     def test_an_enabled_thread_pauses_after_each_work_interval(self):

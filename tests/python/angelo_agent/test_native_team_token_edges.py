@@ -9,6 +9,7 @@ console revokes a grant whose used refresh token is presented again, as the real
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import sys
@@ -188,7 +189,7 @@ class EdgeTests(AccountCase):
         self.refresh(old)  # Rotated; the store refused it.
         self.assertTrue(old._unsaved)
         old.close()  # The add-on's unregister; its last save fails too.
-        self.assertTrue(old.join(10))
+        self.assertTrue(old.join(CAP_S))
         vault = Window(shared)
         vault.failing = True
         new = self.account(vault=vault, record=True)
@@ -244,7 +245,7 @@ class EdgeTests(AccountCase):
         with account._refresh_lock:  # Held by a refresh still waiting for the team lock: nothing presented yet.
             closing = threading.Thread(target=account.close)
             closing.start()
-            closing.join(2.0)
+            closing.join(CAP_S)
             self.assertFalse(closing.is_alive(), "quit waited for a refresh that presented nothing")
 
 
@@ -385,7 +386,7 @@ class RoundThreeTests(AccountCase):
         self.assertTrue(vault.writing.wait(30))
         closing = threading.Thread(target=account.close, daemon=True)
         closing.start()
-        closing.join(0.5)
+        closing.join(0.5)  # window: quit must still be waiting after it
         self.assertTrue(closing.is_alive(), "quit didn't wait for the sign-in's store write")
         vault.hold.set()
         closing.join(30)

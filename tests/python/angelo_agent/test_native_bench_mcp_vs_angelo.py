@@ -3,6 +3,7 @@
 """Offline checks for the billed Blender MCP vs Angelo benchmark: no process, network or account."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import platform_env
 
 import ast
 import contextlib
@@ -63,7 +64,7 @@ class GuardTests(unittest.TestCase):
             self.assertEqual(bench.macos_default("/Applications/Blender.app", platform=platform), "")
         with mock.patch.dict(os.environ, {"ANGELO_BINARY": "/builds/Angelo"}):
             self.assertEqual(bench.parse([]).angelo_binary, "/builds/Angelo")
-        with mock.patch.dict(os.environ, {}, clear=True):
+        with platform_env.cleared():
             self.assertEqual(bench.parse([]).angelo_binary, "")
 
     def test_missing_defaults_are_refused_before_starting_anything(self):
@@ -100,21 +101,26 @@ class GuardTests(unittest.TestCase):
     def test_clean_environment_drops_routing_and_session_variables(self):
         inherited = {"PATH": "/usr/bin", "HOME": "/Users/x", "ANTHROPIC_BASE_URL": "http://proxy", "CLAUDECODE": "1",
                      "CLAUDE_CODE_SESSION_ID": "s", "CLAUDE_CODE_OAUTH_TOKEN": "t", "USE_STAGING_OAUTH": "1"}
-        with mock.patch.dict(os.environ, inherited, clear=True):
+        # What every process has (platform_env) is basic too: on Windows the profile and system folders pass.
+        basic = {name: value for name, value in platform_env.essential_environ(inherited).items()
+                 if name.upper() in trial.KEEP_ENV}
+        self.assertEqual(set(inherited) - set(basic), {"ANTHROPIC_BASE_URL", "CLAUDECODE", "CLAUDE_CODE_SESSION_ID",
+                                                       "CLAUDE_CODE_OAUTH_TOKEN", "USE_STAGING_OAUTH"})
+        with platform_env.cleared(inherited):
             environment = trial.clean_environment(TMPDIR="/tmp/x")
         # The run's GPU preference mode (bench_gpu) is the one harness variable every child gets.
-        self.assertEqual(environment, {"PATH": "/usr/bin", "HOME": "/Users/x", "DISABLE_AUTOUPDATER": "1",
-                                       "CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK": "1", "TMPDIR": "/tmp/x",
-                                       "ANGELO_BENCH_GPU": "require" if sys.platform == "win32" else "off"})
+        self.assertEqual(environment, dict(basic, DISABLE_AUTOUPDATER="1", CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK="1",
+                                           TMPDIR="/tmp/x",
+                                           ANGELO_BENCH_GPU="require" if sys.platform == "win32" else "off"))
 
     def test_the_scenario_references_root_reaches_every_child(self):
-        with mock.patch.dict(os.environ, {"PATH": "/usr/bin", "ANGELO_SCENARIO_REFERENCES": "/refs"}, clear=True):
+        with platform_env.cleared({"PATH": "/usr/bin", "ANGELO_SCENARIO_REFERENCES": "/refs"}):
             environment = trial.clean_environment()
         self.assertEqual(environment["ANGELO_SCENARIO_REFERENCES"], "/refs")   # A moved root, both sides alike.
 
     def test_only_a_bounded_qa_process_owner_reaches_children(self):
         for owner in ("a" * 32, "", "a" * 31, "a" * 33, "A" * 32, "g" * 32, "a" * 31 + "\n"):
-            with self.subTest(owner=owner), mock.patch.dict(os.environ, {"ANGELO_QA_PROCESS_OWNER": owner}, clear=True):
+            with self.subTest(owner=owner), platform_env.cleared({"ANGELO_QA_PROCESS_OWNER": owner}):
                 environment = trial.clean_environment()
             self.assertEqual(environment.get("ANGELO_QA_PROCESS_OWNER"), owner if owner == "a" * 32 else None)
 

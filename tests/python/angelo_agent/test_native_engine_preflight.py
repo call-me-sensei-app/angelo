@@ -211,6 +211,12 @@ class RuleScopeTests(unittest.TestCase):
         self.assertEqual(where(facts(obj("Box"), images=[mixed]), "colour_space"), set())
         aces = dict(normal, colorspace="ACEScg")
         self.assertEqual(where(facts(obj("Box"), images=[aces]), "colour_space"), set())
+        # An ACES configuration's own names (5.3 Projects): judged by kind, never by Blender's names.
+        texture = dict(normal, colorspace="sRGB - Texture", colorspace_kind="srgb")
+        self.assertEqual(where(facts(obj("Box"), images=[texture]), "colour_space"), ALL)
+        raw = dict(normal, colorspace="Raw", colorspace_kind="data")
+        self.assertEqual(where(facts(obj("Box"), images=[raw]), "colour_space"), set())
+        self.assertEqual(where(facts(obj("Box"), images=[dict(raw, roles=["colour"])]), "colour_space"), ALL)
 
     def test_objects_not_exported_never_produce_findings(self):
         scene = facts(obj("Rig", "ARMATURE", scale=[2, 2, 2]), armatures=[armature("Rig")])
@@ -391,7 +397,9 @@ class WebReadBackTests(unittest.TestCase):
         report = folder / "asset.glb.preflight.json"
         spec = {"folder": None, "report": str(report), "scene_version": 3, "blend_identity": [1, 2, 3, 4],
                 "save_key": "token:9"}
-        engine_preflight_link.Runner(str(folder / "no-angelo"))._run(str(folder / "a.blend"), spec)
+        from angelo_agent import engine_link_writeback
+        with mock.patch.object(engine_link_writeback, "angelo_binary", lambda: str(folder / "no-angelo")):
+            engine_preflight_link.Runner()._run(str(folder / "a.blend"), spec)
         written = json.loads(report.read_text(encoding="utf-8"))
         self.assertEqual({key: written[key] for key in ("status", "scene_version", "blend_identity", "save_key")},
                          {"status": "failed", "scene_version": 3, "blend_identity": [1, 2, 3, 4],
@@ -417,9 +425,11 @@ class WebReadBackTests(unittest.TestCase):
                               "json.dump({'argv': sys.argv[1:], 'spec': spec}, open(%r, 'w'))\n" % (sys.executable, str(log)))
             binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
             baked = [["Object.%05d" % index, "Baked.%05d" % index] for index in range(5000)]
-            engine_preflight_link.Runner(str(binary))._run(str(Path(folder, "a.blend")),
-                                                         {"folder": None, "report": str(Path(folder, "r.json")),
-                                                          "baked": baked})
+            from angelo_agent import engine_link_writeback
+            with mock.patch.object(engine_link_writeback, "angelo_binary", lambda: str(binary)):
+                engine_preflight_link.Runner()._run(str(Path(folder, "a.blend")),
+                                                    {"folder": None, "report": str(Path(folder, "r.json")),
+                                                     "baked": baked})
             call = json.loads(log.read_text())
         self.assertEqual(call["spec"]["baked"], baked)
         self.assertLess(len(" ".join(call["argv"])), 8192)   # The child's own code and its paths; never the list.
@@ -428,7 +438,7 @@ class WebReadBackTests(unittest.TestCase):
     def test_a_replaced_link_preflight_leaves_no_folder(self):
         import tempfile
         from angelo_agent import engine_preflight_link
-        runner = engine_preflight_link.Runner("angelo")
+        runner = engine_preflight_link.Runner()
         runner._running = True
         folders = [tempfile.mkdtemp(prefix="angelo-preflight-test-") for _ in range(2)]
         for index, folder in enumerate(folders):
@@ -436,6 +446,27 @@ class WebReadBackTests(unittest.TestCase):
         self.assertFalse(Path(folders[0]).exists())
         self.assertEqual(runner._again[1]["scene_version"], 1)
         Path(folders[1]).rmdir()
+
+    def test_a_preflight_that_cannot_start_leaves_the_runner_idle_and_a_refused_folder_alone(self):
+        # Its undo is a cleanup: one C refuses is skipped (the brief's rule for every cleanup), never raised over the
+        # start's own error with the runner still busy, which held every later preflight for the session.
+        import tempfile
+        import threading
+        from angelo_agent import engine_preflight_link, owned_paths
+        runner = engine_preflight_link.Runner()
+        folder = tempfile.mkdtemp(prefix="angelo-preflight-test-")
+        refused = mock.patch.object(owned_paths, "_MAY_WRITE", lambda _path: False)
+        no_thread = mock.patch.object(threading.Thread, "start", side_effect=RuntimeError("can't start new thread"))
+        with refused, no_thread, self.assertRaises(RuntimeError):
+            runner.request("a.blend", {"folder": folder, "scene_version": 1})
+        self.assertFalse(runner.busy())
+        self.assertTrue(Path(folder).is_dir())   # Not Angelo's to remove: left as it was.
+        Path(folder).rmdir()
+        made = tempfile.mkdtemp(prefix="angelo-preflight-test-")
+        with no_thread, self.assertRaises(RuntimeError):   # One Angelo may remove (no native guard: yes) is removed.
+            runner.request("a.blend", {"folder": made, "scene_version": 2})
+        self.assertFalse(runner.busy())
+        self.assertFalse(Path(made).exists())
 
     def test_a_closed_chat_gets_nothing_and_waiting_results_are_bounded(self):
         import weakref
@@ -645,7 +676,7 @@ class FamilyTests(unittest.TestCase):
         dispatch = (ADDON / "blender_tools.py").read_text(encoding="utf-8")
         self.assertIn("if name in ENGINE_NAMES:", dispatch)
         self.assertNotIn('name.startswith("angelo_engine_")', dispatch)
-        routes = (ADDON / "approvals.py").read_text(encoding="utf-8")
+        routes = (ADDON / "approval_families.py").read_text(encoding="utf-8")   # The approvals routing table.
         self.assertIn('("angelo_engine_fix", "engine_fix_approvals")', routes)
         self.assertNotIn('("angelo_engine_", ', routes)
 

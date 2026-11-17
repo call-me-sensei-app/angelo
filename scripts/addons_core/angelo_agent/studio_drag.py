@@ -173,7 +173,7 @@ def start(context, identities):
         if window is not None:
             window.cursor_set('DEFAULT')
     result = bpy.ops.asset.angelo_drag('INVOKE_DEFAULT', library=entry.name if written else "",
-                                       items="\n".join(prefixes) if written else "", paths="\n".join(paths))
+                                       item_lines="\n".join(prefixes) if written else "", paths="\n".join(paths))
     return result == {'FINISHED'}
 
 
@@ -190,7 +190,7 @@ def _drag_videos(context, studio, records, identities):
     if not paths:
         return False
     _source.update(area=context.area.as_pointer() if context.area else 0, items=frozenset(identities))
-    return bpy.ops.asset.angelo_drag('INVOKE_DEFAULT', library="", items="", paths="\n".join(paths)) == {'FINISHED'}
+    return bpy.ops.asset.angelo_drag('INVOKE_DEFAULT', library="", item_lines="", paths="\n".join(paths)) == {'FINISHED'}
 
 
 def prefetch():

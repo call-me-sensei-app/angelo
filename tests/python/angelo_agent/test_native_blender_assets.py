@@ -8,6 +8,7 @@ import suite_isolation  # noqa: F401  First: never expose real provider logins.
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -252,6 +253,34 @@ class AuditRegressionTests(unittest.TestCase):
         assets.publish([good, bad, dependent], [remote])
         self.assertEqual({r['name'] for r in assets._rows.values()}, {'Example surface', 'Online'})
         self.assertTrue(assets._bundled_notes)
+
+    def test_relative_dependency_reads_either_separator_and_stays_under_its_parent(self):
+        # Blender reads a // reference with either separator on every platform and joins it under the parent's
+        # folder (BLI_path_abs), so a file saved on Windows names the same dependency on macOS and Linux.
+        file = {'path': str(self.root / 'scene' / 'root.blend')}
+        library = (self.root / 'shared' / 'library.blend').resolve()
+        for token in ('//../shared/library.blend', '//..\\shared\\library.blend', '//..\\shared/library.blend',
+                      '//../shared\\library.blend'):
+            self.assertEqual(assets.dependency_path(file, token), library, token)
+        # Separators after // never start again at a root: only .. climbs.
+        nested = (self.root / 'scene' / 'nested' / 'library.blend').resolve()
+        for token in ('//nested/library.blend', '///nested/library.blend', '//\\nested\\library.blend',
+                      '//\\/nested/library.blend'):
+            self.assertEqual(assets.dependency_path(file, token), nested, token)
+        # A file directly under a root joins without doubling the root's separator.
+        top = Path(self.root.anchor)
+        self.assertEqual(assets.dependency_path({'path': str(top / 'root.blend')}, '//library.blend'),
+                         (top / 'library.blend').resolve())
+
+    def test_absolute_dependency_is_the_platform_s_own_path(self):
+        file = {'path': str(self.root / 'scene' / 'root.blend')}
+        library = self.root / 'shared' / 'library.blend'
+        self.assertEqual(assets.dependency_path(file, str(library)), library.resolve())
+        odd = str(self.root / 'shared') + '/one\\name.blend'
+        if os.sep == '/':   # A backslash is a character of a file name here, as the native lookup reads it.
+            self.assertEqual(assets.dependency_path(file, odd).name, 'one\\name.blend')
+        else:
+            self.assertEqual(assets.dependency_path(file, odd), (self.root / 'shared/one/name.blend').resolve())
 
     def test_dependency_file_needs_no_asset_marked_ids(self):
         dependency = dict(self.file, path='/helper.blend', relative='helper.blend')

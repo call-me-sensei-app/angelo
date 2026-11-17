@@ -15,14 +15,16 @@ import sys
 import threading
 import time
 
+import crash_reports
 import native_suite_checks as checks
 
 ROOT = Path(__file__).resolve().parents[3]
 _running, _running_lock = set(), threading.Lock()
 
 
-def run_plan(plan, launch=subprocess.Popen):
-    """Run one planned suite to completion and classify the outcome (never raises for suite failures)."""
+def run_plan(plan, launch=subprocess.Popen, reports=None):
+    """Run one planned suite to completion and classify the outcome (never raises for suite failures). ``reports``:
+    macOS's crash report folder, whose reports for the suite's processes move beside it (``_crash_reports``)."""
     suite, started, clock = plan["suite"], time.time(), time.monotonic()
     status, reasons, code, launched = None, list(plan["preconditions"]), None, False
     if reasons:
@@ -42,6 +44,7 @@ def run_plan(plan, launch=subprocess.Popen):
                     status = "timeout"
                     reasons.append("timed out after %.0f s; suite termination attempted" % plan["timeout"])
     duration = time.monotonic() - clock
+    crash_reports_taken = _crash_reports(plan, started, code, status, reports) if launched and reports else []
     if launched:
         if status is None:
             status, exit_reason = checks.describe_exit(code)
@@ -54,7 +57,21 @@ def run_plan(plan, launch=subprocess.Popen):
     return {"name": suite.name, "class": suite.kind, "mode": "gui" if plan["window"] else "background",
             "status": status, "duration_seconds": round(duration, 3), "exit_code": code, "reasons": reasons,
             "log": str(plan["log"]), "report": str(plan["report"]) if plan["report"] else None,
-            "qa_dir": str(plan["qa"]), "command": plan["command"], "crash_logs": plan.get("crash_logs", {})}
+            "qa_dir": str(plan["qa"]), "command": plan["command"], "crash_logs": plan.get("crash_logs", {}),
+            "crash_reports": [item["report"] for item in crash_reports_taken]}
+
+
+def _crash_reports(plan, started, code, status, reports):
+    """macOS's reports for the suite's processes, moved beside it and summarised at the end of its log
+    (``crash_reports``). A suite that did not pass waits a moment for one still being written."""
+    unclean = status is not None or code is None or code != 0
+    taken = crash_reports.take(started, Path(plan["directory"]) / "crash-reports", wait=5.0 if unclean else 0.0,
+                               reports=reports)
+    if taken:
+        with open(plan["log"], "a", encoding="utf-8") as log:
+            for item in taken:
+                log.write("\ncrash report (macOS) %s\n%s\n" % (item["report"], item["summary"]))
+    return taken
 
 
 def _wait(process, timeout):
@@ -123,12 +140,14 @@ def evidence(plan, started, code=None):
     return reasons
 
 
-def run_all(plans, jobs, launch=subprocess.Popen, progress=print):
-    """Parallel suites first (bounded by ``jobs``), then documented serial suites alone."""
+def run_all(plans, jobs, launch=subprocess.Popen, progress=print, reports=None):
+    """Parallel suites first (bounded by ``jobs``), then documented serial suites alone. ``reports``: see
+    ``run_plan`` (only the runner's own run passes it; with parallel suites, a report lands beside the suite that
+    ended first after it, still kept)."""
     results, total = {}, len(plans)
 
     def run(plan):
-        result = run_plan(plan, launch)
+        result = run_plan(plan, launch, reports)
         results[plan["suite"].name] = result
         progress("[%d/%d] %-7s %8.1fs  %s" % (len(results), total, result["status"].upper(),
                                               result["duration_seconds"], result["name"]))

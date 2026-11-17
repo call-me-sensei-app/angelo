@@ -10,7 +10,7 @@
 #include <cstring>
 #include <ctime>
 
-/* #include "BLI_sys_types.h" */
+/* #include "BLI_sys_types.hh" */
 
 #include "RNA_define.hh"
 #include "RNA_types.hh"
@@ -18,7 +18,7 @@
 
 #ifdef RNA_RUNTIME
 
-#  include "BKE_animsys.h"
+#  include "BKE_animsys.hh"
 #  include "BKE_armature.hh"
 #  include "BKE_context.hh"
 #  include "BKE_pose_backup.h"
@@ -28,9 +28,9 @@
 #  include "DNA_anim_types.h"
 #  include "DNA_armature_types.h"
 
-#  include "BLI_ghash.h"
-#  include "BLI_math_matrix.h"
-#  include "BLI_threads.h"
+#  include "BLI_ghash.hh"
+#  include "BLI_math_matrix_c.hh"
+#  include "BLI_threads.hh"
 
 #  include "ANIM_action.hh"
 #  include "ANIM_pose.hh"
@@ -145,6 +145,10 @@ static void rna_Pose_apply_pose_from_action(
   BLI_assert(GS(pose_owner->name) == ID_OB);
   Object *pose_owner_ob = id_cast<Object *>(pose_owner);
 
+  if (action->wrap().slot_array_num == 0) {
+    /* No slots, no data: nothing to apply (as backup_create, and the pose library). */
+    return;
+  }
   AnimationEvalContext anim_eval_context = {CTX_data_depsgraph_pointer(C), evaluation_time};
   animrig::pose_apply_action({pose_owner_ob}, action->wrap(), &anim_eval_context, 1.0);
 
@@ -168,6 +172,10 @@ static void rna_Pose_blend_pose_from_action(ID *pose_owner,
   BLI_assert(GS(pose_owner->name) == ID_OB);
   Object *pose_owner_ob = id_cast<Object *>(pose_owner);
 
+  if (action->wrap().slot_array_num == 0) {
+    /* No slots, no data: nothing to apply (as backup_create, and the pose library). */
+    return;
+  }
   AnimationEvalContext anim_eval_context = {CTX_data_depsgraph_pointer(C), evaluation_time};
   animrig::pose_apply_action({pose_owner_ob}, action->wrap(), &anim_eval_context, blend_factor);
 
@@ -232,7 +240,7 @@ void RNA_api_pose(StructRNA *srna)
       "Apply the given action to this pose by evaluating it at a specific time. Only updates the "
       "pose of selected bones, or all bones if none are selected.");
   parm = RNA_def_pointer(func, "action", "Action", "Action", "The Action containing the pose");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   parm = RNA_def_float(func,
                        "evaluation_time",
                        0.0f,
@@ -251,7 +259,7 @@ void RNA_api_pose(StructRNA *srna)
                                   "specific time. Only updates the "
                                   "pose of selected bones, or all bones if none are selected.");
   parm = RNA_def_pointer(func, "action", "Action", "Action", "The Action containing the pose");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   RNA_def_float(func,
                 "blend_factor",
                 1.0f,

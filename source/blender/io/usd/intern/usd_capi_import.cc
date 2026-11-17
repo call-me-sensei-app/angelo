@@ -4,11 +4,13 @@
 
 #include "IO_types.hh"
 #include "usd.hh"
+#include "usd_confined_resolver.hh"
 #include "usd_hook.hh"
 #include "usd_reader_domelight.hh"
 #include "usd_reader_geom.hh"
 #include "usd_reader_prim.hh"
 #include "usd_reader_stage.hh"
+#include "usd_reader_xform.hh"
 
 #include "BKE_cachefile.hh"
 #include "BKE_collection.hh"
@@ -21,9 +23,11 @@
 #include "BKE_object.hh"
 #include "BKE_report.hh"
 
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
+#include "BLI_math_matrix.hh"
+#include "BLI_math_matrix_c.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 #include "BLI_timeit.hh"
 
 #include "BLT_translation.hh"
@@ -119,6 +123,42 @@ static void report_job_duration(const ImportJobData *data)
   fmt::print("USD import of '{}' took ", data->filepath);
   timeit::print_duration(duration);
   fmt::print("\n");
+}
+
+static bool reader_resets_xform_stack(const USDPrimReader *reader)
+{
+  const USDXformReader *xform_reader = dynamic_cast<const USDXformReader *>(reader);
+  return xform_reader && xform_reader->resets_xform_stack();
+}
+
+/* World matrix of the reader's object, computed from the transforms read at import. */
+static float4x4 reader_world_matrix(const USDPrimReader *reader)
+{
+  const Object *ob = reader->object();
+  float4x4 mat_local;
+  BKE_object_to_mat4(ob, mat_local.ptr());
+
+  /* The local matrix of a prim that resets the transform stack is its world matrix. Don't rely on
+   * its parent inverse matrix, which may not have been set yet. */
+  const USDPrimReader *parent = reader->parent();
+  if (parent == nullptr || reader_resets_xform_stack(reader)) {
+    return mat_local;
+  }
+  return reader_world_matrix(parent) * float4x4(ob->parentinv) * mat_local;
+}
+
+/* Keep the parent of objects whose prim resets the transform stack, and cancel the parent's
+ * transform with the parent inverse matrix. */
+static void set_xform_stack_reset_parent_inverse(const Span<USDPrimReader *> readers)
+{
+  for (const USDPrimReader *reader : readers) {
+    const USDPrimReader *parent = reader->parent();
+    if (parent == nullptr || !reader_resets_xform_stack(reader)) {
+      continue;
+    }
+    const float4x4 parent_inverse = math::invert(reader_world_matrix(parent));
+    copy_m4_m4(reader->object()->parentinv, parent_inverse.ptr());
+  }
 }
 
 static void import_startjob(void *customdata, wmJobWorkerStatus *worker_status)
@@ -281,6 +321,8 @@ static void import_startjob(void *customdata, wmJobWorkerStatus *worker_status)
       return;
     }
   }
+
+  set_xform_stack_reset_parent_inverse(archive->readers());
 
   if (data->params.import_skeletons) {
     archive->process_armature_modifiers();
@@ -451,6 +493,10 @@ bool USD_import(bContext *C,
                 bool as_background_job,
                 ReportList *reports)
 {
+  if (const char *refused = confined_resolver_refusal()) {
+    BKE_report(reports, RPT_ERROR, refused);
+    return false;
+  }
   /* Using new here since `MEM_*` functions do not call constructor to properly initialize data. */
   ImportJobData *job = new ImportJobData();
   job->C = C;
@@ -613,6 +659,9 @@ CacheArchiveHandle *USD_create_handle(Main * /*bmain*/,
                                       const char *filepath,
                                       ListBaseT<CacheObjectPath> *object_paths)
 {
+  if (confined_resolver_refusal() != nullptr) {
+    return nullptr;
+  }
   pxr::UsdStageRefPtr stage = pxr::UsdStage::Open(filepath);
 
   if (!stage) {

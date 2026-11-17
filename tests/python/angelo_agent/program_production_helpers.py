@@ -17,6 +17,7 @@ import bpy
 from angelo_agent import ui
 from angelo_agent.blender_tools import BlenderExecutor
 from angelo_agent.controller import Controller, ToolCall, ToolDispatchBudget
+from qa_person import as_person  # The person's own action (C's harness scope).
 
 
 @contextlib.contextmanager
@@ -51,7 +52,7 @@ def production_call(controller, window, name, tool, arguments, *, commit=True, b
     for _ in range(400):
         controller.pump_tools(executor, document, budget=ToolDispatchBudget(seconds=60))
         if call.approval and not call.authorized and not responses:
-            controller.approve_tool(call, executor, document)
+            as_person(controller.approve_tool, call, executor, document)
             continue
         job = controller.native_jobs.get(call.id)
         if responses or job is not None and job.ready_to_commit:

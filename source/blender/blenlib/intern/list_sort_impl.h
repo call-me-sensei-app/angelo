@@ -34,9 +34,6 @@
 /* -------------------------------------------------------------------- */
 /* Handle External Defines */
 
-#include "BLI_compiler_compat.h"
-#include "BLI_utildefines.h"
-
 /* check we're not building directly */
 #if !defined(SORT_IMPL_LINKTYPE) || !defined(SORT_IMPL_FUNC)
 #  error "This file can't be compiled directly, include in another source file"
@@ -225,7 +222,7 @@ BLI_INLINE void insert_list(struct SortInfo *si, list_node *list, unsigned int r
   unsigned int i;
 
   if (rank > si->n_ranks) {
-    if (UNLIKELY(rank > MAX_RANKS)) {
+    if (rank > MAX_RANKS) [[unlikely]] {
       // printf("Rank '%d' should not exceed " STRINGIFY(MAX_RANKS), rank);
       rank = MAX_RANKS;
     }
@@ -247,7 +244,7 @@ BLI_INLINE void insert_list(struct SortInfo *si, list_node *list, unsigned int r
   }
 
   /* Will _never_ happen: so we can just devolve into quadratic. */
-  if (UNLIKELY(i == MAX_RANKS)) {
+  if (i == MAX_RANKS) [[unlikely]] {
     i--;
   }
 

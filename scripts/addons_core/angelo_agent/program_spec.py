@@ -236,15 +236,17 @@ def validate_program(name, arguments=None, *, derive_checks=False):
     if len(operations) > MAX_OPERATIONS:
         raise ValueError("A native program requires 1-%s bounded operations; this one has %s: split it into several "
                          "programs (they can follow one another in one plan)" % (MAX_OPERATIONS, len(operations)))
-    from .action_catalog import OPERATION_SCHEMAS, validate_operation, affected_references, written_references
+    from .action_catalog import VALIDATED_OPERATIONS, validate_operation, affected_references, written_references
+    from .read_only import thawed
     from .batch_spec import program_aliases as batch_aliases
     write_handles = {entry["handle"] for entry in normalized["write_set"]}
     aliases, canonical, batches = set(), [], {}
     from .open_values import wrapped
     def admitted(operation):
         # A $alias in an open map; a kind that is not a string (unhashable too) is validate_operation's to refuse.
-        if isinstance(operation, dict) and isinstance(operation.get("kind"), str) and operation["kind"] in OPERATION_SCHEMAS:
-            operation = wrapped(operation, OPERATION_SCHEMAS[operation["kind"]], lambda text: text if text in aliases else None)
+        if isinstance(operation, dict) and isinstance(operation.get("kind"), str) and operation["kind"] in VALIDATED_OPERATIONS:
+            operation = wrapped(operation, thawed(VALIDATED_OPERATIONS[operation["kind"]]),
+                                lambda text: text if text in aliases else None)
         operation = validate_operation(operation)
         # Every dependency has to have been observed and declared before work.
         for reference in affected_references(operation):

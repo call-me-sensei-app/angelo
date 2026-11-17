@@ -36,7 +36,8 @@ def _decode(controller, descriptor):
         reference = descriptor['changes']['views'][0]
         path = controller.references.checked_path(reference)
         image = bpy.data.images.load(str(path), check_existing=False)
-        image.colorspace_settings.name = 'Non-Color'
+        from . import color_spaces
+        color_spaces.mark_stored(image.colorspace_settings)
         width, height = image.size
         if not 0 < width * height <= PIXEL_LIMIT:
             raise ValueError('Native preview exceeds the bounded pixel budget')

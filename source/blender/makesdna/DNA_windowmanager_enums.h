@@ -70,6 +70,19 @@ enum eOperator_Flag : short {
    * (the region-type is maintained to prevent errors).
    */
   OP_IS_MODAL_CURSOR_REGION = (1 << 4),
+
+  /**
+   * Angelo: the operator's modal handler has kept an event from a person's input device for
+   * itself, so no later handler got it. Set by the event system and never cleared, so a running
+   * tool can be told from an operator that only watches, see `wm_angelo_consumed_input.cc`.
+   */
+  OP_HAS_CONSUMED_INPUT = (1 << 5),
+  /**
+   * Angelo: the operator's modal handler has been given an event from a person's input device
+   * and has returned, whatever it answered. Set by the event system and never cleared: until it
+   * is set nothing is known about what the operator does with input.
+   */
+  OP_HAS_ANSWERED_INPUT = (1 << 6),
 };
 ENUM_OPERATORS(eOperator_Flag)
 

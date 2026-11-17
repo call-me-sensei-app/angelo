@@ -21,7 +21,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bench_addon_pin as pin  # noqa: E402
 import native_addon_guard as guard  # noqa: E402
-from test_native_addon_guard import ADDON, Fixture, write  # noqa: E402
+from test_native_addon_guard import ADDON, Fixture, pointer_to, write  # noqa: E402
 
 CONNECTION = "6f1c1f9e-5c43-4f61-9a43-0d3d2b8d7c10"
 
@@ -42,6 +42,21 @@ class PinTests(Fixture):
         lines = []
         self.assertIsNone(pin.problem(binary, True, root=self.source, warn=lambda text, **_: lines.append(text)))
         self.assertTrue(lines[0].startswith("WARNING: %s:" % guard.OVERRIDE))
+
+    def test_a_checkout_holding_lfs_pointers_is_refused_naming_them_and_the_override_warns_of_them(self):
+        # The trials import the checkout's modules, which would read pointer text where their assets belong.
+        image = bytes(range(256)) * 8
+        binary = self.app(addon=dict(ADDON, **{"assets/banner.png": ""}))
+        (guard.bundled_scripts(binary) / "addons_core/angelo_agent/assets/banner.png").write_bytes(image)
+        write(self.source / "scripts/addons_core/angelo_agent", {"assets/banner.png": pointer_to(image)})
+        text = pin.problem(binary, False, root=self.source)
+        self.assertIn("Git LFS pointers, not the files, so nothing ran", text)
+        self.assertIn("The trials import", text)
+        self.assertIn("addon/assets/banner.png", text)
+        self.assertIn(guard.FETCH, text)
+        lines = []
+        self.assertIsNone(pin.problem(binary, True, root=self.source, warn=lambda text, **_: lines.append(text)))
+        self.assertIn("addon/assets/banner.png: a Git LFS pointer in the checkout, not the file", lines[0])
 
     def test_each_trial_is_stamped_and_a_checkout_changed_mid_run_ends_the_run(self):
         binary = self.app()
@@ -79,6 +94,12 @@ class HarnessTests(unittest.TestCase):
         self.binary = self.root / "Angelo"   # An executable that bundles no add-on: never this checkout's.
         self.binary.write_text("#!/bin/sh\nexit 0\n")
         self.binary.chmod(0o755)
+        # These run on this checkout, fetched or not: its LFS state (a pointer's own refusal text) is PinTests',
+        # not what these check.
+        from unittest import mock
+        patcher = mock.patch.object(guard, "pointers", return_value=[])
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def run_main(self, main, argv):
         output = io.StringIO()

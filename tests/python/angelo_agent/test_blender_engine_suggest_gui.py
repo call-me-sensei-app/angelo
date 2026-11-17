@@ -42,6 +42,7 @@ from angelo_agent import (app_feature_host, capabilities_host, card_host, chat_d
                           engine_link, engine_link_ui, engine_suggest, engine_suggest_ui, ui)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import qa_boot  # noqa: E402
+import qa_input  # noqa: E402  (the person's press on the card, which C mints its ticket for)
 import test_blender_godot_link_e2e as e2e  # noqa: E402
 
 ui._authentication.start = lambda *a, **k: None
@@ -73,6 +74,18 @@ def card_texts():
 
 def press(action):
     card_host._active.card.act(action, None, card_host.Host(card_host._active))
+
+
+def press_for_real(action):
+    """The person's press on the card's control, through the window (``qa_input.aim``: a card's grant control is
+    shielded until the pointer has rested below it), so the click runs in its C ticket's scope."""
+    def rect():
+        active = card_host._active
+        area = next(a for a in window().screen.areas if a.as_pointer() == active.area)
+        region = next(r for r in area.regions if r.type == 'WINDOW')
+        x, y, wide, high = next(r for r, name, _ in reversed(active.plan.hits) if name == action)
+        return region.x + x, region.y + y, wide, high
+    qa_input.aim(window(), rect)
 
 
 def check(name, condition):
@@ -200,10 +213,10 @@ def tick():
                 for kind, folder in (("UNITY", "Packages/com.hyperbond.angelo-link/package.json"),
                                      ("UNREAL", "Plugins/AngeloLink/AngeloLink.uplugin")):
                     project = fake_project(kind)
-                    result = bpy.ops.angelo.godot_link_install(engine=kind, directory=str(project))
+                    result = __import__("angelo_agent.grant_guard").grant_guard.stand_in().godot_link_install(engine=kind, directory=str(project))
                     check("installs_into_" + kind.lower(), result == {'FINISHED'} and (project / folder).is_file())
                 try:   # A cancelled operator that reported an error raises here.
-                    refused = bpy.ops.angelo.godot_link_install(engine="UNITY", directory=str(OUT / "godot-project"))
+                    refused = __import__("angelo_agent.grant_guard").grant_guard.stand_in().godot_link_install(engine="UNITY", directory=str(OUT / "godot-project"))
                 except RuntimeError as error:
                     refused = str(error)
             check("refuses_a_folder_of_another_engine", "Choose the Unity project's folder" in str(refused)
@@ -221,7 +234,15 @@ def tick():
                 assert time.monotonic() - godot["since"] < 10, "the card never showed again"
                 return 0.2
             capture("suggestion-card-link.png")
-            press("link")
+            from angelo_agent import grant_guard
+            with bpy.context.temp_override(window=window()):
+                try:   # A script's picker (no press C saw): refused, no folder browser.
+                    scripted = str(bpy.ops.angelo.godot_link_install('INVOKE_DEFAULT', engine="GODOT"))
+                except RuntimeError as error:
+                    scripted = str(error)
+            check("a_scripted_link_is_refused", grant_guard.NOT_YOURS in scripted and not any(
+                a.type == 'FILE_BROWSER' for w in bpy.context.window_manager.windows for a in w.screen.areas))
+            press_for_real("link")   # The person's Link: its consent carries to the picker the card opens on closing.
             return go("picker", 1.0)
         if phase == "picker":
             browsers = [(w, a) for w in bpy.context.window_manager.windows for a in w.screen.areas
@@ -244,4 +265,4 @@ def tick():
     return 0.2
 
 
-bpy.app.timers.register(tick, first_interval=0.5, persistent=True)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=0.5, persistent=True)   # After a press.

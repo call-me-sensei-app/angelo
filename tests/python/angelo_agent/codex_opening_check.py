@@ -148,7 +148,9 @@ def main(argv=None):
     for name in ("state", "home", "workspace"):
         (out / name).mkdir(parents=True, exist_ok=True)
     executable = providers.find_executable("codex", CODEX_BUNDLE if Path(CODEX_BUNDLE).exists() else "")
-    settings = {"codex_path": executable, "model": MODEL, "reasoning": "low", "auth_directory": str(out / "state"),
+    from angelo_agent.cli_runtime import choose   # Preferences' pick: launches read it, never settings.
+    choose(codex_path=executable)
+    settings = {"model": MODEL, "reasoning": "low", "auth_directory": str(out / "state"),
                 "connection_id": PROBE_CONNECTION}
     fake = SlowWarmUps(out, args.warm_up_seconds)
     command = fake_command(executable, out, fake.port)

@@ -8,6 +8,7 @@ of test_native_game_ready_check stand in for ``_bpy._angelo_reduce``; the compil
 (test_blender_game_ready_check)."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import importlib.util
 import sys
@@ -56,7 +57,7 @@ class Kernels(reference.ReferenceKernels):
     def decimate(self, snapshot, ratio, triangulate=True, groups=None):
         self._on("decimate")
         assert snapshot[0] == "snapshot", "Decimate reads the snapshot, never a Blender mesh"
-        assert self.hold.wait(10)
+        assert self.hold.wait(CAP_S)
         geometry = reference.cube(1.0)
         corners = geometry.tris.astype(np.int32)
         return {"positions": geometry.positions.tobytes(), "tris": corners.tobytes(), "corner_uvs": None,
@@ -205,7 +206,7 @@ class OffTheMainThread(unittest.TestCase):
         pending = H.execute(Window, CHECK, request())
         pending.cancel()
         self.kernels.hold.set()
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline and "convex_hull" not in self.kernels.threads:
             if not any(t.name == "Angelo game-ready check" for t in threading.enumerate()):
                 break

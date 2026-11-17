@@ -16,8 +16,9 @@ Layout is pure (``layout``) so it is tested without Blender; every hit rectangle
 
 import math
 
-from . import card_kit as kit
+from . import card_kit as kit, library_fetch
 from .library_catalog import source_name
+from .team_errors import UNTRUSTED_LINE
 from .ui_text import iface_, n_
 
 PILL_W, PILL_H, MARGIN = 236.0, 34.0, 14.0
@@ -207,8 +208,9 @@ def draw_panel(paint, state, rects, library, results, total, status=None):
     if library.catalog is None or not results:
         if loading:
             message = iface_("Loading the library…")
-        elif library.catalog is None:
-            message = iface_("The library is offline. Check your network and try again.")
+        elif library.catalog is None:   # Its certificate, when that was the failure: the network is fine then.
+            message = (iface_(UNTRUSTED_LINE) if isinstance(library.error, library_fetch.Untrusted) else
+                       iface_("The library is offline. Check your network and try again."))
             retry = (grid[0] + grid[2] / 2 - 50 * s, grid[1] + grid[3] / 2 - 46 * s, 100 * s, 30 * s)
             _button(paint, state, retry, iface_("Try again"), "retry")
         else:

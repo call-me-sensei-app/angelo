@@ -39,6 +39,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_cor
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import script_errors  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
+from qa_person import reviewing  # noqa: E402
+BlenderExecutor = reviewing(BlenderExecutor)   # Each script runs as one the person approved (qa_person).
 
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-script-rollback-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -237,7 +239,7 @@ def finished_script_cases():
             result.get("success") is True and (taken_back or result.get("undoable") is False))
     REPORT["checks"]["finished_in_OBJECT:image_undo_unverified"] = REPORT["cases"]["finished_in_OBJECT"]["undoable"] is False
     for name in ("EDIT", "SCULPT"):
-        REPORT["checks"]["finished_in_%s:says_why_not" % name] = "Undo holds only that mode's own data" in str(
+        REPORT["checks"]["finished_in_%s:says_why_not" % name] = "Undo may hold only that mode's own data" in str(
             REPORT["cases"]["finished_in_" + name]["undo"])
 
 

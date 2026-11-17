@@ -20,6 +20,7 @@ import re
 
 # The generic object reference: identifiers expands o<n> handles in it (the same type the team family uses).
 from .action_schema_types import HANDLE
+from . import read_only
 
 PREFIX = "angelo_library_"
 KINDS = ("model", "texture", "hdri", "vfx", "material", "world", "node_group", "brush")
@@ -135,9 +136,12 @@ def _objects(value):
     return list(value)
 
 
+LIBRARY_SCHEMAS = read_only.frozen({t["name"]: t["inputSchema"] for t in LIBRARY_TOOLS})   # As registered, read only: an agent script's change to a spec's dict reaches no check (read_only).
+
+
 def validate_library(name, arguments):
     """Exact validation of one call; returns normalized arguments or raises ``ValueError``."""
-    schema = next(t["inputSchema"] for t in LIBRARY_TOOLS if t["name"] == name)
+    schema = LIBRARY_SCHEMAS[name]
     if not isinstance(arguments, dict):
         raise ValueError("%s arguments must be an object" % name.removeprefix(PREFIX))
     unknown, missing = set(arguments) - set(schema["properties"]), set(schema["required"]) - set(arguments)
@@ -208,3 +212,6 @@ def compact(item, size, cached):
         row["resolutions"] = list(available)
         row["default_resolution"] = item.get("resolution")
     return row
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), 'HANDLE', 'SOURCE_KINDS')

@@ -69,6 +69,11 @@ def is_off(context, now=None):
 def native_tools(context, now=None):
     """The chat's native Claude tools (its own ``native_tools``, else ``DEFAULT``), less WebSearch while it is off."""
     tools = tuple(getattr(context, "native_tools", DEFAULT))
+    from .provider_registry import is_endpoint
+    if is_endpoint((getattr(context, "state", None) or {}).get("provider")):
+        # An organization's model server: its children reach that host only (team_network), so Claude Code's own
+        # web search and page fetch would fail there.
+        return tuple(tool for tool in tools if tool not in {"WebSearch", "WebFetch"})
     return tuple(tool for tool in tools if tool != "WebSearch") if "WebSearch" in tools and is_off(context, now) else tools
 
 

@@ -23,11 +23,11 @@
 
 #include "DNA_scene_types.h"
 
-#include "BLI_fileops.h"
+#include "BLI_fileops.hh"
 #include "BLI_hash_xxh3.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_tempfile.h"
+#include "BLI_string.hh"
+#include "BLI_tempfile.hh"
 
 #include "BKE_idprop.hh"
 #include "BKE_main.hh"

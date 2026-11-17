@@ -8,6 +8,7 @@ the MP4 is published only beside a complete set of frames and only when it is a 
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import os
@@ -282,8 +283,8 @@ class Stopping(unittest.TestCase):
                                            subprocess.Popen, owner=owner)
         if os.name == "nt":  # terminate is TerminateProcess there, which no child ignores: one that outlives its
             encoder.process.terminate = lambda: None   # stop (stuck in I/O) is played by a stop that does nothing.
-        self.addCleanup(lambda: (encoder.process.kill(), encoder.process.wait(5), encoder.close()))
-        limit = time.monotonic() + 10
+        self.addCleanup(lambda: (encoder.process.kill(), encoder.process.wait(CAP_S), encoder.close()))
+        limit = time.monotonic() + CAP_S
         while not ready.exists() and time.monotonic() < limit:
             time.sleep(0.01)
         self.assertTrue(ready.exists(), "the child did not start")

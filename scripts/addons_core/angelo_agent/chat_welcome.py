@@ -31,6 +31,7 @@ import time
 import bpy
 import gpu
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard)
 from . import canvas_controls, first_run, quick_connect, ui_tokens as tk
 from .display_text import shown
 from .ui_text import iface_, n_
@@ -400,11 +401,11 @@ def draw_notice_actions(state, ui, controller, bottom, width, size):
 def dispatch(context, controller, state, action, value):
     from . import ui
     if action == "welcome_connect":
-        bpy.ops.angelo.quick_connect(mode=value)
+        grant_guard.clicked(bpy.ops.angelo).quick_connect(mode=value)   # The person's click (grant_guard).
     elif action == "welcome_reconnect":
         if controller.selection_connection_id != value:
             return  # The chat changed since these notice hits were drawn.
-        if 'FINISHED' in bpy.ops.angelo.connection_signin('EXEC_DEFAULT', connection_id=value):
+        if 'FINISHED' in grant_guard.clicked(bpy.ops.angelo).connection_signin('EXEC_DEFAULT', connection_id=value):
             quick_connect.watch_reconnect(ui, controller, value)
     elif action == "welcome_reconnect_cancel":
         quick_connect.cancel_reconnect(ui, controller, value)

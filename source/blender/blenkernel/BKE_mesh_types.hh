@@ -8,6 +8,7 @@
  * \ingroup bke
  */
 
+#include <array>
 #include <memory>
 #include <variant>
 
@@ -15,6 +16,7 @@
 #include "BLI_bit_vector.hh"
 #include "BLI_bounds_types.hh"
 #include "BLI_implicit_sharing.hh"
+#include "BLI_implicit_sharing_ptr.hh"
 #include "BLI_index_mask.hh"
 #include "BLI_kdopbvh.hh"
 #include "BLI_linear_allocator.hh"
@@ -24,6 +26,8 @@
 #include "BLI_vector.hh"
 #include "BLI_vector_set.hh"
 #include "BLI_virtual_array_fwd.hh"
+
+#include "BKE_bvh.hh"
 
 #include "DNA_customdata_types.h"
 
@@ -142,7 +146,41 @@ struct MeshGroup {
   int corners_count;
 };
 
+/**
+ * A mesh's topology as it was when #mesh_topology_seal last looked: the identity and the write
+ * version of the edge, corner vertex, corner edge and face offset arrays, and the element counts.
+ *
+ * Any access that could write one of those arrays either copies it first (a shared array gets a
+ * new #ImplicitSharingInfo) or tags it (#ImplicitSharingInfo::tag_ensured_mutable raises its
+ * version); replacing, adding, removing or resizing one gives a new #ImplicitSharingInfo too. So
+ * while every array is the one recorded, at the version recorded, and the counts are the ones
+ * recorded, nothing has written the mesh's topology and what was true of its indices still is
+ * (Angelo validates only meshes whose seal is broken after a script, see `script_mesh_check.py`).
+ *
+ * The arrays are held weakly: that keeps each #ImplicitSharingInfo allocated (so a later array
+ * can never be mistaken for a recorded one at a reused address) without keeping its data alive
+ * or making it shared, so the seal costs writers nothing.
+ *
+ * The vertex positions are recorded the same way, apart: a write to positions alone leaves the
+ * topology as it was (#mesh_topology_is_sealed) and says the coordinates may have changed
+ * (#mesh_geometry_is_sealed), which is all that needs looking at again for such a mesh.
+ */
+struct MeshTopologySeal {
+  /** Edge vertices, corner vertices, corner edges, face offsets. Null where there is no array. */
+  std::array<WeakImplicitSharingPtr, 4> arrays;
+  std::array<int64_t, 4> versions = {};
+  /** Vertices, edges, corners, faces. */
+  std::array<int, 4> counts = {};
+  /** The position array. A version of -1 is never an array's: positions written past the mesh. */
+  WeakImplicitSharingPtr positions;
+  int64_t positions_version = 0;
+  bool is_set = false;
+};
+
 struct MeshRuntime {
+  /** See #MeshTopologySeal. Only ever read and written from the main thread. */
+  MeshTopologySeal topology_seal;
+
   /**
    * "Evaluated" mesh owned by this mesh. Used for objects which don't have effective modifiers, so
    * that the evaluated mesh can be shared between objects. Also stores the lazily created #Mesh
@@ -190,7 +228,6 @@ struct MeshRuntime {
   /** Cache for triangle to original face index map, accessed with #Mesh::corner_tri_faces(). */
   SharedCache<Array<int>> corner_tri_faces_cache;
 
-  SharedCache<std::unique_ptr<BVHTree, BVHTreeDeleter>> bvh_cache_verts;
   SharedCache<std::unique_ptr<BVHTree, BVHTreeDeleter>> bvh_cache_edges;
   SharedCache<std::unique_ptr<BVHTree, BVHTreeDeleter>> bvh_cache_faces;
   SharedCache<std::unique_ptr<BVHTree, BVHTreeDeleter>> bvh_cache_corner_tris;
@@ -199,6 +236,10 @@ struct MeshRuntime {
   SharedCache<std::unique_ptr<BVHTree, BVHTreeDeleter>> bvh_cache_loose_verts_no_hidden;
   SharedCache<std::unique_ptr<BVHTree, BVHTreeDeleter>> bvh_cache_loose_edges;
   SharedCache<std::unique_ptr<BVHTree, BVHTreeDeleter>> bvh_cache_loose_edges_no_hidden;
+
+  SharedCache<bke::bvh::Tree> bvh_embree_tris_cache;
+  SharedCache<bke::bvh::Tree> bvh_embree_verts_cache;
+  SharedCache<bke::bvh::Tree> bvh_embree_edges_cache;
 
   SharedCache<std::optional<int>> max_material_index;
   SharedCache<VectorSet<int>> used_material_indices;
@@ -264,6 +305,10 @@ struct MeshRuntime {
   SharedCache<Array<int>> corner_to_face_map_cache;
   /** Angelo: each vertex's edges (#Mesh::vert_to_edge_map), offsets and edge indices. */
   SharedCache<VertToEdgeMap> vert_to_edge_map_cache;
+  /** Cache of offsets for the edge to corner map. */
+  SharedCache<Array<int>> edge_to_corner_offset_cache;
+  /** Cache of indices for the edge to corner map. */
+  SharedCache<Array<int>> edge_to_corner_map_cache;
   /** Cache of data about edges not used by faces. See #Mesh::loose_edges(). */
   SharedCache<LooseGeomCache> loose_edges_cache;
   /** Cache of data about vertices not used by edges. See #Mesh::loose_verts(). */

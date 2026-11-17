@@ -138,7 +138,7 @@ static wmOperatorStatus angelo_sculpt_program_exec(bContext *C, wmOperator *op)
   }
   Object &object = *CTX_data_active_object(C);
   Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
-  BKE_sculpt_update_object_for_edit(depsgraph, &object, false);
+  BKE_sculptsession_update_for_edit(depsgraph, &object, false);
   /* Creating Multires mask storage may rebuild the evaluated PBVH. Do it once
    * before capturing any transaction nodes, never halfway through a program. */
   for (PointerRNA &ptr : properties) {
@@ -147,7 +147,7 @@ static wmOperatorStatus angelo_sculpt_program_exec(bContext *C, wmOperator *op)
                                    CTX_data_main(C),
                                    &object,
                                    BKE_sculpt_multires_active(CTX_data_scene(C), &object));
-      BKE_sculpt_update_object_for_edit(depsgraph, &object, false);
+      BKE_sculptsession_update_for_edit(depsgraph, &object, false);
       break;
     }
   }

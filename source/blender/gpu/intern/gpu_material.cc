@@ -8,6 +8,7 @@
  * Manages materials, lights and textures.
  */
 
+#include <atomic>
 #include <cstring>
 
 #include "BKE_lib_id.hh"
@@ -17,20 +18,22 @@
 #include "DNA_scene_types.h"
 #include "DNA_world_types.h"
 
-#include "BLI_listbase.h"
-#include "BLI_math_vector.h"
-#include "BLI_string.h"
-#include "BLI_time.h"
-#include "BLI_utildefines.h"
+#include "BLI_listbase.hh"
+#include "BLI_math_vector_c.hh"
+#include "BLI_string.hh"
+#include "BLI_time.hh"
+#include "BLI_utildefines.hh"
 
 #include "BKE_main.hh"
 #include "BKE_material.hh"
 #include "BKE_node.hh"
 #include "BKE_node_runtime.hh"
+#include "BKE_node_tree_dot_export.hh"
 
 #include "NOD_shader.h"
 #include "NOD_shader_nodes_inline.hh"
 
+#include "GPU_compile_ahead.hh"
 #include "GPU_material.hh"
 #include "GPU_pass.hh"
 #include "GPU_shader.hh"
@@ -70,6 +73,8 @@ struct GPUMaterial {
    * This shader variant bakes dynamic uniform data as constant. This variant will not use
    * the ubo, and instead bake constants directly into the shader source. */
   GPUPass *optimized_pass = nullptr;
+  /* Whether the optimized pass's pipeline states are built (#GPU_material_get_pass). */
+  std::atomic<bool> optimized_pass_warmed = false;
 
   /* UBOs for this material parameters. */
   gpu::UniformBuf *ubo = nullptr;
@@ -171,7 +176,9 @@ GPUMaterialFromNodeTreeResult GPU_material_from_nodetree(
   nodes::inline_shader_node_tree(*ntree, *localtree, inline_params);
 
   for (nodes::InlineShaderNodeTreeParams::ErrorMessage &error : inline_params.r_error_messages) {
-    result.errors.append({error.node, std::move(error.message)});
+    result.errors.append({error.node,
+                          std::move(error.message),
+                          GPUMaterialFromNodeTreeResult::WarningType(error.type)});
   }
 
   ntreeGPUMaterialNodes(localtree, mat);
@@ -183,7 +190,7 @@ GPUMaterialFromNodeTreeResult GPU_material_from_nodetree(
   if (GPUPass *default_pass = pass_replacement_cb ? pass_replacement_cb(thunk, mat) : nullptr) {
     mat->pass = default_pass;
     GPU_pass_acquire(mat->pass);
-    /** WORKAROUND:
+    /* WORKAROUND:
      * The node tree code is never executed in default replaced passes,
      * but the GPU validation will still complain if the node tree UBO is not bound.
      * So we create a dummy UBO with (at least) the size of the default material one (192 bytes).
@@ -204,6 +211,13 @@ GPUMaterialFromNodeTreeResult GPU_material_from_nodetree(
   }
 
   gpu_node_graph_free_nodes(&mat->graph);
+
+#if 0
+  /* Dump localtree to a .dot file */
+  std::cout << ">>>>>>>>>>>>>>>>>" << name << std::endl
+            << blender::bke::node_tree_to_dot(*localtree) << std::endl;
+#endif
+
   /* Only free after GPU_pass_shader_get where gpu::UniformBuf read data from the local
    * tree. */
   BKE_id_free(nullptr, &localtree->id);
@@ -218,13 +232,23 @@ GPUMaterialFromNodeTreeResult GPU_material_from_nodetree(
   return result;
 }
 
+/* Make sure the two enums are actually the same. */
+static_assert(int(GPUMaterialFromNodeTreeResult::WarningType::Error) ==
+              int(nodes::NodeWarningType::Error));
+static_assert(int(GPUMaterialFromNodeTreeResult::WarningType::Warning) ==
+              int(nodes::NodeWarningType::Warning));
+static_assert(int(GPUMaterialFromNodeTreeResult::WarningType::Info) ==
+              int(nodes::NodeWarningType::Info));
+
 GPUMaterial *GPU_material_from_callbacks(eGPUMaterialEngine engine,
                                          ConstructGPUMaterialFn construct_function_cb,
                                          GPUCodegenCallbackFn generate_code_function_cb,
-                                         void *thunk)
+                                         void *thunk,
+                                         const uint64_t uuid)
 {
   /* Allocate a new material and its material graph. */
   GPUMaterial *material = MEM_new<GPUMaterial>(__func__, engine);
+  material->uuid = uuid;
 
   /* Construct the material graph by adding and linking the necessary GPU material nodes. */
   construct_function_cb(thunk, material);
@@ -306,9 +330,19 @@ GPUPass *GPU_material_get_pass(GPUMaterial *material)
 {
   /* If an optimized pass variant is available, and optimization is
    * flagged as complete, we use this one instead. */
-  return GPU_material_optimization_status(material) == GPU_MAT_OPTIMIZATION_SUCCESS ?
-             material->optimized_pass :
-             material->pass;
+  if (GPU_material_optimization_status(material) != GPU_MAT_OPTIMIZATION_SUCCESS) {
+    return material->pass;
+  }
+  /* Angelo (inventory C5): the optimized variant is another shader, whose pipeline states a backend that builds
+   * them on first use (Metal) would build in the next draw of everything drawing the material, holding that draw
+   * for tens of milliseconds a state. Until they are built in the background from the unoptimized pass's (what
+   * upstream's parent-shader warming did before the GPUMaterial refactor e6638d6e5eb), the unoptimized pass is
+   * drawn: the same picture. */
+  if (!material->optimized_pass_warmed) {
+    material->optimized_pass_warmed = GPU_shader_warm_cache_async(
+        GPU_pass_shader_get(material->optimized_pass), GPU_pass_shader_get(material->pass));
+  }
+  return material->optimized_pass_warmed ? material->optimized_pass : material->pass;
 }
 
 gpu::Shader *GPU_material_get_shader(GPUMaterial *material)
@@ -494,7 +528,7 @@ static void gpu_material_ramp_texture_build(GPUMaterial *mat)
                                               CM_TABLE + 1,
                                               builder->current_layer,
                                               1,
-                                              gpu::TextureFormat::SFLOAT_16_16_16_16,
+                                              gpu::TextureFormat::SFLOAT_32_32_32_32,
                                               GPU_TEXTURE_USAGE_SHADER_READ,
                                               reinterpret_cast<float *>(builder->pixels));
 

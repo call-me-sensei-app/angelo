@@ -203,7 +203,9 @@ def dispatch(context, controller, state, action, value):
             group, name = operator.split(".", 1)
             # undo=True: called from Python, an operator pushes no undo step otherwise (WM_operator_call_py), so what a
             # row creates (New Flow, a template) would be lost to the next Undo. Operators without UNDO push nothing.
-            getattr(getattr(bpy.ops, group), name)('INVOKE_DEFAULT', True, **dict(properties))
+            from . import grant_guard   # The person's click on a row: a grant it runs takes it (grant_guard).
+            ops = grant_guard.clicked() if group == "angelo" else getattr(bpy.ops, group)
+            getattr(ops, name)('INVOKE_DEFAULT', True, **dict(properties))
     elif action == "popup_add_goal":   # A goal chip in the composer (goal_controls.choose); one per document.
         from . import goal_controls
         state.pop("popover", None)

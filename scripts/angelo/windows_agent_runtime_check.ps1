@@ -16,7 +16,9 @@
        certificate; -ExpectSigned: it must be validly signed);
     3. codex.exe --version reports the pinned version, run from that folder;
     4. codex.exe app-server generate-json-schema offers each pinned feature on thread/start, thread/resume and
-       thread/fork, each pinned request field (request_fields) and each pinned notification;
+       thread/fork, each pinned request field (request_fields) and each pinned notification; each pinned wire
+       (wire_apis) lists models, and each pinned provider capability (provider_capabilities) loads every pinned
+       value and refuses an unpinned one (codex features list; runtime_capabilities.py);
     5. codex.exe app-server answers initialize over stdio with a user agent naming the pinned version, exactly what
        the app's agent_runtime.verify requires of every runtime process.
   Offline: no provider, account or network request; CODEX_HOME is a temporary folder, removed afterwards. Writes a
@@ -174,6 +176,42 @@ try {
             throw "codex.exe's app-server schema has no $method notification: not the patched build"
         }
         $result.schema += "notification.$method"
+    }
+    # A pinned model-provider wire (wire_apis): `codex debug models` with a provider on it, offline (no request, no
+    # key); a build without the wire refuses the setting. The same check as release_checks.py (wire_check_argv).
+    foreach ($wire in @($pin.wire_apis | Where-Object { $_ })) {
+        $provider = "angelo_wire_check"
+        $listed = Invoke-Native $codex @("-c", "model_provider=`"$provider`"", "-c", "model_providers.$provider.name=`"$provider`"",
+            "-c", "model_providers.$provider.wire_api=`"$wire`"", "debug", "models") $environment
+        $models = $null
+        try { $models = @(($listed.Out | ConvertFrom-Json).models) } catch { }
+        if ($listed.Code -ne 0 -or -not $models -or $models.Count -eq 0) {
+            throw "codex.exe does not speak the pinned model-provider wire ${wire} (debug models exited $($listed.Code): $($listed.Err)): not the patched build"
+        }
+        $result.schema += "wire_api.$wire"
+    }
+    # A pinned provider capability (provider_capabilities): Codex ignores a capability it does not read and refuses a
+    # value it does not know, so `features list` (offline: it only loads the configuration) with a throwaway provider
+    # declaring each pinned value must load, and with an unpinned value must be refused. The same check as
+    # release_checks.py (runtime_capabilities.capability_check_argv); the provider is never selected, its URL is a
+    # closed local port.
+    if ($pin.provider_capabilities) {
+        $provider = "model_providers.angelo_capability_check"
+        foreach ($capability in @($pin.provider_capabilities.PSObject.Properties | Where-Object { -not $_.Name.StartsWith("_") })) {
+            foreach ($value in @($capability.Value) + "angelo-unpinned-value") {
+                $probe = Invoke-Native $codex @("-c", "$provider.name=`"angelo_capability_check`"",
+                    "-c", "$provider.base_url=`"http://127.0.0.1:9/v1`"",
+                    "-c", "$provider.capabilities.$($capability.Name)=`"$value`"", "features", "list") $environment
+                if ($value -eq "angelo-unpinned-value") {
+                    if ($probe.Code -eq 0 -or -not "$($probe.Err)$($probe.Out)".Contains("unknown variant")) {
+                        throw "codex.exe does not read the pinned provider capability $($capability.Name) (it accepted an unknown value): not the build the pin names"
+                    }
+                } elseif ($probe.Code -ne 0) {
+                    throw "codex.exe refused the pinned provider capability $($capability.Name) = '$value' (features list exited $($probe.Code): $($probe.Err)): not the build the pin names"
+                }
+            }
+            $result.schema += "provider_capability.$($capability.Name)"
+        }
     }
     $info = New-Object System.Diagnostics.ProcessStartInfo $codex, "app-server --listen stdio://"
     $info.UseShellExecute = $false; $info.RedirectStandardInput = $true; $info.RedirectStandardOutput = $true

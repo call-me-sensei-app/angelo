@@ -253,7 +253,7 @@ def tick():
                 return .2
             # The composer's field takes typing only once a connection is ready; connect the stand-in Claude
             # the way the welcome's "Connect Claude" does, so the focused-chat rule below has a field to protect.
-            bpy.ops.angelo.quick_connect(mode="claude_subscription")
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().quick_connect(mode="claude_subscription")
             state["phase"] = "connect"
             return .2
         if state["phase"] == "connect":

@@ -338,7 +338,7 @@ class BuildConfigurationTests(unittest.TestCase):
                        "/PDBALTPATH:%_PDB%", "-oso_prefix"):
             self.assertIn(needle, text)
         main = (ROOT / "CMakeLists.txt").read_text()
-        self.assertLess(main.index("include(platform_apple)"), main.index("angelo_build_paths.cmake"),
+        self.assertLess(main.index("include(build_files/cmake/platform/platform_apple.cmake)"), main.index("angelo_build_paths.cmake"),
                         "after the platform files, which set LIBDIR")
         self.assertLess(main.index("angelo_build_paths.cmake"), main.index("add_subdirectory(intern)"),
                         "before any target is defined")

@@ -13,7 +13,13 @@
         "source/blender/windowmanager/WM_api.hh",
         "source/blender/windowmanager/intern/wm_jobs.cc",
         "source/blender/python/intern/bpy_angelo_jobs_work.cc"
-      ]
+      ],
+      "decisions": {
+        "5.3": {
+          "choice": "take theirs",
+          "why": "Blender 5.3 ships the same function (16859984917c) and removes WM_jobs_has_running_type and the one-argument WM_jobs_has_running; the 1.1 merge keeps 5.3's definition, no caller of the removed two remains. Same loop over the jobs: no latency or cost change."
+        }
+      }
     }
   ]
 }

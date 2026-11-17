@@ -12,6 +12,7 @@ on resume no key is sent, and a process that fails the check is refused before a
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import platform_env
 
 import os
 import sys
@@ -229,7 +230,7 @@ class OpenTeamThreadTests(unittest.TestCase):
         inherited = {"ANGELO_TEAM_CACHE_KEY_SECRET": SECRET, "ANGELO_CACHE_KEY_SECRET": SECRET,
                      "SENSEI_CACHE_KEY_SECRET": SECRET, "angelo_some_secret": "x", "PATH": "/usr/bin",
                      "MY_TOOL_SECRET": "kept: not Angelo's", "ANGELO_STATE_DIR": "/s"}
-        with patch.dict(os.environ, inherited, clear=True):
+        with platform_env.cleared(inherited):
             env = runtime_launch.child_environment("codex_subscription")
         self.assertFalse([name for name in env if name.upper().startswith(("ANGELO_", "SENSEI_"))
                           and name.upper().endswith("SECRET")])

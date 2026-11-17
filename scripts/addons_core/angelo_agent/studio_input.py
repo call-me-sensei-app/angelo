@@ -193,7 +193,7 @@ class ANGELO_OT_studio_input(Operator):
         if event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'RELEASE':
             target = studio_enter.on_release(state, key)   # Return runs a field's primary action on its release.
             if target is not None:
-                self.activate(context, state, area, region, target)   # As a click on its button.
+                self.activate(context, state, area, region, target, ("focus", key))   # As its button's click.
                 area.tag_redraw()
                 return {'RUNNING_MODAL'}
         if not key or event.value != 'PRESS':
@@ -286,12 +286,17 @@ class ANGELO_OT_studio_input(Operator):
         return canvas_rtl.layout_x(event.mouse_x - region.x, state.get("mirror")), event.mouse_y - region.y
 
     @staticmethod
-    def activate(context, state, area, region, target):
+    def activate(context, state, area, region, target, keyed=None):
         """Run a hit ``(rect, action, value)`` as its click, in the Studio's own area; a refusal becomes the notice
-        (``refusable``). A pointer press and Return on a field's primary action both go through here."""
+        (``refusable``). A pointer press and Return on a field's primary action both go through here: a press in the
+        scope of its own ticket, Return in that of the field it was typed in (``keyed``: ``("focus", field)``), which
+        C mints only when the person focused the field by their own press (studio.consent_regions)."""
         rect, action, value = target
+        ticket = keyed or (action, value)
+        from . import grant_guard
         with context.temp_override(window=context.window, area=area, region=region):
-            refusable(state, lambda: click(bpy.context, state, action, value, rect))
+            refusable(state, lambda: grant_guard.ticketed("studio.", ticket[0], ticket[1], click, bpy.context, state,
+                                                          action, value, rect))
 
 
 def ensure_input(window, area):
@@ -332,8 +337,10 @@ def studio_click(window, state, released):
     action, identity, rect, area_pointer = released
     area = next((a for a in live_windows.areas(window) if a.as_pointer() == area_pointer and is_studio(a)), None)
     region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
-    if action == "open" and region is not None:
+    if action == "open" and region is not None:   # The person's press on the item: its ticket's scope, as a click.
+        from . import grant_guard
         with bpy.context.temp_override(window=window, area=area, region=region):
-            refusable(state, lambda: click(bpy.context, state, "asset", identity, rect))
+            refusable(state, lambda: grant_guard.ticketed("studio.", "asset", identity, click, bpy.context, state,
+                                                          "asset", identity, rect))
     if area is not None:
         area.tag_redraw()

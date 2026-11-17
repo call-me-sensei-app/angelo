@@ -16,6 +16,7 @@ import stat
 import threading
 
 from . import blender_asset_index as index, private_roots
+from . import owned_paths  # noqa: E402  (what Angelo made: its cleanups remove only that)
 
 
 class PayloadCopy:
@@ -28,6 +29,7 @@ class PayloadCopy:
 
     def prepare(self, row, cancel):
         """Worker only. Never publish a row until every copied byte has its selected digest."""
+        owned_paths.require_writable(self.folder)
         with self.lock:
             self.started.set()
         try:
@@ -102,7 +104,7 @@ class PayloadCopy:
                 self.users -= 1
                 remove = self._claim_cleanup()
             if remove:
-                shutil.rmtree(self.folder, ignore_errors=True)
+                owned_paths.remove_tree(self.folder)   # Only the copy Angelo made (owned_paths).
 
     def close(self):
         """Cancellation cannot unlink a copy still being written by its worker."""
@@ -110,4 +112,4 @@ class PayloadCopy:
             self.closed.set()
             remove = self._claim_cleanup()
         if remove:
-            shutil.rmtree(self.folder, ignore_errors=True)
+            owned_paths.remove_tree(self.folder)   # Only the copy Angelo made (owned_paths).

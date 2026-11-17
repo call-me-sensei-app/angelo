@@ -11,6 +11,7 @@ translation at display time, ``team_reads`` parsing and the status-bar item.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import plistlib
@@ -303,7 +304,8 @@ class EnforcementTests(PolicyCase):
         self.assertEqual(team_runtime.apply_policy({}, "claude_api"), {"NODE_EXTRA_CA_CERTS": str(pem)})
         self.assertEqual(team_runtime.apply_policy({"NODE_EXTRA_CA_CERTS": "/own.pem"}, "claude_team"),
                          {"NODE_EXTRA_CA_CERTS": "/own.pem"})
-        self.assertEqual(team_runtime.apply_policy({}, "codex_team"), {})
+        # Codex adds CODEX_CA_CERTIFICATE to its native roots; the inherited spellings never reach a child.
+        self.assertEqual(team_runtime.apply_policy({}, "codex_team"), {"CODEX_CA_CERTIFICATE": str(pem)})
 
     def test_collaborators_voice_and_local_cli(self):
         from angelo_agent import external_host, voice
@@ -370,7 +372,7 @@ class TeamLockTests(unittest.TestCase):
         timing_out.assert_within(1.0)
         with team_lock.held(folder, 10):
             self.assertGreater(time.monotonic() - started, 1.0, "acquired once the other process let go")
-        holder.wait(10)
+        holder.wait(CAP_S)
 
     def test_a_crashed_holder_never_leaves_the_lock_taken(self):
         folder = tempfile.mkdtemp()

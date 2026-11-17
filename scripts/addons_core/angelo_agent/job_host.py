@@ -71,11 +71,11 @@ def guard(name, arguments=None):
         image = image.partition(":")[0] if isinstance(image, str) else image  # A pass after the colon.
         if image == LAST_JOB or isinstance(image, str) and re.fullmatch(JOB, image):
             return  # Only job records are read while waiting; the finished picture repeats the full guard.
-    from .tool_specs import TOOL_MAP
+    from .tool_specs import READ_ONLY_TOOLS
     locked = manager.locks_interface()
     if name in SCENE_FREE:
         return
-    if not locked and (TOOL_MAP[name]["annotations"]["readOnlyHint"] or name in SAFE_BESIDE_JOB):
+    if not locked and (name in READ_ONLY_TOOLS or name in SAFE_BESIDE_JOB):
         return
     raise JobBusyError(busy_message(record, locked))
 

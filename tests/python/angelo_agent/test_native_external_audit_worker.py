@@ -8,6 +8,7 @@ Each class is one finding's reproduction and failed while the finding stood.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import queue
@@ -122,8 +123,8 @@ class LateLeaseGrantsAreReleased(unittest.TestCase):
         pair.serve(0.4)
         with patch.object(lifecycle, "_serving", return_value=pair.worker):
             ask(pair.worker)
-        self.assertEqual(pair.got.get(timeout=5)["op"], "part.lease")
-        released = pair.got.get(timeout=5)
+        self.assertEqual(pair.got.get(timeout=CAP_S)["op"], "part.lease")
+        released = pair.got.get(timeout=CAP_S)
         self.assertEqual((released["op"], released.get("lease")), ("part.unlease", "token-1"))
 
     def test_the_audit_poc_a_read_lease_granted_late_is_released(self):

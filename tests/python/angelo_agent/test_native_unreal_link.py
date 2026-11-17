@@ -17,6 +17,7 @@ Covered:
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import json
@@ -72,7 +73,7 @@ class FakeEditor:
 
     def close(self):
         self.closed = True
-        self.thread.join(2)
+        self.thread.join(CAP_S)
         self.udp.close()
         if self.tcp:
             self.tcp.close()
@@ -229,7 +230,7 @@ class PluginClientTests(unittest.TestCase):
                                        "capabilities": ["durable"]},
                                       lambda header, payload: self.received.append((header, payload)), self.record)
 
-    def until(self, client, condition, seconds=5.0):
+    def until(self, client, condition, seconds=CAP_S):
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
             client.poll()

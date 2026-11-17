@@ -4,7 +4,8 @@
 
 ``Angelo -b --factory-startup --python fab_formats_samples.py -- <folder>`` writes ``samples.json`` (path, format,
 title per sample) and the files, the way Fab ships them (2026-11-11 observations): an FBX zip with its maps loose
-beside it and no texture in its material (Megascans), an OBJ zip with .mtl and texture, a glTF zip with .bin and a
+beside it and no texture in its material (Megascans), two FBX zips whose materials name maps the download lacks (all of them; only the cut-out), an OBJ zip with .mtl
+and texture, a glTF zip with .bin and a
 textures/ folder, a bare USD layer, two texture-set zips (four PNG maps in full words for the library, and seven
 channels in abbreviated names, JPEG and PNG, applied to the selected mesh), and a .blend that carries
 what must never reach the scene: a Text block, a Python driver beside a simple-expression driver, a camera, and a
@@ -98,6 +99,33 @@ def texture(obj, image):
     tree.links.new(node.outputs['Color'], tree.nodes['Principled BSDF'].inputs['Base Color'])
 
 
+def author_image(name):
+    """An image that names a file on the author's disk, as many exported FBX materials do: no such file exists."""
+    image = bpy.data.images.new(name, SIDE, SIDE)
+    image.source, image.filepath_raw = 'FILE', '/nonexistent/author/disk/%s.png' % name
+    return image
+
+
+def one_channel(path):
+    """Rewrite a grey map with its value in red and green and blue black, as Megascans' raw plants ship their scalar
+    maps (an RGB JPEG or PNG): it must still be read as that scalar, from red."""
+    image = bpy.data.images.load(str(path))
+    pixels = np.empty(len(image.pixels), dtype=np.float32)
+    image.pixels.foreach_get(pixels)
+    pixels = pixels.reshape(-1, 4)
+    pixels[:, 1:3] = 0.0
+    image.pixels.foreach_set(pixels.ravel())
+    image.save()
+    bpy.data.images.remove(image)
+
+
+def wire(obj, image, socket, output='Color'):
+    tree = obj.data.materials[0].node_tree
+    node = tree.nodes.new('ShaderNodeTexImage')
+    node.image = image
+    tree.links.new(node.outputs[output], tree.nodes['Principled BSDF'].inputs[socket])
+
+
 def zip_folder(folder, target):
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as zipped:
         for path in sorted(folder.rglob('*')):
@@ -116,6 +144,30 @@ def main():
     maps(work, 'Crate_Low_1K')
     bpy.ops.export_scene.fbx(filepath=str(work / 'Crate_Low.fbx'), use_selection=False)
     samples.append(dict(path=str(zip_folder(work, OUT / 'crate_fbx_low.zip')), format='fbx', title='Crate FBX'))
+
+    # Its material names its maps by the author's paths, none in the download (Megascans' raw plants: black leaves,
+    # 2026-11-12); the loose set beside it must complete it, cut-out included.
+    work = OUT / 'fbx_author'
+    leaf = cube('Leaf')
+    wire(leaf, author_image('Leaf_Albedo'), 'Base Color')
+    channel_maps(work, 'leaf')
+    for role in ('roughness', 'opacity'):   # Their scalar in red only, as the ivy's are.
+        one_channel(work / ('leaf_' + CHANNELS[role]))
+    bpy.ops.export_scene.fbx(filepath=str(work / 'Leaf_LOD0.fbx'), use_selection=False, path_mode='ABSOLUTE')
+    samples.append(dict(path=str(zip_folder(work, OUT / 'leaf_fbx_raw.zip')), format='fbx',
+                        title="Leaf FBX, author's paths", wired=['Base Color', 'Normal', 'Roughness', 'Metallic',
+                                                                 'Alpha'], filled_slots=0))
+
+    # Its base colour is in the download (relinked by name) but its cut-out names a file that is not: that one slot
+    # comes from the loose opacity map.
+    work = OUT / 'fbx_partial'
+    vine = cube('Vine')
+    channel_maps(work, 'vine')
+    wire(vine, bpy.data.images.load(str(work / ('vine_' + CHANNELS['base_color']))), 'Base Color')
+    wire(vine, author_image('Vine_Mask'), 'Alpha')
+    bpy.ops.export_scene.fbx(filepath=str(work / 'Vine_LOD0.fbx'), use_selection=False, path_mode='ABSOLUTE')
+    samples.append(dict(path=str(zip_folder(work, OUT / 'vine_fbx_partial.zip')), format='fbx',
+                        title='Vine FBX, one missing map', wired=['Base Color', 'Alpha'], filled_slots=1))
 
     work = OUT / 'obj'
     texture(cube('Stool'), maps(work, 'Stool')['BaseColor'])

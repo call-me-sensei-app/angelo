@@ -10,6 +10,7 @@ its cache and what each answer makes a settle do, on any host.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 from pathlib import Path
@@ -427,7 +428,7 @@ class HostTableTests(unittest.TestCase):
         done = []
         worker = threading.Thread(target=lambda: done.append(volumes.mounts()))
         worker.start()
-        worker.join(10)
+        worker.join(CAP_S)
         self.assertEqual(len(done), 1)
 
     def test_the_agent_and_the_clock_reach_the_same_judge(self):

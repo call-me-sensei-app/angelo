@@ -120,8 +120,16 @@ def features(pixels):
     alpha_varies = bool(alpha is not None and float(alpha.min()) < 0.95)
     value = rgb.mean(axis=2)
     binary = bool(np.mean((value < 0.08) | (value > 0.92)) > 0.9)
+    # A scalar written into one channel of an RGB file, the other two black: that channel holds the map.
+    channel = None
+    if not gray:
+        for index, name in enumerate(('Red', 'Green', 'Blue')):
+            others = np.delete(rgb, index, axis=2)
+            if np.percentile(others, 95) < 0.02 and float(rgb[:, :, index].max()) > 0.02:
+                channel = name
+                break
     return {'gray': gray, 'normal_like': normal_like, 'normal_score': round(score, 4), 'alpha_varies': alpha_varies,
-            'binary': binary, 'mean': [round(float(x), 4) for x in mean]}
+            'binary': binary, 'mean': [round(float(x), 4) for x in mean], 'channel': channel}
 
 
 def _valid_normals(rgb):
@@ -174,7 +182,7 @@ def classify(maps):
             notes.append('named_normal_not_normal')
             unused.append(row['name'])
             continue
-        if role in SCALAR and not facts['gray']:
+        if role in SCALAR and not facts['gray'] and not facts.get('channel'):
             notes.append('named_scalar_is_colour')   # "Metal_Plate_2K": a material's name, not a metalness map.
             role = None
         if role is None and facts['normal_like']:
@@ -195,7 +203,13 @@ def classify(maps):
     roles = {}
     for role, rows in claims.items():
         rows.sort(key=lambda pair: (-(pair[0].get('size') or 0), len(pair[0]['name']), pair[0]['name']))
-        roles[role] = rows[0][0]['name']
+        chosen = rows[0][0]
+        channel = chosen['features'].get('channel') if role in SCALAR and not chosen['features']['gray'] else None
+        if channel is not None:   # Read from its one channel, as a channel-packed map is (``packed``).
+            packed[chosen['name']] = tuple(role if name == channel else None for name in ('Red', 'Green', 'Blue'))
+            notes.append('scalar_in_one_channel')
+        else:
+            roles[role] = chosen['name']
         unused.extend(pair[0]['name'] for pair in rows[1:])
     convention = None
     if 'normal' in roles:

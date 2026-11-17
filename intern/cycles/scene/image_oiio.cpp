@@ -32,6 +32,13 @@ bool OIIOImageLoader::load_metadata(ImageMetaData &metadata,
                                     const ImageLoaderParams &params,
                                     Progress &progress)
 {
+  if (original_filepath_.empty()) {
+    return false;
+  }
+
+  /* Metadata may be loaded again after cancelling, start from the original file. */
+  texture_cache_filepath_.clear();
+
   if (params.use_texture_cache) {
     const std::string &filepath = get_filepath();
     const bool found = resolve_tx(filepath,
@@ -49,14 +56,27 @@ bool OIIOImageLoader::load_metadata(ImageMetaData &metadata,
     if (params.auto_texture_cache) {
       progress.set_status("Generating tx cache | " + path_filename(filepath), "");
 
+      /* Track if generation stopped due to cancel or failure. */
+      bool cancelled = false;
+      const auto cancel = [&]() {
+        cancelled = cancelled || progress.get_cancel();
+        return cancelled;
+      };
+
       if (!make_tx(filepath,
                    texture_cache_filepath_,
                    params.colorspace,
                    params.alpha_type,
-                   IMAGE_FORMAT_PLAIN))
+                   IMAGE_FORMAT_PLAIN,
+                   cancel))
       {
         texture_cache_filepath_.clear();
-        params.tx_failure_num++;
+        if (cancelled) {
+          params.metadata_incomplete = true;
+        }
+        else {
+          params.tx_failure_num++;
+        }
       }
     }
     else {
@@ -97,6 +117,7 @@ static bool oiio_load_pixels_tile(const unique_ptr<ImageInput> &in,
 
 {
   const int channels = metadata.channels;
+  int64_t read_x_stride = x_stride;
   int64_t read_y_stride = y_stride;
 
   /* Read pixels through OpenImageIO. */
@@ -105,6 +126,7 @@ static bool oiio_load_pixels_tile(const unique_ptr<ImageInput> &in,
   if (channels > 4) {
     tmppixels.resize(w * h * channels);
     readpixels = &tmppixels[0];
+    read_x_stride = channels * sizeof(StorageType);
     read_y_stride = w * channels * sizeof(StorageType);
   }
 
@@ -120,7 +142,7 @@ static bool oiio_load_pixels_tile(const unique_ptr<ImageInput> &in,
                       channels,
                       typedesc,
                       readpixels,
-                      x_stride,
+                      read_x_stride,
                       read_y_stride))
   {
     return false;
@@ -392,8 +414,8 @@ bool OIIOImageLoader::load_pixels_tile(const ImageMetaData &metadata,
     return false;
   }
 
-  const int64_t width = metadata.width >> miplevel;
-  const int64_t height = metadata.height >> miplevel;
+  const int64_t width = std::max(int64_t(1), metadata.width >> miplevel);
+  const int64_t height = std::max(int64_t(1), metadata.height >> miplevel);
 
   /* Load center pixels. */
   bool ok = oiio_load_pixels_tile(file_handle_user.get(),

@@ -9,6 +9,7 @@ assigns the planned baked materials in the child's copy (doc/angelo/long_jobs.rs
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import hashlib
 import inspect
@@ -54,10 +55,11 @@ class WriteBackTests(unittest.TestCase):
             run = subprocess.run
             self.enterContext(mock.patch.object(engine_link_writeback.subprocess, "run",
                                                 lambda command, **options: run([sys.executable, *command], **options)))
-        self.writer = engine_link_writeback.WriteBack(str(self.binary))
+        self.enterContext(mock.patch.object(engine_link_writeback, "angelo_binary", lambda: str(self.binary), create=True))   # The stand-in is the app.
+        self.writer = _made(engine_link_writeback.WriteBack, str(self.binary))
 
-    def wait(self, count):
-        done, deadline = [], time.monotonic() + 15
+    def writes_done(self, count):
+        done, deadline = [], time.monotonic() + CAP_S
         while len(done) < count and time.monotonic() < deadline:
             done += self.writer.finished()
             time.sleep(0.02)
@@ -68,7 +70,7 @@ class WriteBackTests(unittest.TestCase):
 
     def test_the_child_exports_from_the_saved_file_in_the_background(self):
         self.writer.request("/p/a.glb", "/p/.angelo/a.glb.blend", "/p/a.glb", "gltf", {"export_apply": True})
-        self.assertEqual(self.wait(1), [("/p/a.glb", None)])
+        self.assertEqual(self.writes_done(1), [("/p/a.glb", None)])
         call = self.calls()[0]
         # The child opens the .blend itself, between two stats of it: never from its arguments.
         self.assertEqual(call["argv"][:3], ["--background", "--factory-startup", "--python-exit-code"])
@@ -80,7 +82,7 @@ class WriteBackTests(unittest.TestCase):
 
     def test_the_child_is_told_which_exporter_writes_the_target(self):
         self.writer.request("/p/a.fbx", "/p/.angelo/a.fbx.blend", "/p/a.fbx", "fbx", {"object_types": ["MESH"]})
-        self.assertEqual(self.wait(1), [("/p/a.fbx", None)])
+        self.assertEqual(self.writes_done(1), [("/p/a.fbx", None)])
         spec = self.calls()[0]["spec"]
         self.assertEqual((spec["target"], spec["exporter"], spec["options"]), ("/p/a.fbx", "fbx", {"object_types": ["MESH"]}))
         child = engine_link_writeback.CHILD
@@ -90,7 +92,7 @@ class WriteBackTests(unittest.TestCase):
 
     def test_the_child_gives_planned_objects_their_baked_material_in_its_own_copy(self):
         self.writer.request("/p/a.glb", "/p/a.blend", "/p/a.glb", "gltf", {}, baked=[("Crate", "Crate Baked")])
-        self.assertEqual(self.wait(1), [("/p/a.glb", None)])
+        self.assertEqual(self.writes_done(1), [("/p/a.glb", None)])
         self.assertEqual(self.calls()[0]["spec"]["baked"], [["Crate", "Crate Baked"]])
         child = engine_link_writeback.CHILD
         gltf = child[child.index("else:"):]
@@ -270,21 +272,21 @@ class WriteBackTests(unittest.TestCase):
     def test_a_save_ended_is_never_reported_busy(self):
         """Its end reported while ``busy`` still names it would make the preflight skip it for a newer save."""
         self.writer.request("one", "/p/a.blend", "/p/a.glb", "gltf", {})
-        self.wait(1)
+        self.writes_done(1)
         self.assertFalse(self.writer.busy())
         source = inspect.getsource(engine_link_writeback.WriteBack._run)
         self.assertLess(source.index("self._running ="), source.index("self._done.put"))
 
     def test_a_failure_says_why(self):
         self.writer.request("k", "/p/f.blend", "/p/fail.glb", "gltf", {})
-        (key, error), = self.wait(1)
+        (key, error), = self.writes_done(1)
         self.assertIn("the exporter failed", error)
 
     def test_saves_during_a_write_back_run_once_with_the_newest_file(self):
         self.writer.request("k", "/p/1.blend", "/p/a.glb", "gltf", {})
         self.writer.request("k", "/p/2.blend", "/p/a.glb", "gltf", {})
         self.writer.request("k", "/p/3.blend", "/p/a.glb", "gltf", {})
-        self.assertEqual(len(self.wait(2)), 2)
+        self.assertEqual(len(self.writes_done(2)), 2)
         self.assertEqual([call["spec"]["blend"] for call in self.calls()], ["/p/1.blend", "/p/3.blend"])
         self.assertFalse(self.writer.busy())
 
@@ -292,7 +294,7 @@ class WriteBackTests(unittest.TestCase):
         """Windows refuses a command line past 32,767 characters: the arguments go in a file, whatever the scene."""
         baked = [("Object.%05d" % index, "Baked.%05d" % index) for index in range(5000)]
         self.writer.request("/p/a.glb", "/p/a.blend", "/p/a.glb", "gltf", {"export_apply": True}, baked=baked)
-        self.assertEqual(self.wait(1), [("/p/a.glb", None)])
+        self.assertEqual(self.writes_done(1), [("/p/a.glb", None)])
         call = self.calls()[0]
         self.assertEqual(call["spec"]["baked"], [list(pair) for pair in baked])
         self.assertLess(len(json.dumps(call["argv"][-1])), 1024)
@@ -300,7 +302,7 @@ class WriteBackTests(unittest.TestCase):
 
     def test_the_spec_file_is_gone_once_the_child_has_ended(self):
         self.writer.request("/p/a.glb", "/p/a.blend", "/p/a.glb", "gltf", {}, baked=[("Crate", "Crate Baked")])
-        self.wait(1)
+        self.writes_done(1)
         self.assertFalse(Path(self.calls()[0]["argv"][-1]).exists())
 
     def test_a_spec_folder_windows_cant_remove_yet_never_fails_a_write_back_that_worked(self):
@@ -316,13 +318,92 @@ class WriteBackTests(unittest.TestCase):
             return real(path, *args, **kwargs)
         with mock.patch.object(os, "unlink", held):
             self.writer.request("/p/a.glb", "/p/a.blend", "/p/a.glb", "gltf", {})
-            done = self.wait(1)
+            done = self.writes_done(1)
         for folder in set(Path(private_roots.scratch_root()).glob("angelo-engine-link-*")) - before:
             for item in folder.iterdir():   # What Windows would remove once the scan lets go.
                 real(item)
             folder.rmdir()
         self.assertTrue(left)
         self.assertEqual(done, [("/p/a.glb", None)])
+
+
+def _made(kind, binary):
+    """A WriteBack or Runner: built without a program (it is read from C at each start), or, on a tree from before
+    that, with the one the test names (the fail-first run of these tests reads the earlier constructor)."""
+    try:
+        return kind()
+    except TypeError:
+        return kind(binary)
+
+
+class ChildWritesAskCTests(unittest.TestCase):
+    """A background child writes where the parent's spec says, in a process where C answers yes (no script region
+    ever began there), so the parent asks C about every file the child will write before the spec exists: a session
+    whose asset object a script swapped in place can't have Ctrl+S write a file of the person's (piece 10)."""
+
+    def setUp(self):
+        from angelo_agent import owned_paths
+        self.folder = Path(tempfile.mkdtemp())
+        self.mine = self.folder / "Documents"   # Where a person's own files are: never vouched for.
+        self.mine.mkdir()
+        self.started = []
+        self.own = str(self.folder / "Angelo")
+
+        def refuse_mine(path):
+            return not os.fspath(path).startswith(str(self.mine))
+        self.enterContext(mock.patch.object(owned_paths, "_MAY_WRITE", refuse_mine))
+        self.enterContext(mock.patch.object(subprocess, "run", self.start))
+        self.enterContext(mock.patch.object(engine_link_writeback, "angelo_binary", lambda: self.own, create=True))
+
+    def start(self, command, **_):   # A child that would have written: recorded, never run.
+        self.started.append(command)
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    def test_a_write_back_to_a_file_c_refuses_starts_no_child_and_says_why(self):
+        writer = _made(engine_link_writeback.WriteBack, self.own)
+        for target, stamp in ((self.mine / "thesis.glb", self.folder / "a.glb.json"),
+                              (self.folder / "a.glb", self.mine / "thesis.json")):
+            writer.request("k", str(self.folder / "a.blend"), str(target), "gltf", {},
+                           stamp={"path": str(stamp), "asset": "a.glb"})
+            deadline, done = time.monotonic() + CAP_S, []
+            while not done and time.monotonic() < deadline:
+                done = writer.finished()
+                time.sleep(0.02)
+            self.assertEqual(done, [("k", "PermissionError")])
+            self.assertFalse(writer.busy())
+        self.assertEqual(self.started, [])
+
+    def test_a_preflight_report_c_refuses_starts_no_child(self):
+        from angelo_agent import engine_preflight_link
+        report = self.mine / "thesis.preflight.json"
+        _made(engine_preflight_link.Runner, self.own)._run(
+            str(self.folder / "a.blend"), {"engine": "godot", "report": str(report), "file": None,
+                                           "exporter": "gltf", "options": {}, "scene_version": 1})
+        self.assertEqual(self.started, [])
+        self.assertFalse(report.exists())
+
+    def test_a_child_is_this_app_whatever_object_named_a_program(self):
+        # The program a child starts is read from C at the start (``angelo_binary``: bpy.app.binary_path), never from
+        # an attribute of Angelo's that a script could set in place to have Angelo start a program unconfined.
+        from angelo_agent import engine_preflight_link
+        writer = _made(engine_link_writeback.WriteBack, self.own)
+        writer._binary = str(self.folder / "elsewhere")   # As a script that reached the object could set it.
+        writer.request("k", str(self.folder / "a.blend"), str(self.folder / "a.glb"), "gltf", {})
+        deadline = time.monotonic() + CAP_S
+        while not writer.finished() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        runner = _made(engine_preflight_link.Runner, self.own)
+        runner._binary = str(self.folder / "elsewhere")
+        runner._run(str(self.folder / "a.blend"), {"engine": "godot", "report": str(self.folder / "r.json"),
+                                                   "file": None, "exporter": "gltf", "options": {}})
+        self.assertEqual([command[0] for command in self.started], [self.own, self.own])
+
+    def test_every_child_spec_names_the_files_its_child_writes(self):
+        parameter = inspect.signature(engine_link_writeback.child_spec).parameters.get("writes")
+        self.assertIsNotNone(parameter, "child_spec(values, *, writes): C is asked about each before the spec exists")
+        self.assertIs(parameter.kind, inspect.Parameter.KEYWORD_ONLY)
+        self.assertIs(parameter.default, inspect.Parameter.empty, "no default: a new child names what it writes")
+
 
 if __name__ == "__main__":
     unittest.main()

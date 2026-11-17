@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """run_native_suites refuses an app whose bundled add-on is not this checkout's (native_addon_guard).
 
-Native suites test the add-on bundled in the app, never the checkout's: run against an app built before the
-change under test, a suite reports another add-on's result as this checkout's.
+Native suites run the app with its bundled add-on, and many also import the checkout's modules: run against an app
+built before the change under test, a suite reports another add-on's result as this checkout's; run from a checkout
+whose add-on assets are Git LFS pointers, a suite fails on pointer text the app never ships.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
@@ -38,6 +39,13 @@ def matching_app(test):
     patcher = mock.patch.object(guard, "check", return_value=MATCHING)
     patcher.start()
     test.addCleanup(patcher.stop)
+
+
+def pointer_to(data):
+    """The Git LFS pointer a checkout made with GIT_LFS_SKIP_SMUDGE=1 holds for ``data``."""
+    import hashlib
+    return ("version https://git-lfs.github.com/spec/v1\noid sha256:%s\nsize %d\n"
+            % (hashlib.sha256(data).hexdigest(), len(data)))
 
 
 def write(root, files):
@@ -104,32 +112,48 @@ class CheckTests(Fixture):
         extra = guard.check(self.app(startup=dict(STARTUP, **{"bl_operators/wm.py": "WM = 1\n"})), self.source)
         self.assertTrue(extra["matches"], extra["differing"])
 
-    def test_a_git_lfs_pointer_counts_as_the_file_it_points_to(self):
-        # Every Angelo checkout is made with GIT_LFS_SKIP_SMUDGE=1: its binary assets are pointers, the app's real.
-        import hashlib
+    def test_a_git_lfs_pointer_in_the_checkout_is_never_the_file(self):
+        # A checkout made with GIT_LFS_SKIP_SMUDGE=1 holds pointer text where the add-on's images and .blend files
+        # belong, and the suites load the checkout's modules, which read the assets beside them: a pointer, even to
+        # the app's own file, is not that file (2.0.0: chosen_tools drew no base-mesh picture, "not a PNG").
         image = bytes(range(256)) * 8
         binary = self.app(addon=dict(ADDON, **{"assets/banner.png": ""}))
         (guard.bundled_scripts(binary) / "addons_core/angelo_agent/assets/banner.png").write_bytes(image)
-        pointer = ("version https://git-lfs.github.com/spec/v1\noid sha256:%s\nsize %d\n"
-                   % (hashlib.sha256(image).hexdigest(), len(image)))
-        write(self.source / "scripts/addons_core/angelo_agent", {"assets/banner.png": pointer})
-        self.assertTrue(guard.check(binary, self.source)["matches"])
-        write(self.source / "scripts/addons_core/angelo_agent", {"assets/banner.png": pointer.replace(
-            hashlib.sha256(image).hexdigest(), "0" * 64)})
-        self.assertEqual(guard.check(binary, self.source)["differing"], ["addon/assets/banner.png: differs"])
+        write(self.source / "scripts/addons_core/angelo_agent", {"assets/banner.png": pointer_to(image)})
+        result = guard.check(binary, self.source)
+        self.assertFalse(result["matches"])
+        self.assertEqual(result["pointers"], ["addon/assets/banner.png"])
+        self.assertEqual(result["differing"],
+                         ["addon/assets/banner.png: a Git LFS pointer in the checkout, not the file"])
+
+    def test_a_fetched_checkout_matches_and_names_no_pointer(self):
+        image = bytes(range(256)) * 8
+        binary = self.app(addon=dict(ADDON, **{"assets/banner.png": ""}))
+        (guard.bundled_scripts(binary) / "addons_core/angelo_agent/assets/banner.png").write_bytes(image)
+        (self.source / "scripts/addons_core/angelo_agent/assets/banner.png").write_bytes(image)
+        result = guard.check(binary, self.source)
+        self.assertTrue(result["matches"], result["differing"])
+        self.assertEqual(result["pointers"], [])
 
     def test_a_git_lfs_pointer_in_the_app_is_never_the_file(self):
         # An app's add-on overlaid from a checkout made with GIT_LFS_SKIP_SMUDGE=1 holds pointer text where its images
         # and .blend files belong: it cannot load them (IMB "unknown file-format"), so it is not the checkout's add-on.
-        import hashlib
         image = bytes(range(256)) * 8
-        pointer = ("version https://git-lfs.github.com/spec/v1\noid sha256:%s\nsize %d\n"
-                   % (hashlib.sha256(image).hexdigest(), len(image)))
+        (self.source / "scripts/addons_core/angelo_agent/assets/banner.png").write_bytes(image)
+        result = guard.check(self.app(addon=dict(ADDON, **{"assets/banner.png": pointer_to(image)})), self.source)
+        self.assertFalse(result["matches"])
+        self.assertEqual(result["pointers"], [])
+        self.assertEqual(result["differing"], ["addon/assets/banner.png: a Git LFS pointer in the app, not the file"])
+        self.assertNotEqual(result["source"]["digest"], result["app"]["digest"])
+
+    def test_the_same_pointer_on_both_sides_is_still_not_the_file(self):
+        pointer = pointer_to(bytes(range(256)) * 8)
         write(self.source / "scripts/addons_core/angelo_agent", {"assets/banner.png": pointer})
         result = guard.check(self.app(addon=dict(ADDON, **{"assets/banner.png": pointer})), self.source)
         self.assertFalse(result["matches"])
-        self.assertEqual(result["differing"], ["addon/assets/banner.png: a Git LFS pointer in the app, not the file"])
-        self.assertNotEqual(result["source"]["digest"], result["app"]["digest"])
+        self.assertEqual(result["pointers"], ["addon/assets/banner.png"])
+        self.assertEqual(result["differing"],
+                         ["addon/assets/banner.png: a Git LFS pointer in the checkout, not the file"])
 
     def test_a_binary_without_a_bundled_add_on_never_matches(self):
         result = guard.check(self.app(addon=None), self.source)
@@ -157,6 +181,27 @@ class RunnerTests(Fixture):
         self.assertIn(str(self.source), text)
         self.assertIn("addon/script_kit.py: differs", text)
         self.assertIn(guard.OVERRIDE, text)
+
+    def test_a_checkout_holding_lfs_pointers_is_refused_up_front_naming_them_and_the_fetch(self):
+        # Even with the override: the suites load the checkout's modules, so no suite can test the app as it is from
+        # such a checkout either. Fetching is the operator's (LFS is metered): the runner never fetches.
+        image = bytes(range(256)) * 8
+        binary = self.app(addon=dict(ADDON, **{"assets/banner.png": "", "assets/thumbs/head.png": ""}))
+        for name in ("banner.png", "thumbs/head.png"):
+            (guard.bundled_scripts(binary) / "addons_core/angelo_agent/assets" / name).write_bytes(image)
+        write(self.source / "scripts/addons_core/angelo_agent",
+              {"assets/banner.png": pointer_to(image), "assets/thumbs/head.png": pointer_to(image)})
+        for extra in ((), (guard.OVERRIDE,)):
+            code, text, launch = self.run_main(binary, *extra)
+            self.assertEqual(code, 2, extra)
+            launch.assert_not_called()
+            self.assertFalse((self.root / "out").exists(), "No run folder: nothing ran")
+            self.assertNotIn("WARNING", text)
+            self.assertIn("Refused", text)
+            self.assertIn("addon/assets/banner.png", text)
+            self.assertIn("addon/assets/thumbs/head.png", text)
+            self.assertIn(guard.FETCH, text)
+        self.assertEqual(guard.FETCH, 'git lfs pull --include "scripts/addons_core/angelo_agent/**"')
 
     def test_the_override_runs_with_a_warning_line(self):
         binary = self.app(addon=dict(ADDON, **{"script_kit.py": "STALE = 1\n"}))

@@ -257,9 +257,12 @@ class BuildScriptTests(unittest.TestCase):
     def test_cpack_stages_in_a_short_folder_and_checks_wix_path_limit(self):
         """WiX 3 reads no path of 260+ characters: the first clang-cl MSI failed at 264 (LGHT0103) under the longer folder."""
         package = block(BUILD, "# --- Package", "if ($Sign) {")
-        order = [package.index(marker) for marker in (
-            "$packageDir = Get-PackageStagingDir $BuildDir", "Assert-StagedPathLengths $BuildDir $packageDir",
-            '$cpack = "cpack -G WIX -C Release -B `"$packageDir`""')]
+        # CPack's -B argument names the short folder, however its path is written (test_native_gpu_sdk_pins.py reads
+        # that every path given to cmake and cpack goes through one function).
+        staged = re.search(r'\$cpack = "cpack -G WIX [^\n]*-B `"[^`\n]*\$packageDir[^`\n]*`"', package)
+        self.assertTrue(staged, "cpack stages in $packageDir")
+        order = [package.index("$packageDir = Get-PackageStagingDir $BuildDir"),
+                 package.index("Assert-StagedPathLengths $BuildDir $packageDir"), staged.start()]
         self.assertEqual(order, sorted(order))
         self.assertIn('Get-ChildItem $packageDir -Filter "*.msi" -ErrorAction SilentlyContinue | Move-Item -Destination $BuildDir',
                       BUILD, "the MSI ends in the build folder, as before")
@@ -292,7 +295,7 @@ class BuildScriptTests(unittest.TestCase):
     def test_the_release_stage_reports_the_check_after_the_seal_check(self):
         order = [STAGE.index(marker) for marker in (
             'Test-Check "release: build_release_windows.ps1 -Package', 'Test-Check "release: a launch writes nothing',
-            'Test-Check "release: the app is clang-cl', "windows-toolset --binary $exe",
+            'Test-Check "release: the app is clang-cl', '"windows-toolset", "--binary", $exe',
             'Test-Check "release: BACKGROUND native suites')]
         self.assertEqual(order, sorted(order))
         self.assertIn('"BlendThumb.dll"', STAGE)
@@ -300,14 +303,38 @@ class BuildScriptTests(unittest.TestCase):
 
 class BuildFolderTests(unittest.TestCase):
     def folder_name(self):
-        pattern = re.search(r'\("(build_windows_Release_x64_vc17_\{0\}_Release)" -f \$AngeloReleaseToolset\.ToLowerInvariant\(\)\)',
+        pattern = re.search(r'\("(build_windows_Release_x64_vc17_\{0\}_Release_\{1\})" -f '
+                            r'\$AngeloReleaseToolset\.ToLowerInvariant\(\), \(Get-AngeloBlenderSeries \$SourceDir\)\)',
                             HELPER).group(1)
         toolset = re.search(r'\$AngeloReleaseToolset = "(\w+)"', HELPER).group(1)
-        return pattern.replace("{0}", toolset.lower())
+        return pattern.replace("{0}", toolset.lower()).replace("{1}", "5.3")
 
-    def test_the_folder_name_carries_the_toolset(self):
-        self.assertEqual(self.folder_name(), "build_windows_Release_x64_vc17_clangcl_Release")
+    def test_the_folder_name_carries_the_toolset_and_the_blender_series(self):
+        self.assertEqual(self.folder_name(), "build_windows_Release_x64_vc17_clangcl_Release_5.3")
         self.assertNotEqual(self.folder_name(), "build_windows_Release_x64_vc17_Release", "never make.bat's MSVC folder")
+
+    def test_a_build_without_vulkan_fails(self):
+        # Vulkan is the default backend on Windows from Blender 5.3, so a release without it starts on the fallback.
+        required = BUILD[BUILD.index("$required = @("):BUILD.index("$required += @($gpu.options")]
+        self.assertIn('"WITH_VULKAN_BACKEND"', required)
+
+    def test_every_required_feature_is_an_option_of_this_tree(self):
+        # Blender 5.3 renamed WITH_CYCLES_EMBREE to WITH_EMBREE, and the old name failed the build only on the VM.
+        required = BUILD[BUILD.index("$required = @("):BUILD.index("$off = @(")]
+        switches = HELPER[HELPER.index("$switches = [ordered]@{"):HELPER.index("foreach ($part in $switches.Keys)")]
+        names = set(re.findall(r'"(WITH_[A-Z0-9_]+)"', required + switches))
+        defined = set()
+        for path in list(ROOT.glob("**/CMakeLists.txt")) + list(ROOT.glob("build_files/cmake/**/*.cmake")):
+            if path.relative_to(ROOT).parts[0] in ("lib", "build", "source"):
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            defined |= set(re.findall(r"\b(?:option|cmake_dependent_option)\(\s*(WITH_[A-Z0-9_]+)", text))
+            defined |= set(re.findall(r"\bset\(\s*(WITH_[A-Z0-9_]+)\s+[^)]*CACHE", text))
+        self.assertGreater(len(names), 40)
+        self.assertEqual(sorted(names - defined), [])
+
+    def test_a_renamed_option_is_named_as_such(self):
+        self.assertIn("(not an option of this tree: renamed upstream?)", BUILD)
 
     def test_every_script_finds_the_release_folder_by_the_one_name(self):
         self.assertIn("if (-not $BuildDir) { $BuildDir = Get-AngeloReleaseBuildDir $SourceDir }", BUILD)
@@ -349,7 +376,7 @@ class MachineTests(unittest.TestCase):
     def test_a_machine_set_up_before_a_part_was_required_gets_it_at_its_next_boot(self):
         # A Windows build machine (2026-10-24): its tools stage ran before clang-cl was required and never runs again.
         reconcile = block(BOOTSTRAP, "function Add-MissingVsParts {", "\n}\n")
-        self.assertIn('-requires @Parts', reconcile)
+        self.assertIn('"-requires") + @($Parts)', reconcile)
         self.assertIn('modify --installPath `"$path`" $add --quiet --norestart', reconcile)
         self.assertIn("foreach ($path in", reconcile, "every installed Visual Studio 2022")
         # It never ends the boot: a failure is logged, the stage that needs the part refuses with what to install.

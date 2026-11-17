@@ -20,6 +20,8 @@ import time
 
 import bpy
 
+from . import color_spaces
+
 COLLECTION = "Angelo Re-import Check"
 TOLERANCE = 0.01          # Bounds agree within 1 % of the largest side (and 1 mm).
 # An animated object's place is not compared, only its size: where it sits depends on the frame, on how each format
@@ -95,7 +97,8 @@ def _weights(obj, sample=SKIN_SAMPLE):
 def _images(material):
     if material is None or material.node_tree is None:
         return []
-    return [{"name": os.path.splitext(node.image.name)[0], "colorspace": node.image.colorspace_settings.name}
+    return [{"name": os.path.splitext(node.image.name)[0], "colorspace": node.image.colorspace_settings.name,
+             "colorspace_kind": color_spaces.kind(node.image.colorspace_settings)}
             for node in material.node_tree.nodes if node.bl_idname == "ShaderNodeTexImage" and node.image]
 
 
@@ -351,10 +354,11 @@ def _material_findings(name, src, got):
         out.append(_finding("reimport_materials", "warn", name, "%s reads back with %d materials, not %d" % (
             name, len(have), len(want)), ", ".join(want) or "none",
             ", ".join(_SUFFIX.sub("", material) for material in have) or "none"))
-    spaces = {image["name"]: image["colorspace"] for image in got["images"]}
+    spaces = {image["name"]: (image["colorspace"], color_spaces.fact_kind(image)) for image in got["images"]}
     for image in src["images"]:
-        arrived = spaces.get(image["name"])
-        if arrived and arrived != image["colorspace"] and {arrived, image["colorspace"]} <= {"sRGB", "Non-Color"}:
+        arrived, arrived_kind = spaces.get(image["name"], (None, None))
+        kinds = {arrived_kind, color_spaces.fact_kind(image)}
+        if arrived and len(kinds) == 2 and kinds <= {"srgb", "data"}:   # sRGB read back as data, or the other way.
             out.append(_finding("reimport_colour_space", "warn", image["name"],
                                 "Image %s reads back as %s; Blender shows it as %s" % (
                                     image["name"], arrived, image["colorspace"]), image["colorspace"], arrived))

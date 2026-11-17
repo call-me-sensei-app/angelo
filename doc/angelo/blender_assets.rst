@@ -26,6 +26,16 @@ capture. Root and recursive .blend reads use the private files; relative Library
 against the original parent's directory before mapping. An unmapped dependency refuses without reopening
 an original source as a fallback. Ordinary loads and memory Undo restoration do not acquire this route.
 
+Paths in the map are compared, never opened to compare them. A registered path must be absolute and canonical.
+On Windows either separator names the same file, so paths are compared in one spelling while a read opens the
+private copy as it was registered; a path under a drive's current folder (``C:name``) is not absolute. Other
+names Windows gives one file (a short 8.3 name, a trailing dot, a ``\\?\`` prefix) are not unified: a
+reference spelled that way is refused, and the add-on registers only paths the file system resolved. A relative
+reference is read with either separator on every platform, by the native lookup and by the add-on's own check
+(``blender_assets.dependency_path``), so a file saved on Windows names the same dependency elsewhere. What
+follows ``//`` stays under the parent's directory unless ``..`` climbs, and a reference too long to join to
+that directory is refused instead of being cut short.
+
 Stock Blender append and placement run inside that native scope. Nested importer Undo pushes are
 suppressed. Successful finalization publishes the before/after history pair for one Undo; a failed import
 requests native restoration of the captured document. Unknown or failed restoration retains a recovery

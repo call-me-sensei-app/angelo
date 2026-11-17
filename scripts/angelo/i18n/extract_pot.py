@@ -10,6 +10,9 @@ items), the Python UI scan (``text=``, ``iface_`` and friends), and the C/C++
 scan (``IFACE_``, ``TIP_``, ``BKE_report``). The result is filtered to what
 Angelo owns: the add-on, the startup scripts, the changed C++ files, and a short
 list of strings Angelo adds to Blender's own RNA (``sources.EXTRA_MSGIDS``).
+A Python class's tooltip is read from the sources (``class_text``): the RNA
+dump finds none on the struct and takes the class docstring instead, which is
+dropped here.
 Counted phrases (``plural_``) and chat notices (``notice``) are not Blender
 spellings, so a small AST pass adds them. The output is deterministic (sorted,
 source files without line numbers) so a catalogue diff shows only real changes.
@@ -30,7 +33,7 @@ sys.path.insert(0, str(HERE.parents[1]))
 sys.path.insert(0, str(HERE.parent))
 
 from _bl_i18n_utils import bl_extract_messages as extractor, settings as settings_i18n, utils  # noqa: E402
-from i18n import po, scan, sources  # noqa: E402
+from i18n import class_text, po, scan, sources  # noqa: E402
 
 SOURCE_PREFIX = ":src: "
 ANGELO_RNA = re.compile(r"(?i)angelo")
@@ -203,6 +206,9 @@ def main():
     blender_msgids = blender_reference(root)
     cpp_files = angelo_c_files() | set(sources.SHARED_PYTHON_FILES)
     lookup_only, literals = python_literals(root)
+    addon_sources = {"angelo_agent/" + path.name: path.read_text(encoding="utf-8") for path in addon}
+    class_tooltips = class_text.tooltips(addon_sources)
+    class_docstrings = set().union(*(class_text.docstrings(source) for source in addon_sources.values()))
     artifacts = []
     entries = {}
     for (ctxt, msgid), message in msgs.items():
@@ -218,6 +224,8 @@ def main():
         if keep and blender_extractor_artifact(msgid, origins, lookup_only, literals):
             artifacts.append(msgid)
             continue
+        if class_text.dump_artifact(msgid, origins, class_docstrings, class_tooltips):
+            continue   # A class docstring the dump took for a tooltip: never interface text.
         if keep:
             entries[(ctxt, msgid)] = origins
     for path in addon:
@@ -230,6 +238,9 @@ def main():
                     entries.setdefault((ctxt, msgid), set()).add("angelo_agent/" + path.name)
     for ctxt, msgid, origin in operator_properties:
         entries.setdefault((ctxt, msgid), set()).add(origin)
+    for msgid, origins in class_tooltips.items():   # What the RNA dump cannot see on a Python class.
+        if msgid not in blender_msgids:
+            entries.setdefault(("", msgid), set()).update(origins)
     for ctxt, msgid, origin in sources.EXTRA_MSGIDS:
         entries.setdefault((ctxt, msgid), set()).add(origin)
     repo_files = sorted((sources.ADDON).glob("*.py")) + [sources.ROOT / f for f in sources.STARTUP_FILES]

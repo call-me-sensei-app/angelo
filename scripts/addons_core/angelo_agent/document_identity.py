@@ -53,8 +53,9 @@ from .ui_text import n_
 PROPERTY = "_angelo_document_id"
 AWAITING = n_("This chat works on {file}. Open that file to continue, or start a new chat.")
 UNSAVED = n_("This chat's file was never saved, so it can't be opened again. Start a new chat.")
-SAVE_FAILED = n_("Angelo couldn't save this chat. It keeps working, but what happens in it now may be lost if Angelo "
-                 "quits.")   # The chat's own row when a bind's save failed (``document_work.save_failed``).
+# The chat's own row when a bind's save failed (``document_work.save_failed``); ``why`` is ``save_failure.cause``.
+SAVE_FAILED = n_("Angelo couldn't save this chat. {why} The chat keeps working, but what happens in it now may be "
+                 "lost if Angelo quits.")
 # Model-facing tool results (English): the file was loaded again, so nothing of the earlier load runs.
 LEFT_STAGES = "The Blender file was opened again; previews and staged jobs of the earlier load were discarded"  # i18n: tool-result error returned to the model
 LEFT_CALLS = "The Blender file was opened again; observe the scene again before editing"  # i18n: tool-result error returned to the model

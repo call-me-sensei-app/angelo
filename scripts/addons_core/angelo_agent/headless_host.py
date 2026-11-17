@@ -16,15 +16,17 @@ admission, ``ExternalWork``, ``DirectRequest``, ``Controller.request_tool`` unde
   saved state, so a partial change is never saved. Every call first checks that neither file changed on disk.
 """
 
-import json
 import os
 import queue
 import shutil
+import sys
 import threading
+import traceback
 import time
 from pathlib import Path
 
-from . import private_roots
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard)
+from . import owned_paths, private_roots
 from . import headless_files
 from . import headless_working_copy as working_copy
 from .external_cli import ClientInfo, Peer
@@ -33,9 +35,10 @@ from .external_host import LISTENING, ClientRegistry, ExternalHost, UiEnvironmen
 from .external_requests import WorkQueue
 from .external_service import RequestService
 from . import program_undo
+from .headless_answers import finish as _finish_answers, nothing_ran, waiting as _replays_waiting  # noqa: F401
+from .headless_answers import with_note as _with_note  # noqa: F401
 
 IDLE_EXIT = 600.0          # Seconds without a call before the child exits; the launcher restarts it on the next call.
-NOTES_KEPT = 1024          # Call notes remembered for a delivery asked for again (external_apps.CALLS_KEPT).
 IDLE_WAIT, BUSY_WAIT = 0.25, 0.005
 WAITS_FOR_PERSON = ("needs_gui: this call would wait for the person's approval in Angelo's window, and no window is "
                     "open here; nothing ran. Without the window only reads, views and bounded typed edits run.")
@@ -56,17 +59,6 @@ FOREIGN_FILE = ("This run opened or saved as another file ({opened}), which this
 NOTHING_RAN = "nothing ran"   # What the refusals below say to the app (the decision itself is structured).
 
 
-def nothing_ran(value):
-    """Whether an MCP result is a refusal before anything ran: its host result block says ``NEEDS_GUI`` and
-    ``scene_changed`` false. Decided from those fields, never from words an error could echo (review N2)."""
-    for block in (value.get("content") or []) if isinstance(value, dict) else ():
-        try:
-            result = json.loads(block.get("text", "")) if isinstance(block, dict) else None
-        except ValueError:
-            continue
-        if isinstance(result, dict) and result.get("error_code") == "NEEDS_GUI" and result.get("scene_changed") is False:
-            return True
-    return False
 # Headless Python (maintainer decision 2026-10-23): only a script file the person always allows while it is unchanged.
 SCRIPT_FILE_NEEDS_APPROVAL = (
     "needs_gui: {file} is not approved for this app in {project}, or it changed since it was approved; nothing ran. "
@@ -77,6 +69,9 @@ SCRIPT_FILE_NEEDS_APPROVAL = (
 SCRIPT_FILE_REFUSALS = {
     "excluded": ("needs_gui: {file} refers to preferences or Angelo's own add-on, so it always needs the person's "
                  "review in Angelo's window and can never be allowed to run unasked; nothing ran."),
+    "file_load": ("needs_gui: {file} would replace the open file (it loads, reverts or recovers a file, or reads the "
+                  "startup file), so it always needs the person's review in Angelo's window and can never be allowed "
+                  "to run unasked; nothing ran."),
     "mode": ("needs_gui: this app's conversation in Angelo is set to Ask or Read only (by the person, or by a policy "
              "that requires asking for edits), so no script runs without the person; nothing ran."),
     "policy": ("needs_gui: the organization's policy requires the person to approve every script (AllowAutoApproval "
@@ -185,7 +180,7 @@ class HeadlessHost(ExternalHost):
         self.ended = False
         self._answers = queue.Queue()     # (key, tool, replayed, request, value, respond) awaiting the main thread
         self.staging = None               # Whether a native program is staging (native_programs; tests replace it)
-        self._notes = {}
+        self._unsent = []                 # Held answers not sent yet, e.g. replays awaiting a first answer
 
     # ExternalHost, for a pipe instead of a listener ----------------------------------------------------------------
 
@@ -254,8 +249,15 @@ class HeadlessHost(ExternalHost):
 
     def handle_app_call(self, work):
         payload = work.payload
-        if not self.session_file_open():
-            self.reload()   # Main thread: the host owns the document, its own file again before anything runs.
+        if self.known_call(work.client.label, payload.get("id")):
+            # Asked again: its kept answer, whatever changed since. The gates below guard running a call, and a re-ask
+            # never runs one (a gate's "stale" would replace the call's real answer).
+            return super().handle_app_call(work)
+        if (not self.session_file_open() and not self._work_in_flight() and self._answers.empty()
+                and not _replays_waiting(self)):
+            # Main thread: the host owns the document, its own file again before anything runs. Never under a call
+            # still unanswered: its own after_call reloads and says so (break-it review 2026-11-13, finding 1).
+            self.reload()
         problem = self.disk_problem()
         if problem:
             return self._reply(work, None, "stale", problem)
@@ -285,23 +287,13 @@ class HeadlessHost(ExternalHost):
         return deliver
 
     def finish_answers(self):
-        """Main thread: save (or reload) after each answered edit, then send its answer."""
-        while True:
-            try:
-                key, tool, replayed, current, value, respond = self._answers.get_nowait()
-            except queue.Empty:
-                return
-            if replayed:
-                note = self._notes.get(key)
-            else:
-                note = self.after_call(tool, current, value)
-                if note:
-                    self._notes[key] = note
-                    while len(self._notes) > NOTES_KEPT:
-                        self._notes.pop(next(iter(self._notes)))
-            if current is not None and not replayed:
-                current.count_out()   # In flight until now (ExternalWork); also run before each request (drain).
-            respond(_with_note(value, note))
+        """Main thread: save (or reload) after each answered edit, then send its answer (``headless_answers``). One
+        delivery that raises is logged and the session keeps serving: the ones after it go out on the next tick
+        (``run`` and ``drain`` both call this)."""
+        try:
+            _finish_answers(self)
+        except Exception:  # noqa: BLE001 - one failing delivery never ends the session or strands the others.
+            print("Angelo: a held answer could not be sent:\n" + traceback.format_exc(), file=sys.stderr, flush=True)
 
     def after_call(self, tool, current, value):
         if tool not in SAVES:
@@ -367,6 +359,7 @@ class HeadlessHost(ExternalHost):
             try:
                 if backups is not None:   # No .blend1 of the host's own copy; the person's value for other saves.
                     paths.save_version = 0
+                owned_paths.require_writable(staged)
                 result = bpy.ops.wm.save_as_mainfile(filepath=str(staged), copy=True, relative_remap=False,
                                                      check_existing=False)
             except RuntimeError:
@@ -380,6 +373,7 @@ class HeadlessHost(ExternalHost):
                 target = headless_files.claim_output(self.source)   # Changed meanwhile: never replaced.
             if target.resolve() == self.source.resolve():
                 raise RuntimeError("Refusing to save over the source")
+            owned_paths.require_writable(target)   # The output a session's state names (p10c-6's audit), asked itself.
             written = headless_files.place(staged, target)   # The identity of the bytes it wrote, never a later stat.
         except BaseException:
             if target != self.output:
@@ -460,7 +454,7 @@ class HeadlessHost(ExternalHost):
             if self.refuse_unauthorized(target, call):
                 return
             with bpy.context.temp_override(window=ui.main_window()):
-                bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
+                grant_guard.automatic(bpy.ops.angelo).approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
 
         def commit_mutation(target, call):
             with bpy.context.temp_override(window=ui.main_window()):
@@ -476,7 +470,8 @@ class HeadlessHost(ExternalHost):
                                                ui.document_key(), apply_mutation, commit_mutation=commit_mutation)
                 self.refuse_waiting(controllers)
             self.finish_answers()
-            working = any(c.busy or c.pending for c in controllers) or not self._answers.empty()
+            working = (any(c.busy or c.pending for c in controllers) or not self._answers.empty()
+                       or _replays_waiting(self))
             if not working and not self._work_in_flight() and time.monotonic() - self.last_call >= idle_exit:
                 break
             if any(c.has_dispatchable_tools for c in controllers):
@@ -493,8 +488,3 @@ class HeadlessHost(ExternalHost):
         self.ended = True
         self.wake.set()
 
-
-def _with_note(value, note):
-    if not note or not isinstance(value, dict) or not isinstance(value.get("content"), list):
-        return value
-    return dict(value, content=[{"type": "text", "text": note}, *value["content"]])

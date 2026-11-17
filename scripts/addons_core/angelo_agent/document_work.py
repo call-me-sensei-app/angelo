@@ -22,15 +22,17 @@ def save_quietly(controller):
 
 
 def save_failed(controller, error):
-    """A bind's save failed: the chat's ``persistence_warning``, and once per chat a row in it saying so in the person's
-    language (nothing else reads that warning)."""
-    controller.persistence_warning = "The chat's saved state could not be written (%s)" % type(error).__name__
+    """A bind's save failed: the chat's ``persistence_warning``, and once per chat a row in it saying so, why and
+    what to do, in the person's language (nothing else reads that warning)."""
+    from . import save_failure
+    why = save_failure.cause(error)
+    controller.persistence_warning = "The chat's saved state could not be written. " + why
     controller.version += 1
     if not getattr(controller, "_save_failure_shown", False):
         from .document_identity import SAVE_FAILED
         from .ui_text import notice
         controller._save_failure_shown = True
-        controller.emit("message", {"role": "system", **notice(SAVE_FAILED)})
+        controller.emit("message", {"role": "system", **notice(SAVE_FAILED, why=why)})
 
 
 def stale_memory(controller, reason, *, rescope=True):

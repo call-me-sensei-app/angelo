@@ -487,6 +487,21 @@ descriptor is not handed out or deliberately closed. This is a synchronous,
 quiescent resource contract, not protection against a caller illegally closing
 and reopening the same borrowed file behind the owner.
 
+A descriptor that reaches native code is a number its caller chose. Every
+native function that is given one asks ``BLI_file_descriptor_is_open`` before
+the C runtime sees it, and refuses one that is not open: on Windows the runtime
+ends the process for a descriptor that is negative, out of range or closed,
+where POSIX reports ``EBADF``. ``test_native_descriptor_checks.py`` reads the
+native sources for the uses it can recognise: a descriptor that is an integer
+parameter (of a function or a lambda), a local that a call filled, or a value
+converted from a Python object, given to a C runtime descriptor function before
+the check appears in the text of that function. A
+function that hands a descriptor on unchecked by design is listed there with
+its reason, and its callers then carry the duty. It is an aid, not a proof: it
+reads the order of the text, not of execution, and it does not follow a
+descriptor kept in a struct. The check is also not a hold: a descriptor its
+owner closes afterwards, on another thread, is that owner's error.
+
 ``test_native_checkpoint_capture_outputs.py`` exercises real temporary profiles
 and the existing NT adapter stand-in, including metadata acknowledgment failures,
 stale bindings, live descriptor ownership, cleanup and unchanged legacy routes.

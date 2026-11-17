@@ -31,6 +31,7 @@ WORKER_MERGE_AGAIN = "worker_merge_again"  # A merge that places a part merged b
 WRITE_FILE = "write_file"                  # A text file: it always asks (the maintainer, 2026-11-05).
 UNDECIDED = "undecided"                    # A branch whose decision is not made yet: its own reason comes later.
 SCRIPT_EXCLUDED = "script_excluded"        # A script naming preferences or Angelo's add-on (trusted_scripts).
+SCRIPT_FILE_LOAD = "script_file_load"      # A script naming an operator that replaces the open file (trusted_scripts).
 
 LINES = {
     OUTSIDE: n_("Approve for me never runs this kind of step on its own, so it asks for your approval."),
@@ -43,6 +44,8 @@ LINES = {
     WRITE_FILE: n_("A text file can hold anything, so writing one always asks."),
     SCRIPT_EXCLUDED: n_("This script refers to preferences or to Angelo's own add-on, so it always asks, even when "
                         "scripts are allowed."),
+    SCRIPT_FILE_LOAD: n_("This script would replace the file you have open, so it always asks, even when scripts "
+                         "are allowed."),
 }
 NO_LINE = {NOT_AUTO: "only Auto explains why a card asks; Ask asks for every edit",   # i18n: for developers
            UNDECIDED: "no decision yet, so no reason to state; the card waits for the decision's own"}   # i18n: for developers
@@ -63,6 +66,9 @@ def bounded_reason(controller, call, mode=None):
                                                                                                call.arguments):
             return None
         return NOT_AUTO
+    from . import grant_authority
+    if not grant_authority.chat_in_auto(controller.state.get("id", "")):   # No chat id: no chat C holds in Auto.
+        return NOT_AUTO   # Auto only as C holds it for the chat (approval_modes), never its Python state alone.
     if call.name == "angelo_library_import":
         return None   # One Undo step; a free Fab asset joins the library too, a paid one is refused (maintainer, 2026-11-09).
     if call.name not in BOUNDED_MUTATIONS:

@@ -213,6 +213,38 @@ static void engine_view_update(RenderEngine *engine, const bContext *context, De
   RNA_parameter_list_free(&list);
 }
 
+static void engine_view_pause(RenderEngine *engine, const bContext *context)
+{
+  extern FunctionRNA *rna_RenderEngine_view_pause_func;
+  ParameterList list;
+  FunctionRNA *func;
+
+  PointerRNA ptr = RNA_pointer_create_discrete(nullptr, engine->type->rna_ext.srna, engine);
+  func = rna_RenderEngine_view_pause_func;
+
+  RNA_parameter_list_create(&list, &ptr, func);
+  RNA_parameter_set_lookup(&list, "context", &context);
+  engine->type->rna_ext.call(nullptr, &ptr, func, &list);
+
+  RNA_parameter_list_free(&list);
+}
+
+static void engine_view_resume(RenderEngine *engine, const bContext *context)
+{
+  extern FunctionRNA *rna_RenderEngine_view_resume_func;
+  ParameterList list;
+  FunctionRNA *func;
+
+  PointerRNA ptr = RNA_pointer_create_discrete(nullptr, engine->type->rna_ext.srna, engine);
+  func = rna_RenderEngine_view_resume_func;
+
+  RNA_parameter_list_create(&list, &ptr, func);
+  RNA_parameter_set_lookup(&list, "context", &context);
+  engine->type->rna_ext.call(nullptr, &ptr, func, &list);
+
+  RNA_parameter_list_free(&list);
+}
+
 static void engine_view_draw(RenderEngine *engine, const bContext *context, Depsgraph *depsgraph)
 {
   extern FunctionRNA *rna_RenderEngine_view_draw_func;
@@ -321,7 +353,7 @@ static StructRNA *rna_RenderEngine_register(Main *bmain,
   const char *error_prefix = "Registering render engine class:";
   RenderEngineType *et, dummy_et = {nullptr};
   RenderEngine dummy_engine = {nullptr};
-  bool have_function[10];
+  bool have_function[12];
 
   /* setup dummy engine & engine type to store static properties in */
   dummy_engine.type = &dummy_et;
@@ -385,9 +417,11 @@ static StructRNA *rna_RenderEngine_register(Main *bmain,
   et->bake = (have_function[4]) ? engine_bake : nullptr;
   et->view_update = (have_function[5]) ? engine_view_update : nullptr;
   et->view_draw = (have_function[6]) ? engine_view_draw : nullptr;
-  et->update_script_node = (have_function[7]) ? engine_update_script_node : nullptr;
-  et->update_render_passes = (have_function[8]) ? engine_update_render_passes : nullptr;
-  et->update_custom_camera = (have_function[9]) ? engine_update_custom_camera : nullptr;
+  et->view_pause = (have_function[7]) ? engine_view_pause : nullptr;
+  et->view_resume = (have_function[8]) ? engine_view_resume : nullptr;
+  et->update_script_node = (have_function[9]) ? engine_update_script_node : nullptr;
+  et->update_render_passes = (have_function[10]) ? engine_update_render_passes : nullptr;
+  et->update_custom_camera = (have_function[11]) ? engine_update_custom_camera : nullptr;
 
   RE_engines_register(et);
 
@@ -426,7 +460,7 @@ static PointerRNA rna_RenderEngine_render_get(PointerRNA *ptr)
 
     return RNA_pointer_create_with_parent(*ptr, RNA_RenderSettings, r);
   }
-  return PointerRNA_NULL;
+  return {};
 }
 
 static PointerRNA rna_RenderEngine_camera_override_get(PointerRNA *ptr)
@@ -623,6 +657,18 @@ static void rna_def_render_engine(BlenderRNA *brna)
   parm = RNA_def_pointer(func, "depsgraph", "Depsgraph", "", "Evaluated dependency graph");
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
 
+  func = RNA_def_function(srna, "view_pause", nullptr);
+  RNA_def_function_ui_description(func, "Pause viewport render");
+  RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL | FUNC_ALLOW_WRITE);
+  parm = RNA_def_pointer(func, "context", "Context", "", "The context");
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+
+  func = RNA_def_function(srna, "view_resume", nullptr);
+  RNA_def_function_ui_description(func, "Resume viewport render");
+  RNA_def_function_flag(func, FUNC_REGISTER_OPTIONAL | FUNC_ALLOW_WRITE);
+  parm = RNA_def_pointer(func, "context", "Context", "", "The context");
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+
   /* shader script callbacks */
   func = RNA_def_function(srna, "update_script_node", nullptr);
   RNA_def_function_ui_description(func, "Compile shader script node");
@@ -744,14 +790,14 @@ static void rna_def_render_engine(BlenderRNA *brna)
 
   func = RNA_def_function(srna, "camera_shift_x", "RE_engine_get_camera_shift_x");
   parm = RNA_def_pointer(func, "camera", "Object", "", "Camera object");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   RNA_def_boolean(func, "use_spherical_stereo", false, "Spherical Stereo", "");
   parm = RNA_def_float(func, "shift_x", 0.0f, 0.0f, FLT_MAX, "Shift X", "", 0.0f, FLT_MAX);
   RNA_def_function_return(func, parm);
 
   func = RNA_def_function(srna, "camera_model_matrix", "RE_engine_get_camera_model_matrix");
   parm = RNA_def_pointer(func, "camera", "Object", "", "Camera object");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   RNA_def_boolean(func, "use_spherical_stereo", false, "Spherical Stereo", "");
   parm = RNA_def_float_matrix(func,
                               "r_model_matrix",
@@ -769,7 +815,7 @@ static void rna_def_render_engine(BlenderRNA *brna)
 
   func = RNA_def_function(srna, "use_spherical_stereo", "RE_engine_get_spherical_stereo");
   parm = RNA_def_pointer(func, "camera", "Object", "", "Camera object");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   parm = RNA_def_boolean(func, "use_spherical_stereo", false, "Spherical Stereo", "");
   RNA_def_function_return(func, parm);
 
@@ -846,7 +892,7 @@ static void rna_def_render_engine(BlenderRNA *brna)
   RNA_def_function_ui_description(func,
                                   "Get the pixel size that should be used for preview rendering");
   parm = RNA_def_pointer(func, "scene", "Scene", "", "Scene whose preview settings are used");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   parm = RNA_def_int(func, "pixel_size", 0, 1, 8, "Pixel Size", "", 1, 8);
   RNA_def_function_return(func, parm);
 
@@ -1001,6 +1047,14 @@ static void rna_def_render_engine(BlenderRNA *brna)
   RNA_def_property_boolean_sdna(prop, nullptr, "type->flag", RE_USE_STEREO_VIEWPORT);
   RNA_def_property_flag(prop, PROP_REGISTER_OPTIONAL);
   RNA_def_property_ui_text(prop, "Use Stereo Viewport", "Support rendering stereo 3D viewport");
+
+  prop = RNA_def_property(srna, "bl_write_viewport_depth", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "type->flag", RE_WRITE_VIEWPORT_DEPTH);
+  RNA_def_property_flag(prop, PROP_REGISTER_OPTIONAL);
+  RNA_def_property_ui_text(prop,
+                           "Write Viewport Depth",
+                           "The render engine writes depth to the viewport framebuffer "
+                           "which should be used as is instead of doing an internal depth pass");
 
   prop = RNA_def_property(srna, "bl_use_materialx", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_sdna(prop, nullptr, "type->flag", RE_USE_MATERIALX);

@@ -14,19 +14,23 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_ghash.h"
+#include "BLI_array.hh"
+#include "BLI_bounds.hh"
+#include "BLI_ghash.hh"
 #include "BLI_index_range.hh"
-#include "BLI_listbase.h"
-#include "BLI_math_base_safe.h"
-#include "BLI_math_geom.h"
-#include "BLI_math_matrix.h"
-#include "BLI_math_rotation.h"
-#include "BLI_math_solvers.h"
-#include "BLI_math_vector.h"
+#include "BLI_listbase.hh"
+#include "BLI_math_base_safe.hh"
+#include "BLI_math_geom_c.hh"
+#include "BLI_math_matrix_c.hh"
+#include "BLI_math_rotation_c.hh"
+#include "BLI_math_solvers.hh"
+#include "BLI_math_vector.hh"
+#include "BLI_math_vector_c.hh"
 #include "BLI_math_vector_types.hh"
-#include "BLI_string.h"
-#include "BLI_string_utf8.h"
-#include "BLI_utildefines.h"
+#include "BLI_string.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_utildefines.hh"
+#include "BLI_vector.hh"
 #include "BLT_translation.hh"
 
 /* Allow using deprecated functionality for .blend file I/O. */
@@ -34,6 +38,7 @@
 
 #include "DNA_anim_types.h"
 #include "DNA_curve_types.h"
+#include "DNA_curveprofile_types.h"
 #include "DNA_material_types.h"
 
 /* For dereferencing pointers. */
@@ -233,13 +238,13 @@ static void curve_blend_read_data(BlendDataReader *reader, ID *id)
     BLO_read_struct_list(reader, Nurb, &(cu->nurb));
   }
   else {
-    cu->nurb.first = cu->nurb.last = nullptr;
+    cu->nurb.first_ = cu->nurb.last_ = nullptr;
 
-    if (UNLIKELY(cu->str == nullptr)) {
+    if (cu->str == nullptr) [[unlikely]] {
       cu->len_char32 = 0;
       cu->str = MEM_new_array_zeroed<char>(cu->len_char32 + 1, "str new");
     }
-    if (UNLIKELY(cu->strinfo == nullptr)) {
+    if (cu->strinfo == nullptr) [[unlikely]] {
       cu->strinfo = MEM_new_array<CharInfo>(cu->len_char32 + 1, "strinfo new");
     }
 
@@ -317,6 +322,7 @@ IDTypeInfo IDType_ID_CU_LEGACY = {
     .foreach_cache = nullptr,
     .foreach_path = nullptr,
     .foreach_working_space_color = nullptr,
+    .foreach_asset_weak_reference = nullptr,
     .owner_pointer_get = nullptr,
 
     .blend_write = curve_blend_write,
@@ -2083,7 +2089,7 @@ static void bevel_list_calc_bisect(BevList *bl)
   if (is_cyclic == false) {
     bevp0 = &bl->bevpoints[0];
     bevp1 = &bl->bevpoints[1];
-    if (UNLIKELY(is_zero_v3(bevp0->dir))) {
+    if (is_zero_v3(bevp0->dir)) [[unlikely]] {
       sub_v3_v3v3(bevp0->dir, bevp1->vec, bevp0->vec);
       if (normalize_v3(bevp0->dir) == 0.0f) {
         copy_v3_v3(bevp0->dir, bevp1->dir);
@@ -2092,7 +2098,7 @@ static void bevel_list_calc_bisect(BevList *bl)
 
     bevp0 = &bl->bevpoints[bl->nr - 2];
     bevp1 = &bl->bevpoints[bl->nr - 1];
-    if (UNLIKELY(is_zero_v3(bevp1->dir))) {
+    if (is_zero_v3(bevp1->dir)) [[unlikely]] {
       sub_v3_v3v3(bevp1->dir, bevp1->vec, bevp0->vec);
       if (normalize_v3(bevp1->dir) == 0.0f) {
         copy_v3_v3(bevp1->dir, bevp0->dir);
@@ -3110,6 +3116,11 @@ static void calchandleNurb_intern(BezTriple *bezt,
   bezt->auto_handle_type = HD_AUTOTYPE_NORMAL;
 
   if (bezt->h1 == 0 && bezt->h2 == 0) {
+    return;
+  }
+
+  if (prev == nullptr && next == nullptr) {
+    /* Single point, no need to calculate handles. */
     return;
   }
 
@@ -5140,6 +5151,244 @@ std::optional<Bounds<float3>> BKE_curve_minmax(const Curve *cu, bool use_radius)
   }
 
   return calc_nurblist_bounds(nurb_lb, use_radius);
+}
+
+/** The largest |value| among a curve's control points and handles on axis 0 (x) and 1 (y). */
+static float2 nurblist_abs_max_xy(const ListBaseT<Nurb> *nurbs)
+{
+  float2 found(0.0f);
+  const auto take = [&](const float co[3]) {
+    found = math::max(found, math::abs(float2(co[0], co[1])));
+  };
+  for (const Nurb &nu : *nurbs) {
+    if (nu.type == CU_BEZIER) {
+      for (const BezTriple &bezt : Span(nu.bezt, nu.pntsu)) {
+        take(bezt.vec[0]);
+        take(bezt.vec[1]);
+        take(bezt.vec[2]);
+      }
+    }
+    else {
+      for (const BPoint &bp : Span(nu.bp, nu.pntsu * nu.pntsv)) {
+        take(bp.vec);
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * The largest |radius| one spline's evaluation can give (#alfa_bezpart, #BKE_nurb_makeCurve): a NURBS spline's and a
+ * poly's are convex combinations of its points' radii; a Bezier spline's are weighted by its radius interpolation,
+ * whose cardinal weights go negative, so the largest sum of |weights| at the samples Blender takes bounds it.
+ */
+static float nurb_radius_abs_max(const Curve *cu, const Nurb &nu)
+{
+  float radius = 0.0f;
+  if (nu.type != CU_BEZIER) {
+    for (const BPoint &bp : Span(nu.bp, nu.pntsu * nu.pntsv)) {
+      radius = std::max(radius, std::abs(bp.radius));
+    }
+    return radius;
+  }
+  for (const BezTriple &bezt : Span(nu.bezt, nu.pntsu)) {
+    radius = std::max(radius, std::abs(bezt.radius));
+  }
+  float weights_sum = 1.0f;
+  if (!ELEM(nu.radius_interp, KEY_LINEAR, KEY_BSPLINE, KEY_CU_EASE)) {
+    for (const int resolution : {int(nu.resolu), int(cu->resolu_ren)}) {
+      for (int a = 0; a < resolution; a++) {
+        float weights[4];
+        key_curve_position_weights(float(a) / float(resolution), weights,
+                                   KeyInterpolationType(nu.radius_interp));
+        weights_sum = std::max(weights_sum, std::abs(weights[0]) + std::abs(weights[1]) +
+                                                std::abs(weights[2]) + std::abs(weights[3]));
+      }
+    }
+  }
+  return radius * weights_sum;
+}
+
+/**
+ * A 2D spline's evaluated points at ``resolu`` as #BKE_curve_bevelList_make takes them: doubles removed with its
+ * threshold, compared in 3D, a cyclic spline's last point too when it is its first (the wrap pair), for
+ * #nurblist_miter_max.
+ */
+static Vector<float3> nurb_points_2d(const Nurb &nu, const int resolu)
+{
+  Vector<float3> points;
+  const bool cyclic = (nu.flagu & CU_NURB_CYCLIC) != 0;
+  if (nu.type == CU_POLY) {
+    for (const BPoint &bp : Span(nu.bp, nu.pntsu)) {
+      points.append(float3(bp.vec));
+    }
+  }
+  else if (nu.type == CU_BEZIER && nu.pntsu > 0) {
+    const Span<BezTriple> bezts(nu.bezt, nu.pntsu);
+    Array<float3> segment(resolu + 1);
+    for (const int a : bezts.index_range()) {
+      if (a == bezts.size() - 1 && !cyclic) {
+        points.append(float3(bezts[a].vec[1]));
+        break;
+      }
+      const BezTriple &prev = bezts[a];
+      const BezTriple &next = bezts[(a + 1) % bezts.size()];
+      if (prev.h2 == HD_VECT && next.h1 == HD_VECT) {
+        points.append(float3(prev.vec[1]));
+        continue;
+      }
+      for (int j = 0; j < 3; j++) {
+        BKE_curve_forward_diff_bezier(prev.vec[1][j],
+                                      prev.vec[2][j],
+                                      next.vec[0][j],
+                                      next.vec[1][j],
+                                      &segment[0][j],
+                                      resolu,
+                                      sizeof(float3));
+      }
+      points.extend(segment.as_span().drop_back(1));
+    }
+  }
+  else if (nu.type == CU_NURBS && nu.pntsv == 1 && nu.pntsu > 1) {
+    Array<float3> curve(size_t(SEGMENTSU(&nu)) * size_t(resolu), float3(0.0f));
+    if (!curve.is_empty()) {
+      BKE_nurb_makeCurve(&nu, &curve[0][0], nullptr, nullptr, nullptr, resolu, sizeof(float3));
+      points.extend(curve.as_span());
+    }
+  }
+  Vector<float3> found;
+  const float threshold = 0.00001f / float(resolu);
+  for (const float3 &point : points) {
+    if (found.is_empty() || !compare_v3v3(found.last(), point, threshold)) {
+      found.append(point);
+    }
+  }
+  if (cyclic && found.size() > 1 && compare_v3v3(found.first(), found.last(), threshold)) {
+    found.remove_last();
+  }
+  return found;
+}
+
+/**
+ * The largest factor a 2D curve's cross-section is moved out by at a corner of its evaluated polyline: each point's
+ * #calc_bevel_sin_cos (one over the sine of half its angle, a miter) as #make_bevel_list_2D sets it; 1 at an end.
+ */
+static float nurblist_miter_max(const Curve *cu, const ListBaseT<Nurb> *nurbs)
+{
+  float found = 1.0f;
+  for (const Nurb &nu : *nurbs) {
+    for (const int resolu : {int(nu.resolu), int(cu->resolu_ren)}) {
+      if (resolu <= 0) {
+        continue;
+      }
+      const Vector<float3> points = nurb_points_2d(nu, resolu);
+      const bool cyclic = (nu.flagu & CU_NURB_CYCLIC) != 0;
+      const int64_t count = points.size();
+      for (int64_t i = cyclic ? 0 : 1; count > 2 && i < (cyclic ? count : count - 1); i++) {
+        const float3 &point = points[i];
+        const float3 before = point - points[(i + count - 1) % count];
+        const float3 after = point - points[(i + 1) % count];
+        float sina, cosa;
+        calc_bevel_sin_cos(before.x, before.y, after.x, after.y, &sina, &cosa);
+        found = std::max(found, math::length(float2(sina, cosa)));
+      }
+    }
+  }
+  return found;
+}
+
+std::optional<Bounds<float3>> BKE_curve_geometry_minmax(const Curve *cu)
+{
+  const ListBaseT<Nurb> *nurb_lb = BKE_curve_nurbs_get_for_read(cu);
+  ListBaseT<Nurb> temp_nurb_lb{};
+  BLI_SCOPED_DEFER([&]() { BKE_nurbList_free(&temp_nurb_lb); });
+  if (nurb_lb->is_empty() && cu->len != 0) { /* A text's splines, as #BKE_curve_minmax makes them. */
+    BKE_vfont_to_curve_ex(
+        nullptr, *cu, FO_EDIT, &temp_nurb_lb, nullptr, nullptr, nullptr, nullptr, nullptr);
+    nurb_lb = &temp_nurb_lb;
+  }
+  std::optional<Bounds<float3>> bounds = calc_nurblist_bounds(nurb_lb, false);
+  if (!bounds || cu->ob_type == OB_SURF) { /* A surface is never bevelled: its control points' hull holds it. */
+    return bounds;
+  }
+
+  /* The bevel shape (#BKE_curve_bevel_make) as (across, up): how far its points reach across the spline (moved by
+   * the width offset) and along it binormal. #rotateBevelPiece places a point at the spline's plus (across, up)
+   * turned (3D) or (across) along the 2D normal, miter included, and (up) along Z (2D), times the radius factor. */
+  const float width = std::abs(cu->offset - 1.0f);
+  float2 shape(0.0f);
+  float round_bevel = 0.0f; /* A round bevel's radius: the shape is a circle about (offset, +-extrude). */
+  if (cu->bevel_mode == CU_BEV_MODE_OBJECT) {
+    const Object *bevel = cu->bevobj;
+    if (bevel != nullptr && bevel->type == OB_CURVES_LEGACY) {
+      const Curve *bevel_curve = id_cast<const Curve *>(bevel->data);
+      if (bevel_curve->extrude == 0.0f && bevel_curve->bevel_radius == 0.0f) {
+        /* Its spline's own hull, moved by its own width offset (and that offset's own miters, when 2D), scaled by
+         * the object's X and Y scale. */
+        const ListBaseT<Nurb> *bevel_nurbs = BKE_curve_nurbs_get_for_read(bevel_curve);
+        const float own_width = std::abs(bevel_curve->offset - 1.0f) *
+                                ((bevel_curve->flag & CU_3D) ? 1.0f :
+                                                               nurblist_miter_max(bevel_curve, bevel_nurbs));
+        shape = (nurblist_abs_max_xy(bevel_nurbs) + own_width) *
+                math::abs(float2(bevel->scale[0], bevel->scale[1]));
+      }
+    }
+  }
+  else if (cu->extrude != 0.0f || cu->bevel_radius != 0.0f) {
+    const float bevel = std::abs(cu->bevel_radius);
+    const float extrude = std::abs(cu->extrude);
+    if (cu->bevel_mode == CU_BEV_MODE_CURVE_PROFILE && cu->bevel_profile != nullptr) {
+      float profile = 1.0f; /* A profile's points span 0 to 1 unless unclipped: its largest coordinate. */
+      const CurveProfile &curve_profile = *cu->bevel_profile;
+      for (const Span<CurveProfilePoint> points : {Span(curve_profile.path, curve_profile.path_len),
+                                                    Span(curve_profile.segments, curve_profile.segments_len)})
+      {
+        for (const CurveProfilePoint &point : points) {
+          profile = std::max({profile, std::abs(point.x), std::abs(point.y)});
+        }
+      }
+      shape = float2(bevel * profile, bevel * profile + extrude);
+    }
+    else {
+      shape = float2(bevel, bevel + extrude);
+      round_bevel = bevel;
+    }
+  }
+  const bool bevelled = shape != float2(0.0f);
+  const bool flat = (cu->flag & CU_3D) == 0;
+  const float miter = flat && (bevelled || width != 0.0f) ? nurblist_miter_max(cu, nurb_lb) : 1.0f;
+  if (!bevelled) { /* No bevel: a line, moved sideways by the width offset alone (along the 2D normal). */
+    bounds->pad(float3(width * miter, width * miter, flat ? 0.0f : width));
+    return bounds;
+  }
+
+  /* The radius factor each bevel piece is scaled by (#rotateBevelPiece): its point's radius, or the taper's. */
+  float radius = 0.0f;
+  for (const Nurb &nu : *nurb_lb) {
+    radius = std::max(radius, nurb_radius_abs_max(cu, nu));
+  }
+  if (cu->taperobj != nullptr) {
+    float taper = 1.0f; /* #displist_calc_taper: 1 without a usable taper curve. */
+    if (cu->taperobj->type == OB_CURVES_LEGACY) {
+      const Curve *taper_curve = id_cast<const Curve *>(cu->taperobj->data);
+      taper = std::max(taper,
+                       nurblist_abs_max_xy(BKE_curve_nurbs_get_for_read(taper_curve)).y +
+                           std::abs(taper_curve->offset - 1.0f));
+    }
+    radius = cu->taper_radius_mode == CU_TAPER_RADIUS_MULTIPLY ? taper * radius :
+             cu->taper_radius_mode == CU_TAPER_RADIUS_ADD      ? taper + radius :
+                                                                 taper;
+  }
+  const float across = shape.x + width;
+  if (flat) { /* In the curve's plane across it, miters included; along Z by the shape's height alone. */
+    bounds->pad(float3(radius * miter * across, radius * miter * across, radius * shape.y));
+    return bounds;
+  }
+  /* 3D: the piece is turned any way about the spline, so its farthest point bounds every axis. */
+  const float reach = round_bevel > 0.0f ? round_bevel + math::length(float2(width, shape.y - round_bevel)) :
+                                           math::length(float2(across, shape.y));
+  bounds->pad(radius * reach);
+  return bounds;
 }
 
 bool BKE_curve_center_median(Curve *cu, float cent[3])

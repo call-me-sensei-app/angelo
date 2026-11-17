@@ -53,6 +53,13 @@ _addons_hidden_core = {
 
 
 # Called only once at startup, avoids calling 'reset_all', correct but slower.
+def _angelo_held(module_name):
+    # Angelo: its agent add-on is never started from saved preferences in a background process
+    # (`angelo_background_addons`); asking for it by name with `enable` starts it as before.
+    import angelo_background_addons
+    return angelo_background_addons.held(module_name)
+
+
 def _initialize_once():
     for path in paths():
         _bpy.utils._sys_path_ensure_append(path)
@@ -62,7 +69,8 @@ def _initialize_once():
     _initialize_extensions_repos_once()
 
     # Enable "core" add-ons first as other add-ons may import them, see: #161928.
-    for module_name in _addons_hidden_core:
+    # Sort for a stable order between sessions.
+    for module_name in sorted(_addons_hidden_core):
         enable(
             module_name,
             # Ensured by `_initialize_extensions_repos_once`.
@@ -72,7 +80,7 @@ def _initialize_once():
         )
 
     for addon in _preferences.addons:
-        if (module_name := addon.module) in _addons_hidden_core:
+        if (module_name := addon.module) in _addons_hidden_core or _angelo_held(module_name):
             continue
         enable(
             module_name,
@@ -395,7 +403,12 @@ def enable(module_name, *, default_set=False, persistent=False, refresh_handled=
         # NOTE: from now on, before returning None, `extensions_refresh()` must be called
         # to ensure wheels setup in anticipation for this extension being used are removed upon failure.
 
-    # reload if the mtime changes
+    # Reload if the `mtime` changes.
+    #
+    # NOTE(@ideasman42): This isn't intended to be comprehensive add-on change detection.
+    # Add-ons may use many files, depend on libraries, data-files etc.
+    # This is only intended to detect the add-on being fully replaced where checking the files `mtime` is sufficient.
+    # A more robust change detection is possible but adds overhead for situations users are unlikely to face.
     mod = sys.modules.get(module_name)
     # chances of the file _not_ existing are low, but it could be removed
 
@@ -648,7 +661,8 @@ def reset_all(*, reload_scripts=False):
             if is_enabled == is_loaded:
                 pass
             elif is_enabled:
-                enable(mod_name, refresh_handled=True)
+                if not _angelo_held(mod_name):   # Angelo: not its agent add-on in a background process.
+                    enable(mod_name, refresh_handled=True)
             elif is_loaded:
                 print("\taddon_utils.reset_all unloading", mod_name)
                 disable(mod_name)

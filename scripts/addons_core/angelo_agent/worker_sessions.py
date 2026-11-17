@@ -21,8 +21,7 @@ At most ``parallel_access.worker_limit`` (the person's Workers at once, ``parall
 count from ``parallel_capability``) run or launch at once, whoever asked: parts past it wait their turn, and a done
 worker frees its place once its part is saved (``worker_queue``). The start timer survives a file load (it is
 persistent) and ends with the add-on (``release``): a worker that is still launching then is stopped as soon as it is
-ready, and nothing queued starts. A load that invalidates a lead stops its workers
-(``worker_queue.document_replaced``).
+ready, and nothing queued starts. A load that invalidates a lead stops its workers (``worker_queue.document_replaced``).
 ``angelo_workers_status`` (``worker_status``) reads each worker's state (``failed`` with why when its worker ended under
 it), its newest reply and what its part holds, and each queued part's place in line; ``worker_facts`` adds whether
 each part is in this scene and how long each took.
@@ -33,7 +32,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import thread_start
+from . import thread_start, edit_tool_hold
 from .worker_status import SIZE_NOTE, _size  # noqa: F401 - a part's size in its status (``status``)
 
 # Model-visible (never translated): the worker's first message, only its part; what every worker is told is its base
@@ -253,6 +252,7 @@ def _launch(item, take=True):
     thread_start.start_or_fail(item["thread"], item)
 
 
+@edit_tool_hold.guarded(waiting=lambda: bool(_launching))   # A worker waits to be bound.
 def _tick():
     """Main thread: bind each worker that became ready, in launch order; then ``worker_queue``'s step (done workers
     free their places, what waits starts). Runs while either has anything left."""
@@ -405,7 +405,7 @@ def _forget_chat(session_id):
 
 def _new_chat(lead):
     """A new chat with the lead's connection and options, made without switching the person's view."""
-    from . import ui, worker_chat_wiring, worker_trust
+    from . import approval_modes, ui, worker_chat_wiring, worker_trust
     from .connection_access import find_connection
     from .controller import Controller
     sessions = ui._sessions
@@ -414,7 +414,7 @@ def _new_chat(lead):
     sessions.activate(shown)   # ``create`` makes it active; the person stays on their chat.
     controller = Controller(ui.state_directory(), session_id=identity)
     controller.state["connection_id"] = lead.state.get("connection_id")
-    controller.state["options"] = dict(lead.state.get("options") or {})
+    approval_modes.inherit_mode(controller, lead)
     controller.api_key = getattr(lead, "api_key", "")
     controller.delegation_resolver = ui.resolve_collaborator
     worker_trust.link(lead, controller)   # It follows the lead's Trust scripts for this chat (Auto only).
@@ -431,15 +431,15 @@ def _new_chat(lead):
 def _send(controller, text, key):
     """The brief as the chat's first message, observed on the worker's document (``console.execute``'s path), on
     the chat's lane (``worker_dispatch``); a brief that cannot be sent stops its worker and is reported."""
-    from . import ui, worker_facts, worker_routing
+    from . import request_rows, ui, worker_facts, worker_routing
     ui.prepare_controller(controller)
-
     def failed(error):
         failures[key] = str(error)[:400]
         print("Angelo: worker brief:", error)
         worker_routing.unbind(controller, worker_routing.END_NOT_BRIEFED)   # Never a worker running without its brief.
     worker_routing.deliver(controller, ui.main_window(), text, lambda turn: (worker_facts.briefed(controller),
-        controller.send(text, observation=turn.observation, recovery_evidence=turn.recovery_evidence)),
+        controller.send(text, observation=turn.observation, recovery_evidence=turn.recovery_evidence,
+                        host_kind=request_rows.WORKER_BRIEF)),   # The lead model's words, never the person's (R2-L-6).
         failed)   # Its clock (``worker_facts``) starts as it is sent, before its request's own clock.
 
 

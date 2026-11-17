@@ -99,10 +99,16 @@ class MirrorStore(SessionStore):
         return self._resolved
 
     def _pre_rename_profile(self):
-        """The pre-rename folder's identity (``SessionStore``), resolved once for the same reason."""
+        """The earlier folders' identities (``SessionStore``), resolved once for the same reason."""
         if "_legacy" not in self.__dict__:
             self._legacy = super()._pre_rename_profile()
         return self._legacy
+
+    def _carried_chats(self):
+        """The chats carried over from an earlier version (``SessionStore``), read once."""
+        if "_carried" not in self.__dict__:
+            self._carried = super()._carried_chats()
+        return self._carried
 
     def forget(self):
         """Read the whole file next time (a hand-off, a recovery), its identity settled."""

@@ -4,6 +4,7 @@
 the library stuck loading, workers never hold the interpreter at exit, and shutdown stops running downloads."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import tempfile
 import threading
@@ -89,10 +90,10 @@ class PoolTests(unittest.TestCase):
 
         def slow():
             started.set()
-            stop.wait(5)
+            stop.wait(CAP_S)
             return stop.is_set()
         future = pool.submit(slow)
-        started.wait(2)
+        started.wait(CAP_S)
         queued = [pool.submit(time.sleep, 5) for _ in range(4)]
         pool.shutdown()
         stop.set()

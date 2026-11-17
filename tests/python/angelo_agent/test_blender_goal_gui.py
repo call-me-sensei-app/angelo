@@ -87,9 +87,14 @@ def actions():
     return [(action, value) for _, action, value in view_state().get("hits", [])]
 
 
-def _press(rect):
-    area, region = chat()
-    x, y = int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+def _press(rect, action=None):
+    import qa_input
+    if action is None:   # The control drawn there (the + menu's steps name only its rect).
+        view = view_state()
+        action = next((a for r, a, _v in view.get("popup_hits", []) + view.get("hits", []) if r == rect), None)
+    x, y = qa_input.chat_point(chat()[1], rect)   # The chat's points as window pixels (scale, right to left mirrored).
+    if action in qa_input.GRANT_ACTIONS:   # It reaches a grant: only a person's click (move, then press).
+        return qa_input.press(window(), x, y)
     for kind, event_value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
         window().event_simulate(type=kind, value=event_value, x=x, y=y)
 
@@ -97,7 +102,7 @@ def _press(rect):
 def click(action, value=None, popup=False):
     hits = view_state().get("popup_hits" if popup else "hits", [])
     rect = next(r for r, a, v in hits if a == action and (value is None or v == value))
-    _press(rect)
+    _press(rect, action)
 
 
 def key(kind):
@@ -110,9 +115,11 @@ def key(kind):
 
 def popup_key(kind):
     """Press and release ``kind`` with the pointer over the open popup, as a person's key press with it open."""
+    from angelo_agent import chat_view
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
     area, region = chat()
-    x, y, w, h = view_state().get("popup_rect") or (0, 0, region.width, region.height)
-    px, py = int(region.x + x + w / 2), int(region.y + y + h / 2)
+    s = chat_view.ui_scale()
+    px, py = chat_point(region, view_state().get("popup_rect") or (0, 0, region.width / s, region.height / s))
     for value in ('PRESS', 'RELEASE'):
         window().event_simulate(type=kind, value=value, x=px, y=py)
 
@@ -408,4 +415,5 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=.5)
+import qa_input  # noqa: E402  (a click on its way holds the tick: qa_input.after_clicks)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.5)

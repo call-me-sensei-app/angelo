@@ -312,7 +312,7 @@ right-to-left handling and the limits are in ``localization.rst``.
 and is not populated in a linked worktree. The script looks for libraries in
 ``ANGELO_LIBDIR``, then ``lib/macos_arm64`` of the checkout, then the main
 checkout's (``git worktree list``), passes the result as ``-DLIBDIR``, uses it
-read-only, warns if it is not at the source's pinned commit, and refuses to
+read-only, refuses it when it is not at the source's pinned commit, and refuses to
 continue if a probe library or a source asset (``startup.blend``, ``splash.png``,
 ``ui.blend``, or any essential brush/node ``assets/**/*.blend``) is still a Git
 LFS pointer. The release-feature suite opens each bundled essential library,
@@ -321,6 +321,28 @@ It sets ``GIT_LFS_SKIP_SMUDGE=1`` and
 never fetches: in a worktree run ``git lfs checkout`` (local objects only, no
 network) before building. ``CMAKE_BUILD_TYPE`` is ``Release`` (``-O2 -DNDEBUG``),
 the deployment target ``26.0``.
+
+**A stated toolchain, unchanged until the end** (``release_toolchain_macos.py``).
+The build starts only on the pinned Xcode: ``ANGELO_XCODE_PIN`` is
+``"<version> <build>"`` (the release kit sets it), and another Xcode is refused
+unless ``ANGELO_XCODE_OVERRIDE`` gives the reason, which the record keeps. After
+the configure it records the developer folder, Xcode's version and build and the
+SDK CMake chose (path, resolved folder, version) in ``angelo-toolchain.json``;
+CMake's linker launcher checks that record before every link, and the script
+checks it again after the build. Any change fails the build with what changed: in
+the 1.1 rehearsal an Xcode update during a build removed the SDK the configure had
+chosen and every later compile failed.
+Before the next configure, a cache made with another Xcode (version, build or
+developer folder), or whose recorded or cached SDK is gone, moves to
+``CMakeCache.txt.toolchain-changed``: CMake would otherwise keep the old
+``OSX_SYSTEM`` and sysroot.
+
+**New libraries, new find results.** After each configure the build is refused
+when the libraries are not at the source's pin, or when the cache still names a
+path in another library checkout; when the libraries' folder or commit changed
+since the last configure, the old cache moves to
+``CMakeCache.txt.libdir-changed`` first (``release_libdir_cache.sh``; the Windows
+build's twin is under "Windows release build").
 
 Full-feature Windows x64 build
 ==============================
@@ -333,7 +355,7 @@ proxy, plus the Explorer thumbnail handler ``BlendThumb.dll`` (the release
 configuration switches the handler on for macOS only). It configures with the
 Visual Studio 2022 generator and its ClangCL toolset (clang-cl and lld-link; see
 "Toolset: clang-cl" below), as ``make.bat clang`` does, into
-``..\build_windows_Release_x64_vc17_clangcl_Release``, builds the ``INSTALL`` target and,
+``..\build_windows_Release_x64_vc17_clangcl_Release_<series>``, builds the ``INSTALL`` target and,
 with ``-Package``, runs ``cpack -G WIX`` for ``Angelo-<version>-windows-x64.msi``;
 the identity, icons and installer art come from the source tree, and the agent
 runtime from the folder ``ANGELO_AGENT_RUNTIME_DIR`` (or ``-AgentRuntimeDir``)
@@ -348,19 +370,84 @@ names, as on macOS::
   ``WITH_STRICT_BUILD_OPTIONS=ON`` (a missing one is an error), refuses a configure
   log that says ``not found, disabling``, and reads every release option back
   from the cache before compiling.
-* **GPU toolkits** are found where Blender's CMake looks for them: the CUDA Toolkit
-  through ``CUDA_PATH`` (12.8 or newer: the default architectures include
-  ``sm_120``), the OptiX SDK through ``OPTIX_ROOT_DIR`` (8.0 or newer), the AMD HIP
-  SDK through ``HIP_PATH`` (6.0 or newer); HIP RT, the oneAPI DPC++ compiler and
+* **GPU toolkits** are found where Blender's CMake looks for them: one CUDA Toolkit
+  for each major version Blender pins (``CUDA_PATH_V<major>_<minor>`` as NVIDIA's
+  installers set them, or ``CUDA_PATH``), each passed to CMake as Blender's own
+  build passes them (``CUDA<major>_TOOLKIT_ROOT_DIR``), so Cycles picks a toolkit
+  per kernel architecture; the OptiX SDK through ``OPTIX_ROOT_DIR``; the AMD HIP
+  SDK through ``HIP_PATH``; HIP RT, the oneAPI DPC++ compiler and
   Level Zero come with ``lib\windows_x64`` (Level Zero as ``level-zero``, which
   ``platform_win32.cmake`` now reads besides the older ``level_zero``). The oneAPI
   kernels are compiled ahead of time with Intel's ``ocloc``, which Blender's Windows
   libraries do not carry (its dependency builder makes ``ocloc`` for Linux only):
-  Intel's Graphics Offline Compiler for OpenCL, through ``OCLOC_INSTALL_DIR``. They
+  Intel's Graphics Offline Compiler for OpenCL, through ``OCLOC_INSTALL_DIR``. Every
+  path the release build gives ``cmake`` or ``cpack`` (the source, build and staging
+  folders, ``LIBDIR``, the agent runtime, the signing hook and each toolkit) is
+  written with forward slashes by one function, ``ConvertTo-CMakePath``: a backslash
+  survives the command line but not a second reading (``FindCUDA.cmake`` parses its
+  root again, where ``C:\Program Files`` is an invalid escape; ``LIBDIR`` is written
+  into generated CMake code). ``CMAKE_GENERATOR_INSTANCE`` alone stays as Visual
+  Studio reports it: CMake matches it itself and a build tree's value must not
+  change. They
   are checked before configuring,
-  so a missing one fails in seconds. ``-AllowMissing cuda,optix,hip,hiprt,oneapi``
+  so a missing one fails in seconds. ``-AllowMissing cuda,optix,hip,hiprt,oneapi,dlss``
   builds without the named parts; the build is then not equivalent to Blender's
   Windows release, and the manifest says so.
+* **The SDK versions are Blender's.** Each GPU SDK must be the version Blender
+  pins for its own release in ``build_files/buildbot/config/blender_version.cmake``
+  (OptiX, each CUDA toolkit, HIP, ocloc, DLSS). ``scripts/angelo/gpu_sdk_pins.py``
+  is the one reader of that file and the one judge: before configuring (the build
+  stops in seconds and names each difference) and again in the release stage,
+  from the exact versions the build recorded (``toolkit_versions`` in
+  ``angelo-release-build.json``; ``release_checks.py gpu-sdks``). Newer is refused
+  like older, because an SDK's version can change what a person's machine needs:
+  a build made with OptiX SDK 9.1 where Blender pins 9.0.0 had no OptiX on NVIDIA
+  drivers below 590, which Blender's own 5.3 release supports (found on
+  2026-11-14 on a 582 driver). A version known with less precision than its pin
+  is not a match, and a pinned name the check does not know stops the build, so a
+  new SDK cannot go unjudged. An exception is an entry of
+  ``scripts/angelo/gpu_sdk_exceptions.json``: the SDK, the pin, the version used,
+  the reason, who approved it and when. It covers exactly that pin and that
+  version, and an entry that covers nothing in the build is refused too. The list
+  is empty. A part left out with ``-AllowMissing`` is not judged. On a build
+  machine whose toolkits ``windows_toolkits.ps1`` installed, the record also
+  carries that script's ``toolkits-installed.json`` (``toolkit_installers``: each
+  pinned installer's version, SHA-256 and signer), so an installer's hash sits
+  beside the version the build judged. The versions are read from the folders
+  the build is given, and what compiles is what CMake resolved: a build folder
+  keeps what CMake found under a toolkit's folder (OptiX's headers, HIP's
+  compiler, DLSS's headers) and does not look again when another folder is
+  given. ``scripts/angelo/gpu_sdk_cache.py`` closes that around the configure.
+  Before it, a CUDA toolkit without ``nvvm\bin\cicc`` stops the build (CUDA 13
+  ships it apart), and a build folder last configured with other toolkit options
+  or versions, or with no record of them (``angelo-toolkits.json``), has its
+  ``CMakeCache.txt`` moved aside (``CMakeCache.txt.toolkits-changed``; compiled
+  objects stay). After it, the build stops with the entry's name when the cache
+  holds a toolkit's own path outside the folder given for it, any path in another
+  version of a folder that was given (``CUDA\v12.8`` beside ``CUDA\v12.9``), or
+  an entry whose headers or tool do not report the version judged (``optix.h``,
+  ``hip_version.h``, each nvcc's ``version.json``, ocloc's file version, the
+  DLSS folder); a clean cache becomes the folder's record.
+* **DLSS.** From Blender 5.3 the release turns on ``WITH_DLSS``: Cycles' viewport
+  denoiser can use NVIDIA's DLSS Ray Reconstruction. It compiles against NVIDIA's
+  DLSS SDK headers only (``DLSS_SDK_ROOT\include\nvsdk_ngx.h``), at the version
+  Blender pins as ``DLSS_VERSION`` in ``build_files/buildbot/config/blender_version.cmake``;
+  the implementation comes with the person's NVIDIA driver, so nothing of the SDK
+  ships but the loader code Cycles compiles in (``NVSDK_NGX_HEADER_ONLY``). The
+  headers reach a build machine as ``dlss-sdk-<version>-headers.zip`` (``include\*.h``
+  and ``LICENSE.txt`` from the github.com/NVIDIA/DLSS release tag), uploaded with
+  ``gcp_windows_validate.sh toolkits`` and taken only at the SHA-256
+  ``windows_toolkits.ps1`` pins for that version. NVIDIA's RTX SDKs licence was
+  accepted for Angelo on 2026-11-03; it forbids putting the SDK under an
+  open-source licence, so the headers are never committed, published or put in the
+  GPL source archive (``source_release.py`` refuses NVIDIA's file names and its
+  ``LicenseRef-NvidiaProprietary`` tag), and the release build refuses an MSI that
+  carries ``nvngx*`` binaries. A DLSS build must show NVIDIA's marks, and the
+  licence needs NVIDIA's written approval of each use, so a release can leave DLSS
+  out on purpose: ``ANGELO_GCP_RELEASE_DLSS=off`` (the VM's ``angelo-release-dlss``,
+  the build's ``ANGELO_RELEASE_DLSS``) configures ``WITH_DLSS=OFF`` without the SDK
+  and records the choice in the manifest. Unlike ``-AllowMissing dlss``, that build
+  is still release-equivalent.
 * **Agent runtime** (``releasing.rst``, "Agent runtime"): ``codex.exe``,
   ``codex-code-mode-host.exe`` and the two sandbox helpers, checked before
   configuring (x64 executables, OpenAI's signature on its unchanged helpers, the
@@ -437,11 +524,25 @@ byte for byte, where an MSVC build reports cl.exe's.
   beside the build folder (one per build folder; 231 characters for that file),
   the longest staged path is checked against the limit before WiX runs (the
   manifest's ``package_staging``), and the MSI is moved into the build folder.
-* **One folder per toolset.** CMake cannot change the toolset of an existing
-  cache, so the default build folder's name carries it and a ``-BuildDir``
+* **One folder per toolset and Blender series.** CMake cannot change the toolset
+  of an existing cache, and a Blender series has its own libraries and mostly
+  different sources, so the default build folder's name carries both (the series
+  from ``BKE_blender_version.h``) and a machine keeps one incremental tree per
+  series. A ``-BuildDir``
   configured with another toolset (``CMAKE_GENERATOR_TOOLSET`` in its cache;
   empty is MSVC's ``v143``) is refused before anything is written to it. An
   MSVC folder such as ``build_windows_Release_x64_vc17_Release`` is left alone.
+* **New libraries, new find results.** CMake keeps every library it found
+  (``USD_LIBRARY``, ``USD_INCLUDE_DIR`` and the rest) in the build folder's cache
+  and never looks again when ``LIBDIR`` changes, so after a library update (a
+  Blender bump) a reused folder compiles and links against the old libraries
+  while the bundle installs the new ones (the 1.1 rehearsal's macOS app: dyld
+  refused a USD symbol). Each configure records its libraries' folder and commit
+  in ``angelo-libdir.txt``; when either differs, the cache moves to
+  ``CMakeCache.txt.libdir-changed`` before the configure and compiled objects
+  stay. Both release builds do it (``release_libdir_cache.sh`` on macOS,
+  ``Reset-BuildDirForLibraries`` here). A folder from before that record
+  compares the folder alone.
 * **Checked on the built app.** After the build, ``release_checks.py
   windows-toolset`` (``windows_toolset.py``) runs the executable to read its
   flags and requires, in both compile-flag strings, an option passed through

@@ -197,15 +197,16 @@ def scroll_steps():
 
 def band(row_y, size):
     """Window rows of a draft row's glyphs and caret (the caret spans ``y - 3 .. y + line_height - 6``)."""
-    region, s = chat()[1], scale()
-    return int(region.y + (row_y - 3) * s), int(region.y + (row_y + size + 2) * s) + 1
+    from qa_input import chat_rect   # The chat's points as window pixels (its scale, right to left mirrored).
+    _, bottom, _, height = chat_rect(chat()[1], (0, row_y - 3, 0, size + 5))
+    return int(bottom), int(bottom + height) + 1
 
 
 def composer_columns():
     """Window columns of the composer card: nothing else on those rows (other editors, the status bar) counts."""
-    region, s = chat()[1], scale()
-    x, _, width, _ = view_state()["composer"]
-    return int(region.x + x * s), int(region.x + (x + width) * s)
+    from qa_input import chat_rect   # The chat's points as window pixels (its scale, right to left mirrored).
+    left, _, width, _ = chat_rect(chat()[1], view_state()["composer"])
+    return int(left), int(left + width)
 
 
 def ink_columns(image, rows):
@@ -225,14 +226,29 @@ def blink(visible):
     chat_composer.time = SimpleNamespace(monotonic=lambda: 1000.25 if visible else 1000.75)
 
 
+def wrapping(draft):
+    """``draft``, its own text again until it is wider than the composer as drawn now (its text area is narrower),
+    so it wraps at any interface scale and chat width without scrolling its first rows away. At 0.875 the chat holds
+    more points across and the first draft fitted on one row (Xvfb at 75 dpi, 2.0.0): the checks below need rows
+    that wrap, not a particular length."""
+    from angelo_agent import chat_view
+    width, size = view_state()["composer"][2], view_state().get("font_size", 14)
+    text = draft
+    while chat_view.measure(text, size) < 1.2 * width:
+        text += " " + draft
+    return text
+
+
 def caret_steps(draft, label):
     from angelo_agent import chat_composer
     region = chat()[1]
     chat_composer.set_draft(line(), "", 0)
     redraw()
     composer = view_state()["composer"]
-    s = scale()
-    cx, cy = region.x + (composer[0] + 20) * s, region.y + (composer[1] + composer[3] - 20) * s
+    draft = wrapping(draft)
+    s = scale()   # The caret's tolerances are in window pixels.
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    cx, cy = chat_point(region, (composer[0] + 20, composer[1] + composer[3] - 20, 0, 0))
     send('MOUSEMOVE', cx, cy)
     send('LEFTMOUSE', cx, cy, 'PRESS')
     send('LEFTMOUSE', cx, cy, 'RELEASE')
@@ -277,7 +293,8 @@ def caret_steps(draft, label):
         later = full_ink[full_ink > left_edge + 1]
         right_edge = later.min() if len(later) else left_edge + 6 * s
         click_x = left_edge + 1
-        click_y = region.y + (row_y + size * 0.35) * s
+        from qa_input import chat_rect   # The chat's points as window pixels (its scale and mirror).
+        click_y = chat_rect(region, (0, row_y + size * 0.35, 0, 0))[1]
         send('MOUSEMOVE', click_x, click_y)
         send('LEFTMOUSE', click_x, click_y, 'PRESS')
         send('LEFTMOUSE', click_x, click_y, 'RELEASE')

@@ -16,7 +16,7 @@ import sys
 import tempfile
 import time
 
-from . import private_roots, storage
+from . import owned_paths, private_roots, storage
 from .fab_browser_ownership import snapshot, marker_and_profile, identity, browser_bundle, OwnershipUnavailable
 
 BINDING='fab-browser-profile.json'
@@ -51,7 +51,7 @@ class ProfileStore:
         self.directory=Path(directory) if directory is not None else storage.connection_directory()
         if not self.directory.is_absolute() or any(p.is_symlink() for p in (self.directory,*self.directory.parents)):
             raise ProfileUnavailable('PROFILE_METADATA_UNSAFE')
-        self.directory.mkdir(parents=True,exist_ok=True,mode=0o700)
+        owned_paths.require_writable(self.directory).mkdir(parents=True,exist_ok=True,mode=0o700)
         info=self.directory.lstat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or info.st_mode&0o022:
             raise ProfileUnavailable('PROFILE_METADATA_UNSAFE')
@@ -61,7 +61,7 @@ class ProfileStore:
         self.scratch=Path(scratch) if scratch is not None else private_roots.scratch_root()
         if not self.scratch.is_absolute() or any(p.is_symlink() for p in (self.scratch,*self.scratch.parents)):
             raise ProfileUnavailable('PROFILE_ROOT_UNSAFE')
-        self.scratch.mkdir(parents=True,exist_ok=True,mode=0o700)
+        owned_paths.require_writable(self.scratch).mkdir(parents=True,exist_ok=True,mode=0o700)
         info=self.scratch.lstat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or info.st_mode&0o022:
             raise ProfileUnavailable('PROFILE_ROOT_UNSAFE')
@@ -72,6 +72,7 @@ class ProfileStore:
             raise ProfileUnavailable('PROFILE_METADATA_CHANGED')
     @contextmanager
     def _transaction(self):
+        owned_paths.require_writable(self.directory)
         if self._metadata_uncertain:raise ProfileUnavailable('PROFILE_METADATA_CLOSE_UNPROVED',self._metadata_partial_owner or self)
         self._current()
         # Same lock file/protocol as connections.metadata_lock, but fail immediately instead of blocking a job.
@@ -105,6 +106,7 @@ class ProfileStore:
             raise ProfileUnavailable('PROFILE_METADATA_SHAPE')
         return data
     def _write(self,row):
+        owned_paths.require_writable(self.directory)
         self._current()
         fd,name=tempfile.mkstemp(prefix='.fab-profile-',dir=self.directory)
         try:
@@ -158,6 +160,7 @@ class ProfileLease:
         self.path=Path(row['path']);self.identity=row['device'],row['inode']
         self._fd=None;self._fd_uncertain=False;self._lock_identity=None;self._browser=None;self._released=False
         self.validate()
+        owned_paths.require_writable(self.path)
         fd=os.open(self.path/PROFILE_LOCK,os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
         try:
             _regular(fd)
@@ -216,6 +219,8 @@ class ProfileLease:
         return self.path
     def finish_drained(self,browser,*,retain=False):
         # Only the same internal BrowserProcess calls this after its positive helper+leader drain proof.
+        owned_paths.require_writable(self.path)
+        owned_paths.require_writable(self.store.directory)
         if type(retain) is not bool:raise ProfileUnavailable('PROFILE_RETENTION_POLICY',self)
         if self._browser is not browser or getattr(browser,'_pid',None) is not None or getattr(browser,'_closed',False) is not True:
             raise ProfileUnavailable('PROFILE_DRAIN_UNPROVED',self)
@@ -237,12 +242,17 @@ class ProfileLease:
 
     def cancel_pending(self,program):
         """Cancel an allocated but never claimed profile; prove it inactive, never signal by pathname."""
+        owned_paths.require_writable(self.store.directory)
         if self._browser is not None or self._fd is None:raise ProfileUnavailable('PROFILE_BUSY',self)
         self.validate();self._inactive(program)
         with self.store._transaction():
             current=self.store._binding()
             if current is not None and current!=self._row:raise ProfileUnavailable('PROFILE_METADATA_CHANGED',self)
             import shutil
+            from . import owned_paths
+            if not owned_paths.owned(self.path):   # Only the profile Angelo made (owned_paths).
+                raise ProfileUnavailable('PROFILE_METADATA_CHANGED',self)
+            owned_paths.disown(self.path)
             shutil.rmtree(self.path)
             if current is not None:(self.store.directory/BINDING).unlink()
             if not private_roots.remember_profiles(self.store.directory,[],locked=True):

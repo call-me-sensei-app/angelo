@@ -9,6 +9,7 @@ worker with exactly its documented command and environment. The in-Blender proof
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import shutil
@@ -142,7 +143,7 @@ class ChannelTests(unittest.TestCase):
         client = worker_channel.Client(ours)
         self.assertEqual(client.wait_ready(5), {"ok": True})
         self.assertEqual([client.request({"n": n}, 5)["echo"] for n in range(3)], [0, 1, 2])
-        self.assertTrue(client.ended.wait(5))
+        self.assertTrue(client.ended.wait(CAP_S))
         self.assertIsNone(client.request({"n": 9}, 5))   # Ended: unknown, never an answer.
         client.close()
 
@@ -302,20 +303,25 @@ class ProcessTests(unittest.TestCase):
         return SimpleNamespace(child_argument=lambda: "fd:99", pass_fds=lambda: (), started=thread.start,
                                accept=lambda pid, alive=None: ours, close=ours.close)
 
-    def popen(self, started):
-        def popen(command, **options):
+    def fake_start(self, started):
+        """The worker's process start (``worker_process.start_process``) and C's program, stood in for while a test
+        runs; the fake pid's group is never signalled (``killpg``)."""
+        def start(command, options, platform):
             started.append((command, options))
             return SimpleNamespace(pid=4321, poll=lambda: None, wait=lambda timeout=None: 0, kill=lambda: None)
-        return popen
+        for patcher in (patch.object(worker_process, "start_process", start),
+                        patch.object(worker_process, "default_binary", lambda: Path("/app/Angelo"))):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        return lambda *_args: None
 
     @POSIX_ONLY
     def test_start_waits_for_ready_and_stop_leaves_nothing(self):
         temporary = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, temporary, True)
         started = []
-        worker = worker_process.WorkerProcess("/w/part.blend", binary="/app/Angelo", script="/s/h.py",
-                                              environ={"PATH": "/bin"}, platform="darwin",
-                                              popen=self.popen(started), temporary=temporary,
+        worker = worker_process.WorkerProcess("/w/part.blend", environ={"PATH": "/bin"}, platform="darwin",
+                                              killpg=self.fake_start(started), temporary=temporary,
                                               listener=lambda: self.fake_listener({"ok": True, "pid": 4321}))
         self.assertEqual(worker.start(5)["pid"], 4321)
         command, options = started[0]
@@ -332,8 +338,8 @@ class ProcessTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, temporary, True)
         for answer, text in (({"ok": False, "error": "RuntimeError: no part"}, "no part"), (None, "never said ready")):
             with self.subTest(answer=answer):
-                worker = worker_process.WorkerProcess("/w/part.blend", binary="/a", script="/s", environ={},
-                                                      platform="darwin", popen=self.popen([]), temporary=temporary,
+                worker = worker_process.WorkerProcess("/w/part.blend", environ={}, platform="darwin",
+                                                      killpg=self.fake_start([]), temporary=temporary,
                                                       listener=lambda: self.fake_listener(answer))
                 with self.assertRaisesRegex(worker_process.WorkerUnavailable, text):
                     worker.start(5)

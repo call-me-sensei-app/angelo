@@ -7,6 +7,7 @@ channel's descriptor handling.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import os
@@ -153,16 +154,26 @@ class ClaudeLaunchTests(unittest.TestCase):
                        {"tools": "", "direct": True, "fast": True, "model": "claude-opus-5-5[1m]", "effort": "max",
                         "thinking": True, "resume": "5f0c3a52-0d47-4d7e-9a8e-111111111111", "gateway": False},
                        {"tools": "WebSearch,WebFetch", "direct": False, "fast": False, "model": "", "effort": "high",
-                        "thinking": False, "resume": "", "gateway": True}):
+                        "thinking": False, "resume": "", "gateway": True},
+                       # An organization endpoint's mapped Claude model: Claude Code treats the server's name as it.
+                       {"tools": "", "direct": False, "fast": False, "model": "team-opus", "effort": "high",
+                        "thinking": False, "resume": "", "gateway": False,
+                        "overrides": {"claude-opus-5-5": "team-opus", "claude-haiku-5-5": "lab/haiku:v2"}}):
             with self.subTest(values=values):
                 self.assertEqual(launch_values(claude_arguments("claude", values)[1:]),
-                                 dict(values, hooks_blocked=False if values["gateway"] else None))
+                                 dict(values, hooks_blocked=False if values["gateway"] else None,
+                                      overrides=values.get("overrides", {})))
 
     def test_anything_else_is_refused(self):
         good = claude_arguments("claude", {"tools": "WebSearch", "direct": False, "fast": False, "model": "",
                                            "effort": "low", "thinking": False, "resume": ""})[1:]
+        def settings(overrides):   # A worker's launch whose settings carry other overrides than Angelo writes.
+            return [p.replace('"hooks": {}', '"hooks": {}, "modelOverrides": %s' % json.dumps(overrides))
+                    if p.startswith("{") else p for p in good]
         for arguments in (good + ["--add-dir", "/"], good[::-1], [p.replace("dontAsk", "bypassPermissions") for p in good],
-                          [p.replace("low", "ultra") for p in good], good + ["--resume=../x"], []):
+                          [p.replace("low", "ultra") for p in good], good + ["--resume=../x"], [],
+                          settings({"claude-opus-5-5": "two words"}), settings(["claude-opus-5-5"]),
+                          settings({"../x": "team-opus"})):
             with self.subTest(arguments=arguments[-1:]), self.assertRaises(RpcError):
                 launch_values(arguments)
 
@@ -222,7 +233,7 @@ class ReverseChannelTests(unittest.TestCase):
 
     def test_a_connection_that_ends_wakes_every_waiting_request(self):
         gate = threading.Event()
-        client, caller, theirs = self.pair(lambda request: gate.wait(10) and {"ok": True})
+        client, caller, theirs = self.pair(lambda request: gate.wait(CAP_S) and {"ok": True})
         result = []
         threading.Thread(target=lambda: result.append(caller.request({"op": "x"}, 30))).start()
         threading.Timer(0.2, client.close).start()
@@ -231,7 +242,7 @@ class ReverseChannelTests(unittest.TestCase):
         gate.set()
 
 
-def wait_until(predicate, timeout=5.0):
+def wait_until(predicate, timeout=CAP_S):
     import time
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -241,7 +252,7 @@ def wait_until(predicate, timeout=5.0):
     return False
 
 
-def wait_for_list(items, timeout=5.0):
+def wait_for_list(items, timeout=CAP_S):
     import time
     deadline = time.monotonic() + timeout
     while not items and time.monotonic() < deadline:
@@ -263,7 +274,7 @@ class WindowsRelayTests(unittest.TestCase):
         argument, handle = service._relay(child)
         self.assertTrue(argument.startswith("pipe:" + worker_channel.PIPE_PREFIX))
         self.assertIsNone(handle)
-        self.assertTrue(killed.wait(5))
+        self.assertTrue(killed.wait(CAP_S))
         self.assertEqual(accepted, [4242])   # Only the worker's own process is accepted.
 
 

@@ -192,9 +192,8 @@ class ExportTests(unittest.TestCase):
         command, config = web.install_hint()
         self.assertEqual(command, "npm i -D @call-me-sensei/angelo")
         self.assertIn("@call-me-sensei/angelo/vite", config)
-        package = ROOT / "web_link/angelo-live/package.json"
-        if package.is_file():
-            self.assertEqual(json.loads(package.read_text(encoding="utf-8"))["name"], web.PACKAGE)
+        package = json.loads((ROOT / "web_link/angelo-live/package.json").read_text(encoding="utf-8"))
+        self.assertEqual(package["name"], web.PACKAGE)   # The package's source is in the tree (2.0.0, #194).
 
 
 class NodeIdentityTests(unittest.TestCase):

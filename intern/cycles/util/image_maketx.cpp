@@ -12,8 +12,6 @@
 #include <iostream>
 #include <memory>
 
-#include <fmt/format.h>
-
 #include <OpenImageIO/Imath.h>
 #include <OpenImageIO/color.h>
 #include <OpenImageIO/filesystem.h>
@@ -36,6 +34,7 @@
 #include "util/log.h"
 #include "util/md5.h"
 #include "util/path.h"
+#include "util/task_limiter.h"
 #include "util/tbb.h"
 #include "util/types_image.h"
 
@@ -45,13 +44,13 @@ static std::string datestring(time_t t)
 {
   struct tm mytm;
   OIIO::Sysutil::get_local_time(&t, &mytm);
-  return fmt::format("{:4d}:{:02d}:{:02d} {:02d}:{:02d}:{:02d}",
-                     mytm.tm_year + 1900,
-                     mytm.tm_mon + 1,
-                     mytm.tm_mday,
-                     mytm.tm_hour,
-                     mytm.tm_min,
-                     mytm.tm_sec);
+  return string_printf("%04d:%02d:%02d %02d:%02d:%02d",
+                       mytm.tm_year + 1900,
+                       mytm.tm_mon + 1,
+                       mytm.tm_mday,
+                       mytm.tm_hour,
+                       mytm.tm_min,
+                       mytm.tm_sec);
 }
 
 template<class SRCTYPE>
@@ -128,7 +127,12 @@ static bool resize_block_(OIIO::ImageBuf &dst,
   int x0 = roi.xbegin, x1 = roi.xend, y0 = roi.ybegin, y1 = roi.yend;
 
   const ImageSpec &dstspec(dst.spec());
+#if OIIO_VERSION_MAJOR > 3 || (OIIO_VERSION_MAJOR == 3 && OIIO_VERSION_MINOR >= 0)
   OIIO::span<float> pel = OIIO::OIIO_ALLOCA_SPAN(float, dstspec.nchannels);
+#else
+  std::vector<float> pel_buf(dstspec.nchannels);
+  OIIO::span<float> pel(pel_buf.data(), dstspec.nchannels);
+#endif
   float xoffset = (float)dstspec.x;
   float yoffset = (float)dstspec.y;
   float xscale = 1.0f / (float)dstspec.width;
@@ -244,8 +248,17 @@ static bool resize_block(OIIO::ImageBuf &dst,
 static void fix_latl_edges(OIIO::ImageBuf &buf)
 {
   int n = buf.nchannels();
+
+#if OIIO_VERSION_MAJOR > 3 || (OIIO_VERSION_MAJOR == 3 && OIIO_VERSION_MINOR >= 0)
   OIIO::span<float> left = OIIO::OIIO_ALLOCA_SPAN(float, n);
   OIIO::span<float> right = OIIO::OIIO_ALLOCA_SPAN(float, n);
+#else
+  std::vector<float> left_buf(n);
+  std::vector<float> right_buf(n);
+
+  OIIO::span<float> left(left_buf.data(), n);
+  OIIO::span<float> right(right_buf.data(), n);
+#endif
 
   /* Make the whole first and last row be solid, since they are exactly on the pole. */
   float wscale = 1.0f / (buf.spec().width);
@@ -256,7 +269,11 @@ static void fix_latl_edges(OIIO::ImageBuf &buf)
       left[c] = 0.0f;
     }
     for (int x = buf.xbegin(); x < buf.xend(); ++x) {
+#if OIIO_VERSION_MAJOR > 3 || (OIIO_VERSION_MAJOR == 3 && OIIO_VERSION_MINOR >= 0)
       buf.getpixel(x, y, right);
+#else
+      buf.getpixel(x, y, right.data());
+#endif
       for (int c = 0; c < n; ++c) {
         left[c] += right[c];
       }
@@ -271,8 +288,13 @@ static void fix_latl_edges(OIIO::ImageBuf &buf)
 
   /* Make the left and right match, since they are both right on the prime meridian. */
   for (int y = buf.ybegin(); y < buf.yend(); ++y) {
+#if OIIO_VERSION_MAJOR > 3 || (OIIO_VERSION_MAJOR == 3 && OIIO_VERSION_MINOR >= 0)
     buf.getpixel(buf.xbegin(), y, left);
     buf.getpixel(buf.xend() - 1, y, right);
+#else
+    buf.getpixel(buf.xbegin(), y, left.data());
+    buf.getpixel(buf.xend() - 1, y, right.data());
+#endif
     for (int c = 0; c < n; ++c) {
       left[c] = 0.5f * left[c] + 0.5f * right[c];
     }
@@ -325,7 +347,7 @@ static std::string alpha_type_string(const ImageAlphaType alpha_type)
   return "auto";
 }
 
-static std::string format_tyoe_string(const ImageFormatType format_type)
+static std::string format_type_string(const ImageFormatType format_type)
 {
   switch (format_type) {
     case IMAGE_FORMAT_PLAIN:
@@ -354,14 +376,14 @@ static std::string unique_filename_tx(const string &filepath,
   /* Scene linear colorspace that we may be converting to. */
   md5.append("xyz_to_scene_linear:" + ColorSpaceManager::get_xyz_to_scene_linear_rgb_string());
 
-  /* Colorspace. */
+  /* Color-space. */
   md5.append("colorspace:" + (ColorSpaceManager::colorspace_is_data(colorspace) ?
                                   u_colorspace_data.string() :
                                   colorspace.string()));
 
   md5.append("alpha:" + alpha_type_string(alpha_type));
 
-  md5.append("format:" + format_tyoe_string(format_type));
+  md5.append("format:" + format_type_string(format_type));
 
   /* For absolute texture cache path, include the full file path. This requires
    * a matching directory structure though. */
@@ -486,16 +508,18 @@ static void write_stats_tx(OIIO::ImageBuf &buf, const bool use_openexr)
       OIIO::ImageBufAlgo::isMonochrome(buf))
   {
     LOG_INFO << "  Monochrome image detected. Converting to single channel texture.";
-    OIIO::ImageBuf new_buf(buf.spec());
-    OIIO::ImageBufAlgo::channels(new_buf,
-                                 buf,
-                                 1,
-                                 OIIO::cspan<int>(),
-                                 OIIO::cspan<float>(),
-                                 OIIO::cspan<std::string>(),
-                                 true);
-    new_buf.specmod().default_channel_names();
-    std::swap(buf, new_buf);
+    OIIO::ImageBuf new_buf;
+    if (OIIO::ImageBufAlgo::channels(new_buf,
+                                     buf,
+                                     1,
+                                     OIIO::cspan<int>(),
+                                     OIIO::cspan<float>(),
+                                     OIIO::cspan<std::string>(),
+                                     true))
+    {
+      new_buf.specmod().default_channel_names();
+      std::swap(buf, new_buf);
+    }
   }
 
   /* Image description for tiff, to store arbitrary metadata because it's not natively
@@ -528,7 +552,7 @@ static void write_stats_tx(OIIO::ImageBuf &buf, const bool use_openexr)
       buf.specmod().attribute("oiio:ConstantColor", colstr);
     }
     else {
-      desc += fmt::format("{}oiio:ConstantColor={}", desc.length() ? " " : "", colstr);
+      desc += string_printf("%soiio:ConstantColor=%s", desc.length() ? " " : "", colstr.c_str());
     }
     LOG_DEBUG << "  ConstantColor: " << colstr;
   }
@@ -539,13 +563,22 @@ static void write_stats_tx(OIIO::ImageBuf &buf, const bool use_openexr)
     buf.specmod().attribute("oiio:AverageColor", avgstr);
   }
   else {
-    desc += fmt::format("{}oiio:AverageColor={}", desc.length() ? " " : "", avgstr);
+    desc += string_printf("%soiio:AverageColor=%s", desc.length() ? " " : "", avgstr.c_str());
   }
   LOG_DEBUG << "  AverageColor: " << avgstr;
 
   if (!use_openexr) {
     buf.specmod().attribute("ImageDescription", desc);
   }
+}
+
+template<typename Func> static void parallel_for_pixels(const int64_t num, const Func &func)
+{
+  parallel_for(blocked_range<int64_t>(0, num, 65536), [&](const blocked_range<int64_t> &range) {
+    for (int64_t i = range.begin(); i < range.end(); i++) {
+      func(i);
+    }
+  });
 }
 
 static void clamp_half_tx(OIIO::ImageBuf &buf, const TypeDesc out_format)
@@ -559,12 +592,13 @@ static void clamp_half_tx(OIIO::ImageBuf &buf, const TypeDesc out_format)
 
   const int64_t num_values = int64_t(buf.spec().width) * buf.spec().height * buf.spec().nchannels;
   float *pixels = static_cast<float *>(buf.localpixels());
-  for (int64_t i = 0; i < num_values; i++) {
-    pixels[i] = clamp(pixels[i], -HALF_MAX, HALF_MAX);
-  }
+  parallel_for_pixels(num_values,
+                      [&](const int64_t i) { pixels[i] = clamp(pixels[i], -HALF_MAX, HALF_MAX); });
 }
 
-static void convert_srgb_tx(OIIO::ImageBuf &buf, const bool from_srgb)
+static void convert_srgb_tx(OIIO::ImageBuf &buf,
+                            const bool from_srgb,
+                            const bool unassociate_alpha)
 {
   assert(buf.spec().format == TypeFloat);
   assert(buf.spec().nchannels == 1 || buf.spec().nchannels == 4);
@@ -574,21 +608,19 @@ static void convert_srgb_tx(OIIO::ImageBuf &buf, const bool from_srgb)
   if (buf.spec().nchannels == 1) {
     float *pixels = static_cast<float *>(buf.localpixels());
     if (from_srgb) {
-      for (int64_t i = 0; i < num_pixels; i++) {
-        pixels[i] = color_srgb_to_linear(pixels[i]);
-      }
+      parallel_for_pixels(num_pixels,
+                          [&](const int64_t i) { pixels[i] = color_srgb_to_linear(pixels[i]); });
     }
     else {
-      for (int64_t i = 0; i < num_pixels; i++) {
-        pixels[i] = color_linear_to_srgb(pixels[i]);
-      }
+      parallel_for_pixels(num_pixels,
+                          [&](const int64_t i) { pixels[i] = color_linear_to_srgb(pixels[i]); });
     }
   }
   else {
     float4 *pixels = static_cast<float4 *>(buf.localpixels());
-    for (int64_t i = 0; i < num_pixels; i++) {
+    parallel_for_pixels(num_pixels, [&](const int64_t i) {
       float4 value = pixels[i];
-      const bool has_alpha = !(value.w <= 0.0f || value.w == 1.0f);
+      const bool has_alpha = unassociate_alpha && !(value.w <= 0.0f || value.w == 1.0f);
 
       if (has_alpha) {
         const float inv_alpha = 1.0f / value.w;
@@ -611,7 +643,7 @@ static void convert_srgb_tx(OIIO::ImageBuf &buf, const bool from_srgb)
       }
 
       pixels[i] = value;
-    }
+    });
   }
 }
 
@@ -620,6 +652,7 @@ static bool write_buf_tx(std::unique_ptr<ImageOutput> &out,
                          const TypeDesc out_format,
                          const ImageFormatType format_type,
                          const bool compress_as_srgb,
+                         const bool unassociate_alpha,
                          const OIIO::ImageOutput::OpenMode mode,
                          OIIO::ImageBuf &buf)
 {
@@ -630,8 +663,11 @@ static bool write_buf_tx(std::unique_ptr<ImageOutput> &out,
   }
   OIIO::ImageBuf srgb_buf;
   if (compress_as_srgb) {
-    srgb_buf.copy(buf);
-    convert_srgb_tx(srgb_buf, false);
+    if (!srgb_buf.copy(buf)) {
+      LOG_WARNING << "Failed to copy buffer: " << srgb_buf.geterror();
+      return false;
+    }
+    convert_srgb_tx(srgb_buf, false, unassociate_alpha);
   }
   clamp_half_tx(buf, out_format);
   OIIO::ImageBuf &write_buf = (compress_as_srgb) ? srgb_buf : buf;
@@ -653,25 +689,45 @@ static bool write_mipmap_tx(std::unique_ptr<ImageOutput> &out,
                             const TypeDesc out_format,
                             const ImageFormatType format_type,
                             const bool compress_as_srgb,
-                            OIIO::ImageBuf &large_buf)
+                            const bool unassociate_alpha,
+                            OIIO::ImageBuf &large_buf,
+                            const std::function<bool()> &cancel)
 {
   const bool envlatlmode = format_type == IMAGE_FORMAT_EQUIANGULAR;
   const ImageOutput::OpenMode append_mode = out->supports("mipmap") ? ImageOutput::AppendMIPLevel :
                                                                       ImageOutput::AppendSubimage;
 
   /* Write top level. */
-  write_buf_tx(
-      out, out_filepath, out_format, format_type, false, OIIO::ImageOutput::Create, large_buf);
+  if (!write_buf_tx(out,
+                    out_filepath,
+                    out_format,
+                    format_type,
+                    false,
+                    false,
+                    OIIO::ImageOutput::Create,
+                    large_buf))
+  {
+    return false;
+  }
 
   /* When using sRGB, convert to linear before resizing, and convert to sRGB again in write_buf_tx.
-   * for each mip level. */
+   * for each mip level.
+   *
+   * Pixels have associated alpha, which is unassociated for the conversion, matching the image
+   * texture node when the alpha output is used. Except for channel packed alpha, where alpha is
+   * unrelated to color and color can exceed alpha. */
   if (compress_as_srgb) {
-    convert_srgb_tx(large_buf, true);
+    convert_srgb_tx(large_buf, true, unassociate_alpha);
   }
 
   /* Write mip levels. */
   OIIO::ImageBuf small_buf;
   while (large_buf.spec().width > 1 || large_buf.spec().height > 1) {
+    if (cancel && cancel()) {
+      out->close();
+      return false;
+    }
+
     ImageSpec small_spec = large_buf.spec();
     small_spec.extra_attribs.free();
 
@@ -683,6 +739,11 @@ static bool write_mipmap_tx(std::unique_ptr<ImageOutput> &out,
       small_spec.height /= 2;
     }
     small_buf.reset(small_spec);
+    if (!small_buf.localpixels()) {
+      LOG_WARNING << "Failed to allocate mip level: " << small_buf.geterror();
+      out->close();
+      return false;
+    }
 
     /* TODO: Support other filters than box? If we do this, be sure to include them in the
      * hash like OIIO maketx does. */
@@ -697,8 +758,17 @@ static bool write_mipmap_tx(std::unique_ptr<ImageOutput> &out,
                    resize_block<float>(small_buf, large_buf, roi, envlatlmode);
                  });
 
-    write_buf_tx(
-        out, out_filepath, out_format, format_type, compress_as_srgb, append_mode, small_buf);
+    if (!write_buf_tx(out,
+                      out_filepath,
+                      out_format,
+                      format_type,
+                      compress_as_srgb,
+                      unassociate_alpha,
+                      append_mode,
+                      small_buf))
+    {
+      return false;
+    }
     std::swap(large_buf, small_buf);
   }
 
@@ -726,7 +796,8 @@ static bool make_tx(const string &filepath,
                     ImageMetaData &metadata,
                     const ImageAlphaType alpha_type,
                     const ImageFormatType format_type,
-                    const ImageSpec &in_spec)
+                    const ImageSpec &in_spec,
+                    const std::function<bool()> &cancel)
 {
   const bool use_openexr = metadata.is_float();
   const TypeDesc out_format = metadata.typedesc();
@@ -749,9 +820,11 @@ static bool make_tx(const string &filepath,
   /* Software info, version is used to detect if file format is known by old versions. */
   spec.attribute("Software", string_printf("Blender maketx v%d", TX_FILE_FORMAT_VERSION));
 
-  /* Compression. */
+  /* Compression is preserved for EXR to EXR, including lossy compression.
+   * Otherwise always use zip since it is parallelized and smaller than LZW or RLE. */
+  const bool is_openexr_source = strcmp(metadata.colorspace_file_format, "openexr") == 0;
   std::string in_compression = in_spec.get_string_attribute("compression", "none");
-  if (in_compression == "none") {
+  if (!use_openexr || !is_openexr_source || in_compression == "none") {
     spec.attribute("compression", "zip");
   }
   spec.attribute("planarconfig", "contig");
@@ -817,10 +890,18 @@ static bool make_tx(const string &filepath,
   }
 
   OIIO::ImageBuf buf(spec, OIIO::InitializePixels::No);
+  if (!buf.localpixels()) {
+    LOG_WARNING << "Failed to allocate pixels for " << filepath << ": " << buf.geterror();
+    return false;
+  }
   std::time_t in_time = OIIO::Filesystem::last_write_time(filepath);
 
   if (!metadata.oiio_load_pixels(filepath, buf.localpixels(), false)) {
     LOG_WARNING << "Failed to load pixels for " << filepath;
+    return false;
+  }
+
+  if (cancel && cancel()) {
     return false;
   }
 
@@ -831,6 +912,11 @@ static bool make_tx(const string &filepath,
   if (buf.spec().format != TypeFloat) {
     spec.set_format(TypeFloat);
     OIIO::ImageBuf float_buf(spec, OIIO::InitializePixels::No);
+    if (!float_buf.localpixels()) {
+      LOG_WARNING << "Failed to allocate float pixels for " << filepath << ": "
+                  << float_buf.geterror();
+      return false;
+    }
     OIIO::ImageBufAlgo::copy(float_buf, buf, TypeFloat);
     buf = std::move(float_buf);
   }
@@ -851,8 +937,23 @@ static bool make_tx(const string &filepath,
   string tmp_filepath = OIIO::Filesystem::unique_path(out_filepath + tmp_extension);
 
   std::unique_ptr<ImageOutput> out = ImageOutput::create(tmp_filepath);
-  bool ok = write_mipmap_tx(
-      out, tmp_filepath, out_format, format_type, metadata.is_compressible_as_srgb, buf);
+  bool ok = false;
+  try {
+    ok = write_mipmap_tx(out,
+                         tmp_filepath,
+                         out_format,
+                         format_type,
+                         metadata.is_compressible_as_srgb,
+                         !metadata.is_channel_packed,
+                         buf,
+                         cancel);
+  }
+  catch (...) {
+    /* Don't leave temporary file behind, when e.g. out of memory. */
+    out.reset();
+    path_remove(tmp_filepath);
+    throw;
+  }
   out.reset();
 
   /* Stamp with same time as input image file to detect updates. */
@@ -869,8 +970,10 @@ static bool make_tx(const string &filepath,
   }
 
   path_remove(tmp_filepath);
-  assert(path_is_file(out_filepath));
-  LOG_INFO << "Wrote tx file: " << out_filepath;
+  if (ok) {
+    assert(path_is_file(out_filepath));
+    LOG_INFO << "Wrote tx file: " << out_filepath;
+  }
 
   return ok;
 }
@@ -879,7 +982,8 @@ bool make_tx(const string &filepath,
              const string &out_filepath,
              ustring colorspace,
              const ImageAlphaType alpha_type,
-             const ImageFormatType format_type)
+             const ImageFormatType format_type,
+             const std::function<bool()> &cancel)
 {
   LOG_INFO << "Generating tx file for: " << filepath;
 
@@ -897,7 +1001,30 @@ bool make_tx(const string &filepath,
   }
   metadata.finalize(alpha_type);
 
-  if (!make_tx(filepath, out_filepath, metadata, alpha_type, format_type, spec)) {
+  /* Memory usage is approximately two float buffers, plus a temporary buffer
+   * for images with > 4 channels. Use limiter so we don't run out of memory
+   * handling many high res images at the same time. */
+  const size_t num_pixels = size_t(metadata.width) * size_t(metadata.height);
+  size_t estimated_memory_size = num_pixels * (metadata.is_rgba() ? 4 : 1) * sizeof(float) * 2;
+  if (metadata.channels > 4) {
+    estimated_memory_size += num_pixels * metadata.channels * sizeof(float);
+  }
+
+  bool ok = false;
+  const auto generate = [&]() {
+    ok = make_tx(filepath, out_filepath, metadata, alpha_type, format_type, spec, cancel);
+  };
+  try {
+    if (!TaskLimiter::execute(estimated_memory_size, generate, cancel)) {
+      return false;
+    }
+  }
+  catch (const std::bad_alloc &) {
+    LOG_WARNING << "Out of memory generating tx file for " << filepath;
+    return false;
+  }
+
+  if (!ok) {
     LOG_WARNING << "Failed to write tx file";
     return false;
   }

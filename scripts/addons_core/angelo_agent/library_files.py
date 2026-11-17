@@ -26,7 +26,7 @@ import struct
 from pathlib import Path
 from urllib.parse import unquote
 
-from . import gltf_checks as gltf, team_library_files as checks
+from . import gltf_checks as gltf, owned_paths, team_library_files as checks
 from .team_library_files import Refused
 
 HDR_PIXELS = 16384 * 8192
@@ -223,6 +223,7 @@ def _read_glb(path):
 
 
 def _write_glb(path, document, binary_chunks):
+    owned_paths.require_writable(path)
     text = json.dumps(document, separators=(",", ":")).encode("utf-8")
     text += b" " * (-len(text) % 4)
     body = struct.pack("<II", len(text), 0x4E4F534A) + text + binary_chunks

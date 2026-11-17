@@ -136,19 +136,16 @@ def _switch(view, rect, on, state):
 
 def _banner(rect):
     from gpu_extras.batch import batch_for_shader
-    from .providers_page_model import ART
-    if ART["pixels"] is None:
+    from .welcome_screen import BANNER_PICTURE
+    texture = BANNER_PICTURE.texture(gpu)   # None until the page's input has read it: the card's fill shows.
+    if texture is None:
         return
-    width, height = ART["size"]
-    if ART["texture"] is None:
-        ART["texture"] = gpu.types.GPUTexture((width, height), format='RGBA16F',
-                                              data=gpu.types.Buffer('FLOAT', [width * height * 4], ART["pixels"]))
     shader = gpu.shader.from_builtin('IMAGE')
     x, y, w, h = rect
     batch = batch_for_shader(shader, 'TRIS', {"pos": [(x, y), (x + w, y), (x + w, y + h), (x, y + h)],
                                               "texCoord": [(0, 0), (1, 0), (1, 1), (0, 1)]}, indices=[(0, 1, 2), (0, 2, 3)])
     shader.bind()
-    shader.uniform_sampler("image", ART["texture"])
+    shader.uniform_sampler("image", texture)
     batch.draw(shader)
 
 
@@ -234,6 +231,11 @@ def glyph(view, name, rect, color):
         line(x, cy, x + w, cy, color, t)
         line(x + 2.5 * s, y + 2.5 * s, x + 9.5 * s, y + 9.5 * s, color, t * 0.8)
         line(x + 2.5 * s, y + 9.5 * s, x + 9.5 * s, y + 2.5 * s, color, t * 0.8)
+    elif name == "server":   # An organization's model server: two stacked units, each with its light.
+        for bottom in (1 * s, 6.5 * s):
+            for x1, y1, x2, y2 in ((1, 0, 11, 0), (1, 4.5, 11, 4.5), (1, 0, 1, 4.5), (11, 0, 11, 4.5)):
+                line(x + x1 * s, y + bottom + y1 * s, x + x2 * s, y + bottom + y2 * s, color, t)
+            view.shape(x + 8 * s - 0.9 * s, y + bottom + 2.25 * s - 0.9 * s, 1.8 * s, 1.8 * s, color, 0.9 * s)
 
 
 def _arc(view, cx, cy, r, start, end, color, thickness):

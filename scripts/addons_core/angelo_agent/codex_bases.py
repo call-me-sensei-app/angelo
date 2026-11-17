@@ -45,7 +45,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import shared_replace
+from . import owned_paths, shared_replace
 from .protocol import RpcError
 
 FORK = {"experimentalPredictionMode": True, "ephemeral": True, "excludeTurns": True}
@@ -474,11 +474,14 @@ class BaseStore:
     def _write(self, value):
         temporary = self.path.with_name(self.path.name + "." + uuid.uuid4().hex + ".tmp")
         try:
+            owned_paths.require_writable(self.path)   # C first: no temporary is made beside a target it refuses.
             self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump(value, handle)
-            shared_replace.replace(temporary, self.path)   # Readers share delete; a foreign handle is tried again.
+            # Readers share delete. A foreign handle (a scan of the file just written) is waited out for up to 1.9 s:
+            # this save is not tried again, and the warm-up it records was paid for. Always a provider's worker thread.
+            shared_replace.replace(temporary, self.path, shared_replace.PATIENT_ATTEMPTS)
         except OSError as error:   # Not remembered: the next launch warms this variant again.
             print("Angelo: a warm-up's base could not be saved; the next launch warms it again:", error)
         finally:

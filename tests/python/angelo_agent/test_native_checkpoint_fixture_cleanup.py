@@ -28,11 +28,23 @@ class CheckpointFixtureCleanupTests(unittest.TestCase):
             def execute(self, name, arguments, *args):
                 (self.root / arguments["path"]).write_text(arguments["content"])
 
+        scripts = []   # For each script the fixture ran: whether its executor was the person stand-in's.
+
+        def reviewing(executor_class):
+            def make(*args, **kwargs):
+                executor = executor_class(*args, **kwargs)
+                executor.reviewed = True
+                return executor
+            return make
+
         class Executor:
+            reviewed = False
+
             def __init__(self, window):
                 pass
 
             def execute(self, *args):
+                scripts.append(self.reviewed)
                 data.objects["CheckpointSphere"] = object()
                 return {"success": True, "changes": {"added": ["CheckpointSphere"], "modified": []}}
 
@@ -67,9 +79,12 @@ class CheckpointFixtureCleanupTests(unittest.TestCase):
             "bpy": types.SimpleNamespace(app=types.SimpleNamespace(background=True), data=data,
                                          ops=types.SimpleNamespace(wm=types.SimpleNamespace(save_as_mainfile=save),
                                                                    angelo=types.SimpleNamespace(restore_checkpoint=restore))),
-            "angelo_agent": types.SimpleNamespace(ui=ui),
+            # The fixture vouches the open document's folder as ui does (owned_paths.vouch): nothing to record here.
+            "angelo_agent": types.SimpleNamespace(ui=ui, owned_paths=types.SimpleNamespace(
+                vouch=lambda *args, **kwargs: True)),
             "angelo_agent.files": types.SimpleNamespace(FileWorkspace=Workspace),
             "angelo_agent.blender_tools": types.SimpleNamespace(BlenderExecutor=Executor),
+            "qa_person": types.SimpleNamespace(reviewing=reviewing),
         }
         fixture = Path(__file__).with_name("test_blender_checkpoints.py")
         output = io.StringIO()
@@ -81,6 +96,9 @@ class CheckpointFixtureCleanupTests(unittest.TestCase):
         self.assertEqual(events, ["enable", "disable"])
         self.assertNotIn("ANGELO_CHECKPOINT_TEST_OK", output.getvalue())
         self.assertFalse(Path(data.filepath).parent.exists())
+        # The app refuses a script the person did not approve, so the fixture runs each through the person
+        # stand-in (qa_person.reviewing), a collaborator this test supplies like the executor it wraps.
+        self.assertTrue(all(scripts), "the fixture ran a script outside the person stand-in")
         return observations[0]
 
     def test_capture_failure_disables_before_temporary_profile_removal(self):

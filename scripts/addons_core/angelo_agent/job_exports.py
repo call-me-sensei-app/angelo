@@ -11,7 +11,7 @@ from pathlib import Path
 
 import bpy
 
-from . import checkpoint_filesystem as cf
+from . import checkpoint_filesystem as cf, owned_paths
 from .job_manager import JobStartError
 from .job_runners import CANCELLED_NOTHING, NOTHING_WRITTEN, NOT_PUBLISHED, Runner
 from .job_spec import check_frames, check_work
@@ -54,6 +54,7 @@ class ExportRunner(Runner):
 
     def _start(self):
         path = str(self.staging.path / self.output.name)
+        owned_paths.require_writable(path)
         with bpy.context.temp_override(window=self.window):
             if self.job_type == "USD_EXPORT":
                 if self.animated:  # USD exports the scene's frame range: set it for the job.

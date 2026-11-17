@@ -15,7 +15,6 @@
 
 #include "IMB_imbuf.hh"
 #include "IMB_imbuf_types.hh"
-#include "IMB_openexr.hh"
 
 #include "GHOST_ClipboardImage.hh"
 
@@ -65,8 +64,8 @@ blender::ImBuf *GHOST_ClipboardImage_file_load(const char *filepath)
   if (filepath == nullptr) {
     return nullptr;
   }
-  /* Never #ImBufFlags::MultiLayer: a multilayer OpenEXR file would come back as a handle to its
-   * decoded passes and no picture. Without the flag such a file is not loaded at all. */
+  /* Never #ImBufFlags::MultiLayer: a multilayer OpenEXR file would come back with no picture
+   * (Blender 5.3 opens its passes separately). Without the flag it loads one pass. */
   return blender::IMB_load_image_from_filepath(filepath, blender::ImBufFlags::ByteData);
 }
 
@@ -74,11 +73,6 @@ blender::ImBuf *GHOST_ClipboardImage_flatten(blender::ImBuf *ibuf)
 {
   if (ibuf == nullptr) {
     return nullptr;
-  }
-  if (ibuf->exrhandle) {
-    /* #IMB_freeImBuf does not close it; the passes it decoded would leak with every paste. */
-    blender::IMB_exr_close(ibuf->exrhandle);
-    ibuf->exrhandle = nullptr;
   }
   if (ibuf->byte_data() == nullptr) {
     /* High bit depth and HDR files (16-bit PNG and TIFF, OpenEXR, Radiance HDR) load as float

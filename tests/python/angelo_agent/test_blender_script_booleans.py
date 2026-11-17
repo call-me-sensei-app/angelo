@@ -47,6 +47,8 @@ os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_CONNECTIONS_DIR=str(OU
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import model_results, script_booleans, script_kit_geometry  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
+from qa_person import reviewing  # noqa: E402
+BlenderExecutor = reviewing(BlenderExecutor)   # Each script runs as one the person approved (qa_person).
 from angelo_agent.script_kit import ScriptKit  # noqa: E402
 
 bpy.context.preferences.filepaths.file_preview_type = "NONE"

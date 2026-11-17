@@ -25,28 +25,30 @@ LOCALE_DIR = ROOT / "locale/angelo"
 POT = LOCALE_DIR / "angelo.pot"
 
 UI_MODULES = frozenset("""
+learn_card_draw learn_cards learn_resolver learn_routes learn_ui
 fab_preferences fab_settings fab_ui fab_overlay worker_mirror_events
-camera_preview_setting
+camera_preview_setting agent_changes_forget
 about_card game_physics game_physics_ui agent_workspace_ui approvals approval_review canvas_controls chat_composer chat_drop clipboard_image chat_popovers chat_settings chat_titles chat_view
 chat_welcome checkpoint_images checkpoint_restore_ui checkpoint_seal connect_hero team_access
 chat_replies chat_notices chat_resend chat_pending turn_end call_ended review_again chat_start_states chat_toggle chat_hint chat_launcher asset_shelf_add media_shelf shelf_empty studio_toggle studio_video studio_video_ui studio_media_tiles flow_video_node flow_open flow_window flow_start flow_menu studio_to_flow flow_text_field flow_setup asset_browser_entry asset_browser_states studio_workspaces chat_destinations
 checkpoint_review_ui checkpoint_settings_ui console director director_select_through feedback_ui uv_checker uv_checker_card display_text editor_types first_run flow_approvals
 flow_chat flow_drop flow_nodes flow_recipe_ui flow_ui intro key_store managed_policy preferences_ui preview_branding
-project_brief_rebind_ui quick_connect saved_keys_ui settings_import_card settings_import_ui snapshot_blocks splash_setup setup_card start_card firstlaunch_controls studio studio_draw studio_input studio_ops studio_asset_ops studio_library_ops media_drop studio_item_menu media_menus studio_approvals
+project_brief_rebind_ui quick_connect saved_keys_ui shared_keys_ui settings_import_card settings_import_ui snapshot_blocks splash_setup setup_card start_card firstlaunch_controls studio studio_draw studio_input studio_ops studio_asset_ops studio_library_ops media_drop studio_item_menu media_menus studio_approvals
 studio_chat team_account_ui team_chat team_connections team_errors team_library_approvals team_pages
 team_status_bar team_token_store ui voice_ui welcome_screen welcome_slides welcome_art flow_character_nodes flow_character_ui studio_workflow_ops studio_workflows
 app_notices card_draw card_host card_kit crash_card crash_ui update_card update_restart update_ui updates_prefs whatsnew_card
-approval_steps chat_card_draw chat_cards detail_keys review_card review_text job_approvals job_chat job_desktop job_ui trusted_scripts_ui recovery_review
-activity_text chat_history chat_rows live_progress live_row chat_guard chat_blocks changes_popup approval_wait launcher_waiting auto_reasons
+grant_hints approval_steps chat_card_draw chat_cards detail_keys review_card review_text job_approvals job_chat job_desktop job_ui trusted_scripts_ui recovery_review
+activity_text chat_history chat_rows live_progress edit_tool_hold edit_tool_status live_row chat_guard chat_blocks changes_popup approval_wait launcher_waiting auto_reasons
 stop_notice
 ui_kit ui_kit_builder ui_kit_controls ui_kit_field ui_kit_rows ui_kit_select ui_kit_status ui_formats activity_details draft_overflow chat_goal
 chat_add_menu chat_add_nav chat_add_draw chosen_tools
 library_actions library_overlay library_overlay_draw library_ui library_approvals
 web_export_ui web_preview web_shader web_shader_ui engine_link_ui shot_capture shot_capture_ui engine_suggest_ui
-app_feature_approvals engine_link_tool_approvals engine_fix_approvals
+app_feature_approvals engine_link_tool_approvals engine_fix_approvals download_approvals
 chat_usage usage_view
 providers_menu providers_page_draw providers_page_host providers_page_model providers_page_team providers_sheet providers_page_rail
 providers_page_external external_ui
+endpoint_check endpoint_connections endpoint_keys endpoint_routes endpoint_sheet endpoint_ui providers_page_endpoints
 session_rail session_rail_draw rail_minimized live_view_draw worker_approval worker_dispatch document_scene document_identity document_offer
 worker_consent_lead worker_mirror_cards worker_mirror_opens
 photo_drop photo_drop_card photo_drop_choices photo_drop_jobs
@@ -55,7 +57,7 @@ bake_maps_card bake_maps_text
 render_region render_region_card render_region_draw render_region_pills
 tension_map tension_map_card tension_map_logic
 skeleton_report_card skeleton_check_ui skeleton_menu
-version_carry_over_ui safe_start_notice
+version_carry_over_ui safe_start_notice carry_over_finish
 conversations conversations_delete conversations_layout conversations_popover conversations_ui model_picker_ui
 agent_target_labels surface_focus
 
@@ -78,6 +80,25 @@ library_spec library_agent blender_assets_agent blender_asset_previews
 
 # Modules with UI-looking code that never shows translatable chrome, and why.
 NON_UI_MODULES = {
+    "narrowing_ui": "angelo.narrow, an INTERNAL operator that only narrows (grant_operators.rst, \"Scopes\"): its "
+                    "label is class text in the template; it shows nothing else",
+    "script_confinement": "the agent-script confinement: its refusals are n_ constants the executor and Angelo's "
+                          "notices report translated; everything else is markers, file names and log lines",
+    "grant_guard": "only the person's click grants: its three refusals are n_ constants the operators report with "
+                   "rpt_; everything else is tokens, event names and a log line",
+    "grant_gestures": "binds a dialog to what it acts on: its one refusal (TARGET_CHANGED) is an n_ constant "
+                      "grant_guard reports with rpt_; everything else is digests and hold keys",
+    "version_carry_over": "moves the agent state to a newer Blender base: its result messages are log and AI Providers "
+                          "detail text (English, as the other folder moves'); its two notice titles are n_ constants "
+                          "the AI Providers page translates",
+    "carry_over_moves": "the carry-over's renames and clash rules: no interface text (its errors reach the AI "
+                        "Providers detail as English, like every folder move's)",
+    "carry_over_links": "the carry-over's link pinning: no interface text (its errors reach the AI Providers detail as "
+                        "English, like every folder move's)",
+    "carry_over_leave": "the earlier version's note and choices after a carry-over: the note is the earlier version's "
+                        "own file (moved_state_notice translates what it shows), its errors are the log's English",
+    "cli_client": "the external angelo command's client: its errors are the command line's English, never interface "
+                  "text",
     'update_restart_handoff': 'Committed native updater handoff and revocable process ownership; notices remain translated in update_restart.',
     'fab_browser_windows_store_setup': 'Private Windows Store native root setup and ownership checks; no UI text.',
     'fab_browser_platform': 'Private lazy browser platform dispatcher and explicit native Store lifecycle; no UI text.',
@@ -139,6 +160,8 @@ NON_UI_MODULES = {
                        "the states it reads",
     "worker_queue": "worker places: its start answer and a parked chat's refusal are model-facing English; its one "
                     "chat notice is an n_ template shown through display_text",
+    "save_failure": "why a save failed and what to do: n_ sentences as display_text.Text, English in a tool's "
+                    "result and a stored diagnostic, translated whole where a row shows one to a person",
     "worker_ending": "why a worker stopped for good: n_ reasons as display_text.Text, model-facing as English and nested "
                      "in a parked chat's restart notice (translated whole where shown); it draws nothing",
     "worker_save_recovery": "failed-save recovery: model-facing status facts and n_ chat notice templates",
@@ -233,6 +256,13 @@ NON_UI_MODULES = {
     "app_feature_spec": "model-facing tool schema",
     "app_feature_host": "the agent tool's host route; results and refusals are model-facing English",
     "engine_link_tool_spec": "model-facing tool schema",
+    "download_spec": "model-facing tool schema and guidance",
+    "download_checks": "address classes, file types and names; reasons are model-facing words",
+    "download_fetch": "the transfer on a worker; refusals are model-facing English",
+    "download_tool": "the agent tool's host route; results and refusals are model-facing English",
+    "download_folders": "which folder a download lands in; no text of its own",
+    "download_names": "which names the proxy may resolve for a download; no text of its own",
+    "approval_families": "which module writes a family's card; a family's chip is marked in its module",
     "engine_link_tool_host": "the agent tool's host route; results and refusals are model-facing English",
     "engine_link_facts": "the link's facts for the agent; protocol codes, no text of its own",
     "engine_link_agent": "what the agent's tools ask of the link; refusals are model-facing English",
@@ -352,11 +382,13 @@ source/blender/makesrna/intern/rna_mesh.cc
 source/blender/makesrna/intern/rna_object_api.cc
 source/blender/makesrna/intern/rna_space.cc
 source/blender/makesrna/intern/rna_wm_api.cc
+source/blender/editors/object/object_shade_bake.cc
 source/blender/editors/screen/screen_ops.cc
 source/blender/editors/asset/intern/asset_angelo_media.cc
 source/blender/editors/asset/intern/asset_angelo_drag.cc
 source/blender/editors/space_node/node_add.cc
 source/blender/editors/space_node/space_node.cc
+source/blender/modifiers/intern/MOD_subsurf.cc
 source/blender/editors/space_api/angelo_studio_drop.cc
 source/blender/editors/render/render_region.cc
 source/blender/render/intern/angelo_region_render.cc
@@ -392,6 +424,29 @@ EXTRA_MSGIDS = (
     ("", "Native coding-agent chat with approved Angelo tools", "source/blender/makesrna/intern/rna_screen.cc"),
     ("", "Media Studio", "source/blender/makesrna/intern/rna_screen.cc"),
     ("", "Image and 3D generation with a local media library", "source/blender/makesrna/intern/rna_screen.cc"),
+    # SubsurfModifier.gpu_subdivision_status (Blender #58191); "GPU" and "Split Normals" are Blender's own.
+    ("", "GPU Subdivision Status", "source/blender/makesrna/intern/rna_modifier.cc"),
+    ("", "Whether the viewport subdivides this modifier on the GPU, or why not, as of the active view layer's last "
+         "evaluation. A hidden object keeps the status of its last evaluation",
+     "source/blender/makesrna/intern/rna_modifier.cc"),
+    ("", "Not Evaluated", "source/blender/makesrna/intern/rna_modifier.cc"),
+    ("", "The viewport has not evaluated this modifier: it is disabled or its level is 0",
+     "source/blender/makesrna/intern/rna_modifier.cc"),
+    ("", "The viewport subdivides it on the GPU", "source/blender/makesrna/intern/rna_modifier.cc"),
+    ("", "Preference Off", "source/blender/makesrna/intern/rna_modifier.cc"),
+    ("", "Subdivided on the CPU because GPU Subdivision is off in the Viewport preferences",
+     "source/blender/makesrna/intern/rna_modifier.cc"),
+    ("", "No GPU", "source/blender/makesrna/intern/rna_modifier.cc"),
+    ("", "Subdivided on the CPU because no GPU is in use, as in background mode",
+     "source/blender/makesrna/intern/rna_modifier.cc"),
+    ("", "Unsupported GPU", "source/blender/makesrna/intern/rna_modifier.cc"),
+    ("", "Subdivided on the CPU because this GPU does not support GPU subdivision",
+     "source/blender/makesrna/intern/rna_modifier.cc"),
+    ("", "Not Last", "source/blender/makesrna/intern/rna_modifier.cc"),
+    ("", "Subdivided on the CPU because another enabled modifier comes after it, and GPU subdivision needs it to be "
+         "the last one", "source/blender/makesrna/intern/rna_modifier.cc"),
+    ("", "Subdivided on the CPU because its input has sharp edges, both smooth and flat faces, or custom normals",
+     "source/blender/makesrna/intern/rna_modifier.cc"),
     ("", "AI Providers", "source/blender/makesrna/intern/rna_userdef.cc"),
     ("", "Connect AI subscriptions and API keys for the native scene agent",
      "source/blender/makesrna/intern/rna_userdef.cc"),
@@ -404,9 +459,20 @@ EXTRA_MSGIDS = (
     ("", "Select Through", "source/blender/makesrna/intern/rna_space.cc"),
     ("", "Box, lasso and circle selection also select elements hidden behind others, as in X-ray, while the "
          "display stays solid. Click selection still picks what is visible", "source/blender/makesrna/intern/rna_space.cc"),
+    # Bake Auto Smooth, beside Shade Auto Smooth in the Object menu (Blender #153195).
+    ("Operator", "Bake Auto Smooth", "source/blender/editors/object/object_shade_bake.cc"),
+    ("", "Write the Smooth by Angle result into the selected objects' meshes and remove the modifier from every "
+         "object that uses them, so a mesh shared by many objects is evaluated once. The angle no longer updates "
+         "when the mesh is edited", "source/blender/editors/object/object_shade_bake.cc"),
     # Voxel Remesh's hidden size, set by its "too large" dialog (Blender #77868).
     ("", "Voxel size to use, written to the mesh first (0: the mesh's own)",
      "source/blender/editors/object/object_remesh.cc"),
+    # Cycles' OptiX device: the error for Open Shading Language on an NVIDIA driver that cannot link its
+    # pipeline (Blender #163420). Cycles reports its errors untranslated; the report and the Image Editor's
+    # render line look this text up (test_native_cycles_optix_osl_driver keeps it equal to driver.cpp's).
+    ("", "Open Shading Language cannot render on OptiX with the installed NVIDIA driver because of a driver bug. "
+         "Update the NVIDIA driver to version 610 or newer, or use a 580 series driver",
+     "intern/cycles/device/optix/driver.cpp"),
     # Blender's bundled glTF importer: the warning for a file with morph targets imported unwelded (its
     # UNWELDED_MORPH_TARGETS, which test_native_gltf_morph keeps equal to this copy).
     ("", "This file has morph targets (shape keys) and Merge Vertices is off: its seams will shade apart when the "
@@ -414,6 +480,18 @@ EXTRA_MSGIDS = (
          "Merge Vertices on (merge_vertices=True) to weld them", "io_scene_gltf2/__init__.py"),
     # Blender's own text that names the running app, reworded to Angelo (doc/angelo/localization.rst, "The
     # running app is Angelo"). Blender's catalogues translate only the old wording, so Angelo's catalogue does.
+    ('', 'Path to the library .blend file. WARNING: Typically, this value should be considered read-only, changing this path without proper processing afterwards can leave Angelo data in an invalid state',
+     'source/blender/makesrna/intern/rna_ID.cc'),
+    ('', 'The OpenColorIO configuration bundled with Angelo',
+     'source/blender/makesrna/intern/rna_main.cc'),
+    ('', 'On startup, automatically re-open the project that was last open when Angelo was closed',
+     'source/blender/makesrna/intern/rna_userdef.cc'),
+    ('', 'Disabled, Angelo was compiled without SPZ I/O',
+     'source/blender/nodes/geometry/nodes/node_geo_import_spz.cc'),
+    ('', 'Get active/selected colors from current Angelo theme',
+     'scripts/addons_core/rigify/ui.py'),
+    ('', "Set the color palette to match Angelo's active theme for selected and active bones",
+     'scripts/addons_core/rigify/ui.py'),
     ('', 'Angelo was compiled without a viewport denoiser',
      'intern/cycles/blender/addon/properties.py'),
     ('', "List all repositories stored in Angelo's preferences.",
@@ -564,6 +642,11 @@ EXTRA_MSGIDS = (
      'source/blender/windowmanager/intern/wm_files.cc'),
     ('', 'This scene is a recovery copy, not your file: save it with File > Save As',
      'source/blender/windowmanager/intern/wm_files.cc'),
+    # The dialog that asks before a quit or a close ends running work (wm_files.cc is not in CPP_FILES).
+    ('', 'Quit Angelo?', 'source/blender/windowmanager/intern/wm_files.cc'),
+    ('', 'Close this file?', 'source/blender/windowmanager/intern/wm_files.cc'),
+    ('', 'Quitting ends:', 'source/blender/windowmanager/intern/wm_files.cc'),
+    ('', 'Closing this file ends:', 'source/blender/windowmanager/intern/wm_files.cc'),
     ('', 'Recovered scene.blend',
      'source/blender/windowmanager/intern/wm_files.cc'),
     ('', 'Recovered scene (not your file)',
@@ -588,6 +671,10 @@ EXTRA_MSGIDS = (
      'source/blender/makesrna/intern/rna_object_api.cc'),
     ('', 'Active repository lock held by this session, either wait until the operation is finished or restart Angelo',
      'scripts/addons_core/bl_pkg/bl_extension_ops.py'),
+    # A fix taken from upstream main ahead of Blender 5.3.0 (upstream pick 19): Blender's catalogues have no
+    # translation of its message yet, so Angelo's carries it until they do.
+    ('', 'Stopped baking because frame {} could not be written to {}',
+     'source/blender/editors/object/object_bake_simulation.cc'),
 ) + _release_notes_msgids()
 
 # The repository's own msgfmt (from a build) when set; otherwise gettext's.

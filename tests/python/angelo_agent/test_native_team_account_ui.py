@@ -240,10 +240,11 @@ class UiIntegrationTests(unittest.TestCase):
         return namespace[name]
 
     def test_team_readiness_needs_the_glue_and_for_coding_a_mirrored_key(self):
-        from angelo_agent.provider_registry import HTTP_MODES, is_coding, is_team
+        from angelo_agent.provider_registry import HTTP_MODES, is_coding, is_endpoint, is_team
         record = {"id": "t", "mode": "claude_team", "method": "TEAM"}
         glue = SimpleNamespace(ready=lambda r: True)
-        namespace = {"is_team": is_team, "is_coding": is_coding, "team_account_ui": glue, "HTTP_MODES": HTTP_MODES,
+        namespace = {"is_team": is_team, "is_coding": is_coding, "is_endpoint": is_endpoint, "team_account_ui": glue,
+                     "HTTP_MODES": HTTP_MODES,
                      "_memory_keys": {}}
         ready = self.definition("connection_ready", namespace)
         self.assertFalse(ready(record))

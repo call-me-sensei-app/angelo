@@ -53,13 +53,16 @@ class TeamReadTasks:
             if error.status in (403, 404):  # No longer a member (the console answers 404): no secret either.
                 self._keep_affinity(epoch, None)
             if error.status == 404:
-                self._update_if(epoch, providers=(), providers_error=Text(NOT_A_MEMBER, org=name))
+                self._update_if(epoch, providers=(), providers_error=Text(NOT_A_MEMBER, org=name),
+                                custom_endpoints=(), endpoints_left_out=0)
             elif not isinstance(error, SignInRequired):
                 self._update_if(epoch, providers_error=error.message)
             return
         secret = team_reads.cache_affinity_secret(value)
         self._keep_affinity(epoch, (org, user, secret) if secret else None)
-        self._update_if(epoch, providers=team_reads.providers(value), providers_error="")
+        endpoints, left_out = team_reads.custom_endpoints(value)
+        self._update_if(epoch, providers=team_reads.providers(value), providers_error="", custom_endpoints=endpoints,
+                        endpoints_left_out=left_out)
 
     def _keep_affinity(self, epoch, held):
         with self._lock:

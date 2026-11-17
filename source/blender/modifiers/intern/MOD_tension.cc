@@ -23,7 +23,7 @@
 #include "BLI_math_vector.hh"
 #include "BLI_offset_indices.hh"
 #include "BLI_span.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 #include "BLI_task.hh"
 #include "BLI_vector.hh"
 
@@ -137,10 +137,10 @@ static Span<float3> rest_positions_get(const TensionModifierData &tmd,
         return {};
       }
       int original_num;
-      if (BMEditMesh *em = BKE_editmesh_from_object(ob)) {
-        original_num = em->bm->totvert;
+      if (const BMesh *bm = BKE_editmesh_bmesh_get(ob)) {
+        original_num = bm->totvert;
         if (original_num == verts_num) {
-          r_storage = BKE_editmesh_vert_coords_alloc_orco(em);
+          r_storage = BKE_editmesh_vert_coords_alloc_orco(bm);
         }
       }
       else {
@@ -331,9 +331,8 @@ static void panel_draw(const bContext * /*C*/, Panel *panel)
   const int rest_source = RNA_enum_get(ptr, "rest_source");
   if (rest_source == MOD_TENSION_REST_SHAPE_KEY) {
     PointerRNA mesh_ptr = RNA_pointer_get(&ob_ptr, "data");
-    PointerRNA key_ptr = RNA_pointer_is_null(&mesh_ptr) ? PointerRNA_NULL :
-                                                           RNA_pointer_get(&mesh_ptr, "shape_keys");
-    if (!RNA_pointer_is_null(&key_ptr)) {
+    PointerRNA key_ptr = mesh_ptr ? RNA_pointer_get(&mesh_ptr, "shape_keys") : PointerRNA();
+    if (key_ptr) {
       layout.prop_search(ptr, "shape_key", &key_ptr, "key_blocks", std::nullopt, ICON_SHAPEKEY_DATA);
     }
     else {

@@ -100,17 +100,18 @@ def test_code(root=ROOT):
         name = path.relative_to(root).as_posix() if path.is_relative_to(root) else path.name
         digest.update(name.encode("utf-8") + b"\0" + path.read_bytes().replace(b"\r\n", b"\n") + b"\0")
     commit = dirty = None
+    import own_checkout   # Git about this tree only: a tree inside another repository has no commit of its own.
     try:
-        head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=30,
-                              env=dict(os.environ, GIT_LFS_SKIP_SMUDGE="1"))
-        if head.returncode == 0:
+        head = own_checkout.git(root, "rev-parse", "HEAD", capture_output=True, text=True, timeout=30,
+                                env=dict(os.environ, GIT_LFS_SKIP_SMUDGE="1"))
+        if head is not None and head.returncode == 0:
             commit = head.stdout.strip()
-            status = subprocess.run(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no", "--",
-                                     "tests/python/angelo_agent", "scripts/addons_core/angelo_agent"],
-                                    capture_output=True, text=True, timeout=30,
-                                    env=dict(os.environ, GIT_LFS_SKIP_SMUDGE="1"))
-            dirty = bool(status.stdout.strip()) if status.returncode == 0 else None
-    except (OSError, subprocess.TimeoutExpired):
+            status = own_checkout.git(root, "status", "--porcelain", "--untracked-files=no", "--",
+                                      "tests/python/angelo_agent", "scripts/addons_core/angelo_agent",
+                                      capture_output=True, text=True, timeout=30,
+                                      env=dict(os.environ, GIT_LFS_SKIP_SMUDGE="1"))
+            dirty = bool(status.stdout.strip()) if status is not None and status.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired, own_checkout.NotOwnCheckout):
         pass
     # An extracted source tree (the Windows bench) has no git: the stage records its commit.
     commit = commit or os.environ.get("ANGELO_SOURCE_COMMIT") or None
@@ -153,6 +154,11 @@ def reuse_problems(reused, plan, tasks, code=None, cross_model=False, expected=N
         if earlier.get(key) != plan.get(key):
             problems.append("its %s was %r, this run's is %r%s" % (key, earlier.get(key), plan.get(key), (
                 "; --cross-model-reuse allows another model or effort" if key in ("model", "effort") else "")))
+    # Both sides of a Claude comparison write their prompt cache at one lifetime (bench_mcp_vs_angelo.
+    # claude_cache_ttl). A run from before plans recorded it left the choice to Claude Code and is paired as before.
+    lifetimes = earlier.get("claude_cache_ttl"), plan.get("claude_cache_ttl")
+    if lifetimes[0] and lifetimes[1] and lifetimes[0] != lifetimes[1]:
+        problems.append("its prompt-cache lifetime was %r, this run's is %r" % lifetimes)
     digests = [(entry or {}).get("reference_digest") for entry in (earlier.get("scenario"), plan.get("scenario"))]
     if digests[0] != digests[1]:
         problems.append("its reference digest was %r, this run's is %r" % tuple(digests))

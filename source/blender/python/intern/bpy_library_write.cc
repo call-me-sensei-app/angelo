@@ -13,7 +13,7 @@
 #include <cstddef>
 
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 
 #include "BKE_blendfile.hh"
 #include "BKE_global.hh"
@@ -27,6 +27,7 @@
 
 #include "RNA_types.hh"
 
+#include "bpy_angelo_guard_confine.hh"
 #include "bpy_capi_utils.hh"
 #include "bpy_library.hh" /* Declaration for #BPY_library_load_method_def */
 #include "bpy_rna.hh"
@@ -97,7 +98,7 @@ static PyObject *bpy_lib_write(BPy_PropertyRNA *self, PyObject *args, PyObject *
   static _PyArg_Parser _parser = {
       "O&" /* `filepath` */
       "O!" /* `datablocks` */
-      "|$" /* Optional keyword only arguments. */
+      "|$" /* Optional, keyword only arguments. */
       "O&" /* `path_remap` */
       "O&" /* `fake_user` */
       "O&" /* `compress` */
@@ -121,6 +122,13 @@ static PyObject *bpy_lib_write(BPy_PropertyRNA *self, PyObject *args, PyObject *
                                         &use_compress,
                                         &compression_min_size))
   {
+    return nullptr;
+  }
+
+  /* A confined script can't save a library it linked that brings code which runs when a file opens (Angelo). */
+  if (const char *refusal = BPY_angelo_guard_library_write_refusal()) {
+    Py_XDECREF(filepath_data.value_coerce);
+    BPY_angelo_guard_raise(refusal, "bpy.data.libraries.write");
     return nullptr;
   }
 

@@ -16,6 +16,7 @@ do next), never tool errors, so a wrong guess costs one read and not the turn.
 """
 
 from .data_path import MAX_PATH_CHARS
+from . import read_only
 
 MAX_ROWS = 64
 DEFAULT_ROWS = 32
@@ -67,7 +68,7 @@ READ_TOOLS = [
     },
 ]
 READ_NAMES = frozenset(tool["name"] for tool in READ_TOOLS)
-_SCHEMAS = {tool["name"]: tool["inputSchema"] for tool in READ_TOOLS}
+READ_SCHEMAS = read_only.frozen({tool["name"]: tool["inputSchema"] for tool in READ_TOOLS})   # As registered, read only.
 
 
 def _whole(value, low, high, label):
@@ -90,7 +91,7 @@ def validate_read(name, args):
     """Shape and bounds only; returns the arguments with their defaults applied."""
     if type(name) is not str or name not in READ_NAMES or type(args) is not dict:
         raise ValueError("Unknown read tool or non-object arguments")
-    schema = _SCHEMAS[name]
+    schema = READ_SCHEMAS[name]
     if set(args) - set(schema["properties"]) or set(schema["required"]) - set(args):
         raise ValueError("Unexpected or missing read argument")
     result = {"offset": _whole(args.get("offset", 0), 0, MAX_OFFSET, "offset"),

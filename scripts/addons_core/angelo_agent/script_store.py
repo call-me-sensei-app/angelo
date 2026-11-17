@@ -36,9 +36,13 @@ TOOL_NAME = "angelo_script"
 SCRIPT_TOOL = "angelo_execute_python"
 SCRIPT_ID = r"^s[0-9a-f]{8}$"
 MAX_EDITS = 32
-MAX_CODE = 32768  # A script's own limit (tool_specs.validate_call).
+# A script's limit, in characters. Written here only: the schema and validation (tool_specs), the script-file reader
+# (script_files) and the tools' descriptions read it, so what an agent is told and what is enforced cannot differ.
+MAX_CODE = 32768
+# Told where the agent decides (the script tools' descriptions), and again by a refusal for length.
+LIMIT_SENTENCE = " A script holds at most %s characters; split longer work into steps." % format(MAX_CODE, ",")
 MAX_BUILT = 64  # Patch calls remembered for a re-delivery (``_built``).
-# Lengths are the built script's (32,768 characters, tool_specs.validate_call), not each edit's.
+# Lengths are the built script's (MAX_CODE, tool_specs.validate_call), not each edit's.
 EDIT = {"type": "object", "properties": {"find": {"type": "string", "minLength": 1}, "replace": {"type": "string"}},
         "required": ["find", "replace"], "additionalProperties": False}
 # The fields angelo_execute_python gains (tool_specs): the patch form beside ``code``.
@@ -129,8 +133,19 @@ def patched(code, edits):
                                    "must occur exactly once (add surrounding lines to make it unique)" % (index, count))
         code = code.replace(edit["find"], edit["replace"], 1)
         if len(code) > MAX_CODE:  # Never build more than a script may hold (tool_specs.validate_call).
-            raise ScriptStoreError("edits[%d] makes the script longer than %s characters" % (index, format(MAX_CODE, ",")))
+            raise ScriptStoreError(over_limit("edits[%d] makes the script" % index, len(code)))
     return code
+
+
+def over_limit(subject, length=None):
+    """The refusal for a script over ``MAX_CODE``: its size (when known), the limit and how to proceed.
+
+    Before 2.0.0 the refusal gave the two numbers only, and nothing told an agent the limit beforehand: a run wrote
+    a whole script, was refused, and had to work out the split by itself (showcase, 2026-11-14). Short enough for
+    a plan's one-line problem (plan_schema)."""
+    size = " (it has %s)" % format(length, ",") if length is not None else ""
+    return ("%s longer than %s characters%s. Split the work into steps, or keep bulk data in a file the script "
+            "reads." % (subject, format(MAX_CODE, ","), size))
 
 
 def expand(controller, name, arguments):

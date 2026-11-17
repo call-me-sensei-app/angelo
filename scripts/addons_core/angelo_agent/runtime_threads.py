@@ -26,7 +26,7 @@ import threading
 import uuid
 from pathlib import Path
 
-from . import shared_replace
+from . import owned_paths, shared_replace
 
 FILE = "worker-threads.json"
 MAX_THREADS = 64     # A chat's threads kept (its own, resumed and forked: a few per context).
@@ -123,6 +123,7 @@ def _read(path):
 def _write(path, data):
     temporary = path.with_name(".%s.%s.tmp" % (FILE, uuid.uuid4().hex))
     try:
+        owned_paths.require_writable(path)   # C first: no temporary is made beside a target it refuses.
         path.parent.mkdir(parents=True, exist_ok=True)
         descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:

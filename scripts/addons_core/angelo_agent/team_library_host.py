@@ -46,6 +46,7 @@ from .team_library_files import (IMAGE_FORMATS, MAX_BYTES, ImportFailed, NotImpo
                                  inspect, sniff)
 from .team_library_spec import PREFIX, validate_team
 from .team_library_transfer import Cancelled, TransferError, download, fetch, upload
+from . import owned_paths  # noqa: E402  (what Angelo made: its cleanups remove only that)
 
 MAX_ACTIVE = 4
 READ_SECONDS, IMPORT_SECONDS, SAVE_SECONDS = 120, 900, 1800
@@ -156,7 +157,7 @@ class Job:
 
     def _remove_folder(self):
         if self.folder is not None:
-            shutil.rmtree(self.folder, ignore_errors=True)
+            owned_paths.remove_tree(self.folder)   # Only the folder Angelo made (owned_paths).
 
 
 class TeamPending(StudioPending):
@@ -291,6 +292,7 @@ class TeamLibraryService:
                 value["preview_note"] = str(error)
                 return value
             path = folder / ("preview" + IMAGE_FORMATS[fmt])
+            owned_paths.require_writable(path)
             path.write_bytes(data)
             value["_preview"] = path
             return value
@@ -369,6 +371,7 @@ class TeamLibraryService:
                      expected=item.get("sizeBytes"), sha256=digest, cancel=cancel)
             facts = inspect(target, item["kind"])
             final = target.with_name("item" + extension(facts["format"]))
+            owned_paths.require_writable(target)
             target.rename(final)
             return {"item": item, "facts": facts, "path": final}
 

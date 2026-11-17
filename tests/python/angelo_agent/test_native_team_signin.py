@@ -10,6 +10,7 @@ tests drive the real listener with real loopback requests.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import base64
 import hashlib
@@ -131,7 +132,7 @@ class ListenerTests(unittest.TestCase):
         status, headers, body = raw(self.callback(listener, code="the-code"))
         self.assertEqual((status, headers["Location"], body), (303, "/result", ""))
         self.assertEqual(headers["Cache-Control"], "no-store")
-        self.assertEqual(listener.wait(5), {"code": "the-code"})
+        self.assertEqual(listener.wait(CAP_S), {"code": "the-code"})
         self.assertTrue(listener.listening, "it stays for the browser's /result")
         threading.Timer(0.2, lambda: listener.finish("signed_in", device="Mika's Mac", org="Northwind")).start()
         status, headers, body = raw("http://127.0.0.1:%d/result" % listener.port)
@@ -158,15 +159,15 @@ class ListenerTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, 405)
         self.assertTrue(listener.listening)
         self.assertEqual(raw(self.callback(listener, code="good"))[0], 303)
-        self.assertEqual(listener.wait(5), {"code": "good"})
+        self.assertEqual(listener.wait(CAP_S), {"code": "good"})
         self.assertEqual(raw(self.callback(listener, code="again"))[1]["Location"], "/already")
         self.assertIn("already complete", raw("http://127.0.0.1:%d/already" % listener.port)[2])
-        self.assertEqual(listener.wait(5), {"code": "good"}, "only the first answer counts")
+        self.assertEqual(listener.wait(CAP_S), {"code": "good"}, "only the first answer counts")
 
     def test_browser_cancel_is_reported(self):
         listener = self.listener()
         self.assertEqual(raw(self.callback(listener, error="access_denied"))[0], 303)
-        self.assertEqual(listener.wait(5), {"error": "access_denied"})
+        self.assertEqual(listener.wait(CAP_S), {"error": "access_denied"})
         listener.finish("denied")
         self.assertIn("Sign-in cancelled", raw("http://127.0.0.1:%d/result" % listener.port)[2])
 
@@ -189,7 +190,7 @@ class ListenerTests(unittest.TestCase):
         port = listener.port
         listener.close()
         listener.close()  # Idempotent.
-        self.assertEqual(listener.wait(1), {"error": "cancelled"})
+        self.assertEqual(listener.wait(CAP_S), {"error": "cancelled"})
         self.assertTrue(refused(port))
 
     def test_no_request_is_logged(self):
@@ -200,11 +201,11 @@ class ListenerTests(unittest.TestCase):
         with contextlib.redirect_stderr(stderr):
             raw(self.callback(listener, code="secret-code", state="wrong"))
             raw(self.callback(listener, code="secret-code"))
-            listener.wait(5)
+            listener.wait(CAP_S)
         self.assertNotIn("secret-code", stderr.getvalue())
 
 
-def wait_until(predicate, timeout=5):
+def wait_until(predicate, timeout=CAP_S):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():

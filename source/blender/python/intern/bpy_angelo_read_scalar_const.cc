@@ -16,20 +16,21 @@
 
 #include "ANIM_action.hh"
 
-#include "BLI_expr_pylike_eval.h"
+#include "BLI_expr_pylike_eval.hh"
 #include "BLI_bounds.hh"
-#include "BLI_math_base.h"
-#include "BLI_math_geom.h"
-#include "BLI_math_matrix.h"
+#include "BLI_math_base.hh"
+#include "BLI_math_geom.hh"
 #include "BLI_math_matrix.hh"
-#include "BLI_math_rotation.h"
-#include "BLI_math_vector.h"
-#include "BLI_listbase.h"
+#include "BLI_math_matrix.hh"
+#include "BLI_math_rotation.hh"
+#include "BLI_math_rotation_c.hh"
+#include "BLI_math_vector.hh"
+#include "BLI_listbase.hh"
 #include "BLI_span.hh"
-#include "BLI_string.h"
-#include "BLI_string_utf8.h"
-#include "BLI_threads.h"
-#include "BLI_utildefines.h"
+#include "BLI_string.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_threads.hh"
+#include "BLI_utildefines.hh"
 
 #include "BKE_action.hh"
 #include "BKE_anim_path.h"
@@ -237,13 +238,13 @@ Span<Binding> scalar_bindings()
 
 const Binding *binding_for(const StructRNA &type, const PropertyRNA &property, const bool items)
 {
-  if (!declaration_is_native(property) || !property.identifier) {
+  if (!declaration_is_native(property) || property.identifier.is_empty()) {
     return nullptr;
   }
   for (const Binding &binding : scalar_bindings()) {
     if (items != (binding.role == Role::ENUM_ITEMS) || !derives(type, binding.owner) ||
         property.type != binding.type || property.subtype != binding.subtype ||
-        !STREQ(property.identifier, binding.property) ||
+        property.identifier != binding.property ||
         !source_is(property, binding.role, binding.file, binding.symbol))
     {
       continue;
@@ -533,11 +534,11 @@ Status parent_vertex(angelo_read_geometry::Scope &geometry,
     }
   }
   else if (ELEM(parent.type, OB_CURVES_LEGACY, OB_SURF)) {
-    if ((!parent.runtime->curve_cache || !parent.runtime->curve_cache->deformed_nurbs.first) &&
+    if ((!parent.runtime->curve_cache || !parent.runtime->curve_cache->deformed_nurbs.first()) &&
         (!parent.data || GS(parent.data->name) != ID_CU_LEGACY))
     { return Status::INVALID_STORAGE; }
     const ListBaseT<Nurb> *nurbs = parent.runtime->curve_cache &&
-                                         parent.runtime->curve_cache->deformed_nurbs.first ?
+                                         parent.runtime->curve_cache->deformed_nurbs.first() ?
                                      &parent.runtime->curve_cache->deformed_nurbs :
                                      BKE_curve_nurbs_get_for_read(
                                          reinterpret_cast<const Curve *>(parent.data));
@@ -1062,7 +1063,7 @@ Value value(Scope &scope,
         };
         /* query_all_strips_recursive is child-before-parent. Preserve that exact search order
          * with O(meta-depth) pointer storage instead of building its O(all-strips) VectorSet. */
-        std::vector<Pending> pending = {{static_cast<const Strip *>(scene.ed->seqbase.first), nullptr}};
+        std::vector<Pending> pending = {{static_cast<const Strip *>(scene.ed->seqbase.first()), nullptr}};
         const auto &key = *static_cast<const SeqRetimingKey *>(owner.data);
         const Strip *found = nullptr;
         bool malformed = false;
@@ -1093,7 +1094,7 @@ Value value(Scope &scope,
           const Strip *strip = frame.next;
           frame.next = strip->next;
           if (strip->type == STRIP_TYPE_META) {
-            pending.push_back({static_cast<const Strip *>(strip->seqbase.first), strip});
+            pending.push_back({static_cast<const Strip *>(strip->seqbase.first()), strip});
           }
           else if (matches(*strip)) {
             found = strip;
@@ -1513,7 +1514,7 @@ EnumResult enum_items(Scope &scope,
       if (!owner.data || !selected) { result.status = Status::INVALID_STORAGE; return result; }
       const auto &transfer = *static_cast<const DataTransferModifierData *>(owner.data);
       const bool source = family == DATA_TRANSFER_SOURCE_ITEMS;
-      const char *identifier = property.identifier;
+      const char *identifier = property.identifier.c_str();
       const bool groups = STRPREFIX(identifier, "layers_vgroup_");
       const bool uv = STRPREFIX(identifier, "layers_uv_");
       const bool vertex_color = STRPREFIX(identifier, "layers_vcol_vert_");
@@ -1695,7 +1696,7 @@ EnumResult enum_items(Scope &scope,
     case NODE_INPUT_MENU_ITEMS:
       if (owner.data) {
         const auto &node = *static_cast<const bNode *>(owner.data);
-        append_menu_items(result, static_cast<const bNodeSocket *>(node.outputs.first));
+        append_menu_items(result, static_cast<const bNodeSocket *>(node.outputs.first()));
       }
       return result;
     case ANNOTATION_LAYER_ITEMS: {

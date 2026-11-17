@@ -22,6 +22,7 @@ is English.
 
 from .view_exr import ExrError, read_channels, read_parts, write_rgba
 from .view_pixels import encode_rgba_png, to_bytes
+from . import owned_paths
 
 LISTED = 12             # Passes a refusal names.
 FAR = 1e9               # Depth at or beyond this is no hit (Cycles writes 1e10).
@@ -158,6 +159,7 @@ def pass_source(scene, path, references, label, what, facts, item, active_layer,
         rgba = numpy.stack([planes["R"], planes["G"], planes["B"], planes.get("A", numpy.ones_like(planes["R"]))], -1)
         linear = references.new_observation(label + " · linear")
         try:
+            owned_paths.require_writable(linear["path"])
             write_rgba(linear["path"], rgba)
             copy, unrestored, exact, more = linear_file(scene, linear["path"], references, label)
         finally:
@@ -171,6 +173,7 @@ def pass_source(scene, path, references, label, what, facts, item, active_layer,
     rows[..., :3], rows[..., 3] = to_bytes(rgb), 255
     reference = references.new_observation(label + " · data")
     try:
+        owned_paths.require_writable(reference["path"])
         with open(reference["path"], "wb") as handle:
             handle.write(encode_rgba_png(rows))
     except Exception:
@@ -228,6 +231,7 @@ def file_pass_source(window, path, references, label, what, facts, item):
     private = references.new_observation(label + " · source copy")
     try:
         try:
+            owned_paths.require_writable(private["path"])
             with open(private["path"], "wb") as destination:
                 copy_output(path, destination, MAX_BYTES)
         except (OSError, ValueError) as error:

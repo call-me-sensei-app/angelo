@@ -41,11 +41,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/modules"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # macos_window, inside the app.
+sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 import angelo_identity  # noqa: E402
+from angelo_agent.blender_release import RELEASE  # noqa: E402
 
 FATAL = ("BLI_assert failed", "Segmentation fault", "Traceback")
 IDENTITY_PATHS = angelo_identity.data()["paths"]
-VERSION = "5.2"
+VERSION = RELEASE   # The Blender this source builds (test_native_api_drift pins it to BLENDER_VERSION).
 
 
 def expected_roots(home, platform):
@@ -323,9 +325,9 @@ def windows_checks(identity):
 
 def window():
     identity = angelo_identity.data()
-    # Blender's own version plumbing (file compatibility, add-on checks, the 5.2 folders) is untouched.
-    check("blender_version_plumbing_untouched", tuple(bpy.app.version[:2]) == (5, 2)
-          and bpy.app.version_string.startswith("5.2") and bpy.app.version_string != identity["version"]["label"])
+    # Blender's own version plumbing (file compatibility, add-on checks, the per-version folders) is untouched.
+    check("blender_version_plumbing_untouched", "%d.%d" % tuple(bpy.app.version[:2]) == VERSION
+          and bpy.app.version_string.startswith(VERSION) and bpy.app.version_string != identity["version"]["label"])
     if sys.platform == "darwin":
         macos_bundle_checks(identity)
     elif sys.platform == "win32":
@@ -378,7 +380,7 @@ def window():
     about = draw(bpy.types.WM_MT_splash_about)
     labels = [i["label"] for i in about if "label" in i]
     report["about_labels"] = labels
-    check("about_says_based_on_blender", any(label.startswith("Based on Blender 5.2") for label in labels))
+    check("about_says_based_on_blender", any(label.startswith("Based on Blender " + VERSION) for label in labels))
     check("about_shows_angelos_version", "Angelo " + angelo_identity.APP_VERSION_DISPLAY in labels)
     check("about_has_no_branch_line", not any(label.startswith("Branch") for label in labels))
     check("about_says_angelo_is_free_software", "Angelo is free software" in labels)
@@ -448,7 +450,8 @@ def window_title_checks(identity):
     shown = label[:-2] if label.endswith(".0") and label.count(".") == 2 else label  # "1.0" for 1.0.0.
     titled = [(window, title) for window, title, visible in macos_window.windows() if visible and title]
     report["window_titles"] = [title for _, title in titled]
-    check("window_title_names_angelos_version", any(title.endswith(" - %s %s" % (product, shown)) for _, title in titled))
+    # Blender 5.3 separates the product with an em dash, " — Blender 5.3" (upstream 088eb9ca9a9); Angelo's title follows.
+    check("window_title_names_angelos_version", any(title.endswith(" \u2014 %s %s" % (product, shown)) for _, title in titled))
     check("window_title_does_not_name_blender", not any("Blender" in title for _, title in titled))
     report["window_title_captured"] = bool(titled) and macos_window.capture_frame(titled[0][0], OUT / "window-title.png")
 

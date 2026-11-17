@@ -10,6 +10,7 @@ allows: whitespace without end, or text that keeps growing. The two healthy mess
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import sys
@@ -153,7 +154,7 @@ class RunawayAppServer(ScriptedAppServer):
     def play(self, thread, turn, steps):
         if not steps or steps[0][0] not in ("runaway", "recorded"):
             return super().play(thread, turn, steps)
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + CAP_S
         while self.provider.turn_id != turn and time.monotonic() < deadline:
             time.sleep(0.001)
         ids = {"threadId": thread, "turnId": turn}

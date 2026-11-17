@@ -30,10 +30,11 @@
 #include "DNA_vfont_types.h"
 #include "DNA_volume_types.h"
 
-#include "BLI_listbase.h"
+#include "BLI_angelo_writers.hh"
+#include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_utildefines.h"
+#include "BLI_string.hh"
+#include "BLI_utildefines.hh"
 
 #include "BKE_angelo_image_source.hh"
 #include "BKE_bake_geometry_nodes_modifier.hh"
@@ -130,31 +131,25 @@ PackedFileCount BKE_packedfile_count_all(Main *bmain)
   PackedFileCount count;
 
   /* let's check if there are packed files... */
-  for (ima = static_cast<Image *>(bmain->images.first); ima;
-       ima = static_cast<Image *>(ima->id.next))
-  {
+  for (ima = bmain->images.first(); ima; ima = static_cast<Image *>(ima->id.next)) {
     if (BKE_image_has_packedfile(ima) && !ID_IS_LINKED(ima)) {
       count.individual_files++;
     }
   }
 
-  for (vf = static_cast<VFont *>(bmain->fonts.first); vf; vf = static_cast<VFont *>(vf->id.next)) {
+  for (vf = bmain->fonts.first(); vf; vf = static_cast<VFont *>(vf->id.next)) {
     if (vf->packedfile && !ID_IS_LINKED(vf)) {
       count.individual_files++;
     }
   }
 
-  for (sound = static_cast<bSound *>(bmain->sounds.first); sound;
-       sound = static_cast<bSound *>(sound->id.next))
-  {
+  for (sound = bmain->sounds.first(); sound; sound = static_cast<bSound *>(sound->id.next)) {
     if (sound->packedfile && !ID_IS_LINKED(sound)) {
       count.individual_files++;
     }
   }
 
-  for (volume = static_cast<Volume *>(bmain->volumes.first); volume;
-       volume = static_cast<Volume *>(volume->id.next))
-  {
+  for (volume = bmain->volumes.first(); volume; volume = static_cast<Volume *>(volume->id.next)) {
     if (volume->packedfile && !ID_IS_LINKED(volume)) {
       count.individual_files++;
     }
@@ -213,7 +208,7 @@ PackedFile *BKE_packedfile_new_from_memory(const void *mem,
   BLI_assert(mem != nullptr);
   if (!sharing_info) {
     /* Assume we are the only owner of that memory currently. */
-    sharing_info = implicit_sharing::info_for_mem_free(const_cast<void *>(mem));
+    sharing_info = implicit_sharing::info_for_mem_free(static_cast<const std::byte *>(mem));
   }
 
   PackedFile *pf = MEM_new<PackedFile>("PackedFile");
@@ -285,9 +280,7 @@ void BKE_packedfile_pack_all(Main *bmain, ReportList *reports, bool verbose)
   Volume *volume;
   int tot = 0;
 
-  for (ima = static_cast<Image *>(bmain->images.first); ima;
-       ima = static_cast<Image *>(ima->id.next))
-  {
+  for (ima = bmain->images.first(); ima; ima = static_cast<Image *>(ima->id.next)) {
     if (BKE_image_has_packedfile(ima) == false && ID_IS_EDITABLE(ima)) {
       if (ELEM(ima->source, IMA_SRC_FILE, IMA_SRC_TILED)) {
         BKE_image_packfiles(reports, ima, ID_BLEND_PATH(bmain, &ima->id));
@@ -302,9 +295,7 @@ void BKE_packedfile_pack_all(Main *bmain, ReportList *reports, bool verbose)
     }
   }
 
-  for (vfont = static_cast<VFont *>(bmain->fonts.first); vfont;
-       vfont = static_cast<VFont *>(vfont->id.next))
-  {
+  for (vfont = bmain->fonts.first(); vfont; vfont = static_cast<VFont *>(vfont->id.next)) {
     if (vfont->packedfile == nullptr && ID_IS_EDITABLE(vfont) &&
         BKE_vfont_is_builtin(vfont) == false)
     {
@@ -314,9 +305,7 @@ void BKE_packedfile_pack_all(Main *bmain, ReportList *reports, bool verbose)
     }
   }
 
-  for (sound = static_cast<bSound *>(bmain->sounds.first); sound;
-       sound = static_cast<bSound *>(sound->id.next))
-  {
+  for (sound = bmain->sounds.first(); sound; sound = static_cast<bSound *>(sound->id.next)) {
     if (sound->packedfile == nullptr && ID_IS_EDITABLE(sound)) {
       sound->packedfile = BKE_packedfile_new(
           reports, sound->filepath, BKE_main_blendfile_path(bmain));
@@ -324,9 +313,7 @@ void BKE_packedfile_pack_all(Main *bmain, ReportList *reports, bool verbose)
     }
   }
 
-  for (volume = static_cast<Volume *>(bmain->volumes.first); volume;
-       volume = static_cast<Volume *>(volume->id.next))
-  {
+  for (volume = bmain->volumes.first(); volume; volume = static_cast<Volume *>(volume->id.next)) {
     if (volume->packedfile == nullptr && ID_IS_EDITABLE(volume)) {
       volume->packedfile = BKE_packedfile_new(
           reports, volume->filepath, BKE_main_blendfile_path(bmain));
@@ -370,6 +357,12 @@ int BKE_packedfile_write_to_file(ReportList *reports,
 
   STRNCPY(filepath, filepath_rel);
   BLI_path_abs(filepath, ref_file_name);
+
+  /* Angelo: unpacking writes where the data names (BLI_angelo_writers.hh), by the inputs the unpack set. */
+  if (const char *refusal = angelo_writers::refusal(filepath)) {
+    BKE_reportf(reports, RPT_ERROR, "%s: '%s'", refusal, filepath);
+    return RET_ERROR;
+  }
 
   if (BLI_exists(filepath)) {
     for (number = 1; number <= 999; number++) {
@@ -565,7 +558,7 @@ static void unpack_generate_paths(const char *filepath,
      * a file extension based on the file magic. */
     if (id_type == ID_IM) {
       Image *ima = id_cast<Image *>(id);
-      ImagePackedFile *imapf = static_cast<ImagePackedFile *>(ima->packedfiles.last);
+      ImagePackedFile *imapf = ima->packedfiles.last();
       if (imapf != nullptr && imapf->packedfile != nullptr) {
         const PackedFile *pf = imapf->packedfile;
         enum eImbFileType ftype = eImbFileType(
@@ -620,6 +613,24 @@ static void unpack_generate_paths(const char *filepath,
   }
 }
 
+/** Angelo: the RNA type whose `filepath` a packed data-block's file is (BLI_angelo_writers.hh: a writer names the
+ * type its input is defined on). */
+static const char *angelo_packed_rna_type(const ID &id)
+{
+  switch (GS(id.name)) {
+    case ID_IM:
+      return "Image";
+    case ID_SO:
+      return "Sound";
+    case ID_VF:
+      return "VectorFont";
+    case ID_VO:
+      return "Volume";
+    default:
+      return "ID"; /* No such property: the writers' gate judges every write from it (it fails closed). */
+  }
+}
+
 char *BKE_packedfile_unpack(Main *bmain,
                             ReportList *reports,
                             ID *id,
@@ -631,6 +642,18 @@ char *BKE_packedfile_unpack(Main *bmain,
   char *new_name = nullptr;
 
   if (id != nullptr) {
+    /* Angelo: the unpacked file's path is built from the data-block's file and, unpacked locally, its name
+     * (BLI_angelo_writers.hh). */
+    const char *type = angelo_packed_rna_type(*id);
+    Vector<angelo_writers::Input, 3> inputs = {
+        {id, id, type, "filepath"}, {id, nullptr, type, GS(id->name) == ID_IM ? "filepath_raw" : "filepath"}};
+    /* Both paths are named after the data-block when its packed file's path has no file name (a generated image),
+     * whatever `how` (unpack_generate_paths; the re-read of 70600d6438b, MUST-2: a name is an input exactly where
+     * the path uses it). */
+    if (orig_file_path == nullptr || BLI_path_basename(orig_file_path)[0] == '\0') {
+      inputs.append({id, nullptr, "ID", "name"});
+    }
+    const angelo_writers::InputScope scope(inputs);
     unpack_generate_paths(
         orig_file_path, id, absname, sizeof(absname), localname, sizeof(localname));
     new_name = BKE_packedfile_unpack_to_file(
@@ -696,9 +719,14 @@ int BKE_packedfile_unpack_image(Main *bmain,
   int ret_value = RET_ERROR;
 
   if (ima != nullptr) {
-    const bool had_packed_files = ima->packedfiles.last != nullptr;
-    while (ima->packedfiles.last) {
-      ImagePackedFile *imapf = static_cast<ImagePackedFile *>(ima->packedfiles.last);
+    /* Angelo: a packed file whose unpack failed (a write refused by the confinement, or any write error) stays
+     * packed, never dropped as if it were written: its data would be lost, and its record leaked (the re-read of
+     * cf5befe2877, M2's class: a refused write never changes state as if it wrote). */
+    bool removed_any = false;
+    ImagePackedFile *next_imapf = ima->packedfiles.last();
+    while (next_imapf != nullptr) {
+      ImagePackedFile *imapf = next_imapf;
+      next_imapf = imapf->prev;
       char *new_file_path = BKE_packedfile_unpack(
           bmain, reports, id_cast<ID *>(ima), imapf->filepath, imapf->packedfile, how);
 
@@ -725,17 +753,17 @@ int BKE_packedfile_unpack_image(Main *bmain,
           }
         }
         MEM_delete(new_file_path);
+        BLI_remlink(&ima->packedfiles, imapf);
+        MEM_delete(imapf);
+        removed_any = true;
       }
       else {
-        ret_value = RET_ERROR;
+        ret_value = RET_ERROR; /* Kept packed. */
       }
-
-      BLI_remlink(&ima->packedfiles, imapf);
-      MEM_delete(imapf);
     }
-    if (had_packed_files) {
-      /* This path removes the packed records directly, even when extraction reports an error.
-       * Invalidate their source evidence independently of the optional reload below. */
+    if (removed_any) {
+      /* This path removes the packed records directly. Invalidate their source evidence independently of the
+       * optional reload below. */
       bke::angelo_image_source_changed(*ima);
     }
   }
@@ -779,10 +807,11 @@ int BKE_packedfile_unpack_all_libraries(Main *bmain, ReportList *reports)
   char *newname;
   int ret_value = RET_ERROR;
 
-  for (lib = static_cast<Library *>(bmain->libraries.first); lib;
-       lib = static_cast<Library *>(lib->id.next))
-  {
+  for (lib = bmain->libraries.first(); lib; lib = static_cast<Library *>(lib->id.next)) {
     if (lib->packedfile && lib->filepath[0]) {
+      /* Angelo: a library unpacks to the file it names (BLI_angelo_writers.hh). */
+      const angelo_writers::Input inputs[] = {{&lib->id, lib, "Library", "filepath"}};
+      const angelo_writers::InputScope scope(inputs);
 
       newname = BKE_packedfile_unpack_to_file(reports,
                                               BKE_main_blendfile_path(bmain),
@@ -813,9 +842,7 @@ void BKE_packedfile_pack_all_libraries(Main *bmain, ReportList *reports)
   /* Only allow libraries with relative paths (to avoid issues when unpacking, a limitation that we
    * might want to lift since the "relativeness" does not really ensure sanity significantly more).
    */
-  for (lib = static_cast<Library *>(bmain->libraries.first); lib;
-       lib = static_cast<Library *>(lib->id.next))
-  {
+  for (lib = bmain->libraries.first(); lib; lib = static_cast<Library *>(lib->id.next)) {
     /* Exception to the above: essential assets have an absolute path and should not prevent to
      * operator from continuing. */
     if (BLI_path_contains(asset_system::essentials_directory_path().c_str(), lib->filepath)) {
@@ -832,9 +859,7 @@ void BKE_packedfile_pack_all_libraries(Main *bmain, ReportList *reports)
     return;
   }
 
-  for (lib = static_cast<Library *>(bmain->libraries.first); lib;
-       lib = static_cast<Library *>(lib->id.next))
-  {
+  for (lib = bmain->libraries.first(); lib; lib = static_cast<Library *>(lib->id.next)) {
     /* Do not really pack essential assets though (see above). */
     if (BLI_path_contains(asset_system::essentials_directory_path().c_str(), lib->filepath)) {
       continue;
@@ -852,31 +877,25 @@ void BKE_packedfile_unpack_all(Main *bmain, ReportList *reports, enum ePF_FileSt
   bSound *sound;
   Volume *volume;
 
-  for (ima = static_cast<Image *>(bmain->images.first); ima;
-       ima = static_cast<Image *>(ima->id.next))
-  {
+  for (ima = bmain->images.first(); ima; ima = static_cast<Image *>(ima->id.next)) {
     if (BKE_image_has_packedfile(ima) && !ID_IS_LINKED(ima)) {
       BKE_packedfile_unpack_image(bmain, reports, ima, how);
     }
   }
 
-  for (vf = static_cast<VFont *>(bmain->fonts.first); vf; vf = static_cast<VFont *>(vf->id.next)) {
+  for (vf = bmain->fonts.first(); vf; vf = static_cast<VFont *>(vf->id.next)) {
     if (vf->packedfile && !ID_IS_LINKED(vf)) {
       BKE_packedfile_unpack_vfont(bmain, reports, vf, how);
     }
   }
 
-  for (sound = static_cast<bSound *>(bmain->sounds.first); sound;
-       sound = static_cast<bSound *>(sound->id.next))
-  {
+  for (sound = bmain->sounds.first(); sound; sound = static_cast<bSound *>(sound->id.next)) {
     if (sound->packedfile && !ID_IS_LINKED(sound)) {
       BKE_packedfile_unpack_sound(bmain, reports, sound, how);
     }
   }
 
-  for (volume = static_cast<Volume *>(bmain->volumes.first); volume;
-       volume = static_cast<Volume *>(volume->id.next))
-  {
+  for (volume = bmain->volumes.first(); volume; volume = static_cast<Volume *>(volume->id.next)) {
     if (volume->packedfile && !ID_IS_LINKED(volume)) {
       BKE_packedfile_unpack_volume(bmain, reports, volume, how);
     }
@@ -977,9 +996,8 @@ void BKE_packedfile_blend_write(BlendWriter *writer, const PackedFile *pf)
   if (pf == nullptr) {
     return;
   }
-  BLO_write_shared(writer, pf->data, pf->size, pf->sharing_info, [&]() {
-    writer->write_raw(pf->size, pf->data);
-  });
+  writer->write_shared(
+      pf->data, pf->size, pf->sharing_info, [&]() { writer->write_raw(pf->size, pf->data); });
   writer->write_struct(pf);
 }
 
@@ -996,7 +1014,9 @@ void BKE_packedfile_blend_read(BlendDataReader *reader, PackedFile **pf_p, Strin
     BLO_read_array_and_validate_size(
         reader, reinterpret_cast<std::byte **>(const_cast<void **>(&pf->data)), &pf->size);
     /* Do not create an implicit sharing if read data pointer is `nullptr`. */
-    return pf->data ? implicit_sharing::info_for_mem_free(const_cast<void *>(pf->data)) : nullptr;
+    return pf->data ?
+               implicit_sharing::info_for_mem_free(static_cast<const std::byte *>(pf->data)) :
+               nullptr;
   });
   if (pf->data == nullptr) {
     /* We cannot allow a #PackedFile with a nullptr data field,

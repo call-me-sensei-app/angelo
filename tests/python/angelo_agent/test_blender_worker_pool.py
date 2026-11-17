@@ -81,7 +81,7 @@ def recorded(make):
     def new_chat(lead):
         chat = make(lead)
 
-        def send(text, observation=None, recovery_evidence=None, chat=chat):
+        def send(text, observation=None, recovery_evidence=None, host_kind=None, chat=chat):
             sent.setdefault(chat.state["id"], []).append((time.perf_counter(), text))
             if HOSTED:   # Really sent: its worker's turn runs (the stand-in keeps working) and the mirror shows it.
                 HostedWorkerChat.send_brief(chat, text)
@@ -202,7 +202,7 @@ def lead_merge(lead, window, arguments):
 
     def apply_mutation(target, call):
         with bpy.context.temp_override(window=window):
-            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
     started = time.perf_counter()
     while not answers and time.perf_counter() - started < 120:
         lead.pump_events()

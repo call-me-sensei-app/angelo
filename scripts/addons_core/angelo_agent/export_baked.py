@@ -22,6 +22,7 @@ bound objects, with one ``Reader`` per export. Main thread only.
 
 from contextlib import contextmanager
 
+from . import edit_tool_hold
 import bpy
 from bpy.props import BoolProperty, CollectionProperty, IntProperty, PointerProperty, StringProperty
 
@@ -132,6 +133,7 @@ def plan(objects, depsgraph):
             "updated": updated}
 
 
+@edit_tool_hold.guarded   # Touches Blender data: waits for the person's operation.
 def _record():
     """Record ``SCHEME`` on the bindings a plan found current although made before it: their digest already says what
     a bake reads now, so a later change is the person's edit, said as such (``baked_stale``), never the update's.

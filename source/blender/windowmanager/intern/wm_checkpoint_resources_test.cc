@@ -12,7 +12,7 @@
 
 #include "BKE_report.hh"
 #include "BLI_checkpoint_budget.hh"
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 
 #include "wm_checkpoint.hh"
 

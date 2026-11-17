@@ -17,11 +17,13 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Operator
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import external_setup, live_windows
 from .external_apps import waiting
 from .external_clients import APP_NAMES, AppRegistry, DEFAULT_CLIENT
 
 OFFERED = ("claude_code", "codex")   # The apps Angelo sets up in 1.0.2 (external_mcp.rst).
+COPYABLE = ("claude_code", "codex", "claude_desktop", "cursor", "vscode", "other")   # Copy setup, Disconnect.
 from .ui_text import iface_, n_, rpt_
 
 # app -> (ok, template, fields) of the last Connect/Disconnect, shown translated on its card until the next one.
@@ -29,6 +31,9 @@ results = {}
 ADDED_SESSION = n_("Added Angelo to {app}. Start a new {app} session to use it.")
 ADDED_RESTART = n_("Added Angelo to {app}. Restart {app} to load it.")
 REMOVED = n_("Removed Angelo from {app}.")
+DISCONNECTED_ONLY = n_("Disconnected in Angelo. Remove Angelo from {app}'s MCP settings yourself if it's there.")
+NOT_SAVED = n_("Angelo could not save this connection. Check that Angelo's folder can be written, then try again.")
+WINDOWS_LATER = n_("Coming to Windows in a later update.")
 NOT_CHANGED = n_("{app}'s settings were not changed ({reason}). Copy the setup and paste it there yourself.")
 _busy = set()
 
@@ -53,35 +58,59 @@ def _redraw():
     return None
 
 
-def line(app):
-    """The card's translated result line for ``app``, or ""."""
-    if app not in results:
+def line(key):
+    """The card's translated result line for ``key`` (an app, or a generic MCP app's client), or ""; the app's name
+    shown as the card shows it (``MCP app`` translated, product names as written: break-it review N3)."""
+    if key not in results:
         return ""
-    _ok, template, fields = results[app]
-    return iface_(template, **fields)
+    _ok, template, fields = results[key]
+    return iface_(template, **dict(fields, app=iface_(fields["app"])))
 
 
-def _in_background(app, work, done):
-    """Run ``work()`` off the main thread; ``done`` (a template) or the error lands in ``results``; then redraw."""
-    if app in _busy:
+def _in_background(app, work, done, key=None):
+    """Run ``work()`` off the main thread; ``done`` (a template, or a function of what ``work`` returned that gives
+    one) or the error lands in ``results[key or app]``; then redraw."""
+    key = key or app
+    if key in _busy:
         return False
-    _busy.add(app)
+    _busy.add(key)
 
     def run():
         try:
-            work()
-            results[app] = (True, done, {"app": APP_NAMES[app]})
+            result = work()
+            results[key] = (True, done(result) if callable(done) else done, {"app": APP_NAMES[app]})
         except Exception as error:  # noqa: BLE001 - shown on the card, with the snippet to paste.
-            results[app] = (False, NOT_CHANGED, {"app": APP_NAMES[app], "reason": str(error)[:200]})
+            results[key] = (False, NOT_CHANGED, {"app": APP_NAMES[app], "reason": str(error)[:200]})
         finally:
-            _busy.discard(app)
+            _busy.discard(key)
             bpy.app.timers.register(_redraw, first_interval=0.0)
     try:
         threading.Thread(target=run, daemon=True, name="AngeloAppSetup").start()
     except RuntimeError as error:   # No thread to set it up on: not busy, and the card says why (``thread_start``).
-        _busy.discard(app)
-        results[app] = (False, NOT_CHANGED, {"app": APP_NAMES[app], "reason": str(error)[:200]})
+        _busy.discard(key)
+        results[key] = (False, NOT_CHANGED, {"app": APP_NAMES[app], "reason": str(error)[:200]})
     return True
+
+
+def _refused(operator):
+    """Why access for external apps can't be granted here, reported; or False (Connect and Copy setup alike)."""
+    from . import managed_policy
+    if not managed_policy.current().allow_local_cli_access:
+        operator.report({'ERROR'}, rpt_("Turned off by your organization."))
+        return True
+    if sys.platform == "win32":   # No named pipe yet (external_mcp.rst): nothing registered, access stays off.
+        operator.report({'ERROR'}, rpt_(WINDOWS_LATER))
+        return True
+    return False
+
+
+def _access_on(context):
+    """As Connect and Copy setup do: apps on this computer may reach Angelo (inside the person's guarded call)."""
+    from . import ui
+    prefs = ui.preferences()
+    if prefs is not None and not prefs.allow_local_cli:
+        prefs.allow_local_cli = True
+        context.preferences.is_dirty = True
 
 
 class ANGELO_OT_external_app_connect(Operator):
@@ -92,21 +121,22 @@ class ANGELO_OT_external_app_connect(Operator):
     app: StringProperty(options={'SKIP_SAVE'})
 
     def execute(self, context):
-        from . import managed_policy, ui
-        if self.app not in OFFERED:
-            return {'CANCELLED'}
-        if not managed_policy.current().allow_local_cli_access:
-            self.report({'ERROR'}, rpt_("Turned off by your organization."))
-            return {'CANCELLED'}
-        if sys.platform == "win32":   # No named pipe yet (external_mcp.rst).
-            self.report({'ERROR'}, rpt_("Coming to Windows in a later update."))
+        if self.app not in OFFERED or _refused(self):
             return {'CANCELLED'}
         state = _state()
-        name = AppRegistry(state).connect(self.app)
-        prefs = ui.preferences()
-        if prefs is not None and not prefs.allow_local_cli:
-            prefs.allow_local_cli = True
-            context.preferences.is_dirty = True
+        registry = AppRegistry(state)
+        known = DEFAULT_CLIENT[self.app] in registry.load()
+        try:
+            name = registry.connect(self.app)
+        except OSError:
+            if not known:   # Never a key without its record (break-it review N6).
+                try:
+                    registry.disconnect(DEFAULT_CLIENT[self.app])
+                except OSError:
+                    pass
+            self.report({'ERROR'}, rpt_(NOT_SAVED))
+            return {'CANCELLED'}
+        _access_on(context)
         python, app = _python(), self.app
         _in_background(app, lambda: external_setup.connect(app, python, state, name=name),
                        ADDED_SESSION if app in {"claude_code", "codex"} else ADDED_RESTART)
@@ -120,15 +150,29 @@ class ANGELO_OT_external_app_disconnect(Operator):
     bl_description = "Remove Angelo from this app's MCP settings and revoke its access"
     bl_options = {'INTERNAL'}
     app: StringProperty(options={'SKIP_SAVE'})
+    client: StringProperty(options={'SKIP_SAVE'})   # A generic MCP app's own client (external_copy).
 
     def execute(self, context):
-        if self.app not in OFFERED:
+        if self.app not in COPYABLE:
             return {'CANCELLED'}
-        AppRegistry(_state()).disconnect(DEFAULT_CLIENT[self.app])   # Forgets its script files too.
+        registry = AppRegistry(_state())
+        name = _client(self.app, self.client)
+        registry.disconnect(name)   # Forgets its script files too.
         app = self.app
-        _in_background(app, lambda: external_setup.disconnect(app), REMOVED)
+        # Says what happened: the app's settings changed, or only Angelo's side did (break-it review N2).
+        _in_background(app, lambda: external_setup.disconnect(app), lambda removed: REMOVED if removed
+                       else DISCONNECTED_ONLY, key=name if app == "other" else app)
         _redraw()
         return {'FINISHED'}
+
+
+def _client(app, client):
+    """The connection Disconnect and Forget act on: a generic MCP app's own client, or the app's (never a new one)."""
+    from .external_copy import GENERIC
+    if app == "other":
+        numbered = client.startswith(GENERIC + "-") and client[len(GENERIC) + 1:].isdigit()
+        return client if numbered else GENERIC   # Only a client name Copy setup makes: never a path.
+    return DEFAULT_CLIENT[app]
 
 
 def _forget_script_files(client):
@@ -146,11 +190,12 @@ class ANGELO_OT_external_app_forget_scripts(Operator):
     bl_description = "Ask again before this app runs any script file you allowed while it's unchanged"
     bl_options = {'INTERNAL'}
     app: StringProperty(options={'SKIP_SAVE'})
+    client: StringProperty(options={'SKIP_SAVE'})   # A generic MCP app's own client (external_copy).
 
     def execute(self, context):
-        if self.app not in OFFERED:
+        if self.app not in COPYABLE:
             return {'CANCELLED'}
-        if _forget_script_files(DEFAULT_CLIENT[self.app]) is None:
+        if _forget_script_files(_client(self.app, self.client)) is None:
             self.report({'ERROR'}, rpt_("Angelo could not save this change, so a session running without Angelo's "
                                         "window may still allow these script files. Try again."))
             return {'CANCELLED'}
@@ -161,15 +206,32 @@ class ANGELO_OT_external_app_forget_scripts(Operator):
 class ANGELO_OT_external_app_copy_setup(Operator):
     bl_idname = "angelo.external_app_copy_setup"
     bl_label = "Copy Setup"
-    bl_description = "Copy this app's MCP setup to paste into its settings yourself"
+    bl_description = "Connect this app in Angelo and copy its MCP setup to paste into its settings yourself"
     bl_options = {'INTERNAL'}
     app: StringProperty(options={'SKIP_SAVE'})
+    client: StringProperty(options={'SKIP_SAVE'})   # Copy again for this generic MCP app; empty: a new one.
 
     def execute(self, context):
-        if self.app not in OFFERED:
+        """Connects the app in Angelo when it isn't yet (the person's click, as Connect), then copies its setup: the
+        snippet never holds a key (external_copy)."""
+        from . import external_copy
+        if self.app not in COPYABLE or _refused(self):
             return {'CANCELLED'}
-        context.window_manager.clipboard = external_setup.snippet(self.app, _python(), _state())
+        try:
+            _client, snippet = external_copy.copy_setup(_state(), self.app, _python(), self.client)
+        except grant_guard.Refused:   # Agent code reached the click path (never the person's own click).
+            self.report({'ERROR'}, rpt_(grant_guard.SCRIPT_RUNS))
+            return {'CANCELLED'}
+        except PermissionError:
+            self.report({'ERROR'}, rpt_("Turned off by your organization."))
+            return {'CANCELLED'}
+        except OSError:
+            self.report({'ERROR'}, rpt_(NOT_SAVED))
+            return {'CANCELLED'}
+        _access_on(context)
+        context.window_manager.clipboard = snippet
         self.report({'INFO'}, rpt_("Copied. Paste it into the app's MCP settings."))
+        _redraw()
         return {'FINISHED'}
 
 
@@ -258,3 +320,6 @@ def unregister_status():
 
 CLASSES = (ANGELO_OT_waiting_chat_open, ANGELO_OT_external_app_open, ANGELO_OT_external_app_connect, ANGELO_OT_external_app_disconnect,
            ANGELO_OT_external_app_copy_setup, ANGELO_OT_external_app_forget_scripts)
+
+
+grant_guard.guard(ANGELO_OT_external_app_connect, ANGELO_OT_external_app_copy_setup)

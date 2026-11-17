@@ -12,6 +12,7 @@ Send left its lane returns it at once and the worker never gets it; merge holds 
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import sys
@@ -34,7 +35,7 @@ from test_native_worker_mirror import Fixture, TURN  # noqa: E402
 AT_ONCE = 0.05   # Seconds: far below any worker bound (5 s ops, 2 s consent, 10 s holds).
 
 
-def until(predicate, seconds=5.0):
+def until(predicate, seconds=CAP_S):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         if predicate():
@@ -56,7 +57,7 @@ class WedgedWorker:
     def request(self, op, timeout, **fields):
         with self.lock:
             self.requests.append(dict(fields, op=op))
-        if not self.gate.wait(10):
+        if not self.gate.wait(CAP_S):
             raise WorkerUnavailable("no answer within %g s" % timeout, timed_out=True)
         answer = self.answer(op) if callable(self.answer) else self.answer
         if isinstance(answer, BaseException):

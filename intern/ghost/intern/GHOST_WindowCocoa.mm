@@ -803,7 +803,7 @@ NSScreen *GHOST_WindowCocoa::getScreen() const
 
 NSScreen *GHOST_WindowCocoa::getPrimaryScreen()
 {
-  /* The first element of the screens array is guaranted to be the primary screen by AppKit. */
+  /* The first element of the screens array is guaranteed to be the primary screen by AppKit. */
   return [[NSScreen screens] firstObject];
 }
 
@@ -958,7 +958,7 @@ GHOST_Context *GHOST_WindowCocoa::newDrawingContext(GHOST_TDrawingContextType ty
 #ifdef WITH_VULKAN_BACKEND
     case GHOST_kDrawingContextTypeVulkan: {
       GHOST_Context *context = new GHOST_ContextVK(
-          want_context_params_, metal_layer_, 1, 2, preferred_device_, &hdr_info_);
+          want_context_params_, metal_layer_, 1, 1, preferred_device_, &hdr_info_);
       if (context->initializeDrawingContext()) {
         return context;
       }

@@ -3,17 +3,17 @@
 """``web_tone.measure`` for Angelo's own colour configuration, measured ahead. Written by
 tests/python/angelo_agent/make_web_tone_known.py; do not edit."""
 
-CONFIG_SHA256 = 'f10891fc7d34e78e71b535e3f92b3c612177320f990641283247cb84bb8d62ad'
+CONFIG_SHA256 = '066a440ed1c02551fa3cacbb3af5d22d2efde7e4da5f2c14dffcca00c47751a0'
 WEB_TONE_SHA256 = '82effc6323f06ed126cbcee3342f41399e9a55dd3e1490e2691823bbd7e777c6'
 # (view, look or None) -> (three.js tone mapping, output colour space, difference in percent)
-MEASURED = {('ACES 1.3', None): ('NeutralToneMapping', 'srgb', 5.1),
- ('ACES 1.3', 'ACES 1.3 - Reference Gamut Compression'): ('NeutralToneMapping', 'srgb', 5.1),
- ('ACES 1.3', 'High Contrast'): ('NeutralToneMapping', 'srgb', 5.2),
+MEASURED = {('ACES 1.3', 'High Contrast'): ('NeutralToneMapping', 'srgb', 5.2),
  ('ACES 1.3', 'Low Contrast'): ('NeutralToneMapping', 'srgb', 7.0),
- ('ACES 1.3', 'Medium Contrast'): ('NeutralToneMapping', 'srgb', 5.1),
  ('ACES 1.3', 'Medium High Contrast'): ('NeutralToneMapping', 'srgb', 4.9),
- ('ACES 1.3', 'Medium Low Contrast'): ('NeutralToneMapping', 'srgb', 5.8),
  ('ACES 1.3', 'Very High Contrast'): ('NeutralToneMapping', 'srgb', 6.3),
+ ('ACES 1.3', None): ('NeutralToneMapping', 'srgb', 5.1),
+ ('ACES 1.3', 'ACES 1.3 - Reference Gamut Compression'): ('NeutralToneMapping', 'srgb', 5.1),
+ ('ACES 1.3', 'Medium Contrast'): ('NeutralToneMapping', 'srgb', 5.1),
+ ('ACES 1.3', 'Medium Low Contrast'): ('NeutralToneMapping', 'srgb', 5.8),
  ('ACES 1.3', 'Very Low Contrast'): ('NeutralToneMapping', 'srgb', 8.3),
  ('ACES 2.0', None): ('NeutralToneMapping', 'srgb', 7.3),
  ('ACES 2.0', 'ACES 2.0 - Reference Gamut Compression'): ('NeutralToneMapping', 'srgb', 7.3),
@@ -90,11 +90,11 @@ MEASURED = {('ACES 1.3', None): ('NeutralToneMapping', 'srgb', 5.1),
  ('Raw', 'Medium High Contrast'): ('LinearToneMapping', 'srgb-linear', 2.1),
  ('Raw', 'Very High Contrast'): ('LinearToneMapping', 'srgb-linear', 6.0),
  ('Raw', 'Very Low Contrast'): ('LinearToneMapping', 'srgb-linear', 6.4),
- ('Standard', None): ('LinearToneMapping', 'srgb', 0.0),
  ('Standard', 'High Contrast'): ('LinearToneMapping', 'srgb', 3.8),
  ('Standard', 'Low Contrast'): ('LinearToneMapping', 'srgb', 3.6),
- ('Standard', 'Medium Contrast'): ('LinearToneMapping', 'srgb', 0.0),
  ('Standard', 'Medium High Contrast'): ('LinearToneMapping', 'srgb', 2.0),
+ ('Standard', None): ('LinearToneMapping', 'srgb', 0.0),
+ ('Standard', 'Medium Contrast'): ('LinearToneMapping', 'srgb', 0.0),
  ('Standard', 'Medium Low Contrast'): ('LinearToneMapping', 'srgb', 1.8),
  ('Standard', 'Very High Contrast'): ('LinearToneMapping', 'srgb', 5.7),
  ('Standard', 'Very Low Contrast'): ('LinearToneMapping', 'srgb', 5.5)}

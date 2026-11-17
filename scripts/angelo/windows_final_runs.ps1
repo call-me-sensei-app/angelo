@@ -18,6 +18,12 @@
               dry   runs final_runs.py dry-run, headroom and status in a signed-in desktop session (unbilled);
               run   runs final_runs.py run --authorize-billed-runs there, resuming the campaign, until it ends or
                     angelo-bench-hours pass (the machine's own limit is ANGELO_GCP_MAX_HOURS).
+              prepdry  prep, then dry in the same request (one boot cycle fewer): it needs a kept sign-in and refuses
+                    without one (no RDP wait), then goes on as dry.
+            Pre-boot (angelo-bench-candidate-wait-minutes > 0, no angelo-bench-candidate-msi yet): before the candidate,
+            the machine checks itself (Assert-PrebootReady: the sign-in its marker names, no Angelo left installed,
+            stock Blender as the run expects), says PREBOOT-READY, and waits for the candidate MSI to be named in its
+            metadata (gcp_windows_validate.sh bench deliver), so the boot and the checks overlap the MSI's build.
             The desktop session is a throwaway user's automatic sign-in after one reboot (as the GUI stage does);
             exit code 194 asks the bootstrap for that reboot. Results go to gs://<bucket>/bench/.
   -Session  started in that desktop session by a Run-key entry; writes C:\angelo\bench\out\DONE-<nonce>.
@@ -105,7 +111,9 @@ function Invoke-Gcloud([string[]]$Arguments, [switch]$Optional) {
 }
 function Read-Facts { if (Test-Path (Join-Path $state "facts.json")) { Get-Content (Join-Path $state "facts.json") -Raw | ConvertFrom-Json } else { $null } }
 . (Join-Path $PSScriptRoot "windows_bench_tools.ps1")
+. (Join-Path $PSScriptRoot "windows_bench_preboot.ps1")   # Assert-PrebootReady, Wait-PrebootCandidate (functions only)
 . (Join-Path $PSScriptRoot "windows_release_toolchain.ps1")   # the release build folder's name (functions only)
+. (Join-Path $PSScriptRoot "windows_session_start.ps1")   # Wait-SessionStarted, Get-SessionNotStarted (functions only)
 
 # The commit under test: the commit sent, once the tree is proven to be it (windows_source_send.ps1), never metadata.
 # Each mode reads it inside its own error handling: a refusal here, outside the session's try, would never write
@@ -123,7 +131,7 @@ $installDir = "C:\Program Files\Angelo"
 
 # Everything a campaign needs on this machine, installed once and checked every time; facts.json says what it is.
 function Prepare-Bench([string]$ClaudeVersion, [string]$CodexVersion, [string]$StockUrl, [string]$Bundle,
-                       [string]$CandidateMsi, [string]$CandidateSha256, [string]$Sources) {
+                       [string]$CandidateMsi, [string]$CandidateSha256, [string]$Sources, [string[]]$Only = @()) {
     # Only facts.json's object is returned: everything a step prints goes to the host.
     # 1. Tools: Node (npm for Claude Code), Python 3.13 (uv, the MCP install), uv.
     Refresh-Path
@@ -142,10 +150,22 @@ function Prepare-Bench([string]$ClaudeVersion, [string]$CodexVersion, [string]$S
     Add-MachinePath (Split-Path $claude.path)
     Add-MachinePath (Split-Path $codex.path)
     if ($codex.ripgrep) { Add-MachinePath (Split-Path $codex.ripgrep) }
-    # 3. Stock Blender, the current stock release (a portable archive; nothing is installed).
-    $stock = Install-StockBlender $bench $StockUrl
-    # 4. The pilot's MCP add-on and server, byte-identical, with the frozen dependency versions.
-    $mcp = Install-McpRuntime $bench $Bundle $python313 $uv $SourceDir
+    # 3-4. Only when a selected step runs the MCP side (final_runs_plan.py needs; -Only is angelo-bench-only's globs,
+    #      none = every step): the gates and smokes run Angelo's side alone, and stock Blender (download.blender.org
+    #      had no 5.3.0 while 5.3 was in beta, 2026-11-04) would fail a preparation that never uses it.
+    $needsArgs = @((Join-Path $SourceDir "tests\python\angelo_agent\final_runs_plan.py"), "needs", "--platform", "windows")
+    foreach ($glob in $Only) { $needsArgs += @("--only", $glob) }
+    $needs = (& $python313 @needsArgs | Out-String) | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or $null -eq $needs) { throw "final_runs_plan.py needs: no step matches '$($Only -join " ")'" }
+    $stock = $null; $mcp = $null
+    if ($needs.mcp_side) {
+        # 3. Stock Blender, the current stock release (a portable archive; nothing is installed).
+        $stock = Install-StockBlender $bench $StockUrl
+        # 4. The pilot's MCP add-on and server, byte-identical, with the frozen dependency versions.
+        $mcp = Install-McpRuntime $bench $Bundle $python313 $uv $SourceDir
+    } else {
+        Write-Host "No selected step runs the MCP side ($($needs.steps -join ", ")): no stock Blender or MCP side installed"
+    }
     # 4b. The one-shot tests' source pictures (the tree and the cottage cut their references from one), checked
     #     against the tests' SHA-256 pins; the session points ANGELO_ONESHOT_SOURCES at them.
     $oneshot = if ($Sources) { Install-OneshotSources $Sources $python313 $SourceDir } else { $null }
@@ -164,10 +184,10 @@ function Prepare-Bench([string]$ClaudeVersion, [string]$CodexVersion, [string]$S
                 throw "the full-feature build is of '$($manifest.source_commit)' (built: '$($manifest.built)'), not ${commit}: run 'bench prep'"
             }
             $release = Join-Path $buildDir "bin\Release"
-            Invoke-Checked (Join-Path $release "5.2\python\bin\python.exe") @($finalRuns, "freeze", "--source", $release, "--into", $candidate) | Out-Host
+            Invoke-Checked (Join-Path $release "$(Get-AngeloBlenderSeries $SourceDir)\python\bin\python.exe") @($finalRuns, "freeze", "--source", $release, "--into", $candidate) | Out-Host
             Copy-Item $manifestPath (Join-Path $candidate "angelo-release-build.json")
         }
-        $harnessPython = Join-Path $candidate "Release\5.2\python\bin\python.exe"
+        $harnessPython = Join-Path $candidate "Release\$(Get-AngeloBlenderSeries $SourceDir)\python\bin\python.exe"
         $frozen = [ordered]@{ folder = $candidate; build = "angelo-release-build.json" }
     }
     $receipt = Get-Content (Join-Path $candidate "RECEIPT.json") -Raw | ConvertFrom-Json
@@ -175,7 +195,8 @@ function Prepare-Bench([string]$ClaudeVersion, [string]$CodexVersion, [string]$S
         harness_python = $harnessPython; candidate_version = @($receipt.version)[0]; candidate_executable_sha256 = $receipt.executable_sha256
         candidate_source = $frozen
         claude = $claude.path; claude_version = $claude.version; codex = $codex.path; codex_version = $codex.version
-        stock_blender = $stock.path; mcp_server_dir = $mcp.server_dir; mcp_addon_dir = $mcp.addon_dir
+        stock_blender = $(if ($stock) { $stock.path } else { "" }); mcp_server_dir = $(if ($mcp) { $mcp.server_dir } else { "" })
+        mcp_addon_dir = $(if ($mcp) { $mcp.addon_dir } else { "" }); mcp_side = [bool]$needs.mcp_side; only = @($Only); api_key_accounts = @($needs.api_key_accounts)
         oneshot_sources = $(if ($oneshot) { $oneshot.folder } else { "" })
         tools = [ordered]@{ claude = $claude; codex = $codex; stock_blender = $stock; mcp = $mcp; oneshot_sources = $oneshot
             node = "$(& node.exe --version)"; npm = "$(& npm.cmd --version)"; python = "$(& $python313 --version)"; uv = "$(& $uv --version)" } }
@@ -237,6 +258,7 @@ if ($Session) {
         Add-Content (Join-Path $logs "bench-session-stale.log") "$(Get-Date -Format o) session $Nonce exits: the machine runs send $current"
         exit 0
     }
+    Set-Content (Join-Path $out "STARTED-$Nonce") "started $(Get-Date -Format o) as $env:USERNAME in session $((Get-Process -Id $PID).SessionId)"
     $log = Join-Path $logs "bench-session-$Nonce.log"
     $code = 1
     $reason = ""
@@ -251,11 +273,18 @@ if ($Session) {
         # The one-shot tests' source pictures, checked by Prepare-Bench (the bench user's own profile has none).
         if ($facts.oneshot_sources) { $env:ANGELO_ONESHOT_SOURCES = $facts.oneshot_sources }
         $py = $facts.harness_python
+        $gateKey = Use-GateKey $py $SourceDir $bench @($facts.api_key_accounts) "load"   # Before any trial; unloaded below.
         if (-not (Test-Path (Join-Path $campaign "CONFIG.json"))) {
-            Invoke-Checked $py @($finalRuns, "init", "--output", $campaign, "--candidate", $candidate, "--platform", "windows",
-                "--connections-dir", $connections, "--discover-connections", "--stock-blender", $facts.stock_blender,
-                "--mcp-server-dir", $facts.mcp_server_dir, "--mcp-addon-dir", $facts.mcp_addon_dir,
-                "--codex", $facts.codex, "--claude", $facts.claude, "--python", $py)
+            # The campaign's scope is the machine's selection (angelo-bench-only): without an MCP side, init needs no
+            # stock Blender or MCP side, and the facts have none.
+            $initArgs = @($finalRuns, "init", "--output", $campaign, "--candidate", $candidate, "--platform", "windows",
+                "--connections-dir", $connections, "--discover-connections", "--codex", $facts.codex, "--claude", $facts.claude,
+                "--python", $py)
+            if ($facts.stock_blender) { $initArgs += @("--stock-blender", $facts.stock_blender, "--mcp-server-dir", $facts.mcp_server_dir,
+                "--mcp-addon-dir", $facts.mcp_addon_dir) }
+            foreach ($glob in @($facts.only)) { if ($glob) { $initArgs += @("--only", $glob) } }
+            if ($gateKey) { $initArgs += $gateKey }
+            Invoke-Checked $py $initArgs
         }
         $select = @()
         foreach ($glob in ((Get-Meta "angelo-bench-only" "").Split(" ") | Where-Object { $_ })) { $select += @("--only", $glob) }
@@ -277,6 +306,8 @@ if ($Session) {
         Write-Host "bench session failed: $_"
         Write-Host $_.ScriptStackTrace
     } finally {
+        try { Use-GateKey $py $SourceDir $bench @($facts.api_key_accounts) "unload" | Out-Null }
+        catch { $reason = (@($reason, "the gate key was not removed: $_") | Where-Object { $_ }) -join "; " }
         # One line, the stage reads its end ("exit code: 0" only for a session that did not fail).
         Set-Content (Join-Path $out "DONE-$Nonce") ("$Mode exit code: $code" + $(if ($reason) { " (failed: $($reason -replace '\s+', ' '))" } else { "" }))
         Stop-Transcript | Out-Null
@@ -290,7 +321,7 @@ Read-SentCommit   # proven here, at the stage's start: a queued sync may have ch
 # ------------------------------------------------------------------ the stage (SYSTEM, every boot)
 $mode = Get-Meta "angelo-bench-mode" ""
 $nonce = Get-Meta "angelo-src-nonce" "0"
-if ($mode -notin "prep", "dry", "run") { throw "metadata angelo-bench-mode must be prep, dry or run (got '$mode')" }
+if ($mode -notin "prep", "dry", "run", "prepdry") { throw "metadata angelo-bench-mode must be prep, dry, run or prepdry (got '$mode')" }
 $startedFile = Join-Path $state "started-$nonce"
 if (-not (Test-Path $startedFile)) { Set-Content $startedFile (Get-Date -Format o) }
 Write-Host "== bench stage: $mode, commit $short, request $nonce"
@@ -321,7 +352,31 @@ if (-not ((Test-Path $python313) -and (Invoke-Native $python313 $sourcesCheck) -
     }
 }
 $candidateMsi = Get-Meta "angelo-bench-candidate-msi" ""
+$waitMinutes = [int](Get-Meta "angelo-bench-candidate-wait-minutes" "0")
+$stockUrl = Get-Meta "angelo-bench-stock-url" "https://download.blender.org/release/Blender5.2/blender-5.2.2-windows-x64.zip"
+if (-not $candidateMsi -and $waitMinutes -gt 0) {
+    if ($mode -notin "prep", "prepdry") { throw "pre-boot (angelo-bench-candidate-wait-minutes) is for prep or prepdry, not $mode" }
+    $ready = Assert-PrebootReady $stockUrl @((Get-Meta "angelo-bench-only" "").Split(" ") | Where-Object { $_ })
+    $readyFile = Join-Path $state "PREBOOT-READY"
+    Set-Content $readyFile "ready $(Get-Date -Format o): signed in ($($ready.accounts -join ' ')); no Angelo installed; stock: $($ready.stock); commit $short"
+    Write-Host "== pre-boot ready: $(Get-Content $readyFile)"
+    Invoke-Gcloud @("storage", "cp", "--quiet", $readyFile, "gs://$Bucket/result/PREBOOT-READY")
+    $candidateMsi = Wait-PrebootCandidate $waitMinutes
+    Set-Content $startedFile (Get-Date -Format o)   # The request's hours (angelo-bench-hours) start with its candidate.
+    Write-Host "== pre-boot: the candidate is $candidateMsi"
+}
 $candidateSha = Get-Meta "angelo-bench-candidate-sha256" ""
+# A request keeps the candidate it took: every later boot of it (dry's reboot for the desktop session) must name the
+# same one, or the session could run one build while the campaign is filed under another.
+$taken = Join-Path $state "candidate-$nonce.json"
+if (Test-Path $taken) {
+    $was = Get-Content $taken -Raw | ConvertFrom-Json
+    if ($was.msi -ne $candidateMsi -or $was.sha256 -ne $candidateSha) {
+        throw "the candidate changed within request ${nonce}: it took '$($was.msi)' ($($was.sha256)), the metadata now names '$candidateMsi' ($candidateSha)"
+    }
+} else {
+    [ordered]@{ msi = $candidateMsi; sha256 = $candidateSha } | ConvertTo-Json | Set-Content $taken
+}
 $frozenAlready = $candidateSha -and (Test-Path (Join-Path $bench ("candidate-msi-" + $candidateSha.Substring(0, 12) + "\RECEIPT.json")))
 if ($candidateMsi -like "gs://*" -and -not $frozenAlready) {
     $local = Join-Path $bench ("download\" + (Split-Path $candidateMsi -Leaf))
@@ -329,13 +384,15 @@ if ($candidateMsi -like "gs://*" -and -not $frozenAlready) {
     Invoke-Gcloud @("storage", "cp", "--quiet", $candidateMsi, $local)
     $candidateMsi = $local
 }
-$facts = Prepare-Bench $claudeVersion (Get-Meta "angelo-bench-codex-version" "") `
-    (Get-Meta "angelo-bench-stock-url" "https://download.blender.org/release/Blender5.2/blender-5.2.2-windows-x64.zip") `
-    $bundle $candidateMsi $candidateSha $sources
+$facts = Prepare-Bench $claudeVersion (Get-Meta "angelo-bench-codex-version" "") $stockUrl `
+    $bundle $candidateMsi $candidateSha $sources @((Get-Meta "angelo-bench-only" "").Split(" ") | Where-Object { $_ })
 $campaign = $facts.campaign
 $short = Split-Path $campaign -Leaf
 
-if ($mode -eq "prep") {
+# A later boot of a prepdry request (its desktop session prepared) is the dry run's: the sign-in was checked at the
+# first boot, and checking it again under the live session could end that session with its auto-logon left behind.
+if ($mode -eq "prepdry" -and (Test-Path (Join-Path $state "session-$nonce"))) { $mode = "dry" }
+if ($mode -in "prep", "prepdry") {
     # A machine signed in before keeps its sign-ins: the accounts its marker names are checked again as -SignIn
     # checks them (check-sign-in: the CLIs' files exist; nothing is read), and the marker stays when they pass.
     $marker = Join-Path $connections "SIGNED-IN"
@@ -349,11 +406,20 @@ if ($mode -eq "prep") {
             Set-Content $kept "signed in $(@(Get-Content $marker)[0]); checked again $(Get-Date -Format o): $($accounts -join ' ')"
             Write-Host "== signed in already ($($accounts -join ', ')): the sign-ins are there and kept; no sign-in needed"
             Invoke-Gcloud @("storage", "cp", "--quiet", $kept, "gs://$Bucket/result/SIGNED-IN-KEPT") -Optional
-            exit 0
+            if ($mode -eq "prep") { exit 0 }
+            Write-Host "== prepdry: prepared and signed in; the dry run follows in this request"
+        } elseif ($mode -eq "prepdry") {
+            throw "prepdry refused: the earlier sign-in ($($accounts -join ', ')) is incomplete: run 'bench prep' and sign in over RDP"
+        } else {
+            Write-Host "== the earlier sign-in ($($accounts -join ', ')) is incomplete: waiting for -SignIn again"
+            Remove-Item $marker
         }
-        Write-Host "== the earlier sign-in ($($accounts -join ', ')) is incomplete: waiting for -SignIn again"
-        Remove-Item $marker
+    } elseif ($mode -eq "prepdry") {
+        throw "prepdry refused: not signed in (no $marker): run 'bench prep' and sign in over RDP"
     }
+}
+if ($mode -eq "prepdry") { $mode = "dry" }   # The desktop session below runs the dry run.
+if ($mode -eq "prep") {
     $minutes = [int](Get-Meta "angelo-bench-signin-minutes" "60")
     if ($minutes -le 0) { $minutes = 60 }
     Write-Host "== prepared; waiting up to $minutes minutes for the sign-in (RDP, then: powershell -File $PSCommandPath -SignIn)"
@@ -376,10 +442,7 @@ $prepared = Join-Path $state "session-$nonce"
 if (-not (Test-Path $prepared)) {
     Add-Type -AssemblyName System.Web
     $pw = [System.Web.Security.Membership]::GeneratePassword(20, 4) + "aA1!"
-    Remove-LocalUser -Name $benchUser -ErrorAction SilentlyContinue
-    # An earlier session user's profile goes too (removing an account keeps it).
-    Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -like "C:\Users\$benchUser*" -and -not $_.Loaded } |
-        Remove-CimInstance -ErrorAction SilentlyContinue
+    $staleUser = Remove-BenchUser $benchUser   # An earlier one's account, profile and credential vault.
     New-LocalUser -Name $benchUser -Password (ConvertTo-SecureString $pw -AsPlainText -Force) -PasswordNeverExpires -AccountNeverExpires | Out-Null
     Add-LocalGroupMember -Group "Users" -Member $benchUser
     # The bench user is a new account (a new SID) on every send; its rights come from one local group, granted once
@@ -405,9 +468,9 @@ if (-not (Test-Path $prepared)) {
         Remove-Item $walking -ErrorAction SilentlyContinue
         if ($walkExit -eq 0) { Set-Content $granted (Get-Date -Format o) }   # Any item refused: walked again next send.
     }
-    # The sign-ins (a small tree), on every send: a file moved in, or one whose rights do not inherit, gets the group.
-    $connectionsDir = Join-Path $bench "connections"
-    if (Test-Path $connectionsDir) { & icacls.exe $connectionsDir /grant "${benchGroup}:(OI)(CI)M" /T /C /Q | Out-Null }
+    # The sign-ins, every send: connections and each <account>-connections (bench_api_key.py's, made owner-only in a session:
+    # the next send's new user was refused it). A file moved in, or a folder whose rights do not inherit, gets the group.
+    Get-ChildItem $bench -Directory -Filter "*connections" | ForEach-Object { & icacls.exe $_.FullName /grant "${benchGroup}:(OI)(CI)M" /T /C /Q | Out-Null }
     foreach ($folder in $SourceDir, $logs) { & icacls.exe $folder /grant "${benchGroup}:(OI)(CI)M" /C /Q | Out-Null }
     if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\ServerManager")) { New-Item "HKLM:\SOFTWARE\Microsoft\ServerManager" | Out-Null }
     Set-ItemProperty "HKLM:\SOFTWARE\Microsoft\ServerManager" DoNotOpenServerManagerAtLogon 1 -Type DWord
@@ -420,13 +483,17 @@ if (-not (Test-Path $prepared)) {
 $hours = [double](Get-Meta "angelo-bench-hours" "7")
 $deadline = [datetime]::Parse((Get-Content $startedFile)).AddHours($hours + 0.25)
 Write-Host "== waiting for the desktop session (until $deadline)"
-while (-not (Test-Path (Join-Path $out "DONE-$nonce")) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 30 }
-$result = if (Test-Path (Join-Path $out "DONE-$nonce")) { Get-Content (Join-Path $out "DONE-$nonce") } else { "TIMED OUT" }
+$startMinutes = [int](Get-Meta "angelo-session-start-minutes" "2"); if ($startMinutes -le 0) { $startMinutes = 2 }
+$started = Wait-SessionStarted (Join-Path $out "STARTED-$nonce") $startMinutes @((Join-Path $out "DONE-$nonce"))
+if ($started) { Write-Host "== desktop session started: $(Get-Content (Join-Path $out "STARTED-$nonce") -ErrorAction SilentlyContinue)" }
+while ($started -and -not (Test-Path (Join-Path $out "DONE-$nonce")) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 30 }
+$result = if (Test-Path (Join-Path $out "DONE-$nonce")) { Get-Content (Join-Path $out "DONE-$nonce") }
+    elseif (-not $started) { "NOT STARTED: " + (Get-SessionNotStarted $benchUser "AngeloFinalRuns" $startMinutes) } else { "TIMED OUT" }
 Write-Host "== session: $result"
-Set-ItemProperty $winlogon AutoAdminLogon "0"
-Remove-ItemProperty $winlogon DefaultPassword -ErrorAction SilentlyContinue
+Set-ItemProperty $winlogon AutoAdminLogon "0"; Remove-ItemProperty $winlogon DefaultPassword -ErrorAction SilentlyContinue
 Remove-ItemProperty $run AngeloFinalRuns -ErrorAction SilentlyContinue
-Remove-LocalUser -Name $benchUser -ErrorAction SilentlyContinue
+$cleanup = @($staleUser, (Remove-BenchUser $benchUser)) | Where-Object { $_ }   # In the result: it fails the request.
+if ($cleanup) { Write-Host "== $($cleanup -join '; ')"; $result = "$result; $($cleanup -join '; ')" }
 if (Test-Path $campaign) { Invoke-Gcloud @("storage", "rsync", "--recursive", $campaign, "gs://$Bucket/bench/$short") -Optional }
 Invoke-Gcloud @("storage", "cp", "--quiet", (Join-Path $state "facts.json"), "gs://$Bucket/bench/facts-$short.json") -Optional
 if ($result -notmatch "exit code: 0$") { exit 1 }

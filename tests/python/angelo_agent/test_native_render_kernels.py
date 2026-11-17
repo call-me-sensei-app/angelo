@@ -12,10 +12,11 @@ credit could also be gained without a compile; each of its findings has a test h
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
+import platform_env
 
 import collections
 import math
-import os
 import re
 import sys
 import tempfile
@@ -197,7 +198,7 @@ class Findings(unittest.TestCase):
                 self.assertGreaterEqual(value, 0.0)
         finally:
             done.set()
-            thread.join(5)
+            thread.join(CAP_S)
             sys.setswitchinterval(interval)
         self.assertEqual(errors, [])
 
@@ -490,6 +491,8 @@ class ChildCache(unittest.TestCase):
     $XDG_CACHE_HOME, else $HOME/.cache (``path_xdg_cache_get``), once per process. Evidence (1.0.11 GUI round on
     116c309, 2026-11-11): the child loaded the archives its parent wrote in the same folder (it marked them used)."""
 
+    NAMES = ("HOME", "XDG_CACHE_HOME", "CFFIXED_USER_HOME")
+
     def spawned_environment(self, environ):
         seen = {}
 
@@ -503,11 +506,12 @@ class ChildCache(unittest.TestCase):
             seen.update(kwargs.get("env") or {})
             return Process()
 
-        with mock.patch.dict(os.environ, environ, clear=True):
+        # The three names are the test's: one it does not give is absent, HOME too.
+        with platform_env.cleared(environ, without=[name for name in self.NAMES if name not in environ]):
             child = job_render_child.Child(["Angelo"], owner=None, deadline=None, popen=popen,
                                            footprint=lambda *a: 0, memory_low=lambda *a: False, total_mb=1)
-        child.reader.join(60)   # Completion waits, capped only against a hang (host_waits.CAP_S, where it exists).
-        child.watcher.join(60)
+        child.reader.join(CAP_S)   # Completion waits, capped only against a hang.
+        child.watcher.join(CAP_S)
         job_render_child._running.discard(child)
         return seen
 
@@ -516,7 +520,7 @@ class ChildCache(unittest.TestCase):
                         {"HOME": "/Users/b"}, {}):
             with self.subTest(environ=environ):
                 seen = self.spawned_environment(environ)
-                for name in ("HOME", "XDG_CACHE_HOME", "CFFIXED_USER_HOME"):
+                for name in self.NAMES:
                     self.assertEqual(seen.get(name), environ.get(name), name)
 
     def test_nothing_shipped_rewrites_them_in_its_own_process(self):

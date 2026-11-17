@@ -19,6 +19,10 @@ INCOMPLETE_AGE = 60.0     # A record cut short is removed once this old (a fresh
 HELD_WAIT = 2.5           # A record another process still holds: how long a launch waits for a crashed owner to end.
 HELD_POLL = 0.1
 FOUND_MARK = ".found"     # Beside a found record that could not be removed yet: it is never found again.
+CRASHED_MARK = ".crashed"  # Beside a record whose process crashed and still runs (its crash dialog is open).
+LOADING = ".loading"      # Beside a held record: the add-ons Blender is enabling right now (``Held.note_loading``).
+RECORD_ENV = "ANGELO_START_RECORD"   # "<pid>|<record path>": the record the Windows crash handler marks crashed.
+_published = []           # This process's held records, newest last; the newest is in RECORD_ENV.
 _identity = {}            # This process's host and boot (``identity``), read once.
 
 
@@ -103,20 +107,51 @@ class Held:
     """This process's start record: open and locked until ``release``."""
 
     def __init__(self, path, handle):
-        self.path, self._handle = path, handle
+        self.path, self._handle, self._loading, self._loading_size = path, handle, None, 0
+
+    def note_loading(self, modules):
+        """Name the add-ons Blender is enabling now, outermost first (empty: none), so a launch that finds this start
+        never completed can name the one it died in. A file beside the record, opened once and rewritten in place
+        around each add-on (never removed between them: a removal an antivirus or indexer holds up would leave an
+        earlier name standing); written straight to the operating system, so a native crash right after keeps it. A
+        shorter text is padded with spaces to the file's length (JSON allows them) in that one write, so no crash
+        between two steps leaves an earlier text's tail. A crash while it is written leaves the record itself whole
+        (only the name is lost)."""
+        data = json.dumps({"loading": [str(module) for module in modules or ()]}).encode("utf-8")
+        data += b" " * max(0, self._loading_size - len(data))
+        try:
+            if self._loading is None:
+                self._loading = open(self.path.with_name(self.path.name + LOADING), "wb", buffering=0)
+            self._loading.seek(0)
+            self._loading.write(data)
+            self._loading_size = len(data)
+        except OSError:
+            pass   # A name is a courtesy: the start goes on.
+
+    def _close_loading(self):
+        loading, self._loading = self._loading, None
+        if loading is not None:
+            try:
+                loading.close()
+            except OSError:
+                pass
 
     def close(self):
         """End the lock but keep the record: the next launch finds a start that never completed."""
         handle, self._handle = self._handle, None
+        self._close_loading()
         if handle is not None:
+            _withdraw(self.path)
             handle.close()
 
     def release(self):
         """End the record. It is emptied while still locked, so whatever later holds up its removal (another launch
         reading it, a scanner), nothing that reads as a start that never completed stays behind."""
         handle, self._handle = self._handle, None
+        self._close_loading()   # Before its removal: Windows removes no open file.
         if handle is None:
             return
+        _withdraw(self.path)
         try:
             handle.seek(0)
             handle.truncate(0)
@@ -127,6 +162,7 @@ class Held:
         except OSError:
             pass
         handle.close()   # Before the removal: Windows removes no open file.
+        _remove(self.path.with_name(self.path.name + LOADING))
         for attempt in range(4):
             try:
                 self.path.unlink()
@@ -164,7 +200,35 @@ def begin(folder, now=None):
         except OSError:
             pass
         return None
+    _publish(path)
     return Held(path, handle)
+
+
+def _publish(path):
+    """Name a held record for the crash handler: on Windows a crash shows a dialog and waits while the process still
+    holds its record, so the handler (``creator_signals.cc``, ``crash_mark_start_record``) creates ``CRASHED_MARK``
+    beside the record ``RECORD_ENV`` names (only when its process id is the crashed process's: a child inherits the
+    variable), and a launch made while the dialog is open finds the start that never completed."""
+    _published.append(str(path))
+    _name_newest()
+
+
+def _withdraw(path):
+    try:
+        _published.remove(str(path))
+    except ValueError:
+        return
+    _name_newest()
+
+
+def _name_newest():
+    try:
+        if _published:
+            os.environ[RECORD_ENV] = "%d|%s" % (os.getpid(), _published[-1])
+        else:
+            os.environ.pop(RECORD_ENV, None)
+    except (OSError, ValueError):   # A start goes on whatever the environment refuses.
+        pass
 
 
 def _complete(data):
@@ -239,6 +303,20 @@ def _examine(path, now):
         handle.close()
 
 
+def _loading(path):
+    """The add-ons a found record's process was enabling when it ended, outermost first (``Held.note_loading``), or
+    None: none, or nothing readable."""
+    try:
+        value = json.loads(path.with_name(path.name + LOADING).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    loading = value.get("loading") if isinstance(value, dict) else None
+    if isinstance(loading, str):   # An earlier build's single name.
+        loading = [loading]
+    names = [name for name in loading if isinstance(name, str) and name] if isinstance(loading, list) else []
+    return names or None
+
+
 def _remove(path):
     try:
         path.unlink()
@@ -259,14 +337,16 @@ def interrupted(folder, now=None, wait=None, clock=time.monotonic, sleep=time.sl
     record from this host and boot (``identity``) naming a valid process id is judged by its process; any other held
     record is left alone at once, as one held by a live start. A found record that cannot be removed yet (Windows
     removes no file another process still has open) is marked found (``FOUND_MARK``), so no later launch finds it
-    again."""
+    again. A held record its own process marked crashed (``CRASHED_MARK``, the Windows crash handler, while its crash
+    dialog is open) is found at once, whoever holds it."""
     folder = Path(folder)
     now = time.time() if now is None else now
     try:
         paths = sorted(folder.glob("*" + SUFFIX))
-        for mark in folder.glob("*" + SUFFIX + FOUND_MARK):   # Its record went since: the mark goes too.
-            if not mark.with_name(mark.name[:-len(FOUND_MARK)]).exists():
-                _remove(mark)
+        for suffix in (FOUND_MARK, CRASHED_MARK, LOADING):   # A mark whose record went since goes too.
+            for mark in folder.glob("*" + SUFFIX + suffix):
+                if not mark.with_name(mark.name[:-len(suffix)]).exists():
+                    _remove(mark)
     except OSError:
         return []
     deadline = clock() + (HELD_WAIT if wait is None else wait)
@@ -276,11 +356,16 @@ def interrupted(folder, now=None, wait=None, clock=time.monotonic, sleep=time.sl
         if mark.exists():   # Found by an earlier launch: removed now if it can be, never found again.
             if _remove(path):
                 _remove(mark)
+                _remove(path.with_name(path.name + CRASHED_MARK))
             continue
+        crashed = path.with_name(path.name + CRASHED_MARK)
         waited = False
         while True:
             state, record = _examine(path, now)
             pid = _pid(record) if record is not None else None
+            if record is not None and state in ("held", "found") and crashed.exists():
+                state = "found"   # Its process crashed (its crash handler said so), though it still holds it.
+                break
             if state == "found" and waited and (pid is None or _alive(pid)):
                 state = "keep"   # Its lock went while its owner runs: that start completed, it was no crash.
                 break
@@ -294,8 +379,12 @@ def interrupted(folder, now=None, wait=None, clock=time.monotonic, sleep=time.sl
             waited = True
             sleep(HELD_POLL)
         if state == "found":
-            found.append(record)
-            if not _remove(path):
+            loading = _loading(path)
+            found.append(dict(record, loading=loading) if loading else record)
+            _remove(path.with_name(path.name + LOADING))
+            if _remove(path):
+                _remove(crashed)
+            else:
                 try:
                     mark.write_bytes(b"")
                 except OSError:

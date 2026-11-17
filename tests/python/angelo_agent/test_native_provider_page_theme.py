@@ -64,7 +64,8 @@ class ProviderPageThemeTests(unittest.TestCase):
         import angelo_agent
         events = []
         region = SimpleNamespace(as_pointer=lambda: 21, width=800, height=600)
-        context = SimpleNamespace(region=region, preferences=SimpleNamespace(system=SimpleNamespace(ui_scale=1)))
+        context = SimpleNamespace(region=region, preferences=SimpleNamespace(system=SimpleNamespace(ui_scale=1)),
+                                  window=None)
         def planned(*args):
             events.append(('plan', tk.CARD, tk.TEXT))
             return SimpleNamespace(card=(0, 0, 500, 300), animated=False), object()
@@ -84,7 +85,8 @@ class ProviderPageThemeTests(unittest.TestCase):
             '_sheet_ui': kit.UiState(), '_sheet_keyboard': False,
             'canvas_rtl': SimpleNamespace(begin=lambda width: events.append(('rtl-begin',)),
                                          end=lambda: events.append(('rtl-end',))),
-            'providers_page_draw': SimpleNamespace(draw=draw_page)})
+            'providers_page_draw': SimpleNamespace(draw=draw_page),
+            'providers_page_actions': SimpleNamespace(register=lambda *args: None)})   # C's consent regions.
         card_draw = SimpleNamespace(draw=lambda view, plan: events.append(('draw-' + plan.name, tk.CARD, tk.TEXT)))
         gpu = SimpleNamespace(state=SimpleNamespace(blend_set=lambda mode: None))
         return ns['_draw'], events, patch.object(angelo_agent, 'card_draw', card_draw, create=True), patch.dict(sys.modules, {'gpu': gpu})

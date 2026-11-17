@@ -128,6 +128,24 @@ if (-not $buildDir) { Add-Result "build directory" "FAIL" "no ..\build_windows_*
 $bin = if ($buildDir) { Join-Path $buildDir.FullName "bin\Release" } else { "" }
 
 # --- 2. The built program ---------------------------------------------------------------------------
+# An incremental install copies the add-on over the previous build's and never deletes a module the checkout no longer
+# has, so this build folder's app can hold another branch's add-on files (2026-11-05: five worker_merge_* modules made
+# the native suites refuse this stage's app). Make it this commit's, as the release stage does before its suites, so
+# whatever runs on this build afterwards tests the checkout: exactly the files the suites' add-on guard calls "only in
+# the app" go (prune_installed_addon.py); any other difference is a build problem and fails here.
+Test-Check "installed add-on is this commit's" {
+    $python = "C:\Python313\python.exe"
+    if (-not (Test-Path $python)) { $python = (Get-Command python.exe -ErrorAction SilentlyContinue).Source }
+    if (-not $python) { throw "no host Python 3.13 for prune_installed_addon.py" }
+    $prune = Join-Path $SourceDir "tests\python\angelo_agent\prune_installed_addon.py"
+    $ErrorActionPreference = "Continue"   # Python's stderr (a warning) is output here; failures throw below.
+    $output = & $python $prune --binary (Join-Path $bin $exe) --source $SourceDir 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "prune_installed_addon.py exited with ${LASTEXITCODE}: $output" }
+    $state = ($output.Trim() -split "`n" | Select-Object -Last 1).Trim()
+    if ($state -notmatch "matches the checkout") { throw $state }
+    $state
+}
+
 Test-Check "executables are Angelo's, not Blender's" {
     foreach ($name in $exe, $launcher) {
         if (-not (Test-Path (Join-Path $bin $name))) { throw "$name missing in $bin" }

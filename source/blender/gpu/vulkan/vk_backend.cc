@@ -11,12 +11,13 @@
 #include <sstream>
 
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_threads.h"
+#include "BLI_string.hh"
+#include "BLI_threads.hh"
 
 #include "CLG_log.h"
 
 #include "GPU_capabilities.hh"
+#include "GPU_framebuffer.hh"
 #include "gpu_capabilities_private.hh"
 #include "gpu_platform_private.hh"
 
@@ -28,6 +29,7 @@
 #include "vk_index_buffer.hh"
 #include "vk_pixel_buffer.hh"
 #include "vk_query.hh"
+#include "vk_ray_tracing.hh"
 #include "vk_shader.hh"
 #include "vk_state_manager.hh"
 #include "vk_storage_buffer.hh"
@@ -35,6 +37,7 @@
 #include "vk_texture_pool.hh"
 #include "vk_uniform_buffer.hh"
 #include "vk_vertex_buffer.hh"
+#include "vk_work_in_flight.hh"
 
 #include "vk_backend.hh"
 
@@ -141,58 +144,6 @@ bool GPU_vulkan_is_supported_driver(VkPhysicalDevice vk_physical_device)
 static Vector<StringRefNull> missing_capabilities_get(VkPhysicalDevice vk_physical_device)
 {
   Vector<StringRefNull> missing_capabilities;
-  /* Check device features. */
-  VkPhysicalDeviceVulkan12Features features_12 = {
-      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
-  VkPhysicalDeviceVulkan11Features features_11 = {
-      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES, &features_12};
-  VkPhysicalDeviceFeatures2 features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-                                        &features_11};
-
-  vkGetPhysicalDeviceFeatures2(vk_physical_device, &features);
-
-#ifndef __APPLE__
-  /* Features currently not supported by Mesa KosmicKrisp. */
-  if (features.features.geometryShader == VK_FALSE) {
-    missing_capabilities.append("geometry shaders");
-  }
-#endif
-  if (features.features.vertexPipelineStoresAndAtomics == VK_FALSE) {
-    missing_capabilities.append("vertex pipeline stores and atomics");
-  }
-  if (features.features.multiViewport == VK_FALSE) {
-    missing_capabilities.append("multi viewport");
-  }
-  if (features.features.shaderClipDistance == VK_FALSE) {
-    missing_capabilities.append("shader clip distance");
-  }
-  if (features.features.fragmentStoresAndAtomics == VK_FALSE) {
-    missing_capabilities.append("fragment stores and atomics");
-  }
-  if (features.features.logicOp == VK_FALSE) {
-    missing_capabilities.append("logical operations");
-  }
-  if (features.features.dualSrcBlend == VK_FALSE) {
-    missing_capabilities.append("dual source blending");
-  }
-  if (features.features.imageCubeArray == VK_FALSE) {
-    missing_capabilities.append("image cube array");
-  }
-  if (features.features.multiDrawIndirect == VK_FALSE) {
-    missing_capabilities.append("multi draw indirect");
-  }
-  if (features.features.drawIndirectFirstInstance == VK_FALSE) {
-    missing_capabilities.append("draw indirect first instance");
-  }
-  if (features_11.shaderDrawParameters == VK_FALSE) {
-    missing_capabilities.append("shader draw parameters");
-  }
-  if (features_12.timelineSemaphore == VK_FALSE) {
-    missing_capabilities.append("timeline semaphores");
-  }
-  if (features_12.bufferDeviceAddress == VK_FALSE) {
-    missing_capabilities.append("buffer device address");
-  }
 
   /* Check device extensions. */
   uint32_t vk_extension_count;
@@ -212,12 +163,44 @@ static Vector<StringRefNull> missing_capabilities_get(VkPhysicalDevice vk_physic
   if (!extensions.contains(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME)) {
     missing_capabilities.append(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
   }
+  if (!extensions.contains(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME)) {
+    missing_capabilities.append(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
+  }
+  if (!extensions.contains(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME)) {
+    missing_capabilities.append(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+  }
+  if (!extensions.contains(VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME)) {
+    missing_capabilities.append(VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME);
+  }
+  if (!extensions.contains(VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME)) {
+    missing_capabilities.append(VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME);
+  }
+  if (!extensions.contains(VK_KHR_SEPARATE_DEPTH_STENCIL_LAYOUTS_EXTENSION_NAME)) {
+    missing_capabilities.append(VK_KHR_SEPARATE_DEPTH_STENCIL_LAYOUTS_EXTENSION_NAME);
+  }
+
+  /* Check device features. */
+  VkPhysicalDeviceFeatures2 features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+  vkGetPhysicalDeviceFeatures2(vk_physical_device, &features);
+
 #ifndef __APPLE__
-  /* Metal doesn't support provoking vertex. */
-  if (!extensions.contains(VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME)) {
-    missing_capabilities.append(VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME);
+  /* Features currently not supported by Mesa KosmicKrisp. */
+  if (features.features.geometryShader == VK_FALSE) {
+    missing_capabilities.append("geometry shaders");
   }
 #endif
+  if (features.features.fragmentStoresAndAtomics == VK_FALSE) {
+    missing_capabilities.append("fragment stores and atomics");
+  }
+  if (features.features.dualSrcBlend == VK_FALSE) {
+    missing_capabilities.append("dual source blending");
+  }
+  if (features.features.imageCubeArray == VK_FALSE) {
+    missing_capabilities.append("image cube array");
+  }
+  if (features.features.drawIndirectFirstInstance == VK_FALSE) {
+    missing_capabilities.append("draw indirect first instance");
+  }
 
   return missing_capabilities;
 }
@@ -251,13 +234,22 @@ static bool vk_instance_create_for_platform_checks(VkInstance *r_instance)
 {
   vk_restrict_loader_layers();
 
-  /* Initialize an vulkan 1.2 instance. */
+  VkResult vk_result = volkInitialize();
+  if (vk_result != VK_SUCCESS) {
+    CLOG_ERROR(&LOG,
+               "Error initializing Vulkan loader: VkResult=%d, most likely cannot find the Vulkan "
+               "Loader provided by GPU driver/OS.",
+               vk_result);
+    return false;
+  }
+
+  /* Initialize an vulkan 1.1 instance. */
   VkApplicationInfo vk_application_info = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
   vk_application_info.pApplicationName = "Blender";
   vk_application_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
   vk_application_info.pEngineName = "Blender";
   vk_application_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-  vk_application_info.apiVersion = VK_API_VERSION_1_2;
+  vk_application_info.apiVersion = VK_API_VERSION_1_1;
 
   const char *vk_instance_extensions[] = {
       VK_KHR_SURFACE_EXTENSION_NAME, /* Required dependency for VK_KHR_swapchain. */
@@ -280,9 +272,10 @@ bool VKBackend::is_supported()
 
   VkInstance vk_instance = VK_NULL_HANDLE;
   if (!vk_instance_create_for_platform_checks(&vk_instance)) {
-    CLOG_ERROR(&LOG, "Unable to initialize a Vulkan 1.2 instance.");
+    CLOG_WARN(&LOG, "Unable to initialize a Vulkan 1.1 instance.");
     return false;
   }
+  volkLoadInstanceOnly(vk_instance);
 
   /* Go over all the devices. */
   uint32_t physical_devices_count = 0;
@@ -345,6 +338,7 @@ void VKBackend::supported_devices_print(FILE *fp)
     fprintf(fp, "Unable to initialize a Vulkan 1.2 instance.\n");
     return;
   }
+  volkLoadInstanceOnly(vk_instance);
 
   uint32_t physical_devices_count = 0;
   vkEnumeratePhysicalDevices(vk_instance, &physical_devices_count, nullptr);
@@ -385,7 +379,7 @@ void VKBackend::supported_devices_print(FILE *fp)
   size_t w_id = strlen(col_id);
   for (const Row &row : rows) {
     char buf[16];
-    w_index = std::max(w_index, BLI_snprintf_rlen(buf, sizeof(buf), "%d", row.index));
+    w_index = std::max(w_index, SNPRINTF_RLEN(buf, "%d", row.index));
     w_id = std::max(w_id, row.identifier.size());
   }
 
@@ -496,7 +490,7 @@ void VKBackend::platform_init(const VKDevice &device)
   GPG.device_uuid = Array<uint8_t, 16>(Span<uint8_t>(id_properties.deviceUUID, VK_UUID_SIZE));
 
   if (id_properties.deviceLUIDValid) {
-    GPG.device_luid = Array<uint8_t, 8>(Span<uint8_t>(id_properties.deviceUUID, VK_LUID_SIZE));
+    GPG.device_luid = Array<uint8_t, 8>(Span<uint8_t>(id_properties.deviceLUID, VK_LUID_SIZE));
     GPG.device_luid_node_mask = id_properties.deviceNodeMask;
   }
   else {
@@ -521,8 +515,8 @@ void VKBackend::detect_workarounds(VKDevice &device)
 
     /* Force workarounds and disable extensions. */
     workarounds.not_aligned_pixel_formats = true;
-    extensions.shader_output_layer = false;
-    extensions.shader_output_viewport_index = false;
+    workarounds.static_viewport_scissor = true;
+    extensions.shader_viewport_index_layer = false;
     extensions.fragment_shader_barycentric = false;
     extensions.dynamic_rendering_local_read = false;
     extensions.dynamic_rendering_unused_attachments = false;
@@ -530,8 +524,14 @@ void VKBackend::detect_workarounds(VKDevice &device)
     extensions.wide_lines = false;
     extensions.line_rasterization = false;
     extensions.extended_dynamic_state = false;
+    extensions.multi_draw_indirect = false;
+    extensions.provoking_vertex = false;
+    extensions.spirv_1_4 = false;
+    GCaps.ray_query_support = false;
     GCaps.stencil_export_support = false;
     GCaps.texture_pool_workaround = true;
+    GCaps.vertex_pipeline_stores_and_atomics_support = false;
+    GCaps.multi_viewport_support = false;
 
     device.workarounds_ = workarounds;
     device.extensions_ = extensions;
@@ -542,10 +542,15 @@ void VKBackend::detect_workarounds(VKDevice &device)
     GCaps.texture_pool_workaround = true;
   }
 
-  extensions.shader_output_layer =
-      device.physical_device_vulkan_12_features_get().shaderOutputLayer;
-  extensions.shader_output_viewport_index =
-      device.physical_device_vulkan_12_features_get().shaderOutputViewportIndex;
+  /* Some Qualcomm drivers keep command-buffer-local state written by `vkCmdSetViewport` across
+   * command buffer resets. */
+  if (GPU_type_matches(GPU_DEVICE_QUALCOMM, GPU_OS_ANY, GPU_DRIVER_ANY)) {
+    workarounds.static_viewport_scissor = true;
+  }
+
+  extensions.shader_viewport_index_layer = device.supports_extension(
+      VK_EXT_SHADER_VIEWPORT_INDEX_LAYER_EXTENSION_NAME);
+  extensions.spirv_1_4 = device.supports_extension(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
   extensions.wide_lines = device.physical_device_features_get().wideLines;
   extensions.fragment_shader_barycentric = device.supports_extension(
       VK_KHR_FRAGMENT_SHADER_BARYCENTRIC_EXTENSION_NAME);
@@ -553,7 +558,7 @@ void VKBackend::detect_workarounds(VKDevice &device)
       VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
   extensions.dynamic_rendering_unused_attachments = device.supports_extension(
       VK_EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_EXTENSION_NAME);
-  extensions.logic_ops = device.physical_device_features_get().logicOp;
+
   extensions.maintenance4 = device.supports_extension(VK_KHR_MAINTENANCE_4_EXTENSION_NAME);
   extensions.memory_priority = device.supports_extension(VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME);
   extensions.pageable_device_local_memory = device.supports_extension(
@@ -566,6 +571,9 @@ void VKBackend::detect_workarounds(VKDevice &device)
       VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
   extensions.vertex_input_dynamic_state = device.supports_extension(
       VK_EXT_VERTEX_INPUT_DYNAMIC_STATE_EXTENSION_NAME);
+  extensions.multi_draw_indirect = device.physical_device_features_get().multiDrawIndirect ==
+                                   VK_TRUE;
+  extensions.provoking_vertex = device.supports_extension(VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME);
 #if 0
   extensions.host_image_copy = device.supports_extension(VK_EXT_HOST_IMAGE_COPY_EXTENSION_NAME);
 #endif
@@ -584,6 +592,9 @@ void VKBackend::detect_workarounds(VKDevice &device)
   {
     workarounds.not_aligned_pixel_formats = true;
   }
+
+  extensions.shader_clip_distance = device.physical_device_features_get().shaderClipDistance ==
+                                    VK_TRUE;
 
   /* During testing graphics pipeline library feature it was detected that it would crash on
    * official AMD drivers.
@@ -637,30 +648,33 @@ void VKBackend::detect_workarounds(VKDevice &device)
     GPUIntelGpuArch gpu_arch = GPU_platform_get_intel_arch(
         device.physical_device_properties_get().deviceID);
 
-    /* Intel Gen9 iGPUs (Intel 7th to 10th Gen Processor Graphics driver) show a black screen at
-     * application startup when using VK_EXT_vertex_input_dynamic_state.
-     *
-     * See #147721
-     */
-    if (gpu_arch == GPUIntelGpuArch::Gen9AndOlder) {
+    if (gpu_arch <= GPUIntelGpuArch::Gen11) {
+      /* Intel Gen11 and older iGPUs (Intel 7th to 10th Gen Processor Graphics driver) show a black
+       * screen at application startup when using VK_EXT_vertex_input_dynamic_state.
+       *
+       * Driver reports support, but returns nullpointer for the needed functions.
+       *
+       * See #147721
+       */
       extensions.vertex_input_dynamic_state = false;
-    }
 
-    /* Using the texture pool causes varying issues on older Intel iGPUs.
-     * Note: Gen12 iGPUs are partly covered by the Intel 11th to 14th Gen Processor Graphics driver
-     * and the Intel Arc Graphics driver (the latter handles Arrow Lake and Meteor Lake).
-     * - Visual corruptions can be seen on Gen9 and older iGPUs (Intel 7th to 10th Gen Processor
-     * Graphics driver; #147721).
-     * - When using the image cache, visual artifacts can be seen on Gen11 and Gen12 iGPUs
-     * (#156496) and Gen12 dGPUs (#160002).
-     * - When using the texture pool without the image cache, memory leaks happen on Gen11 and
-     * Gen12 GPUs (#157777).
-     */
-    if (gpu_arch <= GPUIntelGpuArch::Gen12) {
+      /* Using the texture pool causes visual corruptions on Gen11 and older iGPUs (Intel 7th to
+       * 10th Gen Processor Graphics driver; #147721). */
       GCaps.texture_pool_workaround = true;
     }
   }
 #endif
+
+  /* Legacy AMD drivers (#142019) don't perform the sRGB conversion when storing a clear value into
+   * an sRGB attachment, so a linear clear color is stored into the sRGB attachment and the
+   * background then renders too bright. Only official AMD drivers up to version 31.0.24002.92
+   * (Vulkan 2.0.294) are affected. */
+  if (GPU_type_matches(GPU_DEVICE_ATI, GPU_OS_WIN, GPU_DRIVER_OFFICIAL)) {
+    const uint32_t driver_version = device.physical_device_properties_get().driverVersion;
+    if (driver_version <= VK_MAKE_API_VERSION(2, 0, 294, 0)) {
+      workarounds.missing_srgb_clear_conversion = true;
+    }
+  }
 
 #ifdef __APPLE__
   extensions.extended_dynamic_state = false;
@@ -690,6 +704,16 @@ void VKBackend::delete_resources()
   MEM_delete(compiler_);
 }
 
+bool VKBackend::pipelines_compiled_since_last_reset()
+{
+  return device.pipelines.compiled_since_last_reset();
+}
+
+void VKBackend::reset_pipeline_compilation_tracking()
+{
+  device.pipelines.reset_compilation_tracking();
+}
+
 void VKBackend::compute_dispatch(int groups_x_len, int groups_y_len, int groups_z_len)
 {
   VKContext &context = *VKContext::get();
@@ -710,19 +734,13 @@ void VKBackend::compute_dispatch_indirect(StorageBuf *indirect_buf)
   render_graph::VKResourceAccessInfo &resources = context.reset_and_get_access_info();
   render_graph::VKDispatchIndirectNode::CreateInfo dispatch_indirect_info(resources);
   context.update_pipeline_data(dispatch_indirect_info.dispatch_indirect_node.pipeline_data);
-  dispatch_indirect_info.dispatch_indirect_node.buffer = indirect_buffer.vk_handle();
+  dispatch_indirect_info.dispatch_indirect_node.buffer = indirect_buffer.resource();
   dispatch_indirect_info.dispatch_indirect_node.offset = 0;
   context.render_graph().add_node(dispatch_indirect_info);
 }
 
 Context *VKBackend::context_alloc(GHOST_IWindow *ghost_window, GHOST_IContext *ghost_context)
 {
-  if (ghost_window) {
-    BLI_assert(ghost_context == nullptr);
-    ghost_context = ghost_window->getDrawingContext();
-  }
-
-  BLI_assert(ghost_context != nullptr);
   if (!device.is_initialized()) {
     device.init(ghost_context);
     device.extensions_get().log();
@@ -749,6 +767,11 @@ Batch *VKBackend::batch_alloc()
 Fence *VKBackend::fence_alloc()
 {
   return new VKFence();
+}
+
+WorkInFlight *VKBackend::work_in_flight_alloc(uint max_in_flight)
+{
+  return new VKWorkInFlight(max_in_flight);
 }
 
 FrameBuffer *VKBackend::framebuffer_alloc(const char *name)
@@ -806,20 +829,36 @@ VertBuf *VKBackend::vertbuf_alloc()
   return new VKVertexBuffer();
 }
 
+TopLevelAS *VKBackend::tlas_alloc(const char *name)
+{
+  return new VKTopLevelAS(name);
+}
+BottomLevelAS *VKBackend::blas_alloc(const char *name)
+{
+  return new VKBottomLevelAS(name);
+}
+
+/**
+ * The current rendering depth of this thread.
+ *
+ * GPU_rendering_begin can be called multiple times forming a hierarchy. rendering_depth is
+ * increased for every GPU_rendering_begin and decreased when GPU_rendering_end is called.
+ * Discarded resources are released when rendering_depth is set to 0.
+ */
+static thread_local int32_t rendering_depth = 0;
+
 void VKBackend::render_begin()
 {
-  VKThreadData &thread_data = device.current_thread_data();
-  BLI_assert_msg(thread_data.rendering_depth >= 0, "Unbalanced `GPU_render_begin/end`");
-  thread_data.rendering_depth += 1;
+  BLI_assert_msg(rendering_depth >= 0, "Unbalanced `GPU_render_begin/end`");
+  rendering_depth += 1;
 }
 
 void VKBackend::render_end()
 {
-  VKThreadData &thread_data = device.current_thread_data();
-  thread_data.rendering_depth -= 1;
-  BLI_assert_msg(thread_data.rendering_depth >= 0, "Unbalanced `GPU_render_begin/end`");
+  rendering_depth -= 1;
+  BLI_assert_msg(rendering_depth >= 0, "Unbalanced `GPU_render_begin/end`");
   if (G.background) {
-    if (thread_data.rendering_depth == 0) {
+    if (rendering_depth == 0) {
       VKContext *context = VKContext::get();
       if (context != nullptr) {
         context->flush();
@@ -833,7 +872,7 @@ void VKBackend::render_end()
   /* When performing animation render we want to release any discarded resources during rendering
    * after each frame.
    */
-  if (G.is_rendering && thread_data.rendering_depth == 0 && !BLI_thread_is_main()) {
+  if (G.is_rendering && rendering_depth == 0 && !BLI_thread_is_main()) {
     std::scoped_lock lock(device.orphaned_data.mutex_get());
     device.orphaned_data.move_data(device.orphaned_data_render,
                                    device.orphaned_data.timeline_ + 1);
@@ -859,6 +898,21 @@ void VKBackend::capabilities_init(VKDevice &device)
   GCaps.geometry_shader_support = true;
   GCaps.stencil_export_support = device.supports_extension(
       VK_EXT_SHADER_STENCIL_EXPORT_EXTENSION_NAME);
+  GCaps.vertex_pipeline_stores_and_atomics_support =
+      device.physical_device_features_get().vertexPipelineStoresAndAtomics;
+  GCaps.ray_query_support =
+      device.supports_extension(VK_KHR_RAY_QUERY_EXTENSION_NAME) &&
+      device.physical_device_acceleration_structure_properties_get().maxGeometryCount > 0 &&
+      device.physical_device_acceleration_structure_properties_get().maxPrimitiveCount > 0 &&
+      device.physical_device_acceleration_structure_properties_get().maxInstanceCount > 0;
+  if (G.debug & G_DEBUG_GPU_NO_HW_RAYTRACING) {
+    GCaps.ray_query_support = false;
+  }
+
+  GCaps.multi_viewport_support = device.physical_device_features_get().multiViewport &&
+                                 limits.maxViewports >= GPU_MAX_VIEWPORTS;
+
+  GCaps.srgb_write_view_support = true;
 
   GCaps.max_texture_size = max_ii(limits.maxImageDimension1D, limits.maxImageDimension2D);
   GCaps.max_texture_3d_size = min_uu(limits.maxImageDimension3D, INT_MAX);
@@ -872,7 +926,8 @@ void VKBackend::capabilities_init(VKDevice &device)
   }
   GCaps.max_uniforms_vert = GCaps.max_uniforms_frag = min_uu(
       limits.maxPerStageDescriptorUniformBuffers, INT_MAX);
-  GCaps.max_batch_indices = min_uu(limits.maxDrawIndirectCount, INT_MAX);
+  /* Vulkan has no limit on the number of indices in a single draw call. */
+  GCaps.max_batch_indices = INT_MAX;
   GCaps.max_batch_vertices = min_uu(limits.maxDrawIndexedIndexValue, INT_MAX);
   GCaps.max_vertex_attribs = min_uu(limits.maxVertexInputAttributes, INT_MAX);
   GCaps.max_varying_floats = min_uu(limits.maxVertexOutputComponents, INT_MAX);

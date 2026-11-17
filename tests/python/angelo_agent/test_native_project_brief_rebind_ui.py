@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'scripts/addons_core'))
-from angelo_agent import display_text, project_brief_rebind_ui, ui_text
+from angelo_agent import display_text, project_brief_rebind_ui, save_failure, ui_text
 from angelo_agent.agent_workspace_ui import control_lines
 
 
@@ -31,6 +31,7 @@ class ProjectBriefRebindUITests(unittest.TestCase):
             document_key=Mock(return_value=self.document), main_window=lambda: 'native-window')
         self.capture = Mock(return_value='host-native-attestation')
         namespace = {'Operator': object, 'iface_': ui_text.iface_, 'rpt_': ui_text.rpt_, 'review_line_type': object, 'control_lines': control_lines,
+            'shown': display_text.shown, 'save_failure': save_failure,   # The module's own names the class uses.
             'review_identity': project_brief_rebind_ui.review_identity, 'ui': self.ui, 'capture_loaded_project': self.capture,
             'add_lines': lambda operator, values: operator.review_lines.extend(values),
             **{name: (lambda **kwargs: None) for name in ('BoolProperty', 'CollectionProperty', 'IntProperty', 'StringProperty')}}
@@ -78,7 +79,11 @@ class ProjectBriefRebindUITests(unittest.TestCase):
         self.controller.save.side_effect = OSError('Metadata storage unavailable')
         self.assertEqual(self.operator.execute(self.context), {'FINISHED'})
         self.assertIn('WARNING', self.operator.report.call_args.args[0])
-        self.assertIn('No scene edits or tool approvals', self.operator.report.call_args.args[1])
+        said = self.operator.report.call_args.args[1]
+        self.assertIn('No scene edits or tool approvals', said)
+        # Why and what to do (save_failure), never the system's own text, which can hold the settings folder's path.
+        self.assertIn(str(save_failure.cause(OSError('Metadata storage unavailable'))), said)
+        self.assertNotIn('Metadata storage unavailable', said)
 
 
 if __name__ == '__main__':

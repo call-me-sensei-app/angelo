@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Prompt-cache floors: a gate run fails, as a cache SEV, when a cache read falls below its recorded floor.
+"""Prompt-cache floors: a gate run fails, as a cache SEV, when a session's cache read falls below its recorded floor.
 
 A cache read costs 0.05x input on the launch models, so one silent prefix break
 (a timestamp in the instructions, a tool list in another order, a cache key that
@@ -11,44 +11,45 @@ What is measured, from the Angelo receipts a run already writes
 (``eval-live-agent.json``: each task's ``receipt.usage`` and ``receipt.route``):
 
 * A *chat* is one native session: the tasks of a trial with the same ``chat``.
-* Its *first call* is the chat's first model request. Its share is the first
-  turn's ``cached_input_tokens / input_tokens`` when that turn made exactly one
-  request; otherwise the first call is not separable and is unknown.
-* Its *calls 2+ share* is the token-weighted ``cached / input`` over every later
-  turn whose ``cache_gap`` is ``under_5m`` (or unrecorded, in older receipts). A
-  turn after a longer gap may have outlived the provider's shortest cache
-  lifetime, so it is left out and counted. When the first turn made several
-  requests it is left out too (its later requests cannot be separated).
-* A *cell* is ``route mode | model | variant``; the variant is the task set
-  (``plan.grading.task_set``), with the approval mode when it is not the
-  default and ``new-chat-per-task`` for returning-user runs.
+* Its *session share* is its cached input tokens over its input tokens, summed
+  over ALL its measured calls: the first included, turns after a long gap
+  included. A turn without usage is unmeasured and left out (counted).
+* Its *first call* is the chat's first model request: the first turn's share
+  when that turn made exactly one request; otherwise it is not separable and
+  unknown.
+* A *cell* is ``platform | route mode | model | variant``; the platform is the
+  campaign's (``CONFIG.json``, ``unknown`` without one: never gated); the
+  variant is the task set (``plan.grading.task_set``), with the approval mode
+  when it is not the default and ``new-chat-per-task`` for returning-user runs.
 
-The check, per receipt group (one step folder) and cell that has a floor:
+The check (maintainer rulings 2026-11-04, "Measure over all calls" and "Skip
+first turn + per-platform floors"), the same for every route and model:
 
-* the cell's calls 2+ share, token-weighted over the counted later turns of
-  all its chats in the step except the one turn with the lowest share, below
-  ``later_floor`` is a SEV. Providers occasionally serve one request without
-  its cache (the 1.0.0 final gate's Sol trial 5 read nothing on one turn,
-  under a minute after the previous one): leaving out the lowest turn absorbs
-  one such request, while a prefix or key break lowers every turn;
-* on a route with a cache-affinity key (``route.cache_affinity``: Codex keyed
-  and team routes), the median first-call share below ``first_floor`` is a
-  SEV. The first keyed chat of the cell in each step is left out: it may be the
-  one that warms a key the provider had expired. Claude has no key (reuse is
-  automatic and not guaranteed), so its first call is shown, never gated.
+* A chat's *judged share* is its session share, except for the first chat of
+  its cell in each step: that one is judged without its first turn, which may
+  warm a key the provider had expired (a one-chat step's chat, every smoke's,
+  always is that first chat). A first chat of one turn has no judged share.
+* **SEV:** a chat whose judged share is below its cell's ``session_floor``.
+  A provider that serves one request without its cache costs that request's
+  share of the session only (cut-15's Astra long trial 03: a cold first call,
+  0.956 over 40 calls), while a prefix or key break lowers every call.
+* **Warning, never a failure:** two or more first calls in one check (one run:
+  a campaign's gate steps) that read less than ``FULL_READ`` of their input.
+  The first chat of each cell in each step is left out: it may warm a key the
+  provider had expired. One such miss is a provider's; several in a run may be
+  a key or routing change worth reading.
 
-Each step cell also reports its full misses (later turns that read nothing), its
-lowest chat and, when receipts carry them, the provider's miss reasons
-(``receipt.cache_diagnostics`` counts, if present), for forensics; none of them
-is gated by itself, and an absent one is never a failure.
+Each cell also reports its chats, lowest chat, full misses (later turns that
+read nothing) and, when receipts carry them, the provider's miss reasons
+(``receipt.cache_diagnostics``), for forensics; none is gated by itself.
 
 A value the receipts do not give is unknown and never a SEV. A cell with no floor
 is listed as unfloored, never failed: floors come only from passing gates.
 
-Floors (``cache_floors.json``): for every cell, the lowest step value observed
-across the passing gate campaigns given to ``regenerate``, minus ``MARGIN`` (5
-percentage points), rounded down to a whole percent; the same rule for every
-cell and both metrics. Usage::
+Floors (``cache_floors.json``): for every cell, the lowest judged share of any
+chat across the passing gate campaigns given to ``regenerate``, minus ``MARGIN``
+(5 percentage points), rounded down to a whole percent; one rule for every cell.
+Usage::
 
     python3 cache_floor.py check STEP_OR_RECEIPT...          # exit 1 on a cache SEV
     python3 cache_floor.py regenerate CAMPAIGN...            # rewrite cache_floors.json from passing gates
@@ -69,11 +70,13 @@ HERE = Path(__file__).resolve().parent
 FLOORS_PATH = HERE / "cache_floors.json"
 RECEIPT = send_record.NAME
 MARGIN = 0.05
-# Gaps under the shortest provider cache lifetime (5 minutes); a missing bucket is an older receipt.
-COUNTED_GAPS = ("under_5m", None)
-RULE = ("per cell (route mode | model | variant): the lowest step value across the passing gate campaigns in "
-        "sources (calls 2+: token-weighted over the step's later turns except its lowest one; first call: median of the step's keyed chats "
-        "after the first), minus %d percentage points, rounded down to a whole percent" % round(MARGIN * 100))
+# A first call that read less than this share of its input missed the cache. In the 2026-11-04 survey of 6,049
+# new-session requests, full reads sit at 0.93-0.97 on Opus 5.5, Sol and Astra; partial and cold ones at 0.75 or less.
+FULL_READ = 0.90
+WARN_FIRST_MISSES = 2
+RULE = ("per cell (platform | route mode | model | variant): the lowest judged share (cached over input tokens over a "
+        "chat's measured calls; a step's first chat of the cell without its first turn) of any chat across the passing "
+        "gate campaigns in sources, minus %d percentage points, rounded down to a whole percent" % round(MARGIN * 100))
 
 
 def receipt_paths(target):
@@ -109,7 +112,7 @@ def _usage(task):
 
 
 def chats(report, group, label=""):
-    """Per chat of one receipt: its cell, whether it is keyed, its first-call share and calls 2+ token sums."""
+    """Per chat of one receipt: its cell, whether it is keyed, its session share and its first-call share."""
     found = []
     for trial in report.get("trials") or []:
         if trial.get("invalid"):
@@ -126,76 +129,76 @@ def chats(report, group, label=""):
             first = None
             if first_usage is not None and first_usage.get("requests") == 1:
                 first = _share(first_usage["cached_input_tokens"], first_usage["input_tokens"])
-            cached = total = full_misses = 0
-            turns, diagnostics = [], {}
-            for task in tasks:
-                _add_counts(diagnostics, (task.get("receipt") or {}).get("cache_diagnostics"))
-            left_out = {"long_gap": 0, "unmeasured": 0, "first_turn_several_requests": 0}
-            if first_usage is not None and first_usage.get("requests", 1) != 1:
-                left_out["first_turn_several_requests"] = 1
-            for task in tasks[1:]:
+            cached = total = calls = full_misses = unmeasured = rest_cached = rest_total = 0
+            diagnostics = {}
+            for index, task in enumerate(tasks):
                 receipt, usage = _usage(task)
+                _add_counts(diagnostics, receipt.get("cache_diagnostics"))
                 if usage is None:
-                    left_out["unmeasured"] += 1
-                elif (receipt.get("route") or {}).get("cache_gap") not in COUNTED_GAPS:
-                    left_out["long_gap"] += 1
-                else:
-                    cached += usage["cached_input_tokens"]
-                    total += usage["input_tokens"]
-                    turns.append((usage["cached_input_tokens"], usage["input_tokens"]))
-                    full_misses += usage["input_tokens"] > 0 and usage["cached_input_tokens"] == 0
+                    unmeasured += 1
+                    continue
+                cached += usage["cached_input_tokens"]
+                total += usage["input_tokens"]
+                if index > 0:
+                    rest_cached += usage["cached_input_tokens"]
+                    rest_total += usage["input_tokens"]
+                calls += usage.get("requests") if type(usage.get("requests")) is int else 1
+                full_misses += index > 0 and usage["input_tokens"] > 0 and usage["cached_input_tokens"] == 0
             found.append({"cell": "%s|%s|%s" % (mode, model, variant(report)), "group": group,
                           "trial": label or trial.get("trial"), "chat": chat,
                           "keyed": route.get("cache_affinity") is True, "first": first,
-                          "later": _share(cached, total), "later_turns": turns,
+                          "session": _share(cached, total), "after_first_turn": _share(rest_cached, rest_total),
+                          "input_tokens": total, "calls": calls,
                           "full_misses": full_misses, "diagnostics": diagnostics,
-                          "left_out": {key: value for key, value in left_out.items() if value}})
+                          "left_out": {"unmeasured": unmeasured} if unmeasured else {}})
     return found
 
 
+def platform(target):
+    """The platform of the campaign a step folder or receipt belongs to (its ``CONFIG.json``), else ``unknown``."""
+    for folder in list(Path(target).resolve().parents)[:4]:
+        config = folder / "CONFIG.json"
+        if config.is_file():
+            try:
+                return json.loads(config.read_text(encoding="utf-8")).get("platform") or "unknown"
+            except (OSError, ValueError):
+                return "unknown"
+    return "unknown"
+
+
 def measure(targets):
-    """Every chat in the receipts under ``targets``; each target is one group (step) for the first-call rule."""
+    """Every chat in the receipts under ``targets``; each target is one group (step)."""
     found = []
     for target in targets:
+        where = platform(target)
         for path in receipt_paths(target):
             label = path.parent.name if path.parent.name.startswith("angelo-trial-") else ""
-            found += chats(json.loads(path.read_text(encoding="utf-8")), str(target), label)
-    gated = set()
-    for chat in found:   # The first keyed chat of a cell in each group may warm an expired key.
+            for chat in chats(json.loads(path.read_text(encoding="utf-8")), str(target), label):
+                chat["cell"] = where + "|" + chat["cell"]
+                found.append(chat)
+    seen = set()
+    for chat in found:   # The first chat of a cell in each group may warm a key the provider had expired.
         key = (chat["group"], chat["cell"])
-        chat["first_gated"] = chat["keyed"] and key in gated
-        if chat["keyed"]:
-            gated.add(key)
+        chat["first_counted"] = key in seen
+        chat["judged"] = chat["session"] if chat["first_counted"] else chat["after_first_turn"]
+        seen.add(key)
     return found
 
 
 def cells(found):
-    """Per (group, cell): the gated statistics and their forensics.
-
-    ``later``: token-weighted calls 2+ share over the counted later turns of all the cell's chats in the group,
-    leaving out the one turn with the lowest share: a request the provider happened not to serve from cache is
-    trimmed, while a prefix or key break lowers every turn.
-    ``first``: the median first-call share of the gated chats (keyed routes), for the same reason.
-    """
+    """Per (group, cell): its chats, lowest judged share, first-call misses and forensics."""
     result = {}
     for chat in found:
         entry = result.setdefault((chat["group"], chat["cell"]), {
-            "group": chat["group"], "cell": chat["cell"], "chats": 0, "turns": [], "full_misses": 0, "firsts": [],
-            "lowest_chat": None, "diagnostics": {}})
+            "group": chat["group"], "cell": chat["cell"], "chats": 0, "full_misses": 0, "lowest_chat": None,
+            "first_misses": [], "diagnostics": {}})
         entry["chats"] += 1
-        entry["turns"] += chat["later_turns"]
         entry["full_misses"] += chat["full_misses"]
         _add_counts(entry["diagnostics"], chat["diagnostics"])
-        if chat["first_gated"] and chat["first"] is not None:
-            entry["firsts"].append(chat["first"])
-        if chat["later"] is not None and (entry["lowest_chat"] is None or chat["later"] < entry["lowest_chat"][0]):
-            entry["lowest_chat"] = (round(chat["later"], 4), chat["trial"], chat["chat"])
-    for entry in result.values():
-        turns = sorted(entry.pop("turns"), key=lambda turn: _share(*turn) if turn[1] else 1.0)
-        kept = turns[1:] if len(turns) > 1 else turns   # One request's provider miss is trimmed, a break is not.
-        entry["later_turns"] = len(turns)
-        entry["later"] = _share(sum(turn[0] for turn in kept), sum(turn[1] for turn in kept))
-        entry["first"] = statistics.median(entry["firsts"]) if entry["firsts"] else None
+        if chat["judged"] is not None and (entry["lowest_chat"] is None or chat["judged"] < entry["lowest_chat"][0]):
+            entry["lowest_chat"] = (round(chat["judged"], 4), chat["trial"], chat["chat"])
+        if chat["first_counted"] and chat["first"] is not None and chat["first"] < FULL_READ:
+            entry["first_misses"].append((round(chat["first"], 4), chat["trial"], chat["chat"]))
     return [result[key] for key in sorted(result)]
 
 
@@ -212,19 +215,13 @@ def _floor(values):
 
 
 def floors_from(found):
-    """``cells`` for cache_floors.json: per cell the floors, the lowest and median step value, how many steps."""
+    """``cells`` for cache_floors.json: per cell the floor, the lowest and median judged share, how many chats."""
     floors = {}
-    measured = cells(found)
-    for cell in sorted({entry["cell"] for entry in measured}):
-        mine = [entry for entry in measured if entry["cell"] == cell]
-        later = [entry["later"] for entry in mine if entry["later"] is not None]
-        first = [entry["first"] for entry in mine if entry["first"] is not None]
-        floor = {"later_floor": _floor(later), "later_steps": len(later)}
-        if later:
-            floor.update(later_min=round(min(later), 4), later_median=round(statistics.median(later), 4))
-        if first:
-            floor.update(first_floor=_floor(first), first_steps=len(first), first_min=round(min(first), 4),
-                         first_median=round(statistics.median(first), 4))
+    for cell in sorted({chat["cell"] for chat in found}):
+        sessions = [chat["judged"] for chat in found if chat["cell"] == cell and chat["judged"] is not None]
+        floor = {"session_floor": _floor(sessions), "session_chats": len(sessions)}
+        if sessions:
+            floor.update(session_min=round(min(sessions), 4), session_median=round(statistics.median(sessions), 4))
         floors[cell] = floor
     return floors
 
@@ -234,36 +231,45 @@ def load_floors(path=FLOORS_PATH):
 
 
 def check(found, floors):
-    """``{"sev", "breaches", "unfloored", "cells"}``: a breach is a step's cell value below the cell's floor."""
+    """``{"sev", "breaches", "warning", "first_misses", "unfloored", "cells"}``: a breach is a chat whose judged
+    share is below its cell's floor; the warning is ``WARN_FIRST_MISSES`` or more first-call misses in the check."""
     recorded = floors.get("cells", {})
-    breaches, measured = [], cells(found)
-    for entry in measured:
-        floor = recorded.get(entry["cell"])
-        if floor is None:
-            continue
-        for metric, key, label in (("later", "later_floor", "calls 2+"), ("first", "first_floor", "first call")):
-            if entry[metric] is not None and floor.get(key) is not None and entry[metric] < floor[key]:
-                breaches.append({"cell": entry["cell"], "group": entry["group"], "metric": label,
-                                 "share": round(entry[metric], 4), "floor": floor[key],
-                                 "full_misses": entry["full_misses"], "lowest_chat": entry["lowest_chat"],
-                                 "diagnostics": entry["diagnostics"]})
+    breaches = []
+    for chat in found:
+        floor = (recorded.get(chat["cell"]) or {}).get("session_floor")
+        if chat["judged"] is not None and floor is not None and chat["judged"] < floor:
+            breaches.append({"cell": chat["cell"], "group": chat["group"], "trial": chat["trial"], "chat": chat["chat"],
+                             "share": round(chat["judged"], 4), "session": round(chat["session"], 4),
+                             "first_chat": not chat["first_counted"], "floor": floor, "calls": chat["calls"],
+                             "first": None if chat["first"] is None else round(chat["first"], 4),
+                             "full_misses": chat["full_misses"], "diagnostics": chat["diagnostics"]})
+    measured = cells(found)
+    first_misses = [dict(zip(("share", "trial", "chat"), miss), cell=entry["cell"], group=entry["group"])
+                    for entry in measured for miss in entry["first_misses"]]
     unfloored = sorted({entry["cell"] for entry in measured if entry["cell"] not in recorded})
-    summary = [{key: (round(value, 4) if isinstance(value, float) else value) for key, value in entry.items()
-                if key != "firsts"} for entry in measured]
-    return {"sev": bool(breaches), "breaches": breaches, "unfloored": unfloored, "cells": summary}
+    return {"sev": bool(breaches), "breaches": breaches, "warning": len(first_misses) >= WARN_FIRST_MISSES,
+            "first_misses": first_misses, "unfloored": unfloored, "cells": measured}
 
 
 def describe(result):
-    """Human-readable lines; the first says SEV or clear."""
+    """Human-readable lines; the first says SEV or clear, a warning follows."""
     if result["sev"]:
-        lines = ["CACHE SEV: %d prompt-cache read(s) below the recorded floor (cache_floors.json); a prefix or "
-                 "cache-key break multiplies input cost by up to 20 while every task passes" % len(result["breaches"])]
-        lines += ["  %s: %s read %.1f%% < floor %.0f%% (%s; full misses %d; lowest chat %s; provider miss "
-                  "diagnostics %s)" % (b["cell"], b["metric"], b["share"] * 100, b["floor"] * 100, b["group"],
-                                       b["full_misses"], b["lowest_chat"], b["diagnostics"] or "none reported")
-                  for b in result["breaches"]]
+        lines = ["CACHE SEV: %d session(s) read their prompt cache below the recorded floor (cache_floors.json); a "
+                 "prefix or cache-key break multiplies input cost by up to 20 while every task passes"
+                 % len(result["breaches"])]
+        lines += ["  %s: %s chat %s read %.1f%%%s (all %d calls: %.1f%%) < floor %.0f%% (%s; first call %s; full "
+                  "misses %d; provider miss diagnostics %s)" % (
+                      b["cell"], b["trial"], b["chat"], b["share"] * 100, " after its first turn" if b["first_chat"] else "",
+                      b["calls"], b["session"] * 100, b["floor"] * 100, b["group"], b["first"], b["full_misses"],
+                      b["diagnostics"] or "none reported") for b in result["breaches"]]
     else:
         lines = ["cache floors: clear (%d step cells checked)" % len(result["cells"])]
+    if result["warning"]:
+        lines.append("CACHE WARNING: %d first calls read under %d%% of their input in this run (one is a provider's "
+                     "miss; several may be a key or routing change): %s" % (
+                         len(result["first_misses"]), round(FULL_READ * 100),
+                         "; ".join("%s %s %.1f%%" % (m["cell"], m["trial"], m["share"] * 100)
+                                   for m in result["first_misses"])))
     lines += ["  no floor recorded for %s (not gated)" % cell for cell in result["unfloored"]]
     return lines
 

@@ -82,8 +82,10 @@ def _relocated_record(record, legacy, current):
     return updated if changed else None
 
 
-def relocate_snapshot_records(current, legacy):
-    """Rewrite snapshot records in ``current`` that point into ``legacy``; returns how many changed."""
+def relocate_snapshot_records(current, legacy, skip_damaged=False):
+    """Rewrite snapshot records in ``current`` that point into ``legacy``; returns how many changed. ``skip_damaged``
+    (the version carry-over): a record that is not one (bad JSON, over its size limit) is left to the store, which
+    reads, or sets aside, a damaged record as it always does, instead of stopping every other rewrite."""
     from .checkpoint_filesystem import _private_directory, _read_json, _write_json
     from .checkpoint_transactions import _transaction
     base, count = current / "checkpoints", 0
@@ -100,6 +102,10 @@ def relocate_snapshot_records(current, legacy):
                     try:
                         record = _read_json(descriptor, "checkpoint.json")
                     except FileNotFoundError:
+                        continue
+                    except ValueError:
+                        if not skip_damaged:
+                            raise
                         continue
                     updated = _relocated_record(record, legacy, current)
                     if updated is not None:

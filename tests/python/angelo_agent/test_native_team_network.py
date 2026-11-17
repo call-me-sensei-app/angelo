@@ -25,7 +25,7 @@ from angelo_agent import api_connections, team_network, web_fetch_hook, web_sear
 from angelo_agent.claude_transport import claude_arguments, claude_session, launch_values  # noqa: E402
 from angelo_agent.runtime_launch import child_environment  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from platform_env import essential_environ  # noqa: E402
+import platform_env  # noqa: E402
 
 GRANT_KEY = "agk_" + "k" * 43
 GATEWAY = "https://gateway.example.test"
@@ -62,7 +62,7 @@ class FenceTests(unittest.TestCase):
             team_network.apply({}, "claude", "")
 
     def test_team_children_are_fenced_and_personal_children_keep_the_persons_network(self):
-        with patch.dict(os.environ, dict(PROXIES, PATH="/usr/bin", ANGELO_GATEWAY_URL=GATEWAY), clear=True):
+        with platform_env.cleared(dict(PROXIES, PATH="/usr/bin", ANGELO_GATEWAY_URL=GATEWAY)):
             for mode in ("claude_team", "codex_team"):
                 with self.subTest(mode=mode):
                     env = child_environment(mode, GRANT_KEY)
@@ -126,8 +126,7 @@ class FenceTests(unittest.TestCase):
         plans = Plans()
         plans._recorded = lambda session: set()
         for mode, asked, expected in (("claude_team", False, True), ("claude_api", True, False)):
-            with self.subTest(mode=mode), patch.dict(os.environ, {"PATH": "/usr/bin", "ANGELO_GATEWAY_URL": GATEWAY},
-                                                     clear=True), \
+            with self.subTest(mode=mode), platform_env.cleared({"PATH": "/usr/bin", "ANGELO_GATEWAY_URL": GATEWAY}), \
                     patch("angelo_agent.runtime_environment.require_angelo_profile"):
                 chat = SimpleNamespace(mode=mode, api_key=GRANT_KEY, store_directory="/tmp", settings={})
                 arguments = claude_arguments("claude", dict(values, gateway=asked))[1:]
@@ -231,8 +230,8 @@ class HookTests(unittest.TestCase):
         self.addCleanup(server.shutdown)
         origin = "http://127.0.0.1:%d" % server.server_address[1]   # http only to loopback (team_http).
         # The variables every real process has stay (child_environment inherits them): Winsock needs SYSTEMROOT.
-        env = team_network.apply(essential_environ(PATH=os.environ.get("PATH", ""), ANTHROPIC_API_KEY=GRANT_KEY,
-                                                   ANTHROPIC_BASE_URL=origin + "/v1/anthropic"), "claude", "127.0.0.1")
+        person = platform_env.essential_environ(ANTHROPIC_API_KEY=GRANT_KEY, ANTHROPIC_BASE_URL=origin + "/v1/anthropic")
+        env = team_network.apply(person, "claude", "127.0.0.1")
         # Claude Code writes UTF-8 whatever the system's code page; a prompt in any language comes back unchanged.
         hook_input = dict(self.INPUT, tool_input=dict(self.INPUT["tool_input"], prompt="見出しは? Überschrift?"))
         result = subprocess.run([sys.executable, *team_network.HOOK_COMMAND.split()[1:-1], env[team_network.HOOK_SCRIPT]],

@@ -21,6 +21,7 @@ from .team_library_spec import TEAM_NAMES
 from .tool_guidance import has_any, split, told
 from .web_export_spec import WEB_NAMES
 from .engine_link_tool_spec import ENGINE_LINK_NAMES
+from .download_spec import DOWNLOAD_NAMES
 from .engine_check_spec import ENGINE_NAMES
 from .game_ready_spec import GAME_READY_NAMES
 
@@ -189,6 +190,7 @@ _FAMILIES = (("sculpt", SCULPT_NAMES), ("hand rigging", RIG_NAMES), ("Media Stud
              ("the team library and IPs (angelo_team_library_search, _get, _import, _save, angelo_team_ips_list,\n"
               "angelo_team_ips_resolve, angelo_team_ip_get, _entity)", TEAM_NAMES),
              ("background jobs", JOB_NAMES), ("the web export", WEB_NAMES), ("the engine live link", ENGINE_LINK_NAMES),
+             ("downloads", DOWNLOAD_NAMES),
              ("the game-engine preflight", ENGINE_NAMES), ("angelo_skeleton_check", ()),
              ("the game-ready check", GAME_READY_NAMES), ("angelo_goal", ()), ("angelo_memory_update", ()),
              ("angelo_expand_recipe", ()), ("angelo_blend_file", ()))

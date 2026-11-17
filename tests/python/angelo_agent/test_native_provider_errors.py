@@ -3,6 +3,7 @@
 """No network: provider error bodies become bounded, sanitized, user-visible details."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import base64
 import json
@@ -192,7 +193,7 @@ class TransportTests(unittest.TestCase):
             asset = store.add("IMAGE", "Cat", "Nano Banana 2", model_id="gemini-3.1-flash-image")
             jobs = StudioJobs(store, request_bytes)
             jobs.start(asset, binding, {"aspect": "1:1", "resolution": "1K"}, [])
-            deadline = time.monotonic() + 3
+            deadline = time.monotonic() + CAP_S
             while jobs.active and time.monotonic() < deadline:
                 jobs.pump()
                 time.sleep(.01)

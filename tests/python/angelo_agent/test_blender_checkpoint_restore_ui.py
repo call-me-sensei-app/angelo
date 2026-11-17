@@ -87,11 +87,11 @@ def click_restore(identity):
     redraw()
     view = chat_view._views[parts()['area'].as_pointer()]
     rect = next(rect for rect, action, value in view['hits'] if action == 'restore' and value == identity)
-    x, y = rect[0] + rect[2] / 2, rect[1] + rect[3] / 2
-    region = parts()['region']
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    x, y = chat_point(parts()['region'], rect)
     for value in ('PRESS', 'RELEASE'):
-        event = SimpleNamespace(type='LEFTMOUSE', value=value, mouse_x=region.x + x, mouse_y=region.y + y,
-            mouse_prev_y=region.y + y, ctrl=False, oskey=False, shift=False, alt=False, unicode='')
+        event = SimpleNamespace(type='LEFTMOUSE', value=value, mouse_x=x, mouse_y=y,
+            mouse_prev_y=y, ctrl=False, oskey=False, shift=False, alt=False, unicode='')
         with bpy.context.temp_override(**parts()):
             chat_view.ANGELO_OT_chat_input.modal(handler, bpy.context, event)
 

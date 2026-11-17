@@ -43,6 +43,7 @@ from unittest import mock
 from urllib.parse import urlsplit
 
 from host_test_policy import environment_skip
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 # The published list for a Teams gateway profile (doc/angelo/enterprise_policy.rst, "Network").
 PUBLISHED_HOSTS = frozenset({"gateway.angelo.studio", "console.angelo.studio", "angelo.studio",
@@ -323,4 +324,4 @@ class StandIn:
     def close(self):
         self.server.shutdown()
         self.server.server_close()
-        self.thread.join(10)
+        self.thread.join(CAP_S)

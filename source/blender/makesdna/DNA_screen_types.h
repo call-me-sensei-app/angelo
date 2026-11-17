@@ -784,11 +784,15 @@ enum eRegion_Flag : short {
   RGN_FLAG_POLL_FAILED = (1 << 10),
   RGN_FLAG_RESIZE_RESPECT_BUTTON_SECTIONS = (1 << 11),
   RGN_FLAG_INDICATE_OVERFLOW = (1 << 12),
+
+  RGN_FLAG_SEARCH_FILTER_SHOW = (1 << 13),
   /**
    * Angelo: hidden (#RGN_FLAG_HIDDEN is set too), but the regions that hide with it
    * (#RGN_ALIGN_HIDE_WITH_PREV) stay visible: an asset shelf collapsed to its tab strip. Cleared
-   * whenever the region shows again. */
-  RGN_FLAG_COLLAPSED = (1 << 13),
+   * whenever the region shows again.
+   * Angelo 1.0 (Blender 5.2) files stored it as (1 << 13), which Blender 5.3 took for
+   * #RGN_FLAG_SEARCH_FILTER_SHOW: reading such a file must move that bit here (versioning). */
+  RGN_FLAG_COLLAPSED = (1 << 14),
 };
 ENUM_OPERATORS(eRegion_Flag)
 

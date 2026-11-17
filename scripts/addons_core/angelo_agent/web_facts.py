@@ -10,6 +10,7 @@ data.
 
 import bpy
 
+from . import compositor_stack
 from .blend_file_paths import located
 
 PRINCIPLED = "ShaderNodeBsdfPrincipled"
@@ -130,16 +131,17 @@ def _look(scene):
 
 
 def _effect_settings(scene):
-    """What ``_effects`` reads from the scene itself (its compositor's nodes are updates of their own tree)."""
-    return {"compositor": getattr(scene, "compositing_node_group", None) or getattr(scene, "node_tree", None),
+    """What ``_effects`` reads from the scene itself: the compositor trees a render runs through, in stack order
+    (``compositor_stack.render_trees``: 5.3's effects stack, or the one group of 5.2), so enabling, adding or
+    reordering an effect changes this value; the trees' nodes are updates of their own trees."""
+    return {"compositor": tuple(tree for _path, tree in compositor_stack.render_trees(scene)),
             "use_compositing": bool(scene.render.use_compositing), "motion_blur": bool(scene.render.use_motion_blur)}
 
 
 def _effects(scene, objects):
     read = _effect_settings(scene)
-    tree = read["compositor"]
-    use_compositor = bool(tree is not None and read["use_compositing"] and any(
-        node.bl_idname not in PASSTHROUGH and not node.mute for node in tree.nodes))
+    use_compositor = bool(read["use_compositing"] and any(
+        node.bl_idname not in PASSTHROUGH and not node.mute for tree in read["compositor"] for node in tree.nodes))
     return {"motion_blur": read["motion_blur"],
             "depth_of_field": sorted(obj.name for obj in objects if obj.type == "CAMERA" and obj.data.dof.use_dof),
             "compositor": use_compositor}

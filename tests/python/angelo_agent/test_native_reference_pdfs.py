@@ -7,6 +7,7 @@ the thread it ran on; no real PDF tool or provider is used.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import subprocess
@@ -38,7 +39,7 @@ class FakeExtractor:
         with self.lock:
             self.calls.append({"arguments": arguments, "options": options, "thread": threading.current_thread()})
         if self.gate is not None:
-            self.gate.wait(10)   # Still extracting until the test releases it.
+            self.gate.wait(CAP_S)   # Still extracting until the test releases it.
         if self.outcome == "timeout":
             raise subprocess.TimeoutExpired(arguments, options["timeout"])
         if self.outcome == "failed":
@@ -169,7 +170,7 @@ class ToolReadThreadTests(unittest.TestCase):
         self.assertIn("call angelo_read_reference again", first["note"])
         self.assertIs(self.read("while-extracting").get("ready"), False, "One extraction, still running")
         self.release.set()
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + CAP_S
         while not self.fake.calls or self.controller.references.extracting():
             self.assertLess(time.monotonic(), deadline, "The background extraction never finished")
             time.sleep(0.01)

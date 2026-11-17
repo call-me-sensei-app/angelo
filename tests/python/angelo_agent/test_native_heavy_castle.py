@@ -242,7 +242,8 @@ class NativeReadsIdentityTests(unittest.TestCase):
             sys.modules.pop("bench_native_reads", None)
             import bench_native_reads
         self.bench = bench_native_reads
-        git = mock.patch.object(self.bench.subprocess, "run", return_value=SimpleNamespace(stdout=self.HARNESS + "\n"))
+        import own_checkout   # The harness asks it for this tree's own HEAD (bench_native_reads.harness_commit).
+        git = mock.patch.object(own_checkout, "revision", return_value=self.HARNESS)
         git.start()
         self.addCleanup(git.stop)
 

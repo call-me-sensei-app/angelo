@@ -12,6 +12,7 @@ the agent's OPEN and for an editor's own Edit in Angelo, runs off the main threa
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import sys
@@ -116,7 +117,7 @@ class BoundedWalkTests(unittest.TestCase):
         slow = Huge(5000, delay=0.002)
         with mock.patch.object(assets.os, "scandir", slow):
             lookup = reads.Lookup(lambda: assets.named(godot, "/p", "barrel"), seconds=0.05)
-            lookup.wait(5)
+            lookup.wait(CAP_S)
         self.assertEqual(lookup.outcome, ("late", None))   # Unfinished for time: refused as unreadable (9-L1).
         self.assertLess(slow.read, 5000)
         info = os.stat_result((0o100644, 7, 0, 2, 0, 0, 0, 0, 0, 0))
@@ -125,7 +126,7 @@ class BoundedWalkTests(unittest.TestCase):
                                                                                        0xFFFFFFFF, 0, 1, 0, 0, 0, 0, 0,
                                                                                        0))):
             lookup = reads.Lookup(lambda: assets._holds_inode(Path("/w"), info), seconds=0.05)
-            lookup.wait(5)
+            lookup.wait(CAP_S)
         self.assertEqual(lookup.outcome, ("late", None))   # Unchecked: refused as unreadable, never "outside".
 
     def test_an_entry_gone_while_checked_still_counts_as_held(self):

@@ -42,9 +42,10 @@ STALL, QUIET = "stall", "quiet"
 # runtime's last event of any kind (keep-alives included; None: it sends none, use last_model). thinking: a
 # thinking row of this turn is open. summarized: that open row has text. step: the newest running step row, or None.
 # watched: the provider reports signs of life at all; without them the row never notes a quiet or stalled turn.
-# thinking_age: seconds the open thinking row has been open (None: unknown).
-FIELDS = "status started accepted last_model last_heard thinking summarized step watched thinking_age"  # i18n: field names
-Facts = namedtuple("Facts", FIELDS)
+# thinking_age: seconds the open thinking row has been open (None: unknown). tool: the person's operation the
+# chat's held work waits for (``edit_tool_hold``), or None.
+FIELDS = "status started accepted last_model last_heard thinking summarized step watched thinking_age tool"  # i18n: field names
+Facts = namedtuple("Facts", FIELDS, defaults=(None,))
 # What one draw of the live row shows: the phase label (translated), the clock, the note (translated) and its kind.
 Live = namedtuple("Live", "label clock note kind")  # i18n: field names
 
@@ -124,7 +125,11 @@ def step_phase(message):
 
 
 def phase(facts):
-    """The live row's label, translated: a running step's phase, waiting for the model, or the status's label."""
+    """The live row's label, translated: waiting for the person's tool, a running step's phase, waiting for the
+    model, or the status's label."""
+    if facts.tool is not None:   # Never "Working in Angelo" or a stall: Angelo waits for the person (edit_tool_hold).
+        from .edit_tool_hold import shown
+        return shown(facts.tool)
     from .chat_titles import live_label
     from .claude_stream import STATUS_THINKING
     from .plan_progress import split
@@ -161,7 +166,7 @@ def note(facts, now, stall_seconds=STALL_SECONDS, quiet_seconds=QUIET_SECONDS):
     all; one that sends none (Codex) is silent with no reasoning item open, since an unsummarized reasoning item is
     exactly a quiet model, never proof of a dead connection. The host's own give-up is unchanged.
     """
-    if facts.step is not None or not facts.watched or facts.last_model is None:
+    if facts.tool is not None or facts.step is not None or not facts.watched or facts.last_model is None:
         return None
     keepalives = facts.last_heard is not None
     heard = _latest(facts.last_heard if keepalives else facts.last_model, facts.started)
@@ -207,8 +212,9 @@ def facts(controller):
         watched, found = False, None
     accepted, last_model, last_heard = found or (None, None, None)
     begun = started(controller) if getattr(controller, "busy", True) else None
+    tool = vars(controller).get("_tool_waiting")   # Work held for the person's operation (edit_tool_hold).
     return Facts(str(controller.status), begun, accepted, last_model, last_heard, thinking, summarized, step,
-                 watched, age)
+                 watched, age, tool if isinstance(tool, str) else None)
 
 
 def _thinking_age(controller, index):

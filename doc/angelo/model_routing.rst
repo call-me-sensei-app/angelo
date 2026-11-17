@@ -148,21 +148,22 @@ Prompt-cache TTL per session
 Claude Code writes its main conversation at the 1-hour TTL (2x input) on a
 subscription and at 5 minutes (1.25x) on an API key, Bedrock, Vertex or
 Foundry. ``CLAUDE_CODE_PROMPT_CACHE_TTL`` overrides it per process. Angelo's
-artist chats match that default on every route, so a chat writes the cache as
-the same chat would in Claude Code on the same account and costs what it would
-cost there. Switching TTL partly misses the cached prefix, so the TTL belongs
-to a native session:
+artist chats write at 1 hour on every billed route (`Why a key-billed chat
+writes at one hour`_); from Angelo 1.0.4 to 1.0.11 a key-billed chat matched
+Claude Code's 5-minute default there. Switching TTL partly misses the cached
+prefix, so the TTL belongs to a native session:
 
 * ``Controller.session_cache_ttl`` decides it when a session starts:
   ``model_routing.cache_ttl`` for the chat's ``session_kind`` and billing
   (``provider_registry.billing_kind``), or a harness's
   ``prompt_cache_ttl_override``. An ``interactive`` chat gets 1h on a
-  subscription (``claude_subscription``) and 5m on every key-billed route: a
+  subscription (``claude_subscription``) and on every key-billed route: a
   personal API key (``claude_api``) and a team's gateway key
   (``claude_team``, billed ``API_KEY``). ``autonomous``, ``benchmark`` and
   ``subagent`` get 5m on every route.
-* Angelo sets the variable for 5m too, instead of leaving the choice to Claude
-  Code, so a new session's TTL is the same whatever the person's machine holds:
+* Angelo sets the variable on every route, for 5m too, instead of leaving the
+  choice to Claude Code, so a new session's TTL is the same whatever the
+  person's machine holds:
   the variable outranks a ``promptCacheTtl`` setting (a managed settings file
   still applies under ``--setting-sources ""``) and ``ENABLE_PROMPT_CACHING_1H``,
   and every inherited TTL variable is dropped (`Native child environment`_),
@@ -172,9 +173,8 @@ to a native session:
 * The TTL is recorded in that context's ``runtime_sessions`` entry
   (``cache_ttl``, persisted by ``sessions.py``) and reused by every relaunch
   and ``--resume``. A session that already exists keeps its recorded TTL: an
-  API-key or team chat whose session was recorded at 1h (as earlier versions
-  of Angelo chose for every interactive chat) keeps 1h, and only its new
-  native sessions use 5m.
+  API-key or team chat whose session was recorded at 5m (Angelo 1.0.4 to
+  1.0.11) keeps 5m, and only its new native sessions use 1h.
 * A session recorded before TTLs were recorded keeps what Claude Code chose
   then (1h on a subscription, 5m with an API key or a team key).
 * ``ClaudeProvider`` sets the variable in the launched process only, and a TTL
@@ -188,14 +188,18 @@ shows the result without billing anything (Claude Code with a dummy key against
 a local fake endpoint, ``performance.rst``). With
 ``ENABLE_PROMPT_CACHING_1H=1``, ``CLAUDE_CODE_PROMPT_CACHE_TTL=1h``,
 ``FORCE_PROMPT_CACHING_5M=1`` and ``CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL=5m``
-inherited, every breakpoint of an interactive API-key or team chat is a plain
-``{"type": "ephemeral"}`` (5 minutes) and every one of a subscription chat's
-environment carries ``"ttl": "1h"`` (Claude Code 2.1.293 and 2.1.301). The
+inherited, every breakpoint carried the TTL Angelo set for its route, whatever
+was inherited: recorded on Claude Code 2.1.293 and 2.1.301 while API-key and
+team chats were set to 5 minutes (a plain ``{"type": "ephemeral"}``) and
+subscription chats to 1 hour (``"ttl": "1h"``). The
 probe cannot sign in to a subscription; its subscription run keeps the dummy
 key and shows the TTL that route's environment sets. As a control, forcing
 ``CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL=5m`` past the filter in that
 subscription run leaves the system blocks at 1h and writes the message
 breakpoints at 5 minutes, which is why the filter drops it.
+
+Why a key-billed chat writes at one hour
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The trade-off is cost against gaps. Break-even: with ``w`` the per-turn write,
 ``P`` the cached prefix, input price ``I`` and read price ``R``, 5 minutes is
@@ -209,8 +213,62 @@ far less than its first request, which also carries the new chat's opening
 saving, one pause of 5 to 60 minutes rewrites the whole prefix at 1.25x, and a
 new chat after it rewrites the static prefix that 1h keeps warm across chats.
 A key-billed chat with frequent longer pauses therefore costs more at 5m than
-it would at 1h; it costs what the same chat costs in Claude Code. The
-receipts' ``cache_gap`` buckets show which case real use is.
+it would at 1h. The receipts' ``cache_gap`` buckets show which case real use is.
+
+Read on 2026-11-11, with no model run, they showed this:
+
+.. list-table:: Follow-up turns by the gap since the chat's previous model request
+   :header-rows: 1
+
+   * - Source
+     - Chats, turns
+     - Under 5 min
+     - 5 to 60 min
+     - Over 60 min
+   * - Benchmark runs (four Angelo 2.0.0 Windows gate runs (built as 1.1.0) on GPT-6.1-Sol and GPT-6 Astra, and the Opus 5.5
+       campaign on 1.0.4)
+     - 143, 1,643
+     - 1,500 of 1,500
+     - 0
+     - 0
+   * - One person's own use (a developer of Angelo, 1.0.x, a GPT subscription)
+     - 5, 41
+     - 14 of 34
+     - 11 of 34
+     - 9 of 34
+   * - Key-billed Claude chats
+     - none recorded
+     -
+     -
+     -
+
+A benchmark sends its next task at once, so its buckets say nothing about a
+person. The one real sample is a single person on another model's subscription,
+30 of its 34 follow-up turns from one long chat; no receipt of a key-billed
+Claude chat was available. At list prices read the same day (USD per million
+tokens; Opus 5.5: input 4, 5-minute write 5, 1-hour write 8, read 0.20; Sonnet
+5.5: 2, 2.50, 4, 0.10), for an everyday-edit chat that reads a 38k prefix and
+writes 0.7k per turn (Opus 5.5 on 1.0.4):
+
+* the 1-hour write costs $0.0021 more per turn on Opus 5.5 ($0.0011 on Sonnet
+  5.5);
+* at 5 minutes, each turn after a pause of 5 to 60 minutes costs $0.182 more
+  ($0.091), because the prefix is written again instead of read;
+* after more than 60 minutes both rewrite it: $0.182 at 5 minutes, $0.296 at
+  1 hour ($0.091 and $0.148).
+
+So 1 hour is cheaper when the share of follow-up turns after 5 to 60 minutes
+is above about 1.2% plus 0.625 times the share after more than 60 minutes, on
+both models; a chat that writes 10k per turn on a 60k prefix needs about 10%
+plus the same term. At the one person's shares the expected extra per
+follow-up turn on Opus 5.5 is $0.107 at 5 minutes and $0.081 at 1 hour. The
+bucket counts from the end of the previous request and the provider counts
+from its start, which favours 5 minutes slightly. A person who only ever
+returns after more than an hour pays $0.114 more per turn on Opus 5.5 at 1
+hour ($0.057 on Sonnet 5.5). On that basis key-billed interactive chats moved
+to 1 hour in Angelo 1.1 (the maintainer's decision, 2026-11-11). What would
+settle it for team chats is the gateway's own record of cache writes and reads
+per session, which was not read.
 
 What a new chat can reuse differs by runtime (``performance.rst``, "Fixed
 opening of a new chat"). Claude Code sends the plan schema as its first tool
@@ -434,6 +492,10 @@ Tiers in ``MODELS``:
    * - kimi-k3
      - single
      - automatic; 5m, or 1h on request
+   * - gemini-4-carbon
+     - single
+     - implicit only, from 4,096 tokens, no write charge; reuse stops up to
+       about 2,048 tokens short of the previous request
 
 Subscriptions and plan keys
 ===========================
@@ -541,9 +603,17 @@ MiniMax
    No cache-write charge and a low read rate, so long prefixes are cheap.
    Effort is on or off.
 
+Gemini 4 Carbon (agent runtime's Gemini wire)
+   One admitted model, so routing is effort only (medium by default). Caching
+   is implicit and prefix-based: Angelo's opening carries no time or per-chat
+   path, so a new chat's first request can read it. Explicit cachedContents is
+   not supported for Gemini 4. Its time to first byte is Google's (measured
+   2026-11-12 at 4 to 54 s, the same with and without a harness).
+
 Kimi
    A 5-minute write costs the input rate and a 1-hour write twice that. The
-   vendor's default effort is ``max``; Angelo pins ``high``.
+   vendor's default effort is ``max``; Angelo's default is ``high``, as for
+   every model that offers it (``chat_settings.default_effort``).
 
 Local llama.cpp
    No token cost, so quality and then latency decide (``billing`` ``LOCAL`` in

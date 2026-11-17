@@ -75,6 +75,7 @@ set_property(GLOBAL PROPERTY ICON_GEOM_NAMES
   ops.generic.select_circle
   ops.generic.select_lasso
   ops.generic.select_paint
+  ops.gpencil.carver
   ops.gpencil.draw
   ops.gpencil.draw.eraser
   ops.gpencil.draw.line
@@ -346,6 +347,7 @@ if(WITH_BLENDER)
       error
       experimental
       export
+      extension
       external_drive
       external_drive_large
       eyedropper
@@ -418,6 +420,7 @@ if(WITH_BLENDER)
       gizmo
       gp_caps_flat
       gp_caps_round
+      gp_cyclic_stroke
       gp_draw_stroke
       gp_draw_fill
       gp_draw_both
@@ -463,6 +466,7 @@ if(WITH_BLENDER)
       image_zdepth
       imgdisplay
       import
+      import_export
       indirect_only_off
       indirect_only_on
       info
@@ -570,6 +574,7 @@ if(WITH_BLENDER)
       mesh_monkey
       mesh_plane
       mesh_torus
+      mesh_quadsphere
       mesh_uvsphere
       meta_ball
       meta_capsule
@@ -827,9 +832,14 @@ if(WITH_BLENDER)
       seq_chroma_scope
       seq_histogram
       seq_luma_waveform
+      seq_overlap_overwrite
+      seq_overlap_ripple
+      seq_overlap_shuffle
       seq_preview
       seq_sequencer
       seq_splitview
+      seq_strip
+      seq_strip_data
       seq_strip_duplicate
       seq_strip_meta
       seq_strip_modifier

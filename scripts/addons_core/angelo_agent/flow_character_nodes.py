@@ -34,7 +34,7 @@ def _part_grid(layout, tree, parts, chosen=None, columns=4):
 
 
 class ANGELO_FlowSplitSheetNode(_FlowNode, Node):
-    """Cut a parts sheet into one transparent part per filled column (free, local)"""
+    bl_description = "Cut a parts sheet into one transparent part per filled column (free, local)"
     bl_idname = "ANGELO_FlowSplitSheetNode"
     bl_label = "Split Sheet"
     bl_icon = 'UV_ISLANDSEL'
@@ -63,7 +63,7 @@ class ANGELO_FlowSplitSheetNode(_FlowNode, Node):
 
 
 class ANGELO_FlowGenerate3DEachNode(_PerUseState, _GeneratorNode, Node):
-    """Generate one 3D model per part of a split parts sheet"""
+    bl_description = "Generate one 3D model per part of a split parts sheet"
     bl_idname = "ANGELO_FlowGenerate3DEachNode"
     bl_label = "Generate 3D per Part"
     bl_icon = 'MESH_MONKEY'
@@ -96,7 +96,7 @@ class ANGELO_FlowGenerate3DEachNode(_PerUseState, _GeneratorNode, Node):
 
 
 class ANGELO_FlowPlaceCharacterNode(_FlowNode, Node):
-    """Put the parts together on the body as separate objects in the scene (undoable)"""
+    bl_description = "Put the parts together on the body as separate objects in the scene (undoable)"
     bl_idname = "ANGELO_FlowPlaceCharacterNode"
     bl_label = "Place Character"
     bl_icon = 'ARMATURE_DATA'

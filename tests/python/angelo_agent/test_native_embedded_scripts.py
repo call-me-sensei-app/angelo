@@ -21,6 +21,7 @@ import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 ADDON = ROOT / "scripts/addons_core/angelo_agent"
 
 

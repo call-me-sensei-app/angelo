@@ -15,7 +15,7 @@ what each does and when it is offered.
 
 import bpy
 
-from . import engine_rules
+from . import color_spaces, engine_rules
 from .engine_facts import deform_armature, geometry_keys
 
 RENAMES = ("rename_armature", "loop_name")   # Run after every other fix: they change the names the others use.
@@ -247,10 +247,12 @@ def colour_space(subject, facts, context):
     described = next((item for item in facts["images"] if item["name"] == subject), None)
     if described is None or len(described["roles"]) != 1:
         raise FixRefused("Image %s is no longer used one way" % subject)
-    wanted = "sRGB" if described["roles"][0] == "colour" else "Non-Color"
     before = image.colorspace_settings.name
-    image.colorspace_settings.name = wanted
-    return [{"what": "%s colour space" % subject, "before": before, "after": wanted}]
+    if described["roles"][0] == "colour":   # As the active configuration names them (color_spaces).
+        color_spaces.mark_srgb(image.colorspace_settings)
+    else:
+        color_spaces.mark_stored(image.colorspace_settings)
+    return [{"what": "%s colour space" % subject, "before": before, "after": image.colorspace_settings.name}]
 
 
 FIX_FUNCTIONS = {"apply_transform": apply_transform, "apply_scale": apply_scale, "rename_armature": rename_armature,

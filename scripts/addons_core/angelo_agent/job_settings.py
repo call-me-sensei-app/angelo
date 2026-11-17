@@ -31,9 +31,22 @@ import json
 
 import bpy
 
-from . import job_animated_settings as animated, live_target
+from . import job_animated_settings as animated, live_target, owned_paths
 
 TAG = "_angelo_job_restore"
+# Settings that name where Blender writes once the job or look renders or bakes: the render's images
+# (``render.filepath``), a File Output node's folder (``.directory``), a simulation's disk cache (``.bake_directory``).
+# Blender's own writer reads them later, so what a job sets in them is asked of C first, like any write of Angelo's
+# (``owned_paths.require_writable``; doc/angelo/script_confinement.rst, "Angelo's own I/O"), whatever object named it.
+WRITE_TARGETS = frozenset({"filepath", "directory", "bake_directory"})
+
+
+def check_write_targets(values):
+    """Raise ``PermissionError`` before anything is set when one of ``values`` names a place Angelo may not write."""
+    for path, value in values.items():
+        if path.rpartition(".")[2] in WRITE_TARGETS and isinstance(value, str) and value:
+            # Output path templates read ``{`` and ``}`` doubled (job_render_scene.escape): the folder as written.
+            owned_paths.require_writable(value.replace("{{", "{").replace("}}", "}"))
 
 
 def _restore_bake_nodes(data):
@@ -167,6 +180,7 @@ class Overrides:
     def apply(self, values, also_record=()):
         """Record the originals, then set ``values`` in order. ``also_record`` are settings the job does not set
         itself but one of its values changes (a file format coerces the colour depth): restored with the rest."""
+        check_write_targets(values)
         for path in (*also_record, *values):
             self.originals.setdefault(path, get(self.scene, path))
         self.hold((*also_record, *values))

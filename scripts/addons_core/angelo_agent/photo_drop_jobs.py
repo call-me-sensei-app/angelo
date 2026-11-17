@@ -16,6 +16,7 @@ restart the model is still in Media Studio.
 
 from dataclasses import dataclass, field
 
+from . import edit_tool_hold
 import bpy
 from bpy.app.handlers import persistent
 from mathutils import Vector
@@ -61,6 +62,7 @@ def track(placement):
     _redraw()
 
 
+@edit_tool_hold.guarded(waiting=lambda: bool(_pending))   # A drop to place waits for the person's operation.
 def _watch():
     if not _pending:
         return None
@@ -85,6 +87,8 @@ def _step(identity, placement, asset):
         return
     _pending.pop(identity, None)
     if verdict == "place":
+        from . import grant_gestures
+        grant_gestures.landed()   # A generated asset comes into the scene.
         _place(placement, window)
     elif verdict == "elsewhere":
         _notice("check", iface_(ELSEWHERE_TITLE), iface_(ELSEWHERE))

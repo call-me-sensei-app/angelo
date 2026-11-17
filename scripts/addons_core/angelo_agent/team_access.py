@@ -16,6 +16,7 @@ from .display_text import Text
 from .ui_text import n_
 
 READY, CHECKING, NO_SEAT, NO_PROVIDERS, NO_CODING, ERROR = "ready", "checking", "no_seat", "no_providers", "no_coding", "error"
+ENDPOINT_KEY = "endpoint_key"   # The organization's model server needs the person's own key (AI Providers).
 
 NO_SEAT_TITLE = n_("No seat in {org}")
 NO_PROVIDERS_TITLE = n_("{org} has no AI provider keys yet")
@@ -31,14 +32,19 @@ READY_LINE = n_("Signed in to {org}. Your team's {providers} keys are ready.")
 READY_LINE_ONE = n_("Signed in to {org}. Your team's {provider} key is ready.")
 AND = n_("{first} and {second}")
 TEAM = n_("Your team")
+ENDPOINT_KEY_TITLE = n_("Add your key for your organization's model server")
+ENDPOINT_KEY_NOTE = n_("Open AI Providers to add it")
+ENDPOINT_READY_LINE = n_("Signed in to {org}. Your organization's model server is ready.")
 CODING_NAMES = (("anthropic", "Claude"), ("openai", "OpenAI"), ("xai", "Grok"), ("minimax", "MiniMax"), ("moonshot", "Kimi"))
 
 
-def access(view, coding_ready, admin_contact=""):
+def access(view, coding_ready, admin_contact="", endpoint_ready=None):
     """``{"state", "title", "note", "page", "busy"}`` for a signed-in person, or None when not signed in.
 
-    ``coding_ready``: whether a team coding connection is usable now. ``page`` is the console page that fixes
-    the problem ("people", "keys") when the person can fix it, else "".
+    ``coding_ready``: whether a team coding connection is usable now. ``endpoint_ready``: None when the
+    organization offers this person no custom model endpoint, else whether one is usable now; a team whose
+    coding runs only on its endpoints is ready with them, not short of provider keys. ``page`` is the console page
+    that fixes the problem ("people", "keys") when the person can fix it, else "".
     """
     if view is None or not view.signed_in:
         return None
@@ -52,6 +58,12 @@ def access(view, coding_ready, admin_contact=""):
 
     if not view.seat:
         return blocked(NO_SEAT, Text(NO_SEAT_TITLE, org=org), ASSIGN_SEAT, "people")
+    if endpoint_ready is not None and not (coding_ready and coding_providers(view.providers or ())):
+        if endpoint_ready:
+            return {"state": READY, "title": TEAM, "note": Text(ENDPOINT_READY_LINE, org=org), "page": "", "busy": False}
+        if not coding_providers(view.providers or ()):   # Only the person can add their own key.
+            return {"state": ENDPOINT_KEY, "title": ENDPOINT_KEY_TITLE, "note": ENDPOINT_KEY_NOTE, "page": "",
+                    "busy": False}
     if view.providers is None:
         if view.providers_error:
             return {"state": ERROR, "title": TEAM, "note": view.providers_error, "page": "", "busy": False}

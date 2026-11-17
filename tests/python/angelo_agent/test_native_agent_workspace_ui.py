@@ -106,7 +106,10 @@ def workspace_class(name, namespace, path=None):
     path = Path(path or presentation.__file__)
     module = ast.parse(path.read_text())
     definition = next(node for node in ast.walk(module) if isinstance(node, ast.ClassDef) and node.name == name)
-    namespace = {'Operator': object, 'PropertyGroup': object, 'UIList': object,
+    # The operator's own body: its grant guard (only the person's click) has its own test (test_native_grant_operators).
+    definition.decorator_list = [d for d in definition.decorator_list if "grant_guard" not in ast.unparse(d)]
+    from angelo_agent import grant_guard
+    namespace = {'Operator': object, 'PropertyGroup': object, 'UIList': object, 'grant_guard': grant_guard,
                  'ANGELO_PG_native_review_line': object, 'review_line_type': object,
                  **{prop: (lambda **_: None) for prop in ('StringProperty', 'BoolProperty', 'CollectionProperty',
                                                           'IntProperty', 'FloatProperty', 'EnumProperty')},
@@ -230,7 +233,10 @@ class ExactHumanReviewGateTests(unittest.TestCase):
         self.assertEqual(self.accept.execute(self.context), {'FINISHED'})
         self.assertTrue(approval_preview_reviewed(self.controller, call))
         self.controller.accept_native_preview.assert_not_called()
-        self.bpy.ops.angelo.approve.assert_called_once_with('EXEC_DEFAULT', True, call_id=call.id, session_id='chat')
+        self.bpy.ops.angelo.approve.assert_called_once()
+        args, kwargs = self.bpy.ops.angelo.approve.call_args
+        kwargs.pop("click", None)   # The review card's click token, when Approve is guarded here (grant_guard).
+        self.assertEqual((args, kwargs), (('EXEC_DEFAULT', True), {"call_id": call.id, "session_id": 'chat'}))
         self.preview['checks'].append({'name': 'New check', 'passed': False})
         self.assertFalse(approval_preview_reviewed(self.controller, call))
 

@@ -10,7 +10,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import pdf_text, thread_start
+from . import owned_paths, pdf_text, thread_start
 from .image_proof import digest, url_digest
 from .refusal_codes import coded
 from .ui_text import n_
@@ -128,7 +128,7 @@ class ReferenceStore:
                 except UnicodeError as error:
                     raise ValueError("Text references must be UTF-8") from error
             loaded.append((source.name[:160], data, suffix))
-        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(self.directory).mkdir(parents=True, exist_ok=True, mode=0o700)   # C first.
         snapshots = []
         try:
             for name, data, suffix in loaded:
@@ -153,7 +153,7 @@ class ReferenceStore:
 
     def new_observation(self, name):
         """Reserve a private generated view; never accept a model-supplied path."""
-        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(self.directory).mkdir(parents=True, exist_ok=True, mode=0o700)   # C first.
         path = self.directory / (str(uuid.uuid4()) + '.png')
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         os.close(fd)
@@ -164,7 +164,7 @@ class ReferenceStore:
         path = self._own_file(reference)
         if not path.is_symlink():
             uuid.UUID(path.stem)
-            path.unlink(missing_ok=True)
+            owned_paths.require_writable(path).unlink(missing_ok=True)
 
     def remember_observation(self, reference, camera):
         self.checked_path(reference)
@@ -383,7 +383,7 @@ class ReferenceStore:
 
     def remove(self, reference):
         path = self.checked_path(reference)
-        path.unlink()
+        owned_paths.require_writable(path).unlink()
         with self._lock:
             for key in [key for key in self._texts if key[0] == path.stem]:
                 del self._texts[key]

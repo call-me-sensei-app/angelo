@@ -8,8 +8,8 @@
 
 #include "testing/testing.h"
 
-#include "BLI_listbase.h"
-#include "BLI_string.h"
+#include "BLI_listbase.hh"
+#include "BLI_string.hh"
 #include "BLI_vector.hh"
 
 #include "BKE_angelo_stage_links.hh"
@@ -104,13 +104,13 @@ class UndoSystemTestData {
 
   UndoSystemTestData()
   {
-    memfile_type.name = "Test MemFile";
+    memfile_type.identifier = "TEST_MEMFILE";
     memfile_type.step_size = sizeof(TestUndoStep);
     memfile_type.step_encode = [](bContext *, Main *, UndoStep *) { return true; };
     memfile_type.step_decode_checked = test_step_decode_checked;
     memfile_type.step_free = [](UndoStep *) {};
 
-    sculpt_type.name = "Test Sculpt";
+    sculpt_type.identifier = "TEST_SCULPT";
     sculpt_type.step_size = sizeof(TestUndoStep);
     sculpt_type.step_decode = test_step_decode;
     sculpt_type.step_foreach_ID_ref = test_step_foreach_id_ref;
@@ -201,7 +201,8 @@ TEST_F(UndoSystemCheckedDecodeTest, RestoreLeaseBlocksMutationAndIsVisibleToWork
     const UndoStep *old_active = stack->step_active;
     const UndoStep *old_memfile = stack->step_active_memfile;
     EXPECT_FALSE(BKE_undosys_step_load_data_ex(stack, C, &step.step, nullptr, false));
-    EXPECT_EQ(BKE_undosys_step_push_with_type(stack, C, "Nested", step.step.type),
+    EXPECT_EQ(BKE_undosys_step_push_with_type(
+                  stack, C, "Nested", UndoEncodeHints::None, step.step.type),
               UNDO_PUSH_RET_FAILURE);
     EXPECT_EQ(BKE_undosys_step_push_init_with_type(stack, C, "Nested", step.step.type), nullptr);
     BKE_undosys_stack_clear(stack);
@@ -345,7 +346,7 @@ TEST_F(UndoSystemCheckedDecodeTest, CapturePublishesOnceBeforeOneShotEditorDeliv
   Main *bmain = CTX_data_main(data.C);
   Scene *scene = BKE_id_new<Scene>(bmain, "Scene");
   Depsgraph *graph = BKE_scene_ensure_depsgraph(
-      bmain, scene, static_cast<ViewLayer *>(scene->view_layers.first));
+      bmain, scene, static_cast<ViewLayer *>(scene->view_layers.first()));
   data.append(data.memfile_type, "Original");
   CaptureTestOwner owner(data);
   UndoCaptureScope *scope = BKE_undosys_capture_begin(bmain, data.stack);
@@ -380,7 +381,7 @@ TEST_F(UndoSystemCheckedDecodeTest, EditorDeliveryWaitsForFinalHistoryAndCombine
   Main *bmain = CTX_data_main(data.C);
   Scene *scene = BKE_id_new<Scene>(bmain, "Scene");
   Depsgraph *graph = BKE_scene_ensure_depsgraph(
-      bmain, scene, static_cast<ViewLayer *>(scene->view_layers.first));
+      bmain, scene, static_cast<ViewLayer *>(scene->view_layers.first()));
   TestUndoStep &original = data.append(data.memfile_type, "Original");
   data.append(data.memfile_type, "Commit");
   original.test_stack = data.stack;
@@ -410,8 +411,8 @@ TEST_F(UndoSystemCheckedDecodeTest, DeferredGraphAddressDoesNotReplaceItsNewOwne
   Main *bmain = CTX_data_main(data.C);
   Scene *old_scene = BKE_id_new<Scene>(bmain, "Rebound");
   Scene *new_scene = BKE_id_new<Scene>(bmain, "Other");
-  ViewLayer *old_layer = static_cast<ViewLayer *>(old_scene->view_layers.first);
-  ViewLayer *new_layer = static_cast<ViewLayer *>(new_scene->view_layers.first);
+  ViewLayer *old_layer = static_cast<ViewLayer *>(old_scene->view_layers.first());
+  ViewLayer *new_layer = static_cast<ViewLayer *>(new_scene->view_layers.first());
   Depsgraph *graph = BKE_scene_ensure_depsgraph(bmain, old_scene, old_layer);
   data.append(data.memfile_type, "Original");
   TestUndoStep &active = data.append(data.memfile_type, "Current");
@@ -445,7 +446,7 @@ TEST_F(UndoSystemCheckedDecodeTest, NonEditorGraphsKeepTheirImmediateFinalizatio
   Main *bmain = CTX_data_main(data.C);
   Scene *scene = BKE_id_new<Scene>(bmain, "Scene");
   Depsgraph *graph = DEG_graph_new(
-      bmain, scene, static_cast<ViewLayer *>(scene->view_layers.first), DAG_EVAL_RENDER);
+      bmain, scene, static_cast<ViewLayer *>(scene->view_layers.first()), DAG_EVAL_RENDER);
   data.append(data.memfile_type, "Original");
   CaptureTestOwner owner(data);
   UndoCaptureScope *scope = BKE_undosys_capture_begin(bmain, data.stack);
@@ -469,7 +470,7 @@ TEST_F(UndoSystemCheckedDecodeTest, UnexpectedNoncanonicalEditorOwnerFailsWithou
   Main *bmain = CTX_data_main(data.C);
   Scene *scene = BKE_id_new<Scene>(bmain, "Scene");
   Depsgraph *graph = DEG_graph_new(
-      bmain, scene, static_cast<ViewLayer *>(scene->view_layers.first), DAG_EVAL_VIEWPORT);
+      bmain, scene, static_cast<ViewLayer *>(scene->view_layers.first()), DAG_EVAL_VIEWPORT);
   DEG_enable_editors_update(graph); /* No production caller enables this noncanonical graph. */
   data.append(data.memfile_type, "Original");
   CaptureTestOwner owner(data);
@@ -925,8 +926,8 @@ struct CheckpointHistoryState {
   bool recovery_required;
 
   explicit CheckpointHistoryState(const UndoStack &stack)
-      : first(static_cast<const UndoStep *>(stack.steps.first)),
-        last(static_cast<const UndoStep *>(stack.steps.last)),
+      : first(static_cast<const UndoStep *>(stack.steps.first())),
+        last(static_cast<const UndoStep *>(stack.steps.last())),
         active(stack.step_active),
         memfile(stack.step_active_memfile),
         init(stack.step_init),
@@ -938,8 +939,8 @@ struct CheckpointHistoryState {
 
   void expect_unchanged(const UndoStack &stack) const
   {
-    EXPECT_EQ(stack.steps.first, first);
-    EXPECT_EQ(stack.steps.last, last);
+    EXPECT_EQ(stack.steps.first(), first);
+    EXPECT_EQ(stack.steps.last(), last);
     EXPECT_EQ(stack.step_active, active);
     EXPECT_EQ(stack.step_active_memfile, memfile);
     EXPECT_EQ(stack.step_init, init);
@@ -1036,7 +1037,7 @@ TEST_F(UndoSystemCheckedDecodeTest, CheckpointProtectsEveryDistinctAndSharedWind
   UndoStack *secondary = owners.add_stack();
   owners.add_manager("C secondary", secondary);
   owners.add_manager("D shared primary", data.stack);
-  ASSERT_EQ(bmain->wm.first, first);
+  ASSERT_EQ(bmain->wm.first(), first);
   TestUndoStep &original = data.append(data.memfile_type, "Original");
   TestUndoStep &redo = data.append(data.memfile_type, "Redo");
   data.stack->step_active = data.stack->step_active_memfile = &original.step;
@@ -1064,7 +1065,8 @@ TEST_F(UndoSystemCheckedDecodeTest, CheckpointProtectsEveryDistinctAndSharedWind
     BKE_undosys_stack_group_end(stack);
     EXPECT_FALSE(BKE_undosys_step_redo(stack, data.C));
     EXPECT_FALSE(BKE_undosys_step_load_data_ex(stack, data.C, stack->step_active, nullptr, false));
-    EXPECT_EQ(BKE_undosys_step_push_with_type(stack, data.C, "Blocked", &data.memfile_type),
+    EXPECT_EQ(BKE_undosys_step_push_with_type(
+                  stack, data.C, "Blocked", UndoEncodeHints::None, &data.memfile_type),
               UNDO_PUSH_RET_FAILURE);
     EXPECT_EQ(BKE_undosys_step_push_init_with_type(stack, data.C, "Blocked", &data.memfile_type),
               nullptr);
@@ -1350,7 +1352,7 @@ TEST_F(UndoSystemCheckedDecodeTest,
   data.append(data.memfile_type, "Original");
   Scene *scene = BKE_id_new<Scene>(bmain, "Scene");
   Depsgraph *graph = BKE_scene_ensure_depsgraph(
-      bmain, scene, static_cast<ViewLayer *>(scene->view_layers.first));
+      bmain, scene, static_cast<ViewLayer *>(scene->view_layers.first()));
   ASSERT_TRUE(DEG_editors_update_is_enabled(graph));
   DEG_graph_build_from_view_layer(graph);
   DEG_make_active(graph);
@@ -1553,7 +1555,8 @@ TEST_F(UndoSystemCheckedDecodeTest, CheckpointRestorePrivateInitialPublicationKe
   EXPECT_TRUE(BKE_undosys_restore_protects_stack(foreign_stack));
   BKE_undosys_stack_clear(data.stack);
   EXPECT_EQ(data.stack->steps.count(), 0);
-  EXPECT_EQ(BKE_undosys_step_push_with_type(data.stack, data.C, "Reentry", &data.memfile_type),
+  EXPECT_EQ(BKE_undosys_step_push_with_type(
+                data.stack, data.C, "Reentry", UndoEncodeHints::None, &data.memfile_type),
             UNDO_PUSH_RET_FAILURE);
   auto *initial = MEM_new<TestUndoStep>(__func__);
   initial->step.type = &data.memfile_type;

@@ -24,11 +24,12 @@ Main thread. Nothing in the file, the image or the Image Editor changes.
 Model-facing text is English.
 """
 
+from . import color_spaces, owned_paths
+from .web_tone import srgb_display
 from .view_pixels import ROW_BLOCK, encode_rgba_png, srgb_encode, to_bytes
 
 MAX_PIXELS = 4096 * 4096
 LISTED = 8  # Image names a refusal lists.
-SRGB_NAMES = ("sRGB", "sRGB IEC61966-2.1")
 NOT_LOADED = ("Image '%s' is not in memory, and an automatic read never loads an image file. Its pixels can be shown "
               "once Blender holds them: when the person opens it in the Image Editor, or after an approved "
               "angelo_execute_python script loads it (for example image.reload()); EDITOR:IMAGE_EDITOR shows the "
@@ -142,9 +143,9 @@ def _approximations(image, settings, stored, is_float, scene):
     reasons = []
     if not stored:
         device = scene.display_settings.display_device
-        if device != "sRGB":
+        if not srgb_display(device):
             reasons.append("the display device is %s, not sRGB" % device[:32])
-        if not is_float and settings.name not in SRGB_NAMES:
+        if not is_float and color_spaces.kind(settings) != "srgb":
             reasons.append("its 8-bit pixels are in %s, shown as stored" % settings.name[:32])
         if getattr(image, "use_view_as_render", False):
             reasons.append("View as Render is on, so the Image Editor applies the scene's view transform")
@@ -174,6 +175,7 @@ def source(window, checked, references, controller):
     label = "Image %s" % image.name[:64]
     reference = references.new_observation(label + " · pixels")
     try:
+        owned_paths.require_writable(reference["path"])
         with open(reference["path"], "wb") as handle:
             handle.write(encode_rgba_png(rows))
     except Exception:

@@ -44,6 +44,7 @@ ui.refresh_connected_models = lambda *args, **kwargs: None
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_input  # noqa: E402  (the person's press on Run flow, which C mints its button's ticket for)
 bpy.context.preferences.view.show_splash = False
 bpy.context.preferences.use_preferences_save = False
 from angelo_agent import flow_host, flow_nodes, flow_tools, flow_tree, flow_ui, preferences_ui, studio  # noqa: E402
@@ -138,9 +139,8 @@ def studio_click(action):
     if rect is None:
         state["observed"].setdefault("missing_controls", []).append(action)
         return
-    x, y = int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
-    for kind, value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
-        window().event_simulate(type=kind, value=value, x=x, y=y)
+    # A person's press: onto it a beat after reaching it (qa_input.press: C's ARM_SECONDS rule for a grant).
+    qa_input.press(window(), int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2))
 
 
 def build(flow, **edit):
@@ -231,16 +231,33 @@ def tick():
             x, y = region.x + region.width // 2, region.y + region.height // 2
             window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=y)
             state["pointer"] = (x, y)
+            from angelo_agent import grant_guard
             with bpy.context.temp_override(window=window(), area=area, region=region):
-                seen["run_attempt"] = sorted(bpy.ops.angelo.flow_run('INVOKE_DEFAULT', tree="Characters", scope="ALL"))
+                try:   # A script's Run (no press C saw): the grant refuses it.
+                    scripted = str(sorted(bpy.ops.angelo.flow_run('INVOKE_DEFAULT', tree="Characters", scope="ALL")))
+                except RuntimeError as error:
+                    scripted = str(error)
+            state["notices_before_run"] = len(getattr(flow_ui, "connect_notices", []))
+            checks["a_scripted_run_is_refused"] = grant_guard.NOT_YOURS in scripted and not flow_host.active_runs()
+            state["phase"] = "run_press"
+            return .3
+        if phase == "run_press":   # The person's press on the sidebar's Run flow: its button's C ticket.
+            rect = qa_input.region_button(window(), "angelo.flow_run", "Run flow")
+            if rect is None:
+                assert time.monotonic() - state.setdefault("run_press_since", time.monotonic()) < 20, "no Run flow"
+                return .2
+            qa_input.press(window(), rect[0] + rect[2] / 2, rect[1] + rect[3] / 2)
             state["phase"] = "run_shot"
             return .6
         if phase == "run_shot":
-            capture("b5-flow-run-attempt.png")
             shown = getattr(flow_ui, "connect_notices", [])
+            if len(shown) <= state["notices_before_run"] \
+                    and time.monotonic() - state.setdefault("run_shot_since", time.monotonic()) < 10:
+                return .2   # The notice the press shows, once it lands: the state, not a time.
+            capture("b5-flow-run-attempt.png")
             seen["run_notice"] = shown[-1] if shown else None
             checks["run_attempt_names_the_steps_and_offers_ai_providers"] = (
-                seen["run_attempt"] == ["CANCELLED"] and bool(shown) and len(shown[-1]) == len(STEPS)
+                len(shown) > state["notices_before_run"] and len(shown[-1]) == len(STEPS)
                 and {"Concept", "Model"} <= set(shown[-1]))
             checks["run_attempt_starts_nothing"] = not flow_host.active_runs() and not flow_host.jobs().active
             x, y = state["pointer"]
@@ -371,4 +388,4 @@ def tick():
 
 bpy.types.SpaceConsole.draw_handler_add(_grab_studio, (), 'WINDOW', 'POST_PIXEL')
 # Held until Angelo's start-up (the first tab build its enable schedules) is over: qa_boot.gated.
-bpy.app.timers.register(qa_boot.gated(tick), first_interval=1.0, persistent=True)
+bpy.app.timers.register(qa_boot.gated(qa_input.after_clicks(tick)), first_interval=1.0, persistent=True)

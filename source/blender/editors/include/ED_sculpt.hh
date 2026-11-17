@@ -79,9 +79,26 @@ bool main_undo_state_suppress_old_grid_writeback(Main &bmain, const char **r_err
 /** Hold old Dyntopo meshes across an admitted private MemFile read, without writing to Mesh IDs.
  * End consumes the hold and returns meshes only to exact surviving runtime owners. */
 struct MainUndoBMeshRead;
-MainUndoBMeshRead *main_undo_bmesh_read_begin(Main &bmain, const char **r_error);
+/** Whether any Object's Sculpt session holds a live Dyntopo BMesh. */
+bool main_undo_bmesh_any(const Main &bmain);
+/**
+ * `keep_read_again_edits`: for a read with no Angelo Sculpt snapshot on either side, an Object the
+ * read restores at its old address keeps its live Dyntopo edits, flushed into the restored Mesh
+ * (Blender 5.2's behaviour); otherwise its BMesh is retired unflushed.
+ */
+MainUndoBMeshRead *main_undo_bmesh_read_begin(Main &bmain,
+                                              const char **r_error,
+                                              bool keep_read_again_edits = false);
 bool main_undo_bmesh_read_end(Main &bmain, MainUndoBMeshRead *read, const char **r_error);
+/**
+ * After a protected read and the restore of the step it read, if any: free every Dyntopo log
+ * left without its BMesh (an Object read again at its old address whose history no restore
+ * adopted).
+ */
+void main_undo_bmesh_read_drop_orphan_logs(Main &bmain);
 #ifdef WITH_GTESTS
+/** The next #main_undo_bmesh_read_end refuses every owner (native fixtures of a failed read). */
+void main_undo_bmesh_read_test_fail_next();
 struct MainUndoTestFault;
 std::shared_ptr<MainUndoTestFault> main_undo_state_test_fault_arm(MainUndoState &state,
                                                                   Main *source_main,
@@ -134,7 +151,7 @@ size_t step_memory_size_get(UndoStep *step);
 
 namespace face_set {
 
-int find_next_available_id(const Mesh &object);
+int find_next_available_id(const Mesh &mesh);
 int find_next_available_id(Object &object);
 void initialize_none_to_id(Mesh *mesh, int new_id);
 int active_update_and_get(bContext *C, Object &ob, const float mval_fl[2]);

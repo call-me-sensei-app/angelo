@@ -17,6 +17,7 @@ clock; the limit has its own check, and a hold its limit ended fails the suite o
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import importlib.util
@@ -65,11 +66,11 @@ class HeldPreparationTests(unittest.TestCase):
             self.assertEqual(self.handlers.render_pre, [held._handler])
             self.assertEqual(self.hosted, [held._handler], "the fixture's own handler, never add-on Python")
             thread = self.render()
-            self.assertTrue(held.held.wait(5))
-            thread.join(0.3)
+            self.assertTrue(held.held.wait(CAP_S))
+            thread.join(0.3)  # window: it must still be preparing after it
             self.assertTrue(thread.is_alive(), "still preparing until the suite releases it")
             held.release()
-            thread.join(5)
+            thread.join(CAP_S)
             self.assertFalse(thread.is_alive())
             self.assertEqual(held.threads, [False], "held on the render's thread, never the main one")
             self.assertEqual(held.ended, ["released"])
@@ -79,8 +80,8 @@ class HeldPreparationTests(unittest.TestCase):
         held = self.fx.HeldPreparation(limit=None)
         with held:
             thread = self.render()
-            self.assertTrue(held.held.wait(5))
-        thread.join(5)
+            self.assertTrue(held.held.wait(CAP_S))
+        thread.join(CAP_S)
         self.assertFalse(thread.is_alive(), "a suite that fails mid-hold never leaves a render waiting")
         self.assertEqual(self.handlers.render_pre, [])
 
@@ -89,7 +90,7 @@ class HeldPreparationTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "ended by its 0.2 s limit, not by release"):
             with held:
                 thread = self.render()
-                thread.join(5)
+                thread.join(CAP_S)
                 ended = (thread.is_alive(), held.held.is_set(), list(held.ended))
         self.assertEqual(ended, (False, True, ["limit"]))
         self.assertEqual(self.handlers.render_pre, [], "the handler is removed all the same")
@@ -99,7 +100,7 @@ class HeldPreparationTests(unittest.TestCase):
         with self.assertRaisesRegex(KeyError, "the suite's own"):
             with held:
                 thread = self.render()
-                thread.join(5)
+                thread.join(CAP_S)
                 raise KeyError("the suite's own")
         self.assertEqual(held.ended, ["limit"])
 

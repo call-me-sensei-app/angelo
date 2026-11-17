@@ -5,6 +5,7 @@
 set(INC
   ../include
   ../../makesrna
+
   # RNA_prototypes.hh
   ${CMAKE_BINARY_DIR}/source/blender/makesrna
 )
@@ -54,6 +55,7 @@ if(WITH_GTESTS)
   set(TEST_SRC
     angelo_checkpoint_undo_test.cc
     angelo_recovery_observation_test.cc
+    memfile_undo_depsgraphs_test.cc
   )
   set_source_files_properties(angelo_checkpoint_undo_test.cc PROPERTIES COMPILE_DEFINITIONS WITH_GTESTS)
   set(TEST_LIB

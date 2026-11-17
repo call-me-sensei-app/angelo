@@ -13,7 +13,7 @@ and cheap, and every fact says what it measured.
 
 Owners: ``game_ready_spec.py`` (schema and arguments), ``game_ready_host.py`` (the host route, off the main thread),
 ``game_ready_mesh.py`` (reading objects, welding, reductions), ``game_ready_metrics.py`` (the measurements),
-``game_ready_collider.py`` (the collider facts) and the
+``game_ready_collider.py`` (the collider facts), ``game_ready_glossary.py`` (what each fact measured) and the
 native module ``_bpy._angelo_reduce`` (``source/blender/python/intern/bpy_angelo_reduce*.cc`` and
 ``bpy_angelo_meshopt.cc``).
 
@@ -51,8 +51,13 @@ What each fact measures
 =======================
 
 Everything is in world space, in meters when the scene has a unit system (its unit scale applied), otherwise in
-Blender units. Each block carries ``measured``: its method in one sentence, because the agent reads the number
-without seeing how it was made.
+Blender units. The result carries ``measured``: for each kind of fact it holds, the method in one sentence, because
+the agent reads the number without seeing how it was made. A kind the result does not hold has no sentence
+(``game_ready_metrics.glossary`` with ``facts``, in ``game_ready_glossary``, reading every block's keys; a note
+such as a source's ``"no UV map"`` and the phase times in ``native_ms`` are not facts): a check of the mesh alone
+explains its UV and topology facts only, and the Hausdorff sentence comes with a LOD or with a collider's
+``hull_distance``. The whole glossary was 2,886 bytes of compact JSON on every result, 79% of a check of the mesh
+alone (see "Result size" below).
 
 * **Triangles**: ``tris`` and ``of_source_tris``. A meshopt LOD also gives ``vertices_used`` of the shared buffer.
 * **Hausdorff**: the nearest-surface distance from every vertex and 32,768 area-weighted points of the LOD to the
@@ -205,7 +210,8 @@ Nothing runs while it is unused
 ===============================
 
 ``blender_tools`` imports ``game_ready_host`` inside the call; ``game_ready_mesh``, ``game_ready_metrics``,
-``game_ready_collider`` and NumPy are imported by it alone, and ``game_ready_spec`` imports nothing heavy (a host test parses every add-on module
+``game_ready_collider`` and NumPy are imported by it alone (``game_ready_glossary`` by ``game_ready_metrics.glossary``
+when it is called), and ``game_ready_spec`` imports nothing heavy (a host test parses every add-on module
 to keep it so). The library opens on the first native call that needs it. The native suite proves it in the built
 app: after the add-on registered, ``_angelo_reduce.attempted()`` is false, ``libmeshoptimizer`` is not among the
 process's loaded images, and none of the four modules is imported. Startup adds one ``_bpy`` submodule object.
@@ -293,6 +299,28 @@ always-sent schema (done when a chat session or Codex thread starts, not per mes
 ``agent_integration.rst``, "Toolset 48". Refusals: an app copy without the library, and one with a stand-in library
 lacking 1.1's exports whose functions abort if called, both refuse the meshopt method with the reason and still
 measure LOD objects and Decimate.
+
+**Result size.** What a model reads of each result, measured with ``bench_result_brief_bytes.py`` (deterministic host
+Python, no provider): the real host route on parametric meshes (a UV sphere, a torus, an open grid, a skinned capsule)
+with stand-ins for Blender's reads, its reductions (the same surface with about the ratio's triangles) and the hull
+(the source itself), so keys and number formats are a real result's and values are not. The model's copy
+(``model_results.model_result``) as compact JSON; Codex's ASCII-escaped and Claude's direct-tools copy are the same
+size here. Bytes, not tokens (no offline tokenizer). Before: every glossary entry on every result; after: the entries
+for the facts the result holds.
+
+===============================================  =================  ================  ============
+Request                                          Before (glossary)  After (glossary)  Entries kept
+===============================================  =================  ================  ============
+The mesh alone (sphere; grid 7 B more)           3,676 (2,886)      1,407 (617)       2 of 11
+Two LOD objects                                  5,675 (2,886)      4,667 (1,878)     7
+Simplify, both methods, three ratios             9,224 (2,886)      8,492 (2,154)     9
+Simplify, meshopt only, two ratios               5,627 (2,886)      4,895 (2,154)     9
+A collider only                                  4,277 (2,886)      2,726 (1,335)     4
+Skinned, both methods, two ratios                7,829 (2,886)      7,307 (2,364)     10
+A LOD object, two ratios, a collider, distances  9,181 (2,886)      8,813 (2,518)     10
+===============================================  =================  ================  ============
+
+The tokens a live request reads are not measured yet (Sol and Astra, pending; ``agent_integration.rst``, toolset 50).
 
 Tests
 =====

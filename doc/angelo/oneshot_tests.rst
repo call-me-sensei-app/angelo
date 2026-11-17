@@ -1048,13 +1048,14 @@ chat rows, Claude Code's stream, Codex's notifications.
   (``cost_reported_usd``); the report prints one of them for every side, the
   comparison's ``cost_basis`` (``final_runs.rst``, "What is recorded"). Each
   cache write is priced at the TTL the provider reported for it (Claude's
-  ``usage.cache_creation``; on a subscription Claude Code writes 1-hour
-  entries, as Angelo's interactive sessions there do, and on an API-key or
-  team route both write 5-minute ones), read from the side's raw stream when
+  ``usage.cache_creation``; both sides write at the run's one lifetime, which
+  the launcher also sets for the MCP side's Claude Code: ``final_runs.rst``,
+  "What is recorded"), read from the side's raw stream when
   its record predates the split. Writes without a reported TTL are priced at
   Angelo's session TTL (the one its receipt's route records, which the cost
-  cap asks the chat for; its receipts carry no split) or at the 5-minute rate
-  for Claude Code, and ``cost_list_basis`` says which (``final_runs.rst``,
+  cap asks the chat for; its receipts carry no split) or, for Claude Code, at
+  the lifetime the launcher set (the 5-minute rate for a record from before it
+  set one), and ``cost_list_basis`` says which (``final_runs.rst``,
   "What is recorded"). A price step is per request: the MCP side's stream gives each
   request's usage; Angelo's receipt sums them, so a model with a step whose
   sum exceeds it has an unknown list price. The cost cap prices the usage it
@@ -1331,7 +1332,10 @@ the model-facing text stay the same. So:
   suites' check). A mismatch is refused, naming both folders, their digests
   and the differing files; a checkout that changes after the run began ends
   the run before its next trial. ``--allow-addon-mismatch`` runs anyway, for a
-  deliberate case, and prints a warning first.
+  deliberate case, and prints a warning first. A Git LFS pointer in the
+  checkout's add-on is never the file (the trials import its modules): the
+  refusal names the pointer files and the operator's fetch, and the override's
+  warning lists them.
 * **Every trial records what it ran**: the Angelo trial's ``addon`` (the
   imported add-on's digest, the app's bundled digest, whether they match, the
   commit and whether the add-on files had uncommitted changes), in its

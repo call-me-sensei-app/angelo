@@ -21,7 +21,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import shared_replace, thread_start
+from . import owned_paths, shared_replace, studio_commits, thread_start
 from .references import image_type, MIME
 from .generative import GenerationBinding
 from .provider_errors import error_detail
@@ -29,9 +29,10 @@ from .provider_registry import GEMINI_IMAGE_CONTROLS, SPECS
 from .studio_state import image_dimensions, atomic_json
 from .ui_text import n_
 # The transport moved to studio_http; these names stay importable from here.
-from .studio_http import (MAX_JSON, SERVICE_HOSTS, SERVICE_NAMES, GatewayRejection, GenerationCancelled,  # noqa: F401
+from .studio_http import (MAX_JSON, SERVICE_HOSTS, SERVICE_NAMES, GatewayRejection, GenerationCancelled, StopSignal,  # noqa: F401
                           GenerationError, binding_json, multipart, public_addresses, public_url, rejection,
                           request_bytes, service_json, service_name)
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 MAX_IMAGE = 32 * 1024 * 1024
 # What both 3D providers take as the image of image-to-3D (Tripo's file upload, Meshy's data URL); the viewport's photo
@@ -175,6 +176,7 @@ def gemini_output(response):
 
 
 def write_private(path, data):
+    owned_paths.require_writable(path)
     fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     with os.fdopen(fd, "wb") as handle:
         handle.write(data)
@@ -387,11 +389,7 @@ def enhance_gemini(access, model, prompt, kind, generation_model, transport=requ
     return text[:16000]
 
 
-class StopSignal(threading.Event):
-    """A job's stop event. ``remote``: the person asked to stop, so a provider that can cancel (fal) is asked to;
-    ``closing``: Angelo is closing or the add-on unloading, so a resumable job only pauses (``fal_video``)."""
-    remote = False
-    closing = False
+enhance_gemini = _grant_guard.entry(enhance_gemini)
 
 
 class StudioJobs:
@@ -399,7 +397,7 @@ class StudioJobs:
     def __init__(self, library, transport=request_bytes):
         self.library, self.transport = library, transport
         self.events, self.active, self.kinds = queue.Queue(), {}, {}
-        self.closed = False
+        self.closed, self.commits = False, studio_commits.Commits(library)
 
     def start(self, asset, binding, options, references):
         """``references``: image references, or for a VIDEO asset its inputs ``{"first", "last", "references"}``."""
@@ -470,17 +468,12 @@ class StudioJobs:
                            lambda: (self.active.pop(identity, None), self.kinds.pop(identity, None)))
 
     def pump(self):
-        changed = False
-        while not self.events.empty():
-            identity, updates = self.events.get_nowait()
-            if updates.pop("_finished", False):
-                self.active.pop(identity, None)
-                self.kinds.pop(identity, None)
-                changed = True   # The job left the active set (its card's Stop goes) even when its state didn't change.
-            asset = self.library.assets.get(identity)
-            if asset and dict(asset, **updates) != asset:   # An event that changes nothing rewrites no library state.
-                self.library.update(dict(asset, **updates))
-                changed = True
+        """Main thread: the workers' events into the library (a held record shown and owed); files land (``landed``)."""
+        results = self.commits.results
+        changed = self.commits.pump(self.events, self.active, self.kinds)
+        if self.commits.results != results:   # Files came in; progress and statuses land nothing.
+            from . import grant_gestures
+            grant_gestures.landed()
         return changed
 
     def stop(self, identity, remote=True):
@@ -495,6 +488,7 @@ class StudioJobs:
 
     def close(self):
         self.closed = True
+        self.commits.retry(final=True)   # A record still owed gets one more try; job-state.json has it either way.
         for cancel in self.active.values():
             cancel.closing = True
             cancel.set()

@@ -254,6 +254,66 @@ def host_notes_cases(sky, scene):
     bpy.data.actions.remove(action)
 
 
+TREE_FOR_PREFIX = (("ShaderNode", "ShaderNodeTree"), ("GeometryNode", "GeometryNodeTree"),
+                   ("FunctionNode", "GeometryNodeTree"), ("CompositorNode", "CompositorNodeTree"),
+                   ("TextureNode", "TextureNodeTree"))
+
+
+def generated_rows_cases():
+    """Every row of the shared table (assets/api_drift.json) holds in this build, so no row can mislead.
+
+    An attribute row's owner exists and lacks the name; an enum row's property lacks the item and has each
+    named replacement; a socket row's node lacks the key (by name and identifier), has each named replacement
+    as a key, and its KeyError carries the row's sentence after stock's text.
+    """
+    path = ROOT / "scripts/addons_core/angelo_agent/assets/api_drift.json"
+    if not path.exists():
+        REPORT["generated_rows"] = "not in this tree"
+        return
+    entries = json.loads(path.read_text(encoding="utf-8"))["entries"]
+    trees, wrong = {}, []
+    for entry in entries:
+        use, owner, name = entry["use"], entry.get("owner"), entry["name"]
+        label = f"{use}:{owner}.{entry.get('property') or ''}:{name}"
+        rna = getattr(getattr(bpy.types, owner or "", None), "bl_rna", None)
+        if use == "attribute" and rna is not None:
+            if name in rna.properties.keys() or name in rna.functions.keys():
+                wrong.append(label + " is still there")
+        elif use == "enum_item" and rna is not None and entry["property"] in rna.properties.keys():
+            items = rna.properties[entry["property"]].enum_items.keys()
+            if items and name in items:
+                wrong.append(label + " is still an item")
+            missing = [new for new in entry.get("replacements", []) if items and new not in items]
+            if missing:
+                wrong.append(label + " names %s, not items" % missing)
+        elif use == "socket" and rna is not None:
+            tree_type = next((tree for prefix, tree in TREE_FOR_PREFIX if owner.startswith(prefix)), None)
+            if tree_type is None:
+                continue
+            if tree_type not in trees:
+                trees[tree_type] = bpy.data.node_groups.new("Renamed API rows " + tree_type, tree_type)
+            try:
+                node = trees[tree_type].nodes.new(owner)
+            except RuntimeError:
+                continue
+            sockets = getattr(node, entry["property"])
+            keys = {socket.name for socket in sockets} | {socket.identifier for socket in sockets}
+            if name in keys:
+                wrong.append(label + " is still a key")
+            for new in entry.get("replacements", []):
+                if new not in keys:
+                    wrong.append(label + " names %r, not a key" % new)
+            error = raised(f"generated_{label}", lambda: sockets[name]) if name not in keys else None
+            prefix = f'bpy_prop_collection[key]: key "{name}" not found. {entry["hint"]}'
+            if name not in keys and not (type(error) is KeyError and error.args and error.args[0].startswith(prefix)):
+                wrong.append(label + " error lacks its sentence")
+            trees[tree_type].nodes.remove(node)
+    for tree in trees.values():
+        bpy.data.node_groups.remove(tree)
+    REPORT["generated_rows"] = {"entries": len(entries), "wrong": wrong}
+    check("generated_rows_hold_in_this_build", not wrong)
+
+
 def run():
     scene = bpy.context.scene
     world = bpy.data.worlds.new("Renamed API errors")
@@ -263,7 +323,8 @@ def run():
             owner.use_nodes = True
     sky = world.node_tree.nodes.new("ShaderNodeTexSky")
     steps = ((enum_cases, (sky, scene)), (attribute_cases, (sky,)), (action_cases, ()),
-             (collection_cases, (material.node_tree,)), (host_notes_cases, (sky, scene)))
+             (collection_cases, (material.node_tree,)), (host_notes_cases, (sky, scene)),
+             (generated_rows_cases, ()))
     for step, args in steps:
         try:
             step(*args)

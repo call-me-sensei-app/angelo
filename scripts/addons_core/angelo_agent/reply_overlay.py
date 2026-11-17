@@ -21,6 +21,8 @@ so no part of a key split across fragments is ever drawn.
 Main thread only: the event pump writes and the chat draws.
 """
 
+from . import activity_rows
+
 ATTRIBUTE = "_streamed_replies"
 
 
@@ -45,10 +47,11 @@ def update(controller, kind, data):
 
 def drawable(controller, text):
     """``text`` as the chat may draw it: redacted, without a tail that could begin the connection's key."""
-    text, secret = controller.redact(text), getattr(controller, "api_key", "") or ""
-    for length in range(min(len(secret) - 1, len(text)), 2, -1):  # Two characters reveal nothing.
-        if text.endswith(secret[:length]):
-            return text[:-length]  # Perhaps the start of the key: wait for the next fragment.
+    text = controller.redact(text)
+    for secret in activity_rows.redaction_keys(controller):
+        for length in range(min(len(secret) - 1, len(text)), 2, -1):  # Two characters reveal nothing.
+            if text.endswith(secret[:length]):
+                return text[:-length]  # Perhaps the start of the key: wait for the next fragment.
     return text
 
 

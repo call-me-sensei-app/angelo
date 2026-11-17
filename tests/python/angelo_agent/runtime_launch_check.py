@@ -134,7 +134,9 @@ def trial(out, executable, arm, typing):
     try:
         with patch.object(providers, "child_environment", child_environment):
             controller.set_document(("launch-check", 1))
-            settings = {"model": "", "claude_path": executable, "connection_id": connection,
+            from angelo_agent.cli_runtime import choose   # Preferences' pick: launches read it, never settings.
+            choose(claude_path=executable)
+            settings = {"model": "", "connection_id": connection,
                         "reuse_codex_login": False, "auth_directory": str(out / "state")}
             controller.choose_connection("claude_api", settings, "launch-check-not-a-secret", connection, MODELS, "opus")
             controller.set_options(effort="low")
@@ -190,7 +192,9 @@ def codex_trial(out, executable, arm, typing):
         with patch.object(team_runtime, "base_url", lambda mode: "http://127.0.0.1:9" + "/v1/openai/v1"):
             controller.set_document(("launch-check", 1))
             controller.state.update(provider="codex_team", connection_id=connection)
-            controller.settings = {"model": "", "codex_path": executable, "connection_id": connection,
+            from angelo_agent.cli_runtime import choose   # Preferences' pick: launches read it, never settings.
+            choose(codex_path=executable)
+            controller.settings = {"model": "", "connection_id": connection,
                                    "reuse_codex_login": False, "auth_directory": str(out / "state")}
             controller.api_key = "launch-check-not-a-secret"
             runtime_prewarm.observe(controller, "", [controller], time.monotonic())

@@ -177,10 +177,12 @@ class ExistingDataTests(StoreCase):
         self.store.path.write_text(json.dumps({"version": 3, "active": legacy["id"], "connections": [legacy],
                                                "ignored_native_modes": []}))
         store = self.reloaded()
-        self.assertEqual(store.records[legacy["id"]], legacy)
+        # Kept unchanged: every value it had; a field added later (key_from, shared_keys) reads as None, as
+        # native_profile did when it came.
+        self.assertEqual(store.records[legacy["id"]], dict(legacy, key_from=None))
         self.assertEqual(self.offered(store), ["claude_subscription"])
         store.dismiss_native("claude_subscription")
-        self.assertEqual(self.reloaded().records, {legacy["id"]: legacy})
+        self.assertEqual(self.reloaded().records, {legacy["id"]: dict(legacy, key_from=None)})   # As above.
         self.assertEqual(self.reloaded().active, legacy["id"])
 
     def test_isolated_store_with_every_mode_ignored_offers_and_creates_nothing(self):
@@ -197,6 +199,14 @@ class ExistingDataTests(StoreCase):
         self.assertIsNone(unbound.state["connection_id"])
 
 
+# shared_keys_ui with no connection to share a key from (these forms add coding connections of other providers); its
+# own behavior is pinned by test_native_gemini_connection.py and test_blender_shared_keys.py.
+NO_SHARED_KEYS = SimpleNamespace(NEW="NEW", key_source_items=lambda operator, context: [("NEW", "Enter a new key", "")],
+                                 offers_choice=lambda operator, mode: False, chosen_source=lambda operator, mode: None,
+                                 initial_choice=lambda record: "NEW", link=lambda record, source: None,
+                                 unlink=lambda record: None)
+
+
 class PrefilledFormTests(StoreCase):
     def form_class(self, status=SIGNED_IN):
         self.logins = []
@@ -204,13 +214,14 @@ class PrefilledFormTests(StoreCase):
             "GROUPS": provider_registry.GROUPS, "CODING": CODING, "new_connection_group_changed": None,
             "new_connection_providers": None, "new_connection_provider_changed": None,
             "connections": lambda: self.store, "methods": provider_registry.methods, "spec_for": provider_registry.spec_for,
+            "MODE_BY_CONNECTION": provider_registry.MODE_BY_CONNECTION,
             "is_coding": provider_registry.is_coding, "runtime_kind": provider_registry.runtime_kind,
             "HTTP_MODES": provider_registry.HTTP_MODES, "preferences": lambda: None,
             "preferences_ui": SimpleNamespace(redraw=lambda: None),
             "_authentication": SimpleNamespace(status=dict(status), start=lambda *a, **k: self.logins.append((a, k))),
             "connection_settings": lambda *a, **k: {}, "state_directory": lambda: self.directory.name,
             # Python 3.13 evaluates the class annotations (the Remember label) while compiling.
-            "saved_keys_ui": saved_keys_ui})
+            "saved_keys_ui": saved_keys_ui, "shared_keys_ui": NO_SHARED_KEYS})
 
     def form(self, mode, **overrides):
         values = dict(connection_id="", connection_name="", api_key="", remember_key=True, model="", runtime_path="",

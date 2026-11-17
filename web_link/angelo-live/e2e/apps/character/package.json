@@ -1,0 +1,11 @@
+{
+  "name": "angelo-live-character",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "vite": "7.3.7"
+  }
+}

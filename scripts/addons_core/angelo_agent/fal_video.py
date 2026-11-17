@@ -25,7 +25,7 @@ import os
 import time
 import uuid
 
-from . import fal_models, fal_queue, shared_replace
+from . import fal_models, fal_queue, owned_paths, shared_replace
 from .studio_http import GatewayRejection, GenerationCancelled, GenerationError, request_bytes
 from .ui_text import n_
 
@@ -212,6 +212,7 @@ def follow(binding, handle, directory, emit, cancel, transport=request_bytes, po
 
 def _write(directory, name, data):
     """``data`` as ``directory/name``, atomically (a resumed job may finish a download an earlier session began)."""
+    owned_paths.require_writable(directory / name)   # C first: no temporary is made beside a target it refuses.
     temporary = directory / f".{name}.{uuid.uuid4().hex}.part"
     try:
         fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)

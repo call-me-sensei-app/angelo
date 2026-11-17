@@ -256,6 +256,18 @@ def add(sample, index):
         assert views and all(i.packed_file is not None and not i.is_multiview for i in views), views
         assert conversion.get('single_view_images') == 1, conversion
         assert all(i.alpha_mode == 'CHANNEL_PACKED' for i in views), [i.alpha_mode for i in views]
+    if sample.get('wired'):   # Its maps the download lacks were completed from the loose set: every slot it names
+        # is fed by an image, every image node holds one and feeds the shader, and the count of filled slots is right.
+        materials = {slot.material for o in result['objects'] for slot in bpy.data.objects[o['name']].material_slots
+                     if slot.material is not None and slot.material.node_tree is not None}
+        assert materials, result['objects']
+        for material in materials:
+            maps, fed = textures_feeding(material)
+            empty = [n.name for n in material.node_tree.nodes if n.type == 'TEX_IMAGE' and n.image is None]
+            assert set(sample['wired']) <= wired_inputs(material), (material.name, wired_inputs(material))
+            assert maps and maps <= fed and not empty, (material.name, sorted(maps), sorted(fed), empty)
+        assert conversion.get('material_from_textures') is True, conversion
+        assert conversion.get('filled_slots', 0) == sample['filled_slots'], conversion
     if sample.get('embedded'):   # Its texture's bytes came from the download: kept and packed, whatever path it names.
         images = [n.image for o in result['objects'] for slot in bpy.data.objects[o['name']].material_slots
                   if slot.material and slot.material.node_tree for n in slot.material.node_tree.nodes

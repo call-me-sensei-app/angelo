@@ -121,7 +121,7 @@ def _interface(tree, metadata, work):
 
 
 def _modifier_inputs(modifier, interface, work):
-    # Blender 5.2 uses generated system PropertyGroups, not modifier IDProps.
+    # Blender uses generated system PropertyGroups, not modifier IDProps.
     # A Geometry-only catalog interface has one fallback and NO value/resource
     # inputs or output attributes. Extra key values are never inspected.
     inputs = [s for s in interface if s["direction"] == "INPUT"]
@@ -137,7 +137,7 @@ def _modifier_inputs(modifier, interface, work):
     raw_type = value["type"]
     if type(raw_type) is not int or raw_type != 0:
         _unsupported("modifier_input_storage")
-    if value.type != "FALLBACK" or len(modifier.bakes) or len(modifier.panels):
+    if value.type != "FALLBACK" or len(modifier.bakes):
         _unsupported("modifier_inputs_or_bakes")
     return {"input": identifier, "type": "FALLBACK", "output_attributes": [], "panels": []}
 

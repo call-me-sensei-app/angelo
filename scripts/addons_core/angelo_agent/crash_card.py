@@ -40,6 +40,10 @@ FAILED_OFFLINE = n_("Check your internet connection and try again. You can also 
 FAILED_REFUSED = n_("The server did not accept this report. You can save it and attach it when you report the problem.")
 FAILED_BUSY = n_("The report service is busy right now. You can save the report and attach it when you report the "
                  "problem.")
+GPU_TITLE = n_("Angelo stopped in the graphics driver")
+GPU_REASON = n_("It stopped inside the graphics driver while drawing with Vulkan. Starting with OpenGL often avoids "
+                "this; you can switch back in Preferences > System.")
+RESTART_OPENGL = n_("Restart with OpenGL")
 REVIEW_TITLE = n_("The last crash report Angelo sent")
 REVIEW_BODY = n_("This is exactly what was sent.")
 SEND, DONT_SEND, SAVE, PROBLEM, CLOSE, TRY_AGAIN, COPY, STOP_AUTO = (
@@ -54,10 +58,15 @@ class CrashCard(kit.BaseCard):
     retry_when_lost = True
 
     def __init__(self, flow, actions):
-        """``actions`` provides ``save()``, ``open_problem(url)``, ``copy(text)``, ``finished()`` and ``stop_automatic()``."""
+        """``actions`` provides ``save()``, ``open_problem(url)``, ``copy(text)``, ``finished()``,
+        ``stop_automatic()`` and ``restart_opengl()``."""
         self.flow, self.actions = flow, actions
         self.expanded = flow.phase == REVIEW
         self._version = 0
+
+    @property
+    def gpu_restart(self):
+        return bool(getattr(self.flow, "gpu_restart", False))
 
     @property
     def animated(self):
@@ -94,6 +103,11 @@ class CrashCard(kit.BaseCard):
         if phase == ASK:
             b.gap(8)
             b.paragraph(iface_(DETAIL_CAN_SEND if flow.can_send else DETAIL_CANNOT_SEND), 14, kit.MUTED, leading=1.5)
+            if self.gpu_restart:   # A driver crash on Vulkan (crash_gpu): the way out first, then the report.
+                b.gap(12)
+                b.paragraph(iface_(GPU_REASON), 14, kit.TEXT, leading=1.5)
+                b.gap(8)
+                b.buttons([("opengl", None, iface_(RESTART_OPENGL), "secondary", True)])
         if phase in {ASK, FAILED, SENT, REVIEW}:
             b.gap(12)
             labels = ((SHOW_SENT, HIDE_SENT) if phase in {SENT, REVIEW} else (SHOW, HIDE) if flow.can_send
@@ -162,6 +176,9 @@ class CrashCard(kit.BaseCard):
         elif action == "decline" and flow.phase == ASK:
             flow.decline(flow.remember)
             host.close("declined")
+        elif action == "opengl" and self.gpu_restart and flow.phase == ASK:
+            host.close("opengl")   # The crash is answered (as Close is), so the next launch does not ask again.
+            self.actions.restart_opengl()
         elif action == "save":
             self.actions.save()
         elif action == "problem":

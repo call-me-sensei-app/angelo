@@ -97,7 +97,7 @@ class SchemaNearMissTests(unittest.TestCase):
     def test_an_overlong_text_passes_the_runtime_and_the_host_answers_in_one_line(self):
         validator = Draft202012Validator(native_plan_schema())
         for field, length, names in (("description", 5000, ("1-500 printable characters", "this one has 5000")),
-                                     ("code", 40000, ("1-32768 characters", "this one has 40000"))):
+                                     ("code", 40000, ("longer than 32,768 characters", "it has 40,000"))):
             arguments = {"description": "Build the pines", "code": "result = 1"}
             arguments[field] = ("#" if field == "code" else "d") * length
             operation = {"tool": "angelo_execute_python", "arguments": arguments}

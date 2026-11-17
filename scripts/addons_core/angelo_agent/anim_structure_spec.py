@@ -25,6 +25,7 @@ and, for the scene, ``markers`` (the marker list, rebuilt the same way).
 """
 
 from .refusal_codes import RefusalError
+from . import read_only
 from .action_schema_types import NULLABLE_POINTER, text, number, integer, enum, boolean, nullable, obj
 
 ACTION_ID_PATTERN = r'^dat:[a-f0-9]{32}:ACTION:[1-9][0-9]{0,19}$'
@@ -82,6 +83,7 @@ MARKER_EDIT_SCHEMA = obj({'operation': enum(tuple(MARKER_FIELDS)), 'marker': nul
 
 STRUCTURE_SCHEMAS = {'action_set': ACTION_SET_SCHEMA, 'nla_edit': NLA_EDIT_SCHEMA, 'marker_edit': MARKER_EDIT_SCHEMA}
 STRUCTURE_KINDS = frozenset(STRUCTURE_SCHEMAS)
+VALIDATED_STRUCTURES = read_only.frozen(STRUCTURE_SCHEMAS)   # What validation reads: as registered, read only.
 
 
 # Each kind's mode key and table; the model reads the same tables (kind_notes, mode_fields.statement).
@@ -94,7 +96,7 @@ def _fields(kind, params, raw):
     from .anim_spec import given_fields
     from .mode_fields import problem
     key, table = TABLES[kind]
-    given = [name for name in given_fields(raw['parameters'], STRUCTURE_SCHEMAS[kind]) if name != key]
+    given = [name for name in given_fields(raw['parameters'], read_only.thawed(VALIDATED_STRUCTURES[kind])) if name != key]
     # Required fields are non-null; only BIND_CAMERA's camera may be null (unbinding it).
     present = [name for name in table[params[key]][0] if name in raw['parameters']
                and (params[name] is not None or (kind, params[key], name) == ('marker_edit', 'BIND_CAMERA', 'camera'))]
@@ -196,3 +198,6 @@ def merge_markers(previous, new):
         present[row['name']] = dict(present.get(row['name'], {}), **row)
     absent = sorted((set(previous.get('absent', [])) | set(new.get('absent', []))) - set(present))
     return {'kind': 'markers', 'target': new['target'], 'present': list(present.values()), 'absent': absent}
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), 'TABLES')

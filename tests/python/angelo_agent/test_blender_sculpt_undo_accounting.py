@@ -99,6 +99,7 @@ def snapshot(obj, multires):
 def history(label):
     path = OUT / (label + '-undo-history.txt')
     with native_output(path):
+        # Blender 5.3 prints each undo step's type identifier (SCULPT, GLOBAL_UNDO), not its name (upstream ae71b519937).
         bpy.context.window_manager.print_undo_steps()
     entries = []
     for line in path.read_text().splitlines():
@@ -117,7 +118,7 @@ def visible_predecessors(entries):
 
 
 def program_count(entries):
-    return sum(entry['type'] == 'Sculpt' and entry['name'] == 'Angelo Sculpt Program' for entry in entries)
+    return sum(entry['type'] == 'SCULPT' and entry['name'] == 'Angelo Sculpt Program' for entry in entries)
 
 
 def program(obj, label):
@@ -230,7 +231,7 @@ def case(multires):
         else:
             check('base_budget_prunes_real_programs', 1 < program_count(limited) < program_count(unlimited))
             check('base_history_retains_visible_sculpt_predecessor',
-                  any(entry['type'] == 'Sculpt' for entry in visible_predecessors(limited)))
+                  any(entry['type'] == 'SCULPT' for entry in visible_predecessors(limited)))
         with native_output(OUT / (prefix + '-undo-native.log')):
             measurement['undo_operator_result'] = sorted(bpy.ops.ed.undo())
         after_undo = history(prefix + '-after-undo')

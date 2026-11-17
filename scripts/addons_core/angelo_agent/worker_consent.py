@@ -30,8 +30,9 @@ import hashlib
 import hmac
 import json
 
-from . import worker_values as values
+from . import grant_authority, worker_values as values
 from .chat_settings import clean_options
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 SCRIPT = "angelo_execute_python"
 GRANTS = ("auto", "scripts", "always_allow")   # What a lease may grant (worker_consent_lead.grants).
@@ -121,8 +122,8 @@ def approve(controller, call_id, digest, apply):
     if refusal is not None:
         return refusal
     call.__dict__["consent_approved"] = digest   # Before apply: a re-entrant or repeated Approve finds it taken.
-    if call.name == SCRIPT:
-        controller.review_script(call)
+    if call.name == SCRIPT:   # The person's review of this exact text, relayed: recorded in C in this worker's
+        grant_authority.automatic(controller.review_script, call)   # automatic scope, as its apply runs.
     apply(call)
     return {"approved": True}
 
@@ -164,6 +165,19 @@ def lease_of(controller):
     return getattr(controller, "consent_lease", None)
 
 
+def lease_key(chat_id):
+    """The ledger's key for a worker chat's leased Always allow scripts (grant_authority.ALWAYS_ALLOW)."""
+    return "lease/" + chat_id
+
+
+def _hold(controller, lease):
+    """The lease as C holds it (grant_authority): the lead's grant, arrived over the worker's own channel, is Angelo's
+    decision here; a script in the worker cannot write it (refused while it runs)."""
+    chat = controller.state["id"]
+    grant_authority.mirror(grant_authority.TRUSTED_CHATS, [(chat, "scripts" in lease._tokens)])
+    grant_authority.mirror(grant_authority.ALWAYS_ALLOW, [(lease_key(chat), "always_allow" in lease._tokens)])
+
+
 def apply_consent(controller, epoch, grants):
     """``chat.consent``: ``{"epoch": acknowledged}`` once the lease of ``epoch`` holds, or ``{"error_code", "error"}``
     with the current lease unchanged (module docstring). Conflicting grants under the epoch already held revoke
@@ -190,6 +204,7 @@ def apply_consent(controller, epoch, grants):
             if clean.get(kind) and kind not in lease._tokens:
                 lease._tokens[kind] = (clean[kind], object())
         lease.epoch, lease.auto = epoch, clean["auto"]
+        _hold(controller, lease)
         _revoke_uncovered(controller, withdrawn)
         controller.version += 1
     if conflict:
@@ -271,7 +286,8 @@ class LeasedConsent:
 
     def chat_consents(self):
         token = self._granted_token("scripts")
-        return (token,) if token is not None and self._lease_may_cover() else ()
+        held = grant_authority.holds(grant_authority.TRUSTED_CHATS, self.state["id"])   # As C holds the lease.
+        return (token,) if token is not None and held and self._lease_may_cover() else ()
 
     def own_chat_consent(self):
         return None   # No chat in a worker follows another's trust: the lead's arrives as a grant.
@@ -281,7 +297,8 @@ class LeasedConsent:
 
     @property
     def always_allow_scripts(self):
-        return self._granted_token("always_allow") is not None and self._lease_may_cover()
+        return (self._granted_token("always_allow") is not None and self._lease_may_cover()
+                and grant_authority.holds(grant_authority.ALWAYS_ALLOW, lease_key(self.state["id"])))
 
     def admission_script_consent(self):
         consents = self.chat_consents()
@@ -320,3 +337,6 @@ class _NotAScript:
 
 
 _NOT_A_SCRIPT = _NotAScript()
+
+
+_grant_guard.entry_methods(LeasedConsent, "set_trusted_scripts", widens="enabled")

@@ -6,7 +6,8 @@ Never imported by the add-on. The parent starts ``Angelo --background --factory-
 -- <request JSON>``; the request names the frames by their pattern, their frame rate, the video's size and the MP4's
 path (ending in .mp4, which Blender then writes exactly, with no frame range added).
 The frames are display-referred PNG or JPEG (the render already applied the scene's view transform), so the encode
-scene shows them as they are: the Standard view, sRGB in and out. Blender's own Sequencer and its bundled FFmpeg do
+scene shows them as they are: an un-tone-mapped view (Standard), sRGB in and out, as the active configuration names
+them (``color_spaces``, loaded by path: this child is no package). Blender's own Sequencer and its bundled FFmpeg do
 the encoding, so the app needs no other program. The last line printed is ``ANGELO-VIDEO <json>`` with the file it
 wrote, or the child ends with a non-zero exit status.
 """
@@ -19,6 +20,14 @@ from pathlib import Path
 import bpy
 
 MARK = "ANGELO-VIDEO "
+
+
+def _color_spaces():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("angelo_color_spaces", Path(__file__).with_name("color_spaces.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _escape(path):
@@ -71,14 +80,15 @@ def encode(request):
     strip = editor.strips.new_image("frames", str(frames[0]), 1, 1, fit_method="STRETCH")
     for frame in frames[1:]:
         strip.elements.append(frame.name)
-    strip.colorspace_settings.name = "sRGB"
+    spaces = _color_spaces()
+    spaces.mark_srgb(strip.colorspace_settings)
     scene.frame_start, scene.frame_end = 1, len(frames)
     render.fps, render.fps_base = int(request["fps"]), float(request["fps_base"])
     render.use_sequencer, render.use_compositing = True, False
-    scene.view_settings.view_transform = "Standard"
+    spaces.view_untonemapped(scene.view_settings)
     scene.view_settings.look = "None"
     scene.view_settings.exposure, scene.view_settings.gamma = 0.0, 1.0
-    scene.sequencer_colorspace_settings.name = "sRGB"
+    spaces.mark_srgb(scene.sequencer_colorspace_settings)
     image = render.image_settings
     image.media_type = "VIDEO"
     image.file_format = "FFMPEG"

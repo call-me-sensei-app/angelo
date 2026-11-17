@@ -45,7 +45,7 @@ import threading
 import time
 from dataclasses import replace
 
-from . import managed_policy, product_env, team_signin
+from . import managed_policy, net_integrity, product_env, team_signin
 from .display_text import Text
 from .team_errors import (BROWSER_ANSWERS, INVALID_ANSWER, NOT_ACCEPTED, REFUSED_BROWSER, SIGNED_OUT_NOTE,
                           UNEXPECTED, NotSent, SignInRequired, TeamError, Unanswered, api_error, unreachable)
@@ -60,6 +60,7 @@ from .team_refresh_marks import RecordError, RefreshRecord
 from .team_token_store import StoredSignIn
 from .team_usage_reports import REPORT_EVERY, UsageReportTasks
 from .team_view import OFFLINE, RESTORING, SIGNED_IN, SIGNED_OUT, SIGNING_IN, AccountView
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 __all__ = ["ACCESS_MARGIN", "PROVIDERS_EVERY", "TeamAccount"]
 PROVIDERS_EVERY = 15 * 60        # seconds between providers/available checks
@@ -70,6 +71,7 @@ class TeamAccount(RefreshTasks, GrantKeyTasks, TeamReadTasks, UsageReportTasks):
                  monotonic=time.monotonic, sign_in_timeout=team_signin.TIMEOUT, policy=managed_policy.current,
                  usage_buffer=None, record_directory=None):
         self.console_url = console_url
+        net_integrity.allow_origin(console_url)   # Where its credentials may go (checked at each request).
         self._stored, self._transport, self._process_lock = StoredSignIn(vault), transport, process_lock
         self._shared = SharedAccess(access_vault, clock)  # The access token every process here uses.
         # Generation and spent marks every process here shares (team_refresh_marks); in memory without a folder.
@@ -95,6 +97,7 @@ class TeamAccount(RefreshTasks, GrantKeyTasks, TeamReadTasks, UsageReportTasks):
         self._pending, self._last = set(), {}
         # team_usage_buffer.UsageBuffer, the counts not saved yet, one save at a time (a quit waits for the worker's).
         self._usage_buffer, self._usage_pending, self._usage_saving = usage_buffer, {}, threading.Lock()
+        self._usage_pending_endpoints = {}   # Custom endpoint counts by owner, before the buffer (team_usage_reports).
         self._tasks, self._worker, self._exit_report = queue.Queue(), None, None  # Threads ``join`` waits for.
         atexit.register(self.drain)
 
@@ -261,7 +264,8 @@ class TeamAccount(RefreshTasks, GrantKeyTasks, TeamReadTasks, UsageReportTasks):
     def _no_org():
         return {"org_id": "", "org_name": "", "user_id": "", "email": "", "seat": False, "scopes": frozenset(),
                 "providers": None, "providers_error": "", "grant_key_expires": None, "grant_error": "", "usage": None,
-                "org_policy": None, "save_problem": ""}
+                "org_policy": None, "save_problem": "", "custom_endpoints": (), "endpoints_left_out": 0,
+                "seat_confirmed_at": None}
 
     # Worker threads --------------------------------------------------------
 
@@ -291,9 +295,10 @@ class TeamAccount(RefreshTasks, GrantKeyTasks, TeamReadTasks, UsageReportTasks):
         for attempt in (0, 1):
             request = dict(headers or {}, Authorization="Bearer " + token, Accept="application/json")
             try:
-                status, answer, data = self._transport(method, self.console_url + path, request, body)
-            except (NotSent, Unanswered):
-                raise unreachable(self.console_url) from None
+                url = net_integrity.checked(self.console_url) + path   # Only a console Angelo named.
+                status, answer, data = self._transport(method, url, request, body)
+            except (NotSent, Unanswered) as error:
+                raise unreachable(self.console_url, error) from None
             if status == 401 and attempt == 0:
                 with self._lock:  # What was read under a refused token (a removed member's) goes, however the refresh
                     self._affinity = None  # ends; a live token's next providers read brings it back.
@@ -321,10 +326,14 @@ class TeamAccount(RefreshTasks, GrantKeyTasks, TeamReadTasks, UsageReportTasks):
                 self._access_expiry = self._monotonic() + tokens["expires_in"]
                 fields = {key: tokens[key] for key in ("org_id", "org_name", "user_id", "email", "seat", "scopes",
                                                        "org_policy", "role")}
+                # The offline grace (endpoints) counts from when the console issued the token: a token another
+                # process here refreshed earlier (team_access_share ``age``) confirms the seat only as of then.
+                fields["seat_confirmed_at"] = self._monotonic() - tokens.get("age", 0)
                 if self._owner() != (tokens["org_id"], tokens["user_id"]):
                     self._grants.forget()
                     self._affinity = None
-                    fields.update(providers=None, providers_error="", grant_key_expires=None, grant_error="", usage=None)
+                    fields.update(providers=None, providers_error="", grant_key_expires=None, grant_error="", usage=None,
+                                  custom_endpoints=(), endpoints_left_out=0)
                 self._update(status=SIGNED_IN, message="", sign_in_url="", **fields)
         if refusal is not None:
             self._end(epoch, refusal, refused=True)  # Also erases a stored token of this refused sign-in.
@@ -392,9 +401,13 @@ class TeamAccount(RefreshTasks, GrantKeyTasks, TeamReadTasks, UsageReportTasks):
             self._update_if(epoch, status=SIGNED_OUT, message=Text(NOT_ACCEPTED) if expired else error.message,
                             sign_in_url="")
             return
-        except (NotSent, Unanswered):
-            listener.finish("unreachable")
-            self._update_if(epoch, status=SIGNED_OUT, message=unreachable(self.console_url).message, sign_in_url="")
+        except (NotSent, Unanswered) as error:
+            message = unreachable(self.console_url, error).message
+            if getattr(error, "untrusted", False):   # The browser's page says it was the certificate too.
+                listener.finish("error", reason=message)
+            else:
+                listener.finish("unreachable")
+            self._update_if(epoch, status=SIGNED_OUT, message=message, sign_in_url="")
             return
         policy = self._policy()
         refusal = managed_policy.admit(policy, tokens["org_id"], tokens["email"])
@@ -439,6 +452,11 @@ class TeamAccount(RefreshTasks, GrantKeyTasks, TeamReadTasks, UsageReportTasks):
     def _task_revoke(self, token):
         body, headers = form_body({"token": token, "client_id": team_signin.CLIENT_ID})
         try:
-            self._transport("POST", self.console_url + "/api/oauth/revoke", headers, body)
+            self._transport("POST", net_integrity.checked(self.console_url) + "/api/oauth/revoke", headers,
+                            body)
         except (NotSent, Unanswered):
             pass  # Best effort; the person can also sign the device out in the console (Your devices).
+
+
+_grant_guard.entry_methods(TeamAccount, "begin_sign_in")
+_grant_guard.entry_methods(TeamAccount, "sign_out", "cancel_sign_in")   # Never a script's: ACCOUNT_OPERATORS.

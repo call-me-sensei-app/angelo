@@ -29,7 +29,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import shared_replace
+from . import owned_paths, shared_replace
 
 OWED = ".owed"
 STALE = 3 * shared_replace.RETRY_SECONDS
@@ -48,6 +48,7 @@ def write(root, name, record, claimed=()):
     it is written and when it fails. ``claimed``: markers (``claim_stale``) this write answers, removed with this
     process's own once it lands. A marker that can't go raises ``shared_replace.Refused``: the record stays owed
     (failing closed) and is tried again later."""
+    owned_paths.require_writable(root)
     root = Path(root)
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     own = root / ("%s.%d-%s%s" % (name, os.getpid(), _TOKEN, OWED))
@@ -77,6 +78,8 @@ def claim_stale(root, name, now=None):
     process's own name first and touched (never claimed twice), so only what was claimed is removed later."""
     now = time.time() if now is None else now
     claimed = []
+    if not owned_paths.may_write(root):   # A cleanup: only where C says Angelo may write.
+        return claimed
     for marker in markers(root, name):
         mine = marker.with_name("%s.%d-%sc%s%s" % (name, os.getpid(), _TOKEN, uuid.uuid4().hex[:8], OWED))
         try:

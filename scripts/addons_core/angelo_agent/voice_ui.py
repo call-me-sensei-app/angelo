@@ -34,6 +34,10 @@ class ANGELO_OT_voice(Operator):
     bl_description = "Opt-in microphone and speaker relay through the selected native Codex account. Requires runtime access; no API billing fallback"
     microphone: StringProperty(name="Microphone", default="0", description="macOS AVFoundation audio-device index or name", options={'SKIP_SAVE'})
 
+    def consent_target(self, context):
+        """Nothing beyond the chat and its scene, which ``dialog_target`` binds already."""
+        return None
+
     def invoke(self, context, event):
         from . import ui
         controller = ui.get_controller()
@@ -71,7 +75,10 @@ class ANGELO_OT_voice(Operator):
 
     def execute(self, context):
         try:
-            from . import ui, worker_routing
+            from . import edit_tool_hold, ui, worker_routing
+            if edit_tool_hold.running():   # Its observation reads the scene under the person's tool (edit_tool_hold).
+                self.report({'INFO'}, rpt_("Finish the tool you are using, then start voice"))
+                return {'CANCELLED'}
             ui.prepare_controller()
             controller = ui.get_controller()
             document_scene.refuse(controller)   # Its scene not shown: no voice (R5-M-1 M-5).
@@ -90,3 +97,7 @@ def register():
 
 def unregister():
     bpy.utils.unregister_class(ANGELO_OT_voice)
+
+
+from . import grant_guard as _grant_guard  # noqa: E402  (the microphone to a provider: grant_operators.rst)
+_grant_guard.guard(ANGELO_OT_voice)

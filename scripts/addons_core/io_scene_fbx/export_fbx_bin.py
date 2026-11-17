@@ -26,6 +26,7 @@ import bpy_extras
 from bpy_extras import node_shader_utils
 from bpy.app.translations import pgettext_tip as tip_
 from mathutils import Vector, Matrix
+from angelo_own_properties import own as angelo_own
 
 from . import encode_bin, data_types, fbx_utils
 from .fbx_utils import (
@@ -266,7 +267,7 @@ def fbx_template_def_camera(scene, settings, override_defaults=None, nbr_users=0
         b"ShowAzimut": (True, "p_bool", False),
         b"ShowTimeCode": (False, "p_bool", False),
         b"ShowAudio": (False, "p_bool", False),
-        b"AudioColor": ((0.0, 1.0, 0.0), "p_vector_3d", False),  # Yep, `vector3d`, not `corlorgb` (cry).
+        b"AudioColor": ((0.0, 1.0, 0.0), "p_vector_3d", False),  # Yep, `p_vector_3d`, not `p_color_rgb` (cry).
         b"NearPlane": (10.0, "p_double", False),
         b"FarPlane": (4000.0, "p_double", False),
         b"AutoComputeClipPanes": (False, "p_bool", False),
@@ -531,7 +532,7 @@ def fbx_data_element_custom_properties(props, bid):
     rna_properties = {prop.identifier for prop in bid.bl_rna.properties if prop.is_runtime}
 
     for k, v in items:
-        if k in rna_properties:
+        if k in rna_properties or angelo_own(k):   # Angelo: its own saved records are never exported.
             continue
 
         list_val = getattr(v, "to_list", lambda: None)()

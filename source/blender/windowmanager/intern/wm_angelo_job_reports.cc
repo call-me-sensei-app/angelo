@@ -12,9 +12,9 @@
 
 #include <cstring>
 
-#include "BLI_assert.h"
-#include "BLI_string_utf8.h"
-#include "BLI_threads.h"
+#include "BLI_assert.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_threads.hh"
 
 #include "WM_angelo_job_reports.hh"
 

@@ -3,6 +3,7 @@
 """fal video jobs: one billable submit, credentials only to fal, Stop vs closing, resume after a restart, the agent."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import base64
 import json
@@ -232,7 +233,7 @@ class StopAndErrorTests(unittest.TestCase):
                 time.sleep(0.1)
                 self.assertFalse(jobs.active[asset["id"]].is_set())
                 jobs.close()
-                deadline = time.monotonic() + 5   # The worker writes job-state.json until it pauses: let it finish
+                deadline = time.monotonic() + CAP_S   # The worker writes job-state.json until it pauses: let it finish
                 while asset["id"] in jobs.active and time.monotonic() < deadline:   # before the folder is removed.
                     jobs.pump()
                     time.sleep(0.01)
@@ -286,7 +287,7 @@ class ResumePassTests(unittest.TestCase):
             jobs = StudioJobs(library, fal)
             with patch.object(fal_video, "POLL_SECONDS", 0):
                 video_resume.tick(library, jobs, lambda _i: binding(), lambda *a: False)
-                deadline = time.monotonic() + 5
+                deadline = time.monotonic() + CAP_S
                 while jobs.active and time.monotonic() < deadline:
                     jobs.pump()
                     time.sleep(0.01)
@@ -297,7 +298,7 @@ class ResumePassTests(unittest.TestCase):
 
 class JobTests(unittest.TestCase):
     def wait(self, jobs, identity):
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while identity in jobs.active and time.monotonic() < deadline:
             jobs.pump()
             time.sleep(0.01)
@@ -311,7 +312,7 @@ class JobTests(unittest.TestCase):
             fal = Fal(statuses=("IN_QUEUE",))
             jobs = StudioJobs(library, fal)
             jobs.start(asset, binding(), OPTIONS, {"first": None, "last": None, "references": []})
-            deadline = time.monotonic() + 5
+            deadline = time.monotonic() + CAP_S
             while not fal.submits() and time.monotonic() < deadline:
                 time.sleep(0.01)
             jobs.close()   # Angelo quits: monitoring pauses, nothing is sent to fal.
@@ -365,7 +366,7 @@ class AgentTests(unittest.TestCase):
             with patch.object(fal_video, "POLL_SECONDS", 0):
                 pending = agent.execute("angelo_studio_generate", args)
                 pending.cancel()   # The chat turn ended: the video keeps going.
-                deadline = time.monotonic() + 5
+                deadline = time.monotonic() + CAP_S
                 while jobs.active and time.monotonic() < deadline:
                     jobs.pump()
                     time.sleep(0.01)

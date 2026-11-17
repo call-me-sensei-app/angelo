@@ -177,3 +177,15 @@ class FlowRun:
         elif self.later:
             result["remaining_steps"] = list(self.later)
         return result
+
+
+def advance(run):
+    """``run.tick()``: True on any change. A step that reached DONE has an output its flow records: a result from
+    outside the person's present input landing (``grant_gestures.landed``); a start, a skip or a failure lands
+    nothing, so a flow running for minutes never keeps the person from granting (the review of a6edbf3)."""
+    done = [step["state"] for step in run.steps.values()].count(DONE)
+    changed = run.tick()
+    if changed and [step["state"] for step in run.steps.values()].count(DONE) > done:
+        from . import grant_gestures
+        grant_gestures.landed()
+    return changed

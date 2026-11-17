@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """The private EEVEE draws behind ``view_warm``: a compile-ahead draw of a scene or of some of its objects, the
 objects that draw given materials, and the first draws of newly compiled ones a tick at a time (``view_warm``'s
-docstring; doc/angelo/agent_execution.rst)."""
+docstring; doc/angelo/agent_execution.rst). A compile-ahead draw queues the pipeline states it meets to the
+background where the backend allows (Metal), so a view waits for ``pipelines_pending`` too: for every build queued up
+to the last such draw made for its scene (``_marks``)."""
 
 import time
 
@@ -24,16 +26,33 @@ def _region(window, area=None):
     return (area, region) if region is not None and region.data is not None else None
 
 
+class _World:
+    """Stands for the world shaders a LIT look needs among the objects owed first draws: queued by a draw of no
+    object (``only=[]``, the world alone), first-drawn by a draw of the whole scene, since a new world can give every
+    object passes it did not draw before (a sun it lights the scene with casts shadows)."""
+    name = "World"
+
+    @staticmethod
+    def as_pointer():
+        return 0
+
+
+WORLD = _World()
+
+
 def _draw(window, area, region, only=None, lit=True):
-    """One private compile-ahead draw of ``window``'s scene (of ``only`` alone when given) on a new offscreen, freed
-    at once (its EEVEE instance with it), in the look the view asked for (``lit``: with the scene's lights and world;
-    else neither, as MATERIAL draws: BREAKIT-viewwarm VW-M-1); its seconds. Raises what the draw raises."""
+    """One private compile-ahead draw of ``window``'s scene (of ``only`` alone when given; ``WORLD`` in it adds no
+    object) on a new offscreen, freed at once (its EEVEE instance with it), in the look the view asked for
+    (``lit``: with the scene's lights and world; else neither, as MATERIAL draws: BREAKIT-viewwarm VW-M-1); its
+    seconds. Raises what the draw raises. In a build with ``_angelo_live.pipeline_stats`` the draw builds no pipeline
+    state and compiles no world shader on the main thread: it queues them to the background and the view waits for
+    them (``pipelines_pending``; inventory C5)."""
     import _bpy
     import gpu
     started = time.perf_counter()
     offscreen = gpu.types.GPUOffScreen(*SIZE)
     try:
-        kwargs = {"only": only} if only is not None else {}
+        kwargs = {"only": [obj for obj in only if obj is not WORLD]} if only is not None else {}
         kwargs.update({} if lit else {"lit": False})
         with bpy.context.temp_override(window=window, area=area, region=region):
             _bpy._angelo_live.draw(window.scene, offscreen, area.spaces.active, region.data.view_matrix,
@@ -41,6 +60,7 @@ def _draw(window, area, region, only=None, lit=True):
                                    **kwargs)
     finally:
         offscreen.free()
+        _mark(window)
     return time.perf_counter() - started
 
 
@@ -95,11 +115,69 @@ def _drawing(window, names):
     return [(obj, keys) for keys, obj in found], instancers, covered
 
 
-def _first_draw_objects(window, names):
-    """``(object, keys)`` for every visible object that draws a material named in ``names``, then ``(instancer,
-    None)`` for every other visible instancer (module docstring)."""
+def _first_draw_objects(window, names, worlds=frozenset()):
+    """``(object, keys)`` for every visible object that draws a material named in ``names``, ``(WORLD, keys)`` when
+    one of ``worlds`` (the UIDs of the worlds a LIT look counts, ``shader_state``) is among them, then ``(instancer,
+    None)`` for every other visible instancer (module docstring). Nothing when no name is given: nothing is new."""
+    if not names:
+        return []
     direct, instancers, _covered = _drawing(window, names)
-    return direct + [(obj, None) for obj in instancers]
+    pending = set(worlds) & set(names)
+    shown = [(WORLD, frozenset((uid, ("WORLD",)) for uid in pending))] if pending else []
+    return direct + shown + [(obj, None) for obj in instancers]
+
+
+def _queued():
+    """How many pipeline builds compile-ahead draws queued so far (0 on a build that builds them in the draw)."""
+    try:
+        import _bpy
+        stats = getattr(getattr(_bpy, "_angelo_live", None), "pipeline_stats", None)
+        return int(stats()["queued"]) if stats is not None else 0
+    except (ImportError, AttributeError, TypeError, ValueError, KeyError, RuntimeError):
+        return 0
+
+
+# Scene (session UID) -> how many pipeline builds were queued in all when the last compile-ahead draw made for it
+# returned: a view's own draw, another view's, or a merge's spreading, finished or not (break-it C5 on 5.3, re-read).
+# Kept only while a build numbered up to it is pending (``_mark``): none outlives its builds, so a freed scene's and
+# those of a file since replaced are gone by the next draw.
+_marks = {}
+
+
+def _scene(window):
+    scene = getattr(window, "scene", None)
+    uid = getattr(scene, "session_uid", None)
+    return uid if uid is not None else str(scene)
+
+
+def _mark(window):
+    """Mark what a draw made for ``window``'s scene queued, or met queued: every build numbered up to now. Marks
+    nothing up to which is pending any more are dropped, this one included: they can make no view wait again."""
+    try:
+        import _bpy
+        pending = getattr(getattr(_bpy, "_angelo_live", None), "pipelines_pending", None)
+        _marks[_scene(window)] = _queued()
+        for key in [key for key, mark in _marks.items() if pending is None or not mark or not pending(0, mark)]:
+            del _marks[key]
+    except (ImportError, AttributeError, TypeError, ValueError, KeyError, RuntimeError):
+        _marks.clear()   # Unreadable: a view then waits for none, as on a build that queues none.
+
+
+def pipelines_pending(window):
+    """How many pipeline states queued up to the last compile-ahead draw made for ``window``'s scene are not built
+    yet (0 on a build that builds them in the draw): a view drawn before they are built would build them on the
+    main loop. Every draw made for the scene counts, a merge's too, since the view draws what they prepared; and
+    every build numbered up to that draw, since one it met already queued by someone else is among them (builds are
+    built in the order queued, so those are ahead of its own). Never one queued after: the builds another window's
+    view, another scene's merge or a material's optimized variant queue later are not this view's to wait for
+    (break-it C5 on 5.3, 3)."""
+    try:
+        import _bpy
+        pending = getattr(getattr(_bpy, "_angelo_live", None), "pipelines_pending", None)
+        mark = _marks.get(_scene(window), 0)
+        return int(pending(0, mark)) if pending is not None and mark else 0
+    except (ImportError, AttributeError, TypeError, ValueError, KeyError, RuntimeError):
+        return 0
 
 
 def _alive(obj):
@@ -178,6 +256,8 @@ def first_draws(window, objects, area=None, pace=None):
             continue
         first = False
         only = [obj for obj, _keys in batch]
+        if WORLD in only:
+            only = None   # The world's first draw: the whole scene (_World).
         try:
             spent = _draw(window, *host, only, pace.get("lit", True))
         except Exception:
@@ -190,3 +270,23 @@ def first_draws(window, objects, area=None, pace=None):
         if keys is None:
             pace["group"] = 1 if spent > SLOW else min(GROUP_MAX, pace.get("group", 1) * 2)
     return True
+
+
+def _world(found):
+    """The session UIDs of the worlds whose shaders a LIT look counts, from a ``state`` reading with ``lit`` (none
+    otherwise): the one it draws and the scene's (its volume)."""
+    if found is None or len(found) <= 9:
+        return frozenset()
+    if len(found) > 10:
+        return frozenset(found[10])
+    return frozenset({found[9]}) if found[9] is not None else frozenset()
+
+
+def _redo(pace, pending):
+    """Forget the first draws done for materials pending again: an edit recompiles a material under the same UID, so
+    what was drawn before is not what the view will draw (VW10-H-2)."""
+    if not pending:
+        return
+    for look, (done, drawn) in list(pace.get("books", {}).items()):
+        pace["books"][look] = ({item for item in done if not any(key[0] in pending for key in (item[1] or ()))},
+                               {key for key in drawn if key[0] not in pending})

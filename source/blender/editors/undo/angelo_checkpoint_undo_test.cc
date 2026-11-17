@@ -3,16 +3,18 @@
 #include "testing/testing.h"
 #include <iterator>
 #include <memory>
+#include <utility>
 #include "MEM_guardedalloc.h"
 #include "BKE_context.hh"
 #include "BKE_attribute_storage.hh"
 #include "BLI_generic_pointer.hh"
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_vector.hh"
 #include "BKE_global.hh"
 #include "BKE_gtest_base.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_main.hh"
+#include "BKE_mesh.h"
 #include "BKE_mesh.hh"
 #include "BKE_mesh_types.hh"
 #include "BKE_object.hh"
@@ -258,6 +260,191 @@ TEST_F(CheckpointInitialUndoTest, PrivateMemFileReadRejectsChangedUidAtSameObjec
   error = nullptr;
   EXPECT_TRUE(main_undo_state_discard_runtime(*target, &error)) << (error ? error : "");
   EXPECT_EQ(id_cast<Mesh *>(objects[0]->data)->verts_num, 0);
+}
+
+/* What memfile undo does to an Object its step stores changed (or that it reads again because it
+ * changed in place): restore it at its old address with the ObjectRuntime read with it, the
+ * session moved onto that runtime by Blender's ID cache (#object_foreach_cache), tagged
+ * #ID_TAG_UNDO_OLD_ID_REREAD_IN_PLACE. */
+static void read_again_at_old_address(Object &object)
+{
+  bke::ObjectRuntime *previous = object.runtime;
+  bke::ObjectRuntime *read_with_object = MEM_new<bke::ObjectRuntime>(__func__);
+  read_with_object->sculpt_session = std::exchange(previous->sculpt_session, nullptr);
+  object.runtime = read_with_object;
+  MEM_delete(previous);
+  object.id.tag |= ID_TAG_UNDO_OLD_ID_REREAD_IN_PLACE;
+}
+
+/* The same owner, never a refusal; but it now holds the step's stored state, which the live BMesh
+ * is not: the BMesh is retired unflushed and the log kept for a restore to adopt. A reused Object
+ * still gets its BMesh back. Afterwards no log is left without its BMesh. */
+TEST_F(CheckpointInitialUndoTest, PrivateMemFileReadRetiresBMeshOfObjectReadAgainAtOldAddress)
+{
+  using namespace ed::sculpt_paint::undo;
+  SculptSession *sessions[2] = {objects[0]->runtime->sculpt_session,
+                                objects[1]->runtime->sculpt_session};
+  BMesh *reused_mesh = sessions[1]->bm;
+  BMLog *logs[2] = {sessions[0]->bm_log, sessions[1]->bm_log};
+  const char *error = nullptr;
+  MainUndoBMeshRead *read = main_undo_bmesh_read_begin(*target, &error);
+  ASSERT_NE(read, nullptr) << (error ? error : "");
+  read_again_at_old_address(*objects[0]);
+  const bool restored = main_undo_bmesh_read_end(*target, read, &error);
+  objects[0]->id.tag &= ~ID_TAG_UNDO_OLD_ID_REREAD_IN_PLACE;
+  EXPECT_TRUE(restored) << (error ? error : "");
+  EXPECT_EQ(objects[0]->runtime->sculpt_session, sessions[0]);
+  EXPECT_EQ(sessions[0]->bm, nullptr);
+  EXPECT_EQ(sessions[0]->bm_log, logs[0]);
+  EXPECT_EQ(id_cast<Mesh *>(objects[0]->data)->verts_num, 0);
+  EXPECT_EQ(sessions[1]->bm, reused_mesh);
+  EXPECT_EQ(sessions[1]->bm_log, logs[1]);
+  main_undo_bmesh_read_drop_orphan_logs(*target);
+  EXPECT_EQ(sessions[0]->bm_log, nullptr);
+  EXPECT_EQ(sessions[1]->bm_log, logs[1]);
+}
+
+/* The memfile decode protects every read while a Dyntopo BMesh is live, tagged step or not. */
+TEST_F(CheckpointInitialUndoTest, LiveDyntopoBMeshIsSeenForEveryMemfileRead)
+{
+  using namespace ed::sculpt_paint::undo;
+  EXPECT_TRUE(main_undo_bmesh_any(*target));
+  const char *error = nullptr;
+  MainUndoBMeshRead *read = main_undo_bmesh_read_begin(*target, &error);
+  ASSERT_NE(read, nullptr) << (error ? error : "");
+  EXPECT_FALSE(main_undo_bmesh_any(*target)) << "the read holds every BMesh it protects";
+  EXPECT_TRUE(main_undo_bmesh_read_end(*target, read, &error)) << (error ? error : "");
+  EXPECT_TRUE(main_undo_bmesh_any(*target));
+  EXPECT_FALSE(main_undo_bmesh_any(*source));
+}
+
+/* A read Blender alone owns (no Angelo snapshot on either side) keeps Blender 5.2's behaviour for
+ * an Object read again: its live Dyntopo edits flushed into the restored Mesh, no BMesh or log
+ * left. A reused Object keeps its BMesh as always. */
+TEST_F(CheckpointInitialUndoTest, PlainMemFileReadKeepsEditsOfObjectReadAgain)
+{
+  using namespace ed::sculpt_paint::undo;
+  SculptSession *sessions[2] = {objects[0]->runtime->sculpt_session,
+                                objects[1]->runtime->sculpt_session};
+  BMesh *reused_mesh = sessions[1]->bm;
+  const int live_verts = sessions[0]->bm->totvert;
+  const char *error = nullptr;
+  MainUndoBMeshRead *read = main_undo_bmesh_read_begin(*target, &error, true);
+  ASSERT_NE(read, nullptr) << (error ? error : "");
+  read_again_at_old_address(*objects[0]);
+  const bool restored = main_undo_bmesh_read_end(*target, read, &error);
+  objects[0]->id.tag &= ~ID_TAG_UNDO_OLD_ID_REREAD_IN_PLACE;
+  EXPECT_TRUE(restored) << (error ? error : "");
+  EXPECT_EQ(objects[0]->runtime->sculpt_session, sessions[0]);
+  EXPECT_EQ(sessions[0]->bm, nullptr);
+  EXPECT_EQ(sessions[0]->bm_log, nullptr);
+  EXPECT_EQ(id_cast<Mesh *>(objects[0]->data)->verts_num, live_verts);
+  EXPECT_EQ(sessions[1]->bm, reused_mesh);
+}
+
+/* A full read (no old Main reused) installs the same ID at a new address and the ID cache moves the
+ * session onto it: the same owner read again, never a refusal. Across a tagged snapshot (no
+ * `keep_read_again_edits`) its BMesh is retired unflushed and its log kept. */
+TEST_F(CheckpointInitialUndoTest, FullMemFileReadAdmitsTheSameIdAtANewAddress)
+{
+  using namespace ed::sculpt_paint::undo;
+  SculptSession *session = objects[0]->runtime->sculpt_session;
+  BMLog *log = session->bm_log;
+  const char *error = nullptr;
+  MainUndoBMeshRead *read = main_undo_bmesh_read_begin(*target, &error);
+  ASSERT_NE(read, nullptr) << (error ? error : "");
+  Object *read_anew = BKE_id_new<Object>(target, "Active-owner read anew");
+  read_anew->type = OB_MESH;
+  read_anew->data = objects[0]->data;
+  read_anew->mode = OB_MODE_SCULPT;
+  read_anew->id.session_uid = objects[0]->id.session_uid;
+  read_anew->runtime->sculpt_session = std::exchange(objects[0]->runtime->sculpt_session, nullptr);
+  const bool restored = main_undo_bmesh_read_end(*target, read, &error);
+  EXPECT_TRUE(restored) << (error ? error : "");
+  EXPECT_EQ(read_anew->runtime->sculpt_session, session);
+  EXPECT_EQ(session->bm, nullptr);
+  EXPECT_EQ(session->bm_log, log);
+  objects[0]->runtime->sculpt_session = std::exchange(read_anew->runtime->sculpt_session, nullptr);
+  read_anew->id.session_uid = MAIN_ID_SESSION_UID_UNSET;
+}
+
+/* A plain read keeps the live edits only in the Mesh the session owned: a full read's new Mesh
+ * (another address) keeps the step's data. */
+TEST_F(CheckpointInitialUndoTest, PlainFullReadKeepsTheStepsNewMesh)
+{
+  using namespace ed::sculpt_paint::undo;
+  SculptSession *session = objects[0]->runtime->sculpt_session;
+  const char *error = nullptr;
+  MainUndoBMeshRead *read = main_undo_bmesh_read_begin(*target, &error, true);
+  ASSERT_NE(read, nullptr) << (error ? error : "");
+  Mesh *step_mesh = BKE_id_new<Mesh>(target, "Step mesh");
+  ID *owned = objects[0]->data;
+  objects[0]->data = &step_mesh->id;
+  read_again_at_old_address(*objects[0]);
+  const bool restored = main_undo_bmesh_read_end(*target, read, &error);
+  objects[0]->id.tag &= ~ID_TAG_UNDO_OLD_ID_REREAD_IN_PLACE;
+  objects[0]->data = owned;
+  EXPECT_TRUE(restored) << (error ? error : "");
+  EXPECT_EQ(session->bm, nullptr);
+  EXPECT_EQ(step_mesh->verts_num, 0);
+  EXPECT_EQ(id_cast<Mesh *>(owned)->verts_num, 0);
+}
+
+/* A plain read never overwrites a Mesh the step itself changed (an agent script that edited it in
+ * Sculpt mode): its geometry differs from the Mesh's before the read, so the BMesh is retired. */
+TEST_F(CheckpointInitialUndoTest, PlainMemFileReadKeepsAMeshTheStepChanged)
+{
+  using namespace ed::sculpt_paint::undo;
+  SculptSession *session = objects[0]->runtime->sculpt_session;
+  Mesh *mesh = id_cast<Mesh *>(objects[0]->data);
+  const char *error = nullptr;
+  MainUndoBMeshRead *read = main_undo_bmesh_read_begin(*target, &error, true);
+  ASSERT_NE(read, nullptr) << (error ? error : "");
+  Mesh *changed = BKE_mesh_new_nomain(1, 0, 0, 0);
+  BKE_mesh_nomain_to_mesh(changed, mesh, objects[0]);
+  read_again_at_old_address(*objects[0]);
+  const bool restored = main_undo_bmesh_read_end(*target, read, &error);
+  objects[0]->id.tag &= ~ID_TAG_UNDO_OLD_ID_REREAD_IN_PLACE;
+  EXPECT_TRUE(restored) << (error ? error : "");
+  EXPECT_EQ(session->bm, nullptr);
+  EXPECT_EQ(mesh->verts_num, 1);
+}
+
+/* Only the read's own tag explains a new runtime: on an Object the read reused, it is refused. */
+TEST_F(CheckpointInitialUndoTest, PrivateMemFileReadRefusesNewRuntimeOfReusedObject)
+{
+  using namespace ed::sculpt_paint::undo;
+  const char *error = nullptr;
+  MainUndoBMeshRead *read = main_undo_bmesh_read_begin(*target, &error);
+  ASSERT_NE(read, nullptr) << (error ? error : "");
+  read_again_at_old_address(*objects[0]);
+  objects[0]->id.tag &= ~ID_TAG_UNDO_OLD_ID_REREAD_IN_PLACE;
+  EXPECT_FALSE(main_undo_bmesh_read_end(*target, read, &error));
+  EXPECT_NE(error, nullptr);
+  EXPECT_EQ(objects[0]->runtime->sculpt_session->bm, nullptr);
+  error = nullptr;
+  EXPECT_TRUE(main_undo_state_discard_runtime(*target, &error)) << (error ? error : "");
+}
+
+/* The session alone is no owner: on another Object it is refused, whatever runtime it is on. */
+TEST_F(CheckpointInitialUndoTest, PrivateMemFileReadRefusesSessionMovedToAnotherObject)
+{
+  using namespace ed::sculpt_paint::undo;
+  SculptSession *moved = objects[0]->runtime->sculpt_session;
+  SculptSession *displaced = objects[1]->runtime->sculpt_session;
+  const char *error = nullptr;
+  MainUndoBMeshRead *read = main_undo_bmesh_read_begin(*target, &error);
+  ASSERT_NE(read, nullptr) << (error ? error : "");
+  objects[1]->runtime->sculpt_session = moved;
+  objects[0]->runtime->sculpt_session = nullptr;
+  const bool restored = main_undo_bmesh_read_end(*target, read, &error);
+  objects[0]->runtime->sculpt_session = moved;
+  objects[1]->runtime->sculpt_session = displaced;
+  EXPECT_FALSE(restored);
+  EXPECT_NE(error, nullptr);
+  EXPECT_EQ(moved->bm, nullptr);
+  error = nullptr;
+  EXPECT_TRUE(main_undo_state_discard_runtime(*target, &error)) << (error ? error : "");
 }
 
 TEST_F(CheckpointInitialUndoTest, PrivateMemFileReadFailurePreservesDifferentLiveBMesh)

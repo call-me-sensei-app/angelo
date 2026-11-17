@@ -8,11 +8,12 @@
 
 #include "DNA_brush_types.h"
 #include "DNA_mask_types.h"
+#include "DNA_mesh_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
-#include "BLI_listbase.h"
-#include "BLI_rect.h"
+#include "BLI_listbase.hh"
+#include "BLI_rect.hh"
 
 #include "BKE_colortools.hh"
 #include "BKE_context.hh"
@@ -52,6 +53,7 @@ void ED_space_image_set(Main *bmain, SpaceImage *sima, Image *ima, bool automati
     sima->pin = true;
   }
 
+  const bool image_changed = sima->image != ima;
   sima->image = ima;
 
   if (ima == nullptr || ima->type == IMA_TYPE_R_RESULT || ima->type == IMA_TYPE_COMPOSITE) {
@@ -62,6 +64,11 @@ void ED_space_image_set(Main *bmain, SpaceImage *sima, Image *ima, bool automati
 
   if (sima->image) {
     BKE_image_signal(bmain, sima->image, &sima->iuser, IMA_SIGNAL_USER_NEW_IMAGE);
+
+    /* The stored frame belongs to the previous image. */
+    if (image_changed) {
+      sima->iuser.flag |= IMA_NEED_FRAME_RECALC;
+    }
   }
 
   id_us_ensure_real(id_cast<ID *>(sima->image));
@@ -77,7 +84,7 @@ void ED_space_image_set(Main *bmain, SpaceImage *sima, Image *ima, bool automati
 
 void ED_space_image_sync(Main *bmain, Image *image, bool ignore_render_viewer)
 {
-  wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
+  wmWindowManager *wm = bmain->wm.first();
   for (wmWindow &win : wm->windows) {
     const bScreen *screen = WM_window_get_active_screen(&win);
     for (ScrArea &area : screen->areabase) {
@@ -112,8 +119,7 @@ void ED_space_image_auto_set(const bContext *C, SpaceImage *sima)
     return;
   }
 
-  BMEditMesh *em = BKE_editmesh_from_object(ob);
-  BMesh *bm = em->bm;
+  BMesh *bm = BKE_editmesh_bmesh_get_for_write(ob);
   BMFace *efa = BM_mesh_active_face_get(bm, true, false);
   if (efa == nullptr) {
     return;
@@ -128,6 +134,7 @@ void ED_space_image_auto_set(const bContext *C, SpaceImage *sima)
     if (sima->image) {
       Main *bmain = CTX_data_main(C);
       BKE_image_signal(bmain, sima->image, &sima->iuser, IMA_SIGNAL_USER_NEW_IMAGE);
+      sima->iuser.flag |= IMA_NEED_FRAME_RECALC;
       WM_main_add_notifier(NC_SPACE | ND_SPACE_IMAGE, sima);
     }
   }
@@ -425,9 +432,6 @@ bool ED_image_slot_cycle(Image *image, int direction)
     image->render_slot = ((cur == 1) ? 0 : 1);
   }
 
-  if (cur != image->render_slot) {
-    BKE_image_partial_update_mark_gpu_stale(image); /* Angelo: another slot, not new pixels. */
-  }
   return (cur != image->render_slot);
 }
 
@@ -492,12 +496,7 @@ bool ED_space_image_show_uvedit(const SpaceImage *sima, Object *obedit)
   }
 
   if (obedit && obedit->type == OB_MESH) {
-    BMEditMesh *em = BKE_editmesh_from_object(obedit);
-    bool ret;
-
-    ret = EDBM_uv_check(em);
-
-    return ret;
+    return EDBM_uv_check(id_cast<const Mesh *>(obedit->data));
   }
 
   return false;

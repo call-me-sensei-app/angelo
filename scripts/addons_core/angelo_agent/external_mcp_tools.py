@@ -21,15 +21,17 @@ import functools
 import json
 
 from .agent_guidance import BLENDER_API_FACTS
+from .blender_release import RELEASE
 from .claude_direct_schema import tool_list
 from .external_clients import PYTHON, SCRIPT_FILE_TOOL, TASKS, tools_for
 from .routing import TOOLSET_VERSION
 from .tool_guidance import split, told
+from .script_store import LIMIT_SENTENCE
 from .tool_specs import SCRIPT_DESCRIPTION_LIMIT, TOOL_MAP
 
 MAX_TASK_WAIT = 50   # external_service.MAX_TASK_WAIT: one status call never outlasts an MCP client's tool timeout.
 
-HEADER = """Angelo (Hyperbond Studio) is a 3D app built on Blender 5.2. This is Angelo's own MCP server, not Blender MCP:
+HEADER = """Angelo (Hyperbond Studio) is a 3D app built on Blender %s. This is Angelo's own MCP server, not Blender MCP:
 every call runs in the open Angelo window (or, after angelo_open_file, a headless Angelo on that file) through the host
 checks Angelo's own agent uses.
 The person approves in Angelo, never you. Under Approve for me, bounded typed edits run at once, and so does a script
@@ -37,7 +39,7 @@ file the person chose to always allow while it is unchanged; other Python script
 wait for the person's decision in Angelo, and the call waits with them. A call the
 person declined or stopped says so: then make no further calls and tell the user.
 Each committed edit is one Undo step in Angelo, and Angelo snapshots the file before the first edit of a run of calls.
-Results carry the host's verified read-back of what changed; a failed or inconclusive check never proves completion."""
+Results carry the host's verified read-back of what changed; a failed or inconclusive check never proves completion.""" % RELEASE
 TASKS_FACT = """
 angelo_task hands Angelo's own agent a whole task in plain language; it works in this app's External conversation in
 Angelo on the person's connected account and reports progress (angelo_task_status) and its result. Tools and tasks
@@ -94,7 +96,8 @@ TASK_TOOLS = [
          "required": ["task"], "additionalProperties": False},
      "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True}},
     {"name": "angelo_task_status", "title": "Angelo task status",
-     "description": ("A task's state (running, waiting_for_approval_in_angelo, done, failed, stopped), its latest "
+     "description": ("A task's state (running, waiting_for_approval_in_angelo, waiting_for_person_in_angelo: it starts "
+                     "once the person finishes the tool they are using, done, failed, stopped), its latest "
                      "progress rows and, when it ends, the agent's reply. Waits up to wait_seconds for it to end."),
      "inputSchema": {"type": "object", "properties": {
          "task_id": {"type": "string"},
@@ -144,7 +147,7 @@ SCRIPT_FILE_TOOLS = [
     {"name": SCRIPT_FILE_TOOL, "title": "Run a Python script file in Angelo",
      "description": ("Run a Blender Python script file from this computer in the open Angelo scene, exactly as "
                      "angelo_execute_python runs code: same main-thread execution, result and read-back. Angelo reads "
-                     "the file itself, once, and runs exactly the text it read (UTF-8, up to 32768 characters). The "
+                     "the file itself, once, and runs exactly the text it read (UTF-8)." + LIMIT_SENTENCE + " The "
                      "person reviews that text in Angelo and may choose to always allow this file while it stays "
                      "unchanged, for this app and the open saved .blend; any change to the file asks again. Set "
                      "result in the script, as with angelo_execute_python."),

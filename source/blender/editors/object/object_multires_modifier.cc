@@ -2,6 +2,10 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
+/** \file
+ * \ingroup edobj
+ */
+
 #include "object_intern.hh"
 
 #include "DNA_mesh_types.h"
@@ -10,6 +14,7 @@
 #include "DNA_space_types.h"
 #include "DNA_windowmanager_types.h"
 
+#include "BKE_angelo_writer_inputs.hh"
 #include "BKE_attribute.hh"
 #include "BKE_context.hh"
 #include "BKE_customdata.hh"
@@ -19,7 +24,8 @@
 #include "BKE_report.hh"
 
 #include "BLI_path_utils.hh"
-#include "BLI_string_utf8.h"
+#include "BLI_string.hh"
+#include "BLI_string_utf8.hh"
 
 #include "DEG_depsgraph.hh"
 
@@ -269,6 +275,21 @@ static wmOperatorStatus multires_external_save_exec(bContext *C, wmOperator *op)
   }
 
   RNA_string_get(op->ptr, "filepath", filepath);
+
+  /* Angelo: asked before anything changes (BLI_angelo_writers.hh): a refused file leaves the displacements inline,
+   * reported, never flagged external with nothing written (the re-read of cf5befe2877, M2). The person's own pick
+   * in this operator's file browser is theirs (wm_event_system.cc, angelo_note_picked). */
+  {
+    char angelo_filepath[FILE_MAX];
+    STRNCPY(angelo_filepath, filepath);
+    BLI_path_abs(angelo_filepath, BKE_main_blendfile_path(bmain));
+    if (const char *refusal = angelo_writers::refusal_for(angelo_filepath,
+                                                          BKE_angelo_custom_data_external_inputs(mesh->id)))
+    {
+      BKE_reportf(op->reports, RPT_ERROR, "%s: '%s'", refusal, angelo_filepath);
+      return OPERATOR_CANCELLED;
+    }
+  }
 
   if (relative) {
     BLI_path_rel(filepath, BKE_main_blendfile_path(bmain));

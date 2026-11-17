@@ -108,6 +108,7 @@ class OpenerTests(unittest.TestCase):
         studio.is_studio = lambda area: area.studio
         studio.view = lambda area: self.views.setdefault(area.as_pointer(), {"kind": "IMAGE", "prompt": ""})
         studio.click = lambda context, state, action, value, rect: state.update(kind=value, focus=None)
+        studio.select_tab = lambda state, kind: state.update(kind=kind, focus=None)   # studio_toggle's.
         chat_toggle = types.ModuleType("angelo_agent.chat_toggle")
         chat_toggle.redraw_top_bars = lambda: None
         self.main = Window(1, [Area(10)])

@@ -117,8 +117,8 @@ def hit(action, value):
 
 
 def point(rect):
-    _, region = chat()
-    return int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    return chat_point(chat()[1], rect)
 
 
 def simulate(kind, value, x, y, **keys):
@@ -153,7 +153,9 @@ def mean_color(path, rect):
         image.pixels.foreach_get(values)
     finally:
         bpy.data.images.remove(image)
-    left, bottom = region.x - area.x + int(rect[0]) + 6, region.y - area.y + int(rect[1]) + 4
+    from qa_input import chat_rect   # The chat's points as window pixels (its scale, right to left mirrored).
+    x0, y0, _w, _h = chat_rect(region, rect)
+    left, bottom = int(x0) - area.x + 6, int(y0) - area.y + 4
     samples = [(x, y) for x in range(left, left + 12) for y in range(bottom, bottom + 4)]
     total = [sum(values[(y * width + x) * 4 + c] for x, y in samples) / len(samples) for c in range(3)]
     return tuple(round(v, 3) for v in total)
@@ -492,8 +494,8 @@ def step():
         # Mirrored: a button laid out at x is drawn at width - x, and the pointer there must reach it.
         _, region = chat()
         rect = hit("job_cancel", ctx["arabic_job"]["id"])
-        x = region.x + region.width - int(rect[0] + rect[2] / 2)
-        simulate('MOUSEMOVE', 'NOTHING', x, region.y + int(rect[1] + rect[3] / 2))
+        from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+        simulate('MOUSEMOVE', 'NOTHING', *chat_point(region, rect))   # Its scale and the mirror (Arabic is RTL).
         state["phase"] = "arabic_hover"
         return 0.4
     if phase == "arabic_hover":

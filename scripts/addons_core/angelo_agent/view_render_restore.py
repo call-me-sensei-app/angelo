@@ -17,7 +17,7 @@ of Blender's Render Result image. Main thread only.
 import bpy
 
 from . import live_windows
-from .job_settings import TAG, Overrides, get, put, rna_key
+from .job_settings import TAG, Overrides, check_write_targets, get, put, rna_key
 
 SLOT = "Angelo"  # The product's name: the render slot looks use. Python can add a slot but not remove one.
 _PLAIN_TYPES = frozenset({"BOOLEAN", "INT", "FLOAT", "STRING", "ENUM"})
@@ -105,6 +105,7 @@ class LookSettings(Overrides):
     """A look's temporary settings, with every value a format change can alter recorded beside them."""
 
     def apply(self, values):
+        check_write_targets(values)   # The look's PNG (``render.filepath``): asked of C before anything is set.
         scene = self.scene
         watched = _watched(scene, values)
         originals = {}

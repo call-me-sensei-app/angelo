@@ -35,6 +35,7 @@ from .refusal_codes import RefusalError
 from .action_schema_types import POINTER, text, number, integer, enum, boolean, array, nullable, obj
 from .rna_rules import PATH_PATTERN, screen_path, json_value
 from .action_properties import SCALAR_VALUE
+from . import read_only
 
 # A data path through identifiers, ["quoted keys"] and [integer] subscripts; no evaluation.
 CHANNEL_PATTERN = (r'^(?:[A-Za-z_][A-Za-z0-9_]*|\["[^"\\]{1,64}"\])'
@@ -161,7 +162,7 @@ def canonical(result, raw):
 def _edit_rules(params, raw):
     from .mode_fields import problem
     operation = params['operation']
-    given = [key for key in given_fields(raw['parameters'], KEYFRAME_EDIT_SCHEMA) if key != 'operation']
+    given = [key for key in given_fields(raw['parameters'], read_only.thawed(KEYFRAME_EDIT_SCHEMA)) if key != 'operation']
     refused = problem(operation, EDIT_FIELDS, given, common=EDIT_COMMON)
     if refused:
         raise RefusalError('keyframe_edit ' + refused, code="VALIDATION")
@@ -245,3 +246,6 @@ def keeps(check, operation):
     """Whether a later keyframe_configure leaves an earlier keyframes check true: only on another channel."""
     path = operation['parameters']['property']
     return path is not None and path != check['property']
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), 'EDIT_FIELDS', 'KEYFRAME_EDIT_SCHEMA')

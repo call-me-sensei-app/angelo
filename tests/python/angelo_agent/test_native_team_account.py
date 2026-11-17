@@ -12,6 +12,7 @@ backend; never a file). No real console or key store is used.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import contextlib
 import html
@@ -53,7 +54,7 @@ def browse(url):
         return error.code, error.geturl(), html.unescape(error.read().decode())
 
 
-def wait_for(predicate, timeout=5.0):
+def wait_for(predicate, timeout=CAP_S):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
@@ -106,7 +107,7 @@ class AccountCase(unittest.TestCase):
         still sending): one still running after the test holds a lock file in the folder the test is removing, which
         Windows refuses to delete (WinError 32) and POSIX reports as "Directory not empty" on a loaded machine."""
         account.close()
-        self.assertTrue(account.join(10), "a team account thread outlived its test")
+        self.assertTrue(account.join(CAP_S), "a team account thread outlived its test")
         refresh = sys.modules.get("angelo_agent.team_account_refresh")
         if refresh is not None:  # A token a closed account handed off keeps a lock file open in the folder.
             with refresh._handoff_lock:
@@ -199,7 +200,7 @@ class RefreshTests(AccountCase):
         for thread in threads:
             thread.start()
         for thread in threads:
-            thread.join(10)
+            thread.join(CAP_S)
         self.assertEqual(len(self.console.refresh_requests()), 1)
         self.assertEqual(len(set(results)), 1)
         self.assertNotEqual(results[0], first_access)
@@ -686,19 +687,19 @@ class FileVaultTests(unittest.TestCase):
                 handle = real_open(path, *args, **kwargs)
                 if path == vault.path and threading.current_thread().name == "reader":
                     reading.set()
-                    release.wait(10)  # The reader has the file open.
+                    release.wait(CAP_S)  # The reader has the file open.
                 return handle
             with unittest.mock.patch.dict(FileVault.read.__globals__, {"open": held_open}):
                 reader = threading.Thread(target=lambda: results.update(read=vault.read()), name="reader")
                 reader.start()
-                self.assertTrue(reading.wait(5))
+                self.assertTrue(reading.wait(CAP_S))
                 writer = threading.Thread(target=lambda: results.update(write=vault.write("rt_new")), name="writer")
                 writer.start()
-                writer.join(1.0)
+                writer.join(1.0)  # window: the write must still be waiting for the reader after it
                 waited = writer.is_alive()
                 release.set()
-                reader.join(5)
-                writer.join(5)
+                reader.join(CAP_S)
+                writer.join(CAP_S)
             self.assertTrue(waited, "the write replaced the token while a read had it open")
             self.assertEqual((results.get("read"), results.get("write"), vault.read()), ("rt_old", True, "rt_new"))
 
@@ -791,7 +792,7 @@ class TokenVaultTests(unittest.TestCase):
 
         class Hung(self.Backend):
             def read(self, account, interactive=False):
-                release.wait(5)
+                release.wait(CAP_S)
                 return None
         vault = team_token_store.TokenVault(Hung(), "https://console.angelo.studio", "p", timeout=0.2)
         with self.assertRaises(KeyStoreError) as caught:

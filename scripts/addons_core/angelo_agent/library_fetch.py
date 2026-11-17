@@ -34,7 +34,7 @@ import weakref
 import zlib
 from pathlib import Path
 
-from . import app_http, library_catalog as catalog, shared_replace, team_library_files
+from . import app_http, library_catalog as catalog, owned_paths, shared_replace, team_errors, team_library_files
 
 LATEST_URL = "https://assets.toonlab.io/catalog/v1/latest.json"   # ToonLab's catalog export.
 URL_VARIABLE = "ANGELO_LIBRARY_URL"    # Another latest.json (tests, a development mirror on this computer).
@@ -56,9 +56,18 @@ class FetchError(RuntimeError):
     """A download that failed; ``code`` is the closed refusal code (``EXPIRED`` in transit, ``UNSUPPORTED`` refused,
     ``LIMIT_EXCEEDED`` too large, ``CANCELLED`` stopped). The message never holds a link."""
 
-    def __init__(self, message, code="EXPIRED"):
+    def __init__(self, message, code="EXPIRED", untrusted=False):
         super().__init__(message)
-        self.refusal_code = code
+        self.refusal_code, self.untrusted = code, untrusted   # ``untrusted``: the server's certificate was not verified.
+
+
+class Untrusted(str):
+    """A failure's text when it was the server's certificate: the library's own surfaces say so (``reported``)."""
+
+
+def reported(error):
+    """``str(error)`` for the library's state (``library_host``), marked when its certificate was the failure."""
+    return Untrusted(error) if getattr(error, "untrusted", False) else str(error)
 
 
 def latest_url():
@@ -76,8 +85,9 @@ def _get(url, limit, what, hosts=catalog.FILE_HOSTS):
     try:
         response = app_http.request("GET", url, timeout=TIMEOUT, limit=limit, follow=False)
     except app_http.NetworkError as error:
-        raise FetchError("Couldn't reach the Angelo Library (%s); check your network." % error.kind,
-                         "LIMIT_EXCEEDED" if error.kind == app_http.TOO_LARGE else "EXPIRED") from None
+        raise FetchError(team_errors.untrusted_text(url) if error.untrusted else
+                         "Couldn't reach the Angelo Library (%s); check your network." % error.kind,
+                         "LIMIT_EXCEEDED" if error.kind == app_http.TOO_LARGE else "EXPIRED", error.untrusted) from None
     if response.status != 200:
         raise FetchError("The Angelo Library answered HTTP %d for its %s." % (response.status, what))
     return response.body
@@ -115,6 +125,7 @@ def _decode(packed):
 def refresh(folder, current_version=None):
     """Download the index when ``latest.json`` names another version; returns the document, or None when the cached
     one is current. Writes ``index.json`` (the record) and the index file atomically; never leaves a partial file."""
+    owned_paths.require_writable(folder)
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     try:
@@ -149,6 +160,7 @@ def refresh(folder, current_version=None):
 
 
 def _atomic(path, data):
+    owned_paths.require_writable(path)
     temporary = path.with_name(".%s.%d.part" % (path.name, threading.get_ident()))
     try:
         temporary.write_bytes(data)
@@ -195,12 +207,15 @@ def _matches(path, file):
 
 
 def _download(url, path, file, cancel):
+    owned_paths.require_writable(path)
     if not catalog.allowed_url(url, loopback_ok()):
         raise FetchError("A library file isn't on a ToonLab host; it wasn't downloaded.", "UNSUPPORTED")
     try:
         status, headers, body = app_http.stream(url, timeout=TIMEOUT, follow=False)
     except app_http.NetworkError as error:
-        raise FetchError("Couldn't download from the Angelo Library (%s); check your network." % error.kind) from None
+        raise FetchError(team_errors.untrusted_text(url) if error.untrusted else
+                         "Couldn't download from the Angelo Library (%s); check your network." % error.kind,
+                         untrusted=error.untrusted) from None
     temporary = path.with_name(".%s.%d.part" % (path.name, threading.get_ident()))
     try:
         final = getattr(body, "geturl", lambda: url)()
@@ -286,6 +301,7 @@ def fetch_files(root, item, files, cancel=None, progress=None):
 
 
 def _fetch_into(root, folder, files, cancel, progress):
+    owned_paths.require_writable(folder)
     if folder.is_symlink():
         folder.unlink()
     folder.mkdir(parents=True, exist_ok=True)
@@ -356,6 +372,8 @@ def _tree_size(path):
 
 
 def _remove(entry):
+    if not owned_paths.may_write(entry):
+        return   # A trim: only what C says Angelo may remove, never raised mid-trim.
     if entry.is_symlink() or not entry.is_dir():
         entry.unlink(missing_ok=True)
     else:
@@ -368,7 +386,7 @@ def thumbnail(root, url, hosts=catalog.FILE_HOSTS):
     """The thumbnail's cached file (downloaded when missing), or None when it can't be had. ``hosts``: where this
     picture may come from (the Angelo Library's ToonLab hosts; a Fab result's is Fab's own image host)."""
     folder = Path(root) / "thumbs"
-    folder.mkdir(parents=True, exist_ok=True)
+    owned_paths.require_writable(folder).mkdir(parents=True, exist_ok=True)
     path = folder / (hashlib.sha256(url.encode()).hexdigest()[:32] + ".img")
     if path.is_file():
         os.utime(path)

@@ -10,6 +10,7 @@ The fake children never signal a real process or group: their pids are negative 
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import sys
@@ -44,7 +45,7 @@ class OverlappingLaunches(Case):
             calls.append(request)
             if len(calls) == 1:
                 entered.set()
-                gate.wait(10)
+                gate.wait(CAP_S)
             return plan(request, found)
         self.service.plan = held
         return entered, gate
@@ -62,11 +63,11 @@ class OverlappingLaunches(Case):
                 outcome.append(error)
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
-        self.assertTrue(entered.wait(10))
+        self.assertTrue(entered.wait(CAP_S))
         fast()
         self.service.kill_session(A)
         gate.set()
-        thread.join(10)
+        thread.join(CAP_S)
         self.assertFalse(thread.is_alive())
         self.assertFalse([process for process in self.spawned if process.alive], "a child outlived Stop")
         self.assertFalse([child for child in self.service.children() if child.alive()])
@@ -109,10 +110,10 @@ class OverlappingLaunches(Case):
         results = []
         thread = threading.Thread(target=lambda: results.append(self.launch()), daemon=True)
         thread.start()
-        self.assertTrue(entered.wait(10))
+        self.assertTrue(entered.wait(CAP_S))
         results.append(self.launch())
         gate.set()
-        thread.join(10)
+        thread.join(CAP_S)
         self.assertEqual([result["ok"] for result in results], [True, True])
         self.assertEqual(len([child for child in self.service.children() if child.alive()]), 2)
         self.assertEqual(self.service._launching, [])

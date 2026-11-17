@@ -156,6 +156,9 @@ def _register(bpy, ui):
     bpy.app.handlers.load_pre.append(ui.document_load_pre)
     bpy.app.handlers.load_post.append(after_load)
     bpy.app.handlers.depsgraph_update_post.append(track_scene_changes)
+    from . import script_confinement_blender   # Agent scripts run confined here too (script_confinement.rst).
+    script_confinement_blender.install_app(bpy)
+    script_confinement_blender.register_fixed_folders()
 
 
 def _prepare_preferences(bpy):
@@ -192,6 +195,19 @@ def main(argv, environ=None):
         shutil.rmtree(private, ignore_errors=True)
 
 
+def _vouch_saves(*paths):
+    """The files this child's own saves write, each a real path ``headless_files`` checked from the launcher's
+    arguments before any script runs: the source (its temporaries and new outputs beside it), the working copy the
+    launcher made (the first saved edit's output) and a resumed session's output. C records what a process made for
+    that process only, so the child vouches for them itself (the cut's GUI round on 3fc1f94df29: the first save of an
+    approved file was refused). In 2.0.0 a script's writers can write them too (doc/angelo/script_confinement.rst,
+    "Known limits in 2.0.0"); 2.1.0 vouches them for these saves alone."""
+    from . import owned_paths
+    for path in paths:
+        if path is not None:
+            owned_paths.vouch(path)
+
+
 def _serve(bpy, options, server_type):
     from . import ui
     from .headless_host import HeadlessEnvironment, HeadlessHost
@@ -209,6 +225,7 @@ def _serve(bpy, options, server_type):
             raise HeadlessFailure(headless_preferences.NOT_READABLE, "Blender could not read the preferences")
         source = headless_files.check_source(options.file)
         resume = headless_files.check_resume(source, options.resume) if options.resume else None
+        _vouch_saves(source, resume)   # Real paths, checked: before the copy beside the source is claimed.
         _prepare_preferences(bpy)
         if options.preferences == headless_preferences.YOURS:
             # Counted before Angelo registers its own classes; an add-on that did not load is named, never fatal.
@@ -224,6 +241,7 @@ def _serve(bpy, options, server_type):
         else:   # Never the source itself: a copy next to it (headless_working_copy).
             from .headless_working_copy import open_copy
             working, opened = open_copy(bpy, source, options.working)
+        _vouch_saves(working)   # Checked as this source's own output (``check_resume``) or claimed here.
         if options.source_identity is not None and headless_files.identity(source) != options.source_identity:
             raise HeadlessFailure("stale", SOURCE_CHANGED_AT_OPEN.format(name=source.name))
         from . import live_windows

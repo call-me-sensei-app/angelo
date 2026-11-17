@@ -28,9 +28,10 @@ BINARY = "/Applications/Angelo.app/Contents/MacOS/Angelo"
 class LeadSendsItsVerdict(Base):
     def opened(self, verdicts):
         worker = OpWorker()
-        worker.binary = BINARY
         lifecycle._hosted.clear()   # Each open is of a chat no other worker hosts (Base patches a fresh table).
-        with patch.dict(remote_executor.OFFSCREEN_VERDICTS, verdicts, clear=True):
+        # Keyed by the program every worker runs (read from C at the call), never a worker's attribute (p10c-6).
+        with patch.dict(remote_executor.OFFSCREEN_VERDICTS, verdicts, clear=True), \
+                patch.object(remote_executor, "worker_verdict_key", lambda: BINARY):
             lifecycle.open_chat(chat(), worker, resume=False)
         return worker.requests[0]["gpu_verdict"]
 

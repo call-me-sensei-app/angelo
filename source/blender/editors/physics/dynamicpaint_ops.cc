@@ -10,9 +10,12 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_angelo_writers.hh"
+#include "BLI_listbase_iterator.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string_utf8.h"
-#include "BLI_time.h"
+#include "BLI_string.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_time.hh"
 
 #include "BLT_translation.hh"
 
@@ -113,7 +116,7 @@ static wmOperatorStatus surface_slot_remove_exec(bContext *C, wmOperator * /*op*
   }
 
   canvas = pmd->canvas;
-  surface = static_cast<DynamicPaintSurface *>(canvas->surfaces.first);
+  surface = canvas->surfaces.first();
 
   /* find active surface and remove it */
   for (; surface; surface = surface->next) {
@@ -323,7 +326,7 @@ static void dpaint_bake_endjob(void *customdata)
 
   G.is_rendering = false;
 
-  WM_locked_interface_set(static_cast<wmWindowManager *>(G_MAIN->wm.first), false);
+  WM_locked_interface_set(G_MAIN->wm.first(), false);
 
   /* Bake was successful:
    * Report for ended bake and how long it took */
@@ -452,7 +455,39 @@ static void dpaint_bake_startjob(void *customdata, wmJobWorkerStatus *worker_sta
   G.is_rendering = true;
   BKE_spacedata_draw_locks(REGION_DRAW_LOCK_BAKING);
 
-  dynamicPaint_bakeImageSequence(job);
+  {
+    /* Angelo: what the image sequence's paths are built from (BLI_angelo_writers.hh): the surface's folder (the tag),
+     * its output names and format. */
+    const ID *owner = job->ob ? &job->ob->id : nullptr;
+    /* The bake runs on the evaluated canvas: the tag names the surface the person edits (their typed folder). */
+    const void *original_surface = job->surface;
+    const Object *original = job->ob ? DEG_get_original(job->ob) : nullptr;
+    const DynamicPaintModifierData *pmd =
+        original ? reinterpret_cast<const DynamicPaintModifierData *>(
+                       BKE_modifiers_findby_type(original, eModifierType_DynamicPaint)) :
+                   nullptr;
+    if (pmd != nullptr && pmd->canvas != nullptr && job->canvas != nullptr) {
+      int index = 0;
+      for (const DynamicPaintSurface &surface : job->canvas->surfaces) {
+        if (&surface == job->surface) {
+          break;
+        }
+        index++;
+      }
+      for (const DynamicPaintSurface &surface : pmd->canvas->surfaces) {
+        if (index-- == 0) {
+          original_surface = &surface;
+          break;
+        }
+      }
+    }
+    const angelo_writers::Input inputs[] = {{owner, original_surface, "DynamicPaintSurface", "image_output_path"},
+                                            {owner, nullptr, "DynamicPaintSurface", "output_name_a"},
+                                            {owner, nullptr, "DynamicPaintSurface", "output_name_b"},
+                                            {owner, nullptr, "DynamicPaintSurface", "image_fileformat"}};
+    const angelo_writers::InputScope scope(inputs);
+    dynamicPaint_bakeImageSequence(job);
+  }
 
   worker_status->do_update = true;
   worker_status->stop = false;

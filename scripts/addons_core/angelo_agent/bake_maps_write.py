@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy
 
-from . import bake_maps_encode as encode
+from . import bake_maps_encode as encode, owned_paths
 from . import bake_maps_pack as pack
 from .bake_maps_spec import FORMATS, HIGH_POSITION, LOW_NORMAL, LOW_POSITION, depth_of, file_name, files
 
@@ -151,7 +151,7 @@ def encode_one(prepared, job, cancelled=lambda: False):
             return pack.compose(channels, slots, shape, (lo, lo + count))[::-1]
 
         filename = file_name(prepared["stem"], name, prepared["extension"], tile)
-        path = prepared["folder"] / filename
+        path = owned_paths.require_writable(prepared["folder"] / filename)   # First: a refusal touches nothing.
         try:
             with open(path, "wb") as out:
                 encode.write(out, band, (height, shape[1], len(slots)), prepared["format"], depth, colour)

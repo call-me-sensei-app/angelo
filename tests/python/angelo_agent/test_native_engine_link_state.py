@@ -14,6 +14,7 @@ and says which objects are stale, while FBX sends none.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import os
@@ -343,12 +344,14 @@ class LinkStateTests(unittest.TestCase):
             self.assertEqual(len(specs), 1, engine_link._state.get("error"))
             self.assertEqual(specs[0]["blend_witness"].st_ino, saved[1], "the save's witness, never the later path")
             self.assertEqual(waited, [], "request kept the raw saved witness")
+            from angelo_agent import engine_link_writeback
             with mock.patch.object(engine_preflight_link.subprocess, "run",
-                                   return_value=SimpleNamespace(returncode=0, stderr=b"")):
-                worker = threading.Thread(target=engine_preflight_link.Runner(sys.executable)._run,
+                                   return_value=SimpleNamespace(returncode=0, stderr=b"")), \
+                    mock.patch.object(engine_link_writeback, "angelo_binary", lambda: sys.executable):
+                worker = threading.Thread(target=engine_preflight_link.Runner()._run,
                                           args=(asset.editable, specs[0]))
                 worker.start()
-                worker.join(10)
+                worker.join(CAP_S)
                 self.assertFalse(worker.is_alive())
         self.assertEqual(len(waited), 1, "the worker settled exactly the original save witness")
         self.assertEqual(specs[0]["blend_identity"], saved)
@@ -646,6 +649,24 @@ class InstallTests(unittest.TestCase):
         self.assertEqual([path.name for path in (project / "addons").iterdir()], ["angelo_link"], "no staging left")
         with self.assertRaises(assets.AssetError):
             assets.install_plugin(godot_link_assets, str(project / "addons"))
+
+
+class AnEnginesRequestLandsOnce(unittest.TestCase):
+    """The review of a6edbf3, MUST: an engine's status reports, however many, land nothing; its request lands once
+    (``grant_gestures.landed``: a dialog's held OK and a gesture's hold end, the person's own input stays)."""
+
+    def test_status_reports_land_nothing_and_a_request_lands_once(self):
+        notes = []
+        with mock.patch.object(engine_link.grant_gestures, "landed", lambda: notes.append(True)), \
+                mock.patch.object(engine_link, "_state", dict(engine_link._state, server=None, session=None,
+                                                              reports=[])), \
+                mock.patch.object(engine_link.assets, "adapter", lambda engine: None), \
+                mock.patch.object(engine_link, "_reply", lambda client, header: None):
+            for _ in range(7):
+                engine_link._handle(1, {"type": "status", "code": "saved"}, info={})
+            self.assertEqual(notes, [])
+            engine_link._handle(1, {"type": "open", "id": "r1"}, info={"engine": "godot"})
+        self.assertEqual(len(notes), 1)
 
 
 if __name__ == "__main__":

@@ -53,6 +53,17 @@ PIN = json.loads((Path(__file__).resolve().parent / "agent_runtime.json").read_t
 _VERSION = re.compile(r"/(\d+\.\d+\.\d+[^\s(;]*)")
 
 
+DEFAULT_WIRE = "responses"   # Codex's own model-provider wire; every build has it.
+
+
+def supports_wire(wire):
+    """Whether the pinned agent runtime speaks the model-provider ``wire_api`` ``wire``: Codex's own Responses wire,
+    or one the build adds (``agent_runtime.json`` ``wire_apis``). The release checks ask the build to accept each
+    listed wire (``scripts/angelo/release_checks.py``), so a mode that needs one is offered only with it
+    (``provider_registry.available``)."""
+    return wire == DEFAULT_WIRE or wire in PIN.get("wire_apis", ())
+
+
 def platform_key(platform=None):
     """``macos``, ``windows`` or None (no platform bundles a runtime)."""
     platform = sys.platform if platform is None else platform

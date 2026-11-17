@@ -126,7 +126,9 @@ class ConnectionSweeps(Hosted):
                      "catalogs": lambda: SimpleNamespace(invalidate=lambda identity: None),
                      "_api_connections": SimpleNamespace(invalidate=lambda identity: None),
                      "RuntimeError": RuntimeError, "Text": str, "n_": str, "threading": __import__("threading"),
-                     "runtime_bindings": SimpleNamespace(retire_connection=lambda identity: None)}
+                     "runtime_bindings": SimpleNamespace(retire_connection=lambda identity: None),
+                     # No connection shares this key (shared_keys_ui; pinned by test_native_gemini_connection.py).
+                     "shared_keys_ui": SimpleNamespace(in_use=lambda identity: False, share=lambda identity: None)}
         exec(textwrap.dedent(_function(UI, "replace_connection_key")), namespace)
         namespace["replace_connection_key"]({"id": "conn"}, "sk-test")
         self.assertEqual(namespace["_memory_keys"].get("conn"), "sk-test")
@@ -160,7 +162,8 @@ class ModelPick(Hosted):
         self.mirror.state.update(provider="codex_api", connection_id="conn")
         self.mirror._pins.update(provider="codex_api", connection_id="conn")   # The chat's route, as Angelo pinned it.
         self.mirror.choose_connection("codex_api", {}, "", "conn", self.MODELS, "m2")
-        self.assertEqual(self.ops.calls[-1][1:], ("chat.options", {"options": {"model": "m2", "effort": "high",
+        # No effort was chosen in this chat, so none is sent: the worker's chat runs m2 at its default.
+        self.assertEqual(self.ops.calls[-1][1:], ("chat.options", {"options": {"model": "m2", "effort": "",
                                                                                "fast": False}}))
         self.assertEqual(self.mirror.state["options"]["model"], "m2")   # Shown at once; the journal confirms it.
         with self.assertRaises(ValueError):

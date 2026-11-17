@@ -193,9 +193,10 @@ def clean_memory(value, profile_id=None, rehydrating=False, moved_from_profile_i
     summary it still holds is whitelisted once, not on every read of the memory.
 
     ``moved_from_profile_id`` is the identity this same profile had before the
-    host moved its folder (the pre-rename state folder): memory scoped to it is
-    re-scoped to ``profile_id`` instead of being dropped. Memory from any other
-    profile is still never rehydrated.
+    host moved its folder (the pre-rename state folder, an earlier Blender
+    version's folder), or a sequence of them: memory scoped to one is re-scoped
+    to ``profile_id`` instead of being dropped. Memory from any other profile is
+    still never rehydrated.
 
     Rehydration is never verification: all retained native evidence is stale and
     live handles/revisions are removed even if JSON claims ``stale: false``.
@@ -211,7 +212,8 @@ def clean_memory(value, profile_id=None, rehydrating=False, moved_from_profile_i
         return output
     expected_profile = scope_token(profile_id)
     if expected_profile is not None and supplied_profile != expected_profile:
-        if moved_from_profile_id is None or supplied_profile != scope_token(moved_from_profile_id):
+        earlier = (moved_from_profile_id,) if isinstance(moved_from_profile_id, str) else moved_from_profile_id or ()
+        if not any(supplied_profile == scope_token(identity) for identity in earlier if identity is not None):
             return output
         supplied_profile = expected_profile
     document = scope.get("document")

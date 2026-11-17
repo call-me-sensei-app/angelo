@@ -27,7 +27,7 @@ Needs a window (not background mode) and no modal interaction. Main thread;
 model-facing text is English; the notice is translatable.
 """
 
-from . import live_windows
+from . import live_windows, owned_paths
 from .input_policy import interaction_active
 from .ui_text import n_, notice
 from .view_pixels import box_downscale
@@ -205,6 +205,7 @@ def source(window, checked, references, controller):
         if factor > 1:  # A display wider than the encoder takes (a 5K or 6K screen): halved, or more.
             rows = (box_downscale(rows.astype("float32"), factor) + 0.5).astype("uint8")
         data = encode_png(rows.tobytes(), rows.shape[1], rows.shape[0], bottom_up=True)
+        owned_paths.require_writable(reference["path"])
         with open(reference["path"], "wb") as handle:
             handle.write(data)
     except Exception:

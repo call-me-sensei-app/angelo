@@ -11,6 +11,7 @@ the platform selector is in ``test_native_key_store.py``.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import threading
@@ -240,7 +241,7 @@ class FakeBackend:
 
     def _wait(self):
         if self.gate is not None:
-            self.gate.wait(5)
+            self.gate.wait(CAP_S)
 
     def read(self, account, interactive=False):
         self.calls.append(("read", account, interactive))
@@ -288,7 +289,7 @@ def settle(vault, limit=5.0):
     raise AssertionError("Keychain work did not finish")
 
 
-def wait_for(condition, limit=5.0):
+def wait_for(condition, limit=CAP_S):
     end = time.monotonic() + limit
     while not condition():
         if time.monotonic() > end:
@@ -402,7 +403,7 @@ class SavedKeysTests(unittest.TestCase):
         self.vault.close()
         with self.assertRaises(RuntimeError):
             self.vault.save(self.identity, KEY, "label")
-        self.vault._thread.join(2)
+        self.vault._thread.join(CAP_S)
         self.assertFalse(self.vault._thread.is_alive())
 
     def test_a_backend_without_erase_reports_a_locked_removal(self):

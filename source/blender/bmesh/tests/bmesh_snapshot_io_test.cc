@@ -20,11 +20,11 @@
 #include "DNA_scene_types.h"
 
 #include "BLI_array.hh"
-#include "BLI_bitmap.h"
+#include "BLI_bitmap.hh"
 #include "BLI_math_matrix_types.hh"
 #include "BLI_math_vector_types.hh"
-#include "BLI_mempool.h"
-#include "BLI_string.h"
+#include "BLI_mempool.hh"
+#include "BLI_string.hh"
 #include "BLI_vector.hh"
 
 #include "BKE_customdata.hh"
@@ -293,7 +293,6 @@ void fill_layer_value(const LayerCase &test, void *value)
       auto &data = *static_cast<MDisps *>(value);
       data = {};
       data.totdisp = 3;
-      data.level = 2;
       data.disps = MEM_new_array_zeroed<float[3]>(3, __func__);
       fill_float_components(data.disps, 9);
       data.hidden = BLI_BITMAP_NEW(3, __func__);
@@ -434,7 +433,6 @@ void expect_layer_value(const LayerCase &test, const void *value)
     case ValueKind::Displacements: {
       const auto &data = *static_cast<const MDisps *>(value);
       ASSERT_EQ(data.totdisp, 3);
-      EXPECT_EQ(data.level, 2);
       ASSERT_NE(data.disps, nullptr);
       ASSERT_NE(data.hidden, nullptr);
       expect_float_components(data.disps, 9);
@@ -897,18 +895,15 @@ TEST_F(BMeshSnapshotIOTest, DeepPayloadPresenceAndPlansHaveIndependentLifetimes)
   data<MDeformVert>(source[1], deform_offset).dw = MEM_new_array_zeroed<MDeformWeight>(1,
                                                                                        __func__);
   MDisps &zero_present = data<MDisps>(source[1], disp_offset);
-  zero_present.level = 7;
   zero_present.disps = MEM_new_array_zeroed<float[3]>(1, __func__);
   zero_present.hidden = MEM_new_array_zeroed<BLI_bitmap>(1, __func__);
   data<GridPaintMask>(source[1], mask_offset).level = 37;
   MDisps &hidden_only = data<MDisps>(source[2], disp_offset);
   hidden_only.totdisp = 9;
-  hidden_only.level = 2;
   hidden_only.hidden = BLI_BITMAP_NEW(9, __func__);
   hidden_only.hidden[0] = 0xfedcba98;
   data<GridPaintMask>(source[2], mask_offset).level = std::numeric_limits<unsigned int>::max();
   data<MDisps>(source[3], disp_offset).totdisp = 25;
-  data<MDisps>(source[3], disp_offset).level = 3;
   BMGeometrySnapshot *snapshot = snapshot_create(bm);
   ASSERT_NE(snapshot, nullptr);
   Array<std::byte, 0> bytes = encode(snapshot);
@@ -945,7 +940,6 @@ TEST_F(BMeshSnapshotIOTest, DeepPayloadPresenceAndPlansHaveIndependentLifetimes)
     EXPECT_EQ(load_float_bits(&deform.dw[0].weight), 0);
     const MDisps &disp = data<MDisps>(verts[1], disp_offset);
     EXPECT_EQ(disp.totdisp, 0);
-    EXPECT_EQ(disp.level, 7);
     ASSERT_NE(disp.disps, nullptr);
     ASSERT_NE(disp.hidden, nullptr);
     EXPECT_GE(MEM_allocN_len(disp.disps), sizeof(float[3]));
@@ -988,6 +982,82 @@ TEST_F(BMeshSnapshotIOTest, DeepPayloadPresenceAndPlansHaveIndependentLifetimes)
   BMGeometrySnapshot *remaining = snapshot_create(second);
   ASSERT_NE(remaining, nullptr);
   EXPECT_FALSE(encode(remaining).is_empty());
+}
+
+TEST_F(BMeshSnapshotIOTest, DisplacementLevelSlotIsDerivedOnWriteAndIgnoredOnRead)
+{
+  /* Blender 5.3 has no `MDisps::level`; version one keeps its four-byte slot after `totdisp`.
+   * The encoder writes the level a 5.2 record of the same area held (0 for an area that is no
+   * multires grid), and the decoder accepts any slot value: Angelo 1.0.x streams carry whatever
+   * level 5.2 stored, including levels that disagree with `totdisp`. */
+  BMesh *bm = mesh_create();
+  BM_data_layer_add(bm, &bm->vdata, CD_MDISPS);
+  const int disp_offset = CustomData_get_offset(&bm->vdata, CD_MDISPS);
+  struct Record {
+    int totdisp;
+    uint32_t wire_level;
+    bool disps;
+    bool hidden;
+  };
+  const Record records[] = {
+      {0, 0, false, false},
+      {4, 1, true, false},
+      {9, 2, true, true},
+      {25, 3, false, true},
+      {289, 5, true, false},
+      {3, 0, true, true},
+      {16, 0, false, false},
+  };
+  for (const int i : IndexRange(std::size(records))) {
+    const Record &record = records[i];
+    MDisps &disp = data<MDisps>(vert_add(bm, float(i)), disp_offset);
+    disp.totdisp = record.totdisp;
+    if (record.disps) {
+      disp.disps = MEM_new_array_zeroed<float[3]>(record.totdisp, __func__);
+      disp.disps[record.totdisp - 1][2] = 0.5f + i;
+    }
+    if (record.hidden) {
+      disp.hidden = BLI_BITMAP_NEW(record.totdisp, __func__);
+      BLI_BITMAP_ENABLE(disp.hidden, record.totdisp - 1);
+    }
+  }
+  BMGeometrySnapshot *snapshot = snapshot_create(bm);
+  ASSERT_NE(snapshot, nullptr);
+  const Array<std::byte, 0> encoded = encode(snapshot);
+  Vector<size_t> level_slots;
+  size_t offset = inspect_valid_wire(encoded).payload;
+  for (const Record &record : records) {
+    SCOPED_TRACE(record.totdisp);
+    ASSERT_LE(offset + 9, encoded.size());
+    EXPECT_EQ(read_le(encoded, offset, 4), uint64_t(record.totdisp));
+    EXPECT_EQ(read_le(encoded, offset + 4, 4), uint64_t(record.wire_level));
+    EXPECT_EQ(read_le(encoded, offset + 8, 1),
+              uint64_t(record.disps) | (uint64_t(record.hidden) << 1));
+    level_slots.append(offset + 4);
+    offset += 9;
+    if (record.disps) {
+      offset += size_t(record.totdisp) * sizeof(float[3]);
+    }
+    if (record.hidden) {
+      offset += (size_t(record.totdisp) / 32 + (record.totdisp % 32 != 0)) * sizeof(uint32_t);
+    }
+  }
+  EXPECT_EQ(offset, encoded.size());
+  for (const uint32_t legacy : {0u, 1u, 7u, 0x7fffffffu, 0xffffffffu}) {
+    SCOPED_TRACE(legacy);
+    Array<std::byte, 0> legacy_bytes(encoded);
+    for (const size_t slot : level_slots) {
+      write_le(legacy_bytes, slot, 4, legacy);
+    }
+    BMGeometryDecodePlan *plan = prepare(std::move(legacy_bytes));
+    ASSERT_NE(plan, nullptr);
+    BMesh *decoded = decode(*plan);
+    ASSERT_NE(decoded, nullptr);
+    EXPECT_TRUE(BM_geometry_snapshot_equals(snapshot, decoded));
+    BMGeometrySnapshot *again = snapshot_create(decoded);
+    ASSERT_NE(again, nullptr);
+    EXPECT_EQ_SPAN<std::byte>(encoded, encode(again));
+  }
 }
 
 TEST_F(BMeshSnapshotIOTest, PreparedInputOutlivesCallerBufferSourceAndSnapshot)
@@ -1225,7 +1295,7 @@ TEST_F(BMeshSnapshotIOTest, TopologySchemaSelectionAndDirtySourceStateRemainExac
                                              &decoded->etable[0]->head,
                                              &decoded->vtable[0]->head,
                                              &decoded->ftable[3]->head};
-  BMEditSelection *selection = static_cast<BMEditSelection *>(decoded->selected.first);
+  BMEditSelection *selection = static_cast<BMEditSelection *>(decoded->selected.first());
   for (BMHeader *element : history) {
     ASSERT_NE(selection, nullptr);
     EXPECT_EQ(&selection->ele->head, element);
@@ -1917,7 +1987,6 @@ TEST_F(BMeshSnapshotIOTest, EachLocalConstructionFaultCleansUpAndLeavesPlanReusa
     deform.dw[1] = {7, 0.75f};
     MDisps &disp = data<MDisps>(loop, disp_offset);
     disp.totdisp = 9;
-    disp.level = 2;
     disp.disps = MEM_new_array_zeroed<float[3]>(9, __func__);
     disp.disps[8][2] = i + 0.5f;
     disp.hidden = BLI_BITMAP_NEW(9, __func__);

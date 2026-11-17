@@ -10,6 +10,7 @@ oracles; the receipt records every refusal and partial-verification outcome.
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+from qa_person import as_person  # noqa: E402  The person's own action (C's harness scope).
 
 import copy
 import os
@@ -383,7 +384,7 @@ def previews_and_stop():
         controller.request_tool("mirror-stop", "angelo_scene_program", values, responses.append)
         controller.pump_tools(executor, controller.document)
         call = next(iter(controller.pending.values()))
-        controller.approve_tool(call, executor, controller.document)
+        as_person(controller.approve_tool, call, executor, controller.document)
         with spent_budget():
             for _ in range(128):
                 controller.pump_tools(executor, controller.document, budget=ToolDispatchBudget(seconds=1))

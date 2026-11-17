@@ -26,10 +26,15 @@ class AccountView:
     user_id: str = ""
     email: str = ""
     seat: bool = False
+    seat_confirmed_at: float | None = None   # Monotonic time of the last token that stated the seat.
     role: str = ""            # "owner", "admin" or "member" from the access token, for what to suggest; "" unknown.
     scopes: frozenset = frozenset()
     providers: tuple | None = None
     providers_error: str = ""
+    # The organization's own model servers from the same answer (team_reads.custom_endpoints) and how many entries
+    # were left out as unusable; () until read.
+    custom_endpoints: tuple = ()
+    endpoints_left_out: int = 0
     grant_key_expires: float | None = None
     grant_error: str = ""
     usage: dict | None = None  # The person's own usage numbers (team_reads.usage), for the account menu.

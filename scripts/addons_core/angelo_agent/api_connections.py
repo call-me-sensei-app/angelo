@@ -9,12 +9,14 @@ by the connection manager, not discovered in environment variables or files.
 import json
 import math
 import queue
+import ssl
 import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 
 from .provider_registry import HTTP_MODES, spec_for
+from .team_errors import untrusted_text
 from .team_http import tls_context
 
 
@@ -70,13 +72,15 @@ def read_probe(request):
         raise ConnectionCheckError(messages.get(error.code, "Provider connection check failed (HTTP %d)" % error.code)) from None
     except (ValueError, UnicodeError):
         raise ConnectionCheckError("Provider returned an invalid connection-check response") from None
-    except (urllib.error.URLError, TimeoutError, OSError):
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        if isinstance(getattr(error, "reason", error), ssl.SSLCertVerificationError):   # Its certificate: untrusted.
+            raise ConnectionCheckError(untrusted_text(request.full_url)) from None
         raise ConnectionCheckError("Couldn't reach the provider securely; check your network and retry") from None
 
 
 def _models(mode, data):
     spec = spec_for(mode)
-    values = data.get("models") if mode == "gemini_images_api" else data.get("data")
+    values = data.get("models") if spec["provider"] == "GOOGLE" else data.get("data")   # Google lists "models"
     if not isinstance(values, list):
         raise ConnectionCheckError("Provider didn't return a model catalog")
     identities = set()

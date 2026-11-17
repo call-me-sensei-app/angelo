@@ -8,11 +8,12 @@
 
 #include "abc_writer_nurbs.h"
 #include "intern/abc_axis_conversion.h"
+#include "intern/abc_util.h"
 
 #include "DNA_curve_types.h"
 #include "DNA_object_types.h"
 
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 
 #include "BKE_curve.hh"
 #include "BKE_object_types.hh"
@@ -116,7 +117,7 @@ void ABCNurbsWriter::do_write(HierarchyContext &context)
   Curve *curve = id_cast<Curve *>(context.object->data);
   ListBaseT<Nurb> *nulb;
 
-  if (context.object->runtime->curve_cache->deformed_nurbs.first != nullptr) {
+  if (context.object->runtime->curve_cache->deformed_nurbs.first_ != nullptr) {
     nulb = &context.object->runtime->curve_cache->deformed_nurbs;
   }
   else {
@@ -124,7 +125,7 @@ void ABCNurbsWriter::do_write(HierarchyContext &context)
   }
 
   size_t count = 0;
-  for (Nurb *nu = static_cast<Nurb *>(nulb->first); nu; nu = nu->next, count++) {
+  for (Nurb *nu = nulb->first(); nu; nu = nu->next, count++) {
     std::vector<float> knotsU;
     get_knots(knotsU, KNOTSU(nu), nu->knotsu);
 
@@ -157,22 +158,22 @@ void ABCNurbsWriter::do_write(HierarchyContext &context)
     OCompoundProperty user_props = abc_nurbs_schemas_[count].getUserProperties();
 
     if ((nu->flagu & CU_NURB_ENDPOINT) != 0) {
-      OBoolProperty prop(user_props, "endpoint_u");
+      OBoolProperty prop(user_props, ABC_NURBS_ENDPOINT_U_PROPNAME);
       prop.set(true);
     }
 
     if ((nu->flagv & CU_NURB_ENDPOINT) != 0) {
-      OBoolProperty prop(user_props, "endpoint_v");
+      OBoolProperty prop(user_props, ABC_NURBS_ENDPOINT_V_PROPNAME);
       prop.set(true);
     }
 
     if ((nu->flagu & CU_NURB_CYCLIC) != 0) {
-      OBoolProperty prop(user_props, "cyclic_u");
+      OBoolProperty prop(user_props, ABC_NURBS_CYCLIC_U_PROPNAME);
       prop.set(true);
     }
 
     if ((nu->flagv & CU_NURB_CYCLIC) != 0) {
-      OBoolProperty prop(user_props, "cyclic_v");
+      OBoolProperty prop(user_props, ABC_NURBS_CYCLIC_V_PROPNAME);
       prop.set(true);
     }
 

@@ -11,6 +11,7 @@ ahead stops at its turn's end there too.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import sys
@@ -202,7 +203,7 @@ class BackgroundPoolTests(Base):
         with mock.patch.object(worker_sessions, "_tick", lambda: worker_queue.tick() and worker_sessions.POLL):
             worker_queue.drive()
         self.assertEqual(worker_pool._pool, [])
-        self.assertTrue(worker.stopped.wait(5))
+        self.assertTrue(worker.stopped.wait(CAP_S))
 
 
 
@@ -220,7 +221,7 @@ class LeadInvalidatedTests(Base):
         self.lead.document_invalid = True   # What set_document does to a lead that holds document work.
         worker_queue.tick()
         self.assertIsNone(worker_routing.bound(chat))
-        self.assertTrue(worker.stopped.wait(5))
+        self.assertTrue(worker.stopped.wait(CAP_S))
         self.assertEqual((worker_queue.queue, worker_sessions._launching), ([], []))
         self.assertEqual(worker_sessions.died.get("w1"), worker_queue.REPLACED)
 

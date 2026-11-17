@@ -17,6 +17,7 @@ network or inference.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import http.server
 import json
@@ -272,6 +273,20 @@ class ProviderFixture(unittest.TestCase):
         self.p.rpc = ScriptedRPC(self.p, outcomes, **options)
         return self.p.rpc
 
+    def during_the_wait(self, act):
+        """``codex_retry.wait`` doing ``act`` at its second poll: always inside the resend wait the first turn's
+        failure started. A timer from the request's start raced the first ``turn/start`` on a loaded machine
+        (VM CI win-3, 2026-11-13: closed before the turn, so none was sent)."""
+        wait, polls = codex_retry.wait, []
+
+        def polled(stopped):
+            polls.append(1)
+            if len(polls) == 2:
+                act()
+            return stopped()
+        return mock.patch.object(codex_retry, "wait", lambda seconds, stopped, *a, **k: wait(
+            seconds, lambda: polled(stopped), *a, **k))
+
     def run_request(self, text="Stage a PREVIEW only that moves 'Eval Cube' to (3, 0, 0)."):
         started = machine_clock.start(self)
         try:
@@ -393,8 +408,7 @@ class FailedTurnTests(ProviderFixture):
 
     def test_stop_during_the_wait_sends_nothing_more(self):
         rpc = self.script(lambda turn: failed(turn, THROTTLED), answered)
-        with mock.patch.multiple(codex_retry, RATE_SECONDS=5):
-            threading.Timer(.4, self.c.stop).start()
+        with mock.patch.multiple(codex_retry, RATE_SECONDS=5), self.during_the_wait(self.c.stop):
             outcome, seconds = self.run_request()
         self.assertEqual(outcome, "interrupted")
         machine_clock.assert_within(self, seconds, 2)
@@ -423,7 +437,7 @@ class FailedTurnTests(ProviderFixture):
             rpc = self.script(lambda turn: failed(turn, THROTTLED))
             outcome, seconds = self.run_request()
             for worker in rpc.delivered:
-                worker.join(2)  # The defect is printed after the turn has already ended.
+                worker.join(CAP_S)  # The defect is printed after the turn has already ended.
         self.assertIn("Codex event handling failed", "".join(call.args[0] for call in stderr.write.call_args_list))
         self.assertIsInstance(outcome, RpcError)
         machine_clock.assert_within(self, seconds, 2)
@@ -503,7 +517,7 @@ class Codex163TurnEndTests(ProviderFixture):
         self.assertEqual(outcome, "interrupted")
         machine_clock.assert_within(self, seconds, 2, "Ends with Codex's turn/completed, never a watchdog")
         for worker in rpc.delivered:
-            worker.join(2)
+            worker.join(CAP_S)
         self.assertEqual([method for method, _ in rpc.requests], ["turn/start", "turn/interrupt"])
         self.assertEqual(rpc.responses, [], "No late answer to a call Codex already ended")
         self.assertEqual(self.c.pending, {})

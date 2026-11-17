@@ -21,11 +21,11 @@
 #include "DNA_customdata_types.h"
 #include "DNA_meshdata_types.h"
 
-#include "BLI_bitmap.h"
+#include "BLI_bitmap.hh"
 #include "BLI_checkpoint_budget.hh"
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_map.hh"
-#include "BLI_mempool.h"
+#include "BLI_mempool.hh"
 #include "BLI_vector.hh"
 
 #include "BKE_customdata.hh"
@@ -346,8 +346,8 @@ static bool block_copy(const Schema &source,
       case LayerKind::Displacements: {
         const MDisps &a = *static_cast<const MDisps *>(src);
         MDisps &b = *static_cast<MDisps *>(dst);
+        /* Blender 5.3 dropped `MDisps::level`: `totdisp` alone gives the grid size. */
         b.totdisp = a.totdisp;
-        b.level = a.level;
         /* Native generic copying drops hidden-only records; both owned arrays matter here. */
         b.disps = a.disps ? MEM_dupalloc(a.disps) : nullptr;
         b.hidden = a.hidden ? MEM_dupalloc(a.hidden) : nullptr;
@@ -416,7 +416,7 @@ static bool block_equal(const Schema &a_schema,
       case LayerKind::Displacements: {
         const MDisps &x = *static_cast<const MDisps *>(a);
         const MDisps &y = *static_cast<const MDisps *>(b);
-        if (x.totdisp != y.totdisp || x.level != y.level ||
+        if (x.totdisp != y.totdisp ||
             !bytes_equal(x.disps, y.disps, size_t(x.totdisp) * sizeof(float[3])) ||
             !bytes_equal(x.hidden, y.hidden, BLI_BITMAP_SIZE(size_t(x.totdisp))))
         {
@@ -727,8 +727,8 @@ static bool mesh_equal(const BMesh &a, const BMesh &b)
   {
     return false;
   }
-  const BMEditSelection *as = static_cast<const BMEditSelection *>(a.selected.first);
-  const BMEditSelection *bs = static_cast<const BMEditSelection *>(b.selected.first);
+  const BMEditSelection *as = static_cast<const BMEditSelection *>(a.selected.first());
+  const BMEditSelection *bs = static_cast<const BMEditSelection *>(b.selected.first());
   for (; as && bs; as = as->next, bs = bs->next) {
     if (as->htype != bs->htype) {
       return false;

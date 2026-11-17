@@ -45,6 +45,7 @@ region early. A lane stops starting sections once its chat's events back up (``e
 import threading
 import time
 
+from . import guard_work
 from . import thread_start
 from .ui_text import n_   # noqa: E402 - marks the text for the catalogs; pure Python.
 from .worker_away import AWAY_AFTER, STATS, _away, _clock, _lanes, away, back, reclaim   # noqa: F401,E501
@@ -148,7 +149,7 @@ class Lane:
         while self.main_calls:
             call = self.main_calls.pop(0)
             try:
-                call()
+                guard_work.run(call)   # Only work made by ``on_main`` (doc/angelo/script_confinement.rst).
             except Exception as error:   # noqa: BLE001 - as the listeners it runs: never fails the step.
                 print("Angelo: worker chat main-thread call:", type(error).__name__, error)
         if self.error is not None:
@@ -157,7 +158,7 @@ class Lane:
         while self.failed:
             on_error, error = self.failed.pop(0)
             if on_error is not None:
-                on_error(error)
+                guard_work.run(on_error, error)
             else:
                 print("Angelo: worker chat action did not run:", error)
 
@@ -232,7 +233,7 @@ class Lane:
                 while self.actions:
                     action, on_error = self.actions.pop(0)
                     try:
-                        action()
+                        guard_work.run(action)
                     except Exception as error:   # noqa: BLE001 - its owner hears of it on the main thread.
                         if on_error is None:
                             raise
@@ -329,7 +330,7 @@ def on_main(call):
     running = current()
     if running is None:
         return call()
-    running.main_calls.append(call)
+    running.main_calls.append(guard_work.work(call))
     return None
 
 
@@ -367,8 +368,11 @@ def pump(controller, budget=None):
 
 
 def apply(controller, call):
-    """An approved edit of a worker chat: the worker stages and commits it (no Undo operator runs here)."""
-    controller.approve_tool(call, None, None) or controller.execute_tool(call, None, None)
+    """Angelo's own approved edit of a worker chat (the pump's ``apply_mutation`` on its lane): the worker stages and
+    commits it (no Undo operator runs here), in Angelo's automatic C grant scope (grant_authority.automatic)."""
+    from . import grant_authority
+    grant_authority.automatic(lambda: controller.approve_tool(call, None, None) or
+                              controller.execute_tool(call, None, None))
 
 
 def approve(controller, call):
@@ -377,13 +381,13 @@ def approve(controller, call):
     def gone(error):
         if controller.pending.get(call.id) is call and not call.executing:
             controller.finish_tool(call, {"error_code": "CANCELLED", "error": str(error), "scene_changed": False})
-    _queue(controller, (lambda: apply(controller, call), gone))
+    _queue(controller, (guard_work.work(apply, controller, call), guard_work.work(gone)))
 
 
 def submit(controller, action, on_error=None):
     """``action()`` on the chat's lane at its next step (a message to the chat, prepared on the worker's document);
     ``on_error(error)`` runs on the main thread when it raises."""
-    _queue(controller, (action, on_error))
+    _queue(controller, (guard_work.work(action), guard_work.work(on_error) if on_error is not None else None))
 
 
 def _queue(controller, item):

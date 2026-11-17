@@ -49,6 +49,7 @@ from angelo_agent.action_kernels import StagedActionContext, apply_operation  # 
 from angelo_agent.program_dependencies import _fingerprint  # noqa: E402
 from angelo_agent.tool_specs import validate_call  # noqa: E402
 from program_qa_helpers import commit_operator, no_stages  # noqa: E402
+import sealed_tables  # noqa: E402  The sealed allow-list is replaced, never patched in place.
 
 report = {"checks": {}, "timings": {}, "paid_requests": 0, "binary_path": bpy.app.binary_path}
 window = bpy.context.window_manager.windows[0]
@@ -111,9 +112,11 @@ class QAPythonOperator(bpy.types.Operator):
 
 def admitted(*names, targets=None, undeny=()):
     """Patch the allow-list (and object targets) for one case; the RNA rules still run."""
-    patches = [patch.dict(spec.ALLOWED, {name: (1, {}) for name in names}),
-               patch.dict(spec.OBJECT_TARGETS, {name: targets for name in names if targets}),
-               patch.dict(spec.DENIED, {key: value for key, value in spec.DENIED.items() if key not in undeny}, clear=True)]
+    patches = [*sealed_tables.override(spec, "ALLOWED", {**spec.ALLOWED, **{name: (1, {}) for name in names}}),
+               *sealed_tables.override(spec, "OBJECT_TARGETS",
+                                       {**spec.OBJECT_TARGETS, **{name: targets for name in names if targets}}),
+               *sealed_tables.override(spec, "DENIED",
+                                       {key: value for key, value in spec.DENIED.items() if key not in undeny})]
     for item in patches:
         item.start()
     return patches

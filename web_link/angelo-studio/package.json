@@ -1,0 +1,25 @@
+{
+  "name": "angelo-studio",
+  "version": "0.1.1",
+  "description": "Alias for @call-me-sensei/angelo — live link from Angelo to your own Three.js page",
+  "license": "MIT",
+  "author": "Hyperbond Studio Pte. Ltd.",
+  "type": "module",
+  "main": "./index.js",
+  "module": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./vite": {
+      "types": "./vite.d.ts",
+      "default": "./vite.js"
+    }
+  },
+  "files": ["index.js", "index.d.ts", "vite.js", "vite.d.ts", "LICENSE", "README.md"],
+  "dependencies": {
+    "@call-me-sensei/angelo": "^0.1.1"
+  }
+}

@@ -35,6 +35,7 @@ ADDON = HERE.parents[2] / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ADDON.parent))
 import angelo_agent  # noqa: E402
+import module_namespace  # noqa: E402
 import qa_operator  # noqa: E402
 from angelo_agent import canvas_controls, canvas_focus, canvas_rtl, chat_key_arming, chat_composer, composer_input, composer_scroll, ui_kit_field  # noqa: E402,E501
 
@@ -52,6 +53,7 @@ def load(name, wanted, namespace):
     path = ADDON / name
     tree = ast.parse(path.read_text(encoding="utf-8"))
     body = [node for node in tree.body if getattr(node, "name", None) in wanted]
+    namespace = {**module_namespace.relative_imports(path), **namespace}   # What the module imports, then stand-ins.
     namespace.setdefault("__name__", "angelo_agent." + path.stem)
     namespace.setdefault("__package__", "angelo_agent")
     exec(compile(ast.Module(body=body, type_ignores=[]), str(path), "exec"), namespace)

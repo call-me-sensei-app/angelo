@@ -87,7 +87,7 @@ def _set_audio(self, value):
 
 
 class ANGELO_FlowGenerateVideoNode(_GeneratorNode, Node):
-    """Generate a video clip with a video model"""
+    bl_description = "Generate a video clip with a video model"
     bl_idname = VIDEO_IDNAME
     bl_label = "Generate Video"
     bl_icon = 'FILE_MOVIE'

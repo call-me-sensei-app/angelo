@@ -101,17 +101,27 @@ def actions():
 def centre(action, value=None):
     area, region = chat()
     rect = next(r for r, a, v in hits() if a == action and (value is None or v == value))
-    return int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    return qa_input.chat_point(region, rect)   # Canvas points to window pixels.
 
 
 def click_at(x, y):
-    """A real click."""
-    window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=y)
-    window().event_simulate(type='LEFTMOUSE', value='PRESS', x=x, y=y)
-    window().event_simulate(type='LEFTMOUSE', value='RELEASE', x=x, y=y)
+    """A real click, as a person's hand makes it: onto the control a beat after reaching it (``qa_input.press``;
+    C mints a grant's ticket only for a press after a real move inside it once it is drawn there ARM_SECONDS)."""
+    qa_input.press(window(), x, y)
 
 
 def click(action, value=None):
+    from angelo_agent.approval_arming import GRANTS
+    if action in GRANTS:   # It takes only a click aimed at it (approval_arming): the suite's tick waits for it.
+        from angelo_agent import approval_arming
+
+        def found():   # Read again at the click: the card may have moved meanwhile.
+            return next(h for h in hits() if h[1] == action and (value is None or h[2] == value))
+
+        def where():
+            return qa_input.chat_rect(chat()[1], found()[0])
+        return qa_input.aim(window(), where,
+                            ready=lambda: approval_arming.view(view_state()).key_armed(tuple(found()[1:])))
     click_at(*centre(action, value))
 
 
@@ -317,6 +327,9 @@ def tick():
                 state["phase"] = "approved"
                 return .3
             assert state["approve_clicks"] < 3, "Approve clicked three times; the program still waits"
+            call = controller.pending[state["program"]]
+            if call.approved or call.executing:   # Approved: it runs, and leaves pending once it has run.
+                return .2
             if ("approve", state["program"]) in actions():
                 click("approve", state["program"])   # A card whose first click shows its details takes a second.
                 state["approve_clicks"] += 1
@@ -327,7 +340,8 @@ def tick():
             state.pop("waiting", None)
             nothing_says_it_waits("approved", controller, capture("aw-5-approved-and-ran.png"))
             check("the_approved_step_ran", "Approval Cube" in bpy.data.objects)
-            controller.set_options(approval="AUTO_BOUNDED")
+            from angelo_agent import grant_guard   # The person picks Auto: the harness stands in.
+            grant_guard.harness(controller.set_options, approval="AUTO_BOUNDED")
             controller.state["messages"].append({"role": "user", "text": "History"})
             # History above the card: scrolled to its top, the card is out of view. Its reply is one link wrapping over
             # more rows than any transcript shows, in rows with no gap between them, so whatever row the revealed card
@@ -367,7 +381,8 @@ def tick():
         if phase == "revealed":
             if not wait(lambda: ("decline", state["far"]) in actions(), 5):
                 return .05
-            x, y = state["spot"][0] - chat()[1].x, state["spot"][1] - chat()[1].y   # Region pixels, as hits are.
+            s = __import__("angelo_agent.chat_view").chat_view.ui_scale()   # Window pixels to canvas points (centre).
+            x, y = (state["spot"][0] - chat()[1].x) / s, (state["spot"][1] - chat()[1].y) / s
             at_spot = [hit for hit in hits() if hit[0][0] <= x <= hit[0][0] + hit[0][2]
                        and hit[0][1] <= y <= hit[0][1] + hit[0][3]]
             shield = view_state().get("approval_shield")
@@ -441,4 +456,5 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=.5)
+import qa_input  # noqa: E402  (aimed clicks: qa_input.aim)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.5)   # An aimed click lands first.

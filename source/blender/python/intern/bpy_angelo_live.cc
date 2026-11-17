@@ -29,12 +29,13 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_math_matrix.hh"
-#include "BLI_math_vector.h"
-#include "BLI_listbase.h"
+#include "BLI_math_vector.hh"
+#include "BLI_math_vector_c.hh"
+#include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_threads.h"
-#include "BLI_utildefines.h"
+#include "BLI_string.hh"
+#include "BLI_threads.hh"
+#include "BLI_utildefines.hh"
 
 #include "BKE_anim_data.hh"
 #include "BKE_bpath.hh"
@@ -188,7 +189,7 @@ static PyObject *live_open(PyObject * /*self*/, PyObject *args)
   LivePart *part = MEM_new<LivePart>(__func__);
   part->main = bfd->main;
   bfd->main = nullptr; /* Owned by the part from here; the rest of the read is freed. */
-  part->scene = bfd->curscene ? bfd->curscene : static_cast<Scene *>(part->main->scenes.first);
+  part->scene = bfd->curscene ? bfd->curscene : static_cast<Scene *>(part->main->scenes.first());
   part->view_layer = bfd->cur_view_layer;   /* The worker's own layer: what it saw. */
   BLO_blendfiledata_free(bfd);
   if (part->scene == nullptr) {
@@ -476,10 +477,20 @@ static PyMethodDef methods[] = {
      "own; (None, ...) when it makes more than limit (1,000,000; 0: no limit), or (None, ..., \"hair\") when an "
      "instance draws hair, which is not read. Each object is expanded alone: the cost is what "
      "it makes, never the scene's. None when the depsgraph is not fully evaluated."},
-    {"shader_state", reinterpret_cast<PyCFunction>(live_shader_state), METH_VARARGS,
-     "shader_state(depsgraph[, view3d]): (materials EEVEE asks for, missing, queued, [their session UIDs], [the "
-     "missing ones' UIDs], [failed ones' names], [the drawn world's name if it failed], [pending names], whether "
-     "that world is the view layer's override) or None."},
+    {"shader_state", reinterpret_cast<PyCFunction>(live_shader_state), METH_VARARGS | METH_KEYWORDS,
+     "shader_state(depsgraph[, view3d], *, world=False): (materials EEVEE asks for, missing, queued, [their session "
+     "UIDs], [the missing ones' UIDs], [failed ones' names], [the drawn world's name if it failed], [pending names], "
+     "whether that world is the view layer's override, the drawn world's session UID or None) or None. With world, "
+     "the world a LIT look draws counts among missing and queued as a material does."},
+    {"pipeline_stats", reinterpret_cast<PyCFunction>(live_pipeline_stats), METH_NOARGS,
+     "pipeline_stats(): {built_in_draw, built_in_draw_ms, built_in_background, built_in_background_ms, pending, "
+     "failed, shaders_waited, queued}: the GPU pipeline states built since start-up inside draw calls and on "
+     "background threads (queued by compile-ahead draws), those queued and not built yet, queued builds that failed, "
+     "the material shaders a thread compiled or waited for where it asked for them, and how many builds were queued "
+     "in all (GPU_pipeline_stats_get)."},
+    {"pipelines_pending", reinterpret_cast<PyCFunction>(live_pipelines_pending), METH_VARARGS,
+     "pipelines_pending(after, through): how many of the builds queued after the 'queued' count was after, up to "
+     "when it was through, are not built yet: with the count read before and after a draw, those that draw queued."},
     {"shown_state", reinterpret_cast<PyCFunction>(live_shown_state), METH_VARARGS,
      "shown_state(depsgraph): a number that changes when which objects it shows changes (never selection), or None."},
     {"update_count",

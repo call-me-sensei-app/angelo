@@ -297,11 +297,26 @@ def save_checks(session, imported_item, studio_asset):
     library = session.library
     source = next(o for o in bpy.context.scene.objects if o.get(ITEM_PROPERTY) == imported_item and o.type == 'MESH')
     from angelo_agent.scene_queries import object_handle
+    # Another scene of the same file, with an object selected in its own view layer: none of it is the save's.
+    other = bpy.data.scenes.new("QA other scene")
+    bystander = bpy.data.objects.new("QA other scene object", bpy.data.meshes.new("QA other scene mesh"))
+    bystander.data.from_pydata([(0, 0, 0), (1, 0, 0), (0, 1, 0)], [], [(0, 1, 2)])
+    other.collection.objects.link(bystander)
+    bystander.select_set(True, view_layer=other.view_layers[0])
+    shown = window().scene
     saved = session.run("angelo_team_library_save", {"source": "OBJECTS", "objects": [object_handle(source)], "space": "team",
                                                      "title": "QA saved box", "tags": ["qa"]}, approve=True,
                         label="save_objects_glb")
     item = library.items.get(saved.get("item_id"), {})
     stored = library.objects.get(item.get("_key"), ("", b""))[1]
+    document = json.loads(stored[20:20 + struct.unpack_from("<I", stored, 12)[0]]) if stored.startswith(b"glTF") else {}
+    written = sorted(node.get("name", "") for node in document.get("nodes", ()))
+    check("a_save_of_objects_holds_the_shown_scene_only", written and bystander.name not in written
+          and [scene.get("name") for scene in document.get("scenes", ())] == [shown.name] and window().scene == shown
+          and bystander.select_get(view_layer=other.view_layers[0]),
+          [written, [scene.get("name") for scene in document.get("scenes", ())]])
+    bpy.data.objects.remove(bystander)
+    bpy.data.scenes.remove(other)
     thumb = library.objects.get(str(item.get("_key", "")).replace("/original", "/thumb.webp"), ("", b""))
     check("objects_save_as_glb_with_a_webp_thumbnail", stored.startswith(b"glTF") and thumb[0] == "image/webp"
           and thumb[1][:4] == b"RIFF" and thumb[1][8:12] == b"WEBP", [saved, len(stored), thumb[0]])

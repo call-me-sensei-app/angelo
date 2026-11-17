@@ -3,10 +3,10 @@
 #include <cstdio>
 #include <iterator>
 #include <memory>
-#include "BLI_fileops.h"
-#include "BLI_listbase.h"
+#include "BLI_fileops.hh"
+#include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 #include "BKE_key.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_main.hh"
@@ -90,7 +90,7 @@ class ReadfileCheckpointTokensTest : public BlendfileLoadingBaseTest {
                                   ReportList *, void *user_data) {
       auto &test = *static_cast<ReadfileCheckpointTokensTest *>(user_data);
       const auto token = tokens.view_layer_token(
-          *test.scene_, *static_cast<const ViewLayer *>(test.scene_->view_layers.first));
+          *test.scene_, *static_cast<const ViewLayer *>(test.scene_->view_layers.first()));
       if (!token) { return false; }
       test.layer_token_ = *token;
       return true;
@@ -168,6 +168,25 @@ TEST_F(ReadfileCheckpointTokensTest, IncompleteBaseNeverClosesBorrowedDescriptor
   EXPECT_FALSE(tokens.complete);
   BLI_stat_t info;
   EXPECT_EQ(BLI_fstat(descriptor(), &info), 0);
+}
+/* Windows' C runtime ends the process when asked about a descriptor that is negative, out of
+ * range or closed: the read refuses each before any such call. */
+TEST_F(ReadfileCheckpointTokensTest, DescriptorThatIsNotOpenIsRefused)
+{
+  ASSERT_TRUE(write());
+  const int closed = descriptor();
+  ASSERT_EQ(fclose(file_), 0);
+  file_ = nullptr;
+  BlendFileReadReport reports{};
+  reports.reports = &reports_;
+  for (const int invalid : {-1, closed, 1 << 20}) {
+    BLOCheckpointIDToken ids[] = {{object_token_, ID_OB}};
+    BLOCheckpointReadTokens tokens{MutableSpan<BLOCheckpointIDToken>(ids, std::size(ids)), {}};
+    EXPECT_EQ(BLO_read_checkpoint_from_descriptor("/checkpoint.blend", invalid, &reports, tokens),
+              nullptr)
+        << invalid;
+    EXPECT_FALSE(tokens.complete);
+  }
 }
 }  // namespace
 }  // namespace blender

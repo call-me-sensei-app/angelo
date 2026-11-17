@@ -10,8 +10,9 @@ Blender reads, what a text transport makes of a private path, and a long text.
   name; an image packed, then made generated with its private
   path (BREAKIT-C7A-6), which the person edits and saves. Each image must merge as its own pixels and nothing else;
   the sound's file and the fonts never.
-- ``write_encoded``: an ID property spelling a state-folder path form-encoded (a space as "+"), or as UTF-16 bytes:
-  nothing can cut it in place, so the merge must refuse with nothing added.
+- ``write_encoded``: an ID property spelling a state-folder path form-encoded (a space as "+"), or as UTF-16 bytes,
+  and both after 9 MiB (an ID property's text, its bytes, one line of a Text: BREAKIT-C7A-7 H1): nothing can cut
+  it in place, so the merge must refuse with nothing added.
 - ``write_long``: a text of many lines that name Angelo (as every text in the data folder's path does) with one
   private path: cut, in bounded time.
 """
@@ -132,6 +133,11 @@ def media_checks(check, answer, saved, leaks, secret, expected, marker):
         and marker not in image.filepath_raw for name, image in found.items()),
         {name: (bool(image and image.packed_file), image and digest(image) == expected[name],
                 getattr(image, "filepath_raw", None)) for name, image in found.items()})
+    own = {name: "//%s.%s" % (os.path.splitext(name)[0], "exr" if image.is_float else "png")
+           for name, image in found.items() if image is not None}
+    check("media_images_keep_their_own_file_name", len(own) == len(found) and all(   # BREAKIT-C7A-7 L4.
+        found[name].filepath_raw == path for name, path in own.items()),
+        {name: getattr(image, "filepath_raw", None) for name, image in found.items()})
     check("media_float_buffers_stay_linear_or_data",
           found["deep.png"] is not None and not found["deep.png"].colorspace_settings.is_data
           and found["data.png"] is not None and found["data.png"].colorspace_settings.is_data,
@@ -171,18 +177,32 @@ def reopened_media_checks(check, expected):
         {name: image is not None and digest(image) == expected[name] for name, image in found.items()})
 
 
+BIG = 9 << 20   # Past the check's first chunk (``worker_merge_scan.CHUNK``) and any size a check could skip.
+
+
 def write_encoded(part, quad, path, how):
     """A part spelling ``path`` (in the state folder) as a text transport does (``how``: "plus", form-encoded in a
-    URL's query, or "wide", UTF-16 bytes): nothing can cut it in place."""
+    URL's query, or "wide", UTF-16 bytes; "big", each of those after ``BIG`` bytes, in an ID property's text, its
+    bytes and one line of a Text, BREAKIT-C7A-7 H1): nothing can cut it in place."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     part.parent.mkdir(parents=True, exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=str(part), compress=False)
     encoded = bpy.data.objects.new("Encoded " + how, quad("Encoded%sMesh" % how))
     bpy.context.scene.collection.objects.link(encoded)
+    query = "https://example.invalid/view?" + urlencode({"file": str(path)})
     if how == "plus":
-        encoded["query"] = "https://example.invalid/view?" + urlencode({"file": str(path)})
-    else:
+        encoded["query"] = query
+    elif how == "wide":
         encoded["wide"] = str(path).encode("utf-16-le")
+    else:
+        pad = "x" * BIG
+        encoded.name, encoded["query"] = "Big query", pad + " " + query
+        wide = bpy.data.objects.new("Big wide", quad("BigWideMesh"))
+        bpy.context.scene.collection.objects.link(wide)
+        wide["wide"] = (pad + " " + str(path)).encode("utf-16-le")
+        log = bpy.data.texts.new("Big log")
+        log.from_string("first\n" + pad + " " + query + "\nlast")
+        encoded["log"] = log
     bpy.ops.wm.save_mainfile(compress=False)
 
 

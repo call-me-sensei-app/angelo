@@ -20,7 +20,7 @@ import secrets
 import time
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from . import kept_state, shared_replace
+from . import kept_state, owned_paths, shared_replace
 from .job_spec import JOB_ID, PREVIEW
 
 ACTIVE = frozenset({"queued", "starting", "running", "stopping"})
@@ -193,6 +193,7 @@ class JobStore:
 
     def save(self, *, throttle=0.0, now=None):
         """Atomic write; ``throttle`` skips a progress-only save made sooner than that many seconds."""
+        owned_paths.require_writable(self.path)
         now = time.monotonic() if now is None else now
         if throttle and now - self._saved_at < throttle:
             return False

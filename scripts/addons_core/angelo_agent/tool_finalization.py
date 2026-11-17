@@ -15,6 +15,7 @@ save encodes the request's rows and what changed since the last save (see
 
 import time
 
+from . import save_failure
 from .owned_values import owned
 
 PERSISTENCE_ERRORS = (OSError, ValueError, TypeError, UnicodeError, RecursionError, OverflowError)
@@ -57,6 +58,25 @@ def journal_tool(controller, call, phase):
         controller.save()
 
 
+def journal_refusal(error):
+    """The answer to a call whose before-start receipt could not be saved (``Controller`` admission).
+
+    ``error`` says why and what to do next (``save_failure.cause``: another Angelo process by its number, a full
+    disk, no permission and so on), ``journal_cause`` is that cause's key, and ``journal_error`` the kind of the
+    failure: the error's type and, when it has one, its errno's name ("OSError ENOSPC", "JournalTaken",
+    "ValueError"). Never the error's text, which can hold the chat's path. The kind is printed too: before 2.0.0
+    the refusal kept no cause, so neither the agent, the person nor a report of it could say what had failed.
+    Admission answers with this for every error a save raises, of any type: a call is refused, never the
+    provider's thread ended by an exception (a value the file cannot hold is not such an error any more:
+    ``session_saveable.held`` makes it saveable and the save goes on).
+    """
+    kind = save_failure.label(error)
+    print("Angelo: a chat's invocation journal could not be saved, so its call was not admitted:", kind)
+    return {"error_code": 'INTERNAL_ERROR', "journal_error": kind, "journal_cause": save_failure.kind(error),
+            "error": "The invocation journal could not be saved, so no native work was admitted. "
+                     + save_failure.cause(error)}
+
+
 SAVE_THROTTLE_SECONDS = 0.5   # The pump's durable saves, at most this often (Controller._pump_events).
 
 
@@ -86,6 +106,7 @@ def save_observed_state(controller, *, compact=False, compact_if_due=False, leav
     for a chat left (``ui.show_session``, ``SessionStore.leave``). A failure there (a full disk, or a file
     this build will not write over: ``SessionStore.load``) must not stop the close or the switch; the file
     keeps its last save. ``changes_only`` compares only rows new or touched since the last write (``save_if_owed``).
+    The warning a failure leaves says why and what to do next (``save_failure.cause``).
     """
     try:
         if compact:
@@ -98,8 +119,8 @@ def save_observed_state(controller, *, compact=False, compact_if_due=False, leav
             controller.save(changes_only=True)
         else:
             controller.save()
-    except PERSISTENCE_ERRORS:
-        controller.persistence_warning = JOURNAL_WARNING
+    except PERSISTENCE_ERRORS as error:
+        controller.persistence_warning = JOURNAL_WARNING + " " + save_failure.cause(error)
         return False
     controller.persistence_warning = ""
     return True
@@ -126,7 +147,8 @@ def complete_result(controller, call, result, *, persist=True):
         controller.state["results"].pop(next(iter(controller.state["results"])))
     if not persist or not save_observed_state(controller):
         result = dict(result, journal_durable=False,
-                      journal_warning=JOURNAL_WARNING if persist else "This completion has not yet been saved to the conversation journal.")
+                      journal_warning=(controller.persistence_warning or JOURNAL_WARNING) if persist else
+                      "This completion has not yet been saved to the conversation journal.")
         if controller.request_checkpoint:
             result.setdefault("request_checkpoint", controller.request_checkpoint)
         # A new record, never a change in place: the journal finds changed results by identity (session_writer).

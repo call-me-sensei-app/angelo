@@ -278,11 +278,11 @@ class DispatchTests(ChatTests):
         self.assertTrue(chat_pending.dispatch_due(self.c))
         self.assertTrue(chat_pending.dispatch_due(self.c))
         self.assertEqual(sent, [("Continue the request.", {"host_request": []}), ("make it blue", {})])
-        self.assertIsNone(chat_pending.send_or_queue(self.c, "Continue the request.", "Continue"),
+        self.assertIsNone(chat_pending.send_or_queue(self.c, "Continue the request.", "Continue", host_request=[]),
                           "Idle with nothing waiting: sent at once")
-        self.assertEqual(sent[-1], ("Continue the request.", {}))
+        self.assertEqual(sent[-1], ("Continue the request.", {"host_request": []}))   # Angelo's: says so (R2-L-6).
         self.c.inbox.hold("a person's message still waiting")
-        self.assertIsNotNone(chat_pending.send_or_queue(self.c, "Continue the request.", "Continue"),
+        self.assertIsNotNone(chat_pending.send_or_queue(self.c, "Continue the request.", "Continue", host_request=[]),
                              "Never ahead of the person's words")
         self.assertTrue(chat_pending.person_waiting(self.c))
 

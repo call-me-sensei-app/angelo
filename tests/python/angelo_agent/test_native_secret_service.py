@@ -16,6 +16,7 @@ conversion is exercised too. They cannot prove behavior on a real desktop; see
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ctypes
 import sys
@@ -99,7 +100,7 @@ class FakeLibSecret:
     def _unlock(self, collection):
         self.prompts += 1
         if isinstance(self.prompt, threading.Event):
-            self.prompt.wait(10)
+            self.prompt.wait(CAP_S)
             return
         if self.prompt == "approve":
             self.collections[collection]["locked"] = False

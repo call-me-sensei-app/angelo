@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """About Angelo: a centered card (``card_host``) opened from the Angelo menu's "About Angelo".
 
-Its header is Angelo's brand art, the welcome screen's raven banner (``welcome_screen.prepare_banner``), with the
+Its header is Angelo's brand art, the welcome screen's raven banner (``welcome_screen.BANNER_PICTURE``), with the
 product name over the banner's dark side; without the art (an undownloaded asset) a plain mark stands in. It names the
 product and version in the title bar's convention ("Angelo 1.0", ``APP_VERSION_DISPLAY``), says
 what it is based on ("Based on Blender 5.2.3"), the licence and the build (date and hash; never the source
@@ -48,6 +48,7 @@ def open_link(action):
 class AboutCard(kit.BaseCard):
     kind, modal, priority = "about", True, 60
     cancel_action, default_action, outside_dismisses = "close", "close", True
+    pictures = (welcome_screen.BANNER_PICTURE,)
 
     def layout(self, view, region_w, region_h, scale, ui):
         banner = banner_ready()
@@ -66,14 +67,6 @@ class AboutCard(kit.BaseCard):
                 placed.ops.insert(index, ("paint", _draw_banner, art))
             return placed
         return kit.fit(plan, region_w, region_h, scale)
-
-    def opened(self, host):
-        welcome_screen.prepare_banner()
-
-    def closed(self, how):
-        from . import intro
-        if not intro.is_open():   # The welcome screen shares the banner's pixels.
-            welcome_screen.release()
 
     def _build(self, view, scale, region_w, ui, banner):
         import angelo_identity
@@ -128,8 +121,8 @@ BANNER_ASPECT = welcome_screen.BANNER_ASPECT
 
 
 def banner_ready():
-    """The brand banner's pixels are loaded (``prepare_banner`` runs outside drawing, when the card opens)."""
-    return welcome_screen._banner["pixels"] is not None
+    """The brand banner can be drawn (read outside drawing when the card opens: ``pictures``)."""
+    return welcome_screen.banner_ready()
 
 
 def _draw_banner(rect):
@@ -151,7 +144,6 @@ class ANGELO_OT_show_about(Operator):
 
     def execute(self, context):
         from . import card_host
-        welcome_screen.prepare_banner()   # Read once, outside drawing; the card's first layout then has the art.
         card_host.request(AboutCard())
         card_host.pump(lambda: True)   # Shown now, or after the card in front of it (``app_notices`` pumps).
         return {'FINISHED'}

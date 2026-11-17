@@ -115,10 +115,11 @@ class ClaudeStandIn:
         self.host = claude_protocol_fixtures.host()
         self.host.request_tool = self.dispatcher.request_tool
         self.provider = ClaudeProvider(self.host, {})
-        self.provider.executable, self.provider.env = "claude-stand-in", {"FIXTURE": "only"}
         self.rounds, self.prompts = [], []
         self.process = claude_protocol_fixtures.NativeInitializeFixture(on_user=self._round)
-        self._patches = [patch("angelo_agent.child_process.run", return_value=SimpleNamespace(
+        self._patches = [patch("angelo_agent.providers.claude_launch",   # What each start is launched with.
+                               return_value=("claude-stand-in", {"FIXTURE": "only"})),
+                         patch("angelo_agent.child_process.run", return_value=SimpleNamespace(
             returncode=0, stdout=claude_protocol_fixtures.SUPPORTED)),
             patch("angelo_agent.child_process.popen", return_value=self.process)]
         for item in self._patches:

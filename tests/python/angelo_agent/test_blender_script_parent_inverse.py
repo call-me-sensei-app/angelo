@@ -25,11 +25,9 @@ import bpy
 
 try:
     from angelo_agent import script_prepare
-    from angelo_agent.script_errors import SCRIPT_FILE
 except ImportError:   # A stock Blender run from the checkout.
     sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
     from angelo_agent import script_prepare
-    from angelo_agent.script_errors import SCRIPT_FILE
 
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-script-parent-inverse-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -80,13 +78,20 @@ def centres(prefix="Part"):
 
 
 def run(code, prepared):
+    """``prepared``: as Angelo runs an agent script (its compiler, confined, admitted as an approval would).
+    Otherwise the test's own reference: the same text as plain Python, under a name that isn't an agent script's (an
+    agent-script name run outside the confinement leaves the thread confined, failing closed)."""
     fresh()
-    namespace = {"bpy": bpy}
+    namespace = {"bpy": bpy, "__name__": "__angelo_script__"}
     if prepared:
+        from angelo_agent import script_confinement
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from confinement_attacks_admit import admit
         prepared = script_prepare.Prepared(bpy, bpy.context.view_layer)
-        exec(prepared.compiled(code, namespace), namespace)
+        admit("parent-inverse", code)
+        script_confinement.run_confined(code, namespace, prepared.compiled, "parent-inverse")
         return centres(), prepared.after(code)
-    exec(compile(code, SCRIPT_FILE, "exec"), namespace)
+    exec(compile(code, "<parent-inverse reference>", "exec"), namespace)
     return centres(), {}
 
 

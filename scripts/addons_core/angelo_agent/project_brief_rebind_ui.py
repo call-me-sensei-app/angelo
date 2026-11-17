@@ -5,6 +5,8 @@
 import hashlib
 import json
 
+from . import save_failure
+from .display_text import shown
 from .ui_text import iface_, rpt_
 
 
@@ -75,9 +77,9 @@ def workspace_operators(review_line_type, add_lines):
                 return {'CANCELLED'}
             try:
                 controller.save()
-            except (OSError, ValueError) as error:
-                self.report({'WARNING'}, rpt_('Public notes are available in this chat, but could not be saved: {error}. '
-                    'No scene edits or tool approvals were granted.', error=error))
+            except (OSError, ValueError) as error:   # Why and what to do, never the system's text (save_failure).
+                self.report({'WARNING'}, rpt_('Public notes are available in this chat, but could not be saved. {error} '
+                    'No scene edits or tool approvals were granted.', error=shown(save_failure.cause(error))))
             else:
                 self.report({'INFO'}, rpt_('Public brief confirmed. Prior evidence stays stale; scene, tool and paid approvals are unchanged.'))
             return {'FINISHED'}

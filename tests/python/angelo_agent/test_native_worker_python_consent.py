@@ -39,6 +39,9 @@ SCRIPT = {"description": "Set a value", "code": "result = 1"}
 CHECKPOINT = "9cf4e420-dcdb-4f45-bc8a-d9d439ce9aac"
 
 
+import angelo_guard_twin  # noqa: E402
+angelo_guard_twin.stand_in_for_the_person(globals())   # Its tests set consents as the person does (grant_authority).
+
 class Part:
     """A worker Blender as its chat's executor sees it (``RemoteExecutor``): the part's document, what ran there."""
 
@@ -304,7 +307,7 @@ class CardBindingTests(ChatFixture):
         calls = {node.func.attr: {k.arg: ast.unparse(k.value) for k in node.keywords} for node in ast.walk(dispatch)
                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                  and node.func.attr in {"approve", "decline", "review_tool"}
-                 and ast.unparse(node.func.value) == "bpy.ops.angelo"}
+                 and ast.unparse(node.func.value) in {"bpy.ops.angelo", "grant_guard.clicked(bpy.ops.angelo)"}}
         self.assertEqual(set(calls), {"approve", "decline", "review_tool"})
         for name, keywords in calls.items():
             with self.subTest(operator=name):

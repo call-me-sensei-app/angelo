@@ -66,6 +66,7 @@ KEYS = {
     "DisableUpdateCheck": ("disable_update_check", "disable"),
     "DisableCrashReporting": ("disable_crash_reporting", "disable"),
     "UpdateFeedURL": ("update_feed_url", "feed"),
+    "CustomEndpoints": ("custom_endpoints", "endpoints"),
 }
 INVALID = "invalid"  # console_url / gateway_url / organization when the managed value can't be used.
 _TRUE, _FALSE = {"1", "true", "yes", "on"}, {"0", "false", "no", "off"}
@@ -92,6 +93,9 @@ class Policy:
     disable_update_check: bool = False     # No update feed is fetched (updates_and_reports.rst).
     disable_crash_reporting: bool = False  # No crash report is offered or sent; the crash file stays local.
     update_feed_url: str = ""   # An https mirror of the signed update feed; INVALID stops the check.
+    # The organization's own model servers (custom_endpoints.Endpoint, …), or None when the policy doesn't set them
+    # (the console's then apply). Set, it wins over the console's, even when empty (endpoint_connections).
+    custom_endpoints: tuple | None = None
     keys: frozenset = frozenset()   # Keys a source set.
     sources: tuple = ()             # Where they came from, for the About text.
     problems: tuple = ()            # Keys whose values were unusable and applied restrictively.
@@ -199,6 +203,11 @@ def parse(entries):
             if parsed is None:  # Unusable roots: nothing is added; the problem is shown to the person.
                 problems.append(key)
                 continue
+        elif kind == "endpoints":
+            from .custom_endpoints import endpoints
+            parsed, left_out = endpoints(value, source="policy")   # A list (plist array), or its JSON text (a registry string).
+            if left_out:   # Each unusable entry is off, never half-applied; the usable ones still apply.
+                problems.append(key)
         elif kind == "domains":
             parsed = _domains(value)
             if parsed is None:  # Unusable domains admit no email: sign-in is refused, never widened.
@@ -224,6 +233,11 @@ def combine(sources):
         problems += invalid
         keys.update(entries)
         fields.update(parsed)
+    if fields.get("custom_endpoints") and fields.get("organization", "") in ("", INVALID):
+        # An organization's own model servers run on that organization's seats only: without a usable Organization
+        # they would run (and count usage) on whichever team signs in, so they are off and the problem is shown.
+        fields["custom_endpoints"] = ()
+        problems += [] if "CustomEndpoints" in problems else ["CustomEndpoints"]
     return replace(Policy(), **fields, keys=frozenset(keys), sources=tuple(labels), problems=tuple(problems))
 
 

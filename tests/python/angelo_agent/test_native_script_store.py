@@ -10,6 +10,7 @@ the read-only fetch, and the Claude plan path. Blender stand-ins; no provider or
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import re
 import sys
@@ -184,7 +185,7 @@ class OnTheController(unittest.TestCase):
         if call is None:
             return None, results
         self.pump()
-        self.controller.review_script(call)
+        angelo_guard_twin.harness(self.controller.review_script, call)
         self.controller.execute_tool(call, self.executor, self.controller.document)
         self.controller.pump_events()
         return call, results
@@ -208,7 +209,7 @@ class OnTheController(unittest.TestCase):
             results.append)
         call = next(c for c in self.controller.pending.values() if c.id.endswith("/second"))
         self.pump()
-        self.controller.review_script(call)
+        angelo_guard_twin.harness(self.controller.review_script, call)
         call.arguments["code"] = BUILD.replace("41", "666")  # Anything other than what was reviewed.
         self.controller.execute_tool(call, self.executor, self.controller.document)
         self.assertNotIn(BUILD.replace("41", "666"), [arguments["code"] for _, arguments in self.executed])

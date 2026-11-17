@@ -3,8 +3,9 @@
 """The removed-API table (script_api_removed) against Blender's own RNA and operators.
 
 Every attribute in the table is a property or function of no RNA type, every removed enum value is refused by its
-property and its replacement taken, every removed operator is absent and its replacement present, and the Bump node
-has an ``invert`` property and no Invert input. A table entry that Blender still has would refuse working scripts:
+property and its replacement taken, every removed operator is absent and its replacement present, every removed
+operator keyword is absent from its operator while the keyword it names is present, and the Bump node has an
+``invert`` property and no Invert input. A table entry that Blender still has would refuse working scripts:
 this suite fails first. Background, local only; writes results.json under ANGELO_QA_DIR.
 """
 
@@ -64,9 +65,11 @@ def _():
 def _():
     tree = bpy.data.node_groups.new("Removed API check", "ShaderNodeTree")
     sky = tree.nodes.new("ShaderNodeTexSky")
+    scene = bpy.context.scene
+    holders = {"sky_type": sky, "engine": scene.render, "overlap_mode": scene.tool_settings.sequencer_tool_settings}
     results = []
     for (attribute, value), _instead in removed.VALUES.items():
-        holder = sky if attribute == "sky_type" else bpy.context.scene.render
+        holder = holders[attribute]
         try:
             setattr(holder, attribute, value)
             results.append(False)
@@ -75,6 +78,7 @@ def _():
     sky.sky_type = "MULTIPLE_SCATTERING"
     bpy.context.scene.render.engine = "BLENDER_EEVEE"
     sky.aerosol_density = 1.0
+    scene.tool_settings.sequencer_tool_settings.overlap_mode = "RIPPLE"
     bpy.data.node_groups.remove(tree)
     return all(results)
 
@@ -86,8 +90,22 @@ def _():
         return name in dir(getattr(bpy.ops, module))
     gone = [path for path in removed.OPERATORS if not exists(path)]
     replacements = ["wm.obj_export", "wm.obj_import", "wm.stl_export", "wm.stl_import", "wm.ply_export", "wm.ply_import",
-                    "wm.usd_export", "wm.usd_import", "export_scene.gltf", "import_scene.gltf"]
+                    "wm.usd_export", "wm.usd_import", "export_scene.gltf", "import_scene.gltf", "sequencer.select_all",
+                    "scene.duplicate_compositor_effect_node_group"]
     return len(gone) == len(removed.OPERATORS) and all(exists(path) for path in replacements)
+
+
+@case("removed_operator_keywords_are_absent_and_their_replacements_present")
+def _():
+    missing = {}
+    for (path, keyword), instead in removed.KEYWORDS.items():
+        module, name = path.split(".")
+        keywords = {prop.identifier for prop in getattr(getattr(bpy.ops, module), name).get_rna_type().properties}
+        replacement = instead.split("use ", 1)[1].split(" ", 1)[0].split("=", 1)[0]
+        if keyword in keywords or replacement not in keywords:
+            missing["%s(%s)" % (path, keyword)] = sorted(keywords)
+    notes["keywords_wrong"] = missing
+    return not missing
 
 
 @case("the_bump_node_inverts_by_a_property")
@@ -104,7 +122,8 @@ def _():
 def _():
     names = rna_names()
     return all(name in names for name in ("aerosol_density", "set_sharp_from_angle", "corner_normals",
-                                          "use_raytracing"))
+                                          "use_raytracing", "use_smooth_pressure", "curve_auto_smooth",
+                                          "sort_method", "nodes_stack_limit"))
 
 
 report = {"success": bool(checks) and all(checks.values()), "checks": checks, "notes": notes}

@@ -93,6 +93,49 @@ class PluginContractTests(unittest.TestCase):
         self.assertIn("preview.clear()", handler)
         self.assertIn('linked = ""', handler)
 
+    def test_a_reimport_godot_refuses_while_importing_is_tried_again(self):
+        """Godot's reimport_files() refuses, with only an error in its log, while Godot is importing already ("called
+        recursively"): its own scan of the replaced file, begun on bytes from before Angelo's save, held the editor on
+        the old asset until Reload Saved Scene (Godot showcase, 2026-11-15). So a save's re-import is owed until the
+        plugin's own reimport_files() has run for it, and is tried again until then (never settled by Godot's own
+        import of the asset, which may have read the earlier bytes).
+
+        Each asset is owed its own: a save of a second asset (the link switched while Godot imported) never drops a
+        first asset's re-import still owed (test_blender_godot_link_busy, "switch"), and each gives up on its own."""
+        plugin = "\n".join(code("plugin.gd"))   # No comments: a doc comment above the next function is not code.
+        body = lambda name: plugin.split("func %s(" % name, 1)[1].split("\nfunc ", 1)[0]
+        reimport, reimported, process = body("_reimport"), body("_on_reimported"), body("_process")
+        self.assertIn("_owed[asset] = ", reimport, "a save's re-import is owed, per asset, before it is asked for")
+        self.assertIn("_try_reimport(asset)", reimport)
+        self.assertNotIn("reimport_owed =", plugin, "no single owed asset a later save could overwrite")
+        attempt = body("_try_reimport")
+        self.assertIn("_reimporting_now = asset", attempt)
+        self.assertIn("reimport_files(", attempt)
+        self.assertIn('_reimporting_now = ""', attempt)
+        self.assertIn("_owed.erase(_reimporting_now)", reimported, "only the plugin's own re-import settles what it owes")
+        self.assertIn("for asset", process, "every owed asset is tried again")
+        self.assertIn("_try_reimport(asset)", process)
+        self.assertIn("_owed.erase(asset)", process, "each owed asset gives up on its own")
+        self.assertNotIn("reimport_files(", reimport, "only _try_reimport asks Godot, and owes it until it runs")
+        # Giving up only after one more try: a blocking import longer than REIMPORT_GIVE_UP arrives as one long frame,
+        # after which Godot is free; the plugin must try then, not tell the person to reload (2026-11-15).
+        try_at, give_up_at = process.find("_try_reimport(asset)"), process.find("_owed.erase(asset)")
+        self.assertTrue(0 <= try_at < give_up_at, "the give-up is decided after a try, never instead of one")
+
+    def test_no_value_returning_call_is_discarded(self):
+        """Projects that raise every GDScript warning to an error, addons included, refuse a plugin whose call
+        discards a returned value (RETURN_VALUE_DISCARDED): Godot then does not load the plugin at all. The per-asset
+        re-import (7ac303fce3a) did that with Dictionary.erase(); the e2e's strict project caught it (2026-11-15).
+        Every call whose value Godot's API returns and this plugin ignores is assigned instead."""
+        returning = ("erase", "connect", "store_string", "store_buffer")   # Godot API calls that return a value.
+        for path in sorted(PLUGIN.glob("*.gd")):
+            for number, line in enumerate(source(path.name).splitlines(), 1):
+                statement = line.strip()
+                for name in returning:
+                    with self.subTest(file=path.name, line=number):
+                        self.assertNotRegex(statement, r"^[\w.\[\]\(\)\"]*\.%s\(" % name,
+                                            "%s:%d discards %s()'s value" % (path.name, number, name))
+
     def test_nothing_comes_from_the_network_and_every_file_is_licensed(self):
         for path in sorted(PLUGIN.iterdir()):
             with self.subTest(file=path.name):

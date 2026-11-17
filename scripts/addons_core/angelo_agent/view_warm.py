@@ -24,9 +24,13 @@ First draws (option 3): Metal builds a pipeline at a shader's first draw on the 
 view, every object drawing a material compiled during the wait, then every instancer, is drawn on its own offscreen
 (``only=``), batched by the ``(material, format)`` keys it brings (``_batch``: one object with new keys, up to
 ``CHUNK_MAX`` whose keys are all drawn; alone after a draw over ``SLOW``; instancers up to ``GROUP_MAX``), until
-``TICK_SECONDS`` of a tick are spent (REVIEW-VIEW-SPREAD H1, -2 HB/MA, -3 H1/H2/M1). Residuals, as before the
-fix: one object with many new materials, a new variant of a compiled material, other frames of a strip, a new world
-(compiled in any draw, eevee_world.cc). A background Blender (a worker) draws its views as before.
+``TICK_SECONDS`` of a tick are spent (REVIEW-VIEW-SPREAD H1, -2 HB/MA, -3 H1/H2/M1). Those are compile-ahead
+draws (``GPU_compile_ahead_begin``): Metal queues the pipeline states they miss to background threads instead of
+building them in the draw, and the view waits until none queued up to its scene's last such draw is pending
+(``pipelines_pending``); a LIT look counts its world as a material, queued by a draw of no object and first-drawn
+once compiled (``WORLD``), since any other draw compiles a world on the main thread (inventory C5). Residuals, as
+before the fix: a new variant of a compiled material, other frames of a strip; on Vulkan the first draws build
+their pipelines in the draw. A background Blender (a worker) draws its views as before.
 """
 
 import time
@@ -34,9 +38,9 @@ import time
 import bpy
 
 from .view_first_draw import (CHUNK_MAX, GROUP_MAX, OVERRIDE_TYPES, SIZE, SLOW, TICK_SECONDS,  # noqa: F401
-                              _alive, _batch, _draw, _drawing, _first_draw_objects, _format, _pointer, _region, _uid,
-                              first_draws)
-from .view_shader_notes import FAILED_NOTE, failed, note, notes  # noqa: F401  (the views' callers read them here)
+                              WORLD, _alive, _batch, _draw, _drawing, _first_draw_objects, _format, _pointer, _redo,
+                              _region, _uid, _world, first_draws, pipelines_pending)
+from .view_shader_notes import FAILED_NOTE, _labelled, failed, note, notes  # noqa: F401  (callers read them here)
 
 WAIT_SECONDS = 60.0
 GRACE_SECONDS = 1.0      # How long a look not ready is waited for before its first answer is Solid (wait).
@@ -70,7 +74,7 @@ _soon = {}        # A window's pointer -> the materials a merge queued, until th
 
 
 def compiling():
-    """Whether Blender's background shader-compilation job is running."""
+    """Blender's shader-compilation flag: its compiler busy or, on Vulkan, a pipeline built since the last redraw."""
     try:
         return bool(bpy.app.is_job_running("SHADER_COMPILATION"))
     except (AttributeError, TypeError, ValueError):
@@ -81,9 +85,10 @@ def _background():
     return getattr(bpy.app, "background", True) is not False   # Unknown (a stand-in): as in the background.
 
 
-def state(window, area=None):
+def state(window, area=None, lit=None):
     """``(materials, missing, queued[, names])`` of ``window``'s scene as the 3D view ``area`` (default: the window's
-    first) draws it (module docstring), or None when it cannot be read."""
+    first) draws it (module docstring), or None when it cannot be read. With ``lit``, the world the LIT look draws
+    counts as a material (where the build reads it: a compile-ahead draw queues its shaders, inventory C5)."""
     try:
         import _bpy
         from . import live_windows
@@ -92,8 +97,9 @@ def state(window, area=None):
             return None
         area = area or next((a for a in live_windows.areas(window) if a.type == 'VIEW_3D'), None)
         space = area.spaces.active if area is not None else None
-        found = (live.shader_state(window.view_layer.depsgraph, space) if space is not None else
-                 live.shader_state(window.view_layer.depsgraph))
+        world = {"world": True} if lit and hasattr(live, "pipeline_stats") else {}
+        found = (live.shader_state(window.view_layer.depsgraph, space, **world) if space is not None else
+                 live.shader_state(window.view_layer.depsgraph, **world))
         return tuple(found) if found is not None else None
     except (AttributeError, TypeError, ValueError, RuntimeError, ReferenceError):
         return None
@@ -102,12 +108,14 @@ def state(window, area=None):
 def queue(window, area=None, lit=True):
     """Queue the shaders ``window``'s scene still misses (module docstring); True when a draw ran. Never raises: a
     build or state that cannot queue leaves a view to compile as before. Each draw is one object, the fewest that
-    draw every missing material, those with the fewest materials first, until ``TICK_SECONDS`` are spent (every
-    pipeline a draw meets is built in it: one draw of all of them built their compiled ones too, VW8-H-4); the rest
-    on the next call. While a missing material is drawn by no such object, one instancer a call, in turn."""
+    draw every missing material, those with the fewest materials first, until ``TICK_SECONDS`` are spent (where a
+    backend builds pipelines in the draw, every pipeline a draw meets is built in it: one draw of all of them built
+    their compiled ones too, VW8-H-4); the rest
+    on the next call. While a missing material is drawn by no such object, one instancer a call, in turn. A LIT look's
+    missing world is queued by a draw of no object (``WORLD``)."""
     if _background() or window is None:
         return False
-    found = state(window, area)
+    found = state(window, area, lit)
     if found is None or not found[1]:
         return False
     try:
@@ -119,6 +127,10 @@ def queue(window, area=None, lit=True):
         missing = set(found[4])
         direct, instancers, covered = _drawing(window, missing)
         picks, left = [], set(missing)
+        worlds = _world(found) & left
+        if worlds:
+            picks.append(WORLD)
+            left -= worlds
         depsgraph = window.view_layer.depsgraph
 
         def slots(entry):   # What else the object draws: each is a pipeline its draw may build.
@@ -140,7 +152,7 @@ def queue(window, area=None, lit=True):
         for index, obj in enumerate(picks):
             if index and time.perf_counter() - tick >= TICK_SECONDS:
                 break
-            _draw(window, *host, [obj], lit)
+            _draw(window, *host, [obj], lit)   # WORLD: a draw of no object, the world alone.
         return True
     except (AttributeError, TypeError, ValueError, RuntimeError, ReferenceError, SystemError):
         return False
@@ -186,7 +198,7 @@ def soon(window):
         if _busy(window) and tries[0] < IDLE_TRIES:
             return 0.25
         if not _busy(window) and queue(window, None, _lit[0]):
-            found = state(window)
+            found = state(window, None, _lit[0])
             names = set(found[3]) if found is not None and len(found) > 3 else set()
             previous = _soon.get(key)
             names |= previous["names"] if previous else set()   # A later merge keeps an earlier one's (MB).
@@ -221,7 +233,7 @@ def _spread(key, held):
             if _key(window) != key:
                 entry["run"] = None   # Another scene shown: owed to this one's next view, never drawn on another.
                 return None
-            current = state(window)
+            current = state(window, None, entry["pace"].get("lit", True))
             if current is not None and len(current) > 3:
                 _redo(entry["pace"], set(current[3]))   # An edit meanwhile: drawn again once compiled (VW11-H-3).
                 if current[1] and time.monotonic() - entry.get("queued_at", 0.0) >= REQUEUE_SECONDS:
@@ -231,7 +243,7 @@ def _spread(key, held):
                     return 0.1   # Still compiling.
             if entry["objects"] is None or entry.get("generation") != _generation(window):
                 entry["generation"] = _generation(window)   # Listed again for what the scene is now (VW11-H-2).
-                entry["objects"] = _first_draw_objects(window, entry["names"])
+                entry["objects"] = _first_draw_objects(window, entry["names"], _world(current))
             if entry["objects"] and first_draws(window, entry["objects"], pace=entry["pace"]) and entry["objects"]:
                 return 0.02
         except Exception:   # noqa: BLE001 - a timer must never raise: kept owed, the next view takes it (VW10-H-1).
@@ -268,7 +280,7 @@ def wait(window, area, run, controller=None, lit=True, solid=None):
     except (AttributeError, RuntimeError, ReferenceError):
         pass
     queue(window, area, lit)
-    found = state(window, area)
+    found = state(window, area, lit)
     owner = _key(window)
     merged = _soon.pop(owner, None)   # This scene's owed first draws: a merge's, a denied view's (M3).
     if merged is not None and (merged["pace"].get("lit", True) != lit or
@@ -276,7 +288,8 @@ def wait(window, area, run, controller=None, lit=True, solid=None):
         merged["objects"] = None   # Another look, or the scene changed since it was listed: listed again (VW11-H-2).
     if merged is not None and merged["objects"] is not None and not merged["objects"]:
         merged = None
-    if (found is None and not _reader()) or (found is not None and not (found[1] or found[2]) and merged is None):
+    if (found is None and not _reader()) or (found is not None and not (found[1] or found[2]) and merged is None
+                                             and not pipelines_pending(window)):   # A merge's builds, still running.
         _solid.pop((owner, lit), None)   # Drawn at once: a capture of the look asked for (VW11-M-2).
         return None   # Nothing pending (or an older build that cannot tell): drawn at once, as before.
     first = solid is not None and found is not None and not asked_again(owner, lit)   # Its grace (GRACE_SECONDS).
@@ -313,7 +326,8 @@ def wait(window, area, run, controller=None, lit=True, solid=None):
             progress["generation"] = now_generation
             base = progress["objects"] if progress["objects"] is not None else list(progress["taken"])
             held = {(_pointer(obj), keys) for obj, keys in base}
-            progress["objects"] = base + [entry for entry in _first_draw_objects(window, progress["names"])
+            progress["objects"] = base + [entry for entry in _first_draw_objects(window, progress["names"],
+                                                                                 _world(progress["state"]))
                                           if (_pointer(entry[0]), entry[1]) not in held]
         if progress["objects"]:
             first_draws(window, progress["objects"], area, progress["pace"])
@@ -321,7 +335,7 @@ def wait(window, area, run, controller=None, lit=True, solid=None):
         return True
 
     def ready(now, window):
-        current = state(window, area)
+        current = state(window, area, lit)
         progress["state"] = current
         if current is not None and len(current) > 3:
             progress["names"] |= set(current[3])
@@ -329,8 +343,9 @@ def wait(window, area, run, controller=None, lit=True, solid=None):
             progress["readable"] = list(current[7]) if len(current) > 7 else [str(item) for item in current[3]]
         if now - started >= WAIT_SECONDS:   # Never drawn while anything is not ready, unknown or owed its first draw:
             if progress["objects"] is None:   # Listed, not guessed: owed only if something draws them.
-                progress["objects"] = list(progress["taken"]) + _first_draw_objects(window, progress["names"])
-            owed = bool(progress["objects"])
+                progress["objects"] = list(progress["taken"]) + _first_draw_objects(window, progress["names"],
+                                                                                    _world(current))
+            owed = bool(progress["objects"]) or bool(pipelines_pending(window))
             progress["late"] = current is None or bool(current[1] or current[2]) or owed   # the backlog stays (-H-2).
             return True
         if _busy(window) or current is None:
@@ -340,7 +355,10 @@ def wait(window, area, run, controller=None, lit=True, solid=None):
                 progress["queued_at"] = now                                    # its own shaders are ready (H3).
                 queue(window, area, lit)
             return False
-        return drawn_first(window)
+        # Then the pipeline states queued up to the last draw made for its scene, its own or a merge's (Metal
+        # builds them in the background): drawn before they are built, the view would build them on the main loop
+        # (inventory C5). None queued after that: another window's, another scene's merge's, an optimized variant's.
+        return drawn_first(window) and not pipelines_pending(window)
 
     def poll():
         now = time.monotonic()
@@ -413,24 +431,6 @@ def wait(window, area, run, controller=None, lit=True, solid=None):
     pending.status_text, pending.activity_note, pending.stopped_result = STATUS, NOTE, dict(STOPPED)
     pending.timeout = WAIT_SECONDS + 30.0
     return pending
-
-
-def _labelled(result, detail):
-    """A Solid answer for a look that was not ready, saying so (``shaders_not_ready``); a refusal unchanged."""
-    if isinstance(result, dict) and not result.get("error"):
-        result.setdefault("uncertainty", []).append({"code": "shaders_not_ready", "detail": detail})
-        result["uncertain"] = True
-    return result
-
-
-def _redo(pace, pending):
-    """Forget the first draws done for materials pending again: an edit recompiles a material under the same UID, so
-    what was drawn before is not what the view will draw (VW10-H-2)."""
-    if not pending:
-        return
-    for look, (done, drawn) in list(pace.get("books", {}).items()):
-        pace["books"][look] = ({item for item in done if not any(key[0] in pending for key in (item[1] or ()))},
-                               {key for key in drawn if key[0] not in pending})
 
 
 def _reason(progress):

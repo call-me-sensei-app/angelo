@@ -59,7 +59,8 @@ import json
 import queue
 import threading
 
-from . import model_results, product_env, query_observations, request_path, worker_news
+from . import claude_direct_notes, model_results, product_env, query_observations, request_path, worker_news
+from .call_order import CallOrder
 from .claude_direct_text import CLAUDE_TOOLS_INSTRUCTIONS
 from .claude_evidence import ClaudeVisualEvidence
 from .claude_outcomes import native_result_problem, present_plan_checks
@@ -72,7 +73,7 @@ from .plan_schema import deferred_references, deferred_schemas, lookup
 from .plan_validation import screen_plan
 from .program_completion import completions_for
 from .protocol import RpcError
-from .tool_specs import TOOL_MAP
+from .tool_specs import READ_ONLY_TOOLS, TOOL_MAP
 from .ui_text import notice
 
 FLAG = "CLAUDE_DIRECT_TOOLS"
@@ -223,9 +224,10 @@ class DirectRequest:
         self.status = None     # The request's status when a call ended it: "failed" or "interrupted".
         self.count = self.failures = self.scripts = 0
         self.dispatched = False   # Whether the call running now reached the host's dispatch (``_native``).
-        self._busy, self._count_lock, self._order = 0, threading.Lock(), threading.Condition()
-        self._tickets, self._next, self._running = 0, 0, threading.Lock()
-        self._waiting, self._answers = {}, {}   # Each call's deliveries awaiting its result, and results given.
+        self._busy, self._count_lock, self.order = 0, threading.Lock(), CallOrder()   # Calls run in arrival order.
+        self._tickets, self._running = 0, threading.Lock()
+        # Each call's deliveries awaiting its result, results given, and calls answered past that bound (``answered``).
+        self._waiting, self._answers, self._not_kept = {}, {}, set()
 
     def admit(self, key, respond):
         """True when the call ``key`` names is new: it runs, and ``answered`` gives ``respond`` its result.
@@ -236,6 +238,8 @@ class DirectRequest:
         with self._count_lock:
             if key in self._answers:
                 cached = self._answers[key]
+            elif key in self._not_kept:
+                cached = _error(claude_direct_notes.NOT_KEPT)
             elif key in self._waiting:
                 self._waiting[key].append(respond)
                 return False
@@ -246,11 +250,13 @@ class DirectRequest:
         return False
 
     def answered(self, key, value):
-        """Give every delivery of the call ``key`` its result; keep it for a later delivery (bounded)."""
+        """Give every delivery of ``key`` its result; keep it (4 × MAX_CALLS, then 64 × MAX_CALLS IDs as not kept)."""
         with self._count_lock:
             waiting = self._waiting.pop(key, [])
             if len(self._answers) < 4 * MAX_CALLS:
                 self._answers[key] = value
+            elif len(self._not_kept) < 64 * MAX_CALLS:
+                self._not_kept.add(key)
         for respond in waiting:
             respond(value)
 
@@ -296,19 +302,14 @@ class DirectRequest:
         self.provider._emit(self.owner, kind, data)
 
     def call(self, name, arguments, ticket=None):
-        """One tool call's MCP result (``{"content": [...], "isError": bool}``), run after the calls that arrived
-        before it (``ticket``, from ``arrived``) and before the ones after it."""
-        with self._order:
-            while ticket is not None and self._next != ticket:
-                self._order.wait()
+        """One tool call's MCP result (``{"content": [...], "isError": bool}``), in the order calls arrived (``ticket``,
+        from ``arrived``); without one the caller holds its turn (``order``: ``ExternalWork``)."""
+        self.order.wait(ticket)
         try:
             with self._running:   # One at a time, whoever calls (a call without a ticket included).
                 return self._call(name, arguments)
         finally:
-            if ticket is not None:
-                with self._order:
-                    self._next += 1
-                    self._order.notify_all()
+            self.order.end(ticket)
 
     def _call(self, name, arguments):
         if not self.current():
@@ -451,7 +452,7 @@ class DirectRequest:
         """
         kept = [(call, completion) for call, completion in zip(self.calls, self.completions)
                 if native_result_problem(call[1]) is None and (
-                    not TOOL_MAP[call[0]["tool"]]["annotations"]["readOnlyHint"] or call[0]["tool"] == "angelo_scene_verify")]
+                    call[0]["tool"] not in READ_ONLY_TOOLS or call[0]["tool"] == "angelo_scene_verify")]
         return [call for call, _completion in kept], [completion for _call, completion in kept]
 
 

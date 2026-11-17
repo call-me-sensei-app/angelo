@@ -181,11 +181,115 @@ Blender's folders:
   (``--platform``/``--home`` select it for tests). A user who had set
   ``BLENDER_USER_CONFIG`` or ``BLENDER_USER_RESOURCES`` has nothing to migrate.
 
+Moving to a newer Blender base
+------------------------------
+
+Blender keeps one user folder per version, so an Angelo release on a newer Blender base (1.1 on Blender 5.3 after
+1.0 on 5.2, and every later move) starts with an empty ``<product>/5.3``. Its first launch is an update, not a new
+install, and carries the person's state over on its own:
+
+* **The agent state is moved** when the add-on registers, before anything opens it (``version_carry_over.py``):
+  the ``angelo-agent`` folder of the newest earlier version that holds any (any earlier version, not only the one
+  before) moves into this version's ``config`` with same-volume renames (``folder_moves``), as one rename when this
+  version has none yet, so gigabytes of snapshots move at once and nothing is copied. Records that named a place in
+  the old folder follow (``carry_over_records.py``): snapshot records as after the pre-rename move, and every other
+  top-level record (background jobs, worker chats, the start panel's scenes). Once every rename is verified the move
+  is ``done`` (the earlier version gets its note and choices then); a record that cannot be read or rewritten now (a
+  sharing violation, an antivirus scan, a full disk), the chat-list merge, or the earlier version's step is named in
+  the carry-over record as pending, and later launches try it again quietly (never while another Angelo is open,
+  which spends no try), at most five times, then say once which files Angelo could not update, in the startup
+  notice and on AI Providers (``carry_over_finish.py``, translated). A damaged record (not UTF-8, not JSON, nested
+  past Python's limit, or a damaged snapshot record) is left to its owner and never stops the others. A chat's brief
+  is re-scoped on load
+  (``state_paths.earlier_state_folders``) and its attachments are found by name. A chat that came over (the record
+  lists them) and was saved before the move never resumes its native context: Claude Code keys its sessions to the
+  working folder the chat started them in, which moved; the chat starts a fresh context with its whole history, as
+  after a toolset change. A chat that was already in this version's folder keeps its context.
+* **Blender's settings are copied** by Blender's own import (``preferences.copy_prev``, unchanged in Blender 5.3
+  and 5.4 but for one hook in Angelo's copy of it): it copies the earlier version's folder except the agent state,
+  its carry-over record and lock and the settings-import backup (``settings_import.previous_ignore``,
+  ``PREVIOUS_LEFT_OUT``), wherever it is started from. It runs on its own once the layout has settled, only while
+  this version has no saved preferences, so it never replaces any; the earlier folder keeps its own. A copy that
+  stops part-way saves nothing over what it copied.
+* **No setup card and never Blender's Quick Setup.** Instead one corner notice in Angelo's own UI
+  (``version_carry_over_ui.py``) says the update is ready and what came over, or why the chats did not yet.
+* **Sign-ins are unaffected.** Saved accounts and their isolated native CLI profiles live in the account folder,
+  which is not per version (the Claude Code Keychain item is keyed to the profile's path, Codex keeps
+  ``auth.json`` in its ``CODEX_HOME``). A ``claude-profile`` or ``codex-profile`` still inside an earlier state
+  folder is never moved and keeps resolving there (``storage.native_profile_directory``), with a note beside it.
+* **Crash-safe and resumable.** ``angelo-carry-over.json`` in this version's ``config`` names the old folder before
+  the first rename and says ``done`` once every rename is verified (what records are left is named in it). Every step
+  is one rename or the removal
+  of a byte-identical copy, so a crash or a full disk loses nothing: the next launch plans again from what is left
+  and finishes, and AI Providers shows what stopped meanwhile (after three stops, what to fix). A damaged record is
+  kept aside and the carry-over plans again; a record that cannot be read, or a newer Angelo's, is left alone; a
+  folder that cannot be read is never taken for an empty one; a link anywhere in the user folder's path is resolved
+  once, so every record names one spelling. Across
+  volumes (a version folder linked to another disk) an entry is copied beside its target, verified byte for byte,
+  renamed into place and only then removed from the old folder (never while another Angelo is open). Copied files
+  get new identities, so snapshots sealed on them stop verifying there: keep version folders on one disk.
+* **Merged, never overwritten,** when this version already holds state (an interrupted or finished "Use my earlier
+  Angelo settings" copy from a build without the carry-over, or such a build used there): folders merge entry by
+  entry (``carry_over_moves.py``). A file with the same bytes is that copy, and the original takes its name. Any
+  other clash keeps one side and moves the other, whole, into ``kept-from-<version>`` in the state folder, decided
+  by content and age, never by which folder it is in: a file that is the start of the other (an interrupted copy, an
+  older state of an append-only chat journal) gives way to the longer one, otherwise the one modified last stays.
+  The snapshot system (store, records, timeline, seal) is one unit and never mixes two stores: a copy of the old one
+  gives way to it, a unit that holds the other (its continuation) stays, otherwise the one with more history stays;
+  the other is kept whole, and the choice is recorded before the first rename, so a resumed move finishes it instead
+  of taking its own half for a rival. A file written after the move's first attempt (a default of a failed launch)
+  never outranks the original. The chat list is combined.
+* **Never while another Angelo is open** (it may be the earlier version, still writing into the old folder; this
+  Angelo's own children, such as Cycles' GPU listing, do not count): that launch works on the earlier folder in place
+  (``state_paths.session_redirect``, in this process only, so it never reaches a child or an updated app), the new
+  folder gains no state of its own, and the notice says so; the next launch with no other Angelo moves everything.
+  An unreadable process list counts as another Angelo. A move already under way is finished, with renames only. A
+  lock beside the record serializes two first launches.
+* **Links move as links** and are never followed: a linked state folder moves as its link (or, when this version
+  already has state, its entries merge in through it); a link inside it moves as itself (a junction counts as a
+  link). Before each rename the whole carry-over decides each relative link (``carry_over_links.py``): one whose target
+  moves with it to where its text will reach stays relative (two entries that both move); one whose target stays
+  behind (outside the state folder, as a state folder linked as ``../angelo-data``, or in a retained sign-in profile)
+  is first given the absolute target naming the same place; one whose target lands elsewhere (an entry kept aside in
+  ``kept-from-<version>``) is left as it is, a known limit. Without the privilege to make links (Windows), a folder
+  target gets a junction and any other link stays as it is. A relink a crash stopped is finished by the next launch
+  first; a twin beside something else at its link's name is kept (it may be the only way to the state), the move
+  stops naming both, and that session works on the state through the twin. A junction moves across volumes as a
+  junction naming the same folder, verified before it takes the name, and so does one inside a folder copied
+  across volumes (never copied as its folder's content); one whose folder is on a disk not attached is compared by
+  its target's text. A disk mounted at a folder cannot be recreated on another volume: the copy refuses it before
+  anything is copied, naming it, so the person unmounts it or moves it out. A native sign-in profile stays where it
+  is whether it is a folder or a link or junction to one. A new state folder that does not lead to a folder after
+  the renames, or that is empty where a linked one should have arrived, is never reported as moved. On Windows every path is used in its extended-length form, so a
+  deep snapshot never meets ``MAX_PATH``.
+* **The earlier version stays usable.** People may stay on 1.0 or go back to it (``updates_and_reports.rst``,
+  "Release lines"). The old state folder keeps a note of where the state went and a copy of the person's update,
+  crash-report, welcome and mode choices (without a yes to the newer version). Angelo 1.0 opened again starts with its
+  own preferences (unchanged: they were copied), those
+  choices and no chats; a 1.0.x built with this module also says once where they went (1.0.9 is not: the note in the
+  old folder says it there). Chats made there come over at the next launch of
+  the newer version (any later one, from any earlier folder) with no other Angelo open: nothing here is replaced, so
+  any clash stays in ``kept-from-<version>``,
+  including that stint's snapshots. A chat left empty brings nothing.
+* **One folder through a link** (this version's state folder and the earlier one reach the same folder) is the
+  person's own setup: nothing moves.
+* **Run once per process.** A preference read re-registers the add-on with the state open, so the carry-over runs only
+  at the first registration. A launch that failed before moving anything works on the earlier folder, as a deferred
+  one does.
+
+An explicit ``ANGELO_STATE_DIR``, ``BLENDER_USER_CONFIG`` or ``BLENDER_USER_RESOURCES`` has no per-version folders, so
+nothing is carried.
+
+Code that names the per-version folder outside Blender (the external ``angelo`` command, the headless session's
+preferences) uses ``cli_client.BLENDER_SERIES``. A base move must change it with the release: on the 5.3 line it is
+``blender_release.RELEASE``, which ``test_native_api_drift`` keeps equal to the source's ``BLENDER_VERSION``. The
+release gate is ``tests/python/angelo_agent/update_carry_over_gate.py`` (``releasing.rst``).
+
 A start that did not finish
 ---------------------------
 
 A third-party add-on that crashes natively as it loads ends the process before any Python error handling sees it
-(Blender 5.3 #166395 Hair Tool, #166397). Once preferences that enable it are saved (the setup card's settings import
+(Blender 5.3 #166395 Hair Tool, #166397). Once preferences that enable it are saved (an update's settings import
 copies them, or the person enabled it), every later launch would end the same way and the app would never open
 again. So a launch that finds a start that never completed enables only the add-ons that ship with Angelo
 (``scripts/modules/angelo_safe_start.py``, wired by the startup module ``scripts/startup/angelo_start_guard.py``,
@@ -205,15 +309,20 @@ which Blender registers before it enables add-ons):
   its lock goes, so a removal held up by another reader leaves nothing that reads as a crash; a found record that
   cannot be removed yet is marked found, never found twice. A record cut short is no crash, and goes once a minute
   old.
-  *Known limitation (1.0.11):* on Windows the crashed process keeps its record locked while its crash dialog is
-  open. A launch started from elsewhere while the dialog is still open (not from its Restart), or one that finds
-  the crashed process still ending after the 2.5-second wait, opens normally, and the launch after the crashed
-  process has ended opens safely. The whole-class fix, the crash handler releasing the record's lock before it
-  shows the dialog, is planned for the next release.
-* **Completed** means Angelo's start-up has run what it owes this launch (``intro.startup_done``: the layout and the
-  card that follows the splash) and the window has run two seconds more; or three minutes have passed. A crash
-  after that is not a crash at start. A quit before it ends the record too, except on a launch that left add-ons
-  off and has not yet saved them off: that record stays, so the next launch leaves them off again.
+  On Windows the crashed process lives on while its crash dialog is open, still holding its record, so its crash
+  handler (``creator_signals.cc``, ``crash_mark_start_record``) first marks that record crashed: a ``.crashed``
+  file beside it, for the record ``ANGELO_START_RECORD`` names (``<pid>|<path>``, set by ``angelo_safe_start`` for
+  this process's newest held record; a child that inherits it is never marked). A launch made while the dialog is
+  open, from its Restart or from the icon, finds the marked record at once and opens safely. (1.0.11 had no mark:
+  such a launch opened normally unless the crashed process ended within the 2.5-second wait.)
+* **Completed** means Angelo's start-up has run what it owes this launch (``intro.startup_done``: the layout, the
+  card that follows the splash, an update's settings import and the start-up file it reloads) and the window has run
+  two seconds more; or three minutes have passed. Each bound is an instant (the reading it counts from plus the
+  duration) that later readings are compared with, never a difference of two readings compared with the duration:
+  the two disagree where the sum rounds (a clock reading just under a power of two), which decided a test on
+  Windows by the machine's uptime (``Completion``). A crash after that is not a crash at start. A quit before it
+  ends the record too, except on a launch that left add-ons off and has not yet saved them off: that record stays,
+  so the next launch leaves them off again.
 * **Add-ons enabled later in the session.** Blender enables add-ons again on every preference read: the setup
   card's settings import and the one in File > Defaults (which copy the preferences first), Revert to Saved
   Preferences, factory preferences, an application template. ``prefs_reload`` runs that step inside
@@ -224,13 +333,57 @@ which Blender registers before it enables add-ons):
   without them once the start completes, and one notice (``angelo_agent.safe_start_notice``, its own card kind,
   translated) names them by their own names and says how to turn one back on (Preferences > Add-ons). One
   that crashes again is left off again on the next launch.
+* **Which one it was.** Around each add-on of the person's that Blender enables while a record is held, a
+  ``.loading`` file beside the record lists the add-ons being enabled, outermost first (one's ``register`` may enable
+  another), rewritten in place on one open file (``Held.note_loading``; a file of its own, so a crash while it is
+  written never cuts the record short). The launch that finds the record leads its notice with the innermost one it
+  left off: "Angelo stopped while <add-on> was loading" (something else, such as an earlier add-on's thread, may have
+  ended it then), then the others left off. A crash outside any add-on's enabling names none. Shipped add-ons are
+  never written: the cost is one small write per add-on of the person's.
+* **Add-ons that raise as they load.** Blender catches an add-on that raises as it imports or registers (a newer
+  Blender's API removed something it uses), prints the traceback to the console and goes on; the start completes,
+  so no record says so, and the add-on stays enabled and fails again at every launch. While a start or an enabling
+  runs, ``scripts/modules/angelo_addon_failures.py`` wraps ``addon_utils.enable``: each of the person's add-ons that
+  fails is collected with a one-line cause (its first error's type and first line, folders shortened to the file's
+  name, so no home folder shows). Once the start completes, the ones still enabled and not loaded since are named
+  on one notice (its own card kind, translated): a row each with its cause and **Turn off**, which the person clicks
+  (as the Add-ons list's checkbox, then the preferences saved whatever Auto-Save says: the person asked for it);
+  past five, how many more, which the console names. Nothing is undone or turned off by itself, exactly as stock Blender: what a ``register`` that raised
+  part-way set up stays until Angelo restarts without the add-on (classes and the properties that use them, menu
+  and header functions, draw handlers, timers, keymap items, tools, message-bus subscriptions, translations).
+  Undoing it is not safe: a registered ``PropertyGroup`` that a runtime pointer property still uses is freed under
+  that property, a native crash stock Blender never has. So a start names a failing add-on again at every launch
+  until it is turned off or loads; a transient failure (a studio server offline) costs nothing. An add-on that is
+  not installed at all is no failure (Blender's own line says so), Angelo's own and Blender's are never named, and
+  one that loads on a later try in the same window is not named. An extension Blender finds incompatible is named
+  too and stays enabled, so it comes back on its own once an update makes it compatible. An import's or update's
+  notice names the add-ons that did not load and are not installed (five, then how many more) and only counts
+  those that failed, which their own notice names with causes, so none is named twice. Without Angelo's add-on
+  enabled, only the console names them. An add-on
+  importable only from outside the add-on folders (``site-packages``) counts as shipped and is never named.
+* **The left-off add-ons are saved off.** A launch that left add-ons off saves the preferences once its start
+  completes (``wm.save_userpref``), whatever Auto-Save Preferences says, with any other change still in memory, so
+  a later normal start does not load them again.
+* ``isolate`` decides whether a launch leaves third-party add-ons off (today: a start that never completed), so
+  another reason, such as the first launch after a move to a newer Blender base, is one more condition there.
 * **Where it does nothing.** ``--background`` runs and ``--factory-startup`` keep no record. A normal start costs
-  one small file created, locked, written and removed, and a half-second timer for its first seconds.
+  one small file created, locked, written and removed, a half-second timer for its first seconds, a cached
+  shipped-or-not lookup per add-on Blender enables and two in-place writes of ``.loading`` around each add-on of the
+  person's.
 
-``test_blender_settings_import``'s ``crashing`` group proves it end to end: a stock Blender folder enables an
-add-on that crashes natively as it loads; the setup card's import ends in that crash, the next launch opens with
-it off and the notice, and the one after opens normally with it still off. ``test_native_safe_start.py`` holds
-the record's state machine.
+The update gate's ``--crashing-addon`` case proves it end to end (``releasing.rst``, "Update carry-over gate"):
+the update's first launch dies in a seeded add-on's native crash, the next opens with it off and the notice, and
+the one after opens normally with it still off. ``test_blender_settings_import``'s ``crashing`` group does the same
+for an import from a stock Blender folder. ``test_native_safe_start.py`` holds the record's state machine.
+
+**What a person sees on Windows.** A crash in a windowed Angelo writes the crash log, then shows Angelo's crash dialog
+("Angelo has stopped working", naming the crash log; Restart, View Crash Log, Close) and waits: the crash watchdog
+stands down once it is up, and the process ends (exit 11) only when it is closed. The next launch opens with the
+third-party add-ons off and the notice. Restart starts Angelo again from the dialog, while the crashed process is
+still ending; that start, like any launch made while the dialog is open, opens safely (the crash handler marked
+the record crashed before the dialog). The gate's windowed launches wait through that dialog
+(``crash_dialog``): it reads the dialog's texts and presses its Close button through UI Automation, and the crashing
+launch must show it, end with exit 11 after Close and leave the crash log; nothing suppresses the dialog.
 
 Going back to an earlier version
 --------------------------------
@@ -278,10 +431,9 @@ Defaults > Import Blender Settings…** (also in Preferences > Save & Load).
 confirmation card and the result notice. ``blender_folders.py`` is the one place
 that names stock Blender's folders; ``migrate_user_folder.py`` reads it too.
 
-* **Which folder.** On the setup card an earlier Angelo version's folder wins (an
-  Angelo upgrade), and Blender's own import copies it unchanged
-  (``preferences.copy_prev``: everything, the agent state included, and the
-  start-up file reloaded when nothing changed yet). Otherwise, and always from the
+* **Which folder.** An earlier Angelo version's folder wins (an Angelo update):
+  it is copied on its own at the update's first launch, without the setup card
+  ("Moving to a newer Blender base" above). Otherwise, and always from the
   menu, stock Blender's folder: the newest version that is not newer than Angelo's
   Blender version (5.2 first), down to the previous major release as Blender's own
   import searches, and that holds something to bring: macOS
@@ -873,13 +1025,38 @@ script stops with a message naming any of them that is missing::
   ``ocloc*.zip``; either way every ``.exe`` and ``.dll`` beside its ``ocloc.exe``
   must carry Intel Corporation's signature before ``OCLOC_INSTALL_DIR`` names that
   folder. No display driver is installed: CUDA
-  gets its compiler and runtime parts only, never ``Display.Driver``, and the
+  gets its compiler and runtime parts only, never ``Display.Driver`` (CUDA 13
+  moved ``crt`` and ``nvvm``, the ``cicc`` front end nvcc runs for every kernel,
+  out of ``nvcc`` into parts of their own, so both are requested). Each CUDA must
+  then hold every program and header nvcc runs (``cicc``, ``ptxas``,
+  ``fatbinary``, ``nvlink``, ``cudafe++``, the ``crt`` headers) or the stage fails
+  naming the missing file; an earlier run's install that lacks one is installed
+  again, and a changed ``windows_toolkits.ps1`` reruns the stage like a changed
+  pin file. The
   HIP bundle (``AMD-Software-PRO-Edition-...-For-HIP.exe``, whose documented
   ``-install`` installs "both driver and applications") is not run: only the
   SDK's own MSIs inside it (SDK core, runtime compiler, ray tracing), each
   signature checked again, go through ``msiexec``, and the Radeon driver and
   software beside them are never extracted. ``angelo-hip-args`` set on the VM
-  runs the bundle itself with those arguments instead. A refused or failed
+  runs the bundle itself with those arguments instead. The installed set is
+  pinned: ``scripts/angelo/windows_toolkit_pins.json`` names each installer the
+  release takes (OptiX SDK, each CUDA toolkit, the HIP SDK) by the SHA-256 of the
+  vendor's own file, at the versions Blender pins for its release builds. An
+  installer in ``toolkits/`` whose SHA-256 is not pinned is skipped with a log
+  line and never installed, a pinned installer missing from the folder fails the
+  stage, and a pin whose ``sha256`` is still ``TBD`` fails it before anything
+  runs. ``OPTIX_ROOT_DIR`` names the SDK whose ``optix.h`` reports the pinned
+  version and ``HIP_PATH`` the pinned HIP version's folder, also beside an older
+  install. ``<toolkits>\toolkits-installed.json`` records what was installed
+  (each pin's version, SHA-256 and signer, the OptiX and HIP folders and the
+  ``CUDA_PATH_V*`` folders) for the build's record, and ``gpu_sdk_pins.py``
+  judges the versions against Blender's pins before configuring. A pin's
+  SHA-256 is recorded only after the file matched its vendor's published
+  checksum (or came from the vendor's own site where none is published) and its
+  signature is ``Valid``. Intel's ``ocloc`` is pinned the same way, and
+  ``OCLOC_INSTALL_DIR`` names the ``ocloc.exe`` whose file version ends in the
+  pinned version (Intel numbers it like its graphics driver, ``32.0.101.8424``),
+  never simply the newest oneAPI ``ocloc`` on the machine. A refused or failed
   installer leaves the stage to run again next time, and the build then stops
   in seconds for the missing toolkit. ``release-build`` sends ``HEAD``, runs only this
   stage and then ``wait-off``, which waits for the run's end and confirms the

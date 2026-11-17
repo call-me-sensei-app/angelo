@@ -43,7 +43,9 @@ bool live_is_part(PyObject *object);
 PyObject *live_draw(PyObject *self, PyObject *args, PyObject *kwds);
 PyObject *live_camera_draw(PyObject *self, PyObject *args, PyObject *kwds);
 PyObject *live_region_tabs(PyObject *self, PyObject *area);
-PyObject *live_shader_state(PyObject *self, PyObject *args);
+PyObject *live_shader_state(PyObject *self, PyObject *args, PyObject *kwds);
+PyObject *live_pipeline_stats(PyObject *self, PyObject *args);
+PyObject *live_pipelines_pending(PyObject *self, PyObject *args);
 PyObject *live_shown_state(PyObject *self, PyObject *args);
 /** The input hold and the window capture (`bpy_angelo_live_hold.cc`): see the module's method table. */
 PyObject *live_hold(PyObject *self, PyObject *args);

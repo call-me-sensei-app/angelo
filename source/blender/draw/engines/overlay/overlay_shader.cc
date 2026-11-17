@@ -77,6 +77,7 @@ void ShaderModule::compile_async()
   depth_curves.ensure_compile_async();
   depth_grease_pencil.ensure_compile_async();
   depth_mesh.ensure_compile_async();
+  depth_gsplat.ensure_compile_async();
   depth_pointcloud.ensure_compile_async();
   extra_grid.ensure_compile_async();
   extra_ground_line.ensure_compile_async();
@@ -92,6 +93,7 @@ void ShaderModule::compile_async()
   fluid_velocity_needle.ensure_compile_async();
   fluid_velocity_streamline.ensure_compile_async();
   grid.ensure_compile_async();
+  gsplat_points.ensure_compile_async();
   image_plane_depth_bias.ensure_compile_async();
   lattice_points.ensure_compile_async();
   lattice_wire.ensure_compile_async();
@@ -111,6 +113,7 @@ void ShaderModule::compile_async()
   outline_detect.ensure_compile_async();
   outline_prepass_curves.ensure_compile_async();
   outline_prepass_gpencil.ensure_compile_async();
+  outline_prepass_gsplat.ensure_compile_async();
   outline_prepass_mesh.ensure_compile_async();
   outline_prepass_pointcloud.ensure_compile_async();
   outline_prepass_wire.ensure_compile_async();

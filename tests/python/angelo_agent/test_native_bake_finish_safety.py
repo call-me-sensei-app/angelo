@@ -130,5 +130,54 @@ class BakeFinishTests(unittest.TestCase):
         self.assertEqual(len(runner.images[0].pixels), 8)
 
 
+class BakeOutputsTests(unittest.TestCase):
+    """The real ``_outputs`` (the cases above stand it in): a bake with no output names what it wrote and checks no
+    folder; one with an output checks its folder before Blender saves into it (the 2.0.0 cut's Mac GUI round on
+    3fc1f94: the folder check ran for a bake without an output, whose staging is None, and failed every such job)."""
+
+    @classmethod
+    def setUpClass(cls):
+        with patch.dict(sys.modules, {"bpy": ModuleType("bpy")}):
+            cls.bakes = importlib.import_module("angelo_agent.job_bakes")   # The cases patch its own targets module.
+
+    def outputs(self, runner, order=None):
+        world = ModuleType("angelo_agent.action_world")
+        world.image_id = lambda image: "img:" + image.name
+        checked = []
+
+        def check(path):   # The write check, recorded where it ran among the folder's verify and the saves.
+            checked.append(path)
+            if order is not None:
+                order.append(("check", path))
+            return path
+        with patch.dict(sys.modules, {"angelo_agent.action_world": world}), \
+                patch.object(self.bakes.targets, "is_tiled", lambda image: False), \
+                patch.object(self.bakes.owned_paths, "require_writable", check):
+            return runner._outputs(), checked
+
+    def runner(self, output, staging):
+        runner = self.bakes.TextureBakeRunner.__new__(self.bakes.TextureBakeRunner)
+        runner.images, runner.request, runner.tiles = [Image("Baked", True)], {"bake_type": "NORMAL"}, {}
+        runner.output, runner.staging = output, staging
+        return runner
+
+    def test_a_bake_without_an_output_lists_what_it_wrote_and_checks_no_folder(self):
+        entries, checked = self.outputs(self.runner(None, None))
+        self.assertEqual((entries, checked), ([{"image": "img:Baked", "name": "Baked", "map": "NORMAL"}], []))
+
+    def test_a_bake_with_an_output_checks_its_folder_before_saving_into_it(self):
+        order = []
+        staging = type("Staging", (), {"path": Path("/staged"), "verify": lambda self: order.append("verify")})()
+        image = Image("Baked", True)
+        image.save = lambda filepath, save_copy: order.append(("save", filepath))
+        runner = self.runner(Path("maps"), staging)
+        runner.images = [image]
+        with patch.object(self.bakes.targets, "copy_name", lambda image, taken: "Baked.png"):
+            entries, checked = self.outputs(runner, order)
+        self.assertEqual(checked, [Path("/staged")])
+        self.assertEqual(order, [("check", Path("/staged")), "verify", ("save", str(Path("/staged") / "Baked.png"))])
+        self.assertEqual(entries[0]["file"], "Baked.png")
+
+
 if __name__ == "__main__":
     unittest.main()

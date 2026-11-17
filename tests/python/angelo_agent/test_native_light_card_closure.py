@@ -154,7 +154,8 @@ class ThemeCardTests(unittest.TestCase):
             'font_watch': SimpleNamespace(checks={'reloads': 0}), '_language': lambda: 'en_US',
             'canvas_rtl': SimpleNamespace(begin=lambda *args: None, end=lambda: None),
             'card_draw': SimpleNamespace(draw=lambda view, plan: draws.append(plan.colours)),
-            'gpu': SimpleNamespace(state=SimpleNamespace(blend_set=lambda value: None))})
+            'gpu': SimpleNamespace(state=SimpleNamespace(blend_set=lambda value: None)),
+            'card_input': SimpleNamespace(sync=lambda state, region=None: None)})   # Where its grants are drawn (approval_arming).
         import angelo_agent
         with patch.object(angelo_agent, 'connect_hero', hero, create=True):
             for variant in ('dark', 'light', 'light'):

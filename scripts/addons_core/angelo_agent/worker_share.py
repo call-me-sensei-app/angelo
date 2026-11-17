@@ -18,6 +18,8 @@ import os
 import shutil
 from pathlib import Path
 
+from . import owned_paths
+
 
 def share(worker, controller, session, arguments):
     """Each image ``controller`` holds that a view in ``arguments`` names, in ``worker``'s store for ``session``."""
@@ -40,10 +42,12 @@ def share(worker, controller, session, arguments):
                 continue
             made += folders(Path(private) / STATE, target.parent)
             try:
+                owned_paths.require_writable(target)
                 os.link(source, target)
             except FileNotFoundError:
                 raise
             except OSError:   # Another volume, or links refused: a copy.
+                owned_paths.require_writable(target)
                 shutil.copy2(source, target)
             made.append(target)
     except FileNotFoundError:   # Its state folder went with its end.
@@ -51,6 +55,7 @@ def share(worker, controller, session, arguments):
     if made and not alive():   # Its end overtook this share: what it made goes, and the folders it emptied.
         for path in [*reversed(made), Path(private) / STATE, Path(private)]:
             try:
+                owned_paths.require_writable(path)
                 path.rmdir() if path.is_dir() and not path.is_symlink() else path.unlink()
             except OSError:
                 pass   # Never a folder that still holds anything (a dead worker's log stays for its stop).
@@ -62,7 +67,7 @@ def folders(state, folder):
     made = []
     for level in reversed([folder, *folder.parents][:len(folder.relative_to(state).parts)]):
         try:
-            level.mkdir(mode=0o700)
+            owned_paths.require_writable(level).mkdir(mode=0o700)
             made.append(level)
         except FileExistsError:
             pass

@@ -287,7 +287,7 @@ def tick():
             state["phase"] = "open_card"
             return .5
         if phase == "open_card":
-            bpy.ops.angelo.ai_render()
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().ai_render()
             state["phase"] = "card"
             return .6
         if phase == "card":

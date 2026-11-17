@@ -10,7 +10,7 @@ import json
 import os
 import uuid
 
-from . import shared_replace
+from . import owned_paths, shared_replace
 
 
 def write_receipts(path, records, limit):
@@ -19,6 +19,7 @@ def write_receipts(path, records, limit):
     True when written; on any failure the temporary file is removed and the old file stays."""
     temporary = path.with_name(".performance-" + str(uuid.uuid4()) + ".tmp")
     try:
+        owned_paths.require_writable(path)   # C first: no temporary is made beside a target it refuses.
         encoded = json.dumps({"version": 1, "requests": records}, ensure_ascii=False, allow_nan=False)
         while len(encoded.encode("utf-8")) > limit and records:
             # The budget is fixed; receipts are not all one size. The file keeps the newest that fit.

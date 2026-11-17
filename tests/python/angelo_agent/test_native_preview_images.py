@@ -40,7 +40,7 @@ class PreviewImageLifecycleTests(unittest.TestCase):
             self.assertFalse(images.prepared(self.descriptors[0], self.controller))
             self.assertEqual(self.bpy.data.images.load.call_count, 1)
             self.bpy.data.images.remove.assert_called_once_with(self.image)
-            self.assertEqual(self.image.colorspace_settings.name, 'Non-Color')
+            self.assertIs(self.image.colorspace_settings.is_data, True)   # The data role (color_spaces).
             self.assertEqual(images.prepare([self.controller]), 1)
             self.assertEqual(images.prepare([self.controller]), 0)
             self.assertEqual(self.bpy.data.images.load.call_count, 2)

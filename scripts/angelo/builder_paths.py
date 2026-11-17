@@ -75,6 +75,11 @@ SECRETS = {
     "Google API key": r"AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])",
     "Stripe live key": r"(?:sk|rk)_live_[0-9A-Za-z]{24,}",
 }
+# The marker a diagnostic build embeds when it is made without the agent-script confinement (CMake
+# ANGELO_GUARD_DIAG_NO_INSTALL; bpy_angelo_guard_confine_run.cc): never in what ships, never allowed. Joined at run
+# time so neither this file nor its bytecode holds it.
+DIAGNOSTIC_MARKER = "_".join(("ANGELO", "GUARD", "DIAGNOSTIC", "BUILD", "NOT", "FOR", "RELEASE"))
+DIAGNOSTIC_KIND = "diagnostic build without the agent-script confinement"
 # Files that are build output, never part of an installer: refused by type, whatever they hold.
 BUILD_ARTIFACTS = (".pdb", ".exp", ".ilk", ".iobj", ".ipdb", ".obj", ".lib")
 
@@ -162,6 +167,8 @@ def _rules(identity, folders=()):
     rules += [("builder folder", re.compile(_folder_pattern(folder), re.I), "identity",
                max(re.split(r"[\\/]+", folder), key=len).lower().encode()) for folder in folders]
     rules += [(kind, re.compile(pattern.encode()), "secret", ANCHORS[kind]) for kind, pattern in SECRETS.items()]
+    rules.append((DIAGNOSTIC_KIND, re.compile(re.escape(DIAGNOSTIC_MARKER.encode())), "diagnostic",
+                  DIAGNOSTIC_MARKER.lower().encode()))
     return rules
 
 
@@ -177,8 +184,8 @@ def load_allow(path=ALLOW_FILE):
 
 
 def _allowed(allow, relative, text, rule_class):
-    if rule_class == "secret" or rule_class == "identity":
-        return None  # never allowed: a credential or this machine's own name
+    if rule_class in ("secret", "identity", "diagnostic"):
+        return None  # never allowed: a credential, this machine's own name or a build without the confinement
     for globs, match, reason in allow:
         if match.fullmatch(text) and any(fnmatch.fnmatchcase(relative, glob) for glob in globs):
             return reason
@@ -310,6 +317,30 @@ def scan(folder, identity=None, allow=None, folders=None, only=None):
     if report["files"] == 0:
         raise ScanError("%s holds no files: nothing was scanned" % folder)
     return report
+
+
+def diagnostic_files(folder):
+    """Folder-relative paths of the files below ``folder`` that hold ``DIAGNOSTIC_MARKER``: a build made without the
+    agent-script confinement. Read in overlapping blocks, so a file of any size is scanned whole."""
+    marker = DIAGNOSTIC_MARKER.encode()
+    found = []
+    for root, dirs, files in os.walk(folder):
+        dirs.sort()
+        for name in sorted(files):
+            path = Path(root, name)
+            if path.is_symlink() or not path.is_file():
+                continue
+            tail = b""
+            with open(path, "rb") as handle:
+                while True:
+                    block = handle.read(1 << 20)
+                    if not block:
+                        break
+                    if marker in tail + block:
+                        found.append(path.relative_to(folder).as_posix())
+                        break
+                    tail = block[-len(marker):]
+    return found
 
 
 def scan_disk_image(path, runner=None):

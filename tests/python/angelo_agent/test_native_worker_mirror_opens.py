@@ -16,6 +16,7 @@ The worker side is faked: frames are what ``worker_chat_events`` sends, each tag
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import sys
@@ -252,11 +253,11 @@ class ParkRaceTests(queue_base.Fixture, lifecycle_tests.Base):
         chat, process = self.running("w1", process)
         self.host("w1", process)
         gate = __import__("threading").Event()
-        with mock.patch.object(lifecycle, "close_chat", lambda session, reason: gate.wait(1) or True):
+        with mock.patch.object(lifecycle, "close_chat", lambda session, reason: gate.wait(CAP_S) or True):
             worker_queue.tick()
             chat._request_generation = getattr(chat, "_request_generation", 0) + 1   # The person's message.
             gate.set()
-            self.assertTrue(worker_queue._parking["w1"]["done"].wait(1))
+            self.assertTrue(worker_queue._parking["w1"]["done"].wait(CAP_S))
         worker_queue._finish_parks(self.ui)
         self.assertIn("w1", worker_queue.parked)
         self.assertNotIn("w1", worker_queue._held)

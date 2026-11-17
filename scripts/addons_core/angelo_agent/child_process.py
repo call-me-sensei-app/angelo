@@ -33,6 +33,8 @@ import subprocess
 import threading
 import time
 
+from . import owned_paths
+
 CREATE_SUSPENDED = 0x00000004
 CREATE_NO_WINDOW = 0x08000000
 IMAGE_SUBSYSTEM_WINDOWS_GUI = 2
@@ -198,6 +200,8 @@ class _WindowsJob:
             if not pids:
                 return
             for pid in pids:
+                if not owned_paths.process_ours(pid):   # Only this process's own descendants (C's record), whatever
+                    continue                            # a handle held in Python state lists.
                 process = self.kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
                 if process:
                     self.kernel32.TerminateProcess(process, 1)

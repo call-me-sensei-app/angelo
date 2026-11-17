@@ -82,10 +82,10 @@ class CropReuseTests(unittest.TestCase):
         from angelo_agent.flow_graph import SPLIT_ALGORITHM, split_key
         addon = ROOT / "scripts/addons_core/angelo_agent"
         digests = (rules_digest(addon / "flow_parts.py"), rules_digest(addon / "flow_split_host.py", {"_pixels", "_png", "_work"}))
-        self.assertEqual((SPLIT_ALGORITHM, digests), (2, ("1ae362dcca6f", "d55a997fddc7")),
+        self.assertEqual((SPLIT_ALGORITHM, digests), (3, ("1ae362dcca6f", "ae9bd5e24330")),
                          "the split's code changed: bump flow_graph.SPLIT_ALGORITHM and record the new digests")
         node = {"rows": 2, "slots": [{"id": "body", "kind": "BODY"}]}
-        with mock.patch("angelo_agent.flow_graph.SPLIT_ALGORITHM", 3):
+        with mock.patch("angelo_agent.flow_graph.SPLIT_ALGORITHM", 4):
             changed = split_key("sheet", node)
         self.assertNotEqual(split_key("sheet", node), changed, "a new split algorithm is a new key")
 

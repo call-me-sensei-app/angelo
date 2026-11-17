@@ -187,12 +187,34 @@ class TemplateTests(unittest.TestCase):
         if categories:
             self.assertGreaterEqual(categories, {"plural:one", "plural:other", "plural:few", "plural:many"})
 
+    def test_every_plural_call_names_its_forms_as_literals(self):
+        """The extractor makes a counted family's plural:<category> entries only from literal forms, and plural_
+        looks up only those, so a family passed through variables shows in English in every language."""
+        found = []
+        for path in sorted(sources.ADDON.glob("*.py")) + [sources.ROOT / name for name in sources.STARTUP_FILES]:
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                name = getattr(node, "func", None)
+                name = getattr(name, "id", getattr(name, "attr", None)) if name is not None else None
+                if name == "plural_" and not (len(node.args) >= 3 and all(
+                        isinstance(arg, ast.Constant) and isinstance(arg.value, str) for arg in node.args[1:3])):
+                    found.append(f"{path.name}:{node.lineno}")
+        self.assertEqual([], found, "plural_(count, \"{count} thing\", \"{count} things\") with literal forms")
+
     def test_each_message_is_in_the_template_once(self):
         self.assertEqual(len(self.template), len(self.keys), "one entry per (context, message)")
 
     def test_template_has_no_padded_fragments(self):
+        """A message is a whole sentence or label, never a piece padded to be joined to another. The one end a
+        message may have is the line break its C or C++ literal has: the catalogue is looked up with the literal
+        as written, and upstream ends some reports and its graphics-card dialog line that way ("Graphics card:" and
+        a line break; translated here because Blender's catalogues hold none of them:
+        ``test_native_translation_cpp_text``)."""
         for entry in self.template:
-            self.assertEqual(entry.id.strip(), entry.id, entry.id)
+            origins = [line[len("src: "):] for line in entry.extracted if line.startswith("src: ")]
+            from_c = bool(origins) and all(origin.startswith("source/") and origin.endswith((".cc", ".c", ".hh", ".h"))
+                                           for origin in origins)
+            text = entry.id[:-1] if from_c and entry.id.endswith("\n") else entry.id
+            self.assertEqual(text.strip(), text, entry.id)
 
 
 class CatalogueTests(unittest.TestCase):

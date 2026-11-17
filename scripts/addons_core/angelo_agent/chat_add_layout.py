@@ -26,6 +26,8 @@ TILE, TITLE_X, CHEVRON, END = 28, 42, 18, 8
 TITLE, TITLE_LINE = 12.5, 14.5
 WHY, WHY_LINE, STRIP_PAD = 11.5, 14, 16
 LINK, LINK_ICON, LINK_GAP = 28, 18, 18
+LINK_WRAPPED = 24          # A footer row's height when its links take more than one row (three links in a long
+                           # language): two rows then cost 48, which still fits every language at 1280 x 800.
 ATTACH_PAD = 42            # The Attach button: its + and padding beside its label.
 SEARCH_SIZE, SEARCH_PAD = 12.5, 44   # The search field's text size and its icon and padding (chat_add_draw).
 PAGE_HEADER, RESULT, PAGE_ROW = 36, 38, 46   # PAGE_ROW: a page's row (chat_add_menu.HEIGHTS["row"]).
@@ -105,7 +107,8 @@ def place(items, measure, wrap, width, height, bottom, hint="", scroll=0, notes=
                 lx = 0
             lx += (LINK_GAP if link_rows[-1] else 0) + lw
             link_rows[-1].append((index, lw))
-    links_height = LINK * len(link_rows) if link_rows[0] else 0
+    link_height = LINK if len(link_rows) == 1 else LINK_WRAPPED
+    links_height = link_height * len(link_rows) if link_rows[0] else 0
     footer = strip_height + links_height
     content = PAD + BAR + BAR_GAP + grid_height + footer + PAD
     # However short the chat, a row of tiles (or a page's first row) stays in the list; the popup may reach past its top.
@@ -139,10 +142,10 @@ def place(items, measure, wrap, width, height, bottom, hint="", scroll=0, notes=
             cells.append({"index": index, "rect": (cx, top + 1, full if span else cw, rh - 2), "lines": lines})
     links, ly = [], y + PAD + links_height
     for line in link_rows:
-        ly -= LINK
+        ly -= link_height
         lx = x + 12
         for index, lw in line:
-            links.append((index, (lx, ly, lw, LINK)))
+            links.append((index, (lx, ly, lw, link_height)))
             lx += lw + LINK_GAP
     return {"rect": (x, y, w, h), "columns": cols, "search": search, "attach": attach, "attach_compact": compact,
             "headings": headings,

@@ -35,6 +35,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from . import owned_paths
 from . import (app_version, update_delta, update_download, update_feed, update_hold, update_install,
                update_stage_mac, update_stage_win)
 from .update_download import DownloadError, Expected
@@ -119,7 +120,12 @@ class Preparer:
         return "platform", ""
 
     def work(self, version):
-        return self.root / version
+        """``<root>/<version>``. ``version`` comes from Python state a script can change in place (an offer, a
+        ``Ready``): only one folder name that reads as a version is taken, so no removal or stage reaches another
+        folder, Angelo's private ones included (``ValueError``; p10c-1-update)."""
+        if app_version.parse(version) is None:
+            raise ValueError("Not one update version: %r" % (version,))
+        return self.root / owned_paths.entry_name(version)
 
     def prepare(self, release, download, cancel=None, limit=None, progress=None):
         """A ``Ready`` for ``release``; raises ``PrepareError``. ``download`` is this platform's feed entry."""
@@ -143,6 +149,7 @@ class Preparer:
         return ready
 
     def _prepare_held(self, release, download, work, install_root, cancel, limit, progress):
+        owned_paths.require_writable(work)
         known = self.recall(release.version, download)   # Also what a stopped worker before this one finished.
         if known is not None:
             return known
@@ -176,6 +183,7 @@ class Preparer:
             raise PrepareError("download:" + error.code, error.transient) from None
 
     def _prepare_mac(self, release, download, work, app, options):
+        owned_paths.require_writable(work)
         reserve = UNPACKED_FACTOR["macos"] * download.size
         delta = download.delta_from(self.current, DELTA_FORMATS)
         if delta is not None and not update_feed.installable(delta.url):
@@ -207,6 +215,7 @@ class Preparer:
                      "1" if self.mac.approved(app) else "")
 
     def _prepare_windows(self, release, download, work, root, options):
+        owned_paths.require_writable(work)
         reserve = UNPACKED_FACTOR["windows"] * download.size
         installer = self._fetch(download, work, "update.msi", reserve, options)
         try:
@@ -243,8 +252,17 @@ class Preparer:
     def still_valid(self, ready):
         """Cheap re-check before installing: this install's, and the staged bundle unchanged or the installer's
         digest. The installer verifies the signature (macOS) or the digest (Windows) again right before it swaps."""
+        # Held to what staging made, whatever the ``Ready`` (Python state) says now: its version's own folder under
+        # the updates folder, this platform, and the one payload there (p10c-1-update).
+        try:
+            work = self.work(ready.version)
+        except ValueError:
+            return False
         payload = Path(ready.payload)
-        if Path(ready.work) not in payload.parents or not _same_path(ready.install_root, self.support()[1]):
+        staged = work / "staged" / Path(ready.install_root).name if ready.family == "macos" else None
+        if (ready.family != self.family or Path(ready.work) != work
+                or (payload != staged if staged is not None else payload.parent != work)
+                or not _same_path(ready.install_root, self.support()[1])):
             return False
         try:
             if ready.family == "macos":
@@ -282,11 +300,16 @@ class Preparer:
         """Remove one version's folder, whatever it holds (the person chose not to take that version); a worker
         still writing there removes it as it stops. ``unless``: asked right before removing (the person changed
         their mind meanwhile). Returns the names removed now."""
-        folder = self.work(version)
+        try:
+            folder = self.work(version)
+        except ValueError:
+            return []   # Not a version's name: nothing of the updates folder's.
         return [version] if folder.is_dir() and self._remove(folder, unless) else []
 
     def _remove(self, folder, unless=None):
+        owned_paths.require_writable(folder)
         def remove():
+            owned_paths.require_writable(folder)
             if self.family == "macos":
                 self.mac.release_mount(folder / "mount")   # A disk image a quit left attached.
             shutil.rmtree(folder, ignore_errors=True)

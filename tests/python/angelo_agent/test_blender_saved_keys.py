@@ -136,7 +136,7 @@ def main():
     saved_keys_ui.start(ui, background=False, backend=fake, platform=FAKE_PLATFORM)
     profile = profile_id(ui.connection_directory())
 
-    result = bpy.ops.angelo.new_connection('EXEC_DEFAULT', group="CODING", provider="XAI", method="API_KEY",
+    result = __import__("angelo_agent.grant_guard").grant_guard.stand_in().new_connection('EXEC_DEFAULT', group="CODING", provider="XAI", method="API_KEY",
                                             connection_name="Grok QA", api_key=KEY)
     grok = next(r for r in ui.connections().records.values() if r["mode"] == "grok_api")
     account = account_name(grok["id"], profile)
@@ -157,15 +157,15 @@ def main():
     report["longest_restart_pump_ms"] = round(longest * 1000, 3)
     check("main_thread_pump_stays_fast", longest < 0.25)
 
-    bpy.ops.angelo.new_connection('EXEC_DEFAULT', connection_id=grok["id"], api_key=OTHER, remember_key=False)
+    __import__("angelo_agent.grant_guard").grant_guard.stand_in().new_connection('EXEC_DEFAULT', connection_id=grok["id"], api_key=OTHER, remember_key=False)
     pump_until(idle)
     check("memory_only_replacement_deletes_saved_key", account not in fake.items and ui._memory_keys[grok["id"]] == OTHER)
     check("memory_only_is_labelled", "Key in memory only · enter it again after restarting" in _draw())
-    bpy.ops.angelo.new_connection('EXEC_DEFAULT', connection_id=grok["id"], remember_key=True)
+    __import__("angelo_agent.grant_guard").grant_guard.stand_in().new_connection('EXEC_DEFAULT', connection_id=grok["id"], remember_key=True)
     pump_until(idle)
     check("remember_current_key_without_retyping", fake.items.get(account) == OTHER)
 
-    bpy.ops.angelo.new_connection('EXEC_DEFAULT', group="CODING", provider="ANTHROPIC", method="API_KEY",
+    __import__("angelo_agent.grant_guard").grant_guard.stand_in().new_connection('EXEC_DEFAULT', group="CODING", provider="ANTHROPIC", method="API_KEY",
                                    connection_name="Claude QA", api_key=KEY)
     claude = next(r for r in ui.connections().records.values() if r["mode"] == "claude_api")
     claude_account = account_name(claude["id"], profile)
@@ -176,7 +176,7 @@ def main():
     check("approval_needed_is_actionable", "Keychain approval needed" in ui.connection_status(claude)
           and not ui.connection_ready(claude))
     before = len(fake.calls)
-    bpy.ops.angelo.connection_load_key('EXEC_DEFAULT', connection_id=claude["id"])
+    __import__("angelo_agent.grant_guard").grant_guard.stand_in().connection_load_key('EXEC_DEFAULT', connection_id=claude["id"])
     pump_until(lambda: ui.connection_ready(claude))
     check("explicit_load_is_the_only_prompting_call",
           [c[2] for c in fake.calls[before:]] == [True] and ui.connection_status(claude) == "API key configured")

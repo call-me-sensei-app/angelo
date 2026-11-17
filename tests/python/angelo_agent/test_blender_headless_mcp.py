@@ -274,7 +274,8 @@ def main():
         unapproved.write_text("result = {'made': None}\n")
         from angelo_agent import script_files
         script_files.attach(state)
-        script_files.allow(name, os.path.realpath(source), script_files.read_script(str(approved)))
+        from angelo_agent import grant_guard   # The person's Allow on the script file: the harness.
+        grant_guard.harness(script_files.allow, name, os.path.realpath(source), script_files.read_script(str(approved)))
         script_files.detach()
         result, timings["script_file_ms"] = client.call("angelo_run_script_file", {"file": str(approved)})
         check("an approved script file runs headless and is saved to the output",

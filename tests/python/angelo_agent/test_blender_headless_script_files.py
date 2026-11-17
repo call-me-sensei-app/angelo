@@ -102,7 +102,8 @@ def main():
     def approve():
         """What the window's "Always allow this file while it's unchanged" saves."""
         script_files.attach(state)
-        script_files.allow(name, os.path.realpath(source), script_files.read_script(str(build)))
+        from angelo_agent import grant_guard   # The person's Allow on the script file: the harness.
+        grant_guard.harness(script_files.allow, name, os.path.realpath(source), script_files.read_script(str(build)))
         script_files.detach()
 
     def session(extra=None):

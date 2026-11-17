@@ -311,7 +311,8 @@ class TrustedScriptsTests(unittest.TestCase):
 
     def test_the_in_app_tester_leaves_trusted_scripts_to_the_chat(self):
         source = (HERE / "eval_live_agent_session.py").read_text()
-        self.assertIn("self.controller.set_trusted_scripts(True)", source)
+        # The person's Trust scripts for this chat, stood in for through C's harness scope (the grant guard).
+        self.assertIn("grant_guard.harness(self.controller.set_trusted_scripts, True)", source)
         self.assertEqual(source.count("**self.configure()"), 2, "Subscription and team boot set it alike")
         # Trusted, always-allowed or Auto-bounded alike, for the lead and (the parallel arm) each of its workers' chats:
         # the chat runs those itself, so the tester never answers them first (a worker's bounded edit was "approved"

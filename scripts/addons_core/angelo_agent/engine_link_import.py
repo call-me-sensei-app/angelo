@@ -9,7 +9,7 @@ import os
 
 import bpy
 
-from . import engine_link_assets as assets, shared_replace
+from . import engine_link_assets as assets, owned_paths, shared_replace
 
 
 def working_file(asset, writing):
@@ -33,6 +33,10 @@ def working_file(asset, writing):
         print("Angelo engine link:", error)
         return {'CANCELLED'}
     assets.ensure_working_folder(asset)
+    # The working file is one C vouched for when the editor named its asset (``assets.inside``), whatever object
+    # names it now: a script that reached Python state can't make this replace or save land on a file of the person's.
+    owned_paths.require_writable(asset.editable)
+    owned_paths.require_writable(assets.previous_path(asset))
     if os.path.isfile(asset.editable):
         shared_replace.replace(asset.editable, assets.previous_path(asset), shown=asset.editable)   # Refused: raised.
     result = bpy.ops.wm.read_homefile(use_empty=True)

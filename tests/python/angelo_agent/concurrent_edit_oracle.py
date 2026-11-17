@@ -129,8 +129,19 @@ def batches(actor, phase):
              'job_id': '%s/%s/%d' % (actor, phase, offset // BATCH)} for offset in range(0, len(ids), BATCH)]
 
 
-def temporal_proof(events, jobs, pids, *, parallel):
-    """Actual mutation intervals, bounded by host admission/result clocks; no wait/sleep counts as work."""
+def overlap_required(variant):
+    """Whether a parallel run of this variant must show cross-process mutation overlap to be complete. Only the
+    lanes (``ANGELO_WORKER_CHAT_HOST=0``, the fallback path) are excused: they rarely overlap by design, which is
+    what hosting the worker's chat in its own Blender fixed, so their run is judged on correctness and its overlap
+    is reported (maintainer, 2026-10-27; every platform and side). The hosted path, and any variant not named
+    here, must overlap."""
+    return variant != 'lanes'
+
+
+def temporal_proof(events, jobs, pids, *, parallel, overlap_required=True):
+    """Actual mutation intervals, bounded by host admission/result clocks; no wait/sleep counts as work.
+    ``overlap_observed`` and ``reason`` say what happened whatever is required; without ``overlap_required`` a
+    parallel run with a valid proof is complete without overlap. No proof error is ever excused."""
     expected_jobs = {job['job_id']: job for job in jobs}
     found, errors = {}, []
     if len(expected_jobs) != len(jobs):
@@ -179,6 +190,10 @@ def temporal_proof(events, jobs, pids, *, parallel):
                             overlaps.append({'lead': lead['job_id'], 'worker': worker['job_id'],
                                              'overlap_ns': sum(row[2] for row in crossings),
                                              'mutation_pairs': len(crossings), 'first_indices': list(crossings[0][:2])})
-    return {'complete': not errors and (bool(overlaps) if parallel else True), 'errors': errors,
-            'overlap_pairs': overlaps, 'reason': 'invalid proof' if errors else
-            'observed mutation overlap' if overlaps else 'no mutation overlap observed' if parallel else 'serial control'}
+    complete = not errors and (bool(overlaps) or not overlap_required if parallel else True)
+    reason = ('invalid proof' if errors else 'observed mutation overlap' if overlaps else
+              'no mutation overlap observed' if parallel else 'serial control')
+    # Whether mutations overlapped is only known from a valid parallel proof (None: not known, or nothing to overlap).
+    return {'complete': complete, 'errors': errors, 'overlap_pairs': overlaps, 'reason': reason,
+            'overlap_observed': bool(overlaps) if parallel and not errors else None,
+            'overlap_required': bool(parallel and overlap_required)}

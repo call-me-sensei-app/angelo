@@ -2,6 +2,10 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
+/** \file
+ * \ingroup draw_engine
+ */
+
 #include "DNA_view3d_types.h"
 
 #include "DRW_engine.hh"
@@ -13,7 +17,7 @@ namespace blender::workbench {
 
 ShaderCache::ShaderCache()
 {
-  const std::string geometries[] = {"_mesh", "_curves", "_ptcloud"};
+  const std::string geometries[] = {"_mesh", "_curves", "_ptcloud", "_gsplat"};
   const std::string pipelines[] = {"_opaque", "_transparent"};
   const std::string lightings[] = {"_flat", "_studio", "_matcap"};
   const std::string shaders[] = {"_material", "_texture"};

@@ -13,6 +13,7 @@ import math
 import re
 
 from .scene_spec import HANDLE
+from . import read_only
 
 CHECK = "angelo_game_ready_check"
 METHODS = ("MESHOPT", "DECIMATE")
@@ -112,13 +113,16 @@ def _simplify(value):
     return out
 
 
+GAME_READY_PROPERTIES = frozenset(GAME_READY_TOOLS[0]["inputSchema"]["properties"])   # As registered, read only: an agent script's change to a spec's dict reaches no check (read_only).
+
+
 def validate_game_ready(name, args):
     """The canonical arguments of a game-ready check; ValueError for any that is not valid."""
     if name != CHECK:
         raise ValueError("Unknown game-ready tool")
     if not isinstance(args, dict):
         raise ValueError("Arguments must be an object")
-    allowed = set(GAME_READY_TOOLS[0]["inputSchema"]["properties"])
+    allowed = GAME_READY_PROPERTIES
     extra = set(args) - allowed
     if extra:
         raise ValueError("%s does not take: %s" % (CHECK, ", ".join(sorted(extra))))

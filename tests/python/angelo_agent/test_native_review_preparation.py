@@ -468,8 +468,11 @@ class CanvasTimerLifecycleTests(unittest.TestCase):
                               context=SimpleNamespace(preferences=SimpleNamespace(view=SimpleNamespace()),
                                                       window_manager=SimpleNamespace(windows=[])))
         from angelo_agent import live_windows
-        namespace = {"__package__": "angelo_agent", "bpy": bpy, "live_windows": live_windows, "_handler": None,
+        import module_namespace
+        namespace = {**module_namespace.relative_imports(source),   # What chat_view imports, then the stand-ins.
+                     "__package__": "angelo_agent", "bpy": bpy, "live_windows": live_windows, "_handler": None,
                      "_enabled": False, "composer_input": SimpleNamespace(forget=Mock()),
+                     "composer_ime": SimpleNamespace(clear=Mock()),   # Module state another test may leave.
                      "_input_generation": 0, "_views": {}, "_modals": set(), "_scroll": {},
                      "reload_fonts": Mock(), "draw": Mock(), "wrap": SimpleNamespace(cache_clear=Mock()),
                      "ANGELO_OT_chat_input": object, "gpu": SimpleNamespace(shader=SimpleNamespace(from_builtin=Mock()))}

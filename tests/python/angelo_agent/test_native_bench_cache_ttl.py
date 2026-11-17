@@ -12,6 +12,7 @@ check every request of it. No process, account or model is involved.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import platform_env
 
 import json
 import os
@@ -42,6 +43,81 @@ ROUNDING = 0.00005 + 1e-9   # list_cost rounds to 4 decimals.
 
 def split(five, hour):
     return dict(USAGE, cache_write_5m_input_tokens=five, cache_write_1h_input_tokens=hour)
+
+
+class SameLifetimeOnBothSidesTests(unittest.TestCase):
+    """Both sides of a Claude comparison write their prompt cache at one lifetime, set by the launcher.
+
+    Left to its own default, Claude Code on the MCP side writes 5-minute entries on a key-billed route, where a
+    new Angelo chat writes 1-hour ones (model_routing.cache_ttl): the sides would be cached and priced differently.
+    """
+
+    def test_the_runs_lifetime_is_angelos_and_the_mcp_side_is_launched_with_it(self):
+        import bench_mcp_trial as trial
+        from angelo_agent import model_routing
+        product = {model_routing.cache_ttl("claude", "interactive", billing) for billing in ("SUBSCRIPTION", "API_KEY")}
+        self.assertEqual(product, {"1h"}, "one lifetime for a new interactive chat on every billed route")
+        for arguments, expected in (([], "1h"), (["--angelo-cache-ttl", "5m"], "5m"), (["--angelo-cache-ttl", "1h"], "1h")):
+            args = bench.parse(arguments + ["--output", "/nonexistent/x"])
+            with self.subTest(arguments=arguments):
+                self.assertEqual(bench.claude_cache_ttl(args), expected)
+                config = bench.mcp_config(args, Path("/nonexistent/x"))
+                self.assertEqual(config["claude_cache_ttl"], expected)
+                # Whatever the harness's own environment holds, the MCP side's Claude Code gets the run's value.
+                inherited = {"PATH": "/usr/bin", "CLAUDE_CODE_PROMPT_CACHE_TTL": "5m" if expected == "1h" else "1h",
+                             "ENABLE_PROMPT_CACHING_1H": "1", "FORCE_PROMPT_CACHING_5M": "1",
+                             "CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL": "5m"}
+                with platform_env.cleared(inherited):
+                    environment = trial.claude_environment(config, TMPDIR="/tmp/x")
+                self.assertEqual(environment["CLAUDE_CODE_PROMPT_CACHE_TTL"], expected)
+                self.assertFalse({"ENABLE_PROMPT_CACHING_1H", "FORCE_PROMPT_CACHING_5M",
+                                  "CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL"} & set(environment))
+                self.assertEqual(environment["TMPDIR"], "/tmp/x")
+                # The Angelo side: the same value, by the product's own choice or by the same option.
+                angelo = expected if arguments else model_routing.cache_ttl("claude", "interactive", "SUBSCRIPTION")
+                self.assertEqual(angelo, expected)
+                self.assertEqual(bench.plan(args)["claude_cache_ttl"], expected)
+
+    def test_a_codex_run_sets_no_claude_lifetime(self):
+        import bench_mcp_trial as trial
+        args = bench.parse(["--runtime", "codex", "--model", "gpt-6.1-sol", "--output", "/nonexistent/x"])
+        self.assertIsNone(bench.claude_cache_ttl(args))
+        self.assertNotIn("claude_cache_ttl", bench.plan(args))
+        self.assertNotIn("CLAUDE_CODE_PROMPT_CACHE_TTL", trial.claude_environment({"claude_cache_ttl": None}))
+        self.assertNotIn("CLAUDE_CODE_PROMPT_CACHE_TTL", trial.claude_environment({}), "a config from before it")
+
+    def test_every_mcp_claude_launch_uses_that_environment(self):
+        """A trial's stream and the warm-up's: the two places the MCP side's Claude Code starts."""
+        for name in ("bench_mcp_trial.py", "bench_warm_up.py"):
+            source = (HERE / name).read_text(encoding="utf-8")
+            launches = [line.strip() for line in source.splitlines()
+                        if "ClaudeStream(" in line and "class ClaudeStream" not in line]
+            self.assertEqual(len(launches), 1, name)
+            self.assertIn("claude_environment(config", launches[0], name)
+
+    def test_an_mcp_record_carries_the_lifetime_and_unsplit_writes_are_priced_at_it(self):
+        records = [{"side": "mcp", "provider_usage": dict(USAGE), "cache_ttl": "1h"},
+                   {"side": "mcp", "provider_usage": dict(USAGE)},   # Recorded before the launcher set it.
+                   {"side": "angelo", "provider_usage": dict(USAGE), "cache_ttl": "1h"}]
+        bench.price_records(records, OPUS, "claude")
+        self.assertEqual([r["list_price_usd"] for r in records],
+                         [round(UNWRITTEN + 0.8, 4), round(UNWRITTEN + 0.5, 4), round(UNWRITTEN + 0.8, 4)])
+        self.assertEqual(records[0]["list_price_basis"], records[2]["list_price_basis"], "one basis for both sides")
+        source = (HERE / "bench_mcp_trial.py").read_text(encoding="utf-8")
+        self.assertIn('"cache_ttl": config.get("claude_cache_ttl")', source)   # run_task's record.
+
+    def test_reused_mcp_trials_of_another_lifetime_are_never_paired(self):
+        import bench_integrity
+        with tempfile.TemporaryDirectory() as folder:
+            run = Path(folder)
+            plan = bench.plan(bench.parse(["--output", "/nonexistent/x"]))
+            for recorded, refused in (("5m", True), ("1h", False), (None, False)):
+                earlier = dict(plan) if recorded else {k: v for k, v in plan.items() if k != "claude_cache_ttl"}
+                if recorded:
+                    earlier["claude_cache_ttl"] = recorded
+                (run / "RUN-PLAN.json").write_text(json.dumps(earlier))
+                problems = bench_integrity.reuse_problems(run, plan, [])
+                self.assertEqual(any("prompt-cache lifetime" in problem for problem in problems), refused, recorded)
 
 
 def response(identity, five, hour, read=9000, output=10, reported=True):
@@ -214,7 +290,8 @@ class RecordedRunTests(unittest.TestCase):
                          {"model_profiles list prices, 5m cache writes assumed (Codex usage reports no TTL split)"})
 
     def test_angelos_unsplit_writes_are_priced_at_the_ttl_its_session_recorded(self):
-        """An API-key or team chat writes 5-minute entries (Claude Code's default there); a subscription chat 1-hour."""
+        """Each record is priced at the TTL its session recorded: 5-minute entries for a key-billed chat started by
+        a version that chose them there, 1-hour ones for a subscription chat."""
         trial = {"tasks": [{"task": task, "kind": "edit", "status": "completed", "provider_usage": dict(USAGE),
                             "receipt": {"route": {"mode": mode, "cache_ttl": ttl}}}
                            for task, mode, ttl in (("a", "claude_api", "5m"), ("b", "claude_team", "5m"),

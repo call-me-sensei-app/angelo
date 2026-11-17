@@ -318,15 +318,15 @@ bool GHOST_ClipboardImage_memory_size(const uint8_t *data,
                                       int *r_height);
 
 /**
- * Load the picture in the file at \a filepath for the clipboard: flat (never as an OpenEXR
- * multilayer file, whose passes have no single picture), byte pixels preferred.
+ * Load the picture in the file at \a filepath for the clipboard: flat (an OpenEXR multilayer file
+ * gives one pass, never its layers), byte pixels preferred.
  */
 blender::ImBuf *GHOST_ClipboardImage_file_load(const char *filepath);
 
 /**
- * Make \a ibuf (null is allowed) the clipboard's image: byte pixels only, in place. An OpenEXR
- * multilayer handle is closed (its decoded passes would leak), float-only pixels (a 16-bit PNG or
- * TIFF, an OpenEXR or Radiance HDR file) are converted to bytes and the float pixels freed.
+ * Make \a ibuf (null is allowed) the clipboard's image: byte pixels only, in place. Float-only
+ * pixels (a 16-bit PNG or TIFF, an OpenEXR or Radiance HDR file) are converted to bytes and the
+ * float pixels freed.
  * \return \a ibuf, or null (with \a ibuf freed) when it has no pixels or memory runs out.
  */
 blender::ImBuf *GHOST_ClipboardImage_flatten(blender::ImBuf *ibuf);

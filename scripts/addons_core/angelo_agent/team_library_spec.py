@@ -23,6 +23,7 @@ import uuid
 # The generic object reference: identifiers expands o<n> handles in it, and its pattern accepts both forms,
 # so a deferred lookup's exact schema never contradicts the short handles a chat shows.
 from .action_schema_types import HANDLE
+from . import read_only
 
 PREFIX = "angelo_team_"
 # Saved custom property on imported objects: the library item they came from (provenance on save).
@@ -152,9 +153,12 @@ def _check(value, schema, where):
     return value
 
 
+TEAM_SCHEMAS = read_only.frozen({t["name"]: t["inputSchema"] for t in TEAM_TOOLS})   # As registered, read only: an agent script's change to a spec's dict reaches no check (read_only).
+
+
 def validate_team(name, arguments):
     """Exact validation of one call; returns normalized arguments or raises ``ValueError``."""
-    schema = next(t["inputSchema"] for t in TEAM_TOOLS if t["name"] == name)
+    schema = TEAM_SCHEMAS[name]
     args = _check(arguments, schema, name.removeprefix(PREFIX))
     if name == PREFIX + "library_save":
         field = _SOURCE_FIELDS[args["source"]]
@@ -164,3 +168,6 @@ def validate_team(name, arguments):
                              % (args["source"], field, ", ".join(extra) or "nothing else"))
         args["tags"] = sorted({tag.strip().lower() for tag in args.get("tags", ()) if tag.strip()})
     return args
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), '_SOURCE_FIELDS')

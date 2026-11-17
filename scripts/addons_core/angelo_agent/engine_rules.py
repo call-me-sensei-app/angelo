@@ -16,6 +16,8 @@ doc/angelo/engine_preflight.rst is the contract.
 
 import re
 
+from . import color_spaces
+
 ERROR, WARN, INFO = "error", "warn", "info"
 SEVERITIES = (ERROR, WARN, INFO)
 TARGETS = ("GODOT", "UNITY", "UNREAL", "WEB")
@@ -414,16 +416,21 @@ def _skin_rules(rules, facts, exported, options):
                       dropped="%.3f" % dropped)
 
 
+COLOUR_SPACE_LABELS = {"srgb": "sRGB", "data": "Non-Color"}   # The kinds the rule judges, as a finding says them.
+
+
 def _image_rules(rules, facts):
     if not rules.applies("colour_space"):
         return
     for image in facts["images"]:
         roles = set(image["roles"])
-        if not image["used_by_export"] or len(roles) != 1 or image["colorspace"] not in {"sRGB", "Non-Color"}:
-            continue   # Used both ways, or a colour space the rule doesn't judge (ACES, Linear, Filmic...).
+        have = color_spaces.fact_kind(image)   # The configuration's own names differ (ACES has no "sRGB").
+        if not image["used_by_export"] or len(roles) != 1 or have not in COLOUR_SPACE_LABELS:
+            continue   # Used both ways, or a colour space the rule doesn't judge (ACEScg, Linear, Filmic...).
         role = next(iter(roles))
-        wanted = "sRGB" if role == "colour" else "Non-Color"
-        if image["colorspace"] != wanted:
+        wanted_kind = "srgb" if role == "colour" else "data"
+        wanted = COLOUR_SPACE_LABELS[wanted_kind]
+        if have != wanted_kind:
             rules.add("colour_space", image["name"], "%s for %s data" % (wanted, role), image["colorspace"],
                       fixable=image.get("editable", True), colorspace=image["colorspace"], role=role, wanted=wanted)
 

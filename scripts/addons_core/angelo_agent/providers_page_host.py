@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Hosts the AI Providers page on Angelo's canvas inside the Preferences content region.
 
-* **Drawing**: a POST_PIXEL handler on ``SpacePreferences`` (region ``WINDOW``) draws the page while the
-  AI Providers section is shown (``preferences_ui.is_selected``).
+* **Drawing**: a POST_PIXEL handler on ``SpacePreferences`` (``WINDOW``) draws it while AI Providers shows.
 * **Scrolling**: the section's panel draws only an invisible spacer as tall as the page (``draw_panel``), so
   Blender's View2D owns scrolling, the scrollbar and trackpad momentum; the canvas follows ``view2d``.
 * **Input**: one window modal per Preferences window, started from a timer (a draw callback cannot invoke
@@ -21,7 +20,7 @@ from bpy.types import Operator
 from .ui_text import iface_
 from .input_policy import modal_options, overlay_passes, refresh_move
 from . import canvas_rtl, card_kit as kit, preferences_ui, providers_page_draw, providers_page_layout, providers_page_model
-from . import fab_ui, live_windows, providers_page_external, providers_page_rail, ui_tokens
+from . import grant_guard, live_windows, providers_page_actions, providers_page_external, providers_page_rail, ui_tokens
 
 _handler = None
 _plans = {}      # region pointer -> (plan, page height)
@@ -162,6 +161,7 @@ def _draw_themed():
         _sheet_ui.time = state.time
         _sheet_ui.focus = _sheet_ui.focus if _sheet_keyboard else None
         sheet = _sheet_plan = _sheet.layout(view, region.width, region.height, context.preferences.system.ui_scale, _sheet_ui)
+    providers_page_actions.register(context.window, region, plan, menu, sheet, _sheet_ui if sheet else state)
     canvas_rtl.begin(region.width)
     try:
         providers_page_draw.draw(view, plan, region.width, region.height, state.time)
@@ -233,26 +233,18 @@ def _remember(model):
 
 
 def _start_input(window):
-    if window is None or window.as_pointer() in _modals:
-        return None
-    area = next((a for a in live_windows.areas(window) if a.type == 'PREFERENCES'), None)
+    area = next((a for a in live_windows.areas(window) if a.type == 'PREFERENCES'), None) if window else None
     region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
-    if region is None:
+    if region is None or window.as_pointer() in _modals:
         return None
     try:
         with bpy.context.temp_override(window=window, area=area, region=region):
             bpy.ops.angelo.providers_page_input('INVOKE_DEFAULT')
     except RuntimeError:
-        pass
-    return None
+        pass   # A timer: None (returned) ends it.
 
 
-SIMPLE_OPERATORS = {"team_sign_in": ("team_sign_in", 'INVOKE_DEFAULT', None), "team_sign_out": ("team_sign_out", 'INVOKE_DEFAULT', None),
-                    "team_cancel": ("team_cancel_sign_in", 'EXEC_DEFAULT', None), "team_refresh": ("team_refresh", 'EXEC_DEFAULT', None),
-                    "team_copy_link": ("team_copy_sign_in_link", 'EXEC_DEFAULT', None),
-                    "team_console": ("team_open_console", 'EXEC_DEFAULT', "page"), "enhancer": ("enhancer_settings", 'INVOKE_DEFAULT', None), **fab_ui.PREF_OPERATORS}
-MENU_OPERATORS = {"menu_cancel_signin": ("cancel_signin", "mode"), "menu_reconnect": ("connection_signin", "connection_id"),
-                  "menu_load_key": ("connection_load_key", "connection_id"), "menu_check": ("connection_check", "connection_id")}
+from .providers_page_actions import MENU_OPERATORS, SIMPLE_OPERATORS  # noqa: E402  (split: 500-line rule)
 
 
 def _open_menu(record_id):
@@ -266,10 +258,14 @@ def plan_for(region):
 
 
 def act(action, value, window, area, region):
+    """One page action, in the grant scope of the person's press on it when it minted a ticket (grant_guard)."""
+    grant_guard.ticketed("page.", action, value, _act, action, value, window, area, region)
+
+
+def _act(action, value, window, area, region):
     """Run one page action through the existing operators (with the Preferences region as context)."""
     from . import ui
-    ops = bpy.ops.angelo
-    prefs = ui.preferences()
+    ops, prefs = bpy.ops.angelo, ui.preferences()
     with bpy.context.temp_override(window=window, area=area, region=region):
         from .providers_sheet import ConnectionSheet
         if action == "add":
@@ -282,9 +278,9 @@ def act(action, value, window, area, region):
             _open_menu(value)
         elif action == "menu_close":
             _open_menu(None)
-        elif action == "menu_remove":
+        elif action == "menu_remove" and _menu:   # Not once its menu has closed (a quick second click): nothing.
             _menu["confirm"] = True
-        elif action == "menu_remove_confirm":
+        elif action == "menu_remove_confirm" and _menu:
             record_id = _menu["id"]
             _open_menu(None)
             ops.connection_remove('EXEC_DEFAULT', connection_id=record_id)
@@ -322,21 +318,24 @@ class ANGELO_OT_providers_page_input(Operator):
     bl_options = {'INTERNAL'} | modal_options(bl_idname)   # Auto-save never waits for it (input_policy).
 
     def invoke(self, context, event):
-        window = context.window
-        if window is None or window.as_pointer() in _modals:
+        if (window := context.window) is None or window.as_pointer() in _modals:
             return {'CANCELLED'}
         self.window = window.as_pointer()
         _modals.add(self.window)
         context.window_manager.modal_handler_add(self)
+        providers_page_model.show_art(window)
         return {'RUNNING_MODAL'}
 
-    def _finish(self):
+    def cancel(self, _context):   # Its window closed (Preferences): Blender calls this, not modal. Returns nothing.
         _modals.discard(self.window)
+        providers_page_model.hide_art()
+
+    def _finish(self):
+        self.cancel(None)
         return {'FINISHED', 'PASS_THROUGH'}
 
     def modal(self, context, event):
-        window = context.window
-        if window is None or window.as_pointer() != self.window:
+        if (window := context.window) is None or window.as_pointer() != self.window:
             return {'PASS_THROUGH'}
         if overlay_passes(event, context.window_manager):   # Timers, window events and the quit key.
             return {'PASS_THROUGH'}
@@ -448,12 +447,13 @@ class ANGELO_OT_providers_page_input(Operator):
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             pressed, ui.pressed = ui.pressed, None
             if pressed is not None and pressed == target:
-                card.act(pressed[0], pressed[1], host)
+                grant_guard.ticketed("sheet.", pressed[0], pressed[1], card.act, pressed[0], pressed[1], host)
             area.tag_redraw()
             return {'RUNNING_MODAL'}
         if event.value != 'PRESS':
             return {'RUNNING_MODAL'}
-        if card.key_event(event, host):
+        focus = providers_page_actions.sheet_focus(card, ui)   # What a key acts on: C mints for it alone.
+        if grant_guard.ticketed("sheet.", *focus, card.key_event, event, host):
             area.tag_redraw()
             return {'RUNNING_MODAL'}
         order = plan.focus_order
@@ -464,11 +464,11 @@ class ANGELO_OT_providers_page_input(Operator):
         elif event.type in {'RET', 'NUMPAD_ENTER', 'SPACE'}:
             focused = ui.focus if _sheet_keyboard and ui.focus in order else None
             if focused:
-                card.act(focused[0], focused[1], host)
+                grant_guard.ticketed("sheet.", focused[0], focused[1], card.act, focused[0], focused[1], host)
             elif event.type != 'SPACE':
-                card.act(card.default_action, None, host)
+                grant_guard.ticketed("sheet.", *focus, card.act, card.default_action, None, host)
         elif event.type == 'ESC':
-            card.act(card.cancel_action, None, host)
+            grant_guard.ticketed("sheet.", card.cancel_action, None, card.act, card.cancel_action, None, host)
         area.tag_redraw()
         return {'RUNNING_MODAL'}
 

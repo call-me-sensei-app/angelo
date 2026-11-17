@@ -436,6 +436,21 @@ class WiringTests(unittest.TestCase):
         self.assertIn("OWN_PACKED_DATA = ('fbx', 'blend')", child)
         self.assertIn('clean.pack_images(folder, report, embedded=embedded)', child)
 
+    def test_images_are_packed_before_the_loose_set_completes_a_model(self):
+        """An image node whose file the download does not hold is no texture: pack_images drops it (its node empty)
+        before complete_untextured judges which materials hold textures, and packs the loose maps it loaded after
+        (Megascans' "English Ivy" raw FBX named its base colour by the author's path: black leaves, 2026-11-12)."""
+        import ast
+        tree = ast.parse(self.source('fab_convert_child.py'))
+        convert = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == 'convert_model')
+        calls = [ast.unparse(n.func) for n in ast.walk(convert) if isinstance(n, ast.Call)]
+        lines = {name: sorted(n.lineno for n in ast.walk(convert) if isinstance(n, ast.Call)
+                              and ast.unparse(n.func) == name) for name in set(calls)}
+        packs, completes = lines['clean.pack_images'], lines['material.complete_untextured']
+        self.assertEqual(len(completes), 1)
+        self.assertTrue(packs and packs[0] < completes[0], (packs, completes))
+        self.assertTrue(any(line > completes[0] for line in packs), "the loose maps it loaded are packed too")
+
     def test_packing_keeps_only_allowed_sources(self):
         clean = self.source('fab_convert_clean.py')
         self.assertIn('guard.source_allowed(', clean)

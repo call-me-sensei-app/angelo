@@ -40,6 +40,7 @@ from angelo_agent import card_host, chat_destinations, director, engine_link, en
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import qa_boot  # noqa: E402
 import test_blender_godot_link_e2e as e2e  # noqa: E402
+from angelo_agent import grant_guard  # noqa: E402
 
 ui._authentication.start = lambda *a, **k: None
 ui.refresh_connected_models = lambda *a, **k: None
@@ -154,7 +155,8 @@ def tick():
             on = [row for row in rows if row.get("value") == "godot_link_on"]
             state["checks"]["menu_offers_turn_on"] = len(on) == 1 and on[0]["operator"] == "angelo.godot_link"
             with bpy.context.temp_override(window=window()):
-                getattr(bpy.ops.angelo, "godot_link")("EXEC_DEFAULT", **dict(on[0]["properties"]))
+                # The menu row's click, as the person makes it (grant_guard: a grant takes only the person's click).
+                getattr(grant_guard.stand_in(), "godot_link")("EXEC_DEFAULT", **dict(on[0]["properties"]))
             state["checks"]["link_on"] = engine_link.running() and os.path.isfile(os.environ["ANGELO_LINK_RECORD"])
             state["checks"]["status_bar_says_on"] = status_text() == ["Engine live link on"]
             state["checks"]["director_top_bar_quiet_until_live"] = director_bar_text() == []
@@ -278,7 +280,7 @@ def tick():
                                                              for item in engine_link._state["reports"])
             state["checks"]["godot_stop_ends_link"] = engine_link.session() is None
             with bpy.context.temp_override(window=window()):
-                bpy.ops.angelo.godot_link(action="OFF")
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().godot_link(action="OFF")
             state["checks"]["off_removes_record"] = not os.path.exists(os.environ["ANGELO_LINK_RECORD"])
             state["checks"]["status_bar_clear_when_off"] = status_text() == [] and director_bar_text() == []
             finish()

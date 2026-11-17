@@ -10,8 +10,8 @@
 
 #include <Python.h>
 
-#include "BLI_listbase.h"
-#include "BLI_utildefines.h"
+#include "BLI_listbase.hh"
+#include "BLI_utildefines.hh"
 
 #include "DNA_layer_types.h"
 #include "DNA_scene_types.h"
@@ -665,7 +665,7 @@ static PyObject *bpy_rna_context_temp_override_logging_set(BPyContextTempOverrid
   };
   static _PyArg_Parser _parser = {
       "O&" /* `enable` */
-      "|$" /* Optional keyword only arguments. */
+      "|$" /* Optional, keyword only arguments. */
       "O&" /* `hide_missing` */
       ":logging_set",
       _keywords,

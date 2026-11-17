@@ -17,6 +17,7 @@ import time
 
 from .flow_spec import FlowError, as_definition, interface_of, normalize
 from .studio_state import atomic_json, library_directory, read_json
+from . import owned_paths
 
 FORMAT = "angelo.flow-recipe/1"
 MAX_RECIPES = 200
@@ -72,4 +73,5 @@ def remove(name):
     path = _path(name)
     if not path.exists():
         raise FlowError(f"There's no saved recipe named '{name}'")
+    owned_paths.require_writable(path)
     path.unlink()

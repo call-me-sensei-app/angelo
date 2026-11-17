@@ -15,7 +15,7 @@
 #include "BLI_math_matrix_types.hh"
 #include "BLI_math_vector_types.hh"
 #include "BLI_span.hh"
-#include "BLI_sys_types.h"
+#include "BLI_sys_types.hh"
 
 #include "DNA_curve_types.h"
 #include "DNA_listBase.h"
@@ -24,7 +24,7 @@ namespace blender {
 
 struct BezTriple;
 struct BevList;
-struct BMEditMesh;
+struct BMesh;
 struct BPoint;
 struct Curve;
 struct Depsgraph;
@@ -111,6 +111,14 @@ void BKE_curve_texspace_ensure(Curve *cu);
 /* Basic vertex data functions. */
 
 std::optional<Bounds<float3>> BKE_curve_minmax(const Curve *cu, bool use_radius);
+/**
+ * Angelo: the box the curve's geometry occupies, without evaluating it: control points and handles (whose hull holds
+ * every Bezier and NURBS spline) grown by the largest distance a point of its cross-section can be from the spline:
+ * the bevel shape (round, custom profile, extrude, or a bevel object's own points) and the width offset, scaled by
+ * the radius as Blender applies it (taper included). A point's radius scales the bevel; it is never a distance
+ * itself (#BKE_curve_minmax with radius pads a thin unbevelled curve by 1 m on every side).
+ */
+std::optional<Bounds<float3>> BKE_curve_geometry_minmax(const Curve *cu);
 bool BKE_curve_center_median(Curve *cu, float cent[3]);
 void BKE_curve_transform_ex(
     Curve *cu, const float mat[4][4], bool do_keys, bool do_props, float unit_scale);
@@ -435,7 +443,7 @@ void BKE_curve_deform_coords_with_editmesh(const Object *ob_curve,
                                            int defgrp_index,
                                            short flag,
                                            short defaxis,
-                                           const BMEditMesh *em_target);
+                                           const BMesh &bm_target);
 
 /**
  * \param orco: Input vec and orco = local coord in curve space

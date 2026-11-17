@@ -278,7 +278,7 @@ class StandInStreamTests(unittest.TestCase):
                             time.sleep(0.01)
                         self.assertEqual(fixture_rounds.gate_sent(gate), number)
                         with self.assertRaises(queue.Empty, msg="fragment %d came unacknowledged" % (number + 1)):
-                            lines.get(timeout=0.1)
+                            lines.get(timeout=0.1)  # window: no fragment may come before its acknowledgement
                         fixture_rounds.acknowledge(gate, number)
                     self.assertEqual(process.wait(timeout=30), 0)
                 finally:

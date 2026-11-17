@@ -3,6 +3,7 @@
 """Bounded host lifecycle queue; no project I/O in controller lookup/draw."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 from pathlib import Path
@@ -32,12 +33,12 @@ class MemoryProjectUITests(unittest.TestCase):
 
     def tearDown(self):
         if project_ui._worker:
-            project_ui._worker.join(timeout=3)
+            project_ui._worker.join(timeout=CAP_S)
         project_ui.clear()
         self.directory.cleanup()
 
     def await_worker(self):
-        project_ui._worker.join(timeout=3)
+        project_ui._worker.join(timeout=CAP_S)
         self.assertFalse(project_ui._worker.is_alive())
 
     def test_lookup_scheduling_has_no_attestation_or_project_reads(self):
@@ -73,12 +74,12 @@ class MemoryProjectUITests(unittest.TestCase):
         entered, release = threading.Event(), threading.Event()
         def admit(*args, **kwargs):
             entered.set()
-            release.wait(3)
+            release.wait(CAP_S)
             return self.receipt
         with patch.object(project_ui, 'capture_loaded_project', return_value=object()), patch.object(project_ui, 'admit_saved_project', side_effect=admit):
             project_ui.schedule(self.ui, self.controller)
             project_ui.pump(self.ui)
-            self.assertTrue(entered.wait(3))
+            self.assertTrue(entered.wait(CAP_S))
             project_ui.clear()
             release.set()
             self.await_worker()

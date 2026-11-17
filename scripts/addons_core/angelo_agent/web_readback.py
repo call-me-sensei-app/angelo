@@ -22,7 +22,7 @@ import subprocess
 import threading
 import weakref
 
-from . import thread_start
+from . import edit_tool_hold, owned_paths, shared_replace, thread_start
 from .ui_text import n_
 
 TIMEOUT_SECONDS = 600
@@ -39,8 +39,7 @@ FAILED = n_("Angelo couldn't read {file} back to check it")
 
 
 class _Runner:
-    def __init__(self, binary):
-        self.binary = binary
+    def __init__(self, binary=None):   # ``binary``: unused (the child's binary is read when it starts).
         self.lock = threading.Lock()
         self.running = False
         self.queued = None
@@ -53,7 +52,8 @@ class _Runner:
                 dropped, self.queued = self.queued, job
             self.running = True
         if dropped is not None:   # The newest export replaces one still waiting, which ends here, said so.
-            shutil.rmtree(dropped["folder"], ignore_errors=True)
+            if owned_paths.may_write(dropped["folder"]):   # A cleanup: only what C says Angelo may remove.
+                shutil.rmtree(dropped["folder"], ignore_errors=True)
             self.done.put((dropped, {"superseded_by": job["revision"]}))
         if start:   # A start that raises leaves the runner idle, so the next export starts one (``thread_start``).
             thread_start.start(threading.Thread(target=self._run, args=(job,), name="Angelo web read-back",
@@ -67,7 +67,9 @@ class _Runner:
         from .engine_link_writeback import _child_environment
         result = None
         try:
-            subprocess.run([self.binary, "--background", "--factory-startup", "--python-exit-code", "1",
+            binary = _child_inputs(job)
+            owned_paths.require_runnable(binary)
+            subprocess.run([binary, "--background", "--factory-startup", "--python-exit-code", "1",
                             "--python-expr", CHILD, "--", job["spec"]], stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, timeout=TIMEOUT_SECONDS, env=_child_environment())
             with open(job["result"], encoding="utf-8") as handle:
@@ -75,13 +77,35 @@ class _Runner:
         except Exception as error:   # noqa: BLE001 - a read-back that couldn't run is reported, never raised.
             result = {"error": type(error).__name__}
         finally:
-            shutil.rmtree(job["folder"], ignore_errors=True)
+            if owned_paths.may_write(job["folder"]):   # A cleanup: only what C says Angelo may remove.
+                shutil.rmtree(job["folder"], ignore_errors=True)
         self.done.put((job, result))
         with self.lock:
             again, self.queued = self.queued, None
             self.running = again is not None
         if again is not None:
             self._run(again)
+
+
+def _child_inputs(job):
+    """The binary for the read-back child, after C allowed what it will write. The child is a Blender where no script
+    region begins (C answers yes to its writes), so its spec must be one Angelo wrote in the job's own folder and the
+    result it names must be that folder's ``result.json``, which C allows; the binary is read now, never kept.
+    Raises (``PermissionError``, ``ValueError``): the read-back is reported as failed and no child starts."""
+    folder = os.path.realpath(job["folder"])
+    spec, result = os.path.realpath(job["spec"]), os.path.realpath(job["result"])
+    if os.path.dirname(spec) != folder or result != os.path.join(folder, "result.json"):
+        raise ValueError("the read-back's files are not in its folder")
+    owned_paths.require_writable(result)
+    named = json.loads(shared_replace.read_text(spec)).get("result")
+    if not isinstance(named, str) or os.path.realpath(named) != result:
+        raise ValueError("the read-back's spec names another result")
+    return _binary()
+
+
+def _binary():
+    import bpy   # ``binary_path``: read-only, set by C at startup; a plain read, safe on this thread.
+    return bpy.app.binary_path
 
 
 _state = {"runner": None, "timer": False, "revision": 0}
@@ -112,7 +136,7 @@ def _start(controller, path, written, source, merged):
         copied = export_snapshot.take(path, copy)
         spec_file = _write_spec(folder, copy, copied, source, merged)
         if _state["runner"] is None:
-            _state["runner"] = _Runner(binary)
+            _state["runner"] = _Runner()
         _state["revision"] += 1
         _state["runner"].request({"spec": spec_file, "result": str(folder / "result.json"), "folder": str(folder),
                                   "written": written, "revision": _state["revision"], "controller": reply})
@@ -167,6 +191,7 @@ def _deliver(job, result):
         controller.emit("message", {"role": "system", **row})
 
 
+@edit_tool_hold.guarded   # Touches Blender data: waits for the person's operation.
 def _tick():
     runner = _state["runner"]
     while True:

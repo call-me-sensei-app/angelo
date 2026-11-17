@@ -47,12 +47,12 @@ class NativeSources(unittest.TestCase):
         self.assertIn("View3DUVChecker uv_checker;", text[text.index("struct View3D {"):])
 
     def test_versioning_gives_older_files_the_defaults(self):
-        text = (SOURCE / "blenloader/intern/versioning_520.cc").read_text()
+        text = (SOURCE / "blenloader/intern/versioning_502.cc").read_text()
         helper = function_bodies(text)["version_angelo_uv_checker_defaults"]
-        self.assertIn('DNA_struct_member_exists_with_alias(fd.filesdna, "View3D", "View3DUVChecker", "uv_checker")',
-                      helper)
+        self.assertIn('DNA_struct_member_exists_with_alias( fd.filesdna.get(), "View3D", "View3DUVChecker", "uv_checker")',
+                      " ".join(helper.split()))
         self.assertIn("->uv_checker = defaults;", helper)
-        main = text[text.index("void blo_do_versions_520("):]
+        main = text[text.index("void blo_do_versions_502("):]
         call = main.index("version_angelo_uv_checker_defaults(*fd, *bmain);")
         self.assertGreater(call, main.rindex("if (!MAIN_VERSION_FILE_ATLEAST("), "not gated by a file version")
 

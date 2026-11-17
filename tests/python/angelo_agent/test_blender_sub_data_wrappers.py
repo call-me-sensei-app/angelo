@@ -380,9 +380,12 @@ def _overridden_mesh():
     bpy.data.libraries.write(library, {source})
     with bpy.data.libraries.load(library, link=True) as (_data_from, data_to):
         data_to.meshes = [source.name]
-    mesh = data_to.meshes[0].override_create(remap_local_usages=True)
-    holder = bpy.data.objects.new("Override mesh", mesh)
+    # Blender 5.3 settles a linked ID's direct status after instantiation (upstream f8dd28d9695): one nothing uses
+    # yet is indirect, which override_create refuses. A local object uses it first; the override takes its place.
+    holder = bpy.data.objects.new("Override mesh", data_to.meshes[0])
     bpy.context.scene.collection.objects.link(holder)
+    mesh = data_to.meshes[0].override_create(remap_local_usages=True)
+    assert holder.data == mesh, "The override replaces the linked mesh in the local object"
     mesh["probe"] = 2
     mesh.override_library.operations_update()
     return mesh

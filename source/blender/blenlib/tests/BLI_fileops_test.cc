@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0 */
 
 #include <cerrno>
+#include <climits>
 #include <fcntl.h>
 #include <fstream>
 #include <sys/stat.h>
@@ -17,17 +18,17 @@
 
 #include "BLI_fileops.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_system.h"
-#include "BLI_tempfile.h"
-#include "BLI_threads.h"
+#include "BLI_string.hh"
+#include "BLI_system.hh"
+#include "BLI_tempfile.hh"
+#include "BLI_threads.hh"
 
 #include BLI_SYSTEM_PID_H
 
 namespace blender::tests {
 
 /*
- * General `BLI_fileops.h` tests.
+ * General `BLI_fileops.hh` tests.
  */
 
 class FileOpsTest : public testing::Test {
@@ -52,6 +53,18 @@ class FileOpsTest : public testing::Test {
     if (BLI_exists(temp_dir.c_str())) {
       BLI_delete(temp_dir.c_str(), true, true);
     }
+  }
+
+  /** The number of a descriptor that was open a moment ago and is closed now. */
+  int closed_descriptor()
+  {
+    const std::string filepath = temp_dir + SEP_STR + "closed.bin";
+    const int file = BLI_open(filepath.c_str(), O_BINARY | O_RDWR | O_CREAT, 0666);
+    EXPECT_NE(file, -1);
+    if (file != -1) {
+      EXPECT_EQ(close(file), 0);
+    }
+    return file;
   }
 };
 
@@ -421,6 +434,48 @@ TEST_F(FileOpsTest, open_replacing_detaches_a_hard_link)
 /** \} */
 
 /* -------------------------------------------------------------------- */
+/** \name #BLI_file_descriptor_is_open
+ *
+ * A descriptor a caller supplied is asked about here before the C runtime sees it: on Windows
+ * the runtime ends the process for one that is negative, out of range or closed.
+ * \{ */
+
+TEST_F(FileOpsTest, descriptor_is_open_only_while_it_is_open)
+{
+  const std::string filepath = temp_dir + SEP_STR + "descriptor.bin";
+  const int file = BLI_open(filepath.c_str(), O_BINARY | O_RDWR | O_CREAT, 0666);
+  ASSERT_NE(file, -1);
+  EXPECT_TRUE(BLI_file_descriptor_is_open(file));
+  /* Asking changes nothing: the descriptor still works and `errno` is as it was. */
+  errno = ENOENT;
+  EXPECT_TRUE(BLI_file_descriptor_is_open(file));
+  EXPECT_FALSE(BLI_file_descriptor_is_open(-1));
+  EXPECT_EQ(errno, ENOENT);
+  EXPECT_EQ(write(file, "x", 1), 1);
+  EXPECT_EQ(close(file), 0);
+  EXPECT_FALSE(BLI_file_descriptor_is_open(file));
+  EXPECT_EQ(errno, ENOENT);
+}
+
+TEST_F(FileOpsTest, descriptor_is_open_refuses_numbers_that_are_no_descriptor)
+{
+  /* Negative, far past any table of open files, and the largest `int`: each ends the process
+   * when Windows' C runtime is asked about it directly. */
+  for (const int file : {-1, -2, INT_MIN, 1 << 20, INT_MAX}) {
+    EXPECT_FALSE(BLI_file_descriptor_is_open(file)) << file;
+  }
+}
+
+TEST_F(FileOpsTest, identity_of_a_descriptor_that_is_not_open)
+{
+  FileIdentity identity;
+  EXPECT_FALSE(BLI_file_identity_descriptor(-1, &identity));
+  EXPECT_FALSE(BLI_file_identity_descriptor(closed_descriptor(), &identity));
+}
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
 /** \name #BLI_file_sync, #BLI_dir_sync
  *
  * A save syncs its temporary file before renaming it over the old one, then the folder.
@@ -509,19 +564,22 @@ TEST_F(FileOpsTest, dir_sync_of_a_folder)
   EXPECT_EQ(BLI_dir_sync(temp_dir.c_str()), 0);
 }
 
-#ifndef WIN32
-/* Windows' C runtime treats an invalid descriptor as a fatal invalid parameter, and its
- * #BLI_dir_sync does nothing. */
+/* Windows' C runtime treats an invalid descriptor as a fatal invalid parameter: the sync asks
+ * #BLI_file_descriptor_is_open first, so both platforms report `EBADF`. */
 TEST_F(FileOpsTest, file_sync_reports_an_invalid_descriptor)
 {
-  errno = 0;
-  EXPECT_EQ(BLI_file_sync(-1), -1);
-  EXPECT_EQ(errno, EBADF);
-  errno = 0;
-  EXPECT_EQ(BLI_file_sync_barrier(-1), -1);
-  EXPECT_EQ(errno, EBADF);
+  for (const int file : {-1, closed_descriptor()}) {
+    errno = 0;
+    EXPECT_EQ(BLI_file_sync(file), -1);
+    EXPECT_EQ(errno, EBADF);
+    errno = 0;
+    EXPECT_EQ(BLI_file_sync_barrier(file), -1);
+    EXPECT_EQ(errno, EBADF);
+  }
 }
 
+#ifndef WIN32
+/* Windows' #BLI_dir_sync does nothing. */
 TEST_F(FileOpsTest, dir_sync_reports_a_missing_folder)
 {
   const std::string missing = temp_dir + SEP_STR + "missing";

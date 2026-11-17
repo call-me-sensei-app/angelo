@@ -10,6 +10,7 @@ the next job on a real thread. The web read-back exposed the class (the maintain
 runners here were fixed by the same sweep and are checked the same way."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import subprocess
@@ -44,7 +45,7 @@ def failing_starts(times=1):
     return mock.patch.object(threading.Thread, "start", start)
 
 
-def wait_for(condition, seconds=10.0):
+def wait_for(condition, seconds=CAP_S):
     deadline = time.monotonic() + seconds
     while not condition():
         if time.monotonic() > deadline:
@@ -59,6 +60,8 @@ def completed(command, **_options):
 class WebReadBack(unittest.TestCase):
     def read_back_job(self, root, revision, controller=None):
         folder = Path(tempfile.mkdtemp(prefix="read-back-", dir=root))
+        # As web_readback._write_spec leaves it: the parent checks the result the spec names before the child runs.
+        (folder / "spec.json").write_text(json.dumps({"result": str(folder / "result.json")}))
         return {"spec": str(folder / "spec.json"), "result": str(folder / "result.json"), "folder": str(folder),
                 "written": "w%d.glb" % revision, "revision": revision, "controller": controller}
 
@@ -69,14 +72,15 @@ class WebReadBack(unittest.TestCase):
 
     def test_the_runner_is_idle_after_a_start_that_failed_and_runs_the_next_export(self):
         runner = web_readback._Runner("angelo")
-        with tempfile.TemporaryDirectory() as root, mock.patch.object(web_readback.subprocess, "run", self.child):
+        with tempfile.TemporaryDirectory() as root, mock.patch.object(web_readback.subprocess, "run", self.child), \
+                mock.patch.object(web_readback, "_binary", lambda: "angelo"):   # The child stands in; no Blender.
             first, second = self.read_back_job(root, 1), self.read_back_job(root, 2)
             with failing_starts():
                 with self.assertRaisesRegex(RuntimeError, NO_THREAD):
                     runner.request(first)
                 self.assertFalse(runner.running, "a read-back that never started must not hold the runner")
                 runner.request(second)
-            job, result = runner.done.get(timeout=10)
+            job, result = runner.done.get(timeout=CAP_S)
             self.assertEqual((job["revision"], result), (2, {"findings": [], "ms": 1.0}))
             wait_for(lambda: not runner.running)
             self.assertTrue(runner.done.empty())
@@ -102,13 +106,14 @@ class WebReadBack(unittest.TestCase):
                 self.assertIn(NO_THREAD, " ".join(str(arg) for call in printed.call_args_list for arg in call.args))
                 state, revision = web_readback.start(None, "/b.glb", "b.glb", {}, False)
                 self.assertEqual(state, "running")
-                job, result = web_readback._state["runner"].done.get(timeout=10)
+                job, result = web_readback._state["runner"].done.get(timeout=CAP_S)
             self.assertEqual((job["revision"], job["written"], result["findings"]), (revision, "b.glb", []))
 
 
 class EngineLinkRunners(unittest.TestCase):
     def test_a_preflight_that_cant_start_leaves_the_runner_idle_and_its_folder_gone(self):
-        runner = engine_preflight_link.Runner("angelo")
+        self.enterContext(mock.patch.object(engine_link_writeback, "angelo_binary", lambda: "angelo"))
+        runner = engine_preflight_link.Runner()
         with tempfile.TemporaryDirectory() as root, \
                 mock.patch.object(engine_preflight_link.subprocess, "run", side_effect=completed) as run:
             first, second = Path(root, "first"), Path(root, "second")
@@ -126,7 +131,8 @@ class EngineLinkRunners(unittest.TestCase):
             self.assertIsNone(runner.last_error)
 
     def test_a_write_back_that_cant_start_ends_unwritten_said_so_and_the_next_save_runs(self):
-        writeback = engine_link_writeback.WriteBack("angelo")
+        self.enterContext(mock.patch.object(engine_link_writeback, "angelo_binary", lambda: "angelo"))
+        writeback = engine_link_writeback.WriteBack()
         with mock.patch.object(engine_link_writeback.subprocess, "run", side_effect=completed):
             with failing_starts():
                 writeback.request("save-1", "a.blend", "a.glb", "gltf", {})   # Report-only: never raises.
@@ -179,9 +185,9 @@ class ChatRunners(unittest.TestCase):
         rpc = mock.Mock()
         with failing_starts():
             self.assertFalse(turns.interrupt(rpc, "thread", "turn"))
-        turns.join(1.0)   # Never waits on (or trips over) a worker that never started.
+        turns.join(CAP_S)   # Never waits on (or trips over) a worker that never started.
         self.assertTrue(turns.interrupt(rpc, "thread", "turn"))
-        turns.join(5.0)
+        turns.join(CAP_S)
         rpc.request.assert_called_once_with("turn/interrupt", {"threadId": "thread", "turnId": "turn"}, timeout=10)
 
     def test_a_consent_applier_that_cant_start_is_said_and_the_chats_next_frame_is_applied(self):
@@ -208,7 +214,7 @@ class HostRunners(unittest.TestCase):
             self.assertFalse(folder.exists())
             jobs = [team_library_host.Job(lambda cancel, index=index: index) for index in range(4)]   # All four.
             for job in jobs:
-                self.assertTrue(job.done.wait(10))
+                self.assertTrue(job.done.wait(CAP_S))
         self.assertEqual([job.value for job in jobs], [0, 1, 2, 3])
 
     def test_a_snapshot_worker_that_cant_start_is_started_again_by_the_next_start(self):
@@ -234,7 +240,7 @@ class Helpers(unittest.TestCase):
                 thread_start.start(threading.Thread(target=lambda: None), lambda: undone.append(True))
         self.assertEqual(undone, [True])
         ran = threading.Event()
-        thread_start.daemon("test-daemon", ran.set, undo=lambda: undone.append(False)).join(5)
+        thread_start.daemon("test-daemon", ran.set, undo=lambda: undone.append(False)).join(CAP_S)
         self.assertTrue(ran.is_set())
         self.assertEqual(undone, [True])
 
@@ -258,7 +264,7 @@ class Helpers(unittest.TestCase):
         wait_for(lambda: ran)
         self.assertIsNot(ran[0], threading.current_thread())
         thread = thread_start.daemon_or_later("test-there", lambda: ran.append(threading.current_thread()))
-        thread.join(5)
+        thread.join(CAP_S)
         self.assertIs(ran[-1], thread)
 
 

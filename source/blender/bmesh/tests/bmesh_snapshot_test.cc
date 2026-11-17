@@ -12,11 +12,12 @@
 #include "DNA_meshdata_types.h"
 #include "DNA_scene_types.h"
 
-#include "BLI_bitmap.h"
-#include "BLI_math_vector.h"
+#include "BLI_bitmap.hh"
+#include "BLI_math_vector.hh"
+#include "BLI_math_vector_c.hh"
 #include "BLI_math_vector_types.hh"
-#include "BLI_mempool.h"
-#include "BLI_string.h"
+#include "BLI_mempool.hh"
+#include "BLI_string.hh"
 #include "BLI_vector.hh"
 
 #include "BKE_customdata.hh"
@@ -331,7 +332,7 @@ TEST_F(BMeshGeometrySnapshotTest, PreservesFlaggedLayersShapeKeysAndSelectionSta
   const std::array<BMElem *, 3> selected = {reinterpret_cast<BMElem *>(copy_loop->v),
                                             reinterpret_cast<BMElem *>(copy_loop->e),
                                             reinterpret_cast<BMElem *>(copy_face)};
-  BMEditSelection *selection = static_cast<BMEditSelection *>(restored->selected.first);
+  BMEditSelection *selection = static_cast<BMEditSelection *>(restored->selected.first());
   for (BMElem *element : selected) {
     ASSERT_NE(selection, nullptr);
     EXPECT_EQ(selection->ele, element);
@@ -376,7 +377,6 @@ TEST_F(BMeshGeometrySnapshotTest, DynamicPayloadsAreIndependentAndEqualityDetect
   deform.dw[1] = {9, 0.75f};
   MDisps &disp = layer_data<MDisps>(loop, disp_offset);
   disp.totdisp = 9;
-  disp.level = 2;
   disp.disps = MEM_new_array_zeroed<float[3]>(9, __func__);
   disp.disps[8][2] = 4.5f;
   disp.hidden = BLI_BITMAP_NEW(9, __func__);
@@ -453,7 +453,6 @@ TEST_F(BMeshGeometrySnapshotTest, PreservesHiddenOnlyDisplacementsAndEmptyGridLe
   const int grid_offset = CustomData_get_offset(&bm->ldata, CD_GRID_PAINT_MASK);
   MDisps &disp = layer_data<MDisps>(loop, disp_offset);
   disp.totdisp = 25;
-  disp.level = 3;
   disp.hidden = BLI_BITMAP_NEW(25, __func__);
   BLI_BITMAP_ENABLE(disp.hidden, 24);
   GridPaintMask &grid = layer_data<GridPaintMask>(loop, grid_offset);
@@ -466,7 +465,6 @@ TEST_F(BMeshGeometrySnapshotTest, PreservesHiddenOnlyDisplacementsAndEmptyGridLe
   const MDisps &copy_disp = layer_data<MDisps>(copy_loop, disp_offset);
   EXPECT_EQ(copy_disp.disps, nullptr);
   EXPECT_EQ(copy_disp.totdisp, 25);
-  EXPECT_EQ(copy_disp.level, 3);
   ASSERT_NE(copy_disp.hidden, nullptr);
   EXPECT_NE(copy_disp.hidden, disp.hidden);
   EXPECT_TRUE(BLI_BITMAP_TEST(copy_disp.hidden, 24));
@@ -509,7 +507,6 @@ TEST_F(BMeshGeometrySnapshotTest, ExternalCustomDataMetadataIsOwnedAndCompared)
   BMLoop *loop = BM_FACE_FIRST_LOOP(triangle_add(bm));
   MDisps &disp = layer_data<MDisps>(loop, CustomData_get_offset(&bm->ldata, CD_MDISPS));
   disp.totdisp = 9;
-  disp.level = 2;
   disp.disps = MEM_new_array_zeroed<float[3]>(9, __func__);
   disp.disps[8][2] = 1.25f;
   bm->ldata.layers[0].flag = CD_FLAG_EXTERNAL | CD_FLAG_IN_MEMORY;
@@ -593,7 +590,6 @@ TEST_F(BMeshGeometrySnapshotTest, MemoryIncludesReservedPoolsAndDynamicPayloads)
   }
   MDisps &disp = layer_data<MDisps>(loop, CustomData_get_offset(&bm->ldata, CD_MDISPS));
   disp.totdisp = 289;
-  disp.level = 5;
   disp.disps = MEM_new_array_zeroed<float[3]>(289, __func__);
   disp.hidden = BLI_BITMAP_NEW(289, __func__);
   GridPaintMask &grid = layer_data<GridPaintMask>(

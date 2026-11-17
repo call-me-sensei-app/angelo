@@ -24,6 +24,7 @@ import native_addon_guard as guard  # noqa: E402
 import prune_installed_addon  # noqa: E402
 
 STAGE = (ROOT / "scripts/angelo/windows_release_validate.ps1").read_text(encoding="utf-8")
+IDENTITY = (ROOT / "scripts/angelo/windows_validate.ps1").read_text(encoding="utf-8")
 
 
 def write(path, text):
@@ -85,6 +86,19 @@ class PruneTests(unittest.TestCase):
         self.assertIn("--binary", check[prune_at:prune_at + 200])
         self.assertIn("--source", check[prune_at:prune_at + 200])
 
+
+    def test_the_identity_stage_leaves_its_build_holding_this_commits_add_on(self):
+        # Its build folder's app is what held commands and later suites run on: pruned right after the build, and a
+        # difference the prune can't remove fails the check instead of passing silently.
+        built = IDENTITY.index('Test-Check "make.bat $BuildTarget $MakeArgs"')
+        check = IDENTITY[IDENTITY.index('Test-Check "installed add-on is this commit\'s"'):]
+        self.assertLess(built, IDENTITY.index('Test-Check "installed add-on is this commit\'s"'))
+        body = check[:check.index("\n}\n")]
+        self.assertIn("prune_installed_addon.py", body)
+        self.assertIn("--binary", body)
+        self.assertIn("--source", body)
+        self.assertIn("matches the checkout", body)
+        self.assertIn("throw $state", body)
 
 if __name__ == "__main__":
     unittest.main()

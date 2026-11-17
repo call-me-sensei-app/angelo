@@ -49,6 +49,9 @@ def ui_constant(name):
     return node.value.args[0].value
 
 
+import angelo_guard_twin  # noqa: E402
+angelo_guard_twin.stand_in_for_the_person(globals())   # Its tests set consents as the person does (grant_authority).
+
 class AlwaysAllowTests(unittest.TestCase):
     def setUp(self):
         managed_policy.reset(Policy())
@@ -94,6 +97,19 @@ class AlwaysAllowTests(unittest.TestCase):
         self.pump()
         self.assert_asks(call, results)
         self.assertTrue(self.controller.offers_always_allow(call), "the card offers it in Auto")
+
+    def test_every_change_reaches_the_worker_chats_leases(self):
+        """However it changes (Preferences, a card's Always allow button), a lead's worker chats hosted in their
+        workers learn it (worker_consent_lead.changed), as Trust scripts for this chat does: worker_python@hosted
+        ran its worker chat's script with a card after the card's button turned it on."""
+        from angelo_agent import worker_consent_lead
+        with patch.object(worker_consent_lead, "changed") as changed:
+            always_allow.set_enabled(True)
+            self.assertEqual(changed.call_count, 1)
+            always_allow.set_enabled(True)   # Unchanged: nothing to tell.
+            self.assertEqual(changed.call_count, 1)
+            always_allow.set_enabled(False)
+            self.assertEqual(changed.call_count, 2)
 
     def test_opted_in_scripts_run_unasked_in_auto_and_record_the_consent(self):
         always_allow.set_enabled(True)
@@ -297,17 +313,27 @@ class AlwaysAllowTests(unittest.TestCase):
         self.assertIn("preferences", message["warning"])
 
     def test_only_the_person_changes_the_preference(self):
-        """Review should-fix 1b: the property's setter accepts the Preferences editor while no script runs; a
-        script, an add-on or a keymap entry changes nothing and the chat says so."""
+        angelo_guard_twin.strict()   # The checkbox's own rule: C exactly (angelo_guard_twin).
+        self.addCleanup(angelo_guard_twin.strict, False)
+        self._only_the_person_changes_the_preference()
+
+    def _only_the_person_changes_the_preference(self):
+        """Review should-fix 1b, and the C authority since: the property's setter turns it on only for the person's
+        real press on its own checkbox (its ticket in C) while no script runs; the Preferences editor being the
+        active space proves nothing. A script, an add-on or a keymap entry changes nothing and the chat says so."""
         setter = ui_function("always_allow_set", {"agent_script_running": lambda: running[0],
                                                   "NOT_YOURS": ui_constant("NOT_YOURS")})
         running, emitted = [False], []
         controller = SimpleNamespace(emit=lambda kind, payload: emitted.append(payload))
         fake_ui = SimpleNamespace(_controller=controller)
-        for space, script, expected in (("VIEW_3D", False, False), ("PREFERENCES", True, False),
-                                        (None, False, False), ("PREFERENCES", False, True)):
-            with self.subTest(space=space, script=script):
+        for space, script, expected, pressed in (("VIEW_3D", False, False, False), ("PREFERENCES", True, False, True),
+                                                 (None, False, False, False), ("PREFERENCES", False, False, False),
+                                                 ("PREFERENCES", False, True, True)):
+            with self.subTest(space=space, script=script, pressed=pressed):
                 running[0], emitted[:] = script, []
+                angelo_guard_twin.reset()
+                if pressed:   # The person's real press on the checkbox: C mints "prop.always_allow_scripts".
+                    angelo_guard_twin.press("prop.always_allow_scripts", "ui")
                 bpy = SimpleNamespace(context=SimpleNamespace(space_data=SimpleNamespace(type=space) if space else None))
                 with patch.dict(sys.modules, {"bpy": bpy, "angelo_agent.ui": fake_ui}):
                     setter(None, True)

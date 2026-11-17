@@ -24,11 +24,9 @@
 
 namespace blender::gpu {
 class VKFrameBuffer;
-class VKVertexAttributeObject;
 class VKBatch;
 class VKStateManager;
 class VKShader;
-class VKThreadData;
 class VKDevice;
 
 enum RenderGraphFlushFlags {
@@ -42,6 +40,7 @@ ENUM_OPERATORS(RenderGraphFlushFlags);
 
 class VKContext : public Context, NonCopyable {
   friend class VKDevice;
+  friend class VKDescriptorPools;
 
  private:
   VkExtent2D vk_extent_ = {};
@@ -54,7 +53,10 @@ class VKContext : public Context, NonCopyable {
   /* Reusable data. Stored inside context to limit reallocations. */
   render_graph::VKResourceAccessInfo access_info_ = {};
 
-  std::optional<std::reference_wrapper<VKThreadData>> thread_data_;
+  VKDescriptorSetTracker descriptor_set_;
+  /** Active pool to allocate descriptor sets from, acquired from #VKDescriptorPools. */
+  VkDescriptorPool vk_descriptor_pool_ = VK_NULL_HANDLE;
+
   std::optional<std::reference_wrapper<render_graph::VKRenderGraph>> render_graph_;
 
   /* Active shader specialization constants state. */
@@ -141,7 +143,7 @@ class VKContext : public Context, NonCopyable {
   void update_pipeline_data(render_graph::VKPipelineData &r_pipeline_data);
   void update_pipeline_data(const VKFrameBuffer &framebuffer,
                             GPUPrimType primitive,
-                            VKVertexAttributeObject &vao,
+                            VKVertexInputDescriptionPool::Key vertex_input_key,
                             render_graph::VKPipelineDataGraphics &r_pipeline_data);
 
   void sync_backbuffer();
@@ -151,7 +153,6 @@ class VKContext : public Context, NonCopyable {
     return static_cast<VKContext *>(Context::get());
   }
 
-  VKDescriptorPools &descriptor_pools_get();
   VKDescriptorSetTracker &descriptor_set_get();
   VKStateManager &state_manager_get() const;
 

@@ -23,6 +23,7 @@
 #include "GHOST_TimerManager.hh"
 #include "GHOST_WindowManager.hh"
 #include "GHOST_WindowX11.hh"
+#include "GHOST_XlibCloseDisplay.hh"
 #ifdef WITH_INPUT_NDOF
 #  include "GHOST_NDOFManagerUnix.hh"
 #endif
@@ -240,7 +241,9 @@ GHOST_SystemX11::~GHOST_SystemX11()
     XkbFreeKeyboard(xkb_descr_, XkbAllComponentsMask, true);
   }
 
-  XCloseDisplay(display_);
+  /* Not plain #XCloseDisplay: it frees stale bytes of recycled queue entries as event data (an
+   * abort on quit). */
+  GHOST_XlibCloseDisplay(display_);
 }
 
 GHOST_TSuccess GHOST_SystemX11::init()
@@ -417,7 +420,7 @@ GHOST_IContext *GHOST_SystemX11::createOffscreenContext(GHOST_GPUSettings gpu_se
                                                    nullptr,
                                                    nullptr,
                                                    1,
-                                                   2,
+                                                   1,
                                                    gpu_settings.preferred_device);
       if (context->initializeDrawingContext()) {
         return context;

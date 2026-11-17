@@ -37,6 +37,10 @@ sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 
 # (file, call as written, without its comment) -> why it stays as it is. The count of each is pinned.
 BARE = {
+    ("external_setup.py", 'os.replace(copy, path.with_name(path.name + ".angelo-backup"))'):
+        (1, "The backup of an app's settings file: Angelo's own new file (owned_paths.create_beside, beside the file "
+            "Connect writes, which C allows) renamed onto the backup's fixed name, never written in place there; a "
+            "refusal fails the write as before. The settings file itself goes through shared_replace."),
     ("fab_browser_profile.py", "os.replace(name,self.directory/BINDING)"):
         (1, "Darwin-only profile metadata under its exclusive transaction; module requires fcntl and platform "
             "dispatch selects it only on Darwin. Exact source/platform guards are pinned below."),
@@ -60,6 +64,15 @@ BARE = {
         (1, "A capability check (``os.replace in os.supports_dir_fd``): no move."),
     ("checkpoint_filesystem.py", "os.rename"):
         (1, "A capability check (``os.rename in os.supports_dir_fd``): no move."),
+    ("carry_over_moves.py", "os.rename(long_path(temporary), long_path(target))"):
+        (2, "A verified cross-volume copy renamed onto a free name: the carry-over's clash rules ran first, and "
+            "a refusal stops the move, which the next launch resumes."),
+    ("carry_over_links.py", "os.replace(long_path(twin), long_path(link))"):
+        (1, "POSIX only (Windows takes the rename below): a link's absolute twin replaces the link before a "
+            "carry-over move; no reader refuses a replace on POSIX, and a refusal resumes at the next launch."),
+    ("carry_over_links.py", "os.rename(long_path(twin), long_path(link))"):
+        (2, "Windows and a crash's leftover: a link's absolute twin takes the free name of the link it replaces "
+            "(removed first); never over an existing name, and a refusal resumes at the next launch."),
     ("folder_moves.py", "os.rename(source, target)"):
         (1, "Never over an existing name by design (a migration's move); a refusal resumes at the next launch."),
     ("studio_files.py", "os.rename(temporary, path)"):
@@ -75,6 +88,7 @@ BARE = {
 
 # (file, function) -> the file it reads. Each reads through the shared reader.
 READERS = {
+    ("endpoint_catalog.py", "write"): "a custom endpoint's Codex model catalog (a running Codex may hold it open)",
     ("always_allow.py", "attach"): "always-allow-scripts.json",
     ("cache_affinity_secret.py", "_read"): "cache-affinity-secret",
     ("chat_pending.py", "load"): "a chat's pending messages",
@@ -91,6 +105,7 @@ READERS = {
     ("fal_video.py", "load_video"): "a reference video (a result _write replaces may be one)",
     ("headless_files.py", "check_source"): "a .blend (an earlier output place() may replace)",
     ("goal_store.py", "_saved"): "goals.json",
+    ("learn_option.py", "load"): "learn.json",
     ("external_cli_protocol.py", "read_key"): "an app's key file",
     ("external_requests.py", "_trim"): "the audit log",
     ("kept_state.py", "read"): "jobs.json, connections.json, conversations.json, cli/clients.json",
@@ -125,10 +140,22 @@ _OWN_NEW = "Creates or appends to its own file (write flags in a variable): noth
 _SHARED_ITSELF = "The shared reader itself (session_journal.open_shared shares delete on Windows)."
 # (file, function) -> why its plain open never refuses a replace. Pinned both ways: a stale entry fails too.
 PLAIN = {
+    ("carry_over_moves.py", "_compare"):
+        "Compares the bytes of two version folders' files during the carry-over, which never runs while another "
+        "Angelo is open (carry_over_processes): nothing replaces them while it reads.",
+    ("carry_over_moves.py", "copy_across"):
+        "Copies an entry of the earlier version's folder to another disk during the carry-over (no other Angelo "
+        "open), and compares the copy with it byte for byte before it renames the copy into place.",
+    ("carry_over_leave.py", "leave_behind"):
+        "Copies the person's choices into the earlier version's folder during the carry-over, which runs at "
+        "registration before anything that replaces them starts, and never while another Angelo is open "
+        "(carry_over_processes).",
     ("always_allow.py", "_write"): _FOLDER_SYNC,
     ("checkpoint_filesystem.py", "_open_file"):
         "Snapshot files: on Windows a WindowsDirectory opens them sharing read, write and delete (windows_nt "
         "FILE_SHARE_ALL); the other branches are POSIX, where no reader refuses a replace.",
+    ("download_fetch.py", "_place"): _OWN_NEW,     # The exclusive claim of a free name (O_EXCL).
+    ("download_fetch.py", "_download"): _OWN_NEW,   # The download's own temporary file (O_EXCL).
     ("engine_link_stamps.py", "write"): _OWN_NEW,
     ("fab_convert.py", "_write_new"): _OWN_NEW,
     ("fab_convert.py", "cached"):
@@ -138,7 +165,6 @@ PLAIN = {
     ("engine_preflight.py", "after_writeback"):
         "In the preflight child: a copy of the asset made for that child alone; nothing replaces it.",
     ("external_requests.py", "record"): _OWN_NEW,
-    ("headless_files.py", "claim_output"): _OWN_NEW,
     ("headless_files.py", "place"): _OWN_NEW,
     ("script_files.py", "read_script"): "The person's own script file, which Angelo never writes.",
     ("script_files.py", "_write"): _FOLDER_SYNC,
@@ -317,7 +343,15 @@ class SitesTests(unittest.TestCase):
                          "A listed bare site moved or changed: update BARE (and its reason) with it")
 
     def test_fab_posix_bare_sites_keep_exact_platform_and_producer_guards(self):
-        pins = {('fab_browser_profile.py', 'ProfileStore._write'): 'fd83eb94b165aaf60c36b4bb50acd26ac49608e083b5b7852a83a8e09be1ac01', ('fab_browser_diagnostics.py', 'write_record'): '736ae286010ff627064cc43df5652da97252d1efa59cc6242a56d6f15ce33160', ('fab_browser_process.py', 'BrowserProcess.__init__'): '6405fb770bfb105b8f46e7dbd69661209e56c436ba01fa647872bcbd7e3f315a', ('fab_browser_process.py', 'BrowserProcess._record'): '204bdf8a98398184aa0bd1d934a8383d14112dec2b15a6b767d35edb10cecaf5', ('fab_browser_platform.py', 'profile_types'): '2f6f951de8fe60a2bf05e42fa088ad33b89861a61b522046a4eb24fcea41d277'}
+        # BrowserProcess.__init__ re-pinned for its environment line only (browser_environment, essential_environment);
+        # its guards and bare sites are unchanged.
+        # write_record re-pinned for its owned_paths check before mkstemp (guard piece 9 (ii)); its guards and bare
+        # sites are unchanged.
+        # BrowserProcess.__init__ re-pinned for owned_paths.require_runnable(program) before posix_spawn (piece 10:
+        # process starts by C's may_run); its guards and bare sites are unchanged.
+        # BrowserProcess.__init__ re-pinned for require_writable(self.profile) in its os.chmod (piece 10 item 5: a mode
+        # changed at a path from state asks C); its guards and bare sites are unchanged.
+        pins = {('fab_browser_profile.py', 'ProfileStore._write'): 'd09d152cc94bc65cb690f5c2ff208aa6743ecffbfa524c841eebcdf1228bb9eb', ('fab_browser_diagnostics.py', 'write_record'): '143f53db76d2a393b8ae887ffe1e15b62af5a9e678be47111e6547e74b79c7ef', ('fab_browser_process.py', 'BrowserProcess.__init__'): '1c70fa9de890602ae54aac10116e85cfe3078de1f53f0fed3d6eeecbbaf2b8e9', ('fab_browser_process.py', 'BrowserProcess._record'): '204bdf8a98398184aa0bd1d934a8383d14112dec2b15a6b767d35edb10cecaf5', ('fab_browser_platform.py', 'profile_types'): '2f6f951de8fe60a2bf05e42fa088ad33b89861a61b522046a4eb24fcea41d277'}
         for (module, function), digest in pins.items():
             with self.subTest(module=module, function=function):
                 node = ast.parse((ADDON / module).read_text())

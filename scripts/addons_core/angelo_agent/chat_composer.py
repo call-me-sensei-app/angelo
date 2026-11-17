@@ -186,7 +186,8 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
     cx, _, cw, _ = geometry["rect"]
     view.shape(cx, composer_bottom, cw, composer_height, ui_tokens.RAISED, geometry["radius"])
     state["composer_card"] = (cx, composer_bottom, cw, composer_height)   # Tooltips open clear of its text.
-    caret = cursor_position(line) if line else 0
+    from . import composer_ime
+    caret = composer_ime.caret(state, line) if line else 0   # Inside a composition while an input method composes.
     from .composer_input import adopt, keep
     adopt(state, controller.state["id"])   # This chat's own scroll, from its first frame in this area.
     # The row the caret is drawn on: the earlier one at a wrap inside a word when the caret is upstream there.
@@ -216,6 +217,7 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
     else:
         with canvas_rtl.unmirrored():
             _draw_draft(view, state, size, line_height)
+            composer_ime.draw_marks(view, state, size, line_height)
             composer_scroll.draw_bar(view, state)   # With the text: a left-to-right field in every language.
     state["text_scale"] = view._scale  # The draft is measured, clicked and drawn at this one scale (view.measure).
     caret_shown = first <= caret_row < first + rows   # Scrolled away from it: no caret drawn over another row.
@@ -225,6 +227,11 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
         y = start_y - (caret_row - first) * line_height
         with canvas_rtl.unmirrored():
             view.shape(x, y - 3, 1, line_height - 3, ui_tokens.TEXT)
+    if line:   # The input method's candidate window at the caret, blinking or not (its row, scrolled away).
+        value, offset = draft_lines[caret_row] if caret_shown and draft_lines else ("", caret)
+        composer_ime.place(state, column_x(value, caret - offset, size) if caret_shown else DRAFT_LEFT,
+                           start_y - ((caret_row - first) * line_height if caret_shown else 0) - 3, line_height - 3,
+                           not waiting)
     goal_row = 0
     if chat_goal.chip_shown(controller):
         chat_goal.draw_chip(view, state, controller, 28, composer_bottom + composer_height - 48, width - 56)
@@ -366,7 +373,7 @@ def footer_fit(view, approval, label, short_label, label_inset, chip_right, show
 def _draw_draft(view, state, size, line_height):
     """The typed text and its selection, as laid out (never shaped or mirrored: the caret follows the characters)."""
     for value, offset, y in state["draft_rows"]:
-        selected = state.get("selection")
+        selected = None if state.get("composer_ime_shown") else state.get("selection")   # A composition takes its place.
         if selected:
             begin, end = max(offset, selected[0]), min(offset + len(value), selected[1])
             if end > begin:

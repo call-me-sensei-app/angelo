@@ -18,7 +18,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[3]
 ADDON = ROOT / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
-from angelo_agent import game_ready_collider as C, game_ready_metrics as G  # noqa: E402
+from angelo_agent import game_ready_collider as C, game_ready_glossary as GL, game_ready_metrics as G  # noqa: E402
 from angelo_agent.game_ready_spec import CHECK, GAME_READY_NAMES, GAME_READY_TOOLS, validate_game_ready  # noqa: E402
 
 H1 = "scn:" + "a" * 32 + ":1"
@@ -186,7 +186,8 @@ class RegistrationTests(unittest.TestCase):
     def test_nothing_of_it_loads_until_it_is_called(self):
         """Only blender_tools names the host module, and only inside the call; the measuring modules are imported by
         the host module alone, so an add-on that never runs the check never imports them, NumPy included."""
-        heavy = {"game_ready_host", "game_ready_mesh", "game_ready_metrics", "game_ready_collider"}
+        heavy = {"game_ready_host", "game_ready_mesh", "game_ready_metrics", "game_ready_collider",
+                 "game_ready_glossary"}
         for path in ADDON.glob("*.py"):
             if path.stem in heavy:
                 continue
@@ -199,14 +200,14 @@ class RegistrationTests(unittest.TestCase):
             if path.name != "blender_tools.py":
                 self.assertFalse(any(h in path.read_text(encoding="utf-8") for h in (
                     "import game_ready_host", "import game_ready_mesh", "import game_ready_metrics",
-                    "import game_ready_collider")),
+                    "import game_ready_collider", "import game_ready_glossary")),
                                  path.name)
         self.assertIn("from . import game_ready_host", (ADDON / "blender_tools.py").read_text(encoding="utf-8"))
         # The spec imports nothing heavy: plan_kinds and tool_specs import it on every start.
         spec = ast.parse((ADDON / "game_ready_spec.py").read_text(encoding="utf-8"))
         imported = {a.name for n in ast.walk(spec) if isinstance(n, ast.Import) for a in n.names}
-        imported |= {n.module for n in ast.walk(spec) if isinstance(n, ast.ImportFrom)}
-        self.assertLessEqual(imported, {"math", "re", "scene_spec"})
+        imported |= {n.module or a.name for n in ast.walk(spec) if isinstance(n, ast.ImportFrom) for a in n.names}
+        self.assertLessEqual(imported, {"math", "re", "scene_spec", "read_only"})   # read_only: stdlib only.
 
 
 class HausdorffTests(unittest.TestCase):
@@ -307,6 +308,47 @@ class GlossaryTests(unittest.TestCase):
         self.assertIn("at 2048 px", glossary["uv"])
         self.assertIn("1000 area-weighted points", glossary["hausdorff"])
         self.assertTrue(all(isinstance(v, str) and len(v) > 30 for v in glossary.values()))
+
+    def test_a_result_carries_the_entries_for_the_facts_it_holds_and_no_others(self):
+        source = {"tris": 12, "uv": {"seam_edges": 3}, "topology": {"open_edges": 0}}
+        alone = {"success": True, "source": source, "lods": [], "native_ms": {"read": 1.0, "total": 2.0}}
+        self.assertEqual(set(G.glossary(1080, 60, 1024, facts=alone)), {"uv", "topology"})
+        # The source's ``uv`` note of a mesh without UVs is not a fact; nor is a phase's time, named as a fact is.
+        bare = dict(alone, source=dict(source, uv="no UV map"), native_ms={"silhouette": 4.0, "collider": 1.0})
+        self.assertEqual(set(G.glossary(1080, 60, 1024, facts=bare)), {"topology"})
+        lod = {"hausdorff": {"max_m": 0.01}, "pixel_error": {}, "silhouette": {}, "normals": {}, "uv_shift": {},
+               "uv": {}, "topology": {}, "meshopt_error": 0.01}
+        reduced = dict(alone, lods=[lod], lod0_vertex_buffer=40)
+        self.assertEqual(set(G.glossary(1080, 60, 1024, facts=reduced)),
+                         {"hausdorff", "pixel_error", "silhouette", "normals", "uv_shift", "uv", "topology",
+                          "meshopt_error", "lod0_vertex_buffer"})
+        skinned = dict(reduced, lods=[dict(lod, skin_weights={"p50": 0.0}, apart=True), {"empty": "no triangles"}])
+        self.assertIn("skin_weights", G.glossary(1080, 60, 1024, facts=skinned))
+        self.assertIn("apart", G.glossary(1080, 60, 1024, facts=skinned))
+        # A collider's hull distance is a block of Hausdorff facts: its entry comes too; without a hull, it does not.
+        collider = dict(alone, collider={"closed": True, "hull_distance": {"max_m": 0.1}, "mesh_outside": {}})
+        self.assertEqual(set(G.glossary(1080, 60, 1024, facts=collider)), {"uv", "topology", "collider", "hausdorff"})
+        no_hull = dict(alone, collider={"closed": True, "hull": "not measured: this build has no convex hull"})
+        self.assertEqual(set(G.glossary(1080, 60, 1024, facts=no_hull)), {"uv", "topology", "collider"})
+        # Each entry kept is the whole entry's text, the request's settings in it.
+        full = G.glossary(720, 90, 2048)
+        self.assertEqual(G.glossary(720, 90, 2048, facts=reduced)["pixel_error"], full["pixel_error"])
+
+    def test_every_entry_explains_a_fact_a_result_can_hold(self):
+        """No entry is unreachable: each names a key the check writes (or ``EXPLAINS`` says which keys it explains)."""
+        metrics = (ADDON / "game_ready_metrics.py").read_text(encoding="utf-8")
+        written = "".join((ADDON / name).read_text(encoding="utf-8") for name in ("game_ready_host.py",
+                                                                                  "game_ready_collider.py"))
+        written += metrics   # The facts' own code; the glossary's keys are in game_ready_glossary.
+        for name in G.glossary(1080, 60, 1024):
+            self.assertTrue(any('"%s"' % key in written for key in GL.EXPLAINS.get(name, (name,))), name)
+
+    def test_the_host_route_passes_its_result(self):
+        tree = ast.parse((ADDON / "game_ready_host.py").read_text(encoding="utf-8"))
+        calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                 and getattr(node.func, "attr", None) == "glossary"]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual([(k.arg, getattr(k.value, "id", None)) for k in calls[0].keywords], [("facts", "answer")])
 
 
 class PixelErrorTests(unittest.TestCase):

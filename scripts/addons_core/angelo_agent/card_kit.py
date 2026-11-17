@@ -68,6 +68,7 @@ class BaseCard:
     default_action = None      # Return with nothing focused.
     outside_dismisses = False
     retry_when_lost = False    # Shown again when its 3D view disappears (a layout change).
+    pictures = ()              # brand_picture.Picture objects it draws: shown by card_host while the card is open.
 
     def version(self):
         """Changes whenever the card's content does, so the host redraws its cached layout."""
@@ -84,6 +85,21 @@ class BaseCard:
 
     def closed(self, how):
         pass
+
+
+def opened(card, host):
+    """``card`` is shown: its pictures are read (outside drawing, unless another surface holds them), then its
+    ``opened``."""
+    for picture in card.pictures:
+        picture.show(card)
+    card.opened(host)
+
+
+def closed(card, how):
+    """``card`` closed: its ``closed``, then its pictures let go (the texture goes with the last surface)."""
+    card.closed(how)
+    for picture in card.pictures:
+        picture.hide(card)
 
 
 def hit_test(plan, x, y):

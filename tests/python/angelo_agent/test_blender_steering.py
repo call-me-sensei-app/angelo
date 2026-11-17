@@ -89,7 +89,11 @@ def actions():
 def click(action, value=None):
     area, region = chat()
     rect = next(r for r, a, v in view_state()["hits"] if a == action and (value is None or v == value))
-    x, y = int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    x, y = chat_point(region, rect)
+    import qa_input
+    if action in qa_input.GRANT_ACTIONS:   # It reaches a grant: only a person's click (move, then press).
+        return qa_input.press(window(), x, y)
     for kind, event_value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
         window().event_simulate(type=kind, value=event_value, x=x, y=y)
 
@@ -240,7 +244,7 @@ def tick():
                     observed["steer_typed"] = True
                 return .2
             other = next((m["id"] for m in c.models if not m["default"]), "")
-            bpy.ops.angelo.select_model(model=other, connection_id=c.state["connection_id"])
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().select_model(model=other, connection_id=c.state["connection_id"])
             observed["chosen_model"] = other
             state["phase"] = "steer_shown"
             return .3
@@ -386,4 +390,5 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=.5)
+import qa_input  # noqa: E402  (a click on its way holds the tick: qa_input.after_clicks)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.5)

@@ -15,6 +15,7 @@ import copy
 import math
 import re
 from .refusal_codes import RefusalError
+from . import read_only
 from .request_recovery import FIELD as RECOVERY_FIELD, CITATION_SCHEMA, citation
 
 from .action_catalog import validate_operation
@@ -141,12 +142,16 @@ def parameter_ranges():
     return "Parameter ranges (inclusive): " + "; ".join(parts) + "."
 
 
+VALIDATED_RECIPES = read_only.frozen(RECIPE_SCHEMAS)   # What validation reads: as registered, read only.
+
+
 def validate_parameters(recipe, parameters):
-    if type(recipe) is not str or recipe not in RECIPE_SCHEMAS:
+    if type(recipe) is not str or recipe not in VALIDATED_RECIPES:
         raise RefusalError("Choose a documented native recipe", code="VALIDATION")
     if type(parameters) is not dict:
         raise RefusalError("Recipe parameters must be a closed object", code="VALIDATION")
-    result = validate_value({**copy.deepcopy(DEFAULTS[recipe]), **parameters}, RECIPE_SCHEMAS[recipe], "recipe.parameters")
+    result = validate_value({**copy.deepcopy(DEFAULTS[recipe]), **parameters}, read_only.thawed(VALIDATED_RECIPES[recipe]),
+                            "recipe.parameters")
     if recipe == "fit-dimensions" and result["minimum_scale"] > result["maximum_scale"]:
         raise RefusalError("Approved minimum scale cannot exceed maximum scale", code="VALIDATION")
     if recipe == "simple-animation" and result["start_frame"] >= result["end_frame"]:

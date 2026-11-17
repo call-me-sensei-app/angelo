@@ -35,6 +35,8 @@ os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_DISABLE_KEYCHAIN="1",
                   ANGELO_CONNECTIONS_DIR=str(OUT / "accounts"), ANGELO_STATE_DIR=str(OUT / "state"))
 sys.path[:0] = [str(HERE.parents[2] / "scripts/addons_core"), str(HERE)]
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
+from qa_person import reviewing  # noqa: E402
+BlenderExecutor = reviewing(BlenderExecutor)   # Each script runs as one the person approved (qa_person).
 from angelo_agent.tool_specs import validate_call  # noqa: E402
 from read_tools_fixtures import png  # noqa: E402
 

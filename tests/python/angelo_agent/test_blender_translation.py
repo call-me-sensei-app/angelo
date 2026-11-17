@@ -221,8 +221,9 @@ def tick():
             # Mirrored: a button laid out at x is drawn at width - x, and the pointer there must reach it.
             area, region = chat()
             rect, action, value = next(hit for hit in hits() if hit[1] == "welcome_connect")
-            x = region.x + region.width - int(rect[0] + rect[2] / 2)
-            window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=region.y + int(rect[1] + rect[3] / 2))
+            from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+            x, y = chat_point(region, rect)   # Its scale, and the mirror the language asks for.
+            window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=y)
             state["expected_hover"] = (action, value)
             state["phase"] = "mirror_check"
             return .4

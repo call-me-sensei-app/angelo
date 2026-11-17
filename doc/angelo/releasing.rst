@@ -128,6 +128,21 @@ Order of a release
    ``build_release_windows.ps1 -Package -Sign``), each with the agent runtime
    built for it (`Agent runtime`_). Bump the trust-store pins the day
    certifi, pip or webpki-roots publish (`Bundled trust stores`_).
+   **Update carry-over gate** (required for a release on a newer Blender base, 1.1 first; cheap enough to run
+   for every release): on macOS and on Windows,
+   ``tests/python/angelo_agent/update_carry_over_gate.py --from-app <previous release's executable> --to-app
+   <candidate> --out <fresh dir> --connections-from <a signed-in account folder>``. The previous release seeds a
+   populated install with its own code (chats with briefs, an attachment, a snapshot with a file journal, a scene,
+   changed preferences, Claude and Codex accounts); the candidate's first launch must carry everything over and
+   keep it usable, show Angelo's own notice and never the setup card or Quick Setup, change nothing again on the
+   next launch, leave the account folder and the previous version's preferences unchanged, and every account must
+   still report signed in; the previous release must still open. A FAIL on either platform blocks publishing.
+   macOS runs in a sandboxed home; Windows uses ``--profile account`` on a VM account with no Angelo folders,
+   since its known folders cannot be redirected. Contract: ``app_identity.rst``, "Moving to a newer Blender base".
+   Run it a second time with ``--crashing-addon`` in a fresh directory: the seed also enables a third-party add-on
+   that crashes natively as it loads in the candidate; the update's first launch must end in that crash, the next
+   must open with the add-on off and one notice naming it, and the one after must open normally with it still off
+   (``app_identity.rst``, "A start that did not finish").
 6. macOS: sign, notarize and staple (``sign_notarize_macos.py``); then the
    delta from the previous release (``make_update_delta.py``, `Update feed`_).
 7. Source: ``source_release.py`` for the tag.
@@ -513,7 +528,16 @@ built for Windows (`Agent runtime`_)::
 
 It builds with clang-cl and lld-link, as official Blender's Windows release
 (``native_editor_build.rst``, "Toolset: clang-cl": Visual Studio's two clang-cl
-components are required). Order inside the script: ``sign_windows.ps1 -Mode
+components are required). The release path (the cloud bootstrap's release
+stage, this build and signing) runs under Windows PowerShell 5.1, mostly with
+``$ErrorActionPreference = "Stop"``, where a program's redirected error output
+becomes a terminating error. Every program whose error output it redirects runs
+through ``Invoke-NativeCapture`` (``windows_native_call.ps1``: its own Continue
+scope, the exit code judged, standard output kept apart, ``-Log`` for a stage's
+live log); the two startup scripts that run before a checkout exists carry it
+byte for byte. ``test_native_windows_native_call`` lists the path's scripts,
+refuses any other redirect on it and fails when a script it dot-sources is not
+listed. Order inside the script: ``sign_windows.ps1 -Mode
 Preflight`` (signtool, the CNG provider, a code-signing certificate in date
 without a private key, the key name), the update-key check and the
 agent-runtime check (the files, the pinned version from ``codex.exe
@@ -718,6 +742,16 @@ Configuration, Custom Purge, by URL, or ``POST
 ``--verify-only`` again; nothing needs publishing again. Run no ``--verify-only``
 while an addition is in progress.
 
+The read-back of each file resumes a dropped stream (``published_files.read_back``):
+when the body stops short of its ``Content-Length`` or the connection breaks
+mid-file, it asks for the rest with ``Range`` and ``If-Range`` on the strong
+``ETag`` the ``HEAD`` answer gave, up to ``MAX_RESUMES`` (5) times. A ``206`` must
+start where the read stopped. A ``200`` means the file changed, so the read
+starts over from zero. Each resume and restart is printed and kept in the file's
+``verified`` entry (``resumes``), so a flaky edge is visible, never silent. The
+SHA-256 is still the whole file's. On 1.0.9 the edge dropped the 536 MB MSI at
+218 MB mid-check, and the publish read as failed though the file was right.
+
 A version published before 1.0.6 has a ``.sha256`` only for a platform added
 later (1.0.4's MSI). ``--add-checksum-files`` (only ``--version``, and
 ``--dry-run``) writes each missing one: for every installer ``SHA256SUMS``
@@ -897,8 +931,8 @@ with the fix:
 * ``56a6f5b4ac4`` Fix: Mesh: Uninitialized attributes when adding elements (by Tibo Stans)
 * ``050e8f2277b`` Fix #165230: Regression: rendering to the current directory broken (by Sybren A. Stüvel)
 
-Angelo 1.0.11 carries this fix from Blender's main branch (5.4), which upstream had not backported to 5.2 or 5.3,
-taken with ``test_blender_custom_normals_transform.py`` failing on 1.0.11 and passing with it:
+Angelo 1.0.11 and 2.0.0 carry this fix from Blender's main branch (5.4), which upstream had not backported to 5.2
+or 5.3, taken with ``test_blender_custom_normals_transform.py`` failing on 1.0.11 and passing with it:
 
 * ``8306860f963`` Fix #121831: Applying non-uniform or negative scale breaks custom split normals (by Tariq-Sulley)
 
@@ -906,11 +940,69 @@ Upstream fixed only Blender's Apply operator. Angelo extends it to ``Mesh.transf
 (``rna_mesh_api.cc``), which the agent's ``transform_apply`` and scripts bake through, and keeps free custom normals
 free in all three (the operator would have stored them in tangent space).
 
-Angelo 1.0.11 also carries this fix from Blender's main branch (5.4), which upstream had not backported to 5.2 or
-5.3, taken with ``test_blender_upstream_fix_backports.py`` failing without it (a render in a kept session differed
-from the same render in a new one after the denoiser's passes changed) and passing with it:
+Angelo 2.0.0 carries this fix from Blender's main branch (5.4), which upstream had not backported to 5.3 or 5.2,
+taken with ``test_blender_upstream_fix_backports.py`` failing without it (a render in a kept session differed from
+the same render in a new one after the denoiser's passes changed) and passing with it:
 
 * ``a78e8dccb9c`` Fix #166217: Cycles: Crashes changing denoisers (by Brecht Van Lommel)
+
+Angelo 2.0.0 also carries these 21 fixes from Blender's main branch (5.4) that upstream had not backported to 5.3.
+``test_blender_upstream_fix_backports.py`` fails without the OBJ, USD and bake-write fixes and passes with them;
+the others were taken on upstream's review, since a window, a GPU or a damaged file is needed to see them.
+One differs from upstream by a line: ``c4713dfec04`` passes the buffer size to ``BLI_path_join``, which 5.3
+still takes.
+
+* ``0d1817d58b2`` Fix: avoid crashing when renaming an ID via ui::AbstractView (by Sybren A. Stüvel)
+* ``8670d139c74`` Fix: Metal framebuffer completeness errors silent in release builds (by Jeroen Bakker)
+* ``54a5bec1430`` Fix: Changing Anisotropic Filtering preference has no effect on images (by Jeroen Bakker)
+* ``bb8aade460e`` Fix: Metal: Out of bounds write when binding a high uniform buffer slot (by Clément Foucault)
+* ``0982cb7c5f4`` Fix: Metal: Do not bind acceleration structure for stages not using it (by Clément Foucault)
+* ``e1572ab87b5`` Fix: Potential nullptr dereference with invalid zones (by Omar Emara)
+* ``7d4d20414bc`` Fix #165615: USD import applies parent transform despite resetXformStack (by Leon Zandman)
+* ``046cf43eace`` Fix: Metal: Out of bounds read for shaders with high buffer slots (by Clément Foucault)
+* ``9bd3e301984`` Fix: Metal: Out of bounds write when binding a high storage buffer slot (by Clément Foucault)
+* ``4f97ee24309`` Fix: OBJ import left no active vertex group (by Hans Goudey)
+* ``74dea2b7e2c`` Fix: Memory leak computing UV islands without seams (by Hans Goudey)
+* ``946babe6b67`` Fix: Undefined behavior adding UV island without inner cuts (by Hans Goudey)
+* ``1ab01aa5074`` Fix #165892: Crash when repeat zone contains dangling node (by Omar Emara)
+* ``55570b2a31d`` Fix #165827: Cycles viewport HDRI EXR file wrong colorspace (by Oktay Comu)
+* ``567c8ff08b4`` Fix: Metal: Initialize capabilities once per backend (by Tibo Stans)
+* ``537a8fa6c93`` Fix: GPU: Avoid pass cache races (by Tibo Stans)
+* ``5241bf98857`` Fix #165875: Lag when changing various sculpt and paint settings (by Brecht Van Lommel)
+* ``380cf800058`` Fix: Geometry Nodes: Crash when unpacking empty bake files (by Tibo Stans)
+* ``c4713dfec04`` Fix: Geometry Nodes bake write failures go undetected (by Tibo Stans)
+* ``7041b1f7b46`` Fix: Geometry Nodes invalid bake data causes crashes (by Tibo Stans)
+* ``d0ee3e1db6f`` Fix: Crash interpolating baked lists with different sizes (by Hans Goudey)
+
+Angelo 2.0.0 also carries these 8 Vulkan and GPU fixes from Blender's main branch (5.4), which upstream had not
+backported to 5.3. Blender 5.3.0 makes Vulkan the default on Windows, so Angelo 1.1 is the first release that draws
+with it. They were taken on upstream's review and are proven by the Windows build and its T4 GUI round. Five files'
+context in 5.3.0 differs from the commits' upstream parent: ``vk_backend.cc``, ``vk_device.cc``, ``vk_device.hh``,
+``vk_shader_compiler.cc`` and ``vk_texture.cc``.
+
+* ``88daad5c128`` Fix: Vulkan: texture size limit ignores the width (by Bernhard Wodok)
+* ``fc27398118d`` Fix: Vulkan: GPU LUID reported as device UUID (by Bernhard Wodok)
+* ``bf6823b64e5`` Fix: Vulkan: No OpenGL fallback when required extensions are missing (by Jeroen Bakker)
+* ``859b056add9`` Fix: Vulkan: reported max batch indices is 1 on some devices (by Jeroen Bakker)
+* ``21e54d946f1`` Fix: Vulkan reads back texture views of RGB16F/RGB32F textures wrong (by Jeroen Bakker)
+* ``ba33d293e36`` Fix #164400: Vulkan: Memory leak using GPU in many short-lived threads (by Jeroen Bakker)
+* ``7cdf6305312`` Fix: GPU: Multi draw indirect with zero stride replays first command (by Clément Foucault)
+* ``05caad5ac73`` Fix: Vulkan: Missing layout transitions of layered attachments (by Jeroen Bakker)
+
+Angelo 2.0.0 also carries these 4 fixes from Blender's main branch (5.4), which upstream had not backported to 5.3,
+named by a source audit of the 1.1 tree (2026-11-13) and taken on upstream's review: each needs a GPU race, an
+allocation failure or a compositor zone to see. All four apply to 5.3.0 without a conflict.
+
+* ``f4c57c46d7f`` Fix: EEVEE: Address race condition in HiZ construction (by Mark van de Ruit)
+* ``fb8bdeff4de`` Fix: Geometry Nodes: data race in Format String node with varying format strings (by Jacques Lucke)
+* ``15baff794d3`` Fix: Vulkan: Invalid copy on storage buffer readback allocation failure (by Jeroen Bakker)
+* ``e4c3f014c9f`` Fix: Stale viewer output for viewers inside repeat zones (by Omar Emara)
+
+The same audit found a fault that is open in Blender 5.3.0 and in main, fixed in Angelo 2.0.0 and owed upstream as a
+report: on a multires mesh with hidden faces the blur of a mask or weight array (the Pose brush's weight smoothing,
+Expand's falloff blur) wrote each visible grid vertex at its grid's place in the node instead of at its own place in
+the array. ``scatter_data_visible_grids`` (``mesh_brush_common.hh``) holds the fix, and two tests in
+``mesh_brush_common_tests.cc`` fail without it.
 
 Agent runtime
 =============
@@ -959,6 +1051,35 @@ with ``cargo build --target x86_64-pc-windows-msvc --release --bin codex
 OpenAI's unchanged signed release asset of the pinned tag, checked against its
 published SHA-256 and valid signature.
 
+1.1.1 pins fork commit ``caab709d09b56e552daa83c5f640996325affeb0`` (branch
+``angelo/rust-v0.166.0-gemini-wire``): 1.0.11's commit plus the native Gemini wire (``wire_api = "gemini"``,
+``agent_runtime.json`` ``wire_apis``) that Gemini 4 Carbon runs on (``ai_providers.rst``, "Gemini 4 Carbon"), and
+the config schema fixture regenerated for the new wire value (``just write-config-schema``). No dependency or lock
+change. The release checks run ``codex debug models`` with a provider on each pinned wire
+(offline, no request); a build without the wire refuses it.
+
+**When the pin moves, record the runtimes' tool layouts again.** Test connection
+for an organization's model server imitates the requests the runtimes send
+(``endpoint_check_tools``; ``ai_providers.rst``, "Test connection"), and a fork
+rebase may change where tools ride (a Responses Lite item, a namespace,
+``parallel_tool_calls``). With the new build, on Mac 1 through a queue slot
+(it launches Codex and Claude Code against a recorder on 127.0.0.1; no key, no
+model, nothing billed)::
+
+   python3 tests/python/angelo_agent/capture_endpoint_tool_layouts.py --codex <the new codex> \
+       --built-from <its fork commit> [--fork <fork checkout>] --write
+
+and commit ``tests/python/angelo_agent/fixtures/endpoint_tool_layouts.json``. The
+fixture names the commit the codex was really built from; a build from another
+commit than the pin needs ``--fork``, which records the files between the two,
+and counts only while each is one no request depends on (the generated config
+schema, documentation). Set ``ANGELO_CODEX_FORK`` to a fork checkout to have the
+test verify that record with git.
+``test_native_endpoint_tool_layouts.py`` fails while the fixture names another
+pin, and while any request Test connection sends departs from the recorded
+layout of the runtime and tool shape it stands for; fix the check, never the
+fixture, when the runtime's own form moved.
+
 1.0.11 pins fork commit ``2dfdc4c72e3b497b2c463bce3631eec05475cb3c``: 1.0.10's commit plus the hold of a
 code-mode cell in a step without an instant-interrupt token (Angelo launches with instant interrupt off, so
 1.0.10's runtime never held a waiting call). The change is in ``codex-core`` alone, with no dependency or lock
@@ -984,9 +1105,18 @@ macOS, an x64 PE executable on Windows), a Windows file listed in
 ``upstream_signed`` without OpenAI's embedded signature, a version other than
 the pin (``codex --version``) and a build without the parameter, a pinned request field (``request_fields``) or a
 pinned notification in its app-server schema (``codex app-server
-generate-json-schema``: stock Codex reports the same version). Both run offline
-and write only to a temporary ``CODEX_HOME``; ``--no-run`` checks another
-platform's folder without running it.
+generate-json-schema``: stock Codex reports the same version), a build that
+does not speak a pinned model-provider wire (``wire_apis``: ``codex debug
+models`` with a provider on it), and a build that does not read a pinned
+provider capability (``provider_capabilities``, ``runtime_capabilities.py``):
+``codex features list`` with a throwaway provider declaring each pinned value
+must load, and with an unpinned value must be refused as an unknown variant,
+because Codex ignores a capability it does not read. Every
+``capabilities.<name>`` Angelo writes into a provider must be pinned
+(``test_native_runtime_capabilities``). All run offline and write only to a
+temporary ``CODEX_HOME``; ``--no-run`` checks another platform's folder without
+running it. ``windows_agent_runtime_check.ps1`` and the Windows release build
+(``Assert-RuntimeWires``, ``Assert-RuntimeCapabilities``) run the same probes.
 
 **Release builds require it.** ``build_release_macos.sh`` stops without
 ``ANGELO_AGENT_RUNTIME_DIR``, runs that check and configures with
@@ -1544,6 +1674,14 @@ included, and no credential. Two parts keep it so.
   ``publish_installers.py`` (``--dry-run`` included) mounts the disk image
   read-only and scans it, and refuses an MSI without a clean receipt for exactly
   its bytes.
+* **No diagnostic build ships.** The same scan refuses, never allowlisted, the
+  marker a build made with CMake ``ANGELO_GUARD_DIAG_NO_INSTALL`` embeds (the
+  agent-script guard compiled without its install: such a build refuses every
+  agent script). A release configure (``blender_release.cmake``, or
+  ``ANGELO_REQUIRE_AGENT_RUNTIME=ON``) refuses the option even when a shared
+  build folder has it cached, and the Linux archive (``make package_archive``,
+  ``build_files/package_spec/build_archive.py``) refuses an install that holds
+  the marker (doc/angelo/script_confinement.rst).
 
 The only exceptions are in ``scripts/angelo/builder_paths_allow.json``, each
 with its files, its exact match and its reason: third-party files shipped

@@ -90,7 +90,8 @@ def hit_point(action, value=None):
     _, region = chat()
     rect = next((r for r, a, v in view().get("popup_hits", []) + view().get("hits", [])
                  if a == action and (value is None or v == value)), None)
-    return None if rect is None else (region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2)
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    return None if rect is None else chat_point(region, rect)
 
 
 def key(kind):
@@ -122,10 +123,16 @@ def chat_sizes():
     from angelo_agent import chat_view
     w = window()
     _, region = chat()
-    pixels, scale = prefs.system.pixel_size, chat_view.ui_scale()   # Window sizes are points; the canvas lays out
-    share, rest = region.width / w.width, w.height - region.height  # region pixels / its scale.
+    # Window sizes are the screen's points; the canvas lays out region pixels / its scale. A point is the display's
+    # own scale in pixels: the Retina pixel size on macOS, the DPI's on Linux and Windows (a 150% display at 144 dpi),
+    # which is the interface scale less the person's own Resolution Scale. Counting a point as one pixel shrank each
+    # window by that factor off scale 1 (Xvfb at 100 dpi: 1.04, and every feature fell out at 144 dpi).
+    scale = chat_view.ui_scale()
+    pixels = prefs.system.ui_scale / (prefs.view.ui_scale or 1.0)
+    share, rest = region.width / w.width, w.height - region.height
     state["layout_basis"] = {"window": [w.width, w.height], "chat": [region.width, region.height],
-                             "share": round(share, 4), "rest": rest, "pixel_size": pixels, "ui_scale": scale}
+                             "share": round(share, 4), "rest": rest, "pixel_size": prefs.system.pixel_size,
+                             "points_to_pixels": round(pixels, 4), "ui_scale": scale}
     return {"%dx%d" % size: (int(size[0] * pixels * share / scale), int((size[1] * pixels - rest) / scale))
             for size in WINDOWS}
 

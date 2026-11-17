@@ -552,8 +552,11 @@ def _overridden_object():
     bpy.data.objects.remove(source)
     with bpy.data.libraries.load(library, link=True) as (data_from, data_to):
         data_to.objects = ["Source"]
+    # Blender 5.3 settles a linked ID's direct status after instantiation (upstream f8dd28d9695): one nothing uses
+    # yet is indirect, which override_create refuses. The scene uses it first; the override takes its place there.
+    bpy.context.scene.collection.objects.link(data_to.objects[0])
     override = data_to.objects[0].override_create(remap_local_usages=True)
-    bpy.context.scene.collection.objects.link(override)
+    assert override.name in bpy.context.scene.collection.objects, "The override replaces the linked object"
     override.location.x = 3.0
     override.override_library.operations_update()
     return override

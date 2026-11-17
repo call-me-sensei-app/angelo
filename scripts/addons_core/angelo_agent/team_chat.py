@@ -17,6 +17,7 @@ connections, ``chat_welcome`` keeps this row alone (``team_only_options``).
 
 import bpy
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard)
 from . import managed_policy, team_access, team_account_ui
 from .provider_registry import is_coding
 from .team_view import OFFLINE, RESTORING, SIGNED_OUT, SIGNING_IN
@@ -38,11 +39,19 @@ def coding_ready():
     return any(is_coding(r) and team_account_ui.ready(r) for r in team_account_ui._records.values())
 
 
+def endpoint_ready():
+    """None when the organization offers no custom endpoint connection, else whether one is usable now."""
+    from . import endpoint_ui
+    found = endpoint_ui.records()
+    return any(endpoint_ui.ready(r) for r in found.values()) if found else None
+
+
 def access():
     """``team_access.access`` for the current account, or None when not signed in."""
     account = team_account_ui._account
     view = account.view() if account is not None else None
-    return team_access.access(view, coding_ready(), managed_policy.current().admin_contact) if view else None
+    return team_access.access(view, coding_ready(), managed_policy.current().admin_contact,
+                              endpoint_ready()) if view else None
 
 
 def ready_line(record):
@@ -89,7 +98,7 @@ def welcome_action(page=""):
     the reason shown (``page``: "people" or "keys"); else AI Providers, where the team's state is."""
     account = team_account_ui._account
     if account is not None and account.view().status == SIGNED_OUT:
-        return bpy.ops.angelo.team_sign_in()
+        return grant_guard.clicked(bpy.ops.angelo).team_sign_in()   # The row's click (grant_guard).
     if account is not None and page in {"people", "keys"} and account.view().signed_in:
         return team_account_ui.open_in_browser("%s/orgs/%s/%s" % (account.console_url, account.view().org_id, page))
     return bpy.ops.angelo.settings()
@@ -122,6 +131,8 @@ def bind_team_chats(ui):
     records = team_account_ui._records
     ready = sorted((r for r in records.values() if is_coding(r) and ui.connection_ready(r)),
                    key=lambda r: CODING_ORDER.index(r["mode"]) if r["mode"] in CODING_ORDER else len(CODING_ORDER))
+    from . import endpoint_ui   # Then the organization's own model servers, in the order it lists them.
+    ready += [r for r in endpoint_ui.records().values() if ui.connection_ready(r)]
     if not ready:
         return
     for controller in ui._controllers.values():

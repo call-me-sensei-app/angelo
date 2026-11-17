@@ -10,6 +10,7 @@ On 1.0.9 code (delete the stored token after a failed write) each scenario ended
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import contextlib
 import inspect
@@ -272,7 +273,7 @@ class RotationFailureTests(AccountCase):
         before = len(self.console.refresh_requests())
         for name in ("p2", "p3"):
             answer = self.do(name, "refresh")
-            deadline = time.monotonic() + 15
+            deadline = time.monotonic() + CAP_S
             while answer["status"] == "offline" and time.monotonic() < deadline:
                 time.sleep(0.5)  # Windows may release a dead process's file lock a moment after it exits.
                 answer = self.do(name, "retry")

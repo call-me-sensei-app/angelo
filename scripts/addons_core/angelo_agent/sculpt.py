@@ -14,6 +14,7 @@ import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
+from . import color_spaces, owned_paths
 from .input_policy import tool_running
 from .legacy_names import SCULPT_REGIONS, read_property
 from .sculpt_preflight import SculptPreflightError, before_an_edit, named
@@ -607,10 +608,11 @@ def capture_views(window, area, region, obj, state, args, references):
             image = None
             try:
                 image = bpy.data.images.new('Angelo sculpt observation', width=size, height=size, alpha=True)
-                image.colorspace_settings.name = 'Non-Color'
+                color_spaces.mark_stored(image.colorspace_settings)
                 image.pixels.foreach_set(np.frombuffer(bytes(pixels), dtype=np.uint8).astype(np.float32) / 255)
                 image.filepath_raw = reference['path']
                 image.file_format = 'PNG'
+                owned_paths.require_writable(reference['path'])
                 image.save()
                 os.chmod(reference['path'], 0o600)
                 reference['bytes'] = os.path.getsize(reference['path'])

@@ -15,6 +15,7 @@ from .document_scene import same_file
 from .checkpoint_review_ui import checkpoint_review, mark_scene_history as _mark_scene_history, restore_outcome
 from .restore_load_handlers import bundled as _bundled, owners as _handler_owners, resume as _resume_load_handlers, \
     suspend as _suspend_load_handlers
+from . import save_failure
 from .tool_finalization import PERSISTENCE_ERRORS
 from .transcript_rows import changing
 
@@ -49,10 +50,11 @@ def _safety_notice(controller, selected, safety, unsaved):
         controller.version += 1
         try:
             controller.save()  # Strict pre-open gate; never defer to an event queue.
-        except Exception:
+        except Exception as error:
             with changing(controller, notice):
                 notice.update(restore_state='not_applied', **ui_text.notice('The recovery scene was not opened because its '
-                    'safety link could not be saved. The protected safety snapshot is still available through Undo restore.'))
+                    'safety link could not be saved. {why} The protected safety snapshot is still available through Undo restore.',
+                    why=save_failure.cause(error)))
             raise
     return notice
 
@@ -125,12 +127,13 @@ def _reload_safety(ui, controller, native, safety, warnings, kept=None):
 
 
 def _save(controller):
-    """Save the chat with a restore's outcome: the redacted persistence error, or None. Only persistence errors are
-    caught (``PERSISTENCE_ERRORS``): anything else, such as a test's journal check, still raises."""
+    """Save the chat with a restore's outcome: why the save failed and what to do (``save_failure.cause``, which
+    holds nothing of the error's own text), or None. Only persistence errors are caught (``PERSISTENCE_ERRORS``):
+    anything else, such as a test's journal check, still raises."""
     try:
         controller.save()
     except PERSISTENCE_ERRORS as error:
-        return _error(controller, error)
+        return str(save_failure.cause(error))
     return None
 
 
@@ -198,7 +201,10 @@ def execute_restore(ui, operator):
         operator.report({'ERROR'}, busy_message(ui._controllers.values(), ui_text.rpt_,
                                                 ui_text.rpt_('Stop active requests before restoring')))
         return {'CANCELLED'}
-    from . import worker_routing
+    from . import edit_tool_hold, worker_routing
+    if edit_tool_hold.running():   # Its safety snapshot and the reload: never under the person's operation.
+        operator.report({'ERROR'}, ui_text.rpt_("Finish the tool you are using, then restore"))
+        return {'CANCELLED'}
     if worker_routing.worker_snapshots(controller):   # Of a worker's part file, never this window's file.
         operator.report({'ERROR'}, ui_text.rpt_("Request snapshot is unavailable: {reason}",
                                                 reason="it is a snapshot of a worker's file"))

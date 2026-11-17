@@ -42,6 +42,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent.web_preview_server import PreviewServer  # noqa: E402
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 try:
     from playwright.sync_api import sync_playwright
@@ -122,7 +123,7 @@ class StandInAngelo:
 
     def close(self):
         self._stop.set()
-        self._thread.join(2)
+        self._thread.join(CAP_S)
         self.server.close()
 
 

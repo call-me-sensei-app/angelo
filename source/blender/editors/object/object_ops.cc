@@ -45,6 +45,7 @@ void operatortypes_object()
   WM_operatortype_append(OBJECT_OT_shade_smooth);
   WM_operatortype_append(OBJECT_OT_shade_smooth_by_angle);
   WM_operatortype_append(OBJECT_OT_shade_auto_smooth);
+  WM_operatortype_append(OBJECT_OT_shade_auto_smooth_bake);
   WM_operatortype_append(OBJECT_OT_shade_flat);
   WM_operatortype_append(OBJECT_OT_paths_calculate);
   WM_operatortype_append(OBJECT_OT_paths_update);
@@ -324,6 +325,8 @@ void operatormacros_object()
     otmacro = WM_operatortype_macro_define(ot, "TRANSFORM_OT_translate");
     RNA_boolean_set(otmacro->ptr, "use_proportional_edit", false);
   }
+
+  collection_importer_macros_register();
 }
 
 static bool object_mode_poll(bContext *C)

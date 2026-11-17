@@ -277,9 +277,9 @@ class NativeWiringTests(unittest.TestCase):
         self.assertIn("{VBOType::Position, VBOType::Tension}", impl)
 
     def test_older_files_get_the_overlay_defaults(self):
-        versioning = read(SOURCE / "blenloader/intern/versioning_520.cc")
+        versioning = read(SOURCE / "blenloader/intern/versioning_502.cc")
         self.assertIn('"View3DOverlay", "float", "tension_stretch_max"', versioning)
-        body = versioning[versioning.index("void blo_do_versions_520("):]
+        body = versioning[versioning.index("void blo_do_versions_502("):]
         self.assertIn("version_angelo_tension_overlay(fd, bmain);", body[:200])
         rna = read(SOURCE / "makesrna/intern/rna_space.cc")
         for name in ("show_tension", "tension_stretch_max", "tension_compress_max", "tension_opacity"):

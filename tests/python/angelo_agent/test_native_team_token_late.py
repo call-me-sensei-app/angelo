@@ -7,6 +7,7 @@ Contract: doc/angelo/ai_providers.rst, "A rotated token the store refuses". As i
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import threading
@@ -104,7 +105,7 @@ class EndAndLateAnswerTests(AccountCase):
             account.close()
         gate.set()
         refreshing.join(30)
-        self.assertTrue(account.join(10))
+        self.assertTrue(account.join(CAP_S))
 
     def test_a_late_renewal_of_a_sign_in_not_recorded_yet_is_never_stored(self):
         """A sign-in whose generation couldn't be recorded stores nothing until it is: a renewal's answer that

@@ -23,8 +23,9 @@
  */
 
 #include "BLI_listbase_iterator.hh"
-#include "BLI_math_vector.h"
-#include "BLI_rect.h"
+#include "BLI_math_vector.hh"
+#include "BLI_math_vector_c.hh"
+#include "BLI_rect.hh"
 
 #include "BKE_global.hh"
 #include "BKE_main.hh"
@@ -47,7 +48,7 @@ static float g_startup_cover[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 /** Tag every area of every window for a redraw: the viewports the cover hid were never rendered. */
 static void startup_cover_redraw_hidden()
 {
-  wmWindowManager *wm = G_MAIN != nullptr ? static_cast<wmWindowManager *>(G_MAIN->wm.first) : nullptr;
+  wmWindowManager *wm = G_MAIN != nullptr ? static_cast<wmWindowManager *>(G_MAIN->wm.first()) : nullptr;
   if (wm == nullptr) {
     return;
   }

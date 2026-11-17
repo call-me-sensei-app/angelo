@@ -8,6 +8,7 @@ expiry. Time is a fake clock throughout; nothing sleeps.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import ast
 import inspect
@@ -35,11 +36,14 @@ PYTHON = {"description": "Fixture", "code": "result = {}"}
 
 
 def controller_expiry_methods():
-    """Inspect the concrete method selected by Controller's production MRO."""
+    """The method body Controller's production MRO selects, as its class's own source defines it: the grant entries
+    that wrap some of them keep no route to the body (grant_guard.entry), so the source is read, not unwrapped."""
     methods = {}
     for name in ("_execute_tool", "approve_tool", "_commit_native_job", "_tool_available"):
         owner = next(cls for cls in Controller.__mro__ if name in cls.__dict__)
-        methods[name] = ast.parse(textwrap.dedent(inspect.getsource(owner.__dict__[name]))).body[0]
+        tree = ast.parse(textwrap.dedent(inspect.getsource(sys.modules[owner.__module__])))
+        cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == owner.__name__)
+        methods[name] = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == name)
     return methods
 
 
@@ -168,7 +172,7 @@ class RevocationFixture(unittest.TestCase):
         call = next(call for key, call in self.controller.pending.items() if key.endswith("/" + identity))
         self.controller.pump_tools(self.executor, self.controller.document, budget=ToolDispatchBudget(seconds=60))
         self.assertTrue(call.approval and not call.revoked)
-        self.controller.review_script(call)  # Human read the exact code while this turn owned it.
+        angelo_guard_twin.harness(self.controller.review_script, call)  # Human read the exact code while this turn owned it.
         return replies, call
 
     def approve_operator(self, call):

@@ -30,7 +30,7 @@ import subprocess
 import threading
 import time
 
-from . import thread_start
+from . import owned_paths, thread_start
 
 TIMEOUT_SECONDS = 600
 CHILD = r"""
@@ -44,8 +44,7 @@ with open(sys.argv[-1], encoding="utf-8") as handle:   # engine_link_writeback.c
 class Runner:
     """Background preflights of linked assets. ``request`` from the main thread."""
 
-    def __init__(self, binary):
-        self._binary = binary
+    def __init__(self):
         self._lock = threading.Lock()
         self._running = False
         self._again = None
@@ -57,7 +56,8 @@ class Runner:
             if self._running:
                 dropped, self._again = self._again, (blend, spec)
                 if dropped is not None and dropped[1].get("folder"):   # The newer save's report covers it.
-                    shutil.rmtree(dropped[1]["folder"], ignore_errors=True)
+                    if owned_paths.may_write(dropped[1]["folder"]):   # A cleanup: only what C says Angelo may remove.
+                        shutil.rmtree(dropped[1]["folder"], ignore_errors=True)
                 return
             self._running = True
         # One that can't start leaves the runner idle and its folder gone; the save reports why (``after_save``).
@@ -67,7 +67,7 @@ class Runner:
     def _idle(self, spec):
         with self._lock:
             self._running = False
-        if spec.get("folder"):
+        if spec.get("folder") and owned_paths.may_write(spec["folder"]):   # A cleanup: skipped when C refuses it.
             shutil.rmtree(spec["folder"], ignore_errors=True)
 
     def busy(self):
@@ -75,15 +75,16 @@ class Runner:
             return self._running
 
     def _run(self, blend, spec):
-        from .engine_link_writeback import _child_environment, child_spec
+        from .engine_link_writeback import _child_environment, angelo_binary, child_spec
         try:
             if "blend_witness" in spec:   # The save's stat from the main thread, settled here: a wait is free.
                 from .export_snapshot import settled_identity
                 witness = spec.pop("blend_witness")
                 spec["blend_identity"] = None if witness is None else settled_identity(witness)
-            with child_spec(spec) as path:   # Never the command line: ``baked`` grows with the scene.
-                command = [self._binary, "--background", "--factory-startup", blend, "--python-exit-code", "1",
+            with child_spec(spec, writes=(spec["report"],)) as path:   # Never the command line (``baked``).
+                command = [angelo_binary(), "--background", "--factory-startup", blend, "--python-exit-code", "1",
                            "--python-expr", CHILD, "--", path]
+                owned_paths.require_runnable(command[0])
                 completed = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                            timeout=TIMEOUT_SECONDS, env=_child_environment())
             lines = (completed.stderr or b"").decode("utf-8", "replace").strip().splitlines()
@@ -92,7 +93,8 @@ class Runner:
             self.last_error = type(failure).__name__
         finally:
             if spec.get("folder"):
-                shutil.rmtree(spec["folder"], ignore_errors=True)
+                if owned_paths.may_write(spec["folder"]):   # A cleanup: only what C says Angelo may remove.
+                    shutil.rmtree(spec["folder"], ignore_errors=True)
         if self.last_error is not None:   # The save still gets its report: that it couldn't be checked, and why.
             from .engine_preflight import write_report
             try:
@@ -114,7 +116,8 @@ _runner = None
 
 def after_save(binary, asset, blend, written, durable, params, scene_version=None, save_key=None, baked=(),
                blend_identity=None, blend_witness=None):
-    """Start the preflight of a save (``request``) with the Angelo at ``binary``, from the main thread; returns why it
+    """Start the preflight of a save (``request``) when the Angelo at ``binary`` is there (the child is this app, read
+    from C as it starts: ``engine_link_writeback.angelo_binary``), from the main thread; returns why it
     couldn't start, or None. The report's folder is the asset's working folder (``ensure_working_folder``).
     ``blend_identity`` and ``blend_witness``: as ``request``."""
     from . import engine_link_assets
@@ -122,7 +125,7 @@ def after_save(binary, asset, blend, written, durable, params, scene_version=Non
         return None   # No Angelo to start (a session without its binary): the save is reported without a preflight.
     try:   # Report-only: the save is written and its editors told, so a failure here is the save's error only.
         engine_link_assets.ensure_working_folder(asset)
-        request(binary, asset, blend, written, durable, params, scene_version, save_key, baked, blend_identity, blend_witness)
+        request(asset, blend, written, durable, params, scene_version, save_key, baked, blend_identity, blend_witness)
     except OSError as failure:
         return "preflight: %s" % failure
     except Exception as failure:  # noqa: BLE001 - never into the link's timer, which ends other saves too.
@@ -148,7 +151,7 @@ def after_writeback(state, binary, asset, params, scene_version, save_key=None, 
                                 baked, blend_identity, blend_witness) or state["error"]
 
 
-def request(binary, asset, blend, written, durable, params, scene_version=None, save_key=None, baked=(),
+def request(asset, blend, written, durable, params, scene_version=None, save_key=None, baked=(),
             blend_identity=None, blend_witness=None):
     """Preflight ``asset`` after its save to ``blend`` (at the link's ``scene_version``): ``written`` is the file the
     write-back wrote (None for a .blend asset), copied now, and ``durable`` its (exporter, options); for a .blend the
@@ -172,6 +175,7 @@ def request(binary, asset, blend, written, durable, params, scene_version=None, 
         copy = None
         if written is not None:
             copy = str(folder / ("asset" + os.path.splitext(written)[1]))
+            owned_paths.require_writable(copy)
             export_snapshot.take(written, copy)
     except OSError:
         shutil.rmtree(folder, ignore_errors=True)
@@ -187,7 +191,7 @@ def request(binary, asset, blend, written, durable, params, scene_version=None, 
                 pass
         evidence = {"blend_witness": witness}
     if _runner is None:
-        _runner = Runner(binary)
+        _runner = Runner()
     _runner.request(blend, {"engine": asset.engine, "report": engine_preflight.report_path(asset),
                             "file": copy, "exporter": exporter, "options": options, "folder": str(folder),
                             "scene_version": scene_version, **evidence,

@@ -24,7 +24,8 @@ source that is neither marked nor made before the row joins the chat.
 import time
 from contextlib import contextmanager
 
-from . import session_writer
+from . import activity_rows, session_lease, session_writer
+from .session_journal import JournalTaken
 
 
 def _locked(controller, index):
@@ -58,28 +59,46 @@ class TranscriptRows:
         ``tool_finalization.save_if_owed``).
 
         ``compact`` rewrites it whole: ``Controller.close`` (chat close, add-on unregister and quit) passes
-        it. ``leave`` leaves it one base line, writing nothing when it already is one holding the chat
+        it, and it alone, so the chat's lease is given up after it, written or not (``session_lease.release``):
+        another Angelo process may then open the chat and write it. ``leave`` leaves it one base line, writing nothing when it already is one holding the chat
         (``SessionStore.leave``): ``ui.show_session``, a switch to another chat. ``compact_if_due`` rewrites
         it once its records outgrow the base: the end of a turn (``Controller._pump_events``).
         """
         with self.lock:
             self.state["updated"] = time.time()
-            if compact:
-                self.store.compact(self.state)
-            elif leave:
-                self.store.leave(self.state)
-            elif compact_if_due:
-                self.store.compact_if_due(self.state)
-            elif changes_only:
-                self.store.save(self.state, changes_only=True)
-            else:
-                self.store.save(self.state)
+            try:
+                try:
+                    self._write(compact, compact_if_due, leave, changes_only)
+                except JournalTaken:
+                    # Another writer's content in the open chat's file: kept beside it, then this chat's state
+                    # is written whole (``GuardedWriter.take_back``). Not this chat's to take (another live
+                    # Angelo has it open, a worker's hosted chat, a superseded store): the refusal stands.
+                    if not self.store._writer.take_back():
+                        raise
+                    self._write(compact, compact_if_due, leave, changes_only)
+            finally:
+                if compact:
+                    session_lease.release(self.store)
             self._last_save = time.monotonic()
             self._save_owed = False   # Everything noted is written: the pump owes no save.
 
+    def _write(self, compact, compact_if_due, leave, changes_only):
+        if compact:
+            self.store.compact(self.state)
+        elif leave:
+            self.store.leave(self.state)
+        elif compact_if_due:
+            self.store.compact_if_due(self.state)
+        elif changes_only:
+            self.store.save(self.state, changes_only=True)
+        else:
+            self.store.save(self.state)
+
     def redact(self, value):
         text = str(value)
-        return text.replace(self.api_key, "[REDACTED]") if self.api_key else text
+        for key in activity_rows.redaction_keys(self):   # A key withdrawn mid-turn too, until its runtime ends.
+            text = text.replace(key, "[REDACTED]")
+        return text
 
     def _redacted_text(self, previous, text):
         """``text`` redacted for a row whose stored text was ``previous`` (``Controller.redact``).
@@ -126,5 +145,7 @@ class TranscriptRows:
             self._thinking_message += 1
         if type(self._request_message_index) is int and self._request_message_index >= index:
             self._request_message_index += 1
-        if type(self._native_unsynced_from) is int and self._native_unsynced_from >= index:
+        # A boundary, not a row: the rows at and after it are unread by the native context. The row inserted exactly
+        # at it is new, so the boundary stays and that row is unread with the rows it moved.
+        if type(self._native_unsynced_from) is int and self._native_unsynced_from > index:
             self._native_unsynced_from += 1

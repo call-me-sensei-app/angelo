@@ -87,7 +87,7 @@ class ChatCallbacks(unittest.TestCase):
             yield
         namespace = dict(held_window=lambda: current[0], context=SimpleNamespace(temp_override=override),
                          area=object(), region=object(), bpy=SimpleNamespace(context=object()), controller=object(),
-                         dispatch_action=lambda *args: dispatched.append(args[2:]))
+                         _clicked=lambda *args: dispatched.append(args[1:]))   # A key's control goes through _clicked.
         exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), 'exec'), namespace)
         activate = namespace['activate_control']
         activate('send', None)

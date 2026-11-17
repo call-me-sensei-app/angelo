@@ -43,6 +43,8 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402
 import qa_operator  # noqa: E402
+import qa_canvas_grant  # noqa: E402  (a grant clicked as the person clicks it; a scripted one refused)
+import qa_input  # noqa: E402
 
 product_env.clear('DISABLE_DEFAULT_CHAT')
 REPORT = OUT / "fal-video-gui.json"
@@ -297,10 +299,15 @@ def tick():
             state["price_line"] = line
             checks["the_price_shows_before_generate"] = "≈ $" in line and "4 s" in line
             capture("03-ready-to-generate.png")
-            click("generate")
+            checks["a_scripted_generate_is_refused"] = qa_canvas_grant.refused(view(), lambda: click("generate")) \
+                and not qa_canvas_grant.dialog_open()
+            redraw()
+            qa_canvas_grant.press(studio_area()[0], region(), view()["hits"], "generate")   # The person's press.
             state["phase"] = "confirm"
             return 1.0
         if phase == "confirm":
+            if not wait(phase, qa_canvas_grant.dialog_open):   # Generate's confirmation, opened by that press.
+                return .2
             capture("04-confirmation.png", studio_area()[0])
             key(studio_area()[0], 'RET')
             state["phase"] = "generating"
@@ -371,4 +378,4 @@ def tick():
     return .3
 
 
-bpy.app.timers.register(tick, first_interval=1.0)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=1.0)   # Never ahead of a press.

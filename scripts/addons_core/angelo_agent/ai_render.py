@@ -26,6 +26,7 @@ from pathlib import Path
 
 from .flow_spec import FlowError
 from .ui_text import n_
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 MARK = "angelo_ai_render"          # Saved on the flow's node tree: this document's AI render flow.
 FILE = "ai-render.json"
@@ -238,6 +239,9 @@ def start(window, style, entry, shown_price, *, plan=None, start_run=None, activ
                 node.take = take
     remember(style, entry["connection"], entry["id"])
     return run
+
+
+start = _grant_guard.entry(start)
 
 
 def _same_price(planned, shown):

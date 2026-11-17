@@ -187,7 +187,7 @@ esac
         stage = stages[stages.index('Write-Host "== stage: bench"'):]
         self.assertIn('Get-Meta "angelo-bench-prep-minutes" "90"', stage)
         self.assertIn('"bench\\state\\session-"', stage)   # Windows_final_runs.ps1's own marker of a prepared session.
-        self.assertIn("taskkill.exe /T /F /PID $process.Id", stage)
+        self.assertIn('Invoke-NativeCapture taskkill.exe @("/T", "/F", "/PID", "$($process.Id)")', stage)
         self.assertRegex(stage, r'throw "bench preparation did not finish within')
         self.assertIn('if ("$_" -like "bench preparation did not finish*") { throw }', stage)
         runs = text("windows_final_runs.ps1")
@@ -241,7 +241,7 @@ esac
         self.assertIn('"free_gb: $free"', boot)
         self.assertIn("angelo-min-free-gb=${ANGELO_GCP_MIN_FREE_GB:-30}", text("gcp_windows_validate.sh"))   # Always set.
         # A failure is uploaded from memory when the file cannot be written, and the machine still powers off.
-        self.assertIn('$failedText | & $gcloud storage cp --quiet - "gs://$bucket/result/FAILED"', boot)
+        self.assertIn('Invoke-NativeCapture $gcloud @("storage", "cp", "--quiet", "-", "gs://$bucket/result/FAILED") -InputText $failedText', boot)
         self.assertIn("-or $failedRun)", boot)
 
     def test_the_bench_grant_goes_to_a_group_once_per_machine(self):
@@ -250,7 +250,14 @@ esac
         self.assertIn('if (-not (Test-Path $granted))', runs)
         self.assertIn('& icacls.exe $bench /grant "${benchGroup}:(OI)(CI)M" /T /C\n', runs)   # Listed: progress.
         self.assertIn("if ($walkExit -eq 0) { Set-Content $granted", runs)   # Refused items: walked again.
-        self.assertIn('& icacls.exe $connectionsDir /grant "${benchGroup}:(OI)(CI)M" /T /C /Q', runs)   # Every send.
+        # Every send, every sign-in folder: connections and each <account>-connections. A folder a session creates
+        # (bench_api_key.py's Gemini key folder, 11-17 on the Carbon gate VM) gets its creator's owner-only rights, and
+        # the next send's new bench user was refused it; the group grant is what carries a folder across users.
+        self.assertIn('Get-ChildItem $bench -Directory -Filter "*connections"', runs)
+        self.assertIn('& icacls.exe $_.FullName /grant "${benchGroup}:(OI)(CI)M" /T /C /Q', runs)
+        self.assertNotIn('$connectionsDir = Join-Path $bench "connections"', runs)   # Not the one folder only.
+        # The key folders the filter must reach are named <account>-connections, inside the bench.
+        self.assertIn('$folder = Join-Path $Bench "$account-connections"', text("windows_bench_tools.ps1"))
         self.assertIn("if (Test-Path $walking) { $prepDeadline = (Get-Date).AddMinutes($prepMinutes) }",
                       text("windows_bootstrap_stages.ps1"))
         self.assertNotIn('icacls.exe $bench /grant "${benchUser}', runs)

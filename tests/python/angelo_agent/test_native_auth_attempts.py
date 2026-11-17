@@ -6,13 +6,16 @@ import suite_isolation  # noqa: F401 First: no real account, executable or crede
 import contextlib
 import ast
 from pathlib import Path
+import sys
 from types import SimpleNamespace as NS
-import angelo_agent
 import tempfile
 import unittest
 from unittest import mock
 
-from angelo_agent import authentication
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
+import angelo_agent  # noqa: E402
+
+from angelo_agent import authentication  # noqa: E402
 
 
 class FinishedProcess:

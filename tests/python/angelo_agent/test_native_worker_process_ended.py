@@ -13,6 +13,7 @@ binding on the main thread only then.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import subprocess
@@ -43,7 +44,7 @@ POSIX_ONLY = unittest.skipIf(sys.platform == "win32", environment_skip(
     "the stand-in worker dies by POSIX signals in its own process group (os.killpg, an inherited descriptor)"))
 
 
-def wait_for(predicate, timeout=10.0):
+def wait_for(predicate, timeout=CAP_S):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
@@ -71,14 +72,18 @@ class EndedOnItsOwn(unittest.TestCase):
             self.addCleanup(patcher.stop)
 
     def start(self, mode="exit"):
-        def popen(command, **options):   # The documented command's channel, run by the stand-in instead of Blender.
+        def start(command, options, _platform):   # The documented command's channel, run by the stand-in.
             channel, private = (command[command.index(flag) + 1] for flag in ("--channel", "--private"))
             return subprocess.Popen([sys.executable, "-B", "-I", str(FAKE), str(ADDONS), channel, mode, private],
                                     **options)
+        for patcher in (mock.patch.object(worker_process, "start_process", start),
+                        mock.patch.object(worker_process, "default_binary", lambda: Path("/unused"))):
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.reports = Path(self.temporary) / "reports"   # Where Angelo's crash report reads crash logs.
         self.reports.mkdir(exist_ok=True)
-        worker = worker_process.WorkerProcess(Path(self.temporary) / "part.blend", binary="/unused", script="/unused",
-                                              environ={"PATH": os.environ.get("PATH", "")}, popen=popen,
+        worker = worker_process.WorkerProcess(Path(self.temporary) / "part.blend",
+                                              environ={"PATH": os.environ.get("PATH", "")},
                                               temporary=self.temporary, crash_reports=self.reports)
         worker._killpg = os.killpg   # Its scripts' processes share its group, as for a real worker.
         self.addCleanup(lambda: worker.process.poll() is None and worker.process.kill())
@@ -122,7 +127,7 @@ class EndedOnItsOwn(unittest.TestCase):
                     for thread in stops:
                         thread.start()
                     for thread in stops:
-                        thread.join(15)
+                        thread.join(CAP_S)
                     self.assertTrue(wait_for(lambda: worker._stopped is worker.process))
                     time.sleep(worker_process.WATCH_SECONDS * 2)   # The watcher, too, has had its turn.
                 self.assertEqual(ended, [worker])
@@ -157,7 +162,7 @@ class EndedOnItsOwn(unittest.TestCase):
             with self.assertRaises(worker_process.WorkerUnavailable) as raised:
                 worker.request("die", 5)   # It dies under the request: Angelo's stop starts first (request's own).
             self.assertIn("connection ended while it still ran", str(raised.exception))
-            self.assertTrue(stopping.wait(5))
+            self.assertTrue(stopping.wait(CAP_S))
             self.assertTrue(wait_for(lambda: self.handoffs == [("chat", False)]), self.handoffs)
             unreaped.clear()
             self.assertTrue(wait_for(lambda: worker._stopped is worker.process))

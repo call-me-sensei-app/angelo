@@ -11,6 +11,7 @@ is announced (``worker_part_counts.saved_facts`` / ``note``, A′). No Blender: 
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import queue
@@ -42,7 +43,7 @@ class Reports(Fixture):
     def settle(self):
         self.wedge.set()
         for thread in [t for t in threading.enumerate() if t.name == "AngeloPartCount"]:
-            thread.join(5)
+            thread.join(CAP_S)
 
     def report(self, worker=None, facts=None):
         """The worker's save announced (``part_saved``) through the channel's router, as the reader thread runs it."""

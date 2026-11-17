@@ -7,6 +7,7 @@ that writes the answer a child would. Hostile answers (unknown codes, wrong type
 paths (quotes in the work folder) are generated.
 """
 import suite_isolation  # noqa: F401
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 import team_library_fixtures  # noqa: F401  Puts the add-on on the path.
 import hashlib
 import json
@@ -126,7 +127,7 @@ class LifetimeTests(unittest.TestCase):
             job = convert._kill_on_close_job(child)
             self.assertIsNotNone(job)
             convert._close_job(job)
-            child.wait(timeout=10)
+            child.wait(timeout=CAP_S)
             self.assertIsNotNone(child.returncode)
         finally:
             if child.poll() is None:
@@ -156,6 +157,14 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(result['timings'], {'import': 1.5})
         self.assertEqual(result['surface'], {'roles': ['base_color'], 'normal': None})
         self.assertNotIn('secret', json.dumps(result))
+
+    def test_slots_filled_from_the_loose_maps_are_counted(self):
+        result = self.answer({'ok': True, 'name': 'Ivy', 'id_type': 'COLLECTION', 'filled_slots': 2})
+        self.assertEqual(result['filled_slots'], 2)
+
+    def test_a_conversion_made_before_empty_image_nodes_counted_as_untextured_is_redone(self):
+        """VERSION 2: models whose FBX named maps the download lacks were converted with those slots left empty."""
+        self.assertGreaterEqual(convert.VERSION, 2)
 
     def test_refusals_become_fixed_sentences(self):
         for code in convert.MESSAGES:

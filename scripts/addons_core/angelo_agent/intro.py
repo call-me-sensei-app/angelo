@@ -73,9 +73,12 @@ def schedule_first_launch(startup=False):
     disabled = product_env.flag("DISABLE_INTRO")
     welcome = not _auto_opened and first_run.should_show_intro(seen(), director.mode_path().exists(), disabled)
     card = startup and not disabled and splash_setup.shows_on_startup()
-    setup = card and not splash_setup.preferences_saved()
-    start = card and not setup and not welcome
-    if _timer is not None or not (welcome or setup or start):
+    from . import version_carry_over_ui
+    # A newer Blender base's first launch is an update, not a new install: no setup card (version_carry_over_ui).
+    update = not disabled and (startup or version_carry_over_ui.owed()) and version_carry_over_ui.pending()
+    setup = card and not update and not splash_setup.preferences_saved()
+    start = card and not setup and not welcome and not update
+    if _timer is not None or not (welcome or setup or start or update):
         if startup:
             splash_setup.startup_settled()
         return
@@ -98,16 +101,19 @@ def schedule_first_launch(startup=False):
         from . import studio_workspaces
         if studio_workspaces.startup_build_pending():
             return .2   # Manual's tabs are built first, under the start-up cover (studio_workspaces).
-        if (setup or start) and windows[0].as_pointer() not in chat_view._modals and any(
+        if (setup or start or update) and windows[0].as_pointer() not in chat_view._modals and any(
                 console.is_chat(a) for a in live_windows.areas(windows[0])):
             return .2  # The chat's input handler first: a handler added later would sit above the card and take its keys.
         _timer = None
         show_welcome = welcome and not (_auto_opened or seen())
         window = windows[0]
         with bpy.context.temp_override(window=window):
-            if setup or start:
+            if setup or start or update:
                 splash_setup.close_popups(window)  # Blender's splash, where no workspace switch closed it.
             splash_setup.startup_settled()
+            if update and version_carry_over_ui.finish():
+                schedule_first_launch()   # The earlier start-up file was reloaded: let it settle first.
+                return None
             if setup and splash_setup.open_setup(window, show_welcome):
                 return None  # The welcome follows the setup card (``open_after_setup``).
             if start and splash_setup.open_start(window):
@@ -122,14 +128,15 @@ def schedule_first_launch(startup=False):
 
 
 def startup_done():
-    """Whether Angelo's start-up has run what it owes this launch: the default layout and the card that follows the
-    splash (``angelo_safe_start`` waits for this before a start counts as completed)."""
+    """Whether Angelo's start-up has run what it owes this launch: the default layout, the card that follows the
+    splash, and an update's settings import with the start-up file it reloads (``angelo_safe_start`` waits for this
+    before a start counts as completed)."""
     import sys
-    from . import splash_setup
+    from . import splash_setup, version_carry_over_ui
     layout = sys.modules.get("angelo_default_layout")
     layout_owed = bool(layout and getattr(layout, "running", lambda: False)())
     scheduled = _timer is not None and bpy.app.timers.is_registered(_timer)
-    return not (layout_owed or scheduled or splash_setup.pending())
+    return not (layout_owed or scheduled or splash_setup.pending() or version_carry_over_ui.owed())
 
 
 def file_loaded():
@@ -253,6 +260,7 @@ def _draw():
 def _close(context, choice):
     area = _open.get("area")
     _open.clear()
+    welcome_screen.BANNER_PICTURE.hide("welcome")   # Its texture goes with the last surface that shows it.
     for _window, candidate in live_windows.window_areas(context.window_manager):
         if candidate.as_pointer() == area:
             candidate.tag_redraw()
@@ -274,7 +282,7 @@ class ANGELO_OT_intro(Operator):
         if area is None:
             self.report({'INFO'}, rpt_("Open a 3D Viewport to see the welcome screen"))
             return {'CANCELLED'}
-        welcome_screen.prepare_banner()
+        welcome_screen.BANNER_PICTURE.show("welcome")   # Read now, outside drawing, unless another surface holds it.
         if _handler is None:
             _handler = bpy.types.SpaceView3D.draw_handler_add(_draw, (), 'WINDOW', 'POST_PIXEL')
         _open.clear()

@@ -3,6 +3,7 @@
 """No Blender/provider access: Studio tools, billing gates and async receipts."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import base64
 import json
@@ -78,7 +79,7 @@ class MediaToolsTests(unittest.TestCase):
         return reference
 
     def wait(self, job):
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             result = job.poll()
             if result is not None:
@@ -201,7 +202,7 @@ class MediaToolsTests(unittest.TestCase):
         self.controller.execute_tool(call, self.executor, self.controller.document)
         self.assertIn(call.id, self.controller.media_jobs)
         self.assertEqual(answers, [])
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + CAP_S
         while not answers and time.monotonic() < deadline:
             self.controller.pump_events()
             time.sleep(.01)

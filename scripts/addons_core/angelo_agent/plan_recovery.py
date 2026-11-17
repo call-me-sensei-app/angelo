@@ -49,7 +49,7 @@ from .claude_evidence import VISUAL_IMAGE_TOOLS
 from .claude_outcomes import correctable_failure, native_result_problem
 from .plan_schema import CLAUDE_CORE_ACTIONS, staged_rejection_prompt
 from .rig_spec import RIG_IMAGE_TOOLS
-from .tool_specs import TOOL_MAP
+from .tool_specs import READ_ONLY_TOOLS
 from .ui_text import notice
 
 VERIFY = "angelo_scene_verify"
@@ -90,7 +90,7 @@ MAX_NOTE_ERROR = 400
 
 
 def read_only(tool):
-    return bool(TOOL_MAP[tool]["annotations"]["readOnlyHint"])
+    return tool in READ_ONLY_TOOLS
 
 
 def is_lookup(tool):
@@ -340,8 +340,8 @@ def changed_scene(operations, results):
     """Whether any of a plan's ``operations`` changed the scene, by its host result: a committed edit, or a
     script that ran and read back what it added, removed or modified. Lookups never count, whatever their data."""
     for operation, result in zip(operations, results):
-        tool = TOOL_MAP.get(operation.get("tool")) if isinstance(operation, dict) else None
-        if tool is None or tool["annotations"]["readOnlyHint"]:
+        name = operation.get("tool") if isinstance(operation, dict) else None
+        if name is None or name in READ_ONLY_TOOLS:   # An unknown tool's committed result counts (fail closed).
             continue
         if not isinstance(result, dict) or result.get("error") or result.get("success") is False:
             continue

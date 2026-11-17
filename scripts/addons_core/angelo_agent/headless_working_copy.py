@@ -22,7 +22,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from . import change_clock, headless_files
+from . import change_clock, file_owner, headless_files, owned_paths
 
 
 def claim(source):
@@ -38,6 +38,7 @@ def claim(source):
     except BaseException:
         _unlink(target)
         raise
+    owned_paths.own(target)   # The launcher's copy: the only one ``discard`` removes.
     return target, written
 
 
@@ -107,6 +108,9 @@ def discard(path, source, identity):
         return False
     if headless_files.identity(path) != tuple(identity):
         return False
+    if not owned_paths.owned(path):   # Only the copy the launcher made, still that file (owned_paths): never one a
+        return False                  # child saved over, nor whatever an agent script put in the session's state.
+    owned_paths.disown(path)
     try:
         if os.path.islink(path):
             return False
@@ -120,6 +124,7 @@ def discard(path, source, identity):
 
 
 def _unlink(path):
+    owned_paths.require_writable(path)
     try:
         os.unlink(path)
     except OSError:
@@ -153,24 +158,28 @@ def sweep(temporary, prefix):
             continue
     if legacy:
         try:
-            marker.touch()
+            owned_paths.require_writable(marker).touch()   # Refused (an OSError): tried again.
         except OSError:
             pass   # Tried again at the next sweep.
     for folder in candidates:
         info = None
         try:
             info = os.lstat(folder)
-            if not os.path.isdir(folder) or os.path.islink(folder) or info.st_uid != os.getuid():
+            # This user's own, asked on every platform (file_owner: Windows has no owner ID, it has an owner SID).
+            if (not os.path.isdir(folder) or os.path.islink(folder)
+                    or not file_owner.owned_by_this_user(folder, info)):
                 continue
             pid = _read_pid(folder / "child.pid")
         except (OSError, ValueError):
             if info is not None and time.time() - info.st_mtime > 86400:   # Never started (no pid), a day old.
-                shutil.rmtree(folder, ignore_errors=True)
+                if owned_paths.may_write(folder):   # A cleanup: only what C says Angelo may remove.
+                    shutil.rmtree(folder, ignore_errors=True)
             continue
+        from .engine_link_protocol import process_alive   # Never a signal-0 kill: on Windows it sends Ctrl+C.
         try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            shutil.rmtree(folder, ignore_errors=True)
+            if not process_alive(pid):
+                if owned_paths.may_write(folder):   # A cleanup: only what C says Angelo may remove.
+                    shutil.rmtree(folder, ignore_errors=True)
         except OSError:
             pass
 
@@ -186,7 +195,7 @@ def sweep_in_background(temporary, prefix):
 
 def _read_pid(path):
     """A child's PID from its own small regular file; never blocks on, or follows, anything else put there."""
-    descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0))
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise ValueError("not a regular file")

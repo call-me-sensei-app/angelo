@@ -18,10 +18,10 @@
 #  include <unistd.h>
 #endif
 #include "MEM_guardedalloc.h"
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 #include "BLI_memory_utils.hh"
 #include "BLI_vector.hh"
-#include "BLI_fileops.h"
+#include "BLI_fileops.hh"
 #include "BKE_context.hh"
 #include "BKE_callbacks.hh"
 #include "BKE_global.hh"
@@ -48,6 +48,10 @@ struct FileStamp {
 };
 static bool file_stamp(const int fd, FileStamp &stamp)
 {
+  /* A number Python chose: never the C runtime's to judge (on Windows it ends the process). */
+  if (!BLI_file_descriptor_is_open(fd)) {
+    return false;
+  }
 #ifdef WIN32
   const HANDLE handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
   FILE_ID_INFO identity{};

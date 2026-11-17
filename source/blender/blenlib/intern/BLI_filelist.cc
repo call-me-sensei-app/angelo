@@ -20,7 +20,7 @@
 #include <sys/stat.h>
 
 #ifdef WIN32
-#  include "BLI_winstuff.h"
+#  include "BLI_winstuff.hh"
 #  include "utfconv.hh"
 #  include <direct.h>
 #  include <io.h>
@@ -35,11 +35,11 @@
 
 #include "DNA_listBase.h"
 
-#include "BLI_fileops.h"
-#include "BLI_fileops_types.h"
-#include "BLI_listbase.h"
+#include "BLI_fileops.hh"
+#include "BLI_fileops_types.hh"
+#include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 #include "BLI_string_utils.hh"
 
 namespace blender {
@@ -112,7 +112,7 @@ static void bli_builddir(BuildDirCtx *dir_ctx, const char *dirname)
 {
   BLI_assert(!BLI_path_is_rel(dirname));
   DIR *dir = opendir(dirname);
-  if (UNLIKELY(dir == nullptr)) {
+  if (dir == nullptr) [[unlikely]] {
     fprintf(stderr,
             "Failed to open dir (%s): %s\n",
             errno ? strerror(errno) : "unknown error",
@@ -190,12 +190,12 @@ static void bli_builddir(BuildDirCtx *dir_ctx, const char *dirname)
       dir_ctx->files = MEM_new_array_uninitialized<direntry>(size_t(newnum), __func__);
     }
 
-    if (UNLIKELY(dir_ctx->files == nullptr)) {
+    if (dir_ctx->files == nullptr) [[unlikely]] {
       fprintf(stderr, "Couldn't get memory for dir: %s\n", dirname);
       dir_ctx->files_num = 0;
     }
     else {
-      dirlink *dlink = static_cast<dirlink *>(dirbase.first);
+      dirlink *dlink = dirbase.first();
       direntry *file = &dir_ctx->files[dir_ctx->files_num];
 
       while (dlink) {
@@ -253,27 +253,18 @@ void BLI_filelist_entry_size_to_string(const struct stat *st,
                                        const bool compact,
                                        char r_size[FILELIST_DIRENTRY_SIZE_LEN])
 {
-  /*
-   * Seems st_size is signed 32-bit value in *nix and Windows.  This
-   * will buy us some time until files get bigger than 4GB or until
-   * everyone starts using __USE_FILE_OFFSET64 or equivalent.
-   */
-  double size = double(st ? st->st_size : st_size_fallback);
+  const int64_t size = st ? int64_t(st->st_size) : int64_t(st_size_fallback);
 #ifdef WIN32
-  if (compact) {
-    BLI_str_format_byte_unit_compact(r_size, size, false);
-  }
-  else {
-    BLI_str_format_byte_unit(r_size, size, false);
-  }
+  const bool base_10 = false;
 #else
+  const bool base_10 = true;
+#endif
   if (compact) {
-    BLI_str_format_byte_unit_compact(r_size, size, true);
+    BLI_str_format_byte_unit_compact(r_size, size, base_10);
   }
   else {
-    BLI_str_format_byte_unit(r_size, size, true);
+    BLI_str_format_byte_unit(r_size, size, base_10);
   }
-#endif
 }
 
 void BLI_filelist_entry_mode_to_string(const struct stat *st,

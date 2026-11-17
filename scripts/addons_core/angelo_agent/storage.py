@@ -57,19 +57,23 @@ def connection_directory(environ=None, platform=None, home=None):
 
 
 def native_profile_directory(state_dir, family, name, environ=None, platform=None, home=None):
-    """Isolated native CLI profile ``<state_dir>/<family>/<name>``, or its retained pre-rename path.
+    """Isolated native CLI profile ``<state_dir>/<family>/<name>``, or its retained earlier path.
 
-    Only the default account store and the default agent state folder have a
-    pre-rename location. A profile that already exists under the current folder
-    always wins; a new profile is always created there.
+    Only the default account store and the default agent state folder have
+    earlier locations: the pre-rename folders, and for the agent state folder
+    every earlier Blender version's (``state_paths.earlier_state_folders``),
+    newest first. A profile that already exists under the current folder always
+    wins; a new profile is always created there.
     """
     current = Path(state_dir) / family / name
     if family not in NATIVE_PROFILE_FAMILIES or current.exists():
         return current
-    legacy_state = state_paths.legacy_sibling(state_dir, environ)
-    if legacy_state is not None:
-        retained = legacy_state / family / name
-        return retained if retained.is_dir() and not retained.is_symlink() else current
+    if state_paths.legacy_sibling(state_dir, environ) is not None:
+        for earlier in state_paths.earlier_state_folders(state_dir, environ):
+            retained = earlier / family / name
+            if retained.is_dir() and not retained.is_symlink():
+                return retained
+        return current
     try:
         default = data_directory(environ, platform, home) / "connections"
         legacy = data_directory(environ, platform, home, LEGACY_DATA_FOLDER) / "connections" / family / name
@@ -81,11 +85,31 @@ def native_profile_directory(state_dir, family, name, environ=None, platform=Non
 
 
 def valid_profile_directory(value, identity, mode):
-    """Keep the native CLI's exact namespace; never inspect/copy its credentials."""
+    """Keep the native CLI's exact namespace; never inspect/copy its credentials. Its form only: a launch also asks
+    C where it is (``private_profile``); a record's own folders make Angelo's private set (``private_roots``)."""
     if not value:
         return None
     path = Path(value)
-    family = "claude" if mode.startswith("claude_") else "codex"
+    from .provider_registry import spec_for   # A custom endpoint's mode carries no runtime prefix.
+    family = "claude" if spec_for(mode)["runtime"] == "claude" else "codex"
     if not path.is_absolute() or path.name != identity or path.parent.name != family + "-profile":
         raise ValueError("Invalid saved native runtime profile directory")
     return str(path)
+
+
+class ProfileOutside(ValueError):
+    """A runtime profile folder outside Angelo's private folders: no runtime is started with it."""
+    refusal_code = "READ_ONLY"
+
+
+def private_profile(path):
+    """``path``, a runtime's profile folder (``CODEX_HOME`` / ``CLAUDE_CONFIG_DIR``), when C keeps it inside Angelo's
+    private folders, a set no script can change. Its name comes from Python state a script could change in place (a
+    provider's settings, a connection record), and the runtime reads its configuration from there unconfined (the
+    programs it may start, its sign-in): a folder anywhere else is refused before anything is made in it. Without
+    the native guard every path passes (``owned_replace._private``)."""
+    from .owned_replace import _private
+    if not _private(path):
+        raise ProfileOutside("A model runtime starts only with its profile in Angelo's own folders: %s"
+                             % Path(path).name)
+    return path

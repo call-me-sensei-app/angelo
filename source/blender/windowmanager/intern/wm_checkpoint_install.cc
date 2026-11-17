@@ -9,10 +9,10 @@
 #include <memory>
 #include <utility>
 #include "MEM_guardedalloc.h"
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_generic_pointer.hh"
 #include "BLI_set.hh"
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 #include "BKE_customdata.hh"
 #include "BKE_asset_edit.hh"
 #include "BKE_collection.hh"
@@ -105,12 +105,13 @@ struct WMCheckpointColdInstall {
     /* Every affected SharedCache is constructed under finite admission, not while
      * publishing. This runtime owns no geometry/CCG/evaluated mesh; it is cache staging. */
     std::unique_ptr<bke::MeshRuntime> empty_caches;
+    /* Every derived cache #BKE_mesh_runtime_clear_geometry dirties, one by one; re-check this
+     * list against it whenever #bke::MeshRuntime gains or loses a cache. */
     void publish_cache_invalidation(Mesh &mesh)
     {
       auto &live = *mesh.runtime;
       auto &empty = *empty_caches;
       live.bounds_cache = std::move(empty.bounds_cache);
-      live.bvh_cache_verts = std::move(empty.bvh_cache_verts);
       live.bvh_cache_edges = std::move(empty.bvh_cache_edges);
       live.bvh_cache_faces = std::move(empty.bvh_cache_faces);
       live.bvh_cache_corner_tris = std::move(empty.bvh_cache_corner_tris);
@@ -119,10 +120,15 @@ struct WMCheckpointColdInstall {
       live.bvh_cache_loose_verts_no_hidden = std::move(empty.bvh_cache_loose_verts_no_hidden);
       live.bvh_cache_loose_edges = std::move(empty.bvh_cache_loose_edges);
       live.bvh_cache_loose_edges_no_hidden = std::move(empty.bvh_cache_loose_edges_no_hidden);
+      live.bvh_embree_tris_cache = std::move(empty.bvh_embree_tris_cache);
+      live.bvh_embree_verts_cache = std::move(empty.bvh_embree_verts_cache);
+      live.bvh_embree_edges_cache = std::move(empty.bvh_embree_edges_cache);
       live.vert_to_face_offset_cache = std::move(empty.vert_to_face_offset_cache);
       live.vert_to_face_map_cache = std::move(empty.vert_to_face_map_cache);
       live.vert_to_corner_map_cache = std::move(empty.vert_to_corner_map_cache);
       live.corner_to_face_map_cache = std::move(empty.corner_to_face_map_cache);
+      live.edge_to_corner_offset_cache = std::move(empty.edge_to_corner_offset_cache);
+      live.edge_to_corner_map_cache = std::move(empty.edge_to_corner_map_cache);
       live.vert_to_edge_map_cache = std::move(empty.vert_to_edge_map_cache);
       live.vert_normals_cache = std::move(empty.vert_normals_cache);
       live.vert_normals_true_cache = std::move(empty.vert_normals_true_cache);
@@ -1141,7 +1147,7 @@ bool WM_checkpoint_cold_install(bContext *C, Main &main, WMCheckpointColdInstall
     if (grid.authority) {
       Object &object = *cold.targets[grid.object_index].object;
       BKE_sculptsession_free_pbvh(object);
-      BKE_sculpt_update_object_for_edit(
+      BKE_sculptsession_update_for_edit(
           BKE_scene_get_depsgraph(cold.scenes[i], cold.layers[i]), &object, false);
       if (!valid()) { return refuse("Selected checkpoint owners changed while selecting the Sculpt authority"); }
     }

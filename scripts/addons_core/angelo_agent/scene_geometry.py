@@ -5,7 +5,7 @@
 from array import array
 import hashlib
 from itertools import islice
-from . import attribute_types
+from . import attribute_types, script_mesh_check
 from .refusal_codes import coded
 from .scene_read_values import BudgetExceeded, SceneQueryError, all_finite, count_nonzero, dump, label
 
@@ -128,9 +128,14 @@ class GeometryReader:
         return values
 
     def mesh(self, obj, work, details=False, output=None):
-        """Original geometry, or live BMesh in Edit Mode; no evaluated mesh export."""
+        """Original geometry, or live BMesh in Edit Mode; no evaluated mesh export. A read only: a mesh whose
+        topology seal held before it is sealed again after it (script_mesh_check.reading)."""
         if obj.type != "MESH":
             return None
+        with script_mesh_check.reading(obj.data):
+            return self._mesh(obj, work, details, output)
+
+    def _mesh(self, obj, work, details, output):
         mesh = obj.data
         digest = hashlib.blake2b(digest_size=32)
         selection = {}

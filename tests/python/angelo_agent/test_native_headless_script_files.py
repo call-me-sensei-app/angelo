@@ -15,6 +15,7 @@ neither the tool nor the approvals folder; the child reads the person's approval
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import json
 import tempfile
@@ -62,7 +63,7 @@ class HeadlessScriptFileTests(unittest.TestCase):
     def approve(self, project=None, app=None):
         """What the person's "Always allow this file while it's unchanged" in the window saved."""
         script_files.attach(self.state)
-        script_files.allow(app or self.name, project or os.path.realpath(self.source),
+        angelo_guard_twin.harness(script_files.allow, app or self.name, project or os.path.realpath(self.source),
                            script_files.read_script(str(self.script)))
         script_files.detach()
 

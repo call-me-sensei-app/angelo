@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import external_cli_protocol as protocol
-from . import product_env
+from . import owned_paths, product_env
 
 # Private runtime directory and socket names. Renamed with the product; the CLI
 # finds the socket through the endpoint record, never by guessing this name.
@@ -114,7 +114,7 @@ def default_runtime_directory(environ=None, platform=None, uid=None):
 def create_private_directory(path):
     path = Path(path)
     try:
-        os.mkdir(path, 0o700)
+        os.mkdir(owned_paths.require_writable(path), 0o700)
     except FileExistsError:
         pass
     except OSError as error:
@@ -128,7 +128,7 @@ def create_private_directory(path):
 def write_endpoint(path, record):
     """Exclusive, owner-only and never through a link: O_EXCL|O_NOFOLLOW, 0600."""
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags, 0o600)
+    descriptor = os.open(owned_paths.require_writable(path), flags, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         json.dump(record, handle, allow_nan=False)
         handle.flush()
@@ -136,13 +136,10 @@ def write_endpoint(path, record):
 
 
 def process_alive(pid):
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+    """Whether ``pid`` runs: the engine link's platform-aware check (never a signal-0 kill, which on Windows sends
+    Ctrl+C to that console process group and answers nothing; audit 2026-11-14 F1)."""
+    from .engine_link_protocol import process_alive as alive
+    return alive(pid)
 
 
 def socket_accepts(path, timeout=0.2):
@@ -194,7 +191,7 @@ class LocalCliServer:
             raise TransportUnavailable("Local CLI access is not implemented on this platform yet "
                                        "(the Windows named-pipe transport is a later phase)")
         runtime = create_private_directory(self.runtime_directory or default_runtime_directory())
-        self.state_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(self.state_directory).mkdir(parents=True, exist_ok=True, mode=0o700)
         cli_directory = create_private_directory(self.state_directory / "cli")
         scope = hashlib.sha256(os.fsencode(self.state_directory.resolve())).hexdigest()[:16]
         socket_path = runtime / f"{RUNTIME_NAME}-cli-{scope}.sock"
@@ -213,13 +210,15 @@ class LocalCliServer:
             raise TransportUnavailable(f"Cannot bind the local CLI socket: {error.strerror}") from error
         finally:
             os.umask(previous)
+        owned_paths.own(socket_path)   # What the cleanup may remove: C's record, not this object's attributes.
         try:
-            os.chmod(socket_path, 0o600)
+            os.chmod(owned_paths.require_writable(socket_path), 0o600)
             listener.listen(self.max_connections)
             listener.settimeout(0.2)
             write_endpoint(endpoint, {"cli_protocol": protocol.CLI_PROTOCOL, "socket": str(socket_path),
                                       "pid": os.getpid(), "instance": instance, "token": token.hex(),
                                       "created": time.time()})
+            owned_paths.own(endpoint)
         except OSError as error:
             listener.close()
             self._unlink_socket(socket_path)
@@ -240,6 +239,7 @@ class LocalCliServer:
             raise TransportUnavailable(f"Cannot start the local CLI listener: {error}") from error
 
     def _clear_stale(self, endpoint, socket_path):
+        owned_paths.require_writable(endpoint), owned_paths.require_writable(socket_path)
         existing = None
         try:
             existing = protocol.read_endpoint(endpoint)
@@ -267,7 +267,7 @@ class LocalCliServer:
         try:
             info = os.lstat(path)
             if stat.S_ISSOCK(info.st_mode) and info.st_uid == os.geteuid():
-                os.unlink(path)
+                owned_paths.unlink(path)   # Only the socket this process made (C's record).
         except OSError:
             pass
 
@@ -276,7 +276,7 @@ class LocalCliServer:
         if self.endpoint_path is not None:
             try:
                 if protocol.read_endpoint(self.endpoint_path).get("instance") == self.instance:
-                    self.endpoint_path.unlink()
+                    owned_paths.unlink(self.endpoint_path)   # Only the record this process wrote (C's record).
             except (OSError, protocol.UnsafePath):
                 pass
 

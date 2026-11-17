@@ -12,6 +12,7 @@ from . import fab_settings
 from .fab_catalog import MAX_RESULTS, MAX_VARIANTS
 from .team_library_files import MAX_BYTES
 from .ui_text import iface_, n_
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 CONNECTION_ACTIONS = frozenset({'fab_connect', 'fab_disconnect'})
 PREF_OPERATORS = {name: ('fab_connection', 'EXEC_DEFAULT', 'request') for name in CONNECTION_ACTIONS}
@@ -147,6 +148,9 @@ def run_connection_request(window, request):
     if not isinstance(value, list) or len(value) != 3:
         return False
     return connection_action(value[0], window, value[1:])
+
+
+run_connection_request = _grant_guard.entry(run_connection_request)
 
 
 def connection_action(action, window, expected):

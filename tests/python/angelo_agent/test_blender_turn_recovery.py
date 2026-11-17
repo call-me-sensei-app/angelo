@@ -105,7 +105,22 @@ def actions():
 def click(action, value=None):
     area, region = chat()
     rect = next(r for r, a, v in view_state()["hits"] if a == action and (value is None or v == value))
-    x, y = int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    import qa_input
+    from angelo_agent.approval_arming import GRANTS
+    if action in GRANTS:   # It takes only a click aimed at it (approval_arming): the suite's tick waits for it.
+        from angelo_agent import approval_arming
+
+        def found():   # Read again at the click: the card may have moved meanwhile.
+            return next(h for h in view_state()["hits"] if h[1] == action and (value is None or h[2] == value))
+
+        def where():
+            return qa_input.chat_rect(chat()[1], found()[0])
+        return qa_input.aim(window(), where,
+                            ready=lambda: approval_arming.view(view_state()).key_armed(tuple(found()[1:])))
+    x, y = qa_input.chat_point(region, rect)
+    import qa_input
+    if action in qa_input.GRANT_ACTIONS:   # It reaches a grant: only a person's click (move, then press).
+        return qa_input.press(window(), x, y)
     for kind, event_value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
         window().event_simulate(type=kind, value=event_value, x=x, y=y)
 
@@ -262,13 +277,23 @@ def progress_phase(phase, controller):
         return .4
     if phase == "progress_open":
         group = observed["progress_group"]
-        if not wait(lambda: group in view_state().get("expanded", set())):
+        # Click from the hits of a frame drawn with the group open: opening it moves the notices below it.
+        if not wait(lambda: group in view_state().get("expanded", set())
+                    and len(actions()) > observed["progress_folded_hits"]):
             return .2
-        failures = [n for n in notices if drawn.get(n[1], ("", "", ""))[2] == "coral"]  # An error notice's Details.
+        # A notice about a step that went wrong: an error (coral) or a step Angelo works around (amber). Which ones
+        # are on screen depends on the window's height (a 1080 p Linux VM shows only the amber one), so the check
+        # never rests on one tone; the tones seen are kept for a miss.
+        observed.setdefault("progress_notice_tones", [list(drawn.get(n[1], ("", "", ""))) for n in notices])
+        failures = [n for n in notices if drawn.get(n[1], ("", "", ""))[2] in ("coral", "amber")]
         if failures and not observed.get("progress_notice"):
             observed["progress_notice"] = failures[0]
             click("expand", failures[0])
             return .4
+        notice = observed.get("progress_notice")   # Its Details open once the click lands: the state, not a time.
+        if notice is not None and notice not in view_state().get("expanded", set()) \
+                and time.monotonic() - observed.setdefault("progress_notice_since", time.monotonic()) < 10:
+            return .2
         opened_steps = [key for key, (role, _, _) in drawn.items() if role == "activity"]
         checks["progress_group_opens_to_its_steps"] = bool(opened_steps) and len(actions()) > observed["progress_folded_hits"]
         checks["progress_notice_details_open_on_click"] = observed.get("progress_notice") in view_state().get("expanded", set())
@@ -601,4 +626,4 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=.5)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.5)   # An aimed click lands first.

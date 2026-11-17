@@ -26,8 +26,10 @@ builds it) and in Manual with its chat and the sidebar open, with the panel LEFT
   the panel, its arrows and "+N more" lines and the minimized button stay inside the view and clear of the rest.
 * 16 workers at 1x with the Asset Shelf open (expanded to its rows): the panel clears it and its pills.
 
-Then the place and the minimized state are the add-on's preferences: set, marked to save, saved and read back by a
-second, background Angelo from the run's own isolated profile. The interface scale and the panel are put back.
+Then the place and the minimized state are the add-on's preferences, kept with Workers at once: set, marked to save,
+saved and read back from the run's own isolated profile by a new window Angelo (which starts the add-on from them) and
+a background one (which starts no agent from them, and reads them once a script enables it). The interface scale, the
+panel and those settings are put back.
 Captures of every state in the QA folder (``<case>-<n>-<state>.png``) for a vision review; ``rail-positions.json``.
 
 Model-free: stand-in workers are chats bound as worker sessions with no worker process, provider or model (as

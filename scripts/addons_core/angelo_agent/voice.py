@@ -14,7 +14,7 @@ import subprocess
 import sys
 import threading
 
-from . import child_process, managed_policy
+from . import child_process, managed_policy, owned_paths
 from .display_text import Text
 from .ui_text import n_, notice
 
@@ -102,6 +102,7 @@ class NativeVoiceSession:
         with self.lock:
             if self.stopped.is_set() or self.controller.cancelled:
                 return
+            owned_paths.require_runnable(microphone_command(self.device)[0])
             self.microphone = child_process.popen(microphone_command(self.device), stdin=subprocess.DEVNULL,
                                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
         self.controller.emit("voice_status", {"text": n_("Listening · microphone on")})
@@ -175,6 +176,7 @@ class NativeVoiceSession:
                     if self.speaker is None:
                         command = [audio_executable("ffplay"), "-nodisp", "-autoexit", "-loglevel", "error", "-fflags", "nobuffer",
                                    "-f", "s16le", "-ar", str(rate), "-ch_layout", "mono" if channels == 1 else "stereo", "-i", "pipe:0"]
+                        owned_paths.require_runnable(command[0])
                         self.speaker = child_process.popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                                                            stderr=subprocess.DEVNULL, bufsize=0)
                         self.speaker_format = (rate, channels)

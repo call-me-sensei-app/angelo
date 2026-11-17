@@ -18,6 +18,7 @@ import uuid
 
 from .refusal_codes import RefusalError
 from .studio_spec import OPTIONS, _validate
+from . import read_only
 
 FORMAT = "angelo.flow/1"
 MAX_NODES = 64
@@ -447,3 +448,6 @@ def as_definition(flow):
     if flow.get("recipe"):
         definition["recipe"] = dict(flow["recipe"])
     return definition
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), 'OPTIONS', 'OUTPUTS', 'INPUTS')

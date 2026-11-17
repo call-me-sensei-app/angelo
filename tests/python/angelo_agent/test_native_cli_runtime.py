@@ -7,6 +7,7 @@ login shell is a script written for the test, and the Codex process is a fixture
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import contextlib
 import io
@@ -211,18 +212,15 @@ class LoginShellProbeTests(unittest.TestCase):
         started.assert_within(6)
         pids = [int(line) for line in marker.read_text().split()]
         self.assertEqual(len(pids), 2)  # The shell and the process its profile left running.
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline and any(self.alive(pid) for pid in pids):
             time.sleep(.05)
         self.assertFalse([pid for pid in pids if self.alive(pid)])
 
     @staticmethod
-    def alive(pid):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        return True
+    def alive(pid):   # The platform-aware check: a signal-0 kill sends Ctrl+C on Windows (liveness_probes).
+        from angelo_agent.engine_link_protocol import process_alive
+        return process_alive(pid)
 
     def test_a_flood_of_output_is_cut_off(self):
         started = machine_clock.start(self)
@@ -370,8 +368,10 @@ class ClaudeNewerEndToEndTests(unittest.TestCase):
 
         class OfflineClaude(providers.ClaudeProvider):
             def connect(inner):
-                inner.executable, inner.env = "claude", {"FIXTURE": "only"}
                 return inner.controller.state["native_id"]
+
+            def launch_inputs(inner, controller):   # Built at each start in the app (providers.claude_launch).
+                return "claude", {"FIXTURE": "only"}
 
         def reply(process, event):
             content = event["message"]["content"]
@@ -392,7 +392,7 @@ class ClaudeNewerEndToEndTests(unittest.TestCase):
 
     def turn(self, text):
         self.controller.send(text, {"objects": []})
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             self.controller.pump_events()
             if not self.controller.busy and not (self.controller._worker and self.controller._worker.is_alive()):

@@ -13,6 +13,7 @@ that leaves its chat while it waits is released; leases grown old are asked agai
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import sys
@@ -36,7 +37,7 @@ AT_ONCE = 0.05   # Seconds: what "returns at once" means here, far below any wor
 BOTH = {"parts": [{"worker": 1}, {"worker": 2}]}
 
 
-def until(predicate, seconds=5.0):
+def until(predicate, seconds=CAP_S):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         if predicate():
@@ -63,7 +64,7 @@ class Worker:
     def request(self, op, timeout, **fields):
         with self.lock:
             self.requests.append(dict(fields, op=op))
-        if op in self.wedged and not self.open.wait(10):
+        if op in self.wedged and not self.open.wait(CAP_S):
             raise WorkerUnavailable("no answer within %g s" % timeout, timed_out=True)
         answer = self.answers.get(op, {"ok": True, "lease": "L-" + str(self.part)} if op == "part.lease" else None)
         answer = answer(fields) if callable(answer) else answer
@@ -221,7 +222,7 @@ class NormalCaseTests(GateFixture):
             self.assertEqual(concurrent[key], synchronous[key], key)
 
     def test_answers_in_before_the_asking_pump_looks_merge_in_that_pump(self):
-        with mock.patch.object(gate.Gate, "start", lambda g, start=gate.Gate.start: (start(g), g.done.wait(5))[0]):
+        with mock.patch.object(gate.Gate, "start", lambda g, start=gate.Gate.start: (start(g), g.done.wait(CAP_S))[0]):
             c, replies = self.run_merge("merge")   # Every hold and lease answered before ``waits`` reads the gate.
         self.assertEqual(len(replies), 1)
         self.assertTrue(replies[0].get("success"), replies[0])

@@ -22,12 +22,12 @@
 #include "CLG_log.h"
 
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_string_utf8.h"
-#include "BLI_threads.h"
-#include "BLI_utildefines.h"
+#include "BLI_string.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_threads.hh"
+#include "BLI_utildefines.hh"
 #ifdef WITH_PYTHON_MODULE
-#  include "BLI_string.h"
+#  include "BLI_string.hh"
 #endif
 
 #include "BLT_translation.hh"
@@ -36,6 +36,7 @@
 #include "RNA_types.hh"
 
 #include "bpy.hh"
+#include "bpy_angelo_guard_confine.hh"
 #include "bpy_audaspace.hh"
 #include "bpy_capi_utils.hh"
 #include "bpy_intern_string.hh"
@@ -98,7 +99,7 @@ static bool py_use_user_env = false;
 // #define TIME_PY_RUN /* Simple python tests. prints on exit. */
 
 #ifdef TIME_PY_RUN
-#  include "BLI_time.h"
+#  include "BLI_time.hh"
 static int bpy_timer_count = 0;
 /** Time since python starts. */
 static double bpy_timer;
@@ -229,7 +230,7 @@ void bpy_context_clear(bContext *C, const PyGILState_STATE *gilstate)
 
 static void bpy_context_end(bContext *C)
 {
-  if (UNLIKELY(C == nullptr)) {
+  if (C == nullptr) [[unlikely]] {
     return;
   }
   CTX_wm_operator_poll_msg_clear(C);
@@ -388,7 +389,7 @@ static _inittab bpy_internal_modules[] = {
  */
 static void pystatus_exit_on_error(const PyStatus &status)
 {
-  if (UNLIKELY(PyStatus_Exception(status))) {
+  if (PyStatus_Exception(status)) [[unlikely]] {
     fputs("Internal error initializing Python!\n", stderr);
     /* This calls `exit`. */
     Py_ExitStatusException(status);
@@ -608,6 +609,10 @@ void BPY_python_start(bContext *C, int argc, const char **argv)
 
     /* Bytecode goes to a per-user cache, never into the installed application (Angelo). */
     bpy_pycache_config_apply(&config);
+
+    /* Agent scripts run confined: the audit hook is registered before Python starts, so it sees every event and
+     * nothing in Python can remove it (doc/angelo/script_confinement.rst). */
+    BPY_angelo_guard_confine_install();
 
     /* Initialize Python (also acquires lock). */
     status = Py_InitializeFromConfig(&config);
@@ -902,11 +907,43 @@ void BPY_modules_load_user(bContext *C)
     }
   }
 
-  for (text = static_cast<Text *>(bmain->texts.first); text;
-       text = static_cast<Text *>(text->id.next))
-  {
+  /* Angelo: with auto-run on, Python the file carries runs only when the person trusted that exact content
+   * (bpy_angelo_autorun_trust.cc); the rest is held back as when auto-run is off, and named in the warning, whose
+   * "Allow Execution" trusts it. */
+  BPY_angelo_autorun_blocked_reset();
+  if (G.f & G_FLAG_SCRIPT_AUTOEXEC) {
+    for (Scene &scene : bmain->scenes) {
+      for (ViewLayer &view_layer : scene.view_layers) {
+        for (const FreestyleModuleConfig &module_conf : view_layer.freestyle_config.modules) {
+          if (module_conf.script && module_conf.is_displayed &&
+              !BPY_angelo_style_module_trusted(module_conf.script))
+          {
+            BPY_angelo_autorun_blocked_add(module_conf.script);
+            if (!(G.f & G_FLAG_SCRIPT_AUTOEXEC_FAIL_QUIET)) {
+              G.f |= G_FLAG_SCRIPT_AUTOEXEC_FAIL;
+              SNPRINTF_UTF8(G.autoexec_fail,
+                            RPT_("Freestyle style module '%s'"),
+                            module_conf.script->id.name + 2);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (text = bmain->texts.first(); text; text = static_cast<Text *>(text->id.next)) {
     if (text->flags & TXT_ISSCRIPT) {
-      if (!(G.f & G_FLAG_SCRIPT_AUTOEXEC)) {
+      if ((G.f & G_FLAG_SCRIPT_AUTOEXEC) && !BPY_angelo_autorun_trusted(text)) {
+        BPY_angelo_autorun_blocked_add(text);
+        if (!(G.f & G_FLAG_SCRIPT_AUTOEXEC_FAIL_QUIET)) {
+          G.f |= G_FLAG_SCRIPT_AUTOEXEC_FAIL;
+          SNPRINTF_UTF8(G.autoexec_fail, RPT_("Text '%s'"), text->id.name + 2);
+        }
+        printf("scripts not yet trusted for \"%s\", skipping '%s'\n",
+               BKE_main_blendfile_path(bmain),
+               text->id.name + 2);
+      }
+      else if (!(G.f & G_FLAG_SCRIPT_AUTOEXEC)) {
         if (!(G.f & G_FLAG_SCRIPT_AUTOEXEC_FAIL_QUIET)) {
           G.f |= G_FLAG_SCRIPT_AUTOEXEC_FAIL;
           SNPRINTF_UTF8(G.autoexec_fail, RPT_("Text '%s'"), text->id.name + 2);
@@ -1245,6 +1282,16 @@ PyMODINIT_FUNC PyInit_bpy()
     return nullptr; /* The error has been set. */
   }
 
+  /* Assign dummy type. */
+  dealloc_obj_Type.tp_name = "dealloc_obj";
+  dealloc_obj_Type.tp_basicsize = sizeof(dealloc_obj);
+  dealloc_obj_Type.tp_dealloc = dealloc_obj_dealloc;
+  dealloc_obj_Type.tp_flags = Py_TPFLAGS_DEFAULT;
+
+  if (PyType_Ready(&dealloc_obj_Type) < 0) {
+    return nullptr;
+  }
+
   PyObject *bpy_proxy = PyModule_Create(&bpy_proxy_def);
 
   /* Problem:
@@ -1263,16 +1310,6 @@ PyMODINIT_FUNC PyInit_bpy()
 
   /* Assign an object which is freed after `__file__` is assigned. */
   dealloc_obj *dob;
-
-  /* Assign dummy type. */
-  dealloc_obj_Type.tp_name = "dealloc_obj";
-  dealloc_obj_Type.tp_basicsize = sizeof(dealloc_obj);
-  dealloc_obj_Type.tp_dealloc = dealloc_obj_dealloc;
-  dealloc_obj_Type.tp_flags = Py_TPFLAGS_DEFAULT;
-
-  if (PyType_Ready(&dealloc_obj_Type) < 0) {
-    return nullptr;
-  }
 
   dob = (dealloc_obj *)dealloc_obj_Type.tp_alloc(&dealloc_obj_Type, 0);
   dob->mod = bpy_proxy;                                       /* borrow */

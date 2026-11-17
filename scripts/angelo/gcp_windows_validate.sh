@@ -16,7 +16,8 @@
 # The full-feature build (blender_release with every GPU device and its kernels, BlendThumb.dll, the MSI, then the
 # BACKGROUND native suites on it; windows_release_validate.ps1):
 #   scripts/angelo/gcp_windows_validate.sh toolkits FILE...   upload GPU toolkit installers (CUDA Toolkit .exe, OptiX SDK
-#                                                             .zip or .exe, AMD HIP SDK .exe) that you downloaded yourself
+#                                                             .exe, AMD HIP SDK .exe, DLSS SDK headers .zip) that you
+#                                                             downloaded yourself
 #   scripts/angelo/gcp_windows_validate.sh agent-runtime DIR  upload the Windows agent runtime (DIR as for ANGELO_AGENT_RUNTIME_DIR:
 #                                                             codex.exe, codex-code-mode-host.exe and the sandbox helpers),
 #                                                             checked here first; the release stage bundles it
@@ -24,8 +25,10 @@
 #   scripts/angelo/gcp_windows_validate.sh wait-off           wait for the run's end, then confirm the VM is powered off
 #                                                             (powering it off itself if it is not); exit 1 if it can't,
 #                                                             or if the run failed (its stage exit code, or FAILED)
-#   ANGELO_GCP_RELEASE_ALLOW_MISSING=hip+hiprt   build without the named parts (cuda, optix, hip, hiprt, oneapi, agent-runtime);
+#   ANGELO_GCP_RELEASE_ALLOW_MISSING=hip+hiprt   build without the named parts (cuda, optix, hip, hiprt, oneapi, dlss, agent-runtime);
 #                                                the manifest then says the build is not release-equivalent
+#   ANGELO_GCP_RELEASE_DLSS=off                  a release without NVIDIA DLSS (still release-equivalent; the manifest
+#                                                records it): used when NVIDIA's written approval of its marks is missing
 #   scripts/angelo/gcp_windows_validate.sh release-signing DIR|none   a remote-signed release's inputs (sign_remote.sh's
 #                                                             output: certificate.crt, payload/..., and for the second
 #                                                             pass signed-msi/<name>.msi), with sums of every file; the
@@ -37,6 +40,8 @@
 #   scripts/angelo/gcp_windows_validate.sh send FILE.ps1 [gui]   run a PowerShell script there (gui: in the desktop session)
 #   scripts/angelo/gcp_windows_validate.sh sync                  send what changed since the confirmed commit, without a restart
 #   scripts/angelo/gcp_windows_validate.sh out [N]               the newest N command outputs (default 3)
+#   scripts/angelo/gcp_windows_validate.sh tools                 publish this checkout's queue tool (every redo does too):
+#                                                                the machine loads it at its next boot (Resolve-QueueTool)
 #   scripts/angelo/gcp_windows_validate.sh release [gui]         stop waiting for commands; the run continues and ends
 #
 # The final measurement runs on Windows (doc/angelo/final_runs.rst; the commands are documented in this script); each waits for the stage, then confirms the VM stopped:
@@ -44,6 +49,10 @@
 #   scripts/angelo/gcp_windows_validate.sh bench dry             every unbilled check of the campaign (no model request)
 #   scripts/angelo/gcp_windows_validate.sh bench run --authorize-billed-runs   BILLED: run or resume the campaign
 #   scripts/angelo/gcp_windows_validate.sh bench wait            re-attach: wait-off (the run's end, then the VM off)
+#   scripts/angelo/gcp_windows_validate.sh bench prepdry         prep then dry in one request (needs a kept sign-in)
+#     ANGELO_BENCH_CANDIDATE_WAIT_MINUTES=N, no candidate: pre-boot; returns at PREBOOT READY, the machine waiting
+#   scripts/angelo/gcp_windows_validate.sh bench deliver MSI     the pre-boot machine's candidate; then wait-off
+#   scripts/angelo/gcp_windows_validate.sh wait-preboot          re-attach to a pre-boot until PREBOOT READY
 #   (ANGELO_GCP_DRY_RUN=1: print what `bench` would send and start, and change nothing)
 #   scripts/angelo/gcp_windows_validate.sh clone NAME    another bench machine from the image $ANGELO_GCP_NAME-bench-base
 #                                                        (its own bucket; no sign-in); ANGELO_GCP_DRY_RUN=1 prints it
@@ -69,6 +78,8 @@ STOP_WHEN_DONE="${ANGELO_GCP_STOP_WHEN_DONE:-1}"   # 1 = the VM powers itself of
 STAGES="${ANGELO_GCP_STAGES:-identity+teams}"   # which checks a run does, joined by +: identity, teams, thumbs, agent, gui
 HOLD="${ANGELO_GCP_HOLD_MINUTES:-0}"            # > 0: run remote commands until this many idle minutes (or `release`)
 ALLOW_MISSING="${ANGELO_GCP_RELEASE_ALLOW_MISSING:-}"   # release stage: GPU parts it may build without, joined by +
+RELEASE_DLSS="${ANGELO_GCP_RELEASE_DLSS:-on}"           # release stage: on, or off for a release without DLSS
+[[ "$RELEASE_DLSS" == on || "$RELEASE_DLSS" == off ]] || { echo "ANGELO_GCP_RELEASE_DLSS is '$RELEASE_DLSS', not on or off" >&2; exit 2; }
 GPU="${ANGELO_GCP_GPU:-1}"                    # 1 = T4 virtual workstation (GUI checks), 0 = none
 MACHINE="${ANGELO_GCP_MACHINE:-n1-standard-16}"
 MAX_HOURS="${ANGELO_GCP_MAX_HOURS:-8}"
@@ -136,6 +147,7 @@ up() {
   g storage buckets add-iam-policy-binding "gs://$BUCKET" --member="serviceAccount:$SA_EMAIL" --role=roles/storage.objectAdmin >/dev/null
   g storage rm --quiet "gs://$BUCKET/input/confirmed-commit" 2>/dev/null || true   # a new machine has proven nothing
   send_source "$work" "$nonce" "" "$head_sha"
+  publish_tools
   g storage rm -r "gs://$BUCKET/result/" "gs://$BUCKET/logs/" 2>/dev/null || true
 
   echo "== VM"
@@ -146,7 +158,7 @@ up() {
     --boot-disk-size=300GB --boot-disk-type=pd-ssd --network="$NAME-net" --subnet="$NAME-subnet" \
     --service-account="$SA_EMAIL" --scopes=storage-rw \
     --max-run-duration="${MAX_HOURS}h" --instance-termination-action=STOP \
-    --metadata="$meta" --metadata-from-file="windows-startup-script-ps1=$ROOT/scripts/angelo/windows_cloud_bootstrap.ps1"
+    --metadata="$meta" --metadata-from-file="windows-startup-script-ps1=$ROOT/scripts/angelo/windows_cloud_bootstrap.ps1$(queue_loader)"
   rm -rf "$work"
   echo "Started. Watch with: $0 status   (the VM powers off when the run ends, or after ${MAX_HOURS}h; '$0 down' deletes everything)"
 }
@@ -155,6 +167,28 @@ up() {
 # changed since then are sent, with their new times, so the incremental build recompiles just what depends on them;
 # extracting all of HEAD would stamp every file with the commit time and rebuild the whole tree. With no confirmed
 # commit (a cut-off or failed send, a new machine, redo --full) the send is all of HEAD.
+# The remote-command tool every boot loads (windows_cloud_bootstrap.ps1, Resolve-QueueTool): this checkout's copy and
+# its SHA-256 in the bucket, so a fix to the tool reaches the machine at its next boot without a send of the whole tree.
+publish_tools() {
+  local tmp; tmp="$(mktemp -d)"
+  [[ -f "$ROOT/scripts/angelo/windows_command_queue.ps1" ]] || { echo "No queue tool in this checkout: none published." >&2; return 0; }
+  cp "$ROOT/scripts/angelo/windows_command_queue.ps1" "$tmp/windows_command_queue.ps1"
+  python3 -I -c 'import hashlib, json, sys
+print(json.dumps({"windows_command_queue.ps1": {"sha256": hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest(),
+                                                "commit": sys.argv[2]}}))' "$tmp/windows_command_queue.ps1" \
+    "$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)" > "$tmp/manifest.json"
+  # Best effort: without it the machine loads its tree's copy and says so (windows_queue_loader.ps1).
+  g storage cp --quiet "$tmp/windows_command_queue.ps1" "$tmp/manifest.json" "gs://$BUCKET/tools/" ||
+    echo "The queue tool was not published: the machine uses its tree's copy." >&2
+  rm -rf "$tmp"
+}
+
+# The loader every boot runs (angelo-queue-loader metadata, beside the boot script), when this checkout has it.
+queue_loader() {
+  [[ -f "$ROOT/scripts/angelo/windows_queue_loader.ps1" ]] && echo ",angelo-queue-loader=$ROOT/scripts/angelo/windows_queue_loader.ps1"
+  return 0
+}
+
 redo() {
   cd "$ROOT"
   need_real_files
@@ -164,10 +198,11 @@ redo() {
   [[ "${2:-}" == "--full" ]] || base="$(confirmed_commit)"
   send_source "$work" "$nonce" "$base" "$head_sha"
   g storage rm -r "gs://$BUCKET/result/" "gs://$BUCKET/live/" 2>/dev/null || true
+  publish_tools
   export ANGELO_GCP_RUN_SINCE="${nonce%%-*}"   # The send's start (epoch), for the stall check.
   g compute instances add-metadata "$NAME" --zone="$ZONE" \
-    --metadata="angelo-min-free-gb=${ANGELO_GCP_MIN_FREE_GB:-30},angelo-src-nonce=$nonce,angelo-src-commit=$head_sha,angelo-stop-when-done=$STOP_WHEN_DONE,angelo-stages=$STAGES,angelo-hold-minutes=$HOLD,angelo-libs-sha=$(git ls-tree "$head_sha" lib/windows_x64 | awk '{print $3}'),angelo-release-allow-missing=$ALLOW_MISSING,angelo-release-sign=$RELEASE_SIGN,angelo-release-signed-msi-sha256=$SIGNED_MSI_SHA256${STOCK_URL:+,angelo-stock-blender-url=$STOCK_URL}$EXTRA_META" \
-    --metadata-from-file="windows-startup-script-ps1=$ROOT/scripts/angelo/windows_cloud_bootstrap.ps1"
+    --metadata="angelo-min-free-gb=${ANGELO_GCP_MIN_FREE_GB:-30},angelo-src-nonce=$nonce,angelo-src-commit=$head_sha,angelo-stop-when-done=$STOP_WHEN_DONE,angelo-stages=$STAGES,angelo-hold-minutes=$HOLD,angelo-libs-sha=$(git ls-tree "$head_sha" lib/windows_x64 | awk '{print $3}'),angelo-release-allow-missing=$ALLOW_MISSING,angelo-release-dlss=$RELEASE_DLSS,angelo-release-sign=$RELEASE_SIGN,angelo-release-signed-msi-sha256=$SIGNED_MSI_SHA256${STOCK_URL:+,angelo-stock-blender-url=$STOCK_URL}$EXTRA_META" \
+    --metadata-from-file="windows-startup-script-ps1=$ROOT/scripts/angelo/windows_cloud_bootstrap.ps1$(queue_loader)"
   if [[ "$(g compute instances describe "$NAME" --zone="$ZONE" --format='value(status)')" == "RUNNING" ]]; then
     echo "The VM was running: its earlier maximum run time stays (set only while it is stopped)." >&2
     g compute instances reset "$NAME" --zone="$ZONE"
@@ -218,6 +253,8 @@ out() {
   for f in $(ls "$tmp"/*.log | sort -r | head -n "${2:-3}"); do
     echo "### $(basename "$f") exit $(cat "$f.exit" 2>/dev/null | tr -d '[:space:]')"; tail -n "${ANGELO_GCP_LOG_LINES:-60}" "$f"
   done
+  # A listing or download the machine could not make (windows_command_queue.ps1): its newest problem per queue.
+  for f in "$tmp"/*-queue-problem.txt; do [[ -f "$f" ]] && echo "### $(basename "$f"): $(cat "$f")"; done
   rm -rf "$tmp"
 }
 
@@ -226,11 +263,12 @@ release() {
   g storage cp --quiet "$marker" "gs://$BUCKET/$([[ "${2:-}" == "gui" ]] && echo cmd-gui || echo cmd)-release"; rm -f "$marker"
 }
 
-# GPU toolkit installers for the release stage. They are licensed downloads (NVIDIA's CUDA Toolkit and OptiX SDK, AMD's
-# HIP SDK): whoever runs this downloaded them and accepted their terms; the machine installs what it finds here.
+# GPU toolkit installers for the release stage. They are licensed downloads (NVIDIA's CUDA Toolkit, OptiX SDK and DLSS
+# SDK headers, AMD's HIP SDK): whoever runs this downloaded them and accepted their terms; the machine installs what it
+# finds here.
 toolkits() {
   shift
-  [[ $# -gt 0 ]] || { echo "toolkits FILE... (cuda_<version>_..._windows.exe, an OptiX SDK .zip or .exe, the AMD HIP SDK .exe)" >&2; exit 2; }
+  [[ $# -gt 0 ]] || { echo "toolkits FILE... (cuda_<version>_..._windows.exe, the OptiX SDK .exe, the AMD HIP SDK .exe, dlss-sdk-<version>-headers.zip)" >&2; exit 2; }
   local f
   for f in "$@"; do [[ -f "$f" ]] || { echo "$f is not a file" >&2; exit 1; }; done
   g storage cp "$@" "gs://$BUCKET/toolkits/"
@@ -327,13 +365,20 @@ release_build() {
 
 bench() {
   local mode="${2:-}" claude_version codex_version work only="${ANGELO_BENCH_ONLY:-}"
+  local wait_minutes="${ANGELO_BENCH_CANDIDATE_WAIT_MINUTES:-0}"
   case "$mode" in
-    prep|dry) ;;
+    prep|dry|prepdry) ;;
     run) [[ "${3:-}" == "--authorize-billed-runs" ]] || {
            echo "bench run sends BILLED model requests on the signed-in accounts: pass --authorize-billed-runs" >&2; exit 2; } ;;
     wait) wait_off; return ;;
-    *) echo "usage: $0 bench prep|dry|run --authorize-billed-runs|wait" >&2; exit 2 ;;
+    deliver) bench_deliver "$@"; return ;;
+    *) echo "usage: $0 bench prep|dry|prepdry|run --authorize-billed-runs|deliver MSI|wait" >&2; exit 2 ;;
   esac
+  [[ "$wait_minutes" =~ ^[0-9]+$ ]] || { echo "ANGELO_BENCH_CANDIDATE_WAIT_MINUTES: whole minutes" >&2; exit 2; }
+  if (( wait_minutes > 0 )); then
+    [[ "$mode" == prep || "$mode" == prepdry ]] || { echo "pre-boot (ANGELO_BENCH_CANDIDATE_WAIT_MINUTES) is for prep or prepdry" >&2; exit 2; }
+    [[ -z "${ANGELO_BENCH_CANDIDATE_MSI:-}" ]] || { echo "pre-boot waits for its candidate: leave ANGELO_BENCH_CANDIDATE_MSI unset (bench deliver)" >&2; exit 2; }
+  fi
   local runtime="${ANGELO_BENCH_MCP_RUNTIME:?set ANGELO_BENCH_MCP_RUNTIME to the frozen-runtime folder of the pilot}"
   # The CLI versions the Mac measures with; the VM installs exactly these (a missing version fails the stage): Claude
   # Code from npm at the Mac's version, stock Codex from its GitHub release at the agent runtime's pinned version.
@@ -365,8 +410,11 @@ bench() {
   python3 "$ROOT/tests/python/angelo_agent/final_runs_mcp.py" bundle --runtime "$runtime" --into "$work/mcp-runtime.tar.gz" >/dev/null
   # prep also brings the full-feature build to this commit (the 'release' stage, incremental) unless an MSI is the
   # candidate; the bench freezes the candidate.
-  STAGES="$([[ "$mode" == prep && -z "$candidate" ]] && echo release+bench || echo bench)"; HOLD=0; STOP_WHEN_DONE=1
+  STAGES="$([[ "$mode" == prep && -z "$candidate" && "$wait_minutes" == 0 ]] && echo release+bench || echo bench)"; HOLD=0; STOP_WHEN_DONE=1
   [[ "$STAGES" == bench && -z "${ANGELO_GCP_RUN_HOURS:-}" ]] && RUN_HOURS=$(( BENCH_HOURS + 1 ))
+  # A pre-boot's wait comes before the request's own hours (the stage starts them with its candidate): the machine's
+  # maximum run time covers both.
+  (( wait_minutes > 0 )) && RUN_HOURS=$(( RUN_HOURS + (wait_minutes + 59) / 60 ))
   EXTRA_META=",angelo-bench-mode=$mode,angelo-bench-claude-version=$claude_version,angelo-bench-codex-version=$codex_version"
   EXTRA_META+=",angelo-bench-hours=$BENCH_HOURS,angelo-bench-stock-url=$BENCH_STOCK_URL,angelo-bench-only=$only"
   # The preparation's own deadline on the machine (windows_cloud_bootstrap.ps1), and a test-only hang in it.
@@ -374,6 +422,9 @@ bench() {
   EXTRA_META+=",angelo-bench-test-prep-hang-minutes=${ANGELO_GCP_TEST_PREP_HANG_MINUTES:-0}"
   EXTRA_META+=",angelo-bench-signin-minutes=${ANGELO_BENCH_SIGNIN_MINUTES:-60}"
   EXTRA_META+=",angelo-bench-candidate-msi=$candidate_meta,angelo-bench-candidate-sha256=$candidate_sha"
+  EXTRA_META+=",angelo-bench-candidate-wait-minutes=$wait_minutes"
+  # An API-key gate's Secret Manager secret NAME (bench_api_key.py), in the bench prefix, never echoed; sent always.
+  local gemini_secret="${ANGELO_BENCH_GEMINI_SECRET_NAME:-}"; [[ -z "$gemini_secret" || "$gemini_secret" =~ ^angelo-bench-[A-Za-z0-9_-]{1,242}$ ]] || { echo "ANGELO_BENCH_GEMINI_SECRET_NAME is not an angelo-bench-... secret name (not shown: it may be a key)" >&2; exit 2; }; EXTRA_META+=",angelo-bench-gemini-secret=$gemini_secret"
   if [[ "${ANGELO_GCP_DRY_RUN:-0}" == "1" ]]; then
     echo "DRY RUN: nothing is uploaded or started."
     echo "  VM $NAME in $ZONE (project $PROJECT), bucket gs://$BUCKET; stage bench, mode $mode"
@@ -391,6 +442,7 @@ bench() {
   if [[ "$candidate_meta" == gs://* ]]; then g storage cp --no-clobber "$candidate" "$candidate_meta"; fi
   rm -rf "$work"
   redo bench
+  if (( wait_minutes > 0 )); then wait_preboot; return; fi
   local code=0
   wait_off || code=1
   echo "Results: gcloud storage ls gs://$BUCKET/bench/  (logs: $0 logs)"
@@ -440,9 +492,9 @@ down() {
 
 case "${1:-}" in
   up) up ;; redo) redo "$@" ;; stop) stop ;; status) status ;; logs) logs ;; fetch) fetch ;; down) down ;;
-  send) send "$@" ;; sync) sync ;; out) out "$@" ;; release) release "$@" ;; bench) bench "$@" ;;
-  toolkits) toolkits "$@" ;; agent-runtime) agent_runtime "$@" ;; release-build) release_build "$@" ;; release-signing) release_signing "$@" ;; wait-off) wait_off ;;
+  send) send "$@" ;; sync) sync ;; out) out "$@" ;; tools) publish_tools; echo "published the queue tool to gs://$BUCKET/tools/ (loaded at the next boot)" ;; release) release "$@" ;; bench) bench "$@" ;;
+  toolkits) toolkits "$@" ;; agent-runtime) agent_runtime "$@" ;; release-build) release_build "$@" ;; release-signing) release_signing "$@" ;; wait-off) wait_off ;; wait-preboot) wait_preboot ;;
   clone) clone "$@" ;;
   oneshot-sources) oneshot_sources "$@" ;;
-  *) sed -n '2,53p' "$0"; exit 2 ;;
+  *) awk 'NR == 1 { next } /^#/ { print; next } { exit }' "$0"; exit 2 ;;
 esac

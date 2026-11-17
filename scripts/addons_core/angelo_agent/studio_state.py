@@ -12,13 +12,14 @@ import time
 import uuid
 from pathlib import Path
 
-from . import product_env, shared_replace
+from . import owned_paths, product_env, shared_replace
 from .storage import connection_directory
 from .provider_registry import GENAI, PROVIDER_NAMES, SPECS, TEAM, service_mode
 from .references import image_type, MIME
 from .ui_text import iface_, n_, rpt_
 from .refusal_codes import coded
 from .display_text import describe_error, error_message
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 DEFAULT_ENHANCER = {"connection": "AUTO_GEMINI", "model": "gemini-3.8-flash"}
 ASPECTS = ("1:1", "16:9", "9:16", "4:3", "3:4")
@@ -154,6 +155,8 @@ def library_directory():
     path = Path(override or connection_directory().parent / "media-studio").expanduser()
     if not path.is_absolute():
         raise coded(StudioValueError(n_("{variable} must be an absolute path"), variable=variable), "UNSUPPORTED")
+    if override:   # The person named it before Angelo started (the environment, which no script changes): registered
+        owned_paths.register_writable(path)   # at startup (register_fixed_folders), before any script region.
     return path
 
 
@@ -161,8 +164,9 @@ def atomic_json(path, value):
     """Write ``value`` to ``path`` whole, or not at all. The rename is every add-on file's (``shared_replace``):
     on Windows it lands while a reader holds ``path`` open, as ``read_json`` does (a job's state, read by the
     library's reload or another window, while its worker saves), and a plain ``os.replace`` there refused the save:
-    a finished job then never left "generating" (CI 41887060350, ``test_native_studio``)."""
-    path = Path(path)
+    a finished job then never left "generating" (CI 41887060350, ``test_native_studio``). ``path`` is one C says
+    Angelo may write (``owned_paths.require_writable``), whatever object named it."""
+    path = Path(owned_paths.require_writable(path))
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = path.with_name(path.name + "." + str(uuid.uuid4()) + ".tmp")
     try:
@@ -389,7 +393,7 @@ class StudioLibrary:
 
     def result_directory(self, identity):
         path = self.directory / "outputs" / str(uuid.UUID(identity))
-        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(path).mkdir(parents=True, exist_ok=True, mode=0o700)
         return path
 
     def checked_file(self, asset, relative):
@@ -418,7 +422,11 @@ class StudioLibrary:
         suffix = validated_image(data)
         asset = self.add("IMAGE", source.name, IMPORTED_MODEL, folder=folder, status="ready")
         path = self.result_directory(asset["id"]) / ("image" + suffix)
+        owned_paths.require_writable(path)
         path.write_bytes(data)
         asset.update(files=[path.name], thumbnail=path.name, progress=100)
         self.update(asset)
         return asset
+
+
+_grant_guard.entry_methods(StudioLibrary, "configure_enhancer")

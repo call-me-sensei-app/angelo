@@ -122,6 +122,13 @@ class Inbox:
     def __init__(self):
         self._queue, self._server, self._seq = deque(), None, 0
 
+    def unread(self, server):
+        """Whether one of ``server``'s editor requests (``engine_link_server.is_request``) waits to be handled: read
+        here and not yet answered, or still held by the server (``LinkServer.unread``)."""
+        from .engine_link_server import is_request
+        return (server is self._server and any(not entry[4] and is_request(entry[1]) for entry in self._queue)
+                or server.unread())
+
     def ready(self, server, resolve):
         """Each request whose turn has come, as (client, header, info, lookup or None, seq). An editor's requests come
         in the order it sent them: one whose asset is being read holds that editor's later ones (a "close" never
@@ -154,3 +161,15 @@ class Inbox:
 
 
 inbox = Inbox()   # The engine link's, one per process (``engine_link._tick``).
+
+
+def waiting(state):
+    """Whether the engine link has work the person's operation defers (``engine_link._tick``'s waiting work, break-it
+    review 7, S2): an editor's request not yet handled, or an export of changes made before the operation began. Never
+    the person's own Open / Not now card, nor the operation's own changes, which wait for its end anyway
+    (``scene_changes.busy``)."""
+    from . import edit_tool_hold
+    server = state["server"]
+    if server is not None and inbox.unread(server):
+        return True
+    return state["session"] is not None and edit_tool_hold.before_hold(state["dirty_at"])

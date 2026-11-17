@@ -36,18 +36,19 @@ STORED = {
     "asset_browser_states": "drawn icon pixels",
     "asset_shelf_add": "drawn icon pixels",
     "base_mesh_thumbs": "PNG bytes decoded by the add-on",
-    "connect_hero": "Image.pixels of a WebP read as Non-Color",
+    "brand_picture": "an 8-bit file's stored bytes over 255, read with imbuf: no colour conversion",
+    "connect_hero": "brand_picture's texture of a WebP (stored values)",
     "firstlaunch_controls": ".blend preview pixels",
     "library_host": "Image.pixels of a PNG, JPEG or WebP thumbnail read as Non-Color",
     "library_overlay_draw": "library_host's thumbnail textures",
     "fab_overlay": "library_host's thumbnail textures (Fab result and details pictures)",
     "native_preview_images": "Image.pixels of a PNG read as Non-Color",
-    "providers_page_draw": "the welcome banner's pixels (welcome_screen)",
+    "providers_page_draw": "the welcome banner's texture (welcome_screen.BANNER_PICTURE)",
     "shelf_empty": "asset_shelf_add's icon texture",
     "studio_media_tiles": "studio_tile_previews' textures (stored values)",
     "studio_tile_previews": "Image.pixels of a picture or a movie's first frame read as Non-Color, bounded",
     "welcome_art": "drawn icon pixels",
-    "welcome_screen": "Image.pixels of a PNG read as Non-Color",
+    "welcome_screen": "brand_picture's texture of a PNG (stored values)",
 }
 # Offscreens that already hold what the screen shows: the interface drawn into them, or a colour-managed 3D draw.
 DISPLAY = {

@@ -61,7 +61,7 @@
   "turn_facts": [],
   "reported_routes": [],
   "facts": [
-    {"id": "blender.version", "anchors": ["Blender 5.2"], "routes": ["agent", "mcp"],
+    {"id": "blender.version", "anchors": ["Blender 5.3"], "routes": ["agent", "mcp"],
      "says": "The Blender release the scripts run in."},
     {"id": "blender.sky_type_values", "anchors": ["sky_type", "SINGLE_SCATTERING", "MULTIPLE_SCATTERING", "PREETHAM", "HOSEK_WILKIE", "NISHITA no longer exists"],
      "routes": ["agent", "mcp"], "stale": ["\\bNISHITA\\b"],

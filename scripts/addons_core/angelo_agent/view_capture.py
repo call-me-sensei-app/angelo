@@ -42,6 +42,7 @@ from .view_spec import (ATTRIBUTE, DEPTH, FIT, LIT, MAX_PAIRS, RENDERED, SCENE_C
 from .refusal_codes import coded
 # The drawing viewport (view_viewport); view_motion, view_warm and web_compare reach these through this module.
 from .view_viewport import DisplayOverrides, _draw_area, _view3d_areas, _viewport_state, window_region
+from . import owned_paths
 
 DRAWABLE = frozenset({"MESH", "CURVE", "SURFACE", "FONT", "META", "CURVES", "GREASEPENCIL",
                       "POINTCLOUD", "VOLUME"})
@@ -247,12 +248,24 @@ def _capture(window, area, shading, plans):
     started = time.perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PAIRS, thread_name_prefix="AngeloViewPNG") as pool:
         futures, capture["unavailable"] = _draw_all(window, area, shading, jobs, pool)
-        capture["compiling"] = shading in EEVEE_SHADINGS and bpy.app.is_job_running("SHADER_COMPILATION")
+        capture["compiling"] = shading in EEVEE_SHADINGS and _shaders_pending(window, area)
         drawn = time.perf_counter()
         capture["encoded"] = {index: future.result() for index, future in futures.items()}
     capture["draw_wall_ms"] = (drawn - started) * 1000
     capture["encode_wait_wall_ms"] = (time.perf_counter() - drawn) * 1000
     return capture
+
+
+def _shaders_pending(window, area):
+    """Whether a material the scene draws through ``area`` has no shader yet or one still queued once a view is drawn
+    (the picture may show its placeholder): the scene's own shader state, which an agent's view waits on before it
+    draws (``view_warm.state``). Blender's ``SHADER_COMPILATION`` flag decides only where that state cannot be read:
+    it is also up for another scene's or an optimization compile and, on Vulkan, for every pipeline a draw since the
+    last redraw built, this view's own included, each complete once its draw returns."""
+    found = view_warm.state(window, area)
+    if found is not None:
+        return bool(found[1] or found[2])
+    return bool(bpy.app.is_job_running("SHADER_COMPILATION"))
 
 
 def _write_views(references, plans, encoded, shading):
@@ -265,6 +278,7 @@ def _write_views(references, plans, encoded, shading):
             label = view_free_camera.label(plan) or f"{plan['item'] if kind != 'REUSE' else 'Reused'} view"
             reference = references.new_observation(f"{label} · {shading.lower()}")
             written.append(reference)
+            owned_paths.require_writable(reference["path"])
             with open(reference["path"], "wb") as handle:
                 handle.write(png)
             os.chmod(reference["path"], 0o600)

@@ -33,6 +33,7 @@ set(SRC
   bpy_angelo_meshopt.cc
   bpy_angelo_metadata.cc
   bpy_angelo_digest.cc
+  bpy_angelo_guard_authority_core.cc
   bpy_angelo_saved.cc
   bpy_angelo_picture.cc
   bpy_angelo_read.cc
@@ -50,6 +51,57 @@ set(SRC
   bpy_angelo_undo.cc
   bpy_angelo_checkpoint.cc
   bpy_angelo_checkpoint_binding.cc
+  bpy_angelo_guard.cc
+  bpy_angelo_autorun_trust.cc
+  bpy_angelo_guard_authority.cc
+  bpy_angelo_guard_confine.cc
+  bpy_angelo_guard_confine_attr.cc
+  bpy_angelo_guard_confine_deferred.cc
+  bpy_angelo_guard_confine_environ.cc
+  bpy_angelo_guard_confine_changes.cc
+  bpy_angelo_guard_confine_folders.cc
+  bpy_angelo_guard_confine_hook.cc
+  bpy_angelo_guard_confine_journal.cc
+  bpy_angelo_guard_confine_journal_planted.cc
+  bpy_angelo_guard_confine_leftovers.cc
+  bpy_angelo_guard_confine_beside.cc
+  bpy_angelo_guard_confine_ops.cc
+  bpy_angelo_guard_confine_output.cc
+  bpy_angelo_guard_confine_callbacks.cc
+  bpy_angelo_guard_confine_carriers.cc
+  bpy_angelo_guard_confine_paths.cc
+  bpy_angelo_guard_confine_modules.cc
+  bpy_angelo_guard_confine_origins.cc
+  bpy_angelo_guard_confine_steering.cc
+  bpy_angelo_guard_confine_tagged.cc
+  bpy_angelo_guard_confine_trace_hooks.cc
+  bpy_angelo_guard_confine_winpath.cc
+  bpy_angelo_guard_confine_writable.cc
+  bpy_angelo_guard_confine_writers.cc
+  bpy_angelo_guard_confine_vouches.cc
+  bpy_angelo_guard_confine_logging.cc
+  bpy_angelo_guard_confine_owned.cc
+  bpy_angelo_guard_confine_opaque.cc
+  bpy_angelo_guard_confine_pipeline_install.cc
+  bpy_angelo_guard_confine_pipeline_ocio.cc
+  bpy_angelo_guard_confine_pipeline_special.cc
+  bpy_angelo_guard_confine_pipeline_table.cc
+  bpy_angelo_guard_confine_process.cc
+  bpy_angelo_guard_confine_signals.cc
+  bpy_angelo_guard_confine_provenance.cc
+  bpy_angelo_guard_confine_record.cc
+  bpy_angelo_guard_confine_region.cc
+  bpy_angelo_guard_confine_resume.cc
+  bpy_angelo_guard_confine_roots.cc
+  bpy_angelo_guard_confine_run.cc
+  bpy_angelo_guard_confine_texts.cc
+  bpy_angelo_guard_confine_types.cc
+  bpy_angelo_guard_confine_wrap.cc
+  bpy_angelo_guard_confine_wrap_io.cc
+  bpy_angelo_guard_confine_wrap_native.cc
+  bpy_angelo_guard_confine_wrap_pipeline.cc
+  bpy_angelo_guard_confine_work.cc
+  bpy_angelo_guard_sha256.cc
   bpy_app.cc
   bpy_app_alembic.cc
   bpy_app_build_options.cc
@@ -115,6 +167,7 @@ set(SRC
   bpy_angelo_meshopt.hh
   bpy_angelo_metadata.hh
   bpy_angelo_digest.hh
+  bpy_angelo_guard_authority_core.hh
   bpy_angelo_saved.hh
   bpy_angelo_picture.hh
   bpy_angelo_read.hh
@@ -126,12 +179,26 @@ set(SRC
   bpy_angelo_reduce_decimate.hh
   bpy_angelo_reduce_geometry.hh
   bpy_angelo_renamed_api.hh
+  bpy_angelo_renamed_api_table.inc
   bpy_angelo_stage.hh
   bpy_angelo_stage_layers.hh
   bpy_angelo_stage_relink.hh
   bpy_angelo_undo.hh
   bpy_angelo_checkpoint.hh
   bpy_angelo_checkpoint_binding.hh
+  bpy_angelo_guard.hh
+  bpy_angelo_guard_authority.hh
+  bpy_angelo_guard_confine.hh
+  bpy_angelo_guard_confine_changes.hh
+  bpy_angelo_guard_confine_intern.hh
+  bpy_angelo_guard_confine_journal.hh
+  bpy_angelo_guard_confine_native.hh
+  bpy_angelo_guard_confine_paths.hh
+  bpy_angelo_guard_confine_pipeline.hh
+  bpy_angelo_guard_confine_record.hh
+  bpy_angelo_guard_confine_vouches.hh
+  bpy_angelo_guard_confine_winpath.hh
+  bpy_angelo_guard_sha256.hh
   bpy_app.hh
   bpy_app_alembic.hh
   bpy_app_build_options.hh
@@ -199,6 +266,7 @@ set(LIB
   bf_editor_interface
   bf_editor_object
   bf_editor_space_api
+  bf_editor_util  # Angelo: ED_editors_flush_edits for _angelo_saved.write_only.
   PRIVATE bf::functions
   PRIVATE bf::gpu
   PRIVATE bf::imbuf
@@ -238,6 +306,21 @@ if(APPLE)
   )
 endif()
 
+# Diagnostics only (a guard cost bisect): builds the agent-script confinement without installing it, and every
+# agent script is refused (bpy_angelo_guard_confine_run.cc). Never in a release or shipped configuration:
+# test_native_guard_diag_define fails if any configuration sets it, a release configure refuses it here (checked at
+# every configure: a shared build folder may keep it cached), and the packaging steps refuse a binary carrying its
+# marker (builder_paths.py).
+if(ANGELO_GUARD_DIAG_NO_INSTALL)
+  if(ANGELO_RELEASE_CONFIGURATION OR ANGELO_REQUIRE_AGENT_RUNTIME)
+    message(FATAL_ERROR
+      "ANGELO_GUARD_DIAG_NO_INSTALL builds Angelo without the agent-script confinement; a release configuration "
+      "(blender_release.cmake, ANGELO_REQUIRE_AGENT_RUNTIME=ON) never takes it. It may be cached in this build "
+      "folder: configure with -DANGELO_GUARD_DIAG_NO_INSTALL=OFF, or use a separate folder for diagnostic builds.")
+  endif()
+  add_definitions(-DANGELO_GUARD_DIAG_NO_INSTALL)
+endif()
+
 # Only to check if `buildinfo` is available.
 if(WITH_BUILDINFO)
   add_definitions(-DBUILD_DATE)
@@ -256,7 +339,7 @@ endif()
 # Without this, the absolute path on the builder is used, causing HTTPS access to fail.
 # For example `urllib.request.urlopen("https://projects.blender.org")` fails
 # (or any other HTTPS site). see: #102300 for details.
-if(WITH_PYTHON AND WITH_PYTHON_INSTALL AND (APPLE OR WIN32 OR WITH_INSTALL_PORTABLE))
+if(WITH_PYTHON AND WITH_PYTHON_INSTALL AND WITH_INSTALL_PORTABLE)
   # - `PYTHON_SSL_CERT_FILE` absolute path to the PEM file.
   find_python_module_file("certifi/cacert.pem" PYTHON_SSL_CERT_FILE _python_ssl_cert_file_relative)
   mark_as_advanced(PYTHON_SSL_CERT_FILE)
@@ -307,8 +390,8 @@ if(WITH_CYCLES_OSL)
   add_definitions(-DWITH_CYCLES_OSL)
 endif()
 
-if(WITH_CYCLES_EMBREE)
-  add_definitions(-DWITH_CYCLES_EMBREE)
+if(WITH_EMBREE)
+  add_definitions(-DWITH_EMBREE)
 endif()
 
 if(WITH_FREESTYLE)
@@ -389,6 +472,10 @@ if(WITH_IO_PLY)
   add_definitions(-DWITH_IO_PLY)
 endif()
 
+if(WITH_IO_SPZ)
+  add_definitions(-DWITH_IO_SPZ)
+endif()
+
 if(WITH_IO_STL)
   add_definitions(-DWITH_IO_STL)
 endif()
@@ -442,6 +529,10 @@ if(WITH_HYDRA)
   add_definitions(-DWITH_HYDRA)
 endif()
 
+if(WITH_OPENTIMELINEIO)
+  add_definitions(-DWITH_OPENTIMELINEIO)
+endif()
+
 if(WITH_EXPERIMENTAL_FEATURES)
   add_definitions(-DWITH_EXPERIMENTAL_FEATURES)
 endif()
@@ -461,6 +552,12 @@ if(WITH_GTESTS)
   set(TEST_SRC
     bpy_angelo_checkpoint_binding_test.cc
     bpy_angelo_clipboard_test.cc
+    bpy_angelo_guard_authority_core_test.cc
+    bpy_angelo_guard_confine_changes_test.cc
+    bpy_angelo_guard_confine_paths_test.cc
+    bpy_angelo_guard_confine_vouches_test.cc
+    bpy_angelo_guard_confine_winpath_test.cc
+    bpy_angelo_guard_sha256_test.cc
     bpy_angelo_jobs_caches_test.cc
     bpy_angelo_read_scalar_const_test.cc
   )

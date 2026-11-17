@@ -1,0 +1,1158 @@
+{
+ "dumped": [],
+ "entries": [
+  {
+   "certain": true,
+   "elsewhere": true,
+   "evidence": "curated",
+   "hint": "Blender 5.0 removed Action.fcurves: F-Curves are in a slot's channelbag, for example bpy_extras.anim_utils.action_get_channelbag_for_slot(action, slot).fcurves, where slot is the animated ID's animation_data.action_slot",
+   "name": "fcurves",
+   "note": "Blender 5.3's Action has no fcurves: use bpy_extras.anim_utils.action_get_channelbag_for_slot(action, animation_data.action_slot).fcurves.",
+   "on": "action",
+   "owner": "Action",
+   "replacements": [
+    "bpy_extras.anim_utils.action_get_channelbag_for_slot(action, slot).fcurves"
+   ],
+   "since": "5.0",
+   "source": "Recorded agent scripts, October 2026 (153 of 1,094 distinct Angelo scripts); Blender 5.0 release notes (slotted actions)",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": true,
+   "evidence": "curated",
+   "hint": "Blender 5.0 removed Action.groups: F-Curve groups are in a slot's channelbag, for example bpy_extras.anim_utils.action_get_channelbag_for_slot(action, slot).groups, where slot is the animated ID's animation_data.action_slot",
+   "name": "groups",
+   "owner": "Action",
+   "replacements": [
+    "bpy_extras.anim_utils.action_get_channelbag_for_slot(action, slot).groups"
+   ],
+   "since": "5.0",
+   "source": "Blender 5.0 release notes: removed in the same change as Action.fcurves, with the same replacement",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced Brush.use_inverse_smooth_pressure with use_smooth_pressure and the brush's curve_auto_smooth pressure curve",
+   "name": "use_inverse_smooth_pressure",
+   "owner": "Brush",
+   "refusal": "use brush.use_smooth_pressure with its curve_auto_smooth pressure curve (Blender 5.3 replaced the inverse toggle with a curve)",
+   "replacements": [
+    "use_smooth_pressure"
+   ],
+   "since": "5.3",
+   "source": "rna_brush.cc, 8f909f9abd2 (custom pressure curves for hardness, auto-smooth and spacing); Blender 5.3 source diff of v5.2.2 (d13f752e3b9) against blender-v5.3-release (6869fb5a316)",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.1 removed Mesh.auto_smooth_angle: use mesh.set_sharp_from_angle(angle=...)",
+   "name": "auto_smooth_angle",
+   "owner": "Mesh",
+   "refusal": "use mesh.set_sharp_from_angle(angle=...) (removed in Blender 4.1)",
+   "replacements": [],
+   "since": "4.1",
+   "source": "Blender 4.1 Python API release notes",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.0 removed Mesh.calc_normals: normals are always current",
+   "name": "calc_normals",
+   "owner": "Mesh",
+   "refusal": "leave it out: normals are always current (removed in Blender 4.0)",
+   "replacements": [],
+   "since": "4.0",
+   "source": "Blender 4.0 Python API release notes",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.1 removed Mesh.calc_normals_split: read mesh.corner_normals, always current",
+   "name": "calc_normals_split",
+   "owner": "Mesh",
+   "refusal": "read mesh.corner_normals, always current (removed in Blender 4.1)",
+   "replacements": [],
+   "since": "4.1",
+   "source": "Blender 4.1 Python API release notes",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.1 removed Mesh.free_normals_split: corner normals are always current",
+   "name": "free_normals_split",
+   "owner": "Mesh",
+   "refusal": "leave it out: corner normals are always current (removed in Blender 4.1)",
+   "replacements": [],
+   "since": "4.1",
+   "source": "Blender 4.1 Python API release notes",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.1 removed Mesh.use_auto_smooth: use mesh.set_sharp_from_angle(angle=...) or the Smooth by Angle modifier",
+   "name": "use_auto_smooth",
+   "owner": "Mesh",
+   "refusal": "use mesh.set_sharp_from_angle(angle=...) or the Smooth by Angle modifier (removed in Blender 4.1)",
+   "replacements": [],
+   "since": "4.1",
+   "source": "Blender 4.1 Python API release notes (auto smooth replaced by sharp edges)",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 removed NodesModifier.panels: a panel's open state is modifier.properties.panels.open_<panel>",
+   "name": "panels",
+   "owner": "NodesModifier",
+   "replacements": [],
+   "since": "5.3",
+   "source": "rna_modifier.cc, 189443b3cab (remove replaced panels API). Error only: scripts use the name 'panels' for their own objects, so the refusal does not take it",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 renamed 'geometry_nodes_stack_limit' to 'nodes_stack_limit'",
+   "name": "geometry_nodes_stack_limit",
+   "owner": "PreferencesSystem",
+   "refusal": "use nodes_stack_limit (renamed in Blender 5.3)",
+   "replacements": [
+    "nodes_stack_limit"
+   ],
+   "since": "5.3",
+   "source": "rna_userdef.cc, 567c5be3ab0 (the stack limit covers shader nodes too); Blender 5.3 source diff of v5.2.2 (d13f752e3b9) against blender-v5.3-release (6869fb5a316)",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.2 removed SceneEEVEE.shadow_cascade_size, an EEVEE Legacy setting, with nothing in its place",
+   "name": "shadow_cascade_size",
+   "owner": "SceneEEVEE",
+   "refusal": "leave it out: an EEVEE Legacy setting, removed in Blender 4.2 with nothing in its place",
+   "replacements": [],
+   "since": "4.2",
+   "source": "Blender 4.2 release notes (EEVEE Next)",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.2 removed SceneEEVEE.shadow_cube_size, an EEVEE Legacy setting, with nothing in its place",
+   "name": "shadow_cube_size",
+   "owner": "SceneEEVEE",
+   "refusal": "leave it out: an EEVEE Legacy setting, removed in Blender 4.2 with nothing in its place",
+   "replacements": [],
+   "since": "4.2",
+   "source": "Blender 4.2 release notes (EEVEE Next)",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.2 removed SceneEEVEE.use_bloom: use the compositor's Glare node",
+   "name": "use_bloom",
+   "owner": "SceneEEVEE",
+   "refusal": "use the compositor's Glare node (EEVEE's bloom was removed in Blender 4.2)",
+   "replacements": [],
+   "since": "4.2",
+   "source": "Blender 4.2 release notes (EEVEE Next)",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.2 removed SceneEEVEE.use_gtao, an EEVEE Legacy setting, with nothing in its place",
+   "name": "use_gtao",
+   "owner": "SceneEEVEE",
+   "refusal": "leave it out: an EEVEE Legacy setting, removed in Blender 4.2 with nothing in its place",
+   "replacements": [],
+   "since": "4.2",
+   "source": "Blender 4.2 release notes (EEVEE Next)",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.2 removed SceneEEVEE.use_soft_shadows, an EEVEE Legacy setting, with nothing in its place",
+   "name": "use_soft_shadows",
+   "owner": "SceneEEVEE",
+   "refusal": "leave it out: an EEVEE Legacy setting, removed in Blender 4.2 with nothing in its place",
+   "replacements": [],
+   "since": "4.2",
+   "source": "Blender 4.2 release notes (EEVEE Next)",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.2 removed SceneEEVEE.use_ssr: use scene.eevee.use_raytracing",
+   "name": "use_ssr",
+   "owner": "SceneEEVEE",
+   "refusal": "use scene.eevee.use_raytracing (screen-space reflections were removed in Blender 4.2)",
+   "replacements": [],
+   "since": "4.2",
+   "source": "Blender 4.2 release notes (EEVEE Next)",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.2 removed SceneEEVEE.use_ssr_refraction: use scene.eevee.use_raytracing",
+   "name": "use_ssr_refraction",
+   "owner": "SceneEEVEE",
+   "refusal": "use scene.eevee.use_raytracing (screen-space refraction was removed in Blender 4.2)",
+   "replacements": [],
+   "since": "4.2",
+   "source": "Blender 4.2 release notes (EEVEE Next)",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.0 renamed 'dust_density' to 'aerosol_density'",
+   "name": "dust_density",
+   "note": "Blender 5.3's Sky Texture has no dust_density: use aerosol_density.",
+   "owner": "ShaderNodeTexSky",
+   "refusal": "use aerosol_density (renamed in Blender 5.0)",
+   "replacements": [
+    "aerosol_density"
+   ],
+   "since": "5.0",
+   "source": "Recorded agent scripts, October 2026 (37 of 1,094 distinct Angelo scripts); Blender 5.0 release notes",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced SpaceOutliner.use_sort_alpha with sort_method ('ALPHA', 'CUSTOM' or 'NONE')",
+   "name": "use_sort_alpha",
+   "owner": "SpaceOutliner",
+   "refusal": "use sort_method = 'ALPHA' ('CUSTOM' and 'NONE' are the others; replaced in Blender 5.3)",
+   "replacements": [
+    "sort_method"
+   ],
+   "since": "5.3",
+   "source": "rna_space.cc, a5e564c3548 (Outliner custom sorting); Blender 5.3 source diff of v5.2.2 (d13f752e3b9) against blender-v5.3-release (6869fb5a316)",
+   "use": "attribute"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.0 renamed 'BLENDER_EEVEE_NEXT' to 'BLENDER_EEVEE'",
+   "name": "BLENDER_EEVEE_NEXT",
+   "note": "Blender 5.3 has no render engine 'BLENDER_EEVEE_NEXT': use 'BLENDER_EEVEE'.",
+   "owner": "RenderSettings",
+   "property": "engine",
+   "refusal": "use 'BLENDER_EEVEE' (Blender 5.0 renamed EEVEE Next back to EEVEE)",
+   "replacements": [
+    "BLENDER_EEVEE"
+   ],
+   "since": "5.0",
+   "source": "Recorded agent scripts, October 2026 (264 of 1,094 distinct Angelo scripts); Blender 5.0 release notes",
+   "use": "enum_item"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 renamed 'EXPAND' to 'RIPPLE'",
+   "name": "EXPAND",
+   "owner": "SequencerToolSettings",
+   "property": "overlap_mode",
+   "refusal": "use 'RIPPLE' (Blender 5.3 renamed the Sequencer's Expand overlap mode to Ripple)",
+   "replacements": [
+    "RIPPLE"
+   ],
+   "since": "5.3",
+   "source": "rna_sequencer.cc rna_enum_strip_overlap_mode_items, sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "enum_item"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.0 renamed 'NISHITA' to 'SINGLE_SCATTERING' (the same model: files saved with 'NISHITA' open with it); the new default is 'MULTIPLE_SCATTERING'",
+   "name": "NISHITA",
+   "note": "Blender 5.3 has no sky_type 'NISHITA': use 'SINGLE_SCATTERING' (the same model: files saved with 'NISHITA' open with it); the new default is 'MULTIPLE_SCATTERING'.",
+   "owner": "ShaderNodeTexSky",
+   "property": "sky_type",
+   "refusal": "use 'SINGLE_SCATTERING' (Blender 5.0 renamed 'NISHITA' to it, the same model: files saved with 'NISHITA' open with it); the new default is 'MULTIPLE_SCATTERING'",
+   "replacements": [
+    "SINGLE_SCATTERING",
+    "MULTIPLE_SCATTERING"
+   ],
+   "since": "5.0",
+   "source": "Recorded agent scripts, October 2026 benchmark runs (qa/MISTAKE-CATALOGUE.md class 6: 240 of 1,094 distinct Angelo scripts); Blender 5.0 Python API release notes",
+   "use": "enum_item"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 removed bpy.ops.anim.update_animated_transform_constraints",
+   "name": "anim.update_animated_transform_constraints",
+   "refusal": "leave it out: Blender 5.3 removed this one-time update of old files' constraint values",
+   "replacements": [],
+   "since": "5.3",
+   "source": "bl_operators/anim.py, d5cadff582a (remove Update Animated Transform Constraints); Blender 5.3 source diff of v5.2.2 (d13f752e3b9) against blender-v5.3-release (6869fb5a316)",
+   "use": "operator"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.0 replaced bpy.ops.export_mesh.ply with bpy.ops.wm.ply_export",
+   "name": "export_mesh.ply",
+   "refusal": "use bpy.ops.wm.ply_export (since Blender 4.0)",
+   "replacements": [
+    "wm.ply_export"
+   ],
+   "since": "4.0",
+   "source": "Blender 4.0 release notes",
+   "use": "operator"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.2 replaced bpy.ops.export_mesh.stl with bpy.ops.wm.stl_export",
+   "name": "export_mesh.stl",
+   "refusal": "use bpy.ops.wm.stl_export (since Blender 4.2)",
+   "replacements": [
+    "wm.stl_export"
+   ],
+   "since": "4.2",
+   "source": "Blender 4.2 release notes (the Python STL add-on became an extension)",
+   "use": "operator"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.0 replaced bpy.ops.export_scene.obj with bpy.ops.wm.obj_export",
+   "name": "export_scene.obj",
+   "refusal": "use bpy.ops.wm.obj_export (since Blender 4.0)",
+   "replacements": [
+    "wm.obj_export"
+   ],
+   "since": "4.0",
+   "source": "Blender 4.0 release notes (the Python OBJ add-on was removed)",
+   "use": "operator"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.0 replaced bpy.ops.import_mesh.ply with bpy.ops.wm.ply_import",
+   "name": "import_mesh.ply",
+   "refusal": "use bpy.ops.wm.ply_import (since Blender 4.0)",
+   "replacements": [
+    "wm.ply_import"
+   ],
+   "since": "4.0",
+   "source": "Blender 4.0 release notes",
+   "use": "operator"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.2 replaced bpy.ops.import_mesh.stl with bpy.ops.wm.stl_import",
+   "name": "import_mesh.stl",
+   "refusal": "use bpy.ops.wm.stl_import (since Blender 4.2)",
+   "replacements": [
+    "wm.stl_import"
+   ],
+   "since": "4.2",
+   "source": "Blender 4.2 release notes",
+   "use": "operator"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.0 replaced bpy.ops.import_scene.obj with bpy.ops.wm.obj_import",
+   "name": "import_scene.obj",
+   "refusal": "use bpy.ops.wm.obj_import (since Blender 4.0)",
+   "replacements": [
+    "wm.obj_import"
+   ],
+   "since": "4.0",
+   "source": "Blender 4.0 release notes",
+   "use": "operator"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced bpy.ops.sequencer.select_inverse with bpy.ops.sequencer.select_all",
+   "name": "sequencer.select_inverse",
+   "refusal": "use bpy.ops.sequencer.select_all(action='INVERT') (removed in Blender 5.3)",
+   "replacements": [
+    "sequencer.select_all"
+   ],
+   "since": "5.3",
+   "source": "sequencer_select.cc, 4f3a1ff3f27 (remove unused Select Inverse); Blender 5.3 source diff of v5.2.2 (d13f752e3b9) against blender-v5.3-release (6869fb5a316)",
+   "use": "operator"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.0 removed bpy.ops.wm.collada_export",
+   "name": "wm.collada_export",
+   "refusal": "use bpy.ops.wm.usd_export or bpy.ops.export_scene.gltf (Collada was removed in Blender 5.0)",
+   "replacements": [
+    "wm.usd_export",
+    "export_scene.gltf"
+   ],
+   "since": "5.0",
+   "source": "Blender 5.0 release notes (Collada removed)",
+   "use": "operator"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.0 removed bpy.ops.wm.collada_import",
+   "name": "wm.collada_import",
+   "refusal": "use bpy.ops.wm.usd_import or bpy.ops.import_scene.gltf (Collada was removed in Blender 5.0)",
+   "replacements": [
+    "wm.usd_import",
+    "import_scene.gltf"
+   ],
+   "since": "5.0",
+   "source": "Blender 5.0 release notes (Collada removed)",
+   "use": "operator"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced the argument 'at_collection_center' of bpy.ops.export_scene.gltf with collection_center_mode ('CENTER_MASS' for the old True)",
+   "name": "at_collection_center",
+   "owner": "export_scene.gltf",
+   "refusal": "use collection_center_mode='CENTER_MASS' (replaced in Blender 5.3)",
+   "replacements": [
+    "collection_center_mode"
+   ],
+   "since": "5.3",
+   "source": "io_scene_gltf2/__init__.py, e7ddf4c16ca (glTF collection exporter center options); Blender 5.3 source diff of v5.2.2 (d13f752e3b9) against blender-v5.3-release (6869fb5a316)",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced the argument 'export_image_add_webp' of bpy.ops.export_scene.gltf with export_image_add_compressed_images and export_compressed_images_type='WEBP'",
+   "name": "export_image_add_webp",
+   "owner": "export_scene.gltf",
+   "refusal": "use export_image_add_compressed_images with export_compressed_images_type='WEBP' (renamed in Blender 5.3)",
+   "replacements": [
+    "export_image_add_compressed_images"
+   ],
+   "since": "5.3",
+   "source": "io_scene_gltf2/__init__.py, f75ffda5977 (glTF: KHR_texture_basisu); Blender 5.3 source diff of v5.2.2 (d13f752e3b9) against blender-v5.3-release (6869fb5a316)",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 renamed the argument 'export_image_webp_fallback' of bpy.ops.export_scene.gltf to 'export_compressed_images_fallback'",
+   "name": "export_image_webp_fallback",
+   "owner": "export_scene.gltf",
+   "refusal": "use export_compressed_images_fallback (renamed in Blender 5.3)",
+   "replacements": [
+    "export_compressed_images_fallback"
+   ],
+   "since": "5.3",
+   "source": "io_scene_gltf2/__init__.py, f75ffda5977 (glTF: KHR_texture_basisu); Blender 5.3 source diff of v5.2.2 (d13f752e3b9) against blender-v5.3-release (6869fb5a316)",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 renamed the argument 'radius' of bpy.ops.object.text_add to 'size' (the same value)",
+   "name": "radius",
+   "owner": "object.text_add",
+   "refusal": "use size (renamed in Blender 5.3; the same value)",
+   "replacements": [
+    "size"
+   ],
+   "since": "5.3",
+   "source": "object_add.cc, b17eb242af0 (text add uses the size property); Blender 5.3 source diff of v5.2.2 (d13f752e3b9) against blender-v5.3-release (6869fb5a316)",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 renamed the argument 'move_strips' of bpy.ops.sequencer.add_scene_strip_from_scene_asset to 'move_strips_after_add'",
+   "name": "move_strips",
+   "owner": "sequencer.add_scene_strip_from_scene_asset",
+   "refusal": "use move_strips_after_add (renamed in Blender 5.3)",
+   "replacements": [
+    "move_strips_after_add"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced the argument 'overlap_shuffle_override' of bpy.ops.sequencer.add_scene_strip_from_scene_asset with overlap_mode",
+   "name": "overlap_shuffle_override",
+   "owner": "sequencer.add_scene_strip_from_scene_asset",
+   "refusal": "use overlap_mode='SHUFFLE', 'RIPPLE' or 'OVERWRITE' (replaced in Blender 5.3)",
+   "replacements": [
+    "overlap_mode"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 renamed the argument 'move_strips' of bpy.ops.sequencer.effect_strip_add to 'move_strips_after_add'",
+   "name": "move_strips",
+   "owner": "sequencer.effect_strip_add",
+   "refusal": "use move_strips_after_add (renamed in Blender 5.3)",
+   "replacements": [
+    "move_strips_after_add"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced the argument 'overlap_shuffle_override' of bpy.ops.sequencer.effect_strip_add with overlap_mode",
+   "name": "overlap_shuffle_override",
+   "owner": "sequencer.effect_strip_add",
+   "refusal": "use overlap_mode='SHUFFLE', 'RIPPLE' or 'OVERWRITE' (replaced in Blender 5.3)",
+   "replacements": [
+    "overlap_mode"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 renamed the argument 'move_strips' of bpy.ops.sequencer.image_strip_add to 'move_strips_after_add'",
+   "name": "move_strips",
+   "owner": "sequencer.image_strip_add",
+   "refusal": "use move_strips_after_add (renamed in Blender 5.3)",
+   "replacements": [
+    "move_strips_after_add"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced the argument 'overlap_shuffle_override' of bpy.ops.sequencer.image_strip_add with overlap_mode",
+   "name": "overlap_shuffle_override",
+   "owner": "sequencer.image_strip_add",
+   "refusal": "use overlap_mode='SHUFFLE', 'RIPPLE' or 'OVERWRITE' (replaced in Blender 5.3)",
+   "replacements": [
+    "overlap_mode"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 renamed the argument 'move_strips' of bpy.ops.sequencer.mask_strip_add to 'move_strips_after_add'",
+   "name": "move_strips",
+   "owner": "sequencer.mask_strip_add",
+   "refusal": "use move_strips_after_add (renamed in Blender 5.3)",
+   "replacements": [
+    "move_strips_after_add"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced the argument 'overlap_shuffle_override' of bpy.ops.sequencer.mask_strip_add with overlap_mode",
+   "name": "overlap_shuffle_override",
+   "owner": "sequencer.mask_strip_add",
+   "refusal": "use overlap_mode='SHUFFLE', 'RIPPLE' or 'OVERWRITE' (replaced in Blender 5.3)",
+   "replacements": [
+    "overlap_mode"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 renamed the argument 'move_strips' of bpy.ops.sequencer.movie_strip_add to 'move_strips_after_add'",
+   "name": "move_strips",
+   "owner": "sequencer.movie_strip_add",
+   "refusal": "use move_strips_after_add (renamed in Blender 5.3)",
+   "replacements": [
+    "move_strips_after_add"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced the argument 'overlap_shuffle_override' of bpy.ops.sequencer.movie_strip_add with overlap_mode",
+   "name": "overlap_shuffle_override",
+   "owner": "sequencer.movie_strip_add",
+   "refusal": "use overlap_mode='SHUFFLE', 'RIPPLE' or 'OVERWRITE' (replaced in Blender 5.3)",
+   "replacements": [
+    "overlap_mode"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 renamed the argument 'move_strips' of bpy.ops.sequencer.movieclip_strip_add to 'move_strips_after_add'",
+   "name": "move_strips",
+   "owner": "sequencer.movieclip_strip_add",
+   "refusal": "use move_strips_after_add (renamed in Blender 5.3)",
+   "replacements": [
+    "move_strips_after_add"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced the argument 'overlap_shuffle_override' of bpy.ops.sequencer.movieclip_strip_add with overlap_mode",
+   "name": "overlap_shuffle_override",
+   "owner": "sequencer.movieclip_strip_add",
+   "refusal": "use overlap_mode='SHUFFLE', 'RIPPLE' or 'OVERWRITE' (replaced in Blender 5.3)",
+   "replacements": [
+    "overlap_mode"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 renamed the argument 'move_strips' of bpy.ops.sequencer.scene_strip_add to 'move_strips_after_add'",
+   "name": "move_strips",
+   "owner": "sequencer.scene_strip_add",
+   "refusal": "use move_strips_after_add (renamed in Blender 5.3)",
+   "replacements": [
+    "move_strips_after_add"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced the argument 'overlap_shuffle_override' of bpy.ops.sequencer.scene_strip_add with overlap_mode",
+   "name": "overlap_shuffle_override",
+   "owner": "sequencer.scene_strip_add",
+   "refusal": "use overlap_mode='SHUFFLE', 'RIPPLE' or 'OVERWRITE' (replaced in Blender 5.3)",
+   "replacements": [
+    "overlap_mode"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 renamed the argument 'move_strips' of bpy.ops.sequencer.scene_strip_add_new to 'move_strips_after_add'",
+   "name": "move_strips",
+   "owner": "sequencer.scene_strip_add_new",
+   "refusal": "use move_strips_after_add (renamed in Blender 5.3)",
+   "replacements": [
+    "move_strips_after_add"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced the argument 'overlap_shuffle_override' of bpy.ops.sequencer.scene_strip_add_new with overlap_mode",
+   "name": "overlap_shuffle_override",
+   "owner": "sequencer.scene_strip_add_new",
+   "refusal": "use overlap_mode='SHUFFLE', 'RIPPLE' or 'OVERWRITE' (replaced in Blender 5.3)",
+   "replacements": [
+    "overlap_mode"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 renamed the argument 'move_strips' of bpy.ops.sequencer.sound_strip_add to 'move_strips_after_add'",
+   "name": "move_strips",
+   "owner": "sequencer.sound_strip_add",
+   "refusal": "use move_strips_after_add (renamed in Blender 5.3)",
+   "replacements": [
+    "move_strips_after_add"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 5.3 replaced the argument 'overlap_shuffle_override' of bpy.ops.sequencer.sound_strip_add with overlap_mode",
+   "name": "overlap_shuffle_override",
+   "owner": "sequencer.sound_strip_add",
+   "refusal": "use overlap_mode='SHUFFLE', 'RIPPLE' or 'OVERWRITE' (replaced in Blender 5.3)",
+   "replacements": [
+    "overlap_mode"
+   ],
+   "since": "5.3",
+   "source": "sequencer_add.cc, dd1f6182197 (VSE: Ripple Editing); Blender 5.3 Video Sequencer release notes",
+   "use": "operator_argument"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeAlphaOver input 'Image' to 'Background'",
+   "name": "Image",
+   "owner": "CompositorNodeAlphaOver",
+   "property": "inputs",
+   "replacements": [
+    "Background"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeAlphaOver input 'Image_001' to 'Foreground'",
+   "name": "Image_001",
+   "owner": "CompositorNodeAlphaOver",
+   "property": "inputs",
+   "replacements": [
+    "Foreground"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeBokehBlur input 'Bounding box' to 'Mask'",
+   "name": "Bounding box",
+   "owner": "CompositorNodeBokehBlur",
+   "property": "inputs",
+   "replacements": [
+    "Mask"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeColorCorrection input 'Highlights Lift' to 'Highlights Offset'",
+   "name": "Highlights Lift",
+   "owner": "CompositorNodeColorCorrection",
+   "property": "inputs",
+   "replacements": [
+    "Highlights Offset"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeColorCorrection input 'Master Lift' to 'Master Offset'",
+   "name": "Master Lift",
+   "owner": "CompositorNodeColorCorrection",
+   "property": "inputs",
+   "replacements": [
+    "Master Offset"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeColorCorrection input 'Midtones Lift' to 'Midtones Offset'",
+   "name": "Midtones Lift",
+   "owner": "CompositorNodeColorCorrection",
+   "property": "inputs",
+   "replacements": [
+    "Midtones Offset"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeColorCorrection input 'Shadows Lift' to 'Shadows Offset'",
+   "name": "Shadows Lift",
+   "owner": "CompositorNodeColorCorrection",
+   "property": "inputs",
+   "replacements": [
+    "Shadows Offset"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.1 renamed the CompositorNodeCryptomatte input 'image' to 'Image'",
+   "name": "image",
+   "owner": "CompositorNodeCryptomatte",
+   "property": "inputs",
+   "replacements": [
+    "Image"
+   ],
+   "since": "5.1",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeDisplace input 'Vector' to 'Displacement'",
+   "name": "Vector",
+   "owner": "CompositorNodeDisplace",
+   "property": "inputs",
+   "replacements": [
+    "Displacement"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeZcombine input 'Image' to 'A'",
+   "name": "Image",
+   "owner": "CompositorNodeZcombine",
+   "property": "inputs",
+   "replacements": [
+    "A"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeZcombine input 'Image_001' to 'B'",
+   "name": "Image_001",
+   "owner": "CompositorNodeZcombine",
+   "property": "inputs",
+   "replacements": [
+    "B"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeZcombine input 'Z' to 'Depth A'",
+   "name": "Z",
+   "owner": "CompositorNodeZcombine",
+   "property": "inputs",
+   "replacements": [
+    "Depth A"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeZcombine input 'Z_001' to 'Depth B'",
+   "name": "Z_001",
+   "owner": "CompositorNodeZcombine",
+   "property": "inputs",
+   "replacements": [
+    "Depth B"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeZcombine output 'Image' to 'Result'",
+   "name": "Image",
+   "owner": "CompositorNodeZcombine",
+   "property": "outputs",
+   "replacements": [
+    "Result"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 5.0 renamed the CompositorNodeZcombine output 'Z' to 'Depth'",
+   "name": "Z",
+   "owner": "CompositorNodeZcombine",
+   "property": "outputs",
+   "replacements": [
+    "Depth"
+   ],
+   "since": "5.0",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 4.2 renamed the FunctionNodeCombineTransform input 'Location' to 'Translation'",
+   "name": "Location",
+   "owner": "FunctionNodeCombineTransform",
+   "property": "inputs",
+   "replacements": [
+    "Translation"
+   ],
+   "since": "4.2",
+   "use": "socket"
+  },
+  {
+   "certain": false,
+   "elsewhere": false,
+   "evidence": "versioning",
+   "hint": "Blender 4.2 renamed the FunctionNodeSeparateTransform output 'Location' to 'Translation'",
+   "name": "Location",
+   "owner": "FunctionNodeSeparateTransform",
+   "property": "outputs",
+   "replacements": [
+    "Translation"
+   ],
+   "since": "4.2",
+   "use": "socket"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.0 renamed the Principled BSDF input 'Clearcoat' to 'Coat Weight'",
+   "name": "Clearcoat",
+   "owner": "ShaderNodeBsdfPrincipled",
+   "property": "inputs",
+   "replacements": [
+    "Coat Weight"
+   ],
+   "since": "4.0",
+   "source": "Blender 4.0 file versioning (versioning_400.cc)",
+   "use": "socket"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.0 renamed the Principled BSDF input 'Clearcoat Normal' to 'Coat Normal'",
+   "name": "Clearcoat Normal",
+   "owner": "ShaderNodeBsdfPrincipled",
+   "property": "inputs",
+   "replacements": [
+    "Coat Normal"
+   ],
+   "since": "4.0",
+   "source": "Blender 4.0 file versioning (versioning_400.cc)",
+   "use": "socket"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.0 renamed the Principled BSDF input 'Clearcoat Roughness' to 'Coat Roughness'",
+   "name": "Clearcoat Roughness",
+   "owner": "ShaderNodeBsdfPrincipled",
+   "property": "inputs",
+   "replacements": [
+    "Coat Roughness"
+   ],
+   "since": "4.0",
+   "source": "Blender 4.0 file versioning (versioning_400.cc)",
+   "use": "socket"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.0 renamed the Principled BSDF input 'Emission' to 'Emission Color'",
+   "name": "Emission",
+   "owner": "ShaderNodeBsdfPrincipled",
+   "property": "inputs",
+   "replacements": [
+    "Emission Color"
+   ],
+   "since": "4.0",
+   "source": "Blender 4.0 file versioning (versioning_400.cc)",
+   "use": "socket"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.0 renamed the Principled BSDF input 'Sheen' to 'Sheen Weight'",
+   "name": "Sheen",
+   "owner": "ShaderNodeBsdfPrincipled",
+   "property": "inputs",
+   "replacements": [
+    "Sheen Weight"
+   ],
+   "since": "4.0",
+   "source": "Blender 4.0 file versioning (versioning_400.cc)",
+   "use": "socket"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.0 renamed the Principled BSDF input 'Specular' to 'Specular IOR Level'",
+   "name": "Specular",
+   "owner": "ShaderNodeBsdfPrincipled",
+   "property": "inputs",
+   "replacements": [
+    "Specular IOR Level"
+   ],
+   "since": "4.0",
+   "source": "Blender 4.0 file versioning (versioning_400.cc)",
+   "use": "socket"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.0 renamed the Principled BSDF input 'Subsurface' to 'Subsurface Weight'",
+   "name": "Subsurface",
+   "owner": "ShaderNodeBsdfPrincipled",
+   "property": "inputs",
+   "replacements": [
+    "Subsurface Weight"
+   ],
+   "since": "4.0",
+   "source": "Blender 4.0 file versioning (versioning_400.cc)",
+   "use": "socket"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "Blender 4.0 renamed the Principled BSDF input 'Transmission' to 'Transmission Weight'",
+   "name": "Transmission",
+   "owner": "ShaderNodeBsdfPrincipled",
+   "property": "inputs",
+   "replacements": [
+    "Transmission Weight"
+   ],
+   "since": "4.0",
+   "source": "Blender 4.0 file versioning (versioning_400.cc)",
+   "use": "socket"
+  },
+  {
+   "certain": true,
+   "elsewhere": false,
+   "evidence": "curated",
+   "hint": "The Bump node's invert is a property, not an input: set node.invert = True",
+   "name": "Invert",
+   "owner": "ShaderNodeBump",
+   "property": "inputs",
+   "refusal": "set node.invert = True: the Bump node's invert is a property, not an input",
+   "replacements": [],
+   "source": "Recorded raises, October 2026 (qa/MISTAKE-CATALOGUE.md class 6: 2 scripts); compositor nodes do have an Invert input",
+   "use": "socket"
+  }
+ ],
+ "schema": 1,
+ "target": "5.3"
+}

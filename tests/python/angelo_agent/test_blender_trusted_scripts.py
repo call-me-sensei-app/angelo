@@ -62,6 +62,10 @@ def smoke():
     window = ui.main_window()
     assert window and any(area.type == 'VIEW_3D' for area in window.screen.areas), "The fixture needs a 3D viewport"
     (OUT / "chat").mkdir(exist_ok=True)
+    # A chat's store is always in Angelo's own folders (ui.state_directory(), a headless child's private state, a
+    # lead's store): its journal is written only where C lets Angelo write. This suite's folder is made Angelo's own.
+    from angelo_agent import owned_paths
+    owned_paths.own(OUT / "chat")
     controller = Controller(str(OUT / "chat"))
     try:
         controller.busy = True
@@ -79,7 +83,7 @@ def smoke():
 
         def apply(call):
             with bpy.context.temp_override(window=window):
-                return bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=controller.state["id"])
+                return __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=controller.state["id"])
 
         def pump():
             controller.pump_tools(executor, ui.document_key(), apply_mutation=apply, budget=ToolDispatchBudget(seconds=60))
@@ -88,7 +92,8 @@ def smoke():
         pump()
         check("unreviewed_script_waits_for_approval", not controller.trusted_scripts and not replies
               and KEY not in window.scene)
-        controller.review_script(call)  # Stands in for the person's exact-code review on the card.
+        from angelo_agent import grant_guard   # The harness stands in for the person:
+        grant_guard.harness(controller.review_script, call)  # their exact-code review on the card.
         apply(call)
         first = replies[0] if replies else {}
         check("reviewed_script_runs", first.get("success") and window.scene.get(KEY) == 11)
@@ -97,7 +102,7 @@ def smoke():
         apply(call)
         check("a_second_approve_runs_nothing", len(replies) == 1)
         check("request_snapshot_present", bool(controller.request_checkpoint))
-        controller.set_trusted_scripts(True)  # The native consent dialog's confirmation (its own suite).
+        grant_guard.harness(controller.set_trusted_scripts, True)  # The dialog's confirmation (its own suite).
         call, replies = queue("trusted", 22)
         pump()
         check("chat_consent_runs_automatically", replies and replies[0].get("success")

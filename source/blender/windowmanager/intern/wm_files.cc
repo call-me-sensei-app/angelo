@@ -33,9 +33,9 @@
 /* Minimal requirements for SHGetSpecialFolderPath on MINGW MSVC has this defined already. */
 #    define _WIN32_IE 0x0400
 #  endif
-/* For #SHGetSpecialFolderPath, has to be done before `BLI_winstuff.h`
+/* For #SHGetSpecialFolderPath, has to be done before `BLI_winstuff.hh`
  * because 'near' is disabled through `BLI_windstuff.h`. */
-#  include "BLI_winstuff.h"
+#  include "BLI_winstuff.hh"
 #  include <shlobj.h>
 #endif
 
@@ -44,25 +44,24 @@
 #include "MEM_CacheLimiterC-Api.h"
 #include "MEM_guardedalloc.h"
 
-#include "BLI_fileops.h"
 #include "BLI_fileops.hh"
-#include "BLI_filereader.h"
+#include "BLI_filereader.hh"
 #include "BLI_hash_xxh3.hh"
-#include "BLI_linklist.h"
-#include "BLI_listbase.h"
-#include "BLI_math_base.h"
-#include "BLI_math_time.h"
+#include "BLI_linklist.hh"
+#include "BLI_listbase.hh"
+#include "BLI_math_base_c.hh"
+#include "BLI_math_time.hh"
 #include "BLI_memory_cache.hh"
-#include "BLI_set.hh"
 #include "BLI_map.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_string_utf8.h"
-#include "BLI_system.h"
-#include "BLI_threads.h"
-#include "BLI_time.h"
-#include "BLI_timer.h"
-#include "BLI_utildefines.h"
+#include "BLI_set.hh"
+#include "BLI_string.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_system.hh"
+#include "BLI_threads.hh"
+#include "BLI_time.hh"
+#include "BLI_timer.hh"
+#include "BLI_utildefines.hh"
 #include BLI_SYSTEM_PID_H
 
 #include "BLO_core_blend_header.hh"
@@ -101,6 +100,7 @@
 #include "BKE_paint.hh"
 #include "BKE_autoexec.hh"
 #include "BKE_blender.hh"
+#include "BKE_blender_project.hh"
 #include "BKE_blender_version.h"
 #include "BKE_blendfile.hh"
 #include "BKE_callbacks.hh"
@@ -144,6 +144,7 @@
 #include "RNA_access.hh"
 #include "RNA_define.hh"
 
+#include "IMB_colormanagement.hh"
 #include "IMB_imbuf.hh"
 #include "IMB_imbuf_types.hh"
 #include "IMB_metadata.hh"
@@ -179,12 +180,15 @@
 #include "RE_engine.h"
 
 #ifdef WITH_PYTHON
+#  include "BPY_extern.hh"
 #  include "BPY_extern_python.hh"
 #  include "BPY_extern_run.hh"
+#  include "intern/bpy_angelo_guard_confine.hh"
 #endif
 
 #include "DEG_depsgraph.hh"
 
+#include "WM_angelo_gpu_startup.hh"
 #include "WM_api.hh"
 #include "WM_keymap.hh"
 #include "WM_message.hh"
@@ -228,7 +232,7 @@ static CLG_LogRef LOG = {"blend"};
 
 void WM_file_tag_modified()
 {
-  wmWindowManager *wm = static_cast<wmWindowManager *>(G_MAIN->wm.first);
+  wmWindowManager *wm = G_MAIN->wm.first();
   if (wm->file_saved) {
     wm->file_saved = 0;
     /* Notifier that data changed, for save-over warning or header. */
@@ -259,7 +263,8 @@ bool wm_file_or_session_data_has_unsaved_changes(const Main *bmain, const wmWind
 /**
  * Clear several WM/UI runtime data that would make later complex WM handling impossible.
  *
- * Return data should be cleared by #wm_file_read_setup_wm_finalize. */
+ * Return data should be cleared by #wm_file_read_setup_wm_finalize.
+ */
 static BlendFileReadWMSetupData *wm_file_read_setup_wm_init(bContext *C,
                                                             Main *bmain,
                                                             const bool is_read_homefile,
@@ -267,7 +272,7 @@ static BlendFileReadWMSetupData *wm_file_read_setup_wm_init(bContext *C,
                                                             FunctionRef<bool()> *checkpoint_source = nullptr)
 {
   BLI_assert(BLI_listbase_count_at_most(&bmain->wm, 2) <= 1);
-  wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
+  wmWindowManager *wm = bmain->wm.first();
   BlendFileReadWMSetupData *wm_setup_data = MEM_new_zeroed<BlendFileReadWMSetupData>(__func__);
   wm_setup_data->is_read_homefile = is_read_homefile;
   /* This info is not always known yet when this function is called. */
@@ -307,7 +312,7 @@ static BlendFileReadWMSetupData *wm_file_read_setup_wm_init(bContext *C,
   }
   /* Reset active window. */
   CTX_wm_window_set(C, checkpoint_live && BLI_findindex(&wm->windows, active_win) < 0 ?
-                         static_cast<wmWindow *>(wm->windows.first) : active_win);
+                         wm->windows.first() : active_win);
 
   /* Modal removal may have freed this popup. Clear it before validation or screen repair can
    * call ordinary UI code, just as on the successful file-read path. */
@@ -327,7 +332,7 @@ static BlendFileReadWMSetupData *wm_file_read_setup_wm_init(bContext *C,
       }
       if ((*checkpoint_live)()) {
         CTX_wm_window_set(C, BLI_findindex(&wm->windows, active_win) >= 0 ? active_win :
-                              static_cast<wmWindow *>(wm->windows.first));
+                              wm->windows.first());
       }
     }
     MEM_delete(wm_setup_data);
@@ -496,10 +501,8 @@ static void wm_file_read_setup_wm_use_new(bContext *C,
   }
   /* Ensure that at least one window is kept open so we don't lose the context, see #42303. */
   if (!has_match) {
-    wm_file_read_setup_wm_substitute_old_window(old_wm,
-                                                wm,
-                                                static_cast<wmWindow *>(old_wm->windows.first),
-                                                static_cast<wmWindow *>(wm->windows.first));
+    wm_file_read_setup_wm_substitute_old_window(
+        old_wm, wm, old_wm->windows.first(), wm->windows.first());
   }
 
   wm_setup_data->old_wm = nullptr;
@@ -510,6 +513,9 @@ static void wm_file_read_setup_wm_use_new(bContext *C,
   BKE_libblock_free_data(&old_wm->id, false);
   BKE_libblock_free_data_py(&old_wm->id);
   MEM_delete(old_wm);
+
+  wmWindow *win = wm->runtime->winactive ? wm->runtime->winactive : wm->windows.first();
+  wm_window_make_drawable(wm, win);
 }
 
 /**
@@ -524,7 +530,7 @@ static void wm_file_read_setup_wm_finalize(bContext *C,
 {
   BLI_assert(BLI_listbase_count_at_most(&bmain->wm, 2) <= 1);
   BLI_assert(wm_setup_data != nullptr);
-  wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
+  wmWindowManager *wm = bmain->wm.first();
 
   /* If reading factory startup file, and there was no previous WM, clear the size of the windows
    * in newly read WM so that they get resized to occupy the whole available space on current
@@ -586,6 +592,10 @@ static void wm_file_read_setup_wm_finalize(bContext *C,
 
 static void wm_gpu_backend_override_from_userdef()
 {
+  /* Angelo: a Vulkan start that died before its first frame is not tried again; this may set
+   * the preference to OpenGL (`wm_angelo_gpu_startup.cc`). */
+  WM_angelo_gpu_startup_preferences_read(GPU_backend_type_selection_is_overridden());
+
   /* Check if GPU backend is already set from the command line arguments. The command line
    * arguments have higher priority than user preferences. */
   if (GPU_backend_type_selection_is_overridden()) {
@@ -638,7 +648,6 @@ static void wm_init_userdef(Main *bmain)
   BLO_sanitize_experimental_features_userpref_blend(&U);
 
   wm_gpu_backend_override_from_userdef();
-  GPU_backend_type_selection_detect();
 }
 
 /* Return codes. */
@@ -707,7 +716,7 @@ void WM_file_autoexec_init(const char *filepath)
 
 void wm_file_read_report(Main *bmain, wmWindow *win)
 {
-  wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
+  wmWindowManager *wm = bmain->wm.first();
   ReportList *reports = &wm->runtime->reports;
   bool found = false;
   for (Scene &scene : bmain->scenes) {
@@ -1270,7 +1279,7 @@ static void wm_file_read_post(bContext *C,
       wm_window_ghostwindows_remove_invalid(C, wm);
       if (!wm_checkpoint_read_post_live(C, *params)) { return; }
     }
-    CTX_wm_window_set(C, static_cast<wmWindow *>(wm->windows.first));
+    CTX_wm_window_set(C, wm->windows.first());
   }
 
 #ifdef WITH_PYTHON
@@ -1345,6 +1354,11 @@ static void wm_file_read_post(bContext *C,
     if (params->success) {
       BKE_callback_exec_string(bmain, filepath, BKE_CB_EVT_LOAD_POST);
       if (!wm_checkpoint_read_post_live(C, *params)) { return; }
+#ifdef WITH_PYTHON
+      /* Angelo: whose document this is decides whether its folder takes new files a script named
+       * (doc/angelo/script_confinement.rst, "Output paths in data"). */
+      BPY_angelo_guard_document_settled();
+#endif
     }
     if (params->checkpoint_validate && !(*params->checkpoint_validate)(*bmain)) {
       return; /* Replacement happened, but selected LOAD_POST conflicts must not be overwritten. */
@@ -1406,7 +1420,7 @@ static void wm_file_read_post(bContext *C,
   /* Report any errors.
    * Currently disabled if add-ons aren't yet loaded. */
   if (addons_loaded) {
-    wm_file_read_report(bmain, static_cast<wmWindow *>(wm->windows.first));
+    wm_file_read_report(bmain, wm->windows.first());
   }
 
   if (use_data && !params->checkpoint_install) {
@@ -1614,9 +1628,20 @@ bool WM_checkpoint_restore(bContext *C,
 
 static void wm_read_callback_pre_wrapper(bContext *C, const char *filepath)
 {
+  Main *bmain = CTX_data_main(C);
   /* NOTE: either #BKE_CB_EVT_LOAD_POST or #BKE_CB_EVT_LOAD_POST_FAIL must run.
    * Runs at the end of this function, don't return beforehand. */
-  BKE_callback_exec_string(CTX_data_main(C), filepath, BKE_CB_EVT_LOAD_PRE);
+  BKE_callback_exec_string(bmain, filepath, BKE_CB_EVT_LOAD_PRE);
+
+  /* Auto save (if enabled) the project config and then see if we should load in a
+   * new project if the project root path has changed.
+   */
+  BKE_blender_project_config_autosave(bmain);
+  BKE_blender_project_refresh(bmain, filepath);
+
+  /* The function above switch to the project of the new file, immediately update
+   * color management to match as blend file read needs the project config. */
+  IMB_colormanagement_project_read_post(bmain);
 }
 
 static void wm_read_callback_post_wrapper(bContext *C, const char *filepath, const bool success)
@@ -1626,8 +1651,8 @@ static void wm_read_callback_post_wrapper(bContext *C, const char *filepath, con
    * If the window is already set, don't change it. */
   bool has_window = CTX_wm_window(C) != nullptr;
   if (!has_window) {
-    wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
-    wmWindow *win = static_cast<wmWindow *>(wm->windows.first);
+    wmWindowManager *wm = bmain->wm.first();
+    wmWindow *win = wm->windows.first();
     CTX_wm_window_set(C, win);
   }
 
@@ -1890,6 +1915,7 @@ bool WM_file_read(bContext *C,
 
       if (do_history_file_update) {
         wm_history_file_update();
+        BKE_blender_project_recent_update(CTX_data_main(C));
       }
 
       wmFileReadPost_Params read_file_post_params{};
@@ -1942,6 +1968,38 @@ bool WM_file_read(bContext *C,
   BLI_assert(BKE_main_namemap_validate(*CTX_data_main(C)));
 
   return success;
+}
+
+bool WM_file_read_project(bContext *C, const char *filepath, ReportList *reports)
+{
+  const std::string project_root_path = BKE_is_path_inside_blender_project(filepath);
+
+  if (project_root_path.empty()) {
+    BKE_reportf(
+        reports, RPT_ERROR, "Could not find a project within the specified path: %s", filepath);
+    return false;
+  }
+
+  /* Initialize project before blend file, so it is taken into account. */
+  if (!BKE_blender_project_init_from_root_path(CTX_data_main(C), project_root_path)) {
+    BKE_reportf(
+        reports, RPT_ERROR, "Failed to load project from path: %s", project_root_path.c_str());
+    return false;
+  }
+
+  /* Read the startup file again with project configuration applied. */
+  wmHomeFileRead_Params read_homefile_params{};
+  read_homefile_params.use_data = true;
+  read_homefile_params.use_userdef = false;
+  read_homefile_params.use_factory_settings = G.factory_startup;
+  read_homefile_params.app_template_override = WM_init_state_app_template_get();
+  wm_homefile_read(C, &read_homefile_params, reports);
+
+  if (!G.background) {
+    BKE_blender_project_recent_update(CTX_data_main(C));
+  }
+
+  return true;
 }
 
 static struct {
@@ -2148,6 +2206,11 @@ bool wm_homefile_read_ex(bContext *C,
         skip_flags |= BLO_READ_SKIP_USERDEF;
       }
     }
+  }
+
+  /* Open last project on startup. */
+  if (params_homefile->is_first_time && use_data && wm_init_last_project_on_startup(bmain)) {
+    IMB_colormanagement_project_read_post(bmain);
   }
 
   if ((app_template != nullptr) && (app_template[0] != '\0')) {
@@ -2474,7 +2537,7 @@ static void wm_history_file_update()
     return;
   }
 
-  recent = static_cast<RecentFile *>(G.recent_files.first);
+  recent = G.recent_files.first();
   /* Refresh #BLENDER_HISTORY_FILE of recent opened files, when current file was changed. */
   if (!(recent) || (BLI_path_cmp(recent->filepath, blendfile_path) != 0)) {
 
@@ -2504,6 +2567,45 @@ static void wm_history_file_update()
     const GHOST_ISystemPaths *ghost_system_paths = GHOST_ISystemPaths::get();
     ghost_system_paths->addToSystemRecentFiles(blendfile_path);
   }
+}
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Recent Project Files
+ * \{ */
+
+static std::optional<std::string> wm_project_root_path_get(const Main *bmain)
+{
+  return BKE_blender_project_read_callback(
+      bmain, [](const bke::BlenderProject *project) -> std::optional<std::string> {
+        if (project == nullptr) {
+          return std::nullopt;
+        }
+        return project->get_root_path();
+      });
+}
+
+/** Most recently used blend file, to initialize file browsers. */
+static std::string wm_recent_filepath_get(const Main *bmain)
+{
+  const std::optional<std::string> root_path = wm_project_root_path_get(bmain);
+  if (!root_path) {
+    const RecentFile *recent = G.recent_files.first();
+    return recent ? recent->filepath : "";
+  }
+
+  /* In a project, use a file from the project, or the project directory. */
+  for (const RecentFile &recent : G.recent_files) {
+    if (BLI_path_contains(root_path->c_str(), recent.filepath)) {
+      return recent.filepath;
+    }
+  }
+
+  char dirpath[FILE_MAX];
+  STRNCPY(dirpath, root_path->c_str());
+  BLI_path_slash_ensure(dirpath, sizeof(dirpath));
+  return dirpath;
 }
 
 /** \} */
@@ -2550,12 +2652,12 @@ static uint8_t *blend_file_thumb_fast_downscale(const uint8_t *src_rect,
    * this isn't a concern. */
 
   BLI_assert(dst_size[0] <= src_size[0] && dst_size[1] <= src_size[1]);
-  uint8_t *dst_rect = MEM_new_array_uninitialized<uint8_t>(size_t(4 * dst_size[0] * dst_size[1]),
+  uint8_t *dst_rect = MEM_new_array_uninitialized<uint8_t>(size_t(4) * dst_size[0] * dst_size[1],
                                                            __func__);
 
   /* A row, the width of the destination to accumulate pixel values into
    * before writing into the image. */
-  uint32_t *accum_row = MEM_new_array_zeroed<uint32_t>(size_t(dst_size[0] * 4), __func__);
+  uint32_t *accum_row = MEM_new_array_zeroed<uint32_t>(size_t(dst_size[0]) * 4, __func__);
 
 #  ifndef NDEBUG
   /* Assert that samples are calculated correctly. */
@@ -2697,8 +2799,7 @@ static ImBuf *blend_file_thumb_from_screenshot(bContext *C, BlendThumbnail **r_t
     /* Save metadata for quick access. */
     char version_str[10];
     SNPRINTF(version_str, "%d.%01d", BLENDER_VERSION / 100, BLENDER_VERSION % 100);
-    IMB_metadata_ensure(&ibuf->metadata);
-    IMB_metadata_set_field(ibuf->metadata, "Thumb::Blender::Version", version_str);
+    IMB_metadata_set_field(ibuf->metadata_for_write(), "Thumb::Blender::Version", version_str);
   }
 
   /* Must be freed by caller. */
@@ -2738,7 +2839,7 @@ static ImBuf *blend_file_thumb_from_camera(const bContext *C,
   if (screen != nullptr) {
     area = BKE_screen_find_big_area(screen, SPACE_VIEW3D, 0);
     if (area) {
-      v3d = static_cast<View3D *>(area->spacedata.first);
+      v3d = area->spacedata.first_as<View3D>();
       region = BKE_area_find_region_type(area, RGN_TYPE_WINDOW);
     }
   }
@@ -2804,8 +2905,7 @@ static ImBuf *blend_file_thumb_from_camera(const bContext *C,
     /* Save metadata for quick access. */
     char version_str[10];
     SNPRINTF(version_str, "%d.%01d", BLENDER_VERSION / 100, BLENDER_VERSION % 100);
-    IMB_metadata_ensure(&ibuf->metadata);
-    IMB_metadata_set_field(ibuf->metadata, "Thumb::Blender::Version", version_str);
+    IMB_metadata_set_field(ibuf->metadata_for_write(), "Thumb::Blender::Version", version_str);
 
     /* BLEN_THUMB_SIZE is size of thumbnail inside blend file: 128x128. */
     ImBuf *thumb_ibuf = IMB_scale_into_new(
@@ -3294,7 +3394,8 @@ bool WM_checkpoint_capture_runtime_write(WMCheckpointCapture &capture,
 {
   using namespace ed::sculpt_paint::checkpoint;
   if (!WM_checkpoint_capture_validate(capture) || !capture.base_complete ||
-      capture.runtime_complete || !capture.snapshot || capture.objects.is_empty())
+      capture.runtime_complete || !capture.snapshot || capture.objects.is_empty() ||
+      !BLI_file_descriptor_is_open(descriptor))
   {
     return false;
   }
@@ -3557,19 +3658,11 @@ static bool wm_file_write(bContext *C,
   const bool success = BLO_write_file(bmain, filepath, fileflags, &blend_write_params, reports);
 
   if (success) {
-    const bool do_history_file_update = (G.background == false) &&
-                                        (CTX_wm_manager(C)->op_undo_depth == 0);
-
     if (use_save_as_copy == false) {
       STRNCPY(bmain->filepath, filepath); /* Is guaranteed current file. */
     }
 
     SET_FLAG_FROM_TEST(G.fileflags, fileflags & G_FILE_COMPRESS, G_FILE_COMPRESS);
-
-    /* Prevent background mode scripts from clobbering history. */
-    if (do_history_file_update) {
-      wm_history_file_update();
-    }
 
     /* Run this function after because the file can't be written before the blend is. */
     if (ibuf_thumb) {
@@ -3602,6 +3695,21 @@ static bool wm_file_write(bContext *C,
     wm_angelo_saved_identity = outer_identity;
   }
 
+  /* Auto save (if enabled) the project config and then see if we should load in a
+   * new project if the project root path has changed.
+   */
+  BKE_blender_project_config_autosave(bmain);
+  BKE_blender_project_refresh(bmain, bmain->filepath);
+
+  /* Prevent background mode scripts from clobbering history.
+   * After BKE_blender_project_refresh which activates the project. */
+  const bool do_history_file_update = (G.background == false) &&
+                                      (CTX_wm_manager(C)->op_undo_depth == 0);
+  if (success && do_history_file_update) {
+    wm_history_file_update();
+    BKE_blender_project_recent_update(bmain);
+  }
+
   if (ibuf_thumb) {
     IMB_freeImBuf(ibuf_thumb);
   }
@@ -3611,6 +3719,11 @@ static bool wm_file_write(bContext *C,
 
   WM_cursor_wait(false);
 
+#ifdef WITH_PYTHON
+  if (success) {
+    BPY_angelo_guard_document_settled(); /* Angelo: see wm_file_read_post. */
+  }
+#endif
   return success;
 }
 
@@ -4177,7 +4290,7 @@ static wmOperatorStatus wm_userpref_read_exec(bContext *C, wmOperator *op)
   BKE_callback_exec_null(bmain, BKE_CB_EVT_EXTENSION_REPOS_UPDATE_POST);
 
   /* Needed to recalculate UI scaling values (eg, #UserDef.inv_scale_factor). */
-  wm_window_clear_drawable(static_cast<wmWindowManager *>(bmain->wm.first));
+  wm_window_clear_drawable(bmain->wm.first());
 
   WM_event_add_notifier(C, NC_WINDOW, nullptr);
   WM_event_add_notifier(C, NC_UI | ND_UI_FONT, nullptr);
@@ -4657,9 +4770,9 @@ static wmOperatorStatus wm_open_mainfile__select_file_path_exec(bContext *C, wmO
   }
 
   /* If possible, get the name of the most recently used `.blend` file. */
-  if (G.recent_files.first) {
-    RecentFile *recent = static_cast<RecentFile *>(G.recent_files.first);
-    blendfile_path = recent->filepath;
+  const std::string recent_filepath = wm_recent_filepath_get(bmain);
+  if (!recent_filepath.empty()) {
+    blendfile_path = recent_filepath.c_str();
   }
 
   RNA_string_set(op->ptr, "filepath", blendfile_path);
@@ -4786,7 +4899,8 @@ static bool wm_open_mainfile_check(bContext * /*C*/, wmOperator *op)
 
   /* Excluded paths can't be trusted, unless the command line overrides the preference. */
   if (((U.flag & USER_SCRIPT_AUTOEXEC_DISABLE) == 0) && !G.autoexec_override.has_value()) {
-    if (BKE_autoexec_match(filepath, true, true)) {
+    /* The file selector may start without a path, e.g. an unsaved session. */
+    if ((filepath[0] != '\0') && BKE_autoexec_match(filepath, true, true)) {
       RNA_property_boolean_set(op->ptr, prop, false);
       is_untrusted = true;
     }
@@ -5173,7 +5287,7 @@ static void wm_block_save_modified_images_save(bContext *C, void *arg_block, voi
   }
 
   const Main *bmain = CTX_data_main(C);
-  wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
+  wmWindowManager *wm = bmain->wm.first();
   wmGenericCallback *callback = WM_generic_callback_steal(
       static_cast<wmGenericCallback *>(arg_data));
 
@@ -5244,7 +5358,7 @@ static ui::Block *block_create_save_modified_images_dialog(bContext *C, ARegion 
 {
   wmGenericCallback *post_action = static_cast<wmGenericCallback *>(arg);
   Main *bmain = CTX_data_main(C);
-  wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
+  wmWindowManager *wm = bmain->wm.first();
 
   ui::Block *block = block_begin(
       C, region, save_modified_images_dialog_name, ui::EmbossType::Emboss);
@@ -5400,9 +5514,8 @@ static void save_set_filepath(bContext *C, wmOperator *op)
   if (!RNA_property_is_set(op->ptr, prop)) {
     const char *blendfile_path = BKE_main_blendfile_path(bmain);
     /* If not saved before, get the name of the most recently used `.blend` file. */
-    if ((blendfile_path[0] == '\0') && G.recent_files.first) {
-      RecentFile *recent = static_cast<RecentFile *>(G.recent_files.first);
-      STRNCPY(filepath, recent->filepath);
+    if (blendfile_path[0] == '\0') {
+      STRNCPY(filepath, wm_recent_filepath_get(bmain).c_str());
     }
     else {
       STRNCPY(filepath, blendfile_path);
@@ -5475,7 +5588,7 @@ static wmOperatorStatus wm_save_as_mainfile_exec(bContext *C, wmOperator *op)
     ReportList *reports = CTX_wm_reports(C);
     const bool is_successful = ED_image_save_all_modified(C, reports);
     if (!is_successful) {
-      WM_report_banner_show(static_cast<wmWindowManager *>(bmain->wm.first), CTX_wm_window(C));
+      WM_report_banner_show(bmain->wm.first(), CTX_wm_window(C));
     }
   }
   else if (wm_show_save_modified_images_dialog(bmain, op)) {
@@ -5564,6 +5677,10 @@ static wmOperatorStatus wm_save_as_mainfile_exec(bContext *C, wmOperator *op)
   if (success == false) {
     return OPERATOR_CANCELLED;
   }
+#ifdef WITH_PYTHON
+  /* The person's own save trusts their registered texts (never a confined thread's; Angelo). */
+  BPY_angelo_autorun_trust_saved(bmain);
+#endif
 
   const char *filename = BLI_path_basename(filepath);
 
@@ -5587,7 +5704,7 @@ static wmOperatorStatus wm_save_as_mainfile_exec(bContext *C, wmOperator *op)
     /* If saved file is the active one, there are technically no more compatibility issues, the
      * file on disk now matches the currently opened data version-wise. */
     bmain->has_forward_compatibility_issues = false;
-    bmain->colorspace.is_missing_opencolorio_config = false;
+    IMB_colormanagement_file_save_post(bmain);
 
     /* If saved file is the active one, notify WM so that saved status and window title can be
      * updated. */
@@ -5737,7 +5854,7 @@ static wmOperatorStatus wm_save_mainfile_invoke(bContext *C,
   RNA_string_get(op->ptr, "filepath", target);
   if (WM_angelo_recovery_copy(blendfile_path)) {
     /* Angelo: a Restore's working copy is never saved over: Save asks where, as Save As does. */
-    const RecentFile *recent = static_cast<const RecentFile *>(G.recent_files.first);
+    const RecentFile *recent = G.recent_files.first();
     char filepath[FILE_MAX] = "";
     if (recent && !WM_angelo_recovery_copy(recent->filepath)) {
       BLI_path_split_dir_part(recent->filepath, filepath, sizeof(filepath));
@@ -5844,7 +5961,7 @@ void WM_OT_save_mainfile(wmOperatorType *ot)
 /** \} */
 
 /* -------------------------------------------------------------------- */
-/** \name Clear Recent Files List Operator
+/** \name Clear Recent Files/Projects List Operators
  * \{ */
 
 enum ClearRecentInclude { CLEAR_RECENT_ALL, CLEAR_RECENT_MISSING };
@@ -5912,6 +6029,39 @@ void WM_OT_clear_recent_files(wmOperatorType *ot)
       ot->srna, "remove", prop_clear_recent_types, CLEAR_RECENT_ALL, "Remove", "");
 }
 
+static wmOperatorStatus wm_clear_recent_projects_invoke(bContext *C,
+                                                        wmOperator *op,
+                                                        const wmEvent *event)
+{
+  return WM_operator_props_popup_confirm_ex(
+      C, op, event, IFACE_("Clear Recent Projects List"), IFACE_("Remove"));
+}
+
+static wmOperatorStatus wm_clear_recent_projects_exec(bContext * /*C*/, wmOperator *op)
+{
+  const ClearRecentInclude include = ClearRecentInclude(RNA_enum_get(op->ptr, "remove"));
+  BKE_blender_project_recent_clear(include == CLEAR_RECENT_MISSING);
+  return OPERATOR_FINISHED;
+}
+
+void WM_OT_clear_recent_projects(wmOperatorType *ot)
+{
+  ot->name = "Clear Recent Projects List";
+  ot->idname = "WM_OT_clear_recent_projects";
+  ot->description = "Clear the recent projects list";
+
+  ot->invoke = wm_clear_recent_projects_invoke;
+  ot->exec = wm_clear_recent_projects_exec;
+  ot->ui = wm_clear_recent_files_ui;
+
+  /* flags */
+  ot->flag = OPTYPE_REGISTER;
+
+  /* props */
+  ot->prop = RNA_def_enum(
+      ot->srna, "remove", prop_clear_recent_types, CLEAR_RECENT_ALL, "Remove", "");
+}
+
 /** \} */
 
 /* -------------------------------------------------------------------- */
@@ -5930,6 +6080,9 @@ static void wm_block_autorun_warning_ignore(bContext *C, ui::Block *block)
 static void wm_block_autorun_warning_reload_with_scripts(bContext *C, ui::Block *block)
 {
   wmWindow *win = CTX_wm_window(C);
+#ifdef WITH_PYTHON
+  BPY_angelo_autorun_consent(); /* The person trusts what the warning held back (Angelo). */
+#endif
 
   popup_block_close(C, win, block);
 
@@ -5942,6 +6095,9 @@ static void wm_block_autorun_warning_enable_scripts(bContext *C, ui::Block *bloc
 {
   wmWindow *win = CTX_wm_window(C);
   Main *bmain = CTX_data_main(C);
+#ifdef WITH_PYTHON
+  BPY_angelo_autorun_consent(); /* The person trusts what the warning held back (Angelo). */
+#endif
 
   popup_block_close(C, win, block);
 
@@ -6110,8 +6266,7 @@ void wm_test_autorun_warning(bContext *C)
   G.f |= G_FLAG_SCRIPT_AUTOEXEC_FAIL_QUIET;
 
   wmWindowManager *wm = CTX_wm_manager(C);
-  wmWindow *win = (wm->runtime->winactive) ? wm->runtime->winactive :
-                                             static_cast<wmWindow *>(wm->windows.first);
+  wmWindow *win = (wm->runtime->winactive) ? wm->runtime->winactive : wm->windows.first();
 
   if (win) {
     /* We want this warning on the Main window, not a child window even if active. See #118765. */
@@ -6121,6 +6276,9 @@ void wm_test_autorun_warning(bContext *C)
 
     wmWindow *prevwin = CTX_wm_window(C);
     CTX_wm_window_set(C, win);
+#ifdef WITH_PYTHON
+    BPY_angelo_autorun_warning_shown(); /* What its "Allow Execution" trusts (Angelo). */
+#endif
     ui::popup_block_invoke(C, block_create_autorun_warning, nullptr, nullptr);
     CTX_wm_window_set(C, prevwin);
   }
@@ -6135,8 +6293,7 @@ void wm_test_foreign_file_warning(bContext *C)
   G_MAIN->is_read_invalid = false;
 
   wmWindowManager *wm = CTX_wm_manager(C);
-  wmWindow *win = (wm->runtime->winactive) ? wm->runtime->winactive :
-                                             static_cast<wmWindow *>(wm->windows.first);
+  wmWindow *win = (wm->runtime->winactive) ? wm->runtime->winactive : wm->windows.first();
 
   if (win) {
     /* We want this warning on the Main window, not a child window even if active. See #118765. */
@@ -6228,9 +6385,11 @@ static void file_overwrite_detailed_info_show(ui::Layout &parent_layout, Main *b
     if (bmain->is_asset_edit_file || bmain->has_forward_compatibility_issues) {
       layout.separator(1.4f);
     }
-    layout.label(
-        RPT_("Displays, views or color spaces in this file were missing and have been changed."),
-        ICON_NONE);
+    layout.label(bmain->colorspace.is_failed_opencolorio_config ?
+                     RPT_("OpenColorIO configuration failed to load.") :
+                     RPT_("Displays, views or color spaces in this file were missing and have "
+                          "been changed."),
+                 ICON_NONE);
     layout.label(RPT_("Saving it with this OpenColorIO configuration may cause loss of data."),
                  ICON_NONE);
   }
@@ -6453,7 +6612,7 @@ static void wm_block_file_close_discard(bContext *C, void *arg_block, void *arg_
 static void wm_block_file_close_save(bContext *C, void *arg_block, void *arg_data)
 {
   const Main *bmain = CTX_data_main(C);
-  wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
+  wmWindowManager *wm = bmain->wm.first();
   wmGenericCallback *callback = WM_generic_callback_steal(
       static_cast<wmGenericCallback *>(arg_data));
   bool execute_callback = true;

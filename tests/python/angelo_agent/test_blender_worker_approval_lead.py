@@ -143,13 +143,31 @@ def tile_point(session):
     return int(region.x + x + w / 2), int(region.y + y + h / 2)
 
 
+def approve_rect(call_id):
+    """The window rectangle of the Approve the chat area drew for ``call_id`` (its hit), or None."""
+    area = chat_area()
+    region = next(r for r in area.regions if r.type == 'WINDOW')
+    for rect, action, value in chat_view._views.get(area.as_pointer(), {}).get('hits', []):
+        if action == 'approve' and value == call_id:
+            from qa_input import chat_rect   # The chat's points as window pixels (its scale and mirror).
+            return chat_rect(region, rect)
+    return None
+
+
+def approve_ready(call_id):
+    """The arming's own signal that this Approve's shield has passed where it is drawn now (approval_arming)."""
+    from angelo_agent import approval_arming
+    return approval_arming.view(chat_view._views.get(chat_area().as_pointer(), {})).key_armed(("approve", call_id))
+
+
 def approve_point(call_id):
     """The window point of the Approve the chat area drew for ``call_id`` (its hit), or None."""
     area = chat_area()
     region = next(r for r in area.regions if r.type == 'WINDOW')
     for rect, action, value in chat_view._views.get(area.as_pointer(), {}).get('hits', []):
         if action == 'approve' and value == call_id:
-            return int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+            from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+            return chat_point(region, rect)
     return None
 
 
@@ -266,8 +284,8 @@ def tick():
             screenshot('1-lead-approval-on-the-tile.png')
             state['approved_at'] = time.monotonic()
             with bpy.context.temp_override(window=window):   # As eval_live_agent_session.answer_approvals does.
-                first = bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=session)
-                second = (bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=session)
+                first = __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=session)
+                second = (__import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=session)
                           if 'CANCELLED' in first and call.id in worker.reviewed_calls else first)
             report['operator_results'] = [sorted(first), sorted(second)]
             check('the_first_approve_opens_the_scripts_review', first == {'CANCELLED'}
@@ -298,8 +316,7 @@ def tick():
                 return .1 if not waited(10) else finish('the worker card never showed after its tile was clicked')
             check('a_click_on_the_tile_shows_the_workers_card', True)
             screenshot('3-person-card-in-the-chat.png')
-            state['approved_at'] = time.monotonic()
-            click(*point)   # Its exact-code review opens.
+            qa_input.aim(window, lambda: approve_rect(state['call']), ready=lambda: approve_ready(state['call']))   # Its exact-code review opens (aimed: 2.0.0).
             advance('person-review')
             return .3
         if phase == 'person-review':
@@ -307,10 +324,12 @@ def tick():
             if state['call'] not in worker.reviewed_calls or point is None:
                 return .1 if not waited(10) else finish('the script review never opened')
             screenshot('4-person-script-review.png')
-            click(*point)
+            qa_input.aim(window, lambda: approve_rect(state['call']), ready=lambda: approve_ready(state['call']))
+            state.pop('approved_at', None)   # Case A's; case B's is the aimed press (person-ran).
             advance('person-ran')
             return .05
         if phase == 'person-ran':
+            state.setdefault('approved_at', qa_input.sent_at[-1])   # When the aimed Approve was pressed.
             if ran_promptly('Person Approved', 'person') is None:
                 return .1
             click(*tile_point(report['lead']))
@@ -345,4 +364,5 @@ def finish(error=None):
     return None
 
 
-bpy.app.timers.register(tick, first_interval=.5)
+import qa_input  # noqa: E402  (aimed clicks: qa_input.aim)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.5)   # An aimed click lands first.

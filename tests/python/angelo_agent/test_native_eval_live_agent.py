@@ -7,6 +7,7 @@ temporary one; the app's real connection directory is never read.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import platform_env
 
 import contextlib
 import copy
@@ -79,7 +80,7 @@ class GuardTests(unittest.TestCase):
         self.assertIn("binary", stderr)
 
     def test_authorized_run_needs_a_binary_from_the_flag_or_angelo_binary(self):
-        with patch.dict(os.environ, {}, clear=True):
+        with platform_env.cleared():
             self.assertEqual(eval_live_agent.parse([]).blender, "")
             code, _, stderr = self.run_main("--authorize-billed-runs", "--connection-id", CONNECTION)
         self.assertEqual(code, 2)
@@ -286,10 +287,10 @@ class IsolationTests(unittest.TestCase):
         guard = text.index('os.environ.get("ANGELO_EVAL_AUTHORIZED") != "1"')
         self.assertLess(guard, text.index("addon_utils.enable"), "refuse before the app add-on starts")
         self.assertNotIn('"approval": "ASK"', text, "the chat keeps the product's default approval")
-        self.assertIn('"fast": False, **eval_approval.options()}', text)
+        self.assertIn("eval_effort.chat_options(fast=False, **eval_approval.options())", text)
         self.assertIn("approval = eval_approval.apply(ui, self.controller)", text)
         self.assertIn("self.controller.single_model_runs = True", text, "measurements disable refusal fallback")
-        self.assertIn('"fast": False', text)
+        self.assertIn("fast=False", text)
 
     def test_trials_use_the_product_default_approval_unless_ask_is_asked_for(self):
         default = eval_live_agent.parse(["--authorize-billed-runs", "--connection-id", CONNECTION])

@@ -21,7 +21,7 @@ output, and how a cancel undoes it:
 
 import bpy
 
-from . import job_bake_caches as caches
+from . import job_bake_caches as caches, owned_paths
 from . import job_bake_targets as targets
 from .job_manager import JobStartError
 from .job_runners import Runner, native
@@ -259,7 +259,8 @@ class TextureBakeRunner(Runner):
         they held. Without an output only the written tiles are listed.
         """
         from .action_world import image_id
-        if self.output is not None:
+        if self.output is not None:   # Only a bake with an output saves files, so only it has a folder to check.
+            owned_paths.require_writable(self.staging.path)
             self.staging.verify()  # Blender saves by path: it must still reach the folder held.
         entries, taken, bake_type = [], set(), self.request["bake_type"]
         for image in self.images:

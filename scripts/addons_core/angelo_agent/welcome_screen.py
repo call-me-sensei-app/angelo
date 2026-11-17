@@ -11,18 +11,16 @@ shortcut as keycaps), demo tiles (``first_run.DEMOS``) and one primary button.
 This module only lays out and draws; ``intro.py`` owns opening, input and the
 saved state. Layout is measured with the chat's font and translated text, wraps
 instead of truncating, and shrinks as a whole when the 3D view is small.
-Drawing touches no files and no Blender data: the banner's pixels are read
-once, outside drawing, by ``prepare_banner``.
+Drawing touches no files and no Blender data: the banner is read outside
+drawing (``BANNER_PICTURE``, a ``brand_picture.Picture``: on the GPU while a
+surface shows it, its float copy dropped at the first draw).
 """
 
 import math
 import sys
-from array import array
 from pathlib import Path
 
-import bpy
-
-from . import canvas_rtl, first_run, welcome_slides
+from . import brand_picture, canvas_rtl, first_run, welcome_slides
 from .ui_text import iface_, join
 
 CARD = (0.090, 0.098, 0.118, 1)  # welcome_banner.py fades its bottom edge into this.
@@ -38,33 +36,23 @@ SCRIM = (0.020, 0.024, 0.030, 0.66)
 BANNER_ASPECT = 480 / 1520
 BANNER = Path(__file__).resolve().parent / "assets" / "welcome-banner.png"
 
-_banner = {"pixels": None, "size": None, "texture": None, "failed": False}
+# The welcome screen, the About card, the first-launch cards and the AI Providers page all draw this one picture.
+BANNER_PICTURE = brand_picture.Picture(BANNER)
 _shader = None
 
 
 def prepare_banner():
-    """Read the banner's pixels once, outside drawing (the same pattern as native_preview_images)."""
-    if _banner["pixels"] is not None or _banner["failed"]:
-        return
-    image = None
-    try:
-        image = bpy.data.images.load(str(BANNER), check_existing=False)
-        image.colorspace_settings.name = 'Non-Color'
-        width, height = image.size
-        if not width or not height:
-            raise ValueError("The welcome banner did not decode")
-        pixels = array('f', [0]) * (width * height * 4)
-        image.pixels.foreach_get(pixels)
-        _banner.update(pixels=pixels, size=(width, height))
-    except (OSError, RuntimeError, ValueError):
-        _banner["failed"] = True  # A missing or undownloaded asset leaves a plain banner, never an error.
-    finally:
-        if image is not None:
-            bpy.data.images.remove(image)
+    """Read the banner outside drawing, unless it is held (a missing or undownloaded asset: a plain banner)."""
+    BANNER_PICTURE.prepare()
+
+
+def banner_ready():
+    """The banner can be drawn (read, or on the GPU); its surfaces draw their plain stand-in otherwise."""
+    return BANNER_PICTURE.ready
 
 
 def release():
-    _banner.update(pixels=None, size=None, texture=None, failed=False)
+    BANNER_PICTURE.release()
 
 
 def shortcut_keys():
@@ -291,19 +279,16 @@ def draw(view, plan):
 def _draw_banner(gpu, rect):
     global _shader
     from gpu_extras.batch import batch_for_shader
-    if _banner["pixels"] is None:
+    texture = BANNER_PICTURE.texture(gpu)   # Made from the read pixels at the first draw, which drops them.
+    if texture is None:
         return
-    width, height = _banner["size"]
-    if _banner["texture"] is None:
-        _banner["texture"] = gpu.types.GPUTexture((width, height), format='RGBA16F',
-                                                  data=gpu.types.Buffer('FLOAT', [width * height * 4], _banner["pixels"]))
     if _shader is None:
         _shader = gpu.shader.from_builtin('IMAGE')
     x, y, w, h = rect
     batch = batch_for_shader(_shader, 'TRIS', {"pos": [(x, y), (x + w, y), (x + w, y + h), (x, y + h)],
                                                "texCoord": [(0, 0), (1, 0), (1, 1), (0, 1)]}, indices=[(0, 1, 2), (0, 2, 3)])
     _shader.bind()
-    _shader.uniform_sampler("image", _banner["texture"])
+    _shader.uniform_sampler("image", texture)
     batch.draw(_shader)
 
 

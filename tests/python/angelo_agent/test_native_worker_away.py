@@ -311,7 +311,7 @@ class AwayTests(unittest.TestCase):
         worker_dispatch.submit(chat, lambda: sent.set())
         with patch.object(worker_away, "AWAY_AFTER", 60.0):   # Every region is "short" now.
             def during():
-                seen["sent"] = sent.wait(0.3)
+                seen["sent"] = sent.wait(0.3)  # window: nothing may be sent during it
             tool_pump.pump_controller_tools([Lead(during)], 0, None, None, lambda t, c: None, budget=budget())
         self.assertFalse(seen["sent"])   # Ran at the next step instead, as before regions.
         worker_dispatch.pump(chat, budget())
@@ -326,7 +326,7 @@ class AwayTests(unittest.TestCase):
         worker_dispatch.submit(chat, lambda: sent.set())
 
         def during():
-            seen["sent"] = sent.wait(0.3)
+            seen["sent"] = sent.wait(0.3)  # window: nothing may be sent during it
         tool_pump.pump_controller_tools([Lead(during)], 0, None, None, lambda t, c: None, budget=budget())
         self.assertFalse(seen["sent"])
 

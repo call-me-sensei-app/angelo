@@ -21,10 +21,13 @@ Standard library only; no bpy. Called only on worker threads.
 
 import hashlib
 import http.client
+import ssl
 from urllib.parse import urlsplit
 
 from .team_endpoints import is_loopback
+from .team_errors import untrusted_text
 from .team_http import USER_AGENT, tls_context
+from . import owned_paths
 
 TIMEOUT = 30
 CHUNK = 1024 * 1024
@@ -73,14 +76,17 @@ def download(url, destination, *, limit, expected=None, sha256=None, cancel=None
     lowercase hex digest storage checked when the file arrived (the current
     console's ``LibraryItemDto.sha256``); the bytes must hash to it.
     """
+    owned_paths.require_writable(destination)
     digest = hashlib.sha256() if sha256 else None
     connection, path = _connection(url, timeout)
     try:
         try:
             connection.request("GET", path, headers={"User-Agent": USER_AGENT, "Accept-Encoding": "identity"})
             response = connection.getresponse()
-        except (OSError, http.client.HTTPException):
-            raise TransferError("Couldn't download the file from team storage; check your network and try again.",
+        except (OSError, http.client.HTTPException) as error:
+            untrusted = isinstance(error, ssl.SSLCertVerificationError)   # Says the storage host, never the link.
+            raise TransferError(untrusted_text(url) if untrusted else
+                                "Couldn't download the file from team storage; check your network and try again.",
                                 "EXPIRED") from None
         if response.status != 200:
             raise TransferError("Team storage refused the download (HTTP %d); the link may have expired. Try again."

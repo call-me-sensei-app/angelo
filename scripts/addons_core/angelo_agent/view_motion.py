@@ -36,7 +36,7 @@ does. Main thread; model-facing text is English.
 import datetime
 import time
 
-from . import view_cache, view_free_camera
+from . import owned_paths, view_cache, view_free_camera
 from .input_policy import tool_running
 from .view_blur import NOT_DRAWN, own_offscreen_per_draw
 from .view_framing import output_size
@@ -260,6 +260,7 @@ def execute(window, checked, references, controller=None):
     png = encode_png(sheet.tobytes(), sheet.shape[1], sheet.shape[0], bottom_up=False)
     reference = references.new_observation("Frames %d-%d · %s" % (frames[0], frames[-1], checked["shading"].lower()))
     try:
+        owned_paths.require_writable(reference["path"])
         with open(reference["path"], "wb") as handle:
             handle.write(png)
     except Exception:

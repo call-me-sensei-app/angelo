@@ -36,6 +36,7 @@ No provider, account or paid call.
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+from qa_person import as_person  # noqa: E402  The person's own action (C's harness scope).
 import array
 import contextlib
 import hashlib
@@ -275,7 +276,7 @@ def commit(window, x):
                           responses.append)
         call = chat.pending.get(session + '/program')
         chat.pump_tools(executor, document, budget=ToolDispatchBudget(seconds=60))
-        chat.approve_tool(call, executor, document)
+        as_person(chat.approve_tool, call, executor, document)
         for _ in range(400):
             chat.pump_tools(executor, document, budget=ToolDispatchBudget(seconds=60))
             job = chat.native_jobs.get(call.id)
@@ -462,6 +463,45 @@ def tick():
             printed = STATE['handler_stderr'].getvalue()
             (OUT / 'expected-handler-stderr.txt').write_text(printed)
             check('handler_errors_are_printed', printed.count('EXPECTED_REVIEW_HANDLER_ERROR') >= 3)
+            STATE['phase'] = 'scene-tamper'
+        elif phase == 'scene-tamper':
+            # The single-file swap: two captures apart by an ordinary property edit, whose scene.blend files differ.
+            capture('scene first')
+            with context('A'):
+                target = bpy.data.objects[TARGET]
+                target.hide_render = not target.hide_render
+                bpy.ops.ed.undo_push(message='Review scene edit')
+            STATE['phase'] = 'scene-tamper-second'
+        elif phase == 'scene-tamper-second':
+            settle()
+            capture('scene second')
+            settle()
+            STATE['S'] = observe()
+            records = [controller.checkpoints.load(m['checkpoint']) for m in controller.state['messages']
+                       if m.get('text') in ('scene first', 'scene second')]
+            folder_first = controller.checkpoints.folder(records[-2]['id'])
+            folder_second = controller.checkpoints.folder(records[-1]['id'])
+            data = (folder_first / 'scene.blend').read_bytes()
+            check('scene_swap_changes_the_bytes', data != (folder_second / 'scene.blend').read_bytes())
+            with open(folder_second / 'scene.blend', 'r+b') as handle:  # Keep the inode; only the bytes change.
+                handle.write(data)
+                handle.truncate(len(data))
+            metadata = folder_second / 'checkpoint.json'
+            record = json.loads(metadata.read_text())
+            record.update(scene_bytes=len(data), scene_hash=hashlib.blake2b(data, digest_size=32).hexdigest())
+            metadata.write_text(json.dumps(record))
+            restore(records[-1]['id'], 'scene_tampered_restore')
+            outcome = REPORT['facts']['scene_tampered_restore']['outcome']
+            check('swapped_scene_alone_is_refused', isinstance(outcome, dict)
+                  and 'not bound to its own capture' in outcome.get('raised', ''))
+            STATE['phase'] = 'scene-tamper-check'
+        elif phase == 'scene-tamper-check':
+            settle()
+            compare('refused_scene_restore_leaves_document_unchanged', STATE['S'], observe())
+            with context('A'):  # Put the edit back: the later phases start from the state they always did.
+                target = bpy.data.objects[TARGET]
+                target.hide_render = not target.hide_render
+                bpy.ops.ed.undo_push(message='Review scene edit reverted')
             STATE['phase'] = 'tamper'
         elif phase == 'tamper':
             first = capture('review first')
@@ -476,13 +516,21 @@ def tick():
             first, second = records[-2], records[-1]
             folder_first = controller.checkpoints.folder(first['id'])
             folder_second = controller.checkpoints.folder(second['id'])
-            data = (folder_first / 'scene.blend').read_bytes()
-            with open(folder_second / 'scene.blend', 'r+b') as handle:  # Keep the inode; only the bytes change.
-                handle.write(data)
-                handle.truncate(len(data))
+            # Swap the whole component pair from the first capture into the second and rewrite every declared size and
+            # hash to match, so only the seal can tell. Which component a stroke changes depends on the format: a
+            # Sculpt stroke lives in sculpt.runtime, and on the 5.3 base a scene.blend written twice around one stroke
+            # is byte-identical, so swapping scene.blend alone tampered with nothing.
+            pair = {name: (folder_first / name).read_bytes() for name in ('scene.blend', 'sculpt.runtime')}
+            check('swap_changes_the_bytes', any(data != (folder_second / name).read_bytes() for name, data in pair.items()))
+            for name, data in pair.items():
+                with open(folder_second / name, 'r+b') as handle:  # Keep the inode; only the bytes change.
+                    handle.write(data)
+                    handle.truncate(len(data))
             metadata = folder_second / 'checkpoint.json'
             record = json.loads(metadata.read_text())
-            record.update(scene_bytes=len(data), scene_hash=hashlib.blake2b(data, digest_size=32).hexdigest())
+            digest = lambda data: hashlib.blake2b(data, digest_size=32).hexdigest()
+            record.update(scene_bytes=len(pair['scene.blend']), scene_hash=digest(pair['scene.blend']))
+            record['sculpt'].update(bytes=len(pair['sculpt.runtime']), hash=digest(pair['sculpt.runtime']))
             metadata.write_text(json.dumps(record))
             notice = restore(second['id'], 'tampered_restore')
             outcome = REPORT['facts']['tampered_restore']['outcome']

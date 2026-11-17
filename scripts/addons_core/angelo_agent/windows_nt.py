@@ -26,6 +26,14 @@ behaviour: an open file can be renamed or unlinked) and are not inheritable.
 ctypes releases the GIL during each call. The libraries and C runtime calls are
 injectable so host tests on any OS drive this exact marshalling through fakes
 (test_native_windows_nt.py); only a Windows run proves Windows' behaviour.
+
+Known coverage limit: a file deleted under an open (STATUS_DELETE_PENDING or
+STATUS_FILE_DELETED) is proven absent on real Windows only for ``open_at``, by
+a VM CI stress of SQLite removing its -wal and -shm (773f2eeb811: 5
+FILE_DELETED hits, 0 failures in about 3 million looks). The Win32 opens
+(``reopen``, ``open_anchor``), which learn the status from RtlGetLastNtStatus,
+are proven by the fakes only: no Windows test deletes a provider-managed file
+under a reopen or the volume root under its open.
 """
 
 import ctypes

@@ -38,6 +38,7 @@ import re
 
 from . import action_operator_families as _families
 from .action_schema_types import MAX_OPERATIONS, INDICES, enum, integer, nullable, obj, text
+from . import read_only
 
 MODULE_TARGETS = {"mesh": ("MESH",), "curve": ("CURVE",), "armature": ("ARMATURE",), "lattice": ("LATTICE",),
                   "uv": ("MESH",), **_families.EDIT_MODULES}
@@ -405,3 +406,6 @@ def within_work_bound(idname, elements, selected):
     """Whether a WORK_BOUNDS operator may run on ``elements`` with ``selected`` of them selected (others always)."""
     bound = WORK_BOUNDS.get(idname)
     return bound is None or elements * selected <= bound
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), 'ALLOWED', 'DENIED', 'MODULE_TARGETS', 'OBJECT_MODULES', 'POSE_MODULES', 'OBJECT_TARGETS', 'CAPS', 'WORK_BOUNDS')

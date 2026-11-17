@@ -10,6 +10,7 @@ main-thread loop. Contract: doc/angelo/external_mcp.rst, "Headless".
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import io
 import json
@@ -198,11 +199,10 @@ class AllowListTests(unittest.TestCase):
                 env = child_environment({"ANGELO_QA_PROCESS_OWNER": owner}, Path("/tmp/p"))
                 self.assertEqual(env.get("ANGELO_QA_PROCESS_OWNER"), owner if owner == "a" * 32 else None)
 
-    @unittest.skipIf(os.name == "nt", environment_skip("the sweep (os.getuid, O_NONBLOCK) runs only where headless "
-                                                       "does: headless_session.SUPPORTED_PLATFORMS"))
     def test_a_folder_gone_mid_sweep_never_stops_the_sweep(self):
-        """Break-it L2: a leftover folder that disappears while the sweep looks at it is skipped."""
-        root = Path(tempfile.mkdtemp(prefix="shl-sweep-", dir="/tmp"))
+        """Break-it L2: a leftover folder that disappears while the sweep looks at it is skipped. On every platform:
+        the sweep asks no POSIX user ID, signal or open flag any more (test_native_windows_user_identity)."""
+        root = Path(tempfile.mkdtemp(prefix="shl-sweep-"))
         self.addCleanup(shutil.rmtree, root, True)
         gone, dead = root / (PRIVATE_PREFIX + "gone"), root / (PRIVATE_PREFIX + "dead")
         dead.mkdir()
@@ -263,7 +263,7 @@ while not done:
         for thread in threads:
             thread.start()
         for thread in threads:
-            thread.join(15)
+            thread.join(CAP_S)
         self.assertEqual({n: answers[n]["result"]["echo"]["n"] for n in range(6)}, {n: n for n in range(6)})
         child.close()
         self.assertIsNotNone(child.process.poll(), "the child exits when its pipes close")
@@ -273,8 +273,8 @@ while not done:
         child = self.child()
         child.wait_ready(20)
         child.process.kill()
-        child.process.wait(5)
-        deadline = time.monotonic() + 5
+        child.process.wait(CAP_S)
+        deadline = time.monotonic() + CAP_S
         while child.alive() and time.monotonic() < deadline:
             time.sleep(0.01)
         self.assertEqual(child.request({"command": "fast"}, 1)["code"], "unavailable")
@@ -492,7 +492,7 @@ class HeadlessTests(unittest.TestCase):
         while thread.is_alive() and time.monotonic() < deadline:
             self.tick()
             time.sleep(0.003)
-        thread.join(1)
+        thread.join(CAP_S)
         self.assertTrue(out, "no answer for " + tool)
         return out[0]
 
@@ -746,7 +746,7 @@ class HeadlessTests(unittest.TestCase):
         (linked / "child.pid").symlink_to(self.source)
         done = threading.Event()
         threading.Thread(target=lambda: (sweep_leftovers(self.root), done.set()), daemon=True).start()
-        self.assertTrue(done.wait(5), "the sweep blocked on a FIFO")
+        self.assertTrue(done.wait(CAP_S), "the sweep blocked on a FIFO")
         self.assertEqual(self.source.read_bytes(), SOURCE_BYTES)
 
     def test_placing_the_saved_bytes_never_writes_through_a_link(self):

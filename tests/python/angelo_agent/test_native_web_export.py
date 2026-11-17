@@ -234,9 +234,9 @@ class FamilyTests(unittest.TestCase):
 
     def test_the_executor_routes_it_without_a_scene_diff(self):
         source = (ADDON / "blender_tools.py").read_text(encoding="utf-8")
-        self.assertIn("and not name.startswith(('angelo_web_', 'angelo_engine_link')))  # Web, engine link: no scene edit.",
+        self.assertIn("and not name.startswith(('angelo_web_', 'angelo_engine_link', 'angelo_download')))  # No scene edit.",
                       source)
-        self.assertIn('else web_host).execute(', source)
+        self.assertIn('else web_host if name.startswith("angelo_web_") else download_tool', source)
 
 
 class BundledThreeTests(unittest.TestCase):

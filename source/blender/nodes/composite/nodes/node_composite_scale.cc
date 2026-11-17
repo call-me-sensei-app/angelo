@@ -20,6 +20,7 @@
 #include "COM_utilities.hh"
 
 #include "node_composite_util.hh"
+#include "node_composite_scale_render_size.hh"
 
 namespace blender::nodes::node_composite_scale_cc {
 
@@ -169,10 +170,10 @@ class ScaleOperation : public NodeOperation {
     input.bind_as_texture(shader, "input_tx");
 
     Result &x_scale = get_input("X");
-    x_scale.bind_as_texture(shader, "x_scale_tx");
+    gpu::Texture *x_scale_texture = x_scale.bind_as_texture_or_single_value(shader, "x_scale_tx");
 
     Result &y_scale = get_input("Y");
-    y_scale.bind_as_texture(shader, "y_scale_tx");
+    gpu::Texture *y_scale_texture = y_scale.bind_as_texture_or_single_value(shader, "y_scale_tx");
 
     Result &output = get_result("Image");
     const Domain domain = compute_domain();
@@ -182,8 +183,8 @@ class ScaleOperation : public NodeOperation {
     compute_dispatch_threads_at_least(shader, domain.data_size);
 
     input.unbind_as_texture();
-    x_scale.unbind_as_texture();
-    y_scale.unbind_as_texture();
+    x_scale.unbind_as_texture_or_single_value(x_scale_texture);
+    y_scale.unbind_as_texture_or_single_value(y_scale_texture);
     output.unbind_as_image();
     GPU_shader_unbind();
   }
@@ -332,9 +333,11 @@ class ScaleOperation : public NodeOperation {
    * potentially stretched, hence the name. */
   float2 get_scale_render_size_stretch()
   {
-    const float2 input_size = float2(get_input("Image").domain().display_size);
+    const Result &input = this->get_input("Image");
+    const float2 input_size = float2(input.domain().display_size);
+    const float2 input_scale = math::to_scale(float2x2(input.domain().transformation));
     const float2 render_size = float2(context().get_compositing_domain().display_size);
-    return render_size / input_size;
+    return scale_render_size::stretch(input_size, input_scale, render_size);
   }
 
   /* Scale such that the dimension with the smaller scaling factor matches that of the render size
@@ -343,10 +346,11 @@ class ScaleOperation : public NodeOperation {
    * inside that region, hence the name. */
   float2 get_scale_render_size_fit()
   {
-    const float2 input_size = float2(get_input("Image").domain().display_size);
+    const Result &input = this->get_input("Image");
+    const float2 input_size = float2(input.domain().display_size);
+    const float2 input_scale = math::to_scale(float2x2(input.domain().transformation));
     const float2 render_size = float2(context().get_compositing_domain().display_size);
-    const float2 scale = render_size / input_size;
-    return float2(math::min(scale.x, scale.y));
+    return scale_render_size::fit(input_size, input_scale, render_size);
   }
 
   /* Scale such that the dimension with the larger scaling factor matches that of the render size
@@ -355,10 +359,11 @@ class ScaleOperation : public NodeOperation {
    * region, hence the name. */
   float2 get_scale_render_size_crop()
   {
-    const float2 input_size = float2(get_input("Image").domain().display_size);
+    const Result &input = this->get_input("Image");
+    const float2 input_size = float2(input.domain().display_size);
+    const float2 input_scale = math::to_scale(float2x2(input.domain().transformation));
     const float2 render_size = float2(context().get_compositing_domain().display_size);
-    const float2 scale = render_size / input_size;
-    return float2(math::max(scale.x, scale.y));
+    return scale_render_size::crop(input_size, input_scale, render_size);
   }
 
   bool is_variable_size()

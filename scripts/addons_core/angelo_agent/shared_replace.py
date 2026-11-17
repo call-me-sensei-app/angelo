@@ -19,13 +19,20 @@ did not expect it strands what it was saving (a finished job stayed "generating"
   ``PermissionError``): its caller says so and keeps what it was saving (``test_native_shared_replace_sites`` names
   each caller and its path). Every call gets its retries; a caller that tries again from a timer or a UI tick waits
   ``RETRY_SECONDS`` after a ``Refused`` first, so a file held for good never costs the main thread at every tick.
+  A save made once, off the main thread, with no later try in its launch passes ``PATIENT_ATTEMPTS`` (1.9 s of
+  pauses in all): the short retries are sized for a tick, and its refusal lasts the launch
+  (``test_native_shared_replace_once`` names the two that do).
 * ``open_shared``, ``open_file``, ``read_bytes`` and ``read_text`` read such a file sharing read, write and delete
   (``session_journal.open_shared``), so a reader of ours never refuses a writer's replace. A plain script outside
   the add-on package (``studio_assets_convert``) uses ``replace`` and ``retried`` only: the readers need the
   package on Windows.
 
-Cost on the success path (``test_native_shared_replace``): POSIX, one Python call and one flag test over
-``os.replace``; Windows, the journal's own rename (``CreateFileW``, ``SetFileInformationByHandle``, ``CloseHandle``)
+Every replace and remove first asks C whether Angelo may write the target (``owned_paths.require_writable``: its
+private folders, what it made, or a path vouched for), so an object a script changed can't aim a save at a file of
+the person's (doc/angelo/script_confinement.rst, "Angelo's own I/O").
+
+Cost on the success path (``test_native_shared_replace``): POSIX, three Python calls and one flag test over
+``os.replace``, plus C's check in the app (the target's folder resolved and judged); Windows, the journal's own rename (``CreateFileW``, ``SetFileInformationByHandle``, ``CloseHandle``)
 in place of ``MoveFileExW``. The checker ``test_native_shared_replace_sites`` fails on any other replace or rename in
 the add-on that it does not list with its reason.
 """
@@ -34,6 +41,11 @@ import errno
 import os
 import stat
 import time
+
+try:
+    from . import owned_paths as _owned
+except ImportError:   # A plain script outside the package (studio_assets_convert): beside it, as itself.
+    import owned_paths as _owned
 
 try:
     from . import win32_replace
@@ -46,6 +58,11 @@ PAUSE = 0.01   # Seconds before the second try; the next pauses grow by as much 
 # A caller that saves from a timer or UI tick tries a refused save (``Refused``) again no sooner than this: a file
 # held for good then costs the main thread one replace's pauses (100 ms) this often, never at every tick.
 RETRY_SECONDS = 5.0
+# The tries of a save with no later try in its launch (the per-user cache-key secret, a warm-up's base): pauses of
+# 10 to 190 ms, 1.9 s in all, then ``Refused`` as ever. A scan of a file just written held it past the usual 100 ms
+# on a loaded machine (VM CI, 78d279707a1, win-1). Never from a timer or a UI tick: those wait ``RETRY_SECONDS`` and
+# try again, and a file held for good must not cost them this.
+PATIENT_ATTEMPTS = 20
 _ATTRIBUTE_DIRECTORY = 0x10   # FILE_ATTRIBUTE_DIRECTORY (``st_file_attributes``, Windows)
 # Told each ``Refused`` target (any thread): the add-on's window shows the person a card (``refused_saves``).
 on_refused = None
@@ -59,7 +76,9 @@ class Refused(PermissionError):
 def replace(source, target, attempts=ATTEMPTS, shown=None, told=True):
     """Replace ``target`` with ``source`` (module docstring); ``Refused`` when Windows still refuses it. ``shown``:
     the file the person knows, told in place of ``target`` (a move aside names the file it moves); ``told=False``
-    for a caller that tells the person itself (``on_refused`` is not called)."""
+    for a caller that tells the person itself (``on_refused`` is not called). ``target`` is one C says Angelo may
+    write (``owned_paths.require_writable``), whatever object named it, or ``PermissionError``."""
+    _owned.require_writable(target)
     if not _WINDOWS:
         return os.replace(source, target)
     return retried(_windows_replace, source, target, attempts, shown, told)
@@ -67,7 +86,9 @@ def replace(source, target, attempts=ATTEMPTS, shown=None, told=True):
 
 def remove(path, attempts=ATTEMPTS, told=True):
     """Remove ``path`` (already gone: done). Windows refuses a delete while a handle that does not share delete holds
-    the file: retried as ``replace`` is, then ``Refused`` (told unless ``told=False``)."""
+    the file: retried as ``replace`` is, then ``Refused`` (told unless ``told=False``). ``path`` as ``replace``'s
+    ``target``."""
+    _owned.require_writable(path)
     if not _WINDOWS:
         try:
             os.unlink(path)
@@ -93,9 +114,10 @@ def tell(path):
 
 
 def discard(temporary):
-    """Remove a save's temporary file after its replace failed; quietly, when it is gone or cannot go now."""
+    """Remove a save's temporary file after its replace failed; quietly, when it is gone or cannot go now (or is not
+    one C says Angelo may write)."""
     try:
-        os.remove(temporary)
+        os.remove(_owned.require_writable(temporary))
     except OSError:
         pass
 

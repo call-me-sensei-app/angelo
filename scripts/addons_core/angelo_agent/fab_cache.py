@@ -21,7 +21,7 @@ import stat
 import tempfile
 import threading
 
-from . import fab_formats, library_fetch, shared_replace, team_library_files
+from . import fab_formats, library_fetch, owned_paths, shared_replace, team_library_files
 from .fab_catalog import FabError
 
 CHUNK = 1024 * 1024
@@ -89,7 +89,7 @@ def _directory(path):
         try:
             info = part.lstat()
         except FileNotFoundError:
-            part.mkdir(mode=0o700)
+            owned_paths.require_writable(part).mkdir(mode=0o700)
             info = part.lstat()
         if not stat.S_ISDIR(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
             raise FabError('CACHE_UNAVAILABLE')
@@ -148,7 +148,7 @@ def prepare(root, account_scope, item, variant, stream, check, progress=None):
             converted, size, sealed, result = fab_convert.cached(folder, path, digest, fmt, facts, item, check, progress)
             facts = dict(facts, model=converted, conversion=result)
             proof = PayloadProof(converted, size, sealed, 'asset.blend')
-        os.utime(folder, None)
+        os.utime(owned_paths.require_writable(folder), None)
         library_fetch.trim(folder.parent, CACHE_BYTES)
         return facts, lease, hit, proof
     except BaseException:

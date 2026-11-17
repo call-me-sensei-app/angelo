@@ -30,7 +30,8 @@ import json
 import os
 import time
 
-from . import managed_policy, shared_replace
+from . import grant_authority, managed_policy, owned_paths, shared_replace
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 FILE = "always-allow-scripts.json"
 _enabled = False   # The person's choice, as saved.
@@ -51,7 +52,9 @@ def attach(directory):
         saved = None
     revoked = os.path.lexists(_path + REVOKED)   # An "off" whose save was refused: off, and saved again (sync).
     _owed = time.monotonic() - shared_replace.RETRY_SECONDS if revoked else None
-    _remember(not revoked and isinstance(saved, dict) and saved.get("version") == 1 and saved.get("enabled") is True)
+    on = not revoked and isinstance(saved, dict) and saved.get("version") == 1 and saved.get("enabled") is True
+    grant_authority.mirror(grant_authority.ALWAYS_ALLOW, [("on", on)])   # The saved choice, held in C.
+    _remember(on)
 
 
 def detach():
@@ -70,29 +73,51 @@ def set_enabled(enabled):
     """The person's change (the script card's button, the Preferences toggle): saved first, then in effect.
 
     Raises ``OSError`` when it can't be saved; turning it off still takes
-    effect for this session then, and turning it on doesn't.
+    effect for this session then, and turning it on doesn't. Raises
+    ``PermissionError`` when C refuses it (on outside the person's own click,
+    off from an agent script), before anything is saved or changed.
     """
     global _owed
     enabled = bool(enabled)
     if enabled == _enabled:
         return False
+    if enabled:   # Held in C first: refused outside the person's own click (grant_authority).
+        grant_authority.record(grant_authority.ALWAYS_ALLOW, "on", True)
+    else:   # In C first too: C refuses an agent script's withdrawal (G2) before anything is saved or changed here.
+        grant_authority.forget(grant_authority.ALWAYS_ALLOW, "on")
     try:
         if _path is not None:
             _write(enabled)
     except OSError:
         if not enabled:
-            _remember(False)
             _owed = time.monotonic()
             _mark_revoked()
+        _remember(False if not enabled else _enabled)   # On refused to save: not on, here or in C.
+        if enabled:
+            grant_authority.forget(grant_authority.ALWAYS_ALLOW, "on")
+        else:
+            _tell_workers()   # Off holds for this session: the worker chats stop too.
         raise
     _owed = None
     _remember(enabled)
+    _tell_workers()
     return True
+
+
+def _tell_workers():
+    """The lead's worker chats hosted in their workers carry this consent in their lease: every change reaches them
+    (worker_consent_lead.changed), whichever path made it (Preferences, a card's button), as Trust scripts does."""
+    from . import worker_consent_lead
+    worker_consent_lead.changed()
+
+
+set_enabled = _grant_guard.entry(set_enabled, widens="enabled")
 
 
 def _write(enabled):
     temporary = _path + ".tmp"
     try:
+        owned_paths.require_writable(_path)
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump({"version": 1, "enabled": enabled}, handle)
@@ -118,6 +143,7 @@ def _write(enabled):
 
 def _mark_revoked():
     try:
+        owned_paths.require_writable(_path)
         os.close(os.open(_path + REVOKED, os.O_CREAT | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600))
     except OSError as error:
         print("Angelo: Always allow scripts is off for this session only (its save was refused):", error)
@@ -126,6 +152,8 @@ def _mark_revoked():
 def _remember(enabled):
     global _enabled, _token
     _enabled = bool(enabled)
+    if not _enabled:
+        grant_authority.forget(grant_authority.ALWAYS_ALLOW, "on")   # Narrowing: Angelo's own (C refuses a script, G2).
     _token = object() if _enabled and managed_policy.current().allow_auto_approval else None
 
 
@@ -158,4 +186,6 @@ def token():
     current = _token
     if current is not None and not managed_policy.current().allow_auto_approval:
         _token = current = None
+    if current is not None and not grant_authority.holds(grant_authority.ALWAYS_ALLOW, "on"):
+        return None   # The choice as held in C: Python's own copy alone never runs a script unasked.
     return current

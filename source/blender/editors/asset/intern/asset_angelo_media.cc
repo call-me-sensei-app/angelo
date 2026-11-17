@@ -32,10 +32,10 @@
 #include "BKE_report.hh"
 #include "BKE_wm_runtime.hh"
 
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_math_vector_types.hh"
-#include "BLI_string.h"
-#include "BLI_uuid.h"
+#include "BLI_string.hh"
+#include "BLI_uuid.hh"
 
 #include "BLT_translation.hh"
 
@@ -168,7 +168,7 @@ void drop_props_set(PointerRNA &ptr, const DragItems &items, const char *target)
   }
   const AssetWeakReference first = items.assets.first()->make_weak_reference();
   RNA_string_set(&ptr, "library", first.asset_library_identifier ? first.asset_library_identifier : "");
-  RNA_string_set(&ptr, "items", identifiers.c_str());
+  RNA_string_set(&ptr, "item_lines", identifiers.c_str());
   RNA_string_set(&ptr, "target", target);
   /* A drop box's properties outlive its drop: what the last drop was over must never reach the next one. */
   for (const char *name : {"object", "collection", "into"}) {
@@ -217,7 +217,7 @@ static wmOperatorStatus media_drop_call(bContext *C, wmOperator *op, const wmEve
     return OPERATOR_CANCELLED;
   }
   PointerRNA ptr = WM_operator_properties_create_ptr(ot);
-  for (const char *name : {"target", "library", "items", "object", "collection", "into"}) {
+  for (const char *name : {"target", "library", "item_lines", "object", "collection", "into"}) {
     const std::string value = RNA_string_get(op->ptr, name);
     RNA_string_set(&ptr, name, value.c_str());
   }
@@ -252,7 +252,7 @@ static void ASSET_OT_angelo_media_drop(wmOperatorType *ot)
    * (the chat, Media Studio's references) pushes none. */
   ot->flag = OPTYPE_INTERNAL;
 
-  for (const char *name : {"target", "library", "items", "object", "collection", "into"}) {
+  for (const char *name : {"target", "library", "item_lines", "object", "collection", "into"}) {
     PropertyRNA *prop = RNA_def_string(ot->srna, name, nullptr, 0, name, "");
     RNA_def_property_flag(prop, PropertyFlag(PROP_HIDDEN | PROP_SKIP_SAVE));
   }

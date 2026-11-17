@@ -15,13 +15,13 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_fileops.h"
-#include "BLI_listbase.h"
+#include "BLI_fileops.hh"
+#include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_string_cursor_utf8.h"
-#include "BLI_string_utf8.h"
-#include "BLI_utildefines.h"
+#include "BLI_string.hh"
+#include "BLI_string_cursor_utf8.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_utildefines.hh"
 
 #include "BLT_translation.hh"
 
@@ -52,6 +52,19 @@ static void txt_pop_last(Text *text);
 static void txt_delete_line(Text *text, TextLine *line);
 static void txt_delete_sel(Text *text);
 static void txt_make_dirty(Text *text);
+
+/** Content read from a file (a .blend, a .py) is the person's only once they trust it (Angelo,
+ * #TXT_ANGELO_UNTRUSTED): marked by whether its digest is one they trusted. */
+static void text_mark_read(Text *text)
+{
+  const BLI_FileGate *gate = BLI_fileops_gate_get();
+  if (gate && gate->autorun_trusted && !gate->autorun_trusted(text)) {
+    text->flags |= TXT_ANGELO_UNTRUSTED;
+  }
+  else {
+    text->flags &= ~TXT_ANGELO_UNTRUSTED;
+  }
+}
 
 static TextLine *txt_line_malloc() ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
 
@@ -88,9 +101,9 @@ static void text_init_data(ID *id)
 
   BLI_addhead(&text->lines, tmp);
 
-  text->curl = static_cast<TextLine *>(text->lines.first);
+  text->curl = text->lines.first();
   text->curc = 0;
-  text->sell = static_cast<TextLine *>(text->lines.first);
+  text->sell = text->lines.first();
   text->selc = 0;
 }
 
@@ -135,7 +148,7 @@ static void text_copy_data(Main * /*bmain*/,
     BLI_addtail(&text_dst->lines, line_dst);
   }
 
-  text_dst->curl = text_dst->sell = static_cast<TextLine *>(text_dst->lines.first);
+  text_dst->curl = text_dst->sell = text_dst->lines.first();
   text_dst->curc = text_dst->selc = 0;
 }
 
@@ -174,8 +187,15 @@ static void text_blend_write(BlendWriter *writer, ID *id, const void *id_address
   /* Clean up, important in undo case to reduce false detection of changed data-blocks. */
   text->compiled = nullptr;
 
-  /* write LibData */
-  writer->write_id_struct(id_address, text);
+  /* write LibData. A text an agent script made (or changed) to run when the file opens is written without it while
+   * the script is confined (doc/angelo/script_confinement.rst): only the copy in the file changes. */
+  const BLI_FileGate *gate = BLI_fileops_gate_get();
+  Text written = *text;
+  if ((text->flags & TXT_ISSCRIPT) && gate && gate->load_time_kept && !gate->load_time_kept(text)) {
+    written.flags &= ~TXT_ISSCRIPT;
+  }
+  written.flags &= ~TXT_ANGELO_UNTRUSTED; /* Run-time only: judged again by its digest when read. */
+  writer->write_id_struct(id_address, &written);
   BKE_id_blend_write(writer, &text->id);
 
   if (text->filepath) {
@@ -225,6 +245,7 @@ static void text_blend_read_data(BlendDataReader *reader, ID *id)
   }
 
   text->flags = (text->flags) & ~TXT_ISEXT;
+  text_mark_read(text);
 }
 
 IDTypeInfo IDType_ID_TXT = {
@@ -247,6 +268,7 @@ IDTypeInfo IDType_ID_TXT = {
     .foreach_cache = nullptr,
     .foreach_path = text_foreach_path,
     .foreach_working_space_color = nullptr,
+    .foreach_asset_weak_reference = nullptr,
     .owner_pointer_get = nullptr,
 
     .blend_write = text_blend_write,
@@ -266,8 +288,7 @@ IDTypeInfo IDType_ID_TXT = {
 
 void BKE_text_free_lines(Text *text)
 {
-  for (TextLine *tmp = static_cast<TextLine *>(text->lines.first), *tmp_next; tmp; tmp = tmp_next)
-  {
+  for (TextLine *tmp = text->lines.first(), *tmp_next; tmp; tmp = tmp_next) {
     tmp_next = tmp->next;
     MEM_delete(tmp->line);
     if (tmp->format) {
@@ -412,7 +433,7 @@ static void text_from_buf(Text *text, const uchar *buffer, const int len)
     // lines_count += 1; /* UNUSED. */
   }
 
-  text->curl = text->sell = static_cast<TextLine *>(text->lines.first);
+  text->curl = text->sell = text->lines.first();
   text->curc = text->selc = 0;
 }
 
@@ -448,6 +469,9 @@ bool BKE_text_reload(Text *text)
   }
 
   text_from_buf(text, reinterpret_cast<uchar *>(buffer), buffer_len);
+  if (!(text->flags & TXT_ANGELO_UNTRUSTED)) {
+    text_mark_read(text); /* The file's content now (sticky once marked: only the person's trust clears it). */
+  }
 
   MEM_delete(buffer);
   return true;
@@ -501,6 +525,7 @@ Text *BKE_text_load_ex(Main *bmain,
   }
 
   text_from_buf(ta, reinterpret_cast<uchar *>(buffer), buffer_len);
+  text_mark_read(ta);
 
   MEM_delete(buffer);
 
@@ -639,21 +664,21 @@ void txt_clean_text(Text *text)
 {
   TextLine **top, **bot;
 
-  if (!text->lines.first) {
-    if (text->lines.last) {
-      text->lines.first = text->lines.last;
+  if (!text->lines.first()) {
+    if (text->lines.last()) {
+      text->lines.first_ = text->lines.last();
     }
     else {
-      text->lines.first = text->lines.last = txt_new_line("");
+      text->lines.first_ = text->lines.last_ = txt_new_line("");
     }
   }
 
-  if (!text->lines.last) {
-    text->lines.last = text->lines.first;
+  if (!text->lines.last()) {
+    text->lines.last_ = text->lines.first();
   }
 
-  top = reinterpret_cast<TextLine **>(&text->lines.first);
-  bot = reinterpret_cast<TextLine **>(&text->lines.last);
+  top = reinterpret_cast<TextLine **>(&text->lines.first_);
+  bot = reinterpret_cast<TextLine **>(&text->lines.last_);
 
   while ((*top)->prev) {
     *top = (*top)->prev;
@@ -667,7 +692,7 @@ void txt_clean_text(Text *text)
       text->curl = text->sell;
     }
     else {
-      text->curl = static_cast<TextLine *>(text->lines.first);
+      text->curl = text->lines.first();
     }
     text->curc = 0;
   }
@@ -718,9 +743,19 @@ int txt_get_span(const TextLine *from, const TextLine *to)
   return ret;
 }
 
+void BKE_text_angelo_edited(Text *text)
+{
+  /* Changed by an agent script: no longer the person's (Angelo). */
+  const BLI_FileGate *gate = BLI_fileops_gate_get();
+  if (gate && gate->confined && gate->confined()) {
+    text->flags |= TXT_ANGELO_UNTRUSTED;
+  }
+}
+
 static void txt_make_dirty(Text *text)
 {
   text->flags |= TXT_ISDIRTY;
+  BKE_text_angelo_edited(text); /* Any edit: Python's `write`, an operator, a reload. */
 #ifdef WITH_PYTHON
   if (text->compiled) {
     BPY_text_free_code(text);
@@ -1065,7 +1100,7 @@ void txt_move_bof(Text *text, const bool sel)
     return;
   }
 
-  *linep = static_cast<TextLine *>(text->lines.first);
+  *linep = text->lines.first();
   *charp = 0;
 
   if (!sel) {
@@ -1088,7 +1123,7 @@ void txt_move_eof(Text *text, const bool sel)
     return;
   }
 
-  *linep = static_cast<TextLine *>(text->lines.last);
+  *linep = text->lines.last();
   *charp = (*linep)->len;
 
   if (!sel) {
@@ -1117,7 +1152,7 @@ void txt_move_to(Text *text, uint line, uint ch, const bool sel)
     return;
   }
 
-  *linep = static_cast<TextLine *>(text->lines.first);
+  *linep = text->lines.first();
   for (i = 0; i < line; i++) {
     if ((*linep)->next) {
       *linep = (*linep)->next;
@@ -1258,10 +1293,10 @@ static void txt_delete_sel(Text *text)
 
 void txt_sel_all(Text *text)
 {
-  text->curl = static_cast<TextLine *>(text->lines.first);
+  text->curl = text->lines.first();
   text->curc = 0;
 
-  text->sell = static_cast<TextLine *>(text->lines.last);
+  text->sell = text->lines.last();
   text->selc = text->sell->len;
 }
 
@@ -1303,7 +1338,7 @@ void txt_sel_set(Text *text, int startl, int startc, int endl, int endc)
 
   froml = static_cast<TextLine *>(BLI_findlink(&text->lines, startl));
   if (froml == nullptr) {
-    froml = static_cast<TextLine *>(text->lines.last);
+    froml = text->lines.last();
   }
   if (startl == endl) {
     tol = froml;
@@ -1311,7 +1346,7 @@ void txt_sel_set(Text *text, int startl, int startc, int endl, int endc)
   else {
     tol = static_cast<TextLine *>(BLI_findlink(&text->lines, endl));
     if (tol == nullptr) {
-      tol = static_cast<TextLine *>(text->lines.last);
+      tol = text->lines.last();
     }
   }
 
@@ -1371,7 +1406,7 @@ void txt_from_buf_for_undo(Text *text, const char *buf, size_t buf_len)
   /* First re-use existing lines.
    * Good for undo since it means in practice many operations re-use all
    * except for the modified line. */
-  TextLine *l_src = static_cast<TextLine *>(text->lines.first);
+  TextLine *l_src = text->lines.first();
   text->lines.clear_no_delete();
   while (buf_step != buf_end && l_src) {
     /* New lines are ensured by #txt_to_buf_for_undo. */
@@ -1419,7 +1454,7 @@ void txt_from_buf_for_undo(Text *text, const char *buf, size_t buf_len)
     buf_step = buf_step_next + 1;
   }
 
-  text->curl = text->sell = static_cast<TextLine *>(text->lines.first);
+  text->curl = text->sell = text->lines.first();
   text->curc = text->selc = 0;
 
   txt_make_dirty(text);
@@ -1619,7 +1654,7 @@ bool txt_find_string(Text *text, const char *findstr, int wrap, int match_case)
     tl = tl->next;
     if (!tl) {
       if (wrap) {
-        tl = static_cast<TextLine *>(text->lines.first);
+        tl = text->lines.first();
       }
       else {
         break;
@@ -1638,7 +1673,7 @@ bool txt_find_string(Text *text, const char *findstr, int wrap, int match_case)
   }
 
   if (s) {
-    int newl = txt_get_span(static_cast<TextLine *>(text->lines.first), tl);
+    int newl = txt_get_span(text->lines.first(), tl);
     int newc = int(s - tl->line);
     txt_move_to(text, newl, newc, false);
     txt_move_to(text, newl, newc + strlen(findstr), true);
@@ -2385,7 +2420,7 @@ bool text_check_whitespace(const char ch)
 
 int text_find_identifier_start(const char *str, int i)
 {
-  if (UNLIKELY(i <= 0)) {
+  if (i <= 0) [[unlikely]] {
     return 0;
   }
 

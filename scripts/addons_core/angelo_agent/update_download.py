@@ -27,7 +27,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import app_http, shared_replace
+from . import app_http, owned_paths, shared_replace
 from .app_http import NetworkError
 
 CHUNK = 256 * 1024
@@ -98,11 +98,13 @@ def _read_meta(part, expected):
 
 
 def _write_meta(part, expected, validator):
+    owned_paths.require_writable(part)
     _meta_path(part).write_text(json.dumps({"url": expected.url, "sha256": expected.sha256, "size": expected.size,
                                             "validator": validator}), encoding="utf-8")
 
 
 def _discard(part):
+    owned_paths.require_writable(part)
     for path in (part, _meta_path(part)):
         try:
             path.unlink()
@@ -160,7 +162,7 @@ def fetch(expected, target, *, stream=app_http.stream, progress=None, cancel=Non
     target = Path(target)
     if target.exists() and verified(target, expected):
         return target
-    target.parent.mkdir(parents=True, exist_ok=True)
+    owned_paths.require_writable(target).parent.mkdir(parents=True, exist_ok=True)
     part = target.with_name(target.name + ".part")
     have = part.stat().st_size if part.exists() else 0
     validator = _read_meta(part, expected) if have else ""
@@ -207,6 +209,7 @@ def fetch(expected, target, *, stream=app_http.stream, progress=None, cancel=Non
 
 
 def _copy(body, part, mode, digest, have, expected, progress, cancel, limit, clock, sleep):
+    owned_paths.require_writable(part)
     throttle = Throttle(limit, clock, sleep)
     last_report = 0.0
     try:

@@ -15,7 +15,7 @@ import stat
 import time
 from pathlib import Path
 
-from . import change_clock, shared_replace
+from . import change_clock, owned_paths, shared_replace
 
 SUFFIX = ".blend"
 OUTPUT_TAG = ".angelo-"
@@ -121,16 +121,23 @@ def claim_output(source, now=None):
     if not folder_writable(source):
         raise FileProblem("Angelo cannot write a new file in this folder, so edits cannot be saved",
                           code="output_unwritable")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     for candidate in output_candidates(source, now):
-        try:
-            descriptor = os.open(candidate, flags, 0o666)
+        if os.path.lexists(candidate):
+            continue
+        try:   # Made exclusively by C beside the file the person named, and recorded as Angelo's.
+            owned_paths.create_beside(source, candidate.name)
         except FileExistsError:
             continue
         except OSError as error:
+            if os.path.lexists(candidate):
+                continue   # Taken meanwhile: the next name.
             raise FileProblem("Angelo cannot create a new file here (%s)" % error.strerror,
                               code="output_unwritable") from None
-        os.close(descriptor)
+        # Named for the session's saves as it is designated their target (the launcher's claim, the child's reload
+        # and save, never inside a script): a plain save of the open copy (an approved script's save_mainfile, an
+        # add-on) renames a new file onto it, which C's record of what Angelo made no longer names, and the session's
+        # next save must still reach it (the review of the Python-only fallback, MUST-1).
+        owned_paths.vouch(candidate)
         return candidate
     raise FileProblem("Too many saved copies of this file already exist here", code="output_unwritable")
 
@@ -161,10 +168,11 @@ def place(staged, target):
     number a file by its directory entry. If permission denies that read, only an unchanged file number verifies
     the fallback: a matching size and time never prove a different entry is the file written.
     """
-    target = Path(target)
-    temporary = target.with_name(".%s.%s.tmp" % (target.name, secrets.token_hex(6)))
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(temporary, flags, 0o666)
+    target = owned_paths.require_writable(Path(target))   # C first: no temporary is made beside a target it refuses.
+    # A new file beside the target, made exclusively by C and recorded as Angelo's (the person's document folder is
+    # not otherwise writable), then opened without following a link.
+    temporary = Path(owned_paths.create_beside(target, ".%s.%s.tmp" % (target.name, secrets.token_hex(6))))
+    descriptor = os.open(temporary, os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0))
     mine = os.fstat(descriptor)   # The file this call created: only it is ever removed again.
     held = None
     try:

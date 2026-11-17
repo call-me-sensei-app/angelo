@@ -88,9 +88,10 @@ class BONE_PT_transform(BoneButtonsPanel, Panel):
                 row.prop(pchan, "rotation_euler", text="Rotation")
                 row.use_property_decorate = False
                 row.prop(pchan, "lock_rotation", text="", emboss=False, icon='DECORATE_UNLOCKED')
+
             row = layout.row(align=True)
             row.prop(pchan, "rotation_mode", text="Mode")
-            row.label(text="", icon='BLANK1')
+            row.menu("ANIM_MT_rotation_mode_convert", text="", icon='DOWNARROW_HLT')
 
             col = layout.column()
             row = col.row(align=True)
@@ -176,7 +177,7 @@ class BONE_PT_curved(BoneButtonsPanel, Panel):
 
         row = col.row(align=True)
         row.use_property_split = False
-        split = row.split(factor=0.4)
+        split = row.split(factor=row.property_split_factor)
         split.alignment = 'RIGHT'
         split.label(text="Scale")
         split2 = split.split(factor=0.7)
@@ -196,7 +197,7 @@ class BONE_PT_curved(BoneButtonsPanel, Panel):
 
         row = col.row(align=True)
         row.use_property_split = False
-        split = row.split(factor=0.4)
+        split = row.split(factor=row.property_split_factor)
         split.alignment = 'RIGHT'
         split.label(text="Scale")
         split2 = split.split(factor=0.7)
@@ -369,7 +370,7 @@ class BONE_PT_display(BoneButtonsPanel, Panel):
         if not bone_color.is_custom:
             return
 
-        split = layout.split(factor=0.401)
+        split = layout.split(factor=layout.property_split_factor)
 
         col = split.column()
         row = col.row()

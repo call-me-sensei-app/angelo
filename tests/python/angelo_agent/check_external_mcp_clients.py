@@ -152,7 +152,8 @@ def main():
         if name in os.environ:
             env[name] = os.environ[name]
     binary = Path(args.binary).resolve(strict=True)
-    resources = binary.parents[1] / "Resources" / "5.2"
+    import app_layout
+    resources = app_layout.resources(binary)
     sys.path.insert(0, str(resources / "scripts/addons_core"))
     from angelo_agent.external_clients import AppRegistry, DEFAULT_LEVELS
     for app in ("claude_code", "codex"):
@@ -222,7 +223,8 @@ def _start():
     addon = bpy.context.preferences.addons.get("angelo_agent")
     if addon is None:
         return 0.3
-    addon.preferences.allow_local_cli = True
+    from angelo_agent import grant_guard  # The test acts as the person (grant_guard.setting).
+    grant_guard.harness(setattr, addon.preferences, "allow_local_cli", True)
     from angelo_agent import external_host, ui
     host = external_host._host
     if host is None or not (Path(os.environ["ANGELO_STATE_DIR"]) / "cli/endpoint.json").is_file():
@@ -248,9 +250,10 @@ def _person():
                 if now - first >= 2.0:
                     seen["approvals"].append({"tool": call.name, "client": controller.external_client})
                     if call.name == "angelo_execute_python":
-                        controller.review_script(call)
+                        from angelo_agent import grant_guard   # The person's Review: the harness stands in.
+                        grant_guard.harness(controller.review_script, call)
                     with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-                        bpy.ops.angelo.approve(call_id=call.id, session_id=controller.state["id"])
+                        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve(call_id=call.id, session_id=controller.state["id"])
     if (ROOT / "stop").is_file():
         objects = {obj.name: list(obj.location) for obj in bpy.data.objects}
         (ROOT / "scene.json").write_text(json.dumps({"objects": objects, "approvals": seen["approvals"],

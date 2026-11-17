@@ -18,6 +18,7 @@ Render menu, the chat bar's + menu and F3. Three phases, drawn with ``card_kit``
 import bpy
 from bpy.types import Operator
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import ai_render, card_kit as kit, ui_kit_field as field
 from .ui_text import iface_, n_
 
@@ -282,3 +283,6 @@ def unregister():
         bpy.app.timers.unregister(_watch_run)
     _watch.update(run=None, card=None)
     bpy.utils.unregister_class(ANGELO_OT_ai_render)
+
+
+grant_guard.guard(ANGELO_OT_ai_render)   # Only the person's click grants (grant_guard).

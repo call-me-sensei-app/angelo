@@ -43,6 +43,8 @@ PIN_FILE = ROOT / "scripts/addons_core/angelo_agent/agent_runtime.json"
 PIN = json.loads(PIN_FILE.read_text(encoding="utf-8"))
 sys.path.insert(0, str(TOOLS))
 import release_checks  # noqa: E402
+from runtime_capabilities import pinned_capabilities as capability_pin  # noqa: E402
+from test_native_runtime_capabilities import fake_features_list  # noqa: E402
 RUNTIME = {"angelo_cli.py", "angelo_headless.py", "angelo_mcp.py", "migrate_user_folder.py", "recover_connections.py"}
 # Every file name in scripts/angelo: shipped code naming one, however it builds the path, needs it in RUNTIME.
 TOOL_NAMES = {path.name for path in TOOLS.iterdir() if path.is_file()}
@@ -237,8 +239,8 @@ class AgentRuntimeCheckTests(unittest.TestCase):
         self.root = Path(folder.name)
 
     def runner(self, version=PIN["version"], features=tuple(PIN["features"]), notifications=tuple(PIN["notifications"]),
-               request_fields=None):
-        calls = []
+               request_fields=None, wires=tuple(PIN.get("wire_apis", ())), read=None):
+        calls = []   # read: {capability: values} the build reads (test_native_runtime_capabilities), the pin's by default
         if request_fields is None:
             request_fields = {name: fields for name, fields in PIN.get("request_fields", {}).items()
                               if not name.startswith("_")}
@@ -247,6 +249,13 @@ class AgentRuntimeCheckTests(unittest.TestCase):
             calls.append((argv, env))
             if argv[1] == "--version":
                 return SimpleNamespace(returncode=0, stdout="codex-cli %s\n" % version, stderr="")
+            if argv[-2:] == ["debug", "models"]:   # The wire check: a build without the wire refuses the setting.
+                wire = argv[-3].split("=", 1)[1].strip('"')
+                if wire not in wires:
+                    return SimpleNamespace(returncode=1, stdout="", stderr="unknown variant `%s`, expected `responses`" % wire)
+                return SimpleNamespace(returncode=0, stdout=json.dumps({"models": [{"slug": "a-model"}]}), stderr="")
+            if argv[-2:] == ["features", "list"]:   # The provider-capability check (runtime_capabilities).
+                return fake_features_list(argv, capability_pin(PIN) if read is None else read)
             out = Path(argv[argv.index("--out") + 1])
             for name in release_checks.AGENT_RUNTIME_PARAMS:
                 (out / "v2").mkdir(parents=True, exist_ok=True)
@@ -265,9 +274,14 @@ class AgentRuntimeCheckTests(unittest.TestCase):
                 folder = runtime_folder(self.root, platform)
                 run = self.runner()
                 self.assertEqual(release_checks.agent_runtime_problems(folder, platform, run), [])
-                (version, env), (schema, _env) = run.calls
+                (version, env), (schema, _env), *probes = run.calls
+                wires = [call for call in probes if call[0][-2:] == ["debug", "models"]]
+                self.assertEqual(len(probes) - len(wires), sum(len(v) + 1 for v in capability_pin(PIN).values()))
                 self.assertEqual(version[1:], ["--version"])
                 self.assertEqual(schema[1:4], ["app-server", "generate-json-schema", "--experimental"])
+                self.assertEqual([argv for argv, _ in wires], [release_checks.wire_check_argv(Path(version[0]), wire)
+                                                              for wire in PIN.get("wire_apis", ())])
+                self.assertTrue(all(probe_env is env for _, probe_env in probes), "the same temporary CODEX_HOME")
                 self.assertNotEqual(Path(env["CODEX_HOME"]), Path.home() / ".codex", "never the person's profile")
 
     def test_missing_wrong_or_joined_files_are_refused(self):
@@ -326,6 +340,23 @@ class AgentRuntimeCheckTests(unittest.TestCase):
         stock = release_checks.agent_runtime_problems(folder, "macos", self.runner(features=()))
         self.assertEqual(len(stock), 3)
         self.assertIn("not the patched build", stock[0])
+
+    def test_a_pinned_wire_must_be_one_the_build_speaks(self):
+        """A connection on a wire only Angelo's runtime adds (Gemini) is offered only when the pin lists the wire, so
+        a build without it must be refused before it ships (agent_runtime.supports_wire)."""
+        self.assertEqual(PIN["wire_apis"], ["gemini"])
+        self.assertNotIn("responses", PIN["wire_apis"], "Codex's own wire needs no listing")
+        for wire in PIN["wire_apis"]:
+            self.assertRegex(wire, r"^[a-z][a-z0-9_]*$", "a bare TOML-safe word: Windows passes it unquoted")
+        folder = runtime_folder(self.root, "macos")
+        problems = release_checks.agent_runtime_problems(folder, "macos", self.runner(wires=()))
+        self.assertEqual(len(problems), len(PIN["wire_apis"]), problems)
+        self.assertIn("does not speak the pinned model-provider wire gemini", problems[0])
+        self.assertIn("unknown variant", problems[0], "the build's own refusal is quoted")
+        argv = release_checks.wire_check_argv(Path("/r/codex"), "gemini")
+        self.assertEqual(argv[-2:], ["debug", "models"], "offline: it lists models and sends no request")
+        self.assertIn('model_providers.%s.wire_api="gemini"' % release_checks.WIRE_CHECK_PROVIDER, argv)
+        self.assertFalse(any("key" in part.lower() or "http" in part for part in argv), "no key, no endpoint")
 
     def test_a_pinned_notification_must_be_in_the_builds_schema(self):
         """``notifications`` (image_proof: turn/modelInputImages) is checked as ``features`` is: offline, by schema."""

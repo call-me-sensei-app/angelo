@@ -1,0 +1,4 @@
+{
+ "about": "GPU SDK versions a release may use although Blender pins another (scripts/angelo/gpu_sdk_pins.py; doc/angelo/native_editor_build.rst, GPU toolkits). Each entry: sdk (optix, cuda, hip, ocloc or dlss), pin (Blender's pinned version, or none), used (the version used, or none), reason, approved_by, approved_on. An entry covers exactly that pin and that version.",
+ "exceptions": []
+}

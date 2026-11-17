@@ -1106,7 +1106,13 @@ against Cycles' Diffuse-colour, Roughness and Emit bakes of the untouched
 material, a transparent-film render and closed forms, on development and
 held-out materials, files read back by Angelo); ``test_blender_bake_maps_job``
 (GUI: the + menu, the card, the job, Use, a stopped bake, the main thread's
-longest gap and the device).
+longest gap and the device); ``test_blender_bake_maps_agent_start`` (GUI: the
+agent's own start through ``angelo_job_start``, done with its files and baked
+material); ``test_native_job_request_canonical`` (every job kind's canonical
+request is one the agent's schema takes and validates to itself: the executor
+and the job host each validate what the one before returned, so a
+``BAKE_MAPS`` request keeps one target as ``target`` and leaves ``margin`` to the
+runner).
 
 Baked materials at export
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1649,6 +1655,9 @@ starts (``job_render_scene.Plan``, ``job_render_outputs.plan``):
 * one file per linked item of every unmuted File Output node, in the scene's
   compositor and in the node groups it uses, per view when the item's format
   keeps views apart; a multi-layer node writes one file holding its items.
+  From Blender 5.3 the compositor is a stack of effects: every effect enabled
+  for render counts, not only the active one that ``compositing_node_group``
+  names (``compositor_stack.render_trees``).
 
 Every output that keeps views apart checks the view suffixes for unsafe path
 characters and duplicates, including individual File Output items and

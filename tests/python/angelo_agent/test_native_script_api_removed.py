@@ -1,23 +1,26 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Blender Python that Blender 5.2 removed is refused before a script runs (script_api_removed), without Blender.
+"""Blender Python that this release removed is refused before a script runs (script_api_removed), without Blender.
 
 Every recorded raise of a removed name (ten in 2,618 recorded one-shot scripts, both sides: the Nishita sky six
 times, EEVEE Next, dust_density, the Bump node's Invert input twice) is refused with its replacement, and none of the
 2,608 others is: scripts that probe for either spelling (a try, hasattr, ``in``, a conditional value, a loop over
-names) keep running. The lines below are the recorded shapes. test_blender_script_api_removed.py checks the table
-against Blender 5.2's own RNA.
+names) keep running. The lines below are the recorded shapes. The Blender 5.3 rows (attributes, operators and
+operator keywords) come from the 5.2.2 to 5.3 source diff, not from recorded raises; test_blender_script_api_removed.py
+checks the whole table against the release's own RNA and operators.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 from pathlib import Path
+import re
 import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 
 from angelo_agent import script_api_removed as removed  # noqa: E402
+from angelo_agent.blender_release import RELEASE  # noqa: E402
 from angelo_agent.tool_specs import validate_call  # noqa: E402
 
 # Recorded lines that raised, with the scene's own names left out.
@@ -68,10 +71,42 @@ class TableTests(unittest.TestCase):
                 ("scene.eevee.shadow_cube_size = '1024'", "leave it out"),
                 ("bpy.ops.export_scene.obj(filepath=path)", "bpy.ops.wm.obj_export"),
                 ("bpy.ops.import_mesh.stl(filepath=path)", "bpy.ops.wm.stl_import"),
-                ("bpy.ops.wm.collada_export(filepath=path)", "usd_export")):
+                ("bpy.ops.wm.collada_export(filepath=path)", "usd_export"),
+                ("brush.use_inverse_smooth_pressure = True", "use_smooth_pressure"),
+                ("space.use_sort_alpha = False", "sort_method = 'ALPHA'"),
+                ("prefs.system.geometry_nodes_stack_limit = 64", "nodes_stack_limit"),
+                ("bpy.ops.sequencer.select_inverse()", "select_all(action='INVERT')"),
+                ("bpy.ops.anim.update_animated_transform_constraints()", "leave it out"),
+                ("scene.sequencer_tool_settings.overlap_mode = 'EXPAND'", "'RIPPLE'")):
             with self.subTest(line=line):
                 found = removed.problems(line)
                 self.assertTrue(found and replacement in found[0], found)
+
+    def test_removed_operator_keywords(self):
+        for line, replacement in (
+                ("bpy.ops.object.text_add(radius=2.0, location=(0, 0, 0))", "use size"),
+                ("bpy.ops.sequencer.image_strip_add(directory=d, files=f, move_strips=False)",
+                 "move_strips_after_add"),
+                ("bpy.ops.sequencer.sound_strip_add(filepath=p, overlap_shuffle_override=True)", "overlap_mode="),
+                ("bpy.ops.export_scene.gltf(filepath=p, export_image_add_webp=True)",
+                 "export_image_add_compressed_images"),
+                ("bpy.ops.export_scene.gltf(filepath=p, at_collection_center=True)", "collection_center_mode")):
+            with self.subTest(line=line):
+                found = removed.problems(line)
+                self.assertTrue(found and replacement in found[0], found)
+                self.assertIn("=...)", found[0])
+
+    def test_current_operator_keywords_and_spread_options_run(self):
+        for line in ("bpy.ops.object.text_add(size=2.0)",
+                     "bpy.ops.mesh.primitive_uv_sphere_add(radius=2.0)",   # radius is gone from text_add only.
+                     "bpy.ops.sequencer.image_strip_add(directory=d, files=f, move_strips_after_add=False)",
+                     "bpy.ops.export_scene.gltf(**{'filepath': p, 'export_image_add_webp': True})",
+                     "options = dict(radius=2.0)\nbpy.ops.object.text_add(**options)",
+                     "try:\n    bpy.ops.object.text_add(radius=2.0)\n"
+                     "except TypeError:\n    bpy.ops.object.text_add(size=2.0)",
+                     "if 'radius' in props: bpy.ops.object.text_add(radius=2.0)"):
+            with self.subTest(line=line):
+                self.assertEqual(removed.problems(line), [])
 
     def test_a_function_and_a_loop_are_read_too_and_the_list_is_capped(self):
         code = "def make(sky):\n    sky.sky_type = 'NISHITA'\n" + "".join(
@@ -87,8 +122,10 @@ class TableTests(unittest.TestCase):
 class ValidationTests(unittest.TestCase):
     def test_validation_refuses_before_anything_runs(self):
         code = "import bpy\nw = bpy.context.scene.world\nsky = w.node_tree.nodes.new('ShaderNodeTexSky')\nsky.sky_type = 'NISHITA'\n"
-        with self.assertRaisesRegex(ValueError, r"so it was not run: line 4: sky_type = 'NISHITA' is not in Blender 5\.2: "
-                                                r"use 'SINGLE_SCATTERING' .*the new default is 'MULTIPLE_SCATTERING'"):
+        release = re.escape(RELEASE)
+        with self.assertRaisesRegex(ValueError, r"Blender %s removed, so it was not run: line 4: sky_type = 'NISHITA' "
+                                                r"is not in Blender %s: use 'SINGLE_SCATTERING' .*the new default is "
+                                                r"'MULTIPLE_SCATTERING'" % (release, release)):
             validate_call("angelo_execute_python", {"description": "Sky", "code": code})
         ran = validate_call("angelo_execute_python", {"description": "Sky", "code": code.replace("NISHITA",
                                                                                                 "MULTIPLE_SCATTERING")})

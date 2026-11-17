@@ -134,9 +134,11 @@ class SendableTests(unittest.TestCase):
             self.assertEqual(source_tree.unsendable(folder), [], "the same name in different folders is fine")
 
     def test_this_repository_is_sendable(self):
-        listed = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True)
-        if listed.returncode == 0:   # A source archive without Git has nothing to check; CI checks out the repository.
-            self.assertEqual(source_tree.unsendable(ROOT), [])
+        # This tree's own repository. Inside another one the test fails by name; a source archive without Git
+        # has nothing to check and the test is skipped under the counted reason, never passed without the check.
+        import own_checkout
+        own_checkout.needed(self, ROOT)
+        self.assertEqual(source_tree.unsendable(ROOT), [])
 
 
 @unittest.skipIf(os.name == "nt", environment_skip("the launcher (gcp_windows_*.sh) is bash, run from the macOS "

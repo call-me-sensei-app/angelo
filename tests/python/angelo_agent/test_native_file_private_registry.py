@@ -10,6 +10,7 @@ Synthetic folders only.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import os
@@ -64,7 +65,7 @@ class ConcurrentWriterTests(Fixture):
             value = real(folder, *rest)
             if threading.current_thread().name == "A" and not read.is_set():
                 read.set()
-                go.wait(5)
+                go.wait(CAP_S)
             return value
         with patch.object(private_roots, "retained_profiles", side_effect=pausing):
             a = threading.Thread(name="A", target=private_roots.remember_profiles,
@@ -72,12 +73,12 @@ class ConcurrentWriterTests(Fixture):
             b = threading.Thread(name="B", target=private_roots.remember_profiles,
                                  args=(self.accounts, [{"native_profile": str(second)}]))
             a.start()
-            self.assertTrue(read.wait(5))
+            self.assertTrue(read.wait(CAP_S))
             b.start()
             time.sleep(0.5)   # B waits for A's lock (or, unlocked, writes now).
             go.set()
-            a.join(10)
-            b.join(10)
+            a.join(CAP_S)
+            b.join(CAP_S)
         self.assertEqual(set(self.recorded()), {str(first), str(second)})
 
 

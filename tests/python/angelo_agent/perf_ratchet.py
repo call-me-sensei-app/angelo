@@ -27,6 +27,13 @@ with the median retired-instruction count of each operation (see
   or ``abab_regressed``. Spread is the relative range of the run's valid
   samples; an operation that reports only a median has no spread and stays
   ceiling-gated. These rules were set on 2026-10-21, before any run used them.
+* ``side_by_side``: a ``regressed`` instruction count judged by the same
+  interleaved ABAB against the stamped baseline, because it drifts with the
+  machine (maintainer, 2026-11-12: "Side-by-side from now on"). A native read,
+  or an operation whose ceiling the baseline itself no longer reproduces, passes
+  when the ABAB rule passes and B/A is within its tolerance; otherwise it stays
+  ``regressed``. ``--stamp`` then records its same-session number as its
+  ceiling (``perf_side_by_side``).
 
 Operations have a unit: instructions (default) or ``bytes``, an exact size
 such as the bytes a capture writes. A byte ceiling is recorded with zero
@@ -78,6 +85,8 @@ import struct
 import sys
 import uuid
 
+import perf_side_by_side
+
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 CEILINGS_PATH = HERE / "perf_ceilings.json"
@@ -93,7 +102,9 @@ MEASURED_HARNESS = ("perf_counters.py", "benchmark_fixtures.py", "benchmark_blen
                     "bench_native_reads.py", "bench_native_reads_paths.py", "heavy_scene_blend.py", "heavy_plan.py",
                     "heavy_scene.py", "castle_kit.py", "scenario_build_kit.py", "benchmark_blender_chat_waiting.py",
                     "snapshot_paired.py")
-GATE_ADVICE = {"regressed": "find the extra work, or raise with --update --allow-raise and say why in review",
+GATE_ADVICE = {"regressed": "find the extra work, or raise with --update --allow-raise and say why in review; a "
+                            "native read, or an operation the stamped build no longer reproduces, is decided side by "
+                            "side with test_blender_perf_ratchet --baseline-binary (perf_side_by_side)",
                "abab_regressed": "the interleaved ABAB against the last stamped build found more work; find it",
                "noisy": "its spread exceeds a third of its tolerance; decide it with an interleaved ABAB against "
                         "the last stamped build (test_blender_perf_ratchet --baseline-binary, or perf_abab.py)",
@@ -183,11 +194,13 @@ def load_ceilings(value):
     return value
 
 
-def compare(ceilings, platform, measured, details=None, abab=None):
+def compare(ceilings, platform, measured, details=None, abab=None, side_by_side=None):
     """Classify every operation; pure function used by the CLI and tests.
 
     ``details`` is ``load_details`` of the run; ``abab`` maps an operation to
-    its ``perf_abab`` verdict ("pass" or "regressed") for noisy operations.
+    its ``perf_abab`` verdict ("pass" or "regressed") for noisy operations;
+    ``side_by_side`` maps an operation to its ABAB values (``{"A": [..], "B":
+    [..]}``, the receipt's ``abab``) to judge a ceiling regression side by side.
     """
     details, abab = details or {}, abab or {}
     spreads, units, rejected = details.get("spread", {}), details.get("units", {}), details.get("rejected", {})
@@ -224,6 +237,8 @@ def compare(ceilings, platform, measured, details=None, abab=None):
                     row["ceiling_status"] = row["status"]
                     verdict = abab.get(name)
                     row["status"] = {"pass": "abab_pass", "regressed": "abab_regressed"}.get(verdict, "noisy")
+            if side_by_side and name in side_by_side:
+                perf_side_by_side.apply(row, side_by_side[name])
         rows.append(row)
     return rows
 
@@ -249,6 +264,9 @@ def update(ceilings, platform, rows, *, allow_raise=False, source=""):
     if source:
         entry["updated_from"] = source
     return result
+
+
+side_by_side_candidates = perf_side_by_side.candidates
 
 
 def range_only(name):
@@ -362,7 +380,8 @@ def stamp(ceilings, receipt, *, root=ROOT, today=None):
     platform, measured = load_results(receipt)
     if platform not in ceilings["platforms"]:
         raise RatchetError("No ceilings for platform %s; record them with --update first" % platform)
-    rows = compare(ceilings, platform, measured, load_details(receipt), receipt.get("abab_verdicts"))
+    rows = compare(ceilings, platform, measured, load_details(receipt), receipt.get("abab_verdicts"),
+                   side_by_side=receipt.get("abab"))
     problems = gate_problems(rows)
     if problems:
         raise RatchetError("The receipt does not pass against these ceilings: " + "; ".join(problems))
@@ -379,6 +398,12 @@ def stamp(ceilings, receipt, *, root=ROOT, today=None):
     if spreads:  # Each operation's own spread in this run, for the next noisy-or-not comparison.
         last["spreads"] = dict(sorted(spreads.items()))
         last["abab_decided"] = sorted(row["operation"] for row in rows if row["status"] == "abab_pass")
+    decided = {row["operation"]: row for row in rows if row["status"] == perf_side_by_side.PASSED}
+    operations = result["platforms"][platform]["operations"]
+    for name, row in decided.items():   # Its same-session number (perf_side_by_side); a B/A regression failed above.
+        operations[name] = dict(operations[name], ceiling=row["measured"])
+    if decided:
+        last["side_by_side"] = {name: row["side_by_side"] for name, row in sorted(decided.items())}
     if receipt.get("loads"):
         last["loads"] = receipt["loads"]
     if receipt.get("max_load") not in (None, QUIET_LOAD_DEFAULT):   # A recorded exception to the quiet-machine rule.

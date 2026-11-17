@@ -13,10 +13,13 @@ controller, the person's review (``review_script``), ``angelo.approve`` and the 
 document is a saved file. Cases that replace it: ``read_homefile``, ``open_mainfile`` of another file,
 ``open_mainfile`` without its UI, ``revert_mainfile``, a load under a computed operator name, a load followed by a
 raise, a load followed by a parent-inverse statement (the host's mid-script hook, ``script_prepare``), a load followed
-by the namespace's ``scene`` and by the ``kit`` (what the script can reach of the host), a load after
-clearing ``load_post`` (fails closed) and ``read_factory_settings``. Controls that do not: a plain script (succeeds),
-a raise with no load (the usual rollback), a load of a missing file the script catches (load_pre fired, nothing
-replaced), and a plain script after ``read_factory_settings``.
+by the namespace's ``scene`` and by the ``kit`` (what the script can reach of the host) and a load after
+clearing ``load_post`` (fails closed). Controls that do not: a plain script (succeeds), a raise with no load (the
+usual rollback), a load of a missing file the script catches (load_pre fired, nothing replaced).
+Refused as operators, never run: ``read_factory_settings`` and ``read_homefile`` naming an app template. Both reload
+every add-on inside the script's region, whose end then put the old classes and handlers back: each add-on's
+unregister failed at exit (the 2.0.0 Windows and Linux legs: three tracebacks from this case alone). A plain script
+after them shows the add-ons are still whole.
 ``ANGELO_QA_CASES`` (comma-separated) runs only the named cases: a crash repro on a build without the fix.
 
 Writes ``script-document-replaced.json`` in ``ANGELO_QA_DIR``; exits 1 on any failed check.
@@ -25,6 +28,7 @@ Writes ``script-document-replaced.json`` in ``ANGELO_QA_DIR``; exits 1 on any fa
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+from qa_person import as_person  # noqa: E402  The person's own action (C's harness scope).
 
 import json
 import os
@@ -50,13 +54,13 @@ from angelo_agent.headless_main import _prepare_preferences, _register  # noqa: 
 
 DOCUMENT, OTHER = OUT / "document.blend", OUT / "other.blend"
 LOAD = "bpy.ops.wm.read_homefile(use_empty=True)\n"
-# name -> (code, replaces the document). read_factory_settings resets the preferences too, so it runs last.
 FRESH_AFTER_LOAD = ("scene = bpy.context.scene\nparent = bpy.data.objects.new('P', None)\n"
                     "scene.collection.objects.link(parent)\nparent.constraints.new('COPY_LOCATION')\n"
                     "child = bpy.data.objects.new('C', None)\nscene.collection.objects.link(child)\n"
                     "child.parent = parent\nchild.matrix_parent_inverse = parent.matrix_world.inverted()\n")
-# name -> (code, replaces the document). read_factory_settings resets the preferences too, so a plain script after
-# it shows what it leaves behind.
+# name -> (code, replaces the document: True, False, or REFUSED as an operator). A plain script after the refused
+# add-on reloads shows they left the add-ons whole.
+REFUSED = "refused"
 CASES = {
     "plain": ("import bpy\nbpy.context.scene.collection.objects.link(bpy.data.objects.new('Kept', None))\n"
               "result = {'objects': len(bpy.data.objects)}\n", False),
@@ -77,7 +81,8 @@ CASES = {
                             True),
     "load_then_kit": ("import bpy\n" + LOAD + "kit.box('B', (0, 0, 0), (1, 1, 1))\n", True),
     "cleared_handlers_then_load": ("import bpy\nbpy.app.handlers.load_post.clear()\n" + LOAD, True),
-    "read_factory_settings": ("import bpy\nbpy.ops.wm.read_factory_settings(use_empty=True)\n", True),
+    "read_factory_settings": ("import bpy\nbpy.ops.wm.read_factory_settings(use_empty=True)\n", REFUSED),
+    "read_homefile_app_template": ("import bpy\nbpy.ops.wm.read_homefile(app_template='Sculpting')\n", REFUSED),
     "plain_after_factory_settings": ("import bpy\nbpy.context.scene.collection.objects.link("
                                      "bpy.data.objects.new('KeptAfterFactory', None))\n", False),
 }
@@ -87,7 +92,7 @@ report = {"cases": {}, "checks": checks}
 
 def apply_mutation(target, call):
     with bpy.context.temp_override(window=ui.main_window()):
-        bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
+        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
 
 
 def run_case(name, code):
@@ -108,7 +113,7 @@ def run_case(name, code):
             pump_controller_tools([controller], 0, BlenderExecutor(ui.main_window()), ui.document_key(), apply_mutation)
             call = controller.pending.get(key)
             if call is not None and call.approval and not approved and not call.executing:
-                controller.review_script(call)   # The person's Review of the exact code.
+                as_person(controller.review_script, call)   # The person's Review of the exact code.
                 approved = True
                 apply_mutation(controller, call)
             time.sleep(0.005)
@@ -132,10 +137,13 @@ def main():
         if name.startswith("cleared_handlers"):
             bpy.app.handlers.load_post[:] = handlers
         row = {k: result.get(k) for k in ("success", "error_code", "document_replaced", "main_data_restored",
-                                          "raised", "script_error", "scene_changed")}
+                                          "raised", "script_error", "scene_changed", "error")}
         report["cases"][name] = row
         checks[name + "_answered"] = bool(result)
-        if replaces:
+        if replaces == REFUSED:
+            checks[name + "_refused_as_an_operator"] = (not row["success"] and not row["document_replaced"]
+                                                        and "can't run this operator" in json.dumps(result))
+        elif replaces:
             checks[name + "_refused_as_document_replaced"] = (row["error_code"] == "DOCUMENT_REPLACED"
                                                               and row["document_replaced"] is True
                                                               and row["main_data_restored"] is False

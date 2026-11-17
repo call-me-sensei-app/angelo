@@ -6,12 +6,13 @@
  * \ingroup pythonintern
  */
 
-#include "BLI_timer.h"
+#include "BLI_timer.hh"
 
 #include <Python.h>
 
 #include <algorithm>
 
+#include "bpy_angelo_guard_confine.hh"
 #include "bpy_app_timers.hh"
 
 #include "../generic/py_capi_utils.hh"
@@ -96,7 +97,7 @@ static PyObject *bpy_app_timers_register(PyObject * /*self*/, PyObject *args, Py
   static const char *_keywords[] = {"function", "first_interval", "persistent", nullptr};
   static _PyArg_Parser _parser = {
       "O"  /* `function` */
-      "|$" /* Optional keyword only arguments. */
+      "|$" /* Optional, keyword only arguments. */
       "d"  /* `first_interval` */
       "p"  /* `persistent` */
       ":register",
@@ -114,7 +115,11 @@ static PyObject *bpy_app_timers_register(PyObject * /*self*/, PyObject *args, Py
     return nullptr;
   }
 
-  Py_INCREF(function);
+  /* A confined agent script's timer runs confined when it fires (doc/angelo/script_confinement.rst). */
+  function = BPY_angelo_guard_defer_if_confined(function);
+  if (function == nullptr) {
+    return nullptr;
+  }
   BLI_timer_register(
       intptr_t(function), py_timer_execute, function, py_timer_free, first_interval, persistent);
   Py_RETURN_NONE;

@@ -1,0 +1,17 @@
+{
+  "name": "angelo-live-r3f",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@react-three/drei": "10.7.9",
+    "@react-three/fiber": "9.8.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "three": "0.187.0",
+    "three-stdlib": "2.36.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.2.1",
+    "vite": "8.3.5"
+  }
+}

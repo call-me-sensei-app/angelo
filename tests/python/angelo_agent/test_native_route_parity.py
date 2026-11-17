@@ -183,7 +183,7 @@ class Routes(unittest.TestCase):
         # Both MCP routes reuse DirectRequest (the window's ExternalWork, and the headless child's): one view.
         source = (ROOT / "scripts/addons_core/angelo_agent/external_work.py").read_text()
         self.assertIn("from .claude_direct import DirectRequest", source)
-        self.assertIn("self.direct.call(name, arguments, ticket)", source)
+        self.assertIn("self.direct.call(name, arguments)", source)   # Its turn in the order is held by ExternalWork.
         headless = ROOT / "scripts/addons_core/angelo_agent/headless_host.py"
         if headless.is_file():
             self.assertIn("ExternalWork", headless.read_text())

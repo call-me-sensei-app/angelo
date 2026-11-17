@@ -23,7 +23,7 @@
 #include "DNA_listBase.h"
 
 #include "BLI_implicit_sharing.hh"
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 
 #include "BLO_readfile.hh"
 #include "BLO_undofile.hh"
@@ -32,7 +32,7 @@
 #include "BKE_main.hh"
 #include "BKE_undo_system.hh"
 
-#include "BLI_strict_flags.h" /* IWYU pragma: keep. Keep last. */
+#include "BLI_strict_flags.hh" /* IWYU pragma: keep. Keep last. */
 
 #include "writefile.hh"
 
@@ -49,7 +49,22 @@ void BLO_memfile_free(MemFile *memfile)
     MEM_delete(chunk);
   }
   MEM_SAFE_DELETE(memfile->shared_storage);
+  MEM_SAFE_DELETE(memfile->stored_ids);
   memfile->size = 0;
+}
+
+void BLO_memfile_stored_id_add(MemFile *memfile, const ID &id)
+{
+  if (memfile->stored_ids == nullptr) {
+    memfile->stored_ids = MEM_new<MemFileStoredIDs>(__func__);
+  }
+  memfile->stored_ids->session_uids.add(id.session_uid);
+}
+
+size_t BLO_memfile_undo_size(const MemFile *memfile)
+{
+  return memfile->size +
+         (memfile->stored_ids ? size_t(memfile->stored_ids->session_uids.size_in_bytes()) : 0);
 }
 
 MemFileSharedStorage::~MemFileSharedStorage()
@@ -107,8 +122,16 @@ void BLO_memfile_write_init(WriteData *wd,
 
   mem_data->written_memfile = written_memfile;
   mem_data->reference_memfile = reference_memfile;
+  /* Angelo: a step stores about the IDs the previous one did: size its record once. */
+  if (reference_memfile != nullptr && reference_memfile->stored_ids != nullptr) {
+    if (written_memfile->stored_ids == nullptr) {
+      written_memfile->stored_ids = MEM_new<MemFileStoredIDs>(__func__);
+    }
+    written_memfile->stored_ids->session_uids.reserve(
+        reference_memfile->stored_ids->session_uids.size());
+  }
   mem_data->reference_current_chunk = reference_memfile ? static_cast<MemFileChunk *>(
-                                                              reference_memfile->chunks.first) :
+                                                              reference_memfile->chunks.first_) :
                                                           nullptr;
 
   /* If we have a reference memfile, we generate a mapping between the session_uid's of the
@@ -225,7 +248,7 @@ static int64_t undo_read(FileReader *reader, void *buffer, size_t size)
   }
 
   if (seek != size_t(undo->reader.offset)) {
-    chunk = static_cast<MemFileChunk *>(undo->memfile->chunks.first);
+    chunk = undo->memfile->chunks.first();
     seek = 0;
 
     while (chunk) {

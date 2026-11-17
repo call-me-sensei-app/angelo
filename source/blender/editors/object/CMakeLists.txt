@@ -40,6 +40,7 @@ set(SRC
   object_random.cc
   object_relations.cc
   object_remesh.cc
+  object_shade_bake.cc
   object_select.cc
   object_shader_fx.cc
   object_shapekey.cc
@@ -59,6 +60,7 @@ set(LIB
   PRIVATE bf::blenfont
   PRIVATE bf::blenkernel
   PRIVATE bf::blenlib
+  PRIVATE bf::blenloader
   PRIVATE bf::blentranslation
   PRIVATE bf::bmesh
   PRIVATE bf::depsgraph

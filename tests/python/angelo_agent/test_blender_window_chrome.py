@@ -193,10 +193,11 @@ def user_pale():
 
 
 def light():
-    # Angelo Light's pulldown text is dark; the top bar falls back to its own header text.
+    # Angelo Light's pulldown text is dark; the top bar falls back to its own text colour (Blender 5.3 draws header
+    # text with the space's Text, f0617f45e25; earlier releases had a separate Header Text).
     pulldown = as_bytes(theme().user_interface.wcol_pulldown.text)
     check("light_pulldown_text_would_not_read_on_the_chrome", window_chrome.contrast(pulldown, CHROME) < window_chrome.READABLE)
-    measure("light", as_bytes(theme().topbar.space.header_text))
+    measure("light", as_bytes(theme().topbar.space.text))
     apply_preset("Angelo_Dark.xml")
 
 

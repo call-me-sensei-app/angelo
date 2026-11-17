@@ -25,10 +25,13 @@ from pathlib import Path
 
 from . import external_cli_protocol as protocol
 from . import product_env
+from .blender_release import RELEASE
 from .state_paths import STATE_FOLDER, state_override
 
-# The per-version user folder name of this build (the Blender series Angelo is based on).
-BLENDER_SERIES = "5.2"
+# The per-version user folder name of this build (the Blender series Angelo is based on). One value with the release
+# the agent's texts name, so a base move changes it too: a literal here once stayed 5.2 on 5.3, and the CLI and the
+# headless worker read the earlier release's folder.
+BLENDER_SERIES = RELEASE
 # The user folder names are the application identity's (scripts/modules/angelo_identity.json), never
 # Blender's: this client must find the running Angelo's state, not a stock Blender's.
 _IDENTITY_FILE = Path(__file__).resolve().parents[2] / "modules" / "angelo_identity.json"

@@ -7,6 +7,8 @@ the stdio fixture; consultations use a scripted stand-in provider.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
+import platform_env
 
 import os
 import sys
@@ -63,7 +65,7 @@ NETWORK = {"HTTPS_PROXY": "http://proxy:3128", "https_proxy": "http://proxy:3128
 
 class EnvironmentTests(unittest.TestCase):
     def test_routing_caching_and_session_variables_never_reach_a_child(self):
-        with patch.dict(os.environ, dict(ROUTING, **NETWORK), clear=True):
+        with platform_env.cleared(dict(ROUTING, **NETWORK)):
             for mode in ("claude_subscription", "claude_api", "claude_team", "codex_subscription", "grok_api"):
                 with self.subTest(mode=mode):
                     env = child_environment(mode, "" if mode.endswith("_subscription") else "explicit-key")
@@ -106,7 +108,8 @@ class ClaudeLaunchTtlTests(ClaudeAdapterFixture, unittest.TestCase):
         self.host.prompt_cache_ttl = "5m"
         self.turn(None, "First")
         self.assertEqual(self.popen_mock.call_args.kwargs["env"]["CLAUDE_CODE_PROMPT_CACHE_TTL"], "5m")
-        self.assertEqual(self.provider.env, {"FIXTURE": "only"}, "the connection's base environment is not mutated")
+        self.assertEqual(self.launch_inputs.return_value[1], {"FIXTURE": "only"},
+                         "the connection's base environment is not mutated")
         self.host.prompt_cache_ttl = "1h"
         self.popen_mock.return_value = NativeInitializeFixture(
             on_user=lambda process, _: process.stdout.emit(completed()))
@@ -128,15 +131,15 @@ class ClaudeLaunchTtlTests(ClaudeAdapterFixture, unittest.TestCase):
     def test_every_session_leaves_out_auto_memory_and_the_git_snapshot(self):
         """Both made up about half of a new chat's first cache write (4,009 tokens measured), so neither is sent."""
         # A connection environment that would force both back on: the session's own values win.
-        self.provider.env = {"FIXTURE": "only", "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "0",
-                             "CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS": "0"}
+        self.launch_inputs.return_value = ("claude.exe", {"FIXTURE": "only", "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "0",
+                                                          "CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS": "0"})
         self.host.prompt_cache_ttl = "1h"
         self.turn(None, "First")
         env = self.popen_mock.call_args.kwargs["env"]
         self.assertEqual(env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"], "1")
         self.assertEqual(env["CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS"], "1")
         self.assertEqual(env["CLAUDE_CODE_PROMPT_CACHE_TTL"], "1h")
-        self.assertEqual(self.provider.env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"], "0",
+        self.assertEqual(self.launch_inputs.return_value[1]["CLAUDE_CODE_DISABLE_AUTO_MEMORY"], "0",
                          "the connection's base environment is not mutated")
         self.assertEqual(runtime_environment.session_environment({}, object()),
                          {**runtime_environment.SESSION_CONTEXT, **runtime_environment.SESSION_TOOLS})
@@ -166,12 +169,14 @@ class SessionTtlTests(unittest.TestCase):
         self.assertEqual(self.c.runtime_context().prompt_cache_ttl, "5m")
 
     def claude_routes(self):
-        """Every Claude route, with Claude Code's own main-conversation default on it.
+        """Every Claude route, with the TTL a new interactive session writes on it: 1 hour on each, since a person
+        pauses on a key-billed route as on a subscription (a personal API key and a team's gateway key were at
+        Claude Code's own 5-minute default there until Angelo 1.1).
 
         A route whose billing method has no entry here fails the test: whoever
         adds one decides its TTL.
         """
-        defaults = {"SUBSCRIPTION": "1h", "API_KEY": "5m", provider_registry.TEAM: "5m"}
+        defaults = {"SUBSCRIPTION": "1h", "API_KEY": "1h", provider_registry.TEAM: "1h"}
         routes = {mode: defaults[spec["method"]] for mode, spec in provider_registry.SPECS.items()
                   if spec["runtime"] == "claude"}
         self.assertLessEqual({"claude_subscription", "claude_api", "claude_team"}, set(routes))
@@ -182,7 +187,7 @@ class SessionTtlTests(unittest.TestCase):
         self.c.choose_connection(mode, {"model": ""}, key, str(uuid.uuid4()), CLAUDE, "sonnet")
 
     def test_new_sessions_match_claude_codes_default_on_every_claude_route(self):
-        """Interactive: 1h on a subscription, 5m on an API key or a team's gateway; runs without pauses: 5m."""
+        """Interactive: 1h on a subscription, an API key and a team's gateway; runs without pauses: 5m."""
         for mode, interactive in self.claude_routes().items():
             with self.subTest(mode=mode):
                 self.use(mode)
@@ -201,7 +206,7 @@ class SessionTtlTests(unittest.TestCase):
                      "FORCE_PROMPT_CACHING_5M": "1", "CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL": "5m",
                      "PATH": "/usr/bin"}
         for mode, interactive in self.claude_routes().items():
-            with self.subTest(mode=mode), patch.dict(os.environ, inherited, clear=True):
+            with self.subTest(mode=mode), platform_env.cleared(inherited):
                 self.use(mode)
                 env = runtime_environment.session_environment(child_environment(mode, self.c.api_key),
                                                               self.c.runtime_context())
@@ -209,7 +214,8 @@ class SessionTtlTests(unittest.TestCase):
                 self.assertFalse((set(inherited) - {"PATH", "CLAUDE_CODE_PROMPT_CACHE_TTL"}) & set(env))
 
     def test_an_existing_key_billed_session_keeps_its_recorded_ttl(self):
-        """Chats started while Angelo chose 1h on every route keep it: a mid-session switch partly misses the cache."""
+        """A session keeps the TTL it was started with, whatever today's policy is: a mid-session switch partly
+        misses the cache. Key-billed chats were started at 1h, then at 5m (1.0.4 to 1.0.11), then at 1h again."""
         for mode in ("claude_api", "claude_team"):
             with self.subTest(mode=mode):
                 self.use(mode)
@@ -221,10 +227,20 @@ class SessionTtlTests(unittest.TestCase):
                 self.c.remember_runtime()
                 entry = self.c.state["runtime_sessions"][self.c.context_key()]
                 self.assertEqual(entry["cache_ttl"], "1h", "a session never changes TTL")
+                entry["cache_ttl"] = "5m"   # Started by a version that chose 5 minutes there: it stays at 5.
+                self.assertEqual(self.c.session_cache_ttl(), "5m", "the policy change reaches new sessions only")
+                self.assertEqual(self.c.runtime_context().prompt_cache_ttl, "5m")
+                self.c.remember_runtime()
+                self.assertEqual(self.c.state["runtime_sessions"][self.c.context_key()]["cache_ttl"], "5m")
+                entry = self.c.state["runtime_sessions"][self.c.context_key()]
                 entry.pop("cache_ttl")
                 self.assertEqual(self.c.session_cache_ttl(), "5m", "an unrecorded one was written at Claude Code's 5m")
                 self.c.state["native_id"] = None
-                self.assertEqual(self.c.session_cache_ttl(), "5m", "a new session on the route follows today's policy")
+                self.assertEqual(self.c.session_cache_ttl(), "1h", "a new session on the route follows today's policy")
+                for kind in ("autonomous", "benchmark", "subagent"):
+                    self.c.session_kind = kind
+                    self.assertEqual(self.c.session_cache_ttl(), "5m", "a run without a person's pauses")
+                self.c.session_kind = "interactive"
 
     def test_a_resumed_session_keeps_its_recorded_or_previous_ttl(self):
         self.c.state["native_id"] = "native-1"
@@ -275,7 +291,8 @@ class RouteReceiptTests(unittest.TestCase):
 
     def test_route_names_mode_model_effort_sent_ttl_and_gap(self):
         route = self.begin().snapshot()["route"]
-        self.assertEqual(route, {"mode": "claude_subscription", "requested_model": "", "effort": "low",
+        # The chat's "minimal" is no level Claude Code accepts, so the request runs at the model's default.
+        self.assertEqual(route, {"mode": "claude_subscription", "requested_model": "", "effort": "high",
                                  "fast": False, "cache_ttl": "1h", "cache_gap": "new_session",
                                  "auto": False, "escalation": 0, "single_model": False})
         self.c.single_model_runs = True
@@ -300,7 +317,8 @@ class RouteReceiptTests(unittest.TestCase):
         self.c.choose_connection("codex_subscription", {"model": ""}, "", str(uuid.uuid4()), GPT, "gpt-test")
         self.c.set_options(effort="medium")
         route = self.begin().snapshot()["route"]
-        self.assertEqual((route["mode"], route["requested_model"], route["effort"]), ("codex_subscription", "gpt-test", "low"))
+        # GPT Test offers low, high and max: a "medium" it lacks runs at its default, never its first listed level.
+        self.assertEqual((route["mode"], route["requested_model"], route["effort"]), ("codex_subscription", "gpt-test", "high"))
         self.assertNotIn("cache_ttl", route)
 
     def test_receipts_keep_only_allowlisted_route_values(self):
@@ -400,7 +418,7 @@ class ConsultationReceiptTests(unittest.TestCase):
         call = next(call for call in self.c.pending.values() if call.name == "angelo_delegate")
         with patch("angelo_agent.delegation.ClaudeProvider", ScriptedChild):
             self.c.execute_tool(call, self.executor, self.c.document)
-            deadline = time.monotonic() + 3
+            deadline = time.monotonic() + CAP_S
             while time.monotonic() < deadline and self.c.delegate_jobs:
                 self.c.pump_events()
                 time.sleep(0.003)
@@ -409,7 +427,7 @@ class ConsultationReceiptTests(unittest.TestCase):
         self.assertNotIn("usage", receipt, "the lead's own usage never includes the consultation")
         consultation, = receipt["consultations"]
         self.assertEqual({key: consultation[key] for key in ("mode", "requested_model", "effort", "cache_ttl")},
-                         {"mode": "claude_subscription", "requested_model": "claude-haiku-5-5", "effort": "low",
+                         {"mode": "claude_subscription", "requested_model": "claude-haiku-5-5", "effort": "high",
                           "cache_ttl": "5m"})
         self.assertEqual(consultation["served_models"], ["claude-haiku-5-5"])
         self.assertEqual(consultation["usage"]["turns"], 2)

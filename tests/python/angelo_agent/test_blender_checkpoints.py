@@ -28,6 +28,8 @@ def main():
         from angelo_agent import ui
         from angelo_agent.files import FileWorkspace
         from angelo_agent.blender_tools import BlenderExecutor
+        from qa_person import reviewing  # noqa: E402
+        BlenderExecutor = reviewing(BlenderExecutor)   # Each script runs as one the person approved (qa_person).
         ui._authentication.start = lambda *args, **kwargs: None
         addon_utils.enable("angelo_agent", default_set=False, persistent=False)
         try:

@@ -17,6 +17,7 @@ by ``MAX_SAMPLES`` line samples. Main thread; model-facing text is English.
 
 from .view_framing import output_size
 from .view_pixels import box_downscale, box_factor, checkerboard, encode_rgba_png
+from . import owned_paths
 
 MAX_LOOPS = 4_000_000        # Face corners read in Object Mode.
 MAX_EDIT_FACES = 200_000     # Faces read one by one in Edit Mode.
@@ -190,6 +191,7 @@ def source(window, checked, references, controller):
     label = "UV %s" % obj.name[:64]
     reference = references.new_observation(label + " · layout")
     try:
+        owned_paths.require_writable(reference["path"])
         with open(reference["path"], "wb") as handle_file:
             handle_file.write(encode_rgba_png(rows))
     except Exception:

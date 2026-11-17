@@ -69,16 +69,18 @@ class UpstreamQuerySourceTests(unittest.TestCase):
         self.assertIn("need_update_relations", entry)
         self.assertIn("is_evaluating", entry)
         self.assertIn("BLI_thread_is_main", entry)
-        # Bakes evaluate this graph on job threads: the scene-owned job registry and the interface lock.
-        self.assertIn("WM_jobs_test(&wm, scene, WM_JOB_TYPE_ANY)", entry)
+        # Bakes evaluate this graph on job threads: the scene-owned job registry and the interface lock (Blender
+        # 5.3's WM_jobs_has_running, which replaced WM_jobs_test and also counts jobs that report no progress).
+        self.assertIn("WM_jobs_has_running(&wm, scene, WM_JOB_TYPE_ANY)", entry)
         self.assertIn("is_interface_locked", entry)
 
     def test_every_resolved_driver_path_is_recorded_and_checked_again(self):
         builder = _code((DEPSGRAPH / "intern/builder/deg_builder_relations.cc").read_text(encoding="utf-8"))
         body = _function_body(builder, "void DepsgraphRelationBuilder::build_driver_rna_path_variable(")
         record = body.index("record_path_read(driver_key, target_prop, rna_path, variable_exit_key.ptr)")
-        # Recorded as soon as the path resolves: before any early return that adds no relation.
-        self.assertLess(body.index("RNA_pointer_is_null"), record)
+        # Recorded as soon as the path resolves (Blender 5.3: ``!variable_exit_key.ptr`` is the unresolved path):
+        # before any early return that adds no relation.
+        self.assertLess(body.index("!variable_exit_key.ptr"), record)
         self.assertLess(record, body.index("is_same_bone_dependency"))
         walk = _code((DEPSGRAPH / "intern/depsgraph_query_foreach.cc").read_text(encoding="utf-8"))
         loop = _function_body(walk, "DEGUpstreamStatus deg_foreach_ancestor_component(")

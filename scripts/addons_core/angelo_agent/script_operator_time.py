@@ -17,6 +17,15 @@ it. ``outcome`` is the ``bpy_ops`` field of the script's result: the calls, thei
 operators, with ``COST`` once calls that added objects took ``NOTE_SECONDS`` or more. Measurements and a fact of
 Blender's, never an instruction.
 
+``not_finished`` is the script result's entry right after ``success`` once an outermost call returned without
+``FINISHED`` (``CANCELLED``, ``PASS_THROUGH``, ``RUNNING_MODAL``...): Blender did not do what that call asked, while
+the script ran on and its other edits stand, so ``success`` still says the script ran to its end and this entry says
+which calls did not finish: rows of operator, returned state and calls (first seen first, at most
+``NOT_FINISHED_ROWS``), the total, and the ``NOT_FINISHED`` fact. A call that raised is the script's own error, never
+a row. A script whose every call finished adds nothing. Evidence: the Devin optimizer audit (Agent-B1, Agent-F1,
+2026-11-13): ``bpy.ops.object.modifier_apply(modifier="DoesNotExist")`` and ``bpy.ops.object.delete()`` with nothing
+selected returned ``{'CANCELLED'}``, and the result said ``success: true`` with timings only.
+
 ``len(bpy.data.objects)`` walks every object (no length callback, ``rna_main.cc``), so a call is counted only while its
 operator's recent cost took ``COUNTED_FROM`` or more, and ``COUNT_SHARE`` times what a count itself took: a cheap
 operator in a long loop pays for the timing alone in a scene of any size, and an operator that adds objects, which
@@ -37,10 +46,14 @@ COUNTED_FROM = 0.001   # Seconds.
 COUNT_SHARE = 20   # A call's two counts stay within a tenth of its operator's recent cost.
 DECAY = 0.5   # Each call keeps this share of its operator's recent cost, or its own time when that is more.
 COUNT_BUDGET = 0.1   # An operator that added objects: counted while its counts took at most this share of its time.
+NOT_FINISHED_ROWS = 5
 # Model-visible (never translated): how Blender runs a bpy.ops call, a fact of its source.
 COST = ("Blender updates the scene's dependency graph before and after each bpy.ops call; an added object makes that "
         "update rebuild the whole graph, so each call that adds one takes longer the more objects the scene has. "
         "Objects and meshes made through bpy.data add no update of their own.")
+# Model-visible (never translated): what a call that returned without FINISHED means, a fact of Blender's protocol.
+NOT_FINISHED = ("Blender did not complete these bpy.ops calls (they returned without FINISHED); "
+                "the rest of the script ran.")
 
 
 class _Timed:
@@ -80,6 +93,7 @@ class Clock:
         # "module.function" -> [calls, seconds, seconds of the calls that added objects, its recent cost (DECAY),
         #                       seconds its counts took]
         self.calls = {}
+        self.unfinished = {}   # (operator, returned state) -> outermost calls without FINISHED, first seen first
 
     def __enter__(self):
         ops = getattr(self._bpy, "ops", None)
@@ -121,9 +135,11 @@ class Clock:
         before = self._objects() if counted else None
         if before is not None:
             row[4] += self._count_seconds
+        returned = None   # Stays None when the call raises: that is the script's error, never a row here.
         begun = time.perf_counter()
         try:
-            return operator(*args, **kwargs)
+            returned = operator(*args, **kwargs)
+            return returned
         finally:
             spent = time.perf_counter() - begun
             after = self._objects() if before is not None else None
@@ -135,6 +151,9 @@ class Clock:
             row[3] = max(spent, row[3] * DECAY)
             if before is not None and after is not None and after > before:
                 row[2] += spent
+            if isinstance(returned, (set, frozenset)) and "FINISHED" not in returned:
+                key = (name, "|".join(sorted(str(state) for state in returned)) or "EMPTY")
+                self.unfinished[key] = self.unfinished.get(key, 0) + 1
 
     def outcome(self):
         """``{"bpy_ops": ...}`` for a script that called any operator; ``{}`` otherwise."""
@@ -147,3 +166,27 @@ class Clock:
         if sum(row[2] for row in self.calls.values()) >= NOTE_SECONDS:
             facts["cost"] = COST
         return {"bpy_ops": facts}
+
+    def not_finished(self):
+        """``{"not_finished": ...}`` once an outermost call returned without FINISHED; ``{}`` otherwise."""
+        if not self.unfinished:
+            return {}
+        rows = [[name, state, calls] for (name, state), calls in list(self.unfinished.items())[:NOT_FINISHED_ROWS]]
+        return {"not_finished": {"calls": sum(self.unfinished.values()), "operators": rows, "fact": NOT_FINISHED}}
+
+    def beside_success(self, result):
+        """``result`` with ``not_finished`` right after ``success``, where the model reads the verdict; the same
+        ``result`` when every call finished, and at its end when it has no ``success``."""
+        extra = self.not_finished()
+        if not extra:
+            return result
+        if "success" not in result:
+            return dict(result, **extra)
+        placed = {}
+        for key, value in result.items():
+            if key == "not_finished":
+                continue
+            placed[key] = value
+            if key == "success":
+                placed.update(extra)
+        return placed

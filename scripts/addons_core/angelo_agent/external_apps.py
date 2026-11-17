@@ -23,14 +23,17 @@ import time
 import uuid
 
 from .external_clients import APP_NAMES, READ_TOOLS, TASKS, tools_for
-from .external_work import ExternalWork
+from .claude_direct import _error
+from .claude_direct_notes import NOT_KEPT
+from .external_work import ExternalWork, call_key
 from .invocations import document_digest
 from .document_offer import person_only
 from .ui_text import model_text, notice
 
 TASK_ROWS = 12           # Progress rows a status returns (the latest ones).
 TASK_TEXT = 1200         # Characters of one row's text.
-CALLS_KEPT = 1024        # Call IDs remembered per host (external_apps: a delivered-again call never runs twice).
+CALLS_KEPT = 1024        # Answered calls remembered per host with their request (a delivered-again call's answer).
+EVICTED_KEPT = 65536     # IDs of answered calls forgotten past CALLS_KEPT, so asked again they are told "not kept".
 TASK_STATES = {"Completed": "done", "Failed": "failed", "Interrupted": "stopped", "Escalated": "done"}
 # After an app's conversation moved to what the window shows (another scene or file), until a read's answer has gone
 # out there: a read runs with MOVED first in its answer; anything else does not run (MOVED_NOT_RUN), so no edit runs
@@ -127,6 +130,9 @@ class ExternalApps:
         known = self._calls.get((label, payload["id"]))
         if known is not None:   # Delivered again (a waiting launcher asks every round): its answer, never a second run.
             return self._again(work, known, payload)
+        if (label, payload["id"]) in self._evicted:   # Ran, answered and forgotten: said so, never run again.
+            return self._reply(work, None, "tool_failed", "The call reported an error", result=_error(NOT_KEPT),
+                               call={"replayed": True, "admitted": True})
         controller, error = self._app_conversation(work)
         if error:
             return self._reply(work, controller, *error)
@@ -135,6 +141,9 @@ class ExternalApps:
         self.settle(controller)
         if identity in self._open:   # A phase-1 read of this label is finishing; it shares no request with an app.
             return self._reply(work, controller, "busy", "Earlier reads are finishing; retry shortly")
+        if (self._tasks.get(identity) or {}).get("held_text") is not None:   # Never interleaved with its held task.
+            return self._reply(work, controller, "busy", "This app's task waits for the person's tool in Angelo; "
+                               "retry once it has started")
         task = self._tasks.get(identity)
         if task is not None and controller.busy and not self._work_open(controller):
             return self._reply(work, controller, "busy", "Angelo is running a task for this app; wait for it "
@@ -161,16 +170,33 @@ class ExternalApps:
         note = MOVED if unobserved else None
         record = {"work": current, "fields": fields, "note": note}
         self._calls[(label, payload["id"])] = record
-        while len(self._calls) > CALLS_KEPT:
-            self._calls.pop(next(iter(self._calls)))
-        current.submit(("call", payload["id"]), payload["tool"], payload["arguments"],
-                       _noted(self.responder(work, fields, current=current, tool=payload["tool"]), note,
-                              lambda: self._unobserved.discard(identity)))
+        self._forget_answered()
+        respond = self.responder(work, fields, current=current, tool=payload["tool"])
+        if not self.answers_held:   # Held answers (headless) are marked when they go out (headless_answers).
+            respond = _marked(record, respond)
+        current.submit(call_key(payload["id"]), payload["tool"], payload["arguments"],
+                       _noted(respond, note, lambda: self._unobserved.discard(identity)))
         work.admitted = True
+
+    def _forget_answered(self):
+        """Past CALLS_KEPT, forget the oldest answered calls, keeping their IDs (EVICTED_KEPT): a call still unanswered
+        is never forgotten, since its re-ask must find it and never run it again."""
+        while len(self._calls) > CALLS_KEPT:
+            oldest = next((key for key, record in self._calls.items() if answered(record)), None)
+            if oldest is None:
+                return
+            del self._calls[oldest]
+            self._evicted[oldest] = None
+            while len(self._evicted) > EVICTED_KEPT:
+                self._evicted.pop(next(iter(self._evicted)))
+
+    def known_call(self, label, call_id):
+        """Whether this host has had the call (kept, or answered and forgotten): a delivery of it is a re-ask."""
+        return (label, call_id) in self._calls or (label, call_id) in self._evicted
 
     def _again(self, work, known, payload):
         """A call ID this host has had: wait on, or get, the first delivery's answer from the request that ran it."""
-        known["work"].submit(("call", payload["id"]), payload["tool"], payload["arguments"],
+        known["work"].submit(call_key(payload["id"]), payload["tool"], payload["arguments"],
                              _noted(self.responder(work, known["fields"], replayed=True, current=known["work"],
                                                    tool=payload["tool"]), known.get("note")))
         work.admitted = True
@@ -190,6 +216,12 @@ class ExternalApps:
         """Main thread, each tick: close requests that ended or went quiet; answer task waiters."""
         self.finish_closing()
         now = time.monotonic()
+        from . import edit_tool_hold
+        for identity, task in list(self._tasks.items()):
+            controller = self.env.controllers().get(identity)
+            busy = controller is not None and (controller.busy or controller.pending or identity in self._open)
+            if task.get("held_text") is not None and not edit_tool_hold.running() and not busy:
+                self._start_held(identity, task)   # The admission an immediate start makes, once nothing holds it.
         for identity in list(self._tasks):
             self._settle_task(identity)
         for identity, current in list(self._work.items()):
@@ -214,6 +246,9 @@ class ExternalApps:
             else:
                 self._closing.append(current)
         self._work.clear()
+        for task in self._tasks.values():   # A task still waiting for the person's operation never starts later.
+            if task.get("held_text") is not None:
+                task.update(held_text=None, final="stopped", ended=time.monotonic())
         for work, identity, _deadline in self._waiters:
             self._task_reply(work, identity)
         self._waiters.clear()
@@ -233,7 +268,9 @@ class ExternalApps:
         if task is None or task["id"] != work.payload.get("task"):
             return self._reply(work, controller, "invalid", "No such task in this app's current conversation")
         if action == "stop":
-            if controller.busy and not self._work_open(controller):
+            if task.get("held_text") is not None:   # Never started: it ends here.
+                task.update(held_text=None, final="stopped", ended=time.monotonic())
+            elif controller.busy and not self._work_open(controller):
                 controller.stop()
             return self._task_reply(work, identity)
         wait = work.payload.get("wait", 0)
@@ -254,9 +291,17 @@ class ExternalApps:
                 return self._reply(work, controller, "busy", "This app's tool calls are still running; retry shortly")
             current.close("the app started a task")
             del self._work[identity]
-        if controller.busy or controller.pending or identity in self._open:
+        held = (self._tasks.get(identity) or {}).get("held_text") is not None
+        if controller.busy or controller.pending or identity in self._open or held:
             return self._reply(work, controller, "busy", "A task or call is still running for this app")
+        from . import edit_tool_hold
         text = work.payload.get("text", "")
+        if edit_tool_hold.running():   # Its start snapshots the document: it waits for the person's operation, as every
+            # call does, and the app has its task now (break-it review 3, S4); ``pump_apps`` starts it.
+            self._tasks[identity] = {"id": str(uuid.uuid4()), "start": len(controller.state["messages"]),
+                                     "started": time.monotonic(), "final": None, "held_text": text}
+            edit_tool_hold.note_waiting()
+            return self._task_reply(work, identity)
         try:
             self.env.prepare_task(controller)
             start = len(controller.state["messages"])
@@ -266,12 +311,30 @@ class ExternalApps:
         self._tasks[identity] = {"id": str(uuid.uuid4()), "start": start, "started": time.monotonic(), "final": None}
         return self._task_reply(work, identity)
 
+    def _start_held(self, identity, task):
+        """A task that waited for the person's operation starts now, as it would have at once: its conversation still
+        this app's, on the document it was given, with no work of its own open (break-it review 4, S-B)."""
+        text, task["held_text"] = task["held_text"], None
+        controller = self.env.controllers().get(identity)
+        try:
+            if controller is None or controller.document_invalid:
+                raise RuntimeError("The task's conversation is gone")
+            current = self._work.get(identity)
+            if current is not None and not current.closed:
+                current.close("the app started a task")
+                del self._work[identity]
+            self.env.prepare_task(controller)
+            task["start"] = len(controller.state["messages"])
+            controller.send_external_task(text)
+        except (RuntimeError, ValueError):
+            task.update(final="failed", ended=time.monotonic())
+
     def _task_terminal(self, identity):
         """Whether the app's task has ended: its turn (Auto's escalated re-run included) is no longer running."""
         controller = self.env.controllers().get(identity)
         task = self._tasks.get(identity)
-        return (controller is None or task is None or task["final"] is not None or not controller.busy
-                or self._work_open(controller))
+        return (controller is None or task is None or task["final"] is not None
+                or task.get("held_text") is None and (not controller.busy or self._work_open(controller)))
 
     def _settle_task(self, identity):
         """Record a task's final state once its turn ends, before anything later (a tool request) changes the chat."""
@@ -291,7 +354,9 @@ class ExternalApps:
         from .approval_wait import awaiting
         waiting = awaiting(controller) is not None   # The card itself, never an activity row that outlived it.
         self._settle_task(identity)
-        if not self._task_terminal(identity):
+        if task.get("held_text") is not None:
+            state = "waiting_for_person_in_angelo"   # The person's operation (``held``): it starts once that ends.
+        elif not self._task_terminal(identity):
             state = "waiting_for_approval_in_angelo" if waiting else "running"
         else:
             state = task["final"]
@@ -300,15 +365,30 @@ class ExternalApps:
                       and row.get("text")), "") or next((row.get("text", "") for row in reversed(rows)
                                                          if row.get("role") == "system" and row.get("host_summary")), "")
         from .approval_wait import status_for_apps
+        from .edit_tool_hold import seen
         result = {"task_id": task["id"], "state": state, "status": status_for_apps(controller),
+                  **({"held": seen()} if task.get("held_text") is not None and seen() else {}),
                   "elapsed_s": round(task.get("ended", time.monotonic()) - task["started"], 1),
                   "progress": [_row(row) for row in rows[-TASK_ROWS:] if _row(row)],
                   "reply": reply[-TASK_TEXT * 4:] if state != "running" else "",
                   "checkpoint": controller.request_checkpoint,
                   "connection": _route(controller)}
-        code = "ok" if state in {"done", "running", "waiting_for_approval_in_angelo"} else (
+        waiting_states = {"waiting_for_approval_in_angelo", "waiting_for_person_in_angelo"}
+        code = "ok" if state in {"done", "running"} | waiting_states else (
             "not_applied" if state == "stopped" else "tool_failed")
         return self._reply(work, controller, code, state, result=result)
+
+
+def answered(record):
+    """Whether a call's answer went out: marked by ``_marked`` in the window, kept as ``answer`` without it."""
+    return bool(record.get("answered")) or "answer" in record
+
+
+def _marked(record, respond):
+    def respond_and_mark(value):
+        record["answered"] = True
+        respond(value)
+    return respond_and_mark
 
 
 def _responder(work, fields, replayed=False):
@@ -347,13 +427,16 @@ def _row(row):
 
 def _route(controller):
     """Which kind of the person's connections ran the task, never an account identifier."""
-    from .provider_registry import TEAM_MODES, runtime_kind
+    from .provider_registry import TEAM_MODES, billing_kind, runtime_kind
     provider = controller.state.get("provider") or ""
     try:
         kind = runtime_kind(provider)
     except (KeyError, ValueError):
         kind = ""
-    billing = ("team" if provider in TEAM_MODES else "API key" if provider.endswith("_api") else "subscription")
+    try:   # A custom endpoint is billed by the organization's own server: an API key's.
+        billing = "team" if provider in TEAM_MODES else "API key" if billing_kind(provider) == "API_KEY" else "subscription"
+    except ValueError:
+        billing = "subscription"
     return {"runtime": kind, "billing": billing, "model": (controller.state.get("options") or {}).get("model") or ""}
 
 

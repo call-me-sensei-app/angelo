@@ -22,6 +22,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import angelo_guard_twin  # noqa: E402
 from test_native_merge_hold import MERGE, SCRIPT, MergeHoldFixture, OperatorFixture  # noqa: E402
 from angelo_agent import script_precondition, stale_binding  # noqa: E402
 from angelo_agent.refusal_codes import refusal_code  # noqa: E402
@@ -82,7 +83,7 @@ class StaleAtRunTests(MergeHoldFixture):
         c = self.chat("ASK")
         replies, script = self.request("script", "angelo_execute_python", SCRIPT, c)
         self.pump(c)
-        c.review_script(script)
+        angelo_guard_twin.harness(c.review_script, script)   # The person's Approve.
         script.reviewed_script = "another script"   # Its identity no longer matches its review.
         c.execute_tool(script, self.scene, c.document)
         self.assertEqual((replies[0]["error_code"], replies[0]["scene_changed"]), ("CANCELLED", False))
@@ -229,7 +230,7 @@ class OperatorTests(OperatorFixture):
         click, _ = self.operators(c)
         replies, script = self.request("script", "angelo_execute_python", SCRIPT, c)
         self.pump(c, times=1)
-        c.review_script(script)
+        angelo_guard_twin.harness(c.review_script, script)   # The person's Approve.
         self.context.preferences.edit.use_global_undo = False
         click(script)
         self.assertEqual((replies[0]["error_code"], replies[0]["scene_changed"]), ("UNSUPPORTED", False))

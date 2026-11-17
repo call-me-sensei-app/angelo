@@ -11,10 +11,11 @@ from types import SimpleNamespace
 from .providers import CodexProvider, ClaudeProvider
 from .provider_registry import runtime_kind
 from .chat_settings import clean_options
-from . import notice_kinds, parts_check, parts_ground
+from . import notice_kinds, owned_paths, parts_check, parts_ground
 from .references import ReferenceStore
 from .routing import TOOLSET_VERSION
 from .ui_text import n_
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 # The editor's whole text on either runtime: never the chat agent's base, plan or tool text (claude_session,
 # CodexProvider._thread_parameters; pinned by test_native_studio_editor_prompt).
@@ -35,12 +36,16 @@ OWN_TEXTS = {"editor": (EDITOR_INSTRUCTIONS, CLAUDE_EDITOR_REPLY),
 class EnhancementContext:
     def __init__(self, directory, record, settings, key, model, models, cancel, use="editor"):
         self.api_key, self.settings = key, dict(settings)
+        # Low on purpose, not the chat default (high): Studio's helper requests, the prompt editor and the parts
+        # checks, each rewrite or judge one short text. Maintainer's ruling, 2026-11-12: "Keep it at low". The one
+        # effort level written into the add-on; test_native_default_effort.py names it (RULED). A model that does
+        # not offer low runs at its own default (chat_settings.chat_effort).
         self.state = {"provider": record["mode"], "native_id": None, "toolset_version": TOOLSET_VERSION,
                       "options": clean_options({"model": model, "effort": "low", "approval": "READ_ONLY"})}
         self.turn_options, self.models = dict(self.state["options"]), list(models)
         self.store = SimpleNamespace(directory=str(directory))
         self.workspace = Path(directory) / "enhancer" / str(uuid.uuid4())
-        self.workspace.mkdir(parents=True, mode=0o700)
+        owned_paths.require_writable(self.workspace).mkdir(parents=True, mode=0o700)
         self.references = ReferenceStore(directory, str(uuid.uuid4()))
         self.turn_attachments, self.allowed_tools, self.native_tools = [], frozenset(), ()
         self.voice, self.text_only, self._cancel = None, True, cancel
@@ -113,6 +118,9 @@ def with_capacity_retries(attempt, cancel, waits=BUSY_WAITS, rng=random.random):
 def enhance_native(directory, record, settings, key, model, models, prompt, kind, generation_model, cancel):
     return with_capacity_retries(lambda: _enhance_once(directory, record, settings, key, model, models, prompt, kind,
                                                        generation_model, cancel), cancel)
+
+
+enhance_native = _grant_guard.entry(enhance_native)
 
 
 def _enhance_once(directory, record, settings, key, model, models, prompt, kind, generation_model, cancel):
@@ -195,3 +203,7 @@ def _ground_once(directory, record, settings, key, model, models, images, part_i
     finally:
         timer.cancel()
         provider.close()
+
+
+check_native = _grant_guard.entry(check_native)   # The person's images to their provider, spending.
+ground_native = _grant_guard.entry(ground_native)

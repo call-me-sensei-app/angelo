@@ -3,6 +3,7 @@
 """Host-only adversarial contracts for the structural concurrency fixture; no Blender/model/process launch."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 import ast
 import copy
 from pathlib import Path
@@ -189,16 +190,22 @@ class OracleTests(unittest.TestCase):
                                  for n in ast.walk(tree)))
 
 
+def one_batch_each(overlap=True):
+    """One planned batch per actor with its execution event: 64 mutations each, in two processes; the worker's
+    interval crosses the lead's (``overlap``) or starts after the lead's has ended."""
+    jobs = [oracle.batches(actor, 'create')[0] for actor in oracle.ACTORS]
+    starts = [10, 11 if overlap else 201]
+    events = [dict(job, admitted_ns=1, start_ns=starts[i], end_ns=starts[i] + 128,
+                   answered_ns=400, pid=i + 101, mutated=64, main_thread=True,
+                   mutation_spans=[[index, starts[i] + offset * 2, starts[i] + offset * 2 + 2]
+                                   for offset, index in enumerate(job['indices'])])
+              for i, job in enumerate(jobs)]
+    return jobs, events
+
+
 class TemporalTests(unittest.TestCase):
     def fixture(self, overlap=True):
-        jobs = [oracle.batches(actor, 'create')[0] for actor in oracle.ACTORS]
-        starts = [10, 11 if overlap else 201]
-        events = [dict(job, admitted_ns=1, start_ns=starts[i], end_ns=starts[i] + 128,
-                       answered_ns=400, pid=i + 101, mutated=64, main_thread=True,
-                       mutation_spans=[[index, starts[i] + offset * 2, starts[i] + offset * 2 + 2]
-                                       for offset, index in enumerate(job['indices'])])
-                  for i, job in enumerate(jobs)]
-        return jobs, events
+        return one_batch_each(overlap)
 
     def test_actual_intervals_not_waits_or_pending_requests_decide_overlap(self):
         jobs, events = self.fixture()
@@ -226,6 +233,98 @@ class TemporalTests(unittest.TestCase):
                 self.assertFalse(oracle.temporal_proof(events, jobs, {'lead': 101, 'worker': 102}, parallel=True)['complete'])
 
 
+class VerdictTests(unittest.TestCase):
+    """The suite's own verdict, by variant (maintainer, 2026-10-27; the same on every platform and side): on the
+    lanes (``ANGELO_WORKER_CHAT_HOST=0``, the fallback path) a parallel run passes on correctness and reports
+    whether mutations overlapped; on the hosted path (the one that ships) overlap is still required. Run from the
+    suite's own statements, so the rule tested is the one the suite applies."""
+    KEYS = ('temporal', 'status', 'success', 'incomplete_reason')
+    PIDS = {'lead': 101, 'worker': 102}
+
+    def verdict(self, variant, events, jobs, pids=None):
+        """The report after the suite's verdict statements ran on this run's events (its ``report[...] =`` lines
+        for ``KEYS``, in the suite's order, with the real oracle)."""
+        source = (Path(__file__).parent / 'test_blender_concurrent_edit.py').read_text()
+        run = next(node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef) and node.name == 'run')
+        found = [node for node in ast.walk(run) if isinstance(node, ast.Assign) and len(node.targets) == 1
+                 and isinstance(node.targets[0], ast.Subscript) and getattr(node.targets[0].value, 'id', '') == 'report'
+                 and getattr(node.targets[0].slice, 'value', None) in self.KEYS]
+        found.sort(key=lambda node: node.lineno)
+        self.assertEqual([node.targets[0].slice.value for node in found], list(self.KEYS))
+        names = {'report': {'variant': variant}, 'oracle': oracle, 'events': events, 'jobs': jobs,
+                 'pids': pids or self.PIDS, 'worker': object(), 'hosted': variant == 'hosted'}
+        exec(compile(ast.Module(body=found, type_ignores=[]), '<the suite\'s verdict>', 'exec'), names)
+        return names['report']
+
+    def test_a_correct_lanes_run_without_overlap_passes_and_says_so(self):
+        jobs, events = one_batch_each(overlap=False)
+        report = self.verdict('lanes', events, jobs)
+        self.assertEqual((report['status'], report['success'], report['incomplete_reason']), ('complete', True, None),
+                         'a correct lanes run without mutation overlap was not passed')
+        temporal = report['temporal']
+        self.assertEqual((temporal['errors'], temporal['overlap_pairs']), ([], []))
+        self.assertEqual((temporal['overlap_observed'], temporal['overlap_required']), (False, False))
+        self.assertEqual(temporal['reason'], 'no mutation overlap observed')   # Reported as it is, never hidden.
+
+    def test_a_hosted_run_without_overlap_stays_incomplete(self):
+        jobs, events = one_batch_each(overlap=False)
+        report = self.verdict('hosted', events, jobs)
+        self.assertEqual((report['status'], report['success'], report['incomplete_reason']),
+                         ('incomplete', False, 'no mutation overlap observed'))
+        self.assertEqual((report['temporal']['overlap_observed'], report['temporal']['overlap_required']),
+                         (False, True))
+
+    def test_overlap_is_reported_on_both_variants(self):
+        for variant in ('lanes', 'hosted'):
+            jobs, events = one_batch_each()
+            report = self.verdict(variant, events, jobs)
+            with self.subTest(variant=variant):
+                self.assertEqual((report['status'], report['success']), ('complete', True))
+                self.assertTrue(report['temporal']['overlap_observed'])
+                self.assertEqual(report['temporal']['overlap_pairs'][0]['overlap_ns'], 127)
+                self.assertEqual(report['temporal']['reason'], 'observed mutation overlap')
+
+    def test_only_the_lanes_are_excused_from_overlap(self):
+        self.assertFalse(oracle.overlap_required('lanes'))
+        for variant in ('hosted', '', None, 'LANES', 'something new'):   # Anything else: overlap is required.
+            with self.subTest(variant=variant):
+                self.assertTrue(oracle.overlap_required(variant))
+
+    def test_no_correctness_failure_passes_on_the_lanes(self):
+        """Every proof failure the hosted path refuses, the lanes refuse too, with and without overlap."""
+        mutations = ('missing', 'duplicate', 'pid', 'actor', 'indices', 'count', 'clock', 'thread', 'no_spans',
+                     'span_outside', 'one_process', 'unknown_job')
+        for overlap in (True, False):
+            for mutation in mutations:
+                jobs, events = one_batch_each(overlap)
+                pids = dict(self.PIDS)
+                if mutation == 'missing': events.pop()
+                elif mutation == 'duplicate': events.append(dict(events[0]))
+                elif mutation == 'pid': events[1]['pid'] = 101
+                elif mutation == 'actor': events[1]['actor'] = 'lead'
+                elif mutation == 'indices': events[1]['indices'] = [999]
+                elif mutation == 'count': events[1]['mutated'] = 0
+                elif mutation == 'clock': events[1]['end_ns'] = 999
+                elif mutation == 'thread': events[1]['main_thread'] = False
+                elif mutation == 'no_spans': events[1].pop('mutation_spans')
+                elif mutation == 'span_outside': events[1]['mutation_spans'][0][2] = 999
+                elif mutation == 'one_process':
+                    pids['worker'] = events[1]['pid'] = 101
+                else: events.append(dict(events[0], job_id='never planned'))
+                with self.subTest(mutation=mutation, overlap=overlap):
+                    report = self.verdict('lanes', events, jobs, pids)
+                    self.assertEqual((report['status'], report['success'], report['incomplete_reason']),
+                                     ('incomplete', False, 'invalid proof'))
+                    self.assertTrue(report['temporal']['errors'])
+
+    def test_the_serial_control_has_no_overlap_to_report(self):
+        jobs, events = one_batch_each(overlap=False)
+        for required in (True, False):
+            proof = oracle.temporal_proof(events, jobs, self.PIDS, parallel=False, overlap_required=required)
+            self.assertEqual((proof['complete'], proof['reason'], proof['overlap_observed']),
+                             (True, 'serial control', None))
+
+
 class RuntimeTests(unittest.TestCase):
     def test_actual_fixed_plan_advances_only_after_answer_and_preserves_raw_evidence(self):
         calls = []
@@ -236,14 +335,14 @@ class RuntimeTests(unittest.TestCase):
         jobs = oracle.batches('lead', 'create')[:2]
         runtime = BatchRuntime(NS(request_tool=request), jobs, payload.script, time.monotonic() + 3).start()
         try:
-            self.assertTrue(first.wait(1))
+            self.assertTrue(first.wait(CAP_S))
             self.assertEqual(len(calls), 1)
             calls[0][3]({'success': True, 'result': {'job_id': jobs[0]['job_id']}})
-            deadline = time.monotonic() + 1
+            deadline = time.monotonic() + CAP_S
             while len(calls) < 2 and time.monotonic() < deadline: time.sleep(.001)
             self.assertEqual(len(calls), 2)
             calls[1][3]({'success': True, 'result': {'job_id': jobs[1]['job_id']}})
-            self.assertTrue(runtime.finished.wait(1))
+            self.assertTrue(runtime.finished.wait(CAP_S))
             self.assertEqual(runtime.errors, [])
             self.assertEqual(len(runtime.receipts), 2)
             self.assertTrue(all(row['admitted_ns'] <= row['answered_ns'] for row in runtime.receipts))
@@ -259,10 +358,10 @@ class RuntimeTests(unittest.TestCase):
                 if failure: answer({'success': False, 'error': 'fixture failure'})
             runtime = BatchRuntime(NS(request_tool=request), oracle.batches('lead', 'create')[:2], payload.script,
                                    time.monotonic() + 2).start()
-            deadline = time.monotonic() + 1
+            deadline = time.monotonic() + CAP_S
             while not calls and time.monotonic() < deadline: time.sleep(.001)
             if not failure: runtime.cancel()
-            self.assertTrue(runtime.finished.wait(1))
+            self.assertTrue(runtime.finished.wait(CAP_S))
             self.assertTrue(runtime.join())
             self.assertEqual(len(calls), 1)
             self.assertTrue(runtime.errors)
@@ -299,7 +398,7 @@ class RuntimeTests(unittest.TestCase):
     def test_native_fixture_uses_existing_owners_and_declares_no_performance_gate(self):
         source = (Path(__file__).parent / 'test_blender_concurrent_edit.py').read_text()
         ast.parse(source)
-        for call in ('pump_controller_tools(', "bpy.ops.angelo.approve(", 'controller.request_tool(', "bpy.ops.ed.undo()", "bpy.ops.ed.redo()", 'bpy.ops.wm.open_mainfile('):
+        for call in ('pump_controller_tools(', ".stand_in().approve(", 'controller.request_tool(', "bpy.ops.ed.undo()", "bpy.ops.ed.redo()", 'bpy.ops.wm.open_mainfile('):
             self.assertIn(call, source)
         self.assertIn("'performance_gate': None", source)
         self.assertNotIn('subprocess.', source)

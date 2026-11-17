@@ -14,6 +14,7 @@ close joins the one under way; the worker marks its refusal by details, never wo
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import io
 import os
@@ -65,7 +66,7 @@ class ParkThenMerge(unittest.TestCase):
         self.closed.set()
         self.worker.unwedge()
         for thread in self.threads:
-            thread.join(5)
+            thread.join(CAP_S)
 
     def start(self, target):
         thread = threading.Thread(target=target, daemon=True)
@@ -101,8 +102,8 @@ class ParkThenMerge(unittest.TestCase):
         self.assertNotIn("chat.hold", self.worker.ops())   # Nothing is asked of a chat whose close is under way.
         self.assertTrue(merging.is_alive())
         self.closed.set()
-        parking.join(5)
-        merging.join(5)
+        parking.join(CAP_S)
+        merging.join(CAP_S)
         self.assertTrue(parked["closed"])
         self.assertIsNone(closing.state("w1"))
         self.assertNotIn("refused", outcome)
@@ -119,14 +120,14 @@ class ParkThenMerge(unittest.TestCase):
             return not_hosted()
         self.worker.answers["chat.hold"] = closed_first
         merging, outcome = self.merge()
-        merging.join(5)
+        merging.join(CAP_S)
         self.assertNotIn("refused", outcome)
         self.assertEqual(outcome["ops"], ["chat.hold", "chat.close", "part.lease"])
 
     def test_no_such_chat_for_a_chat_angelo_still_hosts_refuses(self):
         self.worker.answers["chat.hold"] = lambda fields: not_hosted()
         merging, outcome = self.merge()
-        merging.join(5)
+        merging.join(CAP_S)
         self.assertEqual(outcome["refused"].code, "WRITER_BUSY")
         self.assertNotIn("part.lease", self.worker.ops())
 
@@ -134,7 +135,7 @@ class ParkThenMerge(unittest.TestCase):
         self.park()
         with mock.patch.object(lifecycle, "CLOSE_SECONDS", 0.2):
             merging, outcome = self.merge()
-            merging.join(5)
+            merging.join(CAP_S)
         self.assertEqual(outcome["refused"].code, "WRITER_BUSY")
         self.assertNotIn("chat.hold", self.worker.ops())
 
@@ -163,8 +164,8 @@ class ParkThenMerge(unittest.TestCase):
         second = self.start(lambda: joined.update(closed=lifecycle.close_chat("w1", "closed")))
         time.sleep(0.05)
         self.closed.set()
-        parking.join(5)
-        second.join(5)
+        parking.join(CAP_S)
+        second.join(CAP_S)
         self.assertEqual((parked["closed"], joined["closed"]), (True, True))
         self.assertEqual(self.worker.ops().count("chat.close"), 1)
 

@@ -127,6 +127,128 @@ a missing field by name (``... is missing required fields: target``), so a
 model never has to guess which operation and field to correct. A creating kind
 given a target is told to leave it out.
 
+Waiting for the person's operation
+----------------------------------
+
+While the person's operation is in progress, Angelo's own work does not read,
+edit or snapshot their scene (``edit_tool_hold``). The rule is Blender's own
+for "not in a valid state to save", the one auto-save uses
+(``input_policy.operations``): any window's modal operator without
+``MODAL_PASSIVE``. It covers a transform, crease, bevel or knife, a sculpt or
+paint stroke and a mask gesture (these manage their own undo and carry no Undo
+flag), a render or bake the person started, and view navigation (a short pause
+while the person orbits). An add-on's Python modal holds once it has consumed
+the person's input (``Operator.has_consumed_input``, kept for the operator's
+life: one of its answers kept an input event; ``RUNNING_MODAL`` with
+``PASS_THROUGH`` counts), whatever its flags say, so an add-on edit tool holds
+and an observer that only passes input on (a key-display overlay) does not. It
+also holds while no input has reached it yet (``Operator.has_answered_input``,
+set when an input event reaches it at all; invoking it sets neither mark),
+until the person's first input reaches it or it ends. Angelo never sends it an
+event of its own: one would reach the person's running modal in that window
+first (a Dots paint stroke adds a dab per pointer move). A build without the
+marks holds. The rule is "ever consumed"; the last-consumed time is not used.
+Each check reads every window's running modal operators afresh, never an
+operator kept from an earlier read. It never counts Angelo's own operators, a
+modal Angelo itself started (``input_policy.angelo_started``: matched by
+identity and window, never by address alone), a render whose job has ended, or
+the operator a file browser is open for (choosing a file is no half-made edit).
+A window or operator that cannot be read counts as an operation in progress for
+at most 10 s, each kind of error reported once in the console; after that
+Angelo reads again although a tool may still run there (a broken add-on must
+not hold Angelo forever). A readable window keeps holding meanwhile. A window
+manager without windows (background mode) has none. Why: a Python read of the
+edited object, or a whole-document snapshot, under a running edit can drop the
+person's edit (stock Blender 5.3.0: a ``bmesh.from_edit_mesh`` read during an
+edge crease lost the crease; with the gate an external app's read of that
+object kept it 20/20). ``test_blender_editing_tool_flags`` reads the real flags
+of the common tools.
+
+* The tool pump (``Controller._pump_tools``), after the scene hold: no tool
+  call, approval, native program poll or commit, continuation observation or
+  deferred cleanup runs. Calls keep their place, their lifetimes stop running
+  and the provider's waits pause (``tool_deadlines.held``). Nothing is
+  cancelled or failed.
+* Any route that reaches ``Controller._execute_tool`` (an Approve click
+  included) stops before anything of the call runs, keeping its click mark,
+  and returns ``EXECUTION_WAITING`` (no Undo step); the pump applies it again
+  through the same approval route once the operation ends.
+* Snapshots and turn starts: a voice turn's snapshot event waits with every
+  event after it, in order; the person's message and Angelo's follow-ups wait
+  in the tray; goal rounds and worker-done events wait for readiness
+  (``worker_resume._blender_busy``); an external app's task start gets its task
+  at once and starts once the operation ends (its app's tool calls are answered
+  ``busy`` meanwhile); Accept on a retained preview and Restore ask the person
+  to finish first. The person's own job (a texture set's Bake, a shot, Resume)
+  queues and starts after; their Library Add is done once the operation ends.
+* Everything else Angelo runs on the main thread goes through one choke point,
+  ``edit_tool_hold.guarded``, or holds its data stages itself: job ticks,
+  starts, steps and publication, the texture-set bake chain, pending Library,
+  Fab and Media Studio results, Flow ticks, previews, workers, region renders,
+  the UV checker's count and the File > Export > Web wait. Media Studio and
+  the Library keep their interface moving and hold only their data work; the
+  session rail's pictures and redraws wait. ``test_native_edit_tool_inventory``
+  lists every timer, app handler (direct, from a loop or through
+  ``getattr(bpy.app.handlers, …)``), msgbus subscription, draw handler, call of
+  a generic deferral helper and Angelo modal operator as guarded or reviewed
+  with its reason class; ``test_native_edit_tool_paths`` checks each gate's
+  direction and pins every stage of the UI pump and of every ``ticked``
+  function. Inside Angelo's own work the writers (an import, an export, a
+  job's start) refuse as the last line if a gate was ever missed; the person's
+  own click is never refused.
+* A job waiting for its next step (a texture set between bakes) does not spend
+  its time budget while held; a job running on its own thread meanwhile does.
+
+A job-driven operation (a bake or render, the person's or Angelo's own) ends
+only on the first event after its job; while one is in progress its window gets
+a timer event every 0.5 s, so it ends with nobody at the machine. A file load
+or unregister removes those timers. The live row reads
+"Waiting for you to finish {tool}" (Blender's operator name) while the chat has
+work held (its tray included), never a stall then, and the status bar says
+"Angelo is waiting for you to finish {tool}" once real work of Angelo's has
+waited a moment (a chat's call or message, a queued job, an import, a Flow run,
+a task; an idle tick, the person's own approval card and a sync of the
+operation's own changes never show it: a link's or preview's update counts only
+when it was queued before the operation began), and clears when the operation
+ends; a call held before its first read tells the model so in its result once
+it ran (``waited``). An external app's pending answer names the operation
+(``held``) and the MCP launcher's 900 s wait pauses while it lasts. A worker
+Blender's chat reads its own document and never waits here. Sculpt passes and
+native programs keep their own, wider rule (``input_policy.tool_running``),
+which also waits for Angelo's holding tools; the gate runs first.
+
+The hold has no time limit. A render the person starts (F12) holds every agent
+call and external app call for its whole length, as auto-save waits for it, and
+so does an add-on modal no input has reached yet (see Known gaps).
+
+Known gaps, by design or for later:
+
+* A drag that is not a modal operator: a gizmo that edits a property directly
+  (a light's size, a camera's lens) and a number or text field being dragged
+  or typed in the interface. Neither holds Angelo's work.
+* An add-on's modal that edits on timers while passing every input on never
+  holds (it never consumes the person's input).
+* An add-on modal that no input has reached yet holds Angelo until it gets
+  input or ends; the status bar names it. The person moving the pointer over
+  its window ends the hold for an observer (a key-display overlay), which
+  passes that input on; a tool that keeps it goes on holding, as it should.
+  This includes an observer started without a person (from a ``load_post``
+  timer, or a script's ``INVOKE_DEFAULT``): it holds until a person's input
+  reaches it.
+* An add-on tool that passes pointer moves on and keeps only its click counts
+  as answered but not consumed from its first move until its first kept event,
+  so it does not hold in that time. If its invoke already edited the scene,
+  Angelo can read in that window then.
+* An Auto-approved call held at the pump is not marked as having waited, so
+  its result does not carry ``waited``.
+* Flow runs, Media Studio's tile previews, the job queue's data work, the
+  engine link, the web preview, workers and photo drops pause whole while held
+  (all of their work is data); the status bar says why when work of theirs
+  waits (an editor's request, or an update queued before the operation; workers
+  launched ahead never mark).
+* An unreadable window or operator holds for at most 10 s; after that Angelo
+  reads again although a tool may be running there.
+
 Approval timeouts and turn end
 ------------------------------
 
@@ -136,6 +258,26 @@ wait for the person: 180 s for every call (queueing, preparation and the click),
 for Studio generation and Flow runs (a started job then sets its own, longer
 bound). ``Controller.request_tool`` takes its call's expiry from that table and
 ``expire_tool`` answers an unanswered call on the UI tick.
+
+A card the person is reviewing does not run out under them
+(``approval_wait.review_hold``, the pump's last hold). While the chat is shown
+and its waiting card has its code or details open, or any part of the card is
+in view while Angelo's window is in front, the call's lifetime does not run:
+its expiry moves later by the time that passed, by the same arithmetic as the
+scene and editing-tool holds, so the card's "until" line and the provider's
+wait follow it. A draw records what is seen (the card's place in the
+transcript, whether it is open); the chat's window handler records whether the
+person's last input went to Angelo (losing focus says it did not; a timer and a
+motionless pointer refresh say nothing). Only the card being reviewed is held,
+never another pending call, and a chat already held is not credited twice. A
+card nobody looks at (the chat hidden, another chat shown, the window behind
+another app with the card closed, the card scrolled away) runs out as before.
+Reason: ten minutes is not enough to read a long script, and a reviewer lost a
+card they were still reading (a showcase run, 2026-11-14). The hold has no
+upper bound: a card left open in a focused window waits, as a chat waiting for
+its scene does. Nothing about the approval changes: the same call, digest and
+click. A connected app's own timeout for its tool call is the app's; Angelo
+cannot move it.
 
 A provider waits on that same answer, not on a number of its own: a flat wait
 shorter than the call's expiry would end the whole turn while a 600 s approval
@@ -502,7 +644,18 @@ is full and correct visibility, and a hold only where an edit may have run:
   family's tool as ``tools.more__<name>`` in code mode; voice threads and
   Claude's routes use the plain name. Recorded (C3 early town-centre
   diagnostic): a target-less hold read "Read again: ." and its hint's
-  ``angelo_scene_settings`` was not callable in code mode.
+  ``angelo_scene_settings`` was not callable in code mode. Only tool
+  references are renamed, never literal data spelled as a tool name
+  (break-it MHM-L-1: a merge's material ``angelo_scene_settings`` came back as
+  ``more__angelo_scene_settings``): a word stays as it is, in prose or in a
+  structured value, when the call itself gave it as a name (a whole value or
+  key of its arguments). A word only mentioned in longer argument text (a
+  script's comment, a brief) is no name of the call's, and a field that names
+  tools (a plan operation's ``tool``, the capabilities lookup's ``names``:
+  ``recovery_reads.REFERENCE_FIELDS``) gives none, so those are renamed. Still
+  renamed: a scene name spelled as a tool that the call did not give literally
+  (a Codex chat passing objects by handle), since refusal text does not type
+  its references separately from data.
 
 Either way, the read that completes the targets carries ``changes``: each
 field with complete values that differs from the host's earlier capture
@@ -934,6 +1087,122 @@ format and its recovery are in ``session_journal``.
   may have written (the key's first pieces), the journal is invalidated too
   (``TranscriptRows._redacted_text``). A restore's badges on old rows invalidate
   as well.
+* **A value the file cannot hold.** The journal is finite JSON in UTF-8, so its
+  encoder refuses, before it writes anything: a number that is not finite (as
+  a value or a key), text that is not valid UTF-8, a container that holds
+  itself and an integer past Python's digit limit (``ValueError``); a value
+  JSON has no form for, such as bytes, a set, a number or an array of numpy's,
+  a Blender vector, a path or any other object, and a key that is none of
+  text, a number, a boolean or null (``TypeError``); containers nested past
+  its stack (``RecursionError``). Such a value reaches the state from outside
+  the store: a JSON escape for half of a character (which a model or a
+  connected app can send in arguments, an ID or text), bytes Python read as
+  lone surrogates (a file name that is not UTF-8, a Blender string cut inside
+  a character), a measurement, a row or a field a part of Angelo wrote from
+  Python values. When a save raises for one, the store makes every such value
+  saveable in place and rewrites the file once (``session_saveable.held`` on
+  ``SessionStore.save`` and ``compact``): a surrogate pair held as two code
+  units becomes its character, a lone surrogate U+FFFD, a number that is not
+  finite null, a self-reference null, an integer past the limit its
+  hexadecimal text, bytes text, a path its text, a set a sorted list, a
+  mapping a dict, a sized iterable a list, a library's number Python's, an
+  object that converts itself (``tolist``, ``to_list``, ``to_dict``) what
+  that gives, any other object null, a key its text, and, only when the stack
+  ran out, what is nested deeper than 200 levels null. Rows stay the same
+  objects, everything else is saved as it is, and only the keys a save writes
+  are touched (``session_saveable.SAVED``), never a runtime value under
+  another key. What was changed is recorded by kind and count, never by
+  value: one printed line and ``SessionStore.made_saveable`` (``text``,
+  ``nonfinite``, ``integer``, ``cycle``, ``key``, ``depth``,
+  ``converted:<type>``, ``dropped:<type>``). An ordinary save does nothing
+  more than before. Reason: the value stayed in the state, so every later
+  save failed on it too, and admission, which journals a call before it
+  starts, refused every call until Angelo was started again (and raised
+  instead of refusing when the error was not one it caught). Admission now
+  answers every error a save raises, of any type, with a refusal of that one
+  call; the answer names the kind of its cause in ``journal_error`` (the
+  error's type and errno name, never its text, which can hold a path;
+  ``tool_finalization.journal_refusal``) and prints it.
+* **A save that fails says why and what to do.** One sentence for the cause
+  and one for the next step, the same wherever a failed chat save is reported
+  (``save_failure.cause``): admission's refusal (after "The invocation
+  journal could not be saved, so no native work was admitted.", with the
+  cause's key in ``journal_cause``), a completed call's ``journal_warning``, a
+  bind's warning, a restore's stored diagnostic and a memory update's refusal.
+  The causes: another Angelo process has the chat open (by its number when the
+  lease names it), another program changed the chat's file, a full disk, no
+  permission, a read-only disk, a missing folder, a file another program
+  holds, too many open files, a disk error, a value the file cannot hold, and
+  anything else by its type and errno name. Windows' own error code is read
+  before the errno Python maps it to, so a sharing violation is "another
+  program is holding the file" and never "not allowed". The sentence never
+  holds the error's own text or a path: the folder is "the folder that holds
+  Angelo's own files". It is a ``display_text.Text``, English as it stands
+  and translated whole in a row a person reads: the bind's "Angelo couldn't
+  save this chat" row, the public notes' warning, the mode preference's row
+  and the restore gate's notice carry it in the person's language (every
+  sentence is in Angelo's 20 catalogues); the last two showed the operating
+  system's text before, with the settings folder's path. Reason: the refusal named
+  no cause, a bind's warning gave a Python type name and a restore's the
+  operating system's text with the person's folder in it; a showcase session
+  met the refusal three more times and could not tell another Angelo from a
+  full disk (finding F9).
+* **One process per chat.** Every Angelo process reads the same state folder,
+  and more than one can run: a second window, a background Angelo an engine
+  starts to import a ``.blend`` (Godot does on every save of one), a
+  command-line render. Each loads the active chat, a file load binds it and
+  saves, a quit compacts it. So a lead chat's store writes only while its
+  process holds the chat's lease (``session_lease``): an OS lock on
+  ``leases/<chat id>.lease`` in the state folder (``flock``; one locked byte on
+  Windows), taken without waiting when the store loads the chat or first writes
+  it, shared by the process's stores of the chat, and given up when the chat is
+  closed there or the process ends. A process that finds it held has a view of
+  the chat: every write raises ``JournalLeased`` (a ``JournalTaken``) and
+  nothing of the chat is written there, its pending messages neither; when the
+  holder ends, the view's next save takes the lease by itself. The holder
+  writes its process number into the lease file when it takes the lease (the
+  file's whole content, one line), and a refused process reads it
+  (``session_lease.holder``), so the refusal says which process has the chat.
+  On Windows the locked byte is far past that content (``_LOCK_AT``): a locked
+  byte cannot be read through any other handle there, and a held lease must
+  stay a file anyone can read and copy (Angelo's own carry-over from an earlier
+  version's folder, a backup, Blender's copy of the previous settings).
+  A worker
+  Blender's store of a hosted chat takes no lease (its ownership is the
+  hand-off's, contract C7). Where no lock can be had there is no lease and the
+  guard below works alone. Reason: a background Angelo wrote the open chat's
+  file, the open chat's store then refused to write over it for good, and
+  admission refused every call until Angelo was started again (the showcase's
+  Godot session, 2026-11-14, after each save through the engine link).
+  Limit: an Angelo started second keeps its view of the active chat until the
+  first one closes it or quits; it can start another chat.
+  A background Angelo does not get that far by itself: the add-on is never
+  started from saved preferences there (``angelo_background_addons``, asked by
+  ``addon_utils._initialize_once`` and ``reset_all``), so a command-line render
+  or an engine's import opens no chat, signs in nowhere and writes nothing of
+  Angelo's state, whether an Angelo is open or not. Asking for the add-on by
+  name (``addon_utils.enable``, ``--addons angelo_agent``) starts it as
+  before, and then the lease above is what protects an open chat
+  (``test_blender_second_process_file_load`` starts the real binary both ways).
+  Nor does the add-on's ``unregister`` open a chat: it switches every chat
+  editor of the open file back to the Python console, and remembers a draft
+  only for a chat the process already has open (``editor_types.open_chat``).
+  That call was what loaded the active chat in the background Angelo, whose
+  closing save then wrote it (traced with the showcase's controlled repro on
+  Linux, 2026-11-15: refused before, answered after).
+* **The open chat takes its file back.** When the open chat's save finds
+  another writer's content in its file (``JournalTaken``: a process that took
+  no lease, such as an earlier build, a tool or a restore; or the file gone),
+  ``TranscriptRows.save`` keeps that file beside the chat
+  (``session_kept.preserve``: the ``.unreadable`` copy, a hard link where there
+  are any), then writes the chat's state whole and goes on
+  (``GuardedWriter.take_back``; one line is printed and the writer counts it in
+  ``taken_back``). Only the chat's store in the process that holds its lease
+  does: a view, a worker's hosted chat and a store an in-process reload
+  superseded stay refused, and a link or anything but a regular file in the
+  chat's place is never written over. A bare ``SessionStore`` (below) still
+  never writes over another writer's content. Reason: nothing loaded the open
+  chat again, so one such write refused every later call.
 * **One writer.** A save appends only to the file it last wrote: the same
   device, inode, size, modification and change time and one link. On Windows
   both times tick (15.6 ms by default), so a load settles its witness before it
@@ -947,8 +1216,9 @@ format and its recovery are in ``session_journal``.
   same bytes (CRC-32) whose times, mode or links changed. Another writer's
   content (another app on the same profile, an earlier build's save, a
   restored file, a link put in its place, an in-place edit) raises
-  ``JournalTaken`` and nothing is written until the chat loads again, because
-  a rewrite from memory would erase that writer's records. The store's own
+  ``JournalTaken`` and nothing is written until the chat loads again or the
+  open chat takes its file back (above), because a rewrite from memory alone
+  would erase that writer's records. The store's own
   failures never read as another writer: a failed append is cut back under the
   lock and the file as it was left becomes the expected one, and a rewrite
   whose replace was refused with the file unchanged keeps the writer appending
@@ -1070,13 +1340,39 @@ format and its recovery are in ``session_journal``.
   ``shared_replace.Refused``; the person is told on a card naming the file
   (``refused_saves``, once per file every ten minutes, at most three waiting; a
   caller that tells the person itself passes ``told=False``), and the caller
-  keeps what it was saving or reports its own failure. Every save gets its
+  keeps what it was saving or reports its own failure. Two saves have no later
+  try in their launch and are made on a worker thread, so they wait longer for
+  a moment's holder, 20 tries with 1.9 s of pauses in all
+  (``shared_replace.PATIENT_ATTEMPTS``), then fall back as before: the per-user
+  cache-key secret (a launch that cannot store it keeps one of its own, and
+  shares no prompt-cache key with later launches) and a warm-up's base (not
+  saved, it is warmed again). A scan of a file just written held one past the
+  100 ms on a loaded machine. ``test_native_shared_replace_once`` pins both and
+  fails if any other caller takes the longer wait: two saves keep a choice for
+  the session only when refused, on the main thread, and say so (the engine
+  live link's setting and the engine suggestions shown), and every other save
+  is raised to its caller or owed and tried again. Every save gets its
   retries; a caller that tries again from a timer or a UI tick waits
   ``RETRY_SECONDS`` (5 s) after a refusal first, so a file held for good never
   costs a tick the retries' 100 ms: the job records (a job's progress save
   waits; a save that must land, a job's end, is tried at once), the chat list,
-  the organization's policy, an "off" for Always allow scripts and the
-  launcher's records (a changed value is tried at once). A chat list or an "off"
+  the organization's policy, an "off" for Always allow scripts, the
+  launcher's records (a changed value is tried at once) and a generation's
+  library record (``studio_commits``: the window shows the event at once, so a
+  finished picture never stays "generating" for a file another program holds;
+  what another writer changed meanwhile is kept, a reload that read the old
+  file loses nothing, Studio's close tries once more, and the job's own saved
+  state gives the next launch the result if the record never lands;
+  ``test_native_studio_owed_record``), and Media Studio's Turn off for its
+  Asset Browser library (``studio_assets_space.settle_off``: the refusal is
+  still raised at the click, and the "removed" record is written again from
+  the tick and once at unregister, so the next launch never adds the library
+  back; Turn on, or an entry that is back, ends it;
+  ``test_native_studio_off_owed``), and the crash-report choice and record
+  (``crash_state``: a refused state is what the next ``load`` returns, so a
+  report already sent is never offered again and a remembered choice is kept;
+  a timer writes it again, and unregister once more;
+  ``test_native_crash_state_owed``). A chat list or an "off"
   still owed at quit leaves a marker beside its file (a name nobody holds), so
   the next launch lists every chat on disk and keeps the choice off; an
   organization policy still owed is kept in ``team-org-policy.json.pending``,
@@ -1166,7 +1462,7 @@ and never end Angelo or leave a half-applied script without a result. The
 controller's tool dispatch catches the same set for every tool.
 
 **Names Blender renamed or removed.** Blender's own error for a name that
-Blender 4.x or 5.x renamed or removed names the 5.2 replacement
+Blender 4.x or 5.x renamed or removed names the replacement
 (``bpy_angelo_renamed_api.cc``, a table consulted only after a lookup has
 failed). ``sky_type = 'NISHITA'`` raises stock's ``TypeError`` with the valid
 items, followed by "Blender 5.0 renamed 'NISHITA' to 'SINGLE_SCATTERING' (the
@@ -1444,6 +1740,109 @@ moving group); on passing scenes origin and box agree with the grader. Cost
 on those scenes: 45-83 ms; 316-413 B, about 60 B per group and frame plus part
 names.
 
+A script never leaves a mesh whose arrays name elements the mesh does not have.
+Blender's low-level mesh API (``from_pydata``, ``vertices.add``, ``loops.add``,
+``polygons.add``, ``foreach_set``) writes what it is given and checks nothing,
+and Blender then reads past the arrays at the next evaluation, modifier or
+redraw: a crash or wrong memory, never an error the script can catch. Between
+the script's last statement and anything that evaluates the scene, whether the
+script returned or raised, the executor asks Blender itself
+(``script_mesh_check``): ``Mesh.validate()`` changes nothing in a sound mesh and
+repairs an unsound one (it removes the faces and edges that name missing
+elements and rebuilds edges that are only missing). **Every mesh the script
+could have written is validated, whatever its size, and no other.** Blender
+says which: ``Mesh.topology_seal()`` records the identity and write version of
+the mesh's edge, face-corner and face-offset arrays and its element counts, and
+``Mesh.is_topology_sealed`` stays true exactly while nothing could have written
+them (``MeshTopologySeal``, ``BKE_mesh_types.hh``). The seal rests on what
+Blender's implicit sharing already does for every array: an access that could
+write one either copies it first (a shared array gets a new identity) or raises
+its version (``ImplicitSharingInfo::tag_ensured_mutable``), and replacing,
+adding, removing or resizing one gives a new identity, so no accessor, operator
+or attribute call can write an array and leave both unchanged. The seal holds
+each array weakly, which keeps a recorded identity from being reused by a later
+array and costs writers nothing: no copy is forced and no data is kept alive.
+One write does reach an array without asking the mesh for it, an RNA item a
+script kept from an earlier call (``edge = mesh.edges[0]`` points into the
+array), so setting a topology index through an item breaks the seal in that
+property's update (edge ``vertices``, corner ``vertex_index`` and
+``edge_index``, face ``vertices`` and ``loop_start``, and an attribute value
+that lies inside ``.edge_verts``, ``.corner_vert`` or ``.corner_edge``). After
+a script the check reads the seals of the whole file in one call, validates
+each mesh whose seal is broken or was never set (a new mesh, a copy, one read
+from a file, one the script wrote, and one it only read through RNA, which
+hands out writable arrays) and seals it once ``validate`` finds it sound. A
+mesh ``validate`` could not be asked about, or corrected twice, is not sealed
+and is asked again. In a Blender without the seal every mesh is validated after
+every script, as before: never fewer checks than can be proven enough. The
+result says what was repaired: ``meshes_repaired`` (per mesh, its counts before
+and after; ``still`` when a second ``validate`` corrected it again; at most 16
+rows, the rest counted) and one sentence, ``mesh_repair``; and what could not
+be checked at all (its ``validate`` raised, or the meshes could not be listed):
+``meshes_unchecked`` (per mesh, why; at most 16 rows, the rest counted) and one
+sentence, ``mesh_unchecked``, so an unchecked mesh is never silent. A sound mesh
+is never changed and nothing is reported for it; a failed script whose restore
+put the file back reports nothing. Positions have a seal of their own,
+recorded the same way and read with the topology's as
+``Mesh.is_geometry_sealed``. ``validate`` does one thing for positions: it sets
+a coordinate that is not a finite number to zero. So a mesh whose positions
+alone were written (a script that moves vertices: the topology seal holds, the
+geometry seal does not) is not validated; the check reads its coordinates once
+and scans them, and only a mesh that has such a value is validated, repaired
+and reported. A scan that cannot be made is a validation. Limits: only meshes
+(curves, point clouds and Grease Pencil have no ``validate``); a write through
+``ctypes`` or a raw address is outside any check. Proof:
+``test_blender_mesh_topology_seal`` writes topology every way RNA allows
+(fresh and kept items, ``foreach_set``, the attribute API, building, resizing,
+``bmesh``, Edit Mode) and every way to write a coordinate, and reads both seals
+after each, with reading counts, renaming and evaluating as the controls that
+must keep them; ``test_blender_script_invalid_mesh`` runs twenty-seven approved
+scripts on one document and reads what each validated and scanned. Reason: such
+a script "succeeded" and
+left the mesh as written (competitor triage row B4). Two earlier forms. The
+first compared element counts, validated the meshes whose counts had changed
+and gave the others 5 ms in all per script, in rotation: a mesh whose own check
+cost more than that (about half a million elements) was passed over on every
+call, so an in-place rewrite of it was never repaired, and the result did not
+say a mesh went unchecked (external audit, round 2, F1: 600,000 vertices and
+one edge set to (0, 600001), twenty calls). The second validated every mesh
+after every script, which closed that and cost every script ``validate``'s time
+for the whole file, a script that touched no mesh included: measured on Mac 1
+(M4 Pro, background, CPU only, 2026-11-15, laid over the build of
+``f00b86db6d94``, load average about 5), a script call that changes nothing
+took 62.9 ms against 27.3 ms without the check in a scene of 10,000 meshes of
+4 quads, 89.9 ms against 4.7 ms with 1,000 meshes of 1,024 quads, 42.6 ms
+against 2.5 ms with one mesh of a million quads and 177.6 ms against 2.7 ms
+with four of them.
+
+What the sealed check costs, measured on a Linux build of ``950517b4334`` (GCP
+c2d-highcpu-56, background, CPU only, load about 1, 2026-11-15;
+``ANGELO_QA_MEASURE=1`` of ``test_blender_script_invalid_mesh``; each script
+through the executor with the check and without it in turn, eight each,
+medians). The four scenes are 10,000 meshes of 4 quads, 1,000 meshes of 1,024
+quads, one mesh of a million quads and four of them:
+
+* a script that touches no mesh validates and scans none and pays one read of
+  the seals: 6.7 ms, 0.45 ms, 0.06 ms and 0.02 ms added to the call (the read
+  alone, run back to back: 2.6 ms, 0.26 ms, 0.006 ms and 0.01 ms). It grows
+  with the number of meshes, about two thirds of a microsecond each once other
+  work has run in between, not with their size: under a millisecond up to
+  about 1,500 meshes. Reading only the meshes that were written, from a list
+  kept at write time, is the planned fix for scenes of many thousands of
+  meshes (2.1.0);
+* a script that writes one mesh's coordinates back has that mesh scanned, not
+  validated: 7.7 ms, 0.34 ms, 3.5 ms and 3.3 ms added (a million-quad mesh's
+  coordinates are read in one copy and tested);
+* a script that rewrites one mesh's edges with the same values validates that
+  mesh alone: 8.6 ms, 0.94 ms, 95 ms and 81 ms added (the million-quad
+  script itself takes 355 ms);
+* the audit's rewrite, one edge set out of range with the same counts, is
+  repaired by its own call (``validate``, ``update``, ``validate`` again):
+  8.8 ms, 1.3 ms, 210 ms and 207 ms added;
+* the first check of a file, which has no mesh sealed yet, validates every
+  mesh once: 112 ms, 215 ms, 114 ms and 378 ms. The same machine would have
+  paid that on every script before.
+
 **Names Blender gave in place of the names asked for** (``script_renames``).
 Blender keeps a data-block's name unique among the local data-blocks of its
 kind: a script that creates "Camera" beside the factory camera gets
@@ -1532,6 +1931,35 @@ Blender 5.2: real calls counted in a 4,000-object scene with the fact stated,
 counted, a Python operator calling ``bpy.ops`` counted once, an operator's own
 documentation, a kept callable counting nothing later, and ``bpy.ops`` put back
 after every script.
+
+**Operator calls that did not finish** (``not_finished``). A ``bpy.ops`` call
+returns the set of states Blender's operator ended in; ``{'CANCELLED'}``,
+``{'PASS_THROUGH'}`` or ``{'RUNNING_MODAL'}`` means Blender did not do what the
+call asked, yet the script runs on and its result said only ``success: true``
+(Devin optimizer audit Agent-B1/Agent-F1, 2026-11-13:
+``object.modifier_apply(modifier="DoesNotExist")`` and ``object.delete()`` with
+nothing selected). The same clock keeps each outermost call's returned set, and
+a script, completed or failed, one of whose outermost calls returned without
+``FINISHED`` gets ``not_finished`` right after ``success``, where the model
+reads the verdict::
+
+    "success": true,
+    "not_finished": {"calls": 3, "operators": [["object.delete", "CANCELLED", 1],
+                     ["object.modifier_apply", "CANCELLED", 2]],
+                     "fact": "Blender did not complete these bpy.ops calls (they returned without FINISHED); ..."}
+
+``success`` still says the script ran to its end: the edits its other calls
+made are committed, and ``success: false`` would read as nothing having
+happened and invite a re-run that repeats them (maintainer decision,
+2026-11-13). Rows are grouped by operator and returned state, first seen first,
+at most ``NOT_FINISHED_ROWS`` (five), with ``calls`` counting every one. A call
+that raised is the script's own error and a call made inside another operator
+belongs to that operator, so neither is a row; a script whose calls all
+finished gets nothing more (no bytes). Only the set reaches Python: a poll
+failure or an error report already raises, and the warnings Blender prints for a
+cancelled call go to its own output, which the script never reads, so no
+message is added. ``test_native_script_operator_time.py`` covers it on
+stand-ins and ``test_blender_script_operator_time.py`` through the executor.
 
 **What its Booleans did** (``script_booleans``). A script that adds a Boolean
 modifier and applies it can take the whole block or nothing when a cutter is
@@ -1623,13 +2051,13 @@ Background colour and its colour family (``COLOR``), or the nodes that drive a
 colour the host does not evaluate (``NODES``), or ``NOTHING``. A cheap digest
 of the graph's structure and input values before and after the script decides
 whether it changed (``world_surface.fingerprint``). Every finished script's
-result also carries ``api_notes`` when its code uses a Blender 4.x name that
-5.2 renamed or removed (``script_api_notes.RENAMED``: ``'NISHITA'``,
+result also carries ``api_notes`` when its code uses an older Blender name that
+the release renamed or removed (``script_api_notes.RENAMED``: ``'NISHITA'``,
 ``'BLENDER_EEVEE_NEXT'``, ``dust_density`` and an Action's ``fcurves``),
 inside try/except included: there the old name fails silently and the
 fallback runs, while the model may still believe the old name took effect
 (a physical sky set inside try/except leaves a flat fallback colour). Both
-runtimes' instructions state the 5.2 names beforehand, in one shared sentence
+runtimes' instructions state the current names beforehand, in one shared sentence
 (``agent_guidance.BLENDER_API_FACTS``, ``agent_integration.rst``); the notes
 catch a script that uses an old name anyway. Of
 1,094 distinct recorded Angelo scripts, 240 used ``'NISHITA'``, 264
@@ -1788,6 +2216,35 @@ visits a copy of it, so a callback that grows or clears the caller's list does
 not crash (stock Blender crashes on growth).
 ``test_blender_removed_id_python_api.py`` covers every helper, with live IDs
 and non-ID values unchanged.
+
+A script that passes ``None`` for a pointer parameter whose C function
+dereferences it gets a ``TypeError`` naming the parameter: those parameters
+are ``PROP_NEVER_NULL`` (``makesrna``). Stock Blender passes ``None`` through
+as a null pointer and crashes, for example on
+``bpy.context.window_manager.fileselect_add(None)``, the other invoke
+popups, ``modal_handler_add``, collection ``unlink``, keymap matching,
+``pose.apply_pose_from_action``, a render engine's camera calls, a node's
+``poll`` and ``poll_instance`` and the UILayout node and file-path templates
+(43 parameters of 41 functions; the four ``unit_test_compare`` data and the
+pie menu's ``event`` are also required, since an omitted one was read as
+empty). A parameter whose callee checks ``None`` or ignores it keeps taking
+it: ``UILayout.template_layers`` draws without used-layers data, and
+``template_node_view`` draws nothing without a tree or a node. Where ``None``
+means nothing active it clears instead of crashing: the tracking
+collections' and Grease Pencil layer groups' ``active`` (an active layer
+stays). ``Pose.apply_pose_from_action`` and ``blend_pose_from_action`` apply
+nothing from an action with no slots, as ``Pose.backup_create`` does.
+
+How it was found (an upstream candidate): every pointer parameter and every
+editable pointer property that accepts ``None``, by RNA introspection,
+called on an instance of every struct type a rich scene reaches (every node,
+modifier, constraint, texture, light, strip and space type), one process per
+case for properties and each with a valid-value control; then the C read for
+whatever no instance reached. The sweeps ran on Linux in background mode;
+windowed-only callees and those behind build options were read, and the
+suite runs its window cases on every platform.
+``test_blender_rna_none_pointer_params.py`` calls each fixed case with
+``None`` (or omits it) in its own process, and each family with a real value.
 
 A custom-property assignment that fails raises its error and leaves the
 property as it was (``idprop_py_api.cc``). Stock Blender skipped an array item
@@ -2237,12 +2694,15 @@ instruction bytes; the note is in a result only where it engaged.
 Removed Blender API
 -------------------
 
-Models still write Blender Python from 4.x that Blender 5.2 removed or renamed.
-Such a script would run until that line raised, the host would roll the build
-back, and the next round would write the whole script again. Validation reads every
-reviewed script against a closed table (``script_api_removed.py``) and refuses
-one that would certainly raise there, before it is approved or run, naming each
-line and its 5.2 replacement; nothing has run.
+Models still write Blender Python from older releases that the Blender Angelo
+is built on removed or renamed. Such a script would run until that line raised,
+the host would roll the build back, and the next round would write the whole
+script again. Validation reads every reviewed script against a closed table
+(``script_api_removed.py``) and refuses one that would certainly raise there,
+before it is approved or run, naming each line and its replacement; nothing has
+run. The release the texts name is one value, ``blender_release.RELEASE``,
+shared with the API facts and the MCP header; ``test_native_api_drift.py``
+keeps the table's target equal to it.
 
 * **The table.** Literal enum values (the sky type ``NISHITA``, now
   ``SINGLE_SCATTERING``, the same model, beside the new default
@@ -2253,8 +2713,18 @@ line and its 5.2 replacement; nothing has run.
   ``Mesh.set_sharp_from_angle``; the split-normals calls; EEVEE Legacy's
   reflections, bloom, ambient occlusion and shadow-size settings), the old
   OBJ, STL, PLY and Collada operators, and the Bump node's ``inputs['Invert']``
-  (an ``invert`` property) on a node the script made as a Bump node. Each entry
-  is a documented removal or a recorded raise;
+  (an ``invert`` property) on a node the script made as a Bump node. Blender
+  5.3's rows are cited ``curated.json`` rows from the 5.2.2 to 5.3 RNA and
+  operator source diff: the attributes ``use_inverse_smooth_pressure``,
+  ``use_sort_alpha`` and ``geometry_nodes_stack_limit``, the Sequencer overlap
+  mode ``'EXPAND'`` (now ``'RIPPLE'``), three removed operators, and
+  ``operator_argument`` rows for keywords 5.3 renamed
+  (``object.text_add(radius=)``, the Sequencer strip-add operators'
+  ``move_strips`` and ``overlap_shuffle_override``, three glTF export options),
+  refused only as a literal keyword, never through ``**``. A removed name that
+  scripts use for their own objects (``NodesModifier.panels``) has a row with
+  a hint and no refusal: Blender's error explains it, nothing is refused. Each
+  entry is a documented removal or a recorded raise;
   ``test_blender_script_api_removed.py`` (BACKGROUND) checks every one against
   Blender's own RNA and operators.
 * **Only certain failures.** A value chosen at run time or compared, a name
@@ -2269,6 +2739,35 @@ line and its 5.2 replacement; nothing has run.
   functions of the text, so ``script_source`` keeps them for the last 8 texts
   (the text is the key) and the executor runs the code object validation
   compiled. Text that does not compile keeps nothing.
+* **One generated table for all three uses.** Blender's error sentence
+  (``bpy_angelo_renamed_api.cc``), this refusal and the result note
+  (``script_api_notes.py``) read one table,
+  ``angelo_agent/assets/api_drift.json`` (``script_api_table.py``; the C++ rows
+  are rendered from it into ``bpy_angelo_renamed_api_table.inc``).
+  ``scripts/angelo/api_drift`` builds it: ``dump.py`` records, inside each
+  official release from 3.6 to the target, every RNA struct with its
+  properties, enum items and functions (the bundled add-ons' property groups
+  included), every operator and its arguments, every node type's sockets and
+  the members of the Python modules scripts use; ``table.py`` lists every name
+  an older release had and the target lacks. A replacement is named only on
+  exact evidence: Blender's own file-versioning rename of a socket, an enum
+  item with the same stored value, UI name or description, a member of the same
+  kind with the same UI name or description that appeared when the old one
+  went (exactly one candidate), or a row of ``curated.json``, which cites its
+  source (release notes, a recorded raise). Everything else says only which
+  release removed the name, and the release is named only when the release
+  before it was dumped too. Every row reaches Blender's error, which only
+  explains a failure that already happened; the refusal and the note use only
+  certain rows: the cited ones, and generated ones a replay of the recorded
+  scripts cleared (``replay_cleared``: the refusal may never refuse a recorded
+  script that ran). ``cli.py check`` (``test_native_api_drift.py``) keeps the
+  C++ rows equal to the table, and ``test_blender_renamed_api_errors.py``
+  checks every row against the running build: the old name fails, each named
+  replacement exists, the error carries the sentence. Dumps are inputs kept
+  outside the repository; at each rebase, dump the new release and build again.
+  A release's versioning file is named either way (``versioning_410.cc`` up to
+  5.2, ``versioning_401.cc`` from 5.3, ``0c2ca963600``); ``versioning.release_of``
+  reads both, so a rename is dated by the release that made it.
 
 Post-commit identities
 ----------------------
@@ -4367,6 +4866,324 @@ see which IDs were re-read in place, watch the field with a debugger (``lldb``,
 step's memfile chunks through ``ctypes`` to compare the written pointer with
 its target's written address.
 
+Undo and Redo of linked data that uses packed linked data
+---------------------------------------------------------
+
+Angelo carries a third local fix to Blender's memfile Undo. Stock Blender 5.2
+and 5.3 died with SIGSEGV on Redo after a person linked an asset whose own data
+uses packed linked data (an asset's material using a node group Blender packed
+from another library, e.g. from Essentials) and undid the link. No add-on code
+is involved (found by the merge-privacy break-it review, BREAKIT-C7A-13 M1).
+
+Cause. Undo keeps some IDs from the old Main as they are, ID pointers included:
+'never undo' data (window manager, screens, workspaces, brushes) and the linked
+data it reaches (the window's scene before the step is loaded reaches the linked
+collection, its objects, meshes and materials), and the regular linked IDs of
+libraries the loaded step names, matched by session UID or, when that changed
+(linked again after a purge, a library reload), by name. A packed linked ID is
+local data to Undo, though: matched by session UID only, and one the loaded step
+does not store is freed with the old Main, together with its archive library. A
+kept material then pointed at a freed node group. With AddressSanitizer the
+first use is already in the Undo (``BKE_main_id_refcount_recompute`` from
+``setup_app_data``, a heap use after free of the node group allocated by
+``read_id_in_lib`` at link time); a release build crashed later, in the
+dependency graph build of the Redo. A packed linked brush (itself 'never undo')
+kept its brush but lost its archive library the same way.
+
+Fix. ``readfile.cc``: once the kept IDs are known (after
+``read_undo_libraries_cleanup_unused_ids``),
+``read_undo_keep_packed_ids_used_by_kept_ids`` walks their ID pointers to a
+fixed point: 'never undo' IDs and the linked IDs of re-used libraries that stay
+(not the unused ones about to be discarded). Every packed ID the step does not
+store that they use is moved into the new Main as it is, and walked in turn. It
+is never swapped for another datablock of the same name or content: its users
+depend on that very datablock (an object's pose channels point into its
+armature's bones, its material slots match its mesh, a shape key belongs to one
+mesh). It goes into its archive library, or, when the step stores another ID of
+that name there, into another archive library of the same parent, as reading
+does for a packed ID of the same name with other content; a mesh and its shape
+key go together, and embedded IDs follow their owner's library. The archive
+library is always kept with it; its parent is the step's library for the same
+file, else the old parent, moved over (its unused linked IDs are cleaned up
+again). Packed 'never undo' IDs get their archive library too, and every kept
+packed ID is registered by deep hash. Nothing no kept ID uses is kept, so
+undoing a plain link still frees its packed data, and a file without archive
+libraries costs nothing. Nothing is ever left pointing at freed memory.
+
+Two kinds of left packed IDs are not data the step lacks, and are not moved.
+One the step read again under the same session UID (a full read: Angelo's
+asset import steps, the developer preference "Undo Legacy") is the same
+datablock at a new address: the kept users are pointed at that copy once the
+read is complete, through Blender's remapping
+(``read_undo_remap_reread_packed_ids``), so that each ID type's processing runs,
+and a packed 'never undo' ID takes the step's copy of its archive library. And
+when the step reads anew a packed ID with the same content (deep hash) as a
+kept one, the kept one stays and the step's copy is dropped before linking,
+everything that would use it resolving to the kept one: one packed ID per deep
+hash, as Blender requires. That dropped copy was never linked: its ID pointers
+are cleared before it is freed with the old Main (an object's particle systems
+would read their settings). Libraries kept or created here get names no other
+library of the new Main has, the way Blender names IDs.
+
+A packed datablock is known by a deep hash built on its source file's hash.
+Blender cached that file hash by path and modification time in whole seconds
+(``id_hash.cc``), so two versions of an asset saved within one second got one
+hash, and linking packed (and Undo's dedupe) took one version for the other.
+Angelo knows a file by its version: the identity of the file the reader opens
+at that path (a final symbolic link followed, as the reader's own descriptor
+does: device, file index, size, modification time in nanoseconds) and its
+status change time (which a rewrite restoring an old modification time still
+changes). Each ID is checked first against the version it was read from (its
+size and nanosecond time, recorded when read): an ID read from another version
+never gets this one's hash, cached or not. A cached hash is reused only for the
+same version, and only if the file had not changed within two seconds of being
+hashed (file systems may keep whole seconds); one deep hash computation takes
+each file's version and hash once, both through one descriptor (a file whose
+modification time is in the future, e.g. on a share whose clock runs ahead, is
+never trusted from the cache: it is hashed once per call); an ID records its
+file's whole version when read; Blender's own writes drop what is known of the
+file (``bke::id_hash::source_file_changed``; a save already makes a new file at
+the path, so this is a guard for writes in place). An upstream candidate.
+
+Freeing an object's particle systems read the settings of the object's other
+systems (whether any draws objects), and a system's own settings (whether its
+particles had hair keys); when the object is deleted together with those
+settings (an orphans purge, a multiple delete, packing a linked object), they
+were freed first. Freeing now reads no settings at all: hair keys are freed
+wherever there are some (as ``free_hair`` does), and the draw flag is counted
+again only where one system leaves an object that stays
+(``psys_update_dupli_flag``), and cleared when all of an object's systems are
+freed (it may stay: converted to a mesh). An upstream candidate
+(``test_blender_particle_object_delete.py``, gtest ``ObjectParticleFreeTest``).
+
+Tests. ``test_blender_linked_packed_redo.py`` (BACKGROUND): a node group in a
+material, a mesh under an object and an image in a texture node, each linked
+only (the control, first) and linked and packed, linked into a scene with an
+instancer, then Undo and Redo twice with a depsgraph evaluation after each; and
+a brush with a packed texture image, linked only and packed after a step, with
+the file written after each Undo. ``test_blender_linked_packed_undo_chains.py``
+(BACKGROUND): link, purge and link again with the same and with a changed asset
+(three Undos and Redos), nested and cross-library packed chains, a packed image
+used only by an ID property and a driver, and two packed node groups of one
+archive library linked one after the other; every state is evaluated and
+written, and packed counts by type, libraries and duplicates are compared.
+``test_blender_linked_packed_undo_data.py`` (BACKGROUND): a linked object with
+packed object data (an armature with its pose, a mesh with a shape key, a mesh
+whose material count changes), relinked after a purge with the same asset, a
+changed asset and the libraries removed; after every Undo and Redo the object
+must use the very data it was linked with, whole. Both of these suites also
+read every Undo in full (legacy undo, an asset import step), and run each case
+in a child Blender under ``--log "*undo*"`` (``packed_undo_children.py``): the
+case fails unless that log shows the keep paths it exists for and none it must
+not take. Not reached by any test, and checked by reading only: a parent
+library the step stores for the same file under another session UID, and the
+renaming of a kept library. The chains suite also has a packed object with two
+particle systems (the dropped copy), and local datablocks that use the packed
+data directly (a local object its mesh, a local material its node group, also
+in full reads), which the step reads anew and which must resolve to the kept
+datablock. ``test_blender_packed_link_same_second.py`` (BACKGROUND): an asset
+changed within one second, copied with another size, copied with the same size
+and time to the nanosecond, and written again by Blender; linking it packed
+must take the new content; and a library reached through a symbolic link packs
+right and is read once per call, then not again (a child Blender counts the
+``lib.id_hash`` log's reads). Gtests: ``IDHashSourceFileTest`` (an ID from an
+older version never takes the newer version's cached hash; the symbolic link's
+reads) and ``ReadfileUndoLibraryNamesTest`` (kept libraries in reverse name
+order all get unique names). All these crash or fail without the fix (stock
+Blender already tells the first same-second case by itself).
+
+Maintenance. Not part of upstream Blender (no fix or report in ``main`` or the
+5.3 branch as of 2026-11-17). When a Blender with ``ID::owner_bmain``
+(upstream 81363995849, 5.4) is merged, the moves in
+``read_undo_keep_packed_ids_used_by_kept_ids`` and
+``read_undo_archive_main_ensure`` must set the owner Main as upstream's own
+moves do, and ``read_undo_id_lib_set`` gives way to upstream's
+``bke::id::id_lib_set`` (40acedf8cd8). If upstream fixes this, keep the three
+suites and take theirs.
+
+Undo after an unrecorded change
+-------------------------------
+
+Angelo carries a second local fix to Blender's memfile Undo. A script, add-on,
+handler or timer can change data-blocks without pushing an undo step: add or
+remove them, link them in from a library, or point one at another. Undo then
+crashed: during the Undo itself (the dependency graph build) or at the
+outliner's first draw after it. Stock Blender 5.3.0 crashed the same way (found
+by the learn lessons suite on 2026-11-12: Edit Mode by keys, a cylinder added
+from Python, the Undo key). Angelo's own agent edits push their steps (a script
+runs under the grouped approval operator after its restore point; a typed
+program publishes one step through its native commit), so this came from the
+Python console, add-ons and timers.
+
+Cause. Memfile Undo reuses every ID whose stored chunks equal those of the step
+it comes from (``read_libblock_is_identical`` in ``readfile.cc``), which holds
+only while the current Main is that step. After an unrecorded add, the live
+collection lists the new object while its stored chunks are unchanged: Undo
+reuses the collection as it is and frees the object, which no step stored, so
+the collection points at freed memory. The same holds for any pointer the live
+Main changed: an object's data, a modifier's target, a material slot, a parent.
+Upstream guards only the push side: a ``MemFile Internal (pre)`` step when
+``Main::is_memfile_undo_written`` is false (``undo_system.cc``).
+
+Fix. ``readfile.cc`` (``read_undo_ids_to_reread``), once per read, lists the
+old IDs to read again at their old address, the path a changed ID already
+takes, instead of reusing them; their pointers then come from the step. No step
+is ever read whole for this. Two kinds are listed:
+
+- IDs whose pointers changed in place since the last memfile write or read.
+  Remapping records each owner whose pointer it changed
+  (``foreach_libblock_remap_callback_apply`` in ``lib_remap.cc``): the users of
+  an ID removed with no step (``bpy.data.*.remove``, a purge, an evicted
+  thumbnail). Cleaning up a freed ID's own pointers records the owner it points
+  back at (a shape key's mesh), whose pointer its caller cleared itself
+  (``shape_key_clear``); the freed ID itself is not recorded. The set is
+  ``Main::angelo_memfile_undo_reread_session_uids``
+  (``BKE_main_memfile_undo_id_changed_in_place``; never windows, screens,
+  workspaces or no-undo types). It is recorded once a memfile undo step exists
+  for that Main, whatever the undo preferences (steps written before global
+  undo was turned off stay on the stack and can be read once it is back on;
+  each UID is held once and the set is emptied at every sync), and
+  ``BKE_main_memfile_undo_synced`` empties it where a memfile is written or
+  published and right after a read that installed its Main (a failed decode
+  that still installed it included), before the hooks after the read (asset
+  adjunct, Sculpt state), which record again through the usual functions. A
+  removed ID the step stores comes back as a new read, listed again by its
+  users read from the step.
+- IDs that point at an ID the step does not store (created since, made local,
+  or taken out of Main alive), which the read would free. Each memfile records
+  the session UIDs it stores as it is written (``MemFileStoredIDs``, filled in
+  ``mywrite_id_begin``, sized from the previous step and counted in the step's
+  undo size). A hash lookup per entry of the old ID map the read already built
+  decides whether any old ID is not stored, reading an ID only when its UID is
+  missing; only then does a walk over every old ID's pointers run, tagged or
+  not, so edits
+  that tag nothing are covered too: a dictionary-style ID property
+  (``ob["ref"] = mesh``), a property with no depsgraph update
+  (``stencil_image``). An ID added since that nothing points at (an observation
+  preview, a Studio thumbnail, the Viewer Node image) is read again by nothing.
+  A linked ID a library reload gave a new session UID counts as stored only
+  when its Library's UID is stored, as the read matches libraries by UID, and
+  the step holds a placeholder of that name in it (read from the step's
+  placeholders only when such an ID exists): a library removed and linked
+  again is a new Library, and its IDs are not stored.
+
+Every other ID is reused as before. Tags cannot tell a pointer from a value, so
+the pointer itself is the test: an edit that changed only values (the frame, a
+location) ends as stock Blender leaves it.
+
+Cost: per push, a hash insert per ID written; per read, a hash lookup per old
+ID, a walk over every ID's pointers only while some old ID is not in the step,
+and a re-read of each ID listed. The undo suite's ``heavy_scene`` case times
+Undo and undo pushes on 20,000 objects (each with a parent and an ID property,
+plus 2,000 linked from a library) against the stock-undo app, reports each
+kind's median and spread, and asserts no whole read and the walk's Undo within
+1.3 times the no-change Undo plus 3 ms (measured: 1.05 times). ``--log undo --log-level debug`` shows each ID's
+choice (kept identical, read to its old address) and the counts behind it.
+
+Residual risk. A caller that clears a user's pointer itself and frees an ID that
+does not point back at that user leaves the user reused as it is: the change is
+kept, as stock keeps unrecorded changes, and the ID comes back unused; no pointer
+is left at freed memory. A pointer to an ID removed earlier with
+``bpy.data.*.remove(do_unlink=False)`` (stock leaves it dangling) is followed by
+the walk; that was already unsafe in stock.
+
+Tests. ``test_blender_undo_unrecorded_change.py`` (GUI, event simulation):
+recorded steps, then an unrecorded change, the Undo or Redo key, then a read of
+the scene: the dependency graph, the outliner drawn, every object's data of its
+own type, every collection's objects and the view layer's alive. Cases:
+``frame_as_stock`` and ``location_kept`` (an unrecorded value edit ends as stock
+leaves it; stock reads the scene back here, frame included);
+``image_transient_no_whole_read`` and ``stored_image_removed_reuses`` (images
+added, kept or removed with no step leave unchanged IDs at their address);
+``shape_key_clear`` and ``global_undo_toggled`` (the same with global undo
+off for the change); ``unrecorded_add``, ``unrecorded_remove`` (back in its
+collection and view layer) and ``unrecorded_collection``;
+``pointer_reassigned``, ``dict_id_property``,
+``later_object_in_older_collection`` and ``modifier_target`` (each first
+deselects everything in a step of its own, so the recorded add leaves the edited
+object's chunks as stored); ``linked_from_a_library``; ``redo_after_unrecorded``;
+``library_replaced`` (a library removed, its file linked again and the object
+linked into the scene, all with no step); ``library_reloaded`` and
+``library_reloaded_nested`` (a library reloaded with no step, an indirectly
+linked parent in the nested one: matched by name, no whole read); ``chained_undo_reuses`` (a second
+Undo keeps unchanged IDs where they are); and ``edit_keys_then_python_add``, the
+Edit Mode path above. ``heavy_scene`` runs only
+when ``ANGELO_UNDO_CASES`` names it. ``test_blender_undo_unrecorded_modes.py``
+does the same across Edit, Sculpt and Vertex Paint mode boundaries, after every
+key. ``test_native_undo_unrecorded_change.py`` pins the record, where it is
+recorded and synced, the stored IDs and the walk's gate. Maintenance: if
+upstream adds its own decode-side guard, keep the GUI suites and drop the local
+ones.
+
+An ID read again at its old address
+-----------------------------------
+
+A memfile read restores every ID its step stores changed, or lists to read
+again, at its old address, with a full swap: the ID keeps its address and
+session UID, and gets the runtime read with it. Two contracts follow, for every
+such read (found on 2026-11-15 by ``test_blender_program_sculpt_undo``: the
+Dyntopo case's Redo stopped with "Undo recovery is required", then the next
+dependency graph build crashed in about half the runs).
+
+- A runtime owner check identifies an ID by its address and session UID, and
+  the runtime data it owns by that data's own pointer, never by the ID's
+  runtime struct: a read again ID is the same owner, never a refusal. Its
+  content, though, is now the step's. The Dyntopo read
+  (``main_undo_bmesh_read_end`` in ``sculpt_main_undo.cc``) gives the live
+  BMesh back only to an Object the read reused (same runtime); an Object read
+  again at its old address (``ID_TAG_UNDO_OLD_ID_REREAD_IN_PLACE``, the session
+  moved onto its new runtime by Blender's ID cache, ``object_foreach_cache``)
+  holds the step's stored Mesh, which the live BMesh is not, so that BMesh is
+  retired without a flush and its log kept: a tagged step's restore adopts its
+  retained history from that log. A full read (legacy Undo, an asset step's
+  delta, a barrier) installs every ID at a new address under the same session
+  UID: that Object is read again too, never a refusal. A read with no Angelo
+  Sculpt snapshot on either side keeps Blender 5.2's behaviour instead: that
+  BMesh is flushed, then freed with its log, as 5.2 did when it freed the
+  replaced session, but only into the Mesh it was entered from, at the same
+  address and session UID and with the geometry it had at the read's start
+  (``mesh_geometry_fingerprint``); a Mesh the step replaced or changed is the
+  step's, so the BMesh is retired unflushed. After the read and any restore,
+  and on an asset step's failed delta, ``main_undo_bmesh_read_drop_orphan_logs``
+  frees a log left without its BMesh, as stock leaves neither after a global
+  Undo. The flush is the read's cost: on a 32,768-face Dyntopo sphere, a memfile
+  Undo took a median 17.5 ms against 4.6 ms on the 2.0.0 candidate that kept the
+  BMesh live (Linux VM, four rounds per arm, 2026-11-15), and Dyntopo is off
+  afterwards, as in 5.2. Only memfile steps pushed in Sculpt mode take this
+  path (agent checkpoints); stock Sculpt mode pushes Sculpt steps. The read is
+  protected this way
+  for every memfile step while any Dyntopo BMesh is live, tagged or not
+  (``main_undo_bmesh_any``): since Blender 5.3 (``9407047c635``, undo cache
+  management for ``SculptSession``) the ID cache carries the session, live
+  BMesh included, onto an Object read again in place, where 5.2 gave it a fresh
+  runtime and no session. This keeps 1.0's contract: an ordinary memfile Undo,
+  or one back across a tagged snapshot into an older manual step, shows no live
+  BMesh on an Object it read again; a tagged commit step restores it.
+- The depsgraphs memfile Undo takes out of Main for its read get no tags while
+  they are out. ``memfile_undo_depsgraphs_give_back`` (``memfile_undo.cc``)
+  gives them back on every path: after a complete read it tags what the read
+  changed (Blender's own loop); after a failed decode, its Main installed or
+  not, it tags every ID for a new evaluated copy, since nothing says what
+  changed, and keeps the changes still to record for the next step. Before
+  this, a failed decode gave the graphs back untagged, and an evaluated scene's
+  ToolSettings kept a pointer the read had freed.
+
+Tests: ``angelo_checkpoint_undo_test.cc``
+(``PrivateMemFileReadRetiresBMeshOfObjectReadAgainAtOldAddress``,
+``LiveDyntopoBMeshIsSeenForEveryMemfileRead``,
+``PlainMemFileReadKeepsEditsOfObjectReadAgain``,
+``FullMemFileReadAdmitsTheSameIdAtANewAddress``,
+``PlainFullReadKeepsTheStepsNewMesh`` and
+``PlainMemFileReadKeepsAMeshTheStepChanged``;
+``PrivateMemFileReadRefusesNewRuntimeOfReusedObject`` and
+``PrivateMemFileReadRefusesSessionMovedToAnotherObject`` for what is still no
+owner) and ``memfile_undo_depsgraphs_test.cc`` (an Image a ToolSettings points
+at freed while the graphs are out: the evaluated scene is tagged for a new copy
+before the next build, after a failed decode and after a complete read), with
+``test_blender_program_sculpt_undo``'s Dyntopo, untagged, full-read and
+failed-decode cases end to end (the failed decode through the
+``_test_fail_next_bmesh_read`` hook, last in the run).
+
 Observation and verification
 =============================
 
@@ -4496,7 +5313,7 @@ raises rather than return one short); past it the
 fact is ``unknown`` with its reason and ``own_geometry`` (true or false, the one
 case it is stated true), and its own size stays only when the read saw its own
 geometry. An object showing only instances, and a curve no depsgraph evaluates
-(hidden before any update: its data box pads every point by its radius), state
+(hidden before any update: it has only its data's box), state
 no dimensions or bounds of their own (``angelo_scene_object`` says its GEOMETRY
 section is base data it does not show; a ``dimensions`` check of it is refused by
 name, with its instance facts); ``angelo_view`` framing adds no origin for
@@ -4504,7 +5321,17 @@ such an object. A part of an object's own geometry drawn as a dupli (a curve's
 mesh) is its own, never an instance. Each instance counts as its own box turned
 by its matrix, an upper bound: a round instance turned 45 degrees reads up to
 about 1.4 times its width. No count is stated: an object's own components drawn
-as duplis made counts wrong in ways bounds are not. ``test_blender_object_bounds.py`` checks
+as duplis made counts wrong in ways bounds are not. That data box, which
+Blender's own readers (``Object.bound_box``, ``dimensions``, the N panel, snapping
+and drop placement) and Angelo's native ones (the const geometry read, instance
+facts) report, is the geometry's (``BKE_curve_geometry_minmax``): control points
+and handles grown by how far the cross-section Blender builds reaches (round
+bevel, profile, bevel object, width offset, 2D corner miters, times the largest
+radius factor and taper), never every point padded by its radius as a distance
+(break-it E2E-20 F-L-1: a 6 cm rib read about 2 m wide). Only an object's own box
+reads it; ``BKE_object_boundbox_get`` keeps upstream's rule for the callers that
+evaluate with it (Clamp To, draw culling, Alembic export). Upstream 5.3 and
+``main`` still pad by radius. ``test_blender_object_bounds.py`` checks
 every reader against held-out geometry's own truth.
 
 **How an object is hidden is stated too.** An object a reader lists exists
@@ -4767,15 +5594,57 @@ once as before. Frame strips check their own frame-change, playback and job
 admission before shader preparation too; safe display writes alone do not admit
 a strip's frame changes. Callers of the executor itself must poll a pending answer as
 the controller does (the GUI suites settle it through the event loop). The first draw of
-newly compiled shaders builds Metal pipeline states on the main thread (Blender
-sets no parent shader for materials, so its pipeline warming never runs): about
-80 ms a new shader and vertex format on a cold cache. Before the view, the
-pending call therefore draws, on private offscreens, every object that draws a
-newly compiled material and then every instancer, none assumed to share
-another's pipeline (separated parts and meshes with other attributes build their
-own); how many share a draw doubles while draws cost about what a draw of
-nothing costs and drops to one after one that built something, and a tick draws
-until about 30 ms of it are spent. The queue draws, an object a draw within the
+newly compiled shaders builds Metal pipeline states (one a shader, vertex format
+and attachment set; tens of milliseconds each, the thread waiting on Metal's
+compiler service) inside the draw call, and Blender sets no parent shader for
+materials, so its pipeline warming never runs (the GPUMaterial refactor
+``e6638d6e5eb`` dropped its two callers; Blender 5.3 and main have none). Before
+the view, the pending call therefore draws, on private offscreens, every object
+that draws a newly compiled material and then every instancer, none assumed to
+share another's pipeline (separated parts and meshes with other attributes build
+their own). These are compile-ahead draws (``GPU_compile_ahead_begin``,
+``GPU_compile_ahead.hh``): their pixels are never used, so Metal queues each
+pipeline state they miss to a few background threads
+(``mtl_pipeline_prebuild.mm``, at most four) and skips that draw call (never a
+draw Metal makes for itself to write a texture), and a view is drawn only once
+none of the builds queued up to the last compile-ahead draw made for its scene
+is pending, so its draw finds the states those draws met built. Builds are
+numbered as they are queued; every such draw made for a scene, a view's own or a
+merge's spreading, notes the count when it returns (``view_first_draw._marks``),
+and the view asks for the numbers up to it (``_angelo_live.pipelines_pending``).
+Those include a state the draw met already queued by someone else, and whatever
+else was queued before it, which the builder takes first anyway. They never
+include a build queued after, so a view waits for no later build of another
+window's view, another scene's merge or a material's optimized variant, and a
+view of a scene no such draw was made for waits for none.
+One whose queued build failed is not queued again; the draw
+that needs it builds it, and reports it, as before. Vulkan and OpenGL build
+pipelines in the draw as before (their statistics read the clock only where a
+pipeline is created, never on the lookup every draw makes). Blender's optimized variant of a heavy material (Metal, about 10 s
+after it compiled: another shader with no pipeline states) is drawn only once
+the states its unoptimized pass built are built for it in the background
+(``GPU_shader_warm_cache_async``, ``gpu_material.cc``, asked for every object in
+every draw until it is so: two counts read without a lock unless the
+unoptimized pass has built a state since; upstream warmed it
+synchronously until ``e6638d6e5eb``), the unoptimized pass, the same picture,
+until then. A first draw of
+one object with five new materials took 554-606 ms of the main loop (median 580)
+and 23-26 ms after (median 24): Mac 1, Metal, n 12 a build, the probe
+``bench_first_draw.py`` in the background, local release builds of the 2.0.0
+base ``3dc7bcaef4d`` and of this change on it (``1cc8302e883``; inventory C5).
+Its states were
+built in the background in 219-238 ms, and of the twelve views after them the
+first of each run built two states and the other ten none: a session's first
+view builds two states of its own look whatever it shows (the suite, which
+asserts that a view after first draws builds none, draws one view before it
+counts). Through the tool path in a window
+(``bench_view_shader_wait.py``, the same builds, two runs a build, three new
+worlds a run), the worst main-loop gap of a view after a new world fell from
+574-913 ms to 99-109 ms. Its step of four objects of five new materials each
+waited one second and showed 37-59 ms before and 37-41 ms after, so it shows no
+difference here (on the 5.2 base it fell from 322 and 301 ms to 106 and 39 ms). How many share a draw doubles while draws cost about what a draw
+of nothing costs and drops to one after one that built something, and a tick
+draws until about 30 ms of it are spent. The queue draws, an object a draw within the
 same tick budget, the fewest objects that draw every missing material. A merge's
 materials get these draws once compiled, a later merge adds its own, and a view
 asked before they finish completes them first. First draws are kept per look
@@ -4797,12 +5666,38 @@ without a picture, and a material that never compiles never denies an image. Mat
 (session UID), never by name. A material whose compile failed is drawn with
 Blender's error shading, and a failed LIT world with Blender's default world, as
 in the viewport; the view, a strip frame by frame, names them
-(``shaders_failed``). Where the view still compiles on the main loop as before:
-a new variant of a material already compiled for other geometry (hair curves
-after a mesh), the other frames of a strip, and an object with many new
-materials, whose one draw builds them all. World shaders are compiled
-synchronously by EEVEE in any draw. If shader compilation is still pending
-afterwards, the view is marked ``shaders_compiling`` and not cached. Camera view
+(``shaders_failed``). A LIT look counts the world shaders it needs as materials
+(``shader_state(..., world=True)``): the surface shader of the world it draws (the
+view layer's override, else the scene's while the layer draws its sky; none when
+the scene world's volume absorbs, which makes EEVEE draw its default world) and
+the scene world's volume shader, which EEVEE compiles whatever world it draws,
+each told apart by its EEVEE shader UUID. EEVEE compiles world shaders
+synchronously in any draw (``wait_ready = true``, a TODO upstream in 5.2, 5.3 and
+main), on every backend, except a compile-ahead draw, which queues them to the
+background compilation and draws with EEVEE's default world meanwhile
+(``eevee_world.cc``); another draw that meets one queued waits for that compile
+(the person's viewport too) instead of compiling it. A missing world is queued
+by a draw of no object; once compiled, its first draw is a draw of the whole
+scene, since a new world can give objects passes they did not draw before (a sun
+that casts shadows). A first draw after a new world took 281-599 ms of the main loop
+(median 572) and 7-10 ms after (median 9; the same probe, builds and n). On a
+Windows T4 (release builds of the same base and of ``6cb4be7ffca``, whose native
+source is this change's; the same probe, n 12 a build, medians) it took 992 ms
+against 71 ms with Vulkan and 1336 ms against 211 ms with OpenGL. The first draw
+of five new materials was already short there and is unchanged: 74 against 67 ms
+with Vulkan, 154 against 152 ms with OpenGL. A MATERIAL look's studio-light world is
+unchanged, compiled in its first draw of a session. Where the view still
+compiles on the main loop as before: a new variant of a material already
+compiled for other geometry (hair curves after a mesh) and the other frames of a
+strip. If a material the scene draws still has no
+shader, or one still queued, once the view is drawn, the view is marked
+``shaders_compiling`` and not cached. That is read from the scene's own shader
+state, the one the wait before the draw reads (``view_capture._shaders_pending``),
+never from ``bpy.app.is_job_running("SHADER_COMPILATION")`` where the state can
+be read: Blender's flag is also up for another scene's or an optimization
+compile and, on Vulkan, for every pipeline a draw since the last redraw built
+(the view's own included), none of which leaves a placeholder in the picture.
+Only a state that cannot be read leaves the flag to decide. Camera view
 may let EEVEE apply that camera's depth of field or render border, which is
 reported. Entering MATERIAL re-tags objects in Sculpt Mode for a geometry
 update, as any switch to Material Preview does.
@@ -4810,23 +5705,23 @@ update, as any switch to Material Preview does.
 **Residue (1.1).** Under the maintainer's ruling for 1.0.6 C3 (burst only: shaders
 already compiled in the background, Metal pipeline setup only, no wrong pixels,
 no unbounded wait, never worse than drawing without the wait), these paths still
-build pipelines in one main-loop block and are 1.1 work:
+build pipelines in one main-loop block and are 1.1 work. Inventory C5 removed two
+it listed: one object or instancer with many new materials, whose single first
+draw built all their pipelines (about 330-360 ms for five materials, Mac 1), and a
+new LIT world, compiled in any draw; their first draws now queue that work
+(above). On Vulkan the first draws still build pipelines in the draw, spread as
+below.
 
-* One object or one instancer with many new materials: its single first draw
-  builds all of their pipelines (about 330-360 ms for five materials on an
-  object, Mac 1, against about 4.1 s without the wait).
 * A new variant of a material already compiled for other geometry or passes
   (a mesh material reused on hair curves; new probe, volume or shadow passes):
   not seen as missing, so the view compiles and builds it as before.
 * The frames of a strip other than the current one: prepared by none of this;
   each tile's draw compiles and builds what it needs.
-* A new LIT world: EEVEE compiles world shaders synchronously in any draw.
-* Instancers, whose instances' materials are unknown: up to ``GROUP_MAX`` (4)
-  share a first draw while draws stay quick, so their new pipelines can build
-  together.
-* Batching by ``(material, format)``: the format is read from the original
-  mesh (UV map count, colour attribute names), so evaluated formats (Geometry
-  Nodes) that differ can build several pipelines in one batched draw.
+* Vulkan only: instancers, whose instances' materials are unknown, share a
+  first draw (up to ``GROUP_MAX``, 4, while draws stay quick), and batching by
+  ``(material, format)`` reads the format from the original mesh (UV map count,
+  colour attribute names), so evaluated formats (Geometry Nodes) that differ can
+  build several pipelines in one batched draw. On Metal those draws queue them.
 * Materials that became compiled without ever being pending to a view or a
   merge (compiled by the artist's own viewport, say): no view owes them first
   draws, so the view builds their pipelines.
@@ -5797,7 +6692,15 @@ location; for example, the macOS development build)::
     --binary "$PWD/../build-angelo-native/bin/Angelo.app/Contents/MacOS/Angelo" --jobs 2
 
 A suite runs inside the app, which loads the add-on and startup modules bundled
-in it, never the checkout's. So before anything runs the runner compares them
+in it; many suites also import the checkout's modules, which read the assets
+beside them. So a checkout whose add-on holds Git LFS pointers (one made with
+``GIT_LFS_SKIP_SMUDGE=1``) is refused first, with no override: the refusal
+names the pointer files and the fetch, ``git lfs pull --include
+"scripts/addons_core/angelo_agent/**"``, which is the operator's to run since
+LFS is metered. Without it a suite fails on pointer text the app
+never ships (2.0.0: ``chosen_tools`` drew no base-mesh picture, "not a PNG").
+A pointer is never the file it stands for, on either side. Before anything
+runs, the runner also compares the app's add-on and startup modules
 with this checkout's (``native_addon_guard``: every file of
 ``scripts/addons_core/angelo_agent`` both ways, so a module the checkout deleted
 that an install left in the app counts, and every Python module of
@@ -5830,9 +6733,17 @@ first run).
 A suite that needs something from the machine besides the app names it in the
 manifest's ``inputs`` (``native_suite_inputs``): a Godot editor
 (``ANGELO_QA_GODOT``, else Godot's default install) for the four Godot suites,
-and the held-out models of ``godot_physics_e2e/heldout_assets.json``
+the held-out models of ``godot_physics_e2e/heldout_assets.json``
 (``ANGELO_QA_PHYSICS_ASSETS``, else the pinned set, downloaded once and checked
-by sha256 into ``angelo-native-inputs`` beside the runs). The runner resolves
+by sha256 into ``angelo-native-inputs`` beside the runs), and a hardware GPU
+(``hardware_gpu``) for ``test_blender_view_warm``, whose compile-ahead timing
+is a GPU shader compiler's behaviour. That one is a capability, not a platform:
+the runner asks the app under test once which renderer it draws with (or reads
+``ANGELO_QA_GPU_RENDERER``), and a software renderer by the product's own list
+(``parallel_capability``: llvmpipe, softpipe, SwiftShader, lavapipe, the
+Microsoft Basic Render Driver, GDI Generic) or WARP, or an app that cannot
+say, skips the suite with that reason; on any machine with a real GPU it runs.
+Angelo does not support machines without a GPU. The runner resolves
 each input once and passes it to the suite as that variable. An input the
 machine cannot provide makes the suite a skip whose reason says what is missing
 and how to provide it: never a failure (1.0.10's runs reported the physics
@@ -5936,6 +6847,46 @@ sign in to several ChatGPT accounts). The opted-in
 process keeps its home (the login Keychain), its runtime's profile is pinned to
 the path and the other's to an empty folder. ``ANGELO_QA_LIVE_KEYCHAIN=1`` (the Keychain suite)
 keeps the home only.
+
+**Git answers about the tree under test only** (``own_checkout``). A tree under
+test is not always a checkout: a ``git archive`` snapshot has no ``.git``, and
+unpacked inside another checkout every ``git -C <tree>`` walked up and answered
+for that repository (a 2.0.0 merge slot: ``test_native_sign_windows`` failed on
+the outer checkout's HEAD, and ``run_native_suites.py`` recorded that HEAD as
+the source revision of the snapshot it ran). ``suite_isolation`` therefore puts
+the folder above the tree in ``GIT_CEILING_DIRECTORIES`` for every test process
+and what it starts, so git itself stops there; and whatever asks git about the
+tree goes through ``own_checkout`` (``own``, ``needed``, ``git``, ``command``,
+``revision``): inside another repository that is a failure by name ("not a git
+checkout of the tree under test"), in a plain folder outside any repository
+there is nothing to ask (a source archive on a build machine is tested as
+before), and a report's source revision is the tree's own HEAD or none. A test
+that cannot say anything without the tree's repository asks ``needed`` first:
+one whose subject is the repository, and one that runs a product script which
+asks git where its own repository is (``sign_remote.sh``). Inside another
+repository that is the failure by name; where there is no repository the test
+is skipped under one exact reason, ``[environment] not a git checkout``, which
+a verdict classifies and counts, and never passed with that part left out. The
+skip is allowed for a source archive and never for a release cut: a cut's own
+runs are in real checkouts, one such skip in its verdict fails the cut, and a
+run that sets ``ANGELO_TESTS_REQUIRE_CHECKOUT=1`` gets a failure in its place.
+``test_native_own_checkout`` pins both with real repositories and that no other
+file of the folder asks git about the tree by itself.
+
+A host test that clears the process environment keeps what the operating
+system gives every process. ``platform_env.cleared(values)`` replaces
+``patch.dict(os.environ, values, clear=True)``: it clears what the test
+controls and keeps the names Angelo's own child processes keep
+(``essential_environment``), so the product and its tests share one list. A
+bare ``clear=True`` removes ``SYSTEMROOT``, and on Windows the first SSL
+context the process makes then fails ("[SSL] unknown error"): such a test
+passed in a shard only because an earlier test had started OpenSSL, and failed
+alone. It also removed ``HOME``, so ``Path.home()`` left the isolated profile
+for the account's own folder. A test that means a kept variable to differ
+passes its own value; one that means it absent names it in ``without``.
+``test_native_cleared_environment`` fails on any host test file that clears
+``os.environ`` another way, and makes a new process's first SSL context
+inside ``cleared``.
 
 HOME and TMP sit in the suite's profile folder,
 ``<run>/p/<8 hex of its name>``, beside its own folder, so their depth never
@@ -6170,10 +7121,14 @@ Trusted scripts for an open chat
 ================================
 
 Python uses the existing reviewed executor with full Blender privileges, never
-a sandbox or automatic confinement. The Approval Policy menu offers a separate
+a sandbox. Every agent script runs under the runtime confinement
+(``script_confinement.rst``): it cannot open Angelo's private state, call a grant,
+start other programs, load native code or take the guard off, in every review
+mode. The Approval Policy menu (the chat bar's + menu, Apps and settings, Approval policy…: its only way in, as
+every feature is reached from the + menu) offers a separate
 ``Trust scripts for this chat`` dialog. Its explicit confirmation allows future
 Python calls in the current open chat/document to run without individual code
-review. This can access files, networks, programs and application preferences.
+review. This can access files, networks and the scene.
 External effects are not guaranteed undoable, arbitrary Python has no universal
 scene Undo guarantee, and Stop cannot interrupt atomic Python.
 
@@ -6292,9 +7247,9 @@ Always allow scripts
 ====================
 
 The person's persistent, explicit opt-in, MCP's "Always allow" for scripts.
-Angelo 1.0 has no script confinement, so it means exactly what the card says:
-scripts run with full access to files, the network and other apps on this
-computer. It never covers an External conversation (a connected app's), whose
+Scripts run with access to files, the network and the scene on this computer,
+under the runtime confinement (``script_confinement.rst``): never Angelo's private
+state, grants, other programs or native code. It never covers an External conversation (a connected app's), whose
 one standing consent is narrower: one script file the person allowed while it
 is unchanged (``external_mcp.rst``, "Script files"; consent ``script_file``).
 
@@ -6318,9 +7273,18 @@ is unchanged (``external_mcp.rst``, "Script files"; consent ``script_file``).
   ``fallback_categories.uses_preferences`` or ``angelo_agent`` in the code)
   never runs under a standing consent, chat trust or Always allow scripts: it
   asks, with the card's preferences warning, and the card offers no Always
-  allow scripts for it. This is defence in depth inside one process, not a
-  sandbox: approved, unconfined Python that hides those names can still reach
-  Angelo's own state (``angelo_execute_python`` has Blender's full privileges).
+  allow scripts for it. The same holds for a script that names an operator
+  replacing the open file (``worker_script.file_load``: ``open_mainfile``,
+  ``revert_mainfile``, ``read_homefile``, ``read_factory_settings`` and the
+  two recover operators, as an attribute, a name or a word of a string): the
+  load would take the person's unsaved work with it and Undo cannot bring it
+  back, so a consent given before the script existed does not cover it. Its
+  card says so in its own line, and a headless run refuses it as
+  ``file_load``. Appending or linking data replaces nothing and keeps its
+  consent. A script that hides the name still ends as ``DOCUMENT_REPLACED``,
+  and what was open is in the request's snapshot. This is defence in depth: the
+  runtime confinement (``script_confinement.rst``) is what keeps a script that
+  hides those names from Angelo's own state.
 * **Effect** (``TrustedScripts.script_consent_kind``): only in a chat whose
   effective approval is Auto bounded edits. Ask still asks for every script;
   Read only still rejects them; per-chat trust keeps working and takes

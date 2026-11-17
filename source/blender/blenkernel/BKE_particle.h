@@ -11,7 +11,7 @@
 
 #include <optional>
 
-#include "BLI_compiler_attrs.h"
+#include "BLI_compiler_attrs.hh"
 #include "BLI_map.hh"
 #include "BLI_math_vector_types.hh"
 #include "BLI_ordered_edge.hh"
@@ -347,9 +347,13 @@ void BKE_particlesettings_fluid_default_settings(struct ParticleSettings *part);
  */
 void psys_free_path_cache(struct ParticleSystem *psys, struct PTCacheEdit *edit);
 /**
- * Free everything.
+ * Free everything of a particle system that left `ob` (or goes with it). Angelo: it never reads
+ * the particle settings, which may be freed already; when a system leaves an object that stays,
+ * call #psys_update_dupli_flag afterwards.
  */
 void psys_free(struct Object *ob, struct ParticleSystem *psys);
+/** Angelo: clear #OB_DUPLIPARTS when no particle system of `ob` draws objects or collections. */
+void psys_update_dupli_flag(struct Object *ob);
 /**
  * Copy.
  */

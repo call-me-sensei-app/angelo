@@ -18,6 +18,11 @@ decline. Checks: the scene changes exactly as approved, each edit is one Undo
 step (three Undos take back the script, the move and the cube in that order),
 a snapshot was taken before the first edit, the transcript names the app, no
 TCP listener exists, and the AI Providers page draws the card (screenshot).
+Then Copy setup on the card's MCP app row, pressed as a person does (a script's call and the page's action run by a
+script are refused first): the clipboard's snippet names a client the launcher serves (initialize and tools/list
+through it), holds no key, and access is on; Disconnect revokes it (the same launcher answers "not connected" with
+no tools); the card shows the row (screenshot). ``--language ar`` runs it all with the interface in Arabic (right to
+left), the labels checked in that language.
 No provider, model, network or account is used. Contract: doc/angelo/external_mcp.rst.
 """
 
@@ -52,6 +57,7 @@ def run_host():
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--language", default="en_US", help="the interface language (ar: right to left)")
     args = parser.parse_args()
     root = native_suite_paths.fresh_fixture_root(args.out)
     binary = Path(args.binary).resolve(strict=True)
@@ -60,7 +66,7 @@ def run_host():
     log = root / "angelo.log"
     command = [str(binary), "--factory-startup", "--disable-autoexec", *gui_launch.window_flags(),
                "--window-geometry", "80", "80", "1280", "800", "--python", str(Path(__file__).resolve()),
-               "--", "--native-phase", "gui", "--fixture-root", str(root)]
+               "--", "--native-phase", "gui", "--fixture-root", str(root), "--language", args.language]
     try:
         with log.open("w") as output:
             result = subprocess.run(command, env=env, stdout=output, stderr=subprocess.STDOUT, timeout=360)
@@ -94,6 +100,7 @@ import bpy  # noqa: E402
 _parser = argparse.ArgumentParser()
 _parser.add_argument("--native-phase", required=True)
 _parser.add_argument("--fixture-root", required=True)
+_parser.add_argument("--language", default="en_US")
 ARGS = _parser.parse_args(sys.argv[sys.argv.index("--") + 1:])
 OUT = Path(ARGS.fixture_root)
 STATE = Path(os.environ["ANGELO_STATE_DIR"])
@@ -110,6 +117,9 @@ addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 bpy.context.preferences.view.show_splash = False
+if ARGS.language != "en_US":   # Angelo's own text in that language (its catalogue), Blender's too.
+    bpy.context.preferences.view.language = ARGS.language
+    bpy.context.preferences.view.use_translate_interface = True
 bpy.context.preferences.use_preferences_save = False
 (OUT / "blender-temp").mkdir(exist_ok=True)
 bpy.context.preferences.filepaths.temporary_directory = str(OUT / "blender-temp")
@@ -190,9 +200,10 @@ def decide():
             state["scripts"] += 1
             report.setdefault("approval_cards", []).append({"tool": call.name, "automatic": call.automatic})
             if state["scripts"] == 1:
-                controller.review_script(call)
+                from angelo_agent import grant_guard   # The person's Review: the harness stands in.
+                grant_guard.harness(controller.review_script, call)
                 with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-                    bpy.ops.angelo.approve(call_id=call.id, session_id=controller.state["id"])
+                    __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve(call_id=call.id, session_id=controller.state["id"])
             else:
                 controller.decline_tool(call.id)
 
@@ -216,7 +227,7 @@ def heartbeat():
         if phase == "boot":
             check("access_off_by_default", prefs.allow_local_cli is False)
             with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-                bpy.ops.angelo.external_app_connect(app="codex")   # Writes $HOME/.codex/config.toml (private HOME).
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().external_app_connect(app="codex")   # Writes $HOME/.codex/config.toml (private HOME).
             check("connect_turns_access_on", prefs.allow_local_cli is True)
             state["phase"] = "config"
         elif phase == "config":
@@ -306,19 +317,116 @@ def heartbeat():
             plan = page.plan_for(region)
             if plan is None and time.monotonic() - state["page_wait"] < 20:
                 return 0.3
+            from angelo_agent.ui_text import iface_
             texts = " ".join(op[1] for op in plan.ops if op[0] == "text")
             buttons = [op[2] for op in plan.ops if op[0] == "pbutton"]
-            check("page_draws_the_external_apps_card", "External AI apps (MCP)" in texts and "Codex" in texts
+            check("page_draws_the_external_apps_card", iface_("External AI apps (MCP)") in texts and "Codex" in texts
                   and "Claude Code" in texts)
-            check("page_buttons_say_what_they_do", "Disconnect" in buttons   # Codex is connected; Claude Code is not.
-                  and any(label in {"Connect Claude Code", "Copy setup"} for label in buttons))
+            check("page_buttons_say_what_they_do", iface_("Disconnect") in buttons   # Codex is connected.
+                  and any(label in {iface_("Connect {app}", app="Claude Code"), iface_("Copy setup")} for label in buttons))
+            check("page_offers_any_mcp_app", iface_("MCP app") in texts and "Cursor" in texts and "VS Code" in texts
+                  and iface_("Any other app that speaks MCP.") in texts)
             report["page_buttons"] = buttons
-            with bpy.context.temp_override(window=target, area=area, region=region):
-                bpy.ops.view2d.scroll_down(deltay=6000)   # The card is near the page's end.
+            import view_scroll   # view2d.scroll_* ignore a distance: one wheel step a call (view_scroll.py).
+            view_scroll.down(target, area, region, 6000)   # The card is near the page's end.
             state["phase"] = "shot"
             return 0.8
         elif phase == "shot":
             capture("ai-providers-external-apps.png")
+            state["phase"] = "copy"
+        elif phase == "copy":   # The MCP app row's Copy setup: the person's own press on the drawn button.
+            from angelo_agent import providers_page_host as page
+            from angelo_agent.external_clients import AppRegistry
+            check("mcp_app_not_connected_before", "mcp-app" not in AppRegistry(STATE).load())
+            from angelo_agent import grant_guard
+            target = next(w for w in bpy.context.window_manager.windows
+                          if any(a.type == 'PREFERENCES' for a in w.screen.areas))
+            area = next(a for a in target.screen.areas if a.type == 'PREFERENCES')
+            region = next(r for r in area.regions if r.type == 'WINDOW')
+            with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
+                try:   # A script's call: refused (Blender raises the operator's ERROR report for a Python caller).
+                    scripted = bpy.ops.angelo.external_app_copy_setup(app="other")
+                except RuntimeError as error:
+                    scripted = str(error)
+            try:   # A script driving the page's own action (no press): refused the same way.
+                page.act("mcp_copy", "other", target, area, region)
+                acted = ""
+            except RuntimeError as error:
+                acted = str(error)
+            check("a_scripted_copy_setup_grants_nothing", (scripted == {'CANCELLED'} or grant_guard.NOT_YOURS in scripted)
+                  and grant_guard.NOT_YOURS in acted and "mcp-app" not in AppRegistry(STATE).load())
+            plan = page.plan_for(region)
+            rect = next((r for r, a, v in (plan.hits if plan else ()) if a == "mcp_copy" and v == "other"), None)
+            if rect is None or not (0 <= rect[1] and rect[1] + rect[3] <= region.height):
+                state["copy_scrolls"] = state.get("copy_scrolls", 0) + 1
+                if state["copy_scrolls"] > 20:
+                    raise AssertionError("The MCP app row's Copy setup is not drawn on the page: %r" % (rect,))
+                below = rect is None or rect[1] < 0   # Region y grows upward: below the view is negative.
+                distance = int(region.height / 2 + (-rect[1] if rect is not None and below else
+                                                    rect[1] + rect[3] - region.height if rect is not None else 0))
+                import view_scroll   # Toward it, the whole way (view2d.scroll_* move one wheel step whatever asked).
+                (view_scroll.down if below else view_scroll.up)(target, area, region, distance)
+                return 0.3
+            import qa_input   # The person's press (gui_launch's --enable-event-simulate).
+            qa_input.press(target, region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2)
+            state["copy_pressed"] = time.monotonic()
+            state["phase"] = "copy_pressed"
+            return 0.2
+        elif phase == "copy_pressed":
+            from angelo_agent.external_clients import AppRegistry
+            if "mcp-app" not in AppRegistry(STATE).load():
+                if time.monotonic() - state["copy_pressed"] > 15:
+                    raise AssertionError("The press on Copy setup connected no MCP app (presses sent: %r)"
+                                         % (__import__("qa_input").sent,))
+                return 0.2
+            snippet = bpy.context.window_manager.clipboard
+            entry = json.loads(snippet)["mcpServers"]["angelo"]
+            key = AppRegistry(STATE).key("mcp-app")
+            check("copy_setup_connects_the_copied_client", "mcp-app" in entry["args"] and key is not None
+                  and AppRegistry(STATE).load()["mcp-app"]["app"] == "other")
+            check("the_copied_snippet_holds_no_key", key is not None and key.hex() not in snippet
+                  and set(entry) == {"command", "args"} and all(key.hex() not in arg for arg in entry["args"]))
+            check("copy_setup_leaves_access_on", ui.preferences().allow_local_cli is True)
+            state["copy_command"] = [entry["command"], *entry["args"]]
+            state["phase"] = "copy_run"
+            return 0.8   # The card redraws with the row connected before the next look (and its screenshot).
+        elif phase == "copy_run":
+            def handshake(label):
+                try:
+                    client = Client(state["copy_command"])
+                    try:
+                        init = client.request("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}})
+                        tools = client.request("tools/list")["result"]["tools"]
+                        state["results"][label] = {"instructions": init["result"]["instructions"], "tools": tools}
+                    finally:
+                        client.process.stdin.close()
+                        client.process.wait(15)
+                except Exception:
+                    state["results"][label] = {"error": traceback.format_exc()}
+            if "copied" not in state["results"] and not state.get("copy_started"):
+                capture("ai-providers-mcp-app-connected.png")
+                state["copy_started"] = True
+                threading.Thread(target=handshake, args=("copied",), daemon=True).start()
+            elif "copied" in state["results"] and not state.get("revoked_started"):
+                from angelo_agent.external_mcp import NOT_CONNECTED
+                copied = state["results"]["copied"]
+                check("the_copied_setup_works_in_any_mcp_client", "error" not in copied
+                      and copied["instructions"] != NOT_CONNECTED and len(copied["tools"]) > 0)
+                with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
+                    bpy.ops.angelo.external_app_disconnect(app="other")
+                state["revoked_started"] = True
+                threading.Thread(target=handshake, args=("revoked",), daemon=True).start()
+            elif "revoked" in state["results"]:
+                from angelo_agent.external_clients import AppRegistry
+                from angelo_agent.external_mcp import NOT_CONNECTED
+                revoked = state["results"]["revoked"]
+                check("disconnect_revokes_it", "error" not in revoked and revoked["instructions"] == NOT_CONNECTED
+                      and revoked["tools"] == [] and AppRegistry(STATE).key("mcp-app") is None)
+                state["phase"] = "copy_shot"
+                return 0.5
+            return 0.1
+        elif phase == "copy_shot":
+            capture("ai-providers-mcp-app.png")
             report["success"] = all(report["checks"].values())
             return finish()
         return 0.05
@@ -335,4 +443,5 @@ def finish():
 
 
 # Held until Angelo's start-up (the first tab build its enable schedules) is over: qa_boot.gated.
-bpy.app.timers.register(qa_boot.gated(heartbeat), first_interval=0.5, persistent=True)
+import qa_input  # noqa: E402  (a click on its way holds the tick: qa_input.after_clicks)
+bpy.app.timers.register(qa_boot.gated(qa_input.after_clicks(heartbeat)), first_interval=0.5, persistent=True)

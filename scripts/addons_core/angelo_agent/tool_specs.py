@@ -30,9 +30,11 @@ from .skeleton_check_spec import SKELETON_TOOLS, SKELETON_NAMES, validate_skelet
 from .game_ready_spec import GAME_READY_TOOLS, GAME_READY_NAMES, validate_game_ready
 from .app_feature_spec import APP_FEATURE_TOOLS, APP_FEATURE_NAMES, validate_app_feature
 from .engine_link_tool_spec import ENGINE_LINK_TOOLS, ENGINE_LINK_NAMES, validate_engine_link
+from .download_spec import DOWNLOAD_TOOLS, DOWNLOAD_NAMES, validate_download
 from .schema_compaction import compact_schema
-from . import product_env, script_api_removed, script_source
-from .script_store import PATCH_FIELDS, PATCH_SENTENCE, SCRIPT_TOOLS, TOOL_NAME as SCRIPT_SOURCE_TOOL
+from . import product_env, read_only, script_api_removed, script_source
+from .script_store import LIMIT_SENTENCE, MAX_CODE, PATCH_FIELDS, PATCH_SENTENCE, SCRIPT_TOOLS, over_limit
+from .script_store import TOOL_NAME as SCRIPT_SOURCE_TOOL
 from .script_store import validate as validate_script_source
 
 
@@ -94,11 +96,11 @@ TOOLS.append({
 })
 TOOLS.append({
     "name": "angelo_execute_python",
-    "description": "Run a Blender Python script on the bound scene's main thread after exact-code user review or explicit host UI trust for this open chat. Use bpy/RNA, bmesh and mathutils for modeling, materials, modifiers, animation, rigging and other Blender features. This is NOT a sandbox: scripts have Blender's filesystem/network privileges. Never hide external access or destructive actions. Keep code finite and efficient; no unattended loops, shell commands or unrelated account/filesystem access. Set result to a small JSON-serializable read-back of what actually changed. Scene Undo coverage is not guaranteed for arbitrary Python; external effects are not undoable. Prefer bounded tools when they suffice." + PATCH_SENTENCE,
+    "description": "Run a Blender Python script on the bound scene's main thread after exact-code user review or explicit host UI trust for this open chat. Use bpy/RNA, bmesh and mathutils for modeling, materials, modifiers, animation, rigging and other Blender features. This is NOT a sandbox: scripts have Blender's filesystem/network privileges. Never hide external access or destructive actions. Keep code finite and efficient; no unattended loops, shell commands or unrelated account/filesystem access. Set result to a small JSON-serializable read-back of what actually changed. Scene Undo coverage is not guaranteed for arbitrary Python; external effects are not undoable. Prefer bounded tools when they suffice." + LIMIT_SENTENCE + PATCH_SENTENCE,
     # code, or base and edits (script_store): the host builds the code before validation and review.
     "inputSchema": {"type": "object", "properties": {
         "description": {"type": "string", "minLength": 1, "maxLength": SCRIPT_DESCRIPTION_LIMIT},
-        "code": {"type": "string", "minLength": 1, "maxLength": 32768}, **PATCH_FIELDS,
+        "code": {"type": "string", "minLength": 1, "maxLength": MAX_CODE}, **PATCH_FIELDS,
     }, "required": ["description"], "additionalProperties": False},
     "annotations": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True},
 })
@@ -152,6 +154,7 @@ TOOLS.extend(RIG_TOOLS)
 TOOLS.extend(LIBRARY_TOOLS)   # The Angelo Library: public, no account; deferred like the media families.
 TOOLS.extend(APP_FEATURE_TOOLS)   # Never declared to voice threads (dynamic_tools), as the families around it.
 TOOLS.extend(ENGINE_LINK_TOOLS)   # Deferred; voice threads leave them out too (dynamic_tools).
+TOOLS.extend(DOWNLOAD_TOOLS)   # Deferred; never by voice: a file from the web needs the person's card.
 TOOLS.extend(SKELETON_TOOLS)   # The rig check: never declared to voice threads either (dynamic_tools).
 TOOLS.extend(GAME_READY_TOOLS)   # Nor this one.
 TOOLS.extend(GOAL_TOOLS)   # Deferred on both runtimes (plan_kinds); the instructions name it; never by voice (goal_mode.rst).
@@ -165,10 +168,42 @@ TOOLS.extend(TEAM_TOOLS)
 # route without a feature's tools, as the release before it had (doc/angelo/engine_link.rst, "The agent").
 WITHHELD_TOOLS = frozenset(name.strip() for name in (product_env.current("WITHHOLD_TOOLS") or "").split(",")
                            if name.strip())
+# Every tool any launch may declare (a job binary's, parallel edit's, one withheld here): whether a tool writes decides
+# approvals, plans, recovery and certification, whichever this launch offers, and every such decision reads
+# READ_ONLY_TOOLS, a frozenset taken here as the tools register, never a spec's annotations (test_native_dialog_consent).
+class _Frozen(dict):
+    """A tool's annotations as it registered, read, serialized and copied as a dict. Its own methods refuse a change, so
+    a mistaken edit fails loudly; ``dict``'s methods still change it (2026-11-17 review), so no decision reads it."""
+
+    def __init__(self, *args, **kwargs):
+        if self:   # Built once, when the tool registers.
+            self._refuse()
+        super().__init__(*args, **kwargs)
+
+    def _refuse(self, *_args, **_kwargs):
+        raise TypeError("a tool's annotations are fixed as it registers")
+    __setitem__ = __delitem__ = __ior__ = clear = pop = popitem = setdefault = update = _refuse
+
+    def __copy__(self):
+        return dict(self)
+
+    def __deepcopy__(self, memo):
+        return {key: value for key, value in self.items()}   # Plain values (bools): a copy needs no recursion.
+
+    def __reduce__(self):
+        return (dict, (dict(self),))
+
+
+_EVERY = TOOLS + JOB_TOOLS + list(WORKER_TOOLS) + list(PART_TOOLS)
+for _tool in _EVERY:
+    _tool["annotations"] = _Frozen(_tool["annotations"])
+READ_ONLY_TOOLS = frozenset(tool["name"] for tool in _EVERY if tool["annotations"]["readOnlyHint"])
 TOOLS[:] = [tool for tool in TOOLS if tool["name"] not in WITHHELD_TOOLS]
 TOOL_MAP = {tool["name"]: tool for tool in TOOLS}
+KNOWN_TOOLS = frozenset(TOOL_MAP)   # This launch's tools as they registered, and their schemas, read only (read_only).
+SCHEMAS = read_only.frozen({name: tool["inputSchema"] for name, tool in TOOL_MAP.items()})
 # A collaborator reads the scene, references and scoped files, never this conversation's scripts.
-COLLABORATOR_TOOLS = frozenset(tool["name"] for tool in TOOLS if tool["annotations"]["readOnlyHint"] and tool["name"] not in ({"angelo_delegate", SCRIPT_SOURCE_TOOL} | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | LIBRARY_NAMES | JOB_NAMES | FAMILY_NAMES | RIG_NAMES | SKELETON_NAMES | GAME_READY_NAMES | ENGINE_LINK_NAMES | GOAL_NAMES))
+COLLABORATOR_TOOLS = frozenset(tool["name"] for tool in TOOLS if tool["name"] in READ_ONLY_TOOLS and tool["name"] not in ({"angelo_delegate", SCRIPT_SOURCE_TOOL} | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES | LIBRARY_NAMES | JOB_NAMES | FAMILY_NAMES | RIG_NAMES | SKELETON_NAMES | GAME_READY_NAMES | ENGINE_LINK_NAMES | GOAL_NAMES | DOWNLOAD_NAMES))
 # angelo_apply_recipe stages exactly an angelo_scene_program from the closed catalog.
 BOUNDED_MUTATIONS = frozenset({"angelo_create_cube", "angelo_set_transform", "angelo_apply_batch", "angelo_prepare_sculpt", "angelo_sculpt_batch", "angelo_scene_program", "angelo_apply_recipe", "angelo_accept_preview", "angelo_discard_preview", "angelo_workers_start", "angelo_workers_merge"}) | SCULPT_MUTATIONS | FLOW_EDITS
 FILE_TOOLS = frozenset({"angelo_list_files", "angelo_read_file", "angelo_write_file", "angelo_delete_file"})
@@ -201,13 +236,13 @@ def validate_call(name, args, *, host=False):
 
 
 def _validate_call(name, args, *, host=False):
-    if not isinstance(name,str) or name not in TOOL_MAP:
+    if not isinstance(name,str) or name not in KNOWN_TOOLS:
         raise ValueError("Unknown Blender tool")
     if not isinstance(args, dict):
         raise ValueError("Tool arguments must be an object")
     if name in JOB_NAMES:
         args = still_frame(args)   # A still's ``frame`` is its frame_start (job_spec).
-    schema = TOOL_MAP[name]["inputSchema"]
+    schema = SCHEMAS[name]   # As it registered: an agent script's change to a spec's dict reaches no check.
     from .camera_guards import FIELD as MEASURED
     if set(args) - set(schema["properties"]) - ({MEASURED} if host and name == "angelo_scene_program" else set()):
         raise ValueError("Unexpected tool argument")
@@ -256,6 +291,8 @@ def _validate_call(name, args, *, host=False):
         return validate_app_feature(name, args)
     if name in ENGINE_LINK_NAMES:
         return validate_engine_link(name, args)
+    if name in DOWNLOAD_NAMES:
+        return validate_download(name, args)
     if name == "angelo_set_workspace_mode":
         if args["mode"] not in {"DIRECTOR", "MANUAL"}:
             raise ValueError("Choose DIRECTOR or MANUAL")
@@ -303,9 +340,11 @@ def _validate_call(name, args, *, host=False):
                 or any(ord(c) < 32 for c in description)):
             raise ValueError("Describe the script's changes in 1-%d printable characters (this one has %d)"
                              % (SCRIPT_DESCRIPTION_LIMIT, len(description) if isinstance(description, str) else 0))
-        if not isinstance(code, str) or not code.strip() or len(code) > 32768 or "\x00" in code:
-            raise ValueError("A Blender script requires 1-32768 characters, without NUL bytes (this one has %d)"
-                             % (len(code) if isinstance(code, str) else 0))
+        if isinstance(code, str) and len(code) > MAX_CODE:   # Its own refusal: it says how to go on.
+            raise ValueError(over_limit("This script is", len(code)))
+        if not isinstance(code, str) or not code.strip() or "\x00" in code:
+            raise ValueError("A Blender script requires 1-%d characters, without NUL bytes (this one has %d)"
+                             % (MAX_CODE, len(code) if isinstance(code, str) else 0))
         try:
             script_source.compiled(code)   # Once per text, however often its call is checked (script_source).
         except SyntaxError as error:
@@ -352,7 +391,8 @@ def dynamic_tools(allowed=None):
     and the + menu row does it (the FEATURES lookup tells a voice agent where). Nor ``angelo_skeleton_check``: a rig
     report is read, not heard, it would add about 0.9 KB to each, and its + menu card shows the same report. Nor is the game-ready check:
     its LOD, collider and UV numbers serve asset preparation in a chat, not a spoken request, and it would add
-    about 1.9 KB to each. Nor is the engine link: it acts on a link the person turned on in a chat with its cards."""
+    about 1.9 KB to each. Nor is the engine link: it acts on a link the person turned on in a chat with its cards. Nor
+    is ``angelo_download``: its card names the host, size and folder, which a chat shows and a spoken turn would not."""
     from .plan_schema import codex_arguments
     from .tool_guidance import described
     return [{"type": "function", "name": t["name"], "description": described(t["description"], allowed),
@@ -366,7 +406,8 @@ def declared_dynamic(allowed=None):
             # game-ready check or the engine link.
             if t["name"] not in FAMILY_NAMES
             and t["name"] not in (RIG_NAMES | LIBRARY_NAMES | APP_FEATURE_NAMES | SKELETON_NAMES | GAME_READY_NAMES
-                                  | ENGINE_LINK_NAMES | GOAL_NAMES)   # A voice turn holds no goal (goal_loop).
+                                  | ENGINE_LINK_NAMES | GOAL_NAMES   # A voice turn holds no goal (goal_loop).
+                                  | DOWNLOAD_NAMES)
             and (t["name"] in allowed if allowed is not None else t["name"] not in TEAM_NAMES)]
 
 
@@ -452,9 +493,7 @@ def declared(allowed=None):
 
 
 def native_plan_schema(allowed=None):
-    """Claude's typed-plan schema: exact core schemas, deferred families by name.
-
-    See plan_schema: validate_call still checks every operation exactly.
-    """
+    """Claude's typed-plan schema: exact core schemas, deferred families by name. See plan_schema: validate_call still
+    checks every operation exactly."""
     from .plan_schema import plan_schema
     return plan_schema(declared(allowed), None if allowed is None else frozenset(allowed))

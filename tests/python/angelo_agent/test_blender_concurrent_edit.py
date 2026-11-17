@@ -5,9 +5,11 @@
 Real lead/worker Controllers and approval operators execute fixed <=64-object
 batches. A simulated provider advances only on actual tool answers. Independent
 RNA manifests verify four phases, isolation, protected objects, merge Undo/Redo,
-and save/reopen. No sleep/barrier is inserted into mutation code. Lack of actual
-cross-process mutation overlap is INCOMPLETE, never a pass. Headless pump timings
-are raw instrumentation, not UI latency or an approved performance gate.
+and save/reopen. No sleep/barrier is inserted into mutation code. On the hosted
+variant (the path that ships) lack of actual cross-process mutation overlap is
+INCOMPLETE, never a pass. On the lanes (the fallback) a run passes on correctness
+and its overlap is reported, not required (``concurrent_edit_oracle.overlap_required``).
+Headless pump timings are raw instrumentation, not UI latency or an approved performance gate.
 
 Use run_native_suites.py with this exact suite; it isolates credentials, checks
 the bundled add-on and enforces a 900-second root-process deadline. A separate
@@ -19,6 +21,7 @@ mode. Failure/isolation fault injection remains in the existing worker suites.
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+from qa_person import as_person  # noqa: E402  The person's own action (C's harness scope).
 import hashlib
 import json
 import os
@@ -110,9 +113,9 @@ def run():
     def apply(target, call):
         check('only_fixed_mutation_tools', call.name in ('angelo_execute_python', 'angelo_workers_merge'))
         if call.name == 'angelo_execute_python':
-            target.review_script(call)  # Exact fixed-code consent, as the existing Worker Python fixture.
+            as_person(target.review_script, call)  # Exact fixed-code consent, as the existing Worker Python fixture.
         with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state['id'])
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state['id'])
 
     def pump():
         chats = [lead] + ([worker.controller] if worker is not None and not hosted else [])
@@ -181,19 +184,23 @@ def run():
         lead.state['options'] = dict(lead.state.get('options') or {}, approval='AUTO_BOUNDED')
         lead.set_document(ui.document_key())
         fence = lead.open_external_read()
-        lead.set_trusted_scripts(True)  # Fixed isolated fixture only; native consent tests cover the gate separately.
+        as_person(lead.set_trusted_scripts, True)  # Fixed isolated fixture only; native consent tests cover the gate separately.
         if mode == 'parallel':
             start, launch = worker_routing.start, worker_routing.launch
 
             def probed(controller, part, **options):
-                return start(controller, part, **dict(options, script=Path(__file__).resolve()))
+                # The worker's script is the add-on's own, read at the start (worker_process.default_script): the
+                # suite's probes stand in for it during this start only.
+                from angelo_agent import worker_process
+                with patch.object(worker_process, 'default_script', lambda: Path(__file__).resolve()):
+                    return start(controller, part, **options)
             def tracked_launch(*args, **kwargs):
                 return remember_launch(launch, provisional_workers, *args, **kwargs)
 
             startup_attempted = True
             with patch.object(worker_routing, 'start', probed), patch.object(worker_routing, 'launch', tracked_launch):
                 worker = worker_chat(out / 'state', out / 'parts' / 'partition.blend', ROOT)
-            worker.controller.set_trusted_scripts(True)
+            as_person(worker.controller.set_trusted_scripts, True)
             prepare = {'description': 'Prepare isolated worker', 'code': payload.setup(False)}
             if hosted:   # The model's call in the worker's own turn.
                 prepared = worker.call('angelo_execute_python', prepare)
@@ -220,7 +227,8 @@ def run():
                 observed = worker.executor.ask('qa_concurrent_manifest')['value']
                 check('worker_identity_' + phase, observed['pid'] == pids['worker'])
                 readback(phase + '-worker', observed['objects'], wanted[phase]['worker'])
-        report['temporal'] = oracle.temporal_proof(events, jobs, pids, parallel=bool(worker))
+        report['temporal'] = oracle.temporal_proof(events, jobs, pids, parallel=bool(worker),
+                                                   overlap_required=oracle.overlap_required(report['variant']))
         write(artifacts / 'execution-events.json', events)
         if worker:
             if not hosted:   # A hosted chat's own turns ended with the stand-in's replies.
@@ -290,7 +298,7 @@ def run():
         report['total_wall_s'] = time.monotonic() - started
         report['worker_dispatch_stats'] = dict(worker_dispatch.STATS)
         write(out / 'concurrent-edit.json', report)
-        print('CONCURRENT-EDIT-DONE', report.get('success'), flush=True)
+        print('CONCURRENT-EDIT-DONE', report.get('success'), (report.get('temporal') or {}).get('reason'), flush=True)
     return 0 if report.get('success') else 2 if report.get('status') == 'incomplete' else 1
 
 

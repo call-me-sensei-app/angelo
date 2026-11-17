@@ -23,11 +23,11 @@
 #include "DNA_scene_types.h"
 #include "DNA_userdef_types.h"
 
-#include "BLI_fileops.h"
-#include "BLI_listbase.h"
+#include "BLI_fileops.hh"
+#include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_tempfile.h"
+#include "BLI_string.hh"
+#include "BLI_tempfile.hh"
 
 #include "BKE_blendfile.hh"
 #include "BKE_global.hh"
@@ -273,11 +273,43 @@ TEST_P(WritefileTemporaryLinkKindTest, RelativeRemapReplacesLinkAndRebasesPaths)
   SKIP_WITHOUT_SYMLINKS(GetParam());
   BlendFileWriteParams params = copy_params();
   params.remap_mode = BLO_WRITE_PATH_REMAP_RELATIVE;
-  save_over_planted_link(GetParam(), 0, params, "//../source/textures/wood.png");
+  /* #BLI_path_rel writes a relative path with the platform's separators, as Blender always has
+   * (backslashes on Windows); #BLI_path_abs reads either one on every platform. */
+  char rebased[FILE_MAX] = "//../source/textures/wood.png";
+  BLI_path_slash_native(rebased);
+  save_over_planted_link(GetParam(), 0, params, rebased);
+  /* Whatever the separators: from the saved file it names the texture the source named. */
+  char from_saved[FILE_MAX], from_source[FILE_MAX] = "//textures/wood.png";
+  STRNCPY(from_saved, rebased);
+  EXPECT_TRUE(BLI_path_abs(from_saved, path("saved/target.blend").c_str()));
+  EXPECT_TRUE(BLI_path_abs(from_source, main_->filepath));
+  EXPECT_EQ(BLI_path_cmp_normalized(from_saved, from_source), 0)
+      << from_saved << " | " << from_source;
   /* Save-as-copy restores the in-memory path. */
   Image *image = reinterpret_cast<Image *>(BKE_libblock_find_name(main_, ID_IM, "Texture"));
   ASSERT_NE(image, nullptr);
   EXPECT_STREQ(image->filepath, "//textures/wood.png");
+}
+
+/* A relative path as Blender on Windows writes it names the same file wherever the .blend is
+ * opened: a file saved on Windows does not carry paths another platform cannot follow. This
+ * describes #BLI_path_abs as it has always been and keeps it so. */
+TEST(WritefileRelativePathTest, PathWrittenOnWindowsResolvesOnEveryPlatform)
+{
+#ifdef WIN32
+  const char *blend = "C:\\project\\saved\\target.blend";
+  const char *texture = "C:\\project\\source\\textures\\wood.png";
+#else
+  const char *blend = "/project/saved/target.blend";
+  const char *texture = "/project/source/textures/wood.png";
+#endif
+  for (const char *written : {"//..\\source\\textures\\wood.png", "//../source/textures/wood.png"})
+  {
+    char resolved[FILE_MAX];
+    STRNCPY(resolved, written);
+    EXPECT_TRUE(BLI_path_abs(resolved, blend));
+    EXPECT_STREQ(resolved, texture) << written;
+  }
 }
 
 TEST_P(WritefileTemporaryLinkKindTest, LinkToTheFileBeingSavedFromIsReplaced)

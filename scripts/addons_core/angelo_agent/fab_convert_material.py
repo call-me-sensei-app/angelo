@@ -11,9 +11,13 @@ own alpha) into Alpha; emission; displacement as bump through a Displacement nod
 the tiling stays editable. Maps with no Principled input (cavity, specular next to metalness, translucency) are
 left out and listed.
 
-``surface`` makes a texture set's material; ``complete_untextured`` gives a model whose own materials name no
+``surface`` makes a texture set's material; ``complete_untextured`` gives a model whose own materials hold no
 texture (Megascans FBX files and many sellers' zips ship the maps loose beside the mesh) the material of the maps
-it came with.
+it came with. It runs after the download's images are packed (``fab_convert_clean.pack_images``), so an image node
+whose file the download does not hold is empty by then and holds no texture: a material whose image nodes are all
+empty gets the loose set's material, and an empty node in a material that keeps other textures gets the loose map of
+the role its slot takes (base colour, alpha, roughness, metalness, emission, normal). Megascans' "English Ivy" raw FBX
+names its base colour by a path from the author's disk, so its leaves rendered black (release shoot, 2026-11-12).
 """
 
 from pathlib import Path
@@ -137,8 +141,8 @@ def build(name, roles, packed, convention, images, alpha=frozenset()):
         link(rough, shader.inputs['Roughness'])
     if scalar('metallic') is not None:
         link(scalar('metallic'), shader.inputs['Metallic'])
-    if 'opacity' in nodes:
-        link(nodes['opacity'].outputs['Color'], shader.inputs['Alpha'])
+    if scalar('opacity') is not None:   # Its own map, or one channel of a map (``fab_surface.classify``).
+        link(scalar('opacity'), shader.inputs['Alpha'])
     elif 'base_color' in nodes and roles['base_color'] in alpha:
         link(nodes['base_color'].outputs['Alpha'], shader.inputs['Alpha'])
     if 'emission' in nodes:
@@ -163,17 +167,17 @@ def build(name, roles, packed, convention, images, alpha=frozenset()):
         normal.location = (x - 160, y - 480)
         link(colour, normal.inputs['Color'])
         link(normal.outputs['Normal'], shader.inputs['Normal'])
-    elif 'bump' in nodes:
+    elif scalar('bump') is not None:
         bump = tree.nodes.new('ShaderNodeBump')
         bump.location = (x - 160, y - 480)
         bump.inputs['Distance'].default_value = BUMP_DISTANCE
-        link(nodes['bump'].outputs['Color'], bump.inputs['Height'])
+        link(scalar('bump'), bump.inputs['Height'])
         link(bump.outputs['Normal'], shader.inputs['Normal'])
-    if 'displacement' in nodes:
+    if scalar('displacement') is not None:
         displacement = tree.nodes.new('ShaderNodeDisplacement')
         displacement.location = (output.location.x - 200, output.location.y - 280)
         displacement.inputs['Scale'].default_value = BUMP_DISTANCE
-        link(nodes['displacement'].outputs['Color'], displacement.inputs['Height'])
+        link(scalar('displacement'), displacement.inputs['Height'])
         link(displacement.outputs['Displacement'], output.inputs['Displacement'])
     try:
         import material_display_sync as display   # Solid view: the map's mean colour, as it renders.
@@ -215,14 +219,109 @@ def surface(folder, images, name):
 
 
 def _textured(material):
+    """Whether ``material`` holds a texture: an image node with an image (an empty one holds nothing)."""
     tree = material.node_tree if material is not None else None
     return tree is not None and any(n.type == 'TEX_IMAGE' and n.image is not None for n in tree.nodes)
 
 
+# The shader input an image fills, and the loose map's role that belongs there.
+SLOT_ROLES = {'Base Color': 'base_color', 'Alpha': 'opacity', 'Roughness': 'roughness', 'Metallic': 'metallic',
+              'Emission Color': 'emission', 'Normal': 'normal'}
+
+
+def _slots(node):
+    """``{output name: shader input name}`` an image node's outputs fill: straight into the Principled shader, or its
+    Color through a Normal Map node into Normal. Anything else between them (a mix, a math node) is not a slot."""
+    found = {}
+    for output in node.outputs:
+        for link in output.links:
+            target = link.to_node
+            if target.type == 'BSDF_PRINCIPLED' and link.to_socket.name in SLOT_ROLES:
+                found[output.name] = link.to_socket.name
+            elif target.type == 'NORMAL_MAP' and output.name == 'Color':
+                if any(l.to_node.type == 'BSDF_PRINCIPLED' and l.to_socket.name == 'Normal'
+                       for l in target.outputs['Normal'].links):
+                    found[output.name] = 'Normal'
+    return found
+
+
+def _gaps(material):
+    """The empty image nodes of a material that keeps other textures, with the slots they fill."""
+    tree = material.node_tree if material is not None else None
+    if tree is None or not _textured(material):
+        return []
+    return [(node, slots) for node in tree.nodes
+            if node.type == 'TEX_IMAGE' and node.image is None and (slots := _slots(node))]
+
+
+def _packed_channel(result, role):
+    """``(map name, channel)`` of a role read from one channel of a packed map, or ``(None, None)``."""
+    for name, order in result['packed'].items():
+        for channel, held in zip(('Red', 'Green', 'Blue'), order):
+            if held == role:
+                return name, channel
+    return None, None
+
+
+def _fill(material, node, slots, result, images_by_name):
+    """Fill an empty node's slots with the loose maps of their roles; the number of slots filled."""
+    tree, filled = material.node_tree, 0
+    colour = slots.get('Color')
+    role = SLOT_ROLES.get(colour)
+    if role == 'normal' and result['normal'] == 'dx':
+        role = None   # A DirectX normal map needs its green flipped (``build``): left empty rather than wrong.
+    key = result['roles'].get(role)
+    if key is not None:
+        node.image = images_by_name[key]
+        node.image.colorspace_settings.is_data = role not in COLOUR_ROLES
+        filled += 1
+    elif role is not None:   # The role is one channel of a map: the slot reads that channel through a split.
+        name, channel = _packed_channel(result, role)
+        if name is not None:
+            node.image = images_by_name[name]
+            node.image.colorspace_settings.is_data = True
+            split = tree.nodes.new('ShaderNodeSeparateColor')
+            split.location = (node.location.x + 260, node.location.y)
+            for link in list(node.outputs['Color'].links):
+                target = link.to_socket
+                tree.links.remove(link)
+                tree.links.new(split.outputs[channel], target)
+            tree.links.new(node.outputs['Color'], split.inputs['Color'])
+            filled += 1
+    if slots.get('Alpha') == 'Alpha' and node.image is not None:   # The node's own alpha fills Alpha.
+        opacity = result['roles'].get('opacity')
+        packed_opacity, channel = _packed_channel(result, 'opacity') if opacity is None else (None, None)
+        source = opacity or packed_opacity
+        if source is not None and key != source and key not in result['alpha']:
+            shader = next(l.to_node for l in node.outputs['Alpha'].links if l.to_node.type == 'BSDF_PRINCIPLED')
+            mask = tree.nodes.new('ShaderNodeTexImage')
+            mask.image, mask.location = images_by_name[source], (node.location.x, node.location.y - 280)
+            mask.image.colorspace_settings.is_data = True
+            if node.inputs['Vector'].is_linked:
+                tree.links.new(node.inputs['Vector'].links[0].from_socket, mask.inputs['Vector'])
+            value = mask.outputs['Color']
+            if channel is not None:
+                split = tree.nodes.new('ShaderNodeSeparateColor')
+                split.location = (mask.location.x + 260, mask.location.y)
+                tree.links.new(value, split.inputs['Color'])
+                value = split.outputs[channel]
+            tree.links.new(value, shader.inputs['Alpha'])
+            filled += 1
+    return filled
+
+
 def complete_untextured(objects, folder, images, name, report):
-    """Give meshes whose materials use no texture the material of the download's loose texture set."""
+    """Complete meshes' materials from the download's loose texture set (after ``pack_images``): a mesh whose
+    materials hold no texture gets the set's material; an empty image node in a material that keeps other textures
+    gets the loose map of its slot's role. Whether anything was completed."""
     meshes = [o for o in objects if o.type == 'MESH' and not any(_textured(s.material) for s in o.material_slots)]
-    if not meshes:
+    gaps = {}
+    for obj in objects:
+        if obj.type == 'MESH' and obj not in meshes:
+            for slot in obj.material_slots:
+                if slot.material is not None and slot.material not in gaps and _gaps(slot.material):
+                    gaps[slot.material] = _gaps(slot.material)
+    if not meshes and not gaps:
         return False
     # An image a file names may be anywhere, a network share included: resolved only through the guard, never opened.
     used = {guard.resolved(bpy.path.abspath(i.filepath)) for i in bpy.data.images if i.filepath}
@@ -232,14 +331,19 @@ def complete_untextured(objects, folder, images, name, report):
     if found is None or not ({'base_color', 'normal'} & set(found[0]['roles'])):
         return False
     result, images_by_name = found
-    block = build(name, result['roles'], result['packed'], result['normal'], images_by_name, result['alpha'])
-    for obj in meshes:
-        if not obj.material_slots:
-            obj.data.materials.append(block)
-        for slot in obj.material_slots:
-            slot.material = block
-    report['surface'] = {'roles': sorted(result['roles']), 'normal': result['normal']}
-    return True
+    if meshes:
+        block = build(name, result['roles'], result['packed'], result['normal'], images_by_name, result['alpha'])
+        for obj in meshes:
+            if not obj.material_slots:
+                obj.data.materials.append(block)
+            for slot in obj.material_slots:
+                slot.material = block
+        report['surface'] = {'roles': sorted(result['roles']), 'normal': result['normal']}
+    filled = sum(_fill(material, node, slots, result, images_by_name)
+                 for material, pairs in gaps.items() for node, slots in pairs)
+    if filled:
+        report['filled_slots'] = filled
+    return bool(meshes) or filled > 0
 
 
 def _head(path):

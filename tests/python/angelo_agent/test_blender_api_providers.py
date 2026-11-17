@@ -5,6 +5,7 @@
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+import layout_double  # noqa: E402  (UILayout's own calls, shared by every suite drawing a page)
 
 import json
 import os
@@ -25,7 +26,7 @@ os.environ["ANGELO_STATE_DIR"] = str(OUT / "state")
 os.environ["ANGELO_CONNECTIONS_DIR"] = os.environ["ANGELO_STATE_DIR"]
 os.environ["ANGELO_DISABLE_KEYCHAIN"] = "1"  # Fixture keys must never reach a login Keychain.
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
-from angelo_agent import ui, console, chat_view, preview_branding, saved_keys_ui
+from angelo_agent import ui, console, chat_view, preview_branding, saved_keys_ui, shared_keys_ui, agent_runtime, provider_registry
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, beside this suite.
 import qa_operator  # noqa: E402
 from angelo_agent.provider_registry import CODING, GENAI, SPECS, HTTP_MODES, EXTERNAL_CODEX_MODES
@@ -36,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the 
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
 KEY = "fixture-key-not-a-real-credential"
+CODING_CONNECTIONS = 2 + len(EXTERNAL_CODEX_MODES)   # ChatGPT and Claude sign-ins, then one per API-key coding mode.
 requests = []
 
 
@@ -47,15 +49,18 @@ def probe_url(mode):
 
 def transport(request):
     requests.append(request.full_url)
-    mode = next(m for m in HTTP_MODES if SPECS[m]["probe"] and request.full_url == probe_url(m))
-    assert request.get_method() == "GET"
+    # Several modes can share one probe URL (Gemini Images and the Gemini coding agent both list Google's models):
+    # like the real endpoint, the answer lists the models of every mode behind that URL.
+    modes = sorted(m for m in HTTP_MODES if SPECS[m]["probe"] and request.full_url == probe_url(m))
+    assert modes and request.get_method() == "GET"
+    mode, models = modes[0], [m for each in modes for m in SPECS[each]["models"]]
     if mode == "tripo_api":
         return {"code": 0, "data": {"balance": 100.25}}
     if mode == "meshy_api":
         return {"balance": 50}
-    if mode == "gemini_images_api":
-        return {"models": [{"name": "models/" + m["id"]} for m in SPECS[mode]["models"]]}
-    return {"data": [{"id": m["id"]} for m in SPECS[mode]["models"]]}
+    if SPECS[mode]["provider"] == "GOOGLE":   # Google's own model list shape.
+        return {"models": [{"name": "models/" + m["id"]} for m in models]}
+    return {"data": [{"id": m["id"]} for m in models]}
 
 
 ui._authentication.start = lambda *args, **kwargs: None
@@ -81,17 +86,11 @@ class MemoryKeychain:
         return False
 
 
-class Layout:
+class Layout(layout_double.UILayoutDouble):
+    RECORDS = ("labels", "operators")
+
     def __init__(self):
         self.labels, self.operators = [], []
-    def row(self):
-        return self
-    def box(self):
-        return self
-    def column(self):
-        return self
-    def separator(self):
-        pass
     def prop(self, obj, name, **kwargs):
         self.labels.append(name)
     def label(self, text="", **kwargs):
@@ -103,6 +102,32 @@ class Layout:
 
 def save():
     (OUT / "api-providers.json").write_text(json.dumps(state, indent=2))
+
+
+def preferences_window():
+    return next(w for w in bpy.context.window_manager.windows if any(a.type == 'PREFERENCES' for a in w.screen.areas))
+
+
+def open_settings():
+    with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
+        bpy.ops.angelo.settings()
+
+
+def close(window):
+    with bpy.context.temp_override(window=window):
+        bpy.ops.wm.window_close()   # Takes an open dialog with it.
+
+
+def google(group):
+    return next(r for r in ui.connections().records.values() if r["provider"] == "GOOGLE" and r["group"] == group
+                and r["method"] == "API_KEY")
+
+
+def connection_form(**attributes):
+    """A stand-in of the connection form. An unset ``key_source`` reads ``NEW`` (a key of its own), as an unset enum
+    reads its first item on a real operator: a Google form offers "API key from" once another Google connection exists."""
+    return qa_operator.stand_in(ui.ANGELO_OT_new_connection, layout=Layout(),
+                                **{"key_source": shared_keys_ui.NEW, **attributes})
 
 
 def capture(file, window):
@@ -151,7 +176,7 @@ def tick():
             controller.choose_connection(gpt["mode"], ui.connection_settings(gpt["mode"], record=gpt), "", gpt["id"], gpt_models, "")
             for mode in sorted(HTTP_MODES):
                 spec = SPECS[mode]
-                result = bpy.ops.angelo.new_connection('EXEC_DEFAULT', group=spec["group"], provider=spec["provider"],
+                result = __import__("angelo_agent.grant_guard").grant_guard.stand_in().new_connection('EXEC_DEFAULT', group=spec["group"], provider=spec["provider"],
                     method="API_KEY", connection_name=spec["name"], api_key=KEY)
                 assert 'FINISHED' in result, mode
             state["phase"] = "checks"
@@ -162,7 +187,7 @@ def tick():
                 return .1
             store, controller = ui.connections(), ui.get_controller()
             genai = len([m for m in HTTP_MODES if SPECS[m]["group"] == GENAI])   # Every media provider, as added.
-            state["checks"]["coding_and_genai_groups_are_separate"] = len([r for r in store.records.values() if r["group"] == CODING]) == 5 and len(ui.generation_connections()) == genai
+            state["checks"]["coding_and_genai_groups_are_separate"] = len([r for r in store.records.values() if r["group"] == CODING]) == CODING_CONNECTIONS and len(ui.generation_connections()) == genai
             layout = Layout()
             ui.draw_ai_providers(layout, bpy.context)
             state["checks"]["both_groups_draw_in_native_preferences"] = "Coding agents" in layout.labels and "Media generation" in layout.labels   # provider_registry titles
@@ -174,8 +199,8 @@ def tick():
             state["checks"]["seedream_unverified_is_not_mislabeled_connected"] = not ui.generation_binding(seedream["id"]).verified and "deferred" in ui.connection_status(seedream)
             state["checks"]["no_keys_in_saved_metadata"] = KEY not in store.path.read_text()
             state["checks"]["keychain_off_for_automation"] = not saved_keys_ui.available()
-            form = qa_operator.stand_in(ui.ANGELO_OT_new_connection, layout=Layout(), connection_id="", group=GENAI,
-                                        provider="GOOGLE", method="API_KEY", reuse_existing=True, advanced=False)
+            form = connection_form(connection_id="", group=GENAI, provider="GOOGLE", method="API_KEY",
+                                   reuse_existing=True, advanced=False)
             ui.ANGELO_OT_new_connection.draw(form, bpy.context)
             disabled_form = form.layout.labels
             saved_keys_ui.start(ui, background=False, backend=MemoryKeychain())
@@ -185,14 +210,14 @@ def tick():
                 and "remember_key" not in disabled_form and saved_keys_ui.unavailable_reason() == ""
                 and any("ANGELO_DISABLE_KEYCHAIN" in text for text in disabled_form))
             choices = ui.model_choices(controller)
-            state["checks"]["all_five_coding_providers_offered"] = {m["provider"] for m in choices} == {"codex_subscription", "claude_subscription"} | EXTERNAL_CODEX_MODES
+            state["checks"]["every_coding_provider_offered"] = {m["provider"] for m in choices} == {"codex_subscription", "claude_subscription"} | EXTERNAL_CODEX_MODES
             state["checks"]["genai_never_enters_chat_model_pool"] = not any(m["provider"] in HTTP_MODES - EXTERNAL_CODEX_MODES for m in choices)
             rows = model_rows(choices, "", controller.selection_connection_id)
             state["checks"]["one_default_not_two_recommended_options"] = sum(r["kind"] == "default" for r in rows) == 1 and not any(r["name"] == "Default (recommended)" for r in rows)
-            state["checks"]["generic_provider_groups"] = sum(r["kind"] == "provider" for r in rows) == 5
+            state["checks"]["generic_provider_groups"] = sum(r["kind"] == "provider" for r in rows) == CODING_CONNECTIONS
             kimi = next(r for r in store.records.values() if r["mode"] == "kimi_api")
             conversation = controller.state["id"]
-            bpy.ops.angelo.select_model(connection_id=kimi["id"], model="kimi-k3")
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().select_model(connection_id=kimi["id"], model="kimi-k3")
             state["checks"]["model_routes_key_and_keeps_shared_session"] = controller.state["id"] == conversation and controller.state["connection_id"] == kimi["id"] and controller.api_key == KEY
             bpy.ops.angelo.open_chat(side="RIGHT")
             state["phase"] = "layout"
@@ -245,7 +270,12 @@ def tick():
                 else any(op[0] == "mark" for op in plan.ops))
             state["hero_banner"] = providers_page_model.banner_ready()
             state["images_at_open"] = sorted(image.name for image in bpy.data.images)
-            state["checks"]["banner_read_before_preferences"] = providers_page_model.ART["done"]
+            # The page shows the art while its input runs: read with no datablock, the float copy gone once drawn.
+            from angelo_agent import welcome_screen
+            art = welcome_screen.BANNER_PICTURE
+            state["checks"]["page_holds_its_art_while_open"] = art.failed or (
+                art.ready and providers_page_model.PAGE in art.shown_by())
+            state["checks"]["drawn_art_keeps_no_float_copy"] = not art.holds_pixels()
             with bpy.context.temp_override(window=prefs, area=area, region=region):
                 for _ in range(3):
                     bpy.ops.view2d.scroll_down(page=True)
@@ -256,8 +286,8 @@ def tick():
             capture("page-lower-sections.png", prefs)
             area = next(a for a in prefs.screen.areas if a.type == 'PREFERENCES')
             region = next(r for r in area.regions if r.type == 'WINDOW')
-            with bpy.context.temp_override(window=prefs, area=area, region=region):
-                bpy.ops.view2d.scroll_up(deltay=4000)
+            import view_scroll   # Back to the page's top (view2d.scroll_up ignores a distance: view_scroll.py).
+            view_scroll.up(prefs, area, region)
             bpy.context.preferences.view.language = "ar_EG"
             state["phase"] = "page_rtl"
             return .6
@@ -295,7 +325,9 @@ def tick():
             state["checks"]["sheet_one_primary"] = sum(1 for op in page._sheet_plan.ops if op[0] == "button" and op[3] == "primary") == 1
             sheet.key.text = ""
             ui_kit_field.paste(sheet.key, KEY)
-            sheet.act("submit", None, page._SheetHost(sheet))
+            # The sheet as a form: its Save stands in for the person through the harness
+            # (test_blender_grant_surfaces saves a key by the person's real presses and keys).
+            __import__("angelo_agent.grant_guard").grant_guard.harness(sheet.act, "submit", None, page._SheetHost(sheet))
             state["checks"]["sheet_clears_the_key_on_submit"] = sheet.key.text == ""
             state["phase"] = "sheet_checked"
             return .8
@@ -371,17 +403,22 @@ def tick():
                 return .7
             bpy.context.preferences.view.language = "en_US"
             # Draws, scrolls, a UI-scale relayout, a language switch, the sheet and the menu: no image datablock added
-            # or removed (the banner is read once at start-up). The welcome screen's release leaves the page its art.
+            # or removed (the art is read with imbuf). Another surface letting the art go leaves the page its art.
             from angelo_agent import providers_page_model, welcome_screen
             state["checks"]["page_never_adds_or_removes_images"] = sorted(i.name for i in bpy.data.images) == state["images_at_open"]
-            art = providers_page_model.ART["pixels"]
-            welcome_screen.release()
-            state["checks"]["welcome_release_keeps_the_page_art"] = providers_page_model.ART["pixels"] is art
+            art = welcome_screen.BANNER_PICTURE
+            held = art.ready
+            art.show("qa_other_surface")
+            art.hide("qa_other_surface")
+            state["checks"]["another_surface_closing_keeps_the_page_art"] = art.ready == held
             with bpy.context.temp_override(window=prefs):
                 bpy.ops.wm.window_close()
             state["phase"] = "reopen"
             return .5
         if state["phase"] == "reopen":
+            from angelo_agent import welcome_screen
+            art = welcome_screen.BANNER_PICTURE   # Preferences closed: the art went with the page (no other surface).
+            state["checks"]["closing_preferences_lets_the_art_go"] = bool(art.shown_by()) or not art.ready
             window = bpy.context.window_manager.windows[0]
             with bpy.context.temp_override(window=window):
                 bpy.ops.angelo.settings()
@@ -438,12 +475,76 @@ def tick():
             prefs = next(w for w in bpy.context.window_manager.windows if any(a.type == 'PREFERENCES' for a in w.screen.areas))
             area = next(a for a in prefs.screen.areas if a.type == 'PREFERENCES')
             with bpy.context.temp_override(window=prefs, area=area):
-                bpy.ops.angelo.new_connection('INVOKE_DEFAULT', group=GENAI, provider="GOOGLE", method="API_KEY")
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().new_connection(
+                    'INVOKE_DEFAULT', group=GENAI, provider="GOOGLE", method="API_KEY")
             state["phase"] = "form"
             return .4
         if state["phase"] == "form":
-            prefs = next(w for w in bpy.context.window_manager.windows if any(a.type == 'PREFERENCES' for a in w.screen.areas))
+            prefs = preferences_window()
             capture("new-generative-api-key-form.png", prefs)
+            # One Google key for Images and the coding agent (shared_keys): the Edit form of the coding connection,
+            # first as it opens (its own key), then with the Images connection's key chosen.
+            coding = google("CODING")
+            images = google("GENAI")
+            state["shared"] = {"coding": coding["id"], "images": images["id"]}
+            form = connection_form(connection_id=coding["id"], group=CODING, provider="GOOGLE", method="API_KEY",
+                                   reuse_existing=True, advanced=False)
+            ui.ANGELO_OT_new_connection.draw(form, bpy.context)
+            state["checks"]["coding_form_offers_the_images_key"] = (
+                "key_source" in form.layout.labels and "api_key" in form.layout.labels
+                and any(item[0] == images["id"] for item in shared_keys_ui.key_source_items(form, bpy.context)))
+            close(prefs)
+            state["phase"] = "shared_open"
+            return .4
+        if state["phase"] in ("shared_open", "shared_chosen_open"):
+            open_settings()
+            state["phase"] = state["phase"].replace("_open", "_form")
+            return .8
+        if state["phase"] in ("shared_form", "shared_chosen_form"):
+            prefs = preferences_window()
+            area = next(a for a in prefs.screen.areas if a.type == 'PREFERENCES')
+            # key_source's items depend on group and provider, which RNA assigns first (definition order).
+            choice = {} if state["phase"] == "shared_form" else {"key_source": state["shared"]["images"]}
+            with bpy.context.temp_override(window=prefs, area=area):
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().new_connection(
+                    'INVOKE_DEFAULT', connection_id=state["shared"]["coding"], group=CODING, provider="GOOGLE",
+                    method="API_KEY", **choice)
+            state["phase"] = state["phase"].replace("_form", "_capture")
+            return .4
+        if state["phase"] in ("shared_capture", "shared_chosen_capture"):
+            prefs = preferences_window()
+            capture("gemini-key-from-own.png" if state["phase"] == "shared_capture" else "gemini-key-from-images.png", prefs)
+            close(prefs)
+            state["phase"] = "shared_chosen_open" if state["phase"] == "shared_capture" else "shared_link"
+            return .4
+        if state["phase"] == "shared_link":
+            store = ui.connections()
+            coding, images = (store.records[state["shared"][k]] for k in ("coding", "images"))
+            result = __import__("angelo_agent.grant_guard").grant_guard.stand_in().new_connection('EXEC_DEFAULT', connection_id=coding["id"], group=CODING,
+                                                   provider="GOOGLE", method="API_KEY", key_source=images["id"])
+            label = saved_keys_ui.storage_label(coding, bool(ui._memory_keys.get(coding["id"])))
+            state["checks"]["coding_connection_uses_the_images_key"] = (
+                'FINISHED' in result and coding.get("key_from") == images["id"]
+                and ui._memory_keys.get(coding["id"]) == ui._memory_keys.get(images["id"]) == KEY
+                and label is not None and images["name"] in str(label))
+            state["checks"]["linked_key_never_saved_in_metadata"] = KEY not in store.path.read_text()
+            # A build whose agent runtime lacks the Gemini wire never offers the coding connection (provider_registry
+            # .available): the pin's wire list decides, and the Images connection stays offered either way.
+            pinned = agent_runtime.PIN.get("wire_apis")
+            offered = {item[0] for item in provider_registry.provider_choice_items(CODING)}
+            agent_runtime.PIN["wire_apis"] = []
+            try:
+                without = {item[0] for item in provider_registry.provider_choice_items(CODING)}
+                images_without = {item[0] for item in provider_registry.provider_choice_items(GENAI)}
+            finally:
+                agent_runtime.PIN["wire_apis"] = pinned
+            state["checks"]["google_coding_offered_only_with_the_wire"] = (
+                "GOOGLE" in offered and "GOOGLE" not in without and "GOOGLE" in images_without)
+            open_settings()
+            state["phase"] = "shared_page"
+            return .8
+        if state["phase"] == "shared_page":
+            capture("ai-providers-shared-google-key.png", preferences_window())
             state["checks"]["no_chat_draw_error"] = chat_view.last_error is None
             state["checks"]["scene_unchanged"] = before == [(o.name, tuple(o.location)) for o in bpy.context.scene.objects]
             state["success"] = all(state["checks"].values())

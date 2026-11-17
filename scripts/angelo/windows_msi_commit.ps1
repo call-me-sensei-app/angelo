@@ -10,6 +10,9 @@
   -Pattern. It throws, naming each MSI it refused and why, when there is none: an install check that took the newest
   MSI on the disk once installed and passed on an earlier run's build of another commit.
 #>
+if (-not (Get-Command Invoke-NativeCapture -ErrorAction SilentlyContinue)) {   # Its caller may have loaded it.
+    . (Join-Path $PSScriptRoot "windows_native_call.ps1")
+}
 
 function Get-CommitMsi([string]$SourceDir, [string]$Commit, [string]$Msi = "", [string]$Pattern = "*.msi") {
     $hostPython = "C:\Python313\python.exe"
@@ -17,9 +20,7 @@ function Get-CommitMsi([string]$SourceDir, [string]$Commit, [string]$Msi = "", [
     if (-not (Test-Path $hostPython)) { throw "no host Python at $hostPython to check which commit an MSI was built from" }
     $arguments = @("-I", "-B", (Join-Path $SourceDir "scripts\angelo\msi_commit.py"), "--commit", $Commit, "--pattern", $Pattern)
     $arguments += $(if ($Msi) { @("--msi", $Msi) } else { @("--search", "C:\angelo") })
-    $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    try { $out = @(& $hostPython @arguments 2>&1 | ForEach-Object { "$_" }); $code = $LASTEXITCODE }
-    finally { $ErrorActionPreference = $old }
+    $ran = Invoke-NativeCapture $hostPython $arguments; $out = $ran.Lines; $code = $ran.Code
     $out | ForEach-Object { Write-Host $_ }
     if ($code -ne 0 -or -not $out) { throw ("no MSI of commit {0}: {1}" -f $Commit, ($out -join " / ")) }
     $out[-1].Trim()

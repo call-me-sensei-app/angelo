@@ -49,16 +49,53 @@ def _text(value, high):
     return trimmed if 1 <= len(trimmed) <= high else None
 
 
+ENDPOINT_FORMATS = ("openai-responses", "gemini", "anthropic-messages")
+ENDPOINT_TOKENS = ("inputTokens", "cachedInputTokens", "outputTokens", "reasoningTokens")
+ENDPOINT_KEYS = {"day", "endpointId", "format", "model", "profile", "agentTasks"} | set(ENDPOINT_TOKENS)
+ENDPOINT_ID = re.compile(r"^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$")
+PRINTABLE = re.compile(r"^[\x20-\x7e]+$")
+
+
+def _endpoint_items(items, problems):
+    """``customEndpoints`` as the console's 1.1.1 schema reads it (agreed with the app lane, 2026-11-12)."""
+    parsed = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict) or set(item) != ENDPOINT_KEYS:
+            problems.append("customEndpoints.%d: unknown or missing fields" % index)
+            continue
+        profile = item["profile"]
+        row = {"day": item["day"] if isinstance(item["day"], str) and DAY.match(item["day"]) else None,
+               "endpointId": item["endpointId"] if isinstance(item["endpointId"], str)
+               and ENDPOINT_ID.match(item["endpointId"]) else None,
+               "format": item["format"] if item["format"] in ENDPOINT_FORMATS else None,
+               "model": item["model"] if isinstance(item["model"], str) and 1 <= len(item["model"]) <= 200
+               and PRINTABLE.match(item["model"]) and " " not in item["model"] else None,
+               "agentTasks": _integer(item["agentTasks"], 10_000)}
+        row.update({name: _integer(item[name], 10_000_000_000) for name in ENDPOINT_TOKENS})
+        bad = [key for key, value in row.items() if value is None]
+        if profile is not None and not (isinstance(profile, str) and 1 <= len(profile) <= 64 and PRINTABLE.match(profile)):
+            bad.append("profile")
+        if not bad and (row["cachedInputTokens"] > row["inputTokens"] or row["reasoningTokens"] > row["outputTokens"]):
+            bad.append("tokens")
+        problems += ["customEndpoints.%d.%s: invalid" % (index, key) for key in bad]
+        row["profile"] = profile
+        parsed.append(row)
+    return parsed
+
+
 def parse(body):
     """The parsed body as zod returns it, or a list of problems."""
-    if not isinstance(body, dict) or set(body) - {"batchId", "entries"}:
+    if (not isinstance(body, dict) or set(body) - {"batchId", "entries", "customEndpoints"}
+            or {"batchId", "entries"} - set(body)):
         return ["body: unknown or missing fields"]
     problems, entries = [], []
     if not isinstance(body.get("batchId"), str) or not UUID.match(body["batchId"]):
         problems.append("batchId: Invalid UUID")
-    items = body.get("entries")
-    if not isinstance(items, list) or not 1 <= len(items) <= MAX_ENTRIES:
-        return problems + ["entries: 1 to %d entries" % MAX_ENTRIES]
+    items, custom = body.get("entries"), body.get("customEndpoints", [])
+    if not isinstance(custom, list) or len(custom) > MAX_ENTRIES:
+        return problems + ["customEndpoints: at most %d items" % MAX_ENTRIES]
+    if not isinstance(items, list) or not (1 if not custom else 0) <= len(items) <= MAX_ENTRIES:
+        return problems + ["entries: 1 to %d entries (0 with customEndpoints)" % MAX_ENTRIES]
     for index, item in enumerate(items):
         if not isinstance(item, dict) or set(item) - ENTRY_KEYS or not ENTRY_KEYS - {"longestTaskMs"} <= set(item):
             problems.append("entries.%d: unknown or missing fields" % index)
@@ -75,7 +112,16 @@ def parse(body):
     keys = ["%s|%s|%s" % (e["day"], e["provider"], e["model"]) for e in entries]
     if not problems and len(set(keys)) != len(keys):
         problems.append("entries: Send each day, provider and model once.")
-    return problems or {"batchId": body["batchId"], "entries": entries}
+    endpoints = _endpoint_items(custom, problems)
+    endpoint_keys = [(e["day"], e["endpointId"], e["format"], e["model"], e["profile"]) for e in endpoints]
+    if not problems and len(set(endpoint_keys)) != len(endpoint_keys):
+        problems.append("customEndpoints: Send each day, endpoint, format, model and profile once.")
+    if problems:
+        return problems
+    result = {"batchId": body["batchId"], "entries": entries}
+    if custom:
+        result["customEndpoints"] = endpoints
+    return problems or result
 
 
 class FakeUsageReports:

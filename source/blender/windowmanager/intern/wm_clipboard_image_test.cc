@@ -7,8 +7,8 @@
  * readers that go through #ImBuf (`intern/ghost/intern/GHOST_ClipboardImage_ImBuf.cc`), as the
  * Windows and Wayland routes read files, encoded bytes and the bitmaps Windows hands over in
  * formats GHOST does not decode itself (through Blender's BMP reader); the size comes from the
- * header before anything is decoded, float-only pixels are converted, and the #ImBuf (with any
- * OpenEXR multilayer handle) is always freed. The image the platform decodes into is the one the
+ * header before anything is decoded, float-only pixels are converted, and the #ImBuf is always
+ * freed. The image the platform decodes into is the one the
  * window manager takes (no second copy), and #IMB_allocFromBuffer refuses what it cannot
  * allocate. These need the
  * Blender kernel (colour management), which GHOST's own suite does not link.
@@ -29,7 +29,6 @@
 
 #include "IMB_imbuf.hh"
 #include "IMB_imbuf_types.hh"
-#include "IMB_openexr.hh"
 
 #include "GHOST_ClipboardImage.hh"
 
@@ -107,16 +106,16 @@ TEST_F(GHOST_ClipboardImageBuffer, NoPixelsIsNullAndNothingLeaks)
   EXPECT_EQ(MEM_get_memory_blocks_in_use(), blocks);
 }
 
-TEST_F(GHOST_ClipboardImageBuffer, MultilayerHandleIsClosed)
+TEST_F(GHOST_ClipboardImageBuffer, MultilayerBufferWithoutPixelsIsFreed)
 {
   /* A multilayer OpenEXR file loaded with #ImBufFlags::MultiLayer comes back as an ImBuf with no
-   * pixels and a handle to every decoded pass, which #IMB_freeImBuf does not close. */
+   * pixels (Blender 5.3 opens its passes through a separate handle the ImBuf never holds). */
   const int64_t blocks = MEM_get_memory_blocks_in_use();
   ImBuf *ibuf = IMB_allocImBuf(4, 4, ImBufFlags::Zero);
-  ibuf->exrhandle = IMB_exr_get_handle();
+  ibuf->flags |= ImBufFlags::MultiLayer;
   int width = -1, height = -1;
   EXPECT_EQ(GHOST_ClipboardImage_rgba_from_imbuf(ibuf, &width, &height), nullptr);
-  EXPECT_EQ(MEM_get_memory_blocks_in_use(), blocks) << "the handle is closed with the ImBuf";
+  EXPECT_EQ(MEM_get_memory_blocks_in_use(), blocks) << "the ImBuf is freed";
 }
 
 TEST_F(GHOST_ClipboardImageBuffer, SizeComesFromTheHeaderOfAFileOrItsBytes)

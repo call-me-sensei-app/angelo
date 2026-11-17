@@ -490,21 +490,19 @@ INFERRED_FIELDS = {"angelo_apply_recipe": ("revision",), "angelo_expand_recipe":
 
 
 def expand_call(name, arguments, table):
-    """Model-submitted tool arguments with short identifiers resolved to long ones.
-
-    The one inbound resolver for every tool, called before validation. Long
-    forms and every non-identifier field pass through unchanged. Raises
-    IdentifierError for a short form the table does not know, or for any short
-    form when there is no table (Codex, or a context whose table is gone);
-    nothing has run at that point.
-    """
-    from .tool_specs import TOOL_MAP
-    tool = TOOL_MAP.get(name) if isinstance(name, str) else None
-    if tool is None or not isinstance(arguments, dict):
+    """Model-submitted tool arguments with short identifiers resolved to long ones: the one inbound resolver for
+    every tool, called before validation. Long forms and every non-identifier field pass through unchanged. Raises
+    IdentifierError for a short form the table does not know, or for any short form when there is no table (Codex,
+    or a context whose table is gone); nothing has run at that point."""
+    from .read_only import thawed
+    # The schema as registered, read only; a plain copy per call (2.7 ms for scene_program's 211 KB, ~0 for the rest).
+    from .tool_specs import SCHEMAS
+    schema = SCHEMAS.get(name) if isinstance(name, str) else None
+    if schema is None or not isinstance(arguments, dict):
         return arguments
     table = _NO_TABLE if table is None else table
     handles, check_types = _reference_schemas()
-    expanded = _expand(named_targets(name, arguments), tool["inputSchema"], table, handles, check_types)
+    expanded = _expand(named_targets(name, arguments), thawed(schema), table, handles, check_types)
     return expanded if table is _NO_TABLE else _infer(name, expanded, table)
 
 

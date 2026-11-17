@@ -9,13 +9,18 @@ Run with Angelo's bundled Python (no window opens; take ``/tmp/angelo-billed.loc
 
 Evidence: the headless child runs script files the person always allows through the same executor as the window,
 and in a background Blender a script that loads a file freed the window that executor read the scene back through:
-the child crashed (exit 139; the parallel-agents spike found it with no worker). ``script_document`` ends such a
-script as ``DOCUMENT_REPLACED``. Through the real launcher (``scripts/angelo/angelo_mcp.py``) and its child, with
-private HOME, TMPDIR, state and connections folders. Each script file is approved as the window's "Always allow
-this file while it's unchanged" saves it, then run on the open file:
+the child crashed (exit 139; the parallel-agents spike found it with no worker). A script that names a file-replacing
+operator is refused before it runs (``file_load``, a714a79297a: a standing consent never covers replacing the open
+file); one that hides the name reaches the run, and ``script_document`` ends it as ``DOCUMENT_REPLACED``. Through
+the real launcher (``scripts/angelo/angelo_mcp.py``) and its child, with private HOME, TMPDIR, state and connections
+folders. Each script file is approved as the window's "Always allow this file while it's unchanged" saves it, then
+run on the open file:
 
-* ``read_homefile``, ``open_mainfile`` of another file, a computed name and ``read_factory_settings``: refused as
-  ``DOCUMENT_REPLACED``, and the session's own file is loaded again with nothing of the run saved (``FOREIGN_FILE``);
+* ``read_homefile``, ``open_mainfile`` of another file and ``read_factory_settings`` name their operator: refused
+  before anything runs (``needs_gui``, "would replace the open file", the scene unchanged); which loads name it is
+  the product's own check (``worker_script.file_load``), never a list kept here;
+* a computed name hides it: refused as ``DOCUMENT_REPLACED``, and the session's own file is loaded again with nothing
+  of the run saved (``FOREIGN_FILE``); at least one load takes each path;
 * after each, the same child runs a plain approved file and saves it: it is alive and on the session's file;
 * the source's bytes never change, and the saved copy holds the plain runs and nothing a load brought in.
 Writes ``headless-script-document.json``.
@@ -86,6 +91,7 @@ def main():
     before = sha256(source)
     sys.path.insert(0, str(scripts / "addons_core"))
     from angelo_agent import script_files
+    from angelo_agent.worker_script import file_load
     from angelo_agent.external_clients import AppRegistry, write_access, write_organization
     name = AppRegistry(state).connect("claude_code")
     write_access(state, True)   # What Angelo's window records while "Allow apps on this computer" is on.
@@ -96,11 +102,12 @@ def main():
         path = out / (label + ".py")
         path.write_text("import bpy\n" + body)
         script_files.attach(state)
-        script_files.allow(name, os.path.realpath(source), script_files.read_script(str(path)))
+        from angelo_agent import grant_guard   # The person's Allow on the script file: the harness.
+        grant_guard.harness(script_files.allow, name, os.path.realpath(source), script_files.read_script(str(path)))
         script_files.detach()
         return path
 
-    saved = None
+    saved, paths = None, set()
     client = Client([str(python), "-I", str(scripts / "angelo" / "angelo_mcp.py"), "--client", name,
                      "--state-dir", str(state)], environ)
     try:
@@ -111,10 +118,18 @@ def main():
             load = approved("load_" + label, body % str(other) if "%r" in body else body)
             result, _ = client.call("angelo_run_script_file", {"file": str(load)})
             results[label] = text(result)[:2000]
-            check(label + ": refused as DOCUMENT_REPLACED", result["isError"] and "DOCUMENT_REPLACED" in text(result),
-                  result)
-            check(label + ": nothing of it is saved and the session's own file is loaded again",
-                  "nothing of the run was saved" in text(result) and "Angelo loaded" in text(result), result)
+            named = file_load({"code": load.read_text()}) is not None
+            paths.add(named)
+            if named:   # The check before the run sees the operator: nothing runs.
+                check(label + ": refused before it runs (needs_gui: it would replace the open file)",
+                      result["isError"] and "NEEDS_GUI" in text(result)
+                      and "would replace the open file" in text(result)
+                      and '"scene_changed":false' in text(result).replace(" ", ""), result)
+            else:   # Hidden from that check: the run's own net ends it.
+                check(label + ": refused as DOCUMENT_REPLACED",
+                      result["isError"] and "DOCUMENT_REPLACED" in text(result), result)
+                check(label + ": nothing of it is saved and the session's own file is loaded again",
+                      "nothing of the run was saved" in text(result) and "Angelo loaded" in text(result), result)
             plain = approved("plain_" + label, "bpy.context.scene.collection.objects.link(bpy.data.objects.new(%r, None))\n"
                              % ("After_" + label))
             result, _ = client.call("angelo_run_script_file", {"file": str(plain)})
@@ -125,6 +140,8 @@ def main():
         client.call("angelo_close_file")
     finally:
         client.close()
+    check("both paths ran: a named load refused before it runs and a hidden one ended by the run",
+          paths == {True, False}, paths)
     check("the source's bytes never change", sha256(source) == before)
     objects = []
     if saved is not None:

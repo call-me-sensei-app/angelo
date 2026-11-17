@@ -37,6 +37,8 @@ for path in (ROOT / "scripts/addons_core", ROOT / "scripts/angelo", Path(__file_
     sys.path.insert(0, str(path))
 from angelo_agent import native_programs as native, scene_queries as queries, scene_settings  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
+from qa_person import reviewing  # noqa: E402
+BlenderExecutor = reviewing(BlenderExecutor)   # Each script runs as one the person approved (qa_person).
 from angelo_agent.tool_specs import validate_call  # noqa: E402
 import route_parity  # noqa: E402
 import route_parity_corpus  # noqa: E402

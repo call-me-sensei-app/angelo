@@ -31,6 +31,7 @@ set(DEFSRC
   rna_armature.cc
   rna_asset.cc
   rna_attribute.cc
+  rna_blender_project.cc
   rna_blendfile_import.cc
   rna_boid.cc
   rna_brush.cc
@@ -96,6 +97,7 @@ set(DEFSRC
   rna_volume.cc
   rna_wm.cc
   rna_wm_gizmo.cc
+  rna_wm_undo.cc
   rna_workspace.cc
   rna_world.cc
   rna_xr.cc
@@ -216,6 +218,7 @@ set(SRC_RNA_INC
   ../RNA_enum_items.hh
   ../RNA_enum_types.hh
   ../RNA_path.hh
+  ../RNA_path_fwd.hh
   ../RNA_types.hh
 
   rna_action_tools.hh
@@ -377,6 +380,11 @@ if(WITH_INPUT_NDOF)
   add_definitions(-DWITH_INPUT_NDOF)
 endif()
 
+# Angelo: the window's IME state and the script text-field session (rna_wm.cc, rna_wm_api.cc).
+if(WITH_INPUT_IME)
+  add_definitions(-DWITH_INPUT_IME)
+endif()
+
 if(WITH_XR_OPENXR)
   add_definitions(-DWITH_XR_OPENXR)
 endif()
@@ -424,7 +432,10 @@ add_custom_command(
   BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/rna_read_sources.tsv"
   COMMAND
     ${CMAKE_COMMAND} -E env ${PLATFORM_ENV_BUILD}
-    "$<TARGET_FILE:makesrna>" ${CMAKE_SOURCE_DIR}/source/blender/makesdna/ ${CMAKE_CURRENT_BINARY_DIR}/ ${CMAKE_CURRENT_BINARY_DIR}/../
+    "$<TARGET_FILE:makesrna>"
+    ${CMAKE_SOURCE_DIR}/source/blender/makesdna/
+    ${CMAKE_CURRENT_BINARY_DIR}/
+    ${CMAKE_CURRENT_BINARY_DIR}/../
   DEPENDS makesrna
 )
 
@@ -485,6 +496,7 @@ if(WITH_GTESTS)
   set(TEST_SRC
     makesrna_test.cc
     rna_depsgraph_update_test.cc
+    rna_path_test.cc
     rna_read_storage_test.cc
   )
   set(TEST_LIB

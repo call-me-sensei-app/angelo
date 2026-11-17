@@ -207,7 +207,8 @@ def main():
     root = Path(args.out).resolve()
     root.mkdir(parents=True, exist_ok=True)
     binary = Path(args.binary).resolve(strict=True)
-    resources = binary.parents[1] / "Resources" / "5.2"
+    import app_layout
+    resources = app_layout.resources(binary)
     angelo_root = root / "angelo-app"
     env = isolated_environment(angelo_root)
     sys.path.insert(0, str(resources / "scripts/addons_core"))
@@ -303,7 +304,8 @@ def _start():
     addon = bpy.context.preferences.addons.get("angelo_agent")
     if addon is None:
         return 0.3
-    addon.preferences.allow_local_cli = True
+    from angelo_agent import grant_guard  # The test acts as the person (grant_guard.setting).
+    grant_guard.harness(setattr, addon.preferences, "allow_local_cli", True)
     if not (Path(os.environ["ANGELO_STATE_DIR"]) / "cli/endpoint.json").is_file():
         return 0.3
     (_root / "ready").write_text("1")
@@ -320,9 +322,10 @@ def _person():
                 first = _seen.setdefault(call.id, now)
                 if now - first >= 2.0:
                     if call.name == "angelo_execute_python":
-                        controller.review_script(call)
+                        from angelo_agent import grant_guard   # The person's Review: the harness stands in.
+                        grant_guard.harness(controller.review_script, call)
                     with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-                        bpy.ops.angelo.approve(call_id=call.id, session_id=controller.state["id"])
+                        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve(call_id=call.id, session_id=controller.state["id"])
     if (_root / "stop").is_file():
         bpy.ops.wm.quit_blender()
         return None

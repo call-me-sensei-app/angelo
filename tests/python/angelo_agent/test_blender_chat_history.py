@@ -55,11 +55,6 @@ def line():
     return chat()[0].spaces.active.history[-1]
 
 
-def scale():
-    from angelo_agent import chat_view
-    return chat_view.ui_scale()
-
-
 def send(kind, x, y, value='NOTHING', unicode=None):
     arguments = dict(type=kind, value=value, x=int(round(x)), y=int(round(y)))
     if unicode:
@@ -108,8 +103,8 @@ def finish(error=None):
 
 def click_action(action, value):
     rect = next(rect for rect, kind, payload in view_state()["hits"] if kind == action and payload == value)
-    x, y, w, h = rect
-    px, py = chat()[0].x + (x + w / 2) * scale(), chat()[0].y + (y + h / 2) * scale()
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    px, py = chat_point(chat()[0], rect)
     send('LEFTMOUSE', px, py, 'PRESS')
     send('LEFTMOUSE', px, py, 'RELEASE')
 
@@ -139,8 +134,8 @@ def steps():
             if reached:
                 break
             chat_view._scroll[(chat()[0].as_pointer(), control.state["id"])] = v.get("max_scroll", 0) if boundary == "first" else 0
-            x, y, w, h = v["message_viewport"]
-            send(direction, chat()[0].x + (x + w / 2) * scale(), chat()[0].y + (y + h / 2) * scale(), 'PRESS')
+            from qa_input import chat_point   # The chat's points as window pixels (its scale and mirror).
+            send(direction, *chat_point(chat()[0], v["message_viewport"]), 'PRESS')
             yield 0.08
         check("wheel_reaches_" + boundary, reached)
         if boundary == "latest":
@@ -152,8 +147,8 @@ def steps():
                         if action == "history" and value == "latest"), None)
             check("latest_control_enabled_away_from_bottom", hit is not None)
             if hit:
-                x, y, w, h = hit
-                px, py = chat()[0].x + (x + w / 2) * scale(), chat()[0].y + (y + h / 2) * scale()
+                from qa_input import chat_point   # The chat's points as window pixels (its scale and mirror).
+                px, py = chat_point(chat()[0], hit)
                 send('LEFTMOUSE', px, py, 'PRESS')
                 send('LEFTMOUSE', px, py, 'RELEASE')
                 yield 0.2

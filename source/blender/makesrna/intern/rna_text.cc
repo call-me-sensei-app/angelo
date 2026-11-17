@@ -21,9 +21,10 @@
 
 #ifdef RNA_RUNTIME
 
-#  include "BLI_listbase.h"
-#  include "BLI_string.h"
-#  include "BLI_string_utf8.h"
+#  include "BLI_fileops.hh"
+#  include "BLI_listbase.hh"
+#  include "BLI_string.hh"
+#  include "BLI_string_utf8.hh"
 
 #  include "BKE_text.h"
 
@@ -82,7 +83,7 @@ static void rna_Text_current_line_index_set(PointerRNA *ptr, int value)
   Text *text = static_cast<Text *>(ptr->data);
   TextLine *line = static_cast<TextLine *>(BLI_findlink(&text->lines, value));
   if (line == nullptr) {
-    line = static_cast<TextLine *>(text->lines.last);
+    line = text->lines.last();
   }
   text->curl = line;
   text->curc = 0;
@@ -99,7 +100,7 @@ static void rna_Text_select_end_line_index_set(PointerRNA *ptr, int value)
   Text *text = static_cast<Text *>(ptr->data);
   TextLine *line = static_cast<TextLine *>(BLI_findlink(&text->lines, value));
   if (line == nullptr) {
-    line = static_cast<TextLine *>(text->lines.last);
+    line = text->lines.last();
   }
   text->sell = line;
   text->selc = 0;
@@ -165,6 +166,22 @@ static void rna_TextLine_body_set(PointerRNA *ptr, const char *value)
   memcpy(line->line, value, len + 1);
 
   MEM_SAFE_DELETE(line->format);
+
+  /* A line an agent script changed: the text is no longer the person's (Angelo, #TXT_ANGELO_UNTRUSTED). */
+  const BLI_FileGate *gate = BLI_fileops_gate_get();
+  if (gate && gate->confined && gate->confined() && ptr->owner_id != nullptr) {
+    reinterpret_cast<Text *>(ptr->owner_id)->flags |= TXT_ANGELO_UNTRUSTED;
+  }
+}
+
+/** The person (never a confined thread: refused in bpy_rna.cc) setting "Register" trusts what it runs (Angelo). */
+static void rna_Text_use_module_update(Main * /*bmain*/, Scene * /*scene*/, PointerRNA *ptr)
+{
+  Text *text = static_cast<Text *>(ptr->data);
+  const BLI_FileGate *gate = BLI_fileops_gate_get();
+  if ((text->flags & TXT_ISSCRIPT) && gate && gate->autorun_trust && !(gate->confined && gate->confined())) {
+    gate->autorun_trust(text);
+  }
 }
 
 }  // namespace blender
@@ -207,9 +224,12 @@ static void rna_def_text(BlenderRNA *brna)
   RNA_def_struct_ui_icon(srna, ICON_TEXT);
   RNA_def_struct_clear_flag(srna, STRUCT_ID_REFCOUNT);
 
-  prop = RNA_def_property(srna, "filepath", PROP_STRING, PROP_NONE);
+  /* Angelo: a file path (the text's save writes there), judged and tagged as every path property is
+   * (doc/angelo/script_confinement.rst, "Output paths in data"). Upstream: PROP_NONE. */
+  prop = RNA_def_property(srna, "filepath", PROP_STRING, PROP_FILEPATH);
   RNA_def_property_string_funcs(
       prop, "rna_Text_filepath_get", "rna_Text_filepath_length", "rna_Text_filepath_set");
+  RNA_def_property_flag(prop, PROP_PATH_SUPPORTS_BLEND_RELATIVE); /* `//`: the text's own resolution (text.cc). */
   RNA_def_property_ui_text(prop, "File Path", "Filename of the text file");
 
   prop = RNA_def_property(srna, "is_dirty", PROP_BOOLEAN, PROP_NONE);
@@ -233,6 +253,7 @@ static void rna_def_text(BlenderRNA *brna)
   prop = RNA_def_property(srna, "use_module", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_sdna(prop, nullptr, "flags", TXT_ISSCRIPT);
   RNA_def_property_ui_text(prop, "Register", "Run this text as a Python script on loading");
+  RNA_def_property_update(prop, 0, "rna_Text_use_module_update");
 
   prop = RNA_def_property(srna, "indentation", PROP_ENUM, PROP_NONE); /* as an enum */
   RNA_def_property_enum_bitflag_sdna(prop, nullptr, "flags");

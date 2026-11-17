@@ -131,12 +131,15 @@ def _connected(chat, ui):
 
 
 def _blender_busy():
-    """A render, bake or Angelo job holds Blender, or the interface is locked: a request now would be refused."""
+    """A render, bake or Angelo job holds Blender, the interface is locked (a request now would be refused), or the
+    person's operation is in progress in any window (its turn would snapshot and read under it: edit_tool_hold)."""
     try:
         import bpy  # noqa: F401
     except ImportError:
         return False
-    from . import job_host, program_context
+    from . import edit_tool_hold, job_host, program_context
+    if edit_tool_hold.running():
+        return True
     manager = job_host._manager()
     return program_context._jobs_run() or bool(manager is not None and manager.active() is not None
                                                and manager.locks_interface())

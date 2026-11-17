@@ -16,6 +16,7 @@ continuation observations by wrapping ``turn_context.prepare``, the point where
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 from pathlib import Path
 import sys
@@ -107,7 +108,7 @@ class Harness(TurnContextFixture):
         if edit is not None:   # Blender's main thread makes the person's edit while the model reads the prompt.
             done = threading.Event()
             self.main_calls.append((edit, done))
-            done.wait(5)
+            done.wait(CAP_S)
         hook = self.hooks.get(len(self.prompts))
         if hook is not None and hook(process) is False:
             return  # The hook answers itself.
@@ -228,7 +229,7 @@ class DefectCodexLateObservationTests(Harness):
         with patch.object(codex_plan, "DISPATCH_SECONDS", 0.05):
             worker = threading.Thread(target=lambda: carried.append(codex_plan._observation(provider, context, fence)))
             worker.start()
-            worker.join(5)
+            worker.join(CAP_S)
         self.assertEqual(carried, [None], "The correction is sent without an observation")
         self.c.pump_tools(self.executor, self.c.document, budget=ToolDispatchBudget(seconds=60))  # The late build.
         self.assertIn(mover.name, str(self.built[-1]))

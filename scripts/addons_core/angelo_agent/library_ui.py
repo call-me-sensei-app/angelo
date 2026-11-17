@@ -14,6 +14,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, StringProperty
 from bpy.types import Operator, Panel
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import live_windows
 from .ui_text import iface_, n_, rpt_
 
@@ -166,7 +167,17 @@ class ANGELO_OT_library_add(Operator):
     resolution: StringProperty(name="Resolution", options={'SKIP_SAVE'})
 
     def execute(self, context):
-        from . import library_host, library_import
+        from . import edit_tool_hold, library_host, library_import
+        if edit_tool_hold.running():   # The person's own click during their operation (a render): added once it ends.
+            item_id, resolution = self.item_id, self.resolution
+
+            def later():
+                from . import live_windows
+                with bpy.context.temp_override(window=live_windows.first(bpy.context.window_manager)):
+                    bpy.ops.angelo.library_add(item_id=item_id, resolution=resolution)
+            bpy.app.timers.register(edit_tool_hold.guarded(later, waiting=True), first_interval=edit_tool_hold.RETRY_SECONDS)
+            self.report({'INFO'}, edit_tool_hold.shown(edit_tool_hold._tool()))
+            return {'FINISHED'}
         library = library_host.library()
         if library.catalog is None:
             library.ensure_catalog()
@@ -275,3 +286,6 @@ def unregister():
     library_host.unregister()
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
+
+
+grant_guard.guard(ANGELO_OT_fab_connection)   # Only the person's click grants (grant_guard).

@@ -9,6 +9,7 @@
 #include <cerrno>
 #include <cstdlib>
 
+#include "BLI_fileops.hh"
 #include "BLI_path_utils.hh" /* For assertions. */
 
 #include "IMB_colormanagement.hh"
@@ -42,6 +43,15 @@ bool IMB_save_image(ImBuf *ibuf, const char *filepath, ImBufFlags flags)
   errno = 0;
 
   BLI_assert(!BLI_path_is_rel(filepath));
+
+  /* Angelo: image writers open their files themselves (OpenImageIO, not BLI): the confinement's file gate is asked
+   * here (doc/angelo/script_confinement.rst). */
+  if (const BLI_FileGate *gate = BLI_fileops_gate_get()) {
+    if (gate->refused(filepath, true)) {
+      errno = EACCES;
+      return false;
+    }
+  }
 
   if (ibuf == nullptr) {
     return false;

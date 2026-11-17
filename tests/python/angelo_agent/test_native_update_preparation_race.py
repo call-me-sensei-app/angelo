@@ -247,7 +247,7 @@ class FolderClaimTests(unittest.TestCase):
         first, one = self.run_prepare()
         self.assertTrue(self.mac.entered["1.0.1"].wait(WAIT))
         second, two = self.run_prepare()
-        second.join(0.5)
+        second.join(0.5)  # window: the second must still be waiting after it
         self.assertTrue(second.is_alive(), "waits for the first")
         self.mac.release()
         first.join(WAIT)
@@ -359,7 +359,7 @@ class FolderClaimTests(unittest.TestCase):
         self.assertEqual(self.make().clean(keep=()), [], "the other Angelo's folder stays")
         self.assertTrue((work / "theirs").is_file())
         worker, outcome = self.run_prepare()
-        worker.join(0.6)
+        worker.join(0.6)  # window: it must still be waiting after it
         self.assertTrue(worker.is_alive(), "waits for the other Angelo")
         self.assertEqual(self.mac.finished, [])
         go.write_text("go")
@@ -388,7 +388,7 @@ class FolderClaimTests(unittest.TestCase):
             cleaner.start()
             self.assertTrue(removing.wait(WAIT))
             worker, outcome = self.run_prepare()
-            worker.join(0.3)
+            worker.join(0.3)  # window: the removal must still hold it after it
             self.assertEqual(self.mac.finished, [], "waits while the removal runs")
             started.set()
             cleaner.join(WAIT)

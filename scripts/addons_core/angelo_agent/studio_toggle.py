@@ -251,7 +251,7 @@ def open_media_studio(kind, window=None):
     area = studio_area(created)
     if area is not None:
         if tab is not None:
-            studio.click(bpy.context, studio.view(area), "tab", tab, None)   # Studio's own tab click.
+            studio.select_tab(studio.view(area), tab)   # Studio's own tab click.
         area.tag_redraw()
     from .chat_toggle import redraw_top_bars
     redraw_top_bars()
@@ -274,7 +274,7 @@ def _select_tab_before_shown(window, tab):
             continue
         for area in live_windows.screen_areas(screen):
             if is_studio(area):
-                studio.click(bpy.context, studio.view(area), "tab", tab, None)
+                studio.select_tab(studio.view(area), tab)
                 area.tag_redraw()
 
 
@@ -292,7 +292,7 @@ def _select_tab_when_shown(window, tab, tries=40):
         if not studio_workspaces.active(target, "studio") or area is None or not is_studio(area):
             tries -= 1
             return 0.05 if tries > 0 else None
-        studio.click(bpy.context, studio.view(area), "tab", tab, None)
+        studio.select_tab(studio.view(area), tab)
         area.tag_redraw()
         return None
     bpy.app.timers.register(live_windows.deferred(lambda: bpy.context.window_manager, pointer, select), first_interval=0.01)

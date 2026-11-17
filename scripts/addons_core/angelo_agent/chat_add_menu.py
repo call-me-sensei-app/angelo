@@ -122,6 +122,12 @@ def draw_glyph(view, glyph, tx, ty):
     elif glyph == "skeleton":   # A figure of joints and bones: the rig check for game engines.
         from .skeleton_menu import draw_glyph as skeleton
         skeleton(view, tx, ty, 32, teal)
+    elif glyph == "learn":   # An open book, two pages at the spine with their lines: Learn.
+        for x in (6, 16.8):
+            view.shape(tx + x, ty + 9, 9.2, 14, teal, 2)
+        for x in (8, 18.8):
+            for y in (13, 16.5, 20):
+                view.shape(tx + x, ty + y, 5.2, 1.4, opening(), 0.7)
     elif glyph == "tension":   # A spring, tight (compressed) on the left and open (stretched) on the right.
         xs = (6, 8, 10, 12.5, 15.5, 19.5, 26)
         points = [(x, 11 if index % 2 else 21) for index, x in enumerate(xs)]

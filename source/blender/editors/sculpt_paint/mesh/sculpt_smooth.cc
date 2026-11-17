@@ -9,9 +9,9 @@
 
 #include "BLI_enumerable_thread_specific.hh"
 #include "BLI_math_base.hh"
-#include "BLI_math_geom.h"
-#include "BLI_math_vector.h"
+#include "BLI_math_geom_c.hh"
 #include "BLI_math_vector.hh"
+#include "BLI_math_vector_c.hh"
 
 #include "BKE_attribute_math.hh"
 #include "BKE_mesh.hh"
@@ -791,8 +791,8 @@ void blur_geometry_data_array(const Object &object,
         node_mask.foreach_index(
             [&](const int i) {
               LocalData &tls = all_tls.local();
-              const Span<int> verts = hide::node_visible_verts(
-                  nodes[i], hide_vert, tls.vert_indices);
+              Vector<int, bke::pbvh::MESH_LEAF_LIMIT> index_data;
+              const Span<int> verts = hide::node_visible_verts(nodes[i], hide_vert, index_data);
 
               const GroupedSpan<int> neighbors = calc_vert_neighbors(faces,
                                                                      corner_verts,
@@ -802,9 +802,9 @@ void blur_geometry_data_array(const Object &object,
                                                                      tls.neighbor_offsets,
                                                                      tls.neighbor_data);
 
-              tls.new_factors.resize(verts.size());
-              const MutableSpan<float> new_factors = tls.new_factors;
-              smooth::neighbor_data_average_mesh(source, neighbors, new_factors);
+              Array<float, bke::pbvh::MESH_LEAF_LIMIT> new_factors(verts.size());
+              smooth::neighbor_data_average_mesh(
+                  source, neighbors, new_factors.as_mutable_span());
 
               scatter_data_mesh(new_factors.as_span(), verts, data);
             },
@@ -833,18 +833,9 @@ void blur_geometry_data_array(const Object &object,
                 scatter_data_grids(subdiv_ccg, new_factors.as_span(), grids, data);
               }
               else {
-                for (const int i : grids.index_range()) {
-                  const int node_start = i * key.grid_area;
-                  BKE_subdiv_ccg_foreach_visible_grid_vert(
-                      key, grid_hidden, grids[i], [&](const int offset) {
-                        /* The stable path addresses the actual grid vertex,
-                         * not the local grid ordinal shared by other nodes. */
-                        const int index = stable_iteration_source ?
-                                              grids[i] * key.grid_area + offset :
-                                              i;
-                        data[index] = new_factors[node_start + offset];
-                      });
-                }
+                /* Each visible vertex at its own place in the array, not at the grid's ordinal
+                 * in this node, which other nodes share. */
+                scatter_data_visible_grids(key, grid_hidden, new_factors.as_span(), grids, data);
               }
             },
             exec_mode::grain_size(1));

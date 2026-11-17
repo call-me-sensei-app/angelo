@@ -20,6 +20,7 @@ SOURCES = {
     "xai": "https://docs.x.ai/developers/models/grok-4.6",
     "minimax": "https://platform.minimax.io/docs/guides/pricing-paygo",
     "kimi": "https://platform.kimi.ai/docs/pricing/chat",
+    "google": "https://aistudio.google.com/docs/whats-new-gemini-4-carbon",
 }
 TIERS = ("fast", "balanced", "strong")
 
@@ -58,6 +59,11 @@ MODELS = {
     "MiniMax-M3": {"runtime": "codex", "tier": "balanced", "aliases": (), "context_window": 1000000, "images": True,
                    "source": "minimax", "price_step_tokens": 512000, "prices": _prices(0.30, 1.20, 0.06, 0.30),
                    "prices_above_step": _prices(0.60, 2.40, 0.12, 0.60)},
+    # Read 2026-11-12. Standard rates from 2026-12-01 (introductory 2.00/10.00/0.10 through 2026-11-30): a
+    # projection made now stays right after the change. Implicit caching only, from 4,096 prompt tokens, with no
+    # write charge (writes cost the input rate); thinking is billed as output.
+    "gemini-4-carbon": {"runtime": "codex", "tier": "balanced", "aliases": (), "context_window": 1048576,
+                        "images": True, "source": "google", "prices": _prices(4.0, 20.0, 0.20, 4.0)},
     "kimi-k3": {"runtime": "codex", "tier": "balanced", "aliases": (), "context_window": 1048576, "images": True,
                 "source": "kimi", "prices": _prices(3.0, 15.0, 0.30, 3.0, 6.0)},
 }
@@ -110,11 +116,16 @@ def catalog_ids(catalog):
     return output
 
 
-def capability_profile(connection_id, runtime, billing, catalog, *, effort="low", cache_ttl="1h", measured=None):
+def capability_profile(connection_id, runtime, billing, catalog, *, effort, cache_ttl="1h", measured=None):
     """The ``model_routing`` profile of one connection, or None when it offers no known model.
 
     Only models in this connection's own catalog are listed, under the catalog's
     ID, so a route can never name a model another account would serve.
+    ``effort`` is one level for every model, or a function of the catalog's ID
+    giving each model's own (a chat with no chosen effort runs each model at
+    that model's default, ``chat_settings.request_effort``); a model's measured
+    results are read at its effort. It has no default: the caller knows the
+    chat, and a level written here would be a second default.
     """
     measured = MEASURED if measured is None else measured
     models = []
@@ -123,9 +134,10 @@ def capability_profile(connection_id, runtime, billing, catalog, *, effort="low"
         if facts["runtime"] != runtime:
             continue
         price = rates(canonical, cache_ttl)
-        models.append({"id": catalog_id, "tier": facts["tier"], "effort": effort, "images": facts["images"],
+        level = effort(catalog_id) if callable(effort) else effort
+        models.append({"id": catalog_id, "tier": facts["tier"], "effort": level, "images": facts["images"],
                        "context_window": facts["context_window"], "price_step_tokens": facts.get("price_step_tokens", 0),
-                       "prices": price, "measured": dict(measured.get(canonical, {}).get(effort, {}))})
+                       "prices": price, "measured": dict(measured.get(canonical, {}).get(level, {}))})
     if not models:
         return None
     return {"connection_id": connection_id, "runtime": runtime, "billing": billing, "models": models}

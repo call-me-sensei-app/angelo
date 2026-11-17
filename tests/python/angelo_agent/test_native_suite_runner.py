@@ -57,6 +57,8 @@ if behavior == "fake_signal":   # Windows has no signals: an unhandled exception
 if behavior == "fake_assert":
     print("BLI_assert failed: source/x.cc:1, f(), at 'false'", file=sys.stderr, flush=True)
 print("FAKE_OK", flush=True)
+if behavior == "fake_exit_crash":   # Everything reported and said; then the process dies on its way out.
+    os._exit(-1073741819) if os.name == "nt" else os.kill(os.getpid(), signal.SIGTERM)
 """
 
 
@@ -107,7 +109,7 @@ class ManifestTests(unittest.TestCase):
                     argument.format(binary="b", qa="q")
         self.assertEqual({s.name for s in manifest.SUITES if s.kind == manifest.LIVE},
                          {"test_blender_api_tls", "test_blender_chat_usage_live", "test_blender_cross_provider_live",
-                          "test_blender_keychain_live",
+                          "test_blender_keychain_live", "test_blender_credential_manager_live",
                           "test_blender_shared_sessions"})
 
     def test_manifest_matches_each_suites_own_guards_and_receipts(self):
@@ -174,10 +176,14 @@ class ManifestTests(unittest.TestCase):
                                                  "test_blender_headless_mcp", "test_blender_headless_script_files", "test_blender_headless_script_document", "test_blender_headless_preferences",
                                                  "test_blender_headless_native_commits",
                                                      "test_blender_keychain_live", "test_blender_legacy_migration",
+                                                     "test_blender_credential_manager_live",
                                                      "test_blender_app_identity", "test_blender_perf_ratchet",
                                                      "test_blender_settings_import", "test_blender_prefs_and_quit",
-                                                     "test_blender_first_launch_frames", "test_blender_godot_link_e2e",
-                                                     "test_blender_godot_physics_e2e"})
+                                                     "test_blender_first_launch_frames", "test_blender_godot_link_e2e", "test_blender_godot_link_busy",
+                                                     "test_blender_godot_physics_e2e",
+                                                     "test_blender_gpu_startup_fallback",
+                                                     "test_blender_rna_none_pointer_params",
+                                                     "test_blender_redo_packed_linked_tracking"})
         for suite in drivers:
             with self.subTest(suite=suite.name):
                 out = suite.host_args[suite.host_args.index("--out") + 1]
@@ -199,13 +205,14 @@ class ManifestTests(unittest.TestCase):
                       "test_blender_headless_mcp", "test_blender_headless_script_files", "test_blender_headless_script_document", "test_blender_headless_preferences",
                       "test_blender_headless_native_commits", "test_blender_keychain_live",
                           "test_blender_perf_ratchet", "test_blender_undo_unlinked_pointers",
-                          "test_blender_godot_link_e2e", "test_blender_godot_link_gui", "test_blender_engine_suggest_gui",
+                          "test_blender_godot_link_e2e", "test_blender_godot_link_busy", "test_blender_godot_link_gui",
+                          "test_blender_engine_suggest_gui",
                           "test_blender_godot_physics_e2e", "test_blender_change_chip_details",
-                          "test_blender_signin_reconnect"})
+                          "test_blender_signin_reconnect", "test_blender_crash_handler"})
         self.assertEqual({s.name for s in manifest.SUITES if not s.runs_on("win32")} - {
             s.name for s in manifest.SUITES if s.platforms == ("darwin",)},
-            {"test_blender_canvas_states", "test_blender_chat_cards", "test_blender_engine_fix_gui", "test_blender_crash_handler", "test_blender_chat_start_states", "test_blender_chat_waiting",
-             "test_blender_codex_turn_errors", "test_blender_approval_wait",
+            {"test_blender_canvas_states", "test_blender_chat_cards", "test_blender_engine_fix_gui", "test_blender_chat_start_states", "test_blender_chat_waiting",
+             "test_blender_codex_turn_errors", "test_blender_approval_wait", "test_blender_download_card",
              "test_blender_connect_hero", "test_blender_connect_surfaces", "test_blender_director_navigation", "test_blender_everyday_turns", "test_blender_first_run",
              "test_blender_goal_gui",
              "test_blender_plan_progress", "test_blender_prefs_and_quit", "test_blender_reply_stream",
@@ -247,7 +254,7 @@ class ManifestTests(unittest.TestCase):
 
 class SelectionTests(unittest.TestCase):
     def select(self, **options):
-        options.setdefault("platform", "darwin")  # Every suite applies there; CI runs on Linux.
+        options.setdefault("platform", "darwin")  # Nearly every suite applies there; CI runs on Linux.
         selected, skipped = runner.select_suites(manifest.SUITES, **options)
         self.assertEqual(sorted(s.name for s in selected + [s for s, _ in skipped]), sorted(SUITES))
         return {s.name for s in selected}, dict((s.name, reason) for s, reason in skipped)
@@ -270,7 +277,11 @@ class SelectionTests(unittest.TestCase):
 
     def test_gui_adds_window_suites_but_never_live(self):
         selected, _ = self.select(gui=True, includes=["*"])
-        self.assertEqual(selected, {s.name for s in manifest.SUITES if s.kind != manifest.LIVE})
+        # On macOS (the default here) every suite but the ones that need a second GPU backend applies.
+        self.assertEqual(selected, {s.name for s in manifest.SUITES if s.kind != manifest.LIVE and s.runs_on("darwin")})
+        # The suites macOS cannot run: a second GPU backend, and Windows Credential Manager (a live suite).
+        self.assertEqual({s.name for s in manifest.SUITES if not s.runs_on("darwin")},
+                         {"test_blender_gpu_startup_fallback", "test_blender_credential_manager_live"})
 
     def test_live_requires_allow_live_and_exact_include(self):
         live = "test_blender_cross_provider_live"
@@ -284,7 +295,7 @@ class SelectionTests(unittest.TestCase):
             self.assertEqual(selected, {live})
 
     def test_other_platforms_skip_suites_their_code_cannot_run(self):
-        for platform in ("win32", "linux"):
+        for platform in ("win32", "linux", "darwin"):
             with self.subTest(platform=platform):
                 selected, skipped = self.select(gui=True, platform=platform)
                 for suite in manifest.SUITES:
@@ -326,6 +337,17 @@ class PlanTests(unittest.TestCase):
         plan = self.plan("test_blender_sculpt_checkpoint_external", timeout_scale=2.5)
         self.assertEqual(2.5, runner.qa_waits.timeout_scale(plan["env"]))
         self.assertEqual(SUITES["test_blender_sculpt_checkpoint_external"].timeout * 2.5, plan["timeout"])
+
+    def test_a_slower_machine_gets_a_longer_kill_timeout(self):
+        """The kill timeout is calibrated on the reference Mac like every absolute limit (qa_waits.machine_limit):
+        a machine measured 3x slower gets 3x, and a faster one never less (script_renames timed out at 1x on
+        Devin's VM and passed at 3x)."""
+        for name, options, factor in (("test_blender_script_renames", {"machine_factor": 3.0}, 3.0),
+                                      ("test_blender_script_booleans", {"machine_factor": 3.0, "timeout_scale": 2.0}, 6.0),
+                                      ("test_blender_native", {"machine_factor": 0.5}, 1.0)):
+            with self.subTest(suite=name, **options):   # One plan per suite: each has its own folder in the run.
+                base = SUITES[name].timeout + SUITES[name].kernel_load_cap
+                self.assertEqual(base * factor, self.plan(name, **options)["timeout"])
 
     def test_supervisor_owner_marker_reaches_native_and_worker_without_widening_credentials(self):
         from angelo_agent.worker_process import worker_environment
@@ -377,11 +399,16 @@ class PlanTests(unittest.TestCase):
             "test_blender_essentials": ("ANGELO_QA_ESSENTIALS_ONLINE",),
             "test_blender_fab_formats": ("ANGELO_QA_FAB_SAMPLES",),
             "test_blender_godot_link_e2e": ("ANGELO_QA_GODOT",),
+            "test_blender_view_warm": ("ANGELO_QA_GPU_RENDERER",),   # Its hardware_gpu input (native_suite_inputs).
+            "test_blender_compile_ahead_window": ("ANGELO_QA_WINDOW_CAPTURE",),   # Its window_capture input.
+            "test_blender_godot_link_busy": ("ANGELO_QA_GODOT",),
             "test_blender_render_region_perf": ("ANGELO_RR_BENCH_VARIANT", "ANGELO_RR_BENCH_REPS"),
             "test_blender_godot_link_gui": ("ANGELO_QA_GODOT",),
             "test_blender_engine_suggest_gui": ("ANGELO_QA_GODOT",),
             "test_blender_godot_physics_e2e": ("ANGELO_QA_GODOT", "ANGELO_QA_PHYSICS_ASSETS"),
             "test_blender_chat_waiting": ("ANGELO_QA_WAIT_EXTRA_SHARE",),   # Its loop-rate check's positive control.
+            "test_blender_render_kernels": ("ANGELO_RENDER_KERNELS_FORCE_RECOMPILE",),   # Its reuse check's fail-first.
+            "test_blender_undo_unrecorded_change": ("ANGELO_UNDO_CASES", "ANGELO_UNDO_HEAVY_OBJECTS"),   # Per case.
         }
         self.assertEqual(expected, {suite.name: suite.options_env for suite in with_options})
         for suite in with_options:
@@ -574,11 +601,11 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn("TOONLAB_QA_LIVE_BOTH", plan["env"])
 
     def test_background_command(self):
-        command = self.plan("test_blender_native")["command"]
+        command = self.plan("test_blender_script_confinement")["command"]   # No harness (native_suite_harness).
         self.assertEqual(command[:6], [str(self.binary), "--factory-startup", "--disable-autoexec",
                                        "--python-exit-code", "1", "--background"])
         self.assertNotIn("--no-window-focus", command)
-        self.assertEqual(command[-2:], ["--python", str(HERE / "test_blender_native.py")])
+        self.assertEqual(command[-2:], ["--python", str(HERE / "test_blender_script_confinement.py")])
         self.assertNotIn("--enable-event-simulate", command)
 
     def test_gui_commands(self):
@@ -865,6 +892,14 @@ class ProcessTests(unittest.TestCase):
         runs = list(self.root.glob("angelo-native-suites-*"))
         summary = json.loads((runs[0] / "summary.json").read_text()) if runs else None
         return code, summary, output.getvalue()
+
+    def test_a_suite_that_reported_success_and_then_died_on_its_way_out_is_crashed(self):
+        """A suite may end with work in flight on purpose (test_blender_compile_ahead quits with pipeline builds
+        pending): its report and its marker are written by then, so only the exit status can say the quit crashed."""
+        code, summary, _output = self.main((fake_suite("fake_exit_crash", marker="FAKE_OK"),))
+        item, = summary["suites"]
+        self.assertEqual((code, summary["success"], item["status"]), (1, False, "crashed"), item["reasons"])
+        self.assertIn("NTSTATUS 0xC0000005" if os.name == "nt" else "SIGTERM", " ".join(item["reasons"]))
 
     def test_outcomes_are_classified_from_real_processes(self):
         suites = (fake_suite("fake_pass", marker="FAKE_OK"), fake_suite("fake_assert"),

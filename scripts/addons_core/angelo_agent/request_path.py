@@ -89,8 +89,8 @@ def _tool(name):
 
 def typed(name):
     """Whether a call of this tool is a typed attempt at work a script could also do."""
-    spec = _tool(name)
-    return spec is not None and not spec["annotations"]["readOnlyHint"] and name != SCRIPT and name not in NOT_TYPED
+    from .tool_specs import READ_ONLY_TOOLS
+    return _tool(name) is not None and name not in READ_ONLY_TOOLS and name != SCRIPT and name not in NOT_TYPED
 
 
 def scene_edit(name):

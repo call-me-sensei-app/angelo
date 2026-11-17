@@ -1,0 +1,45 @@
+{
+  "about": "The GPU SDK installers a Windows release build installs, each pinned to the SHA-256 of the vendor's own file (windows_toolkits.ps1 installs these and nothing else; the versions are the ones Blender pins in build_files/buildbot/config/blender_version.cmake, which gpu_sdk_pins.py judges after the install). An installer in the toolkits folder whose SHA-256 is not here is skipped; a pin whose installer is missing, or whose sha256 is still TBD, fails the toolkits stage. Record a sha256 only after the file matched its vendor's published checksum (or, for an installer with none, was taken from the vendor's own site) and its Authenticode signature is Valid.",
+  "installers": [
+    {
+      "sdk": "optix",
+      "version": "9.0.0",
+      "file": "NVIDIA-OptiX-SDK-9.0.0-win64.exe",
+      "sha256": "8c075c41830be74b2fb4a079ab333061e5224a9534a74021fb998df58f9e341f",
+      "signer": "NVIDIA Corporation",
+      "source": "NVIDIA developer site, downloaded by the maintainer 2026-11-14 (56,524,128 bytes)"
+    },
+    {
+      "sdk": "cuda",
+      "version": "12.9.1",
+      "file": "cuda_12.9.1_576.57_windows.exe",
+      "sha256": "f0ca7cc7b4cea2fac2c4951819d2a9caea31e04000e9110e2048719525f8ea0e",
+      "signer": "NVIDIA Corporation",
+      "source": "developer.download.nvidia.com/compute/cuda/12.9.1/local_installers, md5 9475f337896805cbe66935cbb8504d6f matched NVIDIA's published md5sum.txt (2026-11-14)"
+    },
+    {
+      "sdk": "cuda",
+      "version": "13.4.1",
+      "file": "cuda_13.4.1_windows_x86_64.exe",
+      "sha256": "632a5912995473cea77b24788715b8d94db17a94cfea102a12f72c3614fe8c7e",
+      "signer": "NVIDIA Corporation",
+      "source": "developer.download.nvidia.com/compute/cuda/13.4.1/local_installers, md5 76d3e0a1a99e38a8fcb5bf8aa54c8d20 matched NVIDIA's published md5sum.txt (2026-11-14)"
+    },
+    {
+      "sdk": "hip",
+      "version": "7.1.51803",
+      "file": "AMD-Software-PRO-Edition-26.Q1-Win11-For-HIP.exe",
+      "sha256": "f9e1fd7ae6004ce448ef39dcac2c3b45fed741f2d83210259bfda61b86f78f84",
+      "signer": "Advanced Micro Devices",
+      "source": "download.amd.com/developer/eula/rocm-hub (AMD's HIP SDK 7.1.1 for Windows 11, the only 7.1.1 package; licence accepted by the maintainer 2026-11-14). AMD publishes no checksum: 1,754,164,768 bytes as AMD's server reported, Authenticode checked at install, and gpu_sdk_pins.py must read 7.1.51803 from the installed hip_version.h before configuring"
+    },
+    {
+      "sdk": "ocloc",
+      "version": "101.8424",
+      "file": "intel-ocloc-2025.3.7.7_offline.exe",
+      "sha256": "144882a55568aa7b0bb77d0e6e17934424a907c5105dfbdbeb631e07b2d13735",
+      "signer": "Intel Corporation",
+      "source": "registrationcenter-download.intel.com (Intel Graphics Offline Compiler for OpenCL Code 2025.3.7, driver build 32.0.101.8424; Intel's EULA accepted by the maintainer 2026-11-14). Intel publishes no checksum: the file is the size Intel's server reports, Authenticode checked at install, and the registered ocloc.exe must report FileVersion 32.0.101.8424"
+    }
+  ]
+}

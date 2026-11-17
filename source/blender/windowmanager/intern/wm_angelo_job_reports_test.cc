@@ -9,7 +9,7 @@
 #include "BKE_report.hh"
 
 #include "BLI_listbase_iterator.hh"
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 
 #include "WM_angelo_job_reports.hh"
 
@@ -76,7 +76,7 @@ TEST_F(JobReportsTest, PrefersTheUntranslatedText)
   BKE_report_translated(&reports.list, RPT_ERROR, "カメラがありません", "No camera found in scene");
   BKE_report_translated(&reports.list, RPT_ERROR, "Same text", "Same text");
   BKE_report_translated(&reports.list, RPT_WARNING, "Only a message", nullptr);
-  const Report *first = static_cast<const Report *>(reports.list.list.first);
+  const Report *first = static_cast<const Report *>(reports.list.list.first());
   EXPECT_STREQ(first->message, "カメラがありません");
   EXPECT_STREQ(first->message_untranslated, "No camera found in scene");
   EXPECT_EQ(first->next->message_untranslated, nullptr); /* The same text stores none. */
@@ -201,7 +201,7 @@ TEST_F(JobReportsTest, KeepsAtMostTheNewestRecords)
 static int count_of(const ReportList &list)
 {
   int count = 0;
-  for (const Report *report = static_cast<const Report *>(list.list.first); report;
+  for (const Report *report = static_cast<const Report *>(list.list.first()); report;
        report = report->next)
   {
     count++;

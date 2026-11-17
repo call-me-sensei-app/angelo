@@ -88,8 +88,8 @@ def rect_of(action, value=None):
 
 
 def to_window(rect):
-    _, region = chat()
-    return int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    return chat_point(chat()[1], rect)
 
 
 def move_to(x, y):
@@ -124,8 +124,10 @@ def brightness(path, rect, region=None):
         image.pixels.foreach_get(pixels)
     finally:
         bpy.data.images.remove(image)
-    x0, y0 = int(region.x + rect[0]) + 3, int(region.y + rect[1]) + 3  # Row 0 is the bottom, as in window coordinates.
-    x1, y1 = int(region.x + rect[0] + rect[2]) - 3, int(region.y + rect[1] + rect[3]) - 3
+    from qa_input import chat_rect   # The chat's points as window pixels (its scale, right to left mirrored).
+    left, bottom, wide, high = chat_rect(region, rect)
+    x0, y0 = int(left) + 3, int(bottom) + 3  # Row 0 is the bottom, as in window coordinates.
+    x1, y1 = int(left + wide) - 3, int(bottom + high) - 3
     return float(pixels.reshape(height, width, 4)[y0:y1, x0:x1, :3].mean() * 255)
 
 
@@ -195,12 +197,17 @@ def tick():
             # 1.0.5 review row 24: ~370 px of cards sat at the left of a ~700 px chat, its right half empty.
             from angelo_agent import chat_view
             _, region = chat()
-            width = region.width / getattr(chat_view, "_scale", 1.0)
+            # The chat's width in its layout units (chat_view.ui_scale): ``chat_view._scale`` is that factor only while the
+            # chat draws and 1.0 after, so read here it measured the chat in pixels (off by the scale, 75 dpi Xvfb).
+            width = region.width / chat_view.ui_scale()
             cards = [r for r, a, v in view().get("hits", []) if a in ("welcome_connect", "welcome_team", "welcome_api_key")]
             left, right = (min(r[0] for r in cards), max(r[0] + r[2] for r in cards)) if cards else (None, None)
             state["starter_column"] = {"chat_width": width, "left": left, "right": right}
-            checks["the_starter_column_is_centred_in_the_chat"] = bool(cards) and width >= 480 and abs(
-                left - (width - right)) <= 2
+            # Centred at every width: a narrow chat's column fills it less its margins, a wide one's sits in the middle.
+            checks["the_starter_column_is_centred_in_the_chat"] = bool(cards) and abs(left - (width - right)) <= 2
+            # And the run is on a chat wide enough for row 24's regression to show (a column at the left of a wide
+            # chat): a narrow chat would pass the centring check whatever the column did.
+            checks["chat_is_wide_enough_for_the_centring_check"] = width >= 480
             state["pointer"] = to_window(state["claude_rect"])
             move_to(*state["pointer"])
             state["phase"] = "hover"
@@ -330,9 +337,11 @@ def tick():
                 return .2
             checks["cancel_ends_the_sign_in"] = True
             area, _ = chat()
-            # Narrow the chat to about 300 px by dragging the edge between the 3D view and the chat, as a person would.
+            # Narrow the chat to about 300 of its own units (1.0.5 review row 18's width, in pixels at scale 1) by dragging
+            # the edge between the 3D view and the chat, as a person would: 300 pixels is a narrower chat off scale 1.
+            from angelo_agent import chat_view
             edge, middle = area.x - 1, area.y + area.height // 2
-            target = area.x + area.width - 300
+            target = area.x + area.width - round(300 * chat_view.ui_scale())
             move_to(edge, middle)
             qa_input.send(window(), qa_input.drag_path((edge, middle), (target, middle),
                                                        bpy.context.preferences.system.ui_scale))
@@ -349,8 +358,11 @@ def tick():
         if phase == "narrow_hover":
             area, region = chat()
             capture("canvas-8-narrow-hover.png")
-            inside = all(r[0] >= 0 and r[0] + r[2] <= region.width for r, a, v in view().get("hits", []))
-            checks["narrow_chat_wraps_and_keeps_states"] = area.width <= 320 and inside and view().get("hover") == CLAUDE
+            from angelo_agent import chat_view
+            units, scale = region.width / chat_view.ui_scale(), chat_view.ui_scale()   # Hits are in the chat's units.
+            inside = all(r[0] >= 0 and r[0] + r[2] <= units for r, a, v in view().get("hits", []))
+            checks["narrow_chat_wraps_and_keeps_states"] = (area.width <= 320 * scale and inside
+                                                           and view().get("hover") == CLAUDE)
             os.environ.pop(fake_provider_cli.LOGIN_GATE)   # Connect for real now, to reach the composer.
             os.environ["ANGELO_FAKE_CLI_LOGIN_SECONDS"] = "1"
             state["pointer"] = to_window(rect_of(*CLAUDE))

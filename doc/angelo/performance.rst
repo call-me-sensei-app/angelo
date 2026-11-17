@@ -24,6 +24,13 @@ How to read the measurements:
 * Each section names its benchmark script (in ``tests/python/angelo_agent/``),
   fixture, sample counts and statistic. Windows, Linux, OpenGL and Vulkan are
   not measured unless stated.
+* Every live-agent figure names the reasoning effort it ran at. Until
+  2026-11-12 a new chat ran at low effort, and almost every figure below was
+  measured at low effort, as it says. A new chat now runs at high effort
+  (`Reasoning effort policy`_), so a low-effort figure describes a setting a
+  person has to choose; it is not a measurement of the default, and is never
+  compared like for like with a figure at the shipping effort
+  (``final_runs.rst``, "The two sides are matched").
 
 Execution design
 ================
@@ -233,12 +240,53 @@ never starts a second one.
 Reasoning effort policy
 =======================
 
-Each model has a default reasoning effort (``provider_registry.py``), selectable
-per chat in the model menu; Fast is an independent provider service tier, not an
-effort alias. Routing between models and escalation to a stronger model are
-described, with their measured gate, in ``model_routing.rst``. Escalation keeps
-the person's selected connection, the native approval gate and the mutation
-ledger.
+A chat whose person chose no effort runs at high effort wherever its model
+offers "high", and otherwise at the highest level the model offers. One
+function decides it, ``chat_settings.default_effort``, for the chat's request
+on either runtime, the effort the chip and the reasoning card show, a model
+change and the Codex launch configuration; no caller reads a catalog's own
+default or a model's first listed level (``test_native_default_effort.py``
+reads the add-on's source for it). A model whose default is another level is
+named in ``chat_settings.DEFAULT_EFFORT_EXCEPTIONS``, the only place such an
+exception is stated.
+
+A chat stores an effort only when its person picks one in the model menu, and
+that choice is sent as it is on every later request. A choice the chat's next
+model does not offer is dropped, so the chat follows that model's default.
+Reset in the reasoning card returns a chat to no choice. A chat saved by a
+build from before 2026-11-12 holds "low", which that build wrote into every
+chat; it cannot be told from a choice and stays low. Reasoning effort is a
+request parameter: it is in no cache key, warm-up key or launch key.
+
+What the release gates and head-to-heads run at is stated once, in
+``final_runs.rst`` ("The two sides are matched"): a gate step passes no
+``--effort``, so each model runs at this shipping default and its report
+records the effort the chat resolved; a head-to-head names one effort for both
+sides (``final_runs_plan.H2H_EFFORT``).
+
+The prompt-cache lifetime is matched the same way. A new interactive Claude
+chat writes its cache at 1 hour on a subscription, an API key and a team's key
+(``model_routing.rst``, "Prompt-cache TTL per session"), and the launcher
+starts the other side's Claude Code at the run's lifetime
+(``plan.claude_cache_ttl``), so a comparison never prices one side's writes at
+another rate than the other's. The gates run on subscriptions, where both
+sides wrote 1-hour entries before that change and still do. A head-to-head on
+a key-billed Claude route passes ``--angelo-cache-ttl`` and its report names
+the value: left out, both sides write at 1 hour, which is not comparable with a
+run recorded when key-billed chats wrote at 5 minutes (before Angelo 2.0.0).
+Runs of different lifetimes are never paired
+(``bench_integrity.reuse_problems``).
+
+One level is written into the add-on on purpose: Studio's helper requests (the
+prompt editor and the parts checks, ``studio_enhance.EnhancementContext``) ask
+for low, by the maintainer's ruling of 2026-11-12, and a model that does not
+offer low runs them at its own default. ``test_native_default_effort.py``
+reads the add-on for any other written level and names this one.
+
+Fast is an independent provider service tier, not an effort alias. Routing
+between models and escalation to a stronger model are described, with their
+measured gate, in ``model_routing.rst``. Escalation keeps the person's selected
+connection, the native approval gate and the mutation ledger.
 
 Deterministic counters and instruction ceilings
 ===============================================
@@ -328,6 +376,19 @@ report with the ceilings:
   ABAB against the last stamped build does (``abab_pass`` or
   ``abab_regressed``, below). An operation that reports only a median has no
   spread and stays ceiling-gated; noisy runs never lower a ceiling.
+* ``side_by_side`` (maintainer, 2026-11-12: "Side-by-side from now on"): some
+  instruction counts drift with the machine from day to day. On 2026-11-12,
+  ``native_reads/sculpt_mesh`` read 69,956 against a 66,073 ceiling while the
+  stamped 1.0.10 binary read 69,959 the same hour. With ``--baseline-binary``,
+  every ``regressed`` instruction count is run in the same ABAB. A native read
+  (``native_reads/*``), or an operation whose ceiling the stamped build itself
+  no longer reproduces (the mean of A over the ceiling by more than the
+  tolerance), passes when the ABAB rule passes and the mean of B over the mean
+  of A is within the tolerance. Otherwise it stays ``regressed``.
+  ``--stamp`` sets a passing operation's ceiling to its measured value and
+  records the ABAB under ``last_measured.side_by_side``. A B/A regression
+  fails the gate, so its ceiling is never raised (``perf_side_by_side``; the
+  release checks apply the same rule).
 
 Operations are instructions unless their unit is ``bytes``: an exact size, such
 as the bytes a request capture writes, recorded with zero tolerance.
@@ -655,6 +716,64 @@ native runner reports as an allocator leak; a swap releases them, as in every
 real redraw (found with ``--debug-memory`` and a phase-by-phase bisection,
 ``ANGELO_QA_USAGE_SKIP``).
 
+An idle window is not redrawn
+=============================
+
+Left alone, with nothing in it changing, Angelo draws no region of its window. A surface is redrawn when its inputs
+change (an event, a job's or a run's step, an edit, data that differs from what it last drew); a timer that only
+looks, redraws nothing; an animation runs while what it animates is visible and in progress, and stops with it.
+
+* **Why it is a rule.** A redraw nobody asked for wakes the main thread and the GPU, and on Metal it is not free
+  even when the picture is the same: about a second after the last draw Metal releases the buffers a draw used, and
+  the next draw takes them again. A redraw every two seconds therefore costs the most graphics memory traffic a
+  redraw can: on Mac 1 the app's footprint stepped by about 130 MB up and down for as long as it ran (``vmmap``:
+  only "owned unmapped (graphics)" moved, 222-322 MB low, 426 MB high), 0.80 <> 0.93 GB on the start-up file with
+  nobody at the machine, and never settled (an-blender53, 2026-11-16, the release build of 3becd249274; the same in
+  the 1.1.0 measurement build 08e2b0f7842).
+* **What did it.** The Generation Flows pump (``flow_host.pump``) evaluates every flow again each two seconds, for
+  changes nobody announces, and asked every Flows editor and every chat and Media Studio area to redraw after each
+  refresh, changed or not, with or without a flow in the file. It now compares what a refresh found with the last
+  (``flow_redraw``) and asks only on a difference, on a job's or a run's own events, and at the refresh's pace
+  while a job or a run is in progress.
+* **How it was found.** A draw handler on the chat's region gave the draws' times (every 2.02 s); every
+  ``bpy.app.timers`` function called through a recorder gave nothing that ran at that pace; ``sys.monitoring``'s
+  ``CALL`` event on RNA functions named ``*redraw*`` gave the caller and its stack at once. The same three steps
+  find the next one.
+* **The checks.** ``test_blender_idle_redraw`` counts every region draw of the running app (a draw handler on every
+  editor and region type) for ten idle seconds on Director, Layout, Media Studio and Generation Flows, and asks
+  every area to redraw afterwards so that a count of zero is a window that was not drawn. On the release build
+  before the change: 8 region draws on Director, 10 on Layout (the docked chat), 5 on Media Studio and 5 on
+  Generation Flows, each every 2 s; with it: 0 on all four. ``test_native_flow_idle_redraw`` runs the pump itself
+  through each kind of change and through idle time.
+* **What leaned on the old pace.** A surface that was redrawn only because the Flows pump redrew everything shows
+  late or never once it stopped. The chat: a connection saved by this instance (``ConnectionStore.revision``) and a
+  model catalog that arrives now redraw every chat, bound or not (``ui.pump``); before, an unbound chat stayed on its
+  old card (``test_blender_chat_start_states``, ``test_native_connection_redraw``).
+* **When idle begins.** The count starts once Angelo's start-up is over and the tab has come to rest (no region
+  drawn for 3 s; a window that never rests within 30 s fails its own check). Start-up includes the Media Studio
+  asset library's deferred start (``studio_assets_host``: a first sync 20 s after launch, an Asset Browser refresh
+  one 5 s tick later), which redraws the 3D view's headers twice and never again: on the release build, Layout
+  alone, 150 idle seconds counted, those two bursts 4.96 s apart and nothing in the 129 s after. A fixed
+  six-second settle had put the count on top of them in a release round. A redraw that repeats within the ten
+  seconds is counted whatever the rest.
+* **A display to itself.** The window system draws a window too. On a display without a compositor (Xvfb) a
+  window that covers Angelo's and leaves makes all of it draw again, and the count cannot tell that from a redraw
+  Angelo asked for. So the suite is declared serial (the runner runs it beside no other suite), and its report
+  says who asked: every redraw requested from Python while a tab is counted, with its stack, and the moments the
+  whole window drew in one frame. Linux, the suite beside seven others on one Xvfb: 0 of 5 passed, the whole
+  Director window drawn about 9 s into the count, nothing asked from Python; alone on its own Xvfb 10 of 10, and
+  5 of 5 under eight busy loops. Two runners on one display are the same neighbours: each gets its own.
+* **The other half: a change with no redraw.** The blanket redraw also hid state that changed without asking for
+  one (a chat whose model list arrived for a connection it was not bound to stayed as it was). ``qa_stale_frames``
+  finds those by what is on screen: with ``ANGELO_QA_STALE_FRAMES`` set for a run of the GUI suites, every chat,
+  Media Studio and Generation Flows region keeps its last picture, a region at rest for 1.5 s is asked to draw
+  again, and a region whose redraw shows another picture is reported with the tab, the differing box and both
+  pictures. It is a test instrument (``tests/``, never in the app) and an audit, not a gate: asking a rested
+  region to draw is the blanket redraw again, so a suite under the watch may pass where the app alone would wait,
+  and ``test_blender_idle_redraw`` fails under it by design. The runner starts it, in window suites only; no suite
+  imports it, so a machine without a GPU never reaches its drawing code.
+  ``test_blender_stale_frames`` proves it on a state the suite owns.
+
 Live-agent latency harness
 ==========================
 
@@ -839,6 +958,28 @@ instead let the window show for one 10 ms sample. Stock Blender 5.2.0's own
 the activation until it quit (one launch, 119 of 119 samples). A click on a
 covered window to look at it keeps the activation
 (``GHOSTNoFocusActivationGuard``); that path is not measured.
+
+A drawn picture is kept once, on the GPU
+========================================
+
+A picture one of Angelo's own surfaces draws (the welcome banner, the showcase shown before a connection, the start
+panel's scene previews) is held as its GPU texture while a surface shows it and as nothing once the last one closes:
+no float copy stays beside the texture (``brand_picture.Picture``; the tiles in ``firstlaunch_controls``).
+
+* **Why.** A float copy takes 16 bytes a pixel: 11.7 MB for the 1520 x 480 banner, kept for the whole session at
+  every start, and 23 MB for the 1600 x 900 showcase while it was shown; a scene preview read into a Python list of
+  floats took about 32 bytes a value and was never freed (an-blender53's first-open memory, 9d7a54eab7f:
+  ``tracemalloc`` put ``welcome_screen.py`` second among Python's holders).
+* **How.** ``prepare`` reads the file outside drawing with ``imbuf`` (no image datablock: one added while
+  Preferences is open closes a dialog over it, so the AI Providers page reads when it opens instead of at
+  start-up); the first draw makes the texture and drops the pixels; a surface names itself with ``show`` while it
+  draws the picture, and the last ``hide`` releases the texture. Cards list theirs in ``pictures``
+  (``card_kit.opened`` / ``closed``); the welcome screen, the AI Providers page (its input's start and end, or its
+  window closing) and the showcase call them directly.
+* **The checks.** ``test_blender_start_panel`` traces allocations from start-up and finds no block of 1 MB or more
+  from the code that reads these pictures once the panel has drawn, nor after it closes;
+  ``test_blender_color_config`` compares the ``imbuf`` read with an image datablock's stored values under every
+  colour configuration; ``test_native_brand_picture`` holds the lifecycle and each surface's wiring.
 
 Native evaluation and subdivision uploads
 =========================================
@@ -4685,3 +4826,127 @@ World 128.7 and 127.0 against 125.8 and 125.5 ms. Every B median is inside A's
 own range. The key itself costs 2-3 ms for a 66-node World and 12-16 ms with a
 100 MB packed EXR (a digest of its bytes), measured in
 ``test_blender_web_world_key``; a plain colour or no World computes none.
+
+Metal's buffer pool while idle
+==============================
+
+Metal's buffer pool keeps freed GPU buffers for reuse and sweeps them for ones
+unused for a while (``MTLBufferPool::update_memory_pools``). The window
+manager reaches it on every pass of its main loop (``wm_draw_update``:
+``GPU_render_step``), about 160 times a second while nothing happens, and the
+sweep visited every pooled buffer each time. What the sweep frees depends only
+on the clock's second (its thresholds are whole seconds) and on how much the
+pools hold, and only that function adds to the pools. So the sweep now runs
+when the second has changed or buffers were added in the same call, and is
+skipped otherwise: the buffers freed, and the call that frees them, are the
+same as before. Stock Blender 5.3.0 and upstream main have the unconditional
+sweep; this change is a candidate to send upstream.
+
+``MTLBufferPoolTest`` (``source/blender/gpu/metal/tests/mtl_memory_test.mm``, a
+GTest that needs a Metal device but no window or GPU context) drives the pool
+as the main loop does and reads ``MTLBufferPool::stale_sweep_count``: 200
+calls with nothing added sweep at most twice, buffers added in the same second
+are swept at once, and a new second is swept. Without the change the first
+expectation fails (200 sweeps).
+
+Measured on the tag ``v5.3.0`` built with Angelo's toolchain against the same
+tree with only this change (Mac 1, M4 Pro, 2026-11-12; ``stock_compare.py``, 7
+interleaved rounds, a 30 s idle window on a 2,000-object scene):
+
+.. csv-table:: An idle window, per second (median; least to most of 7 processes)
+   :header: "", "Instructions", "CPU time"
+
+   "v5.3.0", "13.95 M (13.78-14.89)", "12.3 ms (11.3-13.4)"
+   "v5.3.0 with the change", "11.87 M (11.84-11.90)", "10.2 ms (3.5-11.5)"
+
+The two sets of instruction counts do not overlap. Viewport frames (draw,
+render, present and play in three shadings), window memory after one and two
+opens, the peak footprint and wake-ups per second were unchanged
+(instructions per frame equal to 0.1%). The saving grows with the buffers a
+session has pooled; this scene pools few.
+
+Cycles' GPU kernels on the first render
+=======================================
+
+Cycles compiles its Metal kernels on the person's Mac, from source the app
+ships, on the first GPU render after an install or an update that changed
+them; the render waits for the ones it needs. Blender 5.3 added a thin film
+to the tinted dielectric (upstream 04c650019c8), and with it that compile
+takes about twice as long (upstream #166491, open on 2026-11-13 with no fix).
+
+The tinted dielectric is a Fresnel type that only OSL's MaterialX closures
+make (``bsdf_dielectric_tint_setup`` has one caller,
+``kernel/osl/closures_setup.h``). OSL is compiled into the CPU kernel and
+OptiX's OSL kernels. Metal, CUDA, HIP, oneAPI and OptiX's node kernel never
+make that type, so they compiled two branches they can never take, inside the
+functions (``microfacet_fresnel``, ``bsdf_microfacet_estimate_albedo``) that
+are inlined into the largest kernels. Both branches are now under
+``__OSL__``, as other OSL-only closure code already is, and the albedo
+function's thin-film test is part of its one if/else chain again: splitting
+that chain in two was most of the cost. Kernels with OSL evaluate the same
+thing as upstream (a closure that falls through the chain has a generalized
+Schlick or F82 Fresnel, and no later test is true for it); kernels without it
+are the code from before the commit. The Glass and Principled nodes' thin
+film uses another Fresnel type and is unchanged. This is a candidate to send
+upstream.
+
+``test_native_cycles_osl_only_thin_film`` reads the source: which Fresnel
+types have every setter called from ``kernel/osl`` alone, and that each read
+of such a type's thin film is under ``__OSL__``. It fails first if a merge
+lets the node system make such a type, when the guard has to come off.
+
+Measured on Mac 1 (M4 Pro, 2026-11-13) with the 2.0.0 cut's app, whose kernel
+header was replaced in copies of the app: Angelo in the background with
+factory settings, the default scene at 64 x 64 with one sample on the Metal
+GPU, the time from the render call to the written file. Every run compiled
+code no cache had seen (a never-taken branch holding a number new for the
+run). Variants were interleaved; the 1-minute load was 2.4 to 7.1.
+
+.. csv-table:: First Metal render, seconds, each run
+   :header: "Kernel source", "Runs"
+
+   "5.3 as released", "165, 184, 161, 183"
+   "04c650019c8 reversed", "72, 85, 80, 83"
+   "With the guard", "79, 81"
+   "Only the Fresnel branch of the commit", "88, 91, 86, 85"
+   "Only the albedo branch (the split chain)", "134, 133"
+   "The albedo test kept in every kernel, as one chain", "103, 101"
+
+``integrator_shade_surface`` alone took 154-159 s as released and 26-31 s
+with the guard; ``integrator_shade_shadow`` 131-136 s and 65-72 s.
+
+Limits: one Mac, two to four runs a row, wall-clock times under other work.
+Not measured: other Macs, and compile times on Windows or Linux, where CUDA
+and HIP kernels are compiled when Angelo is built and OptiX's at first use.
+On Windows the release build compiled every GPU kernel with the guard, with
+the warnings it had without it. One first OptiX render with cleared driver
+caches took 16.7 s without the guard and 11.4 s with it on a Tesla T4: one
+run each, so no more than a hint.
+
+The pictures stay as they were. One scene with a thin film every way the
+nodes can make one (Glass, and Principled as glass, metal and plain
+dielectric), and one whose materials are an OSL script that calls
+``dielectric_bsdf`` with a thin film, which is the tinted dielectric the
+commit extended: 160 x 120, 32 samples, a fixed seed, no denoising, float
+pixels compared between the build without the guard and the build with it
+(2026-11-13 and 14).
+
+* CPU, with SVM and with OSL as the shading system, both scenes: every value
+  identical, on macOS and on Windows. One build rendering twice is identical
+  too.
+* A GPU does not repeat a Cycles picture bit for bit, so "identical" cannot
+  be asked there; the guard's pictures are compared with the noise of the
+  kernel without it. Metal (M4 Pro, node scene, five pictures without the
+  guard and four with it): any two pictures differ in about 22,000 of 76,800
+  values. The largest difference between two without the guard is 1.9e-6,
+  between two with it 3.8e-6, between one of each 3.8e-6; the mean difference
+  is 7.8e-9 to 8.1e-9 in all three groups. CUDA and OptiX (Tesla T4, node
+  scene, two pictures a build): about 18,000 values differ by at most 1.9e-6,
+  the same between the builds as between two pictures of one build. These
+  are single float steps of bright pixels.
+* Not rendered: OptiX with OSL as the shading system. Its pipeline did not
+  link on that T4 with either build (``OPTIX_ERROR_PIPELINE_LINK_ERROR``),
+  so the one GPU kernel that keeps the guarded branches could not be
+  compared there. Its source differs from upstream's by the one ``else``
+  described above. The cause was that T4's NVIDIA driver, not either build
+  (``render_engines.rst``, "Open Shading Language on OptiX and the NVIDIA driver").

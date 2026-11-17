@@ -68,7 +68,8 @@ void template_layers(Layout *layout,
   const int groups = ((cols / 2) < cols_per_group) ? (1) : (cols / cols_per_group);
 
   PropertyRNA *used_prop = nullptr;
-  if (used_ptr && used_propname) {
+  /* `None` from Python arrives as an empty pointer: no used-layers data. */
+  if (used_ptr && *used_ptr && used_propname) {
     used_prop = RNA_struct_find_property(used_ptr, used_propname);
     if (!used_prop) {
       RNA_warning("used layers property not found: %s.%s",

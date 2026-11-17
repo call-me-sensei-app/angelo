@@ -18,6 +18,8 @@ import re
 
 import bpy
 
+from . import color_spaces
+
 SKIN_VERTICES = 250_000      # Vertices read for weights over all meshes; past it, every n-th vertex (``sampled``).
 CAPS = (4, 8, 12)            # The influence limits engine_rules uses (ENGINE_INFLUENCES and glTF's default).
 CURVE_TYPES = frozenset({"CURVE", "FONT", "SURFACE", "META"})
@@ -162,11 +164,14 @@ def _modifiers(obj):
 
 
 def _path_properties(*owners):
+    from angelo_own_properties import own   # Angelo's own records are never exported: nothing to warn about.
     found = []
     for owner in owners:
         if owner is None:
             continue
         for key in owner.keys():
+            if own(key):
+                continue
             value = owner.get(key)
             if isinstance(value, str) and _ABSOLUTE.match(value):
                 found.append(key)
@@ -406,6 +411,7 @@ def _images(objects):
         out.append({"name": id_key(image), "packed": image.packed_file is not None, "used_by_export": True,
                     "file": image.source in {"FILE", "SEQUENCE", "TILED"} and bool(image.filepath),
                     "roles": sorted(roles[pointer]), "colorspace": image.colorspace_settings.name,
+                    "colorspace_kind": color_spaces.kind(image.colorspace_settings),
                     "editable": image.library is None and image.override_library is None})
     return out
 

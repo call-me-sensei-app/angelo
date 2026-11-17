@@ -19,7 +19,8 @@
 #include "testing/testing.h"
 
 namespace blender::ed::sculpt_paint::tests {
-class MeshTests : public bke::BlenderGTestBase {
+
+class MeshBrushCommonTests : public bke::BlenderGTestBase {
  public:
   Mesh *mesh;
 
@@ -31,7 +32,7 @@ class MeshTests : public bke::BlenderGTestBase {
   }
 };
 
-TEST_F(MeshTests, calc_vert_neighbors_interior__cube)
+TEST_F(MeshBrushCommonTests, calc_vert_neighbors_interior__cube)
 {
   mesh = geometry::create_cuboid_mesh(float3(1.0, 1.0, 1.0), 2, 2, 2);
 
@@ -71,7 +72,7 @@ TEST_F(MeshTests, calc_vert_neighbors_interior__cube)
   }
 }
 
-TEST_F(MeshTests, calc_vert_neighbors_interior__1D_strip)
+TEST_F(MeshBrushCommonTests, calc_vert_neighbors_interior__1D_strip)
 {
   mesh = geometry::create_grid_mesh(3, 2, 1.0, 1.0, {});
 
@@ -110,4 +111,54 @@ TEST_F(MeshTests, calc_vert_neighbors_interior__1D_strip)
     ASSERT_EQ(calculated_counts.lookup_default(key, -1), expected_counts.lookup_default(key, -2));
   }
 }
+
+/* Three 2x2 grids; the node holds the last and the first, in that order. One vertex of each is
+ * hidden. */
+class ScatterVisibleGridsTest : public testing::Test {
+ public:
+  CCGKey key = {};
+  BitGroupVector<> grid_hidden{3, 4, false};
+  Array<int> grids = {2, 0};
+  Array<float> node_data = {10.0f, 11.0f, 12.0f, 13.0f, 20.0f, 21.0f, 22.0f, 23.0f};
+
+  ScatterVisibleGridsTest()
+  {
+    key.grid_size = 2;
+    key.grid_area = 4;
+  }
+};
+
+TEST_F(ScatterVisibleGridsTest, each_visible_vertex_is_written_at_its_own_index)
+{
+  grid_hidden[2][1].set();
+  grid_hidden[0][3].set();
+  Array<float> data(12, -1.0f);
+
+  scatter_data_visible_grids<float>(key, grid_hidden, node_data, grids, data);
+
+  /* Grid 0 takes the node's second block, grid 1 is another node's, grid 2 takes the first
+   * block; the two hidden vertices and grid 1 keep what they held. */
+  const Array<float> expected = {
+      20.0f, 21.0f, 22.0f, -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 10.0f, -1.0f, 12.0f, 13.0f};
+  EXPECT_EQ_SPAN<float>(expected, data);
+}
+
+TEST_F(ScatterVisibleGridsTest, visible_vertices_get_what_they_get_with_nothing_hidden)
+{
+  Array<float> all_visible(12, -1.0f);
+  scatter_data_visible_grids<float>(key, grid_hidden, node_data, grids, all_visible);
+  const Array<float> expected = {
+      20.0f, 21.0f, 22.0f, 23.0f, -1.0f, -1.0f, -1.0f, -1.0f, 10.0f, 11.0f, 12.0f, 13.0f};
+  EXPECT_EQ_SPAN<float>(expected, all_visible);
+
+  /* Hiding a vertex changes that vertex only. */
+  grid_hidden[2][1].set();
+  Array<float> one_hidden(12, -1.0f);
+  scatter_data_visible_grids<float>(key, grid_hidden, node_data, grids, one_hidden);
+  for (const int i : all_visible.index_range()) {
+    const bool hidden = i == 2 * key.grid_area + 1;
+    EXPECT_EQ(one_hidden[i], hidden ? -1.0f : all_visible[i]) << "vertex " << i;
+  }
+}
+
 }  // namespace blender::ed::sculpt_paint::tests

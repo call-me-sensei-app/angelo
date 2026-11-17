@@ -6,7 +6,7 @@ import json
 import sys
 import bpy
 
-from . import document_scene
+from . import document_scene, edit_tool_hold
 from .display_text import error_notice
 from .request_rows import person_request
 from .ui_text import display_notice, iface_, join, n_, plural_
@@ -120,7 +120,7 @@ def send_message(controller, text, references=None, *, run_chosen_tools=True, su
     ``references``: the pictures it carries (default: the message box's)."""
     from . import chat_pending
     policy = {} if run_chosen_tools else {"run_chosen_tools": False}
-    if controller.turn_running():
+    if controller.turn_running() or edit_tool_hold.running():   # The person's editing tool: it waits in the tray.
         item = chat_pending.hold(controller, text, references, **policy,
                                  **({"separate": True} if submission is not None else {}))
         if submission is not None:

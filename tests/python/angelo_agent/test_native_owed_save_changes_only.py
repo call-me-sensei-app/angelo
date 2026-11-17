@@ -13,6 +13,7 @@ Dependency-free: the controller's own pump and journal, no Blender, provider pro
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import os
@@ -161,6 +162,36 @@ class CrashMidRequest(ChatCase):
         self.assertEqual(self.crash_and_reload()["messages"], plain(rows))
 
 
+class InsertAtTheUnsyncedStart(ChatCase):
+    """``Controller._native_unsynced_from`` is a boundary between rows: the rows at and after it are the ones the
+    native context has not read (it becomes the context's ``synced_length`` when the turn ends). A row inserted
+    exactly at it is new, so it stays on the unread side (``TranscriptRows._insert_request_message``).
+
+    No caller inserts there today: the one inserted row, a retained preview's acceptance, is refused while the
+    turn that set the mark runs (``test_native_cache_diet``,
+    ``test_the_unsynced_start_is_set_and_used_inside_one_turn``). The mark is set by hand here; the rule is kept
+    right for a caller that might."""
+
+    def mark_after_inserting_at_2(self, mark):
+        self.pump(("message", {"role": "user", "text": REQUEST}), self.activity(1), self.activity(2))
+        rows = self.controller.state["messages"]
+        self.assertEqual([row.get("call_id") or row["role"] for row in rows], ["user", "call-1", "call-2"])
+        self.controller._native_unsynced_from = mark
+        self.pump(("message", {"role": "user", "text": "Accept this preview.", "call_id": "call-2",
+                               "request_kind": "native_preview_accept", "preview_id": "preview-1"}))
+        self.assertEqual([row.get("call_id") or row["role"] for row in rows], ["user", "call-1", "user", "call-2"])
+        return self.controller._native_unsynced_from
+
+    def test_a_row_inserted_exactly_at_the_start_is_unread(self):
+        self.assertEqual(self.mark_after_inserting_at_2(2), 2, "The acceptance and its activity are both unread")
+
+    def test_a_start_after_the_insert_moves_with_its_rows(self):
+        self.assertEqual(self.mark_after_inserting_at_2(3), 4)
+
+    def test_a_start_before_the_insert_stays(self):
+        self.assertEqual(self.mark_after_inserting_at_2(1), 1)
+
+
 class Interleaving(ChatCase):
     """A row's mark follows its change, both under the chat's lock (``TranscriptRows._touched``)."""
 
@@ -201,7 +232,7 @@ class Interleaving(ChatCase):
         self.controller._last_save -= 1.0
 
         def owed_save_now():
-            changed.wait(5)
+            changed.wait(CAP_S)
             self.controller.pump_events()   # Blocks on the lock the change holds.
             saved.set()
         thread = threading.Thread(target=owed_save_now)
@@ -211,7 +242,7 @@ class Interleaving(ChatCase):
             changed.set()
             self.assertFalse(saved.wait(0.2), "no save runs between a change and its mark")
             self.controller._touched(1)
-        thread.join(5)
+        thread.join(CAP_S)
         self.assertTrue(saved.is_set())
         self.assertEqual(self.crash_and_reload()["messages"][1]["status"], "completed")
 

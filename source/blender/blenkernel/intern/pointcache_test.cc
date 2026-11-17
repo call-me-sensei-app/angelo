@@ -34,10 +34,10 @@
 #include "BLO_writefile.hh"
 #include "DNA_scene_types.h"
 
-#include "BLI_fileops.h"
-#include "BLI_listbase.h"
+#include "BLI_fileops.hh"
+#include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 
 #include "DNA_object_force_types.h"
 #include "DNA_object_types.h"
@@ -225,15 +225,15 @@ TEST_F(PointCacheOwnerlessTest, immediate_save_and_undo_preserve_fileless_memory
 
   const auto check_loaded = [](BlendFileData *bfd) {
     ASSERT_NE(bfd, nullptr);
-    const Scene *loaded_scene = static_cast<const Scene *>(bfd->main->scenes.first);
+    const Scene *loaded_scene = static_cast<const Scene *>(bfd->main->scenes.first());
     ASSERT_NE(loaded_scene, nullptr);
     ASSERT_NE(loaded_scene->rigidbody_world, nullptr);
     const PointCache *cache = loaded_scene->rigidbody_world->shared->pointcache;
     EXPECT_EQ(cache->flag & PTCACHE_DISK_CACHE, 0);
     EXPECT_NE(cache->flag & PTCACHE_BAKED, 0);
     ASSERT_EQ(BLI_listbase_count(&cache->mem_cache), 2);
-    EXPECT_EQ(static_cast<const PTCacheMem *>(cache->mem_cache.first)->frame, 1u);
-    EXPECT_EQ(static_cast<const PTCacheMem *>(cache->mem_cache.last)->frame, 2u);
+    EXPECT_EQ(static_cast<const PTCacheMem *>(cache->mem_cache.first())->frame, 1u);
+    EXPECT_EQ(static_cast<const PTCacheMem *>(cache->mem_cache.last())->frame, 2u);
   };
 
   const std::string filepath = folder + "immediate.blend";

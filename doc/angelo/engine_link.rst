@@ -101,6 +101,16 @@ it arrived, but nothing waits for such an editor. Plugins: Godot (``previewed``,
 Unity (all four) and Unreal (all four; ``previewed`` with the Angelo Link Live plugin) send them from Angelo 1.0.9's
 plugins; an older copy in a project acknowledges less until it is updated (Add Angelo Link to the project again).
 
+What counts as a change
+-----------------------
+
+The link (and the web preview) hears a scene change three ways (``scene_changes``): an edit's own evaluation
+(``depsgraph_update_post``); a frame change (``frame_change_post``), whose evaluation also flushes every edit tagged
+before it and runs no ``depsgraph_update_post``, so a script ending in ``scene.frame_set()`` is sent like any other;
+and Angelo's executor after every tool or script that edits the scene (``scene_changes.edited``), for an edit Blender
+never tags (a custom property set from Python, which Godot's extras read). A selection is no change. Found by the Godot
+showcase (2026-11-15). The link's side of it (which scene it follows, its handlers) is ``engine_link_follow``.
+
 Cadence
 -------
 
@@ -159,7 +169,12 @@ Saving and working files
   Both background children (the
   write-back and the preflight) read their arguments from a private file removed when they end
   (``engine_link_writeback.child_spec``), never from their command line: the baked list grows with the scene, and
-  Windows refuses a command line past 32,767 characters. Nothing in ``.angelo`` is written through
+  Windows refuses a command line past 32,767 characters. A child writes where C allows any path (no script runs
+  there), so ``child_spec`` takes the files the child will write (the asset and its stamp; the preflight's report)
+  and asks C about each first (``owned_paths.require_writable``): one C refuses runs no child, and the save ends
+  ``write_failed``. A script that changed the session's asset in place can't make a save write a file of the
+  person's. The child is this Angelo, read from C as it starts (``angelo_binary``: ``bpy.app.binary_path``), never a
+  program path an object of Angelo's holds. Nothing in ``.angelo`` is written through
   a link. No engine imports the folder: it is hidden, and it holds a ``.gdignore`` for Godot.
 * **The engine preflight** of each save runs afterwards in another background Angelo (:doc:`engine_preflight`,
   "Engine-link saves"): report-only, started once the engine has the asset, written to

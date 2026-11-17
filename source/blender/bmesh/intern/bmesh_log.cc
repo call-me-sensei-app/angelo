@@ -24,13 +24,14 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_listbase.h"
 #include "BLI_checkpoint_budget.hh"
+#include "BLI_index_range.hh"
+#include "BLI_listbase.hh"
 #include "BLI_map.hh"
-#include "BLI_math_vector.h"
+#include "BLI_math_vector_c.hh"
 #include "BLI_pool.hh"
 #include "BLI_set.hh"
-#include "BLI_utildefines.h"
+#include "BLI_utildefines.hh"
 
 #include "BKE_customdata.hh"
 
@@ -39,7 +40,7 @@
 
 #include "range_tree.h"
 
-#include "BLI_strict_flags.h" /* IWYU pragma: keep. Keep last. */
+#include "BLI_strict_flags.hh" /* IWYU pragma: keep. Keep last. */
 
 namespace blender {
 
@@ -526,21 +527,21 @@ BMLog *BM_log_from_existing_entries_create(BMesh *bm, BMLogEntry *entry)
   }
 
   /* Let BMLog manage the entry list again */
-  log->entries.first = log->entries.last = entry;
+  log->entries.first_ = log->entries.last_ = entry;
 
   {
     while (entry->prev) {
       entry = entry->prev;
-      log->entries.first = entry;
+      log->entries.first_ = entry;
     }
-    entry = static_cast<BMLogEntry *>(log->entries.last);
+    entry = log->entries.last();
     while (entry->next) {
       entry = entry->next;
-      log->entries.last = entry;
+      log->entries.last_ = entry;
     }
   }
 
-  for (entry = static_cast<BMLogEntry *>(log->entries.first); entry; entry = entry->next) {
+  for (entry = log->entries.first(); entry; entry = entry->next) {
     entry->log = log;
 
     /* Take all used IDs */
@@ -627,8 +628,9 @@ BMLogSnapshot *BM_log_snapshot_create(BMesh *bm, const BMLog *log, const char **
     BM_face_as_array_vert_tri(face, verts);
     BMLogSnapshot::Face snapshot_face;
     snapshot_face.id = *id;
-    for (int i = 0; i < 3; i++) {
-      snapshot_face.vertex_ids[i] = log->elem_to_id.lookup(reinterpret_cast<BMElem *>(verts[i]));
+    for (const int64_t i : IndexRange(3)) {
+      snapshot_face.vertex_ids[size_t(i)] = log->elem_to_id.lookup(
+          reinterpret_cast<BMElem *>(verts[i]));
     }
     snapshot->faces.append(snapshot_face);
   }
@@ -788,8 +790,8 @@ BMLogSnapshotRestore *BM_log_snapshot_restore_prepare(BMesh *bm,
     }
   }
   if (has_owned_entries && (expected_old_log->epoch != snapshot->epoch ||
-                            expected_old_log->entries.first != entries.first() ||
-                            expected_old_log->entries.last != entries.last()))
+                            expected_old_log->entries.first() != entries.first() ||
+                            expected_old_log->entries.last() != entries.last()))
   {
     bm_log_error_set(r_error, "The expected BMesh owner does not contain the retained history");
     return nullptr;
@@ -830,8 +832,8 @@ BMLogSnapshotRestore *BM_log_snapshot_restore_prepare(BMesh *bm,
     const BMLogSnapshot::Face &snapshot_face = snapshot->faces[index];
     BMVert *verts[3];
     BM_face_as_array_vert_tri(face, verts);
-    for (int i = 0; i < 3; i++) {
-      if (bm_log_vert_id_get(log, verts[i]) != snapshot_face.vertex_ids[i]) {
+    for (const int64_t i : IndexRange(3)) {
+      if (bm_log_vert_id_get(log, verts[i]) != snapshot_face.vertex_ids[size_t(i)]) {
         return fail(
             "The reconstructed BMesh face order or vertex order differs from the snapshot");
       }
@@ -903,7 +905,7 @@ BMLogSnapshotRestore *BM_log_snapshot_restore_prepare_bounded(
     }
     previous = &entry;
   }
-  if (previous != expected_old_log->entries.last || entries_count > INT64_MAX || count > (SIZE_MAX - 65536) / 512 ||
+  if (previous != expected_old_log->entries.last() || entries_count > INT64_MAX || count > (SIZE_MAX - 65536) / 512 ||
       entries_count > (SIZE_MAX - 65536 - count * 512) / (sizeof(BMLogReplayEntry) * 4 + 512)) {
     bm_log_error_set(r_error, "Finite history replay size overflows"); return nullptr;
   }
@@ -1051,8 +1053,8 @@ BMLog *BM_log_snapshot_restore_commit(BMLogSnapshotRestore *restore)
   /* All validation and allocation precede the ownership change. Entry links keep their
    * orientation; only the owner and live element mapping are replaced. */
   if (!restore->entries.is_empty()) {
-    log->entries.first = restore->entries.first();
-    log->entries.last = restore->entries.last();
+    log->entries.first_ = restore->entries.first();
+    log->entries.last_ = restore->entries.last();
     for (BMLogEntry *entry : restore->entries) {
       entry->log = log;
     }
@@ -1190,7 +1192,7 @@ void BM_log_redo(BMesh *bm, BMLog *log)
 
   if (!entry) {
     /* Currently at the beginning of the undo stack, move to first entry */
-    entry = static_cast<BMLogEntry *>(log->entries.first);
+    entry = log->entries.first();
   }
   else if (entry->next) {
     /* Move to next undo entry */
@@ -1416,9 +1418,7 @@ void BM_log_print(const BMLog *log, const char *description)
 
   printf("%s:\n", description);
   printf("    % 2d: [ initial ]%s\n", 0, (!log->current_entry) ? current : "");
-  for (entry = static_cast<const BMLogEntry *>(log->entries.first), i = 1; entry;
-       entry = entry->next, i++)
-  {
+  for (entry = log->entries.first(), i = 1; entry; entry = entry->next, i++) {
     printf("    % 2d: [%p]%s\n", i, entry, (entry == log->current_entry) ? current : "");
   }
 }

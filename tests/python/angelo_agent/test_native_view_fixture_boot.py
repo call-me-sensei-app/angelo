@@ -169,7 +169,7 @@ class DriverTests(unittest.TestCase):
                 self.assertNotIn(call.func.value.id, aliases, path.name + " bypasses the startup gate")
                 if call.func.value.id == "fixture_boot":
                     callers.append(path.name)
-        self.assertEqual(len(callers), 7)
+        self.assertEqual(len(callers), 8)
 
 
 if __name__ == "__main__":

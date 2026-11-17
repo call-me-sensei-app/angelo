@@ -289,7 +289,7 @@ def tick():
             v = view()
             v["prompt"] = "a lantern"
             with bpy.context.temp_override(window=studio_window(), area=studio_area()):
-                bpy.ops.angelo.studio_enhance('EXEC_DEFAULT', area_pointer=str(studio_area().as_pointer()))
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().studio_enhance('EXEC_DEFAULT', area_pointer=str(studio_area().as_pointer()))
             state["asked"] = time.monotonic()
             state["phase"] = "enhance_answered"
             return .2

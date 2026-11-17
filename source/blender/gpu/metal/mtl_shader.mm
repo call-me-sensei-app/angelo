@@ -6,12 +6,14 @@
  * \ingroup gpu
  */
 
+#include <fmt/ranges.h>
+
 #include "BKE_global.hh"
 
 #include "DNA_userdef_types.h"
 
-#include "BLI_string.h"
-#include "BLI_time.h"
+#include "BLI_string.hh"
+#include "BLI_time.hh"
 
 #include <algorithm>
 #include <fmt/format.h>
@@ -25,13 +27,16 @@
 
 #include <cstring>
 
+#include "GPU_compile_ahead.hh"
 #include "GPU_platform.hh"
 #include "GPU_vertex_format.hh"
 
 #include "gpu_shader_dependency_private.hh"
+#include "mtl_backend.hh"
 #include "mtl_common.hh"
 #include "mtl_context.hh"
 #include "mtl_debug.hh"
+#include "mtl_pipeline_prebuild.hh"
 #include "mtl_pso_descriptor_state.hh"
 #include "mtl_shader.hh"
 #include "mtl_shader_generate.hh"
@@ -44,6 +49,8 @@ using namespace blender::gpu;
 using namespace blender::gpu::shader;
 
 namespace blender::gpu {
+
+static CLG_LogRef LOG = {"gpu.metal"};
 
 const char *to_string(ShaderStage stage)
 {
@@ -91,6 +98,10 @@ MTLShader::MTLShader(MTLContext *ctx, const char *name) : Shader(name)
 
 MTLShader::~MTLShader()
 {
+  /* Before anything a queued pipeline build reads is freed. */
+  if (MTLPipelinePrebuilder *prebuilder = MTLBackend::pipeline_prebuilder()) {
+    prebuilder->forget(this);
+  }
   if (this->is_valid()) {
     /* Free uniform data block. */
     MEM_SAFE_DELETE(push_constant_buf_);
@@ -170,7 +181,7 @@ const shader::ShaderCreateInfo &MTLShader::patch_create_info(
     if (patched_info_ == nullptr) {
       patched_info_ = std::make_unique<PatchedShaderCreateInfo>(original_info);
     }
-    patched_info_->info.builtins_ |= BuiltinBits::USE_SAMPLER_ARG_BUFFER;
+    patched_info_->info.builtins(BuiltinBits::USE_SAMPLER_ARG_BUFFER);
   }
 
   return patched_info_ != nullptr ? patched_info_->info : original_info;
@@ -207,7 +218,8 @@ std::string MTLShader::entry_point_name_get(const ShaderStage stage)
 
 /* Note: returns a retained object. */
 static ::MTLCompileOptions *get_compile_options(const bool use_subpass_input,
-                                                const bool use_texture_atomic)
+                                                const bool use_texture_atomic,
+                                                const bool use_ray_query)
 {
   ::MTLCompileOptions *options = [[MTLCompileOptions alloc] init];
   options.languageVersion = MTLLanguageVersion2_2;
@@ -220,9 +232,13 @@ static ::MTLCompileOptions *get_compile_options(const bool use_subpass_input,
   if (use_subpass_input) {
     options.languageVersion = MTLLanguageVersion2_3;
   }
+  /* Inline ray queries requires Metal 3.0. */
+  if (use_ray_query) {
+    options.languageVersion = MTLLanguageVersion3_0;
+  }
 #if defined(MAC_OS_VERSION_14_0)
-  if (@available(macOS 14.00, *)) {
-    /* Texture atomics require Metal 3.1. */
+  if (@available(macOS 14.0, *)) {
+    /* Texture atomics requires Metal 3.1. */
     if (use_texture_atomic) {
       options.languageVersion = MTLLanguageVersion3_1;
     }
@@ -246,14 +262,19 @@ id<MTLLibrary> MTLShader::create_shader_library(const shader::ShaderCreateInfo &
     ss << "#define MTL_WORKGROUP_SIZE_X " << info.compute_layout_.local_size_x << "\n";
     ss << "#define MTL_WORKGROUP_SIZE_Y " << info.compute_layout_.local_size_y << "\n";
     ss << "#define MTL_WORKGROUP_SIZE_Z " << info.compute_layout_.local_size_z << "\n";
-    if (flag_is_set(info.builtins_, BuiltinBits::USE_SAMPLER_ARG_BUFFER)) {
+    ss << "#define GPU_PROVOKING_VERTEX_LAST\n";
+    if (flag_is_set(info.builtins_combined(), BuiltinBits::USE_SAMPLER_ARG_BUFFER)) {
       ss << "#define MTL_USE_SAMPLER_ARGUMENT_BUFFER\n";
     }
 
-    if (flag_is_set(info.builtins_, BuiltinBits::TEXTURE_ATOMIC) &&
+    if (flag_is_set(info.builtins_combined(), BuiltinBits::TEXTURE_ATOMIC) &&
         MTLBackend::get_capabilities().supports_texture_atomics)
     {
       ss << "#define MTL_SUPPORTS_TEXTURE_ATOMICS 1\n";
+    }
+
+    if (flag_is_set(info.builtins_combined(), BuiltinBits::RAY_QUERY)) {
+      ss << "#define MTL_USE_RAY_QUERY\n";
     }
 
     shader::GeneratedSource defines_src{"gpu_shader_msl_defines.msl", {}, ss.str()};
@@ -287,9 +308,17 @@ id<MTLLibrary> MTLShader::create_shader_library(const shader::ShaderCreateInfo &
     processed_source = original_source;
   }
 
+  /* Ray-query shaders need the Metal raytracing header prepended to the final source. */
+  if (flag_is_set(info.builtins_combined(), BuiltinBits::RAY_QUERY)) {
+    processed_source = "#include <metal_raytracing>\nusing namespace metal::raytracing;\n" +
+                       processed_source;
+  }
+
   {
     ::MTLCompileOptions *options = get_compile_options(
-        !info.subpass_inputs_.is_empty(), bool(info.builtins_ & BuiltinBits::TEXTURE_ATOMIC));
+        !info.subpass_inputs_.is_empty(),
+        flag_is_set(info.builtins_combined(), BuiltinBits::TEXTURE_ATOMIC),
+        flag_is_set(info.builtins_combined(), BuiltinBits::RAY_QUERY));
 
     NSError *error = nullptr;
     id<MTLLibrary> library = [context_->device
@@ -569,8 +598,12 @@ static uint32_t get_buffers_binding_mask(NSArray<MTLArgument *> *args)
 {
   uint32_t mask = 0u;
   for (int i = 0; i < [args count]; i++) {
-    MTLArgument *arg = [args objectAtIndex:i];
-    if ([arg type] == MTLArgumentTypeBuffer && [arg isActive] == TRUE) {
+    const MTLArgument *arg = [args objectAtIndex:i];
+    const MTLArgumentType type = [arg type];
+    /* Acceleration structures are bound inside the buffer binding space. */
+    if (ELEM(type, MTLArgumentTypeBuffer, MTLArgumentTypeInstanceAccelerationStructure) &&
+        [arg isActive] == TRUE)
+    {
       int index = [arg index];
       if (index >= 0 && index < MTL_MAX_BUFFER_BINDINGS) {
         mask |= (1 << index);
@@ -643,7 +676,7 @@ void MTLRenderPipelineStateInstance::parse_reflection_data(
  * etc; are also used. See mtl_shader.h for full #MLRenderPipelineStateDescriptor.
  */
 MTLRenderPipelineStateInstance *MTLShader::bake_current_pipeline_state(
-    MTLContext *ctx, MTLPrimitiveTopologyClass prim_type)
+    MTLContext *ctx, MTLPrimitiveTopologyClass prim_type, bool *r_queued)
 {
   /** Populate global pipeline descriptor and use this to prepare new PSO. */
   /* NOTE(Metal): PSO cache can be accessed from multiple threads, though these operations should
@@ -728,7 +761,107 @@ MTLRenderPipelineStateInstance *MTLShader::bake_current_pipeline_state(
   pipeline_descriptor.specialization_state = {ctx->constants_state.values};
 
   /* Bake pipeline state using global descriptor. */
-  return bake_graphic_pipeline_state(ctx, prim_type, pipeline_descriptor);
+  if (GPU_compile_ahead_is_active() && MTLBackend::pipeline_prebuilder() != nullptr) {
+    MTLRenderPipelineStateInstance *pipeline_state = queue_graphic_pipeline_state(
+        ctx, prim_type, pipeline_descriptor);
+    if (r_queued) {
+      *r_queued = pipeline_state == nullptr;
+    }
+    return pipeline_state;
+  }
+  return bake_graphic_pipeline_state(ctx, prim_type, pipeline_descriptor, true);
+}
+
+MTLRenderPipelineStateInstance *MTLShader::queue_graphic_pipeline_state(
+    MTLContext *ctx,
+    MTLPrimitiveTopologyClass prim_type,
+    const MTLRenderPipelineStateDescriptor &pipeline_descriptor)
+{
+  MTLPipelinePrebuilder *prebuilder = MTLBackend::pipeline_prebuilder();
+  pso_cache_lock_.lock();
+  MTLRenderPipelineStateInstance **pso_lookup = pso_cache_.lookup_ptr(pipeline_descriptor);
+  MTLRenderPipelineStateInstance *pipeline_state = (pso_lookup) ? *pso_lookup : nullptr;
+  /* One whose queued build failed is not queued again: this draw call is skipped all the same, and the draw that
+   * needs the state builds it, and reports the failure, as without compile-ahead draws. */
+  const bool queue = pipeline_state == nullptr && !pso_prebuild_failed_.contains(pipeline_descriptor) &&
+                     pso_prebuilding_.add(pipeline_descriptor);
+  if (queue) {
+    pso_prebuilding_count_++;
+  }
+  pso_cache_lock_.unlock();
+  if (queue) {
+    prebuilder->push(this, ctx->device, prim_type, pipeline_descriptor);
+  }
+  return pipeline_state;
+}
+
+void MTLShader::prebuild_graphic_pipeline_state(
+    id<MTLDevice> device,
+    MTLPrimitiveTopologyClass prim_type,
+    const MTLRenderPipelineStateDescriptor &pipeline_descriptor)
+{
+  /* A descriptor object of its own: `pso_descriptor_` is the drawing thread's. */
+  ::MTLRenderPipelineDescriptor *desc = [[MTLRenderPipelineDescriptor alloc] init];
+  MTLRenderPipelineStateInstance *pipeline_state = bake_graphic_pipeline_state(
+      device, desc, prim_type, pipeline_descriptor, false);
+  [desc release];
+  pso_cache_lock_.lock();
+  /* After the state is in the cache: a reader that sees none prebuilding finds every one built or failed. */
+  pso_prebuilding_.remove(pipeline_descriptor);
+  pso_prebuilding_count_--;
+  if (pipeline_state == nullptr) {
+    pso_prebuild_failed_.add(pipeline_descriptor);
+  }
+  pso_cache_lock_.unlock();
+  if (pipeline_state == nullptr) {
+    pipeline_stats_failed();
+  }
+}
+
+bool MTLShader::warm_cache_async(Shader *parent)
+{
+  MTLPipelinePrebuilder *prebuilder = MTLBackend::pipeline_prebuilder();
+  MTLContext *ctx = MTLContext::get();
+  if (prebuilder == nullptr || ctx == nullptr || !this->is_valid()) {
+    return true;
+  }
+  MTLShader *parent_mtl = static_cast<MTLShader *>(parent);
+  /* Asked for every object drawn with the material, in every draw and render, until it answers true
+   * (#GPU_material_get_pass). While the parent has built nothing since this shader last went through its PSOs,
+   * all there was to queue is queued, and what is left is to wait for this shader's builds: two loads, no lock
+   * and no copy of the parent's descriptors. */
+  const int parent_built = parent_mtl->pso_built_count_.load();
+  if (warm_parent_built_.load() == parent_built) {
+    return pso_prebuilding_count_.load() == 0;
+  }
+  /* The descriptors the parent built, read under its lock alone (never both shaders' locks at once). */
+  Vector<std::pair<MTLRenderPipelineStateDescriptor, MTLPrimitiveTopologyClass>> wanted;
+  parent_mtl->pso_cache_lock_.lock();
+  for (const auto &item : parent_mtl->pso_cache_.items()) {
+    wanted.append({item.key, item.value->prim_type});
+  }
+  parent_mtl->pso_cache_lock_.unlock();
+
+  bool done = true;
+  Vector<std::pair<MTLRenderPipelineStateDescriptor, MTLPrimitiveTopologyClass>> queue;
+  pso_cache_lock_.lock();
+  for (const auto &[descriptor, prim_type] : wanted) {
+    if (pso_cache_.contains(descriptor) || pso_prebuild_failed_.contains(descriptor)) {
+      continue;
+    }
+    done = false;
+    if (pso_prebuilding_.add(descriptor)) {
+      pso_prebuilding_count_++;
+      queue.append({descriptor, prim_type});
+    }
+  }
+  pso_cache_lock_.unlock();
+  for (const auto &[descriptor, prim_type] : queue) {
+    prebuilder->push(this, ctx->device, prim_type, descriptor);
+  }
+  /* The count read before the parent's PSOs were: one it built meanwhile is seen at the next call. */
+  warm_parent_built_ = parent_built;
+  return done;
 }
 
 /* Variant which bakes a pipeline state based on an existing MTLRenderPipelineStateDescriptor.
@@ -736,7 +869,19 @@ MTLRenderPipelineStateInstance *MTLShader::bake_current_pipeline_state(
 MTLRenderPipelineStateInstance *MTLShader::bake_graphic_pipeline_state(
     MTLContext *ctx,
     MTLPrimitiveTopologyClass prim_type,
-    const MTLRenderPipelineStateDescriptor &pipeline_descriptor)
+    const MTLRenderPipelineStateDescriptor &pipeline_descriptor,
+    bool in_draw)
+{
+  return bake_graphic_pipeline_state(
+      ctx->device, pso_descriptor_, prim_type, pipeline_descriptor, in_draw);
+}
+
+MTLRenderPipelineStateInstance *MTLShader::bake_graphic_pipeline_state(
+    id<MTLDevice> device,
+    ::MTLRenderPipelineDescriptor *desc,
+    MTLPrimitiveTopologyClass prim_type,
+    const MTLRenderPipelineStateDescriptor &pipeline_descriptor,
+    bool in_draw)
 {
   BLI_assert(this->is_valid());
 
@@ -762,8 +907,9 @@ MTLRenderPipelineStateInstance *MTLShader::bake_graphic_pipeline_state(
   ::MTLFunctionConstantValues *values = populate_specialization_constant_values(
       *this->constants, pipeline_descriptor.specialization_state);
 
+  const double build_start = BLI_time_now_seconds();
+
   /* Prepare Vertex descriptor based on current pipeline vertex binding state. */
-  ::MTLRenderPipelineDescriptor *desc = pso_descriptor_;
   [desc reset];
   desc.label = [NSString stringWithUTF8String:this->name];
 
@@ -927,10 +1073,9 @@ MTLRenderPipelineStateInstance *MTLShader::bake_graphic_pipeline_state(
       }
       else {
         if (pipeline_descriptor.blending_enabled && !format_supports_blending) {
-          shader_debug_printf(
-              "[Warning] Attempting to Bake PSO, but MTLPixelFormat %d does not support "
-              "blending\n",
-              *((int *)&pixel_format));
+          CLOG_WARN(&LOG,
+                    "Attempting to Bake PSO, but MTLPixelFormat %d does not support blending",
+                    (int)pixel_format);
         }
       }
     }
@@ -953,18 +1098,22 @@ MTLRenderPipelineStateInstance *MTLShader::bake_graphic_pipeline_state(
     NSError *error = nullptr;
 
     /* Compile PSO */
-    id<MTLRenderPipelineState> pso = [ctx->device
+    id<MTLRenderPipelineState> pso = [device
         newRenderPipelineStateWithDescriptor:desc
                                      options:MTLPipelineOptionBufferTypeInfo
                                   reflection:&reflection_data
                                        error:&error];
     if (error) {
-      NSLog(@"Failed to create PSO for shader: %s error %@\n", this->name, error);
+      CLOG_ERROR(&LOG,
+                 "Failed to create PSO for shader: %s error %s",
+                 this->name,
+                 [[error localizedDescription] UTF8String]);
       BLI_assert(false);
       return nullptr;
     }
     if (!pso) {
-      NSLog(@"Failed to create PSO for shader: %s, but no error was provided!\n", this->name);
+      CLOG_ERROR(
+          &LOG, "Failed to create PSO for shader: %s, but no error was provided!", this->name);
       BLI_assert(false);
       return nullptr;
     }
@@ -981,15 +1130,29 @@ MTLRenderPipelineStateInstance *MTLShader::bake_graphic_pipeline_state(
     /* IMPORTANT: Discard any stale SSBOs or UBOs bindings that could override vertex bindings. */
     pso_inst->used_buf_vert_mask &= ~vbo_bind_mask;
 
+    pipeline_stats_built(in_draw, (BLI_time_now_seconds() - build_start) * 1000.0);
+
     /* Insert into pso cache. */
     pso_cache_lock_.lock();
+    MTLRenderPipelineStateInstance **built = pso_cache_.lookup_ptr(pipeline_descriptor);
+    if (built) {
+      /* Built meanwhile on another thread (a draw while a compile-ahead draw's build ran): that one is kept. */
+      MTLRenderPipelineStateInstance *kept = *built;
+      pso_cache_lock_.unlock();
+      [pso_inst->pso release];
+      [pso_inst->vert release];
+      [pso_inst->frag release];
+      delete pso_inst;
+      return kept;
+    }
     pso_inst->shader_pso_index = pso_cache_.size();
-    pso_cache_.add(pipeline_descriptor, pso_inst);
+    pso_cache_.add_new(pipeline_descriptor, pso_inst);
+    pso_built_count_++;
     pso_cache_lock_.unlock();
-    shader_debug_printf(
-        "PSO CACHE: Stored new variant in PSO cache for shader '%s' Hash: '%llu'\n",
-        this->name,
-        pipeline_descriptor.hash());
+    CLOG_DEBUG(&LOG,
+               "PSO CACHE: Stored new variant in PSO cache for shader '%s' Hash: '%llu'",
+               this->name,
+               (unsigned long long)pipeline_descriptor.hash());
     return pso_inst;
   }
 }
@@ -1034,7 +1197,9 @@ MTLComputePipelineStateInstance *MTLShader::bake_compute_pipeline_state(
   [values release];
 
   if (error) {
-    NSLog(@"Compile Error - Metal Shader compute function, error %@", error);
+    CLOG_WARN(&LOG,
+              "Metal Shader compute function, error %s",
+              [[error localizedDescription] UTF8String]);
 
     /* Only exit out if genuine error and not warning */
     if ([[error localizedDescription] rangeOfString:@"Compilation succeeded"].location ==
@@ -1085,12 +1250,16 @@ MTLComputePipelineStateInstance *MTLShader::bake_compute_pipeline_state(
   [desc release];
 
   if (error) {
-    NSLog(@"Failed to create PSO for compute shader: %s error %@\n", this->name, error);
+    CLOG_ERROR(&LOG,
+               "Failed to create PSO for compute shader: %s error %s",
+               this->name,
+               [[error localizedDescription] UTF8String]);
     return nullptr;
   }
   if (!pso) {
-    NSLog(@"Failed to create PSO for compute shader: %s, but no error was provided!\n",
-          this->name);
+    CLOG_ERROR(&LOG,
+               "Failed to create PSO for compute shader: %s, but no error was provided!",
+               this->name);
     return nullptr;
   }
 

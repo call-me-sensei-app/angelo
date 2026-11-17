@@ -2,10 +2,18 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
+/** \file
+ * \ingroup bke
+ */
+
+#include <atomic>
+#include <chrono>
 #include <fcntl.h>
+#include <sys/stat.h>
 #ifndef WIN32
 #  include <unistd.h>
 #else
+#  include "BLI_winstuff.hh"
 #  include <io.h>
 #endif
 #include <fmt/format.h>
@@ -18,12 +26,19 @@
 #include "BKE_library.hh"
 #include "BKE_main.hh"
 
+#include "BLI_file_time.hh"
 #include "BLI_fileops.hh"
-#include "BLI_mmap.h"
+#include "BLI_mmap.hh"
 #include "BLI_mutex.hh"
+#include "BLI_path_utils.hh"
 #include "BLI_set.hh"
+#include "BLI_vector.hh"
+
+#include "CLG_log.h"
 
 namespace blender::bke::id_hash {
+
+static CLG_LogRef LOG = {"lib.id_hash"};
 
 static std::optional<Vector<char>> read_file(const StringRefNull path)
 {
@@ -50,14 +65,11 @@ static std::optional<XXH128_hash_t> compute_file_hash_with_file_read(const Strin
   return XXH3_128bits(buffer->data(), buffer->size());
 }
 
-static std::optional<XXH128_hash_t> compute_file_hash_with_memory_map(const StringRefNull path)
+static std::optional<XXH128_hash_t> compute_file_hash_with_memory_map(const int file)
 {
-  const int file = BLI_open(path.c_str(), O_BINARY | O_RDONLY, 0);
-  if (file == -1) {
+  if (!BLI_file_descriptor_is_open(file)) {
     return std::nullopt;
   }
-  BLI_SCOPED_DEFER([&]() { close(file); });
-
   BLI_mmap_file *mmap_file = BLI_mmap_open(file);
   if (!mmap_file) {
     return std::nullopt;
@@ -72,10 +84,19 @@ static std::optional<XXH128_hash_t> compute_file_hash_with_memory_map(const Stri
   return hash;
 }
 
-static std::optional<XXH128_hash_t> compute_file_hash(const StringRefNull path)
+static std::atomic<int64_t> file_reads = 0;
+
+int64_t file_reads_for_tests()
 {
-  /* First try the memory map the file, because it avoids an extra copy. */
-  if (const std::optional<XXH128_hash_t> hash = compute_file_hash_with_memory_map(path)) {
+  return file_reads.load();
+}
+
+/** The hash of the file open at `file` (whose path is `path`): read through that descriptor, the
+ * one its version was taken from; by path only if it cannot be memory mapped. */
+static std::optional<XXH128_hash_t> compute_file_hash(const int file, const StringRefNull path)
+{
+  file_reads.fetch_add(1);
+  if (const std::optional<XXH128_hash_t> hash = compute_file_hash_with_memory_map(file)) {
     /* Make sure both code paths are tested even if memory mapping should almost always work. */
     BLI_assert(hash->low64 == compute_file_hash_with_file_read(path)->low64);
     return hash;
@@ -86,53 +107,225 @@ static std::optional<XXH128_hash_t> compute_file_hash(const StringRefNull path)
   return std::nullopt;
 }
 
+/**
+ * Angelo (an upstream candidate). Blender cached a file's hash by its path and modification time
+ * in whole seconds, so two versions of an asset saved within one second got one hash, and packed
+ * linking (and Undo's dedupe) took one for the other. Now:
+ *
+ * - A file is known by its version: the identity of the file the reader opens at that path (a
+ * final link followed: device, file index, size, modification time in nanoseconds) and its status
+ * change time (ctime, which a rewrite that restores an old modification time still changes).
+ * - Each ID is checked first against the version it was read from; an ID read from another
+ *   version never gets this one's hash, cached or not.
+ * - A cached hash is reused only for the same version, and only if the file had not changed within
+ *   #RACY_WINDOW_NS of the moment it was hashed: file systems may keep times in whole seconds (2 s
+ * on FAT), so a file written again just after being hashed can keep its version (the "racily
+ * clean" files of Git).
+ * - One call (#compute_linked_id_deep_hashes) takes each file's version and hash once, whatever
+ * the number of IDs from it.
+ * - Blender's own writes drop what is known of the file (#source_file_changed).
+ */
 struct CachedFileHash {
-  int64_t last_modified = 0;
+  FileVersion version;
+  int64_t hashed_at_ns = 0;
   XXH128_hash_t hash;
 };
 
-static std::optional<XXH128_hash_t> get_source_file_hash(const ID &id, DeepHashErrors &r_errors)
+/** What one call knows of a source file: its version and hash, taken through one descriptor. */
+struct FileHashMemo {
+  bool exists = false;
+  int64_t stat_mtime = 0;
+  std::optional<FileVersion> version;
+  std::optional<XXH128_hash_t> hash;
+};
+using FileHashMemos = Map<std::string, FileHashMemo>;
+
+static constexpr int64_t RACY_WINDOW_NS = int64_t(2) * 1000 * 1000 * 1000;
+
+static Map<std::string, CachedFileHash> &file_hash_cache()
 {
   static Map<std::string, CachedFileHash> cache;
+  return cache;
+}
+
+static Mutex &file_hash_mutex()
+{
   static Mutex mutex;
+  return mutex;
+}
 
-  const StringRefNull path = id.lib->runtime->filepath_abs;
+static bool same_file_version(const FileVersion &a, const FileVersion &b)
+{
+  return a.identity.device == b.identity.device &&
+         a.identity.device_signed == b.identity.device_signed &&
+         a.identity.index_low == b.identity.index_low &&
+         a.identity.index_high == b.identity.index_high && a.identity.size == b.identity.size &&
+         a.identity.modified_ns == b.identity.modified_ns && a.changed_ns == b.changed_ns;
+}
 
+static int64_t now_ns()
+{
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
+
+std::optional<FileVersion> file_version_of_descriptor(const int file)
+{
+  /* A public function: the descriptor is the caller's, so ask before the C runtime sees it. */
+  if (!BLI_file_descriptor_is_open(file)) {
+    return std::nullopt;
+  }
+  FileVersion version;
+  if (!BLI_file_identity_descriptor(file, &version.identity)) {
+    return std::nullopt;
+  }
+#ifdef WIN32
+  FILE_BASIC_INFO info;
+  if (GetFileInformationByHandleEx(
+          reinterpret_cast<HANDLE>(_get_osfhandle(file)), FileBasicInfo, &info, sizeof(info)))
+  {
+    version.changed_ns = file_time::nanoseconds_from_filetime(uint64_t(info.ChangeTime.QuadPart));
+  }
+#else
+  struct stat st;
+  if (fstat(file, &st) == 0) {
+#  ifdef __APPLE__
+    version.changed_ns = file_time::nanoseconds_saturated(int64_t(st.st_ctimespec.tv_sec),
+                                                          int64_t(st.st_ctimespec.tv_nsec));
+#  else
+    version.changed_ns = file_time::nanoseconds_saturated(int64_t(st.st_ctim.tv_sec),
+                                                          int64_t(st.st_ctim.tv_nsec));
+#  endif
+  }
+#endif
+  return version;
+}
+
+void source_file_version_record(ID &id, const FileVersion &version)
+{
+  id.runtime->src_blend_device = version.identity.device;
+  id.runtime->src_blend_index_low = version.identity.index_low;
+  id.runtime->src_blend_index_high = version.identity.index_high;
+  id.runtime->src_blend_size = version.identity.size;
+  id.runtime->src_blend_modified_ns = version.identity.modified_ns;
+  id.runtime->src_blend_changed_ns = version.changed_ns;
+}
+
+/** Whether `id` was read from that version of its file. */
+static bool source_file_version_is(const ID &id, const FileVersion &version)
+{
+  return id.runtime->src_blend_device == version.identity.device &&
+         id.runtime->src_blend_index_low == version.identity.index_low &&
+         id.runtime->src_blend_index_high == version.identity.index_high &&
+         id.runtime->src_blend_size == version.identity.size &&
+         id.runtime->src_blend_modified_ns == version.identity.modified_ns &&
+         id.runtime->src_blend_changed_ns == version.changed_ns;
+}
+
+void source_file_changed(const StringRefNull filepath)
+{
+  std::lock_guard lock(file_hash_mutex());
+  Vector<std::string> stale;
+  for (const std::string &cached_path : file_hash_cache().keys()) {
+    if (BLI_path_cmp_normalized(cached_path.c_str(), filepath.c_str()) == 0) {
+      stale.append(cached_path);
+    }
+  }
+  for (const std::string &cached_path : stale) {
+    file_hash_cache().remove_as(cached_path);
+  }
+}
+
+/** What is known of the file at `path` for one call: opened as the reader opens it (a final link
+ * followed), its version and hash taken through that descriptor: the hash from the cache when it
+ * can be trusted, else by reading the file. */
+static FileHashMemo file_hash_memo_get(const StringRefNull path)
+{
+  FileHashMemo memo;
   BLI_stat_t stat;
-  if (BLI_stat(path.c_str(), &stat) == -1) {
+  memo.exists = BLI_stat(path.c_str(), &stat) != -1;
+  if (!memo.exists) {
+    return memo;
+  }
+  memo.stat_mtime = stat.st_mtime;
+  const int file = BLI_open(path.c_str(), O_BINARY | O_RDONLY, 0);
+  if (file == -1) {
+    return memo;
+  }
+  BLI_SCOPED_DEFER([&]() { close(file); });
+  memo.version = file_version_of_descriptor(file);
+
+  Map<std::string, CachedFileHash> &cache = file_hash_cache();
+  std::lock_guard lock(file_hash_mutex());
+  const CachedFileHash *cached = memo.version ? cache.lookup_ptr_as(path) : nullptr;
+  if (cached && same_file_version(cached->version, *memo.version) &&
+      memo.version->identity.modified_ns < cached->hashed_at_ns - RACY_WINDOW_NS &&
+      memo.version->changed_ns < cached->hashed_at_ns - RACY_WINDOW_NS)
+  {
+    memo.hash = cached->hash;
+    return memo;
+  }
+  /* Taken before the file is read: a write during the read leaves the result untrusted. */
+  const int64_t hashed_at_ns = now_ns();
+  CLOG_DEBUG(&LOG, "Hashing library file %s", path.c_str());
+  memo.hash = compute_file_hash(file, path);
+  if (memo.hash && memo.version) {
+    cache.add_overwrite(path, CachedFileHash{*memo.version, hashed_at_ns, *memo.hash});
+  }
+  else {
+    cache.remove_as(path);
+  }
+  return memo;
+}
+
+static std::optional<XXH128_hash_t> get_source_file_hash(const ID &id,
+                                                         DeepHashErrors &r_errors,
+                                                         FileHashMemos &memos)
+{
+  const StringRefNull path = id.lib->runtime->filepath_abs;
+  const FileHashMemo &memo = memos.lookup_or_add_cb_as(path,
+                                                       [&]() { return file_hash_memo_get(path); });
+
+  if (!memo.exists) {
     r_errors.missing_files.add_as(path);
     return std::nullopt;
   }
-
-  std::lock_guard lock(mutex);
-  if (const CachedFileHash *cached_hash = cache.lookup_ptr_as(path)) {
-    if (cached_hash->last_modified == stat.st_mtime) {
-      return cached_hash->hash;
-    }
+  if ((id.tag & ID_TAG_MISSING) != 0) {
+    r_errors.missing_from_files.add_as(path);
+    return std::nullopt;
   }
 
-  /* The modification time may not be set if the data-block is added as linked data as part of
-   * versioning (e.g. in #do_versions_after_setup). */
-  if (id.runtime->src_blend_modifification_time != 0) {
-    if (stat.st_mtime != id.runtime->src_blend_modifification_time) {
+  /* First, whether the file is still the version this ID was read from: an ID read from another
+   * version never gets this one's hash. The modification time may not be set if the data-block is
+   * added as linked data as part of versioning (e.g. in #do_versions_after_setup). */
+  if (memo.version && id.runtime->src_blend_modified_ns != 0) {
+    if (!source_file_version_is(id, *memo.version)) {
+      r_errors.updated_files.add_as(path);
+      return std::nullopt;
+    }
+  }
+  else if (id.runtime->src_blend_modifification_time != 0) {
+    if (memo.stat_mtime != id.runtime->src_blend_modifification_time) {
       r_errors.updated_files.add_as(path);
       return std::nullopt;
     }
   }
 
-  if (const std::optional<XXH128_hash_t> hash = compute_file_hash(path)) {
-    cache.add_overwrite(path, CachedFileHash{stat.st_mtime, *hash});
-    return hash;
+  if (memo.hash) {
+    return *memo.hash;
   }
   r_errors.missing_files.add_as(path);
   return std::nullopt;
 }
 
-static std::optional<XXH128_hash_t> get_id_shallow_hash(const ID &id, DeepHashErrors &r_errors)
+static std::optional<XXH128_hash_t> get_id_shallow_hash(const ID &id,
+                                                        DeepHashErrors &r_errors,
+                                                        FileHashMemos &memos)
 {
   BLI_assert(ID_IS_LINKED(&id));
   const StringRefNull id_name = id.name;
-  const std::optional<XXH128_hash_t> file_hash = get_source_file_hash(id, r_errors);
+  const std::optional<XXH128_hash_t> file_hash = get_source_file_hash(id, r_errors, memos);
   if (!file_hash) {
     return std::nullopt;
   }
@@ -150,7 +343,8 @@ static void compute_deep_hash_recursive(const Main &bmain,
                                         const ID &id,
                                         Set<const ID *> &current_stack,
                                         Map<const ID *, IDHash> &r_hashes,
-                                        DeepHashErrors &r_errors)
+                                        DeepHashErrors &r_errors,
+                                        FileHashMemos &memos)
 {
   if (r_hashes.contains(&id)) {
     return;
@@ -161,7 +355,7 @@ static void compute_deep_hash_recursive(const Main &bmain,
   }
   current_stack.add(&id);
   BLI_SCOPED_DEFER([&]() -> void { current_stack.remove(&id); });
-  const std::optional<XXH128_hash_t> id_shallow_hash = get_id_shallow_hash(id, r_errors);
+  const std::optional<XXH128_hash_t> id_shallow_hash = get_id_shallow_hash(id, r_errors, memos);
   if (!id_shallow_hash) {
     return;
   }
@@ -208,7 +402,8 @@ static void compute_deep_hash_recursive(const Main &bmain,
           XXH3_128bits_update(hash_state, &random_data, sizeof(int));
           return IDWALK_RET_NOP;
         }
-        compute_deep_hash_recursive(bmain, *referenced_id, current_stack, r_hashes, r_errors);
+        compute_deep_hash_recursive(
+            bmain, *referenced_id, current_stack, r_hashes, r_errors, memos);
         const IDHash *referenced_id_hash = r_hashes.lookup_ptr(referenced_id);
         if (!referenced_id_hash) {
           success = false;
@@ -245,10 +440,14 @@ IDHashResult compute_linked_id_deep_hashes(const Main &bmain, Span<const ID *> i
   Map<const ID *, IDHash> hashes;
   Set<const ID *> current_stack;
   DeepHashErrors errors;
+  /* Angelo: each source file's version and hash are taken once for the whole call. */
+  FileHashMemos memos;
   for (const ID *id : ids) {
-    compute_deep_hash_recursive(bmain, *id, current_stack, hashes, errors);
+    compute_deep_hash_recursive(bmain, *id, current_stack, hashes, errors, memos);
   }
-  if (!errors.missing_files.is_empty() || !errors.updated_files.is_empty()) {
+  if (!errors.missing_files.is_empty() || !errors.missing_from_files.is_empty() ||
+      !errors.updated_files.is_empty())
+  {
     return errors;
   }
   return ValidDeepHashes{hashes};

@@ -34,18 +34,18 @@
 
 #include "BLI_kdopbvh.hh"
 #include "BLI_kdtree.hh"
-#include "BLI_linklist.h"
-#include "BLI_listbase.h"
-#include "BLI_math_base_safe.h"
-#include "BLI_math_geom.h"
-#include "BLI_math_matrix.h"
-#include "BLI_math_rotation.h"
-#include "BLI_math_vector.h"
-#include "BLI_rand.h"
-#include "BLI_string_utf8.h"
-#include "BLI_task.h"
-#include "BLI_threads.h"
-#include "BLI_utildefines.h"
+#include "BLI_linklist.hh"
+#include "BLI_listbase.hh"
+#include "BLI_math_base_safe.hh"
+#include "BLI_math_geom_c.hh"
+#include "BLI_math_matrix_c.hh"
+#include "BLI_math_rotation_c.hh"
+#include "BLI_math_vector_c.hh"
+#include "BLI_rand_c.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_task_c.hh"
+#include "BLI_threads.hh"
+#include "BLI_utildefines.hh"
 
 #include "BLT_translation.hh"
 
@@ -248,7 +248,7 @@ static void write_boid_state(BlendWriter *writer, BoidState *state)
     }
   }
 #if 0
-  BoidCondition *cond = state->conditions.first;
+  BoidCondition *cond = state->conditions.first();
   for (; cond; cond = cond->next) {
     writer->write_struct(cond);
   }
@@ -405,7 +405,7 @@ static void particle_settings_blend_read_after_liblink(BlendLibReader * /*reader
 {
   ParticleSettings *part = reinterpret_cast<ParticleSettings *>(id);
 
-  if (part->instance_weights.first && !part->instance_collection) {
+  if (part->instance_weights.first() && !part->instance_collection) {
     part->instance_weights.free_no_destruct();
   }
 }
@@ -430,6 +430,7 @@ IDTypeInfo IDType_ID_PA = {
     .foreach_cache = nullptr,
     .foreach_path = nullptr,
     .foreach_working_space_color = nullptr,
+    .foreach_asset_weak_reference = nullptr,
     .owner_pointer_get = nullptr,
 
     .blend_write = particle_settings_blend_write,
@@ -590,9 +591,7 @@ short psys_get_current_num(Object *ob)
     return 0;
   }
 
-  for (psys = static_cast<ParticleSystem *>(ob->particlesystem.first), i = 0; psys;
-       psys = psys->next, i++)
-  {
+  for (psys = ob->particlesystem.first(), i = 0; psys; psys = psys->next, i++) {
     if (psys->flag & PSYS_CURRENT) {
       return i;
     }
@@ -609,9 +608,7 @@ void psys_set_current_num(Object *ob, int index)
     return;
   }
 
-  for (psys = static_cast<ParticleSystem *>(ob->particlesystem.first), i = 0; psys;
-       psys = psys->next, i++)
-  {
+  for (psys = ob->particlesystem.first(), i = 0; psys; psys = psys->next, i++) {
     if (i == index) {
       psys->flag |= PSYS_CURRENT;
     }
@@ -674,7 +671,7 @@ void psys_sim_data_free(ParticleSimulationData *sim)
 
 void psys_disable_all(Object *ob)
 {
-  ParticleSystem *psys = static_cast<ParticleSystem *>(ob->particlesystem.first);
+  ParticleSystem *psys = ob->particlesystem.first();
 
   for (; psys; psys = psys->next) {
     psys->flag |= PSYS_DISABLED;
@@ -682,7 +679,7 @@ void psys_disable_all(Object *ob)
 }
 void psys_enable_all(Object *ob)
 {
-  ParticleSystem *psys = static_cast<ParticleSystem *>(ob->particlesystem.first);
+  ParticleSystem *psys = ob->particlesystem.first();
 
   for (; psys; psys = psys->next) {
     psys->flag &= ~PSYS_DISABLED;
@@ -703,7 +700,7 @@ ParticleSystem *psys_eval_get(Depsgraph *depsgraph, Object *object, ParticleSyst
   if (object_eval == object) {
     return psys;
   }
-  ParticleSystem *psys_eval = static_cast<ParticleSystem *>(object_eval->particlesystem.first);
+  ParticleSystem *psys_eval = object_eval->particlesystem.first();
   while (psys_eval != nullptr) {
     if (psys_eval->orig_psys == psys) {
       return psys_eval;
@@ -833,7 +830,7 @@ bool psys_dupli_weight_object_for_read(const ParticleSettings &settings,
           }
         }
         current.entered = true;
-        current.child = static_cast<const CollectionChild *>(current.collection->children.first);
+        current.child = static_cast<const CollectionChild *>(current.collection->children.first());
       }
       if (!current.child) {
         pending.remove_last();
@@ -874,7 +871,7 @@ bool psys_edit_cache_for_read(const Scene &scene,
    * collections, loads a disk cache, or adds a scene rigidbody cache. */
   BKE_ptcache_ids_from_object(&caches, const_cast<Object *>(object), nullptr, 0);
   if (caches.is_single()) {
-    const auto &cache = *static_cast<const PTCacheID *>(caches.first);
+    const auto &cache = *static_cast<const PTCacheID *>(caches.first());
     switch (cache.type) {
       case PTCACHE_TYPE_PARTICLES:
         edit_type = PE_TYPE_PARTICLES;
@@ -932,7 +929,7 @@ void psys_check_group_weights(ParticleSettings *part)
   psys_find_group_weights(part);
 
   /* Remove nullptr objects, that were removed from the collection. */
-  dw = static_cast<ParticleDupliWeight *>(part->instance_weights.first);
+  dw = part->instance_weights.first();
   while (dw) {
     if (dw->ob == nullptr ||
         !BKE_collection_has_object_recursive(part->instance_collection, dw->ob))
@@ -949,7 +946,7 @@ void psys_check_group_weights(ParticleSettings *part)
   /* Add new objects in the collection. */
   int index = 0;
   FOREACH_COLLECTION_OBJECT_RECURSIVE_BEGIN (part->instance_collection, object) {
-    dw = static_cast<ParticleDupliWeight *>(part->instance_weights.first);
+    dw = part->instance_weights.first();
     while (dw && dw->ob != object) {
       dw = dw->next;
     }
@@ -975,7 +972,7 @@ void psys_check_group_weights(ParticleSettings *part)
   }
 
   if (!current) {
-    dw = static_cast<ParticleDupliWeight *>(part->instance_weights.first);
+    dw = part->instance_weights.first();
     if (dw) {
       dw->flag |= PART_DUPLIW_CURRENT;
     }
@@ -1092,15 +1089,14 @@ void psys_free_particles(ParticleSystem *psys)
   PARTICLE_P;
 
   if (psys->particles) {
-    /* Even though psys->part should never be nullptr,
-     * this can happen as an exception during deletion.
-     * See ID_REMAP_SKIP/FORCE/FLAG_NEVER_NULL_USAGE in BKE_library_remap. */
-    if (psys->part && psys->part->type == PART_HAIR) {
-      LOOP_PARTICLES
-      {
-        if (pa->hair) {
-          MEM_delete(pa->hair);
-        }
+    /* Angelo (an upstream candidate): hair keys are freed wherever there are some, without asking
+     * the settings whether this is a hair system (as #free_hair does): freeing never reads the
+     * settings, which can be freed already (an object deleted together with them). */
+    LOOP_PARTICLES
+    {
+      if (pa->hair) {
+        MEM_delete(pa->hair);
+        pa->hair = nullptr;
       }
     }
 
@@ -1133,11 +1129,20 @@ void psys_free_pdd(ParticleSystem *psys)
     psys->pdd->partsize = 0;
   }
 }
+void psys_update_dupli_flag(Object *ob)
+{
+  /* Clear the do-not-draw flag when no particle system left draws objects or collections. */
+  for (const ParticleSystem &psys : ob->particlesystem) {
+    if (psys.part && ELEM(psys.part->ren_as, PART_DRAW_OB, PART_DRAW_GR)) {
+      return;
+    }
+  }
+  ob->transflag &= ~OB_DUPLIPARTS;
+}
+
 void psys_free(Object *ob, ParticleSystem *psys)
 {
   if (psys) {
-    int nr = 0;
-
     psys_free_path_cache(psys, nullptr);
 
     /* NOTE: We pass dynamics=0 to free_hair() to prevent it from doing an
@@ -1168,20 +1173,8 @@ void psys_free(Object *ob, ParticleSystem *psys)
       psys->totchild = 0;
     }
 
-    /* check if we are last non-visible particle system */
-    for (ParticleSystem &tpsys : ob->particlesystem) {
-      if (tpsys.part) {
-        if (ELEM(tpsys.part->ren_as, PART_DRAW_OB, PART_DRAW_GR)) {
-          nr++;
-          break;
-        }
-      }
-    }
-    /* clear do-not-draw-flag */
-    if (!nr) {
-      ob->transflag &= ~OB_DUPLIPARTS;
-    }
-
+    /* Angelo: no look at the object's other particle systems' settings here (see
+     * #psys_update_dupli_flag, called where one system leaves a living object). */
     psys->part = nullptr;
 
     if ((psys->flag & PSYS_SHARED_CACHES) == 0) {
@@ -1365,7 +1358,7 @@ static void get_pointcache_keys_for_time(Object * /*ob*/,
   int index1, index2;
 
   if (index < 0) { /* initialize */
-    *cur = static_cast<PTCacheMem *>(cache->mem_cache.first);
+    *cur = cache->mem_cache.first();
 
     if (*cur) {
       *cur = (*cur)->next;
@@ -1393,8 +1386,8 @@ static void get_pointcache_keys_for_time(Object * /*ob*/,
         BKE_ptcache_make_particle_key(key1, index1, pm->prev->data, float(pm->prev->frame));
       }
     }
-    else if (cache->mem_cache.first) {
-      pm = static_cast<PTCacheMem *>(cache->mem_cache.first);
+    else if (cache->mem_cache.first()) {
+      pm = cache->mem_cache.first();
       index2 = BKE_ptcache_mem_index_find(pm, index);
       if (index2 < 0) {
         return;
@@ -1561,7 +1554,7 @@ static void do_particle_interpolation(ParticleSystem *psys,
     }
 
     if (psys->part->phystype == PART_PHYS_KEYED && psys->flag & PSYS_KEYED_TIMING) {
-      ParticleTarget *pt = static_cast<ParticleTarget *>(psys->targets.first);
+      ParticleTarget *pt = psys->targets.first();
 
       pt = pt->next;
 
@@ -1577,7 +1570,7 @@ static void do_particle_interpolation(ParticleSystem *psys,
         }
       }
       else {
-        real_t = pa->time + (static_cast<ParticleTarget *>(psys->targets.last))->time;
+        real_t = pa->time + (psys->targets.last())->time;
       }
     }
 
@@ -3463,7 +3456,7 @@ void psys_cache_paths(ParticleSimulationData *sim, float cfra, const bool use_re
   }
 
   keyed = psys->flag & PSYS_KEYED;
-  baked = psys->pointcache->mem_cache.first && psys->part->type != PART_HAIR;
+  baked = psys->pointcache->mem_cache.first() && psys->part->type != PART_HAIR;
 
   /* clear out old and create new empty path cache */
   psys_free_path_cache(psys, psys->edit);
@@ -4232,7 +4225,7 @@ static ModifierData *object_add_or_copy_particle_system(
     name = (psys_orig != nullptr) ? psys_orig->name : DATA_("ParticleSystem");
   }
 
-  psys = static_cast<ParticleSystem *>(ob->particlesystem.first);
+  psys = ob->particlesystem.first();
   for (; psys; psys = psys->next) {
     psys->flag &= ~PSYS_CURRENT;
   }
@@ -4377,9 +4370,10 @@ void object_remove_particle_system(Main *bmain,
     id_us_min(&psys->part->id);
   }
   psys_free(ob, psys);
+  psys_update_dupli_flag(ob);
 
-  if (ob->particlesystem.first) {
-    (static_cast<ParticleSystem *>(ob->particlesystem.first))->flag |= PSYS_CURRENT;
+  if (ob->particlesystem.first()) {
+    (ob->particlesystem.first())->flag |= PSYS_CURRENT;
   }
   else {
     ob->mode &= ~OB_MODE_PARTICLE_EDIT;
@@ -5996,7 +5990,7 @@ void BKE_particle_system_blend_read_after_liblink(BlendLibReader * /*reader*/,
         /* XXX(@ideasman42): from reading existing code this seems correct but intended usage
          * of point-cache with cloth should be added in #ParticleSystem. */
         psys.clmd->point_cache = psys.pointcache;
-        psys.clmd->ptcaches.first = psys.clmd->ptcaches.last = nullptr;
+        psys.clmd->ptcaches.first_ = psys.clmd->ptcaches.last_ = nullptr;
         psys.clmd->modifier.error = nullptr;
       }
     }

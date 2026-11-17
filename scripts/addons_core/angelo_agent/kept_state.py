@@ -28,7 +28,7 @@ import os
 import stat
 from pathlib import Path
 
-from . import session_kept, shared_replace
+from . import owned_paths, session_kept, shared_replace
 
 NONE, OK, UNKNOWN, DAMAGED = "none", "ok", "unknown", "damaged"
 
@@ -69,7 +69,8 @@ def remove_copies(copies):
     """Remove kept copies whose whole content a save now holds (an error leaves one for a later save)."""
     for copy in copies:
         try:
-            Path(copy).unlink()
+            if owned_paths.may_write(copy):   # A list a script could append to: only where C says Angelo may.
+                Path(copy).unlink()
         except OSError:
             pass
 

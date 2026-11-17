@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
+from angelo_agent.blender_release import RELEASE  # noqa: E402
 from angelo_agent.script_api_notes import CAUGHT, RENAMED, notes  # noqa: E402
 
 NOTE = {row.get("string", row.get("attribute")): row["note"] for row in RENAMED}
@@ -69,7 +70,7 @@ class Notes(unittest.TestCase):
         self.assertLessEqual(len(RENAMED), 8)
         for row in RENAMED:
             self.assertEqual(len([key for key in ("string", "attribute") if key in row]), 1, row)
-            self.assertTrue(row["owner"] and row["note"].startswith("Blender 5.2"), row)
+            self.assertTrue(row["owner"] and row["note"].startswith("Blender %s" % RELEASE), row)
 
 
 if __name__ == "__main__":

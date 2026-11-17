@@ -89,18 +89,28 @@ def _environment(home, record, extra=()):
     return env
 
 
-def build_project(folder, angelo, godot, home, record, strict=False):
+def godot_settings_folder(home):
+    """Where Godot reads its editor settings under ``home`` (HOME is private to the run): macOS, else Linux's XDG
+    folder (Windows' %APPDATA% is not set up by this harness)."""
+    if sys.platform == "darwin":
+        return home / "Library/Application Support/Godot"
+    return home / ".config/godot"
+
+
+def build_project(folder, angelo, godot, home, record, strict=False, driver=DRIVER):
+    """A throwaway Godot project with the shipped plugin and the test ``driver`` (an addon folder) enabled."""
     project = folder / "project"
     (project / "addons").mkdir(parents=True)
     shutil.copytree(ADDON, project / "addons/angelo_link")
-    shutil.copytree(DRIVER, project / "addons/angelo_link_e2e")
-    text = PROJECT.replace("[editor_plugins]", strict_settings() + "[editor_plugins]") if strict else PROJECT
+    shutil.copytree(driver, project / "addons" / driver.name)
+    text = PROJECT.replace("angelo_link_e2e/plugin.cfg", driver.name + "/plugin.cfg")
+    text = text.replace("[editor_plugins]", strict_settings() + "[editor_plugins]") if strict else text
     (project / "project.godot").write_text(text, encoding="utf-8")
     env = _environment(home, record)
     subprocess.run([angelo, "--background", "--factory-startup", "--python-expr", MAKE_ASSETS, "--", str(project)],
                    check=True, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
     (project / "main.tscn").write_text(SCENE, encoding="utf-8")
-    settings = home / "Library/Application Support/Godot"
+    settings = godot_settings_folder(home)
     settings.mkdir(parents=True, exist_ok=True)
     version = subprocess.run([godot, "--version"], capture_output=True, text=True, timeout=60).stdout.strip()
     series = ".".join(version.split(".")[:2])

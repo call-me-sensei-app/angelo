@@ -2,11 +2,15 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
+/** \file
+ * \ingroup gpu
+ */
+
 #include "BKE_global.hh"
 
 #include "DNA_userdef_types.h"
 
-#include "BLI_math_base.h"
+#include "BLI_math_base_c.hh"
 
 #include "mtl_context.hh"
 #include "mtl_debug.hh"
@@ -26,6 +30,8 @@ constexpr static size_t MEMORY_SIZE_1GB = 1LL * (1024LL * 1024LL * 1024LL);
 constexpr static size_t MEMORY_SIZE_2GB = 2LL * (1024LL * 1024LL * 1024LL);
 
 namespace blender::gpu {
+
+static CLG_LogRef LOG = {"gpu.metal"};
 
 /* -------------------------------------------------------------------- */
 /** \name Memory Management - MTLBufferPool and MTLSafeFreeList implementations
@@ -249,13 +255,22 @@ bool MTLBufferPool::free_buffer(gpu::MTLBuffer *buffer)
   BLI_assert(buffer_in_use);
   if (buffer_in_use) {
 
-    /* Fetch active safe pool from atomic ptr. */
+    /* Reference the active safe pool while the buffer is inserted, otherwise other threads can
+     * begin new lists and release it in the meantime. Locked so that it can't be replaced and
+     * released before it is referenced. This doesn't flag the list as referenced by a workload,
+     * see #MTLSafeFreeList::should_flush. */
+    safelist_lock_.lock();
     MTLSafeFreeList *current_pool = this->get_current_safe_list();
+    BLI_assert(current_pool);
+    current_pool->reference_count_++;
+    safelist_lock_.unlock();
 
     /* Place buffer in safe_free_pool before returning to MemoryManager buffer pools. */
-    BLI_assert(current_pool);
     current_pool->insert_buffer(buffer);
     buffer->flag_in_use(false);
+
+    /* Release after the buffer is flagged as unused, the list can be completed here. */
+    current_pool->decrement_reference();
 
     return true;
   }
@@ -275,6 +290,8 @@ void MTLBufferPool::update_memory_pools()
 #if MTL_DEBUG_MEMORY_STATISTICS == 1
   int num_buffers_added = 0;
 #endif
+
+  bool pools_grew = false;
 
   /* Always free oldest MTLSafeFreeList first. */
   for (int safe_pool_free_index = 0; safe_pool_free_index < completed_safelist_queue_.size();
@@ -298,6 +315,7 @@ void MTLBufferPool::update_memory_pools()
         /* Insert buffer back into open pools. */
         BLI_assert(buf->get_in_use() == false);
         this->insert_buffer_into_pool(buf->get_resource_options(), buf);
+        pools_grew = true;
         counter++;
 
 #if MTL_DEBUG_MEMORY_STATISTICS == 1
@@ -324,72 +342,83 @@ void MTLBufferPool::update_memory_pools()
    * This ensures memory pressure stays low for scenes with compounding complexity during
    * animation.
    * If memory is continually used, then we do not want to free this memory as it will be
-   * re-allocated during a short time period. */
+   * re-allocated during a short time period.
+   *
+   * What this sweep frees depends only on the clock's second and on how much the pools hold, and
+   * only this function adds to the pools. So a sweep in the same second as the last one, with
+   * nothing added in between, frees nothing and is skipped: the window manager calls this on every
+   * pass of its main loop, about 160 times a second while idle, and the sweep visits every pooled
+   * buffer. */
 
   const time_t time_now = std::time(nullptr);
-  for (auto buffer_pool_list : buffer_pools_.items()) {
-    MTLBufferPoolOrderedList *pool_allocations = buffer_pool_list.value;
-    MTLBufferPoolOrderedList::iterator pool_iterator = pool_allocations->begin();
-    while (pool_iterator != pool_allocations->end()) {
+  if (pools_grew || time_now != last_stale_sweep_time_) {
+    last_stale_sweep_time_ = time_now;
+    stale_sweep_count_++;
+    for (auto buffer_pool_list : buffer_pools_.items()) {
+      MTLBufferPoolOrderedList *pool_allocations = buffer_pool_list.value;
+      MTLBufferPoolOrderedList::iterator pool_iterator = pool_allocations->begin();
+      while (pool_iterator != pool_allocations->end()) {
 
-      const MTLBufferHandle handle = *pool_iterator;
-      const time_t time_passed = time_now - handle.insert_time;
+        const MTLBufferHandle handle = *pool_iterator;
+        const time_t time_passed = time_now - handle.insert_time;
 
-      /* Free allocations if a certain amount of time has passed.
-       * Deletion frequency depends on how much excess memory
-       * the application is using. */
-      time_t deletion_time_threshold_s = 600;
-      /* Spare pool memory >= 2GB. */
-      if (allocations_in_pool_ >= MEMORY_SIZE_2GB) {
-        deletion_time_threshold_s = 2;
-      }
-      else
-        /* Spare pool memory >= 1GB. */
-        if (allocations_in_pool_ >= MEMORY_SIZE_1GB) {
-          deletion_time_threshold_s = 4;
+        /* Free allocations if a certain amount of time has passed.
+         * Deletion frequency depends on how much excess memory
+         * the application is using. */
+        time_t deletion_time_threshold_s = 600;
+        /* Spare pool memory >= 2GB. */
+        if (allocations_in_pool_ >= MEMORY_SIZE_2GB) {
+          deletion_time_threshold_s = 2;
         }
-        /* Spare pool memory >= 512MB. */
-        else if (allocations_in_pool_ >= MEMORY_SIZE_512MB) {
-          deletion_time_threshold_s = 15;
-        }
-        /* Spare pool memory >= 256MB. */
-        else if (allocations_in_pool_ >= MEMORY_SIZE_256MB) {
-          deletion_time_threshold_s = 60;
-        }
+        else
+          /* Spare pool memory >= 1GB. */
+          if (allocations_in_pool_ >= MEMORY_SIZE_1GB) {
+            deletion_time_threshold_s = 4;
+          }
+          /* Spare pool memory >= 512MB. */
+          else if (allocations_in_pool_ >= MEMORY_SIZE_512MB) {
+            deletion_time_threshold_s = 15;
+          }
+          /* Spare pool memory >= 256MB. */
+          else if (allocations_in_pool_ >= MEMORY_SIZE_256MB) {
+            deletion_time_threshold_s = 60;
+          }
 
-      if (time_passed > deletion_time_threshold_s) {
+        if (time_passed > deletion_time_threshold_s) {
 
-        /* Remove buffer from global allocations list and release resource. */
-        allocations_list_delete(handle.buffer);
+          /* Remove buffer from global allocations list and release resource. */
+          allocations_list_delete(handle.buffer);
 
-        /* Remove buffer from pool and update pool statistics. */
-        pool_iterator = pool_allocations->erase(pool_iterator);
-        allocations_in_pool_ -= handle.buffer_size;
+          /* Remove buffer from pool and update pool statistics. */
+          pool_iterator = pool_allocations->erase(pool_iterator);
+          allocations_in_pool_ -= handle.buffer_size;
 #if MTL_DEBUG_MEMORY_STATISTICS == 1
-        buffers_in_pool_--;
+          buffers_in_pool_--;
 #endif
-        continue;
+          continue;
+        }
+        pool_iterator++;
       }
-      pool_iterator++;
     }
   }
 
 #if MTL_DEBUG_MEMORY_STATISTICS == 1
-  printf("--- Allocation Stats ---\n");
-  printf("  Num buffers processed in pool (this frame): %u\n", num_buffers_added);
+  CLOG_DEBUG(&LOG, "--- Allocation Stats ---");
+  CLOG_DEBUG(&LOG, "  Num buffers processed in pool (this frame): %u", num_buffers_added);
 
   uint framealloc = (uint)per_frame_allocation_count_;
-  printf("  Allocations in frame: %u\n", framealloc);
-  printf("  Total Buffers allocated: %u\n", allocations_list_size_);
-  printf("  Total Memory allocated: %u MB\n", (uint)total_allocation_bytes_ / (1024 * 1024));
+  CLOG_DEBUG(&LOG, "  Allocations in frame: %u", framealloc);
+  CLOG_DEBUG(&LOG, "  Total Buffers allocated: %u", allocations_list_size_);
+  CLOG_DEBUG(
+      &LOG, "  Total Memory allocated: %u MB", (uint)total_allocation_bytes_ / (1024 * 1024));
 
   uint allocs = (uint)(allocations_in_pool_) / 1024 / 2024;
-  printf("  Free memory in pools: %u MB\n", allocs);
+  CLOG_DEBUG(&LOG, "  Free memory in pools: %u MB", allocs);
 
   uint buffs = (uint)buffers_in_pool_;
-  printf("  Buffers in pools: %u\n", buffs);
+  CLOG_DEBUG(&LOG, "  Buffers in pools: %u", buffs);
 
-  printf("  Pools %u:\n", (uint)buffer_pools_.size());
+  CLOG_DEBUG(&LOG, "  Pools %u:", (uint)buffer_pools_.size());
   auto key_iterator = buffer_pools_.keys().begin();
   auto value_iterator = buffer_pools_.values().begin();
   while (key_iterator != buffer_pools_.keys().end()) {
@@ -400,11 +429,12 @@ void MTLBufferPool::update_memory_pools()
       iters++;
     }
 
-    printf("    Buffers in pool (%u)(%llu): %u (%u MB)\n",
-           (uint)*key_iterator,
-           iters,
-           (uint)((*value_iterator)->size()),
-           (uint)mem_in_pool / 1024 / 1024);
+    CLOG_DEBUG(&LOG,
+               "    Buffers in pool (%u)(%llu): %u (%u MB)",
+               (uint)*key_iterator,
+               iters,
+               (uint)((*value_iterator)->size()),
+               (uint)mem_in_pool / 1024 / 1024);
     ++key_iterator;
     ++value_iterator;
   }
@@ -443,12 +473,44 @@ MTLSafeFreeList *MTLBufferPool::get_current_safe_list()
   return current_free_list_;
 }
 
-void MTLBufferPool::begin_new_safe_list()
+MTLSafeFreeList *MTLBufferPool::acquire_current_safe_list()
+{
+  /* Locked so that the list can't be replaced and released before it is referenced. */
+  std::scoped_lock lock(safelist_lock_);
+  MTLSafeFreeList *list = get_current_safe_list();
+  list->increment_reference();
+  return list;
+}
+
+bool MTLBufferPool::has_completed_safe_lists()
+{
+  std::scoped_lock lock(safelist_lock_);
+  return !completed_safelist_queue_.is_empty();
+}
+
+uint64_t MTLBufferPool::stale_sweep_count()
+{
+  std::scoped_lock lock(buffer_pool_lock_);
+  return stale_sweep_count_;
+}
+
+void MTLBufferPool::begin_new_safe_list(const bool only_if_should_flush)
 {
   safelist_lock_.lock();
   MTLSafeFreeList *previous_list = prev_free_buffer_list_;
   MTLSafeFreeList *active_list = get_current_safe_list();
-  current_free_list_ = new MTLSafeFreeList();
+  /* Check while locked, multiple threads may begin a new list at the same time. */
+  if (only_if_should_flush && !active_list->should_flush()) {
+    safelist_lock_.unlock();
+    return;
+  }
+  MTLSafeFreeList *new_list = new MTLSafeFreeList();
+  if (active_list) {
+    /* Released by the active list once it is released, see #MTLSafeFreeList::next_list_. */
+    new_list->reference_count_++;
+    active_list->next_list_ = new_list;
+  }
+  current_free_list_ = new_list;
   prev_free_buffer_list_ = active_list;
   safelist_lock_.unlock();
 
@@ -585,6 +647,7 @@ MTLSafeFreeList::MTLSafeFreeList()
 void MTLSafeFreeList::insert_buffer(gpu::MTLBuffer *buffer)
 {
   BLI_assert(in_free_queue_ == false);
+  freed_size_ += buffer->get_size();
 
   /* Lockless list insert. */
   uint insert_index = current_list_index_++;
@@ -631,25 +694,32 @@ void MTLSafeFreeList::increment_reference()
  * completion callback thread. */
 void MTLSafeFreeList::decrement_reference()
 {
-  lock_.lock();
-  BLI_assert(in_free_queue_ == false);
-  int ref_count = --reference_count_;
+  /* Releasing a list releases the reference it holds on the next list. */
+  MTLSafeFreeList *list = this;
+  while (list) {
+    list->lock_.lock();
+    BLI_assert(list->in_free_queue_ == false);
+    int ref_count = --list->reference_count_;
 
-  if (ref_count == 0) {
-    MTLContext::get_global_memory_manager()->push_completed_safe_list(this);
+    MTLSafeFreeList *next_list = nullptr;
+    if (ref_count == 0) {
+      next_list = list->next_list_;
+      MTLContext::get_global_memory_manager()->push_completed_safe_list(list);
+    }
+    list->lock_.unlock();
+    list = next_list;
   }
-  lock_.unlock();
 }
 
 bool MTLSafeFreeList::should_flush()
 {
   /* We should only consider refreshing a list if it has been referenced by active workloads, and
-   * contains a sufficient buffer count to avoid overheads associated with flushing the list. If
-   * the reference count is only equal to 1, buffers may have been added, but no command
-   * submissions will have been issued, hence buffers could be returned to the pool prematurely if
-   * associated workload submission occurs later. */
-  return ((reference_count_ > 1 || referenced_by_workload_) &&
-          current_list_index_ > MIN_BUFFER_FLUSH_COUNT);
+   * contains a sufficient buffer count or size to avoid overheads associated with flushing the
+   * list. If the list hasn't been referenced by a command buffer, buffers may have been added, but
+   * no command submissions will have been issued, hence buffers could be returned to the pool
+   * prematurely if associated workload submission occurs later. */
+  return (referenced_by_workload_ &&
+          (current_list_index_ > MIN_BUFFER_FLUSH_COUNT || freed_size_ >= MIN_FLUSH_SIZE));
 }
 
 /** \} */

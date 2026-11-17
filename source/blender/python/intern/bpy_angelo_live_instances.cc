@@ -18,8 +18,8 @@
 #include "BLI_bounds_types.hh"
 #include "BLI_listbase_iterator.hh"
 #include "BLI_math_matrix.hh"
-#include "BLI_math_vector.h"
-#include "BLI_utildefines.h"
+#include "BLI_math_vector.hh"
+#include "BLI_utildefines.hh"
 
 #include "BKE_curve.hh"
 #include "BKE_curves.hh"
@@ -56,7 +56,7 @@ bool live_dupli_shows_self(const DupliObject &dob, const eEvaluationMode mode)
 {
   const Object &ob = *dob.ob;
   const bool replaced = dob.ob_data != nullptr && dob.ob_data != ob.data;
-  const bool instancer = ob.particlesystem.first != nullptr || (ob.transflag & OB_DUPLI) ||
+  const bool instancer = ob.particlesystem.first() != nullptr || (ob.transflag & OB_DUPLI) ||
                          (!replaced && bke::object_has_geometry_set_instances(ob));
   return !instancer || (ob.duplicator_visibility_flag &
                         (mode == DAG_EVAL_RENDER ? OB_DUPLI_FLAG_RENDER : OB_DUPLI_FLAG_VIEWPORT));
@@ -95,7 +95,7 @@ static std::optional<Bounds<float3>> dupli_bounds(const DupliObject &dob)
       return reinterpret_cast<const Mesh *>(dob.ob_data)->bounds_min_max();
     case ID_CU_LEGACY: {
       const Curve *curve = reinterpret_cast<const Curve *>(dob.ob_data);
-      if (std::optional<Bounds<float3>> bounds = BKE_curve_minmax(curve, true)) {
+      if (std::optional<Bounds<float3>> bounds = BKE_curve_geometry_minmax(curve)) {   /* F-L-1 */
         return bounds;
       }
       return curve->curve_eval ? curve->curve_eval->geometry.wrap().bounds_min_max(false) :

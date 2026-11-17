@@ -14,8 +14,8 @@
 
 #ifdef RNA_RUNTIME
 
-#  include "BLI_listbase.h"
-#  include "BLI_threads.h"
+#  include "BLI_listbase.hh"
+#  include "BLI_threads.hh"
 
 #  include "BKE_context.hh"
 #  include "BKE_global.hh"
@@ -64,7 +64,7 @@ static void rna_RegionView3D_update(ID *id, RegionView3D *rv3d, bContext *C, Rep
 
   if (area && region && area->spacetype == SPACE_VIEW3D) {
     Main *bmain = CTX_data_main(C);
-    View3D *v3d = static_cast<View3D *>(area->spacedata.first);
+    View3D *v3d = area->spacedata.first_as<View3D>();
     wmWindowManager *wm = CTX_wm_manager(C);
 
     for (wmWindow &win : wm->windows) {

@@ -1,0 +1,91 @@
+{
+ "captured": "2026-11-13",
+ "layouts": {
+  "gemini": {
+   "declaration_keys": [
+    "description",
+    "name",
+    "parametersJsonSchema"
+   ],
+   "tool_config": [],
+   "tool_keys": [
+    "functionDeclarations"
+   ]
+  },
+  "messages": {
+   "anthropic_beta": [
+    "claude-code-20250219",
+    "context-management-2025-06-27",
+    "effort-2025-11-24",
+    "interleaved-thinking-2025-05-14",
+    "mid-conversation-tool-changes-2026-07-01",
+    "per-turn-control-2026-07-01",
+    "thinking-token-count-2026-05-13"
+   ],
+   "defer_loading": [
+    true
+   ],
+   "tool_choice": null,
+   "tool_keys": [
+    "description",
+    "input_schema",
+    "name"
+   ]
+  },
+  "responses_code_mode": {
+   "carriers": [
+    "input:additional_tools:developer"
+   ],
+   "custom_format": {
+    "syntax": "lark",
+    "type": "grammar"
+   },
+   "function_keys": [
+    "description",
+    "name",
+    "parameters",
+    "strict",
+    "type"
+   ],
+   "kinds": [
+    "custom",
+    "function"
+   ],
+   "namespaces": [
+    "functions"
+   ],
+   "parallel_tool_calls": false,
+   "tool_choice": "auto"
+  },
+  "responses_plain": {
+   "carriers": [
+    "tools"
+   ],
+   "custom_format": null,
+   "function_keys": [
+    "description",
+    "name",
+    "parameters",
+    "strict",
+    "type"
+   ],
+   "kinds": [
+    "function"
+   ],
+   "namespaces": [],
+   "parallel_tool_calls": true,
+   "tool_choice": "auto"
+  }
+ },
+ "runtime": {
+  "claude_code": "2.1.316",
+  "codex_commit": "0963be48f56dbb3eb2513655b39ce7a256e744b3",
+  "codex_version": "0.166.0",
+  "equivalent_to": {
+   "changed_files": [
+    "codex-rs/core/config.schema.json"
+   ],
+   "commit": "caab709d09b56e552daa83c5f640996325affeb0"
+  }
+ }
+}

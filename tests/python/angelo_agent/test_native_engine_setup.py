@@ -12,6 +12,7 @@ operators. Engine and vendor names are stand-ins: the rules hold for any engine 
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import contextlib
 import os
@@ -166,7 +167,11 @@ class SetUpTests(Folder):
                    mock.patch.object(BPY, "ops", SimpleNamespace(wm=SimpleNamespace(
                        save_userpref=lambda: calls.append("saved"))), create=True),
                    mock.patch.dict(sys.modules, {"addon_utils": fake}),
-                   mock.patch.object(render_extensions, "addon_engines", lambda roots=None: dict(engines))]
+                   mock.patch.object(render_extensions, "addon_engines", lambda roots=None: dict(engines)),
+                   # What Angelo finds installed now (set_up links only that): the add-ons this test made.
+                   mock.patch.object(engine_setup, "found", lambda: [
+                       {"module": path.name, "name": path.name, "source": str(path)}
+                       for path in sorted((self.root / "blender").glob("*")) if path.is_dir()])]
         for patcher in patches:
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -182,6 +187,17 @@ class SetUpTests(Folder):
         self.assertLess(calls.index("paths"), calls.index(("enable", "lux", True, True)),
                         "a first add-on's folder is importable before it is enabled")
         self.assertEqual(calls[-1], "saved")
+
+    def test_only_an_add_on_angelo_finds_now_is_linked(self):
+        # The module and folder come from the card's Python state: one Angelo doesn't find now is refused, untouched.
+        addon(self.root / "blender", "lux", "Lux")
+        elsewhere = addon(self.root / "elsewhere", "lux", "Lux")
+        calls, addons = self.stand_in()
+        with self.assertRaises(engine_setup.SetupError) as caught:
+            engine_setup.set_up("lux", "Lux", str(elsewhere))
+        self.assertEqual(caught.exception.template, engine_setup.NO_LINK)
+        self.assertFalse(os.path.lexists(addons / "lux"))
+        self.assertNotIn(("enable", "lux", True, True), calls)
 
     def test_an_add_on_with_no_engine_is_turned_off_and_its_link_removed(self):
         source = addon(self.root / "blender", "tools", "Tools")
@@ -354,7 +370,7 @@ class StatusTests(unittest.TestCase):
 
     def test_a_check_a_restart_superseded_never_writes_its_old_answer(self):
         release, first = threading.Event(), []   # The first check would say "not answering", after the restart.
-        engine_status.VENDORS["lux_addon"].service = lambda: (release.wait(5),
+        engine_status.VENDORS["lux_addon"].service = lambda: (release.wait(CAP_S),
                                                               threading.current_thread() not in first)[1]
         engine_status.service_answers("lux_addon")
         first.append(engine_status._checking["lux_addon"])

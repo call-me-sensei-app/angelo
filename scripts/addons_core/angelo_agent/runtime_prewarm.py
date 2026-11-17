@@ -200,7 +200,8 @@ def observe(active, draft, controllers, now):
     replaced = False  # The open chat's runtime was closed by another change (a connection, a sign-in).
     for controller in controllers:
         record = controller.prewarmed
-        if record is not None and (_replaced(controller, record) or now - record.touched >= IDLE_SECONDS):
+        if record is not None and (_replaced(controller, record) or now - record.touched >= IDLE_SECONDS
+                                   or _refused(controller)):
             replaced = replaced or (controller is active and _replaced(controller, record))
             release(controller)
     if active is None or draft is None:
@@ -310,7 +311,7 @@ def context(controller):
 def start(controller, launch_key, now):
     """Start the runtime the chat's next message would launch, sending nothing; the record, or None."""
     from .providers import ClaudeProvider, CodexProvider
-    if controller.provider is not None or controller.prewarmed is not None:
+    if controller.provider is not None or controller.prewarmed is not None or _refused(controller):
         return None
     if getattr(controller, "hosted_in_worker", False) is True:   # Its runtime starts in its worker, never here.
         from . import worker_mirror_prewarm
@@ -325,6 +326,13 @@ def start(controller, launch_key, now):
     controller.provider = provider
     controller.prewarmed = Prewarm(provider, owner, launch_key, now)
     return controller.prewarmed
+
+
+def _refused(controller):
+    """An organization's model server the account doesn't admit now (endpoint_ui.send_refusal): nothing warms."""
+    from .endpoint_ui import send_refusal
+    state = getattr(controller, "state", {})
+    return send_refusal(state.get("provider"), state.get("connection_id")) is not None
 
 
 def release(controller):

@@ -25,7 +25,7 @@ import sys
 import threading
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parents[2] / "scripts/addons_core"), str(HERE)]
@@ -147,13 +147,13 @@ def run(claude, out, direct, attempt):
     endpoint = Endpoint(folder)
     context = host(folder / "home", direct)
     provider = ClaudeProvider(context, {})
-    provider.executable = claude
-    provider.env = {"PATH": os.environ.get("PATH", ""), "HOME": str(folder / "home"),
-                    "CLAUDE_CONFIG_DIR": str(folder / "home/.claude"), "ANTHROPIC_API_KEY": "probe-not-a-secret",
-                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:%d" % endpoint.server.server_address[1],
-                    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
-    try:
-        status = provider.run_request(context, None, "Find the bridge.", observation={})
+    env = {"PATH": os.environ.get("PATH", ""), "HOME": str(folder / "home"),
+           "CLAUDE_CONFIG_DIR": str(folder / "home/.claude"), "ANTHROPIC_API_KEY": "probe-not-a-secret",
+           "ANTHROPIC_BASE_URL": "http://127.0.0.1:%d" % endpoint.server.server_address[1],
+           "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
+    try:   # Every start is launched with these (built at each start in the app: runtime_launch.claude_launch).
+        with patch("angelo_agent.providers.claude_launch", side_effect=lambda *_args: (claude, dict(env))):
+            status = provider.run_request(context, None, "Find the bridge.", observation={})
     finally:
         provider.close()
         endpoint.server.shutdown()

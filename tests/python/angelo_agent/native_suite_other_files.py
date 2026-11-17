@@ -26,6 +26,8 @@ EXCLUDED = {
     "bench_uv_checker_draw.py": "The in-app half of bench_uv_checker.py; that driver launches it.",
     "bench_engine_preflight.py": "Export time with and without the engine preflight on a production-size scene (ABAB), "
                                  "and the engine link's save; run alone on a quiet machine.",
+    "bench_result_brief_bytes.py": "Bytes a game-ready result and a parallel worker's first message put in front of "
+                                   "a model, by request and worker count; host Python, no Blender; run alone.",
     "bench_export_snapshot.py": "export_snapshot.take's copy time by file size against CopyFile2, copyfile and a hard "
                                 "link; standard library, for Windows; run alone.",
     "bench_game_ready_check.py": "The game-ready check's cost by phase and meshoptimizer against Decimate (ABAB) on "
@@ -38,7 +40,13 @@ EXCLUDED = {
                                       "are its arguments; doc/angelo/updates_and_reports.rst); run by the release.",
     "update_lines_probe.py": "Runs inside a published app for update_lines_shipped_client.py; that gate launches it.",
     "bench_live_view.py": "A live view's reload cost per worker save against document size, with a control; run alone.",
+    "update_carry_over_gate.py": "Release gate: an earlier release's state carried to the candidate (two apps; "
+                                 "doc/angelo/releasing.rst); run by the release, in a quiet slot.",
+    "update_carry_over_phases.py": "The in-app half of update_carry_over_gate.py; that gate launches it.",
+    "update_carry_over_seed.py": "Runs inside the EARLIER app for update_carry_over_gate.py; that gate launches it.",
     "bench_view_shader_wait.py": "GUI views after new materials, the old path against view_warm's wait; run alone.",
+    "bench_first_draw.py": "Background or GUI: what the first draw of one object's new materials and of a new world "
+                           "costs the main thread, and what the view after them still builds (inventory C5).",
     "bench_shader_compile.py": "Background Blender: a new material's EEVEE compile per kind, cold and cached "
                                "(view_warm.GRACE_SECONDS); run alone, niced.",
     "bench_game_physics_export.py": "A glTF export without the game physics extension, with it and nothing marked, "
@@ -74,12 +82,15 @@ EXCLUDED = {
     "benchmark_blender_native_depsgraph.py": "Native graph performance benchmark; run alone after builds/tests stop.",
     "benchmark_blender_agent_execution.py": "Performance benchmark; run alone after builds/tests stop.",
     "benchmark_blender_fingerprint.py": "Performance benchmark; run alone after native measurements stop.",
+    "benchmark_confinement.py": "Per-script confinement cost (ABAB against a base build); run alone, by hand.",
     "measure_sky_table.py": "Re-measures world_light_table.SKY_TABLE (Cycles renders) for a new Blender; run by hand.",
     "measure_parts_check.py": "Measures the parts check on the research characters (the gate on parts_check.READY); "
                               "billed on a subscription, run by hand under its pre-registration.",
     "measure_parts_ground.py": "Measures Fit to My Image on the research characters (the gate on parts_ground.MEASURED); "
                                "billed on a subscription, run by hand under its pre-registration.",
     "benchmark_blender_operator_run_work.py": "Growth of operator_run's phase-5 operators at n and 4n; run alone.",
+    "benchmark_bake_auto_smooth.py": "Objects sharing a mesh before and after Bake Auto Smooth (Blender #153195); "
+                                     "background, run alone.",
     "benchmark_blender_read_tools.py": "Time and answer size of the live read tools on a given .blend; run alone.",
     "read_coverage_sweep.py": "Records what the live reader answers on a planted document, once per binary; run alone.",
     "read_coverage_compare.py": "Host CLI comparing two read_coverage_sweep.py records; no Blender.",
@@ -149,6 +160,9 @@ EXCLUDED = {
     "native_coverage_metrics.py": "Read-only coverage measurement for native_coverage.rst; not a pass/fail suite.",
     "test_codex_external_local.py": "Host-Python test that drives the installed Codex CLI; explicit only.",
     "codex_prompt_probe.py": "Unbilled probe of the installed Codex CLI's request bytes (fake local endpoint); explicit only.",
+    "bench_api_key.py": "Run by the Windows bench session as its bench user (windows_bench_tools.ps1 Use-GateKey): a "
+                        "gate's API key from Secret Manager into Credential Manager; never by the runner.",
+    "gemini_prompt_probe.py": "Unbilled probe of the agent runtime's Gemini wire request bytes (fake local endpoint, dummy key); explicit only.",
     "codex_image_prefix_probe.py": "Unbilled probe: whether a dynamic tool's picture keeps a Codex chat's request prefix (fake local endpoint); explicit only.",
     "approval_hold_probe.py": "Unbilled probe: whether a codex launched with Angelo's flags holds a cell while a call "
                               "waits for the person (fake local endpoint); test_native_codex_approval_hold.py runs it.",
@@ -164,6 +178,9 @@ EXCLUDED = {
                                  "(fake local endpoint); explicit only.",
     "claude_direct_probe.py": "Unbilled probe of the opt-in direct-tools route with the installed Claude Code CLI: both "
                               "routes against a fake local endpoint, their openings and what the model received",
+    "capture_endpoint_tool_layouts.py": "Release step when the agent runtime pin moves: launches Codex and Claude Code "
+                                        "against a local recorder and writes fixtures/endpoint_tool_layouts.json "
+                                        "(releasing.rst, \"Agent runtime\"); no key, no model.",
     "claude_prompt_probe.py": "Unbilled probe of the installed Claude Code CLI's request bytes and cache TTLs per route (fake local endpoint, "
                               "dummy key, never a sign-in); explicit only.",
     "runtime_launch_check.py": "Unbilled launch check and first-message timing of Claude Code and Codex releases, "
@@ -202,14 +219,59 @@ EXCLUDED = {
     "bench_floor_blender.py": "Never-slower floor rows in Angelo and stock Blender (listing, kit.cut, bulk creation); "
                               "started by bench_floor_launch.py --rows or by hand; run alone.",
     "floor_launch_probe.py": "In-app launch probe; started only by bench_floor_launch.py (it reads the driver's arguments).",
+    "bench_merge_check.py": "Main-thread latency of the parallel merge's privacy check on a large part; by hand with an "
+                            "output folder, the same on each build compared.",
+    "bench_merge_check_person.py": "The merge privacy check's time and disk with gigabytes of the person's own data "
+                                   "in the open file; by hand with an output folder and a size.",
+    "redo_packed_linked_repro.py": "Plain Blender Redo on packed linked data (BREAKIT-C7A-13 M1), Angelo's add-on "
+                                   "disabled; run by test_blender_redo_packed_linked_tracking, or by hand.",
 }
 
 # Imported fixture/helper modules and host runners: not entry points.
 HELPERS = frozenset({
+    "angelo_guard_twin.py",   # Host tests: the grant authority's Python twin (suite_isolation installs it).
+    "grant_inventory.py",   # The grant inventory's lists and scanners: the host test and its in-app suite.
+    "grant_call_sites.py",   # Every grant operator call in the add-on and the scope that reaches it (host test).
+    "qa_canvas_grant.py",   # A canvas grant pressed as the person presses it; a scripted one refused.
+    # The agent-script confinement's attacks (doc/angelo/script_confinement.rst): the child the host test runs, its
+    # table of attacks, and how a test admits a run as Angelo's approval would.
+    "confinement_attacks.py", "attacks_table.py", "confinement_attacks_admit.py", "escapes_table.py",
+    "escapes_later.py",
+    "escapes_after.py", "escapes_sinks.py", "escapes_trust.py", "escapes_review.py", "escapes_review2.py",
+    "escapes_loading.py", "escapes_provenance.py", "escapes_review3.py",
+    "escapes_review4.py", "escapes_angelo_io.py", "escapes_review5.py", "escapes_review5_angelo.py",
+    "native_inventory.py", "pipeline_cases.py", "pipeline_inventory.py",
     "essentials_dirty_undo.py",
+    "escapes_provenance_person.py",   # escapes_provenance's child for the person's Forget (its own harness flag).
+    "escapes_review5_sinks.py",   # Piece 9 (ii): a planted target left by every cleanup (the escapes suite).
+    "escapes_engine_children.py",   # Piece 10, engine link: a background child's targets asked of C first.
+    "escapes_review6.py",   # Piece 10: the reviewer's sixth read (threading's trace hooks; the escapes suite).
+    "escapes_review7.py",   # Piece 10's review: no folder vouched, nothing kept, hard links, writers (escapes).
+    "escapes_review8.py",   # Its re-review: a script's file browser, typed paths per writer, Windows forms (escapes).
+    "escapes_review9.py",   # Its re-read: output paths a script sets are recorded, writers in them, templates (escapes).
+    "escapes_review10.py",   # Re-read 4: multires and Save Sequence gated, typed tags, browser functions (escapes).
+    "layout_double.py",   # UILayout's own calls, for every suite that draws a page without a window.
+    "view_scroll.py",     # A View2D scroll by a chosen distance (view2d.scroll_* ignore one).
+    "escapes_writers_data.py",   # test_blender_confinement_writers' round-3 checks: data a path is built from.
+    "escapes_writers.py",   # test_blender_confinement_writers' delta checks: writers reading their path in a job.
+    "escapes_review7_links.py",   # Piece 10 re-review, item 4: links a script makes (the escapes suite).
+    "escapes_review7_callbacks.py",   # Piece 10 re-review, NITs: callbacks with other threads' data (escapes).
+    "escapes_p10c4_export.py",   # Piece 10, export group: renders, views, jobs, Studio by C's facts (escapes suite).
+    "write_sinks.py",   # test_native_write_sinks: every write from Python state and its C check, by ast.
+    "write_sink_calls.py", "write_sinks_constants.py", "write_sinks_dispatch.py",   # write_sinks' parts.
+    "c_write_sinks.py",   # Every C/C++ call that opens a file for writing, and what decides its path.
+    "destructive_sinks.py",   # test_native_destructive_sinks: the sinks exit and cleanup paths reach, by ast.
     "fab_formats_samples.py",   # test_blender_fab_formats: Fab-format samples written by Blender's own exporters.
     "hosted_worker_chat.py", "hosted_codex_stand_in.py", "hosted_rail_turns.py",
     "pump_blocking.py",   # The worker suites' pump checks: time a UI pump spends blocked, not its wall time.
+    "host_waits.py",   # Host tests' waits on a completion signal, capped only against a hang.
+    "own_checkout.py",   # Git about the tree under test only, never a repository around it (suite_isolation).
+    # run_host_tests' loader: a file's tests run while the product imports the module objects that file holds.
+    "host_file_modules.py",
+    "blender_stand_in.py",   # Host tests: operator modules imported against a stand-in for Blender's modules.
+    # Builds learn_menu_paths from bl_ui for test_native_learn_menu_paths and test_native_learn_routes; its --write
+    # regenerates the table with host Python (no Blender).
+    "learn_menu_paths_source.py",
     "concurrent_edit_oracle.py", "concurrent_edit_payload.py", "concurrent_edit_runtime.py",
     "studio_workflows_evidence.py",   # test_blender_studio_workflows' evidence-run steps
     "bake_maps_fixtures.py",   # test_blender_bake_maps_*: block-image materials and the synchronous texture set
@@ -220,13 +282,15 @@ HELPERS = frozenset({
     "runtime_identity.py",   # eval_live_agent plan.agent_runtime: which Codex file a live eval's app runs
     "agent_runtime_fixtures.py", "animation_fakes.py", "external_app_env.py", "bench_mcp_codex.py", "bench_mcp_grading.py", "bench_mcp_report.py", "bench_mcp_trial.py",
     "bench_mcp_scenario.py", "bench_cold_warm.py", "bench_integrity.py",
-    "coverage_prefix.py", "crash_fixtures.py", "settings_import_phases.py", "settings_import_crash_phases.py", "prefs_quit_phases.py",
+    "coverage_prefix.py", "crash_dialog.py", "crash_fixtures.py", "native_crash.py", "start_record_checks.py", "settings_import_phases.py", "settings_import_crash_phases.py",
+    "settings_import_broken_phases.py", "prefs_quit_phases.py",
+    "gpu_startup_phases.py",
     "first_launch_frames_phases.py", "first_launch_frames_probe.py", "cold_bytecode.py", "splash_frames.py",
     "popup_pixels.py",
     "claude_code_errors.py", "claude_protocol_fixtures.py", "eval_agent_tasks.py", "eval_live_tasks.py",
     "eval_live_journeys.py", "eval_animation_tasks.py", "eval_node_tasks.py", "eval_operator_tasks.py", "eval_request_log.py",
     "eval_quality_loop.py",  # Shared within-turn iteration directive for prospective one-shot evaluations.
-    "eval_returning_user.py", "eval_approval.py", "eval_diagnostics.py", "eval_ask_why.py", "mcp_request_parameters.py",
+    "eval_returning_user.py", "eval_approval.py", "eval_effort.py", "eval_diagnostics.py", "eval_ask_why.py", "mcp_request_parameters.py",
     "eval_warm_up.py", "bench_warm_up.py", "bench_addon_pin.py", "eval_abnormal_end.py", "eval_trace_export.py",
     "eval_stream_counts.py", "eval_provider_limits.py", "eval_receipts.py", "eval_survey_tasks.py", "survey_report.py",
     # The grading contract (doc/angelo/native_coverage.rst, "Grading contract"): answers, result checks, fixtures.
@@ -240,10 +304,13 @@ HELPERS = frozenset({
     "content_binding_fixtures.py",   # test_blender_checkpoint_content_binding's rewrite, hooks and Sculpt owner
     "file_times.py",
     "fresh_shader.py",   # shader code new in every run, for timings that claim an uncompiled shader
-    "fake_team_library.py", "fake_usage_reports.py", "team_host_fence.py", "gui_launch.py", "headless_page.py", "identity_fixtures.py", "long_jobs_fixtures.py",
+    "app_layout.py",   # a built app's per-version resources folder and bundled Python, read from the app
+    "fake_team_library.py", "fake_usage_reports.py", "endpoint_tool_layout.py", "team_host_fence.py", "gui_launch.py", "headless_page.py", "identity_fixtures.py", "long_jobs_fixtures.py",
     "long_session_cost_model.py", "long_session_timers.py", "loopback_server.py", "macos_window.py", "measured_results.py", "notices_fakes.py",
     "native_addon_guard.py", "native_suite_checks.py", "native_suite_inputs.py", "native_suite_manifest.py", "native_suite_other_files.py",
     "native_suite_paths.py", "native_suite_process.py",
+    "native_suite_harness.py",   # which suites stand in for the person through C's harness scope (the runner's flag)
+    "qa_person.py",   # an in-app suite's action as the person: C's harness scope
     "native_suite_summary.py",
     "operator_run_qa.py",
     "render_region_scenes.py",   # test_blender_render_region_pixels' unrelated scenes
@@ -253,7 +320,10 @@ HELPERS = frozenset({
     "production_jobs_harness.py", "program_production_helpers.py", "program_qa_helpers.py", "rig_layouts_qa.py",
     "parallel_workers_qa.py", "composer_hint_qa.py", "composer_gui_review.py", "parallel_live_cases.py",
     "eval_parallel.py", "parallel_kits.py", "parallel_variants.py", "parallel_instance_parts.py",
+    "parallel_merge_privacy_links.py",
     "parallel_merge_privacy_media.py",
+    "parallel_merge_privacy_saved.py",
+    "parallel_merge_privacy_writers.py",
     "scenario_oneshot_chess.py",
     "scenario_oneshot_parlour.py", "scenario_oneshot_roadster.py", "scenario_oneshot_outfit.py",
     # The long one-shot candidates (BENCH-PREREG Amendment I; town centre gates 1.0.6): scenarios, their stand-in kits
@@ -268,22 +338,32 @@ HELPERS = frozenset({
     "program_teardown_qa.py",
     # test_blender_rail_positions: its geometry rules (pure, host-tested), in-app fixtures, run state and stages.
     "rail_positions_checks.py", "rail_positions_fixture.py", "rail_positions_run.py", "rail_positions_stages.py",
+    "prefs_read_back.py",   # A new Angelo's reading of the agent add-on's saved preferences, launched by a GUI suite.
     "qa_boot.py", "qa_fixtures.py", "qa_flow_view.py", "qa_frames.py", "qa_input.py", "qa_machine.py", "qa_operator.py",
-    "qa_waits.py", "installed_engine_fixture.py",
+    "qa_waits.py", "qa_stale_frames.py", "installed_engine_fixture.py",
+    "module_namespace.py",   # What an add-on module imports, for tests that run part of it in a namespace they build.
     "qa_plus_menu.py", "plus_menu_features.py",   # The + menu's fold and next move (GUI); its features read from source (host).
     "format_curve_fixtures.py", "rendered_view_sample_checks.py",
     "read_tools_fakes.py", "read_tools_fixtures.py", "read_tools_stand_ins.py", "rendered_view_case.py",
     "rendered_view_fakes.py", "rendered_view_fixtures.py", "replay_fast_tier_cases.py", "replay_refused_plans.py",
     "replay_turn_context.py",
     "plan_progress_fixtures.py", "chat_waiting_fixtures.py", "chat_waiting_measure.py",
+    "cost_timing.py",   # test_blender_web_link_cost: sizes timed interleaved, judged by their best repeat.
     "reply_stream_fixtures.py",
     "script_stream_fixtures.py",
     "view_source_fakes.py",
     "tool_mention_kinds.py",   # test_native_tool_mentions: what every kind of chat is told and offered.
     # test_native_precondition_refusal_codes: its static walk from every precondition, and the add-on it reads.
     "precondition_reach.py", "precondition_package.py",
+    # The admitted-settings audits' callback finder (test_native_python_property_audit, render_setup, game_physics).
+    "python_property_audit.py",
+    "undo_unrecorded_qa.py",   # The undo-unrecorded suites' recorded steps, keys and whole-scene read.
+    "packed_undo_children.py",   # The packed linked data Undo suites: each case in a child under Undo's log.
+    "render_kernel_reuse.py",   # test_blender_render_kernels: a child's kernel reuse, judged the same on every backend.
     # Every suite's and host test's first import, and what it applies: no real provider login without an opt-in.
-    "suite_isolation.py", "provider_isolation.py",
+    "suite_isolation.py", "provider_isolation.py", "relaunch_exit.py",
+    "thread_failures.py",   # suite_isolation, host tests: a thread's uncaught exception fails the test.
+    "crash_reports.py",   # run_native_suites: macOS crash reports of a suite's processes, kept beside it.
     "provider_accounts.py", "account_fixtures.py",   # The account a billed profile is signed in to; test sign-ins.
     "run_host_tests.py", "host_test_policy.py", "platform_env.py", "channel_endpoints.py", "machine_clock.py",
     "thread_work.py",   # Work a thread does, counted (test_native_worker_mirror_reader, engine_link_reads).
@@ -291,6 +371,10 @@ HELPERS = frozenset({
     "save_identity_stand_in.py",   # A save naming the file it wrote, stood in (document, engine link, headless).
     "script_pixel_fixtures.py", "script_review_fixtures.py", "sculpt_undo_admission_cases.py",
     "addon_stand_in_import.py",   # host tests: add-on modules imported against a stand-in bpy, put back or settled
+    "sealed_tables.py",   # a sealed add-on table replaced for a test or benchmark (read_only.seal)
+    "landing_classification.py",   # test_native_dialog_consent: every timer and drain, landing results or not
+    "rna_none_pointer_cases.py", "rna_none_pointer_controls.py",   # test_blender_rna_none_pointer_params, in Blender
+    "edit_tool_inventory.py",   # test_native_edit_tool_inventory: every main-thread callback of the add-on, by AST.
     "prune_installed_addon.py",   # the release stage's host step before its native suites (stale installed add-on files)
     "run_native_suites.py", "snapshot_fixtures.py", "strict_plan_vectors.py", "team_library_fixtures.py",
     "token_accounting.py", "turn_recovery_fixtures.py", "translation_cards.py", "update_crash_gui.py", "update_crash_scenes.py", "update_fixtures.py",
@@ -341,6 +425,7 @@ HELPERS = frozenset({
     # The robust instruction ratchet and the never-slower floor (doc/angelo/performance.rst): imported by the benchmarks and the
     # ratchet suite, a startup script the floor driver copies into a trace profile, and the floor's host driver.
     "snapshot_paired.py", "perf_abab.py", "perf_rebaseline.py", "floor_addon_trace.py", "bench_floor_launch.py",
+    "perf_side_by_side.py",   # The ratchet's side-by-side judgement of counts that drift with the machine.
     # The face and hair one-shots: heads as distance fields, hairstyles, their readings, checks and variants.
     "face_casters.py", "face_compare.py", "face_measure.py", "face_tests.py", "face_truth.py", "face_variants.py",
     "hair_kit.py", "head_checks.py", "head_designs.py", "head_kit.py", "head_sdf.py",

@@ -273,7 +273,7 @@ def main():
             controller.request_tool('validated-region-undo', 'angelo_sculpt_region', args, answers.append)
             controller.pump_tools(executor, ui.document_key())
             call = next(iter(controller.pending.values()))
-            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=controller.state['id'])
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=controller.state['id'])
             controller.busy = False
             check('validated_region_metadata_created_through_chat_approval', answers and answers[0].get('success') and
                   workflow.regions(obj)['Approved landmark']['anchor_version'] == workflow.REGION_ANCHOR_VERSION)

@@ -25,7 +25,7 @@ KEY_VERSION = 1
 # again after they change makes new crops instead of reusing ones cut by the earlier rules (flow_split_host reuses
 # crops by key). test_native_flow_split_reuse pins it to the split's code (flow_parts, and how flow_split_host reads
 # the sheet and writes crops): change it, bump this.
-SPLIT_ALGORITHM = 2
+SPLIT_ALGORITHM = 3   # 3: the crop writer asks C before each file (piece 10); no pixel changed.
 
 READY, PARTIAL, MISSING, STALE = "READY", "PARTIAL", "MISSING", "STALE"
 WAITING, RUNNING, FAILED, BLOCKED = "WAITING", "RUNNING", "FAILED", "BLOCKED"

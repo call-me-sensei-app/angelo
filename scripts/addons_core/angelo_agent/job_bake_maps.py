@@ -23,14 +23,14 @@ Main thread only, except ``write_set``.
 """
 
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import bpy
 
+from . import guard_work
 from . import bake_maps_material, bake_maps_plan, bake_maps_steps as steps, bake_maps_write, job_bake_targets as targets
-from . import export_baked
+from . import export_baked, edit_tool_hold
 from .bake_maps_queue import WriteQueue
-from .bake_maps_spec import FORMATS, BakeMapsError, files, set_files, stems
+from .bake_maps_spec import DEFAULT_MARGIN, FORMATS, BakeMapsError, files, set_files, stems
 from .job_runners import Runner, native
 from .job_settings import scene_value
 from .job_spec import JobRequestError, check_resolution, check_samples, check_work
@@ -56,7 +56,9 @@ class TextureSetRunner(Runner):
         self.digests = {}   # Target index -> export_baked.digest at the start (``material`` only).
         self.done = self.total = 0
         self.failure, self.stop_requested, self.deadline_at, self.stopped_bake = None, False, None, False
-        self.chain = self._chain   # One callable, so the timer can be found and removed again.
+        # One callable, so the timer can be found and removed again; through the one choke point: each next bake
+        # waits for the person's operation and its modal is Angelo's own (edit_tool_hold, break-it F2).
+        self.chain = edit_tool_hold.guarded(self._chain, waiting=True)   # Its next bake waits.
         self.admit()
 
     # -- admission ------------------------------------------------------------------------------------------
@@ -169,7 +171,7 @@ class TextureSetRunner(Runner):
         self.queue = [(index, step) for index, plan in enumerate(self.plans) for step in plan.steps]
         self.total = len(self.queue)
         self.deadline_at = time.monotonic() + float(self.request["minutes"]) * 60
-        self.pool = ThreadPoolExecutor(max_workers=bake_maps_write.WORKERS, thread_name_prefix="angelo-bake-maps")
+        self.pool = guard_work.Pool(bake_maps_write.WORKERS, "angelo-bake-maps", daemon=False)   # WorkItems only.
         self.writer = WriteQueue(self.pool, self.budget, lambda: self.stop_requested)
         self.sums = {index: {} for index in range(len(self.plans))}
         for index, plan in enumerate(self.plans):
@@ -203,7 +205,7 @@ class TextureSetRunner(Runner):
         objects = self.run.objects()
         self._invoke(bpy.ops.object.bake, {"active_object": plan.target, "object": plan.target,
                                            "selected_objects": objects, "selected_editable_objects": objects},
-                     **self.run.operator_properties(self.request, self.request["margin"]))
+                     **self.run.operator_properties(self.request, self.request.get("margin", DEFAULT_MARGIN)))
 
     def _note(self):
         """Say how far the set is, replacing Blender's report about the removed scratch image (bake_maps_card)."""
@@ -215,6 +217,14 @@ class TextureSetRunner(Runner):
                 operator('INVOKE_DEFAULT', done=self.done, total=self.total)
         except RuntimeError:
             pass   # Only words in the top bar: the job goes on.
+
+    def pause_budget(self, seconds):
+        """Held by the person's operation between two bakes (``JobManager._pause_budget``): the set's budget waits too.
+        True when it moved; a bake running on its thread meanwhile spends real time."""
+        if self.deadline_at is None or self.run is None or native().progress(self.scene, self.job_type) is not None:
+            return False
+        self.deadline_at += seconds
+        return True
 
     def _rearm(self):
         """The rest of the time budget as the next bake's own deadline (Blender clears one when its job ends)."""

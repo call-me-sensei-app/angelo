@@ -6,8 +6,9 @@
  * \ingroup gpu
  */
 
-#include "BLI_utildefines.h"
+#include "BLI_utildefines.hh"
 
+#include "GPU_texture.hh"
 #include "vk_backend.hh"
 #include "vk_common.hh"
 
@@ -830,14 +831,79 @@ VkDescriptorType to_vk_descriptor_type(const shader::ShaderCreateInfo::Resource 
       return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     case shader::ShaderCreateInfo::Resource::BindType::UNIFORM_BUFFER:
       return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    case shader::ShaderCreateInfo::Resource::BindType::ACCELERATION_STRUCTURE:
+      return VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
   }
   BLI_assert_unreachable();
   return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 }
 
+bool vk_need_extended_usage_for_storage_image(const eGPUTextureUsage usage,
+                                              const GPUTextureFormatFlag format_flag)
+{
+  /* sRGB textures are not directly writable as storage images. These need EXTENDED_USAGE to bind
+   * them as another format. Compressed formats have no storage capable format to bind as. */
+  return (usage & GPU_TEXTURE_USAGE_FORMAT_VIEW) && (format_flag & GPU_FORMAT_SRGB) &&
+         !(format_flag & GPU_FORMAT_COMPRESSED);
+}
+
+VkFormat vk_extended_usage_storage_image_format(const VkFormat format)
+{
+  /* sRGB textures are bound as UNORM 8 for storage images. */
+  switch (format) {
+    case VK_FORMAT_R8G8B8_SRGB:
+      return VK_FORMAT_R8G8B8_UNORM;
+    case VK_FORMAT_R8G8B8A8_SRGB:
+      return VK_FORMAT_R8G8B8A8_UNORM;
+    default:
+      break;
+  }
+  return format;
+}
+
+VkImageUsageFlags vk_image_usage_supported_by_format(const VkFormat format)
+{
+  const VKDevice &device = VKBackend::get().device;
+  VkFormatProperties3 format_properties3 = {VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3};
+  VkFormatProperties2 format_properties2 = {VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2};
+  /* #VkFormatProperties3 is not available on all devices, and only adds the host transfer bit. */
+  if (device.extensions_get().host_image_copy) {
+    format_properties2.pNext = &format_properties3;
+  }
+  vkGetPhysicalDeviceFormatProperties2(device.physical_device_get(), format, &format_properties2);
+  /* The bits used below have the same values in both flag types. */
+  const VkFormatFeatureFlags2 features =
+      format_properties2.formatProperties.optimalTilingFeatures |
+      format_properties3.optimalTilingFeatures;
+
+  VkImageUsageFlags usage = 0;
+  if (features & VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT) {
+    usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+  }
+  if (features & VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT) {
+    usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  }
+  if (features & VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT) {
+    usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+  }
+  if (features & VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT) {
+    usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+  }
+  if (features & VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BIT) {
+    usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+  }
+  if (features & VK_FORMAT_FEATURE_2_DEPTH_STENCIL_ATTACHMENT_BIT) {
+    usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+  }
+  if (features & VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT_EXT) {
+    usage |= VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT;
+  }
+  return usage;
+}
+
 VkImageCreateFlags to_vk_image_create(const GPUTextureType texture_type,
                                       const GPUTextureFormatFlag format_flag,
-                                      const eGPUTextureUsage usage)
+                                      eGPUTextureUsage usage)
 {
   VkImageCreateFlags result = 0;
 
@@ -848,6 +914,17 @@ VkImageCreateFlags to_vk_image_create(const GPUTextureType texture_type,
   /* sRGB textures needs to be mutable as they can be used as non-sRGB frame-buffer attachments. */
   if (usage & GPU_TEXTURE_USAGE_ATTACHMENT && format_flag & GPU_FORMAT_SRGB) {
     result |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+  }
+
+  if (usage & GPU_TEXTURE_USAGE_FORMAT_VIEW) {
+    result |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+  }
+
+  /* The image's own format does not support storage usage, so it is bound as a storage image
+   * through a view with a different format. EXTENDED_USAGE lets the image keep the storage usage,
+   * by deferring the check to the view. The mutable format lets the view reinterpret the data. */
+  if (vk_need_extended_usage_for_storage_image(usage, format_flag)) {
+    result |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
   }
 
   return result;
@@ -891,8 +968,11 @@ VkImageUsageFlags to_vk_image_usage(const eGPUTextureUsage usage,
   }
 
   /* Disable some usages based on the given format flag to support more devices. */
-  if (format_flag & GPU_FORMAT_SRGB) {
-    /* NVIDIA devices don't create SRGB textures when it storage bit is set. */
+  if (format_flag & GPU_FORMAT_SRGB &&
+      !vk_need_extended_usage_for_storage_image(usage, format_flag))
+  {
+    /* NVIDIA devices don't create SRGB textures when the storage bit is set and
+     * EXTENDED_USAGE is not enabled. */
     result &= ~VK_IMAGE_USAGE_STORAGE_BIT;
   }
   if (format_flag & (GPU_FORMAT_DEPTH | GPU_FORMAT_STENCIL)) {

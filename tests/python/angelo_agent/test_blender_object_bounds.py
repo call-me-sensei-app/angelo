@@ -10,7 +10,10 @@ cache, so a curve's own mesh and every instance it makes read the owner's curve 
 Held-out geometry, none of it that planter: curves with and without a bevel, a bevelled curve with an Array, a
 Bezier, text filled and with Fill Mode None, a NURBS surface with a Mirror, a metaball, a lattice, a mesh (the
 control), a mesh with a Subdivision Surface, Geometry Nodes instances of meshes and of curves, a curve whose nodes
-leave only instances, and a collection instance of a modified curve.
+leave only instances, and a collection instance of a modified curve. A curve no depsgraph evaluates has only its
+data's box (break-it E2E-20 F-L-1: a 6 cm rib read 2 m wide): held-out cross-sections, each shown by a visible twin
+and held by a user never evaluated (hidden from the start, excluded, appended into an excluded collection), must
+hold that geometry and stay within its spline grown by its cross-section.
 
 The truth comes from the geometry itself, never from a bounds reader: evaluated meshes (``to_mesh``), a lattice's
 points, and for a curve primitive instanced by nodes (which converts to no mesh) the circle it was built as. Readers:
@@ -235,6 +238,134 @@ def held_out(add, vertex):
     hidden = add(bpy.data.objects.new("Hidden bevelled curve, never evaluated", twin.data), (40, 0, 0),
                  twin=twin.name)   # Hidden before any evaluation; the same data its twin shows is its truth.
     hidden.hide_viewport = True
+    never_evaluated(add)
+
+
+def curve_object(name, kind, points, dimensions='3D', **settings):
+    """A curve of one ``kind`` spline ('POLY', 'BEZIER' with vector handles, or 'NURBS') through ``points``."""
+    curve = bpy.data.curves.new(name, 'CURVE')
+    curve.dimensions = dimensions
+    for key, value in settings.items():
+        setattr(curve, key, value)
+    spline = curve.splines.new(kind)
+    if kind == 'BEZIER':
+        spline.bezier_points.add(len(points) - 1)
+        for point, co in zip(spline.bezier_points, points):
+            point.co, point.handle_left_type, point.handle_right_type = co, 'VECTOR', 'VECTOR'
+    else:
+        spline.points.add(len(points) - 1)
+        for point, co in zip(spline.points, points):
+            point.co = (*co, 1.0)
+        spline.use_endpoint_u = True
+    return bpy.data.objects.new(name, curve)
+
+
+def never_evaluated(add):
+    """Break-it E2E-20 F-L-1: a curve no depsgraph evaluates has only its data's box. Held out from the planter and
+    from the rib above: each cross-section Blender builds (an offset and extrude on a 2D spline with a 60 degree
+    corner, which its miter widens; a bevel object; a cardinal radius; a multiplying taper; a custom profile;
+    bevelled and extruded text), each shown by a visible twin (its truth) and held by a user never evaluated: hidden
+    from the start, in an excluded collection, or appended into an excluded collection as a merge mirrors a
+    worker's."""
+    scene = bpy.context.scene
+    excluded = bpy.data.collections.new("Excluded curves")
+    scene.collection.children.link(excluded)
+    bpy.context.view_layer.layer_collection.children[excluded.name].exclude = True
+    helpers = bpy.data.collections.new("Curve helpers")   # Bevel and taper objects: evaluated, never graded.
+    scene.collection.children.link(helpers)
+    profile = curve_object("Bevel shape", 'NURBS', [(-1, 0, 0), (0, 1, 0), (1, 0, 0), (0, -1, 0)], '2D')
+    profile.data.splines[0].use_cyclic_u = True
+    profile.scale = (0.012, 0.006, 1.0)
+    taper = curve_object("Taper", 'POLY', [(0, 0.2, 0), (0.5, 1.6, 0), (1, 0.4, 0)], '2D')
+    for helper in (profile, taper):
+        helpers.objects.link(helper)
+    text = bpy.data.curves.new("Bevelled text", 'FONT')
+    text.body, text.size, text.bevel_depth, text.extrude, text.offset = "VAW", 0.15, 0.004, 0.01, 1.003
+    cases = [
+        curve_object("2D corner, offset and extrude", 'BEZIER', [(0, 0, 0), (0.3, 0, 0), (0.15, 0.26, 0)], '2D',
+                     offset=1.004, extrude=0.006),
+        curve_object("Bevel object on a NURBS", 'NURBS', [(0, 0, 0), (0.15, 0.05, 0.02), (0.3, 0, 0)],
+                     bevel_mode='OBJECT', bevel_object=profile),
+        curve_object("Cardinal radius", 'BEZIER', [(0, 0, 0), (0.2, 0, 0), (0.4, 0.01, 0), (0.6, 0, 0)],
+                     bevel_depth=0.003),
+        curve_object("Multiplying taper", 'POLY', [(0, 0, 0), (0.25, 0.03, 0), (0.5, 0, 0.02)], bevel_depth=0.005,
+                     taper_object=taper, taper_radius_mode='MULTIPLY'),
+        curve_object("Custom profile", 'POLY', [(0, 0, 0), (0.2, 0.02, 0.01)], bevel_depth=0.006,
+                     bevel_mode='PROFILE'),
+        bpy.data.objects.new(text.name, text)]
+    cardinal = cases[2].data.splines[0]
+    cardinal.radius_interpolation = 'CARDINAL'
+    for point, radius in zip(cardinal.bezier_points, (0.2, 1.5, 0.1, 1.2)):
+        point.radius = radius
+    for point, radius in zip(cases[3].data.splines[0].points, (0.5, 1.3, 0.8)):
+        point.radius = radius
+    library = OUT / "never-evaluated.blend"
+    for index, twin in enumerate(cases):
+        add(twin, (50 + index, 0, 0))
+        hidden = add(bpy.data.objects.new(twin.name + ", hidden from the start", twin.data), (50 + index, 1, 0),
+                     twin=twin.name)
+        hidden.hide_viewport = True
+        out = add(bpy.data.objects.new(twin.name + ", in an excluded collection", twin.data), (50 + index, 2, 0),
+                  twin=twin.name)
+        out.users_collection[0].objects.unlink(out)
+        excluded.objects.link(out)
+    bpy.data.libraries.write(str(library), {cases[0], cases[5]}, fake_user=True)
+    with bpy.data.libraries.load(str(library), link=False) as (source, target):
+        target.objects = [name for name in source.objects if name in (cases[0].name, cases[5].name)]
+    for index, appended in enumerate(target.objects):   # As a merge appends a part, then mirrors its exclusion.
+        appended.name = appended.name.rsplit(".", 1)[0] + ", appended into an excluded collection"
+        twin = add(bpy.data.objects.new(appended.name + " (its twin)", appended.data), (60 + index, 0, 0))
+        add(appended, (60 + index, 1, 0), twin=twin.name)
+        appended.users_collection[0].objects.unlink(appended)
+        excluded.objects.link(appended)
+
+
+def spine_reach(twin, matrix):
+    """How far the twin's geometry reaches from its own spline (the same data with no bevel, extrude or offset):
+    the largest distance of its mesh's vertices to the spline's evaluated edges, from Blender's own geometry."""
+    from mathutils.geometry import intersect_point_line
+    data = twin.data.copy()
+    data.bevel_depth, data.extrude, data.offset, data.bevel_mode = 0.0, 0.0, 1.0, 'ROUND'
+    if data.dimensions == '2D' or twin.type == 'FONT':
+        data.fill_mode = 'NONE'
+    if twin.type != 'FONT':
+        data.taper_object = None
+    probe = bpy.data.objects.new("Spine probe", data)
+    probe.matrix_world = matrix
+    bpy.context.scene.collection.objects.link(probe)
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    spine = probe.evaluated_get(depsgraph).to_mesh()
+    edges = [(matrix @ spine.vertices[a].co, matrix @ spine.vertices[b].co)
+             for a, b in (edge.vertices for edge in spine.edges)]
+    probe.evaluated_get(depsgraph).to_mesh_clear()
+    surface = twin.evaluated_get(depsgraph).to_mesh()
+    vertices = [matrix @ v.co for v in surface.vertices]
+    twin.evaluated_get(depsgraph).to_mesh_clear()
+    bpy.data.objects.remove(probe)
+    bpy.data.curves.remove(data)
+
+    def distance(point):
+        best = float("inf")
+        for start, end in edges:
+            closest, along = intersect_point_line(point, start, end)
+            closest = start if along < 0 else end if along > 1 else closest
+            best = min(best, (point - closest).length)
+        return best
+    return max((distance(v) for v in vertices), default=0.0)
+
+
+def control_hull(obj, matrix):
+    """The world box of a curve's control points and handles (a text has none: None)."""
+    points = []
+    for spline in getattr(obj.data, "splines", ()):
+        for point in spline.bezier_points:
+            points += [point.co, point.handle_left, point.handle_right]
+        points += [point.co.xyz for point in spline.points]
+    return box(matrix @ point for point in points)
+
+
+def padded(found, by):
+    return [[value - by for value in found[0]], [value + by for value in found[1]]]
 
 
 def box(points):
@@ -365,6 +496,19 @@ def grade(name, reader, found, truth, sized=False, cage=None, unmeasured=None):
     report["checks"][key] = ok
 
 
+def bounded(name, reader, found, truth, outer, sized=False):
+    """A never-evaluated curve's box (its data's: control points and handles grown by its cross-section): it holds
+    the geometry its twin shows, and lies within that geometry and the control points grown by twice the reach the
+    geometry has from its spline. A recorded class, as the subdivision cage: an upper bound by construction."""
+    key = "%s: %s" % (name, reader)
+    report["readings"][key] = {"read": rounded(found), "truth": rounded(truth), "outer": rounded(outer)}
+    ok = isinstance(found, list) and inside(found, outer, truth, sized)
+    report["checks"][key] = ok
+    if ok and not within(found, truth, sized):
+        report["exceptions"].append({"check": key, "class": "never evaluated: control points grown by the "
+                                     "cross-section (an upper bound)", "read": rounded(found)})
+
+
 def dimensions(obj):
     return [[0.0, 0.0, 0.0], list(obj.dimensions)]
 
@@ -414,6 +558,8 @@ def run():
     for obj in list(scene.objects):
         bpy.data.objects.remove(obj)
     made = fixtures(scene)
+    reaches = {name: spine_reach(made[flags["twin"]][0], obj.matrix_world.copy())   # Before any reader's depsgraph.
+               for name, (obj, flags) in made.items() if flags.get("twin")}
     depsgraph = bpy.context.evaluated_depsgraph_get()
     depsgraph.update()
     window = SimpleNamespace(view_layer=bpy.context.view_layer, scene=scene)
@@ -429,14 +575,24 @@ def run():
         rows = made_instances[name]
         shown = shown_truth[name] = union(own_truth, *(truth for _type, _read, truth, _component in rows))
         cage = (box(obj.matrix_world @ v.co for v in obj.data.vertices) if flags.get("cage") else None)
-        none = None if own else ("not evaluated: Blender's box is its data's" if flags.get("twin")
-                                 else "no geometry of its own: Blender's box is its data's")
-        grade(name, "Object.bound_box (original)", corners(obj, obj.matrix_world), own_truth, cage=cage,
-              unmeasured=none)
-        grade(name, "Object.bound_box (evaluated)", corners(evaluated, evaluated.matrix_world), own_truth,
-              cage=cage, unmeasured=none)
-        grade(name, "Object.dimensions (original)", dimensions(obj), own_truth, True, cage, none)
-        grade(name, "Object.dimensions (evaluated)", dimensions(evaluated), own_truth, True, cage, none)
+        none = None if own or flags.get("twin") else "no geometry of its own: Blender's box is its data's"
+        if flags.get("twin") and own_truth is not None:   # F-L-1: an upper bound by its cross-section's reach.
+            reach = reaches[name]
+            outer = padded(union(own_truth, control_hull(obj, obj.matrix_world)), 2 * reach + EPSILON)
+            report["readings"]["%s: cross-section reach" % name] = round(reach, 5)
+            for reader, found, sized in (("Object.bound_box (original)", corners(obj, obj.matrix_world), False),
+                                         ("Object.bound_box (evaluated)",
+                                          corners(evaluated, evaluated.matrix_world), False),
+                                         ("Object.dimensions (original)", dimensions(obj), True),
+                                         ("Object.dimensions (evaluated)", dimensions(evaluated), True)):
+                bounded(name, reader, found, own_truth, outer, sized)
+        else:
+            grade(name, "Object.bound_box (original)", corners(obj, obj.matrix_world), own_truth, cage=cage,
+                  unmeasured=none)
+            grade(name, "Object.bound_box (evaluated)", corners(evaluated, evaluated.matrix_world), own_truth,
+                  cage=cage, unmeasured=none)
+            grade(name, "Object.dimensions (original)", dimensions(obj), own_truth, True, cage, none)
+            grade(name, "Object.dimensions (evaluated)", dimensions(evaluated), own_truth, True, cage, none)
         entry = angelo_readers(name, obj, own_truth, cage, own, depsgraph)
         if flags.get("twin"):
             if own_truth is not None:   # Its size, wherever its twin stands.

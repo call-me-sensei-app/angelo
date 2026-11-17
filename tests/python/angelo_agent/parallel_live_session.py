@@ -41,6 +41,7 @@ import qa_boot  # noqa: E402
 import parallel_live_cases as cases  # noqa: E402
 import eval_ask_why  # noqa: E402  (--ask-why-on-miss)
 import eval_diagnostics as diagnostics  # noqa: E402  (--debug-thinking: a diagnostic run, never a proof)
+import eval_effort  # noqa: E402  (the shipping effort and the one the chat resolved)
 from eval_abnormal_end import turn_ended  # noqa: E402
 from eval_receipts import receipts_since, summarize_receipt  # noqa: E402
 from angelo_agent import (live_view, live_view_draw, parallel_sessions, rail_pictures, session_rail_input,  # noqa
@@ -58,6 +59,7 @@ report = {"case": CASE, "connection_id": CONNECTION_ID, "model": os.environ.get(
           "binary": bpy.app.binary_path, "approved": [], "declined": [], "shots": [], "timings": {}}
 state = {"phase": "boot", "started": time.monotonic(), "idle_since": None, "decided": set(), "done": False}
 lead = None
+
 
 
 def controllers():
@@ -83,10 +85,10 @@ def answer_approvals():
             lead_card = chat is lead and call.name in LEAD_CARDS
             if lead_card or approval_decision(call.name) == "approve":
                 with bpy.context.temp_override(window=ui.main_window()):
-                    result = bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.state["id"])
+                    result = __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.state["id"])
                     if 'CANCELLED' in result and call.id in getattr(chat, "reviewed_calls", ()):
                         # Reviewed Python takes two clicks: the first opens the script, the second runs it.
-                        bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.state["id"])
+                        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.state["id"])
                 report["approved"].append([who, call.name])
             else:
                 chat.decline_tool(call.id)
@@ -141,13 +143,14 @@ def tick():
             bpy.ops.wm.save_as_mainfile(filepath=str(OUT / "main.blend"), check_existing=False)
             report["document_before"] = sorted(o.name for o in ui.main_window().scene.objects)
             lead = ui.create_session(connection_id=CONNECTION_ID)
-            options = {"effort": os.environ.get("ANGELO_EVAL_EFFORT", "low"), "fast": False}
+            options, effort = eval_effort.chat_options(fast=False)   # "default": the app's own effort
             if os.environ.get("ANGELO_EVAL_MODEL"):
                 options["model"] = os.environ["ANGELO_EVAL_MODEL"]
             lead.set_options(**options)
             lead.single_model_runs = True
             report.update(diagnostics.configure(lead))   # Debug thinking on the lead only when the run asks for it.
             report["lead_options"] = dict(lead.state.get("options") or {})
+            report.update(eval_effort.report(effort, lead))
             state["marker"] = None
             send(lead, cases.prompt(CASE))
             report["sent_at"] = time.time()

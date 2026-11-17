@@ -2,14 +2,62 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """When a followed scene changed in a way an export can see, and when re-exporting it is allowed. Main thread.
 
-Shared by the live previews that re-export a scene after each change (``web_preview``, ``engine_link``): a
-``depsgraph_update_post`` handler asks ``matters``; a timer re-exports while nothing is ``busy``, ``web_preview`` once
-the scene has been still for ``quiet_seconds``, ``engine_link`` at its cadence (``engine_link_cadence``).
+Shared by the live previews that re-export a scene after each change (``web_preview``, ``engine_link``): a handler
+registered with ``watch`` asks ``matters``; a timer re-exports while nothing is ``busy``, ``web_preview`` once the scene
+has been still for ``quiet_seconds``, ``engine_link`` at its cadence (``engine_link_cadence``).
+
+A change reaches a preview in one of three ways, and each preview hears all three (Godot showcase, 2026-11-15: a
+script ending in ``scene.frame_set()`` was never sent):
+
+* ``depsgraph_update_post``: an edit's own evaluation;
+* ``frame_change_post``: a frame change, whose evaluation (``BKE_scene_graph_update_for_newframe_ex``) also flushes
+  every edit tagged before it and runs no ``depsgraph_update_post``;
+* ``edited``: Angelo's executor after a tool or script that edits the scene, for an edit Blender never tags (a custom
+  property set from Python, which an export's extras read) and so no handler sees.
 """
 
 import bpy
 
 SCENE_FIELDS = ("frame_current", "frame_start", "frame_end", "world", "camera")
+_listeners = []   # Told by ``edited``: each preview's own function of the scene.
+
+
+def _lists():
+    """Every handler list a change arrives on (the module docstring)."""
+    return (bpy.app.handlers.depsgraph_update_post, bpy.app.handlers.frame_change_post)
+
+
+def watch(function):
+    """Run ``function(scene, depsgraph)`` on every evaluation a change arrives with: an edit's and a frame change's."""
+    for handlers in _lists():
+        if function not in handlers:
+            handlers.append(function)
+
+
+def unwatch(function):
+    for handlers in _lists():
+        if function in handlers:
+            handlers.remove(function)
+
+
+def on_edit(function):
+    """Run ``function(scene)`` whenever ``edited`` says a tool or script edited ``scene``."""
+    if function not in _listeners:
+        _listeners.append(function)
+
+
+def off_edit(function):
+    if function in _listeners:
+        _listeners.remove(function)
+
+
+def edited(scene):
+    """A tool or script edited ``scene``: every preview hears it, whatever Blender tagged. Main thread."""
+    for function in list(_listeners):
+        try:
+            function(scene)
+        except Exception as error:   # One preview's failure never stops the edit's result or another preview.
+            print("Angelo: a live preview could not note an edit:", error)
 
 
 def scene_key(scene, view_layer):

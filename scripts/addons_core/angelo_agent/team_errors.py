@@ -50,6 +50,14 @@ GATEWAY_DOWN = n_("The Angelo gateway is unavailable right now; not retried.")
 GATEWAY_REFUSED = n_("The Angelo gateway refused the request.")
 BUSY = n_("The Angelo console is busy; try again in a minute.")
 UNREACHABLE = n_("Couldn't reach {origin}. Check your network; Angelo retries every minute.")
+# The server answered, but no root Angelo trusts vouches for its certificate (``NotSent.untrusted``): the network is
+# fine and a retry never helps. Angelo's own requests trust its bundled roots and the policy's (team_http.tls_context).
+# Its second sentence is the one a connection check already says (endpoint_check.TLS_FAILED): worded once.
+UNTRUSTED = n_("Angelo couldn't verify the certificate of {origin}, so it did not connect. If your organization "
+               "inspects TLS, its IT department adds its root certificate with the ExtraCACertificates policy.")
+# The same in one line, where a surface draws one (the Angelo Library's overlay).
+UNTRUSTED_LINE = n_("Angelo couldn't verify the library's certificate. Your IT department adds its root certificate "
+                    "with the ExtraCACertificates policy.")
 FAILED = n_("Angelo sign-in failed ({code}).")
 FAILED_DETAIL = n_("Angelo sign-in failed ({code}): {detail}")
 CONSOLE_404 = n_("The Angelo console doesn't offer this request (HTTP 404). Update Angelo.")
@@ -115,6 +123,7 @@ class SignInRequired(TeamError):
 
 class NotSent(OSError):
     """The request never reached the server (DNS, refused connection, TLS handshake)."""
+    untrusted = False   # True when the handshake ended on the server's certificate (team_http.http_transport).
 
 
 class Unanswered(OSError):
@@ -222,5 +231,14 @@ def api_error(status, body, retry_after=None):
     return TeamError(Text(CONSOLE_ERROR, status=status), status=status)
 
 
-def unreachable(origin_url):
-    return TeamError(Text(UNREACHABLE, origin=origin_url))
+def unreachable(origin_url, error):
+    """The person's message for a request that got no answer from ``origin_url``; ``error`` is what the transport
+    raised (None: unknown). An unverified certificate is said as that, never as a network to check."""
+    return TeamError(Text(UNTRUSTED if getattr(error, "untrusted", False) else UNREACHABLE, origin=origin_url))
+
+
+def untrusted_text(url):
+    """``UNTRUSTED`` in English for the origin of ``url``: a tool's answer to the agent, which is never translated."""
+    from urllib.parse import urlsplit
+    parts = urlsplit(url)
+    return UNTRUSTED.format(origin="%s://%s" % (parts.scheme, parts.netloc))

@@ -30,13 +30,16 @@
 #include "GHOST_ISystem.hh"
 
 #include "BLI_enum_flags.hh"
-#include "BLI_ghash.h"
-#include "BLI_listbase.h"
-#include "BLI_math_vector.h"
-#include "BLI_string.h"
-#include "BLI_string_utf8.h"
-#include "BLI_threads.h"
-#include "BLI_timer.h"
+#include "BLI_fileops.hh"
+#include "BLI_ghash.hh"
+#include "BLI_listbase.hh"
+#include "BLI_math_vector_c.hh"
+#include "BLI_path_utils.hh"
+#include "BLI_string.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_threads.hh"
+#include "BLI_time.hh"
+#include "BLI_timer.hh"
 
 #include "BKE_context.hh"
 #include "BKE_customdata.hh"
@@ -84,6 +87,7 @@
 #include "WM_types.hh"
 
 #include "wm.hh"
+#include "wm_angelo_consumed_input.hh"
 #include "wm_event_system.hh"
 #include "wm_event_types.hh"
 #include "wm_surface.hh"
@@ -95,7 +99,32 @@
 
 #include "RE_pipeline.h"
 
+#ifdef WITH_PYTHON
+#  include "intern/bpy_angelo_guard_authority.hh"
+#  include "intern/bpy_angelo_guard_confine.hh"
+#endif
+
 namespace blender {
+
+/** Angelo: real pointer input for the grant authority's tickets (doc/angelo/grant_operators.rst,
+ * "Authority in C"). Only events the operating system delivered, or simulated ones in an app
+ * started with --enable-event-simulate, ever reach it: no Python call can. */
+/** Angelo: how many modal callbacks of operators an agent script started this thread is inside. */
+static thread_local int angelo_agent_modal_depth = 0;
+
+bool WM_angelo_in_agent_modal()
+{
+  return angelo_agent_modal_depth > 0;
+}
+
+static void angelo_note_input(const wmWindow *win, const wmEvent *event)
+{
+#ifdef WITH_PYTHON
+  BPY_angelo_guard_note_input(win, event->xy[0], event->xy[1], event->type, event->val);
+#else
+  UNUSED_VARS(win, event);
+#endif
+}
 
 /**
  * When a gizmo is highlighted and uses click/drag events,
@@ -206,6 +235,7 @@ wmEvent *WM_event_add_simulate(wmWindow *win, const wmEvent *event_to_add)
     return nullptr;
   }
   wmEvent *event = WM_event_add(win, event_to_add);
+  angelo_note_input(win, event);
 
   /* Logic for setting previous value is documented on the #wmEvent struct,
    * see #wm_event_add_ghostevent for the implementation of logic this follows. */
@@ -374,7 +404,7 @@ static void wm_event_add_notifier_intern(wmWindowManager *wm,
   BLI_assert(!wm_notifier_is_clear(&note_test));
 
   wm->runtime->notifier_queue_set.lookup_key_or_add_cb(&note_test, [&]() {
-    wmNotifier *note = MEM_new<wmNotifier>(__func__);
+    wmNotifier *note = MEM_new<wmNotifier>("wm_event_add_notifier_intern");
     *note = note_test;
     BLI_addtail(&wm->runtime->notifier_queue, note);
     return note;
@@ -405,7 +435,7 @@ void WM_event_add_notifier(const bContext *C, uint type, void *reference)
 void WM_main_add_notifier(uint type, void *reference)
 {
   Main *bmain = G_MAIN;
-  wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
+  wmWindowManager *wm = bmain->wm.first();
 
   WM_event_add_notifier_ex(wm, nullptr, type, reference);
 }
@@ -413,7 +443,7 @@ void WM_main_add_notifier(uint type, void *reference)
 void WM_main_remove_notifier_reference(const void *reference)
 {
   Main *bmain = G_MAIN;
-  wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
+  wmWindowManager *wm = bmain->wm.first();
 
   if (wm) {
     for (wmNotifier &note : wm->runtime->notifier_queue.items_mutable()) {
@@ -459,7 +489,7 @@ void WM_main_remap_editor_id_reference(const bke::id::IDRemapper &mappings)
 
   mappings.iter([](ID *old_id, ID *new_id) { ed::asset::list::storage_id_remap(old_id, new_id); });
 
-  if (wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first)) {
+  if (wmWindowManager *wm = bmain->wm.first()) {
     if (wmMsgBus *mbus = wm->runtime->message_bus) {
       mappings.iter([&](ID *old_id, ID *new_id) {
         if (new_id != nullptr) {
@@ -568,14 +598,14 @@ void wm_event_do_refresh_wm_and_depsgraph(bContext *C)
 static void wm_event_timers_execute(bContext *C)
 {
   wmWindowManager *wm = CTX_wm_manager(C);
-  if (UNLIKELY(wm == nullptr)) {
+  if (wm == nullptr) [[unlikely]] {
     return;
   }
 
   /* Set the first window as context, so that there is some minimal context. This avoids crashes
    * when calling code that assumes that there is always a window in the context (which many
    * operators do). */
-  CTX_wm_window_set(C, static_cast<wmWindow *>(wm->windows.first));
+  CTX_wm_window_set(C, wm->windows.first());
   BLI_timer_execute();
   CTX_wm_window_set(C, nullptr);
 }
@@ -583,7 +613,7 @@ static void wm_event_timers_execute(bContext *C)
 static bool notifier_refreshes_node_group_operators(const wmNotifier &note)
 {
   if (note.category == NC_ASSET) {
-    if (ELEM(note.data, ND_ASSET_LIST, ND_ASSET_LIST_READING)) {
+    if (ELEM(note.data, ND_ASSET_LIST, ND_ASSET_LIST_READING, ND_ASSET_CATALOGS)) {
       return true;
     }
   }
@@ -621,10 +651,7 @@ void wm_event_do_notifiers(bContext *C)
     CTX_wm_window_set(C, &win);
 
     BLI_assert(wm->runtime->notifier_current == nullptr);
-    for (const wmNotifier *
-             note = static_cast<const wmNotifier *>(wm->runtime->notifier_queue.first),
-            *note_next = nullptr;
-         note;
+    for (const wmNotifier *note = wm->runtime->notifier_queue.first(), *note_next = nullptr; note;
          note = note_next)
     {
       if (wm_notifier_is_clear(note)) {
@@ -641,7 +668,7 @@ void wm_event_do_notifiers(bContext *C)
           wm->file_saved = note->reference != &wm_checkpoint_read_unsaved;
           WM_window_title_refresh(wm, &win);
         }
-        else if (note->data == ND_DATACHANGED) {
+        else if (ELEM(note->data, ND_DATACHANGED, ND_PROJECT_CHANGED)) {
           WM_window_title_refresh(wm, &win);
         }
         else if (note->data == ND_UNDO) {
@@ -807,7 +834,7 @@ void wm_event_do_notifiers(bContext *C)
           if ((note->category == NC_SPACE) && note->reference) {
             /* Filter out notifiers sent to other spaces. RNA sets the reference to the owning ID
              * though, the screen, so let notifiers through that reference the entire screen. */
-            if (!ELEM(note->reference, area->spacedata.first, screen, scene)) {
+            if (!ELEM(note->reference, area->spacedata.first_, screen, scene)) {
               continue;
             }
           }
@@ -1020,7 +1047,7 @@ void WM_report_banner_show(wmWindowManager *wm, wmWindow *win)
   if (win == nullptr) {
     win = wm->runtime->winactive;
     if (win == nullptr) {
-      win = static_cast<wmWindow *>(wm->windows.first);
+      win = wm->windows.first();
     }
   }
 
@@ -1038,7 +1065,7 @@ void WM_report_banner_show(wmWindowManager *wm, wmWindow *win)
 
 void WM_report_banners_cancel(Main *bmain)
 {
-  wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
+  wmWindowManager *wm = bmain->wm.first();
   BKE_reports_clear(&wm->runtime->reports);
   WM_event_timer_remove(wm, nullptr, wm->runtime->reports.reporttimer);
 }
@@ -1059,7 +1086,7 @@ void WM_reports_from_reports_move(wmWindowManager *wm, ReportList *reports)
   }
 
   if (!wm) {
-    wm = static_cast<wmWindowManager *>(G_MAIN->wm.first);
+    wm = G_MAIN->wm.first();
   }
 
   /* Add reports to the global list, otherwise they are not seen. Angelo: a job's own reports
@@ -1147,8 +1174,8 @@ static intptr_t wm_operator_undo_active_id(const wmWindowManager *wm)
 
 static intptr_t wm_operator_register_active_id(const wmWindowManager *wm)
 {
-  if (wm->runtime->operators.last) {
-    return intptr_t(wm->runtime->operators.last);
+  if (wm->runtime->operators.last()) {
+    return intptr_t(wm->runtime->operators.last());
   }
   return -1;
 }
@@ -1357,12 +1384,12 @@ bool WM_operator_poll_or_report_error(bContext *C, wmOperatorType *ot, ReportLis
   }
   bool msg_free = false;
   const char *msg = CTX_wm_operator_poll_msg_get(C, &msg_free);
-  CTX_wm_operator_poll_msg_clear(C);
   BKE_reportf(reports,
               RPT_ERROR,
               RPT_("Invalid context: \"%s\", %s"),
               CTX_RPT_(ot->translation_context, ot->name),
               msg ? RPT_(msg) : RPT_("poll failed"));
+  CTX_wm_operator_poll_msg_clear(C);
   if (msg_free) {
     MEM_delete(msg);
   }
@@ -1377,7 +1404,7 @@ bool WM_operator_poll_context(bContext *C, wmOperatorType *ot, wm::OpCallContext
 
 bool WM_operator_ui_poll(wmOperatorType *ot, PointerRNA *ptr)
 {
-  if (ot->macro.first != nullptr) {
+  if (ot->macro.first() != nullptr) {
     /* For macros, check all have exec() we can call. */
     for (wmOperatorTypeMacro &otmacro : ot->macro) {
       wmOperatorType *otm = WM_operatortype_find(otmacro.idname, false);
@@ -1428,14 +1455,14 @@ static void wm_operator_reports(bContext *C,
                                 const bool caller_owns_reports)
 {
   if (G.background == 0 && caller_owns_reports == false) { /* Popup. */
-    if (op->reports->list.first) {
+    if (op->reports->list.first()) {
       /* FIXME: temp setting window, see other call to #popup_menu_reports for why. */
       wmWindow *win_prev = CTX_wm_window(C);
       ScrArea *area_prev = CTX_wm_area(C);
       ARegion *region_prev = CTX_wm_region(C);
 
       if (win_prev == nullptr) {
-        CTX_wm_window_set(C, static_cast<wmWindow *>(CTX_wm_manager(C)->windows.first));
+        CTX_wm_window_set(C, CTX_wm_manager(C)->windows.first());
       }
 
       ui::popup_menu_reports(C, op->reports);
@@ -1507,11 +1534,22 @@ static void wm_operator_finished(bContext *C,
     SET,
     CLEAR,
   } hud_status = NOP;
-  const bool do_register = (repeat == false) && wm_operator_register_check(wm, op->type);
+  bool do_register = (repeat == false) && wm_operator_register_check(wm, op->type);
+#ifdef WITH_PYTHON
+  /* Angelo: an operator an agent script ran never enters repeat-last or redo (Shift+R, F3, F9):
+   * run again from there it would run unconfined (grant_operators.rst). */
+  do_register = do_register && !BPY_angelo_guard_thread_confined();
+#endif
 
   op->customdata = nullptr;
 
+  /* Angelo: an agent script never presets the defaults of the person's next invoke (Python's own
+   * calls already skip this; a C operator a script runs may not). */
+#ifdef WITH_PYTHON
+  if (store && !BPY_angelo_guard_thread_confined()) {
+#else
   if (store) {
+#endif
     WM_operator_last_properties_store(op);
   }
 
@@ -1533,7 +1571,7 @@ static void wm_operator_finished(bContext *C,
     }
     else if (has_undo_step) {
       /* An undo step was added but the operator wasn't registered (and won't register itself),
-       * therefor a redo panel wouldn't redo this action but the previous registered action,
+       * therefore a redo panel wouldn't redo this action but the previous registered action,
        * causing the "redo" to remove/loose this operator. See: #101743.
        * Register check is needed so nested operator calls don't clear the HUD. See: #103587. */
       if (!(has_register || do_register)) {
@@ -1720,7 +1758,7 @@ bool WM_operator_is_repeat(const bContext *C, const wmOperator *op)
   wmOperator *op_prev;
   if (op->prev == nullptr && op->next == nullptr) {
     wmWindowManager *wm = CTX_wm_manager(C);
-    op_prev = static_cast<wmOperator *>(wm->runtime->operators.last);
+    op_prev = wm->runtime->operators.last();
   }
   else {
     op_prev = op->prev;
@@ -1761,7 +1799,7 @@ static wmOperator *wm_operator_create(wmWindowManager *wm,
   }
 
   /* Recursive filling of operator macro list. */
-  if (ot->macro.first) {
+  if (ot->macro.first()) {
     static wmOperator *motherop = nullptr;
     int root = 0;
 
@@ -1773,7 +1811,7 @@ static wmOperator *wm_operator_create(wmWindowManager *wm,
 
     /* If properties exist, it will contain everything needed. */
     if (properties) {
-      wmOperatorTypeMacro *otmacro = static_cast<wmOperatorTypeMacro *>(ot->macro.first);
+      wmOperatorTypeMacro *otmacro = ot->macro.first();
 
       RNA_STRUCT_BEGIN (properties, prop) {
 
@@ -1826,7 +1864,7 @@ static void wm_region_tag_draw_on_gizmo_delay_refresh_for_tweak(wmWindow *win)
 
   bScreen *screen = WM_window_get_active_screen(win);
   /* Unlikely but not impossible as this runs after events have been handled. */
-  if (UNLIKELY(screen == nullptr)) {
+  if (screen == nullptr) [[unlikely]] {
     return;
   }
   ED_screen_areas_iter (win, screen, area) {
@@ -2163,15 +2201,26 @@ static wmOperatorStatus wm_operator_call_internal(bContext *C,
   return wmOperatorStatus(0);
 }
 
+wmOperatorStatus WM_operator_type_call_ptr_with_reports(bContext *C,
+                                                        wmOperatorType *ot,
+                                                        wm::OpCallContext context,
+                                                        PointerRNA *properties,
+                                                        ReportList *reports,
+                                                        const wmEvent *event)
+{
+  BLI_assert(ot == WM_operatortype_find(ot->idname, true));
+  return wm_operator_call_internal(C, ot, properties, reports, context, false, event);
+}
+
 wmOperatorStatus WM_operator_name_call_ptr(bContext *C,
                                            wmOperatorType *ot,
                                            wm::OpCallContext context,
                                            PointerRNA *properties,
                                            const wmEvent *event)
 {
-  BLI_assert(ot == WM_operatortype_find(ot->idname, true));
-  return wm_operator_call_internal(C, ot, properties, nullptr, context, false, event);
+  return WM_operator_type_call_ptr_with_reports(C, ot, context, properties, nullptr, event);
 }
+
 wmOperatorStatus WM_operator_name_call(bContext *C,
                                        const char *opstring,
                                        wm::OpCallContext context,
@@ -2180,7 +2229,7 @@ wmOperatorStatus WM_operator_name_call(bContext *C,
 {
   wmOperatorType *ot = WM_operatortype_find(opstring, false);
   if (ot) {
-    return WM_operator_name_call_ptr(C, ot, context, properties, event);
+    return WM_operator_type_call_ptr_with_reports(C, ot, context, properties, nullptr, event);
   }
 
   return wmOperatorStatus(0);
@@ -2204,8 +2253,8 @@ wmOperatorStatus WM_operator_name_call_with_properties(bContext *C,
 {
   wmOperatorType *ot = WM_operatortype_find(opstring, false);
   PointerRNA props_ptr = RNA_pointer_create_discrete(
-      &static_cast<wmWindowManager *>(G_MAIN->wm.first)->id, ot->srna, properties);
-  return WM_operator_name_call_ptr(C, ot, context, &props_ptr, event);
+      &G_MAIN->wm.first()->id, ot->srna, properties);
+  return WM_operator_type_call_ptr_with_reports(C, ot, context, &props_ptr, nullptr, event);
 }
 
 void WM_menu_name_call(bContext *C, const char *menu_name, wm::OpCallContext context)
@@ -2261,7 +2310,7 @@ static void ui_handler_wait_for_input_remove(bContext *C, void *userdata)
 {
   OperatorWaitForInput *opwait = static_cast<OperatorWaitForInput *>(userdata);
   if (opwait->optype_params.opptr) {
-    if (opwait->optype_params.opptr->data) {
+    if (*opwait->optype_params.opptr) {
       IDP_FreeProperty(static_cast<IDProperty *>(opwait->optype_params.opptr->data));
     }
     MEM_delete(opwait->optype_params.opptr);
@@ -2629,6 +2678,11 @@ BLI_INLINE bool wm_eventmatch(const wmEvent *winevent, const wmKeyMapItem *kmi)
 
   /* The matching rules. */
   if (kmitype == KM_TEXTINPUT) {
+#ifdef WITH_INPUT_IME
+    if (IS_EVENT_IME_ANY(winevent->type)) {
+      return true;
+    }
+#endif
     if (winevent->val == KM_PRESS) { /* Prevent double clicks. */
       if (ISKEYBOARD(winevent->type) && winevent->utf8_buf[0]) {
         return true;
@@ -2845,9 +2899,18 @@ static void wm_handler_operator_insert(wmWindow *win, wmEventHandler_Op *handler
         if (handler_iter_op->op != nullptr) {
           if (handler_iter_op->op->type->flag & OPTYPE_MODAL_PRIORITY) {
             last_priority_handler = &handler_iter;
+            continue;
           }
         }
       }
+
+      /* Stop at other UI handlers like popups. We don't want to disturb the relative order
+       * of modal operators from those popups, e.g. dragging in the color picker. See #162498.
+       * Otherwise the popup UI handler may free data used by the modal operator.
+       *
+       * This means modal operator priority order is only preserved relative to other modal
+       * operators, to prevent them from interfering with menus and popups. */
+      break;
     }
 
     if (last_priority_handler) {
@@ -2895,6 +2958,10 @@ static eHandlerActionFlag wm_handler_operator_call(bContext *C,
       wm_handler_op_context(C, handler, event);
       wm_region_mouse_co(C, event);
 
+      /* Angelo: the event's own type, before a modal key map renames it
+       * (`wm_angelo_consumed_input.cc`). */
+      const wmEventType event_type_orig = event->type;
+
       wmEvent_ModalMapStore event_backup;
       wm_event_modalkeymap_begin(C, op, event, &event_backup);
 
@@ -2904,8 +2971,13 @@ static eHandlerActionFlag wm_handler_operator_call(bContext *C,
         wm->op_undo_depth++;
       }
 
+      /* Angelo: a modal an agent script started opens its popups as the script's
+       * (`ui_popup_opened_by_agent`); the handler may be gone after the call. */
+      const bool angelo_agent_modal = handler->angelo_from_agent;
+      angelo_agent_modal_depth += angelo_agent_modal ? 1 : 0;
       /* Warning, after this call all context data and 'event' may be freed. see check below. */
       retval = ot->modal(C, op, event);
+      angelo_agent_modal_depth -= angelo_agent_modal ? 1 : 0;
       OPERATOR_RETVAL_CHECK(retval);
 
       if (ot->flag & OPTYPE_UNDO && CTX_wm_manager(C) == wm) {
@@ -2918,6 +2990,22 @@ static eHandlerActionFlag wm_handler_operator_call(bContext *C,
       if (CTX_wm_window(C) == win) {
 
         wm_event_modalkeymap_end(event, &event_backup);
+
+        /* Angelo: the same window does not mean the operator still exists. A refused
+         * checkpoint Restore (#wm_file_read_setup_wm_init) removes every modal handler and
+         * keeps the window: the handler and its operator are freed then, and nothing of them
+         * is touched. #wm_handlers_do_intern checks the list the same way before it reads the
+         * handler it just called. The operator is compared as well: a handler added since may
+         * have been given the freed one's address. */
+        if (BLI_findindex(handlers, handler) == -1 || handler->op != op) {
+          CTX_wm_area_set(C, nullptr);
+          CTX_wm_region_set(C, nullptr);
+          return WM_HANDLER_BREAK;
+        }
+
+        /* Angelo: what the operator did with a person's input
+         * (`wm_angelo_consumed_input.cc`). */
+        wm_angelo_operator_modal_answered(op, event_type_orig, retval, BLI_time_now_seconds());
 
         if (retval & (OPERATOR_CANCELLED | OPERATOR_FINISHED)) {
           wm_operator_reports(C, op, retval, false);
@@ -3064,7 +3152,7 @@ static void wm_operator_free_for_fileselect(wmOperator *file_operator)
   for (bScreen &screen : G_MAIN->screens) {
     for (ScrArea &area : screen.areabase) {
       if (area.spacetype == SPACE_FILE) {
-        SpaceFile *sfile = static_cast<SpaceFile *>(area.spacedata.first);
+        SpaceFile *sfile = area.spacedata.first_as<SpaceFile>();
         if (sfile->op == file_operator) {
           sfile->op = nullptr;
         }
@@ -3098,10 +3186,14 @@ static eHandlerActionFlag wm_handler_fileselect_do(bContext *C,
       /* Angelo: the OS window is titled with what the user is doing ("Save As", "Import FBX"),
        * not with the editor's internal name. The operator name is already translated. */
       const std::string title = WM_operatortype_name(handler->op->type, handler->op->ptr);
+      /* Maximized file browser does not work for file browsing from popups, as switching the
+       * screen closes it. */
+      const int display_type = handler->is_fileselect_keep_popup ? USER_TEMP_SPACE_DISPLAY_WINDOW :
+                                                                   U.filebrowser_display_type;
       ScrArea *area = ED_screen_temp_space_open(C,
                                                 title.empty() ? IFACE_("File Browser") : title.c_str(),
                                                 SPACE_FILE,
-                                                U.filebrowser_display_type,
+                                                display_type,
                                                 true);
       if (!area) {
         BKE_report(&wm->runtime->reports, RPT_ERROR, "Failed to open file browser!");
@@ -3116,7 +3208,7 @@ static eHandlerActionFlag wm_handler_fileselect_do(bContext *C,
       region_header->alignment = RGN_ALIGN_BOTTOM;
 
       /* Settings for file-browser, #sfile is not operator owner but sends events. */
-      SpaceFile *sfile = static_cast<SpaceFile *>(area->spacedata.first);
+      SpaceFile *sfile = area->spacedata.first_as<SpaceFile>();
       sfile->op = handler->op;
 
       ED_fileselect_set_params_from_userdef(sfile);
@@ -3148,7 +3240,7 @@ static eHandlerActionFlag wm_handler_fileselect_do(bContext *C,
         wmWindow *temp_win = nullptr;
         for (wmWindow &win : wm->windows) {
           bScreen *screen = WM_window_get_active_screen(&win);
-          ScrArea *file_area = static_cast<ScrArea *>(screen->areabase.first);
+          ScrArea *file_area = screen->areabase.first();
 
           if ((file_area->spacetype != SPACE_FILE) || !WM_window_is_temp_screen(&win)) {
             continue;
@@ -3161,13 +3253,17 @@ static eHandlerActionFlag wm_handler_fileselect_do(bContext *C,
             continue;
           }
 
-          ED_fileselect_params_to_userdef(static_cast<SpaceFile *>(file_area->spacedata.first));
+          ED_fileselect_params_to_userdef(file_area->spacedata.first_as<SpaceFile>());
 
           if (file_area->spacedata.is_single()) {
             BLI_assert(root_win != &win);
 
             if (!wm_window_close_request(C, wm, &win)) {
               BLI_addtail(handlers, handler);
+#ifdef WITH_PYTHON
+              /* Angelo: no run follows this confirm now: its pick names nothing (the re-read of 70600d6438b). */
+              BPY_angelo_guard_picks_done();
+#endif
               return WM_HANDLER_BREAK;
             }
 
@@ -3196,7 +3292,7 @@ static eHandlerActionFlag wm_handler_fileselect_do(bContext *C,
         }
 
         if (!temp_win && ctx_area->full) {
-          ED_fileselect_params_to_userdef(static_cast<SpaceFile *>(ctx_area->spacedata.first));
+          ED_fileselect_params_to_userdef(ctx_area->spacedata.first_as<SpaceFile>());
           ED_screen_full_prevspace(C, ctx_area);
         }
       }
@@ -3221,11 +3317,19 @@ static eHandlerActionFlag wm_handler_fileselect_do(bContext *C,
           wm->op_undo_depth++;
         }
 
+        /* Angelo: an agent's file browser runs its operator as the agent's modal does (no typed path from it). */
+        const int angelo_agent_fileselect = handler->angelo_from_agent ? 1 : 0;
+        angelo_agent_modal_depth += angelo_agent_fileselect;
         const wmOperatorStatus retval = wm_operator_undo_recovery_admit(
                                             C, handler->op->type, handler->op->reports) ?
                                             handler->op->type->exec(C, handler->op) :
                                             OPERATOR_CANCELLED;
+        angelo_agent_modal_depth -= angelo_agent_fileselect;
         OPERATOR_RETVAL_CHECK(retval);
+#ifdef WITH_PYTHON
+        /* Angelo: what the person picked was for this run of the operator only (writable.cc). */
+        BPY_angelo_guard_picks_done();
+#endif
 
         /* XXX check this carefully, `CTX_wm_manager(C) == wm` is a bit hackish. */
         if (handler->op->type->flag & OPTYPE_UNDO && CTX_wm_manager(C) == wm) {
@@ -3244,7 +3348,7 @@ static eHandlerActionFlag wm_handler_fileselect_do(bContext *C,
           }
         }
 
-        if (handler->op->reports->list.first) {
+        if (handler->op->reports->list.first()) {
 
           /* FIXME(@ideasman42): temp setting window, this is really bad!
            * only have because lib linking errors need to be seen by users :(
@@ -3254,7 +3358,7 @@ static eHandlerActionFlag wm_handler_fileselect_do(bContext *C,
           ARegion *region_prev = CTX_wm_region(C);
 
           if (win_prev == nullptr) {
-            CTX_wm_window_set(C, static_cast<wmWindow *>(CTX_wm_manager(C)->windows.first));
+            CTX_wm_window_set(C, CTX_wm_manager(C)->windows.first());
           }
 
           BKE_report_print_level_set(handler->op->reports, RPT_WARNING);
@@ -3739,9 +3843,8 @@ static eHandlerActionFlag wm_handlers_do_intern(bContext *C,
    * by the event that's called, for eg:
    *
    * Calling a python script which changes the area.type, see #32232. */
-  for (wmEventHandler *handler_base = static_cast<wmEventHandler *>(handlers->first),
-                      *handler_base_next;
-       handler_base && handlers->first;
+  for (wmEventHandler *handler_base = handlers->first(), *handler_base_next;
+       handler_base && handlers->first();
        handler_base = handler_base_next)
   {
     handler_base_next = handler_base->next;
@@ -4170,7 +4273,7 @@ static void wm_paintcursor_test(bContext *C, const wmEvent *event)
 {
   wmWindowManager *wm = CTX_wm_manager(C);
 
-  if (wm->runtime->paintcursors.first) {
+  if (wm->runtime->paintcursors.first()) {
     const bScreen *screen = CTX_wm_screen(C);
     ARegion *region = screen ? screen->active_region : nullptr;
 
@@ -4314,7 +4417,7 @@ static void wm_event_handle_xrevent(wmWindowManager *wm,
   ScrArea *xr_area = CTX_wm_area(xr_context);
   ARegion *xr_region = CTX_wm_region(xr_context);
 
-  BLI_assert(xr_area && xr_area->spacetype == SPACE_VIEW3D && xr_area->spacedata.first);
+  BLI_assert(xr_area && xr_area->spacetype == SPACE_VIEW3D && xr_area->spacedata.first_);
 
   /* For operators using GPU-based selection. */
   BLI_assert(WM_region_use_viewport(xr_area, xr_region));
@@ -4493,7 +4596,7 @@ void wm_event_do_handlers(bContext *C)
     }
 
     wmEvent *event;
-    while ((event = static_cast<wmEvent *>(win.runtime->event_queue.first))) {
+    while ((event = win.runtime->event_queue.first())) {
       /* Do the check at the start of the next iteration, to avoid by-passing it in case the
        * previous iteration has been early-terminated (using `continue;` e.g.). */
       if (wm->runtime->break_events_handling) {
@@ -4619,6 +4722,11 @@ void wm_event_do_handlers(bContext *C)
            * Also used in `wm_draw.cc`, fails for modal handlers though. */
           ED_screen_set_active_region(C, &win, event->xy);
           /* For regions having custom cursors. */
+          wm_paintcursor_test(C, event);
+        }
+        else if (ISKEYMODIFIER(event->type)) {
+          /* Paint cursors may change appearance based on modifier keys,
+           * e.g. blade tool in the sequencer. */
           wm_paintcursor_test(C, event);
         }
 #ifdef WITH_INPUT_NDOF
@@ -4753,8 +4861,118 @@ void wm_event_do_handlers(bContext *C)
 /** \name File Selector Handling
  * \{ */
 
+/** Angelo: the person's confirm in a file browser that saves (any operator whose browser saves: `check_existing` on
+ * by default; never an open, import or link) or one an Angelo operator opened, never a browser an agent script
+ * opened, vouches for the chosen paths for that operator's run: Blender's writers it runs (a Multires Save External,
+ * an image save) and Angelo's code may write there whatever the data's tags say (doc/angelo/script_confinement.rst,
+ * "Angelo's own I/O"; the re-reads of cf5befe2877, M2, and 70600d6438b, MUST-1). It counts only for unconfined
+ * callers (writable.cc), records nothing while a script runs (a script driving `file.execute` itself), and is
+ * dropped when the execute returns, the browser is cancelled or its window refuses to close. */
+static void angelo_note_picked(void *ophandle)
+{
+#ifdef WITH_PYTHON
+  wmOperator *op = static_cast<wmOperator *>(ophandle);
+  if (op == nullptr || op->type == nullptr || op->ptr == nullptr) {
+    return;
+  }
+  if (!STRPREFIX(op->type->idname, "ANGELO_OT_")) {
+    PropertyRNA *check_existing = RNA_struct_find_property(op->ptr, "check_existing");
+    if (check_existing == nullptr || RNA_property_type(check_existing) != PROP_BOOLEAN ||
+        !RNA_property_boolean_get_default(op->ptr, check_existing))
+    {
+      return; /* An open, import or link browser: what the person picked is read, never written. */
+    }
+  }
+  char directory[FILE_MAX] = "";
+  PropertyRNA *prop = RNA_struct_find_property(op->ptr, "directory");
+  if (prop != nullptr && RNA_property_type(prop) == PROP_STRING) {
+    RNA_property_string_get(op->ptr, prop, directory);
+    BLI_path_abs(directory, BKE_main_blendfile_path_from_global());
+  }
+  bool any = false;
+  prop = RNA_struct_find_property(op->ptr, "files");
+  if (prop != nullptr && directory[0] && RNA_property_type(prop) == PROP_COLLECTION) {
+    RNA_PROP_BEGIN (op->ptr, item, prop) {
+      char name[FILE_MAXFILE];
+      RNA_string_get(&item, "name", name);
+      if (name[0]) {
+        char path[FILE_MAX];
+        BLI_path_join(path, sizeof(path), directory, name);
+        BPY_angelo_guard_note_picked(path, false);
+        any = true;
+      }
+    }
+    RNA_PROP_END;
+  }
+  prop = RNA_struct_find_property(op->ptr, "filepath");
+  if (prop != nullptr && RNA_property_type(prop) == PROP_STRING) {
+    char filepath[FILE_MAX];
+    RNA_property_string_get(op->ptr, prop, filepath);
+    if (filepath[0]) {
+      BLI_path_abs(filepath, BKE_main_blendfile_path_from_global());
+      BPY_angelo_guard_note_picked(filepath, BLI_is_dir(filepath));
+      any = true;
+    }
+  }
+  if (!any && directory[0]) {
+    BPY_angelo_guard_note_picked(directory, true);
+  }
+#else
+  UNUSED_VARS(ophandle);
+#endif
+}
+
+/** Angelo: whether the file browser of `ophandle` was opened by an agent script (its handler's tag); one whose
+ * handler can't be found counts as the agent's (nothing is named). */
+static bool angelo_fileselect_from_agent(wmWindowManager *wm, const void *ophandle)
+{
+  for (wmWindow &win : wm->windows) {
+    for (wmEventHandler &handler_base : win.runtime->modalhandlers) {
+      if (handler_base.type == WM_HANDLER_TYPE_OP) {
+        const wmEventHandler_Op *handler = reinterpret_cast<const wmEventHandler_Op *>(&handler_base);
+        if (handler->is_fileselect && handler->op == ophandle) {
+          return handler->angelo_from_agent;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+bool WM_angelo_fileselect_operator_data(const void *data)
+{
+  const wmWindowManager *wm = G_MAIN != nullptr ? static_cast<const wmWindowManager *>(G_MAIN->wm.first()) :
+                                                  nullptr;
+  if (wm == nullptr || data == nullptr) {
+    return false;
+  }
+  for (const wmWindow &win : wm->windows) {
+    for (const wmEventHandler &handler_base : win.runtime->modalhandlers) {
+      if (handler_base.type != WM_HANDLER_TYPE_OP) {
+        continue;
+      }
+      const wmEventHandler_Op *handler = reinterpret_cast<const wmEventHandler_Op *>(&handler_base);
+      const wmOperator *op = handler->op;
+      if (handler->is_fileselect && op != nullptr &&
+          (data == op || data == op->properties || (op->ptr != nullptr && data == op->ptr->data)))
+      {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 void WM_event_fileselect_event(wmWindowManager *wm, void *ophandle, const int eventval)
 {
+  if (eventval == EVT_FILESELECT_EXEC && !angelo_fileselect_from_agent(wm, ophandle)) {
+    angelo_note_picked(ophandle);
+  }
+#ifdef WITH_PYTHON
+  else if (ELEM(eventval, EVT_FILESELECT_CANCEL, EVT_FILESELECT_EXTERNAL_CANCEL)) {
+    BPY_angelo_guard_picks_done(); /* Angelo: a cancelled browser's pick names nothing. */
+  }
+#endif
   /* Add to all windows! */
   for (wmWindow &win : wm->windows) {
     wmEvent event = *win.runtime->eventstate;
@@ -4806,9 +5024,8 @@ static wmWindow *wm_event_find_fileselect_root_window_from_context(const bContex
 
   /* Fall back to the first window. */
   const wmWindowManager *wm = CTX_wm_manager(C);
-  BLI_assert(!ED_fileselect_handler_area_find_any_with_op(
-      static_cast<const wmWindow *>(wm->windows.first)));
-  return static_cast<wmWindow *>(wm->windows.first);
+  BLI_assert(!ED_fileselect_handler_area_find_any_with_op(wm->windows.first()));
+  return wm->windows.first();
 }
 
 /* Operator is supposed to have a filled "path" property. */
@@ -4927,6 +5144,14 @@ void WM_event_add_fileselect(bContext *C, wmOperator *op)
   handler->head.type = WM_HANDLER_TYPE_OP;
 
   handler->is_fileselect = true;
+#ifdef WITH_PYTHON
+  /* Angelo: a file browser an agent script opened (its operator's invoke ran confined, or the modal of an operator a
+   * script started: the one predicate the refusal and popups use) names nothing when the person confirms it
+   * (angelo_note_picked), and what its operator then sets is no typed path. */
+  handler->angelo_from_agent = BPY_angelo_guard_thread_confined() || WM_angelo_in_agent_modal();
+#endif
+  handler->is_fileselect_keep_popup = ui::popup_region_from_operator(CTX_wm_screen(C),
+                                                                     CTX_wm_region_popup(C));
   handler->op = op;
   handler->context.win = root_win;
   handler->context.area = root_area;
@@ -5018,6 +5243,9 @@ wmEventHandler_Op *WM_event_add_modal_handler_ex(wmWindow *win,
 {
   wmEventHandler_Op *handler = MEM_new_zeroed<wmEventHandler_Op>(__func__);
   handler->head.type = WM_HANDLER_TYPE_OP;
+#ifdef WITH_PYTHON
+  handler->angelo_from_agent = BPY_angelo_guard_thread_confined() || WM_angelo_in_agent_modal();
+#endif
 
   /* Operator was part of macro. */
   if (op->opm) {
@@ -5077,7 +5305,7 @@ void WM_event_remove_modal_handler(ListBaseT<wmEventHandler> *handlers,
 void WM_event_remove_modal_handler_all(const wmOperator *op, const bool postpone)
 {
   Main *bmain = G_MAIN;
-  wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
+  wmWindowManager *wm = bmain->wm.first();
   for (wmWindow &win : wm->windows) {
     WM_event_remove_modal_handler(&win.runtime->modalhandlers, op, postpone);
   }
@@ -6058,7 +6286,7 @@ static wmWindow *wm_event_cursor_other_windows(wmWindowManager *wm, wmWindow *wi
     return nullptr;
   }
 
-  if (wm->windows.first == wm->windows.last) {
+  if (wm->windows.first() == wm->windows.last()) {
     return nullptr;
   }
 
@@ -6131,7 +6359,7 @@ static void wm_event_prev_click_set(uint64_t event_time_ms,
 
 static wmEvent *wm_event_add_mousemove(wmWindow *win, const wmEvent *event)
 {
-  wmEvent *event_last = static_cast<wmEvent *>(win->runtime->event_queue.last);
+  wmEvent *event_last = win->runtime->event_queue.last();
 
   /* Some painting operators want accurate mouse events, they can
    * handle in between mouse move moves, others can happily ignore
@@ -6186,7 +6414,7 @@ static wmEvent *wm_event_add_trackpad(wmWindow *win, const wmEvent *event, int d
 {
   /* Ignore in between trackpad events for performance, we only need high accuracy
    * for painting with mouse moves, for navigation using the accumulated value is ok. */
-  const wmEvent *event_last = static_cast<wmEvent *>(win->runtime->event_queue.last);
+  const wmEvent *event_last = win->runtime->event_queue.last();
   if (event_last && event_last->type == event->type) {
     deltax += event_last->xy[0] - event_last->prev_xy[0];
     deltay += event_last->xy[1] - event_last->prev_xy[1];
@@ -6308,10 +6536,43 @@ static bool wm_event_is_ignorable_key_press(const wmWindow *win, const wmEvent &
     return false;
   }
 
-  const wmEvent &last_event = *static_cast<const wmEvent *>(win->runtime->event_queue.last);
+  const wmEvent &last_event = *win->runtime->event_queue.last();
 
   return wm_event_is_same_key_press(last_event, event);
 }
+
+#ifdef WITH_INPUT_IME
+void WM_event_IME_apply(wmWindow *win, const wmIMEPhase phase, const wmIMEData *data)
+{
+  /* As GHOST's own events: the window's current state (mouse position, modifiers), pressed. */
+  wmEvent event = *win->runtime->eventstate;
+  event.flag = eWM_EventFlag(0);
+  event.val = KM_PRESS;
+  switch (phase) {
+    case wmIMEPhase::Start:
+    case wmIMEPhase::Update: {
+      /* A copy: GHOST's data may not outlive its event. Start replaces any previous data. */
+      BLI_assert(data != nullptr);
+      MEM_delete(win->runtime->ime_data);
+      win->runtime->ime_data = MEM_new<wmIMEData>(__func__, *data);
+      if (phase == wmIMEPhase::Start) {
+        win->runtime->ime_data_is_composing = true;
+        event.type = WM_IME_COMPOSITE_START;
+      }
+      else {
+        event.type = WM_IME_COMPOSITE_EVENT;
+      }
+      break;
+    }
+    case wmIMEPhase::End: {
+      win->runtime->ime_data_is_composing = false;
+      event.type = WM_IME_COMPOSITE_END;
+      break;
+    }
+  }
+  wm_event_add_intern(win, &event);
+}
+#endif
 
 void wm_event_add_ghostevent(wmWindowManager *wm,
                              wmWindow *win,
@@ -6319,7 +6580,7 @@ void wm_event_add_ghostevent(wmWindowManager *wm,
                              const void *customdata,
                              const uint64_t event_time_ms)
 {
-  if (UNLIKELY(G.f & G_FLAG_EVENT_SIMULATE)) {
+  if (G.f & G_FLAG_EVENT_SIMULATE) [[unlikely]] {
     return;
   }
 
@@ -6399,6 +6660,7 @@ void wm_event_add_ghostevent(wmWindowManager *wm,
       event.val = KM_NOTHING;
       {
         wmEvent *event_new = wm_event_add_mousemove(win, &event);
+        angelo_note_input(win, event_new);
         copy_v2_v2_int(event_state->xy, event_new->xy);
         event_state->tablet.is_motion_absolute = event_new->tablet.is_motion_absolute;
         event_state->tablet.tilt = event.tablet.tilt;
@@ -6423,6 +6685,7 @@ void wm_event_add_ghostevent(wmWindowManager *wm,
         event_other.val = KM_NOTHING;
         {
           wmEvent *event_new = wm_event_add_mousemove(win_other, &event_other);
+          angelo_note_input(win_other, event_new);
           copy_v2_v2_int(win_other->runtime->eventstate->xy, event_new->xy);
           win_other->runtime->eventstate->tablet.is_motion_absolute =
               event_new->tablet.is_motion_absolute;
@@ -6525,9 +6788,11 @@ void wm_event_add_ghostevent(wmWindowManager *wm,
         event_other.val = event.val;
         event_other.tablet = event.tablet;
 
+        angelo_note_input(win_other, &event_other);
         wm_event_add_intern(win_other, &event_other);
       }
       else {
+        angelo_note_input(win, &event);
         wm_event_add_intern(win, &event);
       }
 
@@ -6538,7 +6803,7 @@ void wm_event_add_ghostevent(wmWindowManager *wm,
     case GHOST_kEventKeyUp: {
       const GHOST_TEventKeyData *kd = static_cast<const GHOST_TEventKeyData *>(customdata);
       event.type = wm_event_type_from_ghost_key(kd->key);
-      if (UNLIKELY(event.type == EVENT_NONE)) {
+      if (event.type == EVENT_NONE) [[unlikely]] {
         break;
       }
 
@@ -6697,6 +6962,9 @@ void wm_event_add_ghostevent(wmWindowManager *wm,
       }
 
       if (!wm_event_is_ignorable_key_press(win, event)) {
+        if (event.val == KM_PRESS && (event.flag & WM_EVENT_IS_REPEAT) == 0) {
+          angelo_note_input(win, &event); /* The person's key: Tab, or Return on a focused control. */
+        }
         wm_event_add_intern(win, &event);
       }
 
@@ -6793,6 +7061,7 @@ void wm_event_add_ghostevent(wmWindowManager *wm,
 
     case GHOST_kEventWindowDeactivate: {
       event.type = WINDEACTIVATE;
+      angelo_note_input(win, &event);
       wm_event_add_intern(win, &event);
 
       break;
@@ -6800,39 +7069,16 @@ void wm_event_add_ghostevent(wmWindowManager *wm,
 
 #ifdef WITH_INPUT_IME
     case GHOST_kEventImeCompositionStart: {
-      event.val = KM_PRESS;
       BLI_assert(customdata != nullptr);
-      /* We need to free the previously allocated data (if any). */
-      MEM_delete(win->runtime->ime_data);
-
-      /* We make a copy of the ghost custom data as it is not certain that the pointer
-       * will be valid after the event itself gets freed.
-       */
-      const wmIMEData *ghost_event_data = static_cast<const wmIMEData *>(customdata);
-      win->runtime->ime_data = MEM_new<wmIMEData>(__func__, *ghost_event_data);
-
-      win->runtime->ime_data_is_composing = true;
-      event.type = WM_IME_COMPOSITE_START;
-      wm_event_add_intern(win, &event);
+      WM_event_IME_apply(win, wmIMEPhase::Start, static_cast<const wmIMEData *>(customdata));
       break;
     }
     case GHOST_kEventImeComposition: {
-      event.val = KM_PRESS;
-      event.type = WM_IME_COMPOSITE_EVENT;
-
-      /* Update our copy of the ghost custom data. */
-      MEM_delete(win->runtime->ime_data);
-      const wmIMEData *ghost_event_data = static_cast<const wmIMEData *>(customdata);
-      win->runtime->ime_data = MEM_new<wmIMEData>(__func__, *ghost_event_data);
-
-      wm_event_add_intern(win, &event);
+      WM_event_IME_apply(win, wmIMEPhase::Update, static_cast<const wmIMEData *>(customdata));
       break;
     }
     case GHOST_kEventImeCompositionEnd: {
-      event.val = KM_PRESS;
-      win->runtime->ime_data_is_composing = false;
-      event.type = WM_IME_COMPOSITE_END;
-      wm_event_add_intern(win, &event);
+      WM_event_IME_apply(win, wmIMEPhase::End, nullptr);
       break;
     }
 #endif /* WITH_INPUT_IME */
@@ -6978,6 +7224,43 @@ bool WM_event_match(const wmEvent *winevent, const wmKeyMapItem *kmi)
   return wm_eventmatch(winevent, kmi);
 }
 
+bool WM_event_modifier_flag_match_kmi_press(const wmEventModifierFlag event_modifier,
+                                            const wmKeyMapItem *kmi)
+{
+  /* The caller is expected to skip. */
+  BLI_assert((kmi->flag & KMI_INACTIVE) == 0);
+
+  if (event_modifier == 0) {
+    return false;
+  }
+  if (kmi->val != KM_PRESS) {
+    return false;
+  }
+  switch (kmi->type) {
+    case EVT_LEFTCTRLKEY:
+    case EVT_RIGHTCTRLKEY: {
+      return event_modifier & KM_CTRL;
+    }
+    case EVT_LEFTSHIFTKEY:
+    case EVT_RIGHTSHIFTKEY: {
+      return event_modifier & KM_SHIFT;
+    }
+    case EVT_LEFTALTKEY:
+    case EVT_RIGHTALTKEY: {
+      return event_modifier & KM_ALT;
+    }
+    case EVT_OSKEY: {
+      return event_modifier & KM_OSKEY;
+    }
+    case EVT_HYPER: {
+      return event_modifier & KM_HYPER;
+    }
+    default: {
+      return false;
+    }
+  }
+}
+
 /** \} */
 
 /* -------------------------------------------------------------------- */
@@ -7078,7 +7361,7 @@ void WM_window_cursor_keymap_status_refresh(bContext *C, wmWindow *win)
   }
 
   CursorKeymapInfo *cd;
-  if (UNLIKELY(win->runtime->cursor_keymap_status == nullptr)) {
+  if (win->runtime->cursor_keymap_status == nullptr) [[unlikely]] {
     win->runtime->cursor_keymap_status = MEM_new<CursorKeymapInfo>(__func__);
   }
   cd = static_cast<CursorKeymapInfo *>(win->runtime->cursor_keymap_status);

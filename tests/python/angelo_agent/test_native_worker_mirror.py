@@ -8,6 +8,9 @@ it, pumps and saves it as a worker's main loop does, and forwards what it pumped
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
+import platform_env
 
 import os
 import sys
@@ -253,7 +256,7 @@ class ActionTests(Fixture):
     def test_approve_sends_the_digest_drawn_and_never_twice(self):
         self.lane()
         call = self.card()
-        self.mirror.review_script(call)
+        angelo_guard_twin.harness(self.mirror.review_script, call)
         self.assertTrue(self.mirror.script_authorized(call))   # The operator's own review gate works on the card.
         self.approve("c1")
         with self.assertRaises(MirrorRefused):
@@ -263,7 +266,7 @@ class ActionTests(Fixture):
     def test_a_changed_digest_is_a_new_card_that_needs_a_new_review(self):
         self.lane()
         first = self.card()
-        self.mirror.review_script(first)
+        angelo_guard_twin.harness(self.mirror.review_script, first)
         second = self.card(digest="b" * 64)
         self.assertIsNot(first, second)
         self.assertFalse(self.mirror.script_authorized(second))
@@ -294,7 +297,7 @@ class ActionTests(Fixture):
         """A notice is sent off the main thread (a wedged worker never blocks the window): wait for its op."""
         before = len(self.ops.calls)
         self.mirror.emit("message", {"role": "system", "text": text, "notice": True})
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while len(self.ops.calls) == before and time.monotonic() < deadline:
             time.sleep(0.002)
         time.sleep(0.01)
@@ -508,7 +511,7 @@ class SwitchTests(unittest.TestCase):
             environment = {k: v for k, v in os.environ.items() if k != "ANGELO_WORKER_CHAT_HOST"}
             if value is not None:
                 environment["ANGELO_WORKER_CHAT_HOST"] = value
-            with self.subTest(value=value), mock.patch.dict(os.environ, environment, clear=True):
+            with self.subTest(value=value), platform_env.cleared(environment):
                 self.assertIs(worker_mirror.enabled(), expected)
 
 

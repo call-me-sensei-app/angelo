@@ -39,7 +39,7 @@ def fake_bpy():   # As test_native_studio_tab_build's: enough to import the modu
 
 with mock.patch.dict(sys.modules, fake_bpy()):
     import angelo_agent  # noqa: E402
-    from angelo_agent import chat_hide, layout_hold, studio_tab_build, studio_workspaces, timer_jobs  # noqa: E402
+    from angelo_agent import chat_hide, layout_hold, studio_tab_build, studio_workspaces, tab_removal, timer_jobs  # noqa: E402,E501
 
 
 class Freed(AssertionError):
@@ -140,6 +140,7 @@ class Stage(unittest.TestCase):
         patches = [mock.patch.dict(sys.modules, modules),
                    mock.patch.object(studio_workspaces, "bpy", self.bpy),
                    mock.patch.object(studio_tab_build, "bpy", self.bpy),
+                   mock.patch.object(tab_removal, "bpy", self.bpy),
                    mock.patch.object(chat_hide, "bpy", self.bpy),
                    mock.patch.object(studio_workspaces, "_building", False),
                    mock.patch.object(studio_workspaces, "_holding", None),
@@ -148,7 +149,7 @@ class Stage(unittest.TestCase):
                    mock.patch.object(studio_workspaces, "place", lambda: True),
                    mock.patch.object(studio_workspaces, "fill", lambda window, kind: None),
                    mock.patch.object(studio_workspaces, "missing", lambda: ["studio"]),
-                   mock.patch.object(studio_workspaces, "_remove", lambda window, workspace: self.removed.append(
+                   mock.patch.object(studio_workspaces, "_remove", lambda window, workspace, home=None: self.removed.append(
                        workspace.name) or self.workspaces.remove(workspace)),
                    mock.patch.dict(studio_workspaces.last_build, {}, clear=True),
                    mock.patch.dict(studio_tab_build._job, {"generator": None}),

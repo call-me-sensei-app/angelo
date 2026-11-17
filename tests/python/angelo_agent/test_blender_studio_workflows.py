@@ -55,6 +55,8 @@ from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_operator  # noqa: E402  (a stand-in self for an operator's method, never a bare namespace)
+import qa_canvas_grant  # noqa: E402  (a grant clicked as the person clicks it; a scripted one refused)
+import qa_input  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # studio_workflows_evidence
 
@@ -240,6 +242,14 @@ def click(action, value=None):
         studio.ANGELO_OT_studio_input.modal(handler, bpy.context, event)
 
 
+def person_presses(action, value=None):
+    """A run's click no person made (``click``, Studio's handler called from Python) is refused, then the person
+    presses it through the window: the run's grant takes that press's ticket."""
+    checks["a_scripted_%s_is_refused" % action] = qa_canvas_grant.refused(view(), lambda: click(action, value))
+    redraw()
+    qa_canvas_grant.press(studio_area()[0], region(), view()["hits"], action, value)
+
+
 def fit_gate():
     """{(connection mode, model): whether the real Fit operator's poll passes with AI Enhance bound to it}. Poll gates
     every way in (the card's button, its dialog's OK, a script or the agent calling bpy.ops)."""
@@ -408,10 +418,12 @@ def tick():
             capture("workflows-3b-flow-window.png", target)
             with bpy.context.temp_override(window=target, area=target.screen.areas[0]):
                 bpy.ops.wm.window_close()
-            click("wf_start")   # Make parts sheet: the itemized approval opens; declining runs nothing.
+            person_presses("wf_start")   # Make parts sheet: the itemized approval opens; declining runs nothing.
             state["phase"] = "decline_sheet"
             return 1.0
         if phase == "decline_sheet":
+            if not wait(phase, qa_canvas_grant.dialog_open):
+                return .2
             lines = [line.node for line in bpy.context.window_manager.angelo_flow_run_lines]
             checks["make_parts_sheet_asks_to_approve_the_sheet"] = lines == [flow_templates.SHEET_STEP]
             checks["make_parts_sheet_asks_without_an_error"] = not view().get("notice")
@@ -469,10 +481,12 @@ def tick():
             capture("workflows-5-review-one-off.png")
             checks["the_screen_shows_the_part_left_out"] = (OUT / "workflows-5-review-one-off.png").read_bytes() != (
                 OUT / "workflows-4-review.png").read_bytes()
-            click("wf_parts")   # Make 3D for N parts: the run dialog; declining runs nothing.
+            person_presses("wf_parts")   # Make 3D for N parts: the run dialog; declining runs nothing.
             state["phase"] = "decline_parts"
             return 1.0
         if phase == "decline_parts":
+            if not wait(phase, qa_canvas_grant.dialog_open):
+                return .2
             lines = {line.node: line.include for line in bpy.context.window_manager.angelo_flow_run_lines}
             state["parts_dialog"] = lines
             value, tree, shown, _ = current()
@@ -606,4 +620,4 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=1.0)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=1.0)   # Never ahead of a press.

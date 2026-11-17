@@ -22,11 +22,11 @@ Commands, from the repository root::
         --previous published/stable.json --out payload.json
 
     # A newer release line: the published latest stays, for builds before 1.0.9, and this release joins lines.
-    python3 scripts/angelo/sign_update_feed.py build --version 1.1.0 --sequence 12 --as-line \\
-        --download macos-arm64=dist/Angelo-1.1.0-macos-arm64.dmg --previous published/stable.json --out payload.json
+    python3 scripts/angelo/sign_update_feed.py build --version 2.0.0 --sequence 12 --as-line \\
+        --download macos-arm64=dist/Angelo-2.0.0-macos-arm64.dmg --previous published/stable.json --out payload.json
 
     # Recommend a line to everyone on an older one, or stop (--off): one new payload, then sign and verify as usual.
-    python3 scripts/angelo/sign_update_feed.py recommend --line 1.1 --previous published/stable.json --out payload.json
+    python3 scripts/angelo/sign_update_feed.py recommend --line 2.0 --previous published/stable.json --out payload.json
 
     # Sign it (production: Cloud KMS through gcloud; rehearsal: --key-file). The key version's full
     # resource name, projects/<project>/locations/<location>/keyRings/<keyring>/cryptoKeys/<key>/

@@ -35,7 +35,11 @@ function Test-Check([string]$Name, [scriptblock]$Body) {
 $identity = Get-Content (Join-Path $SourceDir "scripts\modules\angelo_identity.json") -Raw | ConvertFrom-Json
 $product = $identity.product.name
 $installDir = Join-Path $env:ProgramFiles $identity.windows.install_folder
-$series = "5.2"
+# The install's per-version folder: the Blender series this source builds, read from its one value
+# (blender_release.py, pinned to BLENDER_VERSION by the host suite), never a literal that a base move leaves behind.
+$releaseText = Get-Content (Join-Path $SourceDir "scripts\addons_core\angelo_agent\blender_release.py") -Raw
+$series = [regex]::Match($releaseText, '(?m)^RELEASE = "(\d+\.\d+)"').Groups[1].Value
+if (-not $series) { throw "blender_release.py names no RELEASE" }
 $python = Join-Path $installDir "$series\python\bin\python.exe"
 $addons = Join-Path $installDir "$series\scripts\addons_core"
 . (Join-Path $SourceDir "scripts\angelo\windows_msi_commit.ps1")

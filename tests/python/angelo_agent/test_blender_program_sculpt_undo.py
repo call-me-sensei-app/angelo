@@ -14,6 +14,7 @@ compiled native brush operator.
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+from qa_person import as_person  # noqa: E402  The person's own action (C's harness scope).
 
 import array
 import contextlib
@@ -66,6 +67,7 @@ def history():
     try:
         with path.open('w') as output:
             os.dup2(output.fileno(), 1)
+            # Blender 5.3 prints each undo step's type identifier (SCULPT, GLOBAL_UNDO), not its name (upstream ae71b519937).
             bpy.context.window_manager.print_undo_steps()
             libc.fflush(None)
     finally:
@@ -197,7 +199,7 @@ def commit(x=5., refuse=False, after_apply=None, *, arguments=None):
         assert isinstance(call, ToolCall), host.responses
         controller.pump_tools(executor, document, budget=ToolDispatchBudget(seconds=60))
         assert call.approval and not call.authorized and not host.responses, host.responses
-        controller.approve_tool(call, executor, document)  # Fixture authorizes this exact reviewed program.
+        as_person(controller.approve_tool, call, executor, document)  # Fixture authorizes this exact reviewed program.
         for _ in range(400):
             controller.pump_tools(executor, document, budget=ToolDispatchBudget(seconds=60))
             job = controller.native_jobs.get(call.id)
@@ -856,6 +858,44 @@ def dyntopo_cases():
 
 
 
+def failed_decode_case():
+    """A memfile read that installs Main and then fails must leave no evaluated copy pointing at an ID it freed.
+
+    The 2.0.0 candidate's Dyntopo Redo was refused after the read installed Main, and the next dependency graph
+    build (a depsgraph update, quitting) walked an evaluated scene's ToolSettings into freed memory (SIGSEGV in
+    about 3 of 4 runs). The same Redo, refused by the native fixture hook, must report recovery and survive every
+    rebuild after it. Run last: the stack stays in recovery."""
+    import _bpy
+    fixture()
+    bpy.ops.sculpt.dynamic_topology_toggle('EXEC_DEFAULT', True)
+    bpy.ops.sculpt.symmetrize('EXEC_DEFAULT', True)
+    check('failed_decode_fixture_is_dyntopo', snapshot()['dyntopo'])
+    commit()
+    bpy.ops.ed.undo()
+    _bpy._angelo_undo._test_fail_next_bmesh_read()
+    try:
+        bpy.ops.ed.redo()
+    except RuntimeError as error:
+        refused = str(error)
+    else:
+        refused = ''
+    REPORT['cases']['failed_decode'] = {'redo_error': refused}
+    check('failed_decode_redo_reports_it', bool(refused))
+    for _ in range(3):   # Each update rebuilds relations after the read: the walk that crashed.
+        bpy.context.view_layer.update()
+        bpy.context.evaluated_depsgraph_get().update()
+    scene = bpy.context.scene
+    evaluated = scene.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    check('failed_decode_evaluated_tool_settings_follow_the_installed_scene',
+          evaluated.tool_settings.sculpt.brush == scene.tool_settings.sculpt.brush)
+    try:
+        bpy.ops.ed.undo()
+    except RuntimeError as error:
+        check('failed_decode_leaves_recovery_required', 'recovery' in str(error).lower())
+    else:
+        check('failed_decode_leaves_recovery_required', False)
+
+
 def raw_mesh_state():
     """Observe stored Mesh data directly; never flush or evaluate its live BMesh."""
     mesh = bpy.data.objects[ACTOR].data
@@ -924,7 +964,7 @@ def untagged_memfile_case():
               any(saved_raw['attributes']['.sculpt_mask'][2]) and
               any(saved_raw['attributes']['.hide_vert'][2]))
         steps = history()
-        check(prefix+'_is_real_main_history', steps[-1]['type'] == 'Global Undo')
+        check(prefix+'_is_real_main_history', steps[-1]['type'] == 'GLOBAL_UNDO')
         if untracked_edit:
             bpy.data.objects[TARGET].location.x = 2.
             # Establish a current live transform before the staged program binds its revision.
@@ -998,8 +1038,8 @@ def stock_untagged_memfile_case():
             bpy.ops.ed.undo_push(message='Stock manual Main successor')
             check(prefix+'_has_only_ordinary_manual_main_boundaries',
                   [(row['type'], row['name']) for row in history()[-2:]] ==
-                  [('Global Undo', 'Stock manual Main checkpoint'),
-                   ('Global Undo', 'Stock manual Main successor')])
+                  [('GLOBAL_UNDO', 'Stock manual Main checkpoint'),
+                   ('GLOBAL_UNDO', 'Stock manual Main successor')])
             bpy.ops.ed.undo()
             restored_raw = raw_mesh_state()
             historical_artist = snapshot()
@@ -1013,6 +1053,45 @@ def stock_untagged_memfile_case():
             redone = snapshot()
             record_phase(prefix, 'redo-artist', redone)
             check(prefix+'_ordinary_untagged_redo_is_reachable', redone['target_x'] == 2.)
+    finally:
+        preference.use_undo_legacy = old_legacy
+        bpy.context.preferences.view.show_developer_ui = old_developer_ui
+
+
+def dyntopo_full_read_and_jump_case():
+    """With Dyntopo live, a memfile read with no old Main reused (the legacy preference reads every step whole, as a
+    brush asset change forces) and a jump of several memfile steps are ordinary Undos, never recovery; the full read
+    keeps the step's own Mesh. Then the same jump reusing the old Main. Objects are looked up by name after each read:
+    a full read frees every Python reference."""
+    preference = bpy.context.preferences.experimental
+    old_legacy = preference.use_undo_legacy
+    old_developer_ui = bpy.context.preferences.view.show_developer_ui
+    try:
+        bpy.context.preferences.view.show_developer_ui = True
+        for full_read in (True, False):
+            preference.use_undo_legacy = full_read
+            prefix = 'dyntopo_full_read' if full_read else 'dyntopo_reused_read'
+            fixture()
+            bpy.ops.sculpt.dynamic_topology_toggle('EXEC_DEFAULT', True)
+            bpy.ops.sculpt.symmetrize('EXEC_DEFAULT', True)
+            check(prefix + '_fixture_is_dyntopo', snapshot()['dyntopo'])
+            bpy.data.objects[TARGET].location.x = 1.
+            bpy.ops.ed.undo_push(message='Dyntopo read step A')
+            first = active_index()
+            saved_raw = raw_mesh_state()
+            bpy.data.objects[TARGET].location.x = 2.
+            bpy.ops.ed.undo_push(message='Dyntopo read step B')
+            bpy.data.objects[TARGET].location.x = 3.
+            bpy.ops.ed.undo_push(message='Dyntopo read step C')
+            bpy.ops.ed.undo_history(item=first)   # Two memfile steps back at once.
+            jumped = snapshot()
+            REPORT['cases'][prefix + '_jump'] = {'target_x': bpy.data.objects[TARGET].location.x, 'dyntopo': jumped['dyntopo']}
+            check(prefix + '_jump_is_an_ordinary_undo', bpy.data.objects[TARGET].location.x == 1.)
+            if full_read:   # Every Object read anew: no live BMesh, the step's own Mesh.
+                check(prefix + '_leaves_no_live_bmesh', not jumped['dyntopo'])
+                check(prefix + '_keeps_the_steps_own_mesh', raw_mesh_state() == saved_raw)
+            bpy.ops.ed.redo()
+            check(prefix + '_redo_after_the_jump', bpy.data.objects[TARGET].location.x == 2.)
     finally:
         preference.use_undo_legacy = old_legacy
         bpy.context.preferences.view.show_developer_ui = old_developer_ui
@@ -1177,7 +1256,7 @@ def recovery_failure_case(*, full_reread=False, second_object=False):
     commit(after_apply=mark_mesh_after_apply)
     saved_history = history()
     boundary = saved_history[-2]
-    check('fault_targets_exact_hidden_boundary', boundary['skip'] and boundary['type'] == 'Global Undo')
+    check('fault_targets_exact_hidden_boundary', boundary['skip'] and boundary['type'] == 'GLOBAL_UNDO')
     # The property disappearing proves Mesh reread even when its address is retained in place.
     actor = bpy.data.objects[ACTOR]
     object_pointer = actor.as_pointer()
@@ -1324,18 +1403,30 @@ def run():
                 if variant.startswith('full-success'):
                     bpy.context.preferences.view.show_developer_ui = True
                     bpy.context.preferences.experimental.use_undo_legacy = True
-                sequence(no_stroke=True)
-                sequence()
-                sequence(multires=True)
-                history_cases()
-                visibility_cases()
-                dyntopo_cases()
-                untagged_memfile_case()
-                stock_untagged_memfile_case()
-                capsule_cases()
-                if os.environ.get('ANGELO_SCULPT_SKIP_TIMING') != '1':
-                    measure()
-            check('no_stage_residue', no_stages())
+                first_failure = None
+                try:
+                    sequence(no_stroke=True)
+                    sequence()
+                    sequence(multires=True)
+                    history_cases()
+                    visibility_cases()
+                    dyntopo_cases()
+                    untagged_memfile_case()
+                    stock_untagged_memfile_case()
+                    dyntopo_full_read_and_jump_case()
+                    capsule_cases()
+                    if os.environ.get('ANGELO_SCULPT_SKIP_TIMING') != '1':
+                        measure()
+                    check('no_stage_residue', no_stages())
+                except Exception as failure:   # noqa: BLE001  Any failure: the failed-decode case still runs.
+                    first_failure = failure
+                if not variant:
+                    # Last, and also after an earlier failed check: it leaves the stack in recovery.
+                    failed_decode_case()
+                if first_failure is not None:
+                    raise first_failure
+            if variant:
+                check('no_stage_residue', no_stages())
         REPORT['success'] = True
     except Exception:
         REPORT['error'] = traceback.format_exc()

@@ -78,12 +78,20 @@ def end_modes(modes):
     return sum(service.end(lambda bound: bound[0] in modes) for service in _services())
 
 
+def end_organization():
+    """A Team sign-out: every worker's children of the organization's connections (team ones and its custom
+    endpoints, which need the same sign-in) end now, a closed chat's too."""
+    from .provider_registry import organization_mode
+    return sum(service.end(lambda bound: organization_mode(bound[0])) for service in _services())
+
+
 def end_personal():
     """The managed policy forbids personal connections (``connection_access.end_refused``): every worker's personal
     children end now, a closed chat's included: a stored connection's and a mode's own key's (no connection) alike.
-    A mode not known as a team one counts as personal; only a team connection's children are not this rule's."""
-    from .provider_registry import TEAM_MODES
-    return sum(service.end(lambda bound: bound[0] not in TEAM_MODES) for service in _services())
+    A mode not known as the organization's (a team connection or its custom endpoint) counts as personal; only
+    those connections' children are not this rule's."""
+    from .provider_registry import organization_mode
+    return sum(service.end(lambda bound: not organization_mode(bound[0])) for service in _services())
 
 
 def end_mode_key(mode):

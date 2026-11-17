@@ -9,7 +9,8 @@ from . import chat_guard, chat_history
 
 def build(controller, ui, expanded, state, width, size, line_height, bubble_max_width):
     """``(role, message, rows, height, identity, bubble_width)`` for each shown message, in order."""
-    from . import reply_overlay
+    from . import learn_rows, reply_overlay
+    learn_rows.begin(controller)   # Teach me as you work, read once per draw: off, nothing of learn runs below.
     blocks = []
     messages = controller.state["messages"]
     shown = chat_guard.call("The shown rows", reply_overlay.shown, controller, messages) or messages
@@ -32,7 +33,8 @@ def _block(controller, ui, message, identity, expanded, state, width, size, line
     from . import chat_notices, chat_replies, chat_rows, chat_view, console
     if message.get("withdrawn") is True:
         return None   # A steer no round answered: it is back in the tray (steering).
-    role = "system" if message.get("request_kind") in ("angelo_event", "angelo_goal") else message["role"]   # Angelo's: a notice.
+    from .request_rows import drawn_as_notice
+    role = "system" if drawn_as_notice(message) else message["role"]   # Angelo's: a notice, with its Restore.
     if role == "tool" and message["text"].startswith("Approval required"):
         return None
     if role == "user":

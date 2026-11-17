@@ -27,7 +27,8 @@ import threading
 import time
 import uuid
 
-from . import part_leases, private_roots
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard)
+from . import owned_paths, part_leases, private_roots
 from . import worker_refusals as refusals, worker_script, worker_values as values
 from .stale_binding import same as same_binding
 from .worker_pictures import carry as _carry, pictures_in as _references
@@ -261,7 +262,7 @@ class WorkerHost:
 
         def apply_mutation(target, call):
             with bpy.context.temp_override(window=ui.main_window()):
-                bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
+                grant_guard.automatic(bpy.ops.angelo).approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
 
         def commit_mutation(target, call):
             with bpy.context.temp_override(window=ui.main_window()):
@@ -284,8 +285,9 @@ class WorkerHost:
                         shadow.finish_tool(call, dict(worker_script.NOT_APPROVED))
                     else:
                         approved_once = True
-                        if script:   # Approved in Angelo as this exact text: the shadow's exact-code review.
-                            shadow.review_script(call)
+                        if script:   # Approved in Angelo as this exact text: the shadow's exact-code review,
+                            from . import grant_authority   # recorded in C in this worker's automatic scope.
+                            grant_authority.automatic(shadow.review_script, call)
                         apply_mutation(shadow, call)
                 elif not shadow.has_dispatchable_tools and not answers:
                     time.sleep(0.001)
@@ -314,6 +316,7 @@ class WorkerHost:
         try:
             paths.save_version = 0
             with part_leases.leases_of(self).saving(self.part), bpy.context.temp_override(window=self.ui.main_window()):
+                owned_paths.require_writable(self.part)
                 result = bpy.ops.wm.save_as_mainfile(filepath=self.part, check_existing=False, relative_remap=False)
         finally:
             paths.save_version = backups
@@ -443,6 +446,7 @@ def offscreen_draw_usable(bpy, run=None):
                "--python-exit-code", "1", "--python-expr", PROBE, "--", str(Path(__file__).resolve().parents[1])]
     try:
         if run is None and os.name != "nt":
+            owned_paths.require_runnable(command[0])
             done = _run_group(command, PROBE_SECONDS)
         else:   # Windows: a Job Object ends the probe's whole tree (child_process).
             from .child_process import run as job_run

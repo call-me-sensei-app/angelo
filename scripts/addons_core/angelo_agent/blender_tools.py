@@ -11,7 +11,7 @@ import time
 from itertools import islice
 import bpy
 
-from .tool_specs import validate_call, TOOL_MAP
+from .tool_specs import READ_ONLY_TOOLS, validate_call
 from .live_target import WindowAttribute
 from .studio_spec import STUDIO_NAMES
 from .flow_tool_spec import FLOW_NAMES
@@ -24,6 +24,7 @@ from .scene_spec import SCENE_NAMES
 from .motion_facts import motion_at_frames, motion_signature
 from .read_spec import READ_NAMES
 from .execution_spec import EXECUTION_NAMES
+from .script_confinement import findings_fields, run_confined   # Scripts run confined (script_confinement.rst).
 from .memory_spec import MEMORY_NAMES
 from .program_spec import PROGRAM_NAMES
 from .validation_spec import VALIDATION_NAMES
@@ -32,7 +33,8 @@ from .view_spec import VIEW_NAMES
 from .goal_spec import GOAL_NAMES
 from .job_spec import JOB_NAMES
 from .engine_check_spec import ENGINE_NAMES
-from . import job_host, live_windows, program_context, script_document, web_host
+from . import download_tool, grant_gestures, job_host, live_windows, program_context, scene_changes, script_admission
+from . import agent_tool_scope, script_document, web_host
 from .legacy_names import WORKSPACE_DIRECTOR, read_property
 from .capabilities_host import agent_capabilities
 
@@ -65,10 +67,8 @@ def note_unknown_change():
 def transform_object(window, value):
     """``angelo_set_transform``'s object: a name, or an exact scene handle (identifiers._object_or_handle).
 
-    A handle resolves exactly as a program target does: stale or deleted
-    handles fail with scene_queries' reason, never fall back to a name.
-    Returns None for a name no object in the bound scene has.
-    """
+    A handle resolves exactly as a program target does: stale or deleted handles fail with scene_queries' reason,
+    never fall back to a name. Returns None for a name no object in the bound scene has."""
     from .identifiers import LONG_HANDLE
     if isinstance(value, str) and LONG_HANDLE.fullmatch(value):
         from .scene_queries import SceneQueryError, resolve_object
@@ -143,8 +143,9 @@ class BlenderExecutor:
         if self._windowless(name):
             return self._windowless_precondition(name, arguments)
         job_host.guard(name, arguments)  # Dispatch, approval and every commit's fresh check pass through here.
-        if name in JOB_NAMES:
-            return job_host.precondition(self.studio_context, self.window, name, arguments)
+        if name in JOB_NAMES or name == "angelo_download":   # A job, or a download's link and folder (download_tool).
+            host = job_host if name in JOB_NAMES else download_tool
+            return host.precondition(self.studio_context, self.window, name, arguments)
         # A worker chat's own tools (memory, metrics, its progress) run on an executor without a window: no scene is
         # read for them (break-it P1-6 H1); every tool that uses one has a window.
         scene = self.window.scene if self.window is not None else None
@@ -156,12 +157,10 @@ class BlenderExecutor:
             program_context.settle(self.window)   # A settled scene, as the commit's fresh check will read it.
             return native_programs.precondition(self.window,name,arguments,controller=self.studio_context)
         if name == 'angelo_apply_recipe':
-            # The controller binds the reviewed expansion (recipe_program); this
-            # direct form re-expands for callers without a reviewed program.
+            # The controller binds the reviewed expansion (recipe_program); callers without one re-expand here.
             return self.precondition('angelo_scene_program', self.recipe_program(arguments))
-        if name in MEMORY_NAMES:
-            from . import memory_host
-            return memory_host.precondition(self.studio_context,name,arguments)
+        if name in MEMORY_NAMES or name in WORKER_NAMES:   # The same with or without a window.
+            return self._windowless_precondition(name, arguments)
         if name in STUDIO_NAMES:
             from .studio_host import service_for
             return service_for(self.studio_context, self.window).precondition(name, arguments)
@@ -174,9 +173,6 @@ class BlenderExecutor:
         if name in LIBRARY_NAMES:
             from .library_agent import service_for
             return service_for(self.studio_context, self.window).precondition(name, arguments)
-        if name in WORKER_NAMES:
-            from . import worker_sessions
-            return worker_sessions.precondition(self.studio_context, name, arguments)
         if name == "angelo_set_workspace_mode":
             from . import director
             return director.is_director(self.window)
@@ -199,8 +195,7 @@ class BlenderExecutor:
                 raise RefusalError("The bound scene has no editable object with that name or handle", code="VALIDATION")
             return (obj.as_pointer(), tuple(obj.location))
         if name == "angelo_execute_python":
-            # Conservative structural/transform guard, not a transactional lock
-            # or a guarantee that arbitrary data hasn't changed in the meantime.
+            # A conservative structural/transform guard: not a lock, nor proof no other data changed meanwhile.
             program_context.settle(self.window)   # Its revision as the approve click's evaluation will leave it.
             from .script_precondition import objects_fingerprint   # Its objects as one digest (that module).
             return (scene.session_uid, _scene_revisions.get(scene.session_uid, 0), scene.frame_current, bpy.context.mode,
@@ -209,10 +204,7 @@ class BlenderExecutor:
 
     def precondition_change(self, name, before, after):
         """How a staged program's approved binding changed (program_context), or None."""
-        if name not in {'angelo_scene_program', 'angelo_apply_recipe'}:
-            return None
-        from .program_context import precondition_change
-        return precondition_change(before, after)
+        return program_context.binding_change(name, before, after)
 
     def rebind_program(self, name, arguments, approved):
         """A frame-only rebind of an approved program (native_programs.rebind), or None."""
@@ -235,17 +227,19 @@ class BlenderExecutor:
             return service_for(self.studio_context, self.window).usage_label(name, arguments)
         return ""
 
+    @agent_tool_scope.as_agent_tool   # The agent's on this thread for its whole run: never the person's press.
     def execute(self, name, arguments):
         started = time.perf_counter()
         if not self._windowless(name):
             job_host.guard(name, arguments)
-        mutation = (not TOOL_MAP[name]['annotations']['readOnlyHint'] and name not in SCULPT_NAMES and name not in JOB_NAMES
+        name in READ_ONLY_TOOLS or grant_gestures.agent_changed()   # Ends a dialog's held OK.
+        mutation = (name not in READ_ONLY_TOOLS and name not in SCULPT_NAMES and name not in JOB_NAMES
                     and (name not in STUDIO_NAMES or name == 'angelo_studio_import_3d')
                     and name not in PROGRAM_NAMES and name not in MEMORY_NAMES and name not in FLOW_NAMES
                     and name not in TEAM_NAMES  # A team import reads back its own changes when it finishes.
                     and name not in LIBRARY_NAMES  # So does a library import (library_agent).
                     and name != 'angelo_set_workspace_mode' and name not in WORKER_NAMES   # Workers: their files.
-                    and not name.startswith(('angelo_web_', 'angelo_engine_link')))  # Web, engine link: no scene edit.
+                    and not name.startswith(('angelo_web_', 'angelo_engine_link', 'angelo_download')))  # No scene edit.
         arguments = validate_call(name,arguments, host=True)
         self._before = before = scene_signature(self.window.scene,_typed_targets(self.window,name,arguments)) if mutation else None
         if script := name == "angelo_execute_python":  # What its result is measured against (script_after.Before).
@@ -253,6 +247,8 @@ class BlenderExecutor:
         self._prior = prior = script_after.Before(self.window, bpy) if script else None
         with prior or contextlib.nullcontext():   # A script that replaced the document returns at once (script_document).
             result = script_document.run(self._execute, name, arguments)
+        if mutation and self.window is not None:   # Every live preview hears it, an edit Blender never tags included.
+            scene_changes.edited(self.window.scene)
         from .studio_agent import StudioPending
         if isinstance(result, StudioPending) or getattr(result,'is_program_job',False) or (isinstance(result, dict) and result.get("document_replaced")):
             return result
@@ -281,6 +277,7 @@ class BlenderExecutor:
 
     def start_native_job(self, name, arguments, *, approved_obligations=None):
         job_host.guard(name)
+        grant_gestures.agent_changed()   # An agent's job may change what an open dialog's OK acts on.
         from . import native_programs
         return native_programs.begin(self.window,name,arguments,controller=self.studio_context,
                                      approved_obligations=approved_obligations)
@@ -291,8 +288,9 @@ class BlenderExecutor:
             from . import read_host
             return read_host.execute(self.studio_context, self.window, name, arguments)
         scene = self.window.scene if self.window is not None else None   # A worker chat's own tools: none (P1-6 H1).
-        if name in JOB_NAMES or name.startswith("angelo_web_"):  # A web export writes like a job's output (web_host).
-            return (job_host if name in JOB_NAMES else web_host).execute(self.studio_context, self.window, name, arguments)
+        if name in JOB_NAMES or name.startswith(("angelo_web_", "angelo_download")):  # Writes files only.
+            host = job_host if name in JOB_NAMES else web_host if name.startswith("angelo_web_") else download_tool
+            return host.execute(self.studio_context, self.window, name, arguments)
         if name in ENGINE_NAMES:   # The engine preflight: a read, or typed fixes after their card.
             from . import engine_check_host
             return engine_check_host.execute(self.studio_context, self.window, name, arguments)
@@ -391,7 +389,7 @@ class BlenderExecutor:
                 # edit's own preflight; turning a handle into a name here resolved an object named like a handle.
                 return sculpt.execute(self.window, area, region, name, arguments, self.observation_store)
             if name == "angelo_execute_python":
-                from . import script_after, script_errors, script_prepare
+                from . import script_after, script_errors, script_mesh_check, script_prepare
                 output, mode = LimitedOutput(), bpy.context.mode
                 # One Undo step holding the whole file as it is now: what a raise is rolled back to.
                 point = script_errors.restore_point(bpy, self.window)
@@ -406,30 +404,38 @@ class BlenderExecutor:
                 from .material_display_sync import ScriptPass
                 display = ScriptPass(bpy)   # Solid view of what it makes or edits, in its own step.
                 try:
-                    code = prepared.compiled(arguments["code"], namespace)
-                    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output), observe:
-                        exec(code, namespace)
+                    from .grant_guard import agent_script   # The one signal that agent code runs (grant_guard).
+                    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output), observe, agent_script():
+                        confinement, read = run_confined(   # Compiled by Angelo's rewrite; read back while confined.
+                            arguments["code"], namespace, prepared.compiled,
+                            script_admission.prepare(getattr(self, "studio_context", None)),
+                            lambda names: script_errors.read_back(names.get("result")))
+                    script_mesh_check.after(bpy, self._prior)   # Angelo's own check, before anything evaluates what it wrote.
                     if watch is not None:
                         watch.stop()
                     kit.finish()   # The cutters its cuts used go once the script has run.
                     display.finish(bpy)
                     self.window.view_layer.update()
-                    result = dict(script_errors.read_back(namespace.get("result")), success=True,
-                                  output=output.getvalue(), **script_errors.undo_facts(bpy, point, mode),
-                                  verified={"scene": scene.name, "object_count": len(scene.objects)}, **kit.outcome(),
-                                  external_effects_undoable=False, **prepared.after(arguments["code"]),
-                                  **observe.applied.outcome(), **observe.clock.outcome())
+                    # Calls that returned without FINISHED sit right after success (script_operator_time).
+                    result = observe.clock.beside_success(dict(
+                        read, success=True,
+                        output=output.getvalue(), **script_errors.undo_facts(bpy, point, mode),
+                        verified={"scene": scene.name, "object_count": len(scene.objects)}, **kit.outcome(),
+                        external_effects_undoable=False, **prepared.after(arguments["code"]),
+                        **observe.applied.outcome(), **observe.clock.outcome(), **findings_fields(confinement)))
                 except script_errors.SCRIPT_FAILURES as error:
                     # Where it failed, and the file as it was before the script when its restore point is reached.
                     # sys.exit(), quit() and KeyboardInterrupt are failures of the script too: never Angelo's exit.
                     namespace.clear()
+                    script_mesh_check.after(bpy, self._prior)   # What it wrote before it raised is evaluated too.
                     try:   # Its spent cutters go first: a file the restore cannot reach keeps no hidden leftovers.
                         kit.finish()
                     except Exception:   # noqa: BLE001 - the script's own failure is what the result reports.
                         pass
-                    result = dict(script_errors.failed(bpy, self.window, arguments["code"], error, output.getvalue(),
-                                                       self._before, mode, scene_signature, point, watch),
-                                  **observe.clock.outcome())   # Where a failed script's time went, too.
+                    result = observe.clock.beside_success(dict(   # Where a failed script's time went, too.
+                        script_errors.failed(bpy, self.window, arguments["code"], error, output.getvalue(),
+                                             self._before, mode, scene_signature, point, watch),
+                        **observe.clock.outcome()))
                 finally:
                     if watch is not None:
                         watch.stop()  # Idempotent: no handler outlives the script.

@@ -34,7 +34,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from . import shared_replace, update_delta
+from . import owned_paths, shared_replace, update_delta
 
 TASKPOLICY = "/usr/sbin/taskpolicy"
 SPCTL = "/usr/sbin/spctl"
@@ -52,6 +52,7 @@ class StageError(Exception):
 
 def run(args, timeout, background=True):
     """Run a tool; ``CompletedProcess`` with text output. Never raises for a non-zero exit."""
+    owned_paths.require_runnable(args[0])
     if background and os.path.exists(TASKPOLICY):
         args = [TASKPOLICY, "-b"] + list(args)
     try:
@@ -140,6 +141,7 @@ def check(staged, version, app, runner=run):
 
 def from_disk_image(image, version, work, app, runner=run):
     """Unpack the app from the release's disk image into ``work/staged``, verify it; returns the bundle."""
+    owned_paths.require_writable(work)
     work = Path(work)
     staged = work / "staged" / Path(app).name
     temporary = work / "staging"
@@ -184,6 +186,7 @@ def _bundle_in(folder, identifier):
 
 def from_delta(package, from_version, version, work, app, runner=run):
     """Rebuild the new bundle from the installed ``app`` and a delta, verify it; returns the bundle."""
+    owned_paths.require_writable(work)
     work = Path(work)
     staged = work / "staged" / Path(app).name
     temporary = work / "staging"
@@ -195,6 +198,8 @@ def from_delta(package, from_version, version, work, app, runner=run):
 
 def _accept(candidate, staged, version, app, runner):
     """Verify ``candidate`` and move it to ``staged`` (named as the installed app, whatever the image called it)."""
+    owned_paths.require_writable(staged)
+    owned_paths.require_writable(candidate)
     try:
         check(candidate, version, app, runner)
         staged.parent.mkdir(parents=True, exist_ok=True)

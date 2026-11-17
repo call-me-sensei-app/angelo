@@ -48,6 +48,8 @@ class JournalReleased(OSError):
 class OwnedWriter(GuardedWriter):
     """The worker's ``GuardedWriter``, which also stops when released."""
 
+    leased = False   # Its ownership is the hand-off's: a parked worker's lease would lock Angelo out (session_lease).
+
     def __init__(self, path):
         self.released = False
         super().__init__(path)

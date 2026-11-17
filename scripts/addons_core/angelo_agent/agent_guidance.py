@@ -16,9 +16,11 @@ from .studio_spec import STUDIO_NAMES
 from .flow_tool_spec import FLOW_NAMES
 from .team_library_spec import TEAM_GUIDANCE, TEAM_NAMES
 from .library_spec import LIBRARY_GUIDANCE, LIBRARY_NAMES
+from .download_spec import DOWNLOAD_GUIDANCE, DOWNLOAD_NAMES
 from .worker_spec import PROGRESS, WORKER_ANNOUNCEMENT, WORKER_BRIEFING, WORKER_GUIDANCE, WORKER_NAMES
 from .job_spec import JOB_NAMES, native_jobs_available
 from .rig_spec import RIG_NAMES
+from .blender_release import RELEASE
 
 
 # The facts this Blender's Python API states differently from older releases, one text that every runtime's
@@ -28,7 +30,7 @@ from .rig_spec import RIG_NAMES
 # measured from +X in all 29 recorded bridge trials that built a sky (its sun 158 degrees from the Sun light), and
 # then replaced the physical sky with a flat colour in 12 of the 13 that left it so; it picked SINGLE_SCATTERING,
 # the warmer one, in 18 (sol-scenes, 2026-10-20). Both are checked against world_light and world_light_table.
-BLENDER_API_FACTS = """Blender 5.2: Sky Texture
+BLENDER_API_FACTS = """Blender %s: Sky Texture
 sky_type is SINGLE_SCATTERING, MULTIPLE_SCATTERING (a new node's), PREETHAM or HOSEK_WILKIE; NISHITA no longer
 exists (old Nishita skies load as SINGLE_SCATTERING); both scattering types render in EEVEE as in Cycles; Blender
 calls MULTIPLE_SCATTERING the more accurate one, and with the sun at or above the horizon its sky is bluer than
@@ -37,7 +39,7 @@ sun_elevation and sun_rotation are radians, and sun_rotation is the sun's bearin
 (0 toward +Y, pi/2 toward +X). render.engine is BLENDER_EEVEE,
 BLENDER_WORKBENCH or CYCLES (no BLENDER_EEVEE_NEXT). An Action has no fcurves: its F-curves are in channelbags,
 bpy_extras.anim_utils.action_get_channelbag_for_slot(action, animation_data.action_slot).fcurves. The Bump node's
-invert is a property, not a socket."""
+invert is a property, not a socket.""" % RELEASE
 
 
 SCULPT_SENTENCE = "Sculpt with native angelo_*sculpt* tools, never Python vertex loops or UI gestures."
@@ -185,7 +187,8 @@ WHOLE_SCENE = ";\n".join(_SCENE_FACTS) + ". " if _SCENE_FACTS else ""
 FAMILY_GUIDANCE = {"SCULPT": (SCULPT_NAMES, SCULPT_GUIDANCE), "STUDIO": (STUDIO_NAMES, STUDIO_GUIDANCE),
                    "FLOW": (FLOW_NAMES, FLOW_GUIDANCE), "TEAM": (TEAM_NAMES, TEAM_GUIDANCE),
                    "JOBS": (JOB_NAMES, JOB_GUIDANCE), "WORKERS": (WORKER_NAMES, WORKER_GUIDANCE),
-                   "RIG": (RIG_NAMES, HAND_GUIDANCE), "LIBRARY": (LIBRARY_NAMES, LIBRARY_GUIDANCE)}
+                   "RIG": (RIG_NAMES, HAND_GUIDANCE), "LIBRARY": (LIBRARY_NAMES, LIBRARY_GUIDANCE),
+                   "DOWNLOAD": (DOWNLOAD_NAMES, DOWNLOAD_GUIDANCE)}
 # Follows a provider's base instructions ("Native web search, where the connection has it, ...") on a Codex
 # connection or Claude session that has no native web search.
 NO_WEB_SEARCH = "\nNative web search is unavailable on this connection; never pretend to look things up."

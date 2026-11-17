@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Synthetic owner contracts, actual facade/jobs/binding; no browser or account proof."""
 import suite_isolation  # noqa: F401
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 import threading
 import unittest
 from dataclasses import dataclass
@@ -195,7 +196,7 @@ class LiveHostTests(unittest.TestCase):
             except RuntimeError as error:
                 errors.append(error)
         thread = threading.Thread(target=read)
-        thread.start(); thread.join(2)
+        thread.start(); thread.join(CAP_S)
         self.assertFalse(thread.is_alive())
         self.assertEqual(len(errors), 1)
 
@@ -259,12 +260,12 @@ class LiveHostTests(unittest.TestCase):
     def test_actual_worker_can_chain_phase_after_done_without_false_busy(self):
         worker = fab_host_jobs.Worker()
         first = worker.submit(fab_host_jobs.Job(1, 'first', lambda stop: 1), replace=False)
-        self.assertTrue(first.done.wait(2))
+        self.assertTrue(first.done.wait(CAP_S))
         self.assertEqual(first.take(), 1)
         second = worker.submit(fab_host_jobs.Job(2, 'second', lambda stop: 2), replace=False)
-        self.assertTrue(second.done.wait(2))
+        self.assertTrue(second.done.wait(CAP_S))
         self.assertEqual(second.take(), 2)
-        self.assertTrue(worker.join(2))
+        self.assertTrue(worker.join(CAP_S))
 
     def test_actual_worker_cancellation_retains_cleanup_owner(self):
         started, release, cleaned = threading.Event(), threading.Event(), []
@@ -272,13 +273,13 @@ class LiveHostTests(unittest.TestCase):
         held = object()
         def work(stop):
             started.set()
-            if not release.wait(2):
+            if not release.wait(CAP_S):
                 raise RuntimeError('Fixture release not received')
             return held
         job = worker.submit(fab_host_jobs.Job(1, 'prepare', work, cleanup=cleaned.append))
-        self.assertTrue(started.wait(2))
+        self.assertTrue(started.wait(CAP_S))
         job.stop(); release.set()
-        self.assertTrue(job.done.wait(2)); self.assertTrue(worker.join(2))
+        self.assertTrue(job.done.wait(CAP_S)); self.assertTrue(worker.join(CAP_S))
         self.assertEqual(cleaned, [held])
         with self.assertRaises(FabError):
             job.take()
@@ -326,7 +327,7 @@ class HumanTwoPhaseTests(unittest.TestCase):
             def __init__(self, row, **kw): self.closed = self.sealed = False
             def seal_payload(self, row, stop):
                 order.append('seal-start')
-                if not gate.wait(2): raise RuntimeError('Fixture gate not released')
+                if not gate.wait(CAP_S): raise RuntimeError('Fixture gate not released')
                 stop.is_set()
                 self.sealed = True; order.append('seal-end')
             def finish(self, context, row, **kw):
@@ -346,17 +347,17 @@ class HumanTwoPhaseTests(unittest.TestCase):
             with patch.object(live_windows, 'areas', return_value=[area]):
                 host.import_pending = fab_library_agent.human_use(host, window, area, region,
                     'fab:' + item.identity, 'v')
-                self.assertTrue(host.job.done.wait(2))
+                self.assertTrue(host.job.done.wait(CAP_S))
                 host.pump()
                 self.assertNotIn('finish', order)
                 self.assertEqual(released, [])
                 gate.set()
-                self.assertTrue(host.job.done.wait(2))
+                self.assertTrue(host.job.done.wait(CAP_S))
                 host.pump()
                 self.assertEqual(order.count('finish'), 1)
                 self.assertLess(order.index('seal-end'), order.index('finish'))
                 self.assertIsNone(host.import_pending)
-                self.assertTrue(host.worker.join(2))
+                self.assertTrue(host.worker.join(CAP_S))
                 self.assertTrue(released)
 
 
@@ -394,7 +395,7 @@ class AgentTeardownTests(unittest.TestCase):
             def __init__(self, row, **kw): self.sealed = False
             def seal_payload(self, row, stop):
                 sealing.set()
-                if not gate.wait(2): raise RuntimeError('Fixture gate not released')
+                if not gate.wait(CAP_S): raise RuntimeError('Fixture gate not released')
                 self.sealed = True; order.append('seal-end')
             def close(self):
                 if not self.sealed: raise AssertionError('Close raced active seal')
@@ -407,15 +408,15 @@ class AgentTeardownTests(unittest.TestCase):
                 patch.object(fab_native_job.live_target, 'scene_ref', side_effect=lambda x: lambda: x):
             pending = fab_library_agent.use(SimpleNamespace(controller=controller, window=window), args)
             self.assertIs(host.active_import, pending)
-            self.assertTrue(host.job.done.wait(2)); self.assertIsNone(pending.poll())
-            self.assertTrue(sealing.wait(2))
+            self.assertTrue(host.job.done.wait(CAP_S)); self.assertIsNone(pending.poll())
+            self.assertTrue(sealing.wait(CAP_S))
             host.disconnect()
             self.assertIsNone(host.active_import)
             self.assertIsNotNone(host.retired_import)
             self.assertNotIn('native-close', order); self.assertNotIn('cache-close', order)
             # The controller drops its pending and never polls it again.
             controller.executing_call = None
-            gate.set(); self.assertTrue(host.worker.join(2))
+            gate.set(); self.assertTrue(host.worker.join(CAP_S))
             host.pump()
             self.assertIsNone(host.retired_import)
             self.assertLess(order.index('seal-end'), order.index('native-close'))

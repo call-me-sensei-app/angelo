@@ -14,6 +14,7 @@ import uuid
 
 from .memory_spec import UNSAFE_CHARACTER
 from .view_spec import _camera_item
+from . import read_only
 
 TOOL_NAME = "angelo_goal"
 ACTIONS = ("SET", "MEASURE", "STOP")
@@ -127,3 +128,6 @@ def validate_goal(name, args):
     if len(checked) == 1:
         raise ValueError("SET takes objective (a new goal) or measure (how a held goal is measured)")
     return checked
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), 'FIELDS')

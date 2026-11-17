@@ -20,11 +20,13 @@
 #include "DNA_modifier_types.h"
 #include "DNA_scene_types.h"
 
-#include "BLI_math_vector.h"
+#include "BLI_math_vector_c.hh"
+#include "BLI_angelo_writers.hh"
+#include "BLI_string.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_rand.h"
-#include "BLI_task.h"
-#include "BLI_utildefines.h"
+#include "BLI_rand_c.hh"
+#include "BLI_task_c.hh"
+#include "BLI_utildefines.hh"
 
 #include "BKE_image.hh"
 #include "BKE_image_format.hh"
@@ -37,7 +39,7 @@
 
 #include "RE_texture.h"
 
-#include "BLI_hash.h"
+#include "BLI_hash_c.hh"
 
 namespace blender {
 
@@ -1381,6 +1383,17 @@ void BKE_ocean_simulate_cache(OceanCache *och, int frame)
   och->ibufs_norm[f] = IMB_load_image_from_filepath(filepath, ImBufFlags::Zero);
 }
 
+/** Angelo: each baked frame's file, judged where it is written by what its folder is built from (the inputs the bake
+ * job set: BLI_angelo_writers.hh). */
+static bool ocean_bake_write(ImBuf *ibuf, const char *filepath, const ImageFormatData *imf)
+{
+  if (const char *refusal = angelo_writers::refusal(filepath)) {
+    printf("%s: '%s'\n", refusal, filepath);
+    return false;
+  }
+  return BKE_imbuf_write(ibuf, filepath, imf);
+}
+
 void BKE_ocean_bake(Ocean *o,
                     OceanCache *och,
                     void (*update_cb)(void *, float progress, int *cancel),
@@ -1504,24 +1517,24 @@ void BKE_ocean_bake(Ocean *o,
 
     /* write the images */
     cache_filepath(filepath, och->bakepath, och->relbase, f, CACHE_TYPE_DISPLACE);
-    if (false == BKE_imbuf_write(ibuf_disp, filepath, &imf)) {
+    if (!ocean_bake_write(ibuf_disp, filepath, &imf)) {
       printf("Cannot save Displacement File Output to %s\n", filepath);
     }
 
     if (o->_do_jacobian) {
       cache_filepath(filepath, och->bakepath, och->relbase, f, CACHE_TYPE_FOAM);
-      if (false == BKE_imbuf_write(ibuf_foam, filepath, &imf)) {
+      if (!ocean_bake_write(ibuf_foam, filepath, &imf)) {
         printf("Cannot save Foam File Output to %s\n", filepath);
       }
 
       if (o->_do_spray) {
         cache_filepath(filepath, och->bakepath, och->relbase, f, CACHE_TYPE_SPRAY);
-        if (false == BKE_imbuf_write(ibuf_spray, filepath, &imf)) {
+        if (!ocean_bake_write(ibuf_spray, filepath, &imf)) {
           printf("Cannot save Spray File Output to %s\n", filepath);
         }
 
         cache_filepath(filepath, och->bakepath, och->relbase, f, CACHE_TYPE_SPRAY_INVERSE);
-        if (false == BKE_imbuf_write(ibuf_spray_inverse, filepath, &imf)) {
+        if (!ocean_bake_write(ibuf_spray_inverse, filepath, &imf)) {
           printf("Cannot save Spray Inverse File Output to %s\n", filepath);
         }
       }
@@ -1529,7 +1542,7 @@ void BKE_ocean_bake(Ocean *o,
 
     if (o->_do_normals) {
       cache_filepath(filepath, och->bakepath, och->relbase, f, CACHE_TYPE_NORMAL);
-      if (false == BKE_imbuf_write(ibuf_normal, filepath, &imf)) {
+      if (!ocean_bake_write(ibuf_normal, filepath, &imf)) {
         printf("Cannot save Normal File Output to %s\n", filepath);
       }
     }

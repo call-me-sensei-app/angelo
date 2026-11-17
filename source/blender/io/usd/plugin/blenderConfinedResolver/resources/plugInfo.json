@@ -1,0 +1,18 @@
+{
+    "Plugins": [
+        {
+            "Info": {
+                "Types": {
+                    "BlenderConfinedResolver": {
+                        "bases": ["ArDefaultResolver"],
+                        "implementsContexts": true
+                    }
+                }
+            },
+            "Name": "blenderConfinedResolver",
+            "ResourcePath": ".",
+            "Root": "..",
+            "Type": "resource"
+        }
+    ]
+}

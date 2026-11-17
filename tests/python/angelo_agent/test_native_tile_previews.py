@@ -74,7 +74,7 @@ class Decode(unittest.TestCase):
     def test_stored_values_are_read(self):
         image = fake_image(64, 64, "FILE")
         self.decode(image)
-        self.assertEqual(image.colorspace_settings.name, "Non-Color")
+        self.assertIs(image.colorspace_settings.is_data, True)   # The configuration's data role (color_spaces).
 
 
 class Previews(unittest.TestCase):

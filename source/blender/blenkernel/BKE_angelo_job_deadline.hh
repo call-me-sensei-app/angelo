@@ -19,7 +19,7 @@
  * that job's break check reads it, so a render or bake the person starts meanwhile, of another scene or of
  * another kind, is never stopped by the agent's budget, and the job's own end clears it
  * (`job_deadline_job_ended`), so a deadline can never outlive its job. Blender itself runs one render job
- * per scene and one bake job per scene (`WM_jobs_test`), so kind and scene name the job exactly.
+ * per scene and one bake job per scene (`WM_jobs_has_running`), so kind and scene name the job exactly.
  *
  * `job_deadline_fired` says whether a break check returned true because of the deadline: the job was
  * stopped by its budget, as opposed to finishing just before or after it. It stays set until the next

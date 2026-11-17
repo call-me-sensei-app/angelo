@@ -11,7 +11,7 @@
 
 #include <xxhash.h>
 
-#include "BLI_assert.h"
+#include "BLI_assert.hh"
 #include "BLI_hash_xxh3.hh"
 
 namespace blender {

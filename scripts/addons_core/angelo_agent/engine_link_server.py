@@ -50,6 +50,16 @@ def project_key(project):
         return os.path.normcase(project)
 
 
+def project_key(project):
+    """``project`` as ``engine_link_assets.serves`` compares it with an asset's project: resolved and case-folded as
+    the platform does. It reads the folder's path, which a slow or network drive can stall, so it runs on the
+    client's own thread when the editor authenticates, never on the main thread."""
+    try:
+        return os.path.normcase(os.path.realpath(project))
+    except (OSError, ValueError):   # Unresolvable (an embedded NUL): as said, so it matches no resolved project.
+        return os.path.normcase(project)
+
+
 def client_info(info):
     """What an editor said about itself when it authenticated, bounded: ``engine`` (default "godot", the first
     plugin, which names itself too), ``project`` (and ``project_key``, its ``project_key``), ``project_name``,
@@ -83,6 +93,14 @@ class _Client:
         self.sent_scenes = 0
         self.capture = None                  # The outstanding capture request: {"id", "deadline", "png", "report"}.
         self.lagging = False                 # Delta scenes were dropped: the editor needs a full scene.
+
+
+def is_request(header):
+    """Whether an editor's message asks the link for work: ``open``, ``close``, or a ``status`` asking a full frame
+    (``resync``). An acknowledgement (``previewed`` after each live frame) and a connection notice are only recorded,
+    so they are never work the person's operation defers (break-it review 8, finding 1)."""
+    kind = header.get("type")
+    return kind in ("open", "close") or kind == "status" and header.get("code") == "resync"
 
 
 class LinkServer:
@@ -122,6 +140,11 @@ class LinkServer:
                 self._departed.pop(ident, None)
             self._forget = {ident for ident, header in items if header.get("type") == "disconnected"}
         return items
+
+    def unread(self):
+        """Whether an editor's request (``is_request``) waits for ``drain`` (any thread; ``engine_link_reads``)."""
+        with self._lock:
+            return any(is_request(header) for _client, header in self._inbox)
 
     def info_of(self, client_id):
         """What an editor said about itself (``client_info``): a connected one, or one whose leaving was drained last."""

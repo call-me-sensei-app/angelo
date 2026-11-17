@@ -46,6 +46,8 @@ os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_CONNECTIONS_DIR=str(OU
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import model_results, script_renames  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
+from qa_person import reviewing  # noqa: E402
+BlenderExecutor = reviewing(BlenderExecutor)   # Each script runs as one the person approved (qa_person).
 import bpy.ops as operators  # noqa: E402
 
 REAL_CREATE, REAL_LOAD = operators._op_create_function, bpy.types.BlendDataLibraries.__dict__["load"]
@@ -260,6 +262,7 @@ def from_files():
     result, field = field_of(
         "import bpy\nwith bpy.data.libraries.load(%r, link=True) as (source, target):\n"
         "    target.objects = ['Rock', 'Rock.001']\n"
+        "for obj in target.objects:\n    bpy.context.scene.collection.objects.link(obj)\n"
         "made = [obj.override_hierarchy_create(bpy.context.scene, bpy.context.view_layer) for obj in target.objects]\n"
         "result = [(o.name, o.override_library.reference.name) for o in made]\n" % str(library), local_rock)
     check("an_override_is_judged_by_its_references_name",

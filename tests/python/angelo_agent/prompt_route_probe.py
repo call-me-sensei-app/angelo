@@ -137,8 +137,11 @@ def wait_for(predicate, seconds):
 
 def source_build():
     """The checkout the probe's Angelo code came from: its commit, ``+dirty`` with uncommitted add-on changes."""
+    import own_checkout   # Git about this tree only, never a repository around it.
+
     def git(*args):
-        return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True).stdout.strip()
+        done = own_checkout.git(ROOT, *args, capture_output=True, text=True)
+        return done.stdout.strip() if done is not None else ""
     dirty = git("status", "--porcelain", "--", "scripts/addons_core/angelo_agent", "scripts/angelo")
     return git("rev-parse", "HEAD") + ("+dirty" if dirty else "")
 

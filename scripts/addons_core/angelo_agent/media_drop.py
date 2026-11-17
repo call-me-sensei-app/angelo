@@ -31,7 +31,7 @@ class _Drop:
     identifiers, and what it was over (an object, a collection, or the scene's own collection)."""
     target: StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
     library: StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
-    items: StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
+    item_lines: StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
     object: StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
     collection: StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
     into: StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
@@ -47,7 +47,7 @@ class _Drop:
             from . import studio_drag
             studio_drag.forget_source()
         try:
-            items = place.from_identifiers(self.items, self.library)
+            items = place.from_identifiers(self.item_lines, self.library)
             if not items:
                 raise ValueError(n_("This Media Studio item is not in the Asset Browser library yet"))
             place.check_files(items)   # All or nothing: nothing changes when an item's file is gone.

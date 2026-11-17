@@ -7,6 +7,7 @@ process, its version probe and auth discovery are replaced by fixtures.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import tempfile
@@ -30,8 +31,10 @@ CLAUDE = normalize_models([{"value": "sonnet", "displayName": "Claude Sonnet", "
 
 class OfflineClaude(ClaudeProvider):
     def connect(self):
-        self.executable, self.env = "claude", {"FIXTURE": "only"}
         return self.controller.state["native_id"]
+
+    def launch_inputs(self, controller):   # Built at each start in the app (providers.claude_launch).
+        return "claude", {"FIXTURE": "only"}
 
 
 class ClaudeToolsetVersionTests(unittest.TestCase):
@@ -62,7 +65,7 @@ class ClaudeToolsetVersionTests(unittest.TestCase):
 
     def turn(self, text):
         self.c.send(text, {"objects": []})
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             self.c.pump_events()
             if not self.c.busy and not (self.c._worker and self.c._worker.is_alive()):

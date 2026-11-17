@@ -12,6 +12,7 @@ Contract: doc/angelo/agent_chat.rst, "Approvals".
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import ast
 import re
@@ -198,6 +199,7 @@ class AutoReasons(unittest.TestCase):
                                _automatic_script=lambda call: automatic, always_allow_scripts=always,
                                trusted_scripts=trusted, explains_auto=True)
         chat._auto_bounded = lambda call, mode=None: gate and Controller._auto_bounded(chat, call, mode)
+        angelo_guard_twin.automatic(angelo_guard_twin.set, "approval_modes", chat.state["id"], "AUTO_BOUNDED")   # C holds its Auto, as a new chat's; its Python mode decides the rest.
         return chat
 
     @staticmethod
@@ -311,8 +313,8 @@ class AutoReasons(unittest.TestCase):
                     controller.busy = True
                     controller.set_document(("isolated",))
                     controller.request_checkpoint = "9cf4e420-dcdb-4f45-bc8a-d9d439ce9aac"
-                    always_allow.set_enabled(consent == "always")
-                    controller.set_trusted_scripts(consent == "chat")   # Trust scripts for this chat, as its UI does.
+                    angelo_guard_twin.harness(always_allow.set_enabled, consent == "always")   # The person's choices.
+                    angelo_guard_twin.harness(controller.set_trusted_scripts, consent == "chat")   # Trust scripts for this chat, as its UI does.
                     for index, (code, excluded) in enumerate((("bpy.context.preferences.view.ui_scale = 2", True),
                                                               ("import angelo_agent", True), ("x = 1", False))):
                         identity = "script-%d" % index

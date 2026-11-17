@@ -997,7 +997,7 @@ GHOST_IContext *GHOST_SystemCocoa::createOffscreenContext(GHOST_GPUSettings gpu_
 #ifdef WITH_VULKAN_BACKEND
     case GHOST_kDrawingContextTypeVulkan: {
       GHOST_Context *context = new GHOST_ContextVK(
-          context_params_offscreen, nullptr, 1, 2, gpu_settings.preferred_device);
+          context_params_offscreen, nullptr, 1, 1, gpu_settings.preferred_device);
       if (context->initializeDrawingContext()) {
         return context;
       }
@@ -1079,7 +1079,7 @@ uint32_t GHOST_SystemCocoa::getCursorPreferredLogicalSize() const
    *
    * Take care, for hardware cursors this is already applied on-top of the cursor bitmap,
    * there doesn't seem to be a way to express that the cursor data is pre-scaled.
-   * Therefor, a larger cursor will work but look blurry.
+   * Therefore, a larger cursor will work but look blurry.
    * Only use this for software cursors. */
   const CGFloat default_size = 21.0;
 

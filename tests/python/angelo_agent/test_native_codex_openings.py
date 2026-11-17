@@ -3,6 +3,7 @@
 """A chat's opening readied when its connection is ready, and the bounded wait for it (codex_bases, codex_connect)."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import tempfile
@@ -55,7 +56,7 @@ class OpeningCase(PoolCase):
             self.addCleanup(value.stop)
 
     def resume(self, params):
-        self.assertTrue(self.resumed.wait(5))
+        self.assertTrue(self.resumed.wait(CAP_S))
         return {"thread": {"id": params["threadId"]}}
 
     def controller(self):
@@ -280,7 +281,7 @@ class WarmUpAccountingTests(OpeningCase):
         self.assertEqual(receipt["usage"]["cached_input_tokens"], 0)
         self.assertEqual((receipt["usage"]["turns"], receipt["usage"]["requests"]), (1, 1))
         self.assertEqual(receipt["route"], {"mode": "codex_subscription", "requested_model": "gpt-6.1-sol",
-                                            "effort": "low", "fast": False})
+                                            "effort": "high", "fast": False})   # No effort chosen: the default.
         self.assertEqual(store.report()["retained_requests"], 0, "A chat's statistics are unchanged")
         self.assertTrue(store.flush())
         self.assertIn('"kind": "warm_up"', (Path(self.temp.name) / "performance.json").read_text())

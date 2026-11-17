@@ -219,7 +219,9 @@ class StudioTabsTests(unittest.TestCase):
 
     def test_one_routing_place_and_a_file_never_gets_a_deleted_tab_back(self):
         source = (ADDON / "studio_workspaces.py").read_text()
-        self.assertIn('TABS = {"studio": "Media Studio", "flows": "Generation Flows"}', source)
+        self.assertIn('TABS = {"studio": "Media Studio", "flows": "Generation Flows"}',
+                      (ADDON / "tab_removal.py").read_text(), "one definition, which studio_workspaces imports")
+        self.assertIn("from .tab_removal import TAB_KEY, TABS, UNFINISHED", source)
         missing = source.split("def missing():", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("kind not in had", missing, "a tab this file had and lost was deleted by the person")
         self.assertIn("Never a \".001\"", source)

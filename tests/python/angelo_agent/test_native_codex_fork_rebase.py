@@ -14,6 +14,7 @@ notifications.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import tempfile
@@ -105,7 +106,7 @@ class ForkRebaseTests(unittest.TestCase):
 
     def turn(self, text):
         self.c.send(text, LEGACY_OBSERVATION)
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while (self.c.busy or (self.c._worker and self.c._worker.is_alive())) and time.monotonic() < deadline:
             self.c.pump_events()
             time.sleep(.002)

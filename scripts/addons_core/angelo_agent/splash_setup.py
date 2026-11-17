@@ -135,10 +135,6 @@ def open_start(window):
     """The returning user's start panel."""
     from . import start_card
     scenes = start_card.recent_scenes(os.path.join(bpy.utils.user_resource('CONFIG'), "recent-files.txt"))
-    from . import firstlaunch_controls, welcome_screen
-    welcome_screen.prepare_banner()
-    for path in scenes:
-        firstlaunch_controls.thumbnail(path)
     held = live_target.window_ref(window)   # The card answers later: its window read live then.
 
     def act(action, path):
@@ -192,9 +188,7 @@ def _remember_scene_chat(*_args):
 
 
 def _show(card, window, name):
-    from . import welcome_screen
-    welcome_screen.prepare_banner()
-    card_host.request(card)
+    card_host.request(card)   # The card reads its art when it opens (card_kit.BaseCard.pictures), not before.
     if card_host.pump(lambda: True) and card_host.is_active(card.kind):
         sequence.append(name)
         return True

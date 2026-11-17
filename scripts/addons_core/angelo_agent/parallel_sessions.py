@@ -13,6 +13,7 @@ pictures are out of date (``stale``; ``rail_pictures`` draws them). ``worker_rou
 ``remote_executor.part_listeners`` calls ``_part_saved`` after each worker save.
 """
 
+from . import edit_tool_hold
 import time
 
 _order = []         # Worker chat session ids, in the order their workers started.
@@ -407,6 +408,7 @@ def _active():
         return None
 
 
+@edit_tool_hold.guarded   # Touches Blender data: waits for the person's operation.
 def _tick():
     from . import live_schedule
     if not pending:

@@ -23,7 +23,7 @@
 #  include <unistd.h>
 #endif
 
-#include "BLI_filereader.h"
+#include "BLI_filereader.hh"
 
 #include "BLO_metadata_scan.hh"
 

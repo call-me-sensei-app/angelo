@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .ui_text import n_
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 ASPECTS = {"16:9": (16, 9), "9:16": (9, 16), "1:1": (1, 1), "4:3": (4, 3), "3:4": (3, 4), "21:9": (21, 9)}
 FRAME_ENGINE = "BLENDER_EEVEE"
@@ -163,6 +164,9 @@ def start(window, controller, *, aspect="16:9", short_side=FRAME_SIDE, parts=PAR
     if shot.finished:
         _deliver(shot)
     return shot
+
+
+start = _grant_guard.entry(start)
 
 
 def _label(job_id, part):

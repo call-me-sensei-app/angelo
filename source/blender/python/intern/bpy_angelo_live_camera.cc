@@ -39,11 +39,12 @@
 
 #include "BKE_camera.h"
 #include "BKE_scene.hh"
+#include "BKE_screen.hh"
 
 #include "BLI_listbase_iterator.hh"
-#include "BLI_math_matrix.h"
-#include "BLI_rect.h"
-#include "BLI_utildefines.h"
+#include "BLI_math_matrix_c.hh"
+#include "BLI_rect.hh"
+#include "BLI_utildefines.hh"
 
 #include "DEG_depsgraph.hh"
 #include "DEG_depsgraph_query.hh"

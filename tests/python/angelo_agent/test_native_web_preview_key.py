@@ -182,6 +182,24 @@ class PreviewKeyTests(unittest.TestCase):
                 write(self.scene, path, value)
                 self.assertTrue(self.notify(), path)
 
+    def test_an_edit_of_the_compositor_effects_stack_schedules_an_export(self):
+        # Blender 5.3 composites through a stack of effects (Scene.compositor_effects), and adding, reordering or
+        # disabling one edits only the scene: the key holds the trees a render runs through, in stack order
+        # (web_facts._effect_settings, compositor_stack.render_trees), not the active effect's group alone.
+        def effect(tree, on=True):
+            return SimpleNamespace(node_group=tree, enable_for_render=on)
+        first, second = World(), World()   # Two node groups (IDs).
+        first.nodes = second.nodes = []
+        self.scene.compositor_effects = [effect(first)]
+        self.settle()
+        for name, edit in (("add", lambda: self.scene.compositor_effects.append(effect(second))),
+                           ("reorder", lambda: self.scene.compositor_effects.reverse()),
+                           ("disable", lambda: setattr(self.scene.compositor_effects[0], "enable_for_render", False))):
+            with self.subTest(edit=name):
+                edit()
+                self.assertTrue(self.notify(), name)
+                self.assertFalse(self.notify(), name + " again: one export per edit, never a loop")
+
     def test_a_world_edit_schedules_an_export(self):
         # The World's colour is the World's own update (any data but the scene counts).
         self.scene.world.color = (0.8, 0.2, 0.1)

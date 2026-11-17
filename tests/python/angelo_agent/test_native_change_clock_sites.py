@@ -518,7 +518,7 @@ class JournalAndIdentitySettleTests(unittest.TestCase):
                     patch.object(engine_preflight, "blend_import_profile", return_value=("gltf", {})), \
                     patch.object(engine_preflight, "report_path", return_value=str(Path(temp) / "report.json")), \
                     patch.object(private_roots, "allocate", return_value=Path(temp) / "folder"):
-                self.assertTrue(engine_preflight_link.request("angelo", asset, str(path), None, None, {}))
+                self.assertTrue(engine_preflight_link.request(asset, str(path), None, None, {}))
             self.assertEqual(list(calls), [], "no settle in request, which runs on the main thread")
             spec = requested[0]
             self.assertNotIn("blend_identity", spec)
@@ -527,11 +527,11 @@ class JournalAndIdentitySettleTests(unittest.TestCase):
             class Stop(Exception):
                 pass
 
-            def child_spec(spec):
+            def child_spec(spec, **_):
                 seen.append(dict(spec))
                 raise Stop()
             spec.pop("folder")   # Never the test's own folder: the runner removes it after a run.
-            runner = engine_preflight_link.Runner(str(Path(temp) / "no-angelo"))
+            runner = engine_preflight_link.Runner()
             with patch.object(engine_link_writeback, "child_spec", child_spec), settling() as calls:
                 runner._run(str(path), spec)
             self.assertEqual(len(calls), 1, "the runner settles the save's stat")

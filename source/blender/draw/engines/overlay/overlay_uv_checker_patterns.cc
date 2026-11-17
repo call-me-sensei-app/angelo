@@ -13,7 +13,7 @@
 #include "CLG_log.h"
 
 #include "BLI_array.hh"
-#include "BLI_sys_types.h"
+#include "BLI_sys_types.hh"
 
 #include "BKE_image.hh"
 

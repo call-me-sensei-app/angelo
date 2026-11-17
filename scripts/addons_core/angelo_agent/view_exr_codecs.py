@@ -21,6 +21,7 @@ import sys
 import threading
 from pathlib import Path
 
+from . import essential_environment, owned_paths
 from .view_exr import MAX_PIXELS, ExrError
 
 WORKER = Path(__file__).with_name("view_exr_worker.py")
@@ -32,7 +33,6 @@ MAX_CHUNK = 256 << 20  # Bytes the library holds to decode one block of scanline
 # Scanlines in a block, by OpenEXR's compression code (view_exr.COMPRESSION_NAMES); a tiled part is not bounded this way.
 LINES = {4: 32, 5: 16, 6: 32, 7: 32, 8: 32, 9: 256, 10: 256, 11: 32}
 SAMPLE_BYTES = {0: 4, 1: 2, 2: 4}   # UINT, HALF, FLOAT.
-ENVIRONMENT = ("PATH", "SYSTEMROOT", "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL")
 CODES = {              # What the worker says went wrong -> what a model is told (never the library's own text).
     "open": "the library could not open the file",
     "subimage": "the library found no such part in the file",
@@ -58,7 +58,8 @@ def _what(part, compression):
 
 
 def _environment():
-    return {name: os.environ[name] for name in ENVIRONMENT if name in os.environ}
+    """The OS's own variables only (essential_environment), never the person's others."""
+    return essential_environment.environment(("LC_ALL",))
 
 
 def _chunk_bytes(part):
@@ -90,6 +91,7 @@ def decode(path, part, names, compression):
                        % (what, _chunk_bytes(part) >> 20))
     command = [python, "-I", str(WORKER), str(path), str(part.index), json.dumps(list(names)), str(MAX_PIXELS)]
     try:
+        owned_paths.require_runnable(command[0])
         process = popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                         env=_environment())
     except OSError:

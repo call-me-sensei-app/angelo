@@ -12,7 +12,7 @@
 
 #include "DNA_customdata_types.h"
 
-#include "BLI_math_base.h"
+#include "BLI_math_base_c.hh"
 
 #include "rna_internal.hh" /* own include */
 
@@ -302,6 +302,14 @@ static bool rna_Mesh_validate_material_indices(Mesh *mesh)
   return !bke::mesh_validate_material_indices(*mesh);
 }
 
+static void rna_Mesh_topology_seal(Mesh *mesh, const bool positions)
+{
+  bke::mesh_topology_seal(*mesh);
+  if (!positions) {
+    bke::mesh_positions_unseal(*mesh);
+  }
+}
+
 }  // namespace blender
 
 #else
@@ -420,7 +428,8 @@ void RNA_api_mesh(StructRNA *srna)
   RNA_def_function(srna, "update_gpu_tag", "rna_Mesh_update_gpu_tag");
 
   func = RNA_def_function(srna, "unit_test_compare", "rna_Mesh_unit_test_compare");
-  RNA_def_pointer(func, "mesh", "Mesh", "", "Mesh to compare to");
+  parm = RNA_def_pointer(func, "mesh", "Mesh", "", "Mesh to compare to");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   RNA_def_float_factor(func,
                        "threshold",
                        FLT_EPSILON * 60,
@@ -449,6 +458,21 @@ void RNA_api_mesh(StructRNA *srna)
       func, "clean_customdata", true, "Clean Custom Data", "Deprecated, has no effect");
   parm = RNA_def_boolean(func, "result", false, "Result", "");
   RNA_def_function_return(func, parm);
+
+  func = RNA_def_function(srna, "topology_seal", "rna_Mesh_topology_seal");
+  RNA_def_function_ui_description(
+      func,
+      "Record the mesh's edge, face corner and face offset arrays, its vertex positions and its "
+      "element counts as they are now, for a caller that has just found them valid: "
+      "is_topology_sealed and is_geometry_sealed stay true until something could have written "
+      "them");
+  RNA_def_boolean(
+      func,
+      "positions",
+      true,
+      "Positions",
+      "Record the vertex positions too. Off, for a caller that knows only the topology "
+      "to be as it was: the positions stay marked as written");
 
   func = RNA_def_function(srna, "validate_material_indices", "rna_Mesh_validate_material_indices");
   RNA_def_function_ui_description(

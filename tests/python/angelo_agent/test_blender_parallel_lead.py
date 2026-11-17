@@ -86,7 +86,7 @@ def run_checks():
 
     def recorded_chat(lead):
         chat = made(lead)
-        chat.send = lambda text, observation=None, recovery_evidence=None, chat=chat: sent.setdefault(
+        chat.send = lambda text, observation=None, recovery_evidence=None, host_kind=None, chat=chat: sent.setdefault(
             chat.state["id"], []).append({"text": text, "observation": observation})
         return chat
     worker_sessions._new_chat = recorded_chat
@@ -218,7 +218,7 @@ def places(executor, lead, window, by_name):
         key, answers = built.request("angelo_scene_program", kettle_body)
         call = built.wait_for_approval(key, answers)
         with bpy.context.temp_override(window=window):
-            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=kettle_id)
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=kettle_id)
         result = built.wait(answers)
         kettle.close_external_read(built.fence)
     check("the_kettle_builds_its_part", result.get("status") == "committed", result)
@@ -333,7 +333,7 @@ def unmerged(executor, lead, window):
 
     def apply(target, call):
         with bpy.context.temp_override(window=window):
-            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
     deadline = time.perf_counter() + 60
     while not answers and time.perf_counter() < deadline:
         lead.pump_events()

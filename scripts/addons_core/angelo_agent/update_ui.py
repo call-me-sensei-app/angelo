@@ -20,6 +20,7 @@ import bpy
 from bpy.types import Operator
 
 from . import app_version, card_host, live_windows, product_env, update_card, update_check, update_ready, updates_prefs
+from .team_errors import UNTRUSTED
 from .ui_text import iface_, n_
 
 STARTUP_DELAY = 20.0           # Seconds after launch before the first check (keeps startup free).
@@ -181,8 +182,11 @@ def _result_notice(result):
     if result.detail == "offline_mode":
         return update_card.NoticeCard("alert", iface_(DISABLED_TITLE), iface_(OFFLINE_MODE_BODY),
                                       [("close", iface_(CLOSE), "primary")])
-    body = OFFLINE_BODY if kind == update_check.OFFLINE else FAILED_BODY
-    return update_card.NoticeCard("alert", iface_(COULD_NOT_TITLE), iface_(body),
+    if result.untrusted_origin:   # The feed's certificate was not verified: neither offline nor a bad feed.
+        body = iface_(UNTRUSTED, origin=result.untrusted_origin)
+    else:
+        body = iface_(OFFLINE_BODY if kind == update_check.OFFLINE else FAILED_BODY)
+    return update_card.NoticeCard("alert", iface_(COULD_NOT_TITLE), body,
                                   [("close", iface_(CLOSE), "secondary"), ("retry", iface_(TRY_AGAIN), "primary")],
                                   on_action=_retry)
 

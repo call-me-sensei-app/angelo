@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "BKE_curves.hh"
 #include "BKE_grease_pencil.hh"
 
 #include "BKE_attribute_filter.hh"
@@ -88,6 +89,7 @@ void ED_interpolatetool_modal_keymap(wmKeyConfig *keyconf);
 void ED_grease_pencil_pentool_modal_keymap(wmKeyConfig *keyconf);
 
 void GREASE_PENCIL_OT_stroke_trim(wmOperatorType *ot);
+void GREASE_PENCIL_OT_stroke_carver(wmOperatorType *ot);
 
 void ED_undosys_type_grease_pencil(UndoType *ut);
 
@@ -269,6 +271,14 @@ bool grease_pencil_layer_parent_set(bke::greasepencil::Layer &layer,
 
 void grease_pencil_layer_parent_clear(bke::greasepencil::Layer &layer, bool keep_transform);
 
+/** The clipboard used to copy and paste keyframes in the animation editors. */
+KeyframeClipboard &keyframe_clipboard();
+/**
+ * Free the drawings in the clipboard, which have to be freed before the GPU back-end exits because
+ * their attributes can store values on the GPU.
+ */
+void keyframe_clipboard_free();
+
 bool grease_pencil_copy_keyframes(bAnimContext *ac, KeyframeClipboard &clipboard);
 
 bool grease_pencil_paste_keyframes(bAnimContext *ac,
@@ -334,19 +344,23 @@ bool grease_pencil_sculpting_poll(bContext *C);
 bool grease_pencil_weight_painting_poll(bContext *C);
 bool grease_pencil_vertex_painting_poll(bContext *C);
 
+bool check_brush_needs_new_material(Object *object, const Brush *brush);
+
 float opacity_from_input_sample(const float pressure,
+                                const Paint &paint,
                                 const Brush *brush,
                                 const BrushGpencilSettings *settings);
 float radius_from_input_sample(const RegionView3D *rv3d,
                                const ARegion *region,
+                               const Paint &paint,
                                const Brush *brush,
                                float pressure,
                                const float3 &location,
                                const float4x4 &to_world,
                                const BrushGpencilSettings *settings);
-wmOperatorStatus grease_pencil_draw_operator_invoke(bContext *C,
-                                                    wmOperator *op,
-                                                    bool use_duplicate_previous_key);
+bool grease_pencil_draw_operator_begin(bContext *C,
+                                       wmOperator *op,
+                                       bool use_duplicate_previous_key);
 float4x2 calculate_texture_space(const Scene *scene,
                                  const ARegion *region,
                                  const float2 &mouse,
@@ -976,6 +990,52 @@ bke::CurvesGeometry trim_curve_segment_ends(const bke::CurvesGeometry &src,
                                             const IndexMask &visible_curves,
                                             bool keep_caps);
 };  // namespace trim
+
+namespace boolean {
+
+enum class Operation : int8_t {
+  /* Intersection of the Subject and the Clipping. */
+  Intersect,
+  /* Union of Subject and Clipping. */
+  Union,
+  /* Differences of Subject with Clipping. */
+  Difference,
+};
+
+struct CurveBooleanOpParameters {
+  Operation boolean_mode;
+  bool keep_caps;
+  bool skip_clipping_attributes;
+  bool separate_islands;
+};
+
+struct CurveBooleanResult {
+  bke::CurvesGeometry curves;
+  Array<bool> unchanged_curves;
+  Array<int> dst_to_src_curves;
+};
+
+/* Project the point from local space to the clipping 2d space. */
+using ProjectionFunc = FunctionRef<float2(const float3)>;
+
+CurveBooleanResult curve_boolean(const CurveBooleanOpParameters op_params,
+                                 const bke::CurvesGeometry &curves,
+                                 ProjectionFunc project_fn,
+                                 GroupedSpan<int> shapes,
+                                 const IndexMask &editable_shapes,
+                                 const IndexMask &clipping_shapes);
+
+CurveBooleanResult curve_boolean_with_planes(const CurveBooleanOpParameters op_params,
+                                             const bke::CurvesGeometry &curves,
+                                             ProjectionFunc project_fn,
+                                             GroupedSpan<int> shapes,
+                                             Span<float4> curve_planes,
+                                             const IndexMask &editable_shapes,
+                                             const IndexMask &clipping_shapes,
+                                             const float4x4 &layer_to_world,
+                                             const ARegion &region);
+
+}  // namespace boolean
 
 void merge_layers(const GreasePencil &src_grease_pencil,
                   const Span<Vector<int>> src_layer_indices_by_dst_layer,

@@ -29,7 +29,7 @@ from bpy.app.handlers import persistent
 from bpy.props import FloatProperty, StringProperty
 from bpy.types import Operator
 
-from . import chat_add_menu, flow_open, input_policy, live_windows, ui_tokens as tk
+from . import chat_add_menu, flow_open, grant_guard, input_policy, live_windows, ui_text, ui_tokens as tk
 
 IDENTITY = "angelo.flow_menu"
 FLOWS, STEPS, ENGINES = "FLOWS", "STEPS", "ENGINES"   # i18n: menu kinds, never shown
@@ -225,7 +225,23 @@ def _draw():
     if state is None or area is None or region is None or area.as_pointer() != state["area"]:
         return
     paint(state, region.width, region.height, chat_view.ui_scale())
+    _consent_regions(state, region)
     drawn += 1
+
+
+def _consent_regions(state, region):
+    """Rows as C's regions (``flowmenu.row``): a row's grant (an engine setup) runs in its press's ticket scope."""
+    geometry, items, hits = state.get("layout"), state["rows"], []
+    if not geometry:
+        return
+    lx, ly, lw, lh = geometry["list_rect"]
+    for index, (rx, ry, rw, rh) in enumerate(geometry["rows"]):
+        top, bottom = min(ry + rh, ly + lh), max(ry, ly)
+        if items[index]["kind"] in chat_add_menu.ACTIONABLE and top > bottom:
+            hits.append(((rx, bottom, rw, top - bottom), "row", index))
+    grant_guard.canvas_regions(bpy.context.window, region, "flowmenu", hits, state.get("scale") or 1.0,
+                               ui_text.is_rtl(), prefix="flowmenu.", focus=("row", state["cursor"]) if state["keyboard"]
+                               else None)
 
 
 def paint(state, region_width, region_height, scale):
@@ -423,8 +439,8 @@ class ANGELO_OT_flow_menu(Operator):
                 return {'RUNNING_MODAL'}
             if event.value == 'RELEASE':
                 pressed, state["pressed"] = state["pressed"], None
-                if pressed is not None and pressed == index:
-                    _run(window, area, items[index])
+                if pressed is not None and pressed == index:   # In the scope of the person's press on that row.
+                    grant_guard.ticketed("flowmenu.", "row", index, _run, window, area, items[index])
                     return {'FINISHED'}
                 area.tag_redraw()
                 return {'RUNNING_MODAL'}
@@ -438,9 +454,10 @@ class ANGELO_OT_flow_menu(Operator):
                 close("escape")
                 return {'FINISHED'}
             popup = {"rows": items, "cursor": state["cursor"], "layout": geometry, "scroll": state["scroll"]}
+            cursor = state["cursor"]   # The row Return acts on, before the key moves the cursor.
             chosen = chat_add_menu.key(popup, event)
-            if chosen is not None:
-                _run(window, area, chosen)
+            if chosen is not None:   # A key grants only on the row the person focused (C decides).
+                grant_guard.ticketed("flowmenu.", "row", cursor, _run, window, area, chosen)
                 return {'FINISHED'}
             if event.type in {'UP_ARROW', 'DOWN_ARROW', 'HOME', 'END'}:
                 state.update(cursor=popup["cursor"], keyboard=True, hover=None, scroll=popup["scroll"])

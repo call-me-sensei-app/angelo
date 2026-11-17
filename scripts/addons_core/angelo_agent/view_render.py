@@ -75,6 +75,7 @@ from .view_render_restore import SLOT  # noqa: F401  (the suites read it here)
 from .view_render_runner import NO_IMAGE, LookRunner
 from .view_spec import RENDER_REQUEST_SECONDS, RENDER_SAMPLES, RENDER_SECONDS, RENDERED, SCENE_CAMERA
 from .refusal_codes import coded, refusal_code
+from . import owned_paths
 
 MINIMUM_SECONDS = 15   # A look does not start with less of its request's budget left.
 from .view_render_timing import HEAVY_PREPARATION  # noqa: E402,F401  (its suites read it here)
@@ -335,6 +336,7 @@ def _outcome(pending):
     reference = dict(context["reference"])
     try:  # Blender wrote the render with its alpha; the model gets it opaque, transparency over a checkerboard.
         png, picture = view_picture.scaled(reference["path"])
+        owned_paths.require_writable(reference["path"])
         Path(reference["path"]).write_bytes(png)
     except Exception as error:
         pending.discard()

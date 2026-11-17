@@ -12,6 +12,7 @@ a card the lead never drew (the mirror's digest) next to one drawn once (never t
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import os
 import sys
@@ -123,7 +124,7 @@ class ConsentTests(LeadFixture):
     def test_the_open_carries_the_lease_and_each_change_a_higher_epoch(self):
         lead, mirror, worker = self.hosted_pair()
         self.assertEqual(worker.consent_lease.grants(), {"auto": True})
-        lead.set_trusted_scripts(True)   # The lead's trust reaches its worker chats.
+        angelo_guard_twin.harness(lead.set_trusted_scripts, True)   # The lead's trust reaches its worker chats.
         first = self.channel.ops("chat.consent")[-1]
         self.assertTrue(first["grants"]["scripts"])
         self.assertIsNotNone(worker.consent_lease.token("scripts"))
@@ -208,7 +209,7 @@ class ConsentTests(LeadFixture):
     def test_epochs_delivered_out_of_order_never_roll_the_worker_back_and_are_not_a_loss(self):
         lead, mirror, worker = self.hosted_pair()
         self.channel.mode = "hold"
-        lead.set_trusted_scripts(True)
+        angelo_guard_twin.harness(lead.set_trusted_scripts, True)
         lead_side.tick()
         mirror.state["options"]["approval"] = "ASK"
         lead_side.tick()
@@ -220,7 +221,7 @@ class ConsentTests(LeadFixture):
 
     def test_an_older_revocation_refused_after_a_newer_one_was_applied_is_not_a_loss(self):
         lead, mirror, worker = self.hosted_pair()
-        lead.set_trusted_scripts(True)   # Acknowledged.
+        angelo_guard_twin.harness(lead.set_trusted_scripts, True)   # Acknowledged.
         self.channel.mode = "hold"
         lead._script_consent = None   # Trust ends (a New Chat in the lead): found by the timer.
         lead_side.tick()
@@ -235,7 +236,7 @@ class ConsentTests(LeadFixture):
     def test_a_widening_never_acknowledged_is_sent_again_and_stops_nothing(self):
         lead, mirror, worker = self.hosted_pair()
         self.channel.mode = "lost"
-        lead.set_trusted_scripts(True)
+        angelo_guard_twin.harness(lead.set_trusted_scripts, True)
         self.assertEqual(self.killed, [])
         self.assertIsNone(worker.consent_lease.token("scripts"))   # Narrower, never wider.
         self.channel.mode = "ack"
@@ -257,7 +258,7 @@ class ConsentTests(LeadFixture):
 
     def test_with_the_switch_off_nothing_is_sent(self):
         lead = self.chat()
-        lead.set_trusted_scripts(True)   # No chat is hosted: today's lanes.
+        angelo_guard_twin.harness(lead.set_trusted_scripts, True)   # No chat is hosted: today's lanes.
         lead_side.tick()
         self.assertEqual(self.channel.requests, [])
         _lead, mirror, _worker = self.hosted_pair()
@@ -513,7 +514,7 @@ class WiringTests(LeadFixture):
         addon = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
         sites = {("trusted_scripts.py", "set_trusted_scripts"): "changed",
                  ("trusted_scripts_ui.py", "ANGELO_OT_set_approval.execute"): "changed",
-                 ("trusted_scripts_ui.py", "always_allow_set"): "changed",
+                 ("always_allow.py", "_tell_workers"): "changed",   # Every Always allow change (its set_enabled).
                  ("team_account_ui.py", "ANGELO_OT_team_sign_out.execute"): "changed",
                  ("team_account_ui.py", "close"): "changed",
                  ("ui.py", "ANGELO_OT_connection_remove.execute"): "changed",

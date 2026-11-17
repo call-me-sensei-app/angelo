@@ -156,7 +156,8 @@ class ExampleTests(unittest.TestCase):
     def test_every_feature_the_agent_can_use_has_an_example(self):
         # The rest are the person's view settings or clicks, or families whose own lookup carries their calls.
         without = {"installed_engines", "ai_render", "select_through", "uv_checker", "generation_flows", "base_meshes",
-                   "feedback"}   # Sending feedback is the person's click on the website's form; the agent has no call.
+                   "feedback",   # Sending feedback is the person's click on the website's form; the agent has no call.
+                   "learn"}   # The how-to cards are the person's view of steps already made; the agent has no call.
         for guide in feature_guide.GUIDES:
             with self.subTest(feature=guide.id):
                 self.assertEqual(bool(guide.examples), guide.id not in without, "add a validated example")

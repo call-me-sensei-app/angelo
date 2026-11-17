@@ -56,6 +56,8 @@ def build(window):
         target = next((w for w in bpy.data.workspaces if w.as_pointer() not in before), None)
         if result != {'FINISHED'} or target is None:
             raise RuntimeError("Could not create the Director workspace")
+        from .tab_removal import drop_copied
+        drop_copied(target)   # Copied from a tab (even a half-made one), it is Director, never that tab.
         target.name = "Director"
         write_property(target, WORKSPACE_DIRECTOR, True)
         from .studio_workspaces import place

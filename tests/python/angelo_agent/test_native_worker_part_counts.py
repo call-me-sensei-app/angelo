@@ -10,6 +10,7 @@ integration, FF's remaining main-thread wait). No Blender: ``bpy`` is a stand-in
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import tempfile
@@ -49,7 +50,8 @@ class Fixture(unittest.TestCase):
         self.wedge = threading.Event()   # Cleared: the worker answers nothing until set.
         self.grant = {"ok": True, "lease": "token-1"}
         bpy = SimpleNamespace(data=SimpleNamespace(libraries=SimpleNamespace(load=self._load)))
-        self.worker = SimpleNamespace(alive=lambda: True)
+        # A live worker: its process still runs, so a refused lease is a refusal, not its process gone (_lease).
+        self.worker = SimpleNamespace(alive=lambda: True, process=SimpleNamespace(poll=lambda: None))
         for patcher in (mock.patch.dict(sys.modules, {"bpy": bpy}),
                         mock.patch.object(lifecycle, "enabled", lambda environ=None: True),
                         mock.patch.object(lifecycle, "_serving", lambda path: self.worker),
@@ -65,7 +67,7 @@ class Fixture(unittest.TestCase):
         to call the real worker channel after the test, or to print while the interpreter exits (an abort at exit)."""
         self.wedge.set()   # Never leave a lease thread waiting.
         counts.reset()     # Releases what was granted, on threads of its own.
-        deadline = time.monotonic() + 10   # A lease thread that ends may start a release thread: until none is left.
+        deadline = time.monotonic() + CAP_S   # A lease thread that ends may start a release thread: until none is left.
         while time.monotonic() < deadline:
             left = [t for t in threading.enumerate() if t.name == "AngeloPartCount" and t.is_alive()]
             if not left:
@@ -92,7 +94,7 @@ class Fixture(unittest.TestCase):
 
     def asks(self, at_least):
         """The leases asked once ``at_least`` have been: each is sent from a lease thread of its own."""
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + CAP_S
         while self.sent.count("part.lease") < at_least and time.monotonic() < deadline:
             time.sleep(0.005)
         return self.sent.count("part.lease")
@@ -100,7 +102,7 @@ class Fixture(unittest.TestCase):
     def granted(self):
         """The worker answered and the pump ran: True once the count is known."""
         self.wedge.set()
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             counts.pump(now=0.0)
             if counts.count(str(self.path)) is not counts.UNKNOWN:
@@ -129,7 +131,7 @@ class WedgedWorker(Fixture):
         self.assertTrue(self.granted())
         self.assertIsNone(self.refusal())
         self.assertEqual(len(self.reads), 1)
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while "part.unlease" not in self.sent and time.monotonic() < deadline:
             time.sleep(0.005)
         self.assertIn("part.unlease", self.sent)
@@ -155,12 +157,14 @@ class WedgedWorker(Fixture):
         self.grant = lifecycle.ChatOpFailed("part.lease", None, "busy saving")
         self.wedge.set()
         self.assertIsNotNone(self.refusal())
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             with counts._lock:
                 if counts._asks[str(self.path)].state == "refused":
                     break
             time.sleep(0.005)
+        else:
+            self.fail("the lease was never refused")
         self.assertEqual(self.refusal().code, "WRITER_BUSY")
         self.assertEqual(self.sent.count("part.lease"), 1)   # Not before RETRY_SECONDS.
         with counts._lock:

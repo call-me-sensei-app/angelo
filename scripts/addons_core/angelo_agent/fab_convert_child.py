@@ -27,6 +27,7 @@ import fab_convert_clean as clean  # noqa: E402
 import fab_convert_guard as guard  # noqa: E402
 import fab_convert_material as material  # noqa: E402
 import fab_formats  # noqa: E402
+import owned_paths  # noqa: E402  A plain sibling too: this script runs with no package (``--python``).
 
 ERRORS = ('UNREADABLE', 'NO_OBJECTS', 'OUTSIDE_REFERENCE', 'LINKED_LIBRARY', 'IMPORTER_MISSING', 'NO_MAPS',
           'TOO_LARGE', 'FAILED')
@@ -207,8 +208,12 @@ def convert_model(job, fmt, folder, timings):
         # Linked, never moved: a collection another object instances must keep its members.
         collection.objects.link(obj)
     report = clean.sanitize(folder, job['images'])
-    textured = material.complete_untextured(kept, folder, job['images'], job['datablock'], report)
+    # Packed first: an image the download does not hold is dropped here, its node left empty, so it counts as no
+    # texture and the loose set completes it (an FBX naming its maps by the author's paths: Megascans' raw plants).
     clean.pack_images(folder, report, embedded=embedded)
+    textured = material.complete_untextured(kept, folder, job['images'], job['datablock'], report)
+    if textured:
+        clean.pack_images(folder, report, embedded=embedded)   # The loose maps it loaded.
     timings['clean'] = round(time.monotonic() - started, 3)
     return collection, dict(report, objects=len(kept), meshes=sum(o.type == 'MESH' for o in kept),
                             skipped=skipped, unit_scale=unit, models=len(models), material_from_textures=textured)
@@ -248,6 +253,7 @@ def main():
         started = time.monotonic()
         output = Path(job['output'])
         block.asset_mark()   # The app appends asset-marked datablocks only (blender_asset_import._append).
+        owned_paths.require_writable(output)
         bpy.data.libraries.write(str(output), {block}, path_remap='NONE', fake_user=True, compress=False)
         timings['write'] = round(time.monotonic() - started, 3)
         result = dict(facts, ok=True, error=None, name=block.name, id_type='MATERIAL' if fmt.kind == 'material'

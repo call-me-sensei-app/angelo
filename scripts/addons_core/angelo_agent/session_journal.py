@@ -79,7 +79,7 @@ import time
 import uuid
 import zlib
 
-from . import shared_replace
+from . import owned_paths, shared_replace
 
 try:
     import fcntl
@@ -281,6 +281,7 @@ def rewrite(path, data, before_replace=None):
     ``before_replace``, when given, runs after the temporary file is synced and
     closed, just before the replace; what it raises stops the replace.
     """
+    owned_paths.require_writable(path)   # C first: no temporary is made beside a target it refuses.
     temporary = path.parent / ("%s.%s.tmp" % (path.name, uuid.uuid4().hex[:12]))   # O_EXCL; short (worker_paths)
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | BINARY, 0o600)
     try:
@@ -335,7 +336,7 @@ def discard_stale(path, older_than=60.0):
             try:
                 status = entry.stat(follow_symlinks=False)
                 if (stat.S_ISREG(status.st_mode) and now - status.st_mtime > older_than
-                        and (temporary or status.st_size == 0)):
+                        and (temporary or status.st_size == 0) and owned_paths.may_write(entry.path)):
                     os.unlink(entry.path)
             except OSError:
                 continue  # Gone, or another writer's: it is never read.
@@ -440,6 +441,7 @@ def append(path, identity, data):
     carries ``journal_left``: the file's ``full_identity`` as this write left it,
     taken under the lock, and whether it was cut back (None when unknown).
     """
+    owned_paths.require_writable(path)
     try:
         fd = os.open(path, os.O_WRONLY | os.O_APPEND | BINARY | _NOFOLLOW)
     except OSError as error:  # Gone, a link, or not writable: a rewrite replaces it or reports why it cannot.

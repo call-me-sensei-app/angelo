@@ -15,14 +15,14 @@
 #include "DNA_scene_types.h"
 
 #include "BLI_array.hh"
-#include "BLI_bitmap.h"
-#include "BLI_linklist_stack.h"
-#include "BLI_listbase.h"
+#include "BLI_bitmap.hh"
+#include "BLI_linklist_stack.hh"
+#include "BLI_listbase.hh"
 #include "BLI_math_base.hh"
-#include "BLI_math_vector.h"
-#include "BLI_task.h"
+#include "BLI_math_vector_c.hh"
 #include "BLI_task.hh"
-#include "BLI_utildefines.h"
+#include "BLI_task_c.hh"
+#include "BLI_utildefines.hh"
 #include "BLI_vector.hh"
 
 #include "BKE_customdata.hh"
@@ -30,6 +30,7 @@
 #include "BKE_global.hh"
 #include "BKE_mesh.hh"
 
+#include "bmesh_iterators_parallel.hh"
 #include "intern/bmesh_private.hh"
 
 namespace blender {
@@ -82,6 +83,47 @@ BLI_INLINE void bm_vert_calc_normals_accum_loop(const BMLoop *l_iter,
   madd_v3_v3fl(v_no, f_no, fac);
 }
 
+BLI_INLINE void bm_vert_calc_normals_accum(const BMVert *v, float v_no[3])
+{
+  BMEdge *e_first = v->e;
+  if (e_first != nullptr) {
+    float e1diff[3], e2diff[3];
+    BMEdge *e_iter = e_first;
+    do {
+      BMLoop *l_first = e_iter->l;
+      if (l_first != nullptr) {
+        sub_v3_v3v3(e2diff, e_iter->v1->co, e_iter->v2->co);
+        normalize_v3(e2diff);
+
+        BMLoop *l_iter = l_first;
+        do {
+          if (l_iter->v == v) {
+            BMEdge *e_prev = l_iter->prev->e;
+            sub_v3_v3v3(e1diff, e_prev->v1->co, e_prev->v2->co);
+            normalize_v3(e1diff);
+
+            bm_vert_calc_normals_accum_loop(l_iter, e1diff, e2diff, l_iter->f->no, v_no);
+          }
+        } while ((l_iter = l_iter->radial_next) != l_first);
+      }
+    } while ((e_iter = BM_DISK_EDGE_NEXT(e_iter, v)) != e_first);
+  }
+}
+
+static bool bm_vert_calc_normals_from_coincident_verts(BMVert *v, float v_no[3])
+{
+  BMIter iter;
+  BMEdge *e_iter;
+
+  BM_ITER_ELEM (e_iter, &iter, v, BM_EDGES_OF_VERT) {
+    const BMVert *v_other = BM_edge_other_vert(e_iter, v);
+    if (equals_v3v3(v->co, v_other->co)) {
+      bm_vert_calc_normals_accum(v_other, v_no);
+    }
+  }
+  return normalize_v3(v_no) != 0.0f;
+}
+
 static void bm_vert_calc_normals_impl(BMVert *v)
 {
   /* NOTE(@ideasman42): Regarding redundant unit-length edge-vector calculation:
@@ -114,32 +156,13 @@ static void bm_vert_calc_normals_impl(BMVert *v)
   float *v_no = v->no;
   zero_v3(v_no);
 
-  BMEdge *e_first = v->e;
-  if (e_first != nullptr) {
-    float e1diff[3], e2diff[3];
-    BMEdge *e_iter = e_first;
-    do {
-      BMLoop *l_first = e_iter->l;
-      if (l_first != nullptr) {
-        sub_v3_v3v3(e2diff, e_iter->v1->co, e_iter->v2->co);
-        normalize_v3(e2diff);
+  bm_vert_calc_normals_accum(v, v_no);
+  if (normalize_v3(v_no) != 0.0f) [[likely]] {
+    return;
+  }
 
-        BMLoop *l_iter = l_first;
-        do {
-          if (l_iter->v == v) {
-            BMEdge *e_prev = l_iter->prev->e;
-            sub_v3_v3v3(e1diff, e_prev->v1->co, e_prev->v2->co);
-            normalize_v3(e1diff);
-
-            bm_vert_calc_normals_accum_loop(l_iter, e1diff, e2diff, l_iter->f->no, v_no);
-          }
-        } while ((l_iter = l_iter->radial_next) != l_first);
-      }
-    } while ((e_iter = BM_DISK_EDGE_NEXT(e_iter, v)) != e_first);
-
-    if (LIKELY(normalize_v3(v_no) != 0.0f)) {
-      return;
-    }
+  if (bm_vert_calc_normals_from_coincident_verts(v, v_no)) {
+    return;
   }
   /* Fallback normal. */
   normalize_v3_v3(v_no, v->co);
@@ -188,7 +211,7 @@ static void bm_vert_calc_normals_with_coords(BMVert *v, BMVertsCalcNormalsWithCo
       }
     } while ((e_iter = BM_DISK_EDGE_NEXT(e_iter, v)) != e_first);
 
-    if (LIKELY(normalize_v3(v_no) != 0.0f)) {
+    if (normalize_v3(v_no) != 0.0f) [[likely]] {
       return;
     }
   }
@@ -273,7 +296,7 @@ void BM_mesh_normals_update_with_partial_ex(BMesh * /*bm*/,
 {
   BLI_assert(bmpinfo->params.do_normals);
   /* While harmless, exit early if there is nothing to do. */
-  if (UNLIKELY(bmpinfo->verts.is_empty() && bmpinfo->faces.is_empty())) {
+  if (bmpinfo->verts.is_empty() && bmpinfo->faces.is_empty()) [[unlikely]] {
     return;
   }
 
@@ -688,7 +711,7 @@ static int bm_mesh_loops_calc_normals_for_loop(BMesh *bm,
 
       /* If we are generating lnor spacearr, we can now define the one for this fan. */
       if (r_lnors_spacearr) {
-        if (UNLIKELY(lnor_len == 0.0f)) {
+        if (lnor_len == 0.0f) [[unlikely]] {
           /* Use vertex normal as fallback! */
           copy_v3_v3(lnor, r_lnos[lfan_pivot_index]);
           lnor_len = 1.0f;
@@ -726,7 +749,7 @@ static int bm_mesh_loops_calc_normals_for_loop(BMesh *bm,
       }
 
       /* In case we get a zero normal here, just use vertex normal already set! */
-      if (LIKELY(lnor_len != 0.0f)) {
+      if (lnor_len != 0.0f) [[likely]] {
         /* Copy back the final computed normal into all related loop-normals. */
         float *nor;
 
@@ -925,7 +948,7 @@ static void bm_mesh_loops_calc_normals_for_vert_with_clnors(BMesh *bm,
       } while ((l_curr = l_curr->radial_next) != e_curr_iter->l);
     } while ((e_curr_iter = BM_DISK_EDGE_NEXT(e_curr_iter, v)) != v->e);
 
-    if (UNLIKELY(loops_of_vert == nullptr)) {
+    if (loops_of_vert == nullptr) [[unlikely]] {
       return;
     }
 

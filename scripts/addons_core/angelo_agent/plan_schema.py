@@ -273,12 +273,12 @@ def lookup(family, names, hidden=frozenset(), features_available=None, engines=N
     engine facts.
     """
     from .agent_guidance import FAMILY_GUIDANCE
-    from .tool_specs import TOOL_MAP
+    from .tool_specs import READ_ONLY_TOOLS, TOOL_MAP
     names = list(dict.fromkeys(names))[:MAX_LOOKUP_NAMES]
     if family == "TOOLS":
         found = [name for name in names if name in TOOL_MAP and name not in hidden]
         result = {"tools": [{"name": name, "description": TOOL_MAP[name]["description"],
-                             "read_only": TOOL_MAP[name]["annotations"]["readOnlyHint"],
+                             "read_only": name in READ_ONLY_TOOLS,
                              "input_schema": _exact(TOOL_MAP[name]["inputSchema"])} for name in found]}
         guidance = {key: text for key, (members, text) in FAMILY_GUIDANCE.items() if members & set(found)}
         if guidance:

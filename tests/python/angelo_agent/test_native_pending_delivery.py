@@ -8,6 +8,7 @@ There is no Blender, runtime subprocess, image decoding or model delivery here.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import queue
@@ -97,7 +98,7 @@ class PendingDeliveryCase(unittest.TestCase):
         self.pendings[identity] = pending
         return pending
 
-    def pack(self, context, name, result):
+    def pack(self, context, name, result, arguments=None):
         self.packing.append(result)
         self.on_pack(result)
         content = [{"type": "inputText", "text": json.dumps(result)}]
@@ -160,7 +161,7 @@ class PendingDeliveryCase(unittest.TestCase):
 
         worker = threading.Thread(target=complete, daemon=True)
         worker.start()
-        completed_inside_phase = done.wait(2)
+        completed_inside_phase = done.wait(CAP_S)
         return worker, completed_inside_phase, errors
 
 
@@ -179,7 +180,7 @@ class PendingDeliveryTests(PendingDeliveryCase):
             worker = threading.Thread(target=acquire, daemon=True)
             workers.append(worker)
             worker.start()
-            barriers.append(entered.wait(2))
+            barriers.append(entered.wait(CAP_S))
             phases.append(label)
             if label == "callback":
                 answers.append(result)
@@ -187,7 +188,7 @@ class PendingDeliveryTests(PendingDeliveryCase):
         self.host.request_tool(identity, name, arguments, lambda result: phase("callback", result),
             result_observer=lambda result: phase("observer", result), **options)
         for worker in workers:
-            worker.join(timeout=3)
+            worker.join(timeout=CAP_S)
             self.assertFalse(worker.is_alive())
         self.assertEqual(phases, ["observer", "callback"])
         self.assertEqual(barriers, [True, True], "an immediate answer retained the admission lock")
@@ -276,7 +277,7 @@ class PendingDeliveryTests(PendingDeliveryCase):
             worker = threading.Thread(target=acquire, daemon=True)
             workers.append(worker)
             worker.start()
-            barriers.append(entered.wait(2))
+            barriers.append(entered.wait(CAP_S))
             order.append("observer")
 
         self.host.request_tool("observed", "angelo_inspect_scene", {}, lambda result: order.append("first"),
@@ -287,7 +288,7 @@ class PendingDeliveryTests(PendingDeliveryCase):
         self.host.finish_tool(call, {"success": True, "read_only": True, "scene_changed": False})
         self.host.finish_tool(call, {"success": True})
         for worker in workers:
-            worker.join(timeout=3)
+            worker.join(timeout=CAP_S)
             self.assertFalse(worker.is_alive())
         self.assertEqual(barriers, [True])
         self.assertEqual(order, ["observer", "first", "joined"])
@@ -312,13 +313,13 @@ class PendingDeliveryTests(PendingDeliveryCase):
             worker = threading.Thread(target=acquire, daemon=True)
             workers.append(worker)
             worker.start()
-            observed.append(entered.wait(2))
+            observed.append(entered.wait(CAP_S))
 
         with patch.object(self.host.tools, "put_nowait", side_effect=queue.Full):
             self.host.request_tool("queue-full", "angelo_inspect_scene", {}, answers.append,
                                    result_observer=observer)
         for worker in workers:
-            worker.join(timeout=3)
+            worker.join(timeout=CAP_S)
             self.assertFalse(worker.is_alive())
         self.assertEqual(observed, [True])
         self.assertEqual(len(answers), 1)
@@ -877,11 +878,11 @@ class PendingDeliveryTests(PendingDeliveryCase):
             worker = threading.Thread(target=run_plan_operation, daemon=True)
             worker.start()
             try:
-                self.assertTrue(admitted.wait(2), "plan did not admit its call")
+                self.assertTrue(admitted.wait(CAP_S), "plan did not admit its call")
                 self.dispatch()
                 self.host.pump_events()
             finally:
-                worker.join(timeout=4)
+                worker.join(timeout=CAP_S)
         self.assertFalse(worker.is_alive())
         self.assertEqual(errors, [])
         self.assertEqual(len(answers), 1)
@@ -931,7 +932,7 @@ class PendingDeliveryTests(PendingDeliveryCase):
         self.on_capture = lambda identity: barriers.append(self.complete_from_worker())
         self.host.pump_events()
         for worker, closed_inside_phase, errors in barriers:
-            worker.join(timeout=3)
+            worker.join(timeout=CAP_S)
             self.assertFalse(worker.is_alive())
             self.assertTrue(closed_inside_phase, "native completion was blocked by capture")
             self.assertEqual(errors, [])
@@ -944,7 +945,7 @@ class PendingDeliveryTests(PendingDeliveryCase):
         self.on_pack = lambda result: barriers.append(self.complete_from_worker())
         self.host.pump_events()
         for worker, closed_inside_phase, errors in barriers:
-            worker.join(timeout=3)
+            worker.join(timeout=CAP_S)
             self.assertFalse(worker.is_alive())
             self.assertTrue(closed_inside_phase, "native completion was blocked by image packing")
             self.assertEqual(errors, [])
@@ -962,16 +963,16 @@ class PendingDeliveryTests(PendingDeliveryCase):
         def hold_scope():
             with self.provider._scope.lock:
                 held.set()
-                released_by_main.append(release.wait(2))
+                released_by_main.append(release.wait(CAP_S))
 
         worker = threading.Thread(target=hold_scope, daemon=True)
         worker.start()
         try:
-            self.assertTrue(held.wait(2))
+            self.assertTrue(held.wait(CAP_S))
             self.host.pump_events()
         finally:
             release.set()
-            worker.join(timeout=3)
+            worker.join(timeout=CAP_S)
         self.assertFalse(worker.is_alive())
         self.assertEqual(released_by_main, [True], "polling waited on the provider scope lock")
         self.assertEqual(self.captures, [])
@@ -1047,7 +1048,7 @@ class DelegatedDeliveryTests(PendingDeliveryCase):
         self.assertFalse(job.timer.finished.is_set())
         parent.delivery_owner.close()
         self.host.pump_events()
-        self.assertTrue(closed.wait(2), "the bounded fake provider did not receive close")
+        self.assertTrue(closed.wait(CAP_S), "the bounded fake provider did not receive close")
         self.assertTrue(stopped.is_set())
         self.assertTrue(job.timer.finished.is_set())
         self.assertTrue(job.cancelled.is_set())

@@ -1,5 +1,7 @@
 /* SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
  * SPDX-License-Identifier: GPL-2.0-or-later */
+#include <algorithm>
+
 #include "BKE_angelo_sculpt.hh"
 #include "BKE_attribute.hh"
 #include "BKE_mesh.hh"
@@ -7,7 +9,7 @@
 #include "BKE_paint.hh"
 #include "BKE_paint_bvh.hh"
 #include "BKE_subdiv_ccg.hh"
-#include "BLI_math_geom.h"
+#include "BLI_math_geom.hh"
 #include "BLI_math_vector.hh"
 #include "DNA_mesh_types.h"
 #include "DNA_object_types.h"
@@ -97,10 +99,13 @@ std::optional<SurfaceSample> surface_query(const FunctionRef<const Depsgraph &()
     isect_ray_tri_watertight_v3_precalc(&precalc, ray);
     pbvh::raycast(
         *tree,
-        [&](pbvh::Node &node, float *tmin) {
-          if ((node.flag_ & pbvh::Node::FullyHidden) ||
-              BKE_pbvh_node_get_tmin(&node) >= sample.distance)
-          {
+        [&](pbvh::Node &node, float *distance) {
+          /* #pbvh::raycast visits leaves nearest-first and stops at the first one whose bounds
+           * start at or beyond `*distance`. Publishing the caller's limit (narrowed by any hit so
+           * far) before the leaf is searched keeps the `max_distance` cutoff for later leaves;
+           * this leaf can only report hits nearer than `sample.distance` anyway. */
+          *distance = std::min(*distance, sample.distance);
+          if (node.flag_ & pbvh::Node::FullyHidden) {
             return;
           }
           bool hit;
@@ -139,7 +144,7 @@ std::optional<SurfaceSample> surface_query(const FunctionRef<const Depsgraph &()
           }
           if (hit) {
             found = true;
-            *tmin = sample.distance;
+            *distance = sample.distance;
           }
         },
         origin,
@@ -211,7 +216,8 @@ std::optional<SurfaceSample> surface_query(const FunctionRef<const Depsgraph &()
             for (const int y : IndexRange(ccg->grid_size - 1)) {
               for (const int x : IndexRange(ccg->grid_size - 1)) {
                 if (!ccg->grid_hidden.is_empty() &&
-                    paint_is_grid_face_hidden(ccg->grid_hidden[grid], ccg->grid_size, x, y)) {
+                    BKE_paint_is_grid_face_hidden(ccg->grid_hidden[grid], ccg->grid_size, x, y))
+                {
                   continue;
                 }
                 const int a = grid * ccg->grid_area + y * ccg->grid_size + x;

@@ -15,7 +15,8 @@
 #include <string_view>
 #include <sys/stat.h>
 
-#include "BLI_endian_defines.h"
+#include "BLI_endian_defines.hh"
+#include "BLI_fileops.hh"
 #include "BLI_span.hh"
 
 #include "DNA_ID.h"
@@ -164,14 +165,12 @@ static std::optional<BHead> read_block(MetadataScanReader &reader,
   return block;
 }
 
-using DnaPointer = std::unique_ptr<SDNA, decltype(&DNA_sdna_free)>;
-
-static DnaPointer read_dna(int descriptor,
-                          uint64_t file_bytes,
-                          MetadataScanBudget &budget,
-                          BlenderHeader &header)
+static std::unique_ptr<SDNA> read_dna(int descriptor,
+                                      uint64_t file_bytes,
+                                      MetadataScanBudget &budget,
+                                      BlenderHeader &header)
 {
-  DnaPointer dna(nullptr, DNA_sdna_free);
+  std::unique_ptr<SDNA> dna;
   MetadataScanReader reader(descriptor, file_bytes, budget);
   budget.result.passes++;
   if (!reader.initialize()) {
@@ -213,7 +212,7 @@ static DnaPointer read_dna(int descriptor,
       }
       const char *error = nullptr;
       /* Own a writable copy: legacy SDNA gravity repair edits its own serialized storage. */
-      dna.reset(DNA_sdna_from_data(encoded.data(), int(encoded.size()), true, false, &error));
+      dna = DNA_sdna_from_data(encoded.data(), int(encoded.size()), true, false, &error);
       if (!dna || dna->pointer_size != header.pointer_size) {
         dna.reset();
         budget.fail(BLOMetadataScanStatus::INVALID, "DNA does not match blend header");
@@ -312,7 +311,7 @@ static bool scan_names(int descriptor,
       continue;
     }
     const int prefix_bytes = library ? layout.library_prefix_bytes : layout.id_prefix_bytes;
-    if (block->len < prefix_bytes || block->SDNAnr >= dna.structs_num || block->nr < 1) {
+    if (block->len < prefix_bytes || block->SDNAnr >= dna.structs.size() || block->nr < 1) {
       return budget.fail(BLOMetadataScanStatus::INVALID, "Invalid datablock metadata");
     }
     if (!reader.read_exact(prefix.data(), size_t(prefix_bytes)) ||
@@ -376,12 +375,17 @@ BLOMetadataScanResult BLO_metadata_scan_from_descriptor(int descriptor,
   BLOMetadataScanResult result;
   result.status = BLOMetadataScanStatus::OK;
   MetadataScanBudget budget{limits, result, cancelled, userdata};
-  if (descriptor < 0 || !limits.decoded_bytes || limits.decoded_bytes > INT64_MAX ||
-      !limits.input_bytes || !limits.block_count || !limits.block_bytes ||
-      limits.block_bytes > INT64_MAX || !limits.dna_bytes || limits.dna_bytes > INT_MAX ||
-      !limits.dna_entries || !limits.decoder_bytes || !limits.zstd_window_bytes ||
-      limits.zstd_window_bytes > SIZE_MAX || !limits.result_names || !request.limit ||
-      !request.summary_names || !request.libraries_limit)
+  if (!BLI_file_descriptor_is_open(descriptor)) {
+    /* A file that could not be read, as `fstat` below reports one off Windows: not a bad request
+     * and not a damaged file. Asked first: Windows' C runtime ends the process when it is. */
+    budget.fail(BLOMetadataScanStatus::IO_ERROR, "Descriptor is not open");
+    return result;
+  }
+  if (!limits.decoded_bytes || limits.decoded_bytes > INT64_MAX || !limits.input_bytes ||
+      !limits.block_count || !limits.block_bytes || limits.block_bytes > INT64_MAX ||
+      !limits.dna_bytes || limits.dna_bytes > INT_MAX || !limits.dna_entries ||
+      !limits.decoder_bytes || !limits.zstd_window_bytes || limits.zstd_window_bytes > SIZE_MAX ||
+      !limits.result_names || !request.limit || !request.summary_names || !request.libraries_limit)
   {
     budget.fail(BLOMetadataScanStatus::INVALID, "Invalid metadata scan limits or request");
     return result;
@@ -418,7 +422,7 @@ BLOMetadataScanResult BLO_metadata_scan_from_descriptor(int descriptor,
     return result;
   }
   BlenderHeader header;
-  DnaPointer dna = read_dna(descriptor, uint64_t(info.st_size), budget, header);
+  std::unique_ptr<SDNA> dna = read_dna(descriptor, uint64_t(info.st_size), budget, header);
   const auto layout = dna ? metadata_layout(*dna) : std::nullopt;
   if (!layout) {
     budget.fail(BLOMetadataScanStatus::INVALID, "Required metadata fields are unavailable");

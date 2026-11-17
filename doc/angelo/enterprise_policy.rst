@@ -58,7 +58,24 @@ Key                           Type           Default  Effect
 ``ExtraCACertificates``       string (path)  —        An absolute path to a PEM file of extra trusted root
                                                       certificates, for networks that inspect TLS. Added to
                                                       Angelo's own roots, never a replacement; Claude Code
-                                                      receives it as ``NODE_EXTRA_CA_CERTS``.
+                                                      receives it as ``NODE_EXTRA_CA_CERTS`` and Codex as
+                                                      ``CODEX_CA_CERTIFICATE``.
+``CustomEndpoints``           list or JSON   —        Your organization's own model servers (LiteLLM, Portkey,
+                              text                    OpenRouter, Azure OpenAI, vLLM, Ollama, LM Studio or an
+                                                      in-house proxy) for the coding agents, in the console's
+                                                      ``customEndpoints`` form (``ai_providers.rst``, "Custom
+                                                      model endpoints"): an array in a configuration profile,
+                                                      or its JSON text in a registry string. Set, it wins over
+                                                      the console's, even empty, and is shown locked. Each
+                                                      member still needs a team seat and adds their own key:
+                                                      an organization's secrets never reach the app, so no
+                                                      key is ever in the policy or the console's answer.
+                                                      Only the policy may name a key program
+                                                      (``"credential": "command"``) for short-lived keys.
+                                                      Requires ``Organization``: the servers run only for
+                                                      that organization's signed-in members (their seats,
+                                                      their usage). Without a usable ``Organization`` they
+                                                      are off and the key is reported as a problem.
 ``DisableUpdateCheck``        boolean        false    true: Angelo never asks whether a newer version exists,
                                                       not even from Check for Updates…, so it never downloads or
                                                       installs one either; the setting is shown locked. An
@@ -81,7 +98,8 @@ Providers ("Your organization's Angelo policy has unusable values (…)"): an
 switches as on, an unusable ``ConsoleURL``, ``GatewayURL``, ``Organization`` or
 ``EmailDomains`` turns team sign-in off rather than falling back to Angelo's
 defaults, and an unusable ``UpdateFeedURL`` stops the update check rather than
-falling back to Angelo's own address. Booleans accept
+falling back to Angelo's own address. An unusable ``CustomEndpoints`` entry is
+left out whole (the others still apply) and reported. Booleans accept
 true/false, 1/0 and yes/no (any case); a missing ``ExtraCACertificates`` file
 adds nothing. Unknown keys are ignored.
 
@@ -251,13 +269,25 @@ checked against its provider.
 
 * **TLS inspection.** Angelo verifies TLS with its bundled root certificates.
   A network that re-signs TLS with its own root needs that root in
-  ``ExtraCACertificates``. API-key connection checks use the same extra roots
+  ``ExtraCACertificates``. Without it Angelo's own requests end at the
+  handshake, and each says so: the team account, the team library, the Angelo
+  Library's downloads and the update check name the origin whose certificate
+  was not verified and this setting (``team_errors.UNTRUSTED``; the transports
+  mark the failure, ``NotSent.untrusted`` and ``NetworkError.untrusted``),
+  never "check your network", which is fine there and where a retry never
+  helps. An operating system that trusts the root does not change this on
+  macOS: Blender's Python has no other roots. API-key connection checks use the same extra roots
   as generation and team requests, with certificate and hostname verification
   still required. A chain holding a key Angelo distrusts (a certificate
   authority's compromised key) is refused even under an added root. The coding agents (Codex and Claude Code) are separate
-  programs: Claude Code receives the file as
-  ``NODE_EXTRA_CA_CERTS``; Codex follows the standard ``SSL_CERT_FILE`` and
-  ``CODEX_CA_CERTIFICATE`` variables, which you can set machine-wide.
+  programs, and neither inherits a certificate variable from the environment:
+  Claude Code receives the file as ``NODE_EXTRA_CA_CERTS`` and Codex as
+  ``CODEX_CA_CERTIFICATE``; each adds it to the system's roots.
+* **Custom model endpoints reach only their own server.** A coding agent on one
+  of your organization's model servers (``CustomEndpoints``) connects straight to
+  that server's host, from the member's computer, without a proxy, and every
+  other host is refused, as for team connections. Allow that host from members'
+  computers; the Angelo gateway is not in the path.
 * **Proxies.** Angelo's own requests to the console and gateway don't use an
   HTTP proxy yet; a network that only allows outbound traffic through a proxy
   can't sign in. The update check and crash reports carry no credential and do

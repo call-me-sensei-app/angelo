@@ -31,9 +31,9 @@
 
 #include "BKE_gtest_base.hh"
 
-#include "BLI_fileops.h"
+#include "BLI_fileops.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_tempfile.h"
+#include "BLI_tempfile.hh"
 
 #include "IMB_imbuf.hh"
 #include "IMB_imbuf_types.hh"

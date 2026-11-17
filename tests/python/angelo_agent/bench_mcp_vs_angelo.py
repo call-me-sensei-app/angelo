@@ -119,11 +119,17 @@ def parse(argv):
     parser.add_argument("--codex-home", default="",
                         help="--runtime codex: dedicated signed-in profile for BOTH sides, named "
                              ".../codex-profile/<connection id> (CODEX_HOME=<it> codex login); never ~/.codex")
+    parser.add_argument("--angelo-allow-api-key-connection", action="store_true",
+                        help="--sides angelo: --connection-id is a pay-per-token API-key coding connection, billed "
+                             "and run in place from --source-connections-dir, which holds only it "
+                             "(eval_live_agent.py --allow-api-key-connection); no --codex-home")
     parser.add_argument("--angelo-team-mode", choices=("",) + live.TEAM_MODES, default="",
                         help="--sides angelo: run Angelo's side through the Angelo gateway with the signed-in team's "
                              "connection of this mode (eval_live_agent.py --team-mode); --source-connections-dir is "
                              "the dedicated team profile and --connection-id is not used")
-    parser.add_argument("--effort", choices=("low", "medium", "high"), default="low")
+    parser.add_argument("--effort", choices=("default", "low", "medium", "high"), default=None,
+                        help="default: Angelo's own, a gate's shipping effort (--sides angelo's default); a run with "
+                             "an MCP side names one effort for both sides (its default: low)")
     parser.add_argument("--task-timeout", type=float, default=None,
                         help="seconds per task before Stop (default 300; a one-shot test's own time cap)")
     parser.add_argument("--sides", choices=("both", "mcp", "angelo"), default="both")
@@ -229,6 +235,10 @@ def parse(argv):
     args = approval.check(parser, parser.parse_args(argv), prefix="angelo_")  # Before any billed trial.
     diagnostics.check(parser, args)
     warm_up.check(parser, args)
+    if args.effort is None:   # Angelo alone runs as shipped; a head-to-head keeps one named effort for both sides.
+        args.effort = "default" if args.sides == "angelo" else "low"
+    if args.effort == "default" and args.sides != "angelo":
+        parser.error("an MCP side has no shipping default to match: name one --effort for both sides")
     if args.cross_model_reuse and not args.reuse_mcp_results:
         parser.error("--cross-model-reuse needs --reuse-mcp-results")
     if args.returning_user and args.runtime != "codex":
@@ -307,6 +317,19 @@ def parallel_disclosure(setting):
             "parallel_edit is Angelo's own launch line." % (setting, variable))
 
 
+def claude_cache_ttl(args):
+    """The prompt-cache lifetime both sides' Claude sessions write at in this run; None on a Codex run.
+
+    ``--angelo-cache-ttl``, else what a new interactive Angelo chat gets (``model_routing.cache_ttl``: one lifetime
+    on a subscription and on a key-billed route). The MCP side's Claude Code is launched with the same value
+    (``bench_mcp_trial.claude_environment``), so neither side's own default decides a comparison.
+    """
+    if getattr(args, "runtime", "claude") != "claude":
+        return None
+    from angelo_agent import model_routing
+    return getattr(args, "angelo_cache_ttl", "") or model_routing.cache_ttl("claude", "interactive", "API_KEY")
+
+
 def plan(args):
     order = [(side, trial) for trial in range(1, args.trials + 1) for side in ("mcp", "angelo")
              if args.sides in ("both", side)]
@@ -331,6 +354,8 @@ def plan(args):
                        "opening_wait_s": getattr(args, "angelo_opening_wait", 0.0),
                        "parallel_edit": parallel_setting(args)},
             **({"mcp": {"new_thread_per_task": True}} if getattr(args, "returning_user", False) else {}),
+            # One prompt-cache lifetime for both sides' Claude sessions (claude_cache_ttl); absent on a Codex run.
+            **({"claude_cache_ttl": claude_cache_ttl(args)} if claude_cache_ttl(args) else {}),
             "mcp_tasks": head, "angelo_tasks": [task["id"] for task in tasks(args)],
             **({"scenario": scenario_specs.plan(scenario_specs.scenario_id(args.task_set)),
                 "python_approvals": getattr(args, "python_approvals", "approve"),
@@ -372,6 +397,9 @@ def preflight(args):
             return (["--angelo-team-mode runs only --sides angelo, without --connection-id"],
                     Path(args.output).resolve() if args.output else None)
         args.connection_id = live.TEAM_PREFIX + args.angelo_team_mode
+    if getattr(args, "angelo_allow_api_key_connection", False) and (args.sides != "angelo" or args.codex_home):
+        return (["--angelo-allow-api-key-connection runs only --sides angelo, without --codex-home"],
+                Path(args.output).resolve() if args.output else None)
     # --preflight-only sends nothing, so it checks as an authorized run would.
     problems = [] if args.dry_run_mcp else live.refusal_reasons(args.authorize_billed_runs or args.preflight_only,
                                                                  args.connection_id)
@@ -443,6 +471,7 @@ def mcp_config(args, output):
             "window_state": getattr(args, "window_state", "behind"),
             "runtime": getattr(args, "runtime", "claude"), "codex": getattr(args, "codex", codex_mcp.DEFAULT_CODEX),
             "codex_home": getattr(args, "codex_home", ""), "cost_cap": getattr(args, "cost_cap", 0),
+            "claude_cache_ttl": claude_cache_ttl(args),   # The MCP side's Claude Code is launched with it.
             "new_thread_per_task": bool(getattr(args, "returning_user", False)), **diagnostics.stamp(args)}
 
 
@@ -488,7 +517,9 @@ def angelo_command(args, output, folder):
     if getattr(args, "angelo_approval", "default") != "default":
         command += ["--approval", args.angelo_approval]
     command += diagnostics.arguments(diagnostics.stamp(args))   # Diagnostic runs only.
-    if getattr(args, "runtime", "claude") == "codex" and not team:
+    if getattr(args, "angelo_allow_api_key_connection", False):
+        command += ["--allow-api-key-connection"]   # Its own key, in place; the app makes the runtime's profile.
+    elif getattr(args, "runtime", "claude") == "codex" and not team:
         command += ["--codex-home", args.codex_home]
     workspace = workdirs.state_path(folder / "trial-01") / "workspace"   # Outside a checkout (bench_workdirs).
     if getattr(args, "angelo_opening_wait", 0.0) > 0:
@@ -733,7 +764,16 @@ def _run(command, **kwargs):
 
 
 def versions(args, output, records, trial_meta):
-    git = lambda *a: _run(["git", "-C", str(ROOT), *a], env=dict(mcp.clean_environment(), GIT_LFS_SKIP_SMUDGE="1"))
+    import own_checkout   # Git about this tree only, never a repository around it.
+
+    def git(*a):
+        try:
+            line = own_checkout.command(ROOT, *a)
+        except own_checkout.NotOwnCheckout:
+            line = None
+        if line is None:
+            return "unavailable: %s" % own_checkout.MESSAGE
+        return _run(line, env=dict(mcp.clean_environment(), GIT_LFS_SKIP_SMUDGE="1"))
     scratch = output / "version-probe"
     scratch.mkdir(exist_ok=True)
     blender_env = mcp.clean_environment(BLENDER_USER_RESOURCES=scratch, TMPDIR=scratch)
@@ -771,8 +811,9 @@ def price_records(records, model, runtime, angelo_cache_ttl=""):
     writes into 5-minute and 1-hour ones, and on a subscription Claude Code on the MCP side writes 1-hour
     entries as Angelo's chats do (``oneshot_metrics.cache_writes``). Writes without a reported TTL are priced at
     an assumed one, which ``list_price_basis`` names: for Angelo's Claude chats the session's TTL its receipt
-    recorded (``cache_ttl``: 5 minutes on an API-key or team route, as Claude Code's default there), else
-    ``--angelo-cache-ttl``, else 1 hour (records from before receipts carried it); 5 minutes for Claude Code;
+    recorded (``cache_ttl``), else ``--angelo-cache-ttl``, else 1 hour (records from before receipts carried it);
+    for Claude Code on the MCP side the lifetime the launcher set (its record's ``cache_ttl``, the same as
+    Angelo's), else 5 minutes (records from before the launcher set it);
     and on Codex, whose usage has no split, the 5-minute rate (a GPT model's only one). Unknown usage stays
     None, never zero. A record that names its own runtime and model (a reused MCP trial: ``gather``) is
     priced by them, not by this run's.
@@ -784,7 +825,8 @@ def price_records(records, model, runtime, angelo_cache_ttl=""):
             continue
         own = record.get("runtime") or runtime
         angelo = own == "claude" and record.get("side") == "angelo"
-        ttl = (record.get("cache_ttl") or angelo_cache_ttl or "1h") if angelo else "5m"
+        ttl = (record.get("cache_ttl") or angelo_cache_ttl or "1h") if angelo else (
+            record.get("cache_ttl") if own == "claude" and record.get("cache_ttl") in ("5m", "1h") else "5m")
         unsplit = (oneshot_metrics.CODEX_UNSPLIT,) if own == "codex" else ()
         priced = record.get("model") or model
         record["uncached_input_tokens"] = max(0, usage["input_tokens"] - (usage.get("cached_input_tokens") or 0))

@@ -7,6 +7,7 @@ import math
 import re
 import uuid
 from urllib.parse import urlsplit
+from . import read_only
 
 MAX_OBJECTIVE = 1024
 MAX_STYLE = 512
@@ -154,10 +155,14 @@ def validate_value(value, schema):
     raise ValueError("Unsupported memory schema")
 
 
+_MEMO = {}   # One frozen REFERENCE in MEMORY_SCHEMAS and as the module's own: validate_value's ``is`` holds.
+MEMORY_SCHEMAS = read_only.frozen({tool["name"]: tool["inputSchema"] for tool in MEMORY_TOOLS}, _MEMO)   # As registered, read only: an agent script's change to a spec's dict reaches no check (read_only).
+
+
 def validate_memory(name, arguments):
     if name not in MEMORY_NAMES:
         raise ValueError("Unknown task-memory tool")
-    schema = next(tool["inputSchema"] for tool in MEMORY_TOOLS if tool["name"] == name)
+    schema = MEMORY_SCHEMAS[name]
     result = validate_value(arguments, schema)
     patch = result.get("patch", {})
     for field in ("references", "assets"):
@@ -184,3 +189,5 @@ def approval_message(name, arguments):
 def approval_details(name, arguments):
     message = approval_message(name, arguments)
     return message["title"] + "\n" + message["body"] + "\n\n" + message["warning"]
+
+read_only.seal(globals(), 'REFERENCE', memo=_MEMO)   # The same object MEMORY_SCHEMAS holds.

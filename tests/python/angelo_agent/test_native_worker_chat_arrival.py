@@ -14,6 +14,7 @@ Pinned here, without Blender, through the worker's real reader thread (``WorkerH
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import queue
 import threading
@@ -41,7 +42,7 @@ class SlowExecutor(Executor):
     def execute(self, name, arguments):
         if not self.calls:
             self.running.set()
-            self.release.wait(5)
+            self.release.wait(CAP_S)
         return super().execute(name, arguments)
 
 
@@ -54,10 +55,10 @@ class CallsProvider(FakeProvider):
             done = threading.Event()
             self.controller.request_tool("%s-%d" % (name, index), name, arguments,
                                          lambda result: (self.results.append(result), done.set()))
-            if not done.wait(5):
+            if not done.wait(CAP_S):
                 raise RuntimeError("The tool never answered")
         if self.gate is not None:
-            self.gate.wait(5)
+            self.gate.wait(CAP_S)
         return "interrupted" if self.controller.cancelled else "completed"
 
 
@@ -120,7 +121,7 @@ class ArrivalFixture(Fixture):
     def pump_in_background(self, until):
         """The worker's main loop, pumping on its own thread until ``until()``."""
         def loop():
-            deadline = time.monotonic() + 5
+            deadline = time.monotonic() + CAP_S
             while not until() and time.monotonic() < deadline:
                 self.chats.pump()
                 time.sleep(0.002)
@@ -135,14 +136,14 @@ class ConsentArrivalTests(ArrivalFixture):
         FakeProvider.tools = (EDIT, OTHER_EDIT)
         self.ask("chat.send", text="two boxes", attachments=[])
         loop = self.pump_in_background(lambda: self.executor.release.is_set() and not chat.busy)
-        self.assertTrue(self.executor.running.wait(5))   # The first edit holds the main thread now.
+        self.assertTrue(self.executor.running.wait(CAP_S))   # The first edit holds the main thread now.
         self.frame(9, "chat.consent", epoch=2, grants={"auto": False})
         answer = self.answer(9)   # Answered by the reader while the edit still runs.
         self.assertEqual((answer["ok"], answer["epoch"]), (True, 2))
         self.assertFalse(self.executor.release.is_set())
         self.assertFalse(chat.consent_marks_cover("auto") and chat.consent_lease.granted_auto())   # Marked: held.
         self.executor.release.set()
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline and not any(call.approval and not call.executing
                                                       for call in chat.pending.values()):
             time.sleep(0.002)
@@ -150,7 +151,7 @@ class ConsentArrivalTests(ArrivalFixture):
         self.assertEqual(len(self.executor.calls), 1)   # The second edit did not start by itself ...
         self.assertTrue(waiting and not waiting[0].automatic)   # ... it waits for the person.
         self.ask("chat.decline", call_id=waiting[0].id)
-        loop.join(5)
+        loop.join(CAP_S)
         self.assertEqual(len(self.executor.calls), 1)
 
     def test_a_revocation_between_admission_and_start_stops_that_call(self):
@@ -202,7 +203,7 @@ class StopArrivalTests(ArrivalFixture):
         self.ask("chat.send", text="long", attachments=[])
         chat = self.chats.hosted(self.session)
         self.frame(3, "chat.stop", reason="")
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline and not self.endpoint.events("finished"):
             time.sleep(0.002)
         self.chats.outbox.flush()
@@ -218,7 +219,7 @@ class StopArrivalTests(ArrivalFixture):
         FakeProvider.tools, FakeProvider.gate = (), threading.Event()
         self.ask("chat.send", text="long", attachments=[])
         chat = self.chats.hosted(self.session)
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + CAP_S
         while chat.provider is None and time.monotonic() < deadline:
             time.sleep(0.002)
         seen, unblock = {}, threading.Event()
@@ -229,13 +230,13 @@ class StopArrivalTests(ArrivalFixture):
             if seen["lock_free"]:
                 chat.lock.release()
             seen["fence"] = fence
-            unblock.wait(5)   # A runtime slow to answer its interrupt never holds the reader.
+            unblock.wait(CAP_S)   # A runtime slow to answer its interrupt never holds the reader.
             FakeProvider.gate.set()
         chat.provider.stop_request = stop_request
         started = machine_clock.start(self)
         self.assertFalse(self.chats.arrivals.arrived(2, {"op": "chat.stop", "session": self.session}))
         started.assert_within(0.5)
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + CAP_S
         while "fence" not in seen and time.monotonic() < deadline:
             time.sleep(0.002)
         unblock.set()
@@ -271,7 +272,7 @@ class StopArrivalTests(ArrivalFixture):
         self.executor.release.set()
         FakeProvider.tools, FakeProvider.gate = (("angelo_inspect_scene", {}), EDIT), threading.Event()
         self.ask("chat.send", text="a box", attachments=[])
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + CAP_S
         while chat.tools.empty():
             self.assertLess(time.monotonic(), deadline, "The provider never asked for its call")
             time.sleep(0.002)
@@ -293,7 +294,7 @@ class StopArrivalTests(ArrivalFixture):
         self.executor.release.set()
         FakeProvider.tools, FakeProvider.gate = (EDIT,), threading.Event()
         self.ask("chat.send", text="a box", attachments=[])
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while not [call for call in chat.pending.values() if call.approval]:
             self.chats.pump()
             self.assertLess(time.monotonic(), deadline)

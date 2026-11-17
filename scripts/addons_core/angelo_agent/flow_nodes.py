@@ -42,7 +42,7 @@ def _interface_changed(self, context):
 
 
 class ANGELO_GenerationFlowTree(NodeTree):
-    """Compose multi-step image and 3D generation"""
+    bl_description = "Compose multi-step image and 3D generation"
     bl_idname = TREE
     bl_label = "Generation Flow"
     bl_icon = 'IMAGE_DATA'
@@ -278,7 +278,7 @@ class _GeneratorNode(_FlowNode):
 
 
 class ANGELO_FlowGenerateImageNode(_GeneratorNode, Node):
-    """Generate images with a Media Studio model"""
+    bl_description = "Generate images with a Media Studio model"
     bl_idname = "ANGELO_FlowGenerateImageNode"
     bl_label = "Generate Image"
     bl_icon = 'IMAGE_DATA'
@@ -295,7 +295,7 @@ class ANGELO_FlowGenerateImageNode(_GeneratorNode, Node):
 
 
 class ANGELO_FlowGenerate3DNode(_GeneratorNode, Node):
-    """Generate a 3D model with a Media Studio model"""
+    bl_description = "Generate a 3D model with a Media Studio model"
     bl_idname = "ANGELO_FlowGenerate3DNode"
     bl_label = "Generate 3D"
     bl_icon = 'MESH_MONKEY'
@@ -308,7 +308,7 @@ class ANGELO_FlowGenerate3DNode(_GeneratorNode, Node):
 
 
 class ANGELO_FlowImageNode(_SourceNode, Node):
-    """A reference image from the Media Studio library or a public URL"""
+    bl_description = "A reference image from the Media Studio library or a public URL"
     bl_idname = "ANGELO_FlowImageNode"
     bl_label = "Image"
     bl_icon = 'IMAGE_REFERENCE'
@@ -337,7 +337,7 @@ class ANGELO_FlowImageNode(_SourceNode, Node):
 
 
 class ANGELO_FlowSceneCaptureNode(_SourceNode, Node):
-    """Render the scene as a reference when a run starts"""
+    bl_description = "Render the scene as a reference when a run starts"
     bl_idname = "ANGELO_FlowSceneCaptureNode"
     bl_label = "Scene Capture"
     bl_icon = 'SCENE'
@@ -370,7 +370,7 @@ class ANGELO_FlowSceneCaptureNode(_SourceNode, Node):
 
 
 class ANGELO_FlowTextNode(_SourceNode, Node):
-    """A prompt fragment; several can feed one generator, in order"""
+    bl_description = "A prompt fragment; several can feed one generator, in order"
     bl_idname = "ANGELO_FlowTextNode"
     bl_label = "Text"
     bl_icon = 'TEXT'
@@ -385,7 +385,7 @@ class ANGELO_FlowTextNode(_SourceNode, Node):
 
 
 class ANGELO_FlowPlaceNode(_FlowNode, Node):
-    """Import a generated 3D model into the scene (undoable)"""
+    bl_description = "Import a generated 3D model into the scene (undoable)"
     bl_idname = "ANGELO_FlowPlaceNode"
     bl_label = "Place in Scene"
     bl_icon = 'IMPORT'
@@ -409,7 +409,7 @@ def _recipe_changed(self, context):
 
 
 class ANGELO_FlowSubflowNode(_PerUseState, _FlowNode, Node):
-    """Run one of your flows as a single step; its inputs and output come from that flow"""
+    bl_description = "Run one of your flows as a single step; its inputs and output come from that flow"
     bl_idname = "ANGELO_FlowSubflowNode"
     bl_label = "Subflow"
     bl_icon = 'NODETREE'

@@ -94,6 +94,11 @@ def app_menu_draw(self, context):
     layout.menu("TOPBAR_MT_blender_system")
 
 
+def installed():
+    """Whether the preview's branding, its About and Welcome operators with it, is installed (``install``)."""
+    return _icons is not None
+
+
 def install():
     global _icons, _original_menus, _original_app_menu, _original_source_menus, _original_source_app_menu
     if _icons is not None:

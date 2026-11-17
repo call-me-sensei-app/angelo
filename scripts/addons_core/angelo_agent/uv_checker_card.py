@@ -261,7 +261,8 @@ class UVCheckerCard(kit.BaseCard):
                     self._version += 1
                     host.redraw()
             return 0.5
-        host.after(0.5, poll)
+        from . import edit_tool_hold   # The count reads each object's UV data: never under the person's operation.
+        host.after(0.5, edit_tool_hold.guarded(poll))
 
     def closed(self, how):
         import bpy

@@ -385,7 +385,7 @@ class AgentRuntimeSigningTests(unittest.TestCase):
         text = read(BUILD)
         order = [text.index(marker) for marker in (
             "# --- Agent runtime", "is not an x64 Windows executable", "$name -in @($runtimeFiles.upstream_signed)",
-            "Get-AuthenticodeSignature -LiteralPath $path", "$agentRuntime.sha256[$name] =", "& $codexExe --version",
+            "Get-AuthenticodeSignature -LiteralPath $path", "$agentRuntime.sha256[$name] =", 'Invoke-NativeCapture $codexExe @("--version")',
             "# --- Configure", "--target INSTALL", "foreach ($name in $agentRuntime.sha256.Keys) {", "# --- Package")]
         self.assertEqual(order, sorted(order))
         self.assertIn("-eq 0x8664", text)
@@ -432,13 +432,18 @@ class ValidationMachineTests(unittest.TestCase):
         self.assertIn('> "$1/angelo-lfs-real.txt"', block(text, "pack_lfs() {", "\n}\n"))
         self.assertIn('"$work/angelo-lfs-real.txt"', send)
         self.assertIn("shipped_sources.pointer_problems(tree, real)", read(TOOLS / "source_tree.py"))
-        listed = subprocess.run(["git", "-C", str(ROOT), "-c", "core.quotePath=off", "ls-files", "-z", ":(attr:filter=lfs)"],
-                                capture_output=True, text=True)
-        if listed.returncode == 0:   # A source archive without Git has nothing to list; CI checks out the repository.
-            shipped = [path for path in listed.stdout.split("\0")
-                       if path and not re.match(r"(tests|doc|lib|release/darwin)/", path)]
-            self.assertTrue(shipped)
-            self.assertEqual([path for path in shipped if not re.match(r"(%s)/" % folders, path)], [])
+        # This tree's own list. Inside another repository the test fails by name; a source archive without Git
+        # has nothing to list and the test is skipped under the counted reason (own_checkout.needed), never
+        # passed with this part left out.
+        import own_checkout
+        own_checkout.needed(self, ROOT)
+        listed = own_checkout.git(ROOT, "-c", "core.quotePath=off", "ls-files", "-z", ":(attr:filter=lfs)",
+                                  capture_output=True, text=True)
+        self.assertEqual(listed.returncode, 0, listed.stderr)
+        shipped = [path for path in listed.stdout.split("\0")
+                   if path and not re.match(r"(tests|doc|lib|release/darwin)/", path)]
+        self.assertTrue(shipped)
+        self.assertEqual([path for path in shipped if not re.match(r"(%s)/" % folders, path)], [])
 
     def test_no_file_the_install_wrote_may_be_a_git_lfs_pointer(self):
         text = read(BUILD)
@@ -454,7 +459,9 @@ class ValidationMachineTests(unittest.TestCase):
                        "(@($files.required) + @($files.optional))", "-SourceRuntimeDir", "$files.release_marker",
                        "$name -in @($files.upstream_signed)", "$signer -eq $files.upstream_signer",
                        '@("--version")', '@("app-server", "generate-json-schema", "--experimental", "--out", $schema)',
-                       '"app-server --listen stdio://"', 'method = "initialize"', "CODEX_HOME"):
+                       '"app-server --listen stdio://"', 'method = "initialize"', "CODEX_HOME",
+                       "foreach ($wire in @($pin.wire_apis", '"model_providers.$provider.wire_api=`"$wire`""',
+                       '"debug", "models") $environment'):
             self.assertIn(marker, text)
         sys.path.insert(0, str(ROOT / "scripts/addons_core"))
         from angelo_agent import agent_runtime
@@ -515,11 +522,15 @@ class ValidationMachineTests(unittest.TestCase):
 class BuildScriptTests(unittest.TestCase):
     def test_signing_is_checked_before_compiling_and_runs_inside_cpack(self):
         text = read(BUILD)
+        # The hook is found by the option that hands it to CPack, not by how its path is written:
+        # test_native_gpu_sdk_pins.py reads that every path given to cmake and cpack goes through one function.
         order = [text.index(marker) for marker in (
             "& $signScript -Mode Preflight", "update_keys.json has no active key", "# --- Libraries and source assets",
-            "--target INSTALL", "CPACK_PRE_BUILD_SCRIPTS=$hook", "& $signScript -Mode Sign -Path $msi.FullName",
+            "--target INSTALL", "CPACK_PRE_BUILD_SCRIPTS=", "& $signScript -Mode Sign -Path $msi.FullName",
             "& $signScript -Mode VerifyMsi", "$msi.Refresh()", "sha256 = (Get-FileHash $msi.FullName")]
         self.assertEqual(order, sorted(order))
+        self.assertEqual(text.count("CPACK_PRE_BUILD_SCRIPTS="), 1)
+        self.assertIn("windows_sign_staging.cmake", block(text, "if ($Sign) {", "CPACK_PRE_BUILD_SCRIPTS="))
         self.assertIn('if (-not $Package) { throw "-Sign signs the MSI; give -Package too" }', text)
         self.assertIn('$env:ANGELO_SIGN_EXPECT = $identity.windows.exe_stem + ".exe"', text)
 
@@ -527,13 +538,17 @@ class BuildScriptTests(unittest.TestCase):
         """The runtime is built apart from the app: without its folder the build stops at once, saying what to do."""
         text = read(BUILD)
         order = [text.index(marker) for marker in (
-            "# --- Agent runtime", "The Windows agent runtime is not supplied", "& $codexExe --version",
-            "& $codexExe app-server generate-json-schema",
+            "# --- Agent runtime", "The Windows agent runtime is not supplied", 'Invoke-NativeCapture $codexExe @("--version")',
+            'Invoke-NativeCapture $codexExe @("app-server", "generate-json-schema"', "Assert-RuntimeWires $codexExe @($runtimePin.wire_apis)",
             "-DANGELO_REQUIRE_AGENT_RUNTIME=ON", "--target INSTALL", 'Join-Path $bin "$($runtimeFiles.folder)\\$_"')]
         self.assertEqual(order, sorted(order))
-        self.assertIn('"oneapi", "agent-runtime") { throw "-AllowMissing knows', text)
+        self.assertIn('"oneapi", "dlss", "agent-runtime") { throw "-AllowMissing knows', text)
         self.assertIn('if ($Sign -and "agent-runtime" -in $allowed) { throw', text, "a signed MSI is a release")
         self.assertIn("agent_runtime = $agentRuntime", text, "the manifest says which runtime shipped")
+        toolchain = read(TOOLCHAIN)   # The pinned wires' check is defined there.
+        for marker in ("function Assert-RuntimeWires([string]$CodexExe, [string[]]$Wires)",
+                       '"-c", "model_providers.angelo_wire_check.wire_api=$wire", "debug", "models"', "$listed.Code -ne 0"):
+            self.assertIn(marker, toolchain)
         self.assertIn('scripts\\addons_core\\angelo_agent\\agent_runtime.json', text, "the one pin")
         self.assertIn("[string]$AgentRuntimeDir = $env:ANGELO_AGENT_RUNTIME_DIR", text)
 

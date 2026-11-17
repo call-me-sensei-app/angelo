@@ -71,15 +71,15 @@ import eval_returning_user as returning, eval_send_record as send_record  # noqa
 import eval_trace_export as trace_export  # noqa: E402  (a turn that did not end normally: its runtime trace rows)
 import gui_launch  # noqa: E402
 import runtime_identity  # noqa: E402  (which Codex file the trials' app runs, by digest)
-from angelo_agent import product_env  # noqa: E402  (standard library only)
+from angelo_agent import product_env, provider_registry as registry  # noqa: E402  (standard library only)
 import scenario_specs  # noqa: E402
 
 SESSION_SCRIPT = HERE / "eval_live_agent_session.py"
 # Subscriptions first: both runtimes' sign-ins.
 SUPPORTED_MODES = frozenset({"codex_subscription", "claude_subscription"})
-# Pay-per-token keys only with --allow-api-key-connection, in place (see isolated_connection).
-API_KEY_MODES = frozenset({"claude_api", "codex_api", "grok_api", "minimax_api", "kimi_api"})
-EFFORTS = ("none", "minimal", "low", "medium", "high")
+# Every coding API-key mode, only with --allow-api-key-connection, in place (see isolated_connection).
+API_KEY_MODES = frozenset(m for m, s in registry.SPECS.items() if (s["group"], s["method"]) == (registry.CODING, "API_KEY"))
+EFFORTS = ("default", "none", "minimal", "low", "medium", "high")   # default: the app's own (eval_effort.py)
 
 
 class Refusal(ValueError):
@@ -96,7 +96,7 @@ def parse(argv):
                         help="run every check of a billed start (binary, --output, connection copy) and stop; unbilled")
     parser.add_argument("--trials", type=int, default=3, help="fresh processes (cold starts); 1-20")
     parser.add_argument("--model", default="", help="model ID; default is the connection's default")
-    parser.add_argument("--effort", choices=EFFORTS, default="low")
+    parser.add_argument("--effort", choices=EFFORTS, default="default")
     parser.add_argument("--task-timeout", type=float, default=None,
                         help="seconds per task before Stop (default 300; a one-shot test's own time cap)")
     parser.add_argument("--cost-cap", type=float, default=0.,

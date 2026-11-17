@@ -69,7 +69,16 @@ feed = {"body": None, "sequence": 3}
 reports = []
 
 
-def set_feed(version="1.1.0", **changes):
+def offered(ahead=1):
+    """A release newer than the running app, ``ahead`` minor releases on: what the feed offers as the update. Read
+    from the running version, never a literal: a fixed 1.1.0 offered nothing once the app itself was 1.1.0."""
+    from angelo_agent import app_version
+    major, minor, _patch = app_version.parse(app_version.current())
+    return "%d.%d.0" % (major, minor + ahead)
+
+
+def set_feed(version=None, **changes):
+    version = version or offered()
     feed["sequence"] += 1
     feed["body"] = ufx.envelope(ufx.payload(version, sequence=feed["sequence"], **changes), SEED)
 
@@ -174,7 +183,8 @@ def scenario(checks):
     state["window"] = [window().width, window().height]
     checks["notices_are_registered"] = app_notices._started is not None
     fixture = SimpleNamespace(checks=checks, state=state, links=opened_links, server=server, reports=reports,
-                              set_feed=set_feed, plant_crash=plant_crash, closed_port=closed_port)
+                              set_feed=set_feed, offered=offered, plant_crash=plant_crash,
+                              closed_port=closed_port)
     for scene in (scenes.crash_without_endpoint, scenes.whats_new, scenes.update_notice, scenes.manual_checks,
                   update_line_scene.line_choice, scenes.crash_with_endpoint, scenes.automatic_send_and_policy, scenes.preferences_and_themes):
         state["scene"] = scene.__name__

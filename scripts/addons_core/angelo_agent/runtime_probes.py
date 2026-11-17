@@ -3,6 +3,7 @@
 """``runtime.probe`` of ``runtime_service.RuntimeService``: the non-secret facts a worker chat may ask Angelo for.
 
 ``coding_models``, ``check_connection``, ``list_models`` (a team or external connection's catalog),
+``endpoint_spec`` (a custom endpoint chat's connection, never its key: ``endpoint_connections.spec``),
 ``check_access`` (a Claude chat's key and sign-in) or ``cache_affinity`` (the account's keyed digest, never the
 secret: a personal one keyed by the account the chat's own child named to ``account/read``, never an identity the
 worker sends). Standard library only and no ``bpy``.
@@ -26,8 +27,13 @@ class Probes:
 
     def probe(self, request, chat):
         from . import api_connections, team_runtime
-        from .provider_registry import CUSTOM_PROVIDER_MODES, TEAM_MODES
+        from .provider_registry import CUSTOM_PROVIDER_MODES, TEAM_MODES, is_endpoint, spec_for
         what = request.get("what")
+        if is_endpoint(chat.mode) and what in {"endpoint_spec", "coding_models", "list_models", "check_connection"}:
+            if what == "endpoint_spec":   # Resolved from Angelo's own endpoints; the spec holds no key.
+                return {"ok": True, "spec": spec_for(chat.mode)}
+            return {"ok": True, "state": "verified", "verified": True, "message": "",
+                    "models": team_runtime.endpoint_models(chat.mode)}
         if what == "coding_models" or (what == "list_models" and chat.mode in TEAM_MODES):
             return {"ok": True, "models": team_runtime.coding_models(chat.mode, chat.api_key)}
         if what == "check_connection" or (what == "list_models" and chat.mode in CUSTOM_PROVIDER_MODES):

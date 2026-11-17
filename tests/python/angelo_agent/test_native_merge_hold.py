@@ -11,6 +11,7 @@ never between two merges. No Blender.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import sys
 import tempfile
@@ -22,7 +23,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from angelo_agent import controller as controller_module, worker_spec  # noqa: E402
+from angelo_agent import controller as controller_module, tool_specs, worker_spec  # noqa: E402
 from angelo_agent.controller import Controller, ToolDispatchBudget  # noqa: E402
 
 MERGE = worker_spec.PREFIX + "merge"
@@ -53,7 +54,7 @@ class MergeHoldFixture(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        tools = patch.dict(controller_module.TOOL_MAP, {tool["name"]: tool for tool in worker_spec.WORKER_TOOLS})
+        tools = patch.dict(tool_specs.TOOL_MAP, {tool["name"]: tool for tool in worker_spec.WORKER_TOOLS})
         tools.start()
         self.addCleanup(tools.stop)
         validate = controller_module.validate_call
@@ -90,7 +91,7 @@ class MergeHoldFixture(unittest.TestCase):
         """The person's click on the card: the review, then the execution the Undo operator runs."""
         c = c or self.c
         if call.name == "angelo_execute_python":
-            c.review_script(call)
+            angelo_guard_twin.harness(c.review_script, call)
         c.execute_tool(call, self.scene, c.document)
 
 
@@ -218,7 +219,7 @@ class StagedProgramTests(unittest.TestCase):
         self.runtime = Runtime()
         self.runtime.setUp()
         self.addCleanup(self.runtime.tearDown)
-        tools = patch.dict(controller_module.TOOL_MAP, {tool["name"]: tool for tool in worker_spec.WORKER_TOOLS})
+        tools = patch.dict(tool_specs.TOOL_MAP, {tool["name"]: tool for tool in worker_spec.WORKER_TOOLS})
         tools.start()
         self.addCleanup(tools.stop)
         validate = controller_module.validate_call
@@ -280,7 +281,7 @@ class OperatorFixture(MergeHoldFixture):
         def click(call):
             operator = approve_class()
             operator.call_id, operator.session_id, operator.report = call.id, c.state["id"], Mock()
-            return operator.execute(self.context)
+            return angelo_guard_twin.harness(operator.execute, self.context)   # The person's click.
         return click, outcomes
 
     def setUp(self):

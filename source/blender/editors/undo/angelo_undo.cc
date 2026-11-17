@@ -18,10 +18,10 @@
 #include <string>
 #include <utility>
 
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_set.hh"
-#include "BLI_string.h"
-#include "BLI_threads.h"
+#include "BLI_string.hh"
+#include "BLI_threads.hh"
 #include "BLI_vector.hh"
 
 #include "DNA_object_types.h"
@@ -31,6 +31,7 @@
 #include "BKE_blender_undo.hh"
 #include "BKE_context.hh"
 #include "BKE_global.hh"
+#include "BKE_lib_id.hh"
 #include "BKE_layer.hh"
 #include "BKE_lib_override.hh"
 #include "BKE_lib_query.hh"
@@ -155,8 +156,8 @@ static void detached_free(MemFileUndoStep *step)
 /** Equality of encoded Main, not of editor runtime or the cost of owning these chunks. */
 static bool memfile_contents_equal(const MemFile &a, const MemFile &b)
 {
-  const MemFileChunk *x = static_cast<const MemFileChunk *>(a.chunks.first);
-  const MemFileChunk *y = static_cast<const MemFileChunk *>(b.chunks.first);
+  const MemFileChunk *x = static_cast<const MemFileChunk *>(a.chunks.first());
+  const MemFileChunk *y = static_cast<const MemFileChunk *>(b.chunks.first());
   while (x && y) {
     if (x->id_session_uid != y->id_session_uid || x->size != y->size ||
         (x->buf != y->buf && x->size != 0 && std::memcmp(x->buf, y->buf, x->size) != 0))
@@ -266,7 +267,7 @@ static MemFileUndoStep *capture_memfile(Main *bmain,
     *r_error = "Could not encode the native commit Undo snapshot";
     return nullptr;
   }
-  step->data->undo_size = step->data->memfile.size;
+  step->data->undo_size = BLO_memfile_undo_size(&step->data->memfile);
   step->step.data_size = step->data->undo_size + sculpt_bytes;
   if (keep_bookkeeping) {
     recalc_restore.keep();
@@ -368,7 +369,7 @@ static MemFileUndoStep *capture_checkpoint_initial(Main &main, const char **erro
     detached_free(step);
     *error = "Could not encode initial checkpoint Undo within finite admission"; return nullptr;
   }
-  step->data->undo_size = step->data->memfile.size;
+  step->data->undo_size = BLO_memfile_undo_size(&step->data->memfile);
   step->step.data_size = sculpt_bytes + step->data->undo_size;
   return step;
 }
@@ -414,6 +415,7 @@ bool ED_angelo_undo_checkpoint_initial(bContext *C,
   /* The stack now owns the complete snapshot. No context Sculpt dummy or callback is
    * needed; future normal sculpt pushes can use this explicit MemFile destination. */
   main->is_memfile_undo_written = true;
+  BKE_main_memfile_undo_synced(main);
   main->use_memfile_full_barrier = false;
   return true;
 }
@@ -548,6 +550,17 @@ static bool synchronize_grid_owners(AngeloUndoCapture &capture, const char **r_e
       return false;
     }
     evaluated.append(identity);
+  }
+  /* Each graph that ran an Object's Multires modifier rebound its session; restore the authority
+   * discovered above, then compare strictly. */
+  if (!main_undo_grids_rebind_authorities(*capture.main, owners, r_error)) {
+    return false;
+  }
+  if (!BKE_undosys_capture_validate(capture.guard) || !capture_jobs_idle(*capture.main, r_error)) {
+    if (!*r_error) {
+      *r_error = "The native capture owner changed during synchronization";
+    }
+    return false;
   }
   Vector<MainUndoGridOwnerKey> current;
   if (!main_undo_grids_collect_owner_keys(*capture.main, current, r_error)) {
@@ -1010,6 +1023,7 @@ bool ED_angelo_undo_finish_prepare(bContext *C,
   capture->before = nullptr; /* Stack owns both snapshots now. */
   capture->pending_after = nullptr;
   bmain->is_memfile_undo_written = true;
+  BKE_main_memfile_undo_synced(bmain);
   bmain->use_memfile_full_barrier = false;
   WM_file_tag_modified();
   if (override_flags & RNA_OVERRIDE_MATCH_RESULT_CREATED) {

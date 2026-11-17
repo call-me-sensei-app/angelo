@@ -43,8 +43,12 @@ Such suites need a separately reviewed owner-marker supervisor and live cleanup
 handshake for a whole-workload bound; the validated QA marker is forwarded here. A suite fails on a
 nonzero exit, a signal, a timeout, a missing/stale/failed receipt, a missing
 completion marker, or native assertion, allocator, crash or Python traceback
-output in any of its logs. ``summary.json`` and ``summary.txt`` are written to
-the run directory; the exit status is nonzero when any selected suite fails.
+output in any of its logs. On macOS, the crash reports written during a suite
+for the processes it launched move into its ``crash-reports`` folder and are
+summarised at the end of its log (``crash_reports``): none counts against
+macOS's 25-report limit, which deliberate crashes once filled. ``summary.json``
+and ``summary.txt`` are written to the run directory; the exit status is
+nonzero when any selected suite fails.
 While another run holds the machine's benchmark lock, the runner refuses to
 start (``scripts/angelo/load_guard.py``); ``--list`` still works.
 """
@@ -66,9 +70,11 @@ ROOT = HERE.parents[2]
 sys.path.insert(0, str(HERE))
 sys.path.insert(1, str(ROOT / "scripts/addons_core"))
 sys.path.append(str(ROOT / "scripts/angelo"))   # load_guard; appended, so it shadows nothing.
+import crash_reports
 import gui_launch
 import load_guard
 import native_addon_guard as addon_guard
+import native_suite_harness
 import native_suite_inputs as suite_inputs
 import native_suite_manifest as manifest
 import native_suite_paths
@@ -77,6 +83,7 @@ from native_suite_process import (_kill, _running, _session_options, _wait, evid
 from native_suite_summary import human_summary, summarize  # summary.json and summary.txt
 import provider_isolation as isolation
 import qa_machine
+import qa_stale_frames
 import qa_waits
 from angelo_agent import product_env  # Standard library only; imports no Blender module.
 
@@ -86,6 +93,9 @@ from angelo_agent import product_env  # Standard library only; imports no Blende
 # installed programs and processor, never a user profile: Windows processes
 # need SYSTEMROOT and WINDIR, shells COMSPEC and PATHEXT.
 NO_OPENGL = "ANGELO_QA_NO_OPENGL"   # set (non-empty) where the machine has no working OpenGL: needs_opengl suites skip
+# Set (non-empty) where the machine has a Cycles GPU device (the T4 kit): passed to every suite, whose GPU checks
+# that cannot run there fail instead of passing as "not run" (test_native_gpu_expected).
+EXPECT_CYCLES_GPU = "ANGELO_QA_EXPECT_CYCLES_GPU"
 INHERITED_ENV = ("PATH", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TERM", "USER", "LOGNAME", "SHELL",
                  "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR",
                  "SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "PATHEXT", "OS", "USERNAME",
@@ -236,6 +246,8 @@ def build_environment(suite, directory, binary, base_env, log_path, report_path=
         env[suite.report.env] = str(report_path)
     env.update({key: base_env[key] for key in suite.options_env if key in base_env})
     env.update({key: base_env[key] for key in SWITCH_ENV if key in base_env})
+    if base_env.get(EXPECT_CYCLES_GPU):
+        env[EXPECT_CYCLES_GPU] = "1"
     if suite.variant is not None:
         env.update(dict(suite.variant.env))
     if suite.kind == manifest.LIVE:
@@ -278,23 +290,30 @@ def caller_value(base_env, key):
     return base_env.get(key)
 
 
-def build_command(suite, binary, window, qa_dir):
+def build_command(suite, binary, window, qa_dir, first=None):
+    """The suite's command line. ``first``: one line of Python a window suite's process runs before its script (the
+    stale-frame watch's start); placed here, where the window flags are, never spliced into a finished command."""
     script = HERE / suite.script
     if suite.host_launcher:
         values = {"binary": str(binary), "qa": str(qa_dir)}
         # A templated argument is a path ("{qa}/fixture"): written in the platform's own form.
         return [sys.executable, str(script)] + [str(Path(arg.format(**values))) if "{" in arg else arg
                                                 for arg in suite.host_args]
-    command = [str(binary), "--factory-startup", "--disable-autoexec", "--python-exit-code", "1"]
+    command = [str(binary), "--factory-startup"] + ([] if suite.autoexec_preference else ["--disable-autoexec"])
+    command += ["--python-exit-code", "1"]
     if not window:
         command.append("--background")
+        if suite.harness:   # C's harness scope exists only with the flag (native_suite_harness).
+            command.append(native_suite_harness.FLAG)
     else:
         # Behind other applications, never focused, and deaf to real input under event simulation (gui_launch).
         # A variant's window size (native_suite_manifest.Variant.window) goes with the shared flags, never alone.
         size = suite.variant.window if suite.variant is not None else None
-        command += gui_launch.window_flags(input_isolation=suite.event_simulate or not suite.real_input) + (
+        command += gui_launch.window_flags(
+            input_isolation=suite.event_simulate or bool(suite.harness) or not suite.real_input) + (
             ["--window-geometry", "0", "0", str(size[0]), str(size[1])] if size else [])
-    return command + list(suite.extra_args) + ["--python", str(script)]
+    return (command + list(suite.extra_args) + (["--python-expr", first] if first and window else [])
+            + ["--python", str(script)])
 
 
 def plan_suite(suite, run_dir, binary, base_env, gui=False, timeout_scale=1.0, machine_factor=1.0, platform=None):
@@ -305,6 +324,9 @@ def plan_suite(suite, run_dir, binary, base_env, gui=False, timeout_scale=1.0, m
     qa_dir = isolated_paths(directory)["qa"]
     report_path = qa_dir / suite.report.path if suite.report else None
     preconditions = []
+    undeclared = native_suite_harness.refusal(suite)
+    if undeclared:
+        preconditions.append(undeclared)
     try:
         real_provider_profile(suite, base_env)
     except isolation.Refusal as error:
@@ -313,6 +335,13 @@ def plan_suite(suite, run_dir, binary, base_env, gui=False, timeout_scale=1.0, m
     env = build_environment(suite, directory, binary, base_env, log_path, report_path,
                             pycache=Path(run_dir).parent / PYCACHE_FOLDER, profile=profile)
     env.update({qa_waits.SCALE_ENV: repr(float(timeout_scale)), qa_waits.FACTOR_ENV: repr(float(machine_factor))})
+    # The caller's stale-frame watch (qa_stale_frames), an audit run: started in a window suite's process before
+    # its script. Never in a windowless one: it reads the pictures the GPU drew.
+    watch = base_env.get(qa_stale_frames.ENV, "")
+    watched = isinstance(watch, str) and qa_stale_frames.valid(watch) and window and not suite.host_launcher
+    command = build_command(suite, binary, window, qa_dir, first=qa_stale_frames.start_line(HERE) if watched else None)
+    if watched:
+        env[qa_stale_frames.ENV] = watch
     missing = [key for key in suite.live_env if caller_value(base_env, key) is None]
     if missing:
         preconditions.append("missing opt-in variables: " + ", ".join(missing))
@@ -323,8 +352,9 @@ def plan_suite(suite, run_dir, binary, base_env, gui=False, timeout_scale=1.0, m
     if required and not Path(directory).resolve().is_relative_to(required.resolve()):
         preconditions.append("needs --output under %s" % required)
     return {"suite": suite, "directory": directory, "profile": profile, "window": window, "log": log_path, "qa": qa_dir,
-            "report": report_path, "env": env, "command": build_command(suite, binary, window, qa_dir),
-            "timeout": (suite.timeout + suite.kernel_load_cap) * timeout_scale, "preconditions": preconditions}
+            "report": report_path, "env": env, "command": command,
+            "timeout": (suite.timeout + suite.kernel_load_cap) * timeout_scale * max(1.0, float(machine_factor)),
+            "preconditions": preconditions}   # Calibrated on the reference Mac, as every absolute limit is (qa_waits).
 
 
 def binary_info(binary):
@@ -338,14 +368,10 @@ def binary_info(binary):
 
 
 def source_revision():
-    try:
-        result = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True,
-                                timeout=10, env=dict(os.environ, GIT_LFS_SKIP_SMUDGE="1"))
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip() or None
+    """This tree's own HEAD, or None: a snapshot inside another checkout has no revision of its own, and that
+    checkout's HEAD was once written here in its place (own_checkout)."""
+    import own_checkout
+    return own_checkout.revision(ROOT)
 
 
 def list_suites(suites):
@@ -400,6 +426,9 @@ def main(argv=None, suites=manifest.SUITES, base_env=None, launch=subprocess.Pop
         return 2
     binary = binary.resolve()
     bundled = addon_check(binary, ROOT)   # The app runs its own add-on: it must be this checkout's.
+    if fetch_first := addon_guard.pointer_refusal(bundled):   # Suites import the checkout's modules: no override.
+        print(fetch_first, file=sys.stderr, end="")
+        return 2
     if not bundled["matches"]:
         if not args.allow_addon_mismatch:
             print(addon_guard.refusal(bundled), file=sys.stderr, end="")
@@ -417,7 +446,11 @@ def main(argv=None, suites=manifest.SUITES, base_env=None, launch=subprocess.Pop
     run_dir = Path(tempfile.mkdtemp(prefix="angelo-native-suites-", dir=str(output_root)))
     base_env = dict(os.environ) if base_env is None else base_env
     # Machine inputs (an engine editor, pinned held-out models): resolved once, or the suite is a counted skip.
-    input_values, unavailable = suite_inputs.resolve(selected, base_env, output_root)
+    # A resolver may ask the app under test itself (its GPU renderer): it is named to them, never to the suites.
+    # An input that FAILED (its probe broke) makes its suites errors of this run, with the reason: never skips.
+    failed_inputs = {}
+    input_values, unavailable = suite_inputs.resolve(
+        selected, dict(base_env, **{suite_inputs.BINARY_ENV: str(binary)}), output_root, failed=failed_inputs)
     skipped = skipped + [(suite, unavailable[suite.name]) for suite in selected if suite.name in unavailable]
     selected = [suite for suite in selected if suite.name not in unavailable]
     started = time.time()
@@ -428,12 +461,16 @@ def main(argv=None, suites=manifest.SUITES, base_env=None, launch=subprocess.Pop
                 "includes": args.include, "excludes": args.exclude, "timeout_scale": args.timeout_scale,
                 "bundled_addon": bundled, "machine_factor": qa_machine.resolve(args.machine_factor, binary)}
     factor = settings["machine_factor"]["factor"]
-    plans = [plan_suite(suite, run_dir, binary, dict(base_env, **input_values[suite.name]), args.gui,
+    plans = [plan_suite(suite, run_dir, binary, dict(base_env, **input_values.get(suite.name, {})), args.gui,
                         args.timeout_scale, factor) for suite in selected]
+    for plan in plans:
+        if plan["suite"].name in failed_inputs:
+            plan["preconditions"].append(failed_inputs[plan["suite"].name])
     print("Running %d native suite(s) with %d job(s); output %s" % (len(plans), settings["jobs"], run_dir), flush=True)
     interrupted = False
     try:
-        results = run_all(plans, settings["jobs"], launch, progress=lambda line: print(line, flush=True))
+        results = run_all(plans, settings["jobs"], launch, progress=lambda line: print(line, flush=True),
+                          reports=crash_reports.folder() if launch is subprocess.Popen else None)
     except KeyboardInterrupt:
         kill_running()
         interrupted, results = True, []

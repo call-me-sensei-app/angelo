@@ -24,7 +24,7 @@ import json
 import os
 import time
 
-from . import shared_replace
+from . import edit_tool_hold, owned_paths, owned_replace, session_lease, shared_replace
 from .steering import DELIVERING, PAUSED, QUEUE, SENDING, STEER
 from .ui_text import iface_, n_
 
@@ -149,7 +149,7 @@ def dispatch_due(controller):
     """Main thread: every waiting message as one request, once the chat is idle. True when it went out."""
     from . import console
     from .display_text import error_notice
-    if controller.turn_running() or not len(controller.inbox):
+    if controller.turn_running() or not len(controller.inbox) or edit_tool_hold.running():   # Then the tool's end.
         return False
     due = controller.inbox.next_due()
     if not due:
@@ -186,7 +186,10 @@ def send_or_queue(controller, text, label, **send_options):
     e.g. ``host_request``), raising what refused it. Returns the pending message, or None when it was sent."""
     if not label:
         raise ValueError("Angelo's own follow-up needs the label its bubble shows")
-    if controller.turn_running() or controller.inbox.has_due():
+    if send_options.get("host_request") is None and send_options.get("host_kind") is None:
+        # Whose send it is (``request_rows.sender``): without either, Angelo's words would count as the person's (R2-L-6).
+        raise ValueError("Angelo's own follow-up says whose it is: a host_request or a host_kind")
+    if controller.turn_running() or controller.inbox.has_due() or edit_tool_hold.running():
         item = controller.inbox.hold(text, (), steerable=False, label=label, send_options=send_options)
         controller.version += 1
         return item
@@ -256,22 +259,23 @@ def save(controller, final=False):
     a refusal (another program holds the file) the pump's saves wait ``shared_replace.RETRY_SECONDS``; a ``final``
     one (the chat switched or closed: its inbox is about to go) is always tried."""
     version = controller.inbox.version
-    if getattr(controller, "_pending_saved", None) == version:
-        return
+    if getattr(controller, "_pending_saved", None) == version or session_lease.view(controller.store):
+        return   # Nothing changed; or another live Angelo has this chat open, and its file is that one's to write.
     refused = getattr(controller, "_pending_refused_at", None)   # Held by another program: tried again after a pause.
     if not final and refused is not None and time.monotonic() - refused < shared_replace.RETRY_SECONDS:
         return
     path, records = _path(controller), controller.inbox.records()
     try:
         if not records:
-            shared_replace.remove(path)   # Windows: a holder refuses a delete too (retried, else said).
+            owned_replace.remove(path)   # Only the file Angelo keeps (owned_replace); Windows: retried, else said.
         else:
-            path.parent.mkdir(mode=0o700, exist_ok=True)
+            owned_paths.require_writable(path).parent.mkdir(mode=0o700, exist_ok=True)
             temporary = path.with_name(path.name + ".%d.tmp" % os.getpid())
             try:
+                owned_paths.require_writable(path)
                 temporary.write_text(json.dumps({"version": 1, "pending": records}, ensure_ascii=False),
                                      encoding="utf-8")
-                shared_replace.replace(temporary, path)   # Refused while held: retried, else said (refused_saves).
+                owned_replace.replace(temporary, path)   # Refused while held: retried, else said (refused_saves).
             except OSError:
                 shared_replace.discard(temporary)
                 raise
@@ -284,8 +288,10 @@ def save(controller, final=False):
 
 def load(controller):
     """A chat's saved pending messages, back paused (a relaunch never sends them by itself)."""
+    path = _path(controller)
+    owned_replace.adopt(path)   # The chat's own file, as it opens: saved over or removed only while it is this one.
     try:
-        saved = json.loads(shared_replace.read_text(_path(controller)))   # Sharing delete: never refuses a save.
+        saved = json.loads(shared_replace.read_text(path))   # Sharing delete: never refuses a save.
     except (OSError, ValueError):
         return
     if isinstance(saved, dict) and saved.get("version") == 1:

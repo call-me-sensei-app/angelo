@@ -11,6 +11,7 @@ Run through ``run_native_suites.py --gui`` (needs ``--enable-event-simulate``).
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+import layout_double  # noqa: E402  (UILayout's own calls, shared by every suite drawing a page)
 
 import hashlib
 import json
@@ -52,21 +53,11 @@ before = [(o.name, tuple(o.location)) for o in bpy.context.scene.objects]
 chat_id = None
 
 
-class Layout:
+class Layout(layout_double.UILayoutDouble):
+    RECORDS = ("labels", "operators")
+
     def __init__(self):
         self.labels, self.operators = [], []
-
-    def row(self):
-        return self
-
-    def box(self):
-        return self
-
-    def column(self):
-        return self
-
-    def separator(self):
-        pass
 
     def prop(self, data, name, **kwargs):
         self.labels.append(name)
@@ -123,7 +114,8 @@ def invoke_suggested_form(mode):
     window = prefs_window()
     area = next(a for a in window.screen.areas if a.type == 'PREFERENCES')
     with bpy.context.temp_override(window=window, area=area):
-        return bpy.ops.angelo.new_connection('INVOKE_DEFAULT', **native_suggestions.form_properties(mode))
+        from angelo_agent import grant_guard   # The person's click on the suggestion: the harness stands in.
+        return grant_guard.stand_in().new_connection('INVOKE_DEFAULT', **native_suggestions.form_properties(mode))
 
 
 def close_dialog(confirm):
@@ -200,9 +192,9 @@ def tick():
             region = next(r for a in prefs_window().screen.areas if a.type == 'PREFERENCES' for r in a.regions if r.type == 'WINDOW')
             state["page_waits"] = state.get("page_waits", 0) + 1
             from angelo_agent import providers_page_model
-            # In the product the hero's banner is read at start-up, long before a person can open Preferences: open
+            # The hero's banner is read as the page's input starts, before a person can open a dialog over it: open
             # the stock dialog only after that read has finished, as a person would.
-            if (page.plan_for(region) is None or not providers_page_model.ART["done"]) and state["page_waits"] < 25:
+            if (page.plan_for(region) is None or not providers_page_model.art_settled()) and state["page_waits"] < 25:
                 return .2
             if state["page_waits"] == 1:
                 state["page_waits"] = 2

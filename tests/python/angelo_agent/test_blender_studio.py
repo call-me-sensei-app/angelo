@@ -30,6 +30,8 @@ sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator and qa_fixtures, inside the app.
 from angelo_agent import ui, studio, console, editor_types
 import qa_operator  # noqa: E402
+import qa_canvas_grant  # noqa: E402  (a grant clicked as the person clicks it; a scripted one refused)
+import qa_input  # noqa: E402
 from angelo_agent.editor_registry import EDITOR_GROUPS, GENERATIVE_AI
 from angelo_agent.api_connections import CheckResult
 from angelo_agent.provider_registry import SPECS, model_kind
@@ -138,6 +140,33 @@ def click(action, value=None):
     event('LEFTMOUSE', rect[0]+rect[2]/2, rect[1]+rect[3]/2)
 
 
+def person_presses(action):
+    """``action``'s click no person made is refused (a check named after it), then the person presses it."""
+    v = studio.view(area())
+    state["checks"]["a_scripted_%s_is_refused" % action] = qa_canvas_grant.refused(v, lambda: click(action))
+    redraw()
+    qa_canvas_grant.press(window(), region(), studio.view(area())["hits"], action)
+
+
+def waited(phase, seconds):
+    """True once ``seconds`` have passed since this phase began."""
+    return time.monotonic() - state.setdefault("since", {}).setdefault(phase, time.monotonic()) >= seconds
+
+
+def studio_key(kind):
+    """The person's key with the pointer over Media Studio (its modal takes it)."""
+    r = region()
+    for value in ('PRESS', 'RELEASE'):
+        window().event_simulate(type=kind, value=value, x=r.x + r.width // 2, y=r.y + r.height // 2)
+
+
+def dialog_opened(phase, limit=20.0):
+    """True once the pressed control's confirmation is drawn; fails the suite after ``limit`` seconds."""
+    since = state.setdefault("since", {}).setdefault(phase, time.monotonic())
+    assert time.monotonic() - since < limit, "Timed out in " + phase
+    return qa_canvas_grant.dialog_open()
+
+
 def select(identity):
     with bpy.context.temp_override(window=window(), area=area(), region=region()):
         bpy.ops.angelo.editor_type(ui_type=identity)
@@ -203,10 +232,15 @@ def tick():
             v["folder"] = folder["id"]
             state["checks"]["enhancer_uses_shared_gemini_connection"] = studio.enhancement_binding()[0]["id"] == record["id"] and studio.library().enhancer["model"] == "gemini-3.8-flash"
             v["prompt"] = "[Local UI fixture] Native gallery result"
-            click("generate")
+            person_presses("generate")
+            state["phase"] = "generate_pressed"
+            return .3
+        if state["phase"] == "generate_pressed":
+            if not dialog_opened("generate_pressed"):
+                return .2
             state["checks"]["generate_dialog_alone_never_calls_provider"] = not calls and not studio._jobs.active
             state["phase"] = "confirm_generation"
-            return .3
+            return .1
         if state["phase"] == "confirm_generation":
             window().event_simulate(type='RET', value='PRESS')
             state["phase"] = "job"
@@ -230,10 +264,12 @@ def tick():
             v["collapsed"] = True
             capture("studio-collapsed-gallery.png")
             v["collapsed"] = False
-            click("enhance")
+            person_presses("enhance")
             state["phase"] = "confirm_enhance"
             return .3
         if state["phase"] == "confirm_enhance":
+            if not dialog_opened("confirm_enhance"):
+                return .2
             window().event_simulate(type='RET', value='PRESS')
             state["phase"] = "enhanced"
             return .5
@@ -251,6 +287,40 @@ def tick():
             click("undo_enhance")
             state["checks"]["apply_and_undo_prompt_enhancement"] &= v["prompt"] == "[Local UI fixture] Native gallery result"
             state["checks"]["enhancer_exact_default_and_shared_key"] = len(calls) == 2 and calls[1][0].endswith("/interactions")
+            v.update(field_focus="prompt", focus=None)   # Focused by code, not by the person's press.
+            redraw()
+            studio_key('RET')
+            state["phase"] = "prompt_code"
+            return .2
+        if state["phase"] == "prompt_code":   # Return in a field code focused: Generate's grant refuses it.
+            if not waited("prompt_code", 1.0):
+                return .1
+            v = studio.view(area())
+            from angelo_agent import grant_guard
+            from angelo_agent.ui_text import rpt_
+            state["checks"]["return_in_a_prompt_code_focused_is_refused"] = (
+                rpt_(grant_guard.NOT_YOURS) in str(v.get("notice") or "") and not qa_canvas_grant.dialog_open())
+            v.update(notice=None, field_focus=None)
+            redraw()
+            qa_canvas_grant.press(window(), region(), v["hits"], "focus", "prompt")   # The person's press into it.
+            state["phase"] = "prompt_return"
+            return .2
+        if state["phase"] == "prompt_return":
+            if not waited("prompt_return", 1.3):   # After the shield since the person's focus arrived.
+                return .1
+            studio_key('RET')
+            state["phase"] = "prompt_dialog"
+            return .2
+        if state["phase"] == "prompt_dialog":
+            if not dialog_opened("prompt_dialog"):
+                return .2
+            state["checks"]["the_persons_return_in_the_prompt_opens_generate"] = True
+            window().event_simulate(type='ESC', value='PRESS')
+            window().event_simulate(type='ESC', value='RELEASE')
+            state["phase"] = "tab_3d"
+            return .3
+        if state["phase"] == "tab_3d":
+            v = studio.view(area())
             v["prompt"] = "A\nB"
             click("tab", "3D")
             v["collapsed"] = False
@@ -285,4 +355,4 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=1)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=1)   # Never ahead of a press.

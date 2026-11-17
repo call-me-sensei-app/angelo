@@ -46,8 +46,10 @@ def provider_seconds(name):
 
 
 def held(context):
-    """Whether ``context``'s chat waits for its scene to be shown (``document_scene.hold``): no lifetime of its runs."""
-    return bool(getattr(getattr(context, "host", context), "_held", False))
+    """Whether ``context``'s chat waits for its scene to be shown (``document_scene.hold``) or for the person's editing
+    tool to end (``edit_tool_hold.hold``): no lifetime of its runs."""
+    chat = getattr(context, "host", context)
+    return bool(getattr(chat, "_held", False) or getattr(chat, "_tool_held", None))
 
 
 def await_host(done, context, seconds):

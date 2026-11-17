@@ -20,7 +20,7 @@ import secrets
 import time
 from pathlib import Path
 
-from . import engine_rules, shared_replace
+from . import engine_rules, owned_paths, shared_replace
 
 TARGET_FOR_ENGINE = {"godot": "GODOT", "unity": "UNITY", "unreal": "UNREAL"}
 DEFAULT_FORMAT = {"GODOT": "GLB", "UNITY": "FBX", "UNREAL": "GLB", "WEB": "GLB"}
@@ -134,6 +134,7 @@ def write_report(path, report):
     written is raised, and ``link_report`` in this process answers with it until a later report is written: a check
     whose report Windows refused (its file held open) never reads as pending for good."""
     _unwritten[path] = report
+    owned_paths.require_writable(path)   # C first: no temporary is made beside a target it refuses.
     if os.path.islink(path):
         raise OSError("The preflight report is a link")
     temporary = "%s.%s.tmp" % (path, secrets.token_hex(4))

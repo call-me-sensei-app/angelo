@@ -8,7 +8,8 @@ earlier build wrote, encoded in one pass of Python's C encoder per row, as one
 line, written to a temporary file, synced and swapped in. These tests pin what
 must not change with the journal (``test_native_session_journal.py`` covers the
 appended records): the values on disk, a compacted file that ``json.loads``
-reads as before, the old file when a value cannot be saved, and the
+reads as before, the old file when an error no value caused stops a save,
+no temporary file when a value the file cannot hold is made saveable, and the
 write-sync-replace order.
 """
 
@@ -95,26 +96,59 @@ class SessionSaveTests(unittest.TestCase):
         if os.name != "nt":   # Windows keeps only a file's read-only bit.
             self.assertEqual(stat.S_IMODE(self.store.path.stat().st_mode), 0o600)
 
-    def test_a_value_that_cannot_be_saved_leaves_no_temporary_file_and_the_old_journal(self):
+    def test_an_error_no_value_caused_leaves_no_temporary_file_and_the_old_journal(self):
+        """An encoder error that no value of the state caused is an error in Angelo's own code: the save raises it
+        as it was and writes nothing (a value JSON has no form for is not one any more: the test after this)."""
         state = journal_state(self.store)
         self.store.save(state)
         for kind in ("rewrite", "append"):
-            for value, error in ((float("nan"), ValueError), (object(), TypeError),
-                                 ("lone \ud800 surrogate", UnicodeEncodeError)):
+            for error in (TypeError, ValueError, RecursionError):
                 with self.subTest(kind=kind, error=error.__name__):
                     if kind == "rewrite":
                         self.store.invalidate()  # The next save rewrites the whole file.
                     else:
                         self.store.save(state)  # Written: the next save appends.
                     before = self.store.path.read_bytes()
-                    state["messages"].append({"role": "assistant", "text": value})
-                    with self.assertRaises(error):
-                        self.store.save(state)
+                    rows = json.dumps(state["messages"])
+                    state["messages"].append({"role": "assistant", "text": "Never written"})
+                    with patch.object(session_journal, "encode", side_effect=error("not a value of the state")):
+                        with self.assertRaisesRegex(error, "not a value of the state"):
+                            self.store.save(state)
                     state["messages"].pop()
+                    self.assertEqual(json.dumps(state["messages"]), rows, "the attempt changed the state")
                     self.assertEqual(self.temporaries(), [])
                     self.assertEqual(self.store.path.read_bytes(), before)
         state["messages"].append({"role": "assistant", "text": "Saved after the failures"})
         self.store.save(state)  # The next save describes the state the failed ones never wrote.
+        saved = sessions.read_transcript(self.store.path)["messages"]
+        self.assertEqual(saved, json.loads(json.dumps(state["messages"])))
+
+    def test_a_value_the_file_cannot_hold_is_saved_made_saveable_and_leaves_no_temporary_file(self):
+        """A number that is not finite, text that is not UTF-8 and a value JSON has no form for reach a chat's state
+        from outside the store. Until 2.0.0 the save raised for one and wrote nothing, and since the value stayed in
+        the chat's state, so did every save after it (the chat then admitted no work until Angelo was started
+        again). Now the value is made saveable in the state and the save writes the rest as it is
+        (``session_saveable.held``, ``test_native_unsaveable_state_recovers``); what a failed attempt leaves is
+        unchanged: no temporary file."""
+        state = journal_state(self.store)
+        self.store.save(state)
+        for kind in ("rewrite", "append"):
+            for value, held in ((float("nan"), None), ("lone \ud800 surrogate", "lone \ufffd surrogate"),
+                                (object(), None), (b"bytes \xff", "bytes \ufffd"), ({2, 1}, [1, 2])):
+                with self.subTest(kind=kind, value=repr(value)):
+                    if kind == "rewrite":
+                        self.store.invalidate()  # The next save rewrites the whole file.
+                    else:
+                        self.store.save(state)  # Written: the next save appends.
+                    state["messages"].append({"role": "assistant", "text": "A reply", "detail": value})
+                    self.store.save(state)
+                    self.assertEqual(self.temporaries(), [])
+                    self.assertEqual(state["messages"][-1], {"role": "assistant", "text": "A reply", "detail": held})
+                    saved = sessions.read_transcript(self.store.path)["messages"]
+                    self.assertEqual(saved, json.loads(json.dumps(state["messages"])))
+        state["messages"].append({"role": "assistant", "text": "Saved after them"})
+        self.store.save(state)
+        self.assertEqual(self.store.last_write, "append")
         saved = sessions.read_transcript(self.store.path)["messages"]
         self.assertEqual(saved, json.loads(json.dumps(state["messages"])))
 

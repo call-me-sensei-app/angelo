@@ -10,7 +10,12 @@ these launches (``ANGELO_QA_CRASH_ON_LOAD``).
   it (the start panel or setup card, the crash report of the launch that crashed) are closed as a person would close
   them; each is recorded.
 * ``crashing-restart``: the launch after. No notice, nothing left off again, the add-ons still off. What opens is
-  recorded: the welcome again, since the safe launch's was never answered.
+  recorded: the welcome again, since the safe launch's was never answered. Then Crash On Load is enabled again in
+  Angelo's own preferences (saved), as a person would.
+* ``crashing-start``: a normal start, which crashes as Blender enables the add-ons, before this script runs (the host
+  checks the exit and that no receipt was written).
+* ``crashing-start-safe``: the next launch leaves it off and its notice leads with it: the record's ``.loading`` of a
+  normal start (not only an import's enabling) names the culprit.
 
 Imported by ``test_blender_settings_import.py`` beside ``settings_import_phases``, whose ``PHASES`` it adds to.
 """
@@ -34,9 +39,10 @@ def all_off():
 
 
 def start_records():
+    """This launch's start records, judged (``start_record_checks``): none of its own left, any other marked found."""
     import angelo_safe_start
-    folder = Path(bpy.utils.user_resource('CONFIG')) / angelo_safe_start.FOLDER
-    return sorted(path.name for path in folder.glob("*" + angelo_safe_start.SUFFIX)) if folder.is_dir() else []
+    import start_record_checks
+    start_record_checks.record(check, report, Path(bpy.utils.user_resource('CONFIG')) / angelo_safe_start.FOLDER)
 
 
 def phase_crashing_import():
@@ -75,9 +81,12 @@ def phase_crashing_safe():
     check("every_third_party_addon_was_left_off", sorted(angelo_safe_start.left_off()) == THIRD_PARTY)
     check("they_are_off", all_off())
     check("the_notice_names_them", all(name in notice.shown[1] for name in NAMES))
+    # The import's enabling died in Crash On Load (its record's .loading named it): it leads the notice.
+    check("the_notice_leads_with_the_one_that_crashed",
+          notice.shown[1].startswith("Angelo stopped while Crash On Load was loading"))
     check("the_notice_says_how_to_turn_one_back_on", "Preferences" in notice.shown[1])
     check("the_notice_is_on_screen", card_host.is_active("safe_start"))
-    check("this_start_completed", start_records() == [])
+    start_records()
     check_agent()
     capture("crashing-safe-notice.png")
 
@@ -95,10 +104,36 @@ def phase_crashing_restart():
     check("no_safe_start_notice", notice.shown is None and not card_host.is_active("safe_start")
           and not card_host.queued("safe_start"))
     check("they_stay_off", all_off())
-    check("this_start_completed", start_records() == [])
+    start_records()
     check_agent()
     capture("crashing-restart.png")
+    bpy.context.preferences.addons.new().module = "crash_on_load"   # On again: the next start's enabling crashes.
+    bpy.ops.wm.save_userpref()
+
+
+def phase_crashing_start_safe():
+    import angelo_safe_start
+    from angelo_agent import card_host, safe_start_notice as notice
+    yield Until(lambda: notice.shown is not None, "the safe-start notice", limit=180)
+    yield 1.0
+
+    def notice_on_screen():
+        if card_host.is_active("safe_start"):
+            return True
+        if card_host.active_card() is not None:
+            card_host.close("close")
+        return False
+    yield Until(notice_on_screen, "the notice on screen", limit=60)
+    yield 1.0
+    check("it_was_left_off", angelo_safe_start.left_off() == ["crash_on_load"])
+    check("they_are_off", all_off())
+    # The normal start's enabling died in Crash On Load: its record's .loading named it.
+    check("the_notice_leads_with_the_one_that_crashed_at_start",
+          notice.shown[1].startswith("Angelo stopped while Crash On Load was loading"))
+    start_records()
+    check_agent()
+    capture("crashing-start-safe-notice.png")
 
 
 PHASES.update({"crashing-import": phase_crashing_import, "crashing-safe": phase_crashing_safe,
-               "crashing-restart": phase_crashing_restart})
+               "crashing-restart": phase_crashing_restart, "crashing-start-safe": phase_crashing_start_safe})

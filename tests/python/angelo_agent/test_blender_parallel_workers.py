@@ -93,7 +93,7 @@ def build_in_parallel(chats):
                           bool(getattr(call, "approval_digest", "")) if HOSTED   # Its card: the worker's summary.
                           else getattr(call, "_approval_review", None) is not None)
                     with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-                        bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.session)
+                        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.session)
                     waiting[name] = answers
                 else:
                     waiting[name] = chat.request("angelo_scene_program", plans[name][index])[1]
@@ -341,7 +341,7 @@ def run_checks():
     moved = other.call("angelo_set_transform", {"object": "Car Body", "location": [5, 0, 0.7]})
     check("other_chat_moved_the_body", moved.get("success") is True, moved)
     with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-        bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=vehicle.session)
+        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=vehicle.session)
     stale = vehicle.wait(answers)
     check("stale_approval_is_refused", stale.get("error_code") == "STALE_REVISION", stale)
     check("stale_approval_ran_nothing", vehicle.objects()["Car Body"]["location"] == [5.0, 0.0, 0.7])
@@ -354,7 +354,7 @@ def run_checks():
     ui.invalidate_workspace_state("undo")
     check("main_undo_leaves_worker_chats_alone", vehicle.controller.pending.get(key) is call)
     with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-        bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=vehicle.session)
+        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=vehicle.session)
     check("approved_after_main_undo", vehicle.wait(answers).get("success") is True)
 
     # A worker that stops answering for a while keeps its chat: refused meanwhile, back once it answers.
@@ -462,7 +462,7 @@ def run_checks():
     broken.stop()
     from angelo_agent import remote_executor
     check("angelo_keeps_the_verdict_for_later_workers", remote_executor.OFFSCREEN_VERDICTS.get(
-        str(broken.worker.binary), [None])[0] is False, remote_executor.OFFSCREEN_VERDICTS)
+        remote_executor.worker_verdict_key(), [None])[0] is False, remote_executor.OFFSCREEN_VERDICTS)
     remote_executor.OFFSCREEN_VERDICTS.clear()   # The forced failure was this test's alone: this machine probes anew.
     # Here (this machine's own GPU or none): a picture, or that same refusal; the worker lives either way.
     painter = WorkerChat(STATE, PARTS / "picture.blend", ROOT)

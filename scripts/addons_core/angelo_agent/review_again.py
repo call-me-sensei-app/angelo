@@ -106,6 +106,15 @@ def take_click(call):
     return vars(call).pop("person_click", None)
 
 
+def keep_click(call, clicked, result=None):
+    """Put back the click mark ``take_click`` read when the call stops at its run before anything of it ran (a merge
+    waiting for its chat's edit, ``merge_hold``): its resume through the same approval route reads it again, so a
+    changed binding asks again on its card instead of failing. Returns ``result``."""
+    if clicked is not None:
+        vars(call).setdefault("person_click", clicked)
+    return result
+
+
 def unanswered(call, clicked):
     """Whether ``call`` was asked again and this run carries no click on the card as it is now: an approval queued
     before the renewal (a double-click, a lane chat's queued apply) never runs the renewed card. It stays."""

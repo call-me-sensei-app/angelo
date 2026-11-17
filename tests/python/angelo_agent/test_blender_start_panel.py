@@ -9,7 +9,8 @@ settles, the start panel opens by itself, once; Blender's splash is never reopen
 nor the welcome shows; Help > Splash Screen opens it again instead of Blender's page; it offers each recent scene
 as a tile, New scene, Open… and What's new, and no
 templates, Recover Last Session or Donate; tiles show the saved thumbnails and, when known, the scene's last
-chat title; a tile opens its scene; in each of Angelo's other 20 languages the open panel draws every one of
+chat title; its art and its tiles' previews keep no float copy once drawn and are let go when the panel closes (traced with
+tracemalloc); a tile opens its scene; in each of Angelo's other 20 languages the open panel draws every one of
 its strings as the catalogue translates it (read from the drawn plan, so a layout kept from another language
 fails); English, Arabic and a narrow view are captured. No network, account or inference.
 
@@ -25,9 +26,14 @@ import os
 import tempfile
 import time
 import traceback
+import tracemalloc
 from pathlib import Path
 
 import bpy
+
+tracemalloc.start()   # Before the panel reads its art: every float copy of a brand picture is traced where it is made.
+ART_SOURCES = ("welcome_screen.py", "brand_picture.py", "providers_page_model.py", "connect_hero.py",
+               "firstlaunch_controls.py")   # The banner, the showcase and the tiles' scene previews.
 
 OUT = Path(os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-start-panel-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -107,6 +113,9 @@ def click_card(action, value=None):
     rect = next(r for r, a, v in reversed(active.plan.hits) if a == action and (value is None or v == value))
     x = canvas_rtl.pointer_x(rect[0] + rect[2] / 2, region.width)
     x, y = int(region.x + x), int(region.y + rect[1] + rect[3] / 2)
+    import qa_input
+    if action in qa_input.GRANT_ACTIONS:   # It reaches a grant: only a person's click (move, then press).
+        return qa_input.press(window(), x, y)
     for kind, event_value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
         window().event_simulate(type=kind, value=event_value, x=x, y=y)
 
@@ -143,6 +152,15 @@ def untranslated():
         if expected == message or not drawn:
             missing.append(message)
     return missing
+
+
+def art_copies():
+    """Live blocks of 1 MB or more made by the code that reads the panel's pictures, as (file, line, bytes): a float
+    copy of the 1520 x 480 banner is 11.7 MB (an-blender53's first-open memory, 9d7a54eab7f), a tile's preview read
+    into a list of floats about 8 MB."""
+    return sorted((os.path.basename(t.traceback[0].filename), t.traceback[0].lineno, t.size)
+                  for t in tracemalloc.take_snapshot().traces
+                  if t.size >= 1 << 20 and os.path.basename(t.traceback[0].filename) in ART_SOURCES)
 
 
 def finish(error=None):
@@ -198,12 +216,18 @@ def tick():
                                                                   and lines[str(SCENES[2])] == "Edited today")
             thumbs = {p: firstlaunch_controls._thumbs.get(p, {}) for p in card.scenes}
             state["thumbnails"] = {p: t.get("size") for p, t in thumbs.items()}
-            pixels = {p: t.get("pixels") for p, t in thumbs.items()}
+            # As drawn: read back from each tile's texture (its float copy is dropped at the first draw).
+            pixels = {p: t["texture"].read().to_list() if t.get("texture") is not None else None
+                      for p, t in thumbs.items()}
             checks["tiles_show_each_files_embedded_preview"] = (
                 pixels[str(SCENES[0])] is not None and pixels[str(SCENES[1])] is not None
                 and pixels[str(SCENES[0])] != pixels[str(SCENES[1])])
             checks["placeholder_only_without_a_preview"] = pixels[str(SCENES[2])] is None
             checks["no_templates_recover_or_donate"] = not any(a in {"template", "recover", "donate"} for a, _ in shown)
+            # The panel drew its art: on the GPU now, with no float copy of it left in memory.
+            state["art_copies_while_shown"] = art_copies()
+            checks["start_panel_draws_the_art"] = firstlaunch_controls.banner_ready()
+            checks["drawn_art_keeps_no_float_copy"] = not state["art_copies_while_shown"]
             state["phase"] = "languages"
             return .1
         if phase == "languages":
@@ -277,6 +301,11 @@ def tick():
             checks["start_panel_not_shown_again_after_opening"] = (
                 [step for step in splash_setup.sequence if step != "splash"] == ["start", "start"]
                 and not card_host.is_active("start"))
+            # Closed, with nothing else showing it: the art and the previews are let go (read again when shown).
+            state["art_copies_after_close"] = art_copies()
+            checks["closed_panel_lets_the_art_go"] = (not firstlaunch_controls.banner_ready()
+                                                     and not firstlaunch_controls._thumbs
+                                                     and not state["art_copies_after_close"])
             finish()
             return None
         return .2
@@ -285,4 +314,5 @@ def tick():
         return None
 
 
-bpy.app.timers.register(tick, first_interval=.05, persistent=True)  # The fixture opens a scene.
+import qa_input  # noqa: E402  (a click on its way holds the tick: qa_input.after_clicks)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.05, persistent=True)  # The fixture opens a scene.

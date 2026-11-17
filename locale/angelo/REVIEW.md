@@ -722,3 +722,22 @@ flow-state key the extractor picked up; it is translated like "Stopped".
   pt-BR, sv, vi; 0,1 sn in tr; 0,1 с in ru; 0.1 s in hi) and the unit word where the language writes one (ja, ko, zh,
   zh-TW 秒/초; th and ar write out "second"). "About ten times a second" is written as a numeral (10) in ja, ko, zh and zh-TW.
 * Megascans stays as written; "texture set" is translated as a common noun (Blender has no label for it).
+
+## 1.1.0 release notes, and the 1.0.11 lines they carry: choices to check
+
+* These lines name controls and Blender features (Preferences › System › Backend, Vulkan, OpenGL, Grease Pencil, the
+  Sequencer, Undo, Fillet Curve, Skin, Flatten, Delaunay). They follow Blender 5.3's catalogues, the 1.1 app's wording, so
+  a few differ from the 1.0.11 translations, which follow 5.2: sv Grease Pencil (not Fettpenna), Sekvensredigerare,
+  Avrunda kurva, Skin, resursbibliotek; ko 델로네.
+* it: Blender's Italian catalogue (5.2 and 5.3) translated the backend item "OpenGL" as "OpenCL". Angelo corrects it in
+  `locale/po/it.po` (pinned by `test_native_blender_catalogue_fixes.py`, to be offered upstream), so the line says OpenGL.
+* ko: the Backend menu shows Vulkan as 벌칸, so both Windows lines use 벌칸.
+* ar and hi: Blender's Preferences title is untranslated, and so is Backend in many languages (de, id, it, nl, pt, pt-BR,
+  th, tr). The line quotes the English the app shows.
+* The layered compositor is a common noun in the summary and highlights. de keeps "Compositor" (Blender's "Setzer" reads
+  oddly as a feature name), fr uses "compositing par calques", and tr uses Blender's "dizgici". Gaussian splats stay in
+  English, as in every catalogue's Gaussian Splat.
+* vi: Blender 5.2's catalogue translated Delaunay as "Trì Hoãn" (delay), a mistranslation. 5.3 keeps "Delaunay", which
+  is what the line uses.
+* Numbers: the 0.1 s and 0.4 s values, version numbers and "about ten times a second" are kept, with each language's
+  decimal separator and unit (0,1 s in most European languages, 0,1 sn in tr, 0,1 с in ru, 0.1秒/초 in ja, ko, zh, zh-TW).

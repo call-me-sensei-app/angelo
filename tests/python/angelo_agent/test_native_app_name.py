@@ -63,7 +63,7 @@ ALLOWED = tuple((re.compile(pattern), reason) for pattern, reason in (
     (r"\b(?:[Yy]our|[Mm]y|[Ee]arlier|[Nn]o|[Ii]mport) Blender [Ss]ettings\b|\bBlender's folder\b"
      r"|\b(?:set for|over from) Blender\b",
      "a stock Blender installation's settings, which Angelo imports"),
-    (r"\bBlender (?:asset library|[Uu]nits?|library file)\b|\bBlender [Ff]iles?\b(?! (?:Browser|View))",
+    (r"\bBlender (?:asset library|[Uu]nits?|library file|[Pp]rojects?)\b|\bBlender [Ff]iles?\b(?! (?:Browser|View))",
      "the Blender file format and its terms"),
     (r"\bBlender(?:'s)? [Ee]xtensions?(?: repository)?\b|\S*\bblender\.org\b\S*|\bBlender(?:'s)? official web-site\b"
      r"|\bBlender Website\b|\bBlender(?:'s)? source(?: code| repository| root path)?\b|\bBlender (?:libraries )?[Rr]epository\b",

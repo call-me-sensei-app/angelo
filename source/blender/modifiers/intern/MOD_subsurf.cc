@@ -6,6 +6,7 @@
  * \ingroup modifiers
  */
 
+#include <algorithm>
 #include <cstddef>
 #include <cstring>
 
@@ -13,7 +14,7 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_utildefines.h"
+#include "BLI_utildefines.hh"
 
 #include "BLT_translation.hh"
 
@@ -36,6 +37,7 @@
 #include "BKE_subdiv_mesh.hh"
 #include "BKE_subdiv_modifier.hh"
 
+#include "UI_interface_c.hh"
 #include "UI_interface_layout.hh"
 #include "UI_resources.hh"
 
@@ -174,7 +176,7 @@ static ModifierData *modifier_get_last_enabled_for_mode(const Scene *scene,
                                                         const Object *ob,
                                                         int required_mode)
 {
-  ModifierData *md = static_cast<ModifierData *>(ob->modifiers.last);
+  ModifierData *md = ob->modifiers.last();
 
   while (md) {
     if (BKE_modifier_is_enabled(scene, md, required_mode)) {
@@ -197,7 +199,12 @@ static Mesh *modify_mesh(ModifierData *md, const ModifierEvalContext *ctx, Mesh 
   return result;
 #endif
   SubsurfModifierData *smd = reinterpret_cast<SubsurfModifierData *>(md);
+  /* Applying evaluates the modifier outside the viewport; its status stays the viewport's. */
+  const bool is_applying = (ctx->flag & MOD_APPLY_TO_ORIGINAL) != 0;
   if (!BKE_subsurf_modifier_runtime_init(smd, (ctx->flag & MOD_APPLY_RENDER) != 0)) {
+    if (!is_applying) {
+      smd->gpu_subdivision_status = SUBSURF_GPU_STATUS_NOT_EVALUATED;
+    }
     return result;
   }
 
@@ -226,8 +233,11 @@ static Mesh *modify_mesh(ModifierData *md, const ModifierEvalContext *ctx, Mesh 
 
     /* Check if we are the last modifier in the stack. */
     ModifierData *md = modifier_get_last_enabled_for_mode(scene, ctx->object, required_mode);
-    if (md == reinterpret_cast<const ModifierData *>(smd)) {
-      const bool has_gpu_subdiv = BKE_subsurf_modifier_can_do_gpu_subdiv(smd, mesh);
+    const bool is_last_enabled = md == reinterpret_cast<const ModifierData *>(smd);
+    /* Why it is or is not subdivided on the GPU, for the panel and Python (Blender #58191). */
+    smd->gpu_subdivision_status = BKE_subsurf_modifier_gpu_status(smd, mesh, is_last_enabled);
+    if (is_last_enabled) {
+      const bool has_gpu_subdiv = smd->gpu_subdivision_status == SUBSURF_GPU_STATUS_GPU;
       subdiv_cache_mesh_wrapper_settings(ctx, mesh, smd, runtime_data, has_gpu_subdiv);
 
       /* Delay for:
@@ -331,6 +341,55 @@ static bool get_show_adaptive_options(const bContext *C, Panel *panel)
   return true;
 }
 
+/**
+ * Why the viewport subdivides on the CPU, where that is not the person's own choice (the
+ * preference) or background mode, which has no panels. The status comes from the evaluation that
+ * decided it (Blender #58191).
+ */
+static void draw_gpu_subdivision_status(ui::Layout &layout,
+                                        const Scene &scene,
+                                        const bool is_editmode,
+                                        const SubsurfModifierData &smd_eval)
+{
+  switch (smd_eval.gpu_subdivision_status) {
+    case SUBSURF_GPU_STATUS_NOT_LAST: {
+      const int required_mode = BKE_subsurf_modifier_eval_required_mode(false, is_editmode);
+      for (const ModifierData *md = smd_eval.modifier.next; md; md = md->next) {
+        if (BKE_modifier_is_enabled(&scene, const_cast<ModifierData *>(md), required_mode)) {
+          layout.label_multiline(
+              fmt::format(fmt::runtime(RPT_(
+                              "Subdividing on the CPU: \"{modifier}\" comes after "
+                              "this modifier, and GPU subdivision needs it to be last")),
+                          fmt::arg("modifier", md->name)),
+              ICON_STATUS_INFO);
+          break;
+        }
+      }
+      break;
+    }
+    case SUBSURF_GPU_STATUS_SPLIT_NORMALS:
+      layout.label_multiline(RPT_("Sharp edges or custom normals detected, disabling GPU subdivision"),
+                             ICON_STATUS_INFO);
+      break;
+    case SUBSURF_GPU_STATUS_UNSUPPORTED_GPU:
+      layout.label_multiline(RPT_("Subdividing on the CPU: this GPU does not support GPU subdivision"),
+                             ICON_STATUS_INFO);
+      break;
+    case SUBSURF_GPU_STATUS_GPU: {
+      const SubsurfRuntimeData *runtime_data = static_cast<const SubsurfRuntimeData *>(
+          smd_eval.modifier.runtime);
+      if (runtime_data && runtime_data->used_gpu && runtime_data->used_cpu) {
+        layout.label_multiline(RPT_("Using both CPU and GPU subdivision"), ICON_STATUS_INFO);
+      }
+      break;
+    }
+    case SUBSURF_GPU_STATUS_NOT_EVALUATED:
+    case SUBSURF_GPU_STATUS_PREFERENCE_OFF:
+    case SUBSURF_GPU_STATUS_NO_GPU:
+      break;
+  }
+}
+
 static void panel_draw(const bContext *C, Panel *panel)
 {
   ui::Layout &layout = *panel->layout;
@@ -353,22 +412,16 @@ static void panel_draw(const bContext *C, Panel *panel)
   Depsgraph *depsgraph = CTX_data_depsgraph_pointer(C);
   SubsurfModifierData *smd = static_cast<SubsurfModifierData *>(ptr->data);
   Object *ob = static_cast<Object *>(ob_ptr.data);
-  if (ob->type == OB_MESH && BKE_subsurf_modifier_force_disable_gpu_evaluation_for_mesh(
-                                 smd, id_cast<const Mesh *>(ob->data)))
-  {
-    layout.label(RPT_("Sharp edges or custom normals detected, disabling GPU subdivision"),
-                 ICON_INFO);
-  }
-  else if (Object *ob_eval = DEG_get_evaluated(depsgraph, ob)) {
+  if (Object *ob_eval = DEG_get_evaluated(depsgraph, ob)) {
     if (ModifierData *md_eval = BKE_modifiers_findby_name(ob_eval, smd->modifier.name)) {
       if (md_eval->type == eModifierType_Subsurf) {
-        SubsurfRuntimeData *runtime_data = static_cast<SubsurfRuntimeData *>(md_eval->runtime);
-
-        if (runtime_data && runtime_data->used_gpu) {
-          if (runtime_data->used_cpu) {
-            layout.label(RPT_("Using both CPU and GPU subdivision"), ICON_INFO);
-          }
-        }
+        /* Edit Mode as the modifier decides it: from the mesh (curves use this modifier too). */
+        const bool is_editmode = ob->type == OB_MESH &&
+                                 id_cast<const Mesh *>(ob->data)->runtime->edit_mesh != nullptr;
+        draw_gpu_subdivision_status(layout,
+                                    *CTX_data_scene(C),
+                                    is_editmode,
+                                    *reinterpret_cast<SubsurfModifierData *>(md_eval));
       }
     }
   }
@@ -438,6 +491,13 @@ static void panel_draw(const bContext *C, Panel *panel)
   modifier_error_message_draw(layout, ptr);
 }
 
+static void blend_read(BlendDataReader * /*reader*/, ModifierData *md)
+{
+  /* The status describes the evaluation of the session that saved it. */
+  reinterpret_cast<SubsurfModifierData *>(md)->gpu_subdivision_status =
+      SUBSURF_GPU_STATUS_NOT_EVALUATED;
+}
+
 static void panel_register(ARegionType *region_type)
 {
   modifier_panel_register(region_type, eModifierType_Subsurf, panel_draw);
@@ -476,7 +536,7 @@ ModifierTypeInfo modifierType_Subsurf = {
     /*free_runtime_data*/ free_runtime_data,
     /*panel_register*/ panel_register,
     /*blend_write*/ nullptr,
-    /*blend_read*/ nullptr,
+    /*blend_read*/ blend_read,
     /*foreach_cache*/ nullptr,
     /*foreach_working_space_color*/ nullptr,
 };

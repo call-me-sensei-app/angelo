@@ -116,6 +116,8 @@ set(SRC_OPTIX
   optix/device.h
   optix/device_impl.cpp
   optix/device_impl.h
+  optix/driver.cpp
+  optix/driver.h
   optix/queue.cpp
   optix/queue.h
   optix/util.h
@@ -148,6 +150,13 @@ set(LIB
   PRIVATE bf::dependencies::optional::openimagedenoise
   PRIVATE bf::dependencies::optional::osl
 )
+
+# The NVIDIA driver's management library is loaded at run time (optix/driver.cpp).
+if(UNIX AND NOT APPLE)
+  list(APPEND LIB
+    PRIVATE ${CMAKE_DL_LIBS}
+  )
+endif()
 
 if(WITH_CYCLES_DEVICE_OPTIX OR WITH_CYCLES_DEVICE_CUDA)
   if(WITH_CUDA_DYNLOAD)

@@ -225,7 +225,11 @@ class QuitFileTests(Handlers):
         unfinished["angelo_tab"], unfinished[UNFINISHED] = "studio", True
         self.workspaces.append(unfinished)
         pending = []
-        with mock.patch.object(studio_workspaces, "_remove", lambda window, workspace: pending.append(workspace)):
+
+        def remove(window, workspace, home=None):   # Shown first (no window showed it), then back home as deleted.
+            pending.append(workspace)
+            window.workspace = self.workspaces[home]
+        with mock.patch.object(studio_workspaces, "_remove", remove):
             studio_tab_build.run(self.window)
             step = self.timers.pop()
             self.assertEqual(step(), 0.0, "waits for Blender to apply the delete")

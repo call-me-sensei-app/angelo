@@ -16,6 +16,7 @@ import hashlib
 from array import array
 from itertools import islice
 
+from . import script_mesh_check
 from .motion_facts import motion_signature
 
 LIMIT = 1000   # Objects a signature keeps; a larger scene's signature is ``truncated``.
@@ -77,7 +78,8 @@ def scene_signature(scene, targets=None):
         vertices, geometry = (len(data.vertices) if mesh else 0), ""
         if mesh and vertices <= vertex_budget:
             coordinates = array('f', [0]) * (vertices * 3)
-            data.vertices.foreach_get("co", coordinates)
+            with script_mesh_check.reading(data):   # A read: the mesh's seals stay as they were.
+                data.vertices.foreach_get("co", coordinates)
             geometry = hashlib.blake2b(coordinates,digest_size=32).hexdigest()
             vertex_budget -= vertices
         elif mesh:

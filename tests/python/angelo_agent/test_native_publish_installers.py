@@ -41,6 +41,7 @@ sys.path.insert(0, str(ROOT / "scripts/angelo"))
 import builder_paths  # noqa: E402
 import msi_signing  # noqa: E402
 import publish_installers as tool  # noqa: E402
+import published_files  # noqa: E402
 import r2_client  # noqa: E402
 import release_downloads as layout  # noqa: E402
 import sign_notarize_macos  # noqa: E402
@@ -79,6 +80,9 @@ class FakeR2:
     def __init__(self):
         self.objects, self.log, self.fail, self.public_fault = {}, [], {}, None
         self.bad_signatures = 0
+        # The custom domain's dropped streams: each GET takes the next cut (bytes sent before the connection closes).
+        # ``etag_after_drop``: the object's ETag after the first drop (the file replaced mid-read).
+        self.public_drops, self.public_gets, self.etag_after_drop = [], [], None
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -170,7 +174,29 @@ class FakeR2:
             headers["Content-Type"] = "application/octet-stream"
         elif self.public_fault == "missing":
             return handler._answer(404, {}, b"not found")
-        return handler._answer(200, dict(headers, **{"Content-Length": str(len(data))}), data)
+        etag = '"%s"' % hashlib.md5(data).hexdigest()
+        if self.etag_after_drop and self.public_gets:   # Every GET after the first sees the new file.
+            etag = self.etag_after_drop
+        headers["ETag"] = etag
+        status, body, start = 200, data, 0
+        wanted = handler.headers.get("Range")
+        if handler.command == "GET" and wanted and handler.headers.get("If-Range") == etag:   # R2: If-Range honoured
+            start = int(wanted.split("=")[1].rstrip("-"))
+            status, body = 206, data[start:]
+            headers["Content-Range"] = "bytes %d-%d/%d" % (start, len(data) - 1, len(data))
+        if handler.command == "GET":
+            self.public_gets.append((wanted, handler.headers.get("If-Range"), status))
+        if handler.command == "GET" and self.public_drops:
+            cut = self.public_drops.pop(0)   # Announce the whole body, send ``cut`` bytes, close: a dropped stream.
+            handler.send_response(status)
+            for name, value in dict(headers, **{"Content-Length": str(len(body))}).items():
+                handler.send_header(name, value)
+            handler.end_headers()
+            handler.wfile.write(body[:cut])
+            handler.wfile.flush()
+            handler.close_connection = True
+            return None
+        return handler._answer(status, dict(headers, **{"Content-Length": str(len(body))}), body)
 
 
 class NotarizedTools:
@@ -581,6 +607,58 @@ class SharedLayoutTests(unittest.TestCase):
         verdict = sign_notarize_macos.check_notarized_image(self.dmg, tools)
         self.assertEqual(verdict[-1], "source=Notarized Developer ID")
         self.assertEqual([argv[0] for argv in tools.log], ["xcrun", "spctl"])
+
+
+class ReadBackResumeTests(unittest.TestCase):
+    """The read-back of a published file resumes a dropped stream with Range and If-Range on the strong ETag, records
+    each resume, and starts over when the file changed (1.0.9: the edge reset a 536 MB MSI at 218 MB)."""
+
+    def setUp(self):
+        self.r2 = FakeR2()
+        self.addCleanup(self.r2.close)
+        self.data = bytes(range(256)) * 400   # 102,400 bytes
+        self.item = published_files.Item("1.0.0", MSI, None, len(self.data), hashlib.sha256(self.data).hexdigest())
+        self.r2.objects[self.item.key] = (self.data, dict(self.item.headers))
+
+    def verify(self):
+        with redirect_stderr(io.StringIO()) as err:
+            record = published_files.verify_public(self.r2.target, self.item)
+        return record, err.getvalue()
+
+    def test_a_stream_dropped_mid_file_resumes_to_the_exact_hash(self):
+        self.r2.public_drops = [30000, 50000]   # Two drops, then the rest arrives.
+        record, err = self.verify()
+        self.assertEqual(record["sha256"], self.item.sha256)
+        self.assertEqual([(r["action"], r["at"]) for r in record["resumes"]], [("resume", 30000), ("resume", 80000)])
+        self.assertEqual([g[0] for g in self.r2.public_gets], [None, "bytes=30000-", "bytes=80000-"])
+        self.assertEqual([g[2] for g in self.r2.public_gets], [200, 206, 206])
+        self.assertIn("resume from byte 30000", err)
+
+    def test_a_changed_etag_restarts_from_zero(self):
+        self.r2.public_drops = [40000]
+        self.r2.etag_after_drop = '"a-new-file"'   # The If-Range no longer matches: the whole file comes back.
+        record, err = self.verify()
+        self.assertEqual(record["sha256"], self.item.sha256)
+        self.assertEqual([r["action"] for r in record["resumes"]], ["resume", "restart"])
+        self.assertEqual([g[2] for g in self.r2.public_gets], [200, 200])
+        self.assertIn("restart", err)
+
+    def test_an_unbroken_read_records_no_resume(self):
+        record, _ = self.verify()
+        self.assertNotIn("resumes", record)
+        self.assertEqual(len(self.r2.public_gets), 1)
+
+    def test_resumes_are_bounded(self):
+        self.r2.public_drops = [100] * (published_files.MAX_RESUMES + 1)
+        with self.assertRaisesRegex(published_files.PublishError, "after %d resumes" % published_files.MAX_RESUMES):
+            self.verify()
+        self.assertEqual(len(self.r2.public_gets), published_files.MAX_RESUMES + 1)
+
+    def test_a_wrong_file_still_fails_after_a_resume(self):
+        self.r2.public_drops = [20000]
+        self.item.sha256 = "0" * 64
+        with self.assertRaisesRegex(published_files.PublishError, "is not the file published"):
+            self.verify()
 
 
 if __name__ == "__main__":

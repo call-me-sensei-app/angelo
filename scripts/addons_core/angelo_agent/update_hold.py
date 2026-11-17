@@ -31,6 +31,8 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from . import owned_paths
+
 try:
     import fcntl
 except ImportError:   # Windows
@@ -71,6 +73,7 @@ def lock_path(folder):
 
 def _os_lock(folder):
     """The locked file, ``_HELD_ELSEWHERE``, or None when the OS can't lock here."""
+    owned_paths.require_writable(folder)
     path = lock_path(folder)
     for _attempt in range(3):
         try:
@@ -115,6 +118,7 @@ def _os_unlock(handle):
 
 
 def _unlink(path):
+    owned_paths.require_writable(path)
     try:
         os.unlink(path)
     except OSError:

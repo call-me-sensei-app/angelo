@@ -11,6 +11,7 @@ delivered to the main thread as a request.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import struct
@@ -42,7 +43,7 @@ class CaptureTests(unittest.TestCase):
         clients = self.wait_for(self.server.clients)
         return client, next(iter(clients))
 
-    def wait_for(self, condition, timeout=5):
+    def wait_for(self, condition, timeout=CAP_S):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             value = condition()
@@ -66,7 +67,7 @@ class CaptureTests(unittest.TestCase):
         request, _ = client.next()
         self.assertEqual((request["type"], request["asset"], request["max"]), ("capture", "public/a.glb", 1280))
         client.send({"type": "status", "asset": "public/a.glb", "code": "captured", "id": request["id"]}, PNG)
-        thread.join(5)
+        thread.join(CAP_S)
         png, report = holder["result"]
         self.assertEqual(png, PNG)
         self.assertEqual(report["code"], "captured")
@@ -81,7 +82,7 @@ class CaptureTests(unittest.TestCase):
         request, _ = client.next()
         client.send({"type": "status", "code": "capture_failed", "id": request["id"],
                      "message": "capture is off on this page"})
-        thread.join(5)
+        thread.join(CAP_S)
         self.assertEqual(holder["result"], (None, {"code": "capture_failed",
                                                     "message": "capture is off on this page"}))
 
@@ -89,7 +90,7 @@ class CaptureTests(unittest.TestCase):
         client, ident = self.connect()
         holder, thread = self.ask(ident, timeout=0.3)
         request, _ = client.next()
-        thread.join(5)
+        thread.join(CAP_S)
         self.assertEqual(holder["result"], (None, None))
         client.send({"type": "status", "code": "captured", "id": request["id"]}, PNG)
         self.assertIsNone(client.next(), "no capture is outstanding: any payload ends the connection")
@@ -146,7 +147,7 @@ class CaptureTests(unittest.TestCase):
         request, _ = client.next()
         reply = {"type": "status", "code": "captured", "id": request["id"]}
         client.send(reply, PNG)
-        thread.join(5)
+        thread.join(CAP_S)
         self.assertEqual(holder["result"][0], PNG)
         client.send(reply, PNG)
         self.assertIsNone(client.next(), "the answered request allows no second payload")
@@ -163,7 +164,7 @@ class CaptureTests(unittest.TestCase):
                                         PNG if first_code == "captured" else b"")
                 second = protocol.encode({"type": "status", "code": "captured", "id": request["id"]}, PNG)
                 client.sock.sendall(first + second)
-                thread.join(5)
+                thread.join(CAP_S)
                 self.assertEqual(holder["result"][1]["code"], first_code, "the first answer counts")
                 self.assertIsNone(client.next(), "the second payload ends the connection")
 
@@ -174,7 +175,7 @@ class CaptureTests(unittest.TestCase):
         request, _ = client.next()
         frame = protocol.encode({"type": "status", "code": "captured", "id": request["id"]}, PNG + b"\x00" * 4096)
         client.sock.sendall(frame[:len(frame) // 2])
-        thread.join(5)
+        thread.join(CAP_S)
         self.assertEqual(holder["result"], (None, None))
         self.assertIsNone(client.next(timeout=3), "the half-sent capture's connection is closed")
 

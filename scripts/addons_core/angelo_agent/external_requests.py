@@ -23,10 +23,10 @@ import uuid
 from collections import deque
 from pathlib import Path
 
-from . import kept_state, shared_replace
+from . import kept_state, owned_paths, shared_replace
 from .routing import TOOLSET_VERSION
 from .studio_spec import STUDIO_NAMES
-from .tool_specs import BOUNDED_MUTATIONS, FILE_TOOLS, TOOL_MAP, dynamic_tools
+from .tool_specs import BOUNDED_MUTATIONS, FILE_TOOLS, READ_ONLY_TOOLS, TOOL_MAP, dynamic_tools
 
 PHASE1_READ_TOOLS = frozenset({
     "angelo_inspect_scene", "angelo_inspect_sculpt", "angelo_scene_search", "angelo_scene_object",
@@ -35,7 +35,7 @@ PHASE1_READ_TOOLS = frozenset({
     "angelo_memory_read",
 })
 # A tool annotation change must not silently widen what an external client can do.
-if any(not TOOL_MAP[name]["annotations"]["readOnlyHint"] for name in PHASE1_READ_TOOLS):
+if any(name not in READ_ONLY_TOOLS for name in PHASE1_READ_TOOLS):
     raise RuntimeError("The phase-1 external CLI allowlist may contain only read-only tools")
 
 IMAGE_TOOLS = frozenset({"angelo_sculpt_view", "angelo_sculpt_review", "angelo_sculpt_target", "angelo_view"})
@@ -71,7 +71,7 @@ def exclusion_reason(name):
         return "Changes the artist's layout."
     if name in IMAGE_TOOLS:
         return "Image-bearing observation; planned for `angelo view` in a later phase."
-    if not TOOL_MAP[name]["annotations"]["readOnlyHint"]:
+    if name not in READ_ONLY_TOOLS:
         return "Scene mutation; external mutation requests under Ask approval are phase 2."
     return "Not in the phase-1 read-only allowlist."
 
@@ -104,7 +104,7 @@ def tools_catalog(name=None, include_schema=False):
                 entry["inputSchema"] = schema
             allowed.append(entry)
         else:
-            excluded.append({"name": tool_name, "read_only": spec["annotations"]["readOnlyHint"],
+            excluded.append({"name": tool_name, "read_only": tool_name in READ_ONLY_TOOLS,
                              "reason": exclusion_reason(tool_name)})
     return {"toolset_version": TOOLSET_VERSION, "phase": 1, "allowed": allowed, "excluded": excluded,
             "note": "Discovery grants nothing; Angelo validates and bounds every call."}
@@ -286,7 +286,7 @@ class AuditLog:
         flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
         with self._lock:
             try:
-                descriptor = os.open(self.path, flags, 0o600)
+                descriptor = os.open(owned_paths.require_writable(self.path), flags, 0o600)
                 try:
                     os.write(descriptor, line)
                     size = os.fstat(descriptor).st_size
@@ -346,7 +346,7 @@ class ClientRegistry:
         if state == kept_state.UNKNOWN or (state == kept_state.DAMAGED and not kept_state.keep_before_write(self.path)):
             raise OSError(errno.EIO, "The local apps' conversations can't be read now; nothing was changed")
         mapping = {**(self._clients(fresh) if state == kept_state.OK else {}), **changes}
-        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(self.path).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         temporary = self.path.with_name("clients." + uuid.uuid4().hex + ".tmp")
 
         def write(handle):
@@ -360,6 +360,7 @@ class ClientRegistry:
 def _replace_with(temporary, write, target, mode="w"):
     """Write the new owner-only ``temporary`` (``write(handle)``) and replace ``target`` with it (``shared_replace``:
     a refusal outlasting its retries is raised); the temporary file never outlives a failure."""
+    owned_paths.require_writable(target), owned_paths.require_writable(temporary)   # C first, for both names.
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
         with os.fdopen(descriptor, mode, **({} if "b" in mode else {"encoding": "utf-8"})) as handle:

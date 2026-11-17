@@ -94,17 +94,20 @@ Test-Check "release: host Python 3.13 with numpy and jsonschema (as CI)" {
     }
     if (-not (Test-Path $python)) { throw "Python 3.13 did not install at $python" }
     # pip vendors its own root store: upgrade it by hash before it downloads anything (.github/pip-bootstrap.txt).
-    & $python -m pip install --disable-pip-version-check -q --require-hashes --no-deps -r (Join-Path $SourceDir ".github\pip-bootstrap.txt") 2>&1 | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "the pip bootstrap exited with $LASTEXITCODE" }
-    & $python -m pip install --disable-pip-version-check -q numpy==2.3.4 jsonschema==4.23.0 2>&1 | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "pip exited with $LASTEXITCODE" }
+    $ran = Invoke-NativeCapture $python @("-m", "pip", "install", "--disable-pip-version-check", "-q", "--require-hashes", "--no-deps", "-r", (Join-Path $SourceDir ".github\pip-bootstrap.txt"))
+    $ran.Text | Where-Object { $_ } | Out-Host
+    if ($ran.Code -ne 0) { throw "the pip bootstrap exited with $($ran.Code)" }
+    $ran = Invoke-NativeCapture $python @("-m", "pip", "install", "--disable-pip-version-check", "-q", "numpy==2.3.4", "jsonschema==4.23.0")
+    $ran.Text | Where-Object { $_ } | Out-Host
+    if ($ran.Code -ne 0) { throw "pip exited with $($ran.Code)" }
     (& $python -c "import sys; print(sys.version.split()[0])")
 }
 Test-Check "release: free disk for the full build" {
     $free = [math]::Floor((Get-PSDrive ((Split-Path $BuildDir -Qualifier).TrimEnd(":"))).Free / 1GB)
     $built = Test-Path (Join-Path $BuildDir "CMakeCache.txt")
-    # A first full build with every GPU kernel needs room for its objects; an incremental one far less.
-    $need = if ($built) { 30 } else { 120 }
+    # A finished build folder with every GPU kernel is about 12 GB (11.7 GB measured on the release builder, 2026-11-03);
+    # a first full build also needs room while it runs, an incremental one less.
+    $need = if ($built) { 30 } else { 40 }
     if ($free -lt $need) { throw "$free GB free on the build drive, $need GB needed" }
     "$free GB free"
 }
@@ -113,16 +116,16 @@ Test-Check "release: the source tree is exactly the sent commit (nothing untrack
     # A folder install ships every file in the tree, so a file git does not track would ship (shipped_sources.py).
     $script:sent = Get-SentCommit $SourceDir
     if (-not $sent) { throw "no send made this tree: the commit under test is unknown" }
-    $out = & $python (Join-Path $SourceDir "scripts\angelo\release_checks.py") source-clean $SourceDir --commit "$sent" 2>&1
-    if ($LASTEXITCODE -ne 0) { throw (($out | Select-Object -First 4) -join " / ") }
+    $ran = Invoke-NativeCapture $python @((Join-Path $SourceDir "scripts\angelo\release_checks.py"), "source-clean", $SourceDir, "--commit", "$sent")
+    if ($ran.Code -ne 0) { throw ((($ran.Text -split "`r`n") | Select-Object -First 4) -join " / ") }
     "$sent"
 }
 
 Test-Check "release: the release's own notes are dated (CHANGELOG.md and release_notes.json)" {
     # What's New draws an undated entry as "Unreleased" (release_dated.py); refuse before the build, not at the feed.
-    $out = & $python (Join-Path $SourceDir "scripts\angelo\release_checks.py") release-dated $SourceDir 2>&1
-    if ($LASTEXITCODE -ne 0) { throw (($out | Select-Object -First 4) -join " / ") }
-    ($out | Select-Object -Last 1)
+    $ran = Invoke-NativeCapture $python @((Join-Path $SourceDir "scripts\angelo\release_checks.py"), "release-dated", $SourceDir)
+    if ($ran.Code -ne 0) { throw ((($ran.Text -split "`r`n") | Select-Object -First 4) -join " / ") }
+    (($ran.Text -split "`r`n") | Select-Object -Last 1)
 }
 
 $build = Join-Path $SourceDir "scripts\angelo\build_release_windows.ps1"
@@ -220,11 +223,19 @@ Test-Check "release: the app is clang-cl's build (release_checks.py windows-tool
     $identity = Get-Content (Join-Path $SourceDir "scripts\modules\angelo_identity.json") -Raw | ConvertFrom-Json
     $images = @(($identity.windows.exe_stem + $identity.windows.launcher_suffix + ".exe"), "BlendThumb.dll") | ForEach-Object { "--pe"; (Join-Path (Split-Path $exe) $_) }
     $report = Join-Path $ResultsDir "toolset-check.json"
-    $out = & $python (Join-Path $SourceDir "scripts\angelo\release_checks.py") windows-toolset --binary $exe @images --report $report 2>&1
-    if ($LASTEXITCODE -ne 0) { throw (($out | Select-Object -First 4) -join " / ") }
+    $ran = Invoke-NativeCapture $python (@((Join-Path $SourceDir "scripts\angelo\release_checks.py"), "windows-toolset", "--binary", $exe) + @($images) + @("--report", $report))
+    if ($ran.Code -ne 0) { throw ((($ran.Text -split "`r`n") | Select-Object -First 4) -join " / ") }
     $manifest = Get-Content (Join-Path $ResultsDir "angelo-release-build.json") -Raw -Encoding UTF8 | ConvertFrom-Json
     "{0}: {1}, {2} ({3} -T {4})" -f (Get-Content $report -Raw | ConvertFrom-Json).toolset, $manifest.toolset.compiler, $manifest.toolset.linker,
         $manifest.toolset.generator, $manifest.toolset.generator_toolset
+}
+Test-Check "release: every GPU SDK is the version Blender pins (release_checks.py gpu-sdks)" {
+    if (-not $buildOk) { throw "no full build" }
+    # The build's own record: an SDK other than Blender's pin can change what a person's machine needs.
+    $record = Join-Path $ResultsDir "angelo-release-build.json"
+    $ran = Invoke-NativeCapture $python @((Join-Path $SourceDir "scripts\angelo\release_checks.py"), "gpu-sdks", "--source", $SourceDir, "--record", $record)
+    if ($ran.Code -ne 0) { throw ((($ran.Text -split "`r`n") | Select-Object -First 6) -join " / ") }
+    "$(($ran.Text -split "`r`n") | Select-Object -Last 1)" -replace "^gpu-sdks: ", ""
 }
 Test-Check "release: BACKGROUND native suites on the full build" {
     if (-not $buildOk -or -not (Test-Path $exe)) { throw "no full build" }

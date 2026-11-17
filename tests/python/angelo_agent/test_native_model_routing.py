@@ -142,9 +142,12 @@ class EscalationTests(unittest.TestCase):
 
 
 class CacheAndDelegationTests(unittest.TestCase):
-    def test_ttl_is_a_per_session_decision_matching_claude_codes_default_per_billing(self):
-        # Claude Code's own main-conversation default: 1h on a subscription, 5m on any key-billed route.
-        expected = {("interactive", "SUBSCRIPTION"): "1h"}
+    def test_ttl_is_a_per_session_decision_and_every_billed_interactive_chat_gets_one_hour(self):
+        # A person pauses: an interactive chat writes at 1h on a subscription and on every key-billed route (a
+        # personal API key, a team's gateway key), where a pause of 5 to 60 minutes would otherwise rewrite the
+        # whole prefix (doc/angelo/model_routing.rst, "Prompt-cache TTL per session"). Runs without a person's
+        # pauses, and a local runtime, stay at 5m.
+        expected = {("interactive", "SUBSCRIPTION"): "1h", ("interactive", "API_KEY"): "1h"}
         for kind in sorted(policy.SESSION_KINDS):
             for billing in sorted(policy.BILLING):
                 with self.subTest(kind=kind, billing=billing):
@@ -156,7 +159,9 @@ class CacheAndDelegationTests(unittest.TestCase):
             policy.cache_ttl("claude", "interactive", "TEAM")  # A team route is billed API_KEY (billing_kind).
         self.assertEqual(policy.route(profile(), EDIT, session_kind="subagent").cache_ttl, "5m")
         self.assertEqual(policy.route(profile(), EDIT).cache_ttl, "1h")
-        self.assertEqual(policy.route(profile(billing="API_KEY"), EDIT).cache_ttl, "5m")
+        self.assertEqual(policy.route(profile(billing="API_KEY"), EDIT).cache_ttl, "1h")
+        for kind in ("autonomous", "benchmark", "subagent"):   # Scripted and benchmark sessions never pause.
+            self.assertEqual(policy.route(profile(billing="API_KEY"), EDIT, session_kind=kind).cache_ttl, "5m", kind)
 
     def test_ttl_break_even_matches_the_opus_arithmetic(self):
         # 0.75 * 4 * w / (P * (1.25 * 4 - 0.2)) = 0.625 * w / P.

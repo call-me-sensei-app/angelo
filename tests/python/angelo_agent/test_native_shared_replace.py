@@ -193,7 +193,9 @@ class FolderAtTheNameTests(unittest.TestCase):
 
 
 class SuccessPathCostTests(unittest.TestCase):
-    """The success path's cost, counted (the helper is on save paths): POSIX, one Python call over ``os.replace``."""
+    """The success path's cost, counted (the helper is on save paths): POSIX, its own call and C's write check
+    (``owned_paths.require_writable``, two calls) over ``os.replace``. Outside the app the check reads the value as a
+    path (``os.fspath``, one C call, as it does in the app before C answers) and asks nothing else."""
 
     @unittest.skipIf(os.name == "nt", environment_skip("Windows renames through win32_replace: its cost is its own module's"))
     def test_posix_adds_one_call_and_no_system_call(self):
@@ -205,8 +207,8 @@ class SuccessPathCostTests(unittest.TestCase):
             shared_replace.replace(sources[3], target)
             _value, bare = thread_work.count(lambda: os.replace(sources[0], target))
             _value, helper = thread_work.count(lambda: shared_replace.replace(sources[1], target))
-        self.assertEqual((helper.calls - bare.calls, helper.c_calls - bare.c_calls), (1, 0))
-        self.assertLessEqual(helper.instructions - bare.instructions, 12)
+        self.assertEqual((helper.calls - bare.calls, helper.c_calls - bare.c_calls), (3, 1))
+        self.assertLessEqual(helper.instructions - bare.instructions, 40)
 
 
 class StandaloneTests(unittest.TestCase):

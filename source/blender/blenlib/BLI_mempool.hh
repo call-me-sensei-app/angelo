@@ -1,0 +1,150 @@
+/* SPDX-FileCopyrightText: 2008 Blender Authors
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later */
+
+#pragma once
+
+/** \file
+ * \ingroup bli
+ */
+
+#include "BLI_compiler_attrs.hh"
+
+#include <cstddef>
+#include <type_traits>
+
+namespace blender {
+
+struct BLI_mempool;
+struct BLI_mempool_chunk;
+
+BLI_mempool *BLI_mempool_create(unsigned int esize,
+                                unsigned int elem_num,
+                                unsigned int pchunk,
+                                unsigned int flag)
+    ATTR_MALLOC ATTR_WARN_UNUSED_RESULT ATTR_RETURNS_NONNULL;
+void *BLI_mempool_alloc(BLI_mempool *pool) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT ATTR_RETURNS_NONNULL
+    ATTR_NONNULL(1);
+void *BLI_mempool_calloc(BLI_mempool *pool)
+    ATTR_MALLOC ATTR_WARN_UNUSED_RESULT ATTR_RETURNS_NONNULL ATTR_NONNULL(1);
+
+/**
+ * C++ templates for convenience.
+ */
+template<typename T>
+ATTR_MALLOC ATTR_WARN_UNUSED_RESULT ATTR_RETURNS_NONNULL
+    ATTR_NONNULL(1) T *BLI_mempool_alloc(BLI_mempool *pool)
+{
+  static_assert(std::is_trivial_v<T>,
+                "Only trivial types may be allocated with BLI_mempool_alloc");
+  return static_cast<T *>(BLI_mempool_alloc(pool));
+}
+template<typename T>
+ATTR_MALLOC ATTR_WARN_UNUSED_RESULT ATTR_RETURNS_NONNULL
+    ATTR_NONNULL(1) T *BLI_mempool_calloc(BLI_mempool *pool)
+{
+  static_assert(std::is_trivial_v<T>,
+                "Only trivial types may be allocated with BLI_mempool_calloc");
+  return static_cast<T *>(BLI_mempool_calloc(pool));
+}
+
+/**
+ * Free an element from the mempool.
+ *
+ * \note doesn't protect against double frees, take care!
+ */
+void BLI_mempool_free(BLI_mempool *pool, void *addr) ATTR_NONNULL(1, 2);
+/**
+ * Empty the pool, as if it were just created.
+ *
+ * \param pool: The pool to clear.
+ * \param elem_num_reserve: Optionally reserve how many items should be kept from clearing.
+ */
+void BLI_mempool_clear_ex(BLI_mempool *pool, int elem_num_reserve) ATTR_NONNULL(1);
+/**
+ * Wrap #BLI_mempool_clear_ex with no reserve set.
+ */
+void BLI_mempool_clear(BLI_mempool *pool) ATTR_NONNULL(1);
+/**
+ * Free the mempool itself (and all elements).
+ */
+void BLI_mempool_destroy(BLI_mempool *pool) ATTR_NONNULL(1);
+int BLI_mempool_len(const BLI_mempool *pool) ATTR_NONNULL(1);
+/**
+ * Allocated payload bytes of the pool and every reserved chunk, including unused capacity.
+ * Excludes allocator bookkeeping outside the allocations. The caller must exclude concurrent
+ * modification. Returns zero for null, or SIZE_MAX if the sum cannot be represented.
+ */
+size_t BLI_mempool_allocated_bytes(const BLI_mempool *pool);
+
+/**
+ * Bound the MEM payload bytes of a new pool and subsequent allocate/free operations whose live
+ * count never exceeds #peak_live_num. Initial preallocation is included even when it exceeds the
+ * peak. Explicit reserve/clear_ex changes and above-peak allocations are outside this contract.
+ * Uses current-build element/chunk layout and MEM request rounding; does not allocate or change
+ * pool creation. Excludes allocator bookkeeping and OS overhead. True proves sizing arithmetic,
+ * not available memory or validity of downstream typed accesses/client counts.
+ *
+ * #r_bytes is required and is zero on failure. Unknown flags and unrepresentable native pool
+ * arithmetic return false before allocation.
+ */
+bool BLI_mempool_create_size_bound(unsigned int elem_size,
+                                   unsigned int preallocate_num,
+                                   unsigned int peak_live_num,
+                                   unsigned int requested_chunk_size,
+                                   unsigned int flags,
+                                   size_t *r_bytes) ATTR_NONNULL(6);
+void *BLI_mempool_findelem(BLI_mempool *pool, unsigned int index) ATTR_WARN_UNUSED_RESULT
+    ATTR_NONNULL(1);
+
+/**
+ * Fill in \a data with the contents of the mempool.
+ */
+void BLI_mempool_as_array(BLI_mempool *pool, void *data) ATTR_NONNULL(1, 2);
+/**
+ * A version of #BLI_mempool_as_array that allocates and returns the data.
+ */
+void *BLI_mempool_as_arrayN(BLI_mempool *pool,
+                            const char *allocstr) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT
+    ATTR_NONNULL(1, 2);
+
+#ifndef NDEBUG
+void BLI_mempool_set_memory_debug();
+#endif
+
+/**
+ * Iteration stuff.
+ * \note this may easy to produce bugs with.
+ */
+
+/**  \note Private structure. */
+struct BLI_mempool_iter {
+  BLI_mempool *pool;
+  struct BLI_mempool_chunk *curchunk;
+  unsigned int curindex;
+};
+
+/** #BLI_mempool.flag */
+enum {
+  BLI_MEMPOOL_NOP = 0,
+  /**
+   * Allow iterating on this mempool.
+   *
+   * \note this requires that the first four bytes of the elements
+   * never begin with 'free' (#FREEWORD).
+   * \note order of iteration is only assured to be the
+   * order of allocation when no chunks have been freed.
+   */
+  BLI_MEMPOOL_ALLOW_ITER = (1 << 0),
+};
+
+/**
+ * Initialize a new mempool iterator, #BLI_MEMPOOL_ALLOW_ITER flag must be set.
+ */
+void BLI_mempool_iternew(BLI_mempool *pool, BLI_mempool_iter *iter) ATTR_NONNULL();
+/**
+ * Step over the iterator, returning the mempool item or NULL.
+ */
+void *BLI_mempool_iterstep(BLI_mempool_iter *iter) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
+
+}  // namespace blender

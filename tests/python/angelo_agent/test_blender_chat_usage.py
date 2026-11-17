@@ -127,8 +127,10 @@ def capture(name, full=False):
 
 def event(kind, value='PRESS', x=None, y=None):
     area, region = area_region()
-    data = SimpleNamespace(type=kind, value=value, mouse_x=region.x + (x or 10), mouse_y=region.y + (y or 10),
-                           mouse_prev_y=region.y + (y or 10), ctrl=False, oskey=False, shift=False, alt=False, unicode="")
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    px, py = chat_point(region, (x or 10, y or 10, 0, 0))   # A point on the chat's canvas, in its points.
+    data = SimpleNamespace(type=kind, value=value, mouse_x=px, mouse_y=py,
+                           mouse_prev_y=py, ctrl=False, oskey=False, shift=False, alt=False, unicode="")
     with bpy.context.temp_override(window=window, area=area, region=region):
         return chat_view.ANGELO_OT_chat_input.modal(handler, bpy.context, data)
 

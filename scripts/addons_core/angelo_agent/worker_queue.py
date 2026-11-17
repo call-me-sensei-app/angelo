@@ -37,7 +37,7 @@ import time
 from .remote_executor import EndedWorker, _nothing_ran
 from .refusal_codes import RefusalError
 from .ui_text import n_
-from . import thread_start, worker_chat_lifecycle, worker_parking, worker_save_recovery
+from . import owned_paths, thread_start, worker_chat_lifecycle, worker_parking, worker_save_recovery
 from .worker_save_recovery import blocker as save_problem
 
 REUSE = []          # Callables (done_session_id, queued_item) -> bool, True when that warm worker took the part: the
@@ -153,7 +153,7 @@ def _remove_folder(item):
     folder = getattr(getattr(item.get("worker"), "part", None), "parent", None)
     try:
         if folder is not None:
-            folder.rmdir()   # Only an empty one: a part never started wrote nothing there.
+            owned_paths.require_writable(folder).rmdir()   # Only an empty one: a part never started wrote nothing.
     except OSError:
         pass
 

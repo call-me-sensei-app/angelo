@@ -35,6 +35,8 @@ import uuid
 from pathlib import Path
 
 import bpy
+import _bpy  # noqa: E402
+GUARD = getattr(_bpy, "_angelo_guard", None)   # Not bpy data: callable from any thread (C locks it).
 
 assert "--factory-startup" in sys.argv and bpy.app.background, "Use a disposable headless factory-startup instance"
 ROOT = Path(__file__).resolve().parents[3]
@@ -46,6 +48,8 @@ sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from angelo_agent import tool_pump, ui, worker_dispatch  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
+from qa_person import reviewing  # noqa: E402
+BlenderExecutor = reviewing(BlenderExecutor)   # Each script runs as one the person approved (qa_person).
 from angelo_agent.controller import ToolDispatchBudget  # noqa: E402
 from angelo_agent.headless_main import _register  # noqa: E402
 from parallel_workers_qa import WorkerChat, percentile, worker_chat  # noqa: E402
@@ -135,7 +139,7 @@ class Runtime:
 
 def apply_mutation(target, call):
     with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-        bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
+        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
 
 
 def one_round(chat, window, seconds, kind=LeadScript):
@@ -198,6 +202,8 @@ def guarded_hosted_round(chat, window):
         elif event == "c_call":
             owner = type(getattr(argument, "__self__", None)).__module__ or ""
             module = getattr(argument, "__module__", None) or ""
+            if getattr(argument, "__self__", None) is GUARD:
+                return   # C's guard (_bpy._angelo_guard) is for any thread: its own lock, a thread's own depth.
             if module.split(".")[0] in modules or owner.split(".")[0] in modules:
                 seen.append((threading.current_thread().name, "c_call", owner + ":" + getattr(argument, "__name__", "")))
     real = {name: getattr(bpy, name) for name in ("data", "context", "ops")}
@@ -251,6 +257,8 @@ def guarded_round(chat, window):
         elif event == "c_call":
             owner = type(getattr(argument, "__self__", None)).__module__ or ""
             module = getattr(argument, "__module__", None) or ""
+            if getattr(argument, "__self__", None) is GUARD:
+                return   # C's guard (_bpy._angelo_guard) is for any thread: its own lock, a thread's own depth.
             if module.split(".")[0] in modules or owner.split(".")[0] in modules:
                 seen.append((threading.current_thread().name, "c_call", owner + ":" + getattr(argument, "__name__", "")))
     real = {name: getattr(bpy, name) for name in ("data", "context", "ops")}

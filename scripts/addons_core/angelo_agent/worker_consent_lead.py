@@ -418,7 +418,8 @@ def approve_operator(operator, controller, call_id):
     if shown is not None and shown[0] == "angelo_execute_python" and not reviewed:
         operator.report({'INFO'}, rpt_(REVIEW_FIRST))
         import bpy
-        bpy.ops.angelo.review_tool(call_id=call_id, session_id=controller.state["id"])
+        from . import grant_guard   # In the Approve click's own grant scope (grant_guard.clicked).
+        grant_guard.clicked(bpy.ops.angelo).review_tool(call_id=call_id, session_id=controller.state["id"])
         return {'CANCELLED'}
     reason = approve(controller, call_id)
     if reason is not None:

@@ -7,6 +7,7 @@ test_blender_checkpoints.py is the separate real-document factory-startup gate.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import copy
 import json
@@ -428,7 +429,7 @@ class CheckpointPolicyTests(unittest.TestCase):
         for worker in workers:
             worker.start()
         for worker in workers:
-            worker.join(timeout=3)
+            worker.join(timeout=CAP_S)
         self.assertFalse(any(worker.is_alive() for worker in workers))
         self.assertEqual(failures, [])
         self.assertEqual(len(self.store.load(record["id"])["files"]), 8)

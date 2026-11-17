@@ -11,9 +11,21 @@ APPROVALS = {
     "AUTO_BOUNDED": (n_("Auto · bounded edits"), n_("Auto-approve validated object edits and native sculpt passes. Python trust is separate.")),
     "READ_ONLY": (n_("Read only"), n_("Inspect and discuss the scene; reject every mutation, including Python.")),
 }
+# Every reasoning effort a runtime may advertise, weakest first (the order ``default_effort`` ranks by).
 EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
-# What Claude Code's --effort accepts; anything else is sent as low.
+# What Claude Code's --effort accepts; a chat's choice outside it is no choice there (``request_effort``).
 CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+# The default reasoning effort (maintainer's ruling, 2026-11-12): this level wherever a model offers it, else the
+# highest level the model offers. ``default_effort`` is the only place that decides it; a chat stores an effort
+# only when its person chose one (``stored_options``), so the default follows the model the chat runs.
+DEFAULT_EFFORT = "high"
+# Models whose default is another level, ``{model ID: effort}``, used only where the model offers that level.
+# The one place a model's adapter states such an exception; a catalog's own default is never read.
+DEFAULT_EFFORT_EXCEPTIONS = {
+    # Gemini 4 Carbon: medium, its highest-but-one level (maintainer ruling 2026-11-12: "default effort for
+    # everything should be high with exception of Carbon, which can be Medium since High is the highest").
+    "gemini-4-carbon": "medium",
+}
 # A new chat, and a saved one with no approval choice, starts in Auto (doc/angelo/agent_chat.rst, "Approvals").
 # A saved choice is kept. Python still asks in Auto unless the person opts in (always_allow, trusted_scripts).
 DEFAULT_APPROVAL = "AUTO_BOUNDED"
@@ -29,7 +41,11 @@ def stored_options(value):
 
     Only a missing approval takes the default (Auto); any other value outside
     ``APPROVALS`` (a typo, a mode a later build adds) reads as Ask, the
-    restrictive reading.
+    restrictive reading. ``effort`` is the person's choice, or ``""`` when they
+    made none (or it is no level any runtime knows): the request then runs at
+    its model's default (``chat_effort``). A build from before the default
+    moved saved "low" in every chat, so a saved "low" stays "low": it cannot be
+    told from a choice.
     """
     value = value if isinstance(value, dict) else {}
     approval = value.get("approval")
@@ -38,10 +54,26 @@ def stored_options(value):
     elif not isinstance(approval, str) or approval not in APPROVALS:
         approval = "ASK"
     return {"model": str(value.get("model") or "")[:128],
-            "effort": value.get("effort") if value.get("effort") in EFFORTS else "low",
+            "effort": value.get("effort") if _level(value.get("effort")) else "",
             "fast": value.get("fast") is True,
             "approval": approval}
 
+
+NARROWING_APPROVALS = frozenset({"ASK", "READ_ONLY"})   # Anything may choose them (doc/angelo/grant_operators.rst).
+
+
+def options_widen(arguments):
+    """Whether a chat's ``set_options(**changes)`` widens (``grant_guard.entry``; ``arguments`` bound, plain values),
+    read from the call alone, never from the chat's state, which a script could write (the C guard review, SHOULD-3):
+    Ask, Read only and Fast off narrow; anything else widens, a model or effort choice and an unknown key included
+    (Copy setup break-it r2, S2: narrowing was refused to agent code)."""
+    for key, value in arguments["changes"].items():
+        if key == "approval":
+            if value not in NARROWING_APPROVALS:
+                return True
+        elif key != "fast" or value is not False:
+            return True
+    return False
 
 def clean_options(value):
     """A chat's effective options, for every reader: dispatch, views and the composer.
@@ -97,8 +129,7 @@ def normalize_models(models, provider="codex"):
         output.append({"id": identity, "name": str(model.get("displayName") or model.get("name") or identity)[:100],
                        "description": str(model.get("description") or "")[:500],
                        "default": bool(model.get("isDefault")) or (provider == "claude" and identity == "default"), "efforts": efforts,
-                       "runtime_default_alias": provider == "claude" and identity == "default",
-                       "default_effort": model.get("defaultReasoningEffort") or "low", "fast_tier": tier,
+                       "runtime_default_alias": provider == "claude" and identity == "default", "fast_tier": tier,
                        "images": "image" in model.get("inputModalities", []) or provider == "claude"})
     return output
 
@@ -131,10 +162,10 @@ def codex_turn_options(controller, options=None):
         if controller.models and not any(m["id"] == identity for m in controller.models):
             raise ValueError("The selected model is no longer available on this connection. Choose another model.")
         parameters["model"] = identity
-    effort = options["effort"]
-    if model and model["efforts"] and effort not in model["efforts"]:
-        effort = model["default_effort"] if model["default_effort"] in model["efforts"] else model["efforts"][0]
-    parameters["effort"] = effort
+    if not (model and model.get("untested")):
+        # An unmapped model of a custom endpoint (endpoint_connections) gets none: its server's own default, never
+        # a reasoning level the model may refuse.
+        parameters["effort"] = chat_effort(options, model)
     # A per-turn override prevents sticky Fast billing when the toggle is off.
     # null would inherit the previous/native profile tier in newer runtimes.
     parameters["serviceTierForTurn"] = "default"
@@ -145,6 +176,65 @@ def codex_turn_options(controller, options=None):
     return parameters
 
 
-def claude_effort(effort):
-    """The effort a Claude launch actually sends for a chat's effort option."""
-    return effort if effort in CLAUDE_EFFORTS else "low"
+def _level(value, accepted=EFFORTS):
+    """Whether ``value`` is one of the ``accepted`` effort levels (any other type or text is not)."""
+    return type(value) is str and value in accepted
+
+
+def default_effort(efforts=(), identity=""):
+    """The effort a chat runs at when its person chose none, on a model that offers ``efforts``.
+
+    ``DEFAULT_EFFORT`` where the model offers it, else the highest level it
+    offers (``EFFORTS`` order), never merely the first one it lists. A model in
+    ``DEFAULT_EFFORT_EXCEPTIONS`` takes its own level where it offers that one.
+    A model that advertises no level (its catalog not read yet, or no such
+    control) is taken to offer them all. Every caller asks here, so the
+    defaults cannot drift apart (``test_native_default_effort.py``).
+    """
+    offered = [level for level in EFFORTS if level in (efforts or ())] or list(EFFORTS)
+    exception = DEFAULT_EFFORT_EXCEPTIONS.get(identity) if type(identity) is str else None
+    if _level(exception, offered):
+        return exception
+    return DEFAULT_EFFORT if DEFAULT_EFFORT in offered else offered[-1]
+
+
+def chat_effort(options, model=None, accepted=EFFORTS):
+    """The effort a chat's request runs at on ``model``: its person's choice where it holds, else the default.
+
+    The choice (``options["effort"]``; ``""`` is none) holds while the model
+    offers it, or advertises no level at all. ``accepted`` narrows the model's
+    levels and the choice to what the runtime takes (``request_effort``). What
+    the chip and the reasoning card show is this same value
+    (``chat_popovers.effective_effort``).
+    """
+    options = options if isinstance(options, dict) else {}
+    model = model if isinstance(model, dict) else {}
+    offered = [level for level in accepted if level in (model.get("efforts") or ())]
+    chosen = options.get("effort")
+    if _level(chosen, offered or accepted):
+        return chosen
+    return default_effort(offered or accepted, model.get("id") or options.get("model") or "")
+
+
+def carried_effort(options, model):
+    """The effort choice a chat keeps when its model becomes ``model``: its own while that model offers it, else none.
+
+    A choice the new model lacks is dropped (``""``), never replaced by a level
+    written into the chat: the chat then follows its model's default, also
+    after a later model change.
+    """
+    chosen = stored_options(options)["effort"]
+    return chosen if chosen and chat_effort({"effort": chosen}, model) == chosen else ""
+
+
+def request_effort(context, options, runtime):
+    """The effort ``context``'s request sends on ``runtime`` ("claude" or "codex"), as its receipt records it.
+
+    The model is the one the request runs (``selected_model``); a context with
+    no catalog has none, and the default is then the runtime's own. Claude Code
+    accepts ``CLAUDE_EFFORTS`` only (its ``--effort``). ``codex_turn_options``
+    sends the same value for a Codex turn.
+    """
+    options = clean_options(options)
+    model = selected_model(context, options) if getattr(context, "models", None) and hasattr(context, "settings") else None
+    return chat_effort(options, model, CLAUDE_EFFORTS if runtime == "claude" else EFFORTS)

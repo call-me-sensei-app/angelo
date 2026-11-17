@@ -21,8 +21,16 @@ reply, in 1.0.9's own words).
   same. The pill sits at the top, never over the bottom where a revealed card's Approve lands: a second click on the
   pill's spot (a double-click) can never approve a step the person has not seen (break-it review P1). Each part runs
   under ``chat_guard``: a failure here never takes the chat, or the card, down with it.
+* ``review_hold``: a card the person is reviewing does not expire under them. A script's card waits ten minutes
+  (``tool_deadlines``), and a reviewer was still reading one when it ran out (a showcase run, 2026-11-14). While
+  the chat is shown and its waiting card has its code or details open, or any part of it is in view with Angelo's
+  window in front, the call's lifetime does not run: ``call.expires`` moves later by the time that passed, as the
+  scene and editing-tool holds move it (``document_scene.hold``), so the card's "until" line and a provider's
+  wait (``tool_deadlines.await_native``) follow. The draw records what is seen (``_place``), the chat's window
+  handler what the person does (``note_event``). The same call, card and click: nothing here approves anything.
 """
 
+import time
 import weakref
 
 from . import auto_reasons
@@ -37,6 +45,8 @@ SHIELD_SECONDS = 1.0   # After a pill's click: Blender's longest double-click ti
 PAD = 12   # Around the pill's spot: past Blender's largest default drag threshold (Preferences > Input, mouse 3 px).
 _shield_pending = {}  # Chat -> exact waiting card; blocked until its first guarded draw.
 _reveal = {}   # Chat id -> the card the next draw of that chat scrolls into view (a pointer's or a rail tile's click).
+_reviews = {}  # Chat id -> (its waiting call's id, any part of the card in view, its code or details open), as drawn.
+_front = [False]   # Whether the person's last input went to an Angelo window (``note_event``).
 
 
 def awaiting(controller):
@@ -124,8 +134,8 @@ def auto_reason(controller, call):
             or automatic(call) or call.name == "angelo_delegate"):
         return None
     if call.name in SCRIPTS:   # Scripts: script_consent_kind's rule. Only an excluded one asks whatever is allowed.
-        from .trusted_scripts import consent_excluded
-        code = auto_reasons.SCRIPT_EXCLUDED if call.name == "angelo_execute_python" and consent_excluded(call) else None
+        from .trusted_scripts import consent_exclusion
+        code = consent_exclusion(call) if call.name == "angelo_execute_python" else None   # Its own rule's code.
     else:
         # _auto_bounded's own rule, evaluated once (None: it runs; a worker chat's extra gate only ever adds a card).
         code = auto_reasons.bounded_reason(controller, call, "AUTO_BOUNDED")
@@ -188,6 +198,9 @@ def place(state, controller, blocks, scroll, visible):
 
 def _place(state, controller, blocks, scroll, visible):
     identity = controller.state["id"]
+    if state.get("session") not in (None, identity):
+        _reviews.pop(state["session"], None)   # Another chat was drawn here last: nobody sees its card now.
+    _reviews.pop(identity, None)   # Recorded again below, as this draw shows it.
     state["session"] = identity  # Canvas input must bind its pending reveal to this exact chat.
     waiting = awaiting(controller)
     # An earlier card or request cannot redirect a later request, even if its call ID is reused.
@@ -212,6 +225,8 @@ def _place(state, controller, blocks, scroll, visible):
     if _reveal.pop(identity, None) is not None:
         scroll = below   # The card's bottom edge at the transcript's bottom: its buttons in view.
     shown = max(0, min(scroll, sum(block[3] for block in blocks) - visible))   # As chat_view clamps it.
+    _reviews[identity] = (waiting.id, below < shown + visible and below + block[3] > shown,
+                          ("approval", waiting.id) in state.get("expanded", ()))   # For review_hold.
     if not shown <= below <= shown + max(0, visible - BUTTONS):
         state["approval_pointer"] = (waiting.id, label(controller), below < shown)
     return scroll
@@ -296,3 +311,61 @@ def _draw_pointer(state, width, y, found):
     view.text(shown, x + 34, y + 12, 14, TEXT)
     view.text(arrow, x + pill_width - 14 - _measure(arrow, 14), y + 12, 14, AMBER)
     state["hits"].insert(0, ((x, y, pill_width, 35), action, call_id))
+
+
+# A card being reviewed does not expire -------------------------------------------------------------------------
+
+def note_event(event_type, value=None, moved=True, now=None):
+    """Every event the chat's window handler sees (``chat_view``), for ``review_hold``: whether the person's last
+    input went to an Angelo window. Losing focus says it did not; a timer, and a pointer refresh without motion
+    (``moved`` False: ``input_policy.refresh_move``), are not the person's and say nothing."""
+    if event_type == "WINDOW_DEACTIVATE":
+        _front[0] = False
+    elif moved and event_type != "NONE" and not event_type.startswith("TIMER"):
+        _front[0] = True
+
+
+def _chat_shown():
+    """Whether the person can see a chat now (``chat_toggle.chat_shown``); False where that cannot be asked."""
+    try:
+        from .chat_toggle import chat_shown
+        return bool(chat_shown())
+    except Exception:   # noqa: BLE001 - not knowing is not reviewing: the card keeps its ordinary lifetime.
+        return False
+
+
+def reviewing(controller, call):
+    """Whether the person is reviewing ``call``'s card, the one ``controller``'s chat shows (module docstring)."""
+    seen = _reviews.get(controller.state.get("id"))
+    if seen is None or seen[0] != call.id or not _chat_shown():
+        return False
+    return bool(seen[2] or seen[1] and _front[0])
+
+
+def review_hold(chat, held=False, now=None):
+    """``Controller._pump_tools``, each pump: True while the person reviews ``chat``'s waiting card, whose lifetime
+    then does not run. ``held``: the chat already waits for its scene or the person's tool, which moved every
+    call's lifetime this pump; nothing is credited twice. A review's first pump credits nothing: there is no
+    earlier one to count from. Only the card being reviewed is held, never another pending call."""
+    now = time.monotonic() if now is None else now
+    last, chat._review_at = getattr(chat, "_review_at", None), None
+    call = None if held else awaiting(chat)
+    if call is None or not reviewing(chat, call):
+        return False
+    chat._review_at = now
+    if last is not None and getattr(call, "expires", None) is not None:
+        call.expires += now - last
+    return True
+
+
+def after_holds(chat, tool_held):
+    """The pump's last hold, after the scene's and the editing tool's (``Controller._pump_tools``); returns
+    ``tool_held`` unchanged."""
+    review_hold(chat, bool(getattr(chat, "_held", False) or tool_held))
+    return tool_held
+
+
+def forget_reviews():
+    """Nothing is being reviewed (tests; an add-on reload)."""
+    _reviews.clear()
+    _front[0] = False

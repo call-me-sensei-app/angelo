@@ -151,9 +151,12 @@ def screenshot(name):
 
 def event(kind, value='PRESS', x=None, y=None):
     area, region = area_region()
-    x = region.width - 100 if x is None else x
-    y = 40 if y is None else y
-    data = SimpleNamespace(type=kind, value=value, mouse_x=region.x + x, mouse_y=region.y + y, mouse_prev_y=region.y + y,
+    if x is None:   # A key's event: anywhere inside the chat, in window pixels.
+        px, py = region.x + region.width - 100, region.y + 40
+    else:   # A point on the chat's canvas (its points, as its hits).
+        from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+        px, py = chat_point(region, (x, y, 0, 0))
+    data = SimpleNamespace(type=kind, value=value, mouse_x=px, mouse_y=py, mouse_prev_y=py,
                            ctrl=False, oskey=False, shift=False, alt=False, unicode="")
     with bpy.context.temp_override(window=window, area=area, region=region):
         return chat_view.ANGELO_OT_chat_input.modal(handler, bpy.context, data)

@@ -30,6 +30,7 @@ from . import timer_resolution, worker_mirror_pins as pins
 from .display_text import Text
 from .worker_mirror_journal import MirrorStore
 from .ui_text import n_
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 NOT_OPEN = n_("This chat is not open in its worker; nothing was sent.")
 NOT_ACCEPTED = n_("This chat's worker did not accept the request, so nothing is counted as done "
@@ -351,18 +352,15 @@ class MirrorController(Controller):
         del settings, api_key
         if (provider, connection_id) != pins.route(self):   # The lead's own record, never the worker's file.
             raise RuntimeError(Text(KEEPS_CONNECTION))
-        from .chat_settings import stored_options
+        from .chat_settings import carried_effort, stored_options
         choices = list(models or self.models or [])
         selected = (next((m for m in choices if m.get("id") == model), None) if model
                     else next((m for m in choices if m.get("default")), None))
         if model and not selected:
             raise ValueError(Text(n_("Refresh the models available to this connection")))
         options = stored_options(self.state.get("options"))
-        effort = options["effort"]
-        if selected and selected.get("efforts") and effort not in selected["efforts"]:
-            effort = (selected["default_effort"] if selected.get("default_effort") in selected["efforts"]
-                      else selected["efforts"][0])
-        self.set_options(model=model, effort=effort, fast=options["fast"] and bool(selected and selected.get("fast_tier")))
+        self.set_options(model=model, effort=carried_effort(options, selected),
+                         fast=options["fast"] and bool(selected and selected.get("fast_tier")))
 
     def invalidate_runtime(self, connection_id=None):
         """A connection's key changed, it was removed or signed in again: nothing here holds a runtime, so this never
@@ -482,3 +480,8 @@ class EventRouter:
             print("Angelo: a worker event for a chat it does not host was dropped")
             return
         mirror.receive(parts[1], parts[2])
+
+
+from .chat_settings import options_widen  # noqa: E402
+_grant_guard.entry_methods(MirrorController, "approve_tool", "execute_tool")
+_grant_guard.entry_methods(MirrorController, "set_options", widens=options_widen)   # As a chat's (chat_settings).

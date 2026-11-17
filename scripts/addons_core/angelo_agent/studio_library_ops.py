@@ -19,7 +19,7 @@ import bpy
 from bpy.props import BoolProperty, StringProperty
 from bpy.types import Operator
 
-from . import live_windows
+from . import live_windows, edit_tool_hold
 from . import studio_assets_host as host
 from . import studio_assets_space as space
 from . import card_kit as kit
@@ -93,6 +93,7 @@ def start_free():
         bpy.app.timers.register(_poll_free, first_interval=0.1, persistent=True)
 
 
+@edit_tool_hold.guarded   # Touches Blender data: waits for the person's operation.
 def _poll_free():
     if not _freeing["done"]:
         return 0.1 if _freeing["running"] else None
@@ -277,6 +278,7 @@ class ANGELO_OT_studio_library_report(Operator):
         return {'FINISHED'}
 
 
+@edit_tool_hold.guarded   # Touches Blender data: waits for the person's operation.
 def ask_free(tries=[0]):   # noqa: B006 - counts the waits for the size across timer calls.
     """After the person removed the library in Preferences (their own Turn off): ask whether to free the space too,
     in the window where they did it. Nothing to ask when no copies are left. The size is measured off the main

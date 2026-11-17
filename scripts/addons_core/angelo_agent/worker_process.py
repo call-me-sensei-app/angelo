@@ -19,7 +19,6 @@ another (``worker_pool``: warm reuse and workers launched ahead).
 """
 
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -29,17 +28,15 @@ from pathlib import Path
 
 from . import external_cli_protocol as protocol, journal_checks, worker_channel
 from .headless_session import KEEP_ENVIRONMENT
-from . import private_roots, thread_start
+from . import essential_environment, private_roots, thread_start
+from . import owned_paths  # noqa: E402  (what Angelo made: its cleanups remove only that)
+from .worker_launch import default_binary, default_script, start_process, worker_command  # noqa: F401
 
 PRIVATE_PREFIX = private_roots.WORKER_PREFIX
 READY_TIMEOUT = 120.0
 SWITCH_TIMEOUT = 30.0   # A switch reloads an empty part file: tens of milliseconds measured (Mac 2).
 STOP_GRACE = 5.0
 WATCH_SECONDS = 0.5   # How often a hosting worker's process is checked while its connection stays open (``watch``).
-# What a Windows process needs besides KEEP_ENVIRONMENT: the system, temporary and profile folders.
-WINDOWS_ENVIRONMENT = ("SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "PATHEXT", "TEMP", "TMP", "USERPROFILE",
-                       "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "USERNAME", "NUMBER_OF_PROCESSORS",
-                       "PROCESSOR_ARCHITECTURE")
 
 
 # QA switches a worker honours when the Angelo that starts it has them set (suites only; never set in a release).
@@ -78,10 +75,7 @@ class RequestRefused(ValueError):
 
 
 def worker_environment(environ, private, platform=None):
-    kept = {name: environ[name] for name in KEEP_ENVIRONMENT if name in environ}
-    if (platform or sys.platform) == "win32":
-        upper = {key.upper(): value for key, value in environ.items()}
-        kept.update({name: upper[name] for name in WINDOWS_ENVIRONMENT if name in upper})
+    kept = essential_environment.environment(KEEP_ENVIRONMENT, environ, platform)   # The OS's own, then the display.
     kept.update({name: value for name, value in environ.items() if name.startswith("LC_")})
     kept.update({name: environ[name] for name in QA_ENVIRONMENT if name in environ})
     kept.update(journal_checks.carried(environ))   # A suite's journal checks cover the worker's owed saves too.
@@ -100,21 +94,6 @@ def worker_environment(environ, private, platform=None):
     return kept
 
 
-def worker_command(binary, script, part, channel, private):
-    return [str(binary), "--background", "--factory-startup", "--disable-autoexec", "--offline-mode",
-            "--python-exit-code", "1", "--python", str(script), "--", "--worker", "--channel", channel,
-            "--file", str(part), "--private", str(private)]
-
-
-def default_binary():
-    import bpy
-    return Path(bpy.app.binary_path)
-
-
-def default_script():
-    return Path(__file__).resolve().parents[2] / "angelo" / "angelo_headless.py"
-
-
 _live = set()   # Workers whose start began and whose process has not been seen to exit (``live``).
 _live_lock = threading.Lock()
 
@@ -130,15 +109,17 @@ def live():
 class WorkerProcess:
     """One worker Blender and its connection. ``request`` is called from Blender's main thread only."""
 
-    def __init__(self, part, *, binary=None, script=None, environ=None, platform=None, popen=None,
-                 listener=None, temporary=None, killpg=None, crash_reports=None):
+    def __init__(self, part, *, environ=None, platform=None, listener=None, temporary=None, killpg=None,
+                 crash_reports=None):
+        # What it runs is never held here: an object's attributes are Python state a script that reached it could
+        # change in place before the start, which runs unconfined (``_launch``: C's program, the add-on's script, the
+        # module's own start).
         self.part = Path(part)
-        self.binary, self.script = binary, script
         self.environ = os.environ if environ is None else environ
         self.platform = platform or sys.platform
-        self._popen, self._listener = popen, listener
+        self._listener = listener
         # posix: a worker runs in a session of its own; its scripts' processes share its group (signalled on stop).
-        self._killpg = killpg if killpg is not None else getattr(os, "killpg", None) if popen is None else None
+        self._killpg = killpg if killpg is not None else getattr(os, "killpg", None)
         self._group = None
         self.temporary = temporary
         self.crash_reports = crash_reports   # Where Angelo's crash report reads crash logs (``worker_crash_evidence``).
@@ -229,6 +210,10 @@ class WorkerProcess:
 
     def _launch(self, timeout):
         part, self.ended_on_its_own = self.part, None
+        try:   # It saves its part there (``worker_main`` vouches it on arrival): only a part C lets Angelo write.
+            owned_paths.require_writable(part)
+        except PermissionError as error:
+            raise WorkerUnavailable(str(error), sent=False) from None
         from .worker_paths import PathTooLong, check   # Windows: never a worker whose own files cannot be written.
         try:
             check(self.temporary or private_roots.scratch_root(), part, platform=self.platform)
@@ -239,27 +224,27 @@ class WorkerProcess:
         (self.private / STATE).mkdir(mode=0o700)
         listener = self._listener() if self._listener else worker_channel.listener(self.platform)
         log = self.private / "worker.log"
+        owned_paths.require_writable(log)
         error = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
         self.started_at = time.perf_counter()
         try:
-            command = worker_command(self.binary or default_binary(), self.script or default_script(), part,
-                                     listener.child_argument(), self.private)
+            command = worker_command(default_binary(), default_script(), part, listener.child_argument(),
+                                     self.private)
             options = dict(env=worker_environment(self.environ, self.private, self.platform),
                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=error)
-            if self.platform == "win32":
-                from .child_process import popen as job_popen
-                popen = self._popen or job_popen   # A Job Object: stopping ends the worker's whole tree.
-            else:
-                popen = self._popen or subprocess.Popen
+            if self.platform != "win32":
                 options.update(pass_fds=listener.pass_fds(), close_fds=True, start_new_session=True)
-            self.process = popen(command, **options)
+            self.process = start_process(command, options, self.platform)
             self._group = self.process.pid if options.get("start_new_session") else None
         except BaseException:
+            os.close(error)   # First: Windows can't remove a folder holding a file still open.
+            error = None
             listener.close()
             self._remove_private()
             raise
         finally:
-            os.close(error)
+            if error is not None:
+                os.close(error)
         listener.started()
         try:
             endpoint = listener.accept(self.process.pid, alive=lambda: self.process.poll() is None)
@@ -484,9 +469,9 @@ class WorkerProcess:
 
     def _remove_private(self):
         if self.private is not None:
-            shutil.rmtree(self.private, ignore_errors=True)
+            owned_paths.remove_tree(self.private)   # Only the folder Angelo made (owned_paths).
 
     def _remove_scratch(self):
         scratch, self.scratch = self.scratch, None
         if scratch is not None:
-            shutil.rmtree(scratch, ignore_errors=True)
+            owned_paths.remove_tree(scratch)   # Only the folder Angelo made (owned_paths; worker_pool records it).

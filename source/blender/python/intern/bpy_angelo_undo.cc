@@ -16,7 +16,7 @@
 #include <string>
 #include <utility>
 
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 #include "BLO_asset_source_paths.hh"
 #include "BLI_map.hh"
 #include "BLI_set.hh"
@@ -24,11 +24,12 @@
 #include "BKE_collection.hh"
 #include "BKE_idtype.hh"
 #include "BKE_main.hh"
+#include "BKE_subdiv.hh"
 #include "BKE_undo_system.hh"
 #include "DNA_ID.h"
 #include "DNA_collection_types.h"
-#include "BLI_string.h"
-#include "BLI_string_utf8.h"
+#include "BLI_string.hh"
+#include "BLI_string_utf8.hh"
 #include "RNA_access.hh"
 #include "RNA_enum_types.hh"
 #include "WM_api.hh"
@@ -52,8 +53,8 @@
 #  include "BKE_object_types.hh"
 #  include "BKE_paint.hh"
 #  include "BKE_undo_system.hh"
-#  include "BLI_bitmap.h"
-#  include "BLI_endian_defines.h"
+#  include "BLI_bitmap.hh"
+#  include "BLI_endian_defines.hh"
 #  include "BLI_map.hh"
 #  include "BLI_set.hh"
 #  include "DNA_meshdata_types.h"
@@ -1074,6 +1075,12 @@ static PyObject *test_fail_next_checkpoint_install(PyObject * /*self*/, PyObject
   Py_RETURN_NONE;
 }
 
+static PyObject *test_fail_next_bmesh_read(PyObject * /*self*/, PyObject * /*args*/)
+{
+  sculpt_undo_fixture::main_undo_bmesh_read_test_fail_next();
+  Py_RETURN_NONE;
+}
+
 static PyObject *test_restore_phase(PyObject * /*self*/, PyObject * /*args*/)
 {
   switch (BKE_undosys_restore_phase()) {
@@ -1264,6 +1271,23 @@ static PyObject *test_optional_storage_bytes(const void *data, const size_t byte
   return PyBytes_FromStringAndSize(static_cast<const char *>(data), Py_ssize_t(bytes));
 }
 
+/* MDisps stored its multires level until Blender 5.3, which derives it from the grid size
+ * instead (b6cc81e2856). The fixture still reports it: the level whose grid area is the stored
+ * count, or 0 for an empty grid or a count that is no level's area. */
+static int test_mdisps_level(const int totdisp)
+{
+  for (int level = 1; level <= 16; level++) {
+    const int side = bke::subdiv::grid_size_from_level(level);
+    if (side * side == totdisp) {
+      return level;
+    }
+    if (side * side > totdisp) {
+      break;
+    }
+  }
+  return 0;
+}
+
 static PyObject *test_original_grid_layers(const Mesh &mesh, size_t &budget)
 {
   PyObject *result = PyDict_New();
@@ -1336,7 +1360,7 @@ static PyObject *test_original_grid_layers(const Mesh &mesh, size_t &budget)
           return nullptr;
         }
         if (!test_dict_set_owned(item, "count", PyLong_FromLong(grid.totdisp)) ||
-            !test_dict_set_owned(item, "level", PyLong_FromLong(grid.level)) ||
+            !test_dict_set_owned(item, "level", PyLong_FromLong(test_mdisps_level(grid.totdisp))) ||
             !test_dict_set_owned(item,
                                  "positions",
                                  test_optional_storage_bytes(
@@ -1406,7 +1430,7 @@ static PyObject *test_original_sculpt_storage(PyObject *, PyObject *)
     return nullptr;
   }
   for (const wmWindowManager &wm : bmain->wm) {
-    if (WM_jobs_has_running(&wm)) {
+    if (WM_jobs_has_running(&wm, nullptr, WM_JOB_TYPE_ANY)) {
       PyErr_SetString(PyExc_RuntimeError, "The original-storage fixture requires idle jobs");
       return nullptr;
     }
@@ -1842,6 +1866,10 @@ static PyMethodDef methods[] = {
      test_fail_next_checkpoint_install,
      METH_NOARGS,
      "Make the next Sculpt checkpoint install refuse after replacing the document."},
+    {"_test_fail_next_bmesh_read",
+     test_fail_next_bmesh_read,
+     METH_NOARGS,
+     "Make the next protected Dyntopo memfile read refuse its owners after installing the document."},
     {"_test_original_sculpt_storage",
      test_original_sculpt_storage,
      METH_NOARGS,

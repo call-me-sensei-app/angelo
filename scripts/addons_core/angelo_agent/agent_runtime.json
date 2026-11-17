@@ -9,8 +9,8 @@
     "feature_request": "https://github.com/openai/codex/issues/21796"
   },
   "fork": {
-    "branch": "angelo/rust-v0.166.0-call-steps",
-    "commit": "2dfdc4c72e3b497b2c463bce3631eec05475cb3c",
+    "branch": "angelo/rust-v0.166.0-gemini-wire",
+    "commit": "caab709d09b56e552daa83c5f640996325affeb0",
     "repository": "https://github.com/call-me-sensei-app/codex",
     "_public_commit": "public_commit and public_tag: the published branch's head (the same tree as commit, the one the bundled codex was built from) and its tag, added once the maintainer publishes the branch."
   },
@@ -18,8 +18,12 @@
   "notifications": ["turn/modelInputImages", "turn/modelRequestStarted"],
   "request_fields": {"DynamicToolCallParams": ["modelStep"]},
   "config_keys": ["code_mode_forward_dynamic_tool_images", "serial_dynamic_tools"],
+  "wire_apis": ["gemini"],
+  "provider_capabilities": {"request_compression": ["unsupported", "zstd"]},
   "_request_fields": "Fields the build adds to the parameters of a server request Angelo answers; the release checks find each in the build's app-server schema. Listing DynamicToolCallParams.modelStep (the model request that wrote a dynamic call, the turn's latest, the exec cell) lets the recovery hold judge a yielded exec cell's later edit by the step that wrote it, and end a step at the next request's calls when a provider reports no usage (model_steps.record_call_step); a runtime without it keeps the step a call is checked in.",
   "_config_keys": "Launch settings the build adds that Angelo sets only on such a build. Listing runtime_launch.FORWARD_IMAGES_KEY (code mode forwards the pictures of the listed dynamic tools itself) makes Angelo list every tool whose results can carry pictures and tell the model image() is optional (image_proof.py). Listing serial_dynamic_tools (runtime_launch.SERIAL_TOOLS_KEY) checks that the build reads the setting that keeps Angelo's tools one call at a time (agent_execution.rst, \"Concurrent calls\"); Angelo passes it to every Codex, and one without it ignores it.",
+  "_wire_apis": "Model-provider wires (a provider's wire_api) the build adds beside Codex's own responses: gemini, Google's generateContent streaming with thought signatures (doc/angelo/ai_providers.rst, \"Gemini 4 Carbon\"). agent_runtime.supports_wire offers a connection on such a wire only when it is listed here, and the release checks run `codex debug models` with a provider on each listed wire (offline, no request), which a build without it refuses.",
+  "_provider_capabilities": "A custom model provider's capabilities.<name> the build reads, with the values it accepts. Angelo writes request_compression = zstd into a team Codex mode's provider when the gateway decodes zstd (team_runtime.request_compression). No app-server schema shows a capability and Codex ignores one it does not read, so a stale build would silently send plain JSON; the release checks load an offline throwaway provider declaring each listed value (each must load) and one unlisted value (it must be refused as an unknown variant; scripts/angelo/runtime_capabilities.py). Every capability Angelo writes must be listed here.",
   "_notifications": "App-server notifications the build adds that Angelo relies on; the release check finds each in the build's app-server schema. Listing turn/modelInputImages (the pictures each model request carried, by SHA-256) turns on content-proven picture delivery (image_proof.py); a build without it keeps Codex tool pictures unconfirmed. Listing turn/modelRequestStarted (the turn sends its next model request, numbered as item/tool/call's modelStep numbers them) lets the recovery hold end a step at that announcement rather than at usage reports (model_steps.record_request_started).",
   "trust_roots": {"webpki-roots": "1.0.11", "rustls-webpki": "0.103.16",
                   "_about": "The root-store crates the bundled runtime was built with (the fork's Cargo.lock at commit). scripts/angelo/trust_store.py refuses a release whose webpki-roots is older than its floor or than the newest on crates.io."},

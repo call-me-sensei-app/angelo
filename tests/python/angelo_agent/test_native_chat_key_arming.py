@@ -11,12 +11,14 @@ from contextlib import nullcontext
 import importlib
 from pathlib import Path
 import sys
+import time
 from types import SimpleNamespace as NS
 import unittest
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
-from angelo_agent import canvas_controls, canvas_focus, review_again
+from angelo_agent import approval_arming, canvas_controls, canvas_focus, review_again
+from angelo_agent.approval_wait import SHIELD_SECONDS
 from angelo_agent.pending_delivery import ToolCall
 from angelo_agent.request_fences import DeliveryOwner
 
@@ -34,11 +36,15 @@ def drivers(state, invoked):
                  and isinstance(n.value.func.value, ast.Name)
                  and n.value.func.value.id in ('canvas_controls', 'chat_key_arming'))
     body = modal.body[index:index + 2]
-    if index and isinstance(modal.body[index - 1], ast.FunctionDef) and modal.body[index - 1].name == 'activate_control':
-        body = [modal.body[index - 1], *body]
+    # The activate_control the key call is given, found by name above it: other checks may sit between them (1.1's
+    # composer_ime.handle does), and a test that took only the statement right above lost it (NameError).
+    defined = next((i for i in range(index - 1, -1, -1) if isinstance(modal.body[i], ast.FunctionDef)
+                    and modal.body[i].name == 'activate_control'), None)
+    if defined is not None:
+        body = [modal.body[defined], *body]
         # The imports and assignments right above it that it closes over (held_window = window_ref(window)).
-        used = {n.id for n in ast.walk(modal.body[index - 1]) if isinstance(n, ast.Name)}
-        start = index - 1
+        used = {n.id for n in ast.walk(modal.body[defined]) if isinstance(n, ast.Name)}
+        start = defined
         while start and isinstance(modal.body[start - 1], (ast.Assign, ast.ImportFrom)):
             bound = ({a.asname or a.name for a in modal.body[start - 1].names} if isinstance(modal.body[start - 1], ast.ImportFrom)
                      else {n.id for t in modal.body[start - 1].targets for n in ast.walk(t) if isinstance(n, ast.Name)})
@@ -46,7 +52,7 @@ def drivers(state, invoked):
                 break
             used |= {n.id for n in ast.walk(modal.body[start - 1]) if isinstance(n, ast.Name)}
             start -= 1
-        body = [*modal.body[start:index - 1], *body]
+        body = [*modal.body[start:defined], *body]
     function = ast.parse("def drive(controller, state, event):\n    pass\n").body[0]
     function.body = body + [ast.Return(value=ast.Constant(value=None))]
     dispatch = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'dispatch_action')
@@ -58,11 +64,16 @@ def drivers(state, invoked):
     native.body = [ast.If(test=branch.test, body=branch.body,
                          orelse=[ast.If(test=send.test, body=send.body, orelse=[])])]
     context = NS(temp_override=lambda **_kw: nullcontext())
-    namespace = dict(__package__='angelo_agent', canvas_controls=canvas_controls, state=state,
+    import module_namespace
+    namespace = dict(module_namespace.relative_imports(ROOT / "scripts/addons_core/angelo_agent/chat_view.py"),
+                     __package__='angelo_agent', canvas_controls=canvas_controls, state=state,
                      review_again=review_again, context=context, window=object(), region=object(),
                      area=NS(tag_redraw=lambda: None),
                      console=NS(execute=lambda context: invoked.append({'send': True})),
                      bpy=NS(context=context, ops=NS(angelo=NS(approve=lambda *a, **kw: invoked.append(kw)))))
+    # The canvas's click (chat_view._clicked): its dispatch, in a grant scope only when C minted a ticket (none here).
+    namespace['_clicked'] = lambda controller, action, value: namespace['dispatch_action'](context, controller, action,
+                                                                                          value)
     if any(isinstance(n, ast.Name) and n.id == 'chat_key_arming' for n in ast.walk(function)):
         namespace['chat_key_arming'] = importlib.import_module('angelo_agent.chat_key_arming')
     module = ast.fix_missing_locations(ast.Module(body=[native, function], type_ignores=[]))
@@ -89,9 +100,14 @@ class KeyboardOwnership(unittest.TestCase):
                       'focus': ('approve', self.call.id), 'approval_review': (self.call.id, object())}
         self.invoked = []
         self.drive, self.namespace = drivers(self.state, self.invoked)
+        # Its Approve was drawn long enough ago for the focused keyboard to grant (approval_arming, 2.0.0).
+        approval_arming.forget()
+        approval_arming.view(self.state).drawn(approval_arming.granting(self.state['hits']),
+                                               now=time.monotonic() - SHIELD_SECONDS - 1)
 
     def tearDown(self):
         review_again.forget(self.call.id)
+        approval_arming.forget()
 
     def press(self):
         self.drive(self.host, self.state, event('PRESS'))

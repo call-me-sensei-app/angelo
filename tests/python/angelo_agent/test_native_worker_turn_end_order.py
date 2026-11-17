@@ -12,6 +12,7 @@ lead sees from a save step is over in the worker too).
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import threading
@@ -75,7 +76,7 @@ class Order(unittest.TestCase):
             ends = TurnEnds(self.outbox)
             ends.put(frame("finished"))
             ends.put(frame("state"))
-            deadline = time.monotonic() + 2
+            deadline = time.monotonic() + CAP_S
             while time.monotonic() < deadline and len(self.outbox.sent) < 2:
                 time.sleep(0.005)
             self.assertEqual(self.outbox.sent, ["finished", "state"])

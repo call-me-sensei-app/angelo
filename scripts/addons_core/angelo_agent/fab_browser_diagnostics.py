@@ -48,6 +48,9 @@ def write_record(profile, expected_identity, marker, leader, leader_identity, ph
                            profile_identity=expected_identity, phase=phase, reason=reason, helper=helper))
     if len(data.encode()) > 16384:
         raise ValueError('Private recovery observation oversized')
+    from . import owned_paths
+    if not owned_paths.owned(folder):   # Only into the profile Angelo made (owned_paths), whatever names it now.
+        raise ValueError('Private recovery profile changed')
     descriptor, temporary = tempfile.mkstemp(prefix='.fab-owner-', suffix='.tmp', dir=folder)
     try:
         with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:

@@ -64,7 +64,9 @@ def main():
     # Never the person's own sign-in, and only a profile signed in to its expected account (provider_accounts).
     isolation.connection_opt_in(isolated_connection(source, args.connection_id, store_dir, codex_home=args.codex_home))
     record = ConnectionStore(store_dir).records[args.connection_id]
-    settings = {"codex_path": args.codex, "claude_path": args.claude, "model": record.get("model") or "",
+    from angelo_agent.cli_runtime import choose   # Preferences' pick: launches read it, never settings.
+    choose(args.codex, args.claude)
+    settings = {"model": record.get("model") or "",
                 "reuse_codex_login": record["reuse_native"], "reasoning": "low", "auth_directory": str(store_dir),
                 "connection_id": None if record["reuse_native"] else record["id"],
                 "native_profile": record.get("native_profile")}

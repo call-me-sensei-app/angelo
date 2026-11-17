@@ -29,7 +29,7 @@
 
 #include <Python.h>
 
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 
 #include "BKE_global.hh"
 #include "BKE_material.hh"
@@ -41,6 +41,8 @@
 #include "BLI_listbase_iterator.hh"
 #include "BLI_set.hh"
 #include "BLI_vector.hh"
+
+#include "../../draw/engines/eevee/eevee_material_shared.hh"
 
 #include "DEG_depsgraph.hh"
 #include "DEG_depsgraph_query.hh"
@@ -63,6 +65,7 @@
 #include "GPU_framebuffer.hh"
 #include "GPU_material.hh"
 #include "GPU_pass.hh"
+#include "GPU_compile_ahead.hh"
 #include "GPU_viewport.hh"
 
 #include "../generic/py_capi_utils.hh"
@@ -238,6 +241,21 @@ PyObject *live_draw(PyObject * /*self*/, PyObject *args, PyObject *kwds)
       object->base_flag &= ~(BASE_ENABLED_AND_MAYBE_VISIBLE_IN_VIEWPORT | BASE_ENABLED_AND_VISIBLE_IN_DEFAULT_VIEWPORT);
     }
   }
+  struct CompileAhead { /* Ended also when drawing throws. */
+    bool active;
+    CompileAhead(bool active) : active(active)
+    {
+      if (active) {
+        GPU_compile_ahead_begin();
+      }
+    }
+    ~CompileAhead()
+    {
+      if (active) {
+        GPU_compile_ahead_end();
+      }
+    }
+  } compile_ahead_scope(compile_ahead);
   GPU_offscreen_bind(offscreen->ofs, true);
   ED_view3d_draw_offscreen_simple(depsgraph,
                                   scene,
@@ -309,7 +327,7 @@ static Vector<int, 8> eevee_material_slots(Object *ob)
   return slots;
 }
 
-PyObject *live_shader_state(PyObject * /*self*/, PyObject *args)
+PyObject *live_shader_state(PyObject * /*self*/, PyObject *args, PyObject *kwds)
 {
   /* The materials EEVEE asks for when it draws an evaluated depsgraph's visible objects and instances
    * (`eevee_material_slots`, the view layer's material override, the 3D view's excluded types): how many, how many
@@ -328,7 +346,17 @@ PyObject *live_shader_state(PyObject * /*self*/, PyObject *args)
    * can give a material its GPU material from a pass Blender already compiled, which changes neither the depsgraph
    * nor any compile count (a value edit, a copy, an undo: REVIEW-VIEW-SPREAD H3). */
   PyObject *py_depsgraph, *py_view3d = Py_None;
-  if (!PyArg_ParseTuple(args, "O|O:shader_state", &py_depsgraph, &py_view3d)) {
+  bool count_world = false;
+  static const char *keywords[] = {"depsgraph", "view3d", "world", nullptr};
+  if (!PyArg_ParseTupleAndKeywords(args,
+                                   kwds,
+                                   "O|O$O&:shader_state",
+                                   const_cast<char **>(keywords),
+                                   &py_depsgraph,
+                                   &py_view3d,
+                                   PyC_ParseBool,
+                                   &count_world))
+  {
     return nullptr;
   }
   if (!live_require_main_thread()) {
@@ -402,7 +430,7 @@ PyObject *live_shader_state(PyObject * /*self*/, PyObject *args)
     return nullptr;
   }
   for (Material *material : kept.materials) {
-    bool pending = material->gpumaterial.first == nullptr, broken = false;
+    bool pending = material->gpumaterial.first() == nullptr, broken = false;
     if (pending) {
       missing++;
     }
@@ -423,7 +451,7 @@ PyObject *live_shader_state(PyObject * /*self*/, PyObject *args)
     PyObject *uid = PyLong_FromUnsignedLong(DEG_get_original(material)->id.session_uid);
     const bool ok = name != nullptr && uid != nullptr && (!broken || PyList_Append(failed, name) == 0) &&
                     (!pending || (PyList_Append(names, uid) == 0 && PyList_Append(readable, name) == 0 &&
-                                  (material->gpumaterial.first != nullptr || PyList_Append(absent, uid) == 0)));
+                                  (material->gpumaterial.first() != nullptr || PyList_Append(absent, uid) == 0)));
     Py_XDECREF(name);
     Py_XDECREF(uid);
     if (!ok) {
@@ -466,7 +494,97 @@ PyObject *live_shader_state(PyObject * /*self*/, PyObject *args)
     }
   }
   const bool overridden = layer != nullptr && layer->world_override != nullptr;
-  return Py_BuildValue("(iiiNNNNNO)",
+  /* With `world=True` (a LIT look's view), the world shaders EEVEE needs for it count as materials do: missing until
+   * a draw asks for them, queued while they compile. Those are the surface shader of the world it draws (the
+   * override, else the scene's while the layer draws its sky) and the volume shader of the scene's world, which it
+   * compiles whatever world it draws (eevee_world.cc). A compile-ahead draw queues them (#GPU_compile_ahead_begin),
+   * where any other draw compiles them on the main thread (330-360 ms with a material's pipeline states, inventory
+   * C5). Each is told apart by its EEVEE shader UUID (#shader_uuid_from_material_type: geometry in the low four
+   * bits, pipeline in the next four), never by having some GPU material: the volume one alone is no surface. */
+  PyObject *py_world_uid = Py_None, *counted = PyList_New(0);
+  if (counted == nullptr) {
+    Py_DECREF(names);
+    Py_DECREF(absent);
+    Py_DECREF(failed);
+    Py_DECREF(readable);
+    Py_DECREF(world_failed);
+    return nullptr;
+  }
+  World *drawn = overridden ? world :
+                              (layer != nullptr && (layer->layflag & SCE_LAY_SKY) ? world : nullptr);
+  World *scene_world = scene != nullptr ? scene->world : nullptr;
+  auto world_material = [](World *of, eevee::eMaterialPipeline pipeline) -> GPUMaterial * {
+    for (LinkData &link : of->gpumaterial) {
+      GPUMaterial *gpumat = static_cast<GPUMaterial *>(link.data);
+      const uint64_t uuid = GPU_material_uuid_get(gpumat);
+      if ((uuid & 0xFu) == eevee::MAT_GEOM_WORLD && ((uuid >> 4u) & 0xFu) == uint64_t(pipeline)) {
+        return gpumat;
+      }
+    }
+    return nullptr;
+  };
+  /* A scene world whose volume absorbs makes EEVEE draw its default world instead (unless overridden), and never
+   * asks for that world's surface: it is not waited for then. */
+  GPUMaterial *volume = scene_world != nullptr && scene_world->nodetree != nullptr ?
+                            world_material(scene_world, eevee::MAT_PIPE_VOLUME_MATERIAL) :
+                            nullptr;
+  const bool absorbing = !overridden && volume != nullptr && GPU_material_status(volume) == GPU_MAT_SUCCESS &&
+                         GPU_material_has_volume_output(volume) &&
+                         GPU_material_flag_get(volume, GPU_MATFLAG_VOLUME_ABSORPTION);
+  struct Need {
+    World *world;
+    eevee::eMaterialPipeline pipeline;
+  };
+  Vector<Need, 2> needs;
+  if (count_world && drawn != nullptr && !absorbing) {
+    needs.append({drawn, eevee::MAT_PIPE_DEFERRED});
+  }
+  if (count_world && scene_world != nullptr && scene_world->nodetree != nullptr) {
+    needs.append({scene_world, eevee::MAT_PIPE_VOLUME_MATERIAL});
+  }
+  bool ok = true;
+  Set<const World *> named;
+  for (const Need &need : needs) {
+    const bool has = world_material(need.world, need.pipeline) != nullptr;
+    bool world_queued = false;
+    for (LinkData &link : need.world->gpumaterial) {
+      world_queued |= GPU_material_status(static_cast<GPUMaterial *>(link.data)) == GPU_MAT_QUEUED;
+    }
+    PyObject *uid = PyLong_FromUnsignedLong(DEG_get_original(need.world)->id.session_uid);
+    ok = uid != nullptr && PyList_Append(counted, uid) == 0;
+    if (ok && need.world == drawn && py_world_uid == Py_None) {
+      py_world_uid = uid;
+      Py_INCREF(py_world_uid);
+    }
+    if (ok && (!has || world_queued) && named.add(need.world)) {
+      missing += has ? 0 : 1;
+      queued += world_queued ? 1 : 0;
+      PyObject *name = PyC_UnicodeFromBytes(need.world->id.name + 2);
+      ok = name != nullptr && PyList_Append(names, uid) == 0 && (has || PyList_Append(absent, uid) == 0) &&
+           PyList_Append(readable, name) == 0;
+      Py_XDECREF(name);
+    }
+    Py_XDECREF(uid);
+    if (!ok) {
+      break;
+    }
+  }
+  if (!ok) {
+    if (py_world_uid != Py_None) {
+      Py_DECREF(py_world_uid);
+    }
+    Py_DECREF(counted);
+    Py_DECREF(names);
+    Py_DECREF(absent);
+    Py_DECREF(failed);
+    Py_DECREF(readable);
+    Py_DECREF(world_failed);
+    return nullptr;
+  }
+  if (py_world_uid == Py_None) {
+    Py_INCREF(py_world_uid);
+  }
+  return Py_BuildValue("(iiiNNNNNONN)",
                        int(kept.materials.size()),
                        missing,
                        queued,
@@ -475,7 +593,40 @@ PyObject *live_shader_state(PyObject * /*self*/, PyObject *args)
                        failed,
                        world_failed,
                        readable,
-                       overridden ? Py_True : Py_False);
+                       overridden ? Py_True : Py_False,
+                       py_world_uid,
+                       counted);
+}
+
+PyObject *live_pipeline_stats(PyObject * /*self*/, PyObject * /*args*/)
+{
+  const GPUPipelineStats stats = GPU_pipeline_stats_get();
+  return Py_BuildValue("{s:K,s:d,s:K,s:d,s:L,s:K,s:K,s:K}",
+                       "built_in_draw",
+                       (unsigned long long)stats.built_in_draw,
+                       "built_in_draw_ms",
+                       stats.built_in_draw_ms,
+                       "built_in_background",
+                       (unsigned long long)stats.built_in_background,
+                       "built_in_background_ms",
+                       stats.built_in_background_ms,
+                       "pending",
+                       (long long)stats.pending,
+                       "failed",
+                       (unsigned long long)stats.failed,
+                       "shaders_waited",
+                       (unsigned long long)stats.shaders_waited,
+                       "queued",
+                       (unsigned long long)stats.queued);
+}
+
+PyObject *live_pipelines_pending(PyObject * /*self*/, PyObject *args)
+{
+  unsigned long long after, through;
+  if (!PyArg_ParseTuple(args, "KK:pipelines_pending", &after, &through)) {
+    return nullptr;
+  }
+  return PyLong_FromLongLong((long long)GPU_pipeline_builds_pending(after, through));
 }
 
 PyObject *live_shown_state(PyObject * /*self*/, PyObject *args)

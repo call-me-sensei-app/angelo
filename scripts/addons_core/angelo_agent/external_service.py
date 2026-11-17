@@ -201,9 +201,11 @@ class RequestService:
                                   "Retry with the same ID", client, call=dict(call, state="not_admitted"), **extra)
         if not work.wait(max(0.0, started + wait - time.monotonic())) and not work.wait(0.05):
             state = "admitted" if work.admitted else "claimed"
+            from .edit_tool_hold import seen   # The person's operation it waits for, if one is in progress (S7).
+            held = {"held": seen()} if seen() else {}
             return self._envelope("pending", f"Still running in Angelo; repeat the identical command (same --id) "
                                   f"to replay its receipt, or run `angelo status --call {identity}`", client,
-                                  call=dict(call, state=state), **extra)
+                                  call=dict(call, state=state), **extra, **held)
         response = self._finish(work, client, call=dict(call, state="finished"), started=started)
         response.update(extra)
         return response

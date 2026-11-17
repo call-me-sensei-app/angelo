@@ -99,7 +99,7 @@ def _following(message, count=4):
 
 
 def activity_block(message, role, identity, expanded, width, size, line_height, state):
-    from . import chat_cards
+    from . import chat_cards, learn_rows
     from .studio_chat import has_preview
     view = _view()
     following = _following(message) if role == "thinking" and identity in expanded else ()
@@ -113,6 +113,7 @@ def activity_block(message, role, identity, expanded, width, size, line_height, 
         preview_height += card_height + 12
     if preview_height:  # A row with its own card or picture is never folded away (group_blocks).
         message = dict(message, _attached=True)
+    message, preview_height = learn_rows.under(message, role, identity, expanded, width, size, line_height, preview_height)
     return (role, message, rows, ROW + len(rows) * line_height + (20 if rows else 0) + preview_height, identity, 0)
 
 
@@ -447,7 +448,7 @@ def _draw_planned(view, message, top, bottom, width, size, state):
 
 
 def _draw_attachments(view, message, rows, block_height, top, bottom, width, size, line_height, state, role, indent):
-    from . import chat_cards
+    from . import chat_cards, learn_rows
     from .studio_chat import has_preview, draw_preview
     preview_height = 196 if has_preview(message) else 0
     if preview_height:
@@ -456,10 +457,11 @@ def _draw_attachments(view, message, rows, block_height, top, bottom, width, siz
         chat_cards.draw_attached(message, state, 16, bottom + 12 + message["_flow_card"], width - 32, view._flow_wrap,
                                  line_height)
         preview_height += message["_flow_card"] + 12
+    learned = learn_rows.draw_under(view, message, 16 + indent + 8, top - ROW - 2, width, state)   # Its how-to card.
     if rows:
-        _fill(16 + indent + 8, bottom + 12 + preview_height, width - 40 - indent, block_height - ROW - 8 - preview_height,
-                   tk.DETAIL_FILL, 8)
-        y = top - ROW - 18
+        _fill(16 + indent + 8, bottom + 12 + preview_height, width - 40 - indent,
+              block_height - ROW - 8 - preview_height - learned, tk.DETAIL_FILL, 8)
+        y = top - ROW - 18 - learned
         for value, _ in rows:
             view.text(value.rstrip(), 36 + indent, y, size - 1, tk.MUTED, view._mono if role == "activity" else view._font)
             y -= line_height

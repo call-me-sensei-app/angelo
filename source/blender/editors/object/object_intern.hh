@@ -91,6 +91,19 @@ void OBJECT_OT_shade_smooth(wmOperatorType *ot);
 void OBJECT_OT_shade_smooth_by_angle(wmOperatorType *ot);
 void OBJECT_OT_shade_auto_smooth(wmOperatorType *ot);
 void OBJECT_OT_shade_flat(wmOperatorType *ot);
+/** The Smooth by Angle modifier from the Essentials asset library (Shade Auto Smooth adds it). */
+bool is_smooth_by_angle_modifier(const ModifierData &md);
+
+/* object_shade_bake.cc */
+
+/**
+ * Smooth by Angle (#is_smooth_by_angle_modifier) or the Auto Smooth modifier that files from
+ * before 4.1 get on load: node groups known to change only edge and face sharpness.
+ */
+bool is_auto_smooth_modifier(const ModifierData &md);
+/** Apply's refusal of an auto smooth modifier on a shared mesh (#BKE_report translates it). */
+extern const char *AUTO_SMOOTH_MULTI_USER_APPLY_MESSAGE;
+void OBJECT_OT_shade_auto_smooth_bake(wmOperatorType *ot);
 void OBJECT_OT_paths_calculate(wmOperatorType *ot);
 void OBJECT_OT_paths_update(wmOperatorType *ot);
 void OBJECT_OT_paths_clear(wmOperatorType *ot);
@@ -382,6 +395,7 @@ void OBJECT_OT_datalayout_transfer(wmOperatorType *ot);
 void object_modifier_add_asset_register();
 
 void collection_importer_register();
+void collection_importer_macros_register();
 void collection_exporter_register();
 
 Vector<PointerRNA> modifier_get_edit_objects(const bContext &C, const wmOperator &op);

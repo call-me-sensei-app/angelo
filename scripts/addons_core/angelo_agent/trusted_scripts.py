@@ -25,22 +25,44 @@ or those settings asks again.
 import hashlib
 import json
 import os
-from . import always_allow, script_files
+from . import always_allow, grant_authority, script_files
 from .chat_settings import clean_options
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
+
+
+def consent_exclusion(call):
+    """Why a script must always ask, as its reason code (``auto_reasons``), or None when a standing consent may run it.
+
+    ``SCRIPT_EXCLUDED``: it refers to preferences (``uses_preferences``, where the person's Always allow scripts
+    lives) or to Angelo's own add-on. ``SCRIPT_FILE_LOAD``: it names an operator that replaces the open file
+    (``worker_script.file_load``: load, revert, recover, read the startup file), unsaved work included, which Undo
+    cannot take back; a consent given before the script existed is not a consent to that. A heuristic over the
+    code, as the card's warning is; a script that hides the names is still covered by the property's guard
+    (trusted_scripts_ui) and ends as ``DOCUMENT_REPLACED`` (script_document)."""
+    from . import auto_reasons
+    from .fallback_categories import uses_preferences
+    from .worker_script import file_load
+    code = call.arguments.get("code") if isinstance(call.arguments, dict) else None
+    if not isinstance(code, str) or uses_preferences(code) or "angelo_agent" in code:
+        return auto_reasons.SCRIPT_EXCLUDED
+    return auto_reasons.SCRIPT_FILE_LOAD if file_load(call.arguments) is not None else None
 
 
 def consent_excluded(call):
-    """Whether a script must always ask: it refers to preferences (``uses_preferences``, where the person's
-    Always allow scripts lives) or to Angelo's own add-on. A heuristic over the code, as the card's warning is;
-    a script that hides the names is still covered by the property's guard (trusted_scripts_ui)."""
-    from .fallback_categories import uses_preferences
-    code = call.arguments.get("code") if isinstance(call.arguments, dict) else None
-    return not isinstance(code, str) or uses_preferences(code) or "angelo_agent" in code
+    """Whether a script must always ask, whatever standing consent the person gave (``consent_exclusion``)."""
+    return consent_exclusion(call) is not None
 
 
 class TrustedScripts:
     """Consent policy mixed into the existing Controller, never a separate executor."""
     explains_auto = True   # Its Auto decision is the base rule, so a card may say why it asks (approval_wait).
+
+    def _approve_automatically(self, call, executor, document):
+        """Angelo's own approval of ``call`` (Auto's bounded edit, a script the person's standing consent covers): in
+        its automatic C grant scope, where the approval is recorded in C (controller_entries). Refused while an agent
+        script runs, as every automatic decision is (grant_authority.automatic)."""
+        from . import grant_authority
+        return grant_authority.automatic(self.approve_tool, call, executor, document)
 
     @property
     def trusted_scripts(self):
@@ -66,7 +88,9 @@ class TrustedScripts:
             return ()
         own = self._script_consent
         own = own if own is not None and own[:2] == (self.state["id"], self.document) else None
-        return tuple(token for token in (own, worker_trust.inherited(self)) if token is not None)
+        # Each trust covers scripts only while C holds it for its chat (grant_authority): Python's copy alone never.
+        return tuple(token for token in (own, worker_trust.inherited(self))
+                     if token is not None and grant_authority.holds(grant_authority.TRUSTED_CHATS, token[0]))
 
     def own_chat_consent(self):
         """This chat's own Trust scripts for this chat while it covers its scripts, else None: what the worker chats a
@@ -87,6 +111,8 @@ class TrustedScripts:
                         or not worker_trust.covers_mode(self, clean_options(self.state.get("options"))["approval"])
                         or not managed_policy.current().allow_auto_approval):
             raise RuntimeError("Trusted scripts are unavailable for this document or approval policy")
+        # Held in C first (grant_authority): a widening refused outside the person's own click changes nothing here.
+        grant_authority.record(grant_authority.TRUSTED_CHATS, self.state["id"], bool(enabled))
         self._script_consent = (self.state["id"], self.document, object()) if enabled else None
         worker_trust.changed(self, enabled)
         self.version += 1
@@ -136,12 +162,13 @@ class TrustedScripts:
 
     def script_file_refusal(self, call):
         """Why the person's approval does not cover this script file now, as a key: ``excluded`` (it names
-        preferences or Angelo's add-on), ``mode`` (Ask or Read only), ``policy`` (``AllowAutoApproval`` off),
+        preferences or Angelo's add-on), ``file_load`` (it would replace the open file), ``mode`` (Ask or Read only), ``policy`` (``AllowAutoApproval`` off),
         ``levels`` (no python level), ``project`` (no saved project, or not the session's own file), ``changed``
         (allowed before with other content) or ``not_approved``. Headless says which (headless_host)."""
-        from . import managed_policy
-        if consent_excluded(call):
-            return "excluded"
+        from . import auto_reasons, managed_policy
+        exclusion = consent_exclusion(call)
+        if exclusion is not None:
+            return "file_load" if exclusion == auto_reasons.SCRIPT_FILE_LOAD else "excluded"
         if clean_options(self.state.get("options"))["approval"] != "AUTO_BOUNDED":
             return "mode"
         if not managed_policy.current().allow_auto_approval:
@@ -199,9 +226,10 @@ class TrustedScripts:
         """Which standing consent still covers this admitted script: "chat_session", "always_allow",
         "script_file" (an External conversation's allowed script file, ``script_file_allowed``) or None.
 
-        None for a script that touches preferences or Angelo's own add-on
-        (``consent_excluded``): it always asks, so a standing consent can't
-        widen itself (the card shows the preferences warning).
+        None for a script that touches preferences or Angelo's own add-on, or
+        that would replace the open file (``consent_excluded``): it always
+        asks, so a standing consent can't widen itself or cost the person
+        their unsaved work (the card says which).
         """
         if getattr(call, "script_file", None) is not None and self.script_file_allowed(call):
             return "script_file"
@@ -242,6 +270,8 @@ class TrustedScripts:
     def review_script(self, call):
         if self.pending.get(call.id) is call and call.approval and not self.expire_tool(call):
             call.automatic = False  # A fresh human review can replace revoked standing consent.
+            if call.name == "angelo_execute_python":   # Its exact text, approved in C for this call (once).
+                grant_authority.approve_script(self.state["id"], call.id, call.arguments.get("code", ""))
             call.reviewed_script = call.invocation_digest
             self.reviewed_calls.add(call.id)
 
@@ -279,3 +309,7 @@ class TrustedScripts:
                           external_effects_undoable=False, stop_interruptible=False)
         from . import script_errors, worker_routing
         return script_errors.in_worker(result) if worker_routing.worker_snapshots(self) else result
+
+
+_grant_guard.entry_methods(TrustedScripts, "set_trusted_scripts", widens="enabled")
+_grant_guard.entry_methods(TrustedScripts, "review_script")   # The person's review approves that exact text.

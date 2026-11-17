@@ -196,7 +196,7 @@ def main():
         bpy.context.scene.collection.children.link(sub)
         bpy.context.view_layer.active_layer_collection = bpy.context.view_layer.layer_collection.children["Sub"]
         result = bpy.ops.angelo.media_drop(target="OUTLINER", library=entry.name, into="SCENE",
-                                           items=f"models/{ids['single']}.blend/Object/A tall stone column\n")
+                                           item_lines=f"models/{ids['single']}.blend/Object/A tall stone column\n")
         landed = [o for o in bpy.data.objects if o.type == 'MESH']
         check("outliner_scene_collection", result == {'FINISHED'} and landed
               and [c.name for c in landed[0].users_collection] == [bpy.context.scene.collection.name],
@@ -205,7 +205,7 @@ def main():
         bpy.context.object.select_set(True)
         selected = {o.name for o in bpy.context.selected_objects}
         result, reason = refused(bpy.ops.angelo.media_drop, target="OUTLINER", library=entry.name,
-                                 items=f"images/{ids['image']}.blend/Material/Two posters\n")
+                                 item_lines=f"images/{ids['image']}.blend/Material/Two posters\n")
         check("outliner_image_without_object_changes_nothing", result == {'CANCELLED'} and reason
               and {o.name for o in bpy.context.selected_objects} == selected, [result, reason])
 
@@ -214,8 +214,8 @@ def main():
         missing = studio_assets.item(library, records["multi"], studio.folders)["blend"]
         Path(missing).rename(missing + ".away")
         result, reason = refused(bpy.ops.angelo.media_drop, target="VIEW3D", library=entry.name,
-                                 items=f"models/{ids['single']}.blend/Object/A tall stone column\n"
-                                       f"models/{ids['multi']}.blend/Collection/A sphere beside a crate\n")
+                                 item_lines=f"models/{ids['single']}.blend/Object/A tall stone column\n"
+                                            f"models/{ids['multi']}.blend/Collection/A sphere beside a crate\n")
         Path(missing + ".away").rename(missing)
         check("a_drop_with_a_missing_file_adds_nothing", result == {'CANCELLED'} and reason and not bpy.data.objects,
               [result, reason])
@@ -253,14 +253,14 @@ def main():
         bpy.ops.wm.read_homefile(use_empty=True)
         bpy.context.scene.cursor.location = (5.0, 0.0, 0.0)
         result = bpy.ops.angelo.media_drop(target="VIEW3D", library=entry.name,
-                                           items=f"models/{ids['single']}.blend/Object/A tall stone column\n")
+                                           item_lines=f"models/{ids['single']}.blend/Object/A tall stone column\n")
         dropped = [o for o in bpy.data.objects if o.type == 'MESH']
         check("drop_operator_places_the_model", result == {'FINISHED'} and len(dropped) == 1
               and abs(bounds(dropped)[0].z) < 1e-3, result)
         bpy.ops.mesh.primitive_cube_add(location=(-3, 0, 0))
         cube = bpy.context.object
         result = bpy.ops.angelo.media_drop(target="VIEW3D", library=entry.name, object=cube.name,
-                                           items=f"images/{ids['image']}.blend/Material/Two posters\n")
+                                           item_lines=f"images/{ids['image']}.blend/Material/Two posters\n")
         check("drop_on_an_object_gives_its_material", result == {'FINISHED'} and cube.active_material is not None
               and cube.active_material.name.startswith("Two posters"), result)
         bpy.ops.wm.read_homefile(use_empty=True)

@@ -12,7 +12,7 @@ Esc cancels (``web_export.pending_export``); an export written without its World
 import bpy
 from bpy_extras.io_utils import ExportHelper
 
-from . import input_policy, web_export, web_export_wait, web_preview
+from . import input_policy, web_export, web_export_wait, web_preview, edit_tool_hold
 from .ui_text import iface_, n_, rpt_
 
 MESH_ITEMS = (("AUTO", n_("Automatic"), n_("Meshopt when this build has it, else Draco, else uncompressed")),
@@ -110,6 +110,9 @@ class ANGELO_OT_web_export(bpy.types.Operator, ExportHelper):
                 pass
 
     def _step(self, context):
+        if edit_tool_hold.running():   # TIMER events reach this handler during the person's operation: the export
+            edit_tool_hold.note_waiting()   # reads every mesh and leaves Edit Mode; it waits (break-it review 3).
+            return {'RUNNING_MODAL'}
         try:
             report = self._pending.step()
         except Exception as error:  # Said in the status bar; the operator ends cleanly whatever the export raised.

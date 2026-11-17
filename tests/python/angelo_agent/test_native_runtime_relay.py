@@ -8,6 +8,7 @@ that echoes what it sees, its key included: what reaches the worker proves the k
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import os
@@ -37,7 +38,7 @@ CLAUDE_VALUES = {"tools": "WebSearch,WebFetch", "direct": False, "fast": False, 
                  "thinking": False, "resume": ""}
 
 
-def wait_for(predicate, timeout=10.0):
+def wait_for(predicate, timeout=CAP_S):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
@@ -47,9 +48,8 @@ def wait_for(predicate, timeout=10.0):
 
 
 def alive(pid):
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+    from angelo_agent.engine_link_protocol import process_alive   # Never a signal-0 kill (liveness_probes).
+    if not process_alive(pid):
         return False
     try:   # A zombie no one reaped yet has ended too.
         return os.waitpid(pid, os.WNOHANG) == (0, 0)
@@ -219,16 +219,16 @@ class RelayTests(unittest.TestCase):
         self.assertTrue(alive(pid))
         rpc.process.kill()
         self.assertTrue(wait_for(lambda: not alive(pid)))
-        self.assertIsNotNone(rpc.process.wait(5))
-        self.assertTrue(rpc.closed.wait(5))
+        self.assertIsNotNone(rpc.process.wait(CAP_S))
+        self.assertTrue(rpc.closed.wait(CAP_S))
         rpc.close()
 
     def test_the_child_ending_is_the_workers_end_of_file_and_return_code(self):
         rpc = self.codex()
         with self.assertRaises(RpcError):
             rpc.request("turn/interrupt", {"threadId": "t", "turnId": "u"}, timeout=10)   # The fake exits with 3.
-        self.assertTrue(rpc.closed.wait(5))
-        self.assertEqual(rpc.process.wait(5), 3)
+        self.assertTrue(rpc.closed.wait(CAP_S))
+        self.assertEqual(rpc.process.wait(CAP_S), 3)
         self.assertEqual(rpc.process.poll(), 3)
         rpc.close()
 
@@ -244,14 +244,14 @@ class RelayTests(unittest.TestCase):
         pid = rpc.process.pid
         rpc.process.endpoint.close()
         self.assertTrue(wait_for(lambda: not alive(pid)))
-        self.assertTrue(rpc.closed.wait(5))
+        self.assertTrue(rpc.closed.wait(CAP_S))
 
     def test_angelo_closing_ends_every_child(self):
         first, second = self.codex(), self.codex()
         pids = [first.process.pid, second.process.pid]
         runtime_service._close_all()   # What Angelo's exit runs.
         self.assertTrue(wait_for(lambda: not any(alive(pid) for pid in pids)))
-        self.assertTrue(first.closed.wait(5) and second.closed.wait(5))
+        self.assertTrue(first.closed.wait(CAP_S) and second.closed.wait(CAP_S))
         with self.assertRaises(RpcError):
             self.codex()   # A closed service starts nothing.
 

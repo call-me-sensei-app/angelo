@@ -10,6 +10,7 @@
 #include "BKE_node.hh"
 #include "BKE_node_legacy_types.hh"
 #include "DEG_depsgraph_query.hh"
+#include "GPU_compile_ahead.hh"
 #include "NOD_shader.h"
 
 #include "eevee_instance.hh"
@@ -67,9 +68,13 @@ void World::sync()
   has_update = wo_handle.recalc != 0;
 
   bool wait_ready = true;  // TODO !inst_.is_image_render;
+  /* A compile-ahead draw (#GPU_compile_ahead_begin; Angelo's agent views prepare their shaders with one) queues the
+   * scene's world shaders to the background compilation, as it does materials, instead of compiling them here, and
+   * while they compile draws with the default world: its pixels are never used. Studio-light worlds are unchanged. */
+  const bool compile_ahead = GPU_compile_ahead_is_active();
 
   /* Sync volume first since its result can override the surface world. */
-  sync_volume(wo_handle, wait_ready);
+  sync_volume(wo_handle, wait_ready && !compile_ahead);
 
   blender::World *bl_world;
   if (inst_.use_studio_light()) {
@@ -114,10 +119,13 @@ void World::sync()
     inst_.sampling.reset();
   }
 
+  const bool defer = compile_ahead && !inst_.use_studio_light();
   GPUMaterial *gpumat = inst_.shaders.world_shader_get(
-      bl_world, ntree, MAT_PIPE_DEFERRED, !wait_ready);
+      bl_world, ntree, MAT_PIPE_DEFERRED, !wait_ready || defer);
 
-  if (GPU_material_status(gpumat) == GPU_MAT_FAILED) {
+  if (GPU_material_status(gpumat) == GPU_MAT_FAILED ||
+      (defer && GPU_material_status(gpumat) == GPU_MAT_QUEUED))
+  {
     bl_world = default_world_get();
     ntree = bl_world->nodetree;
     gpumat = inst_.shaders.world_shader_get(bl_world, ntree, MAT_PIPE_DEFERRED, !wait_ready);

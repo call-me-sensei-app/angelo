@@ -23,8 +23,8 @@ import threading
 import bpy
 from bpy.types import Operator
 
-from . import (managed_policy, preferences_ui, team_connections, team_endpoints, team_lock, team_org_policy, team_pages,
-               team_token_store, team_usage_buffer, team_usage_reports, connection_access)
+from . import (grant_guard, managed_policy, preferences_ui, team_connections, team_endpoints, team_lock,
+               team_org_policy, team_pages, team_token_store, team_usage_buffer, team_usage_reports, connection_access)
 from .display_text import Text, shown
 from .generative import bind_team_generation
 from .key_store import store_text
@@ -228,6 +228,8 @@ def _pump(ui):
     if _org_policy is not None:
         _org_policy.remember(view)
     previous, _records = _records, team_connections.records(view, _account.console_url)
+    from . import endpoint_ui   # The organization's own model servers follow the same account (and the policy).
+    endpoint_ui.refresh(ui, view, _account.console_url, managed_policy.current())
     for identity in previous.keys() - _records.keys():
         ui.catalogs().invalidate(identity)
         _withdraw_key(ui, identity)
@@ -468,17 +470,16 @@ class ANGELO_OT_team_sign_out(Operator):
             self.report({'ERROR'}, iface_("Stop the chat that is using a team connection first"))
             return {'CANCELLED'}
         _account.sign_out()
-        from .provider_registry import TEAM_MODES
-        from .runtime_bindings import end_modes
-        end_modes(TEAM_MODES)   # Every worker's team-connection runtime ends with the sign-in, a closed chat's too.
+        from .runtime_bindings import end_organization
+        end_organization()   # Every worker's team and endpoint runtime ends with the sign-in, a closed chat's too.
         pump(ui)
         from . import worker_consent_lead
         worker_consent_lead.changed()   # Hosted worker chats on a team connection lose their consent with it.
         return {'FINISHED'}
 
 
-CLASSES = (ANGELO_OT_team_sign_in, ANGELO_OT_team_cancel_sign_in, ANGELO_OT_team_copy_sign_in_link,
-           ANGELO_OT_team_refresh, ANGELO_OT_team_sign_out)
+CLASSES = (grant_guard.grant()(ANGELO_OT_team_sign_in), ANGELO_OT_team_refresh,
+           ANGELO_OT_team_cancel_sign_in, ANGELO_OT_team_copy_sign_in_link, ANGELO_OT_team_sign_out)
 
 
 def register():

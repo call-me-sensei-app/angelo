@@ -168,7 +168,7 @@ TEST_F(DegAngeloUpstreamTest, driver_reading_its_owner_transform_reaches_the_own
   body->parent = target;
   AnimData *adt = BKE_animdata_ensure_id(&body->id);
   FCurve *fcu = BKE_fcurve_create();
-  fcu->rna_path = BLI_strdup("data.remesh_voxel_size");
+  fcu->rna_path_set("data.remesh_voxel_size");
   fcu->driver = MEM_new<ChannelDriver>("ChannelDriver");
   fcu->driver->type = DRIVER_TYPE_AVERAGE;
   BLI_addtail(&adt->drivers, fcu);

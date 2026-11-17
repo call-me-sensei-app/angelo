@@ -161,7 +161,7 @@ def main():
             controller.request_tool('workflow-'+str(len(report['checks'])),name,args,answers.append)
             controller.pump_tools(executor,ui.document_key())
             call=next(iter(controller.pending.values()))
-            bpy.ops.angelo.approve('EXEC_DEFAULT',True,call_id=call.id,session_id=controller.state['id'])
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT',True,call_id=call.id,session_id=controller.state['id'])
             controller.busy=False
             assert answers, 'Approval did not return a result'
             return answers[0]

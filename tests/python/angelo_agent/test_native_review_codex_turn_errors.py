@@ -144,8 +144,7 @@ class FixedProcessLostDuringTheWait(ProviderFixture):
             rpc.close()
             self.p._event("host/disconnected", {}, transport=self.p._transport_token)
 
-        with mock.patch.multiple(codex_retry, RATE_SECONDS=.6):
-            threading.Timer(.3, die).start()
+        with mock.patch.multiple(codex_retry, RATE_SECONDS=.6), self.during_the_wait(die):
             outcome, _ = self.run_request()
         return outcome, starts
 
@@ -174,8 +173,8 @@ class FixedProcessLostDuringTheWait(ProviderFixture):
 class HeldStopAndOwnership(ProviderFixture):
     def test_closing_the_chat_during_the_wait_sends_nothing_more(self):
         rpc = self.script(lambda turn: failed(turn, THROTTLED), answered)
-        with mock.patch.multiple(codex_retry, RATE_SECONDS=5):
-            threading.Timer(.3, lambda: setattr(self.c, "_closing", True)).start()
+        with mock.patch.multiple(codex_retry, RATE_SECONDS=5), \
+                self.during_the_wait(lambda: setattr(self.c, "_closing", True)):
             outcome, seconds = self.run_request()
         self.assertEqual(outcome, "interrupted")
         machine_clock.assert_within(self, seconds, 2)
@@ -183,8 +182,8 @@ class HeldStopAndOwnership(ProviderFixture):
 
     def test_a_document_change_during_the_wait_sends_nothing_more(self):
         rpc = self.script(lambda turn: failed(turn, THROTTLED), answered)
-        with mock.patch.multiple(codex_retry, RATE_SECONDS=5):
-            threading.Timer(.3, lambda: self.c.set_document(("another.blend", 4))).start()
+        with mock.patch.multiple(codex_retry, RATE_SECONDS=5), \
+                self.during_the_wait(lambda: self.c.set_document(("another.blend", 4))):
             outcome, seconds = self.run_request()
         self.assertEqual(outcome, "interrupted")
         machine_clock.assert_within(self, seconds, 2)

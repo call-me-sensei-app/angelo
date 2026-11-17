@@ -14,6 +14,16 @@ provider and model, how many agent tasks finished and the longest one.
   stopped and escalated requests, and local preview acceptances (no route)
   are not counted. ``task_entry`` reads only the receipt's allowlisted route
   and phases; no prompt, path or token is involved.
+* **Custom endpoints** (``endpoint_entry``): requests on an organization's own
+  model server (``endpoint_connections``) bypass the gateway, so the app also
+  reports their tokens: per UTC day, endpoint, format, model (the server's
+  name) and the Angelo model it maps to (null: untested), the completed tasks
+  as above, and the input, cached input, output and reasoning tokens of every
+  finished request (completed, failed or stopped), from the runtime's own usage
+  in the receipt (``provider_usage``: cached input within input, as Codex's
+  TokenUsage; Claude Code's cache reads and writes are folded into its input
+  there). They go in batches of their own (``customEndpoints`` with ``entries``
+  empty), never mixed with gateway entries, and never counted in both.
 * **Counting** (``count_task``, the controller's hook) does no I/O: the count
   is kept in memory, attributed to the signed-in person, and the account's
   worker saves it to ``team_usage_buffer`` soon after.
@@ -23,7 +33,10 @@ provider and model, how many agent tasks finished and the longest one.
   ``EXIT_SECONDS``, without a token refresh; what is left goes at the next
   start). A 2xx removes the batch (``applied: false`` means it already landed);
   429 waits for ``Retry-After``; 400, 403 and 404 drop the batch, since it can
-  never land, and a 400 is logged; other failures keep it for the next try.
+  never land, and a 400 is logged; other failures keep it for the next try. A
+  ``customEndpoints`` batch refused with 400 (a console older than the field) is
+  parked instead and sent again with the scheduled reports for 6 hours
+  (``team_usage_buffer.PARK``), in case the console is updated meanwhile.
   An expired token is renewed once as for every console call; nothing here is
   ever shown to the person.
 
@@ -37,11 +50,13 @@ import sys
 import threading
 from urllib.parse import quote
 
-from . import model_profiles, thread_start
+from . import model_profiles, net_integrity, thread_start
 from .provider_registry import CODING, SPECS, TEAM
 from .team_errors import SignInRequired, TeamError, retry_after_seconds
 from .team_lock import LockTimeout
-from .team_usage_buffer import MAX_TASK_MS, day_of, merge
+from .team_usage_buffer import MAX_TASK_MS, MAX_TOKENS, day_of, merge, merge_endpoint
+# The receipt's usage fields (provider_usage.TOKENS) behind each endpoint entry's token field, in TOKEN_FIELDS order.
+RECEIPT_TOKENS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens")
 from .team_view import OFFLINE, SIGNED_IN
 
 REPORT_EVERY = 15 * 60          # seconds between scheduled reports of one process
@@ -104,6 +119,37 @@ def task_entry(receipt):
     return provider, task_model(route)[:200], min(MAX_TASK_MS, int(round(milliseconds)))
 
 
+def endpoint_entry(receipt):
+    """``((endpoint, format, model, profile), (tasks, *tokens))`` of a finished request on a custom endpoint, else
+    None: the server's model name and the Angelo model it maps to ("" when untested); a task only when it
+    completed; the request's own tokens whatever its status. Nothing else is read."""
+    from .endpoint_connections import parse_mode
+    from .provider_registry import spec_for
+    if not isinstance(receipt, dict):
+        return None
+    route, phases = receipt.get("route") or {}, receipt.get("phases") or {}
+    parsed = parse_mode(route.get("mode"))
+    if parsed is None:
+        return None
+    format_id, endpoint_id = parsed
+    spec = spec_for(route["mode"])
+    served = [m for m in route.get("served_models", ()) if isinstance(m, str) and m]
+    model = route.get("requested_model") or (served[0] if served else "") or next(
+        (m["id"] for m in spec["models"] if m["default"]), "unknown")
+    profile = next((m.get("profile") for m in spec["models"] if m["id"] == model), None) or ""
+    milliseconds = phases.get("total_ms")
+    completed = (receipt.get("status") == "completed" and type(milliseconds) in {int, float}
+                 and 0 <= milliseconds < float("inf"))
+    usage = receipt.get("usage") or {}
+    tokens = tuple(min(MAX_TOKENS, usage[name]) if type(usage.get(name)) is int and usage[name] >= 0 else 0
+                   for name in RECEIPT_TOKENS)
+    if not completed and not any(tokens):
+        return None   # Nothing to report: a request that neither finished a task nor used a token.
+    # Within their totals, as the console requires (a runtime's counts never say otherwise).
+    tokens = (tokens[0], min(tokens[1], tokens[0]), tokens[2], min(tokens[3], tokens[2]))
+    return (endpoint_id, format_id, model[:200], profile), (1 if completed else 0,) + tokens
+
+
 def owner_of(console_url, view):
     """``(console, organization, user)`` whose tasks these are, or None when no team sign-in is in use."""
     usable = view.status in {SIGNED_IN, OFFLINE} and view.org_id and view.user_id
@@ -138,6 +184,8 @@ def _quietly(work):
 class UsageReportTasks:
     def count_agent_task(self, receipt):
         """Any thread, no I/O: count a finished request for the signed-in person and queue the save."""
+        if self._usage_buffer is not None and self._count_endpoint(receipt):
+            return True
         found = task_entry(receipt)
         if found is None or self._usage_buffer is None:
             return False
@@ -151,6 +199,24 @@ class UsageReportTasks:
         self._enqueue("usage_save")
         return True
 
+    def _count_endpoint(self, receipt):
+        """A request on a custom endpoint, counted for the signed-in person (``endpoint_entry``); False otherwise."""
+        try:
+            found = endpoint_entry(receipt)
+        except ValueError:
+            return False
+        if found is None:
+            return False
+        (endpoint_id, format_id, model, profile), value = found
+        with self._lock:
+            owner = owner_of(self.console_url, self._view)
+            if owner is None:
+                return False
+            key = (day_of(self._clock()), endpoint_id, format_id, model, profile)
+            merge_endpoint(self._usage_pending_endpoints.setdefault(owner, {}), {key: value})
+        self._enqueue("usage_save")
+        return True
+
     def _save_usage(self):
         """Move the counts kept in memory into the buffer; on a failure they stay for the next try.
 
@@ -159,14 +225,18 @@ class UsageReportTasks:
         with self._usage_saving:
             with self._lock:
                 pending, self._usage_pending = self._usage_pending, {}
+                endpoints, self._usage_pending_endpoints = self._usage_pending_endpoints, {}
             try:
-                for owner in list(pending):
-                    self._usage_buffer.add(owner, pending[owner], self._clock())
-                    del pending[owner]
+                for owner in sorted(set(pending) | set(endpoints)):
+                    self._usage_buffer.add(owner, pending.get(owner, {}), self._clock(), endpoints.get(owner, {}))
+                    pending.pop(owner, None)
+                    endpoints.pop(owner, None)
             except (LockTimeout, OSError):
                 with self._lock:
                     for owner, counts in pending.items():
                         merge(self._usage_pending.setdefault(owner, {}), counts)
+                    for owner, counts in endpoints.items():
+                        merge_endpoint(self._usage_pending_endpoints.setdefault(owner, {}), counts)
                 return False
             return True
 
@@ -208,7 +278,8 @@ class UsageReportTasks:
                 status = 200
             else:
                 headers.update(Authorization="Bearer " + token, Accept="application/json")
-                status, answer, _data = self._transport("POST", self.console_url + report_path(owner[1]), headers, body)
+                url = net_integrity.checked(self.console_url) + report_path(owner[1])   # A console Angelo named.
+                status, answer, _data = self._transport("POST", url, headers, body)
                 hold = retry_after_seconds(answer.get("retry-after")) if status == 429 else 0
         except SignInRequired:
             pass  # The sign-in ended (the account says so where it shows itself); the batch waits for it.
@@ -220,7 +291,10 @@ class UsageReportTasks:
         if status == 429:
             hold = hold or LIMITED_WAIT
         result = outcome(status)
-        if status == 400:
+        if status == 400 and "customEndpoints" in batch:   # A console older than the field: try it for a while.
+            result = "park"
+            _log("the console refused a custom endpoint usage report (HTTP 400); it is sent again for 6 hours")
+        elif status == 400:
             _log("the console refused a usage report as malformed (HTTP 400); it was dropped")
         more = self._usage_buffer.settle(owner, batch["batchId"], result, self._clock(), hold)
         return result == "sent", more

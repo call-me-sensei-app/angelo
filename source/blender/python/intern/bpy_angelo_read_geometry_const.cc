@@ -9,6 +9,7 @@
 #include <climits>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <cstring>
 #include <string>
 #include <unordered_map>
@@ -18,15 +19,17 @@
 
 #include "BLI_bounds.hh"
 #include "BLI_hash.hh"
-#include "BLI_math_geom.h"
-#include "BLI_math_matrix.h"
-#include "BLI_math_rotation.h"
+#include "BLI_math_geom.hh"
 #include "BLI_math_matrix.hh"
-#include "BLI_math_vector.h"
+#include "BLI_math_matrix_c.hh"
+#include "BLI_math_rotation.hh"
+#include "BLI_math_rotation_c.hh"
+#include "BLI_math_matrix.hh"
+#include "BLI_math_vector.hh"
 #include "BLI_index_mask.hh"
 #include "BLI_span.hh"
-#include "BLI_threads.h"
-#include "BLI_utildefines.h"
+#include "BLI_threads.hh"
+#include "BLI_utildefines.hh"
 
 #include "BKE_action.hh"
 #include "BKE_armature.hh"
@@ -72,6 +75,19 @@
 #include "intern/rna_internal_types.hh"
 
 namespace blender::angelo_read_geometry {
+
+/* Whether an ID is evaluated or runtime data rather than document data. Blender 5.3 removed
+ * ID_TAG_COPIED_ON_EVAL_FINAL_RESULT (1422f044cbf): a modifier stack's final mesh is now an
+ * untagged data-block outside Main, so 5.2's tag test is expressed by what the tag marked. Data
+ * outside every Main list that is not embedded in a Main ID cannot be original (upstream's
+ * reading, sound.cc and rna_ID_is_runtime_get); embedded IDs (node trees, master collections)
+ * are created outside the Main lists by design and remain document data. Same rule as the
+ * native read entry points in bpy_angelo_read.cc. */
+static bool evaluated_or_runtime_id(const ID &id)
+{
+  return id.orig_id != nullptr || (id.tag & ID_TAG_COPIED_ON_EVAL) ||
+         ((id.tag & ID_TAG_NO_MAIN) && !(id.flag & ID_FLAG_EMBEDDED_DATA));
+}
 
 namespace {
 
@@ -193,8 +209,8 @@ Span<ScalarBinding> scalar_bindings()
 const ScalarBinding *scalar_binding(const StructRNA &owner, const PropertyRNA &property)
 {
   for (const ScalarBinding &binding : scalar_bindings()) {
-    if (&owner == binding.owner && property.identifier &&
-        STREQ(property.identifier, binding.property) && property.type == binding.type &&
+    if (&owner == binding.owner && property.identifier == binding.property &&
+        property.type == binding.type &&
         source_is(property, binding.role, binding.file, binding.symbol))
     {
       return &binding;
@@ -236,6 +252,10 @@ struct MeshView {
     COPY_CACHE(vert_to_corner_map_cache)
     COPY_CACHE(corner_to_face_map_cache)
     COPY_CACHE(vert_to_edge_map_cache)
+    /* Blender 5.3's edge-to-corner map caches join the warm map caches above. BVH trees (the new
+     * Embree ones included) are not seeded, as before: the readers never build or query them. */
+    COPY_CACHE(edge_to_corner_offset_cache)
+    COPY_CACHE(edge_to_corner_map_cache)
 #undef COPY_CACHE
     if (source.runtime->corner_tris_cache.data.is_cached()) {
       runtime.corner_tris_cache.data.ensure(
@@ -549,7 +569,7 @@ struct Hierarchy {
         return;
       }
     }
-    if (previous != group.children.last) {
+    if (previous != group.children.last()) {
       status = Status::INVALID_STORAGE;
     }
   }
@@ -594,7 +614,7 @@ struct Scope::Impl {
         }
         previous = &nurb;
       }
-      if (previous != nurbs->last) view.status = Status::INVALID_STORAGE;
+      if (previous != nurbs->last()) view.status = Status::INVALID_STORAGE;
       if (view.status == Status::OK) {
         /* A text curve keeps no stored splines: Blender's bounds would convert its glyphs, which
          * can load the font file. Other curves compute bounds from their stored splines only. */
@@ -602,7 +622,7 @@ struct Scope::Impl {
           view.status = Status::LOADS_FILE;
         }
         else {
-          view.bounds = BKE_curve_minmax(&source, true);
+          view.bounds = BKE_curve_geometry_minmax(&source);   /* As `Object.bound_box` reads it (F-L-1). */
         }
       }
       view.bounds_ready = true;
@@ -616,9 +636,11 @@ struct Scope::Impl {
     if (!source.runtime) return Status::INVALID_STORAGE;
     if (!ELEM(source.runtime->wrapper_type, ME_WRAPPER_TYPE_BMESH,
               ME_WRAPPER_TYPE_MDATA, ME_WRAPPER_TYPE_SUBD)) return Status::INVALID_STORAGE;
+    /* 5.3 reaches the edit BMesh through the Mesh (329ec12fe58); the accessor only reads. */
+    const BMesh *bm = source.runtime->wrapper_type == ME_WRAPPER_TYPE_BMESH ?
+                          BKE_editmesh_bmesh_get(&source) : nullptr;
     const int count = source.runtime->wrapper_type == ME_WRAPPER_TYPE_BMESH ?
-                      (source.runtime->edit_mesh && source.runtime->edit_mesh->bm ?
-                           source.runtime->edit_mesh->bm->totvert : -1) : source.verts_num;
+                      (bm ? bm->totvert : -1) : source.verts_num;
     if (count < 0) return Status::INVALID_STORAGE;
     if (!count) { result.reset(); return Status::OK; }
     if (source.runtime->bounds_cache.is_cached()) {
@@ -629,7 +651,8 @@ struct Scope::Impl {
       if (!source.runtime->edit_data) return Status::INVALID_STORAGE;
       /* This source kernel is already const: it iterates BMesh or a stored deformation span,
        * without tables, indices, normals or caches. Avoid validating unrelated DNA topology. */
-      result = BKE_editmesh_cache_calc_minmax(*source.runtime->edit_mesh, *source.runtime->edit_data);
+      /* The kernel takes a mutable BMesh only for BMesh iteration (as Mesh::bounds_min_max). */
+      result = BKE_editmesh_cache_calc_minmax(*const_cast<BMesh *>(bm), *source.runtime->edit_data);
       return Status::OK;
     }
     MeshView *view = mesh(source);
@@ -997,9 +1020,7 @@ Status object_bounds(Scope &scope, const Object &object, BoundsMode mode,
                      std::optional<Bounds<float3>> &result)
 {
   result.reset();
-  if (!BLI_thread_is_main() || object.id.orig_id ||
-      (object.id.tag & (ID_TAG_COPIED_ON_EVAL | ID_TAG_COPIED_ON_EVAL_FINAL_RESULT)))
-  {
+  if (!BLI_thread_is_main() || evaluated_or_runtime_id(object.id)) {
     return Status::INVALID_STORAGE;
   }
   return scope.impl_->bounds(object, mode, result);
@@ -1126,10 +1147,7 @@ const Mesh *admitted_texture_mesh(const Mesh &source)
   /* Membership before dereference; evaluated texture geometry is outside existing policy. */
   for (const Mesh &candidate : G_MAIN->meshes) {
     if (&candidate == source.texcomesh) {
-      return !candidate.id.orig_id &&
-                     !(candidate.id.tag & (ID_TAG_COPIED_ON_EVAL |
-                                           ID_TAG_COPIED_ON_EVAL_FINAL_RESULT)) ?
-                 &candidate : nullptr;
+      return !evaluated_or_runtime_id(candidate.id) ? &candidate : nullptr;
     }
   }
   return nullptr;
@@ -1431,7 +1449,8 @@ std::optional<Value> stored_mesh_value(const Mesh &mesh,
     return invalid();
   }
   const char *name = nullptr;
-  AttrDomain domain = AttrDomain::Auto;
+  /* Unset until a stored family names its domain (5.3 moved Auto out of AttrDomain, 3fae0f1bf33). */
+  std::optional<AttrDomain> domain;
   bool invert = false;
   switch (family) {
     case MESH_VERTEX_SELECT: name = ".select_vert"; domain = AttrDomain::Point; break;
@@ -1452,19 +1471,19 @@ std::optional<Value> stored_mesh_value(const Mesh &mesh,
       break;
     default: break;
   }
-  if (name && index >= 0) {
+  if (name && domain && index >= 0) {
     const int64_t element = flag_element >= 0 ? flag_element : index;
     if (const bke::Attribute *stored = mesh.attribute_storage.wrap().lookup(name)) {
       if (!attribute_valid(*stored, domain_size(mesh, stored->domain()))) return invalid();
     }
     const bke::AttributeAccessor attributes = mesh.attributes();
     const bke::GAttributeReader actual = attributes.lookup(name);
-    if (!actual || actual.domain == domain) {
-      if (actual && actual.varray.size() != domain_size(mesh, domain)) return invalid();
+    if (!actual || actual.domain == *domain) {
+      if (actual && actual.varray.size() != domain_size(mesh, *domain)) return invalid();
       if (family == MESH_FACE_MATERIAL || family == MESH_TRI_MATERIAL) {
-        return owned_scalar((*attributes.lookup_or_default<int>(name, domain, 0))[element]);
+        return owned_scalar((*attributes.lookup_or_default<int>(name, *domain, 0))[element]);
       }
-      const bool flag = (*attributes.lookup_or_default<bool>(name, domain, false))[element];
+      const bool flag = (*attributes.lookup_or_default<bool>(name, *domain, false))[element];
       return owned_scalar(invert ? !flag : flag);
     }
   }
@@ -1525,8 +1544,8 @@ Value value(Scope &scope,
             const PropertyRNA &property,
             const Item *selected)
 {
-  if (!BLI_thread_is_main() || !owner.type || !owner.data || !owner.owner_id || owner.owner_id->orig_id ||
-      (owner.owner_id->tag & (ID_TAG_COPIED_ON_EVAL | ID_TAG_COPIED_ON_EVAL_FINAL_RESULT)) || family == NONE ||
+  if (!BLI_thread_is_main() || !owner.type || !owner.data || !owner.owner_id ||
+      evaluated_or_runtime_id(*owner.owner_id) || family == NONE ||
       scalar_family(*owner.type, property) != family)
   {
     return {};
@@ -1878,8 +1897,8 @@ const CollectionBinding *collection_binding(const StructRNA &owner, const Proper
   }
   const auto &collection = static_cast<const CollectionPropertyRNA &>(property);
   for (const CollectionBinding &binding : collection_bindings()) {
-    if (&owner == binding.owner && property.identifier &&
-        STREQ(property.identifier, binding.property) && collection.item_type == binding.item_type &&
+    if (&owner == binding.owner && property.identifier == binding.property &&
+        collection.item_type == binding.item_type &&
         collection_slot(property, Role::COLLECTION_BEGIN, binding.file, binding.begin) &&
         collection_slot(property, Role::COLLECTION_NEXT, binding.file, binding.next) &&
         collection_slot(property, Role::COLLECTION_END, binding.file, binding.end) &&
@@ -1907,8 +1926,7 @@ const bke::Attribute *find_attribute(const PointerRNA &owner,
 
 bool original_owner(const PointerRNA &owner)
 {
-  return owner.owner_id && !owner.owner_id->orig_id &&
-         !(owner.owner_id->tag & (ID_TAG_COPIED_ON_EVAL | ID_TAG_COPIED_ON_EVAL_FINAL_RESULT));
+  return owner.owner_id && !evaluated_or_runtime_id(*owner.owner_id);
 }
 
 }  // namespace
@@ -1947,7 +1965,7 @@ Family collection_family(const StructRNA &owner, const PropertyRNA &property)
   if (!declaration(property)) {
     return NONE;
   }
-  if (property.type == PROP_COLLECTION && property.identifier && STREQ(property.identifier, "data") &&
+  if (property.type == PROP_COLLECTION && property.identifier == "data" &&
       RNA_struct_is_a(&owner, RNA_Attribute) &&
       source_is(property, Role::COLLECTION_LENGTH, "rna_attribute.cc", "rna_Attribute_data_length"))
   {

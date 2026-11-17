@@ -124,14 +124,20 @@ def press(x, y):
         window().event_simulate(type=kind, value=value, x=x, y=y)
 
 
-def at(rect, region=None):
-    region = region or chat()[1]
+def at(rect, region):
+    """The centre of a rect of a canvas that lays out in region pixels (the welcome, a card) as window pixels."""
     return int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+
+
+def at_chat(rect):
+    """The centre of a chat rect (its points: its scale, right to left mirrored) as window pixels."""
+    from qa_input import chat_point
+    return chat_point(chat()[1], rect)
 
 
 def click(action, value=None):
     rect = next(r for r, a, v in view().get("hits", []) if a == action and (value is None or v == value))
-    press(*at(rect))
+    press(*at_chat(rect))
 
 
 def click_popup(action=None, matches=None, group=None):
@@ -144,15 +150,15 @@ def click_popup(action=None, matches=None, group=None):
     kind, rect = qa_plus_menu.step(view(), action, matches, group)
     if kind in ("click", "there"):
         if rect is not None:
-            press(*at(rect))
+            press(*at_chat(rect))
         state.pop("popup_steps", None)
         return True
     if kind != "missing" and state.setdefault("popup_steps", 0) < 80:
         state["popup_steps"] += 1
         if kind in ("open", "back"):
-            press(*at(rect))
+            press(*at_chat(rect))
         elif kind in ("scroll", "scroll_up"):
-            px, py = at(rect)
+            px, py = at_chat(rect)
             wheel = 'WHEELUPMOUSE' if kind == "scroll_up" else 'WHEELDOWNMOUSE'
             for value in ('PRESS', 'RELEASE'):   # Over the menu, as a person's wheel turns.
                 window().event_simulate(type=wheel, value=value, x=px, y=py)
@@ -165,8 +171,9 @@ def click_popup(action=None, matches=None, group=None):
 
 def menu_key(kind):
     """Press and release ``kind`` with the pointer over the open popup, as a person's key press with the menu open."""
-    x, y, w, h = view().get("popup_rect") or (0, 0, chat()[1].width, chat()[1].height)
-    px, py = at((x, y, w, h))
+    from angelo_agent import chat_view
+    region, s = chat()[1], chat_view.ui_scale()
+    px, py = at_chat(view().get("popup_rect") or (0, 0, region.width / s, region.height / s))
     for value in ('PRESS', 'RELEASE'):
         window().event_simulate(type=kind, value=value, x=px, y=py)
 
@@ -624,7 +631,7 @@ def tick():
             back = qa_plus_menu.hit(view(), qa_plus_menu.BACK, "base_mesh")
             checks["the_page_has_a_back_button"] = back is not None
             if back is not None:
-                press(*at(back))
+                press(*at_chat(back))
             state["phase"] = "plus_back"
             return .4
         if phase == "plus_back":

@@ -3,12 +3,19 @@
 """Consent in the compiled app's window: the trusted-scripts dialog, then a hosted worker chat's approval cards.
 
 Synthetic events, Angelo's default chat startup (Director Mode, the default view), isolated state; no provider,
-account, network or paid call. The ``angelo.trusted_scripts`` dialog: no consent at first and ``EXEC_DEFAULT`` refuses
-(before, after a cancel, after a revoke); Escape leaves it off, Enter grants it, invoking again revokes it, a New
-Chat starts without it. Hosted (design A′): a worker chat made as the lead makes one (``worker_sessions._new_chat``: a
-mirror, in Ask), started in a real worker Blender (``worker_routing.start``, the installed headless script) and played
-by the stand-in ``codex`` the lead's runtime service relays. The person clicks the worker's tile on the session rail,
-types in the composer and presses Return, and clicks the drawn buttons; every card is drawn by the chat's real draw
+account, network or paid call. The ``angelo.trusted_scripts`` dialog, opened as the person opens it: the Approval
+Policy menu reached from the chat bar's + menu (Apps and settings, Approval policy…; its only way in), by clicks or by
+typing in its search and Return (the keyboard ruling, A), then a real pointer press on the menu's item, where Blender
+drew it (``qa_input.popup_button``), the press C mints the operator's ticket for (grant_operators.rst), or End and
+Return in that menu. An agent script's call of the opener (``angelo.approval_policy``, confined as every agent
+script runs) is refused, and no menu opens: C refuses its ``wm.call_menu`` for confined code (SHOULD-2). A script's invoke is refused (before and while trusted: no dialog, no
+change); no consent at first and ``EXEC_DEFAULT`` refuses (before, after a cancel, after a revoke); Escape leaves it
+off, Enter grants it, the item again revokes it, a New Chat starts without it.
+
+Hosted (design A′): a worker chat made as the lead makes one (``worker_sessions._new_chat``: a mirror, in Ask),
+started in a real worker Blender (``worker_routing.start``, the installed headless script) and played by the stand-in
+``codex`` the lead's runtime service relays. The person clicks the worker's tile on the session rail, types in the
+composer and presses Return, and clicks the drawn buttons; every card is drawn by the chat's real draw
 (``chat_guard.shown_approvals`` records each drawn Approve; nothing here calls ``drew``). Checked from the mirror, its
 journal, the stand-in's log, the drawn rows and the window's offscreen pixels (``live_view.window_pixels``):
 
@@ -45,6 +52,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # The QA helpers besid
 import qa_boot  # noqa: E402
 import qa_frames  # noqa: E402
 import qa_input  # noqa: E402
+import qa_plus_menu  # noqa: E402
 import qa_waits  # noqa: E402
 
 product_env.clear('DISABLE_DEFAULT_CHAT')  # The dialog belongs to the default chat.
@@ -66,16 +74,198 @@ def parts():
     return {"window": window, "area": area, "region": next(r for r in area.regions if r.type == 'WINDOW')}
 
 
-def invoke():
+def scripted_invoke():
+    """A script's call of the operator, as a keymap entry or an add-on would make it: refused, so it neither opens the
+    dialog nor revokes (grant_guard: only the person's real press on its own button carries a ticket)."""
+    from angelo_agent import grant_guard
     with bpy.context.temp_override(**parts()):
-        return bpy.ops.angelo.trusted_scripts('INVOKE_DEFAULT')
+        try:
+            return bpy.ops.angelo.trusted_scripts('INVOKE_DEFAULT')
+        except RuntimeError as error:   # Blender raises the operator's ERROR report for a Python caller.
+            if grant_guard.NOT_YOURS not in str(error):
+                raise
+            return {'CANCELLED'}
+
+
+def confined_opener():
+    """An agent script's call of the + menu's opener (bpy.ops.angelo.approval_policy), admitted and confined as every
+    agent script runs (test_blender_pointer_warp.confined's pattern): its refusal text, or None. C refuses the
+    wm.call_menu inside it for confined code, so no menu opens under the person's pointer (the reviewer's SHOULD-2)."""
+    from angelo_agent import script_confinement
+    from confinement_attacks_admit import admit
+    source = "bpy.ops.angelo.approval_policy('INVOKE_DEFAULT')"
+    admit("consent-approval-policy", source)
+    try:
+        with bpy.context.temp_override(**parts()):
+            script_confinement.run_confined(source, {"__name__": "__angelo_script__", "bpy": bpy}, None,
+                                            "consent-approval-policy")
+        return None
+    except script_confinement.ScriptConfined as error:
+        return script_confinement.reason_of(error)
+    except Exception as error:   # noqa: BLE001 - the guard's own error is its refusal; anything else says so.
+        return repr(error)
+
+
+def popup_open():
+    """Any popup drawn in the chat's window now (``_angelo_jobs.popup_buttons``)."""
+    from _bpy import _angelo_jobs
+    window = parts()["window"].as_pointer()
+    return any(pointer == window for pointer, *_ in _angelo_jobs.popup_buttons())
+
+
+def chat_view_state():
+    from angelo_agent import chat_view
+    return chat_view._views.get(parts()["area"].as_pointer(), {})
+
+
+def canvas_press(rect):
+    """A real press at the centre of a chat canvas ``rect``, mapped to window pixels as the chat maps them back
+    (``qa_input.chat_point``: the chat's scale, then the mirror)."""
+    qa_input.press(parts()["window"], *qa_input.chat_point(parts()["region"], rect))
+
+
+def open_menu(then, keyboard=False):
+    """The person opens the Approval Policy menu as Angelo offers it (the + menu is its only way in): a press on the
+    chat bar's +, then Apps and settings' "Approval policy…", clicked (``plus:pointer``) or reached by typing in the
+    + menu's search and pressing Return (``plus:keyboard``: the keyboard ruling, A); then its trust item, clicked
+    where Blender drew it (``menu:``) or, by keyboard, End and Return in Blender's menu (``menu_kb:``)."""
+    REPORT["phase"] = "plus_open:%s:%s" % ("keyboard" if keyboard else "pointer", then)
+
+
+PLUS = {"pressed": 0.0, "presses": 0}   # The presses on + for the menu being opened now.
+
+
+def press_plus(mode, then):
+    rect = next((r for r, action, _ in chat_view_state().get("hits", []) if action == "attach"), None)
+    if not until(lambda: rect, "the chat bar's + drawn"):
+        return 0.2
+    canvas_press(rect)
+    PLUS.update(pressed=time.monotonic(), presses=1, rect=rect)
+    REPORT["phase"] = "plus:%s:%s" % (mode, then)
+    return 0.4
+
+
+def plus_open(view):
+    """Whether the + menu is open; if a press opened nothing (the first click after a refusal dismisses its report,
+    as it would for a person), + is pressed again, at most three times in all."""
+    if qa_plus_menu.is_open(view):
+        return True
+    if time.monotonic() - PLUS["pressed"] > 1.0 and PLUS["presses"] < 3:
+        canvas_press(PLUS["rect"])
+        PLUS.update(pressed=time.monotonic(), presses=PLUS["presses"] + 1)
+    return False
+
+
+def menu_offered():
+    """The Approval Policy menu is drawn (its own items: the modes, the trust item)."""
+    window = parts()["window"]
+    return qa_input.popup_button(window, "angelo.set_approval") or qa_input.popup_button(window, "angelo.trusted_scripts")
+
+
+def plus_pointer(then):
+    """One step of a person's clicks through the + menu towards Apps and settings' Approval policy… row."""
+    view = chat_view_state()
+    if not until(lambda: plus_open(view), "the + menu opened by the press on +"):
+        return 0.2
+    kind, rect = qa_plus_menu.step(view, "popup_add_open", "approval_policy", group="apps_settings")
+    if kind == "missing":
+        raise AssertionError("the + menu offers no approval policy: %r" % qa_plus_menu.miss(
+            view, "popup_add_open", "approval_policy", "apps_settings"))
+    if kind in ("open", "back", "click"):
+        canvas_press(rect)
+    if kind == "click":
+        REPORT["checks"]["plus_menu_offers_the_approval_policy"] = True
+        REPORT["phase"] = "menu:" + then
+    return 0.4
+
+
+def plus_keyboard(then, stage, finish="menu_kb:"):
+    """The keyboard's way: the policy typed into the + menu's search, Down to its row, Return; then the menu's item
+    by keys (``menu_kb:``) or by the pointer (``menu:``)."""
+    view = chat_view_state()
+    if stage == "type":
+        if not until(lambda: plus_open(view), "the + menu opened by the press on +"):
+            return 0.2
+        REPORT["details"].setdefault("plus_presses", []).append(PLUS["presses"])
+        window = parts()["window"]
+        for character in "approval policy":
+            kind = "SPACE" if character == " " else character.upper()
+            window.event_simulate(type=kind, value='PRESS', unicode=character)
+            window.event_simulate(type=kind, value='RELEASE')
+        REPORT["phase"] = "plus:keyboard_down:%s:%s" % (finish.rstrip(":"), then)
+        return 0.4
+    popup = qa_plus_menu.popup(view)
+    stops, cursor = popup.get("stops") or [], popup.get("cursor")
+    on_row = (popup.get("keyboard") and cursor is not None and cursor < len(stops)
+              and tuple(stops[cursor][:2]) == ("popup_add_open", "approval_policy"))
+    if stage == "down":
+        if not until(lambda: any(tuple(stop[:2]) == ("popup_add_open", "approval_policy") for stop in stops),
+                     "the + menu's search found the approval policy"):
+            return 0.2
+        if not on_row:
+            for value in ('PRESS', 'RELEASE'):
+                parts()["window"].event_simulate(type='DOWN_ARROW', value=value)
+            return 0.3
+        REPORT["checks"]["plus_menu_search_finds_the_approval_policy"] = True
+        for value in ('PRESS', 'RELEASE'):
+            parts()["window"].event_simulate(type='RET', value=value)
+        REPORT["phase"] = finish + then
+    return 0.4
+
+
+def click_menu(then):
+    """A real press on the menu's own "Trust scripts for this chat…" / "Disable trusted scripts" item, where Blender
+    drew it: the press C mints the operator's ticket for, which opens the dialog (or revokes)."""
+    rect = until(lambda: qa_input.popup_button(parts()["window"], "angelo.trusted_scripts"),
+                 "the Approval Policy menu's trust item drawn", 10)
+    if rect is None:
+        return 0.2
+    REPORT["checks"]["plus_menu_opens_the_approval_policy_menu"] = True
+    x, y, w, h = rect
+    REPORT["details"].setdefault("menu_clicks", []).append([then, [round(v) for v in rect]])
+    qa_input.press(parts()["window"], x + w / 2, y + h / 2)
+    REPORT["phase"] = then
+    return 0.5
+
+
+def key_menu(then):
+    """Blender's own menu buttons stay pointer-only (grant_operators.rst): End and Return on the trust item, in the menu
+    the person's Return opened, open no dialog and grant nothing (``keys:``); the item is then pressed."""
+    if not until(lambda: qa_input.popup_button(parts()["window"], "angelo.trusted_scripts"),
+                 "the Approval Policy menu opened by Return on its + menu row", 10):
+        return 0.2
+    REPORT["checks"]["plus_menu_return_opens_the_approval_policy_menu"] = True
+    key('END')
+    key('RET')
+    REPORT["phase"] = "keys:" + then
+    return 0.6
+
+
+def after_keys(then):
+    """The keys on Blender's item granted nothing; the person then clicks the item, in the menu if it is still open,
+    else in the menu reopened by the keyboard's way through the + menu."""
+    controller = __import__("angelo_agent.ui").ui.get_controller()
+    REPORT["checks"]["blenders_menu_keys_open_no_dialog"] = not dialog_open() and not controller.trusted_scripts
+    if menu_offered():
+        REPORT["phase"] = "menu:" + then
+    else:
+        REPORT["phase"] = "plus_open:keyboard_click:" + then
+    return 0.3
+
+
+def dialog_open():
+    """Whether the trust dialog is drawn now (its first line, as shown)."""
+    from _bpy import _angelo_jobs
+    from angelo_agent.ui_text import iface_
+    return iface_("Allow future scripts in this chat without individual code review?") in \
+        _angelo_jobs.close_dialog_texts()
 
 
 def execute_direct():
     """The operator without its dialog: it must refuse, never grant consent."""
     with bpy.context.temp_override(**parts()):
         try:
-            return bpy.ops.angelo.trusted_scripts('EXEC_DEFAULT')
+            return __import__("angelo_agent.grant_guard").grant_guard.stand_in().trusted_scripts('EXEC_DEFAULT')
         except RuntimeError as error:  # Blender raises an ERROR report for a Python caller.
             if "Open the trust dialog for the current chat first" not in str(error):
                 raise
@@ -174,6 +364,11 @@ def start_worker():
         return receive(kind, data)
     mirror.receive = recording
     started = time.monotonic()
+    # A worker saves its part where C lets Angelo write (worker_routing.launch's require_writable): Angelo's sessions
+    # make parts in its own folders, so this suite's parts folder is made Angelo's own, as they are.
+    from angelo_agent import owned_paths
+    (OUT / "parts").mkdir(parents=True, exist_ok=True)
+    owned_paths.own(OUT / "parts")
     worker_routing.start(mirror, OUT / "parts" / "hosted-cards.blend")
     REPORT["timings"]["worker_start_s"] = round(time.monotonic() - started, 3)
     HOSTED.update(mirror=mirror, chat=hosted_worker_chat.HostedWorkerChat.of(mirror), lead_document=ui.document_key())
@@ -190,9 +385,8 @@ def actions():
 
 def to_window(rect):
     """A canvas rectangle (unscaled, region-relative) in window pixels: (x, y, width, height)."""
-    from angelo_agent import chat_view
-    region, scale = parts()["region"], chat_view.ui_scale()
-    return (region.x + rect[0] * scale, region.y + rect[1] * scale, rect[2] * scale, rect[3] * scale)
+    from qa_input import chat_rect   # The chat's points as window pixels (its scale, right to left mirrored).
+    return chat_rect(parts()["region"], rect)
 
 
 def control(action, value):
@@ -205,6 +399,11 @@ def press(action, value):
     x, y, w, h = control(action, value)
     point = (x + w / 2, y + h / 2)
     HOSTED["actions"].append({"phase": REPORT["phase"], "click": action, "call": value, "at": [int(v) for v in point]})
+    from angelo_agent.approval_arming import GRANTS
+    if action in GRANTS:   # It takes only a click aimed at it (approval_arming).
+        from angelo_agent import approval_arming
+        return qa_input.aim(parts()["window"], lambda: control(action, value),
+                            ready=lambda: approval_arming.view(view_state()).key_armed((action, value)))
     qa_input.press(parts()["window"], *point)
 
 
@@ -470,9 +669,40 @@ def tick():
             REPORT["checks"]["default_off"] = not controller.busy and not controller.trusted_scripts
             REPORT["checks"]["direct_execute_before_dialog_refused"] = (execute_direct() == {'CANCELLED'}
                                                                          and not controller.trusted_scripts)
-            assert invoke() == {'RUNNING_MODAL'}
-            REPORT["phase"] = "cancel_dialog"
+            check("scripted_invoke_refused", scripted_invoke() == {'CANCELLED'} and not controller.trusted_scripts
+                  and not dialog_open())
+            refusal = confined_opener()
+            REPORT["details"]["confined_opener_refusal"] = refusal
+            # The opener exists (a missing operator would raise too, and pass this for nothing), and its run is refused.
+            check("an_agent_scripts_opener_is_refused_and_opens_no_menu", hasattr(bpy.types, "ANGELO_OT_approval_policy")
+                  and refusal is not None and "open a menu" in refusal and not popup_open()
+                  and not controller.trusted_scripts, refusal)
+            REPORT["phase"] = "confined_settled"
+        elif phase == "confined_settled":   # A redraw later: still no menu, and nothing granted.
+            check("no_menu_after_an_agent_scripts_opener", not popup_open() and not ui.get_controller().trusted_scripts)
+            open_menu("cancel_dialog")
+        elif phase.startswith("plus_open:"):
+            _, mode, then = phase.split(":", 2)
+            return press_plus(mode, then)
+        elif phase.startswith("plus:pointer:"):
+            return plus_pointer(phase.split(":", 2)[2])
+        elif phase.startswith("plus:keyboard:"):
+            return plus_keyboard(phase.split(":", 2)[2], "type")
+        elif phase.startswith("plus:keyboard_click:"):
+            return plus_keyboard(phase.split(":", 2)[2], "type", finish="menu:")
+        elif phase.startswith("keys:"):
+            return after_keys(phase.partition(":")[2])
+        elif phase.startswith("plus:keyboard_down:"):
+            _, _, ending, then = phase.split(":", 3)
+            return plus_keyboard(then, "down", ending + ":")
+        elif phase.startswith("menu:"):
+            return click_menu(phase.partition(":")[2])
+        elif phase.startswith("menu_kb:"):
+            return key_menu(phase.partition(":")[2])
         elif phase == "cancel_dialog":
+            if not until(dialog_open, "the trust dialog opened by the menu click"):
+                return 0.2
+            REPORT["checks"]["menu_click_opens_the_dialog"] = True
             capture("trusted-consent-cancel-warning.png")
             key('ESC')
             REPORT["phase"] = "after_cancel"
@@ -481,9 +711,11 @@ def tick():
             REPORT["checks"]["escape_leaves_consent_off"] = not controller.trusted_scripts
             REPORT["checks"]["direct_execute_after_cancel_refused"] = (execute_direct() == {'CANCELLED'}
                                                                         and not controller.trusted_scripts)
-            assert invoke() == {'RUNNING_MODAL'}
-            REPORT["phase"] = "confirm_dialog"
+            open_menu("confirm_dialog", keyboard=True)
         elif phase == "confirm_dialog":
+            if not until(dialog_open, "the trust dialog opened again by the menu's item"):
+                return 0.2
+            REPORT["checks"]["keyboard_reaches_the_menu_and_a_press_the_dialog"] = True
             capture("trusted-consent-confirm-warning.png")
             key('RET')
             REPORT["phase"] = "after_confirm"
@@ -492,8 +724,12 @@ def tick():
             REPORT["checks"]["enter_grants_consent"] = controller.trusted_scripts
             assert controller.trusted_scripts, "Enter in the dialog did not grant consent"
             capture("trusted-consent-enabled.png")
-            assert invoke() == {'FINISHED'}
-            REPORT["checks"]["invoking_again_revokes"] = not controller.trusted_scripts
+            check("scripted_invoke_changes_nothing_while_trusted", scripted_invoke() == {'CANCELLED'}
+                  and controller.trusted_scripts and not dialog_open())
+            open_menu("after_revoke")
+        elif phase == "after_revoke":
+            controller = ui.get_controller()
+            REPORT["checks"]["invoking_again_revokes"] = not controller.trusted_scripts and not dialog_open()
             REPORT["checks"]["direct_execute_after_revoke_refused"] = (execute_direct() == {'CANCELLED'}
                                                                         and not controller.trusted_scripts)
             controller.new_chat(ui.document_key())

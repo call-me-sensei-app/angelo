@@ -26,7 +26,7 @@ bpy is imported by this module; it runs only on the main thread.
 import bpy
 from mathutils import Vector
 
-from . import team_library_import as base
+from . import color_spaces, team_library_import as base
 from .library_catalog import credits_text  # noqa: F401  (the Credits button reads it here)
 from .team_library_files import ImportFailed
 
@@ -54,7 +54,7 @@ def _image(path, name, data):
     image = bpy.data.images.load(str(path), check_existing=False)
     image.name = name[:60]
     if data:
-        image.colorspace_settings.name = 'Non-Color'
+        color_spaces.mark_stored(image.colorspace_settings)
     image.pack()
     return image
 
@@ -194,6 +194,8 @@ def import_item(context, item, facts, *, point=None, targets=(), set_view=None):
     """Import a checked item; returns the read-back. ``point``: where a model or sprite stands (default: the 3D
     cursor). ``targets``: objects a texture set goes on. ``set_view``: a 3D view whose shading should show a new
     world (a drop in the interface); the agent never changes the person's view."""
+    from . import edit_tool_hold
+    edit_tool_hold.refuse_under("An import")   # Last line: every route to it waits first.
     scene, layer = context.scene, context.view_layer
     if context.mode != 'OBJECT':
         raise base.NotImported("Leave the active editing or sculpt mode before importing.")

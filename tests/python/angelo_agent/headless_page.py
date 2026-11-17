@@ -19,6 +19,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 ENV = "ANGELO_QA_BROWSER"
 OFF = "none"
@@ -87,7 +88,7 @@ class Page:
                     process.terminate()
                 else:
                     os.killpg(process.pid, signal.SIGTERM)
-                process.wait(timeout=10)
+                process.wait(timeout=CAP_S)
             except (OSError, subprocess.TimeoutExpired):
                 if sys.platform == "win32":
                     process.kill()

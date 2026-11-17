@@ -8,15 +8,16 @@ are requested, and each copied image is bounded and verified on a worker. Missin
 
 import hashlib
 from pathlib import Path
-import shutil
 import time
 
 from . import blender_assets as assets, blender_asset_index as index, private_roots
+from . import owned_paths  # noqa: E402  (what Angelo made: its cleanups remove only that)
 
 MAX_BYTES = 2 * 1024 * 1024
 
 
 def _copy(rows, folder, stop, wait):
+    owned_paths.require_writable(folder)   # Every target below is made in it.
     from .library_agent import _image_suffix
     pending, found = list(rows), []
     deadline = time.monotonic() + (15 if wait else 0)
@@ -79,4 +80,4 @@ class Previews:
     def close(self):
         if self.worker:
             self.worker.cancel.set()
-        shutil.rmtree(self.folder, ignore_errors=True)
+        owned_paths.remove_tree(self.folder)   # Only the folder Angelo made (owned_paths).

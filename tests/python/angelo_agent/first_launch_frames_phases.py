@@ -198,8 +198,10 @@ def chat_text_pixels(path):
     for rect, action, value in chat_view._views.get(area.as_pointer(), {}).get("hits", []):
         if not str(action).startswith("welcome"):
             continue
-        x, y = int((region.x + rect[0]) * k), int((region.y + rect[1]) * k)
-        box = rgb[max(0, y):y + int(rect[3] * k), max(0, x):x + int(rect[2] * k)]
+        from qa_input import chat_rect   # The chat's points as window pixels (its scale, right to left mirrored).
+        left, bottom, width, height = chat_rect(region, rect)
+        x, y = int(left * k), int(bottom * k)
+        box = rgb[max(0, y):y + int(height * k), max(0, x):x + int(width * k)]
         rows["%s:%s" % (action, value)] = int((box.max(axis=2) >= 150).sum()) if box.size else 0
     files = getattr(chat_view, "font_files", {})
     if chat_view._font:

@@ -86,9 +86,10 @@ def label(raw):
 
 def edits(tool):
     """Whether a plan's tool changes something (a lookup or a view is no step of what the plan makes)."""
-    from .tool_specs import TOOL_MAP  # Here, not at import: the plan stream loads before the tool catalogue.
-    spec = TOOL_MAP.get(tool)
-    return spec is not None and not spec["annotations"]["readOnlyHint"]
+    from .tool_specs import KNOWN_TOOLS, READ_ONLY_TOOLS  # Here, not at import: the plan stream loads first.
+    # Display only (the stream sees partial names): a step for a known tool that writes, read from the registered
+    # frozen sets. Decisions count an unknown tool as a change (request_recovery, plan_recovery); a display doesn't.
+    return tool in KNOWN_TOOLS and tool not in READ_ONLY_TOOLS
 
 
 def named_tool(tool):

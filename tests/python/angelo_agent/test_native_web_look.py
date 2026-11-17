@@ -113,6 +113,16 @@ class KnownToneTests(unittest.TestCase):
             web_tone.measure(str(self.CONFIG), "Filmic", None, "sRGB - Display")
         measured.assert_called_once_with(str(self.CONFIG), "Filmic", None, "sRGB - Display")
 
+    def test_the_configuration_read_is_the_one_blender_is_using(self):
+        """A project can bring its own, and Blender names it even when it is an ``ocio://`` built-in one."""
+        built_in = "ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
+        stub = SimpleNamespace(data=SimpleNamespace(colorspace=SimpleNamespace(ocio_config_path=built_in)),
+                               utils=SimpleNamespace(system_resource=lambda *_args, **_kwargs: "bundled"))
+        with mock.patch.dict(sys.modules, {"bpy": stub}):
+            self.assertEqual(web_look._config_path(), built_in)
+            stub.data.colorspace.ocio_config_path = ""
+            self.assertEqual(Path(web_look._config_path()), Path("bundled/config.ocio"))
+
     def test_any_other_configuration_is_measured(self):
         with tempfile.TemporaryDirectory() as folder:
             other = Path(folder) / "config.ocio"

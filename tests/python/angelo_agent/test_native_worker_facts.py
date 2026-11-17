@@ -88,7 +88,7 @@ class FactsFixture(Fixture):
         """The brief reaches the chat through ``worker_sessions._send`` (its send recorded, never made)."""
         self.ui.prepare_controller, self.ui.main_window = (lambda controller: None), (lambda: None)
         chat.timings = {}   # As ``Controller.send`` does, its request's clock starts inside the send.
-        chat.send = lambda text, observation=None, recovery_evidence=None: chat.timings.update(started=time.monotonic())
+        chat.send = lambda text, observation=None, recovery_evidence=None, host_kind=None: chat.timings.update(started=time.monotonic())
         with mock.patch.object(worker_routing, "deliver", lambda controller, window, text, send, failed: send(
                 SimpleNamespace(observation={}, recovery_evidence={}))):
             worker_sessions._send(chat, "Part: Sofa.\n\nA sofa.", "lead/%d" % worker_sessions._parts[

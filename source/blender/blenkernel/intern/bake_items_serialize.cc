@@ -2,6 +2,10 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
+/** \file
+ * \ingroup bke
+ */
+
 #include "BKE_anonymous_attribute_id.hh"
 #include "BKE_attribute_legacy_convert.hh"
 #include "BKE_bake_attribute_field.hh"
@@ -16,11 +20,13 @@
 #include "BKE_pointcloud.hh"
 #include "BKE_volume.hh"
 
-#include "BLI_listbase.h"
+#include "BLI_angelo_writers.hh"
+#include "BLI_generic_array.hh"
+#include "BLI_listbase.hh"
 #include "BLI_math_matrix_types.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_string_utf8.h"
+#include "BLI_string.hh"
+#include "BLI_string_utf8.hh"
 
 #include "DNA_object_types.h"
 #include "DNA_volume_types.h"
@@ -84,6 +90,10 @@ std::optional<BlobSlice> BlobSlice::deserialize(const DictionaryValue &io_slice)
   if (!name || !start || !size) {
     return std::nullopt;
   }
+  /* Old bakes can contain a negative size when writing the data failed. */
+  if (*start < 0 || *size < 0 || *size > std::numeric_limits<int64_t>::max() - *start) {
+    return std::nullopt;
+  }
 
   return BlobSlice{*name, {*start, *size}};
 }
@@ -109,7 +119,7 @@ bool BlobReader::read_as_stream(const BlobSlice &slice, FunctionRef<bool(std::is
   if (!fn(stream)) {
     return false;
   }
-  return true;
+  return !stream.fail();
 }
 
 DiskBlobReader::DiskBlobReader(std::string blobs_dir) : blobs_dir_(std::move(blobs_dir)) {}
@@ -143,15 +153,29 @@ DiskBlobWriter::DiskBlobWriter(std::string blob_dir, std::string base_name)
 
 BlobSlice DiskBlobWriter::write(const void *data, const int64_t size)
 {
+  const int64_t old_offset = current_offset_;
+  if (has_error_) {
+    return {blob_name_, {old_offset, 0}};
+  }
+
   if (!blob_stream_.is_open()) {
     char blob_path[FILE_MAX];
     BLI_path_join(blob_path, sizeof(blob_path), blob_dir_.c_str(), blob_name_.c_str());
+    /* Angelo: a bake's file, judged where it is written (BLI_angelo_writers.hh). */
+    if (angelo_writers::refusal(blob_path)) {
+      has_error_ = true;
+      return {blob_name_, {old_offset, 0}};
+    }
     BLI_file_ensure_parent_dir_exists(blob_path);
     blob_stream_.open(blob_path, std::ios::out | std::ios::binary);
+    file_names_.append(blob_name_);
   }
 
-  const int64_t old_offset = current_offset_;
   blob_stream_.write(static_cast<const char *>(data), size);
+  if (blob_stream_.fail()) {
+    has_error_ = true;
+    return {blob_name_, {old_offset, 0}};
+  }
   current_offset_ += size;
   total_written_size_ += size;
   return {blob_name_, {old_offset, size}};
@@ -171,15 +195,55 @@ BlobSlice DiskBlobWriter::write_as_stream(const StringRef file_extension,
   independent_file_count_++;
   const std::string file_name = make_independent_file_name(
       base_name_, independent_file_count_, file_extension);
+  if (has_error_) {
+    return {file_name, {0, 0}};
+  }
 
   char path[FILE_MAX];
   BLI_path_join(path, sizeof(path), blob_dir_.c_str(), file_name.c_str());
+  if (angelo_writers::refusal(path)) { /* Angelo: as #write. */
+    has_error_ = true;
+    return {file_name, {0, 0}};
+  }
   BLI_file_ensure_parent_dir_exists(path);
   std::fstream stream{path, std::ios::out | std::ios::binary};
-  fn(stream);
-  const int64_t written_bytes_num = stream.tellg();
+  file_names_.append(file_name);
+  int64_t written_bytes_num = -1;
+  try {
+    fn(stream);
+    written_bytes_num = stream.tellp();
+  }
+  catch (...) {
+    /* OpenVDB uses exceptions to report errors. */
+  }
+  stream.close();
+  if (stream.fail() || written_bytes_num < 0) {
+    has_error_ = true;
+    return {file_name, {0, 0}};
+  }
   total_written_size_ += written_bytes_num;
   return {file_name, {0, written_bytes_num}};
+}
+
+bool DiskBlobWriter::finish()
+{
+  if (blob_stream_.is_open()) {
+    blob_stream_.close();
+    if (blob_stream_.fail()) {
+      has_error_ = true;
+    }
+  }
+  return !has_error_;
+}
+
+void DiskBlobWriter::remove_files()
+{
+  BLI_assert(!blob_stream_.is_open());
+  for (const std::string &file_name : file_names_) {
+    char path[FILE_MAX];
+    BLI_path_join(path, sizeof(path), blob_dir_.c_str(), file_name.c_str());
+    BLI_delete(path, false, false);
+  }
 }
 
 void MemoryBlobReader::add(const StringRef name, const Span<std::byte> blob)
@@ -369,16 +433,19 @@ static std::shared_ptr<DictionaryValue> write_blob_raw_bytes(BlobWriter &blob_wr
   return blob_sharing.write_deduplicated(blob_writer, data, size_in_bytes);
 }
 
+static bool blob_slice_is_valid(const std::optional<BlobSlice> &slice_opt,
+                                const int64_t expected_size)
+{
+  return slice_opt && slice_opt->range.size() == expected_size;
+}
+
 [[nodiscard]] static bool read_blob_raw_bytes(const BlobReader &blob_reader,
                                               const DictionaryValue &io_data,
                                               const int64_t bytes_num,
                                               void *r_data)
 {
   const std::optional<BlobSlice> slice = BlobSlice::deserialize(io_data);
-  if (!slice) {
-    return false;
-  }
-  if (slice->range.size() != bytes_num) {
+  if (!blob_slice_is_valid(slice, bytes_num)) {
     return false;
   }
   return blob_reader.read(*slice, r_data);
@@ -416,16 +483,21 @@ static std::shared_ptr<DictionaryValue> write_blob_shared_simple_gspan(
     const int size,
     const ImplicitSharingInfo **r_sharing_info)
 {
-  const char *func = __func__;
+  /* Validate before looking up shared data, because the read callback is skipped on cache hits.
+   * This also avoids allocating a buffer for an inconsistent element count. */
+  const std::optional<BlobSlice> slice = BlobSlice::deserialize(io_data);
+  if (size < 0 || !blob_slice_is_valid(slice, int64_t(size) * cpp_type.size)) {
+    *r_sharing_info = nullptr;
+    return nullptr;
+  }
   const std::optional<ImplicitSharingInfoAndData> sharing_info_and_data = blob_sharing.read_shared(
       io_data, [&]() -> std::optional<ImplicitSharingInfoAndData> {
-        void *data_mem = MEM_new_uninitialized_aligned(
-            size * cpp_type.size, cpp_type.alignment, func);
-        if (!read_blob_simple_gspan(blob_reader, io_data, {cpp_type, data_mem, size})) {
-          MEM_delete_void(data_mem);
+        GArray<> data(cpp_type, size, NoInitialization());
+        if (!read_blob_simple_gspan(blob_reader, io_data, data)) {
           return std::nullopt;
         }
-        return ImplicitSharingInfoAndData{implicit_sharing::info_for_mem_free(data_mem), data_mem};
+        auto *sharing_info = new ImplicitSharedValue<GArray<>>(std::move(data));
+        return ImplicitSharingInfoAndData{sharing_info, sharing_info->data.data()};
       });
   if (!sharing_info_and_data) {
     *r_sharing_info = nullptr;
@@ -569,6 +641,22 @@ template<typename T>
   return true;
 }
 
+/* Geometry counts may be omitted for empty domains in older bakes. Check the serialized int64_t
+ * before narrowing it, including room for an extra offset where needed. */
+static std::optional<int> lookup_int_in_range(const DictionaryValue &io_dict,
+                                              const StringRef key,
+                                              const int max = std::numeric_limits<int>::max())
+{
+  if (!io_dict.lookup(key)) {
+    return 0;
+  }
+  const std::optional<int64_t> value = io_dict.lookup_int(key);
+  if (!value || *value < 0 || *value > max) {
+    return std::nullopt;
+  }
+  return int(*value);
+}
+
 static PointCloud *try_load_pointcloud(const DictionaryValue &io_geometry,
                                        const BlobReader &blob_reader,
                                        const BlobReadSharing &blob_sharing)
@@ -581,8 +669,13 @@ static PointCloud *try_load_pointcloud(const DictionaryValue &io_geometry,
   if (!io_attributes) {
     return nullptr;
   }
-  const int points_num = io_pointcloud->lookup_int("num_points").value_or(0);
-  PointCloud *pointcloud = bke::pointcloud_new_no_attributes(points_num);
+  const PointCloudType type = PointCloudType(
+      io_pointcloud->lookup_int("type").value_or(int(PointCloudType::Points)));
+  const std::optional<int> points_num = lookup_int_in_range(*io_pointcloud, "num_points");
+  if (!points_num) {
+    return nullptr;
+  }
+  PointCloud *pointcloud = bke::pointcloud_new_no_attributes(type, *points_num);
 
   auto cancel = [&]() {
     BKE_id_free(nullptr, pointcloud);
@@ -611,10 +704,16 @@ static std::optional<CurvesGeometry> try_load_curves_geometry(const DictionaryVa
     return std::nullopt;
   }
 
+  const std::optional<int> points_num = lookup_int_in_range(io_curves, "num_points");
+  const std::optional<int> curves_num = lookup_int_in_range(
+      io_curves, "num_curves", std::numeric_limits<int>::max() - 1);
+  if (!points_num || !curves_num) {
+    return std::nullopt;
+  }
   CurvesGeometry curves;
   curves.attribute_storage.wrap().remove("position");
-  curves.point_num = io_curves.lookup_int("num_points").value_or(0);
-  curves.curve_num = io_curves.lookup_int("num_curves").value_or(0);
+  curves.point_num = *points_num;
+  curves.curve_num = *curves_num;
 
   if (curves.curves_num() > 0) {
     const auto *io_curve_offsets = io_curves.lookup_dict("curve_offsets");
@@ -753,9 +852,9 @@ static GreasePencil *try_load_grease_pencil(const DictionaryValue &io_geometry,
 
   const DictionaryValue *io_layer_blend_modes = io_grease_pencil->lookup_dict("blend_modes");
   Array<int8_t> layer_blend_modes(layers_num);
-  if (!io_layer_opacities || !read_blob_simple_gspan(blob_reader,
-                                                     *io_layer_blend_modes,
-                                                     layer_blend_modes.as_mutable_span()))
+  if (!io_layer_blend_modes || !read_blob_simple_gspan(blob_reader,
+                                                       *io_layer_blend_modes,
+                                                       layer_blend_modes.as_mutable_span()))
   {
     return cancel();
   }
@@ -786,6 +885,48 @@ static GreasePencil *try_load_grease_pencil(const DictionaryValue &io_geometry,
   return grease_pencil;
 }
 
+static void load_texspace(const DictionaryValue *io_mesh, Mesh *mesh)
+{
+
+  const auto reset_texspace_default = [](Mesh *mesh) {
+    std::ranges::fill(mesh->texspace_location, 0.0f);
+    std::ranges::fill(mesh->texspace_size, 1.0f);
+  };
+
+  const auto fill_texspace_values = [](const io::serialize::ArrayValue *io_array,
+                                       float r_texspace_property[3]) -> bool {
+    size_t i = 0;
+    for (const std::shared_ptr<Value> &value : io_array->elements()) {
+      if (value->type() != io::serialize::eValueType::Double) {
+        return false;
+      }
+      r_texspace_property[i++] = float(value->as_double_value()->value());
+    }
+    return true;
+  };
+
+  mesh->texspace_flag = io_mesh->lookup_bool("texture_space_flag").value_or(false);
+
+  const io::serialize::ArrayValue *io_texloc_array = io_mesh->lookup_array(
+      "texture_space_location");
+  const io::serialize::ArrayValue *io_texsize_array = io_mesh->lookup_array("texture_space_size");
+
+  if (!io_texloc_array || !io_texsize_array) {
+    reset_texspace_default(mesh);
+    return;
+  }
+
+  BLI_assert(io_texloc_array->elements().size() == 3);
+  BLI_assert(io_texsize_array->elements().size() == 3);
+
+  if (!fill_texspace_values(io_texloc_array, mesh->texspace_location) ||
+      !fill_texspace_values(io_texsize_array, mesh->texspace_size))
+  {
+    reset_texspace_default(mesh);
+    return;
+  }
+}
+
 static Mesh *try_load_mesh(const DictionaryValue &io_geometry,
                            const BlobReader &blob_reader,
                            const BlobReadSharing &blob_sharing)
@@ -800,11 +941,19 @@ static Mesh *try_load_mesh(const DictionaryValue &io_geometry,
     return nullptr;
   }
 
+  const std::optional<int> verts_num = lookup_int_in_range(*io_mesh, "num_vertices");
+  const std::optional<int> edges_num = lookup_int_in_range(*io_mesh, "num_edges");
+  const std::optional<int> faces_num = lookup_int_in_range(
+      *io_mesh, "num_polygons", std::numeric_limits<int>::max() - 1);
+  const std::optional<int> corners_num = lookup_int_in_range(*io_mesh, "num_corners");
+  if (!verts_num || !edges_num || !faces_num || !corners_num) {
+    return nullptr;
+  }
   Mesh *mesh = bke::mesh_new_no_attributes(0, 0, 0, 0);
-  mesh->verts_num = io_mesh->lookup_int("num_vertices").value_or(0);
-  mesh->edges_num = io_mesh->lookup_int("num_edges").value_or(0);
-  mesh->faces_num = io_mesh->lookup_int("num_polygons").value_or(0);
-  mesh->corners_num = io_mesh->lookup_int("num_corners").value_or(0);
+  mesh->verts_num = *verts_num;
+  mesh->edges_num = *edges_num;
+  mesh->faces_num = *faces_num;
+  mesh->corners_num = *corners_num;
 
   auto cancel = [&]() {
     BKE_id_free(nullptr, mesh);
@@ -851,6 +1000,8 @@ static Mesh *try_load_mesh(const DictionaryValue &io_geometry,
     }
   }
 
+  load_texspace(io_mesh, mesh);
+
   if (const std::optional<StringRefNull> default_uv_map_name = io_mesh->lookup_str(
           "default_uv_map_name"))
   {
@@ -866,9 +1017,9 @@ static Mesh *try_load_mesh(const DictionaryValue &io_geometry,
   return mesh;
 }
 
-static GeometrySet load_geometry(const DictionaryValue &io_geometry,
-                                 const BlobReader &blob_reader,
-                                 const BlobReadSharing &blob_sharing);
+static std::optional<GeometrySet> load_geometry(const DictionaryValue &io_geometry,
+                                                const BlobReader &blob_reader,
+                                                const BlobReadSharing &blob_sharing);
 
 static std::unique_ptr<Instances> try_load_instances(const DictionaryValue &io_geometry,
                                                      const BlobReader &blob_reader,
@@ -878,8 +1029,8 @@ static std::unique_ptr<Instances> try_load_instances(const DictionaryValue &io_g
   if (!io_instances) {
     return nullptr;
   }
-  const int num_instances = io_instances->lookup_int("num_instances").value_or(0);
-  if (num_instances == 0) {
+  const std::optional<int> num_instances = lookup_int_in_range(*io_instances, "num_instances");
+  if (!num_instances || !io_instances->lookup("num_instances")) {
     return nullptr;
   }
   const io::serialize::ArrayValue *io_attributes = io_instances->lookup_array("attributes");
@@ -891,15 +1042,19 @@ static std::unique_ptr<Instances> try_load_instances(const DictionaryValue &io_g
     return nullptr;
   }
 
-  std::unique_ptr<Instances> instances = std::make_unique<Instances>(num_instances);
+  std::unique_ptr<Instances> instances = std::make_unique<Instances>(*num_instances);
 
   for (const auto &io_reference_value : io_references->elements()) {
     const DictionaryValue *io_reference = io_reference_value->as_dictionary_value();
-    GeometrySet reference_geometry;
-    if (io_reference) {
-      reference_geometry = load_geometry(*io_reference, blob_reader, blob_sharing);
+    if (!io_reference) {
+      return {};
     }
-    instances->add_new_reference(std::move(reference_geometry));
+    std::optional<GeometrySet> reference_geometry = load_geometry(
+        *io_reference, blob_reader, blob_sharing);
+    if (!reference_geometry) {
+      return {};
+    }
+    instances->add_new_reference(std::move(*reference_geometry));
   }
 
   MutableAttributeAccessor attributes = instances->attributes_for_write();
@@ -907,11 +1062,19 @@ static std::unique_ptr<Instances> try_load_instances(const DictionaryValue &io_g
     return {};
   }
 
+  if (*num_instances == 0) {
+    return instances;
+  }
+
   if (!attributes.contains(".reference_index")) {
     /* Try reading the reference index attribute from the old bake format from before it was an
      * attribute. */
     const auto *io_handles = io_instances->lookup_dict("handles");
     if (!io_handles) {
+      return {};
+    }
+    const std::optional<BlobSlice> slice = BlobSlice::deserialize(*io_handles);
+    if (!blob_slice_is_valid(slice, int64_t(*num_instances) * sizeof(int))) {
       return {};
     }
     if (!read_blob_simple_gspan(
@@ -928,11 +1091,20 @@ static std::unique_ptr<Instances> try_load_instances(const DictionaryValue &io_g
     if (!io_handles) {
       return {};
     }
+    const std::optional<BlobSlice> slice = BlobSlice::deserialize(*io_handles);
+    if (!blob_slice_is_valid(slice, int64_t(*num_instances) * sizeof(float4x4))) {
+      return {};
+    }
     if (!read_blob_simple_gspan(blob_reader, *io_handles, instances->transforms_for_write())) {
       return {};
     }
   }
 
+  for (const int handle : instances->reference_handles()) {
+    if (handle < 0 || handle >= instances->references().size()) {
+      return {};
+    }
+  }
   return instances;
 }
 
@@ -949,19 +1121,23 @@ static Volume *try_load_volume(const DictionaryValue &io_geometry, const BlobRea
   }
   openvdb::GridPtrVecPtr vdb_grids;
   if (std::optional<BlobSlice> vdb_slice = BlobSlice::deserialize(*io_vdb)) {
-    if (!blob_reader.read_as_stream(*vdb_slice, [&](std::istream &stream) {
-          try {
-            openvdb::io::Stream vdb_stream{stream};
-            vdb_grids = vdb_stream.getGrids();
-            return true;
-          }
-          catch (...) {
-            return false;
-          }
-        }))
+    if (!blob_reader.read_as_stream(*vdb_slice,
+                                    [&](std::istream &stream) {
+                                      try {
+                                        openvdb::io::Stream vdb_stream{stream};
+                                        vdb_grids = vdb_stream.getGrids();
+                                        return true;
+                                      }
+                                      catch (...) {
+                                        return false;
+                                      }
+                                    }))
     {
       return nullptr;
     }
+  }
+  else {
+    return nullptr;
   }
   Volume *volume = BKE_id_new_nomain<Volume>(nullptr);
   auto cancel = [&]() {
@@ -1004,20 +1180,67 @@ static nodes::BundlePtr try_load_geometry_bundle(const DictionaryValue &io_geome
   return bundle_ptr;
 }
 
-static GeometrySet load_geometry(const DictionaryValue &io_geometry,
-                                 const BlobReader &blob_reader,
-                                 const BlobReadSharing &blob_sharing)
+/**
+ * Every component that has been written has to be loaded successfully, otherwise the geometry
+ * would be incomplete without that being noticed.
+ */
+static std::optional<GeometrySet> load_geometry(const DictionaryValue &io_geometry,
+                                                const BlobReader &blob_reader,
+                                                const BlobReadSharing &blob_sharing)
 {
   GeometrySet geometry;
-  geometry.replace_mesh(try_load_mesh(io_geometry, blob_reader, blob_sharing));
-  geometry.replace_pointcloud(try_load_pointcloud(io_geometry, blob_reader, blob_sharing));
-  geometry.replace_curves(try_load_curves(io_geometry, blob_reader, blob_sharing));
-  geometry.replace_grease_pencil(try_load_grease_pencil(io_geometry, blob_reader, blob_sharing));
-  geometry.replace_instances(try_load_instances(io_geometry, blob_reader, blob_sharing).release());
+  if (io_geometry.lookup("mesh")) {
+    Mesh *mesh = try_load_mesh(io_geometry, blob_reader, blob_sharing);
+    if (!mesh) {
+      return std::nullopt;
+    }
+    geometry.replace_mesh(mesh);
+  }
+  if (io_geometry.lookup("pointcloud")) {
+    PointCloud *pointcloud = try_load_pointcloud(io_geometry, blob_reader, blob_sharing);
+    if (!pointcloud) {
+      return std::nullopt;
+    }
+    geometry.replace_pointcloud(pointcloud);
+  }
+  if (io_geometry.lookup("curves")) {
+    Curves *curves = try_load_curves(io_geometry, blob_reader, blob_sharing);
+    if (!curves) {
+      return std::nullopt;
+    }
+    geometry.replace_curves(curves);
+  }
+  if (io_geometry.lookup("grease_pencil")) {
+    GreasePencil *grease_pencil = try_load_grease_pencil(io_geometry, blob_reader, blob_sharing);
+    if (!grease_pencil) {
+      return std::nullopt;
+    }
+    geometry.replace_grease_pencil(grease_pencil);
+  }
+  if (io_geometry.lookup("instances")) {
+    std::unique_ptr<Instances> instances = try_load_instances(
+        io_geometry, blob_reader, blob_sharing);
+    if (!instances) {
+      return std::nullopt;
+    }
+    geometry.replace_instances(instances.release());
+  }
 #ifdef WITH_OPENVDB
-  geometry.replace_volume(try_load_volume(io_geometry, blob_reader));
+  if (io_geometry.lookup("volume")) {
+    Volume *volume = try_load_volume(io_geometry, blob_reader);
+    if (!volume) {
+      return std::nullopt;
+    }
+    geometry.replace_volume(volume);
+  }
 #endif
-  geometry.bundle_ptr() = try_load_geometry_bundle(io_geometry, blob_reader, blob_sharing);
+  if (io_geometry.lookup("bundle")) {
+    nodes::BundlePtr bundle = try_load_geometry_bundle(io_geometry, blob_reader, blob_sharing);
+    if (!bundle) {
+      return std::nullopt;
+    }
+    geometry.bundle_ptr() = std::move(bundle);
+  }
   return geometry;
 }
 
@@ -1110,6 +1333,22 @@ static void serialize_curves_geometry(DictionaryValue &io_curves,
   io_curves.append("attributes", io_attributes);
 }
 
+static void serialize_texture_space(const Mesh &mesh, std::shared_ptr<DictionaryValue> io_mesh)
+{
+  io_mesh->append_bool("texture_space_flag", mesh.texspace_flag);
+
+  std::shared_ptr<ArrayValue> texspace_location_array = io_mesh->append_array(
+      "texture_space_location");
+  for (float value : Span(mesh.texspace_location, 3)) {
+    texspace_location_array->append_double(value);
+  }
+
+  std::shared_ptr<ArrayValue> texspace_size_array = io_mesh->append_array("texture_space_size");
+  for (float value : Span(mesh.texspace_size, 3)) {
+    texspace_size_array->append_double(value);
+  }
+}
+
 static std::shared_ptr<DictionaryValue> serialize_geometry_set(const GeometrySet &geometry,
                                                                BlobWriter &blob_writer,
                                                                BlobWriteSharing &blob_sharing)
@@ -1142,6 +1381,8 @@ static std::shared_ptr<DictionaryValue> serialize_geometry_set(const GeometrySet
       }
     }
 
+    serialize_texture_space(mesh, io_mesh);
+
     const StringRef default_uv_map_name = mesh.default_uv_map_name();
     if (!default_uv_map_name.is_empty()) {
       io_mesh->append_str("default_uv_map_name", default_uv_map_name);
@@ -1158,6 +1399,7 @@ static std::shared_ptr<DictionaryValue> serialize_geometry_set(const GeometrySet
     const PointCloud &pointcloud = *geometry.get_pointcloud();
     auto io_pointcloud = io_geometry->append_dict("pointcloud");
 
+    io_pointcloud->append_int("type", int(pointcloud.type));
     io_pointcloud->append_int("num_points", pointcloud.totpoint);
 
     auto io_materials = serialize_materials(pointcloud.runtime->bake_materials);
@@ -1503,6 +1745,9 @@ template<typename T>
       return false;
     }
     const DictionaryValue *io_item_value = io_item->lookup_dict("value");
+    if (!io_item_value) {
+      return false;
+    }
     std::optional<SocketValueVariant> value = deserialize_bake_item(
         *io_item_value, blob_reader, blob_sharing);
     if (!value) {
@@ -1704,7 +1949,7 @@ static std::optional<SocketValueVariant> deserialize_value_list(
     }
     nodes::GListPtr list = nodes::GList::create(
         cpp_type, nodes::GList::SingleData::ForValue(GPointer{cpp_type, &*value}), num_items);
-    return SocketValueVariant::From(std::move(list));
+    return SocketValueVariant::from(std::move(list));
   }
   const ArrayValue *io_values = io_item.lookup_array("data");
   if (!io_values || io_values->elements().size() != num_items) {
@@ -1723,7 +1968,7 @@ static std::optional<SocketValueVariant> deserialize_value_list(
     }
     values_span[i] = std::move(*value);
   }
-  return SocketValueVariant::From(nodes::GList::from_garray(std::move(values)));
+  return SocketValueVariant::from(nodes::GList::from_garray(std::move(values)));
 }
 
 static void serialize_socket_value_variant(const SocketValueVariant &value_variant,
@@ -1732,24 +1977,24 @@ static void serialize_socket_value_variant(const SocketValueVariant &value_varia
                                            DictionaryValue &r_io_item)
 {
   if (value_variant.is_single()) {
-    const GPointer single_value = value_variant.get_single_ptr();
+    const GPointer single_value = value_variant.get();
     serialize_single_value(single_value, blob_writer, blob_sharing, r_io_item);
     return;
   }
   if (value_variant.is_context_dependent_field()) {
-    const fn::GField field = value_variant.get<fn::GField>();
+    const fn::GField &field = *value_variant.get_if<fn::GField>();
     serialize_field(field, blob_writer, blob_sharing, r_io_item);
     return;
   }
 #ifdef WITH_OPENVDB
   if (value_variant.is_volume_grid()) {
-    const volume_grid::GVolumeGrid volume_grid = value_variant.get<volume_grid::GVolumeGrid>();
+    const auto &volume_grid = *value_variant.get_if<volume_grid::GVolumeGrid>();
     serialize_volume_grid(volume_grid, blob_writer, blob_sharing, r_io_item);
     return;
   }
 #endif
   if (value_variant.is_list()) {
-    const nodes::GListPtr list = value_variant.get<nodes::GListPtr>();
+    const nodes::GListPtr &list = *value_variant.get_if<nodes::GListPtr>();
     serialize_list(list, blob_writer, blob_sharing, r_io_item);
     return;
   }
@@ -1779,8 +2024,11 @@ static std::optional<SocketValueVariant> deserialize_bake_item(const DictionaryV
     if (!io_geometry) {
       return {};
     }
-    GeometrySet geometry = load_geometry(*io_geometry, blob_reader, blob_sharing);
-    return SocketValueVariant::From(std::move(geometry));
+    std::optional<GeometrySet> geometry = load_geometry(*io_geometry, blob_reader, blob_sharing);
+    if (!geometry) {
+      return {};
+    }
+    return SocketValueVariant::from(std::move(*geometry));
   }
   if (*state_item_type == StringRef("ATTRIBUTE")) {
     const DictionaryValue *io_attribute = &io_item;
@@ -1798,11 +2046,11 @@ static std::optional<SocketValueVariant> deserialize_bake_item(const DictionaryV
       }
     }
     if (field_cpp_type) {
-      return SocketValueVariant::From(AttributeFieldInput::from(*name, *field_cpp_type));
+      return SocketValueVariant::from(AttributeFieldInput::from(*name, *field_cpp_type));
     }
     /* The data type hasn't been written to the bake, it will be derived later from the attribute
      * type. */
-    return SocketValueVariant::From(
+    return SocketValueVariant::from(
         fn::GField::from_input<DeferredTypeAttributeFieldInput>(*name));
   }
 #ifdef WITH_OPENVDB
@@ -1817,16 +2065,17 @@ static std::optional<SocketValueVariant> deserialize_bake_item(const DictionaryV
       return {};
     }
     openvdb::GridPtrVecPtr vdb_grids;
-    if (!blob_reader.read_as_stream(*vdb_slice, [&](std::istream &stream) {
-          try {
-            openvdb::io::Stream vdb_stream{stream};
-            vdb_grids = vdb_stream.getGrids();
-            return true;
-          }
-          catch (...) {
-            return false;
-          }
-        }))
+    if (!blob_reader.read_as_stream(*vdb_slice,
+                                    [&](std::istream &stream) {
+                                      try {
+                                        openvdb::io::Stream vdb_stream{stream};
+                                        vdb_grids = vdb_stream.getGrids();
+                                        return true;
+                                      }
+                                      catch (...) {
+                                        return false;
+                                      }
+                                    }))
     {
       return {};
     }
@@ -1835,7 +2084,7 @@ static std::optional<SocketValueVariant> deserialize_bake_item(const DictionaryV
     }
     std::shared_ptr<openvdb::GridBase> vdb_grid = std::move((*vdb_grids)[0]);
     GVolumeGrid grid{std::move(vdb_grid)};
-    return SocketValueVariant::From(std::move(grid));
+    return SocketValueVariant::from(std::move(grid));
   }
 #endif
   if (*state_item_type == StringRef("STRING")) {
@@ -1845,11 +2094,11 @@ static std::optional<SocketValueVariant> deserialize_bake_item(const DictionaryV
     }
     if (io_data->get()->type() == io::serialize::eValueType::String) {
       const io::serialize::StringValue &io_string = *io_data->get()->as_string_value();
-      return SocketValueVariant::From(std::string(io_string.value()));
+      return SocketValueVariant::from(std::string(io_string.value()));
     }
     if (const io::serialize::DictionaryValue *io_string = io_data->get()->as_dictionary_value()) {
       const std::optional<int64_t> size = io_string->lookup_int("size");
-      if (!size) {
+      if (!size || *size < 0) {
         return {};
       }
       std::string str;
@@ -1857,7 +2106,7 @@ static std::optional<SocketValueVariant> deserialize_bake_item(const DictionaryV
       if (!read_blob_raw_bytes(blob_reader, *io_string, *size, str.data())) {
         return {};
       }
-      return SocketValueVariant::From(std::move(str));
+      return SocketValueVariant::from(std::move(str));
     }
   }
   if (*state_item_type == StringRef("BUNDLE")) {
@@ -1870,19 +2119,18 @@ static std::optional<SocketValueVariant> deserialize_bake_item(const DictionaryV
     if (!deserialize_bundle_items(*io_bundle_items, blob_reader, blob_sharing, bundle)) {
       return {};
     }
-    return SocketValueVariant::From(std::move(bundle_ptr));
+    return SocketValueVariant::from(std::move(bundle_ptr));
   }
   if (*state_item_type == StringRef("LIST")) {
     const std::optional<StringRefNull> io_list_item_type = io_item.lookup_str("item_type");
     if (!io_list_item_type) {
       return {};
     }
-    const std::optional<int> num_items = io_item.lookup_int("num_items");
-    if (!num_items) {
+    const std::optional<int64_t> num_items = io_item.lookup_int("num_items");
+    if (!num_items || *num_items < 0 || *num_items > std::numeric_limits<int>::max()) {
       return {};
     }
     if (io_list_item_type == "SOCKET_VALUE_VARIANT") {
-      Vector<SocketValueVariant> values(*num_items);
       const ArrayValue *io_values = io_item.lookup_array("data");
       if (!io_values) {
         return {};
@@ -1890,6 +2138,7 @@ static std::optional<SocketValueVariant> deserialize_bake_item(const DictionaryV
       if (io_values->elements().size() != *num_items) {
         return {};
       }
+      Vector<SocketValueVariant> values(*num_items);
       for (const int64_t i : IndexRange(*num_items)) {
         const DictionaryValue *io_value = io_values->elements()[i]->as_dictionary_value();
         if (!io_value) {
@@ -1902,7 +2151,7 @@ static std::optional<SocketValueVariant> deserialize_bake_item(const DictionaryV
         }
         values[i] = std::move(*value);
       }
-      return SocketValueVariant::From(nodes::GList::from_container(values));
+      return SocketValueVariant::from(nodes::GList::from_container(values));
     }
     if (io_list_item_type == "GEOMETRY") {
       return deserialize_value_list<GeometrySet>(io_item, *num_items, blob_reader, blob_sharing);
@@ -1926,16 +2175,20 @@ static std::optional<SocketValueVariant> deserialize_bake_item(const DictionaryV
         }
         auto list = nodes::GList::create(
             *cpp_type, nodes::GList::SingleData::ForValue(GPointer{cpp_type, buffer}), *num_items);
-        return SocketValueVariant::From(std::move(list));
+        return SocketValueVariant::from(std::move(list));
       }
       if (const io::serialize::DictionaryValue *io_data = io_item.lookup_dict("data")) {
+        const std::optional<BlobSlice> slice = BlobSlice::deserialize(*io_data);
+        if (!blob_slice_is_valid(slice, *num_items * cpp_type->size)) {
+          return {};
+        }
         GArray<> buffer(*cpp_type, *num_items);
         if (!read_blob_simple_gspan(
                 blob_reader, *io_data, GMutableSpan{cpp_type, buffer.data(), *num_items}))
         {
           return {};
         }
-        return SocketValueVariant::From(nodes::GList::from_garray(std::move(buffer)));
+        return SocketValueVariant::from(nodes::GList::from_garray(std::move(buffer)));
       }
     }
   }
@@ -1946,18 +2199,13 @@ static std::optional<SocketValueVariant> deserialize_bake_item(const DictionaryV
   const std::optional<eCustomDataType> data_type = get_data_type_from_io_name(*state_item_type);
   if (data_type) {
     const CPPType &cpp_type = *custom_data_type_to_cpp_type(*data_type);
-    const std::optional<eNodeSocketDatatype> socket_type = custom_data_type_to_socket_type(
-        *data_type);
-    if (!socket_type) {
-      return {};
-    }
     BUFFER_FOR_CPP_TYPE_VALUE(cpp_type, buffer);
     if (!deserialize_primitive_value(**io_data, *data_type, buffer)) {
       return {};
     }
     BLI_SCOPED_DEFER([&]() { cpp_type.destruct(buffer); });
     SocketValueVariant value;
-    cpp_type.copy_construct(buffer, value.allocate_single(*socket_type));
+    cpp_type.copy_construct(buffer, value.allocate_single(cpp_type));
     return value;
   }
   return {};

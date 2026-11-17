@@ -3,7 +3,7 @@
 """Tell the person once that a newer Angelo moved their chats away, and how to get them back.
 
 Blender keeps one user folder per version (``<product>/5.2``, ``<product>/5.3``). Angelo 1.1 (Blender 5.3) moves the
-agent state (chats, snapshots, workspace) out of 1.0's folder into its own at its first launch (1.1's
+agent state (chats, snapshots, workspace) out of 1.0's folder into its own at its first launch (2.0's
 ``version_carry_over``, angelo-studio #137). A person who then opens 1.0.x again finds no chats. This module, read
 only, recognises that from what the newer version leaves (its format, not its code):
 

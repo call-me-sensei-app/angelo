@@ -188,5 +188,8 @@ def retire_singletons(browser):
         lock = lease.path / 'SingletonLock'
         if 'SingletonLock' in current and os.readlink(lock).rsplit('-', 1)[-1] != str(browser._owner.leader):
             raise _refused('MANUAL_SINGLETON_CHANGED')
+        from . import owned_paths
+        if not owned_paths.owned(lease.path):   # Only in the profile Angelo made (owned_paths).
+            raise _refused('MANUAL_LEASE_UNPROVED')
         for name in current:
             (lease.path / name).unlink()

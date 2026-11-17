@@ -10,6 +10,7 @@ tool's launch count. The in-app proof is the GUI suite's Settings check on Mac 1
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import platform_env
 
 import ast
 
@@ -72,7 +73,7 @@ def preferences(value, registered=True, enabled=True, **fields):
 
 def unforced():
     environ = {key: value for key, value in os.environ.items() if key != ENV}
-    return patch.dict(os.environ, environ, clear=True)
+    return platform_env.cleared(environ)
 
 
 class LimitTests(unittest.TestCase):

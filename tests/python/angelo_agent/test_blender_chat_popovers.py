@@ -36,8 +36,8 @@ sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import ui, chat_view, console
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, beside this suite.
 import qa_operator  # noqa: E402
-from angelo_agent.chat_popovers import model_rows
-from angelo_agent.chat_settings import normalize_models
+from angelo_agent.chat_popovers import effective_effort, model_rows
+from angelo_agent.chat_settings import normalize_models, selected_model
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 
@@ -123,12 +123,16 @@ def capture(name):
 
 def event(kind, value='PRESS', x=None, y=None, unicode=""):
     area, region = area_region()
-    x = region.width - 100 if x is None else x
-    y = 40 if y is None else y
-    data = SimpleNamespace(type=kind, value=value, mouse_x=region.x + x, mouse_y=region.y + y,
-                           mouse_prev_y=region.y + y, ctrl=False, oskey=False, shift=False, alt=False, unicode=unicode)
-    with bpy.context.temp_override(window=window, area=area, region=region):
-        return chat_view.ANGELO_OT_chat_input.modal(handler, bpy.context, data)
+    if x is None:   # A key's event: anywhere inside the chat, in window pixels.
+        px, py = region.x + region.width - 100, region.y + 40
+    else:   # A point on the chat's canvas (its points, as its hits).
+        from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+        px, py = chat_point(region, (x, y, 0, 0))
+    data = SimpleNamespace(type=kind, value=value, mouse_x=px, mouse_y=py,
+                           mouse_prev_y=py, ctrl=False, oskey=False, shift=False, alt=False, unicode=unicode)
+    from angelo_agent import grant_guard   # The pickers as forms: the harness stands in for the person's input
+    with bpy.context.temp_override(window=window, area=area, region=region):   # (test_blender_grant_surfaces: real).
+        return grant_guard.harness(chat_view.ANGELO_OT_chat_input.modal, handler, bpy.context, data)
 
 
 def click(action, value=None, popup=True, before_release=None):
@@ -184,6 +188,14 @@ def tick():
                                            selected_all=False, anchor=None, dragging=False, pending_click=None)
             def closed_on_press():
                 assert not source.get("popover"), "A picker must not inherit a held mouse gesture"
+            from angelo_agent import grant_guard
+            try:   # Outside the harness, a script's grant from this picker is refused (no press C saw).
+                with bpy.context.temp_override(window=window, area=area, region=region):
+                    scripted = str(bpy.ops.angelo.set_effort(effort="low"))
+            except RuntimeError as error:
+                scripted = str(error)
+            kept = controller.state["options"]["effort"] == "max"
+            state["checks"]["a_scripted_effort_change_is_refused"] = grant_guard.NOT_YOURS in scripted and kept
             click("model", popup=False, before_release=closed_on_press)
             assert source["popover"]["kind"] == "controls"
             state["checks"]["ordinary_click_opens_compact_picker"] = True
@@ -224,8 +236,11 @@ def tick():
             event('MOUSEMOVE', 'NOTHING', track[0] + track[2] - 8, track[1] + 14)
             event('LEFTMOUSE', 'RELEASE', track[0] + track[2] - 8, track[1] + 14)
             assert controller.state["options"]["effort"] == "max" and not controller.state["options"]["fast"]
-            click("popup_reset")
-            assert controller.state["options"]["effort"] == "medium" and not controller.state["options"]["fast"]
+            click("popup_reset")   # Back to no choice: the model's default, never the catalog's own ("medium").
+            assert controller.state["options"]["effort"] == "" and not controller.state["options"]["fast"], (
+                controller.state["options"], (source.get("popover") or {}).get("kind"),
+                [action for _, action, _ in source.get("popup_hits", ())])
+            assert effective_effort(selected_model(controller), "") == "high"
             event('END')
             assert controller.state["options"]["effort"] == "max"
             state["checks"]["slider_keyboard_reset_do_not_enable_paid_fast"] = True
@@ -402,4 +417,5 @@ def tick():
         return None
 
 
-bpy.app.timers.register(tick, first_interval=1)
+import qa_input  # noqa: E402  (a click through the window lands first: qa_input.after_clicks)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=1)

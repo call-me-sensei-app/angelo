@@ -65,7 +65,7 @@ Contract
   vertices, edges and face dots behind the surface are drawn over it at X-ray's opacity for hidden
   edit elements (0.5), and only those: unselected hidden geometry and everything visible draw as
   in stock Blender. ``Meshes::edit_mesh_hidden_selection_ps_`` (``overlay_mesh.hh``), submitted in
-  the overlay's color-only stage (no depth attachment, so it reads the scene depth); shader
+  the overlay's line-only stage (no depth attachment, so it reads the scene depth); shader
   variants ``overlay_edit_mesh_{vert,edge,facedot}_hidden_selection`` (``SELECTED_HIDDEN_ONLY``)
   leave the regular edit-mesh shaders as they are. It reuses the batches the regular passes
   request (face dots are requested in face select mode). In Front objects (the retopology setup) are

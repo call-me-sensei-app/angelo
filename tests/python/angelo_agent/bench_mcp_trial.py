@@ -105,6 +105,25 @@ def clean_environment(**extra):
     return environment
 
 
+CACHE_TTL_VARIABLE = "CLAUDE_CODE_PROMPT_CACHE_TTL"   # Claude Code's own; it outranks its automatic choice.
+
+
+def claude_environment(config, **extra):
+    """The environment of the MCP side's Claude Code for one launch (a trial's, the warm-up's): the clean one, with
+    the run's prompt-cache lifetime (``config["claude_cache_ttl"]``, ``bench_mcp_vs_angelo.claude_cache_ttl``).
+
+    Both sides write their cache at the same lifetime. Left to its own default, Claude Code writes 1-hour entries on
+    a subscription and 5-minute ones on a key-billed route, where a new Angelo chat writes 1-hour ones, so there the
+    two sides would be cached and priced differently. The variable is Claude Code's own setting, the one Angelo sets
+    for its chats (``runtime_environment.apply_prompt_cache_ttl``); nothing else of the client changes. A config
+    without the lifetime (a Codex run, a config from before it) sets nothing.
+    """
+    environment = clean_environment(**extra)
+    if config.get("claude_cache_ttl"):
+        environment[CACHE_TTL_VARIABLE] = str(config["claude_cache_ttl"])
+    return environment
+
+
 def free_port():
     candidates = list(range(*PORT_RANGE))
     random.shuffle(candidates)
@@ -312,6 +331,7 @@ def task_set(config):
 
 def run_task(task, client, stream, usage, config, trial, scenario_output=None):
     record = {"side": "mcp", "trial": trial, "task": task["id"], "kind": task["kind"], "source": task["source"],
+              "cache_ttl": config.get("claude_cache_ttl"),   # The lifetime this side was launched with, as Angelo's.
               **bench_integrity.trial_stamp(task)}   # What it was sent and graded with (bench_integrity).
     if config.get("after_failure") == "reset":
         steps = client.execute(grading.reset_code(task["id"], *task_set(config))).get("steps")
@@ -399,7 +419,7 @@ def run_trial(config, trial, folder):
         output["claude_command"] = scenario.client_command(
             claude_command(config, config_path, output["mcp_server"]["tools"]), config, folder)
         # ``fake_model_environment``: the unbilled dry run's local Messages endpoint (scenario_fake_models).
-        stream = ClaudeStream(output["claude_command"], clean_environment(
+        stream = ClaudeStream(output["claude_command"], claude_environment(config,
             CLAUDE_CONFIG_DIR=isolation.checked("claude-profile", config["claude_config_dir"],   # Each trial's
                                                 fake=config.get("fake_model_environment", {}).get("ANTHROPIC_BASE_URL")),
             TMPDIR=folder / "tmp", **config.get("fake_model_environment", {})), cwd, folder)

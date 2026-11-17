@@ -107,8 +107,13 @@ class Replaced(BaseException):
 
 
 def run(execute, *arguments):
-    """``execute(*arguments)``, or the ``DOCUMENT_REPLACED`` result of a script that replaced the document."""
+    """``execute(*arguments)``, or the ``DOCUMENT_REPLACED`` result of a script that replaced the document. Every agent
+    tool and script runs here (``BlenderExecutor.execute``): a modal operator it starts is Angelo's own, never the
+    person's operation (``input_policy.angelo_started``, ``edit_tool_hold``)."""
+    from .edit_tool_hold import _window_manager, angelo_work
+    from .input_policy import angelo_started
     try:
-        return execute(*arguments)
+        with angelo_started(_window_manager()), angelo_work():
+            return execute(*arguments)
     except Replaced as replaced:
         return replaced.result

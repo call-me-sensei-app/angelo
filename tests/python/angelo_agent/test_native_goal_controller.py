@@ -8,6 +8,7 @@ Dependency-free: a scripted stand-in runtime replaces Claude Code and Codex alik
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import tempfile
@@ -91,7 +92,7 @@ class GoalThroughControllerTests(unittest.TestCase):
         self.measurement = {"measured": True, "iou": 0.55, "drawn": 2, "mean_px": 12.0}
 
     def wait(self):
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             self.c.pump_events()
             if not self.c.busy and not (self.c._worker and self.c._worker.is_alive()):

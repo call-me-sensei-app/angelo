@@ -40,7 +40,7 @@ import uuid
 import weakref
 from pathlib import Path
 
-from . import kept_state, model_profiles, shared_replace, write_turn
+from . import kept_state, model_profiles, owned_replace, shared_replace, write_turn
 from .state_file_writes import encode_usage
 
 TOKEN_KEYS = ("input", "cache_read", "cache_write", "output")
@@ -188,6 +188,7 @@ class UsageLedger:
 
     def __init__(self, directory, clock=time.time):
         self.path = Path(directory) / "usage.json"
+        owned_replace.adopt(self.path)   # Saved over only while it is this file (owned_replace).
         self.clock = clock
         self.lock = threading.Lock()
         self.chats = {}
@@ -375,8 +376,8 @@ class UsageLedger:
         return self._write() if owed else True
 
     def _write(self):
-        if self._unread and not self._merge_saved():
-            return False   # Never written over a file that can't be read now.
+        if not owned_replace.mine(self.path) or (self._unread and not self._merge_saved()):
+            return False   # Only over the file Angelo keeps, and never over one that can't be read now.
         if self._damaged:
             if not kept_state.keep_before_write(self.path):
                 return False
@@ -389,7 +390,7 @@ class UsageLedger:
             fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
             with os.fdopen(fd, "wb") as handle:
                 handle.write(encoded)
-            shared_replace.replace(temporary, self.path)   # Another Angelo's read never refuses it (it shares delete).
+            owned_replace.replace(temporary, self.path)   # Another Angelo's read never refuses it (it shares delete).
             with self.lock:
                 self._written = max(self._written, changes)
             return True

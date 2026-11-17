@@ -29,8 +29,15 @@ come before long and expensive ones, so an early stop still leaves results.
 
 Estimates are rough per-prompt planning numbers, the same for both sides
 (``SOURCES``); they size a campaign and are not results.
+
+A campaign scoped to steps without an MCP side (the gates and smokes: Angelo's side alone) needs no stock Blender and
+no MCP add-on or server: ``mcp_side`` says whether a selection does, and ``python3 final_runs_plan.py needs --platform P
+[--only GLOB ...]`` prints it, so a machine's preparation installs them only when a selected step runs them.
 """
 
+import argparse
+import fnmatch
+import json
 import os
 
 import gui_launch
@@ -39,10 +46,20 @@ import gui_launch
 # defaults them: init takes --claude-connection and --chatgpt-connection, these environment variables, or
 # --discover-connections, and a step without one refuses to build its command (final_runs.connection).
 TEST_CONNECTIONS = {"claude": os.environ.get("ANGELO_FINAL_RUNS_CLAUDE_CONNECTION", ""),
-                    "chatgpt": os.environ.get("ANGELO_FINAL_RUNS_CHATGPT_CONNECTION", "")}
+                    "chatgpt": os.environ.get("ANGELO_FINAL_RUNS_CHATGPT_CONNECTION", ""),
+                    "gemini": os.environ.get("ANGELO_FINAL_RUNS_GEMINI_CONNECTION", "")}
+SUBSCRIPTIONS = ("claude", "chatgpt")
+# A pay-per-token API-key account: its one connection runs in place from a connections folder holding only it (its
+# key is in that folder's OS key-store item, entered in the app by the account's owner: eval_live_agent's
+# isolated_connection), billed with --allow-api-key-connection and no ChatGPT --codex-home. {account: its mode}.
+API_KEY_ACCOUNTS = {"gemini": "gemini_api"}
 MODELS = {"opus": {"model": "claude-opus-5-5", "runtime": "claude", "account": "claude"},
           "sol": {"model": "gpt-6.1-sol", "runtime": "codex", "account": "chatgpt"},
-          "astra": {"model": "gpt-6-astra", "runtime": "codex", "account": "chatgpt"}}
+          "astra": {"model": "gpt-6-astra", "runtime": "codex", "account": "chatgpt"},
+          # Gemini 4 Carbon on the runtime's Gemini wire (agent_runtime.json wire_apis), at its shipping effort. Its gate
+          # of record is the Windows MSI's (maintainer ruling 2026-11-13); a model without "platforms" gates on every one.
+          "carbon": {"model": "gemini-4-carbon", "runtime": "codex", "account": "gemini", "platforms": ("windows",)}}
+GATED = ("sol", "opus", "astra", "carbon")   # Gates of record (run order); head-to-heads: the first three only.
 PILOT_CASES = ("batch_edits", "duplication", "material_assignment", "node_editing")
 MINIS = ("oneshot-mini-footbridge", "oneshot-mini-footbridge-arched", "oneshot-mini-cube", "oneshot-mini-camera",
          "oneshot-mini-lighting")
@@ -53,10 +70,11 @@ SCENES = ("oneshot-footbridge", "oneshot-bridge", "oneshot-tree", "oneshot-cotta
 HEAVY = ("oneshot-castle", "scenario-heavy")
 H2H_TRIALS = 5
 RETURNING_LAUNCHES = 3   # Launches on one profile: cold start, then two returning-user relaunches.
-# Both sides, every head-to-head and gate step: low effort, one stable working folder,
-# the chat editor's observation, real input ignored in the trial windows, every task graded.
-COMMON = ["--effort", "low", "--angelo-stable-workspace", "--angelo-observation", "turn-context",
-          "--input-isolation", "on"]
+# Every head-to-head and gate step: one stable working folder, the chat editor's observation, real input ignored
+# in the trial windows, every task graded. No effort: a gate runs each model at the app's shipping effort
+# (maintainer, 2026-11-12: "Shipping default (high)"); a head-to-head adds H2H_EFFORT, one effort for both sides.
+COMMON = ["--angelo-stable-workspace", "--angelo-observation", "turn-context", "--input-isolation", "on"]
+H2H_EFFORT = ["--effort", "low"]
 
 
 def window_state(step):
@@ -128,6 +146,26 @@ def gate_steps(model):
     ]
 
 
+def connection_args(step, config, connection_id):
+    """The harness arguments that name a step's connection: a subscription from the campaign's connections folder
+    (a Codex runtime with the ChatGPT profile), an API-key account's from its own folder, in place."""
+    if step["account"] in API_KEY_ACCOUNTS:
+        folder = (config.get("api_key_dirs") or {}).get(step["account"])
+        if not folder:
+            raise SystemExit("no %s connections folder for %s: give it at init (--%s-connections-dir)"
+                             % (step["account"], step["id"], step["account"]))
+        allow = "--allow-api-key-connection" if step["tool"] == "eval" else "--angelo-allow-api-key-connection"
+        return ["--connection-id", connection_id, "--source-connections-dir", folder, allow]
+    found = ["--connection-id", connection_id, "--source-connections-dir", config["connections_dir"]]
+    return found + (["--codex-home", config["codex_home"]] if step["runtime"] == "codex" else [])
+
+
+def accounts(steps):
+    """The accounts these steps bill, in the plan's order."""
+    used = {step["account"] for step in steps}
+    return [account for account in TEST_CONNECTIONS if account in used]
+
+
 def h2h_steps(model, platform):
     both = ("mcp", "angelo")
     steps = [_step("h2h-%s-default" % model, "h2h", model, "bench", "default", H2H_TRIALS, both,
@@ -157,7 +195,8 @@ def h2h_steps(model, platform):
 
 def campaign(platform="macos"):
     """Every step in run order (module docstring): gates first, then the head-to-heads, accounts alternating."""
-    gates = gate_steps("sol") + gate_steps("opus") + gate_steps("astra")
+    gates = [step for model in GATED if platform in MODELS[model].get("platforms", (platform,))
+             for step in gate_steps(model)]
     short, heavy = {}, {}
     for model in ("sol", "opus", "astra"):
         steps = h2h_steps(model, platform)
@@ -210,3 +249,32 @@ def summary(steps):
     return {"by_model": by_model, "by_account": by_account,
             "hours": round(sum(entry["hours"] for entry in by_model.values()), 1),
             "usd": round(sum(entry["usd"] for entry in by_model.values()), 2)}
+
+
+def select(steps, only=(), phase="all"):
+    """The steps ``--only`` (globs over step ids, any of them) and ``--phase`` select; no glob selects every step."""
+    return [s for s in steps if (phase == "all" or s["phase"] == phase)
+            and (not only or any(fnmatch.fnmatch(s["id"], pattern) for pattern in only))]
+
+
+def mcp_side(steps):
+    """Whether any of ``steps`` runs the MCP side (stock Blender, the MCP add-on and server)."""
+    return any("mcp" in step["sides"] for step in steps)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="What a campaign selection needs on a machine (no campaign needed).")
+    parser.add_argument("action", choices=("needs",))
+    parser.add_argument("--platform", default="macos", choices=("macos", "windows", "linux"))
+    parser.add_argument("--only", action="append", default=[], metavar="GLOB")
+    args = parser.parse_args(argv)
+    steps = select(campaign(args.platform), args.only)
+    billed = accounts(steps)   # api_key_accounts: the ones whose key the machine loads (bench_api_key.py).
+    print(json.dumps({"platform": args.platform, "only": args.only, "steps": [s["id"] for s in steps],
+                      "mcp_side": mcp_side(steps), "accounts": billed,
+                      "api_key_accounts": [account for account in billed if account in API_KEY_ACCOUNTS]}))
+    return 0 if steps else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

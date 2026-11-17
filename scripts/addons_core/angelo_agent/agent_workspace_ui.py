@@ -1,15 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Readable native reviews; human authorization never comes from memory.
-
-Bpy-independent helpers test exact controls and staging without a user document.
-"""
+"""Readable native reviews; human authorization never comes from memory. Bpy-independent helpers test exact controls
+and staging without a user document."""
 
 from collections.abc import Mapping
-import hashlib
-import json
-import math
+import hashlib, json, math  # noqa: E401
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard)
 from .ui_text import iface_, n_, plural_
 from .detail_keys import translated as translated_key
 
@@ -296,6 +293,13 @@ def workspace_operators():
         review_lines: CollectionProperty(type=ANGELO_PG_native_review_line, options={'SKIP_SAVE'})
         review_index: IntProperty(default=0, options={'SKIP_SAVE'})
 
+        def consent_target(self, context):   # The exact staged preview its card reviews (controls, changes, checks).
+            controller = controller_for(self.session_id)   # None without its chat or a retained preview, as invoke.
+            try:
+                return review_identity(preview_descriptor(controller, self.preview_id)) if controller else None
+            except ValueError:   # inspect_native_preview: unavailable, expired or another document's.
+                return None
+
         def invoke(self, context, event):
             from .document_scene import refused   # Its scene not shown: no review card, nothing to confirm (R5-M-1).
             from .ui_text import iface_, rpt_
@@ -345,13 +349,15 @@ def workspace_operators():
                     _approval_reviews[(self.session_id, call.id)] = self._review_hash
                     while len(_approval_reviews) > 64:
                         _approval_reviews.pop(next(iter(_approval_reviews)))
-                    return bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=self.session_id)
+                    return grant_guard.clicked(bpy.ops.angelo).approve('EXEC_DEFAULT', True, call_id=call.id,
+                                                         session_id=self.session_id)
                 executor = BlenderExecutor(ui.main_window())
                 executor.studio_context = controller  # The retained stage belongs to this exact chat, not just a window.
                 if not controller.accept_native_preview(self.preview_id, executor, ui.document_key(), self._preview_token):
                     raise ValueError(rpt_('Preview acceptance was rejected; no staged change was applied'))
             except (RuntimeError, ValueError, KeyError, TypeError) as error:
-                self.report({'ERROR'}, str(error))
+                from .display_text import Text, shown   # A marked refusal in the interface language.
+                self.report({'ERROR'}, shown(error.args[0]) if error.args and isinstance(error.args[0], Text) else str(error))
                 return {'CANCELLED'}
             return {'FINISHED'}
 
@@ -465,6 +471,7 @@ def workspace_operators():
 
     from . import checkpoint_settings_ui
     from . import project_brief_rebind_ui
+    grant_guard.guard(ANGELO_OT_accept_native_preview)   # It approves the staged edit (grant_operators.rst).
     core_operators = (ANGELO_PG_native_review_line, ANGELO_UL_native_review, ANGELO_OT_commit_native_job,
             ANGELO_OT_accept_native_preview, ANGELO_OT_discard_native_preview,
             ANGELO_OT_project_brief, ANGELO_OT_performance_summary)

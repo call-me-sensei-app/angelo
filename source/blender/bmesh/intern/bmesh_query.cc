@@ -18,13 +18,13 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_array.hh"
-#include "BLI_linklist.h"
-#include "BLI_math_base.h"
-#include "BLI_math_geom.h"
-#include "BLI_math_matrix.h"
-#include "BLI_math_rotation.h"
-#include "BLI_math_vector.h"
-#include "BLI_utildefines_stack.h"
+#include "BLI_linklist.hh"
+#include "BLI_math_base_c.hh"
+#include "BLI_math_geom_c.hh"
+#include "BLI_math_matrix_c.hh"
+#include "BLI_math_rotation_c.hh"
+#include "BLI_math_vector_c.hh"
+#include "BLI_utildefines_stack.hh"
 
 #include "BKE_customdata.hh"
 
@@ -1163,10 +1163,10 @@ BMLoop *BM_loop_find_prev_nodouble(BMLoop *l, BMLoop *l_stop, const float eps_sq
 
   BLI_assert(!ELEM(l_stop, nullptr, l));
 
-  while (UNLIKELY(len_squared_v3v3(l->v->co, l_step->v->co) < eps_sq)) {
+  while (len_squared_v3v3(l->v->co, l_step->v->co) < eps_sq) [[unlikely]] {
     l_step = l_step->prev;
     BLI_assert(l_step != l);
-    if (UNLIKELY(l_step == l_stop)) {
+    if (l_step == l_stop) [[unlikely]] {
       return nullptr;
     }
   }
@@ -1180,10 +1180,10 @@ BMLoop *BM_loop_find_next_nodouble(BMLoop *l, BMLoop *l_stop, const float eps_sq
 
   BLI_assert(!ELEM(l_stop, nullptr, l));
 
-  while (UNLIKELY(len_squared_v3v3(l->v->co, l_step->v->co) < eps_sq)) {
+  while (len_squared_v3v3(l->v->co, l_step->v->co) < eps_sq) [[unlikely]] {
     l_step = l_step->next;
     BLI_assert(l_step != l);
-    if (UNLIKELY(l_step == l_stop)) {
+    if (l_step == l_stop) [[unlikely]] {
       return nullptr;
     }
   }
@@ -1289,7 +1289,7 @@ float BM_loop_calc_face_normal(const BMLoop *l, float r_normal[3])
 
   cross_v3_v3v3(r_normal, v1, v2);
   const float len = normalize_v3(r_normal);
-  if (UNLIKELY(len == 0.0f)) {
+  if (len == 0.0f) [[unlikely]] {
     copy_v3_v3(r_normal, l->f->no);
   }
   return len;
@@ -1327,7 +1327,7 @@ void BM_loop_calc_face_tangent(const BMLoop *l, float r_tangent[3])
     float nor[3]; /* for this purpose doesn't need to be normalized */
     cross_v3_v3v3(nor, v_prev, v_next);
     /* concave face check */
-    if (UNLIKELY(dot_v3v3(nor, l->f->no) < 0.0f)) {
+    if (dot_v3v3(nor, l->f->no) < 0.0f) [[unlikely]] {
       negate_v3(nor);
     }
     cross_v3_v3v3(r_tangent, dir, nor);
@@ -1432,25 +1432,67 @@ float BM_vert_calc_edge_angle(const BMVert *v)
   return BM_vert_calc_edge_angle_ex(v, DEG2RADF(90.0f));
 }
 
-float BM_vert_calc_shell_factor(const BMVert *v)
+static void bm_vert_calc_shell_factor_accum(const BMVert *v,
+                                            const float no[3],
+                                            float *r_accum_shell,
+                                            float *r_accum_angle)
 {
   BMIter iter;
   BMLoop *l;
+  BM_ITER_ELEM (l, &iter, const_cast<BMVert *>(v), BM_LOOPS_OF_VERT) {
+    if (is_zero_v3(l->f->no)) {
+      continue;
+    }
+    const float face_angle = BM_loop_calc_face_angle(l);
+    *r_accum_shell += shell_v3v3_normalized_to_dist(no, l->f->no) * face_angle;
+    *r_accum_angle += face_angle;
+  }
+}
+
+static float bm_vert_calc_shell_factor_impl(const BMVert *v, const bool check_coincident_neighbors)
+{
   float accum_shell = 0.0f;
   float accum_angle = 0.0f;
 
-  BM_ITER_ELEM (l, &iter, (BMVert *)v, BM_LOOPS_OF_VERT) {
-    const float face_angle = BM_loop_calc_face_angle(l);
-    accum_shell += shell_v3v3_normalized_to_dist(v->no, l->f->no) * face_angle;
-    accum_angle += face_angle;
-  }
-
+  bm_vert_calc_shell_factor_accum(v, v->no, &accum_shell, &accum_angle);
   if (accum_angle != 0.0f) {
     return accum_shell / accum_angle;
   }
+
+  if (check_coincident_neighbors) {
+    BMIter iter;
+    BMEdge *e;
+    BM_ITER_ELEM (e, &iter, const_cast<BMVert *>(v), BM_EDGES_OF_VERT) {
+      if (BM_edge_is_wire(e)) {
+        continue;
+      }
+      const BMVert *v_other = BM_edge_other_vert(e, v);
+      if (equals_v3v3(v->co, v_other->co)) {
+        bm_vert_calc_shell_factor_accum(v_other, v->no, &accum_shell, &accum_angle);
+      }
+    }
+    if (accum_angle != 0.0f) {
+      return accum_shell / accum_angle;
+    }
+  }
+
   return 1.0f;
 }
-float BM_vert_calc_shell_factor_ex(const BMVert *v, const float no[3], const char hflag)
+
+float BM_vert_calc_shell_factor(const BMVert *v)
+{
+  return bm_vert_calc_shell_factor_impl(v, false);
+}
+
+float BM_vert_calc_shell_factor_with_coincident_neighbors(const BMVert *v)
+{
+  return bm_vert_calc_shell_factor_impl(v, true);
+}
+
+static float bm_vert_calc_shell_factor_ex_impl(const BMVert *v,
+                                               const float no[3],
+                                               const char hflag,
+                                               const bool check_coincident_neighbors)
 {
   BMIter iter;
   const BMLoop *l;
@@ -1458,11 +1500,13 @@ float BM_vert_calc_shell_factor_ex(const BMVert *v, const float no[3], const cha
   float accum_angle = 0.0f;
   int tot_sel = 0, tot = 0;
 
-  BM_ITER_ELEM (l, &iter, (BMVert *)v, BM_LOOPS_OF_VERT) {
+  BM_ITER_ELEM (l, &iter, const_cast<BMVert *>(v), BM_LOOPS_OF_VERT) {
     if (BM_elem_flag_test(l->f, hflag)) { /* <-- main difference to BM_vert_calc_shell_factor! */
-      const float face_angle = BM_loop_calc_face_angle(l);
-      accum_shell += shell_v3v3_normalized_to_dist(no, l->f->no) * face_angle;
-      accum_angle += face_angle;
+      if (!is_zero_v3(l->f->no)) {
+        const float face_angle = BM_loop_calc_face_angle(l);
+        accum_shell += shell_v3v3_normalized_to_dist(no, l->f->no) * face_angle;
+        accum_angle += face_angle;
+      }
       tot_sel++;
     }
     tot++;
@@ -1474,9 +1518,21 @@ float BM_vert_calc_shell_factor_ex(const BMVert *v, const float no[3], const cha
   /* other main difference from BM_vert_calc_shell_factor! */
   if (tot != 0 && tot_sel == 0) {
     /* none selected, so use all */
-    return BM_vert_calc_shell_factor(v);
+    return bm_vert_calc_shell_factor_impl(v, check_coincident_neighbors);
   }
   return 1.0f;
+}
+
+float BM_vert_calc_shell_factor_ex(const BMVert *v, const float no[3], const char hflag)
+{
+  return bm_vert_calc_shell_factor_ex_impl(v, no, hflag, false);
+}
+
+float BM_vert_calc_shell_factor_with_coincident_neighbors_ex(const BMVert *v,
+                                                             const float no[3],
+                                                             const char hflag)
+{
+  return bm_vert_calc_shell_factor_ex_impl(v, no, hflag, true);
 }
 
 float BM_vert_calc_median_tagged_edge_length(const BMVert *v)
@@ -1602,7 +1658,7 @@ BMEdge *BM_edge_find_double(BMEdge *e)
 
   e_iter = e;
   while ((e_iter = bmesh_disk_edge_next(e_iter, v)) != e) {
-    if (UNLIKELY(BM_vert_in_edge(e_iter, v_other))) {
+    if (BM_vert_in_edge(e_iter, v_other)) [[unlikely]] {
       return e_iter;
     }
   }
@@ -2334,7 +2390,7 @@ int BM_mesh_calc_face_groups(BMesh *bm,
 
   MEM_delete(stack);
 
-  /* reduce alloc to required size */
+  /* Reduce allocation to the required size. */
   if (group_index_len != group_curr) {
     group_index = static_cast<int (*)[2]>(
         MEM_realloc_uninitialized(group_index, sizeof(*group_index) * group_curr));
@@ -2458,7 +2514,7 @@ int BM_mesh_calc_edge_groups(BMesh *bm,
 
   MEM_delete(stack);
 
-  /* reduce alloc to required size */
+  /* Reduce allocation to the required size. */
   if (group_index_len != group_curr) {
     group_index = static_cast<int (*)[2]>(
         MEM_realloc_uninitialized(group_index, sizeof(*group_index) * group_curr));
@@ -2547,7 +2603,7 @@ int BM_mesh_calc_edge_groups_as_arrays(
 
   MEM_delete(stack);
 
-  /* Reduce alloc to required size. */
+  /* Reduce allocation to the required size. */
   groups = static_cast<int (*)[3]>(
       MEM_realloc_uninitialized(groups, sizeof(*groups) * STACK_SIZE(groups)));
   *r_groups = groups;

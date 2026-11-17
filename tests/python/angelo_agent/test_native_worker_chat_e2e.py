@@ -20,6 +20,7 @@ crosses to the worker.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import contextlib
 import json
@@ -50,7 +51,7 @@ POSIX_ONLY = unittest.skipIf(sys.platform == "win32", environment_skip(
     "test_native_parallel_workers_transport)"))
 
 
-def wait_for(predicate, timeout=10.0, pump=None):
+def wait_for(predicate, timeout=CAP_S, pump=None):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if pump is not None:
@@ -234,7 +235,7 @@ class Fixture(unittest.TestCase):
                 lifecycle.close_chat(self.session, "test over")
         self.worker.runtime.close()
         self.worker.client.close()
-        self.loop.join(5)
+        self.loop.join(CAP_S)
 
     # The lead's side, as the window runs it --------------------------------------------------------------------
 

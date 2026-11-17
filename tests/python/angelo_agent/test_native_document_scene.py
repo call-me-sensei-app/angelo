@@ -7,6 +7,7 @@ a new serial) does, as before; a chat with nothing follows the shown key quietly
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import unittest
@@ -96,7 +97,7 @@ class GateTests(unittest.TestCase):
         for _ in range(3):
             self.assertTrue(document_scene.hold(chat, KITCHEN))
         import time
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while not stopped and time.monotonic() < deadline:
             time.sleep(0.01)
         self.assertEqual((stopped, len(chat.rows)), ([1], 1))
@@ -350,7 +351,8 @@ class GateTests(unittest.TestCase):
         read = lambda name: (root / name).read_text()   # noqa: E731
         controller, ui = read("controller.py"), read("ui.py")
         self.assertIn("self._held = document_scene.hold(self, document)", controller)
-        self.assertIn('return bool(self._native_cleanup) or not getattr(self, "_held", False) and (', controller)
+        self.assertIn('return bool(self._native_cleanup) and not getattr(self, "_tool_held", None) or not (getattr(self, '
+                      '"_held", False) or getattr(self, "_tool_held", None)) and (', controller)   # edit_tool_hold: S7
         self.assertIn("moved = document_scene.keep_shown(self, executor, shown)", controller)
         self.assertIn('result["window_scene"] = moved', controller)
         self.assertIn("document_scene.wait_on_lease(call, WRITER.owner)", controller)

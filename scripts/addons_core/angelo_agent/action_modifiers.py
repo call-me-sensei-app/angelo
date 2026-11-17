@@ -203,6 +203,18 @@ def _modifier(context, obj, operation):
 UNREMOVABLE = frozenset({'MULTIRES', 'MESH_DEFORM', 'SURFACE_DEFORM', 'HOOK', 'LAPLACIANDEFORM', 'PARTICLE_SYSTEM'})
 
 
+def _restorable(modifier, doing):
+    """Refuse a removal or an apply that an undone commit could not reverse exactly: a type that is never removed
+    (UNREMOVABLE), or a modifier holding a store no rollback could put back (``modifier_state``, 5.3 inputs too)."""
+    from .modifier_state import refusal
+    if modifier.type in UNREMOVABLE:
+        raise RefusalError('%s this modifier type would discard data the native commit cannot restore' % doing,
+                           code='UNSUPPORTED')
+    why = refusal(modifier)
+    if why is not None:
+        raise RefusalError('%s it is refused. %s' % (doing, why), code='UNSUPPORTED')
+
+
 def _named(obj, name):
     modifier = obj.modifiers.get(name)
     if modifier is None:
@@ -216,8 +228,7 @@ def _stack(obj):
 
 def _remove_modifier(context, obj, operation):
     modifier = _named(obj, operation['parameters']['modifier'])
-    if modifier.type in UNREMOVABLE:
-        raise RefusalError('Removing this modifier type would discard data the native commit cannot restore', code='UNSUPPORTED')
+    _restorable(modifier, 'Removing')
     before = _stack(obj)
     obj.modifiers.remove(modifier)
     return _readback(obj, operation, modifiers_before=before, modifiers_after=_stack(obj))
@@ -243,8 +254,7 @@ def _apply_modifier(context, obj, operation):
     modifier = _named(obj, operation['parameters']['modifier'])
     if obj.modifiers[0] != modifier:
         raise RefusalError('Only the first modifier applies exactly; move it to index 0 first', code='VALIDATION')
-    if modifier.type in UNREMOVABLE:
-        raise RefusalError('Applying this modifier type is outside the native capability', code='UNSUPPORTED')
+    _restorable(modifier, 'Applying')
     if not modifier.show_viewport:
         raise RefusalError('A disabled modifier has no evaluated result to apply', code='VALIDATION')
     bound = _modifier_bound(context, obj)

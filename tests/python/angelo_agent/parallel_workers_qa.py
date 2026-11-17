@@ -50,8 +50,7 @@ class WorkerChat:
         self.controller.state["options"] = dict(self.controller.state.get("options") or {}, approval=approval)
         self.session = self.controller.state["id"]
         started = time.perf_counter()
-        self.executor = worker_routing.start(self.controller, part, binary=bpy.app.binary_path,
-                                             script=root / "scripts/angelo/angelo_headless.py", environ=environ)
+        self.executor = worker_routing.start(self.controller, part, environ=environ)   # Angelo's own program.
         self.start_seconds = time.perf_counter() - started
         self.worker = worker_routing._workers[self.session]
         ui._controllers[self.session] = self.controller   # The approve operator finds it as the window's would.
@@ -74,7 +73,7 @@ class WorkerChat:
 
         def apply_mutation(target, call):
             with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-                bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
         waiting = worker_dispatch.waiting(self.controller)
         with pump_blocking.measure() as blocked:   # Its blocking calls, inside a pump_blocking.watching() window.
             started = time.perf_counter()

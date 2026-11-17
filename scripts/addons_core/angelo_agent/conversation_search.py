@@ -28,7 +28,7 @@ import unicodedata
 from collections import deque
 from pathlib import Path
 
-from . import change_clock, document_file_identity, shared_replace
+from . import change_clock, document_file_identity, owned_paths, shared_replace
 
 NAME = "conversation-search.json"
 LINE = 240        # Characters kept of one request.
@@ -204,6 +204,7 @@ class SearchIndex:
         self._dirty = True
 
     def save(self):
+        owned_paths.require_writable(self.path)
         if (not self._dirty or self._entries is None or self._refused_at is not None
                 and time.monotonic() - self._refused_at < shared_replace.RETRY_SECONDS):
             return

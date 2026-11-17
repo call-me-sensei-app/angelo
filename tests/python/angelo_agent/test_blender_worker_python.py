@@ -36,6 +36,7 @@ Run only in a disposable instance with the exact Angelo binary:
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+from qa_person import as_person  # noqa: E402  The person's own action (C's harness scope).
 
 import json
 import os
@@ -177,7 +178,11 @@ def probed_chat(name, approval):
     start = worker_routing.start
 
     def with_probes(controller, part, **options):
-        return start(controller, part, **dict(options, script=Path(__file__).resolve()))
+        # The worker's script is the add-on's own, read at the start (worker_process.default_script): this suite's
+        # probes stand in for it during this start only.
+        from angelo_agent import worker_process
+        with patch.object(worker_process, "default_script", lambda: Path(__file__).resolve()):
+            return start(controller, part, **options)
     PARTS.mkdir(parents=True, exist_ok=True)
     for switch, suffix in SWITCHES.items():   # Set or cleared each run: a switch never outlives the run that set it.
         marker = Path(str(PARTS / name) + suffix)
@@ -261,14 +266,14 @@ def approve(chat, call, answers=None, review=True):
         else:
             chat.draw(call)
             with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-                outcome = bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.session)
+                outcome = __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.session)
             if answers is None:
                 return outcome
         return chat.wait(answers, timeout=300) if answers is not None else {'FINISHED'}
     if review:
-        chat.controller.review_script(call)
+        as_person(chat.controller.review_script, call)
     with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-        outcome = bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.session)
+        outcome = __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.session)
     return chat.wait(answers, timeout=300) if answers is not None else outcome
 
 
@@ -430,12 +435,12 @@ def shapes(chat):
 def auto_rules(chat):
     from angelo_agent import always_allow
     asks(chat, "auto_untrusted_script_asks")
-    always_allow.set_enabled(True)
+    as_person(always_allow.set_enabled, True)
     try:
         runs_unasked(chat, "always_allow_covers_an_auto_worker_chat", "always_allow")
     finally:
         always_allow.set_enabled(False)
-    chat.controller.set_trusted_scripts(True)
+    as_person(chat.controller.set_trusted_scripts, True)
     runs_unasked(chat, "trusted_worker_chat_runs_unasked", "chat_session")
     asks(chat, "a_script_naming_preferences_still_asks",
          "import bpy\nresult = bpy.context.preferences.view.show_tooltips")
@@ -450,7 +455,8 @@ def inherited_trust(lead):
     from angelo_agent.blender_tools import BlenderExecutor
     from hosted_worker_chat import connect
     connect(lead)   # As a lead that ran a turn has one (the window adopts a connection at its first send); both variants.
-    lead.set_options(approval="AUTO_BOUNDED")
+    from angelo_agent import grant_guard   # The person picks Auto: the harness stands in.
+    grant_guard.harness(lead.set_options, approval="AUTO_BOUNDED")
     executor = BlenderExecutor(bpy.context.window_manager.windows[0])
     executor.studio_context = lead
     made, chats = worker_sessions._new_chat, []
@@ -471,7 +477,7 @@ def inherited_trust(lead):
         with patch.object(worker_sessions, "_new_chat", quiet), patch.object(ui, "prepare_controller", lambda c=None: None):
             early = start("Shelf")
             asks(early, "before_the_lead_trusts_its_worker_asks")
-            lead.set_trusted_scripts(True)
+            as_person(lead.set_trusted_scripts, True)
             runs_unasked(early, "once_the_lead_trusts_its_running_worker_runs_unasked", "chat_session")
             early.stop()
             born = start("Lamp")
@@ -498,7 +504,7 @@ def stale(chat):
     chat.new_request()
     call, answers = script(chat, "import bpy\nbpy.data.objects['QA Base'].location.x = 3\nresult = 1", "Stale")
     check("stale_script_shows_a_card", call is not None, answers[:1])
-    chat.controller.review_script(call)
+    as_person(chat.controller.review_script, call)
     other = WorkerChat.__new__(WorkerChat)
     other.controller = Controller(str(STATE), session_id=str(uuid.uuid4()))
     other.controller.state["options"] = dict(other.controller.state.get("options") or {}, approval="AUTO_BOUNDED")
@@ -598,7 +604,7 @@ def responsive(chat):
     chat.new_request()
     call, answers = script(chat, "import time\ntime.sleep(3)\nresult = 'slept'", "Sleep three seconds")
     check("sleep_script_shows_a_card", call is not None, answers[:1])
-    chat.controller.review_script(call)
+    as_person(chat.controller.review_script, call)
     chat.pumps.clear()
     started = time.perf_counter()
     with pump_blocking.watching() as seen, shipped_saves():   # The app's saves (parallel_workers_qa.shipped_saves).
@@ -621,7 +627,7 @@ def traffic(chat):
         chat.new_request()
         call, answers = script(chat, "import bpy\nbpy.data.objects['QA Base'].location.z += 1\nresult = 1", label)
         check(label + "_script_shows_a_card", call is not None, answers[:1])
-        chat.controller.review_script(call)
+        as_person(chat.controller.review_script, call)
         try:
             poke()
             poked = "ok"

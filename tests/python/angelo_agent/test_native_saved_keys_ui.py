@@ -7,6 +7,7 @@ here the glue and the operator source contracts run on any host OS.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import sys
@@ -228,7 +229,7 @@ class SavedKeysUiTests(unittest.TestCase):
         backend = ProbingBackend(KeyStoreError("unavailable", "No keyring service (Secret Service) is running "
                                                               "in this session", "dbus 2"))
         self.assertTrue(saved_keys_ui.start(self.ui, background=False, platform="linux", backend=backend))
-        end = time.monotonic() + 5
+        end = time.monotonic() + CAP_S
         while saved_keys_ui.available() and time.monotonic() < end:
             saved_keys_ui.pump(self.ui)
             time.sleep(0.005)

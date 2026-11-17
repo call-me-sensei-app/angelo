@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Actual timer/Host/Worker idle publication with synthetic owners; no bpy/browser/account/native proof."""
 import suite_isolation  # noqa: F401
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 import sys
 import threading
 import unittest
@@ -44,13 +45,13 @@ class IdleMainPumpTests(unittest.TestCase):
         def scenario(redraws):
             try:
                 host.connect()
-                self.assertTrue(host.job.done.wait(1))
+                self.assertTrue(host.job.done.wait(CAP_S))
                 next_interval = library_host._tick()  # Actual bpy timer's returned interval is its reschedule owner.
                 self.assertEqual(host.view['status'], 'connected')
                 self.assertFalse(fab_host.busy(), 'Idle-connected browser must not become UI busy/spinning')
                 old_request = host.view['request_id']
                 fail.set()
-                self.assertTrue(host.worker.join(1))  # Full callback/publication completes without a Main poll.
+                self.assertTrue(host.worker.join(CAP_S))  # Full callback/publication completes without a Main poll.
                 self.assertEqual(host.view['status'], 'connected')  # Only Main may change the cached UI.
                 if next_interval is not None:  # Actual timer scheduling: an old None return never runs again.
                     final_interval = library_host._tick()
@@ -75,7 +76,7 @@ class IdleMainPumpTests(unittest.TestCase):
             finally:
                 fail.set()
                 host.disconnect()
-                self.assertTrue(host.worker.join(1))
+                self.assertTrue(host.worker.join(CAP_S))
                 host.pump()
         self.run_with_timer(host, scenario)
 
@@ -89,7 +90,7 @@ class IdleMainPumpTests(unittest.TestCase):
                     def service_idle(self, stop=None, *, seconds=.25): return None
                     def close(self, *, retain_profile=False):
                         entered.set()
-                        assert release.wait(1), 'Synthetic close release timed out'
+                        assert release.wait(CAP_S), 'Synthetic close release timed out'
                         if should_fail[0]: raise RuntimeError('synthetic close unproved')
                 connection = Connection()
                 host = fab_host.Host(lambda **kwargs: connection,
@@ -97,15 +98,15 @@ class IdleMainPumpTests(unittest.TestCase):
                     session_factory=lambda value: SimpleNamespace(disconnect=lambda: None))
                 def scenario(redraws):
                     try:
-                        host.connect(); self.assertTrue(host.job.done.wait(1)); library_host._tick()
-                        host.disconnect(); self.assertTrue(entered.wait(1))
+                        host.connect(); self.assertTrue(host.job.done.wait(CAP_S)); library_host._tick()
+                        host.disconnect(); self.assertTrue(entered.wait(CAP_S))
                         close_job = host.job
                         original_pump = fab_host.pump
                         def publish_after_pump():
                             self.assertFalse(close_job.done.is_set())
                             changed = original_pump()  # Actual Main pump sees the still-pending close.
                             release.set()
-                            self.assertTrue(close_job.done.wait(1))  # Force completion before needs_pump reads busy.
+                            self.assertTrue(close_job.done.wait(CAP_S))  # Complete before needs_pump reads busy.
                             return changed
                         with patch.object(fab_host, 'pump', publish_after_pump):
                             next_interval = library_host._tick()
@@ -127,7 +128,7 @@ class IdleMainPumpTests(unittest.TestCase):
                             self.assertIsNone(final_interval)
                     finally:
                         should_fail[0] = False; release.set()
-                        host.disconnect(); self.assertTrue(host.worker.join(1)); host.pump()
+                        host.disconnect(); self.assertTrue(host.worker.join(CAP_S)); host.pump()
                 self.run_with_timer(host, scenario)
         # A completed agent result belongs to its Controller, not Main's non-agent completion pump.
         host = fab_host.Host(lambda **kwargs: self.fail('No browser for a completed agent result'))

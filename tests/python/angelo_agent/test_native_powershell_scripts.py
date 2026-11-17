@@ -42,7 +42,10 @@ class PowerShellTests(unittest.TestCase):
         # INSTALL fails after the whole build.
         build = (SCRIPTS / "build_release_windows.ps1").read_text(encoding="utf-8")
         passed = [line.strip() for line in build.splitlines() if "-DLIBDIR=" in line]
-        self.assertEqual(passed, ["\"`\"-DLIBDIR=$($LibDir.Replace('\\', '/'))`\"\","])
+        self.assertEqual(passed, ["\"`\"-DLIBDIR=$(ConvertTo-CMakePath $LibDir)`\"\","])
+        toolchain = (SCRIPTS / "windows_release_toolchain.ps1").read_text(encoding="utf-8")
+        helper = toolchain[toolchain.index("function ConvertTo-CMakePath"):].splitlines()[0]
+        self.assertIn(".Replace('\\', '/')", helper)   # the one writer of CMake's paths (test_native_gpu_sdk_pins.py)
 
 
 if __name__ == "__main__":

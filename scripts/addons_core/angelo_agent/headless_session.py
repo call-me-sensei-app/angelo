@@ -13,7 +13,6 @@ never arguments or results). Pure standard library and no ``bpy`` (doc/angelo/ex
 import hashlib
 import json
 import os
-import shutil
 import sys
 import tempfile
 import threading
@@ -21,14 +20,15 @@ import time
 from pathlib import Path
 
 from . import external_cli_protocol as protocol
-from . import headless_files, journal_checks, private_roots
+from . import essential_environment, headless_files, journal_checks, private_roots
 from . import headless_preferences as preferences
 from .headless_working_copy import sweep_in_background
 from .headless_pipe import ChildProcess
+from . import owned_paths  # noqa: E402  (what Angelo made: its cleanups remove only that)
 
 # The child's environment: what Blender and the OS need, nothing that redirects scripts, state or add-ons.
-KEEP_ENVIRONMENT = ("PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "TZ", "LANG", "XDG_RUNTIME_DIR", "DISPLAY",
-                    "WAYLAND_DISPLAY", "CFFIXED_USER_HOME")
+# What a child Blender keeps besides the OS's own variables (essential_environment): the display, the macOS home.
+KEEP_ENVIRONMENT = ("XDG_RUNTIME_DIR", "DISPLAY", "WAYLAND_DISPLAY", "CFFIXED_USER_HOME")
 PRIVATE_PREFIX = private_roots.HEADLESS_PREFIX   # headless_main checks the name; sweep_leftovers removes dead children's.
 POLICY_RESTARTED = ("Angelo started its headless session again on {name} to apply a change to this app's access or "
                     "an organization's policy; identifiers from before are unknown. Observe the scene again.")
@@ -143,7 +143,7 @@ def effective(organization):
 
 def child_environment(environ, private, preferences_used=False):
     """What the child inherits; ``preferences_used``: its config folder is the private copy (headless_preferences)."""
-    kept = {name: environ[name] for name in KEEP_ENVIRONMENT if name in environ}
+    kept = essential_environment.environment(KEEP_ENVIRONMENT, environ)
     # A bounded non-secret QA owner survives a private headless child, so the
     # outer test slot can clean it up without inheriting routing or credentials.
     owner = environ.get("ANGELO_QA_PROCESS_OWNER", "")
@@ -363,7 +363,7 @@ class HeadlessSession:
 
     def _remove_private(self):
         if self._private is not None:
-            shutil.rmtree(self._private, ignore_errors=True)
+            owned_paths.remove_tree(self._private)   # Only the folder Angelo made (owned_paths).
             self._private = None
 
     # Calls ---------------------------------------------------------------------------------------------------------
@@ -491,7 +491,7 @@ class HeadlessSession:
         from .external_requests import AuditLog
         directory = self.state / "mcp"
         try:
-            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+            owned_paths.require_writable(directory).mkdir(parents=True, exist_ok=True, mode=0o700)
         except OSError:
             return
         digest = hashlib.sha256(json.dumps(arguments, sort_keys=True, default=str).encode("utf-8")).hexdigest()

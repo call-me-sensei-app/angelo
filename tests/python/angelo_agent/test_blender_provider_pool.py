@@ -5,6 +5,7 @@
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+import layout_double  # noqa: E402  (UILayout's own calls, shared by every suite drawing a page)
 
 import json
 import os
@@ -40,18 +41,11 @@ state = {"success": False, "phase": "boot", "checks": {},
 before = [(o.name, tuple(o.location)) for o in bpy.context.scene.objects]
 
 
-class Layout:
+class Layout(layout_double.UILayoutDouble):
+    RECORDS = ("labels", "operators", "props")
+
     def __init__(self):
         self.labels, self.operators, self.props = [], [], []
-
-    def row(self):
-        return self
-
-    def box(self):
-        return self
-
-    def separator(self):
-        pass
 
     def label(self, text="", **kwargs):
         self.labels.append(text)
@@ -99,7 +93,7 @@ def tick():
             state["checks"]["both_connections_in_one_model_pool"] = {m["connection_id"] for m in choices} == {a["id"],b["id"]}
             state["checks"]["disconnected_profiles_not_offered"] = all(m["connection_id"] != unavailable["id"] for m in choices)
             chat_id, bootstrap_default = controller.state["id"], store.active
-            bpy.ops.angelo.select_model(connection_id=b["id"], model="sonnet")
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().select_model(connection_id=b["id"], model="sonnet")
             state["checks"]["model_selection_stays_in_same_chat"] = controller.state["id"] == chat_id and controller.state["provider"] == "claude_subscription"
             state["checks"]["selection_does_not_activate_an_exclusive_global_account"] = store.active == bootstrap_default and {m["connection_id"] for m in ui.model_choices(controller)} == {a["id"],b["id"]}
             bpy.ops.angelo.open_chat(side="RIGHT")

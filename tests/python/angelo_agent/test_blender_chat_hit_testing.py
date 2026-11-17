@@ -78,8 +78,9 @@ def redraw(scroll=None):
 def event(kind, value, x, y):
     context = parts()
     region = context['region']
-    data = SimpleNamespace(type=kind, value=value, mouse_x=region.x + x, mouse_y=region.y + y,
-        mouse_prev_y=region.y + y, ctrl=False, oskey=False, shift=False, alt=False, unicode='')
+    px, py = qa_input.chat_point(region, (x, y, 0, 0))   # Canvas points to window pixels, as the chat maps them back.
+    data = SimpleNamespace(type=kind, value=value, mouse_x=px, mouse_y=py,
+        mouse_prev_y=py, ctrl=False, oskey=False, shift=False, alt=False, unicode='')
     with bpy.context.temp_override(**context):
         return chat_view.ANGELO_OT_chat_input.modal(handler, bpy.context, data)
 
@@ -96,15 +97,31 @@ def review_details_published(call):
     context = parts()
     area, region = context['area'], context['region']
     preview, details = approval_review.review_rows(
-        call, area.as_pointer(), max(40, region.width - 64), max(12, int(area.spaces.active.font_size * 0.8)),
+        call, area.as_pointer(), *approval_review.canvas_geometry(area, region),
         chat_view._font, chat_view._mono, chat_view.wrap, True)
     return bool(preview) and bool(details)
 
 
 def click_hit(action):
     view = redraw(0)
-    rect, _, _ = next(item for item in view['hits'] if item[1] == action)
+    rect, _, value = next(item for item in view['hits'] if item[1] == action)
     x, y = rect[0] + rect[2] / 2, rect[1] + rect[3] / 2
+    import qa_input
+    if action in qa_input.GRANT_ACTIONS:   # Through the window: C mints its ticket only from a real press.
+        from angelo_agent import approval_arming
+        qa_input.window_click(window, parts()['region'], rect, action,
+                              ready=lambda: approval_arming.view(view).key_armed((action, value)),
+                              scale=chat_view.ui_scale())
+        return
+    from angelo_agent.approval_arming import GRANTS
+    if action in GRANTS:   # Aimed, as a person aims (approval_arming): below it while its shield passes, then into it.
+        import time
+        from angelo_agent import approval_arming
+        event('MOUSEMOVE', 'NOTHING', x, rect[1] - 6)
+        deadline = time.monotonic() + 10
+        while not approval_arming.view(view).key_armed((action, value)) and time.monotonic() < deadline:
+            time.sleep(0.02)   # Until its shield has passed (the arming's own signal), capped against a hang.
+        event('MOUSEMOVE', 'NOTHING', x, y)
     event('LEFTMOUSE', 'PRESS', x, y)
     event('LEFTMOUSE', 'RELEASE', x, y)
 
@@ -259,4 +276,5 @@ def tick():
         return finish(traceback.format_exc())
 
 
-bpy.app.timers.register(tick, first_interval=.3, persistent=True)
+import qa_input  # noqa: E402  (a click through the window lands first: qa_input.after_clicks)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.3, persistent=True)

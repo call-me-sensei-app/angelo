@@ -33,8 +33,15 @@ def add_argument(parser):
 
 def _git(*arguments, root=ROOT):
     """``git`` output, or None. Popen, not ``subprocess.run``: the harness tests replace ``run`` to count trials."""
+    import own_checkout   # Git about this tree only: None in a tree that is not its own checkout.
     try:
-        process = subprocess.Popen(["git", "-C", str(root), *arguments], stdout=subprocess.PIPE,
+        line = own_checkout.command(root, *arguments)
+    except own_checkout.NotOwnCheckout:
+        line = None
+    if line is None:
+        return None
+    try:
+        process = subprocess.Popen(line, stdout=subprocess.PIPE,
                                    stderr=subprocess.DEVNULL, text=True,
                                    env={"GIT_LFS_SKIP_SMUDGE": "1", "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"})
         output, _error = process.communicate(timeout=20)
@@ -56,7 +63,8 @@ def stamp(binary, root=ROOT, compared=None):
 
 
 def problem(binary, allow, root=ROOT, warn=print):
-    """The refusal text when the checkout's add-on is not ``binary``'s bundled one, else None (``allow`` warns)."""
+    """The refusal text when the checkout's add-on is not ``binary``'s bundled one, else None (``allow`` warns,
+    naming any Git LFS pointer the trials would import, as every difference)."""
     compared = guard.check(binary, root)
     if compared["matches"]:
         return None
@@ -65,7 +73,9 @@ def problem(binary, allow, root=ROOT, warn=print):
         return None
     return guard.refusal(compared).replace(
         "the app would test another add-on than this checkout's, so no suite ran",
-        "the Angelo side imports this checkout's add-on, which is not the app's bundled one, so nothing ran")
+        "the Angelo side imports this checkout's add-on, which is not the app's bundled one, so nothing ran").replace(
+        "not the files, so no suite ran", "not the files, so nothing ran").replace(
+        "The suites import", "The trials import")
 
 
 def trial_stamp(binary, allow, root=ROOT):

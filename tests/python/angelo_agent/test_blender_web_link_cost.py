@@ -7,12 +7,18 @@
 
 Scenes: a typical one (120 boxes, each its own material), and a geometry-nodes scatter of 10,000, 100,000 and
 1,000,000 instances of one pebble beside an unrelated box. The edit is the box's colour, which the scatter never
-shows. For each: the time to decide what changed (median of 9 after 2 untimed), and the whole delta (median of 5
-after 1 untimed) for the record. Checked: deciding stays flat as instances grow (a million costs at most twice ten
-thousand plus 2 ms; it walked every instance before), the delta holds the box alone, and the pebble's own colour
-still reaches the scatter; and with 1,000 and 10,000 empties instancing one collection, a member's colour reaches
-every empty at a cost that grows linearly (round 10, M2: it grew with their square). Writes ``web-link-cost.json`` to DIR (``ANGELO_QA_DIR`` under run_native_suites.py),
-whose ``success`` is the verdict; times are this machine's, compared only with each other.
+shows. For each: the time to decide what changed, and the whole delta (median of 5 after 1 untimed) for the
+record. Checked: deciding stays flat as instances grow (a million costs at most twice ten thousand plus 2 ms; it
+walked every instance before), the delta holds the box alone, and the pebble's own colour still reaches the scatter;
+and with 1,000 and 10,000 empties instancing one collection, a member's colour reaches every empty at a cost that
+grows linearly (round 10, M2: it grew with their square). Writes ``web-link-cost.json`` to DIR (``ANGELO_QA_DIR``
+under run_native_suites.py), whose ``success`` is the verdict; times are this machine's, compared only with each
+other.
+
+The sizes a check compares are timed together (``cost_timing``): each in its own scene of one file, one decision
+of each per round over 15 rounds after 2 untimed, and judged by its best. Load only adds time, so a burst from
+another suite can't fail them, while work that grows faster than the bound slows every repeat and still does
+(1.1.0 candidate ce9ddce, four suites at once: medians timed one size after the other read 147.7 against 8.24 ms).
 """
 
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
@@ -31,6 +37,8 @@ from types import SimpleNamespace
 
 import bpy
 
+import cost_timing as cost
+
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = Path(ARGS[ARGS.index("--out") + 1]) if "--out" in ARGS else Path(
     os.environ.get("ANGELO_QA_DIR") or Path(tempfile.gettempdir(), "angelo-web-link-cost-qa"))
@@ -38,6 +46,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 report = {"checks": {}, "timings": {}}
 SIZES = (10_000, 100_000, 1_000_000)
 INSTANCERS = (1_000, 10_000)   # Empties instancing one collection.
+ROUNDS, WARM = 15, 2   # Interleaved decisions per size (cost_timing.best_ms).
 
 
 def check(name, value, detail=None):
@@ -46,19 +55,24 @@ def check(name, value, detail=None):
         report.setdefault("details", {})[name] = detail
 
 
-def box(name, location, size=0.5):
-    bpy.ops.mesh.primitive_cube_add(size=size, location=location)
-    obj = bpy.context.object
-    obj.name = name
+def box(name, location, size=0.5, scene=None):
+    """A cube of its own mesh and material in ``scene`` (the context's by default)."""
+    half = size / 2.0
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata([(x, y, z) for x in (-half, half) for y in (-half, half) for z in (-half, half)], [],
+                     [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)])
+    obj = bpy.data.objects.new(name, mesh)
+    obj.location = location
+    (scene or bpy.context.scene).collection.objects.link(obj)
     paint = bpy.data.materials.new(name + "Paint")
     paint.use_nodes = True
     obj.data.materials.append(paint)
     return obj, paint
 
 
-def scatter(count):
-    """A geometry-nodes grid of ``count`` points, an instance of the pebble on each (never realized)."""
-    host, _paint = box("Scatter", (0, 10, 0))
+def scatter(count, pebble, scene=None):
+    """A geometry-nodes grid of ``count`` points, an instance of ``pebble`` on each (never realized)."""
+    host, _paint = box("Scatter", (0, 10, 0), scene=scene)
     tree = bpy.data.node_groups.new("Scatter", "GeometryNodeTree")
     tree.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     tree.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
@@ -67,13 +81,56 @@ def scatter(count):
     side = int(round(count ** 0.5))
     grid.inputs["Vertices X"].default_value = grid.inputs["Vertices Y"].default_value = side
     grid.inputs["Size X"].default_value = grid.inputs["Size Y"].default_value = 50.0
-    info.inputs["Object"].default_value = bpy.data.objects["Pebble"]
+    info.inputs["Object"].default_value = pebble
     info.inputs["As Instance"].default_value = True
     tree.links.new(grid.outputs["Mesh"], place.inputs["Points"])
     tree.links.new(info.outputs["Geometry"], place.inputs["Instance"])
     tree.links.new(place.outputs["Instances"], out.inputs[0])
     host.modifiers.new("Scatter", "NODES").node_group = tree
-    return side * side
+    return host, side * side
+
+
+def instancers(count, scene=None):
+    """``count`` empties instancing one collection that holds a single part (not in the scene); the part and its
+    material."""
+    kit = bpy.data.collections.new("Kit")
+    part, part_paint = box("Part", (0, 0, 0), scene=scene)
+    for owner in list(part.users_collection):
+        owner.objects.unlink(part)
+    kit.objects.link(part)
+    for index in range(count):
+        empty = bpy.data.objects.new("Copy%05d" % index, None)
+        empty.instance_type, empty.instance_collection = "COLLECTION", kit
+        empty.location = (index % 100, index // 100, 0)
+        (scene or bpy.context.scene).collection.objects.link(empty)
+    return part, part_paint
+
+
+def deciding(live, scene, paint):
+    """A decision of what a colour change of ``paint`` changed in ``scene``, as the link would make it."""
+    layer = scene.view_layers[0]
+    layer.update()
+    objects, graph = list(scene.objects), layer.depsgraph
+
+    def decide():
+        live._session["dirty"], live._session["dirty_data"] = set(), {paint.session_uid}
+        return live.changed_objects(objects, graph)
+    return decide
+
+
+def timed_together(live, family, build):
+    """Each size of ``family`` ({name: count}) built by ``build(count, scene)`` -> paint in its own scene of one
+    file, then timed interleaved; records each one's best as its ``decide_ms`` and checks that each decides what it
+    did on its own (the same work)."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    works = {name: deciding(live, scene, build(count, scene))
+             for name, count in family.items() for scene in [bpy.data.scenes.new(name)]}
+    for name, decide in works.items():
+        check("%s_decides_alike_beside_the_others" % name, len(decide()) == report["decided"][name],
+              {"alone": report["decided"][name], "beside": len(decide())})
+    for name, best in cost.best_ms(works, ROUNDS, WARM).items():
+        report["timings"][name]["decide_ms"] = best
+    return [report["timings"][name]["decide_ms"] for name in family]
 
 
 def median_ms(work, rounds, warm):
@@ -119,7 +176,9 @@ def measure(live, name, objects_changed):
         live._session["dirty"], live._session["dirty_data"] = set(), {paint.session_uid}
         return frame()
     sent = delta()
-    report["timings"][name] = {"decide_ms": median_ms(decide, 9, 2), "delta_ms": median_ms(delta, 5, 1)}
+    report.setdefault("decided", {})[name] = len(decided)
+    report["timings"][name] = {"decide_ms": cost.best_ms({name: decide}, ROUNDS, WARM)[name],
+                               "delta_ms": median_ms(delta, 5, 1)}
     return decided, sent
 
 
@@ -138,7 +197,7 @@ def main():
     for count in SIZES:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         pebble, pebble_paint = box("Pebble", (0, -10, 0), size=0.05)
-        made = scatter(count)
+        scattered, made = scatter(count, pebble)
         unrelated = box("Unrelated", (5, -10, 0))
         bpy.context.view_layer.update()
         name = "scatter_%d" % made
@@ -150,27 +209,26 @@ def main():
         live._session["dirty"], live._session["dirty_data"] = set(), {pebble_paint.session_uid}
         reach = live.changed_objects(list(bpy.context.scene.objects), bpy.context.view_layer.depsgraph)
         check("%s_pebble_colour_reaches_the_scatter" % name,
-              {pebble.session_uid, bpy.data.objects["Scatter"].session_uid} <= reach, sorted(reach))
-    small, large = (report["timings"]["scatter_%d" % size]["decide_ms"] for size in (SIZES[0], SIZES[-1]))
-    check("deciding_stays_flat_as_instances_grow", large <= 2.0 * small + 2.0, {"10k": small, "1M": large})
+              {pebble.session_uid, scattered.session_uid} <= reach, sorted(reach))
     for count in INSTANCERS:   # Round 10, M2: many instancers of one collection, its member's colour changed.
         bpy.ops.wm.read_factory_settings(use_empty=True)
-        kit = bpy.data.collections.new("Kit")
-        part, part_paint = box("Part", (0, 0, 0))
-        for owner in list(part.users_collection):
-            owner.objects.unlink(part)
-        kit.objects.link(part)
-        for index in range(count):
-            empty = bpy.data.objects.new("Copy%05d" % index, None)
-            empty.instance_type, empty.instance_collection = "COLLECTION", kit
-            empty.location = (index % 100, index // 100, 0)
-            bpy.context.scene.collection.objects.link(empty)
+        part, part_paint = instancers(count)
         bpy.context.view_layer.update()
         decided, _sent = measure(live, "instancers_%d" % count, (part, part_paint))
         check("instancers_%d_all_reached" % count, len(decided) == count + 1, len(decided))
-    few, many = (report["timings"]["instancers_%d" % count]["decide_ms"] for count in INSTANCERS)
+
+    def scattered_beside(count, scene):
+        pebble, _pebble_paint = box("Pebble", (0, -10, 0), size=0.05, scene=scene)
+        scatter(count, pebble, scene)
+        return box("Unrelated", (5, -10, 0), scene=scene)[1]
+    sizes = {"scatter_%d" % int(round(count ** 0.5)) ** 2: count for count in (SIZES[0], SIZES[-1])}
+    small, large = timed_together(live, sizes, scattered_beside)
+    check("deciding_stays_flat_as_instances_grow", cost.bounded(small, large, 2.0, 2.0), {"10k": small, "1M": large})
+    few, many = timed_together(live, {"instancers_%d" % count: count for count in INSTANCERS},
+                               lambda count, scene: instancers(count, scene)[1])
     ratio = INSTANCERS[1] / INSTANCERS[0]
-    check("deciding_grows_linearly_with_instancers", many <= 1.5 * ratio * few + 5.0, {"few": few, "many": many})
+    check("deciding_grows_linearly_with_instancers", cost.bounded(few, many, 1.5 * ratio, 5.0),
+          {"few": few, "many": many})
 
 
 try:

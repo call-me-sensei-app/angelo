@@ -5,6 +5,7 @@
 set(INC
   ../include
   ../../makesrna
+  ../../python
 
   # RNA_prototypes.hh
   ${CMAKE_BINARY_DIR}/source/blender/makesrna
@@ -36,6 +37,9 @@ set(LIB
   PRIVATE bf::sequencer
 )
 
+if(WITH_PYTHON)
+  add_definitions(-DWITH_PYTHON) # Angelo: a path the person browses to (writable.cc, "typed").
+endif()
 
 if(WITH_FREESTYLE)
   add_definitions(-DWITH_FREESTYLE)

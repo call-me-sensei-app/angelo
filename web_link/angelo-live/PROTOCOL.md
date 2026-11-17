@@ -3,8 +3,8 @@
 
 # Angelo web live link: wire contract
 
-This is the contract between Angelo, the dev-server bridge (`@angelo-studio/live/vite`) and the browser SDK
-(`@angelo-studio/live`). Angelo's side is `doc/angelo/web_link.rst`; the engine-neutral link is
+This is the contract between Angelo, the dev-server bridge (`@call-me-sensei/angelo/vite`) and the browser SDK
+(`@call-me-sensei/angelo`; the unscoped alias `angelo-studio` re-exports both). Angelo's side is `doc/angelo/web_link.rst`; the engine-neutral link is
 `doc/angelo/engine_link.rst`. Both halves of this package follow this file. A change here changes both.
 
 ## 1. Angelo ⇄ bridge: `angelo-link/1`
@@ -49,10 +49,13 @@ The bridge is an engine editor plugin like Godot's. It runs in Node, inside the 
 field:
 
 ```json
-{"engine": "web", "web": "vite 7.1.3; three 0.185.1", "plugin": "@angelo-studio/live 0.1.0",
+{"engine": "web", "web": "vite 7.1.3; three 0.185.1", "plugin": "@call-me-sensei/angelo 0.1.0",
  "capabilities": ["durable", "live", "acks", "capture"],
- "project": "/abs/path/to/vite/root", "project_name": "<package.json name, else the folder name>"}
+ "project": "/abs/path/to/the/project", "project_name": "<package.json name, else the folder name>"}
 ```
+
+`project` is the folder holding `package.json` at or above Vite's `root` (Vite's root may be a subfolder); asset paths
+are relative to it.
 
 Add `"look"` to `capabilities` only when a tracked page asked for `look: "apply"`. It is reserved: Angelo 1.0.10
 sends no look frames yet.
@@ -188,12 +191,15 @@ the page in the virtual module `virtual:angelo-live/config`.
 
 ### Server → page (`server.hot.send` / `server.ws.send`; event names)
 
-- `angelo:state {link: "waiting" | "live" | "lost" | "off", message?}`
+- `angelo:state {link: "waiting" | "live" | "lost" | "off", message?, session}`: `session` grows when the bridge
+  links to another Angelo process (its keys mean other objects then).
 - `angelo:pending {asset}`, `angelo:opened {asset}`, `angelo:refused {asset, code, message}`
-- `angelo:scene {asset, version, kind, base?, removed?, url}`: `url` is that frame's `.glb`
+- `angelo:scene {asset, version, session, kind, base?, removed?, url}`: `url` is that frame's `.glb`
   (`scene/<asset-id>/<version>.glb`). The bridge keeps every delta since the last full frame, at most 8 (a delta is
   never skipped), and passes `kind`, `base` and `removed` through unchanged.
-- `angelo:saved {asset, save, url}`: `url` is the asset's own dev-server URL with `?angelo=<save>`.
+- `angelo:saved {asset, save, scene_version, url}`: `url` is the asset's own dev-server URL with `?angelo=<save>`.
+  A page that already shows `scene_version` changes nothing (no fetch, no upload); otherwise it applies the file by
+  the same diff.
 - `angelo:status {asset, code, message}`, `angelo:ended {asset, reason}`
 - `angelo:capture {id, asset, max}`: sent to every tab. The first good answer wins; the bridge relays it.
 
@@ -202,12 +208,15 @@ project path (Vite `publicDir` and `root`).
 
 ### Page → server (`import.meta.hot.send`)
 
-- `angelo:hello {tab, three, tracked: [url], capture: bool}`
+- `angelo:hello {tab, three, tracked: [url], capture: bool, look}`
 - `angelo:track {tab, url}`, `angelo:untrack {tab, url}`
 - `angelo:edit {tab, url, node}`
 - `angelo:ack {tab, asset, code, version|save, instances, message?}`
 - `angelo:capture_failed {tab, id, message}`
-- `angelo:resync {tab, asset}`: the bridge sends Angelo `status {asset, code: "resync"}` (§1.2)
+- `angelo:resync {tab, asset}`: the bridge sends Angelo `status {asset, code: "resync"}` (§1.2). A page asks once
+  per version it shows; the bridge passes at most 8 a second per asset.
+- `angelo:bye {tab}`: the page stopped its live link (a component unmounted); the bridge stops waiting for that
+  tab's answers. A closed socket says the same for every tab on it.
 
 ### HTTP, under `/@angelo-live/<token>/`
 
@@ -227,6 +236,8 @@ and `Cross-Origin-Resource-Policy: same-origin`, and never a CORS header.
 
 ## 3. Production
 
-- `@angelo-studio/live` under the `production` export condition (and its default) is a no-op stub with the same API.
+- `@call-me-sensei/angelo` under the `production` export condition (and its default) is a no-op stub with the same
+  API. In a build the plugin also resolves the package to the stub whatever the conditions, so a build run with
+  another `NODE_ENV` can't pick up the development SDK.
 - The Vite plugin is `apply: "serve"`.
 - A production build holds no `angelo-live` route, socket or string.

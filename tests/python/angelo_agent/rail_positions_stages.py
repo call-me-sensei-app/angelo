@@ -8,9 +8,11 @@ code) tags a redraw, as the change would in the product. Runs inside the app onl
 import json
 import os
 import subprocess
+from pathlib import Path
 
 import bpy
 
+import gui_launch
 import qa_input
 import rail_positions_checks as geometry
 import rail_positions_fixture as fx
@@ -217,42 +219,93 @@ def circle(tag, waits, number, exact=True):
     yield pause(0)
 
 
-CHILD = ("import bpy, json; a = bpy.context.preferences.addons.get('angelo_agent'); p = getattr(a, 'preferences', None);"
-         " print('ANGELO_RAIL_PREFS ' + json.dumps({'position': getattr(p, 'rail_position', None),"
-         " 'minimized': getattr(p, 'rail_minimized', None), 'enabled': a is not None}), flush=True)")
+READ_BACK = Path(__file__).with_name('prefs_read_back.py')   # A new Angelo's reading of the saved preferences.
+
+
+def _other_value(preferences, name):
+    """A value of the preference ``name`` other than the one it holds, inside its range."""
+    prop, current = preferences.bl_rna.properties[name], getattr(preferences, name)
+    if prop.type == 'BOOLEAN':
+        return not current
+    if prop.type == 'ENUM':
+        return next(item.identifier for item in prop.enum_items if item.identifier != current)
+    if prop.type == 'INT':
+        return current + 1 if current < prop.hard_max else current - 1
+    raise TypeError('no other value for %s (%s)' % (name, prop.type))
+
+
+def read_back(names, background):
+    """``prefs_read_back``'s reading in a second Angelo on the run's own profile: a window, or a background process."""
+    kind = 'background' if background else 'window'
+    log = run.OUT / ('preferences-read-back-%s.log' % kind)
+    flags = ['--background'] if background else gui_launch.window_flags()   # A window behind, deaf to real input.
+    with open(log, 'w', encoding='utf-8') as stream:
+        child = subprocess.Popen([bpy.app.binary_path, *flags, '--disable-autoexec', '--python', str(READ_BACK), '--',
+                                  *names], stdout=stream, stderr=subprocess.STDOUT, env=dict(os.environ))
+    done = yield until(lambda: child.poll() is not None, 120)
+    if not done:
+        child.kill()
+    line = next((text for text in log.read_text(encoding='utf-8', errors='replace').splitlines()
+                 if text.startswith('ANGELO_PREFS_READ ')), None)
+    if line is None:
+        return {'error': 'no ANGELO_PREFS_READ line in %s (exit %s)' % (log.name, child.poll())}
+    return json.loads(line.split(' ', 1)[1])
 
 
 def persistence():
-    """The place and the minimized state are the add-on's preferences, kept as Workers at once is: stored there, the
-    preferences marked to save, saved, and read back by a second, background Angelo from the same isolated profile."""
+    """The place and the minimized state are the add-on's preferences, kept as Workers at once is (all of
+    ``parallel_setting.ParallelPreferences``): stored there, the preferences marked to save, saved, and read back from
+    the same isolated profile by a new Angelo of each kind (``prefs_read_back``). A window starts the add-on from the
+    saved preferences and holds every value set here; a background process starts no agent from them
+    (``angelo_background_addons``) and holds the same values once a script enables it by name.
+
+    Evidence (Windows T4, 2026-11-16, 3ca02a52cd2): the read-back was a background Angelo only, which since 2482c84acaa
+    starts no agent from the preferences, so it read nothing although the values were saved."""
     from angelo_agent import parallel_setting
     run.state['phase'] = 'persistence'
     addon = bpy.context.preferences.addons.get('angelo_agent')
     preferences = getattr(addon, 'preferences', None)
-    check('the_panel_settings_are_add_on_preferences', hasattr(preferences, 'rail_position')
-          and hasattr(preferences, 'rail_minimized'), addon is not None)
+    names = list(parallel_setting.ParallelPreferences.__annotations__)
+    check('the_panel_settings_are_add_on_preferences', all(hasattr(preferences, name) for name in names),
+          addon is not None and names)
+    if not all(hasattr(preferences, name) for name in names):
+        return
+    before = {name: getattr(preferences, name) for name in names}
+    expected = {name: _other_value(preferences, name) for name in names}   # Each one changed, whatever it was.
     bpy.context.preferences.is_dirty = False
-    parallel_setting.set_rail_position('BOTTOM')
-    parallel_setting.set_rail_minimized(True)
+    parallel_setting.set_rail_position(expected['rail_position'])   # As the panel's own controls set them.
+    parallel_setting.set_rail_minimized(expected['rail_minimized'])
     stored = (getattr(preferences, 'rail_position', None), getattr(preferences, 'rail_minimized', None))
-    check('place_and_minimized_are_stored_on_the_preferences', stored == ('BOTTOM', True), stored)
+    check('place_and_minimized_are_stored_on_the_preferences',
+          stored == (expected['rail_position'], expected['rail_minimized']), {'stored': stored, 'set': expected})
     check('a_change_marks_the_preferences_to_save', bpy.context.preferences.is_dirty)
+    for name in names:   # Every other kept setting of the group (Workers at once).
+        if name not in ('rail_position', 'rail_minimized'):
+            setattr(preferences, name, expected[name])
+    check('every_kept_setting_changed_before_the_save', all(getattr(preferences, n) == expected[n] != before[n]
+                                                            for n in names), {'before': before, 'set': expected})
     if not os.environ.get('BLENDER_USER_CONFIG'):
         run.report['readings']['persistence'] = 'save and read skipped: no isolated BLENDER_USER_CONFIG (a hand run)'
     else:
         with bpy.context.temp_override(window=S.window):
             bpy.ops.wm.save_userpref()
-        log = run.OUT / 'preferences-read-back.log'
-        with open(log, 'w', encoding='utf-8') as stream:
-            child = subprocess.Popen([bpy.app.binary_path, '--background', '--disable-autoexec', '--python-expr',
-                                      CHILD], stdout=stream, stderr=subprocess.STDOUT, env=dict(os.environ))
-        done = yield until(lambda: child.poll() is not None, 120)
-        if not done:
-            child.kill()
-        line = next((text for text in log.read_text(encoding='utf-8', errors='replace').splitlines()
-                     if text.startswith('ANGELO_RAIL_PREFS ')), None)
-        read = json.loads(line.split(' ', 1)[1]) if line else None
-        check('place_and_minimized_survive_a_save_and_a_new_launch', read is not None and read.get('position') ==
-              'BOTTOM' and read.get('minimized') is True, read or 'no ANGELO_RAIL_PREFS line in ' + log.name)
-    parallel_setting.set_rail_minimized(False)
-    parallel_setting.set_rail_position('LEFT')
+        window = yield from read_back(names, background=False)
+        background = yield from read_back(names, background=True)
+        run.report['readings']['persistence'] = {'expected': expected, 'window': window, 'background': background}
+        at_start = window.get('at_start') or {}
+        values = at_start.get('values') or {}
+        check('place_and_minimized_survive_a_save_and_a_new_launch', values.get('rail_position') ==
+              expected['rail_position'] and values.get('rail_minimized') is expected['rail_minimized'], window)
+        check('every_kept_setting_survives_a_save_and_a_new_launch', at_start.get('started') and values == expected,
+              window)
+        held = background.get('at_start') or {}
+        check('a_background_angelo_starts_no_agent_from_the_preferences', held.get('listed') is True
+              and held.get('started') is False, background)
+        by_name = background.get('by_name') or {}
+        check('a_background_angelo_reads_them_once_a_script_starts_the_agent', by_name.get('started') is True
+              and by_name.get('values') == expected, background)
+    parallel_setting.set_rail_minimized(before['rail_minimized'])   # All put back as they were.
+    parallel_setting.set_rail_position(before['rail_position'])
+    for name in names:
+        if getattr(preferences, name) != before[name]:
+            setattr(preferences, name, before[name])

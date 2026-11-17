@@ -21,6 +21,7 @@ Launcher half: standard library only, no ``bpy``.
 import json
 import os
 import stat
+from . import owned_paths
 from pathlib import Path
 
 USERPREF = "userpref.blend"
@@ -109,6 +110,7 @@ def stage(source_directory, private, staged=None):
 
     Opens the person's file for reading only (a link to it is followed, as Blender follows it) and writes a new
     owner-only file in the private folder; anything but a regular file of a sane size counts as unreadable."""
+    owned_paths.require_writable(private)   # The copy goes into the child's private folder (C), never elsewhere.
     source = Path(source_directory) / USERPREF
     try:
         descriptor = os.open(source, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0))

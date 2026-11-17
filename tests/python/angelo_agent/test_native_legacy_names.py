@@ -69,8 +69,8 @@ class ToolNameTests(unittest.TestCase):
     def test_every_tool_has_the_angelo_prefix_and_the_toolset_records_the_rename(self):
         # 67, the three web export tools (42), the six rig tools (43), the two Angelo Library tools (45),
         # angelo_app_feature (46), angelo_skeleton_check (47), angelo_game_ready_check (48), the engine
-        # preflight's two tools (49) and the two engine link tools (50).
-        self.assertEqual(len(TOOL_MAP), 86)
+        # preflight's two tools (49), the two engine link tools (50) and angelo_download (55).
+        self.assertEqual(len(TOOL_MAP), 87)
         self.assertTrue(all(name.startswith("angelo_") for name in TOOL_MAP))
         # Toolset 16 added angelo_apply_recipe after the rename (toolset 15);
         # toolset 17 added the capabilities lookup of deferred plan schemas;
@@ -106,7 +106,9 @@ class ToolNameTests(unittest.TestCase):
         # "The agent"); 51 the core angelo_goal (goal_mode.rst).
         # 52 adds Essentials library sources/pagination/MCP; 53 adds explicit approved Fab imports; 54 Fab variants in
         # every format the converter reads and objects for Fab texture sets (fab_formats.rst).
-        self.assertEqual((TOOLSET_VERSION, RENAMED_TOOLSET), (54, 15))
+        # 55 (2.0.0) states a script's length limit in the script tools and adds the deferred angelo_download (agent
+        # scripts have no network: downloads.rst); both branches numbered it 55.
+        self.assertEqual((TOOLSET_VERSION, RENAMED_TOOLSET), (55, 15))
 
     def test_pre_rename_names_are_readable_but_never_executable(self):
         for name in TOOL_MAP:

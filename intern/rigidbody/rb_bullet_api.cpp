@@ -37,6 +37,7 @@
 
 #include <cerrno>
 #include <cstdio>
+#include <vector>
 
 #include "RBI_api.h"
 
@@ -52,17 +53,73 @@
 #include <BulletCollision/Gimpact/btGImpactCollisionAlgorithm.h>
 #include <BulletCollision/Gimpact/btGImpactShape.h>
 
+/**
+ * Bullet's world with one addition: a constraint taken out by its place in the world's list.
+ * `removeConstraint` searches that list, and Blender frees a file's bodies and constraints one by
+ * one, each taking a constraint out: with the search, closing a file would take time quadratic in
+ * its constraints.
+ */
+struct rbBulletWorld : public btDiscreteDynamicsWorld {
+  using btDiscreteDynamicsWorld::btDiscreteDynamicsWorld;
+
+  /** As `removeConstraint`; the world's last constraint takes the freed place. */
+  void removeConstraintAt(int index)
+  {
+    btTypedConstraint *constraint = m_constraints[index];
+    m_constraints.swap(index, m_constraints.size() - 1);
+    m_constraints.pop_back();
+    constraint->getRigidBodyA().removeConstraintRef(constraint);
+    constraint->getRigidBodyB().removeConstraintRef(constraint);
+  }
+};
+
 struct rbDynamicsWorld {
-  btDiscreteDynamicsWorld *dynamicsWorld;
+  rbBulletWorld *dynamicsWorld;
   btDefaultCollisionConfiguration *collisionConfiguration;
   btDispatcher *dispatcher;
   btBroadphaseInterface *pairCache;
   btConstraintSolver *constraintSolver;
   btOverlapFilterCallback *filterCallback;
 };
+struct rbConstraintLinks;
+
 struct rbRigidBody {
   btRigidBody *body;
   int col_groups;
+  /** The world the body is in, null when it is in none. */
+  rbDynamicsWorld *world = nullptr;
+  /** Every constraint that exists and was made with this body, in a world or not. */
+  std::vector<rbConstraintLinks *> constraints;
+};
+
+/**
+ * What this API keeps of a constraint beside Bullet's own object, whose user pointer leads here.
+ *
+ * Bullet's constraint holds plain references to its two bodies and uses them when it leaves a
+ * world and when it is freed, and a world holds plain pointers to its bodies and constraints.
+ * Blender owns each of the three through different data (an object's rigid body, another
+ * object's constraint, a scene's world) and frees them when that data is freed: on undo and on
+ * file load a body goes before the constraint made with it, and an object removed as a
+ * data-block takes its body or its constraint along while the world still lists it (#91959).
+ * So the API records who is where, and every free detaches first. Two rules follow:
+ * a constraint that is in a world has both its bodies, and a body or a constraint is in at most
+ * one world.
+ */
+struct rbConstraintLinks {
+  /* Bullet's allocator, as for the constraint itself. */
+  BT_DECLARE_ALIGNED_ALLOCATOR();
+
+  btTypedConstraint *constraint;
+  /** The world the constraint is in, null when it is in none. */
+  rbDynamicsWorld *world;
+  /** Its place in that world's list of constraints. */
+  int world_index;
+  /** The two bodies it was made with; an entry is null once that body was freed. */
+  rbRigidBody *bodies[2];
+  /** Its place in each of those bodies' lists (one place when both are the same body). A wall
+   * that a thousand bodies are pinned to has a thousand constraints: each leaves that list by its
+   * place, not by a search of it. */
+  int body_index[2];
 };
 
 struct rbVert {
@@ -102,6 +159,66 @@ struct rbFilterCallback : public btOverlapFilterCallback {
   }
 };
 
+static rbConstraintLinks *constraint_links(btTypedConstraint *constraint)
+{
+  return static_cast<rbConstraintLinks *>(constraint->getUserConstraintPtr());
+}
+
+/** Make a new constraint known to its bodies; every `RB_constraint_new_*` returns through here. */
+static rbConstraint *constraint_register(btTypedConstraint *constraint,
+                                         rbRigidBody *rb1,
+                                         rbRigidBody *rb2)
+{
+  rbConstraintLinks *links = new rbConstraintLinks{constraint, nullptr, 0, {rb1, rb2}, {0, 0}};
+  constraint->setUserConstraintPtr(links);
+  links->body_index[0] = int(rb1->constraints.size());
+  rb1->constraints.push_back(links);
+  if (rb2 != rb1) {
+    links->body_index[1] = int(rb2->constraints.size());
+    rb2->constraints.push_back(links);
+  }
+  return reinterpret_cast<rbConstraint *>(constraint);
+}
+
+/** Take a constraint off the list of one of its bodies; the list's last entry takes its place. */
+static void body_forget_constraint(rbRigidBody *object, rbConstraintLinks *links, const int side)
+{
+  std::vector<rbConstraintLinks *> &known = object->constraints;
+  const int index = links->body_index[side];
+  rbConstraintLinks *moved = known.back();
+  known[index] = moved;
+  known.pop_back();
+  for (int moved_side = 0; moved_side < 2; moved_side++) {
+    if (moved->bodies[moved_side] == object) {
+      moved->body_index[moved_side] = index;
+    }
+  }
+}
+
+/** Take a constraint out of the world it is in, if any. Bullet visits both bodies for it. */
+static void constraint_leave_world(rbConstraintLinks *links)
+{
+  if (links->world == nullptr) {
+    return;
+  }
+  rbBulletWorld *dynamics = links->world->dynamicsWorld;
+  const int index = links->world_index;
+  dynamics->removeConstraintAt(index);
+  if (index < dynamics->getNumConstraints()) {
+    constraint_links(dynamics->getConstraint(index))->world_index = index;
+  }
+  links->world = nullptr;
+}
+
+/** Take a body out of the world it is in, if any. */
+static void body_leave_world(rbRigidBody *object)
+{
+  if (object->world) {
+    object->world->dynamicsWorld->removeRigidBody(object->body);
+    object->world = nullptr;
+  }
+}
+
 static inline void copy_v3_btvec3(float vec[3], const btVector3 &btvec)
 {
   vec[0] = (float)btvec[0];
@@ -140,7 +257,7 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3])
   world->constraintSolver = new btSequentialImpulseConstraintSolver();
 
   /* world */
-  world->dynamicsWorld = new btDiscreteDynamicsWorld(
+  world->dynamicsWorld = new rbBulletWorld(
       world->dispatcher, world->pairCache, world->constraintSolver, world->collisionConfiguration);
 
   RB_dworld_set_gravity(world, gravity);
@@ -150,6 +267,18 @@ rbDynamicsWorld *RB_dworld_new(const float gravity[3])
 
 void RB_dworld_delete(rbDynamicsWorld *world)
 {
+  /* Bodies and constraints outlive a world that is rebuilt: from here on they are in none.
+   * Nothing is taken out one by one (that searches the world's lists for each): the world frees
+   * its own side, and a body's reference to a constraint goes when either of the two is freed. */
+  btDiscreteDynamicsWorld *dynamics = world->dynamicsWorld;
+  for (int i = dynamics->getNumConstraints() - 1; i >= 0; i--) {
+    constraint_links(dynamics->getConstraint(i))->world = nullptr;
+  }
+  const btCollisionObjectArray &objects = dynamics->getCollisionObjectArray();
+  for (int i = objects.size() - 1; i >= 0; i--) {
+    static_cast<rbRigidBody *>(objects[i]->getUserPointer())->world = nullptr;
+  }
+
   /* bullet doesn't like if we free these in a different order */
   delete world->dynamicsWorld;
   delete world->constraintSolver;
@@ -210,7 +339,18 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename)
   int maxSerializeBufferSize = 1024 * 1024 * 5;
 
   btDefaultSerializer *serializer = new btDefaultSerializer(maxSerializeBufferSize);
-  world->dynamicsWorld->serialize(serializer);
+  /* Bullet writes a constraint's user value into the file. Here it is this API's own pointer:
+   * the file gets Bullet's default in its place. */
+  btDiscreteDynamicsWorld *dynamics = world->dynamicsWorld;
+  std::vector<void *> links(dynamics->getNumConstraints());
+  for (int i = 0; i < dynamics->getNumConstraints(); i++) {
+    links[i] = dynamics->getConstraint(i)->getUserConstraintPtr();
+    dynamics->getConstraint(i)->setUserConstraintPtr((void *)-1);
+  }
+  dynamics->serialize(serializer);
+  for (int i = 0; i < dynamics->getNumConstraints(); i++) {
+    dynamics->getConstraint(i)->setUserConstraintPtr(links[i]);
+  }
 
   FILE *file = fopen(filename, "wb");
   if (file) {
@@ -232,14 +372,20 @@ void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_gro
   btRigidBody *body = object->body;
   object->col_groups = col_groups;
 
+  /* An object in two scenes that both simulate has one body: it moves to the world that asks. */
+  body_leave_world(object);
   world->dynamicsWorld->addRigidBody(body);
+  object->world = world;
 }
 
 void RB_dworld_remove_body(rbDynamicsWorld *world, rbRigidBody *object)
 {
-  btRigidBody *body = object->body;
-
-  world->dynamicsWorld->removeRigidBody(body);
+  /* An object freed without a known world asks every scene's world. Only the world the body is
+   * in takes it out: Bullet, asked by another world, destroys the body's place in the wrong
+   * broad-phase and drops that world's body of the same index. */
+  if (object->world == world) {
+    body_leave_world(object);
+  }
 }
 
 /* Collision detection */
@@ -334,6 +480,22 @@ rbRigidBody *RB_body_new(rbCollisionShape *shape, const float loc[3], const floa
 void RB_body_delete(rbRigidBody *object)
 {
   btRigidBody *body = object->body;
+
+  /* A constraint made with this body can neither be solved nor leave a world once the body is
+   * gone, so it leaves now, while Bullet can still visit both bodies, and the other body lets go
+   * of it. The constraint itself stays: Blender frees it when its own owner is freed. */
+  for (rbConstraintLinks *links : object->constraints) {
+    constraint_leave_world(links);
+    for (rbRigidBody *&other : links->bodies) {
+      if (other == object) {
+        other = nullptr;
+      }
+      else if (other) {
+        other->body->removeConstraintRef(links->constraint);
+      }
+    }
+  }
+  body_leave_world(object);
 
   /* motion state */
   btMotionState *ms = body->getMotionState();
@@ -923,15 +1085,28 @@ void RB_shape_set_margin(rbCollisionShape *shape, float value)
 void RB_dworld_add_constraint(rbDynamicsWorld *world, rbConstraint *con, int disable_collisions)
 {
   btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint *>(con);
+  rbConstraintLinks *links = constraint_links(constraint);
 
+  constraint_leave_world(links);
+  if (links->bodies[0] == nullptr || links->bodies[1] == nullptr) {
+    /* A body it was made with has been freed: there is nothing to solve. */
+    return;
+  }
   world->dynamicsWorld->addConstraint(constraint, disable_collisions);
+  links->world = world;
+  links->world_index = world->dynamicsWorld->getNumConstraints() - 1;
 }
 
 void RB_dworld_remove_constraint(rbDynamicsWorld *world, rbConstraint *con)
 {
-  btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint *>(con);
+  rbConstraintLinks *links = constraint_links(reinterpret_cast<btTypedConstraint *>(con));
 
-  world->dynamicsWorld->removeConstraint(constraint);
+  /* A rebuild asks the new world for the old world's constraints, and a constraint that lost a
+   * body has left already. There is nothing to take out then, and Bullet would visit the bodies.
+   */
+  if (links->world == world) {
+    constraint_leave_world(links);
+  }
 }
 
 /* ............ */
@@ -964,7 +1139,7 @@ rbConstraint *RB_constraint_new_point(const float pivot[3], rbRigidBody *rb1, rb
 
   btTypedConstraint *con = new btPoint2PointConstraint(*body1, *body2, pivot1, pivot2);
 
-  return (rbConstraint *)con;
+  return constraint_register(con, rb1, rb2);
 }
 
 rbConstraint *RB_constraint_new_fixed(float pivot[3],
@@ -981,7 +1156,7 @@ rbConstraint *RB_constraint_new_fixed(float pivot[3],
 
   btFixedConstraint *con = new btFixedConstraint(*body1, *body2, transform1, transform2);
 
-  return (rbConstraint *)con;
+  return constraint_register(con, rb1, rb2);
 }
 
 rbConstraint *RB_constraint_new_hinge(float pivot[3],
@@ -998,7 +1173,7 @@ rbConstraint *RB_constraint_new_hinge(float pivot[3],
 
   btHingeConstraint *con = new btHingeConstraint(*body1, *body2, transform1, transform2);
 
-  return (rbConstraint *)con;
+  return constraint_register(con, rb1, rb2);
 }
 
 rbConstraint *RB_constraint_new_slider(float pivot[3],
@@ -1015,7 +1190,7 @@ rbConstraint *RB_constraint_new_slider(float pivot[3],
 
   btSliderConstraint *con = new btSliderConstraint(*body1, *body2, transform1, transform2, true);
 
-  return (rbConstraint *)con;
+  return constraint_register(con, rb1, rb2);
 }
 
 rbConstraint *RB_constraint_new_piston(float pivot[3],
@@ -1033,7 +1208,7 @@ rbConstraint *RB_constraint_new_piston(float pivot[3],
   btSliderConstraint *con = new btSliderConstraint(*body1, *body2, transform1, transform2, true);
   con->setUpperAngLimit(-1.0f);  // unlock rotation axis
 
-  return (rbConstraint *)con;
+  return constraint_register(con, rb1, rb2);
 }
 
 rbConstraint *RB_constraint_new_6dof(float pivot[3],
@@ -1051,7 +1226,7 @@ rbConstraint *RB_constraint_new_6dof(float pivot[3],
   btTypedConstraint *con = new btGeneric6DofConstraint(
       *body1, *body2, transform1, transform2, true);
 
-  return (rbConstraint *)con;
+  return constraint_register(con, rb1, rb2);
 }
 
 rbConstraint *RB_constraint_new_6dof_spring(float pivot[3],
@@ -1069,7 +1244,7 @@ rbConstraint *RB_constraint_new_6dof_spring(float pivot[3],
   btTypedConstraint *con = new btGeneric6DofSpringConstraint(
       *body1, *body2, transform1, transform2, true);
 
-  return (rbConstraint *)con;
+  return constraint_register(con, rb1, rb2);
 }
 
 rbConstraint *RB_constraint_new_6dof_spring2(float pivot[3],
@@ -1087,7 +1262,7 @@ rbConstraint *RB_constraint_new_6dof_spring2(float pivot[3],
   btTypedConstraint *con = new btGeneric6DofSpring2Constraint(
       *body1, *body2, transform1, transform2);
 
-  return (rbConstraint *)con;
+  return constraint_register(con, rb1, rb2);
 }
 
 rbConstraint *RB_constraint_new_motor(float pivot[3],
@@ -1112,7 +1287,7 @@ rbConstraint *RB_constraint_new_motor(float pivot[3],
   /* unlock motor axes */
   con->getTranslationalLimitMotor()->m_upperLimit.setValue(-1.0f, -1.0f, -1.0f);
 
-  return (rbConstraint *)con;
+  return constraint_register(con, rb1, rb2);
 }
 
 /* Cleanup ----------------------------- */
@@ -1120,13 +1295,29 @@ rbConstraint *RB_constraint_new_motor(float pivot[3],
 void RB_constraint_delete(rbConstraint *con)
 {
   btTypedConstraint *constraint = reinterpret_cast<btTypedConstraint *>(con);
+  rbConstraintLinks *links = constraint_links(constraint);
 
-  /* If the constraint has disabled collisions between the bodies, those bodies
-   * will have a pointer back to the constraint. We need to remove the constraint
-   * from each body to avoid dereferencing the deleted constraint later (#91369) */
-  constraint->getRigidBodyA().removeConstraintRef(constraint);
-  constraint->getRigidBodyB().removeConstraintRef(constraint);
+  /* The object that owns a constraint can be freed while the world still lists it. */
+  constraint_leave_world(links);
 
+  for (int side = 0; side < 2; side++) {
+    rbRigidBody *object = links->bodies[side];
+    if (object == nullptr) {
+      /* Freed before its constraint, as on undo and file load. */
+      continue;
+    }
+    if (side == 1 && object == links->bodies[0]) {
+      /* One body on both sides is known to that body once. */
+      continue;
+    }
+    /* If the constraint has disabled collisions between the bodies, those bodies
+     * will have a pointer back to the constraint. We need to remove the constraint
+     * from each body to avoid dereferencing the deleted constraint later (#91369) */
+    object->body->removeConstraintRef(constraint);
+    body_forget_constraint(object, links, side);
+  }
+
+  delete links;
   delete constraint;
 }
 

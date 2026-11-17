@@ -263,9 +263,9 @@ def tick():
             area, region = chat()
             rect = next((r for r, action, _ in view.get("hits", []) if action == "approve"), None)
             check("card_has_real_approve_hit", rect is not None, "window-draw")
-            x, y, w, h = rect
-            events(region.x + x + w / 2, region.y + y + h / 2, double=True)
-            events(region.x + x + w / 2, region.y + y + h / 2, key="RET")
+            from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+            events(*chat_point(region, rect), double=True)
+            events(*chat_point(region, rect), key="RET")
             state["events_sent"] = time.monotonic()
             state["phase"] = "shield_checked"
         elif phase == "shield_checked":
@@ -288,8 +288,8 @@ def tick():
             capture("other-chat-pointer")
             area, region = chat()
             rect = next(r for r, action, _ in canvas()["hits"] if action == "approval_switch")
-            x, y, w, h = rect
-            events(region.x + x + w / 2, region.y + y + h / 2, double=True)
+            from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+            events(*chat_point(region, rect), double=True)
             state["phase"] = "other_opened"
         elif phase == "other_opened":
             if not wait(ui.get_controller() is controllers[1] and canvas().get("session") == controllers[1].state["id"]):

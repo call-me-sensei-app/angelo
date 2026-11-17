@@ -13,6 +13,13 @@ is; a long kernel load inside a phase (a stub render_stats) does not fail it, an
 a stalled phase without one still fails; a load past KERNEL_LOAD_CAP_S fails, saying so; the suite timeout is
 extended by kernel-load time up to the cap; and the runner gives every suite on the harness the same allowance, so
 its own kill timeout never ends a run that the harness still allows.
+
+A render in a child process compiles its kernels there: Cycles' texts never reach this app's render_stats, only the
+job's record does (``kernel_compile_s``, job_deadline.observe_kernels). Found on 1.1.0's cut 08e2b0f7842 (macOS,
+2026-11-13): test_blender_render_child failed with "Phase still_end did not advance in 150 s" while its child compiled
+Metal kernels cold for 147.9 s, which the product credited to the job's deadline and the suite did not. The harness
+credits a job's reported compile the way the product credits its budget (``kernels.credited``: at most ``CAP_S``), a
+compile seen both ways only once, and a child compiling past the cap still fails its phase.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
@@ -33,6 +40,10 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 import native_suite_manifest as manifest  # noqa: E402
 import run_native_suites  # noqa: E402
+MODULES = HERE.parents[2] / "scripts" / "modules"
+if str(MODULES) not in sys.path:
+    sys.path.insert(0, str(MODULES))
+from angelo_render_device import kernels  # noqa: E402  The product's credit rule.
 
 # Cycles' own texts: Scene::load_kernels (every backend) and MetalDevice::is_ready (Metal's generic kernels).
 LOADING = "Loading render kernels (may take a few minutes the first time)"
@@ -69,7 +80,7 @@ def load_harness(folder):
     return module, harness, handlers, clock, quit_calls
 
 
-class KernelLoadTests(unittest.TestCase):
+class HarnessFixture(unittest.TestCase):
     def setUp(self):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
@@ -99,6 +110,8 @@ class KernelLoadTests(unittest.TestCase):
     def receipt(self):
         return json.loads((self.folder / "report.json").read_text(encoding="utf-8"))
 
+
+class KernelLoadTests(HarnessFixture):
     def test_only_cycles_kernel_loading_texts_count(self):
         clock = self.module.KernelLoadClock()
         for text in (LOADING, METAL_LOADING):
@@ -162,6 +175,67 @@ class KernelLoadTests(unittest.TestCase):
             planned = run_native_suites.plan_suite(suite, Path(run), Path(run, "Angelo"), {}, gui=True,
                                                    timeout_scale=2.0)
         self.assertEqual(planned["timeout"], (suite.timeout + suite.kernel_load_cap) * 2.0)
+
+
+class ChildCompileTests(HarnessFixture):
+    """A job's own report of its kernel compile (a child render's only one) counts as a kernel load does."""
+
+    def setUp(self):
+        super().setUp()
+        self.job = {"id": "j1", "status": "running", "progress": 0.0, "detail": {}}
+        self.harness.jobs = lambda: SimpleNamespace(active=lambda: self.job)
+
+    def compiling(self, seconds):
+        """``seconds`` of fake time while the job's record reports its compile growing, as the child's lines do."""
+        for _ in range(int(seconds)):
+            self.clock.now += 1.0
+            detail = self.job["detail"]
+            detail.update(kernels_loading=True, kernel_compile_s=round(detail.get("kernel_compile_s", 0.0) + 1.0, 1))
+            if self.tick() is None:
+                return False
+        self.job["detail"]["kernels_loading"] = False
+        return True
+
+    def test_a_childs_cold_compile_never_fails_its_phase(self):
+        self.harness.go("still_end")
+        self.assertTrue(self.compiling(148), self.harness.state.get("error"))   # 08e2b0f7842's child: 147.9 s.
+        self.assertTrue(self.advance(140), self.harness.state.get("error"))     # Then it renders.
+        self.harness.finish()
+        receipt = self.receipt()
+        self.assertEqual(receipt["phase"], "complete")
+        self.assertEqual(receipt["job_kernel_compile_s"], {"j1": 148.0})
+
+    def test_a_stalled_phase_after_a_childs_compile_still_fails(self):
+        self.harness.go("still_end")
+        self.assertTrue(self.compiling(100), self.harness.state.get("error"))
+        self.assertFalse(self.advance(160))
+        self.assertIn("Phase still_end did not advance in 150 s", self.receipt()["error"])
+
+    def test_a_child_compiling_past_the_products_cap_still_fails(self):
+        self.harness.go("still_end")
+        self.assertFalse(self.compiling(kernels.CAP_S + self.module.PHASE_SECONDS + 5))
+        self.assertIn("Phase still_end did not advance", self.receipt()["error"])
+        self.assertLessEqual(self.receipt()["elapsed_seconds"], kernels.CAP_S + self.module.PHASE_SECONDS + 2)
+
+    def test_a_compile_seen_in_the_app_and_on_the_record_counts_once(self):
+        """An in-app render's compile reaches both render_stats and the job record: credited once, not twice."""
+        self.harness.go("warmup")
+        for _ in range(100):
+            self.stats(METAL_LOADING)
+            if not self.compiling(1):
+                self.fail(self.harness.state.get("error"))
+        self.stats(RENDERING[1])
+        self.assertTrue(self.advance(149), self.harness.state.get("error"))
+        self.assertFalse(self.advance(5))
+        self.assertIn("Phase warmup did not advance in 150 s", self.receipt()["error"])
+
+    def test_an_earlier_jobs_compile_never_credits_a_later_phase(self):
+        self.harness.go("first")
+        self.assertTrue(self.compiling(120), self.harness.state.get("error"))
+        self.job = {"id": "j2", "status": "running", "progress": 0.0, "detail": {}}
+        self.harness.go("second")
+        self.assertFalse(self.advance(160))
+        self.assertIn("Phase second did not advance in 150 s", self.receipt()["error"])
 
 
 class HostedHandlerTests(unittest.TestCase):

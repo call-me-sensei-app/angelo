@@ -13,6 +13,7 @@ Ported from the UI re-review's proofs (review-ui, round 2). No Blender.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import contextlib
@@ -264,7 +265,8 @@ class ApproveDrawingPathTests(Base):
     """E: every path that draws an Approve records the card it shows (``chat_guard.shown_approvals``)."""
 
     DRAWERS = {"chat_card_draw", "chat_guard", "flow_chat"}   # Register an "approve" hit in the chat's transcript.
-    OTHERS = {"chat_view", "worker_chat_host", "providers_page_model", "chat_key_arming"}   # Dispatch, op names, a word match.
+    OTHERS = {"chat_view", "worker_chat_host", "providers_page_model", "chat_key_arming",
+              "approval_arming", "grant_guard"}   # Dispatch, op names, a word match, the grants' arming, C's shield.
 
     def test_every_module_with_an_approve_action_is_a_known_drawer_or_none(self):
         found = set()
@@ -371,7 +373,7 @@ class CloseTests(Base):
 
         def wedged(session, reason, timeout=lifecycle.CLOSE_SECONDS):
             started.append(session)
-            release.wait(10)
+            release.wait(CAP_S)
         self.addCleanup(release.set)
         with mock.patch.object(lifecycle, "hosted", lambda session: object()), \
                 mock.patch.object(lifecycle, "close_chat", wedged):

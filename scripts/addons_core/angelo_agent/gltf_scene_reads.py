@@ -37,9 +37,11 @@ def _option(options, name):
 
 
 def extras(scene):
-    """The scene's extras as the exporter writes them (its own ``generate_extras``)."""
+    """The scene's extras as the exporter writes them (its own ``generate_extras``, called as its scene gather calls
+    it: Blender 5.3's takes a data type and the export settings, which it writes only for KHR_animation_pointer,
+    off here, so the value is the one the export writes)."""
     from io_scene_gltf2.blender.com.extras import generate_extras
-    return generate_extras(scene)
+    return generate_extras(scene, "objects", {"gltf_export_anim_pointer": False})
 
 
 def settings(scene, view_layer, options):

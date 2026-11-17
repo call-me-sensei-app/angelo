@@ -4,7 +4,9 @@
 
 ``tick`` runs from ``studio.pump``: ``video_resume.tick`` resumes saved fal requests and gives a ready video its
 ``preview.png`` from the first frame (Blender's movie reader, ``make_thumbnail``), once. A video Blender can't read
-(a build without FFmpeg) keeps its card text; the video itself is untouched.
+(a build without FFmpeg) keeps its card text; the video itself is untouched. The picture is 8-bit and shows the
+clip as Blender shows it at any bit depth and in any colour space the reader knows (``_display_values``,
+``test_blender_video_card_picture``).
 
 Play opens the video in the animation player (this executable with ``-a``: play, pause, scrub, loop), the player
 *View Animation* uses. Add to Sequencer puts a movie strip (with its sound, when the file has
@@ -19,7 +21,7 @@ import bpy
 from bpy.props import EnumProperty, StringProperty
 from bpy.types import Operator
 
-from . import video_resume
+from . import owned_paths, video_resume
 from .fal_video import VIDEO_FILE
 from .ui_text import iface_, n_, rpt_
 
@@ -52,10 +54,16 @@ def make_thumbnail(library, asset):
             factor = THUMBNAIL_EDGE / max(width, height)
             movie.scale(max(1, int(width * factor)), max(1, int(height * factor)))
             width, height = movie.size
+        # An 8-bit picture, as every card's is. The reader hands an 8-bit clip over as bytes in the clip's own colour
+        # space, which Blender converts when it saves the picture; a deeper clip comes as scene-linear floats
+        # (``_display_values``). Copied as display bytes, every 10-bit clip's picture came out far too dark.
         picture = bpy.data.images.new("Angelo video preview", width, height)   # i18n: a private, removed data-block name
-        picture.pixels.foreach_set(_pixels(movie))
-        picture.filepath_raw = str(path.with_name(THUMBNAIL))
+        if not movie.is_float:   # Before the pixels: a colour space change discards a generated image's buffer.
+            picture.colorspace_settings.name = movie.colorspace_settings.name
+        picture.pixels.foreach_set(_display_values(movie))
+        picture.filepath_raw = str(owned_paths.require_writable(path.with_name(THUMBNAIL)))
         picture.file_format = 'PNG'
+        owned_paths.require_writable(path.with_name(THUMBNAIL))
         picture.save()
         library.update(dict(asset, thumbnail=THUMBNAIL))
         return True
@@ -67,10 +75,20 @@ def make_thumbnail(library, asset):
                 bpy.data.images.remove(image)
 
 
-def _pixels(image):
+def _display_values(image):
+    """The image's RGBA for a byte picture: bytes as they are; scene-linear floats as the Standard view shows them
+    on an sRGB display (a float picture would be saved 16 bits deep, a second kind of card picture)."""
     import numpy
     values = numpy.empty(image.size[0] * image.size[1] * 4, dtype=numpy.float32)
     image.pixels.foreach_get(values)
+    if image.is_float:
+        from mathutils import Color
+        from .view_pixels import srgb_encode
+        # Rows: where the file's working space puts red, green and blue in linear Rec.709 (itself, by default).
+        to_rec709 = numpy.array([tuple(Color(axis).from_scene_linear_to_rec709_linear())
+                                 for axis in ((1, 0, 0), (0, 1, 0), (0, 0, 1))], dtype=numpy.float32)
+        colour = values.reshape(-1, 4)[:, :3]
+        colour[:] = srgb_encode(colour @ to_rec709)
     return values
 
 

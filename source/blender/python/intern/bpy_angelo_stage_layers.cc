@@ -12,8 +12,8 @@
 #include <Python.h>
 
 #include "BLI_span.hh"
-#include "BLI_threads.h"
-#include "BLI_utildefines.h"
+#include "BLI_threads.hh"
+#include "BLI_utildefines.hh"
 #include "BLI_vector.hh"
 
 #include "BKE_global.hh"
@@ -97,7 +97,7 @@ static ViewLayer *view_layer_from_python(PyObject *py_scene, const char *name, S
 
 static LayerCollection *view_layer_master(ViewLayer *view_layer)
 {
-  return static_cast<LayerCollection *>(view_layer->layer_collections.first);
+  return static_cast<LayerCollection *>(view_layer->layer_collections.first());
 }
 
 static bool collect_layer_flags(LayerCollection &parent, const int depth, PyObject *list)

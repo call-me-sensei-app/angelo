@@ -35,15 +35,15 @@
 #include "GHOST_Types.hh"
 
 #include "BLI_enum_flags.hh"
-#include "BLI_fileops.h"
-#include "BLI_listbase.h"
-#include "BLI_math_vector.h"
+#include "BLI_fileops.hh"
+#include "BLI_listbase.hh"
+#include "BLI_math_vector_c.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_rect.h"
-#include "BLI_string.h"
-#include "BLI_string_utf8.h"
-#include "BLI_system.h"
-#include "BLI_time.h"
+#include "BLI_rect.hh"
+#include "BLI_string.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_system.hh"
+#include "BLI_time.hh"
 
 #include "BLT_translation.hh"
 
@@ -54,6 +54,7 @@
 #include "BKE_icons.hh"
 #include "BKE_layer.hh"
 #include "BKE_main.hh"
+#include "BKE_recents.hh"
 #include "BKE_report.hh"
 #include "BKE_screen.hh"
 #include "BKE_undo_system.hh"
@@ -105,7 +106,11 @@
 
 /* For assert. */
 #ifndef NDEBUG
-#  include "BLI_threads.h"
+#  include "BLI_threads.hh"
+#endif
+
+#ifdef WITH_PYTHON
+#  include "intern/bpy_angelo_guard_authority.hh" /* Angelo: a closed window's consent regions go. */
 #endif
 
 namespace blender {
@@ -245,7 +250,7 @@ static void wm_window_check_size(rcti *rect)
 
 static void wm_ghostwindow_destroy(wmWindowManager *wm, wmWindow *win)
 {
-  if (UNLIKELY(!win->runtime->ghostwin)) {
+  if (!win->runtime->ghostwin) [[unlikely]] {
     return;
   }
 
@@ -275,6 +280,9 @@ static void wm_ghostwindow_destroy(wmWindowManager *wm, wmWindow *win)
 
 void wm_window_free(bContext *C, wmWindowManager *wm, wmWindow *win)
 {
+#ifdef WITH_PYTHON
+  BPY_angelo_guard_forget_window(win);
+#endif
   /* Update context. */
   if (C) {
     WM_event_remove_handlers(C, &win->runtime->handlers);
@@ -486,39 +494,13 @@ void WM_quit_request_simulate(bContext *C)
 /** \name Window Close
  * \{ */
 
-static rctf *stored_window_bounds(eSpace_Type space_type)
-{
-  if (space_type == SPACE_IMAGE) {
-    return &U.stored_bounds.image;
-  }
-  if (space_type == SPACE_USERPREF) {
-    return &U.stored_bounds.userpref;
-  }
-  if (space_type == SPACE_GRAPH) {
-    return &U.stored_bounds.graph;
-  }
-  if (space_type == SPACE_INFO) {
-    return &U.stored_bounds.info;
-  }
-  if (space_type == SPACE_OUTLINER) {
-    return &U.stored_bounds.outliner;
-  }
-  if (space_type == SPACE_FILE) {
-    return &U.stored_bounds.file;
-  }
-
-  return nullptr;
-}
-
 static bool wm_window_is_last_main_window(wmWindowManager *wm, wmWindow *win)
 {
   if (win->parent) {
     return false;
   }
   wmWindow *win_other;
-  for (win_other = static_cast<wmWindow *>(wm->windows.first); win_other;
-       win_other = win_other->next)
-  {
+  for (win_other = wm->windows.first(); win_other; win_other = win_other->next) {
     if (win_other != win && win_other->parent == nullptr && !WM_window_is_temp_screen(win_other)) {
       return false;
     }
@@ -545,22 +527,19 @@ bool wm_window_close_request(bContext *C, wmWindowManager *wm, wmWindow *win)
   {
     bScreen *screen = WM_window_get_active_screen(win);
     if (screen && screen->temp && BLI_listbase_is_single(&screen->areabase)) {
-      const ScrArea *area = static_cast<const ScrArea *>(screen->areabase.first);
-      rctf *stored_bounds = stored_window_bounds(eSpace_Type(area->spacetype));
-
-      if (stored_bounds) {
+      if (!win->runtime->recents_storage_key.empty()) {
         /* Get DPI and scale from parent window, if there is one. */
         WM_window_dpi_set_userdef(win->parent ? win->parent : win);
 
         GHOST_IWindow *ghost_window = static_cast<GHOST_IWindow *>(win->runtime->ghostwin);
         const float fac = ghost_window->getNativePixelSize() / UI_SCALE_FAC;
 
-        stored_bounds->xmin = float(win->posx) * fac;
-        stored_bounds->xmax = stored_bounds->xmin + float(win->sizex) * fac;
-        stored_bounds->ymin = float(win->posy) * fac;
-        stored_bounds->ymax = stored_bounds->ymin + float(win->sizey) * fac;
-        /* Tag user preferences as dirty. */
-        U.runtime.is_dirty = true;
+        std::vector<float> bounds = {float(win->posx) * fac,
+                                     float(win->posx) * fac + float(win->sizex) * fac,
+                                     float(win->posy) * fac,
+                                     float(win->posy) * fac + float(win->sizey) * fac};
+
+        recents::Section("temp.window.dimensions").set(win->runtime->recents_storage_key, bounds);
       }
     }
   }
@@ -620,6 +599,15 @@ bool wm_window_close(bContext *C, wmWindowManager *wm, wmWindow *win)
   return true;
 }
 
+/** If a project is active, append its name to `win_title`. */
+static void wm_window_title_project_append(fmt::memory_buffer &win_title)
+{
+  if (const bke::BlenderProject *project = BKE_blender_project_get(G_MAIN)) {
+    win_title.append(StringRef(" - "));
+    win_title.append(project->get_name());
+  }
+}
+
 /**
  * Construct the title text for `win`.
  * The window may *not* have been created, any calls depending on `win->runtime->ghostwin` are
@@ -627,21 +615,31 @@ bool wm_window_close(bContext *C, wmWindowManager *wm, wmWindow *win)
  *
  * \param window_filepath_fn: When non `nullopt` the title text does not need to contain
  * the file-path (typically based on #WM_CAPABILITY_WINDOW_PATH).
+ * \param win_title: The title text is appended, the inline buffer avoids allocating in practice.
+ * The text is *not* null terminated, callers that need a C string must terminate it.
  */
-static std::string wm_window_title_text(
-    wmWindowManager *wm,
-    wmWindow *win,
-    std::optional<FunctionRef<void(const char *)>> window_filepath_fn)
+static void wm_window_title_text(wmWindowManager *wm,
+                                 wmWindow *win,
+                                 std::optional<FunctionRef<void(const char *)>> window_filepath_fn,
+                                 fmt::memory_buffer &win_title)
 {
   if (win->parent || WM_window_is_temp_screen(win)) {
     /* Not a main window. */
     bScreen *screen = WM_window_get_active_screen(win);
     const bool is_single = screen && BLI_listbase_is_single(&screen->areabase);
-    ScrArea *area = (screen) ? static_cast<ScrArea *>(screen->areabase.first) : nullptr;
+    ScrArea *area = (screen) ? screen->areabase.first() : nullptr;
     if (is_single && area && area->spacetype != SPACE_EMPTY) {
-      return IFACE_(ED_area_name(area).c_str());
+      win_title.append(StringRef(IFACE_(ED_area_name(area).c_str())));
+
+      /* Append the project name to the Project Settings editor. */
+      if (area->spacetype == SPACE_PROJECT) {
+        wm_window_title_project_append(win_title);
+      }
     }
-    return "Angelo";
+    else {
+      win_title.append(StringRef("Angelo"));
+    }
+    return;
   }
 
   /* This path may contain invalid UTF8 byte sequences on UNIX systems,
@@ -674,27 +672,29 @@ static std::string wm_window_title_text(
                                 !recovery_copy;
 
   /* File saved state. */
-  std::string win_title = wm->file_saved ? "" : "* ";
+  if (!wm->file_saved) {
+    win_title.append(StringRef("* "));
+  }
 
   /* File name. Show the file extension if the full file path is not included in the title. */
   if (include_filepath) {
-    const size_t filename_no_ext_len = BLI_path_extension_or_end(filename) - filename;
-    win_title.append(filename, filename_no_ext_len);
+    const char *filename_no_ext_end = BLI_path_extension_or_end(filename);
+    win_title.append(filename, filename_no_ext_end);
   }
   else if (has_filepath) {
-    win_title.append(filename);
+    win_title.append(StringRef(filename));
   }
   /* New / Unsaved file default title. Shows "Untitled" on macOS following the Apple HIGs. */
   else {
 #ifdef __APPLE__
-    win_title.append(IFACE_("Untitled"));
+    win_title.append(StringRef(IFACE_("Untitled")));
 #else
-    win_title.append(IFACE_("(Unsaved)"));
+    win_title.append(StringRef(IFACE_("(Unsaved)")));
 #endif
   }
 
   if (G_MAIN->recovered) {
-    win_title.append(IFACE_(" (Recovered)"));
+    win_title.append(StringRef(IFACE_(" (Recovered)")));
   }
 
   if (include_filepath) {
@@ -717,20 +717,25 @@ static std::string wm_window_title_text(
         }
         if ((home_dir_len > 0) && BLI_path_ncmp(home_dir, filepath_as_bytes, home_dir_len) == 0) {
           if (filepath_as_bytes[home_dir_len] == SEP) {
-            win_title.append(fmt::format(" [~{}]", filepath + home_dir_len));
+            win_title.append(StringRef(" [~"));
+            win_title.append(StringRef(filepath + home_dir_len));
+            win_title.push_back(']');
             add_filepath = false;
           }
         }
       }
     }
     if (add_filepath) {
-      win_title.append(fmt::format(" [{}]", filepath));
+      win_title.append(StringRef(" ["));
+      win_title.append(StringRef(filepath));
+      win_title.push_back(']');
     }
   }
 
-  win_title.append(fmt::format(" - {} {}", ANGELO_PRODUCT_NAME, ANGELO_APP_VERSION_DISPLAY));
+  /* If a project is active, display its name. */
+  wm_window_title_project_append(win_title);
 
-  return win_title;
+  win_title.append(fmt::format(" — {} {}", ANGELO_PRODUCT_NAME, ANGELO_APP_VERSION_DISPLAY));
 }
 
 static void wm_window_title_state_refresh(wmWindowManager *wm, wmWindow *win)
@@ -765,8 +770,10 @@ void WM_window_title_refresh(wmWindowManager *wm, wmWindow *win)
                                   ghost_window->setPath(filepath);
                                 }) :
                                 std::nullopt;
-  std::string win_title = wm_window_title_text(wm, win, window_filepath_fn);
-  ghost_window->setTitle(win_title.c_str());
+  fmt::memory_buffer win_title;
+  wm_window_title_text(wm, win, window_filepath_fn, win_title);
+  win_title.push_back('\0');
+  ghost_window->setTitle(win_title.data());
   wm_window_title_state_refresh(wm, win);
 }
 
@@ -868,26 +875,32 @@ void WM_window_decoration_style_flags_set(const wmWindow *win,
       static_cast<GHOST_TWindowDecorationStyleFlags>(ghost_style_flags));
 }
 
-static void wm_window_decoration_style_set_from_theme(const wmWindow *win, const bScreen *screen)
+void wm_window_titlebar_theme_context_set(const wmWindow *win, const bScreen *screen)
 {
-  /* Set the decoration style settings from the current theme colors.
-   * NOTE: screen may be null. In which case, only the window is used as a theme provider. */
-  GHOST_WindowDecorationStyleSettings decoration_settings = {};
+  /* NOTE: screen may be null. In which case, only the window is used as a theme provider. */
 
-  /* Colored TitleBar Decoration. */
   /* For main windows, use the top-bar color. */
   if (WM_window_is_main_top_level(win)) {
     ui::theme::theme_set(SPACE_TOPBAR, RGN_TYPE_HEADER);
   }
   /* For single editor floating windows, use the editor header color. */
   else if (screen && BLI_listbase_is_single(&screen->areabase)) {
-    const ScrArea *main_area = static_cast<ScrArea *>(screen->areabase.first);
+    const ScrArea *main_area = screen->areabase.first();
     ui::theme::theme_set(main_area->spacetype, RGN_TYPE_HEADER);
   }
   /* For floating window with multiple editors/areas, use the default space color. */
   else {
     ui::theme::theme_set(0, RGN_TYPE_WINDOW);
   }
+}
+
+static void wm_window_decoration_style_set_from_theme(const wmWindow *win, const bScreen *screen)
+{
+  /* Set the decoration style settings from the current theme colors. */
+  GHOST_WindowDecorationStyleSettings decoration_settings = {};
+
+  /* Colored TitleBar Decoration. */
+  wm_window_titlebar_theme_context_set(win, screen);
 
   float titlebar_bg_color[3];
   ui::theme::get_color_3fv(TH_BACK, titlebar_bg_color);
@@ -1044,6 +1057,9 @@ static void wm_window_ghostwindow_add(wmWindowManager *wm,
   if (G.debug & G_DEBUG_GPU) {
     gpu_settings.flags |= GHOST_gpuDebugContext;
   }
+  if (G.debug & G_DEBUG_GPU_NO_HW_RAYTRACING) {
+    gpu_settings.flags |= GHOST_gpuNoHWRaytracing;
+  }
 
   GPUBackendType gpu_backend = GPU_backend_type_selection_get();
   gpu_settings.context_type = wm_ghost_drawing_context_type(gpu_backend);
@@ -1080,7 +1096,7 @@ static void wm_window_ghostwindow_add(wmWindowManager *wm,
       static_cast<GHOST_IWindow *>((win->parent) ? win->parent->runtime->ghostwin : nullptr));
 
   if (ghost_window) {
-    win->runtime->gpuctx = GPU_context_create(ghost_window, nullptr);
+    win->runtime->gpuctx = GPU_context_create(ghost_window, ghost_window->getDrawingContext());
     GPU_render_begin();
 
     /* Needed so we can detect the graphics card below. */
@@ -1109,10 +1125,11 @@ static void wm_window_ghostwindow_add(wmWindowManager *wm,
 #endif
 
     /* Get the window background color from the current theme: the color between the editors.
-     * The top-bar header color, which the colored title-bar decoration style uses, would flash
-     * the whole window in that color when a theme gives its top bar a color of its own. */
+     * The title-bar color (a main window's top-bar header), which the colored title-bar
+     * decoration style uses, would flash the whole window in that color when a theme gives its
+     * top bar a color of its own. */
     float window_bg_color[3];
-    ui::theme::theme_set(SPACE_TOPBAR, RGN_TYPE_HEADER);
+    wm_window_titlebar_theme_context_set(win, nullptr);
     ui::theme::get_color_3fv(TH_EDITOR_BORDER, window_bg_color);
 
     /* Until screens get drawn, draw a default background using the window theme color. */
@@ -1122,10 +1139,24 @@ static void wm_window_ghostwindow_add(wmWindowManager *wm,
     /* Needed here, because it's used before it reads #UserDef. */
     WM_window_dpi_set_userdef(win);
 
+#ifdef WITH_GHOST_CSD
+    /* This background is presented before anything else is drawn, so it needs its corners cut
+     * away too. Without this the window opens as a hard edged rectangle and visibly rounds off
+     * once the editors first draw. */
+    if (WM_window_is_csd(win)) {
+      WM_window_csd_draw_corner_mask(win);
+    }
+#endif
+
     wm_window_swap_buffer_release(win);
 
     /* Clear double buffer to avoids flickering of new windows on certain drivers, see #97600. */
     GPU_clear_color(window_bg_color[0], window_bg_color[1], window_bg_color[2], 1.0f);
+#ifdef WITH_GHOST_CSD
+    if (WM_window_is_csd(win)) {
+      WM_window_csd_draw_corner_mask(win);
+    }
+#endif
 
     GPU_render_end();
   }
@@ -1174,11 +1205,13 @@ static void wm_window_ghostwindow_ensure(wmWindowManager *wm, wmWindow *win, boo
      * after the window has been created. */
     auto window_filepath_fn = (WM_capabilities_flag() & WM_CAPABILITY_WINDOW_PATH) ?
                                   std::optional([&win_filepath](const char *filepath) {
-                                    STRNCPY_UTF8(win_filepath, filepath);
+                                    STRNCPY(win_filepath, filepath);
                                   }) :
                                   std::nullopt;
-    std::string win_title = wm_window_title_text(wm, win, window_filepath_fn);
-    wm_window_ghostwindow_add(wm, win_title.c_str(), win, is_dialog);
+    fmt::memory_buffer win_title;
+    wm_window_title_text(wm, win, window_filepath_fn, win_title);
+    win_title.push_back('\0');
+    wm_window_ghostwindow_add(wm, win_title.data(), win, is_dialog);
   }
 
   if (win->runtime->ghostwin != nullptr) {
@@ -1241,7 +1274,7 @@ void wm_window_ghostwindows_ensure(wmWindowManager *wm)
    * when there is no startup.blend yet.
    */
   if (wm_init_state.size[0] == 0) {
-    if (UNLIKELY(!wm_get_screensize(wm_init_state.size))) {
+    if (!wm_get_screensize(wm_init_state.size)) [[unlikely]] {
       /* Use fallback values. */
       wm_init_state.size = int2(0);
     }
@@ -1363,7 +1396,7 @@ wmWindow *WM_window_open(bContext *C,
     for (wmWindow &win_iter : wm->windows) {
       const bScreen *screen = WM_window_get_active_screen(&win_iter);
       if (screen && screen->temp && BLI_listbase_is_single(&screen->areabase)) {
-        ScrArea *area = static_cast<ScrArea *>(screen->areabase.first);
+        ScrArea *area = screen->areabase.first();
         if (space_type == (area->butspacetype ? area->butspacetype : area->spacetype)) {
           win = &win_iter;
           break;
@@ -1429,13 +1462,13 @@ wmWindow *WM_window_open(bContext *C,
      * otherwise it will attempt to make the empty area usable via #ED_area_init.
      * While refreshing the window could be postponed this makes the state of the
      * window less predictable to the caller. */
-    ScrArea *area = static_cast<ScrArea *>(screen->areabase.first);
+    ScrArea *area = screen->areabase.first();
     area_setup_fn(screen, area, area_setup_user_data);
     CTX_wm_area_set(C, area);
   }
   else if (space_type != SPACE_EMPTY) {
     /* Ensure it shows the right space-type editor. */
-    ScrArea *area = static_cast<ScrArea *>(screen->areabase.first);
+    ScrArea *area = screen->areabase.first();
     CTX_wm_area_set(C, area);
     ED_area_newspace(C, area, space_type, false);
   }
@@ -1489,23 +1522,28 @@ wmWindow *WM_window_open_temp(bContext *C, const char *title, int space_type, bo
   rcti rect;
   WM_window_dpi_set_userdef(CTX_wm_window(C));
   eWindowAlignment align;
-  rctf *stored_bounds = stored_window_bounds(eSpace_Type(space_type));
-  const bool bounds_valid = (stored_bounds && (BLI_rctf_size_x(stored_bounds) > 150.0f) &&
-                             (BLI_rctf_size_y(stored_bounds) > 100.0f));
-  const bool mm_placement = WM_capabilities_flag() & WM_CAPABILITY_MULTIMONITOR_PLACEMENT;
 
+  const int index = RNA_enum_from_value(rna_enum_space_type_items, space_type);
+  BLI_assert(index != -1);
+  const EnumPropertyItem item = rna_enum_space_type_items[index];
+
+  std::string key = item.identifier;
+  auto bounds = recents::Section("temp.window.dimensions").get<std::vector<float>>(key);
+
+  const bool bounds_valid = (bounds.size() == 4 && (bounds[1] - bounds[0] > 150.0f) &&
+                             (bounds[3] - bounds[2] > 100.0f));
+  const bool mm_placement = WM_capabilities_flag() & WM_CAPABILITY_MULTIMONITOR_PLACEMENT;
   if (bounds_valid && mm_placement) {
-    rect.xmin = int(stored_bounds->xmin * UI_SCALE_FAC);
-    rect.ymin = int(stored_bounds->ymin * UI_SCALE_FAC);
-    rect.xmax = int(stored_bounds->xmax * UI_SCALE_FAC);
-    rect.ymax = int(stored_bounds->ymax * UI_SCALE_FAC);
+    rect.xmin = int(bounds[0] * UI_SCALE_FAC);
+    rect.xmax = int(bounds[1] * UI_SCALE_FAC);
+    rect.ymin = int(bounds[2] * UI_SCALE_FAC);
+    rect.ymax = int(bounds[3] * UI_SCALE_FAC);
     align = WIN_ALIGN_ABSOLUTE;
   }
   else {
     wmWindow *win_cur = CTX_wm_window(C);
-    const int width = int((bounds_valid ? BLI_rctf_size_x(stored_bounds) : 800.0f) * UI_SCALE_FAC);
-    const int height = int((bounds_valid ? BLI_rctf_size_y(stored_bounds) : 600.0f) *
-                           UI_SCALE_FAC);
+    const int width = int((bounds_valid ? int(bounds[1] - bounds[0]) : 800.0f) * UI_SCALE_FAC);
+    const int height = int((bounds_valid ? int(bounds[3] - bounds[2]) : 600.0f) * UI_SCALE_FAC);
     /* Use eventstate, not event from _invoke, so this can be called through exec(). */
     const wmEvent *event = win_cur->runtime->eventstate;
     rect.xmin = event->xy[0];
@@ -1517,7 +1555,9 @@ wmWindow *WM_window_open_temp(bContext *C, const char *title, int space_type, bo
 
   wmWindow *win = WM_window_open(
       C, title, &rect, space_type, false, dialog, true, align, nullptr, nullptr);
-
+  if (win) {
+    win->runtime->recents_storage_key = std::move(key);
+  }
   return win;
 }
 
@@ -1638,7 +1678,7 @@ void wm_cursor_position_to_ghost_screen_coords(wmWindow *win, int *x, int *y)
 
 bool wm_cursor_position_get(wmWindow *win, int *r_x, int *r_y)
 {
-  if (UNLIKELY(G.f & G_FLAG_EVENT_SIMULATE)) {
+  if (G.f & G_FLAG_EVENT_SIMULATE) [[unlikely]] {
     *r_x = win->runtime->eventstate->xy[0];
     *r_y = win->runtime->eventstate->xy[1];
     return true;
@@ -1675,14 +1715,15 @@ static void wm_window_set_drawable(wmWindowManager *wm, wmWindow *win, bool acti
   if (activate) {
     GHOST_IWindow *ghost_window = static_cast<GHOST_IWindow *>(win->runtime->ghostwin);
     ghost_window->activateDrawingContext();
+    GPU_context_active_set(static_cast<GPUContext *>(win->runtime->gpuctx));
   }
-  GPU_context_active_set(static_cast<GPUContext *>(win->runtime->gpuctx));
 }
 
 void wm_window_clear_drawable(wmWindowManager *wm)
 {
   if (wm->runtime->windrawable) {
     wm->runtime->windrawable = nullptr;
+    GPU_context_active_set(nullptr);
   }
 }
 
@@ -1711,7 +1752,7 @@ void wm_window_reset_drawable()
 {
   BLI_assert(BLI_thread_is_main());
   BLI_assert(GPU_framebuffer_active_get() == GPU_framebuffer_back_get());
-  wmWindowManager *wm = static_cast<wmWindowManager *>(G_MAIN->wm.first);
+  wmWindowManager *wm = G_MAIN->wm.first();
 
   if (wm == nullptr) {
     return;
@@ -2022,7 +2063,7 @@ static bool ghost_event_proc(const GHOST_IEvent *ghost_event, GHOST_TUserDataPtr
     case GHOST_kEventOpenMainFile: {
       const char *path = static_cast<const char *>(data);
 
-      if (path) {
+      if (path && path[0] != '\0') {
         wmOperatorType *ot = WM_operatortype_find("WM_OT_open_mainfile", false);
         /* Operator needs a valid window in context, ensures it is correctly set. */
         CTX_wm_window_set(C, win);
@@ -2310,6 +2351,8 @@ void WM_window_csd_params_update()
 
       /*cursor_drag_threshold*/ U.drag_threshold_mouse,
       /*cursor_double_click_ms*/ U.dbl_click_time,
+      /*resize_margin_size*/ WM_WINDOW_CSD_RESIZE_MARGIN_SIZE,
+      /*corner_radius*/ WM_WINDOW_CSD_CORNER_RADIUS,
   };
   g_system->setWindowCSD(csd_params);
 }
@@ -2339,7 +2382,7 @@ void wm_ghost_init(bContext *C)
   g_system = GHOST_ISystem::getSystem();
   GPU_backend_ghost_system_set(g_system);
 
-  if (UNLIKELY(g_system == nullptr)) {
+  if (g_system == nullptr) [[unlikely]] {
     /* GHOST will have reported the back-ends that failed to load. */
     CLOG_STR_ERROR(&LOG_GHOST_SYSTEM, "Unable to initialize GHOST, exiting!");
     /* This will leak memory, it's preferable to crashing. */
@@ -2467,7 +2510,7 @@ void wm_test_gpu_backend_fallback(bContext *C)
 
   wmWindowManager *wm = CTX_wm_manager(C);
   wmWindow *win = static_cast<wmWindow *>((wm->runtime->winactive) ? wm->runtime->winactive :
-                                                                     wm->windows.first);
+                                                                     wm->windows.first());
 
   if (win) {
     /* We want this warning on the Main window, not a child window even if active. See #118765. */
@@ -2478,6 +2521,8 @@ void wm_test_gpu_backend_fallback(bContext *C)
     wmWindow *prevwin = CTX_wm_window(C);
     CTX_wm_window_set(C, win);
     std::string message = RPT_("Updating GPU drivers may solve this issue.");
+    /* Angelo: the two sentences ran together. */
+    message += " ";
     message += RPT_(
         "The graphics backend can be changed in the System section of the Preferences.");
     alert(C,
@@ -2705,7 +2750,7 @@ void wm_clipboard_free()
 
 static char *wm_clipboard_text_get_impl(bool selection)
 {
-  if (UNLIKELY(G.f & G_FLAG_EVENT_SIMULATE)) {
+  if (G.f & G_FLAG_EVENT_SIMULATE) [[unlikely]] {
     if (g_wm_clipboard_text_simulate == nullptr) {
       return nullptr;
     }
@@ -2724,7 +2769,7 @@ static char *wm_clipboard_text_get_impl(bool selection)
 
 static void wm_clipboard_text_set_impl(const char *buf, bool selection)
 {
-  if (UNLIKELY(G.f & G_FLAG_EVENT_SIMULATE)) {
+  if (G.f & G_FLAG_EVENT_SIMULATE) [[unlikely]] {
     if (g_wm_clipboard_text_simulate == nullptr) {
       g_wm_clipboard_text_simulate =
           MEM_new_zeroed<std::remove_pointer_t<decltype(g_wm_clipboard_text_simulate)>>(__func__);
@@ -2771,7 +2816,7 @@ static char *wm_clipboard_text_get_ex(bool selection,
   }
 
   /* Always convert from `\r\n` to `\n`. */
-  char *newbuf = MEM_new_array_uninitialized<char>(size_t(buf_len + 1), __func__);
+  char *newbuf = MEM_new_array_uninitialized<char>(size_t(buf_len) + 1, __func__);
   char *p2 = newbuf;
 
   if (firstline) {
@@ -3086,7 +3131,7 @@ void WM_init_native_pixels(bool do_it)
 
 void WM_init_input_devices()
 {
-  if (UNLIKELY(!g_system)) {
+  if (!g_system) [[unlikely]] {
     return;
   }
 
@@ -3125,6 +3170,10 @@ void WM_cursor_warp(wmWindow *win, int x, int y)
 
   win->runtime->eventstate->xy[0] = oldx;
   win->runtime->eventstate->xy[1] = oldy;
+#ifdef WITH_PYTHON
+  /* Angelo: a pointer code put somewhere never aims the person's click (grant_operators.rst). */
+  BPY_angelo_guard_note_warp(win, oldx, oldy);
+#endif
 }
 
 uint WM_cursor_preferred_logical_size(const bool hardware_cursor)
@@ -3189,6 +3238,15 @@ static void wm_window_csd_title_redraw_tag(wmWindowManager *wm, wmWindow *win)
   }
 #else
   UNUSED_VARS(wm, win);
+#endif
+}
+
+bool WM_window_csd_is_active()
+{
+#ifdef WITH_GHOST_CSD
+  return g_system_use_csd;
+#else
+  return false;
 #endif
 }
 
@@ -3392,7 +3450,7 @@ void WM_window_set_active_view_layer(wmWindow *win, ViewLayer *view_layer)
   BLI_assert(BKE_view_layer_find(WM_window_get_active_scene(win), view_layer->name) != nullptr);
   Main *bmain = G_MAIN;
 
-  wmWindowManager *wm = static_cast<wmWindowManager *>(bmain->wm.first);
+  wmWindowManager *wm = bmain->wm.first();
   wmWindow *win_parent = (win->parent) ? win->parent : win;
 
   /* Set view layer in parent and child windows. */
@@ -3476,35 +3534,70 @@ bool WM_window_is_temp_screen(const wmWindow *win)
  * \{ */
 
 #ifdef WITH_INPUT_IME
-void wm_window_IME_begin(wmWindow *win, int x, int y, int w, int h, bool complete)
+/** Shared by begin & reposition, which differ only in GHOST's `complete` argument. */
+static void wm_window_ime_position_set(
+    wmWindow *win, int x, int y, int w, int h, const bool complete)
 {
-  /* NOTE: Keep in mind #wm_window_IME_begin is also used to reposition the IME window. */
-
   BLI_assert(win);
-  if ((WM_capabilities_flag() & WM_CAPABILITY_INPUT_IME) == 0) {
-    return;
-  }
 
   /* Convert to native OS window coordinates. */
   GHOST_IWindow *ghost_window = static_cast<GHOST_IWindow *>(win->runtime->ghostwin);
   const float fac = ghost_window->getNativePixelSize();
   x /= fac;
   y /= fac;
+  w /= fac;
+  h /= fac;
   ghost_window->beginIME(x, win->sizey - y, w, h, complete);
 }
 
-void wm_window_IME_end(wmWindow *win)
+void WM_window_IME_begin(
+    wmWindow *win, int x, int y, int w, int h, const bke::wmIMEOwnerType owner)
+{
+  if ((WM_capabilities_flag() & WM_CAPABILITY_INPUT_IME) == 0) {
+    return;
+  }
+  win->runtime->ime_owner = owner;
+  wm_window_ime_position_set(win, x, y, w, h, true);
+}
+
+void WM_window_IME_reposition(wmWindow *win, int x, int y, int w, int h)
+{
+  if ((WM_capabilities_flag() & WM_CAPABILITY_INPUT_IME) == 0) {
+    return;
+  }
+  /* Callers only reposition a session they know exists. */
+  BLI_assert(win->runtime->ime_owner.has_value());
+  /* `complete = false` moves the IME window without completing the composition. */
+  wm_window_ime_position_set(win, x, y, w, h, false);
+}
+
+void WM_window_IME_end(wmWindow *win)
 {
   if ((WM_capabilities_flag() & WM_CAPABILITY_INPUT_IME) == 0) {
     return;
   }
 
   BLI_assert(win);
+
+  if (win->runtime->ime_data_is_composing) {
+    /* NOTE: ending cancels the composition, however editors have no reliable signal to erase
+     * their preview. The GHOST "composite end" event is dispatched at the mouse, which may be
+     * over another region by now. #ED_region_tag_redraw would seem the obvious alternative,
+     * although it can't be used as this may run from #ED_region_do_draw.
+     * Cancels are rare, so a coarse redraw is acceptable. */
+    WM_main_add_notifier(NC_WINDOW, nullptr);
+  }
+  win->runtime->ime_owner = std::nullopt;
   /* NOTE(@ideasman42): on WAYLAND and Windows a call to "begin" must be closed by an "end" call.
    * Even if no IME events were generated (which assigned `ime_data`).
    * TODO: check if #GHOST_EndIME can run on APPLE without causing problems. */
 #  ifdef __APPLE__
-  BLI_assert(win->runtime->ime_data);
+  /* Null when no IME events occurred since the last "end",
+   * common as callers end without checking an IME editor exists,
+   * see #WM_window_IME_region_refresh. */
+  if (win->runtime->ime_data == nullptr) {
+    return;
+  }
 #  endif
 
   GHOST_IWindow *ghost_window = static_cast<GHOST_IWindow *>(win->runtime->ghostwin);
@@ -3513,6 +3606,193 @@ void wm_window_IME_end(wmWindow *win)
   MEM_delete(win->runtime->ime_data);
   win->runtime->ime_data = nullptr;
   win->runtime->ime_data_is_composing = false;
+}
+
+bool WM_window_IME_region_refresh(wmWindow *win,
+                                  const ScrArea *area,
+                                  const ARegion *region,
+                                  const bool keep_composing,
+                                  ARegionIMECursor *r_cursor)
+{
+  if (win->runtime->ime_owner == bke::wmIMEOwnerType::Button) {
+    /* A text button owns the session, possibly in a popup over this region,
+     * see #textedit_ime_begin. */
+    return false;
+  }
+  if (win->runtime->ime_owner == bke::wmIMEOwnerType::Script) {
+    /* Angelo: a script's own text field has the keyboard wherever the pointer is,
+     * see #WM_window_IME_script_attach. */
+    return false;
+  }
+
+  /* A temporary popup is modal, it takes precedence over the region below it,
+   * otherwise any redraw while the popup is open re-enables the IME, see #ED_region_do_draw.
+   * Tool-tips are excluded, they take no input and may outlive the cursor leaving
+   * their region (gizmo tool-tips for e.g.), which would prevent beginning the IME. */
+  const bScreen *screen = WM_window_get_active_screen(win);
+  const ARegion *tooltip_region = screen->tool_tip ? screen->tool_tip->region : nullptr;
+  for (const ARegion &region_iter : screen->regionbase) {
+    if ((region_iter.regiontype == RGN_TYPE_TEMPORARY) && (&region_iter != tooltip_region)) {
+      return false;
+    }
+  }
+
+  /* NOTE: ending mid-composition cancels it, so the draw-time refresh opts out via
+   * `keep_composing`. Other callers keep end + begin so that the composition doesn't follow
+   * the mouse into another editor.
+   *
+   * Composing while the session has no `Region` owner is unlikely. Treat it as not composing
+   * so the end + begin below still runs, otherwise the candidate window is never positioned. */
+  const bool composing = keep_composing && win->runtime->ime_data_is_composing &&
+                         (win->runtime->ime_owner == bke::wmIMEOwnerType::Region) && region &&
+                         region->runtime->type->cursor_ime;
+
+  if (!composing) {
+    WM_window_IME_end(win);
+
+    if (!region || !region->runtime->type->cursor_ime) {
+      return false;
+    }
+  }
+
+  ARegionIMECursor cursor;
+  const std::optional<ARegionIMECursorState> cursor_state = region->runtime->type->cursor_ime(
+      win, area, region, &cursor);
+  if (!cursor_state) {
+    /* The region stopped accepting IME (e.g. exited edit mode), end the session when composing.
+     * Leaving it open would keep the OS IME enabled with input silently dropped. */
+    if (composing) {
+      WM_window_IME_end(win);
+    }
+    return false;
+  }
+  if (*cursor_state != ARegionIMECursorState::PositionSet) {
+    /* Pending because of a transient lack of position, so keep the session where it is. */
+    return false;
+  }
+  if (r_cursor) {
+    *r_cursor = cursor;
+  }
+
+  /* Convert to window coordinates, clamped to the region so a cursor scrolled out of view
+   * keeps the IME window at the region edge. */
+  const int x = region->winrct.xmin +
+                std::clamp(cursor.rect.xmin, 0, BLI_rcti_size_x(&region->winrct));
+  const int y = region->winrct.ymin +
+                std::clamp(cursor.rect.ymin, 0, BLI_rcti_size_y(&region->winrct));
+  /* A caret has no width, its height is the preview's, see #ARegionType::cursor_ime. */
+  BLI_assert(BLI_rcti_size_x(&cursor.rect) == 0);
+  BLI_assert(BLI_rcti_size_y(&cursor.rect) != 0);
+  const int w = 0;
+  const int h = BLI_rcti_size_y(&cursor.rect);
+
+  if (composing) {
+    WM_window_IME_reposition(win, x, y, w, h);
+  }
+  else {
+    /* #WM_window_IME_end above ended any session, so this is always a fresh begin. */
+    WM_window_IME_begin(win, x, y, w, h, bke::wmIMEOwnerType::Region);
+  }
+  return true;
+}
+
+/** Whether a popup other than a tool-tip is open: it takes the keys (and so the IME). */
+static bool wm_window_IME_popup_open(const wmWindow *win)
+{
+  const bScreen *screen = WM_window_get_active_screen(win);
+  if (screen == nullptr) {
+    return false;
+  }
+  const ARegion *tooltip_region = screen->tool_tip ? screen->tool_tip->region : nullptr;
+  for (const ARegion &region_iter : screen->regionbase) {
+    if ((region_iter.regiontype == RGN_TYPE_TEMPORARY) && (&region_iter != tooltip_region)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool WM_window_IME_script_attach(wmWindow *win, const int x, const int y, const int height)
+{
+  if ((WM_capabilities_flag() & WM_CAPABILITY_INPUT_IME) == 0) {
+    return false;
+  }
+  if (win->runtime->ime_owner == bke::wmIMEOwnerType::Button) {
+    return false; /* A text button being edited has it, see #textedit_ime_begin. */
+  }
+  if (wm_window_IME_popup_open(win)) {
+    WM_window_IME_script_detach(win);
+    return false;
+  }
+  const std::array<int, 4> rect = {x, y, 0, std::max(height, 1)};
+  if (win->runtime->ime_owner == bke::wmIMEOwnerType::Script) {
+    if (rect != win->runtime->ime_script_rect) {
+      /* Keeps the composition: the caret moved (scrolling, a resize, the composition itself). */
+      WM_window_IME_reposition(win, rect[0], rect[1], rect[2], rect[3]);
+      win->runtime->ime_script_rect = rect;
+    }
+    return true;
+  }
+  if ((win->runtime->ime_owner == bke::wmIMEOwnerType::Region) &&
+      win->runtime->ime_data_is_composing)
+  {
+    /* The field under the pointer took a composition the region began (its keys reach the
+     * field): take the session over, ending it would cancel what is being typed. */
+    win->runtime->ime_owner = bke::wmIMEOwnerType::Script;
+    WM_window_IME_reposition(win, rect[0], rect[1], rect[2], rect[3]);
+    win->runtime->ime_script_rect = rect;
+    return true;
+  }
+  /* A region's session (the editor under the pointer) gives way: the field has the keyboard. */
+  WM_window_IME_end(win);
+  WM_window_IME_begin(win, rect[0], rect[1], rect[2], rect[3], bke::wmIMEOwnerType::Script);
+  win->runtime->ime_script_rect = rect;
+  return win->runtime->ime_owner == bke::wmIMEOwnerType::Script;
+}
+
+void WM_window_IME_script_detach(wmWindow *win)
+{
+  if (win->runtime->ime_owner == bke::wmIMEOwnerType::Script) {
+    WM_window_IME_end(win);
+  }
+}
+
+const wmIMEData *WM_window_IME_data_get(const wmWindow *win, const ARegion *region)
+{
+  if (!win->runtime->ime_data_is_composing) {
+    return nullptr;
+  }
+  /* The IME state is per-window, so don't preview a composition a text button owns,
+   * as it may be in a popup over this region. */
+  if (win->runtime->ime_owner != bke::wmIMEOwnerType::Region) {
+    return nullptr;
+  }
+  /* Only the focused region previews, otherwise every editor showing the same data would.
+   * The screen may be null while tearing down, see #WM_window_get_active_screen. */
+  const bScreen *screen = WM_window_get_active_screen(win);
+  if (!screen || region != screen->active_region) {
+    return nullptr;
+  }
+  const wmIMEData *ime_data = win->runtime->ime_data;
+  if (ime_data == nullptr || ime_data->composite.empty()) {
+    return nullptr;
+  }
+  return ime_data;
+}
+
+std::optional<IndexRange> WM_window_IME_composite_select_range(const wmIMEData *ime_data)
+{
+  BLI_assert(ime_data != nullptr);
+  if ((ime_data->sel_start == -1) || (ime_data->sel_end == -1)) {
+    return std::nullopt;
+  }
+  const int composite_len = int(ime_data->composite.size());
+  const int sel_start = std::clamp(ime_data->sel_start, 0, composite_len);
+  const int sel_end = std::clamp(ime_data->sel_end, 0, composite_len);
+  if (sel_start >= sel_end) {
+    return std::nullopt;
+  }
+  return IndexRange::from_begin_end(sel_start, sel_end);
 }
 #endif /* WITH_INPUT_IME */
 
@@ -3541,6 +3821,9 @@ GHOST_IContext *WM_system_gpu_context_create()
   gpu_settings.context_type = wm_ghost_drawing_context_type(gpu_backend);
   if (G.debug & G_DEBUG_GPU) {
     gpu_settings.flags |= GHOST_gpuDebugContext;
+  }
+  if (G.debug & G_DEBUG_GPU_NO_HW_RAYTRACING) {
+    gpu_settings.flags |= GHOST_gpuNoHWRaytracing;
   }
   gpu_settings.preferred_device = GPU_backend_preferred_device_get();
   if (GPU_backend_vsync_is_overridden()) {

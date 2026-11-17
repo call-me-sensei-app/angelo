@@ -4,7 +4,7 @@
 
 #include "angelo_recovery_observation.hh"
 
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 
 namespace blender::ed::undo::recovery {
 
@@ -24,7 +24,7 @@ class Observation {
 
 static bool generated(const SessionUID &uid)
 {
-  return BLI_session_uid_is_generated(&uid);
+  return uid.is_generated();
 }
 
 Registry::Registry() = default;

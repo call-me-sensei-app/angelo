@@ -276,6 +276,7 @@ def _press_look(window, area_pointer, action):
 
 class ANGELO_OT_asset_browser_input(Operator):
     """Clicks on the Asset Browser's Media Studio and Flows pills (internal)."""
+    bl_description = ""   # No tooltip. Blender shows a class docstring as one; this one is a note for developers.
     bl_idname = "angelo.asset_browser_input"
     bl_label = "Asset Browser Pills"
     bl_options = {'INTERNAL'} | modal_options(bl_idname)   # Auto-save never waits for it (input_policy).

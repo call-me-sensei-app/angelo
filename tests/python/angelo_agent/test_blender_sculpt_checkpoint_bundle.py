@@ -157,6 +157,7 @@ def history():
     try:
         with path.open('w') as output:
             os.dup2(output.fileno(), 1)
+            # Blender 5.3 prints each undo step's type identifier (SCULPT, GLOBAL_UNDO), not its name (upstream ae71b519937).
             bpy.context.window_manager.print_undo_steps()
             libc.fflush(None)
     finally:
@@ -654,7 +655,7 @@ def continuation_history(name, states):
         rows = states[phase]['history']
         check(name + '_' + phase + '_one_sculpt_history_step', len(rows) == len(baseline) + 1 and
               [identity(row) for row in rows[:-1]] == prefix and
-              rows[-1]['type'] == 'Sculpt' and rows[-1]['name'] == 'Draw Brush' and not rows[-1]['skip'])
+              rows[-1]['type'] == 'SCULPT' and rows[-1]['name'] == 'Draw Brush' and not rows[-1]['skip'])
         check(name + '_' + phase + '_history_active_position',
               [row['index'] for row in rows if row['active']] == [expected_active[phase]])
         check(name + '_' + phase + '_history_applied_state',
@@ -692,7 +693,7 @@ def continuation(name, reference=None, complete_baseline=None):
         if complete_target:
             rows = baseline['history']
             check(name + '_' + label + '_complete_undo_target_before_edit', len(rows) == 1 and
-                  rows[0]['index'] == 0 and rows[0]['type'] == 'Global Undo' and
+                  rows[0]['index'] == 0 and rows[0]['type'] == 'GLOBAL_UNDO' and
                   rows[0]['name'] == 'Snapshot Restored' and rows[0]['active'] and not rows[0]['skip'])
             undo_target = {key: rows[0][key] for key in ('index', 'address', 'type', 'name', 'skip')}
             undo_expected = complete_baseline
@@ -950,7 +951,7 @@ def tick():
             cold, _safety, _before = restore(record['id'], 'restore-for-continuation')
             restored_equal('second_cold_restore', captured, cold)
             check('cold_history_rebased_to_complete_checkpoint', len(cold['history']) == 1 and
-                  cold['history'][0]['type'] == 'Global Undo' and
+                  cold['history'][0]['type'] == 'GLOBAL_UNDO' and
                   cold['history'][0]['name'] == 'Snapshot Restored' and
                   cold['history'][0]['active'] and not cold['history'][0]['skip'])
             continuation('cold', reference, captured)

@@ -18,6 +18,7 @@ Pinned, each across both sides at once:
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import textwrap
@@ -98,7 +99,7 @@ class RoundTwo(Fixture):
         self.mirror.send("a box")
         card = self.card()
         self.approve_drawn(card)
-        self.assertTrue(entered.wait(10), "The approved edit never started")
+        self.assertTrue(entered.wait(CAP_S), "The approved edit never started")
         child = self.child()
         self.wedge.clear()   # Frozen, then gone: it answers and writes nothing more.
         self.reader_wedge.clear()

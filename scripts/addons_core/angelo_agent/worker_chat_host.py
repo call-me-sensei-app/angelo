@@ -46,6 +46,7 @@ import time
 import uuid
 from pathlib import Path
 
+from . import grant_authority, grant_guard  # noqa: E402  (only the person grants: grant_guard)
 from . import worker_chat_events as events
 from . import worker_chat_holds as holds, worker_chat_part
 from . import worker_chat_seams as seams
@@ -141,7 +142,8 @@ class WorkerChatHost:
     def apply_mutation(self, target, call):
         """The window's approval route for ``target``'s call (its approve operator, on the background window)."""
         with self.host.bpy.context.temp_override(window=self.ui.main_window()):
-            self.host.bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
+            grant_guard.automatic(self.host.bpy.ops.angelo).approve('EXEC_DEFAULT', True, call_id=call.id,
+                                                                    session_id=target.state["id"])
 
     def commit_mutation(self, target, call):
         with self.host.bpy.context.temp_override(window=self.ui.main_window()):
@@ -286,7 +288,7 @@ class WorkerChatHost:
             chat.models = [model for model in models if isinstance(model, dict)] if isinstance(models, list) else []
             options = request.get("options")
             if isinstance(options, dict) and options:
-                chat.set_options(**{str(key): value for key, value in options.items()})
+                grant_authority.automatic(chat.set_options, **{str(key): value for key, value in options.items()})
             consent = request.get("consent")
             if isinstance(consent, dict):   # The open's answer is the lease's acknowledgement (worker_consent_lead).
                 applied = self.consent.apply_consent(chat, consent.get("epoch"), consent.get("grants"))
@@ -372,7 +374,7 @@ class WorkerChatHost:
         options = request.get("options")
         if not isinstance(options, dict):
             raise _refused("Options are a dictionary")
-        chat.set_options(**{str(key): value for key, value in options.items()})
+        grant_authority.automatic(chat.set_options, **{str(key): value for key, value in options.items()})
         return {"ok": True, "options": dict(chat.state["options"])}
 
     def _consent(self, chat, request):

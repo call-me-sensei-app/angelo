@@ -155,6 +155,17 @@ def _exhausted(window):
     return isinstance(window, dict) and type(window.get("usedPercent")) in (int, float) and window["usedPercent"] >= 100
 
 
+def credits_cover(snapshot):
+    """Whether a Codex ``rateLimits`` snapshot's account pays past its usage windows: purchased or unlimited credits
+    (``credits.hasCredits`` or ``unlimited``, as ``usage_windows`` reads them) and no spend control reached. Past a
+    window's limit such an account's requests still run, charged to the credits (``rateLimitReachedType`` set, the
+    window at 100 %, the turn completed and the balance down), so the reached window alone is not a limit."""
+    credits = snapshot.get("credits") if isinstance(snapshot, dict) else None
+    if not isinstance(credits, dict) or snapshot.get("spendControlReached") is True:
+        return False
+    return credits.get("hasCredits") is True or credits.get("unlimited") is True
+
+
 def _error_kind(info):
     """``codexErrorInfo`` is a name (``"usageLimitExceeded"``) or an object keyed by it
     (``{"responseStreamDisconnected": {"httpStatusCode": 503}}``)."""
@@ -175,7 +186,9 @@ def codex_limit(messages, completed, waited_out=True):
     ``messages`` are the turn's notifications (``{"method", "params"}``),
     ``completed`` its ``turn/completed`` params. A failed turn or ``error``
     notification whose ``codexErrorInfo`` names a limit is enough, as is a
-    ``rateLimitReachedType`` or a rate-limit window at 100% with a failed turn.
+    ``rateLimitReachedType`` (unless the account's credits pay past it,
+    ``credits_cover``, and the turn did not fail) or a rate-limit window at 100%
+    with a failed turn.
     So is HTTP 429 in the error that ended the turn (a throttle: Codex sends no
     retry of a 429 without ``Retry-After``, ``responseTooManyFailedAttempts``),
     as a Claude turn's 429 is (``limit_text``), and a 429 Codex retried itself
@@ -198,7 +211,7 @@ def codex_limit(messages, completed, waited_out=True):
     failed = ((completed or {}).get("turn") or {}).get("status") == "failed"
     for message in messages or ():
         snapshot = (message.get("params") or {}).get("rateLimits") if isinstance(message, dict) else None
-        if isinstance(snapshot, dict) and snapshot.get("rateLimitReachedType"):
+        if isinstance(snapshot, dict) and snapshot.get("rateLimitReachedType") and (failed or not credits_cover(snapshot)):
             return "rate limit reached: %s (plan %s)" % (_evidence(snapshot["rateLimitReachedType"]),
                                                          _evidence(snapshot.get("planType") or "unknown"))
         if failed and isinstance(snapshot, dict) and any(_exhausted(snapshot.get(key)) for key in ("primary", "secondary")):

@@ -4,7 +4,7 @@
 
 #include <cstring>
 
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 
 #include "DNA_curve_types.h"
 #include "DNA_material_types.h"
@@ -71,7 +71,7 @@ template<typename T> class ScopedSlotRestore {
 static PropertyRNA *builtin_property(StructRNA *type, const char *identifier)
 {
   for (PropertyRNA &prop : type->cont.properties) {
-    if (std::strcmp(prop.identifier, identifier) == 0) {
+    if (prop.identifier == StringRef(identifier)) {
       return &prop;
     }
   }
@@ -432,8 +432,8 @@ TEST_F(RNAReadStorageTest, GeneratedListExtractionDoesNotTraverseOrRefine)
 {
   Scene scene{};
   /* Deliberately invalid links demonstrate that extraction does not traverse. */
-  scene.markers.first = reinterpret_cast<TimeMarker *>(uintptr_t(1));
-  scene.markers.last = reinterpret_cast<TimeMarker *>(uintptr_t(2));
+  scene.markers.first_ = reinterpret_cast<TimeMarker *>(uintptr_t(1));
+  scene.markers.last_ = reinterpret_cast<TimeMarker *>(uintptr_t(2));
   PointerRNA parent(&scene.id, RNA_Scene, &scene);
   auto *prop = static_cast<CollectionPropertyRNA *>(builtin_property(RNA_Scene, "timeline_markers"));
   ASSERT_NE(prop, nullptr);

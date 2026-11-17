@@ -30,7 +30,7 @@ from .ui_text import n_
 # from another branch adds its id here with its registration (test_native_chat_destinations checks both).
 TOP_LEVEL = ("attach", "goal", "media_studio", "photo_to_3d", "library", "video_tools", "flows", "render_engine", "render_tools",
              "workflows", "base_mesh", "hands", "select_through", "tension_map", "uv_checker", "engine_skeleton", "web_export",
-             "web_preview", "godot_link", "apps_settings", "report_bug", "request_feature")
+             "web_preview", "godot_link", "apps_settings", "learn", "report_bug", "request_feature")
 # Features drawn inside a built-in group rather than as rows of their own (1.0.8: six Create rows for video and
 # rendering pushed the base meshes and Workflows below the fold). A member whose group is not registered is drawn at
 # the top level, so a feature is never hidden.
@@ -207,6 +207,8 @@ TEAM_SIGN_IN = n_("Sign in to Angelo Team")   # The sign-in operator's own label
 TEAM_SIGN_IN_WHY = n_("Use the AI providers and library your organization shares")
 PROVIDERS = n_("AI Providers…")
 PROVIDERS_WHY = n_("See what is connected, and change it")
+APPROVAL_POLICY = n_("Approval policy…")   # The chat's Approval Policy menu (trusted_scripts_ui): its only way in.
+APPROVAL_POLICY_WHY = n_("When the agent asks before changes, and whether this chat's scripts are trusted")
 SNAPSHOT_SETTINGS = n_("Snapshot settings…")
 SNAPSHOT_SETTINGS_WHY = n_("Choose when snapshots are taken and how much disk space they may use")
 SNAPSHOT_REVIEW = n_("Remove old snapshots…")
@@ -257,11 +259,13 @@ def _app_states(now=None):
         installed = {} if poll_due else dict(_registry_seen.get("installed", {}))
         states = {}
         for app in CONNECTED_APPS:
-            if DEFAULT_CLIENT[app] in records:
+            if app not in installed:
+                installed[app] = external_setup.installed(app)
+            # Connected in Angelo but installed without Angelo's entry (copied before it was installed): its Connect
+            # writes the entry (Copy setup break-it review S3), never "connected" for an app that can't reach Angelo.
+            if DEFAULT_CLIENT[app] in records and not (installed[app] and not external_setup.has_entry(app)):
                 states[app] = "connected"
             else:
-                if app not in installed:
-                    installed[app] = external_setup.installed(app)
                 states[app] = "found" if installed[app] else "missing"
         _registry_seen.update(key=key, when=now if poll_due else polled, installed=installed, states=states)
     return {app: (_registry_seen["states"][app], external_ui.results.get(app)) for app in CONNECTED_APPS}
@@ -286,7 +290,8 @@ def _app_row(app, state, result, windows):
 
 def _apps_settings_rows(chosen, fit_target, platform=None, states=None):
     """Connect Claude Code / Codex (or, once connected, where to disconnect), team sign-in while signed out, AI
-    Providers (where each connection's details show), then the snapshot settings and their review."""
+    Providers (where each connection's details show), the chat's approval policy (and Trust scripts for this chat),
+    then the snapshot settings and their review."""
     import sys
     windows = (platform or sys.platform) == "win32"
     if states is None:   # Windows needs no state: its rows only say the connection is coming.
@@ -297,6 +302,8 @@ def _apps_settings_rows(chosen, fit_target, platform=None, states=None):
                          operator="angelo.team_sign_in"))
     rows.append(leaf("apps_settings", "ai_providers", PROVIDERS, PROVIDERS_WHY, glyph="apps",
                      operator="angelo.settings"))
+    rows.append(leaf("apps_settings", "approval_policy", APPROVAL_POLICY, APPROVAL_POLICY_WHY, glyph="apps",
+                     operator="angelo.approval_policy"))
     rows.append(leaf("apps_settings", "snapshot_settings", SNAPSHOT_SETTINGS, SNAPSHOT_SETTINGS_WHY,
                      operator="angelo.checkpoint_settings"))
     rows.append(leaf("apps_settings", "snapshot_review", SNAPSHOT_REVIEW, SNAPSHOT_REVIEW_WHY,

@@ -265,7 +265,11 @@ Validation
   exporter, and the timings above. ``test_blender_web_link_changes``: each edit the depsgraph doesn't report
   reaches the page on its own, with no other edit and no still-scene check (pixels, also while a check waits; users
   only the depsgraph knows; rewritten tile, frame and renamed files). ``test_blender_web_link_cost``: deciding a delta
-  stays flat as geometry-nodes instances grow to a million.
+  stays flat as geometry-nodes instances grow to a million, and grows linearly with instancers. The sizes each check
+  compares are timed together, each in its own scene of one file, one decision of each per round, and judged by their
+  best (``cost_timing``): load only adds time, so another suite's burst never fails them, while work that grows
+  faster than the bound still does (2.0.0's candidate ce9ddce, then numbered 1.1.0: medians timed one size after the other failed under four
+  suites at once).
   * ``test_native_engine_link_assets``: every adapter, including one with an npm plugin.
 * **Package** (Node, ``web_link/angelo-live/test``): unit, security and contract tests (the Node bridge against the
   real ``LinkServer``), and an end-to-end run with a stand-in Angelo, a real Vite dev server and headless Chrome over

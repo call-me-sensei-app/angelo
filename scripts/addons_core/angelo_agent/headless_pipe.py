@@ -21,7 +21,7 @@ import subprocess
 import threading
 import time
 
-from . import external_cli_protocol as protocol, thread_start
+from . import external_cli_protocol as protocol, owned_paths, thread_start
 
 MAX_HANDLERS = 8          # Requests the child answers at once (the CLI listener's connection limit).
 READY_TIMEOUT = 120.0     # Loading a large .blend can take a while; a child that never says ready is stopped.
@@ -170,7 +170,9 @@ class ChildProcess:
         self.stderr_path = stderr
         error = subprocess.DEVNULL
         if stderr is not None:
+            owned_paths.require_writable(stderr)
             error = os.open(stderr, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        owned_paths.require_runnable(command[0])   # Never a program from state (C).
         to_child_read, to_child_write = os.pipe()
         from_child_read, from_child_write = os.pipe()
         # Only the arguments that are exactly ``{in}``/``{out}``: a file name holding those letters stays as it is.

@@ -147,6 +147,18 @@ class LimitTests(unittest.TestCase):
         full = event("account/rateLimits/updated", rateLimits={"primary": {"usedPercent": 100}})
         self.assertIsNotNone(limits.codex_limit([full], {"turn": {"status": "failed", "error": {}}}))
 
+    def test_a_reached_window_the_accounts_credits_pay_past_is_no_limit(self):
+        paid = {"rateLimitReachedType": "rate_limit_reached", "planType": "pro",
+                "primary": {"usedPercent": 100}, "credits": {"hasCredits": True, "unlimited": False}}
+        done, failed = {"turn": {"status": "completed"}}, {"turn": {"status": "failed", "error": {}}}
+        self.assertIsNone(limits.codex_limit([event("account/rateLimits/updated", rateLimits=paid)], done))
+        self.assertIsNone(limits.codex_limit([event("account/rateLimits/updated", rateLimits=paid)], None))
+        self.assertIn("plan pro", limits.codex_limit([event("account/rateLimits/updated", rateLimits=paid)], failed))
+        capped = dict(paid, spendControlReached=True)
+        self.assertIn("plan pro", limits.codex_limit([event("account/rateLimits/updated", rateLimits=capped)], done))
+        unpaid = dict(paid, credits={"hasCredits": False, "unlimited": False})
+        self.assertIn("plan pro", limits.codex_limit([event("account/rateLimits/updated", rateLimits=unpaid)], done))
+
     def test_object_shaped_error_info_is_read_by_its_key(self):
         retry = event("error", error={"message": "Reconnecting... 2/5", "willRetry": True,
                                       "codexErrorInfo": {"responseStreamDisconnected": {"httpStatusCode": 503}}})
@@ -227,6 +239,26 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(data["tasks"][0]["api_calls"], 1)
         self.assertEqual(data["invalid"], limits.INVALID)
         self.assertEqual(data["tasks"][0]["status"], "invalid")
+
+    def test_a_turn_completed_on_credits_past_its_window_stays_a_pass(self):
+        # An account past its weekly window with purchased credits: Codex reports rateLimitReachedType, the turn still
+        # completes, charged to the credits. That task keeps its result; the trial is not set aside as rate-limited.
+        paid = {"rateLimitReachedType": "rate_limit_reached", "planType": "pro", "primary": {"usedPercent": 100},
+                "credits": {"hasCredits": True, "unlimited": False, "balance": "52119.4"}}
+        with tempfile.TemporaryDirectory() as folder:
+            trial = Path(folder) / "mcp-trial-01"
+            trial.mkdir()
+            lines = [{"t_s": 1.2, "task": "cube_creation", "message": event("account/rateLimits/updated", rateLimits=paid)},
+                     {"t_s": 1.5, "task": "cube_creation", "message": event("thread/tokenUsage/updated", tokenUsage={})},
+                     {"t_s": 1.9, "task": "cube_creation",
+                      "message": event("turn/completed", turn={"id": "t", "status": "completed"})}]
+            (trial / "codex-stream.jsonl").write_text("\n".join(json.dumps(line) for line in lines))
+            (trial / "trial.json").write_text(json.dumps({"runtime": "codex", "tasks": [
+                {"side": "mcp", "task": "cube_creation", "sent_at_s": 1.0, "status": "completed", "passed": True}]}))
+            data = bench.load_mcp_trial(Path(folder), 1)
+        self.assertNotIn("invalid", data)
+        self.assertEqual((data["tasks"][0]["status"], data["tasks"][0]["passed"]), ("completed", True))
+        self.assertNotIn("invalid", data["tasks"][0])
 
 
 class McpStartupTests(unittest.TestCase):

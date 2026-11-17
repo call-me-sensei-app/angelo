@@ -16,12 +16,12 @@
 #include <Python.h>
 #include <cstddef>
 
-#include "BLI_linklist.h"
+#include "BLI_linklist.hh"
 #include "BLI_math_vector_types.hh"
 #include "BLI_path_utils.hh"
 #include "BLI_set.hh"
-#include "BLI_string.h"
-#include "BLI_utildefines.h"
+#include "BLI_string.hh"
+#include "BLI_utildefines.hh"
 #include "BLI_vector.hh"
 
 #include "BKE_asset.hh"
@@ -167,7 +167,7 @@ static PyObject *make_library_info(BLODataBlockInfo &id_info)
 
   BLI_assert(pos == bpy_lib_LibraryType_desc.n_in_sequence);
 
-  if (UNLIKELY(PyErr_Occurred())) {
+  if (PyErr_Occurred()) [[unlikely]] {
     Py_DECREF(library_info);
     return nullptr;
   }
@@ -443,7 +443,7 @@ static PyObject *bpy_lib_load(BPy_PropertyRNA *self, PyObject *args, PyObject *k
   };
   static _PyArg_Parser _parser = {
       "O&" /* `filepath` */
-      /* Optional keyword only arguments. */
+      /* Optional, keyword only arguments. */
       "|$"
       "O&" /* `link` */
       "O&" /* `pack` */

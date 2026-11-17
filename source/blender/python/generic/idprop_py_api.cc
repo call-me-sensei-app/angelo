@@ -19,7 +19,7 @@
 #include "BLI_array.hh"
 #include "BLI_set.hh"
 #include "BLI_span.hh"
-#include "BLI_utildefines.h"
+#include "BLI_utildefines.hh"
 #include "BLI_vector.hh"
 
 #include "idprop_py_api.hh"
@@ -29,7 +29,7 @@
 #include "BKE_idprop.hh"
 #include "BKE_idprop_buffer.hh"
 
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 
 #include "DEG_depsgraph_build.hh"
 
@@ -278,7 +278,7 @@ static PyObject *idprop_py_from_idp_idparray(ID *id, IDProperty *prop)
     PyObject *wrap = BPy_IDGroup_WrapData(id, array++, prop);
 
     /* BPy_IDGroup_MapDataToPy sets the error */
-    if (UNLIKELY(wrap == nullptr)) {
+    if (wrap == nullptr) [[unlikely]] {
       Py_DECREF(seq);
       return nullptr;
     }
@@ -1504,7 +1504,7 @@ static void idprop_py_collect_ids(const IDProperty *prop,
       }
       break;
     case IDP_GROUP:
-      for (const IDProperty *child = static_cast<const IDProperty *>(prop->data.group.first);
+      for (const IDProperty *child = static_cast<const IDProperty *>(prop->data.group.first());
            child;
            child = child->next)
       {
@@ -1714,7 +1714,7 @@ PyObject *BPy_IDGroup_MapDataToPy(IDProperty *prop)
         PyObject *wrap = BPy_IDGroup_MapDataToPy(array++);
 
         /* BPy_IDGroup_MapDataToPy sets the error */
-        if (UNLIKELY(wrap == nullptr)) {
+        if (wrap == nullptr) [[unlikely]] {
           Py_DECREF(seq);
           return nullptr;
         }
@@ -1727,11 +1727,11 @@ PyObject *BPy_IDGroup_MapDataToPy(IDProperty *prop)
       PyObject *dict = _PyDict_NewPresized(prop->len);
       IDProperty *loop;
 
-      for (loop = static_cast<IDProperty *>(prop->data.group.first); loop; loop = loop->next) {
+      for (loop = prop->data.group.first(); loop; loop = loop->next) {
         PyObject *wrap = BPy_IDGroup_MapDataToPy(loop);
 
         /* BPy_IDGroup_MapDataToPy sets the error */
-        if (UNLIKELY(wrap == nullptr)) {
+        if (wrap == nullptr) [[unlikely]] {
           Py_DECREF(dict);
           return nullptr;
         }
@@ -1927,7 +1927,7 @@ static PyObject *IDGroup_Iter_New_WithType(BPy_IDProperty *group,
     BLI_assert(!PyObject_GC_IsTracked((PyObject *)iter));
     PyObject_GC_Track(iter);
     iter->cur = static_cast<IDProperty *>(
-        (reversed ? group->prop->data.group.last : group->prop->data.group.first));
+        (reversed ? group->prop->data.group.last() : group->prop->data.group.first()));
     iter->len_init = group->prop->len;
   }
   else {
@@ -2213,7 +2213,14 @@ static PyObject *BPy_IDGroup_pop(BPy_IDProperty *self, PyObject *args)
   char *key;
   PyObject *def = nullptr;
 
-  if (!PyArg_ParseTuple(args, "s|O:pop", &key, &def)) {
+  if (!PyArg_ParseTuple(args,
+                        "s" /* `key` */
+                        "|" /* Optional arguments. */
+                        "O" /* `default` */
+                        ":pop",
+                        &key,
+                        &def))
+  {
     return nullptr;
   }
 
@@ -2261,9 +2268,7 @@ PyObject *BPy_Wrap_GetKeys(IDProperty *prop)
   IDProperty *loop;
   int i;
 
-  for (i = 0, loop = static_cast<IDProperty *>(prop->data.group.first); loop && (i < prop->len);
-       loop = loop->next, i++)
-  {
+  for (i = 0, loop = prop->data.group.first(); loop && (i < prop->len); loop = loop->next, i++) {
     PyList_SET_ITEM(list, i, PyUnicode_FromString(loop->name));
   }
 
@@ -2288,9 +2293,7 @@ PyObject *BPy_Wrap_GetValues(ID *id, IDProperty *prop)
   IDProperty *loop;
   int i;
 
-  for (i = 0, loop = static_cast<IDProperty *>(prop->data.group.first); loop;
-       loop = loop->next, i++)
-  {
+  for (i = 0, loop = prop->data.group.first(); loop; loop = loop->next, i++) {
     PyList_SET_ITEM(list, i, BPy_IDGroup_WrapData(id, loop, prop));
   }
 
@@ -2310,9 +2313,7 @@ PyObject *BPy_Wrap_GetItems(ID *id, IDProperty *prop)
   IDProperty *loop;
   int i;
 
-  for (i = 0, loop = static_cast<IDProperty *>(prop->data.group.first); loop;
-       loop = loop->next, i++)
-  {
+  for (i = 0, loop = prop->data.group.first(); loop; loop = loop->next, i++) {
     PyObject *item = PyTuple_New(2);
     PyTuple_SET_ITEMS(
         item, PyUnicode_FromString(loop->name), BPy_IDGroup_WrapData(id, loop, prop));
@@ -2434,7 +2435,7 @@ static PyObject *BPy_IDGroup_update(BPy_IDProperty *self, PyObject *value)
   if (BPy_IDGroup_Check(value)) {
     BPy_IDProperty *other = reinterpret_cast<BPy_IDProperty *>(value);
     BPY_IDPROP_CHECK_OBJ(other);
-    if (UNLIKELY(self->prop == other->prop)) {
+    if (self->prop == other->prop) [[unlikely]] {
       Py_RETURN_NONE;
     }
 
@@ -2442,7 +2443,7 @@ static PyObject *BPy_IDGroup_update(BPy_IDProperty *self, PyObject *value)
      * is merged into rather than replaced, so each is compared as it is after the merge. */
     Vector<std::string> names;
     IDPropPyPointers before;
-    for (const IDProperty *member = static_cast<const IDProperty *>(other->prop->data.group.first);
+    for (const IDProperty *member = static_cast<const IDProperty *>(other->prop->data.group.first());
          member;
          member = member->next)
     {
@@ -2537,7 +2538,14 @@ static PyObject *BPy_IDGroup_get(BPy_IDProperty *self, PyObject *args)
   const char *key;
   PyObject *def = Py_None;
 
-  if (!PyArg_ParseTuple(args, "s|O:get", &key, &def)) {
+  if (!PyArg_ParseTuple(args,
+                        "s" /* `key` */
+                        "|" /* Optional arguments. */
+                        "O" /* `default` */
+                        ":get",
+                        &key,
+                        &def))
+  {
     return nullptr;
   }
 
@@ -3332,6 +3340,8 @@ static PyObject *BPyInit_idprop_types()
   PyModule_AddType(submodule, &BPy_IDGroup_IterItems_Type);
 
   PyModule_AddType(submodule, &BPy_IDArray_Type);
+
+  PyModule_AddType(submodule, &BPy_IDPropertyUIManager_Type);
 
   return submodule;
 }

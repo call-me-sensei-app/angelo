@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 import weakref
 
-from . import canvas_controls, canvas_focus, review_again
+from . import approval_arming, canvas_controls, canvas_focus, review_again
 from .worker_consent import awaiting_person
 
 _OWNER = "keyboard_press_owner"
@@ -118,6 +118,8 @@ def key(event, state, redraw, controller, dispatch):
             state[_OWNER] = owner
     if result:
         owner = state.pop(_OWNER, None)
+        if not approval_arming.key_lands(state, result):
+            return False   # A grant within its shield, or the first key after a focus change: nothing.
         if _current(owner, controller, state, event, result):
             if result[0] == "approve":
                 with _pressed(state, owner):

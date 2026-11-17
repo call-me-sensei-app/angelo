@@ -16,11 +16,11 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_array.hh"
-#include "BLI_listbase.h"
-#include "BLI_rect.h"
-#include "BLI_string.h"
+#include "BLI_listbase.hh"
+#include "BLI_rect.hh"
+#include "BLI_string.hh"
 #include "BLI_string_utils.hh"
-#include "BLI_time.h"
+#include "BLI_time.hh"
 #include "BLI_vector.hh"
 
 #include "BKE_image.hh"
@@ -267,16 +267,6 @@ RegionOutcome region_render_finish(Render *re)
     free_state(re);
   }
   return outcome;
-}
-
-bool region_render_display_offset(const Render *re, int r_offset[2])
-{
-  if (!region_render_is_armed(re)) {
-    return false;
-  }
-  r_offset[0] = re->disprect.xmin;
-  r_offset[1] = re->disprect.ymin;
-  return true;
 }
 
 /** Unlocked: the caller holds the result lock, or is the main thread with no render running. */

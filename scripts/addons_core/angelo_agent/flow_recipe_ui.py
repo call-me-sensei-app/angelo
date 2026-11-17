@@ -26,7 +26,7 @@ def _flow_tree(context):
 
 
 class ANGELO_OT_flow_open_recipe(Operator):
-    """Show this flow; edits change every Subflow that uses it"""
+    bl_description = "Show this flow; edits change every Subflow that uses it"
     bl_idname = "angelo.flow_open_recipe"
     bl_label = "Open Flow"
     bl_options = {'INTERNAL'}
@@ -43,7 +43,7 @@ class ANGELO_OT_flow_open_recipe(Operator):
 
 
 class ANGELO_OT_flow_save_recipe(Operator):
-    """Save this flow to the flow library so other projects can use it"""
+    bl_description = "Save this flow to the flow library so other projects can use it"
     bl_idname = "angelo.flow_save_recipe"
     bl_label = "Save to Flow Library"
     bl_options = {'INTERNAL'}
@@ -71,7 +71,7 @@ def _recipe_items(self, context):
 
 
 class ANGELO_OT_flow_add_recipe(Operator):
-    """Add a Subflow step that runs one of your flows as a single step"""
+    bl_description = "Add a Subflow step that runs one of your flows as a single step"
     bl_idname = "angelo.flow_add_recipe"
     bl_label = "Add Subflow"
     bl_options = {'UNDO'}

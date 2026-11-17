@@ -8,6 +8,7 @@ macOS sun_path), so these run unchanged on Linux CI and macOS. Never the real
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import os
@@ -212,7 +213,7 @@ class ServerTests(unittest.TestCase):
         (state / "cli").mkdir(parents=True, mode=0o700)
         external_cli.write_endpoint(state / "cli" / "endpoint.json", record)
         envelope = cli_client.run({"command": "status", "args": {}}, state, "tester", 5)
-        thread.join(5)
+        thread.join(CAP_S)
         self.assertEqual(envelope["code"], "unavailable")
         self.assertIn("did not prove", envelope["message"])
 
@@ -279,7 +280,7 @@ class ServerTests(unittest.TestCase):
         envelope = self.run_client()
         self.assertEqual(envelope["code"], "busy")
         self.assertEqual(server.counters["refused_capacity"], 1)
-        deadline = time.monotonic() + 10  # The slow hello times out (0.4 s) and frees its slot.
+        deadline = time.monotonic() + CAP_S  # The slow hello times out (0.4 s) and frees its slot.
         while self.run_client()["code"] != "ok":
             self.assertLess(time.monotonic(), deadline, "the timed-out connection never released its slot")
             time.sleep(0.1)

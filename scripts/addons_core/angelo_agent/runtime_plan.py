@@ -21,7 +21,7 @@ class Plans:
 
     def plan(self, request, chat):
         """``{kind, command, env, cwd, key, model_provider, secrets, login}`` from Angelo's own records."""
-        from .provider_registry import CUSTOM_PROVIDER_MODES, runtime_kind
+        from .provider_registry import custom_provider, runtime_kind
         kind = runtime_kind(chat.mode)
         if request.get("provider_kind") != kind:
             raise RpcError("The worker asked for another runtime than its chat's connection uses")
@@ -34,11 +34,11 @@ class Plans:
                         else self._claude(request, chat, settings, executable))
         names = runtime_environment.CREDENTIALS
         secrets = [chat.api_key] + [value for name, value in env.items() if name.upper() in names
-                                    or name.upper().endswith(("_API_KEY", "_TOKEN", "_GRANT_KEY"))]
+                                    or name.upper().endswith(("_API_KEY", "_TOKEN", "_GRANT_KEY", "_ENDPOINT_KEY"))]
         from .runtime_launch import launch_binding
         return {"kind": kind, "command": command, "env": env, "cwd": str(chat.workspace), "secrets": secrets,
                 "key": (request.get("session"),) + launch_binding(command, env, chat.workspace),
-                "model_provider": chat.mode if chat.mode in CUSTOM_PROVIDER_MODES else CODEX_MODEL_PROVIDER,
+                "model_provider": chat.mode if custom_provider(chat.mode) else CODEX_MODEL_PROVIDER,
                 "login": kind == "codex" and chat.mode == "codex_api" and bool(chat.api_key), "runtime": runtime}
 
     def _codex(self, request, chat, settings, executable):
@@ -64,6 +64,8 @@ class Plans:
             raise RpcError("The Claude session options are not ones Angelo sets")
         values = launch_values(arguments)
         values["gateway"] = chat.mode in TEAM_MODES   # A team chat's WebFetch goes through the gateway, whatever was asked.
+        from .claude_transport import model_overrides   # And the chat's own endpoint models, never the worker's list.
+        values["overrides"] = model_overrides(chat.mode)
         values.pop("hooks_blocked", None)   # And the administrator's hook policy as this host reads it (claude_managed).
         if values["resume"] and values["resume"] not in self._recorded(request.get("session")):
             values["resume"] = str(uuid.uuid4())   # Not one Angelo saw this chat open: a session that cannot exist.

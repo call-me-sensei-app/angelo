@@ -14,6 +14,8 @@ Pinned, across both sides at once:
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import threading
@@ -66,7 +68,7 @@ class Consent(Fixture):
                 pass
             emit(kind, data)
             self.chats.outbox.release()   # Its bound passed: the end goes to the lead anyway.
-            unwind.wait(10)               # The turn's thread is still returning when the next message arrives.
+            unwind.wait(CAP_S)               # The turn's thread is still returning when the next message arrives.
 
         def pumped():
             if gap.is_set() and not self.resumed:
@@ -107,7 +109,7 @@ class Consent(Fixture):
         worker_chat = self.chats.hosted(self.session)
         self.assertIsNone(worker_chat.consent_lease.token("scripts"))
         started = machine_clock.start(self)
-        lead.set_trusted_scripts(True)
+        angelo_guard_twin.harness(lead.set_trusted_scripts, True)
         started.assert_within(0.25, "A widening waited on the worker")
         self.assertTrue(wait_for(lambda: worker_chat.consent_lease.token("scripts") is not None,
                                  pump=worker_consent_lead.settle), "The lead's trust never reached its worker chat")

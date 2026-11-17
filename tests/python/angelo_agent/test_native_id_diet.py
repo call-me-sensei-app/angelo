@@ -8,6 +8,7 @@ stdio fixture: no Blender, Claude process, credentials or inference.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import copy
 import json
@@ -494,6 +495,39 @@ class CompactSuffixTests(unittest.TestCase):
             with self.subTest(rows=len(rows), start=start, why=why):
                 self.assertEqual(kept(rows, start), summaries)
 
+    def test_the_work_limit_admits_two_results_of_this_size_and_the_oldest_of_three_keeps_its_summary(self):
+        """A handoff reads newest first within a work credit equal to its character limit (24,000 by default). A
+        certified result of this fixture (about 1.5 KB as JSON) costs about 11,200 of it, so two are admitted
+        and the third, the oldest, is refused before it is read. The handoff then says so in its omission
+        record, and the oldest result's summary row stays: its group was never read whole. With room for all
+        three, every summary is merged away.
+
+        Measured on 9897f4fba55 (2026-11-12): 12,408 characters of credit left after the newest result, 812 after
+        the second, 131 when the oldest is reached. This is the limit at work, not the rule that leaves a
+        summary out."""
+        first, second = dict(SUMMARY, text=SUMMARY["text"] + " First."), dict(SUMMARY, text=SUMMARY["text"] + " Second.")
+        rows = [{"role": "user", "text": "Create it"}, {"role": "assistant", "text": "Creating."},
+                activity("c1", committed()), first,
+                {"role": "user", "text": "Twice more"}, activity("c2", committed()), activity("c3", committed()), second]
+        for start, unexamined in ((0, 2), (2, 0)):   # The whole transcript; from the first group's first row.
+            with self.subTest(start=start):
+                text, ids = handoff(rows, start, identifiers=IdentifierTable(), delta=True)
+                entries = self.entries(text)
+                self.assertEqual(entries[0], {"role": "handoff_omission", "omitted_candidates": 1,
+                                              "truncated_text_candidates": 0, "work_exhausted": True,
+                                              "unexamined_transcript_records": unexamined})
+                self.assertEqual([entry["role"] for entry in entries[1:]], ["system", "user", "tool_result", "tool_result"])
+                self.assertEqual(ids, {"c2", "c3"})
+                self.assertIn("First.", text, "The oldest result was not read, so its summary is not left out")
+                self.assertNotIn("Second.", text)
+        for limit in (48000, 200000):
+            with self.subTest(limit=limit):
+                text, ids = handoff(rows, 0, limit, identifiers=IdentifierTable(), delta=True)
+                self.assertEqual([entry["role"] for entry in self.entries(text)],
+                                 ["user", "assistant", "tool_result", "user", "tool_result", "tool_result"])
+                self.assertEqual(ids, {"c1", "c2", "c3"})
+                self.assertNotIn("Host-verified result", text)
+
     def test_records_before_the_start_that_prove_nothing_keep_the_summary_and_a_complete_handoff(self):
         rows = self.certified_rows()
         too_large = dict(rows[0], **{"k" * 100000: True})   # Its keys cannot be admitted within the work left.
@@ -656,7 +690,7 @@ class OfflinePlans(ControllerFixture):
         from angelo_agent.controller import ToolDispatchBudget
         self.executor.results = [dict(self.observation(), success=True)]
         self.c.send("Look.", None)  # No turn context: the provider inspects the scene.
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while (self.c.busy or (self.c._worker and self.c._worker.is_alive())) and time.monotonic() < deadline:
             self.c.pump_events()
             self.c.pump_tools(self.executor, self.c.document, budget=ToolDispatchBudget(seconds=60))
@@ -679,7 +713,7 @@ class OfflinePlans(ControllerFixture):
         import time
         with patch("angelo_agent.controller.CodexProvider", provider):
             codex.send("Look.", self.observation())
-            deadline = time.monotonic() + 5
+            deadline = time.monotonic() + CAP_S
             while (codex.busy or (codex._worker and codex._worker.is_alive())) and time.monotonic() < deadline:
                 codex.pump_events()
                 time.sleep(.002)

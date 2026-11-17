@@ -7,6 +7,7 @@ owned by ``trusted_scripts`` (per chat) and ``always_allow`` (per person).
 """
 from bpy.props import StringProperty
 from bpy.types import Menu, Operator
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from .chat_settings import APPROVALS, clean_options
 from .display_text import Text, shown
 from .ui_text import iface_, n_, rpt_
@@ -20,6 +21,10 @@ def get_controller():
 class ANGELO_OT_trusted_scripts(Operator):
     bl_idname = "angelo.trusted_scripts"
     bl_label = "Trust Scripts for This Chat"
+
+    def consent_target(self, context):
+        """Nothing beyond the chat, which ``dialog_target`` binds already."""
+        return None
 
     def invoke(self, context, event):
         self._consent_owner = None
@@ -68,6 +73,10 @@ class ANGELO_OT_set_approval(Operator):
     def description(cls, context, properties):
         return APPROVALS.get(properties.mode, ("", ""))[1]
 
+    def widens(self, context):
+        """Only Auto widens; Ask before changes and Read only narrow, so anything may choose them (grant_guard)."""
+        return self.mode not in {"ASK", "READ_ONLY"}
+
     def execute(self, context):
         from . import managed_policy
         if self.mode not in APPROVALS:  # Only the three modes; never a typo read as some other mode.
@@ -96,9 +105,31 @@ class ANGELO_MT_approval(Menu):
             self.layout.operator("angelo.set_approval", text=iface_(name), translate=False, icon='CHECKMARK' if mode == current else 'NONE').mode = mode
         self.layout.separator()
         controller = get_controller()
+        self.layout.operator_context = 'INVOKE_DEFAULT'   # Its dialog first: the confirm runs it (a menu would exec).
         self.layout.operator("angelo.trusted_scripts", text="Disable trusted scripts" if controller.trusted_scripts
                              else "Trust scripts for this chat…", icon='CHECKMARK' if controller.trusted_scripts else 'NONE')
         self.layout.label(text="Trusted scripts run unrestricted Blender Python.")
+
+
+class ANGELO_OT_approval_policy(Operator):
+    """The Approval Policy menu, from the chat bar's + menu (Apps and settings: chat_destinations), where every
+    feature is reached; nothing else in Angelo's UI opened it, so Trust scripts for this chat could not be reached.
+    Opening a menu grants nothing (grant_operators.rst): each of its items is a guarded operator that takes only the
+    person's own press, and this runs in the ticket of the press or key that chose the row (chat_add_nav.dispatch)."""
+    bl_idname = "angelo.approval_policy"
+    bl_label = "Approval Policy"
+    bl_description = "Choose when the agent asks before changing your scene, and whether this chat's scripts are trusted"
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        import bpy
+        from .script_confinement import ScriptConfined
+        try:
+            bpy.ops.wm.call_menu(name="ANGELO_MT_approval")
+        except (ScriptConfined, RuntimeError) as error:   # An agent script's call: C opens no menu under the pointer.
+            self.report({'ERROR'}, str(error))   # Said as an operator's refusal, never a traceback.
+            return {'CANCELLED'}
+        return {'FINISHED'}
 
 
 # A change to the person's choice that did not come from the person (a script, an add-on, a keymap entry).
@@ -107,10 +138,10 @@ NOT_YOURS = n_("Always allow scripts was not changed: only you can change it, in
 
 
 def agent_script_running():
-    """Whether an agent script is executing in any chat now (its own code must never change the choice)."""
-    from . import ui
-    return any(call.executing and call.name == "angelo_execute_python"
-               for controller in list(ui._controllers.values()) for call in list(controller.pending.values()))
+    """Whether an agent script is executing in any chat now, whichever tool runs it (an app's script file too: Copy
+    setup break-it review M1), so its own code never changes the choice (``grant_guard.script_running``)."""
+    from . import grant_guard
+    return grant_guard.script_running()
 
 
 def always_allow_get(prefs):
@@ -120,24 +151,21 @@ def always_allow_get(prefs):
 
 
 def always_allow_set(prefs, value):
-    """The Preferences toggle: the person's change, made in the Preferences editor while no agent script runs.
+    """The Preferences toggle: turned on only by the person's real press on its own checkbox (its ticket in C,
+    grant_guard.person_set) while no agent script runs; turned off by anything but a running script.
 
-    Any other assignment (a script, an add-on, a keymap entry) changes nothing
-    and the chat says so. Defence in depth inside one process, not a sandbox.
+    Any other assignment (a script, an add-on, a keymap entry) changes nothing and the chat says so.
     """
-    import bpy
     from . import always_allow, ui
     from .ui_text import notice
     if bool(value) == always_allow.enabled():
         return
-    space = getattr(bpy.context, "space_data", None)
-    if getattr(space, "type", "") == 'PREFERENCES' and not agent_script_running():
-        try:
-            always_allow.set_enabled(value)
+    from . import grant_authority, grant_guard
+    if not agent_script_running() and (not value or grant_guard.person_set("always_allow_scripts")):
+        try:   # Turning it off, or the person's real press on its checkbox (its C ticket): held in C. Its worker
+            grant_authority.automatic(always_allow.set_enabled, value)   # chats learn it there (always_allow).
         except OSError as error:   # Turning it on is lost (stays off); turning it off holds for this session.
             print("Angelo: Always allow scripts could not be saved:", error)
-        from . import worker_consent_lead
-        worker_consent_lead.changed()
         return
     controller = ui._controller
     if controller is not None:
@@ -190,3 +218,6 @@ def script_file_allow_from_card(context, controller, call_id):
     except OSError as error:
         print("Angelo: the script file approval could not be saved:", error)
         return False
+
+
+grant_guard.guard(ANGELO_OT_trusted_scripts, ANGELO_OT_set_approval)   # Only the person's click grants (grant_guard).

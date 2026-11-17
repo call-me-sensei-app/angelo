@@ -11,6 +11,7 @@ import bpy
 from bpy.props import CollectionProperty, EnumProperty, StringProperty
 from bpy.types import FileHandler, Operator, OperatorFileListElement
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import studio as core   # Rebound state (_jobs) is read through the module.
 from .provider_registry import is_coding
 from .studio_generation import GenerationError, enhance_gemini, public_url
@@ -163,6 +164,10 @@ class ANGELO_OT_studio_generate(Operator):
     bl_label = "Generate with API Credits"
     area_pointer: StringProperty(options={'SKIP_SAVE'})
 
+    def consent_target(self, context):
+        """Nothing beyond the request snapshot it takes at invoke, which is what it starts."""
+        return None
+
     def invoke(self, context, event):
         from . import ui
         try:
@@ -267,6 +272,9 @@ def start_job(kind, prompt, model, folder, options, references, inputs=None, pri
     return asset
 
 
+start_job = grant_guard.entry(start_job)
+
+
 def enhancement_binding():
     from . import ui
     config = library().enhancer
@@ -292,6 +300,16 @@ class ANGELO_OT_studio_enhance(Operator):
     bl_idname = "angelo.studio_enhance"
     bl_label = "Enhance Media Studio Prompt"
     area_pointer: StringProperty(options={'SKIP_SAVE'})
+
+    def consent_target(self, context):
+        """The prompt, kind and model of its Media Studio area, and the connection that enhances it."""
+        try:
+            binding = enhancement_binding()[0].get("id")
+        except ValueError:   # No enhancer set (enhancement_binding's refusal): absent at invoke and confirm alike.
+            binding = None
+        from .studio_input import _views   # Read only: ``state_for`` clears the area's field focus.
+        state = _views.get(int(self.area_pointer or 0))
+        return [state.get("prompt"), state.get("kind"), selected(state), binding] if state is not None else None
 
     def invoke(self, context, event):
         try:
@@ -350,3 +368,6 @@ class ANGELO_OT_studio_enhance(Operator):
         except ValueError as error:
             self.report({'ERROR'}, error_text(error))
             return {'CANCELLED'}
+
+
+grant_guard.guard(ANGELO_OT_studio_generate, ANGELO_OT_studio_enhance)   # Only the person's click grants (grant_guard).

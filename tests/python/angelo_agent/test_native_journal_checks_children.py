@@ -9,9 +9,9 @@ the changes-only owed saves, so a whitelist that dropped the switches left exact
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import platform_env
 
 import ast
-import os
 import sys
 import tempfile
 import unittest
@@ -29,7 +29,7 @@ SUITE = dict(PRODUCT, ANGELO_JOURNAL_TOUCHES="1", ANGELO_JOURNAL_VERIFY="1")
 
 def enabled_in_blender(environ, name):
     """``journal_checks.enabled(name)`` as a Blender process with ``environ`` evaluates it."""
-    with mock.patch.dict(os.environ, environ, clear=True), \
+    with platform_env.cleared(environ), \
             mock.patch.object(journal_checks.sys, "builtin_module_names", sys.builtin_module_names + ("_bpy_path",)):
         return journal_checks.enabled(name)
 

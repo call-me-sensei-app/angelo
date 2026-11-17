@@ -19,7 +19,7 @@ import os
 import bpy
 from bpy.app.handlers import persistent
 
-from . import pump_guard
+from . import pump_guard, edit_tool_hold
 
 STUDIO_IMAGE = "angelo_studio_asset"   # Set by studio_assets_convert on each picture of an image asset: not yet packed.
 STUDIO_PACKED = "angelo_studio_packed"   # The item id, once packed here: only finds an unchanged copy to share.
@@ -117,6 +117,7 @@ def _free_later(ids):
         bpy.app.timers.register(_free_unused, first_interval=0.5)
 
 
+@edit_tool_hold.guarded   # Touches Blender data: waits for the person's operation.
 def _free_unused():
     unused = []
     for item in _to_free:

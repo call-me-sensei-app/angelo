@@ -23,7 +23,7 @@ Every setting offered is one the chosen model takes in the current mode (``fal_m
 model doesn't take (after switching models) falls back to the model's default rather than being sent.
 """
 
-from . import fal_models, flow_prices
+from . import fal_models, flow_prices, owned_paths
 from .ui_text import iface_, n_
 
 KEYS = ("video_first", "video_last", "video_reference_video", "video_duration", "video_resolution", "video_aspect",
@@ -323,7 +323,7 @@ def set_reference_video(state, path, name=None):
     from . import studio
     from .fal_video import load_video, mp4_seconds
     data, _mime = load_video({"path": str(path)})
-    store = studio._references.directory
+    store = owned_paths.require_writable(studio._references.directory)   # Whatever object named the store (C).
     store.mkdir(parents=True, exist_ok=True, mode=0o700)
     import uuid
     copy = store / (str(uuid.uuid4()) + ".mp4")

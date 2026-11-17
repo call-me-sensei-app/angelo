@@ -25,6 +25,7 @@
 #include "bpy_capi_utils.hh"
 #include "bpy_rna.hh"
 
+#include "bpy_angelo_guard_confine.hh"
 #include "bpy_msgbus.hh" /* own include */
 
 namespace blender {
@@ -248,7 +249,7 @@ static PyObject *bpy_msgbus_subscribe_rna(PyObject * /*self*/, PyObject *args, P
       "O"  /* `owner` */
       "O!" /* `args` */
       "O"  /* `notify` */
-      "|$" /* Optional keyword only arguments. */
+      "|$" /* Optional, keyword only arguments. */
       "O!" /* `options` */
       ":subscribe_rna",
       _keywords,
@@ -306,7 +307,13 @@ static PyObject *bpy_msgbus_subscribe_rna(PyObject * /*self*/, PyObject *args, P
 
   {
     PyObject *user_data = PyTuple_New(2);
-    PyTuple_SET_ITEMS(user_data, Py_NewRef(callback_args), Py_NewRef(callback_notify));
+    /* A confined agent script's subscriber runs confined (doc/angelo/script_confinement.rst). */
+    PyObject *notify = BPY_angelo_guard_defer_if_confined(callback_notify);
+    if (notify == nullptr) {
+      Py_DECREF(user_data);
+      return nullptr;
+    }
+    PyTuple_SET_ITEMS(user_data, Py_NewRef(callback_args), notify);
     msg_val_params.user_data = user_data;
   }
 

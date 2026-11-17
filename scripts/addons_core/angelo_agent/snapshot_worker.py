@@ -24,7 +24,7 @@ import shutil
 import threading
 from pathlib import Path
 
-from . import background_pauses, thread_start
+from . import background_pauses, owned_paths, thread_start
 from .checkpoints import CheckpointStore
 from .checkpoint_policy import clean_policy
 from .snapshot_git import committed_project_times
@@ -164,6 +164,8 @@ class SnapshotWorker:
 
     def _git_signal(self, paths):
         git = self.git or shutil.which("git")
+        if git:
+            owned_paths.require_runnable(git)   # A program a script named in the worker's state is never started.
         return committed_project_times(paths, git=git, cache=self._git_cache) if git else {}
 
     def _maintain(self, policy, protected_refs, watermark, notify, paused):

@@ -18,6 +18,7 @@ Host reproductions; test_blender_review_light_rig.py holds the native ones.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import copy
 import json
@@ -128,7 +129,7 @@ class Held(ControllerCase):
         call, answers = self.submit(executor)
         self.assertTrue(call.approval and not answers)
         resolved = copy.deepcopy(call.program_arguments)
-        self.c.approve_tool(call, executor, self.c.document)
+        angelo_guard_twin.harness(self.c.approve_tool, call, executor, self.c.document)
         executor.frame = 2  # The approved binding no longer matches: the controller rebinds once (_rebind_once).
         self.pump(executor)
         self.assertEqual(executor.resolutions, 1)

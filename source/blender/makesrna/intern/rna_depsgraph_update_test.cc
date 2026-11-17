@@ -14,7 +14,7 @@
 #include "BKE_node.hh"
 #include "BKE_object.hh"
 
-#include "BLI_string.h"
+#include "BLI_string.hh"
 
 #include "DNA_ID.h"
 #include "DNA_material_types.h"

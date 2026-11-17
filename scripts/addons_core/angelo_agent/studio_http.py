@@ -14,6 +14,7 @@ import http.client
 import ipaddress
 import json
 import socket
+import threading
 import uuid
 from urllib.parse import urlsplit
 
@@ -40,6 +41,13 @@ class GenerationError(Templated, RuntimeError):
 
 class GenerationCancelled(GenerationError):
     pass
+
+
+class StopSignal(threading.Event):
+    """A job's stop event. ``remote``: the person asked to stop, so a provider that can cancel (fal) is asked to;
+    ``closing``: Angelo is closing or the add-on unloading, so a resumable job only pauses (``fal_video``)."""
+    remote = False
+    closing = False
 
 
 class GatewayRejection(GenerationError):

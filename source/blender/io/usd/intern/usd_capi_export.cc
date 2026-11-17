@@ -6,6 +6,7 @@
 
 #include "IO_subdiv_disabler.hh"
 #include "usd.hh"
+#include "usd_confined_resolver.hh"
 #include "usd_colorspace_utils.hh"
 #include "usd_hierarchy_iterator.hh"
 #include "usd_hook.hh"
@@ -46,13 +47,13 @@
 #include "BKE_report.hh"
 #include "BKE_scene.hh"
 
-#include "BLI_fileops.h"
+#include "BLI_fileops.hh"
 #include "BLI_math_matrix.hh"
 #include "BLI_math_matrix_types.hh"
-#include "BLI_math_rotation.h"
-#include "BLI_math_vector.h"
+#include "BLI_math_rotation_c.hh"
+#include "BLI_math_vector_c.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 #include "BLI_timeit.hh"
 
 #include "ED_util.hh"
@@ -539,6 +540,7 @@ pxr::UsdStageRefPtr export_to_stage(const USDExportParams &params,
   /* Set up the stage for animated data. */
   if (params.export_animation) {
     usd_stage->SetTimeCodesPerSecond(scene->frames_per_second());
+    usd_stage->SetFramesPerSecond(scene->frames_per_second());
     usd_stage->SetStartTimeCode(scene->r.sfra);
     usd_stage->SetEndTimeCode(scene->r.efra);
   }
@@ -814,6 +816,10 @@ bool USD_export(const bContext *C,
                 bool as_background_job,
                 ReportList *reports)
 {
+  if (const char *refused = io::usd::confined_resolver_refusal()) {
+    BKE_report(reports, RPT_ERROR, refused);
+    return false;
+  }
   if (!io::usd::export_params_valid(*params)) {
     return false;
   }

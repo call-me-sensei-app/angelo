@@ -29,6 +29,16 @@ Two layers, so nothing a person sees in Godot is ever lost or half-saved:
   or the .glb written back), and the plugin re-imports it. The instances are
   rebuilt from the real asset, which ends their preview.
 
+  Angelo says ``saved`` only after the file is in place (written to a temporary
+  file, replaced, then announced). Godot's ``reimport_files()`` refuses, with
+  only an error in its log, while Godot is importing already: its own scan of
+  the replaced file may have begun on the bytes from before the save, and the
+  editor then showed the old asset until Reload Saved Scene (Godot showcase,
+  2026-11-15). So the plugin owes a save's re-import until its own
+  ``reimport_files()`` has run for it, tries again four times a second, and
+  after 30 seconds says to use Reload Saved Scene. Godot's own import of the
+  file never settles it.
+
 The link is at the **asset** level, not the node level: a node chosen in Godot
 resolves to the scene file it was instanced from, every instance of that file
 updates, and a node's placement in the level stays Godot's.
@@ -96,7 +106,10 @@ project, or Angelo's own working folder:
   and Not now; it only sets the path on Use Angelo). Angelo works as Godot's
   Blender: Godot runs it in the background with its import server
   (``--background --python-expr``), and Angelo's add-on starts nothing in a
-  background session. Saving writes Angelo's .blend format: a Blender older than
+  background session: saved preferences list the add-on, and Blender would
+  enable it from them in every process, so the two places that do skip it in
+  a background one (``angelo_background_addons``; before 2.0.0 the import
+  started the whole add-on, which wrote the open Angelo's chat). Saving writes Angelo's .blend format: a Blender older than
   Angelo's (5.2) may not read it, which is why the plugin offers Angelo as Godot's
   Blender.
 * **.glb**: Angelo edits a working .blend at ``<project>/.angelo/<res path>.blend``
@@ -228,6 +241,19 @@ Validation
   restore the scene, and a lost Angelo restores it with one notice. Any script
   error in Godot's log fails the run. HOME, Angelo's state and the record are
   private to the run.
+* Saving while Godot imports, end to end:
+  ``tests/python/angelo_agent/test_blender_godot_link_busy.py --binary <Angelo>
+  --out <folder>`` (a native suite). A test-only Godot plugin
+  (``godot_link_e2e/busy_driver``) keeps Godot importing on demand with a slow
+  test importer and asks Angelo to save (``godot_link_e2e/angelo_side_busy.py``),
+  each save leaving a marker object in the asset. Four cases in one session: three
+  saves in a row, a save during a slow import, a save of one asset during an import
+  followed by a switch of the link to another asset and a save there, and a save
+  during an import longer than the 30-second give-up followed by another save. Each
+  ends with Godot holding the newest save of every asset and nothing owed; the
+  person is told at most once; Angelo hears each asset's newest save re-imported.
+  The run records whether each save reached Godot while it was importing, and
+  Godot's log counts the refused re-imports.
 * GUI: ``tests/python/angelo_agent/test_blender_godot_link_gui.py`` runs in a
   windowed Angelo in Director Mode: the + menu's Godot group, the request card's
   buttons for a never-saved, an unsaved and a clean file, Open through the card,

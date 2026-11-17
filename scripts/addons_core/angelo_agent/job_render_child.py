@@ -38,6 +38,7 @@ import time
 from pathlib import Path
 
 from . import job_render_route
+from . import owned_paths  # noqa: E402  (what Angelo made: its cleanups remove only that)
 
 CHILD = Path(__file__).with_name("render_child.py")
 MARK = "ANGELO-RENDER "    # The child's own lines: JSON (render_child.MARK).
@@ -101,6 +102,7 @@ class Child:
         self.fraction, self.peak_mb, self.device, self.done = 0.0, None, None, None
         self.why = self.used = None   # Why this side ended it ("cancel", "time_budget", "memory"); the memory then.
         self.kill_at, self.killed = None, False
+        owned_paths.runnable_argv(arguments)   # Never a program from state (C).
         self.process = (popen or child_process.popen)(arguments, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                                       stdin=subprocess.DEVNULL, text=True, env=dict(os.environ))
         _running.add(self)
@@ -265,7 +267,7 @@ class Child:
             return False
         _running.discard(self)
         if self.folder is not None:
-            shutil.rmtree(self.folder, ignore_errors=True)
+            owned_paths.remove_tree(self.folder)   # Only the copy Angelo made (owned_paths).
             self.folder = None
         return True
 
@@ -312,7 +314,8 @@ def sweep(root=None, now=None):
     for entry in entries:
         try:
             if entry.is_dir(follow_symlinks=False) and now - entry.stat(follow_symlinks=False).st_mtime > STALE_SECONDS:
-                shutil.rmtree(entry.path, ignore_errors=True)
+                if owned_paths.may_write(entry.path):   # A cleanup: only what C says Angelo may remove.
+                    shutil.rmtree(entry.path, ignore_errors=True)
         except OSError:
             pass
 
@@ -321,6 +324,7 @@ def sweep(root=None, now=None):
 
 def write_snapshot(scene, window, folder):
     """The job's scene and everything it reaches, as it is now (its job settings applied), into ``folder``."""
+    owned_paths.require_writable(folder)
     import bpy
     path = Path(folder) / "render.blend"
     with bpy.context.temp_override(window=window):
@@ -390,7 +394,8 @@ def begin(runner, binary=None, popen=None):
             runner.child = Child(arguments, runner.identity, _deadline(record), folder=folder, popen=popen)
         except Exception as error:   # noqa: BLE001 - any failure renders here instead, as before.
             if folder is not None:
-                shutil.rmtree(folder, ignore_errors=True)
+                if owned_paths.may_write(folder):   # A cleanup: only what C says Angelo may remove.
+                    shutil.rmtree(folder, ignore_errors=True)
             why = "its copy could not be written or its process started (%s)" % type(error).__name__
     if record is not None:
         found = job_render_route.projected_mb(getattr(runner, "facts", None) or {}, getattr(runner, "scene_uid", None))

@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import tempfile
@@ -53,7 +54,7 @@ class FakeProvider:
 
     def connect(self):
         if self.wait:
-            self.wait.wait(2)
+            self.wait.wait(CAP_S)
         self.native_id = self.controller.state.get("native_id") or str(uuid.uuid4())
         self.controller.emit("native_session", {"id": self.native_id})
         return self.native_id
@@ -64,7 +65,7 @@ class FakeProvider:
         for name, args in self.child_tools:
             ready = threading.Event()
             self.controller.request_tool(name, name, args, lambda result: ready.set())
-            if not ready.wait(2):
+            if not ready.wait(CAP_S):
                 raise RuntimeError("Test tool callback timed out")
         self.controller.emit("message_complete", {"item": "reply", "text": "Advisory answer from " + self.controller.state["provider"]})
         return "completed"

@@ -360,7 +360,9 @@ class AttachTests(unittest.TestCase):
         before = after[after.index("class Before:"):after.index("\ndef attach(")]
         self.assertIn("script_renames.before()", before)
         self.assertIn("names=self.names", before)
-        self.assertIn("redirect_stderr(output), observe:\n                        exec(code, namespace)", source)
+        # Observing wraps only the script's run: its confined exec (script_confinement.run_confined), as agent code.
+        self.assertIn("redirect_stderr(output), observe, agent_script():\n"
+                      "                        confinement, read = run_confined(", source)
         observing = after[after.index("class Observing:"):after.index("\ndef attach(")]
         self.assertIn("script_rename_watch.watching(bpy, getattr(prior, \"names\", None))", observing)
 

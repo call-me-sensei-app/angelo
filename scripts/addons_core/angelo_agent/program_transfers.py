@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Per-family live transfers the commit uses: settings path by path, modifier and constraint
 stacks by value, and appended NLA tracks, each journaled for rollback."""
+import math
+
 from .program_jobs import ProgramError
 from .program_dependencies import _RNA_SKIP
 from .action_properties import data_family, holder_and_name, plain
@@ -44,13 +46,42 @@ def _live_id(value, mapping):
     return mapping.get(value.as_pointer(), value) if value is not None and hasattr(value, "as_pointer") else value
 
 
+def held_exactly(current, expected):
+    """Whether ``current`` already holds ``expected`` exactly, so that writing it is a no-op.
+
+    ``==`` is not enough: it calls -0.0 equal to 0.0, and Blender writes -0.0 wherever it computes a value (the
+    inverse of an identity matrix is full of them), so a write skipped on ``==`` kept the other zero. Floats compare
+    with the sign of zero (NaN holds NaN); arrays, vectors and matrices compare element by element; anything else
+    (pointers, enums, flag sets, strings) compares with ``==``.
+    """
+    if isinstance(current, float) or isinstance(expected, float):
+        if not isinstance(current, (int, float)) or not isinstance(expected, (int, float)):
+            return False
+        if math.isnan(current) or math.isnan(expected):
+            return math.isnan(current) and math.isnan(expected)
+        return current == expected and math.copysign(1.0, current) == math.copysign(1.0, expected)
+    if _is_sequence(current) and _is_sequence(expected):
+        return len(current) == len(expected) and all(held_exactly(a, b) for a, b in zip(current, expected))
+    return current == expected
+
+
+def _is_sequence(value):
+    """An array value: a tuple, list, RNA array, vector, colour or matrix; never a string, a flag set or a struct."""
+    return (not isinstance(value, (str, bytes, set, frozenset, dict)) and not hasattr(value, "bl_rna")
+            and hasattr(value, "__len__") and hasattr(value, "__getitem__"))
+
+
 def _set_settings(value, settings, mapping):
     for name, item in settings.items():
         if isinstance(item, dict) and "__struct__" in item:
             _set_settings(getattr(value, name), item["__struct__"], mapping)
             continue
         expected = _live_id(item, mapping)
-        setattr(value, name, expected)
+        if not held_exactly(getattr(value, name), expected):
+            # Only what differs: writing a value it already holds can clamp it (a fresh Build modifier's seed 0, a
+            # cloth's goal spring), so a restore into a fresh modifier would change what it should keep. "Holds" is
+            # exact (held_exactly): a staged -0.0 over a 0.0 is written.
+            setattr(value, name, expected)
         actual = getattr(value, name)
         actual = tuple(actual) if isinstance(expected, tuple) else actual
         if actual != expected:
@@ -118,33 +149,25 @@ def transfer_scene_settings(scene, stage, mapping, journal, isolated, replaced_w
         kept_worlds.append(pair[1])
 
 
-def _id_property_values(block):
-    """Plain copies of a modifier's ID properties (Geometry Nodes inputs), for rollback."""
-    values = {}
-    try:
-        keys = list(block.keys())
-    except TypeError:
-        return values  # Only Geometry Nodes modifiers carry ID properties.
-    for key in keys:
-        value = block[key]
-        values[key] = value.to_dict() if hasattr(value, "to_dict") else value.to_list() if hasattr(value, "to_list") else value
-    return values
-
-
 def _sync_stack(original, staged, journal):
     """Remove the live modifiers the stage removed or applied, then order the stack like the stage.
 
-    Each removed modifier's type, index, RNA settings and ID properties are
-    journaled first; ``_restore_stacks`` rebuilds them on rollback.
+    Each removed modifier's whole state (``modifier_state.capture``: its settings and every store it owns, Geometry
+    Nodes inputs included) is journaled first; ``_restore_stacks`` rebuilds it on rollback. A modifier holding a store
+    no rollback could put back is refused here, before anything is removed, never dropped.
     """
+    from .modifier_state import Unrestorable, capture
     names = [modifier.name for modifier in staged.modifiers]
     before = [modifier.name for modifier in original.modifiers]
     for index in reversed(range(len(original.modifiers))):
         modifier = original.modifiers[index]
         if modifier.name not in names:
-            journal.append(("removed", original, index, {"name": modifier.name, "type": modifier.type,
-                                                         "settings": _settings(modifier),
-                                                         "id_properties": _id_property_values(modifier)}))
+            try:
+                state = capture(modifier)
+            except Unrestorable as error:
+                raise ProgramError("Removing the modifier %r could not be undone: it holds %s (%s)"
+                                   % (modifier.name, error.why, error.where), code='UNSUPPORTED') from None
+            journal.append(("removed", original, index, state))
             original.modifiers.remove(modifier)
     if [modifier.name for modifier in original.modifiers] != names:
         journal.append(("order", original, before))
@@ -184,10 +207,9 @@ def _restore_stacks(journal):
         restore_constraints(obj, records)
     removed = [entry for entry in journal if entry[0] == "removed"]
     for _kind, obj, index, record in sorted(removed, key=lambda entry: entry[2]):
+        from .modifier_state import restore
         modifier = obj.modifiers.new(record["name"], record["type"])
-        _set_settings(modifier, record["settings"], {})
-        for key, value in record["id_properties"].items():
-            modifier[key] = value
+        restore(modifier, record, {})   # Every setting and store it had, proven by capturing it again.
         obj.modifiers.move(len(obj.modifiers) - 1, min(index, len(obj.modifiers) - 1))
     for _kind, obj, before in [entry for entry in journal if entry[0] == "order"]:
         for index, name in enumerate(name for name in before if obj.modifiers.get(name) is not None):

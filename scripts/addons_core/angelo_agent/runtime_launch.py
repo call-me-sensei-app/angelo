@@ -14,11 +14,12 @@ import tomllib
 import uuid
 from pathlib import Path
 
-from . import product_env, runtime_environment, shared_replace, team_runtime
+from . import owned_paths, product_env, runtime_environment, shared_replace, team_runtime
+from .chat_settings import default_effort
 from .cli_runtime import with_runtime_path
 from .protocol import RpcError
-from .provider_registry import CUSTOM_PROVIDER_MODES, TEAM_MODES, spec_for
-from .storage import native_profile_directory, valid_profile_directory
+from .provider_registry import TEAM_MODES, custom_provider, is_endpoint, runtime_wire, spec_for
+from .storage import native_profile_directory, private_profile, valid_profile_directory
 
 
 _PRODUCT = (product_env.PREFIX,) + product_env.LEGACY_PREFIXES
@@ -30,7 +31,7 @@ def child_environment(mode, api_key=""):
     # or prompt-cache TTL (runtime_environment.py lists them with sources).
     env = runtime_environment.inherited(os.environ)
     # The app sets these per child; an inherited copy under any spelling is dropped.
-    for suffix in ("XAI_API_KEY", "MINIMAX_API_KEY", "KIMI_API_KEY", "TEAM_GRANT_KEY"):
+    for suffix in ("XAI_API_KEY", "MINIMAX_API_KEY", "KIMI_API_KEY", "GEMINI_API_KEY", "TEAM_GRANT_KEY", "ENDPOINT_KEY"):
         product_env.clear(suffix, env)
     # Angelo's own secrets (``*_SECRET``: the cache-key secrets) reach no child, whose shell tools could read them.
     for name in [name for name in env if name.upper().startswith(_PRODUCT) and name.upper().endswith("SECRET")]:
@@ -40,32 +41,42 @@ def child_environment(mode, api_key=""):
         env["ANTHROPIC_API_KEY"] = api_key
     elif mode in TEAM_MODES:
         team_runtime.apply_environment(env, mode, api_key)  # Its gateway route: the one endpoint a child receives.
-    elif mode in CUSTOM_PROVIDER_MODES and api_key:
+    elif is_endpoint(mode):
+        team_runtime.apply_endpoint_environment(env, mode, api_key)  # Its organization's server, and only its host.
+    elif custom_provider(mode) and api_key:
         env[spec_for(mode)["env_key"]] = api_key
     return env
 
 
+def _claude(mode):
+    """Whether ``mode`` runs on Claude Code (its registry runtime: a custom endpoint's mode has no claude_ prefix)."""
+    return spec_for(mode)["runtime"] == "claude"
+
+
 def profile_environment(env, mode, state_dir, reuse_login=True, connection_id=None, native_profile=None):
+    """``env`` with the runtime's own profile folder for this connection, which must lie in Angelo's private folders
+    (``storage.private_profile``): it is checked before it is made, whatever ``state_dir`` or ``native_profile``
+    says (both come from Python state)."""
     if connection_id:
         connection_id = str(uuid.UUID(connection_id))
     if native_profile:
-        profile = valid_profile_directory(native_profile, connection_id, mode)
+        profile = private_profile(valid_profile_directory(native_profile, connection_id, mode))
         home = Path(profile)
-        home.mkdir(parents=True, exist_ok=True, mode=0o700)
-        env["CLAUDE_CONFIG_DIR" if mode.startswith("claude_") else "CODEX_HOME"] = str(home)
-        if not mode.startswith("claude_"):
+        owned_paths.require_writable(home).mkdir(parents=True, exist_ok=True, mode=0o700)
+        env["CLAUDE_CONFIG_DIR" if _claude(mode) else "CODEX_HOME"] = str(home)
+        if not _claude(mode):
             env.pop("CODEX_SQLITE_HOME", None)  # As below: state stays in the isolated profile.
         return env
-    if mode in CUSTOM_PROVIDER_MODES or (mode.startswith("codex_") and (mode == "codex_api" or not reuse_login)):
-        home = native_profile_directory(state_dir, "codex-profile", connection_id or mode)
-        home.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if custom_provider(mode) or (mode.startswith("codex_") and (mode == "codex_api" or not reuse_login)):
+        home = private_profile(native_profile_directory(state_dir, "codex-profile", connection_id or mode))
+        owned_paths.require_writable(home).mkdir(parents=True, exist_ok=True, mode=0o700)
         env["CODEX_HOME"] = str(home)
         # Its SQLite state defaults to CODEX_HOME; an inherited path would mix
         # the isolated profile's threads into the person's own store.
         env.pop("CODEX_SQLITE_HOME", None)
-    elif mode.startswith("claude_") and connection_id and not reuse_login:
-        home = native_profile_directory(state_dir, "claude-profile", connection_id)
-        home.mkdir(parents=True, exist_ok=True, mode=0o700)
+    elif _claude(mode) and connection_id and not reuse_login:
+        home = private_profile(native_profile_directory(state_dir, "claude-profile", connection_id))
+        owned_paths.require_writable(home).mkdir(parents=True, exist_ok=True, mode=0o700)
         env["CLAUDE_CONFIG_DIR"] = str(home)
     return env
 
@@ -130,7 +141,8 @@ def codex_command(executable, mode, state_dir, reuse_login=True, connection_id=N
         "features.browser_use": "false", "features.computer_use": "false", "features.in_app_browser": "false",
         "features.image_generation": "false", "features.skill_search": "false",
         "features.skill_mcp_dependency_install": "false", "features.skip_host_skill_discovery": "true",
-        "model_reasoning_effort": '"low"',
+        # What a request without an effort of its own runs at; every turn sends its chat's (codex_turn_options).
+        "model_reasoning_effort": json.dumps(default_effort()),
         # Developer messages Codex otherwise adds to every request of an Angelo
         # thread: the bundled skills list, shell-escalation (permissions) and
         # apps instructions, and the collaboration-mode note (about 6.8 KB in
@@ -157,17 +169,34 @@ def codex_command(executable, mode, state_dir, reuse_login=True, connection_id=N
         overrides[FORWARD_IMAGES_KEY] = json.dumps(list(forwarded))
     if mode == "codex_api":
         overrides["cli_auth_credentials_store"] = '"keyring"'
-    if mode in CUSTOM_PROVIDER_MODES:
+    if custom_provider(mode):
         spec = spec_for(mode)
+        wire = runtime_wire(mode)
+        if wire:   # A wire only Angelo's agent runtime has (Gemini): never the person's own Codex.
+            from . import agent_runtime
+            if agent_runtime.kind(executable) == "own" or not agent_runtime.supports_wire(wire):
+                raise RpcError("%s runs only on Angelo's agent runtime, which this build does not include. "
+                               "Install the full Angelo app." % spec["name"])
         # No ChatGPT login, credential copying, protocol conversion or proxy. Keys (a team's grant key, its
         # base URL the gateway route) live only in the child's environment. The isolated profile must never
         # inherit the user's default provider.
         overrides.update({"model_provider": json.dumps(mode), "model": json.dumps(spec["models"][0]["id"]),
                           "web_search": '"live"' if spec.get("web_search") else '"disabled"',
-                          "model_reasoning_effort": json.dumps(spec["models"][0]["default_effort"])})
+                          "model_reasoning_effort": json.dumps(default_effort(spec["models"][0]["efforts"],
+                                                                              spec["models"][0]["id"]))})
         if spec["models"][0].get("context_window"):
             overrides["model_context_window"] = str(spec["models"][0]["context_window"])
         overrides.update(team_runtime.model_provider_entry(mode))
+        if is_endpoint(mode):   # Each mapped model gets the metadata of the model it is (endpoint_catalog).
+            # No process-wide effort: a mapped model's turns state theirs, an unmapped one's none (its server's
+            # own default, never a level the model may refuse; chat_settings.codex_turn_options).
+            overrides.pop("model_reasoning_effort", None)
+            from . import runtime_relay
+            from .endpoint_catalog import write
+            # A worker's launch is rebuilt by Angelo (runtime_plan), which writes the catalog for the child it runs.
+            catalog = None if runtime_relay.relayed() else write(executable, spec, home)
+            if catalog:
+                overrides["model_catalog_json"] = json.dumps(catalog)
     for name in configuration.get("mcp_servers", {}):
         if "." in name:
             raise RpcError("An MCP server name contains a dot; use an isolated Angelo Codex profile")

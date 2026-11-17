@@ -4,6 +4,7 @@
 the editor crashes on exit, is stopped by PID, and only the one writing under this run's folder."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import importlib.util
 import shutil
@@ -51,11 +52,11 @@ class CrashReporterTests(unittest.TestCase):
                                      str(folder / "Library/Crashes/CrashReport-UE-Skel-pid-1")])
         self.addCleanup(shutil.rmtree, scratch, True)
         try:
-            deadline = time.monotonic() + 5
+            deadline = time.monotonic() + CAP_S
             while stand_in.pid not in run.crash_reporters(folder) and time.monotonic() < deadline:
                 time.sleep(0.05)
             self.assertEqual(run.stop_crash_reporters(folder, wait=1.0), [stand_in.pid])
-            self.assertEqual(stand_in.wait(timeout=5), -15)
+            self.assertEqual(stand_in.wait(timeout=CAP_S), -15)
         finally:
             if stand_in.poll() is None:
                 stand_in.kill()

@@ -79,6 +79,7 @@ VALIDATORS = {
     ("action_catalog", "validate_operation"): ARGUMENTS, ("worker_merge", "validate"): ARGUMENTS,
     ("action_recipes", "validate_recipe"): ARGUMENTS, ("action_recipes", "validate_parameters"): ARGUMENTS,
     ("studio_generation", "validate_generation"): ARGUMENTS, ("fal_video", "validate_any"): ARGUMENTS,
+    ("download_spec", "validate_download"): ARGUMENTS,   # tool_specs.validate_call runs it at admission.
     ("program_spec", "validate_program"): HOST_DATA, ("validation_spec", "validate_check"): HOST_DATA,
     ("validation_spec", "validate_checks"): HOST_DATA, ("view_spec", "validate_view"): HOST_DATA,
     ("studio_generation", "validated_image"): HOST_DATA,

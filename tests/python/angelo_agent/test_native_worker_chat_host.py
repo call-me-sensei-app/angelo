@@ -13,6 +13,7 @@ through the worker's one runtime transport. ``ANGELO_WORKER_CHAT_HOST=0`` leaves
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import contextlib
 import queue
@@ -106,10 +107,10 @@ class FakeProvider:
         for name, arguments in self.tools:
             done = threading.Event()
             self.controller.request_tool(name, name, arguments, lambda result: (self.results.append(result), done.set()))
-            if not done.wait(5):
+            if not done.wait(CAP_S):
                 raise RuntimeError("The tool never answered")
         if self.gate is not None:
-            self.gate.wait(5)
+            self.gate.wait(CAP_S)
         if self.controller.cancelled:
             return "interrupted"
         self.controller.emit("message_complete", {"item": "reply", "text": "Made a cube for " + text})
@@ -352,7 +353,7 @@ class ApprovalTests(Fixture):
         FakeProvider.tools = ((name, arguments or {"name": "Box", "size": 1.0, "location": [0, 0, 0]}),)
         FakeProvider.gate = threading.Event()
         self.ask("chat.send", text="a box", attachments=[])
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             self.chats.pump()
             waiting = [call for call in chat.pending.values() if call.approval]

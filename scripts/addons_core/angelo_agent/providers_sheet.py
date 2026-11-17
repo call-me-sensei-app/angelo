@@ -15,6 +15,7 @@ import time
 
 import bpy
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard)
 from . import card_kit as kit, ui_kit_field as field
 from .card_kit import BaseCard
 from . import ui_tokens as tk
@@ -58,8 +59,8 @@ class ConnectionSheet(BaseCard):
 
     # -- data ----------------------------------------------------------------------------------------------
     def _providers(self):
-        from . import ui
-        return [(item[0], item[1]) for item in ui._connection_provider_items[self.group]]
+        from .provider_registry import provider_choice_items
+        return [(item[0], item[1]) for item in provider_choice_items(self.group)]
 
     def _methods(self):
         from . import ui
@@ -262,11 +263,11 @@ class ConnectionSheet(BaseCard):
         before = set(ui.connections().records)
         self.wipe()
         try:
-            result = bpy.ops.angelo.new_connection('EXEC_DEFAULT', connection_id=self.connection_id, group=self.group,
-                                                   provider=self.provider, method=self.method,
-                                                   connection_name=self.name.text, api_key=secret,
-                                                   remember_key=self.remember, model=self.model.text.strip(),
-                                                   reuse_existing=self.reuse)
+            result = grant_guard.clicked(bpy.ops.angelo).new_connection('EXEC_DEFAULT', connection_id=self.connection_id,
+                                                          group=self.group, provider=self.provider, method=self.method,
+                                                          connection_name=self.name.text, api_key=secret,
+                                                          remember_key=self.remember, model=self.model.text.strip(),
+                                                          reuse_existing=self.reuse)
         except RuntimeError as error:
             result = {'CANCELLED'}
             self.status = ("error", iface_("The connection was not saved"), str(error).split("\n")[-1].strip())

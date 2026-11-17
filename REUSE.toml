@@ -160,3 +160,9 @@ path = "CODE_OF_CONDUCT.md"
 precedence = "closest"
 SPDX-FileCopyrightText = ["Contributor Covenant contributors <https://www.contributor-covenant.org>", "2026 Hyperbond Studio Pte. Ltd."]
 SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = "web_link/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Hyperbond Studio Pte. Ltd."
+SPDX-License-Identifier = "MIT"

@@ -11,8 +11,9 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Menu, Operator
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import chat_popovers, chat_view
-from .chat_settings import clean_options, selected_model
+from .chat_settings import carried_effort, clean_options, selected_model
 from .display_text import error_message
 from .ui_kit import paragraph
 from .ui_text import iface_, rpt_
@@ -75,7 +76,7 @@ class ANGELO_OT_model_picker(Operator):
         efforts = model["efforts"] if model and model["efforts"] else ["low", "medium", "high"]
         layout.label(text="Reasoning effort · independent of Fast mode")
         for effort in efforts:
-            layout.operator("angelo.set_effort", text=chat_popovers.effort_name(effort), translate=False, icon='CHECKMARK' if effort == clean_options(controller.state.get("options"))["effort"] else 'NONE').effort = effort
+            layout.operator("angelo.set_effort", text=chat_popovers.effort_name(effort), translate=False, icon='CHECKMARK' if effort == chat_popovers.effective_effort(model, clean_options(controller.state.get("options"))["effort"]) else 'NONE').effort = effort
 
 
 class ANGELO_MT_models(Menu):
@@ -132,10 +133,8 @@ class ANGELO_OT_select_model(Operator):
         try:
             options = clean_options(controller.state.get("options"))
             model = next((m for m in controller.selection_models if m["id"] == self.model), next((m for m in controller.selection_models if m["default"]), None))
-            effort = options["effort"]
-            if model and model["efforts"] and effort not in model["efforts"]:
-                effort = model["default_effort"] if model["default_effort"] in model["efforts"] else model["efforts"][0]
-            controller.set_options(model=self.model, fast=options["fast"] and bool(model and model["fast_tier"]), effort=effort)
+            controller.set_options(model=self.model, fast=options["fast"] and bool(model and model["fast_tier"]),
+                                   effort=carried_effort(options, model))
         except RuntimeError as error:
             self.report({'ERROR'}, error_message(error))
             return {'CANCELLED'}
@@ -146,6 +145,11 @@ class ANGELO_OT_custom_model(Operator):
     bl_idname = "angelo.custom_model"
     bl_label = "Native Claude Model ID"
     model: StringProperty(name="Model", options={'SKIP_SAVE'})
+
+    def consent_target(self, context):
+        """The chat's provider: a custom model applies to a Claude connection only."""
+        from . import ui
+        return getattr(ui.get_controller(), "selection_provider", None)
 
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self, width=380)
@@ -187,6 +191,12 @@ class ANGELO_OT_toggle_fast(Operator):
     bl_label = "Fast Mode"
     bl_description = "Use the provider's paid lower-latency tier, when supported. This does not lower reasoning effort"
 
+    def consent_target(self, context):
+        """The chat's options and model: the confirm flips the fast tier of that model."""
+        from . import ui
+        controller = ui.get_controller()   # None with no chat yet: nothing read, and its invoke refuses then.
+        return [clean_options(controller.state.get("options")), selected_model(controller)] if controller else None
+
     def invoke(self, context, event):
         from . import ui
         controller = ui.get_controller()
@@ -223,3 +233,6 @@ class ANGELO_OT_toggle_fast(Operator):
 
 CLASSES = (ANGELO_OT_model_picker, ANGELO_MT_models, ANGELO_OT_refresh_models, ANGELO_OT_select_model,
            ANGELO_OT_custom_model, ANGELO_OT_set_effort, ANGELO_OT_toggle_fast)
+
+
+grant_guard.guard(ANGELO_OT_select_model, ANGELO_OT_custom_model, ANGELO_OT_set_effort, ANGELO_OT_toggle_fast)

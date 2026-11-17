@@ -18,7 +18,7 @@ import json
 import os
 import uuid
 
-from . import shared_replace
+from . import owned_paths, shared_replace
 from .engine_detect import DISPLAY, ENGINES
 
 FILE_NAME = "engine-suggestions.json"
@@ -56,6 +56,7 @@ class Memory:
             return
         temporary = "%s.%s.tmp" % (self.path, uuid.uuid4().hex)   # Its own: another window may save at once.
         try:
+            owned_paths.require_writable(self.path)   # C first: no temporary is made beside a target it refuses.
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
             with open(temporary, "x", encoding="utf-8") as handle:
                 json.dump({"suggested": sorted(self.suggested)}, handle)

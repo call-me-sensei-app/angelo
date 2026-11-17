@@ -12,15 +12,14 @@ keeps its last picture (``lead_shown``, E2E-20 R5-M-1). A picture is redrawn whe
 change its picture shows (``rail_changes``), or once the artist's view settles elsewhere (``_view_moved``). Always
 Solid; drawn from a timer, never inside a region's draw, never while a tool or a job holds the window.
 
-Each picture is a ``GPUOffScreen`` kept per session; ``texture`` hands the rail its colour texture.
-"""
+Each picture is a ``GPUOffScreen`` kept per session; ``texture`` hands the rail its colour texture."""
 
 import math
 import time
 
 import bpy
 
-from . import drawn_view, live_windows, rail_changes
+from . import drawn_view, live_windows, rail_changes, edit_tool_hold
 from .rail_fill import CELLS, FILL, KEEP, KEEP_PX, _rectangle, coverage, fill, fitted, perspective  # noqa: F401
 
 SIZE = (256, 160)
@@ -416,13 +415,14 @@ def _scene_bounds(window):
     return box
 
 
+@edit_tool_hold.ticked   # Its own hold below: the person's operation anywhere, or a tool, navigation or job.
 def _tick():
     from . import parallel_sessions, rail_redraw
     if not parallel_sessions.sessions():
         _unstage()   # The rail is gone: a redraw left running would resume on old inputs (-STAGES L2), still owed.
         return None
     try:
-        held = parallel_sessions._held_now()   # A tool, a navigation or a job: pictures and redraws wait too.
+        held = parallel_sessions._held_now() or edit_tool_hold.running()   # Pictures and redraws wait too.
         if not held:
             _view_moved()
         if not held:

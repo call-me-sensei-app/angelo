@@ -29,3 +29,11 @@ def notes(window, shading):
     shading or default world in an EEVEE look (BREAKIT-viewwarm VW-H-1, VW8-H-1: the view must say so)."""
     names = failed(window, shading)
     return [note(names)] if names else []
+
+
+def _labelled(result, detail):
+    """A Solid answer for a look that was not ready, saying so (``shaders_not_ready``); a refusal unchanged."""
+    if isinstance(result, dict) and not result.get("error"):
+        result.setdefault("uncertainty", []).append({"code": "shaders_not_ready", "detail": detail})
+        result["uncertain"] = True
+    return result

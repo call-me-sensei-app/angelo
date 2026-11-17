@@ -2,12 +2,18 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
+/** \file
+ * \ingroup edobj
+ */
+
+#include <fmt/format.h>
 #include <sstream>
 
+#include "BLI_angelo_writers.hh"
 #include "BLI_fileops.hh"
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 #include "BLI_vector.hh"
 
 #include "BLT_translation.hh"
@@ -22,6 +28,7 @@
 #include "DNA_modifier_types.h"
 #include "DNA_windowmanager_types.h"
 
+#include "BKE_angelo_writer_inputs.hh"
 #include "BKE_bake_geometry_nodes_modifier.hh"
 #include "BKE_bake_geometry_nodes_modifier_pack.hh"
 #include "BKE_context.hh"
@@ -33,6 +40,7 @@
 #include "BKE_node_legacy_types.hh"
 #include "BKE_node_runtime.hh"
 #include "BKE_packedFile.hh"
+#include "BKE_path_templates.hh"
 #include "BKE_report.hh"
 #include "BKE_scene.hh"
 
@@ -191,7 +199,8 @@ static wmOperatorStatus simulate_to_frame_modal(bContext *C,
                                                 wmOperator * /*op*/,
                                                 const wmEvent * /*event*/)
 {
-  if (!WM_jobs_test(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_CALCULATE_SIMULATION_NODES))
+  if (!WM_jobs_has_running(
+          CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_CALCULATE_SIMULATION_NODES))
   {
     return OPERATOR_FINISHED | OPERATOR_PASS_THROUGH;
   }
@@ -223,6 +232,8 @@ struct NodeBakeRequest {
   int frame_start;
   int frame_end;
   std::unique_ptr<bake::BlobWriteSharing> blob_sharing;
+  /** Frames before this index in the bake cache were freed after being written to disk. */
+  int64_t frames_freed_end = 0;
 };
 
 struct BakeGeometryNodesJob {
@@ -233,6 +244,8 @@ struct BakeGeometryNodesJob {
   Vector<NodeBakeRequest> bake_requests;
   wmOperator *op;
   std::string error_message;
+  /** Unlike #error_message, this keeps the frames that have been written already. */
+  std::string write_error_message;
 };
 
 static void try_delete_bake(
@@ -257,9 +270,76 @@ static void clear_requested_bakes_in_modifier_cache(BakeGeometryNodesJob &job)
   }
 }
 
+/**
+ * The existence of a meta data file means that a frame has been baked. Therefore it is written
+ * with a temporary name first, so that it can only be found once it is complete.
+ */
+[[nodiscard]] static bool write_meta_file(const StringRefNull meta_path, const StringRef meta_data)
+{
+  const std::string temp_path = meta_path + ".tmp";
+  fstream meta_file{temp_path, std::ios::out};
+  meta_file.write(meta_data.data(), meta_data.size());
+  meta_file.close();
+  if (meta_file.fail() || BLI_rename_overwrite(temp_path.c_str(), meta_path.c_str()) != 0) {
+    BLI_delete(temp_path.c_str(), false, false);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Remember where the last frame has been written to, so that it can be loaded again lazily. Frames
+ * before #up_to_frame_exclusive that are on disk are freed.
+ */
+static void free_frames_written_to_disk(bake::ModifierCache &modifier_cache,
+                                        bake::NodeBakeCache &bake_cache,
+                                        const bake::BakePath &path,
+                                        std::string meta_path,
+                                        const SubFrame up_to_frame_exclusive,
+                                        int64_t &frames_freed_end)
+{
+  /* Free the values outside of the lock because freeing volume grids is multi-threaded. */
+  Vector<bake::BakeValues> values_to_free;
+  {
+    std::lock_guard lock{modifier_cache.mutex};
+    bake::FrameCache &last_frame = *bake_cache.frames.last();
+    if (!last_frame.values.is_empty()) {
+      last_frame.meta_data_source = std::move(meta_path);
+    }
+    if (!bake_cache.blob_sharing) {
+      bake_cache.blobs_dir = path.blobs_dir;
+      bake_cache.blob_sharing = std::make_unique<bake::BlobReadSharing>();
+    }
+    /* Frames are appended in time order and only the last one gets its meta data source, so the
+     * frames before `frames_freed_end` hold nothing more to free: continue from there instead of
+     * scanning every frame after each written one (quadratic in the frame count). */
+    if (frames_freed_end > bake_cache.frames.size()) {
+      frames_freed_end = 0;
+    }
+    for (; frames_freed_end < bake_cache.frames.size(); frames_freed_end++) {
+      bake::FrameCache &frame_cache = *bake_cache.frames[frames_freed_end];
+      if (!(frame_cache.frame < up_to_frame_exclusive)) {
+        break;
+      }
+      if (frame_cache.meta_data_source && !frame_cache.values.is_empty()) {
+        values_to_free.append(std::exchange(frame_cache.values, {}));
+      }
+    }
+  }
+}
+
+/** Angelo: what a geometry-nodes bake's folder is built from (BKE_angelo_bake_inputs, BLI_angelo_writers.hh). */
+static AngeloWriterInputs angelo_bake_inputs(const Object &object, const NodesModifierData &nmd)
+{
+  return BKE_angelo_bake_inputs(object, nmd);
+}
+
 static void bake_geometry_nodes_startjob(void *customdata, wmJobWorkerStatus *worker_status)
 {
   BakeGeometryNodesJob &job = *static_cast<BakeGeometryNodesJob *>(customdata);
+  /* Angelo: a bake run synchronously judges its writes against its own start; a job's thread has the job's
+   * (BLI_angelo_writers.hh). */
+  const angelo_writers::OwnJob angelo_writer;
   G.is_rendering = true;
   G.is_break = false;
 
@@ -316,7 +396,7 @@ static void bake_geometry_nodes_startjob(void *customdata, wmJobWorkerStatus *wo
     for (NodeBakeRequest &request : job.bake_requests) {
       NodesModifierData &nmd = *request.nmd;
       bake::ModifierCache &modifier_cache = *nmd.runtime->cache;
-      const bake::NodeBakeCache *bake_cache = modifier_cache.get_node_bake_cache(request.bake_id);
+      bake::NodeBakeCache *bake_cache = modifier_cache.get_node_bake_cache(request.bake_id);
       if (bake_cache == nullptr) {
         continue;
       }
@@ -336,12 +416,47 @@ static void bake_geometry_nodes_startjob(void *customdata, wmJobWorkerStatus *wo
                       sizeof(meta_path),
                       request.path->meta_dir.c_str(),
                       (frame_file_name + ".json").c_str());
+        /* Angelo: each frame's files, judged where they are written, by what their folder is built from
+         * (BLI_angelo_writers.hh); its blobs where #bake::DiskBlobWriter opens them, in this scope. */
+        const angelo_writers::InputScope inputs(angelo_bake_inputs(*request.object, *request.nmd));
+        if (const char *refusal = angelo_writers::refusal(meta_path)) {
+          std::unique_ptr<bake::FrameCache> unwritten_frame;
+          {
+            std::lock_guard lock{modifier_cache.mutex};
+            unwritten_frame = bake_cache->frames.pop_last();
+          }
+          if (job.write_error_message.empty()) {
+            job.write_error_message = fmt::format("{}: '{}'", refusal, meta_path);
+          }
+          continue;
+        }
         BLI_file_ensure_parent_dir_exists(meta_path);
         bake::DiskBlobWriter blob_writer{request.path->blobs_dir, frame_file_name};
-        fstream meta_file{meta_path, std::ios::out};
-        bake::serialize_bake(frame_cache.values, blob_writer, *request.blob_sharing, meta_file);
+        std::ostringstream meta_stream;
+        bake::serialize_bake(frame_cache.values, blob_writer, *request.blob_sharing, meta_stream);
+        const std::string meta_data = meta_stream.str();
+        if (!blob_writer.finish() || !write_meta_file(meta_path, meta_data)) {
+          blob_writer.remove_files();
+          /* The cache should only contain frames that are on disk. Free the frame outside of the
+           * lock because freeing volume grids is multi-threaded. */
+          std::unique_ptr<bake::FrameCache> unwritten_frame;
+          {
+            std::lock_guard lock{modifier_cache.mutex};
+            unwritten_frame = bake_cache->frames.pop_last();
+          }
+          if (job.write_error_message.empty()) {
+            job.write_error_message = fmt::format(
+                fmt::runtime(TIP_("Stopped baking because frame {} could not be written to {}")),
+                frame.frame(),
+                request.path->bake_dir.value_or(request.path->meta_dir));
+          }
+          continue;
+        }
         written_size += blob_writer.written_size();
-        written_size += meta_file.tellp();
+        written_size += meta_data.size();
+        /* Keep the current frame in memory, it is the input of the next simulation step. */
+        free_frames_written_to_disk(
+            modifier_cache, *bake_cache, *request.path, meta_path, frame, request.frames_freed_end);
       }
       else {
         PackedBake &packed_data = packed_data_by_bake.lookup_or_add_default(&request);
@@ -367,6 +482,10 @@ static void bake_geometry_nodes_startjob(void *customdata, wmJobWorkerStatus *wo
         written_size += blob_writer.written_size();
         written_size += meta_file.tellp();
       }
+    }
+
+    if (!job.write_error_message.empty()) {
+      break;
     }
 
     worker_status->progress += progress_per_frame;
@@ -465,6 +584,9 @@ static void bake_geometry_nodes_endjob(void *customdata)
     }
     BKE_report(job.op->reports, RPT_ERROR, job.error_message.c_str());
   }
+  if (!job.write_error_message.empty()) {
+    BKE_report(job.op->reports, RPT_ERROR, job.write_error_message.c_str());
+  }
 }
 
 static void clear_data_block_references(NodesModifierBake &bake)
@@ -528,6 +650,16 @@ static void try_delete_bake(
       *bmain, object, nmd, bake_id);
   if (!bake_path) {
     return;
+  }
+  /* Angelo: removing a bake is writing there (BLI_angelo_writers.hh), judged by what its folder is built from. */
+  for (const std::string *dir : {&bake_path->meta_dir, &bake_path->blobs_dir}) {
+    if (!BLI_exists(dir->c_str())) {
+      continue;
+    }
+    if (const char *refusal = angelo_writers::refusal_folder(dir->c_str(), angelo_bake_inputs(object, nmd))) {
+      BKE_reportf(reports, RPT_ERROR, "%s: '%s'", refusal, dir->c_str());
+      return;
+    }
   }
   const char *meta_dir = bake_path->meta_dir.c_str();
   if (BLI_exists(meta_dir)) {
@@ -771,7 +903,8 @@ static void initialize_modifier_bake_directory_if_necessary(bContext *C,
               nmd.modifier.name);
 
   nmd.bake_directory = BLI_strdup(
-      bake::get_default_modifier_bake_directory(*bmain, object, nmd).c_str());
+      BKE_path_template_escape(bake::get_default_modifier_bake_directory(*bmain, object, nmd))
+          .c_str());
 }
 
 static void bake_simulation_validate_paths(bContext *C,
@@ -809,8 +942,6 @@ static PathUsersMap bake_simulation_get_path_users(bContext *C, const Span<Objec
 
   PathUsersMap path_users;
   for (const Object *object : objects) {
-    const char *base_path = ID_BLEND_PATH(bmain, &object->id);
-
     for (const ModifierData &md : object->modifiers) {
       if (md.type != eModifierType_Nodes) {
         continue;
@@ -834,18 +965,18 @@ static PathUsersMap bake_simulation_get_path_users(bContext *C, const Span<Objec
       }
 
       /* If all bakes have a custom directory, we're done. */
-      if (all_bakes_have_custom_dir)
-        continue;
-
-      if (StringRef(nmd->bake_directory).is_empty()) {
+      if (all_bakes_have_custom_dir) {
         continue;
       }
 
-      char absolute_bake_dir[FILE_MAX];
-      STRNCPY(absolute_bake_dir, nmd->bake_directory);
-      BLI_path_abs(absolute_bake_dir, base_path);
+      const std::optional<std::string> modifier_bake_dir = bake::get_modifier_bake_path(
+          *bmain, *object, *nmd);
+      if (!modifier_bake_dir) {
+        continue;
+      }
+
       path_users.add_or_modify(
-          absolute_bake_dir, [](int *value) { *value = 1; }, [](int *value) { ++(*value); });
+          *modifier_bake_dir, [](int *value) { *value = 1; }, [](int *value) { ++(*value); });
     }
   }
 
@@ -913,7 +1044,8 @@ static wmOperatorStatus bake_simulation_modal(bContext *C,
                                               wmOperator * /*op*/,
                                               const wmEvent * /*event*/)
 {
-  if (!WM_jobs_test(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_BAKE_GEOMETRY_NODES)) {
+  if (!WM_jobs_has_running(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_BAKE_GEOMETRY_NODES))
+  {
     return OPERATOR_FINISHED | OPERATOR_PASS_THROUGH;
   }
   return OPERATOR_PASS_THROUGH;
@@ -1062,7 +1194,8 @@ static wmOperatorStatus bake_single_node_modal(bContext *C,
                                                wmOperator * /*op*/,
                                                const wmEvent * /*event*/)
 {
-  if (!WM_jobs_test(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_BAKE_GEOMETRY_NODES)) {
+  if (!WM_jobs_has_running(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_BAKE_GEOMETRY_NODES))
+  {
     return OPERATOR_FINISHED | OPERATOR_PASS_THROUGH;
   }
   return OPERATOR_PASS_THROUGH;

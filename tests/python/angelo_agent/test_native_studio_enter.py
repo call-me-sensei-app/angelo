@@ -109,9 +109,14 @@ class WiringTests(unittest.TestCase):
         press = source[source.index("event.type == 'LEFTMOUSE' and event.value == 'PRESS'"):
                        source.index("studio_enter.on_release")]
         for path in (release, press):
-            self.assertIn("self.activate(context, state, area, region, target)", path, "The same click as the button's")
+            self.assertIn("self.activate(context, state, area, region, target", path, "The same click as the button's")
+        # Return runs it in the ticket of the field it was typed in (the keyboard ruling): C mints that only when the
+        # person focused the field by their own press.
+        self.assertIn('self.activate(context, state, area, region, target, ("focus", key))', release)
         activate = source[source.index("def activate"):]
-        self.assertIn("refusable(state, lambda: click(bpy.context, state, action, value, rect))", activate)
+        # In the grant scope of the press (or the focused key) it came from (grant_guard.ticketed).
+        call = 'refusable(state, lambda: grant_guard.ticketed("studio.", ticket[0], ticket[1], click, bpy.context,'
+        self.assertIn(call, activate)
 
     def test_every_paragraph_field_names_its_primary_action(self):
         """Media Studio's paragraph fields (studio_state.MULTILINE_FIELDS) each name what Return runs there."""

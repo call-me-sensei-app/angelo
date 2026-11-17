@@ -1,67 +1,67 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Blender Python names a script may still write from Blender 4.x that Blender 5.2 removed or renamed.
+"""Blender Python names a script may still write from an older Blender that this release removed or renamed.
 
 ``tool_specs.validate_call`` reads every reviewed script against this table before it is approved or run, and
-refuses one that would certainly raise on such a name, naming the 5.2 replacement. Without it the script ran until
+refuses one that would certainly raise on such a name, naming the replacement. Without it the script ran until
 that line raised, the host rolled the whole build back, and the next round wrote it again (doc/angelo/
 agent_execution.rst, "Removed Blender API").
 
-The table is closed and precise: every entry is a documented 4.x or 5.0 removal or rename, or a recorded raise, and
-absent from Blender 5.2's RNA (``test_native_script_api_removed.py`` and ``test_blender_script_api_removed.py`` pin
-both). A use is refused only where it certainly runs into the removed name:
+The rows are the certain rows of the shared table (``script_api_table``: the cited rows of
+``scripts/angelo/api_drift/curated.json`` and generated rows a replay of recorded scripts cleared). Every row is a
+documented removal or rename, or a recorded raise, and absent from the release's RNA
+(``test_native_script_api_removed.py`` and ``test_blender_script_api_removed.py`` pin both). A use is refused only
+where it certainly runs into the removed name:
 
 * an assignment of the removed enum value as a literal (``sky.sky_type = 'NISHITA'``), never a value chosen at run
   time or compared;
-* an attribute read or write of a removed name, or a call of a removed operator;
-* the Bump node's ``inputs['Invert']`` on a name the script made with ``nodes.new('ShaderNodeBump')`` (compositor
-  nodes do have an Invert input);
+* an attribute read or write of a removed name no current type has, a call of a removed operator, or a call that
+  passes an operator a keyword it no longer has (``bpy.ops.object.text_add(radius=2)``), never one passed through
+  ``**``;
+* a listed socket key of a node type on a name the script made with ``nodes.new('<that type>')``: the Bump node's
+  ``inputs['Invert']`` is an ``invert`` property (compositor nodes do have an Invert input);
 
 and never inside a ``try`` statement, nor under an ``if``, ``while`` or conditional expression whose test asks for the
 name (``hasattr``, ``in``, or the name as text): scripts that probe for either spelling keep running as before.
 """
 
 import ast
+import functools
 
-# The same two 5.2 sky types as Blender's own error (bpy_angelo_renamed_api.cc) and the result note (script_api_notes).
-SKY = ("use 'SINGLE_SCATTERING' (Blender 5.0 renamed 'NISHITA' to it, the same model: files saved with 'NISHITA' open "
-       "with it); the new default is 'MULTIPLE_SCATTERING'")
-# (attribute, literal value) -> the 5.2 value.
-VALUES = {
-    ("sky_type", "NISHITA"): SKY,
-    ("engine", "BLENDER_EEVEE_NEXT"): "use 'BLENDER_EEVEE' (Blender 5.0 renamed EEVEE Next back to EEVEE)",
-}
-LEAVE_OUT = "leave it out: an EEVEE Legacy setting, removed in Blender 4.2 with nothing in its place"
-# Attribute -> what to do in Blender 5.2 instead. None of these names is a property or function of any 5.2 RNA type.
-ATTRIBUTES = {
-    "dust_density": "use aerosol_density (renamed in Blender 5.0)",
-    "use_auto_smooth": "use mesh.set_sharp_from_angle(angle=...) or the Smooth by Angle modifier (removed in Blender 4.1)",
-    "auto_smooth_angle": "use mesh.set_sharp_from_angle(angle=...) (removed in Blender 4.1)",
-    "calc_normals": "leave it out: normals are always current (removed in Blender 4.0)",
-    "calc_normals_split": "read mesh.corner_normals, always current (removed in Blender 4.1)",
-    "free_normals_split": "leave it out: corner normals are always current (removed in Blender 4.1)",
-    "use_ssr": "use scene.eevee.use_raytracing (screen-space reflections were removed in Blender 4.2)",
-    "use_ssr_refraction": "use scene.eevee.use_raytracing (screen-space refraction was removed in Blender 4.2)",
-    "use_bloom": "use the compositor's Glare node (EEVEE's bloom was removed in Blender 4.2)",
-    "use_gtao": LEAVE_OUT,
-    "use_soft_shadows": LEAVE_OUT,
-    "shadow_cube_size": LEAVE_OUT,
-    "shadow_cascade_size": LEAVE_OUT,
-}
-# bpy.ops path -> its 5.2 operator.
-OPERATORS = {
-    "export_scene.obj": "use bpy.ops.wm.obj_export (since Blender 4.0)",
-    "import_scene.obj": "use bpy.ops.wm.obj_import (since Blender 4.0)",
-    "export_mesh.stl": "use bpy.ops.wm.stl_export (since Blender 4.2)",
-    "import_mesh.stl": "use bpy.ops.wm.stl_import (since Blender 4.2)",
-    "export_mesh.ply": "use bpy.ops.wm.ply_export (since Blender 4.0)",
-    "import_mesh.ply": "use bpy.ops.wm.ply_import (since Blender 4.0)",
-    "wm.collada_export": "use bpy.ops.wm.usd_export or bpy.ops.export_scene.gltf (Collada was removed in Blender 5.0)",
-    "wm.collada_import": "use bpy.ops.wm.usd_import or bpy.ops.import_scene.gltf (Collada was removed in Blender 5.0)",
-}
-BUMP = "ShaderNodeBump"
-BUMP_INVERT = "set node.invert = True: the Bump node's invert is a property, not an input"
+from . import script_api_table
+from .blender_release import RELEASE
+
+BUMP = "ShaderNodeBump"  # The recorded socket case: its invert is a property (``node.invert``), not an input.
 MAX_LISTED = 5
+
+
+@functools.lru_cache(maxsize=1)
+def _tables():
+    """The refusal's lookups, from the certain rows of the shared table (``script_api_table``)."""
+    values, attributes, operators, sockets, keywords = {}, {}, {}, {}, {}
+    for entry in script_api_table.certain("refusal"):
+        use, name = entry["use"], entry["name"]
+        if use == "enum_item":
+            values[(entry["property"], name)] = entry["refusal"]   # (attribute, literal value) -> the value to use.
+        elif use == "attribute" and not entry.get("elsewhere"):
+            attributes[name] = entry["refusal"]   # No RNA type of the release has the name.
+        elif use == "operator":
+            operators[name] = entry["refusal"]   # bpy.ops path -> what to call instead.
+        elif use == "operator_argument":
+            keywords[(entry["owner"], name)] = entry["refusal"]   # (bpy.ops path, keyword) -> the keyword to pass.
+        elif use == "socket":
+            sockets[(entry["owner"], entry["property"], name)] = entry["refusal"]
+    return {"VALUES": values, "ATTRIBUTES": attributes, "OPERATORS": operators, "SOCKETS": sockets,
+            "KEYWORDS": keywords}
+
+
+def __getattr__(name):
+    """``VALUES``, ``ATTRIBUTES``, ``OPERATORS``, ``SOCKETS``, ``KEYWORDS`` and ``BUMP_INVERT``, built on first use."""
+    if name in ("VALUES", "ATTRIBUTES", "OPERATORS", "SOCKETS", "KEYWORDS"):
+        return _tables()[name]
+    if name == "BUMP_INVERT":
+        return _tables()["SOCKETS"].get((BUMP, "inputs", "Invert"))
+    raise AttributeError("module %r has no attribute %r" % (__name__, name))
 
 
 def _dotted(node):
@@ -75,19 +75,22 @@ def _dotted(node):
     return None
 
 
-def _bump_names(tree):
-    """Names the script binds to ``<nodes>.new('ShaderNodeBump')`` (or ``type=``)."""
-    names = set()
+def _node_kinds(tree):
+    """``{name: node idname}`` for names the script binds to ``<nodes>.new('<idname>')`` (or ``type=``), for the
+    node types the table lists a removed socket of."""
+    listed = {owner for owner, _side, _key in _tables()["SOCKETS"]}
+    kinds = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
             call = node.value
             if isinstance(call.func, ast.Attribute) and call.func.attr == "new":
-                kinds = [arg.value for arg in call.args[:1] if isinstance(arg, ast.Constant)] + [
+                given = [arg.value for arg in call.args[:1] if isinstance(arg, ast.Constant)] + [
                     keyword.value.value for keyword in call.keywords
                     if keyword.arg == "type" and isinstance(keyword.value, ast.Constant)]
-                if BUMP in kinds:
-                    names.update(target.id for target in node.targets if isinstance(target, ast.Name))
-    return names
+                for kind in given:
+                    if kind in listed:
+                        kinds.update((target.id, kind) for target in node.targets if isinstance(target, ast.Name))
+    return kinds
 
 
 def _asks_for(test, words):
@@ -103,11 +106,15 @@ def _asks_for(test, words):
 
 
 class _Reader(ast.NodeVisitor):
-    def __init__(self, bumps):
-        self.bumps, self.found, self.guards = bumps, [], []
+    def __init__(self, kinds):
+        self.kinds, self.found, self.guards = kinds, [], []
+        tables = _tables()
+        self.values, self.attributes = tables["VALUES"], tables["ATTRIBUTES"]
+        self.operators, self.sockets, self.keywords = tables["OPERATORS"], tables["SOCKETS"], tables["KEYWORDS"]
 
     def _report(self, node, what, instead):
-        self.found.append((node.lineno, "line %d: %s is not in Blender 5.2: %s" % (node.lineno, what, instead)))
+        self.found.append((node.lineno, "line %d: %s is not in Blender %s: %s" % (node.lineno, what, RELEASE,
+                                                                                   instead)))
 
     def _guarded(self, words):
         return any(_asks_for(test, words) for test in self.guards)
@@ -137,46 +144,53 @@ class _Reader(ast.NodeVisitor):
         value = node.value
         for target in node.targets:
             if isinstance(target, ast.Attribute) and isinstance(value, ast.Constant):
-                instead = VALUES.get((target.attr, value.value))
+                instead = self.values.get((target.attr, value.value))
                 if instead and not self._guarded({target.attr, value.value}):
                     self._report(node, "%s = %r" % (target.attr, value.value), instead)
         self.generic_visit(node)
 
     def visit_Attribute(self, node):
-        instead = ATTRIBUTES.get(node.attr)
+        instead = self.attributes.get(node.attr)
         if instead and not self._guarded({node.attr}):
             self._report(node, "the attribute %s" % node.attr, instead)
         self.generic_visit(node)
 
     def visit_Call(self, node):
         path = _dotted(node.func)
-        if path and path.startswith("bpy.ops.") and path[len("bpy.ops."):] in OPERATORS \
-                and not self._guarded({path.rsplit(".", 1)[-1]}):
-            self._report(node, path, OPERATORS[path[len("bpy.ops."):]])
+        if path and path.startswith("bpy.ops."):
+            operator = path[len("bpy.ops."):]
+            if operator in self.operators and not self._guarded({path.rsplit(".", 1)[-1]}):
+                self._report(node, path, self.operators[operator])
+            for keyword in node.keywords:   # ``**options`` has no name (arg None): never refused.
+                instead = self.keywords.get((operator, keyword.arg))
+                if instead and not self._guarded({keyword.arg}):
+                    self._report(node, "%s(%s=...)" % (path, keyword.arg), instead)
         self.generic_visit(node)
 
     def visit_Subscript(self, node):
         holder = node.value
-        if (isinstance(holder, ast.Attribute) and holder.attr == "inputs" and isinstance(holder.value, ast.Name)
-                and holder.value.id in self.bumps and isinstance(node.slice, ast.Constant)
-                and node.slice.value == "Invert" and not self._guarded({"Invert"})):
-            self._report(node, "%s.inputs['Invert']" % holder.value.id, BUMP_INVERT)
+        if (isinstance(holder, ast.Attribute) and holder.attr in ("inputs", "outputs")
+                and isinstance(holder.value, ast.Name) and holder.value.id in self.kinds
+                and isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str)):
+            instead = self.sockets.get((self.kinds[holder.value.id], holder.attr, node.slice.value))
+            if instead and not self._guarded({node.slice.value}):
+                self._report(node, "%s.%s[%r]" % (holder.value.id, holder.attr, node.slice.value), instead)
         self.generic_visit(node)
 
 
 def problems(code):
-    """The lines of ``code`` that certainly use a name Blender 5.2 removed, each with its replacement, in order (at
+    """The lines of ``code`` that certainly use a name this release removed, each with its replacement, in order (at
     most MAX_LISTED); [] when there are none or the code does not parse (its syntax error is reported elsewhere)."""
     try:
         tree = ast.parse(code)
     except (SyntaxError, ValueError):
         return []
-    reader = _Reader(_bump_names(tree))
+    reader = _Reader(_node_kinds(tree))
     reader.visit(tree)
     return [text for _line, text in sorted(set(reader.found))][:MAX_LISTED]
 
 
 def refusal(found):
     """The validation error for a script with removed names: nothing has run."""
-    return ("This script uses Blender Python that Blender 5.2 removed, so it was not run: " + "; ".join(found)
+    return ("This script uses Blender Python that Blender %s removed, so it was not run: " % RELEASE + "; ".join(found)
             + ". Correct those lines and send the script again.")

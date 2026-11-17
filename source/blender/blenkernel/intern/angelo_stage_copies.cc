@@ -10,8 +10,8 @@
  */
 
 #include "BLI_set.hh"
-#include "BLI_threads.h"
-#include "BLI_utildefines.h"
+#include "BLI_threads.hh"
+#include "BLI_utildefines.hh"
 
 #include "DNA_ID.h"
 #include "DNA_anim_types.h"

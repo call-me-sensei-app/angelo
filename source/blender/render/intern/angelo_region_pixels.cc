@@ -10,11 +10,12 @@
 
 #include <cstring>
 
-#include "BLI_listbase.h"
-#include "BLI_rect.h"
-#include "BLI_string.h"
+#include "BLI_listbase.hh"
+#include "BLI_rect.hh"
+#include "BLI_string.hh"
 
 #include "IMB_imbuf_types.hh"
+#include "IMB_partial_update.hh"
 
 #include "RE_pipeline.h"
 
@@ -106,6 +107,9 @@ int copy_region(RenderResult *dst,
                 w,
                 h,
                 src_pass.channels);
+      /* The pass's GPU texture is updated from the marked region, as the render's own tile merge
+       * does (render_result.cc), so a live tile shows while the region renders. */
+      IMB_partial_update_mark_region(dst_pass->ibuf, rect);
     }
   }
   return added;

@@ -456,6 +456,10 @@ class SourceRuleTests(unittest.TestCase):
         That the drawn text really went through ``iface_`` is checked on the laid-out cards themselves
         (test_native_notice_cards, ``TranslationTests``).
         """
+        # A text one notice module defines and another shows counts as shown (crash_ui draws
+        # ``iface_(crash_card.GPU_TITLE)``): ``module.NAME`` read in any notice module is a use of NAME.
+        shared = {(node.value.id, node.attr) for other in NOTICE_MODULES for node in ast.walk(self.tree(other))
+                  if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and isinstance(node.ctx, ast.Load)}
         for module in NOTICE_MODULES:
             tree = self.tree(module)
             constants = {}
@@ -467,6 +471,7 @@ class SourceRuleTests(unittest.TestCase):
                         if isinstance(value, ast.Call) and getattr(value.func, "id", "") == "n_":
                             constants[target.id] = value.args[0].value
             used = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)}
+            used |= {name for owner, name in shared if owner == module}
             for name, text in constants.items():
                 with self.subTest(module=module, constant=name):
                     self.assertIn(name, used, "an n_() text that is never shown")

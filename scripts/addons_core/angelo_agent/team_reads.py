@@ -11,6 +11,9 @@ the wrong type reads as absent; nothing here trusts the server's shapes.
   team's 32 random bytes that key its members' Codex prompt-cache routing
   (``codex_team_keys``). The console sends it to the app's token only, never
   to a browser session; an older console sends none.
+* ``custom_endpoints``: the same answer's ``customEndpoints``, the organization's
+  own model servers (``custom_endpoints``; doc/angelo/ai_providers.rst, "Custom
+  model endpoints"). An older console sends none.
 * ``usage``: ``GET /api/orgs/{org}/usage/people/{user}``, the person's own
   usage (any member may read their own), reduced to the few numbers the
   account menu shows. Estimated costs are not read: the organization pays its
@@ -51,6 +54,13 @@ def cache_affinity_secret(value):
     """The team's cache-affinity secret (32 bytes) from a providers answer, or None when it holds none."""
     text = _data(value).get("cacheAffinitySecret")
     return bytes.fromhex(text) if isinstance(text, str) and _SECRET.fullmatch(text) else None
+
+
+def custom_endpoints(value):
+    """``(endpoints, left_out)`` from a providers answer: none and nothing left out when it lists none."""
+    from . import custom_endpoints as parser
+    listed = _data(value).get("customEndpoints")
+    return ((), 0) if listed is None else parser.endpoints(listed)
 
 
 def usage_path(org_id, user_id):

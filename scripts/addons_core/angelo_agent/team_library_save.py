@@ -27,7 +27,7 @@ from pathlib import Path
 
 import bpy
 
-from . import change_clock, live_windows
+from . import change_clock, live_windows, owned_paths
 from .provider_registry import SPECS
 from .team_library_files import IMAGE_FORMATS, image_size, sniff
 from .team_library_spec import ITEM_PROPERTY
@@ -56,6 +56,7 @@ def _image(path, name, folder):
         if fmt not in IMAGE_FORMATS:
             raise ValueError("%s isn't a PNG, JPEG or WebP image." % name)
         copy, size = Path(folder) / ("image" + IMAGE_FORMATS[fmt]), len(head)
+        owned_paths.require_writable(copy)
         with open(copy, "xb") as target:
             target.write(head)
             while size <= MAX_UPLOAD["image"] and (chunk := source.read(1024 * 1024)):
@@ -82,6 +83,7 @@ def webp_thumbnail(source, destination):
         if scale < 1.0:
             image.scale(max(1, round(width * scale)), max(1, round(height * scale)))
         image.filepath_raw, image.file_format = str(destination), 'WEBP'
+        owned_paths.require_writable(destination)
         image.save()
     finally:
         bpy.data.images.remove(image)
@@ -146,8 +148,10 @@ def _objects(controller, window, handles, folder):
                 obj.select_set(False, view_layer=layer)
             for obj in objects:
                 obj.select_set(True, view_layer=layer)
+            # The exporter walks every scene of the file unless told the active one (io_scene_gltf2: a selected
+            # object of another scene was written into this item too).
             result = bpy.ops.export_scene.gltf(filepath=str(path), export_format='GLB', use_selection=True,
-                                               export_apply=True)
+                                               use_active_scene=True, export_apply=True)
         finally:
             for obj in objects:
                 obj.select_set(False, view_layer=layer)

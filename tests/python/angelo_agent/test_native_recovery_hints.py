@@ -10,6 +10,7 @@ own continuation included (a send with ``host_request``, as ``worker_resume`` ma
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import json
 import sys
@@ -25,6 +26,7 @@ from agent_runtime_fixtures import AgentRuntimeFixture, program  # noqa: E402
 from unittest.mock import patch  # noqa: E402
 from angelo_agent.controller import Controller, ToolDispatchBudget  # noqa: E402
 from angelo_agent.refusal_codes import RefusalError  # noqa: E402
+from angelo_agent import recovery_reads  # noqa: E402
 from angelo_agent.request_recovery import RecoveryBarrier  # noqa: E402
 from angelo_agent.tool_specs import CODEX_DEFERRED_NAMESPACE, TOOL_MAP, codex_tools  # noqa: E402
 
@@ -137,6 +139,54 @@ class CallableNameTests(unittest.TestCase):
         self.assertIn("more__angelo_scene_settings", json.loads(packed[0]["text"])["error"])
 
 
+class LiteralDataTests(unittest.TestCase):
+    """MHM-L-1: only tool references are renamed, never literal data spelled as a tool name."""
+
+    def test_a_name_the_call_gave_is_never_renamed_in_its_refusal(self):
+        arguments = {"parts": [{"worker": 1, "placements": [{"materials": {"angelo_scene_settings": "Brass"}}]}]}
+        result = {"error": "Worker 1's part has no material angelo_scene_settings; nothing was merged; read "
+                           "angelo_blend_file first", "error_code": "VALIDATION",
+                  "refusal_details": {"material": "angelo_scene_settings", "note": "angelo_scene_settings is unknown"}}
+        named = recovery_reads.named_for(chat("codex_subscription"), result, arguments)
+        self.assertIn("no material angelo_scene_settings;", named["error"])   # The call's own datum.
+        self.assertIn("read more__angelo_blend_file first", named["error"])   # A tool reference still is.
+        self.assertEqual(named["refusal_details"]["material"], "angelo_scene_settings")   # A structured value.
+        self.assertEqual(named["refusal_details"]["note"], "angelo_scene_settings is unknown")
+
+    def test_a_tool_a_plan_names_is_still_renamed(self):
+        arguments = {"operations": [{"tool": "angelo_scene_settings", "arguments": {}}]}
+        named = recovery_reads.named_for(chat("codex_subscription"), {"error": "read angelo_scene_settings again"},
+                                         arguments)
+        self.assertEqual(named["error"], "read more__angelo_scene_settings again")
+
+    def test_without_arguments_every_reference_is_renamed(self):
+        named = recovery_reads.named_for(chat("codex_subscription"), {
+            "error": "read angelo_scene_settings again", "recovery": {"read": "angelo_scene_settings"}})
+        self.assertEqual(named["error"], "read more__angelo_scene_settings again")
+        self.assertEqual(named["recovery"]["read"], "more__angelo_scene_settings")   # A structured reference too.
+
+    def test_a_word_only_mentioned_in_the_calls_text_is_still_renamed(self):
+        arguments = {"code": "# angelo_scene_settings showed fps 24\nresult = {}", "description": "Check fps"}
+        named = recovery_reads.named_for(chat("codex_subscription"), {"error": "read angelo_scene_settings again"},
+                                         arguments, "angelo_script")
+        self.assertEqual(named["error"], "read more__angelo_scene_settings again")   # BREAKIT-C7A-R P1: C3 again.
+
+    def test_names_a_lookup_asks_about_are_references(self):
+        named = recovery_reads.named_for(chat("codex_subscription"), {"error": "angelo_scene_settings is deferred"},
+                                         {"family": "TOOLS", "names": ["angelo_scene_settings"]},
+                                         "angelo_agent_capabilities")
+        self.assertEqual(named["error"], "more__angelo_scene_settings is deferred")
+
+    def test_the_delivery_passes_the_calls_arguments(self):
+        from angelo_agent import providers
+        packed = providers.tool_content(chat("codex_subscription"), "angelo_workers_merge", {
+            "error": "no material angelo_scene_settings", "error_code": "VALIDATION"},
+            {"parts": [{"placements": [{"materials": {"angelo_scene_settings": "Brass"}}]}]})
+        self.assertIn("no material angelo_scene_settings", json.loads(packed[0]["text"])["error"])
+        source = (Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent/providers.py").read_text()
+        self.assertIn("pack=lambda context, tool, result: tool_content(context, tool, result, arguments)", source)
+
+
 class ControllerPathTests(unittest.TestCase):
     """The recorded path in the Controller: a script refused stale at its run, then a retry on Codex."""
 
@@ -166,7 +216,7 @@ class ControllerPathTests(unittest.TestCase):
         # never-empty hint of a hold that names no target is pinned by EmptyListTests.
         replies, script = self.request("script", "angelo_execute_python", SCRIPT)
         self.revision += 1   # Something else changed the scene while the card waited.
-        self.c.review_script(script)
+        angelo_guard_twin.harness(self.c.review_script, script)
         self.c.execute_tool(script, self.executor, self.c.document)
         self.assertEqual((replies[0]["error_code"], replies[0]["scene_changed"]), ("STALE_REVISION", False))
         self.assertNotIn("recovery", replies[0])
@@ -178,7 +228,7 @@ class ControllerPathTests(unittest.TestCase):
         # Through a real reply (the Controller's own namer): an edit that failed after it started holds.
         self.executor.execute = lambda name, arguments: (_ for _ in ()).throw(RuntimeError("half done"))
         replies, script = self.request("script", "angelo_execute_python", SCRIPT)
-        self.c.review_script(script)
+        angelo_guard_twin.harness(self.c.review_script, script)
         self.c.execute_tool(script, self.executor, self.c.document)
         self.assertTrue(replies[0].get("recovery_required"), replies)
         self.assertEqual(replies[0]["recovery_requirements"]["read_tools"],   # Beside the execution's own advice.

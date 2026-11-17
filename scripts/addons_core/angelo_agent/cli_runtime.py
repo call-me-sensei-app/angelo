@@ -33,7 +33,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import agent_runtime, child_process, cli_windows
+from . import agent_runtime, child_process, cli_windows, owned_paths
 from .protocol import RpcError
 
 RUNTIMES = {
@@ -186,7 +186,16 @@ def not_found_message(name, configured="", searched=(), platform=None):
 
 
 def find_executable(name, configured=""):
-    """The CLI to run for ``name``. For Codex, Angelo's agent runtime when there is one (``agent_runtime``)."""
+    """The CLI to run for ``name``. For Codex, Angelo's agent runtime when there is one (``agent_runtime``). Found by
+    fixed rules only (the person's Preferences pick, ``chosen``; PATH; fixed folders; the login shell's PATH), so it
+    is vouched for this process: a CLI in ``~/.local/bin`` or Homebrew outside a Finder-started app's PATH may start
+    (C's ``may_run`` still refuses one a script wrote; nothing is kept past the process)."""
+    found = _find_executable(name, configured)
+    owned_paths.vouch(found)
+    return found
+
+
+def _find_executable(name, configured=""):
     if name == "codex":
         runtime = agent_runtime.executable()
         if runtime:
@@ -208,6 +217,30 @@ def find_executable(name, configured=""):
     if found:
         return found
     raise RpcError(not_found_message(name, configured, directories))
+
+
+# The executables the person chose in Preferences (``codex_path``, ``claude_path``; ``grant_guard.setting`` keeps a
+# script from changing them), as the main thread last read them there (``choose``, from ``ui.connection_settings``).
+# Launches run on other threads, where Blender's preferences can't be read, and take their program from here
+# (``chosen``), never from a path held on a provider or in its settings: those live as long as the chat, and a
+# script could change them in place to choose what Angelo starts unconfined. This is a module binding of an
+# immutable value: a script that rebinds it is put back when its region ends, and nothing changes it in place.
+_chosen = (("codex", ""), ("claude", ""))
+
+
+def choose(codex_path="", claude_path=""):
+    """Take the person's chosen executables as read from Preferences now (the main thread)."""
+    global _chosen
+    value = (("codex", str(codex_path or "")), ("claude", str(claude_path or "")))
+    if value != _chosen:
+        _chosen = value
+
+
+def chosen(name):
+    """The person's chosen executable for runtime ``name`` as Preferences last said, or "": every launch passes this
+    to ``find_executable`` (Angelo's agent runtime first for Codex, else this file, else the CLI found by its fixed
+    name), and ``launch`` asks C before it starts it (``require_runnable``)."""
+    return dict(_chosen).get(name, "")
 
 
 def _find_windows(name, configured, environ, registry=None):
@@ -295,12 +328,16 @@ def launch(command, *, env, **kwargs):
     """
     if relay is not None:
         return relay(command, env=env, **kwargs)
-    return child_process.popen(runtime_command(command, env), env=env, **kwargs)
+    argv = runtime_command(command, env)
+    owned_paths.require_runnable(argv[0])   # Installed, on PATH or the person's pick, never one from state (C).
+    return child_process.popen(argv, env=env, **kwargs)
 
 
 def run_cli(command, *, env, **kwargs):
     """Run a provider CLI to completion like ``subprocess.run`` (a timeout ends its whole process tree)."""
-    return child_process.run(runtime_command(command, env), env=env, **kwargs)
+    argv = runtime_command(command, env)
+    owned_paths.require_runnable(argv[0])
+    return child_process.run(argv, env=env, **kwargs)
 
 
 def format_version(version):

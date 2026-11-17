@@ -51,14 +51,15 @@ static const EnumPropertyItem image_source_items[] = {
 #  include <algorithm>
 #  include <fmt/format.h>
 
-#  include "BLI_listbase.h"
-#  include "BLI_math_base.h"
-#  include "BLI_math_vector.h"
+#  include "BLI_listbase.hh"
+#  include "BLI_math_base_c.hh"
+#  include "BLI_math_vector_c.hh"
 
 #  include "BKE_angelo_image_source.hh"
 #  include "BKE_global.hh"
 #  include "BKE_image.hh"
 #  include "BKE_image_format.hh"
+#  include "BKE_image_gpu.hh"
 #  include "BKE_lib_id.hh"
 #  include "BKE_main.hh"
 #  include "BKE_main_invariants.hh"
@@ -69,6 +70,7 @@ static const EnumPropertyItem image_source_items[] = {
 
 #  include "IMB_imbuf.hh"
 #  include "IMB_imbuf_types.hh"
+#  include "IMB_partial_update.hh"
 
 #  include "MOV_read.hh"
 
@@ -211,7 +213,6 @@ static void rna_Image_generated_update(Main *bmain, Scene * /*scene*/, PointerRN
 {
   Image *ima = id_cast<Image *>(ptr->owner_id);
   BKE_image_signal(bmain, ima, nullptr, IMA_SIGNAL_FREE);
-  BKE_image_partial_update_mark_full_update(ima);
   DEG_id_tag_update(&ima->id, ID_RECALC_EDITORS | ID_RECALC_SOURCE);
 }
 
@@ -251,7 +252,6 @@ static void rna_Image_views_format_update(Main *bmain, Scene *scene, PointerRNA 
   }
 
   BKE_image_release_ibuf(ima, ibuf, lock);
-  BKE_image_partial_update_mark_full_update(ima);
   DEG_id_tag_update(&ima->id, ID_RECALC_EDITORS | ID_RECALC_SOURCE);
 }
 
@@ -260,7 +260,8 @@ static void rna_ImageUser_update(Main *bmain, Scene *scene, PointerRNA *ptr)
   ImageUser *iuser = static_cast<ImageUser *>(ptr->data);
   ID *id = ptr->owner_id;
 
-  if (scene != nullptr) {
+  /* Without Auto Refresh the stored frame must be kept, nothing recomputes it afterwards. */
+  if (scene != nullptr && (iuser->flag & IMA_ANIM_ALWAYS)) {
     BKE_image_user_frame_calc(nullptr, iuser, scene->r.cfra);
   }
 
@@ -323,9 +324,7 @@ static void rna_Image_gpu_texture_update(Main * /*bmain*/, Scene * /*scene*/, Po
 {
   Image *ima = id_cast<Image *>(ptr->owner_id);
 
-  if (!G.background) {
-    BKE_image_free_gputextures(ima);
-  }
+  BKE_image_free_gpu_texture_caches(ima);
 
   WM_main_add_notifier(NC_IMAGE | ND_DISPLAY, &ima->id);
 }
@@ -463,7 +462,6 @@ static void rna_UDIMTile_generated_update(Main * /*bmain*/, Scene * /*scene*/, P
   /* If the tile is still marked as generated, then update the tile as requested. */
   if ((tile->gen_flag & IMA_GEN_TILE) != 0) {
     BKE_image_fill_tile(ima, tile);
-    BKE_image_partial_update_mark_full_update(ima);
   }
 }
 
@@ -605,7 +603,7 @@ static int rna_Image_frame_duration_get(PointerRNA *ptr)
   }
 
   if (BKE_image_has_anim(ima)) {
-    MovieReader *anim = (static_cast<ImageAnim *>(ima->anims.first))->anim;
+    MovieReader *anim = (ima->anims.first())->anim;
     if (anim) {
       duration = MOV_get_duration_frames(anim);
     }
@@ -683,13 +681,8 @@ static void rna_Image_pixels_set(PointerRNA *ptr, const float *values)
     /* NOTE: Do update from the set() because typically pixels.foreach_set() is used to update
      * the values, and it does not invoke the update(). */
 
-    ibuf->userflags |= IB_DISPLAY_BUFFER_INVALID;
-    BKE_image_mark_dirty(ima, ibuf);
-    if (!G.background) {
-      BKE_image_free_gputextures(ima);
-    }
-
-    BKE_image_partial_update_mark_full_update(ima);
+    IMB_partial_update_mark_full(ibuf);
+    IMB_mark_dirty(ibuf);
     WM_main_add_notifier(NC_IMAGE | ND_DISPLAY, &ima->id);
   }
 
@@ -698,9 +691,9 @@ static void rna_Image_pixels_set(PointerRNA *ptr, const float *values)
 
 static int rna_Image_angelo_pixel_revision_get(PointerRNA *ptr)
 {
-  /* Angelo: a change count, so only its changes matter; kept within an int's positive range. */
-  const Image *image = static_cast<const Image *>(ptr->data);
-  return int(image->runtime->angelo_pixel_revision.load(std::memory_order_relaxed) & 0x7fffffff);
+  /* Angelo: compared for change only (#BKE_image_angelo_pixel_revision); kept within an int's
+   * positive range. */
+  return int(BKE_image_angelo_pixel_revision(static_cast<Image *>(ptr->data)) & 0x7fffffff);
 }
 
 static int rna_Image_angelo_source_revision_get(PointerRNA *ptr)
@@ -754,10 +747,10 @@ static PointerRNA rna_Image_packed_file_get(PointerRNA *ptr)
   Image *ima = id_cast<Image *>(ptr->owner_id);
 
   if (BKE_image_has_packedfile(ima)) {
-    ImagePackedFile *imapf = static_cast<ImagePackedFile *>(ima->packedfiles.first);
+    ImagePackedFile *imapf = ima->packedfiles.first();
     return RNA_pointer_create_with_parent(*ptr, RNA_PackedFile, imapf->packedfile);
   }
-  return PointerRNA_NULL;
+  return {};
 }
 
 static void rna_RenderSlot_clear(ID *id, RenderSlot *slot, ImageUser *iuser)
@@ -787,7 +780,6 @@ static void rna_render_slots_active_set(PointerRNA *ptr,
     int index = BLI_findindex(&image->renderslots, slot);
     if (index != -1) {
       image->render_slot = index;
-      BKE_image_partial_update_mark_gpu_stale(image); /* Angelo: another slot, not new pixels. */
     }
   }
 }
@@ -803,7 +795,6 @@ static void rna_render_slots_active_index_set(PointerRNA *ptr, int value)
   Image *image = id_cast<Image *>(ptr->owner_id);
   int num_slots = image->renderslots.count();
   image->render_slot = value;
-  BKE_image_partial_update_mark_gpu_stale(image); /* Angelo: another slot, not new pixels. */
   CLAMP(image->render_slot, 0, num_slots - 1);
 }
 
@@ -1002,6 +993,7 @@ static void rna_def_render_slots(BlenderRNA *brna, PropertyRNA *cprop)
   RNA_def_function_ui_description(func, "Add a render slot to the image");
   parm = RNA_def_string(func, "name", nullptr, 0, "Name", "New name for the render slot");
   parm = RNA_def_pointer(func, "result", "RenderSlot", "", "Newly created render layer");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
   RNA_def_function_return(func, parm);
 }
 

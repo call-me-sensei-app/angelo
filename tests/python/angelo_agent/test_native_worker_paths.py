@@ -136,9 +136,9 @@ class RefusalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             popen = mock.Mock(side_effect=AssertionError("nothing may run"))
             part = Path(temporary, "p" * (LIMIT + 5), "part.blend")
-            worker = worker_process.WorkerProcess(part, binary="angelo", script="worker.py", platform="win32",
-                                                  popen=popen, listener=mock.Mock(), temporary=temporary)
-            with self.assertRaises(worker_process.WorkerUnavailable) as raised:
+            worker = worker_process.WorkerProcess(part, platform="win32", listener=mock.Mock(), temporary=temporary)
+            with mock.patch.object(worker_process, "start_process", popen), \
+                    self.assertRaises(worker_process.WorkerUnavailable) as raised:
                 worker.start()
             self.assertIn("WRK-PATH-TOO-LONG", str(raised.exception))
             self.assertFalse(raised.exception.sent)

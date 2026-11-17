@@ -56,7 +56,20 @@ def scrub(scene, before, roots, private):
     if still:
         raise RefusalError("A worker's part links %s from one of Angelo's own files, which can't be made part of this "
                            "file; nothing was merged" % ", ".join(still[:8]), code="UNSUPPORTED")
+    # Also packed data only the person's own linked data uses (an Essentials node group their asset uses): Blender
+    # 5.3 crashed on Redo after an Undo that took such data back (a plain append or link did too; BREAKIT-C7A-13 M1).
+    # Angelo 2.0.0 fixes that crash (test_blender_redo_packed_linked_tracking keeps it fixed) and still refuses such
+    # data here, as defense in depth; lifting this refusal is on the 2.1.0 backlog.
+    still = sorted(item.name for item in kept if _linked_packed(item))
+    if still:
+        raise RefusalError("A worker's part holds %s, packed data from another file that only the person's own linked "
+                           "data uses, which this version of Angelo doesn't merge; nothing was merged"
+                           % ", ".join(still[:8]),
+                           code="UNSUPPORTED")
     libraries = {item.library for item in kept if item.library is not None}   # The person's own libraries stay.
+    # What a save writes for them besides: each kept linked datablock's name (its placeholder), and a Library this
+    # append added: never cleaned (a name links it), only checked (BREAKIT-C7A-14 H1).
+    also = [item for item in kept if item.library is not None] + [item for _kind, item in added if item in libraries]
     gone = [item for _kind, item in added if item not in kept and item not in libraries]
     if gone:
         bpy.data.batch_remove(gone)
@@ -72,21 +85,49 @@ def scrub(scene, before, roots, private):
             paths.overwrite(item, "name", item.name)
         except AttributeError:
             pass
-    packed, detached, unsafe = paths.blender_paths(bpy, local, private)
+    packed, detached, unsafe, rewritten = paths.blender_paths(bpy, local, private)
     if unsafe:
         raise RefusalError("A worker's part holds a packed file Angelo can't write again without the worker's own "
                            "bytes (in %s); nothing was merged" % ", ".join(unsafe[:6]), code="UNSUPPORTED")
     cleared = worker_merge_strings.clean_strings(bpy, local, private)
-    left = worker_merge_verify.leaks(bpy, local, private)   # Read as written, by another rule (fail closed).
-    if left:
-        raise RefusalError("A worker's part keeps a path into Angelo's own folders that can't be cleared (in %s); "
-                           "nothing was merged" % ", ".join(left[:6]), code="UNSUPPORTED")
     kinds = {}
     for kind, item in _added(bpy, before):
         if item in kept and kind not in ("objects", "collections"):
             kinds[kind] = kinds.get(kind, 0) + 1
     return {"kinds": kinds, "scene_users": scene_users, "packed": packed, "detached": detached,
-            "cleared": sorted(set(cleared) - set(packed) - set(detached))}
+            "cleared": sorted(set(cleared) - set(packed) - set(detached)), "check": (local, private, rewritten, also)}
+
+
+def verify(reports, before=None):
+    """The merge's check, once all its parts are scrubbed (``reports``: each part's ``scrub``): their kept datablocks
+    read as a save writes them, by another rule than the cleaning's (``worker_merge_verify``, fail closed): a private
+    path, packed bytes the merge did not write again itself, or a file that cannot be checked refuse the merge.
+    ``before`` (``worker_material_check.ids``, taken before the first append): every local datablock the merge has
+    added since is read too, not only those its parts brought: its own collection for each part, a mirrored
+    collection and an object's copy for each further placement. A save writes them all, and the check writes only
+    what it is given (``worker_merge_verify.saved_copy``)."""
+    import bpy
+    from .refusal_codes import RefusalError
+    from .worker_material_check import added_kinds
+    local = [item for report in reports for item in report["check"][0]]
+    written = [item for report in reports for item in report["check"][2]]
+    also = [item for report in reports for item in report["check"][3]]
+    if before is not None:
+        given = {item.as_pointer() for item in local + also}
+        local += [item for kind in added_kinds(bpy) if kind != "libraries" for item in getattr(bpy.data, kind)
+                  if item.library is None and item.as_pointer() not in before and item.as_pointer() not in given]
+    try:
+        left, foreign = (worker_merge_verify.check(bpy, local, reports[0]["check"][1], written, also) if reports
+                         else ([], []))
+    except worker_merge_verify.Unchecked as reason:
+        raise RefusalError("Angelo couldn't check this merge for its own files: %s; nothing was merged" % reason,
+                           code="UNSUPPORTED") from None
+    if foreign:
+        raise RefusalError("A worker's part holds a packed file Angelo can't write again without the worker's own "
+                           "bytes (in %s); nothing was merged" % ", ".join(foreign[:6]), code="UNSUPPORTED")
+    if left:
+        raise RefusalError("A worker's part keeps a path into Angelo's own folders that can't be cleared (in %s); "
+                           "nothing was merged" % ", ".join(left[:6]), code="UNSUPPORTED")
 
 
 def _added(bpy, before):
@@ -116,15 +157,29 @@ def _private_library(bpy, item, private):
     return library is not None and private.holds(bpy.path.abspath(library.filepath, library=library.parent))
 
 
+def _linked_packed(item):
+    """Whether ``item`` is linked data packed in the file (Blender 5's packed linked data): written whole by every
+    save, its own packed files and properties too, from any library (BREAKIT-C7A-11 H1)."""
+    return item.library is not None and bool(getattr(item, "is_linked_packed", False))
+
+
 def _make_local(bpy, kept, private):
-    """Every kept datablock linked from a file in a private folder made local, users before what they use: Blender
+    """Every kept datablock linked from a file in a private folder, or linked and packed in the file from any file
+    (BREAKIT-C7A-11 H1: then cleaned and checked as local data), made local, users before what they use: Blender
     makes one local only once a local datablock uses it (one used only by linked data is indirect, and skipped), and
     copies one that linked data still uses, which would leave the original linked (BREAKIT-C7A H1). One order for
     all, from one map of who uses whom (BREAKIT-C7A-2 M3: rounds were quadratic on a chain); a cycle's members, and
-    any still linked after it, are taken as they come. Whether any was made local."""
-    linked = [item for item in kept if _private_library(bpy, item, private)]
+    any still linked after it, are taken as they come. A copy leaves its original linked for the linked data that used
+    it then; once all are made local (a cycle's members each copied, BREAKIT-C7A-12 M2), every local user is moved to
+    the copy, so the original is used by linked data alone and removed with what the part does not keep. A library
+    override of data made local is made plain local data first and again after (BREAKIT-C7A-12 M1): an override's
+    reference must stay linked, or the file is corrupt when read. A pass moves only the users of originals a
+    local datablock still uses, found in one map (BREAKIT-C7A-13 L1: each move walks the whole file, so moving every
+    copy's users in every pass cost the cycle's length cubed times the file). Whether any was made local."""
+    linked = [item for item in kept if _private_library(bpy, item, private) or _linked_packed(item)]
     if not linked:
         return False
+    _clear_overrides(kept, set(linked))
     users = bpy.data.user_map(subset=linked)
     waiting, uses = {}, {}
     for item in linked:
@@ -141,12 +196,48 @@ def _make_local(bpy, kept, private):
             if not waiting[used] and used not in placed and used not in ready:
                 ready.append(used)
     order += [item for item in linked if item not in placed]
-    for item in order:
-        if item.library is not None:
-            local = item.make_local()
-            if local is not None and local != item:
-                kept.add(local)   # A copy: the original is made local in its turn, or stays only if unused.
+    copies = {}
+    while order:   # One pass, and another for what only linked data used then (what a cycle's members use).
+        for item in order:
+            if item.library is not None and item not in copies:
+                local = item.make_local()
+                if local is not None and local != item:
+                    copies[item] = local
+                    kept.add(local)
+        _move_local_users(bpy, copies)
+        left = [item for item in order if item.library is not None and item not in copies]
+        order = left if len(left) < len(order) else []
+    _clear_overrides(kept, set(linked))
     return True
+
+
+def _move_local_users(bpy, copies):
+    """Every local user of an original Blender copied (``copies``: original to copy) moved to the copy; linked data is
+    never remapped, so the original stays for it alone."""
+    still = [original for original in copies if original.library is not None]
+    users = bpy.data.user_map(subset=still) if still else {}
+    for original in still:
+        if any(user.library is None for user in users.get(original, ())):
+            original.user_remap(copies[original])
+
+
+def _clear_overrides(kept, made):
+    """Every kept local library override whose reference is in ``made`` (to be made local, or made so) or is already
+    local, made plain local data: what it overrides is then its own; and with it every other member of its hierarchy,
+    so none is left an override whose root is now local data (port review NIT). A hierarchy's root goes last, so each
+    other member still has a valid root when it goes."""
+    overrides = [(item, item.override_library) for item in kept
+                 if item.library is None and item.override_library is not None]
+    roots = []
+    for item, override in overrides:
+        reference = override.reference
+        if reference is None or reference in made or reference.library is None:
+            if not any(override.hierarchy_root == root for root in roots):
+                roots.append(override.hierarchy_root)
+    found = [(override.hierarchy_root == item, item) for item, override in overrides
+             if any(override.hierarchy_root == root for root in roots)]
+    for _root, item in sorted(found, key=lambda pair: pair[0]):
+        item.make_local(clear_liboverride=True)
 
 
 def answer(reports):

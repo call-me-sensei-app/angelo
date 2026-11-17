@@ -166,7 +166,8 @@ class SuggestionCard(update_card.NoticeCard):
                 return   # The window closed or a file load replaced it meanwhile: nothing to open the picker in.
             with bpy.context.temp_override(window=target):
                 bpy.ops.angelo.godot_link_install('INVOKE_DEFAULT', engine=engine)
-        after_close(window, pick)   # A file browser must not open inside the card's own modal operator.
+        from . import grant_gestures   # The person's Link click, kept for the picker it opens once the card closes
+        after_close(window, grant_gestures.deferred("angelo.godot_link_install", pick))   # (never inside its modal).
 
 
 def _suggest(engine):

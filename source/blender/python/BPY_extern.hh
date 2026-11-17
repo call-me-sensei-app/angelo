@@ -11,7 +11,7 @@
 #include <optional>
 #include <string>
 
-#include "BLI_sys_types.h"
+#include "BLI_sys_types.hh"
 
 #ifdef WITH_INTERNATIONAL
 #  include "BLI_string_ref.hh"
@@ -23,6 +23,7 @@ struct ARegionType;
 struct AnimationEvalContext;
 struct ChannelDriver; /* DNA_anim_types.h */
 struct ID;            /* DNA_ID.h */
+struct Main;
 struct ListBase;      /* DNA_listBase.h */
 struct Object;        /* DNA_object_types.h */
 struct PathResolvedRNA;
@@ -73,6 +74,26 @@ void BPY_text_free_code(Text *text);
  */
 void BPY_modules_update();
 void BPY_modules_load_user(bContext *C);
+
+/**
+ * Angelo (doc/angelo/script_confinement.rst, "Python a file carries", bpy_angelo_autorun_trust.cc): a registered
+ * text or a style module runs only when the person trusted its exact content.
+ * - #BPY_angelo_autorun_trusted: its digest is in the person's list;
+ * - #BPY_angelo_style_module_trusted: also true for a text made in this session by the person (no file or agent
+ *   script brought or changed it);
+ * - #BPY_angelo_autorun_blocked_reset, #BPY_angelo_autorun_blocked_add: what a file load held back;
+ * - #BPY_angelo_autorun_warning_shown: the auto-run warning is shown for what was held back;
+ * - #BPY_angelo_autorun_consent: the person's "Allow Execution" there trusts that;
+ * - #BPY_angelo_autorun_trust_saved: the person's own save trusts the registered texts and style modules that are
+ *   theirs. Neither does anything on a confined thread.
+ */
+bool BPY_angelo_autorun_trusted(const Text *text);
+bool BPY_angelo_style_module_trusted(const Text *text);
+void BPY_angelo_autorun_blocked_reset();
+void BPY_angelo_autorun_blocked_add(const Text *text);
+void BPY_angelo_autorun_warning_shown();
+void BPY_angelo_autorun_consent();
+void BPY_angelo_autorun_trust_saved(Main *bmain);
 
 void BPY_app_handlers_reset(bool do_all);
 

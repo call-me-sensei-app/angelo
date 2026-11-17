@@ -7,6 +7,8 @@ with the unbilled stdio fixture: no Claude process, credentials or inference.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import copy
 import json
@@ -247,8 +249,10 @@ CLAUDE = normalize_models([{"value": "sonnet", "displayName": "Claude Sonnet", "
 
 class OfflineClaude(ClaudeProvider):
     def connect(self):
-        self.executable, self.env = "claude", {"FIXTURE": "only"}
         return self.controller.state["native_id"]
+
+    def launch_inputs(self, controller):   # Built at each start in the app (providers.claude_launch).
+        return "claude", {"FIXTURE": "only"}
 
 
 class ProgramExecutor:
@@ -308,7 +312,7 @@ class ControllerRoundTests(unittest.TestCase):
     def turn(self, text):
         self.c.send(text, {"objects": []})
         apply = lambda call: self.c.execute_tool(call, self.executor, self.c.document)
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             self.c.pump_events()
             self.c.pump_tools(self.executor, self.c.document, apply_mutation=apply,
@@ -499,7 +503,7 @@ class RecipeApplicationTests(unittest.TestCase):
             self.assertIn(text, details)
         self.assertNotIn("Angle limit", details, "What the recipe writes: the Bevel keeps Blender's other settings")
         self.assertEqual(self.executor.started, [], "Nothing stages before approval")
-        self.c.approve_tool(call, self.executor, self.c.document)
+        angelo_guard_twin.harness(self.c.approve_tool, call, self.executor, self.c.document)
         self.c.pump_tools(self.executor, self.c.document, budget=ToolDispatchBudget(seconds=60))
         self.assertEqual(self.executor.started, [("angelo_scene_program", call.program_arguments)])
         self.assertEqual(self.executor.expansions, 1, "Later preconditions bind the reviewed program, never a re-expansion")

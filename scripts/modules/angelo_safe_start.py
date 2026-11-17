@@ -35,8 +35,15 @@ add-ons) until its start has completed:
   preferences before it enables what they list, so without it a native crash there would end every later launch
   the same way.
 
+* The person's add-ons that **fail** as they load (raise in their import or ``register``) during a start or such an
+  enabling are collected (``angelo_addon_failures``); once it completes, the ones still enabled are named with their
+  causes on one notice that offers **Turn off** for each. Nothing is turned off or undone by itself, as in stock
+  Blender, so each start names them again until the person turns one off or it loads.
+
 Background runs and ``--factory-startup`` keep no record: no window, no person's add-ons. The cost of a normal start
-is one small file created, locked, written and later removed, and a half-second timer for the first seconds.
+is one small file created, locked, written and later removed, a half-second timer for the first seconds, a cached
+shipped-or-not lookup per add-on Blender enables, and two small in-place writes of ``.loading`` around each add-on of
+the person's.
 
 The pure parts (records, the third-party test, completion) need no bpy: tests/python/angelo_agent/
 test_native_safe_start.py.
@@ -48,8 +55,9 @@ import time
 from pathlib import Path
 
 from angelo_start_records import (  # noqa: F401  The records' mechanics, named here as before.
-    FOUND_MARK, HELD_POLL, HELD_WAIT, INCOMPLETE_AGE, LOCK_OFFSET, SUFFIX, Held, applies, begin, identity, interrupted,
-    _alive, _complete, _examine, _here, _lock, _open_record, _pid, _remove, _unlock)
+    CRASHED_MARK, FOUND_MARK, HELD_POLL, HELD_WAIT, INCOMPLETE_AGE, LOCK_OFFSET, RECORD_ENV, SUFFIX, applies, begin,
+    Held, identity, interrupted, _alive, _complete, _examine, _here, _lock, _name_newest, _open_record, _pid,
+    _publish, _published, _remove, _unlock, _withdraw)
 
 FOLDER = "angelo-start"
 SETTLE_SECONDS = 2.0      # The window keeps running this long after Angelo's start-up is done: still part of the start.
@@ -58,7 +66,11 @@ TICK = 0.5
 EXTENSION_PREFIX = "bl_ext."
 
 _state = {"held": None, "left_off": [], "completion": None, "saved": False, "settled_left_off": False,
-          "folder": None}   # "folder": where this run keeps its records (None: it keeps none).
+          "folder": None,    # "folder": where this run keeps its records (None: it keeps none).
+          "culprit": None,   # The left-off add-on the last start died loading (its record's ``loading``), or None.
+          "active": False,   # A start or an enabling runs: add-ons that fail now are collected (angelo_addon_failures).
+          "failures": [],    # Failure(module, cause) collected and not yet settled.
+          "watched": None}   # (shipped(module), {module: the person's own add-on}) for this start or enabling.
 
 
 def third_party(modules, shipped):
@@ -97,7 +109,13 @@ def shipped_check(addon_paths, system_roots, repos, hidden_core=frozenset()):
 
 class Completion:
     """When this start has completed: ``SETTLE_SECONDS`` after Angelo's start-up was first done, or after
-    ``LONGEST_START``."""
+    ``LONGEST_START``.
+
+    Each bound is an instant, ``reading + duration``, and a later reading is compared with it; never a difference
+    of two readings compared with the duration. The two disagree where the sum rounds (a float's spacing doubles
+    at each power of two: ``(reading + 2.0) - reading`` is not 2.0 for a reading just under one, about two seconds
+    of every doubling of uptime), and the instant itself then read as too early, or one float before it as late
+    enough (a test at exactly ``ready_at + SETTLE_SECONDS`` failed on Windows, 2026-11-14)."""
 
     def __init__(self, started):
         self.started, self.ready_at = started, None
@@ -110,9 +128,9 @@ class Completion:
         return completion
 
     def step(self, now, ready):
-        if self.ready_at is None and (ready or now - self.started >= LONGEST_START):
+        if self.ready_at is None and (ready or now >= self.started + LONGEST_START):
             self.ready_at = now
-        return self.ready_at is not None and now - self.ready_at >= SETTLE_SECONDS
+        return self.ready_at is not None and now >= self.ready_at + SETTLE_SECONDS
 
 
 def left_off():
@@ -144,22 +162,45 @@ def _leave_off(bpy):
     return modules
 
 
+def culprit(found, left_off):
+    """The left-off add-on a found record's process was enabling when it ended, or None (it died elsewhere). Its
+    ``loading`` lists the add-ons being enabled, outermost first (one's ``register`` may enable another): the innermost
+    one this launch left off leads, so an add-on the preferences do not list never hides the one that enabled it."""
+    for record in found:
+        loading = record.get("loading")
+        for name in reversed(loading if isinstance(loading, list) else [loading]):
+            if name in left_off:
+                return name
+    return None
+
+
+def isolate(found):
+    """Whether this launch leaves third-party add-ons off: the last start never completed. (One reason today; a launch
+    after a move to a newer Blender base could be another, the same way.)"""
+    return bool(found)
+
+
 def start(bpy):
     """Before any add-on loads: leave third-party add-ons off when a start never completed, then keep this start's
-    record until it completes."""
+    record until it completes, collecting add-ons that fail meanwhile."""
     folder = _state["folder"] = Path(bpy.utils.user_resource('CONFIG')) / FOLDER
     try:
-        if interrupted(folder):
+        found = interrupted(folder)
+        if isolate(found):
             _state["left_off"] = _leave_off(bpy)
+            _state["culprit"] = culprit(found, _state["left_off"])
             if _state["left_off"]:
                 bpy.context.preferences.is_dirty = True   # Blender's save on quit keeps them off too.
-            print("Angelo: the last start did not finish; started without:", ", ".join(_state["left_off"]) or "-")
+            print("Angelo: the last start did not finish%s; started without:" % (
+                " while %s loaded" % _state["culprit"] if _state["culprit"] else ""),
+                ", ".join(_state["left_off"]) or "-")
     except Exception as error:   # The start goes on whatever this check meets.
         print("Angelo: start check:", error, file=sys.stderr)
     _state["held"] = begin(folder)
+    _state["active"], _state["watched"] = True, None
+    _watch_failures(bpy)
     _state["completion"] = Completion(time.monotonic())
-    if _state["held"] is not None or _state["left_off"]:
-        _watch()
+    _watch()   # Completes the start: its record goes, add-ons left off are saved off, they and failed ones named.
 
 
 @contextlib.contextmanager
@@ -170,15 +211,57 @@ def enabling():
     that keeps no record (background, factory startup, a folder that cannot hold one)."""
     folder = _state["folder"]
     if folder is not None and _state["held"] is None:
-        _state["held"], _state["completion"] = begin(folder), None
+        held = begin(folder)
+        if held is not None:   # None (the folder cannot hold one): a start still running keeps its own completion.
+            _state["held"], _state["completion"] = held, None
+    # Only with a record held: its watch is what ends the collecting (a folder that cannot hold one collects nothing).
+    _state["active"], _state["watched"] = _state["held"] is not None, None
     try:
         yield
     finally:
-        if _state["held"] is not None:
+        if _state["held"] is None:
+            _state["active"] = False
+        else:
             completion = _state["completion"]
             if completion is None or completion.ready_at is not None:   # Not a start still running: settle again.
                 _state["completion"] = Completion.settling(time.monotonic())
             _watch()
+
+
+def causes():
+    """``{module: cause}`` of the add-ons that failed so far in this start or enabling (``settings_import_apply``'s
+    notice says why each did not load)."""
+    return {failure.module: failure.cause for failure in _state["failures"]}
+
+
+def _note(modules):
+    held = _state["held"]
+    if held is not None:
+        held.note_loading(modules)
+
+
+def _watched(module):
+    """Whether ``module`` is the person's own add-on (not one that ships with Angelo), cached for this start or
+    enabling: the wrapper costs a shipped add-on nothing but this lookup."""
+    import bpy
+    if _state["watched"] is None:
+        _state["watched"] = (_shipped_here(bpy), {})
+    shipped, known = _state["watched"]
+    if module not in known:
+        known[module] = not shipped(module)
+    return known[module]
+
+
+def _watch_failures(bpy):
+    try:
+        import addon_utils   # Reads bpy.context as it imports: a stand-in bpy (the host tests) may lack it.
+    except Exception:   # Not Blender's Python: there is no add-on to watch.
+        return
+    try:
+        import angelo_addon_failures as failures
+        failures.install(addon_utils, lambda: _state["active"], _note, _state["failures"], _watched)
+    except Exception as error:   # Never stops a start: Blender's own reporting remains.
+        print("Angelo: add-on failure check:", error, file=sys.stderr)
 
 
 def _watch():
@@ -215,7 +298,8 @@ def _tick():
     except Exception as error:
         print("Angelo: start check:", error, file=sys.stderr)
         ready = True
-    if not _state["completion"].step(time.monotonic(), ready):
+    completion = _state["completion"]
+    if completion is not None and not completion.step(time.monotonic(), ready):   # None: nothing left to wait for.
         return TICK
     _completed()
     return None
@@ -223,20 +307,45 @@ def _tick():
 
 def _completed():
     import bpy
-    if _state["left_off"] and not _state["settled_left_off"]:   # Once: a later read's settling saves nothing.
+    _state["active"] = False
+    failed = _settle_failures(bpy)
+    left_off = _state["left_off"] and not _state["settled_left_off"]   # Once: a later read's settling names none.
+    if left_off:
         _state["settled_left_off"] = True
-        try:
-            bpy.ops.wm.save_userpref()   # They stay off: a later normal start must not load them again.
+        try:   # They stay off: a later normal start must not load them again (whatever Auto-Save says).
+            bpy.ops.wm.save_userpref()
             _state["saved"] = True
         except Exception as error:
             print("Angelo: could not save the preferences without the add-ons left off:", error, file=sys.stderr)
-        if _angelo_enabled():
-            try:
-                from angelo_agent import safe_start_notice
-                safe_start_notice.show(_state["left_off"])
-            except Exception as error:
-                print("Angelo: start notice:", error, file=sys.stderr)
+    if (left_off or failed) and _angelo_enabled():   # Without Angelo's add-on: the console lines only.
+        try:
+            from angelo_agent import safe_start_notice
+            if left_off:
+                safe_start_notice.show(_state["left_off"], _state["culprit"])
+            safe_start_notice.show_failures(failed)
+        except Exception as error:
+            print("Angelo: start notice:", error, file=sys.stderr)
     stop()
+
+
+def _settle_failures(bpy):
+    """The add-ons that failed during this start or enabling and are still enabled and not loaded (Failure list).
+    Nothing is turned off: the notice offers it for each."""
+    failures, _state["failures"][:] = list(_state["failures"]), []
+    if not failures:
+        return []
+    try:
+        import addon_utils
+        import angelo_addon_failures
+        addons = bpy.context.preferences.addons
+        failed = angelo_addon_failures.pending(failures, lambda module: module in addons,
+                                               lambda module: addon_utils.check(module)[1])
+    except Exception as error:
+        print("Angelo: add-on failure check:", error, file=sys.stderr)
+        return []
+    for failure in failed:
+        print("Angelo: add-on %s failed as it loaded (%s); still enabled" % (failure.module, failure.cause))
+    return failed
 
 
 def stop(exiting=False):
@@ -244,6 +353,7 @@ def stop(exiting=False):
     completed keeps its record (closed, so unlocked): the next launch leaves them off again, as their being off was
     not yet saved."""
     held, _state["held"] = _state["held"], None
+    _state["active"] = False
     if held is None:
         return
     if exiting and _state["left_off"] and not _state["saved"]:

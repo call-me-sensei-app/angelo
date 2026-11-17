@@ -10,7 +10,8 @@ import uuid
 from typing import NamedTuple
 from pathlib import Path
 
-from .cli_runtime import launch, with_runtime_path
+from . import owned_paths
+from .cli_runtime import chosen, launch, with_runtime_path
 from .providers import child_environment, find_executable, profile_environment
 
 
@@ -20,7 +21,7 @@ def native_auth_command(mode, settings, state_dir, login=False, api_key=False):
     if login and mode.endswith("_api") and not api_key:
         raise ValueError("Use the API-key field for an API connection")
     name = "codex" if mode.startswith("codex_") else "claude"
-    executable = find_executable(name, settings.get(name + "_path", ""))
+    executable = find_executable(name, chosen(name))
     env = with_runtime_path(profile_environment(child_environment(mode), mode, settings.get("auth_directory", state_dir),
                             settings.get("reuse_codex_login", True), settings.get("connection_id"), settings.get("native_profile")), executable)
     if name == "codex":
@@ -88,7 +89,7 @@ class NativeAuthentication:
         return process.poll() is not None
 
     def start(self, mode, settings, state_dir, login=False, identity=None, api_key="", continuation=None):
-        Path(state_dir).mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(Path(state_dir)).mkdir(parents=True, exist_ok=True, mode=0o700)
         command, env = native_auth_command(mode, settings, state_dir, login, bool(api_key))
         identity = identity or mode
         with self.lock:
@@ -181,3 +182,8 @@ class NativeAuthentication:
             for process in self.processes.values():
                 if process.poll() is None:
                     process.terminate()
+
+
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
+_grant_guard.entry_methods(NativeAuthentication, "start", widens=("login", "api_key"))   # Not a status check.
+_grant_guard.entry_methods(NativeAuthentication, "cancel")   # Never a script's: ACCOUNT_OPERATORS.

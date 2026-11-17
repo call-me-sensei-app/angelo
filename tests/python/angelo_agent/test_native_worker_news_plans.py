@@ -10,6 +10,7 @@ worker, and binding takes its answer (``RemoteExecutor.greet``); the Blender sui
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import threading
@@ -196,7 +197,7 @@ class AdoptionHandshakeTests(unittest.TestCase):
                  "error": None, "done": threading.Event(), "worker": worker}
         with patch.object(worker_sessions, "_launching", []):
             worker_sessions._launch(entry, take=False)
-            self.assertTrue(entry["done"].wait(5))
+            self.assertTrue(entry["done"].wait(CAP_S))
         self.assertIsNone(entry["error"])
         self.assertEqual([op for op, _thread in asked], ["hello"])
         self.assertIsNot(asked[0][1], threading.main_thread())

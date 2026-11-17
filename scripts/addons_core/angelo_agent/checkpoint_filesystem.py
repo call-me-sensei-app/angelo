@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import anchored_windows, change_clock, shared_replace
+from .owned_paths import entry_name, require_anchorable, require_writable  # C: where Angelo may write.
 
 MAX_METADATA_BYTES = 512 * 1024
 
@@ -51,6 +52,7 @@ def _private_directory(path, create=False, within=None, lookup_only=False):
     stats names in the folder (never lists or syncs it), so macOS may yield a
     search-only descriptor.
     """
+    require_anchorable(path, within)   # A store's folder: Angelo's (C); the file tools': the open document's.
     api = _windows_api()
     if api is not None:
         with anchored_windows.open_directory(path, create, api, within) as folder:
@@ -214,13 +216,13 @@ def sync_directory(folder):
         os.fsync(folder)
 
 
-def chmod_file(folder, name, mode):
+def chmod_file(folder, name, mode):   # ``entry_name``: one entry of the anchored folder, never a path through it.
     if isinstance(folder, anchored_windows.WindowsDirectory):
-        folder.chmod(name, mode)
+        folder.chmod(entry_name(name), mode)
     elif isinstance(folder, Path):
-        os.chmod(folder / name, mode)
+        os.chmod(folder / entry_name(name), mode)
     else:
-        os.chmod(name, mode, dir_fd=folder)
+        os.chmod(entry_name(name), mode, dir_fd=folder)
 
 
 def _file_info(folder, name):
@@ -285,6 +287,7 @@ def _open_file(folder, name, flags, mode=0o600):
 
 
 def _replace_file(folder, source, destination):
+    entry_name(source), entry_name(destination)
     if isinstance(folder, anchored_windows.WindowsDirectory):
         shared_replace.retried(folder.replace, source, destination)   # A handle not sharing delete: tried again.
     elif isinstance(folder, Path):
@@ -296,6 +299,7 @@ def _replace_file(folder, source, destination):
 
 
 def _unlink_file(folder, name):
+    entry_name(name)
     if isinstance(folder, anchored_windows.WindowsDirectory):
         folder.unlink(name)
     elif isinstance(folder, Path):
@@ -436,14 +440,14 @@ def publish_new_file(folder, temporary, name):
 
 def make_directory(folder, name):
     """Create one new child directory of an anchored folder; an existing name of any kind raises FileExistsError."""
-    if isinstance(folder, anchored_windows.WindowsDirectory):
-        folder.make_directory(name)
+    if isinstance(folder, anchored_windows.WindowsDirectory):   # ``entry_name``: never a path through the folder.
+        folder.make_directory(entry_name(name))
     elif isinstance(folder, Path):
         if folder.resolve() != folder:
             raise ValueError("Snapshot storage changed during access")
-        (folder / name).mkdir(mode=0o700)
+        (folder / entry_name(name)).mkdir(mode=0o700)
     else:
-        os.mkdir(name, 0o700, dir_fd=folder)
+        os.mkdir(entry_name(name), 0o700, dir_fd=folder)
 
 
 def link_into(folder, name, target, new_name):
@@ -458,6 +462,7 @@ def link_into(folder, name, target, new_name):
 
 def remove_entry(folder, name):
     """Remove one entry of an anchored folder itself: a file, a link (never its target) or an empty directory."""
+    entry_name(name)
     if isinstance(folder, anchored_windows.WindowsDirectory):
         folder.remove_entry(name)
     elif isinstance(folder, Path):

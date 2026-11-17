@@ -10,7 +10,7 @@ from pathlib import Path
 
 import bpy
 
-from . import live_windows
+from . import live_windows, owned_paths
 from .gltf_morph import import_options
 from .studio_agent import StudioAgent
 from .provider_registry import billing_label, is_coding
@@ -75,6 +75,7 @@ def write_fitted(path, destination, long_edge):
         if scale < 1:
             image.scale(max(1, round(image.size[0] * scale)), max(1, round(image.size[1] * scale)))
         image.filepath_raw, image.file_format = str(destination), 'PNG'
+        owned_paths.require_writable(destination)
         image.save()
     finally:
         release_preview((image, None) if image else None, bpy.data.images)

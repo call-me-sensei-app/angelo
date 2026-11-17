@@ -21,7 +21,7 @@ from pathlib import Path
 import bpy
 from bpy.app.handlers import persistent
 
-from . import change_clock, live_windows
+from . import change_clock, edit_tool_hold, live_windows
 from .job_chat import MOVED_REASON as MOVED, title
 from .job_manager import JobManager, install, shared
 from .job_spec import PREVIEW, JobRequestError
@@ -115,7 +115,7 @@ def _changed(record):
     look_notify.watch(record, _tick)  # A running look is finished the moment its render ends.
 
 
-def _finished(record):
+def _finished(record):   # JobManager._end noted the agent change before this (grant_gestures.agent_changed).
     global _recent
     # Its depsgraph updates ran on the job's thread and were not tracked: an unknown edit for every reader.
     from . import blender_tools, job_render_route, render_device, scene_queries
@@ -155,6 +155,7 @@ def _notice(record, ui):
     redraw()
 
 
+@edit_tool_hold.ticked   # Its queue's data work holds in JobManager.poll, which keeps a waiting job's budget.
 def _tick():
     jobs = manager(create=False)
     if jobs is None:
@@ -218,6 +219,7 @@ def keep_soon():
         bpy.app.timers.register(_keep_pending, first_interval=1.0, persistent=True)
 
 
+@edit_tool_hold.guarded   # Touches Blender data: waits for the person's operation.
 def _keep_pending():
     """Publish the finished frames of a render the closed document stopped (Blender's job has ended by now)."""
     from . import job_recovery, job_render_video
@@ -239,6 +241,7 @@ def _keep_pending():
     return job_render_video.REAP_SECONDS if waiting else None
 
 
+@edit_tool_hold.guarded   # Touches Blender data: waits for the person's operation.
 def _startup():
     from . import job_fluid, job_settings
     manager()

@@ -33,6 +33,12 @@ enum eText_Flag : int {
 
   /** Use space instead of tabs. */
   TXT_TABSTOSPACES = 1 << 10,
+  /**
+   * Angelo, run-time only (never written): the content came from a file (or was changed by an agent script) and the
+   * person hasn't trusted it, so it neither runs when a file opens nor as a style module, and the person's own save
+   * doesn't trust it (doc/angelo/script_confinement.rst, "Python a file carries").
+   */
+  TXT_ANGELO_UNTRUSTED = 1 << 11,
 };
 ENUM_OPERATORS(eText_Flag)
 

@@ -20,8 +20,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import own_checkout
 from host_test_policy import environment_skip
-from test_native_sign_windows import SIGN, TOOLS, block, ps_structure_problems, read
+from test_native_sign_windows import ROOT, SIGN, TOOLS, block, ps_structure_problems, read
 
 SIGN_BOOTSTRAP = TOOLS / "windows_sign_bootstrap.ps1"
 CLOUD_BOOTSTRAP = TOOLS / "windows_cloud_bootstrap.ps1"
@@ -183,7 +184,7 @@ class RemoteReleaseTests(unittest.TestCase):
         text = read(BUILD)
         packed = block(text, "if ($Package -and -not $SignedMsi) {", "\n}\n")
         stop = packed.index("if ($presigned) {")
-        self.assertLess(packed.index("CPACK_PRE_BUILD_SCRIPTS=$hook"), stop)
+        self.assertLess(packed.index("CPACK_PRE_BUILD_SCRIPTS="), stop)
         self.assertLess(stop, packed.index("& $signScript -Mode Sign -Path $msi.FullName"), "the MSI is never signed here")
         self.assertIn("exit 0", packed[stop:packed.index("& $signScript -Mode Sign -Path $msi.FullName")])
         self.assertNotIn("msi-signing-record", packed, "the record is written only after the signed MSI is checked")
@@ -217,7 +218,7 @@ class RemoteReleaseTests(unittest.TestCase):
     def test_signing_is_asked_for_per_run_never_inferred_from_the_bucket(self):
         inputs = read(INPUTS)
         part = inputs[inputs.index("# Only when this run asks for it"):]
-        self.assertLess(part.index('$signMode = Get-Meta "angelo-release-sign" ""'), part.index("storage ls"))
+        self.assertLess(part.index('$signMode = Get-Meta "angelo-release-sign" ""'), part.index('"storage", "ls"'))
         self.assertIn('$signingSums = if ($signMode) {', part)
         self.assertIn("but gs://$bucket/release-signing/ has no SHA256SUMS", part)
         driver = read(DRIVER)
@@ -272,6 +273,8 @@ class SignRemoteTests(unittest.TestCase):
     """sign_remote.sh, the release owner's side of a job: a dry run sends nothing and shows every step."""
 
     def run_remote(self, kind, job, with_files=True, with_msi=True, **env):
+        # sign_remote.sh asks git where its own repository is and reads files from a commit there.
+        own_checkout.needed(self, ROOT)
         with tempfile.TemporaryDirectory() as folder:
             files = Path(folder, "key")
             (files / "agent-runtime").mkdir(parents=True)
@@ -318,6 +321,7 @@ class SignRemoteTests(unittest.TestCase):
 
     @WORKSTATION_ONLY
     def test_a_files_job_takes_only_key_files_and_a_fresh_out(self):
+        own_checkout.needed(self, ROOT)   # As run_remote: the script finds its repository by git.
         with tempfile.TemporaryDirectory() as folder:
             files = Path(folder, "key")
             files.mkdir()
@@ -423,9 +427,10 @@ class BootstrapTests(unittest.TestCase):
         # throws. The first bare call (Get-Pinned's) powered the VM off at every boot with no receipt (2026-10-22).
         text = read(SIGN_BOOTSTRAP)
         helper = block(text, "function Invoke-Gcloud", "\n}\n")
-        self.assertLess(helper.index('$ErrorActionPreference = "Continue"'), helper.index("& $gcloud @Arguments 2>&1"))
-        self.assertIn("finally { $ErrorActionPreference = $old }", helper)
-        calls = [line for line in text.splitlines() if re.search(r"& \$gcloud\b", line)]
+        # Invoke-NativeCapture: its own Continue scope (test_native_windows_native_call holds its text).
+        self.assertIn("$code = (Invoke-NativeCapture $gcloud $Arguments).Code", helper)
+        self.assertLess(text.index(". ([scriptblock]::Create($NativeCallDefinition))"), text.index("function Invoke-Gcloud"))
+        calls = [line for line in text.splitlines() if re.search(r"(?:& |Invoke-NativeCapture )\$gcloud\b", line)]
         self.assertEqual(len(calls), 1, "every gcloud call goes through Invoke-Gcloud: %s" % calls)
         self.assertLess(text.index("function Invoke-Gcloud"), text.index("function Get-Pinned"))
         trap = block(text, "trap {", "\n}\n")

@@ -21,13 +21,13 @@
 #  include "DNA_userdef_types.h"
 #  include "DNA_windowmanager_enums.h"
 
-#  include "BLI_fileops.h"
-#  include "BLI_listbase.h"
+#  include "BLI_fileops.hh"
+#  include "BLI_listbase.hh"
 #  include "BLI_path_utils.hh"
 #  include "BLI_set.hh"
-#  include "BLI_string.h"
+#  include "BLI_string.hh"
 #  include "BLI_task.hh"
-#  include "BLI_utildefines.h"
+#  include "BLI_utildefines.hh"
 #  include "BLI_vector.hh"
 
 #  include "BKE_bpath.hh"
@@ -195,19 +195,30 @@ static void generate_texture_cache(Main *bmain,
   std::atomic<int> failed_num = 0;
   std::mutex reports_mutex;
 
+  const auto cancel = [&]() { return worker_status && (G.is_break || worker_status->stop); };
+
   blender::threading::parallel_for_each(outdated, [&](const auto &item) {
+    if (cancel()) {
+      return;
+    }
     if (worker_status) {
-      if (G.is_break || worker_status->stop) {
-        return;
-      }
       worker_status->progress = (completed_num + failed_num) / float(outdated.size());
       worker_status->do_update = true;
     }
 
-    if (CCL_generate_texture_cache(item.first, item.second.c_str(), U.texture_cachedir)) {
+    /* Track if generation stopped due to cancel or failure. */
+    bool cancelled = false;
+    const auto item_cancel = [&]() {
+      cancelled = cancelled || cancel();
+      return cancelled;
+    };
+
+    if (CCL_generate_texture_cache(
+            item.first, item.second.c_str(), U.texture_cachedir, item_cancel))
+    {
       completed_num++;
     }
-    else {
+    else if (!cancelled) {
       std::scoped_lock lock(reports_mutex);
       BKE_reportf(
           reports, RPT_ERROR, "Failed to generate texture cache for: %s", item.second.c_str());

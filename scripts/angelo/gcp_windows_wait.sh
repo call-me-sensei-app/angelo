@@ -4,7 +4,7 @@
 # Watching a Windows machine's run to its end (sourced by gcp_windows_validate.sh; needs NAME, ZONE, BUCKET, STAGES,
 # MAX_HOURS, HEARTBEAT_MINUTES, STALL_MINUTES, STALL_CONFIRM and g): the run's result, a release stage's failures, a
 # hung run (the stall guard), and wait_off, which confirms the machine is powered off after every use and puts its
-# maximum run time back to the default.
+# maximum run time back to the default; a pre-boot's wait for PREBOOT READY and its `bench deliver`.
 
 # The run's own result once it ended: DONE says "validate exit code: N" (the last failed stage's code, the bench stage's
 # included; 0 when all passed), FAILED that the bootstrap itself failed.
@@ -97,7 +97,7 @@ wait_off() {
 
 wait_off_run() {
   local deadline=$(( $(date +%s) + ${ANGELO_GCP_WAIT_HOURS:-$((MAX_HOURS + 1))} * 3600 )) grace="${ANGELO_GCP_OFF_GRACE_MINUTES:-15}"
-  local ended="" result="" vm objects told="" ready_seen="" nap failed stalled since="${ANGELO_GCP_RUN_SINCE:-$(date +%s)}" misses=0
+  local ended="" result="" vm objects told="" ready_seen="" kept_said="" nap failed stalled since="${ANGELO_GCP_RUN_SINCE:-$(date +%s)}" misses=0
   while :; do
     vm="$(g compute instances describe "$NAME" --zone="$ZONE" --format='value(status)' 2>/dev/null || echo UNKNOWN)"
     objects="$( (g storage ls "gs://$BUCKET/result/" 2>/dev/null || true) | sed 's#.*/##' | tr '\n' ' ')"
@@ -114,8 +114,9 @@ wait_off_run() {
       ended="$(date +%s)"; result="release-results.json FAIL"; grace=0
       echo "$(date '+%H:%M') release stage FAILED: $failed (release-results.json); not waiting for the run's end" >&2
     fi
-    if [[ -z "$ended" && -z "$told" && " $objects " == *" SIGNED-IN-KEPT "* ]]; then
-      told=kept; echo "SIGNED IN ALREADY: the machine's earlier sign-ins are still there (checked by existence) and were kept; no sign-in needed."
+    # A kept sign-in is only said: the stage may go on for hours (prepdry's dry run), so the stall guard stays on.
+    if [[ -z "$ended" && -z "$told" && -z "$kept_said" && " $objects " == *" SIGNED-IN-KEPT "* ]]; then
+      kept_said=1; echo "SIGNED IN ALREADY: the machine's earlier sign-ins are still there (checked by existence) and were kept; no sign-in needed."
     elif [[ -z "$ended" && -z "$told" && " $objects " == *" SIGN-IN-READY "* && "$vm" == RUNNING ]]; then
       # bench prep: the operator's turn to sign in, once a second look shows the stage still waiting for it.
       if [[ -z "$ready_seen" ]]; then
@@ -155,4 +156,59 @@ wait_off_run() {
     echo "$(date '+%H:%M') VM $vm; results: ${objects:-none yet}"
     sleep "$nap"
   done
+}
+
+# Pre-boot (ANGELO_BENCH_CANDIDATE_WAIT_MINUTES, prep or prepdry with no candidate): the machine boots and checks
+# itself (signed in, no Angelo left installed, stock Blender as the run expects) while the candidate is still being
+# built, says PREBOOT-READY and waits for `bench deliver MSI`, within its own limit. Returns once it is ready (the
+# machine keeps running), or with the run's failure.
+wait_preboot() {
+  local deadline=$(( $(date +%s) + ${ANGELO_GCP_PREBOOT_READY_MINUTES:-30} * 60 )) vm objects
+  while :; do
+    vm="$(g compute instances describe "$NAME" --zone="$ZONE" --format='value(status)' 2>/dev/null || echo UNKNOWN)"
+    objects="$( (g storage ls "gs://$BUCKET/result/" 2>/dev/null || true) | sed 's#.*/##' | tr '\n' ' ')"
+    if [[ " $objects " == *" DONE "* || " $objects " == *" FAILED "* || "$vm" == TERMINATED || "$vm" == STOPPED ]]; then
+      echo "PRE-BOOT FAILED: the stage ended before it was ready ($objects); see $0 logs" >&2
+      wait_off || true; return 1
+    fi
+    if [[ " $objects " == *" PREBOOT-READY "* ]]; then
+      echo "PREBOOT READY: $(g storage cat "gs://$BUCKET/result/PREBOOT-READY" 2>/dev/null | head -n 1 | tr -d '\r')"
+      echo "The machine waits for its candidate: $0 bench deliver MSI"
+      return 0
+    fi
+    if (( $(date +%s) > deadline )); then
+      echo "PRE-BOOT FAILED: not ready within ${ANGELO_GCP_PREBOOT_READY_MINUTES:-30} minutes; stopping it" >&2
+      g compute instances stop "$NAME" --zone="$ZONE" >/dev/null 2>&1 || true
+      wait_off || true; return 1
+    fi
+    sleep "${ANGELO_GCP_POLL_SECONDS:-30}"
+  done
+}
+
+# bench deliver MSI: the candidate for a machine waiting in pre-boot, named in its metadata; then the run's end.
+bench_deliver() {
+  local msi="${3:-}" vm objects sha meta
+  [[ -f "$msi" ]] || { echo "usage: $0 bench deliver MSI (a file)" >&2; exit 2; }
+  vm="$(g compute instances describe "$NAME" --zone="$ZONE" --format='value(status)' 2>/dev/null || echo MISSING)"
+  objects="$( (g storage ls "gs://$BUCKET/result/" 2>/dev/null || true) | sed 's#.*/##' | tr '\n' ' ')"
+  [[ "$vm" == RUNNING && " $objects " == *" PREBOOT-READY "* && " $objects " != *" DONE "* && " $objects " != *" FAILED "* ]] || {
+    echo "bench deliver refused: $NAME is $vm and not waiting in pre-boot (result: ${objects:-none})" >&2; exit 1; }
+  local named
+  named="$(g compute instances describe "$NAME" --zone="$ZONE" --format='value(metadata.items.angelo-bench-candidate-msi)' 2>/dev/null || true)"
+  [[ -z "$named" ]] || { echo "bench deliver refused: $NAME already took its candidate ($named); one request, one candidate" >&2; exit 1; }
+  sha="$(shasum -a 256 "$msi" | awk '{print $1}')"
+  meta="gs://$BUCKET/bench/candidate/${sha:0:12}-$(basename "$msi")"
+  if [[ "${ANGELO_GCP_DRY_RUN:-0}" == "1" ]]; then
+    echo "DRY RUN: nothing is uploaded or named."; echo "  would upload $msi to $meta and name it in $NAME's metadata, then wait-off"
+    return 0
+  fi
+  g storage cp --no-clobber "$msi" "$meta"
+  g compute instances add-metadata "$NAME" --zone="$ZONE" \
+    --metadata="angelo-bench-candidate-msi=$meta,angelo-bench-candidate-sha256=$sha" >/dev/null
+  echo "delivered $(basename "$msi") (${sha:0:12}) to $NAME"
+  STAGES=bench   # wait_off's stall guard reads the bench stage's progress
+  local code=0
+  wait_off || code=1
+  echo "Results: gcloud storage ls gs://$BUCKET/bench/  (logs: $0 logs)"
+  return "$code"
 }

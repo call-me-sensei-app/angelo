@@ -483,7 +483,12 @@ on a staged copy; ``modifier_remove``, ``modifier_move`` and ``modifier_apply``
 edit the stack. Commit copies each staged modifier's settings, then removes
 the live modifiers the stage removed or applied and orders the stack like the
 stage, journaling every removed modifier (type, index, settings and Geometry
-Nodes inputs) for rollback. The object's active modifier is journaled too and
+Nodes inputs) for rollback. A commit or a rollback writes a modifier or
+constraint setting only where the live one does not already hold that exact
+value (``program_transfers.held_exactly``), because rewriting a held value can
+clamp it. "Exact" counts the sign of zero, element by element in arrays and
+matrices: Blender writes -0.0 where it computes a value (a Child Of inverse),
+and ``==`` would keep the other zero. The object's active modifier is journaled too and
 set again last, because ``modifiers.new`` activates each modifier it adds,
 rollback's rebuilt ones included; the rollback read-back covers that flag. A program can stage an object only when every
 existing modifier has a bounded evaluated size (``action_budget.py``): fixed
@@ -1621,13 +1626,13 @@ estimates.
      - Current
    * - Claude plan schema (core plus deferred names)
      - 39,519 (about 20,480)
-     - 57,246 (about 29,661)
+     - 57,264 (about 29,670)
    * - Claude appended instructions
      - 8,875
      - 15,606
    * - Codex dynamic tools
      - 134,781 (about 69,840)
-     - 108,654 (about 56,297)
+     - 108,726 (about 56,335)
    * - Codex instructions
      - 13,077
      - 15,774

@@ -20,6 +20,10 @@
                        HEAD); it removes nothing.
 #>
 
+if (-not (Get-Command Invoke-NativeCapture -ErrorAction SilentlyContinue)) {   # Its caller may have loaded it.
+    . (Join-Path $PSScriptRoot "windows_native_call.ps1")
+}
+
 $sendTools = $PSScriptRoot
 $sendState = "C:\angelo\state"
 $sendPython = "C:\Python313\python.exe"
@@ -27,26 +31,21 @@ $sendPython = "C:\Python313\python.exe"
 function Invoke-SendTool([string[]]$Arguments) {
     if (-not (Test-Path $sendPython)) { & choco install -y --no-progress python313 --params "/InstallDir:C:\Python313" | Out-Host }
     if (-not (Test-Path $sendPython)) { throw "no Python at $sendPython to check the source tree with" }
-    $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    try { $out = @(& $sendPython -I -B (Join-Path $sendTools "source_send.py") @Arguments 2>&1 | ForEach-Object { "$_" }); $code = $LASTEXITCODE }
-    finally { $ErrorActionPreference = $old }
+    $ran = Invoke-NativeCapture $sendPython (@("-I", "-B", (Join-Path $sendTools "source_send.py")) + @($Arguments)); $out = $ran.Lines; $code = $ran.Code
     $out | ForEach-Object { Write-Host $_ }
     [pscustomobject]@{ Code = $code; Text = ($out -join " / ") }
 }
 
 function Set-ConfirmedMarker([string]$Gcloud, [string]$Bucket, [string]$Commit) {
     $marker = "gs://$Bucket/input/confirmed-commit"
-    $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    try {
-        if ($Commit) {
-            $file = Join-Path $sendState "confirmed-commit.upload"
-            [System.IO.File]::WriteAllText($file, $Commit)
-            $out = @(& $Gcloud storage cp --quiet $file $marker 2>&1 | ForEach-Object { "$_" })
-        } else {
-            $out = @(& $Gcloud storage rm --quiet $marker 2>&1 | ForEach-Object { "$_" })
-        }
-        $code = $LASTEXITCODE
-    } finally { $ErrorActionPreference = $old }
+    if ($Commit) {
+        $file = Join-Path $sendState "confirmed-commit.upload"
+        [System.IO.File]::WriteAllText($file, $Commit)
+        $ran = Invoke-NativeCapture $Gcloud @("storage", "cp", "--quiet", $file, $marker)
+    } else {
+        $ran = Invoke-NativeCapture $Gcloud @("storage", "rm", "--quiet", $marker)
+    }
+    $out = $ran.Lines; $code = $ran.Code
     $what = if ($Commit) { "= $Commit" } else { "cleared (no commit is confirmed)" }
     # A marker left stale is caught by the machine (a delta from another base does not apply), but never silently.
     if ($code -ne 0 -and ($Commit -or ($out -join " ") -notmatch "matched no objects|No URLs matched|not found")) {

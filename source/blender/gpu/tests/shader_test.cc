@@ -4,7 +4,7 @@
 
 #include "testing/testing.h"
 
-#include "BLI_math_base.h"
+#include "BLI_math_base_c.hh"
 #include "BLI_math_matrix_types.hh"
 
 #include "GPU_batch.hh"
@@ -595,7 +595,7 @@ static void test_eevee_lib()
   }
 
   /* TODO(fclem): Not passing currently. Need to be updated. */
-  // gpu_shader_lib_test("eevee_shadow_test.bsl.hh");
+  // gpu_shader_lib_test("eevee_test_shadow.bsl.hh");
   gpu_shader_lib_test("eevee_test_occupancy");
   gpu_shader_lib_test("eevee_test_fast_gi");
   /* Disabled on mac because of a buffer reuse bug. Seems to be fixed on Tahoe. */

@@ -3,6 +3,7 @@
 """Host tests: the snapshot worker thread and its main-thread host glue."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import os
@@ -94,7 +95,7 @@ class SnapshotWorkerTests(unittest.TestCase):
             worker.start()
             worker.submit_ingest(self.store.session_id, first["id"])
             worker.submit_ingest(self.store.session_id, second["id"])
-            events = [worker.events.get(timeout=10), worker.events.get(timeout=10)]
+            events = [worker.events.get(timeout=CAP_S), worker.events.get(timeout=CAP_S)]
             worker.stop()
         self.assertEqual([event["kind"] for event in events], ["failed", "ingested"])
         self.assertIn("unexpected failure", events[0]["error"])

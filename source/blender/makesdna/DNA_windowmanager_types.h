@@ -101,6 +101,7 @@ enum eWM_OutlinerSyncSelectDirty : short {
   WM_OUTLINER_SYNC_SELECT_FROM_EDIT_BONE = (1 << 1),
   WM_OUTLINER_SYNC_SELECT_FROM_POSE_BONE = (1 << 2),
   WM_OUTLINER_SYNC_SELECT_FROM_SEQUENCE = (1 << 3),
+  WM_OUTLINER_SYNC_SELECT_FROM_COLLECTION = (1 << 4),
 };
 ENUM_OPERATORS(eWM_OutlinerSyncSelectDirty)
 
@@ -513,6 +514,11 @@ struct wmOperator {
   ui::Layout *layout = nullptr;
   eOperator_Flag flag = {};
   char _pad[6] = {};
+  /**
+   * Angelo, runtime: when the operator's modal handler last kept an event from a person's input
+   * device (#BLI_time_now_seconds), 0 while it never has, see #OP_HAS_CONSUMED_INPUT.
+   */
+  double consumed_input_time = 0.0;
 };
 
 }  // namespace blender

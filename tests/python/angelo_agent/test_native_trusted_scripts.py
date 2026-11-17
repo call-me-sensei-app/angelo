@@ -5,6 +5,7 @@
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 import ast
 import contextlib
+import importlib
 import io
 import sys
 import time
@@ -17,10 +18,13 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent.controller import Controller, ToolDispatchBudget
 from angelo_agent.managed_policy import Policy, combine, with_organization
-from angelo_agent.tool_specs import validate_call, TOOL_MAP
+from angelo_agent.tool_specs import validate_call, READ_ONLY_TOOLS, TOOL_MAP
 from angelo_agent.team_view import org_policy
 from test_native_dispatch_fixes import ui_class
 
+
+import angelo_guard_twin  # noqa: E402
+angelo_guard_twin.stand_in_for_the_person(globals())   # Its tests set consents as the person does (grant_authority).
 
 class TrustedScriptTests(unittest.TestCase):
     def setUp(self):
@@ -315,9 +319,17 @@ class TrustedScriptTests(unittest.TestCase):
         window = SimpleNamespace(scene=scene, screen=SimpleNamespace(areas=[SimpleNamespace(
             type="VIEW_3D", regions=[SimpleNamespace(type="WINDOW")])]), view_layer=SimpleNamespace(update=lambda: None))
         from angelo_agent import live_windows, script_document
+        edited = []
         namespace = {"__package__": "angelo_agent", "contextlib": contextlib, "io": io, "time": time,
-            "validate_call": validate_call, "TOOL_MAP": TOOL_MAP, "live_windows": live_windows,
-            "script_document": script_document,
+            "functools": importlib.import_module("functools"),
+            "validate_call": validate_call, "TOOL_MAP": TOOL_MAP, "READ_ONLY_TOOLS": READ_ONLY_TOOLS,
+            "live_windows": live_windows,
+            "script_document": script_document, "script_admission": importlib.import_module("angelo_agent.script_admission"),
+            "grant_gestures": importlib.import_module("angelo_agent.grant_gestures"),   # Agent changes end held consent.
+            "agent_tool_scope": importlib.import_module("angelo_agent.agent_tool_scope"),   # Marks the agent's call.
+            "run_confined": importlib.import_module("angelo_agent.script_confinement").run_confined,
+            "findings_fields": importlib.import_module("angelo_agent.script_confinement").findings_fields,
+            "scene_changes": SimpleNamespace(edited=edited.append),   # Live previews hear the edit (scene_changes).
             "bpy": SimpleNamespace(context=SimpleNamespace(mode="OBJECT", temp_override=lambda **kw: contextlib.nullcontext())),
             "job_host": SimpleNamespace(guard=lambda name, arguments: None),
             "scene_signature": lambda *args: {}, "_typed_targets": lambda *args: [], "scene_diff": lambda *args: {}}
@@ -337,6 +349,7 @@ class TrustedScriptTests(unittest.TestCase):
             budget=ToolDispatchBudget(seconds=60))
         self.assertEqual(scene.value, 42)
         self.assertEqual(results[0]["result"], 42)
+        self.assertEqual(edited, [scene], "a script's edit is reported to every live preview once")
         self.assertFalse(results[0]["undoable"])
         self.assertFalse(results[0]["main_data_undoable"])
         self.assertFalse(results[0]["image_pixels_undoable"])

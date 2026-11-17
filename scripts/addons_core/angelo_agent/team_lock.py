@@ -24,6 +24,7 @@ import contextlib
 import os
 import threading
 import time
+from . import owned_paths
 from pathlib import Path
 
 LOCK_NAME = "team-account.lock"
@@ -65,6 +66,7 @@ def _unlock(handle):
 @contextlib.contextmanager
 def held(directory, timeout=TIMEOUT, *, name=LOCK_NAME, clock=time.monotonic, sleep=time.sleep):
     """Hold the lock file ``directory/name`` exclusively; ``LockTimeout`` after ``timeout`` seconds."""
+    owned_paths.require_writable(directory)
     path = Path(directory) / name
     with open(path, "a+b") as handle:
         deadline = clock() + timeout
@@ -99,6 +101,7 @@ class Holder:
             return self._take()
 
     def _take(self):
+        owned_paths.require_writable(self.path)
         if self._handle is None:
             handle = open(self.path, "a+b")
             try:
@@ -123,6 +126,7 @@ class Holder:
 
     def held_elsewhere(self):
         """True when another process holds the lock (this process's own hold counts as not elsewhere)."""
+        owned_paths.require_writable(self.path)
         if self._handle is not None:
             return False
         with open(self.path, "a+b") as handle:

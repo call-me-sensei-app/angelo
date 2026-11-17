@@ -8,6 +8,7 @@ joins only static, unshared, unskinned nodes; the exporter's classes are stood i
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import contextlib
 import errno
@@ -129,7 +130,7 @@ class PreviewServerLoadTests(unittest.TestCase):
         first = socket.create_connection(self.address, timeout=5)
         self.addCleanup(first.close)
         first.sendall(self.request("app.js"))
-        self.assertTrue(held.wait(5))
+        self.assertTrue(held.wait(CAP_S))
         files = ["app.js", "look.js", "panel.js", "compare.js", "shaders.js", "app.css",
                  "vendor/three/build/three.module.min.js", "report.json", ""]
         outcomes = [None] * self.PAGE_LOAD
@@ -178,7 +179,7 @@ class PreviewServerLoadTests(unittest.TestCase):
             self.assertTrue(sock.recv(1))   # The reply has started.
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
             sock.close()                    # A reset, as a reload aborts the download (WinError 10053/10054).
-            self.assertTrue(ended.wait(10))
+            self.assertTrue(ended.wait(CAP_S))
         self.assertEqual(printed.getvalue(), "")
         with socket.create_connection(self.address, timeout=5) as again:
             again.sendall(self.request("report.json"))

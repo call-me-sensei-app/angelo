@@ -12,20 +12,30 @@ again from what Blender decoded:
 - an image (one file or generated, one view) as its own pixels, packed as a new PNG, or an OpenEXR for a float
   buffer (which Blender holds in scene linear: tagged so, a data image as it was), in place, so its users and
   properties stay;
-- a sound decoded and written again as PCM WAV, then packed.
+- a sound decoded (audaspace) and written again as 24-bit FLAC, streamed, so memory stays flat however long it is
+  (BREAKIT-C7A-9 M2: a whole decode took 39 GB for three hours; its WAV writer failed on ten minutes, BREAKIT-C7A-7
+  L3), then packed; one whose file would be larger than Blender packs (2 GB) or than the free disk holds is not kept.
 
 A font cannot be written again (and any bytes after its tables are read by no one: BREAKIT-C7A-6), so a worker's font
 is never kept: packed bytes are removed, and its private path cut. Blender's own font is the one named ``<builtin>``
 with nothing packed (its data is Blender's, in memory); bytes packed under that name are a worker's too. What cannot
 be written again this way (a sequence, a movie, tiles, views, what Blender cannot decode, any other datablock's file)
 is never packed: a private file's path is cut (``detached``), and bytes already packed in the part that cannot be
-removed refuse the merge (``unsafe``).
+removed refuse the merge (``unsafe``): a packed Volume always does, since Blender has no way to remove a Volume's
+packed bytes (BREAKIT-C7A-7 L5). An image larger than Blender's generated images can be (65536 pixels a side), or whose
+decoded pixels would be larger than Blender packs (``PIXELS``: their copy is held three times while it is written
+again; BREAKIT-C7A-9 M2), is not written again (BREAKIT-C7A-7 L4).
 """
 
 import os
+import re
+import shutil
 
+from . import owned_paths
+
+PACK_LIMIT = (1 << 31) - 1   # The largest file Blender packs (``BKE_packedfile_new``).
+PIXELS = PACK_LIMIT // 16   # The most pixels written again: their float RGBA copy no larger than a packed file.
 failures = []   # Why each file of the last merge was not kept (kind, error): read by the tests, never shown.
-
 
 
 def packed(item):
@@ -39,7 +49,8 @@ def packed(item):
 
 def secure(bpy, kept, found, private, scratch):
     """Each kept datablock with a worker's file (``found``: a private path, by Blender's path walk) or packed bytes
-    written again from what Blender decoded, or its packing removed. Returns (packed, detached, unsafe) names."""
+    written again from what Blender decoded, or its packing removed. Returns (packed: the datablocks written again,
+    detached names, unsafe names)."""
     from .worker_merge_paths import type_name
     written, detached, unsafe = [], [], []
     failures.clear()
@@ -54,12 +65,12 @@ def secure(bpy, kept, found, private, scratch):
             failures.append((kind, type(error).__name__, str(error)[:300]))
             kept_it = False
         if kept_it:
-            written.append(item.name)
+            written.append(item)
         elif had and not _unpacked(item):
             unsafe.append(item.name)
         else:
             detached.append(item.name)
-    return sorted(written), sorted(detached), sorted(unsafe)
+    return written, sorted(detached), sorted(unsafe)
 
 
 def _unpacked(item):
@@ -83,6 +94,11 @@ def _image(bpy, item):
     width, height = item.size
     if width <= 0 or height <= 0:   # Not an image Blender can read (BREAKIT-C7A-4).
         return False
+    sizes = item.bl_rna.properties
+    if width > sizes["generated_width"].hard_max or height > sizes["generated_height"].hard_max:
+        return False   # A buffer Blender cannot make: refused before anything of the image changes.
+    if width * height > PIXELS:
+        return False   # Checked before its pixels are read (BREAKIT-C7A-9 M2).
     pixels = numpy.empty(width * height * 4, dtype=numpy.float32)
     item.pixels.foreach_get(pixels)
     is_float, colorspace, alpha, data = (item.is_float, item.colorspace_settings.name, item.alpha_mode,
@@ -91,7 +107,8 @@ def _image(bpy, item):
     # Its new name first, its buffer written whole: the new buffer copies the image's path buffer as its own name,
     # which packing and a later repack of an edit (Save Modified Images) write as the packed file's (BREAKIT-C7A-6).
     from .worker_merge_paths import overwrite
-    overwrite(item, "filepath_raw", "//%s.%s" % (stem, "exr" if is_float else "png"))
+    name = "//%s.%s" % (stem, "exr" if is_float else "png")
+    overwrite(item, "filepath_raw", name)
     item.source = "GENERATED"   # A new buffer: none of the file's metadata, packed bytes dropped on packing.
     item.generated_type, item.use_generated_float = "BLANK", is_float
     item.generated_width, item.generated_height = width, height
@@ -102,6 +119,7 @@ def _image(bpy, item):
     item.alpha_mode = alpha
     item.pixels.foreach_set(pixels)
     item.pack()
+    overwrite(item, "filepath_raw", name)   # Making it generated cleared its path (BREAKIT-C7A-7 L4).
     return item.source == "FILE" and len(packed(item)) == 1
 
 
@@ -117,19 +135,37 @@ def _scene_linear(bpy):
     return _LINEAR[0]
 
 
+def _flac_stem(path):
+    """The sound's own last name without its extension (``path``: the part's data), in word characters and ``-``
+    only, at most 64 bytes of UTF-8 (whole characters): after the fixed ``sound-`` its FLAC is one plain file of the
+    folder it is joined to on every platform, never a separator, ``..``, a drive, a stream (``a:b``) or a Windows
+    device name (``COM1``, ``NUL``), whatever a script set the path to."""
+    stem = os.path.splitext(path.replace("\\", "/").rsplit("/", 1)[-1])[0]
+    return re.sub(r"[^\w-]", "_", stem).encode("utf-8")[:64].decode("utf-8", "ignore")
+
+
 def _sound(bpy, item, folder):
-    """``item`` decoded and packed again as PCM WAV, written in ``folder`` (a private scratch folder)."""
+    """``item`` decoded and packed again as 24-bit FLAC, streamed by audaspace into ``folder`` (a private scratch
+    folder): memory stays flat; a file Blender cannot pack (``PACK_LIMIT``) or the disk cannot hold is not kept."""
     import aud
-    os.makedirs(folder, exist_ok=True)
-    stem = os.path.splitext(os.path.basename(item.filepath.replace("\\", "/")))[0] or "sound"
+    os.makedirs(owned_paths.require_writable(folder), exist_ok=True)
     source = bpy.path.abspath(item.filepath, library=item.library)
     files = packed(item)
     if files:
         source = os.path.join(folder, "packed")
+        owned_paths.require_writable(source)
         with open(source, "wb") as out:
             out.write(bytes(files[0].data))
-    target = os.path.join(folder, stem + ".wav")
-    aud.Sound(source).write(target, container=aud.CONTAINER_WAV, codec=aud.CODEC_PCM, format=aud.FORMAT_FLOAT32)
+    sound = aud.Sound(source)
+    rate, channels = sound.specs
+    frames = sound.length
+    if frames > 0 and frames * channels * 3 > shutil.disk_usage(folder).free:   # Its samples, before FLAC packs them.
+        return False
+    target = os.path.join(folder, "sound-%s.flac" % _flac_stem(item.filepath))   # A plain file of the folder above.
+    sound.write(target, rate=int(rate), channels=int(channels), format=aud.FORMAT_S24, container=aud.CONTAINER_FLAC,
+                codec=aud.CODEC_FLAC)
+    if not 0 < os.path.getsize(target) <= PACK_LIMIT:
+        return False
     if files and not _unpacked(item):
         return False
     item.filepath = target

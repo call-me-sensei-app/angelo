@@ -17,6 +17,7 @@ and is never translated.
     format_decimal(value, places=1)    "8.4" with the language's decimal mark
     format_bytes(count) -> str         "940 bytes", "8.4 KB", "212 MB", "1.8 GB": one decimal below ten
     format_pixels(size) -> str         a texture size: "1K" for 1024, "1.5K" for 1536, "512" below
+    format_list(items) -> str          "A, B, C" with the language's list mark ("A、B、C" in Japanese)
 """
 
 import time
@@ -29,6 +30,7 @@ MONTHS = (n_("{day} January {year}"), n_("{day} February {year}"), n_("{day} Mar
           n_("{day} November {year}"), n_("{day} December {year}"))
 DATE_TIME = n_("{date}, {time}")
 PIXELS = n_("{count}K")   # A texture's size in thousands of pixels, as artists write it: 1K, 2K, 4K.
+LIST_ITEM = n_("{list}, {item}")   # One more item at a list's end: "{list}、{item}" in Japanese, "{list}، {item}" in Arabic.
 UNITS = ((1 << 30, n_("{value} GB")), (1 << 20, n_("{value} MB")), (1 << 10, n_("{value} KB")))
 
 
@@ -68,6 +70,18 @@ def format_decimal(value, places=1):
     """``value`` rounded to ``places`` decimals, written with the interface language's decimal mark."""
     text = "%.*f" % (places, value)
     return text.replace(".", iface_(".", "Decimal separator")) if places > 0 else text   # "," in German, French...
+
+
+def format_list(items):
+    """``items`` as one list with the interface language's list mark, one ``LIST_ITEM`` at a time (so a right-to-left
+    language keeps its reading order); "-" when there are none."""
+    items = [str(item) for item in items]
+    if not items:
+        return "-"
+    text = items[0]
+    for item in items[1:]:
+        text = iface_(LIST_ITEM, list=text, item=item)
+    return text
 
 
 def format_bytes(count):

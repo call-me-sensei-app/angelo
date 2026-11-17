@@ -55,6 +55,12 @@ LFS_OID = re.compile(rb"oid sha256:([0-9a-f]{64})\nsize (\d+)\n")
 # Blender's regression-test data: not used to build or run, and left out of upstream's source archive too
 # (build_files/utils/make_source_archive.py). It is the only LFS content most checkouts do not hold.
 EXCLUDED = ("tests/files/",)
+# NVIDIA's RTX SDKs licence (the DLSS SDK headers the Windows build compiles against) forbids putting the SDK under an
+# open-source licence, so none of its files, by name or by NVIDIA's SPDX tag, may enter this GPL archive
+# (doc/angelo/native_editor_build.rst, "DLSS"). The build machines hold the headers; the repository never does.
+NVIDIA_SDK_NAME = re.compile(r"(^|/)(nvsdk_ngx[^/]*|nvngx[^/]*)$", re.IGNORECASE)
+# NVIDIA's SPDX licence line, spelt in pieces so this file never carries it.
+NVIDIA_SDK_TAG = re.compile(rb"SPDX-" rb"License-Identifier:\s*LicenseRef-" rb"NvidiaProprietary")
 HASHES = {"MD5": hashlib.md5, "SHA1": hashlib.sha1, "SHA256": hashlib.sha256, "SHA512": hashlib.sha512}
 
 
@@ -267,6 +273,9 @@ def write_archive(path, prefix, contents, mtime, info_json, compression):
                     archive.addfile(info, handle)
             else:
                 data = source if isinstance(source, bytes) else blobs.read(source)
+                if NVIDIA_SDK_TAG.search(data):
+                    raise SourceError("%s carries NVIDIA's proprietary licence tag: its SDK never enters the source "
+                                      "release" % name)
                 archive.addfile(info, io.BytesIO(data))
         for name, target in sorted(contents["links"]):
             info = entry(name)
@@ -317,6 +326,10 @@ def archive_command(arguments):
     if contents["lfs_missing"] and not arguments.allow_missing_lfs:
         raise SourceError("%d Git LFS files have no local object (git lfs fetch, then run again): %s" % (
             len(contents["lfs_missing"]), ", ".join(m["path"] for m in contents["lfs_missing"][:8])))
+    sdk = [record[0] for record in contents["files"] if NVIDIA_SDK_NAME.search(record[0])]
+    if sdk:
+        raise SourceError("NVIDIA SDK files are tracked, and their licence keeps them out of the source release: %s"
+                          % ", ".join(sdk[:8]))
     version, series_full = identity["version"]["label"], blender_version(commit)[1]
     out = Path(arguments.out)
     out.mkdir(parents=True, exist_ok=True)

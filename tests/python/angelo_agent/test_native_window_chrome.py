@@ -79,7 +79,7 @@ class WindowChromeTests(unittest.TestCase):
         topbar = default_theme_block("space_topbar")
         on_chrome = {
             "menu titles (pulldown text)": window_chrome.rgb(pulldown["text"]),
-            "labels (top bar header text)": window_chrome.rgb(topbar["header_text"]),
+            "labels (top bar text)": window_chrome.rgb(topbar["text"]),
             "borderless buttons (regular text)": window_chrome.rgb(default_theme_block("wcol_regular")["text"]),
             "Windows title text": WHITE,
             # AppKit draws the active window's title in its label colour: white at 90% in the dark
@@ -98,21 +98,21 @@ class WindowChromeTests(unittest.TestCase):
         self.assertLess(window_chrome.contrast(window_chrome.rgb(pulldown["text"]), facet), window_chrome.READABLE)
         self.assertLess(window_chrome.contrast(window_chrome.over(WHITE, 0.85, facet), facet), window_chrome.READABLE)
 
-    def test_light_theme_relies_on_the_top_bars_own_header_text(self):
+    def test_light_theme_relies_on_the_top_bars_own_text(self):
         light = light_theme()
         pulldown = light.find(".//wcol_pulldown/ThemeWidgetColors").attrib
-        header_text = window_chrome.rgb(light_space(light, "topbar")["header_text"])
+        space_text = window_chrome.rgb(light_space(light, "topbar")["text"])
         # The dark pulldown text every light header shares cannot be read on the chrome ...
         self.assertLess(window_chrome.contrast(window_chrome.rgb(pulldown["text"]), CHROME), window_chrome.READABLE)
-        # ... so the top bar's rule falls back to its header text, which can.
-        self.assertGreaterEqual(window_chrome.contrast(header_text, CHROME), window_chrome.READABLE)
+        # ... so the top bar's rule falls back to its own text, which can.
+        self.assertGreaterEqual(window_chrome.contrast(space_text, CHROME), window_chrome.READABLE)
         widgets = (ROOT / "source/blender/editors/interface/interface_widgets.cc").read_text(encoding="utf-8")
         rule = widgets.split("static void widget_text_ensure_readable_on_topbar(", 1)[1].split("\n}\n", 1)[0]
         self.assertIn("theme_state.spacetype != SPACE_TOPBAR", rule, "Other editors and popups are never touched")
         self.assertIn("constexpr float readable_contrast = 4.5f;", rule)
-        self.assertIn("theme::get_color_3ubv(TH_HEADER_TEXT, header_text);", rule)
-        self.assertIn("contrast < readable_contrast && widget_color_contrast_ratio(header_text, back) > contrast", rule,
-                      "A theme whose text already reads, or whose header text is no better, is drawn as before")
+        self.assertIn("theme::get_color_3ubv(TH_TEXT, space_text);", rule)
+        self.assertIn("contrast < readable_contrast && widget_color_contrast_ratio(space_text, back) > contrast", rule,
+                      "A theme whose text already reads, or whose top bar text is no better, is drawn as before")
         self.assertEqual(widgets.count("widget_text_ensure_readable_on_topbar(but, wt);"), 1)
 
     def test_title_bar_text_is_chosen_by_luminance_on_macos_and_windows(self):
@@ -142,8 +142,10 @@ class WindowChromeTests(unittest.TestCase):
 
     def test_main_windows_take_the_title_bar_colour_from_the_top_bar(self):
         window = (ROOT / "source/blender/windowmanager/intern/wm_window.cc").read_text(encoding="utf-8")
+        context = window.split("void wm_window_titlebar_theme_context_set(", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("if (WM_window_is_main_top_level(win)) {\n    ui::theme::theme_set(SPACE_TOPBAR, RGN_TYPE_HEADER);", context)
         style = window.split("static void wm_window_decoration_style_set_from_theme(", 1)[1].split("\n}\n", 1)[0]
-        self.assertIn("if (WM_window_is_main_top_level(win)) {\n    ui::theme::theme_set(SPACE_TOPBAR, RGN_TYPE_HEADER);", style)
+        self.assertIn("wm_window_titlebar_theme_context_set(win, screen);", style)
         self.assertIn("ui::theme::get_color_3fv(TH_BACK, titlebar_bg_color);", style)
         # Before its first draw a window is cleared to the colour between the editors, which the bundled
         # themes keep where the top bar used to be: a start does not flash the whole window in the chrome.

@@ -23,10 +23,10 @@
 
 #include "BLI_array.hh"
 #include "BLI_bit_group_vector.hh"
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_map.hh"
 #include "BLI_set.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 #include "BLI_vector.hh"
 
 #include "DNA_layer_types.h"
@@ -36,6 +36,7 @@
 #include "DNA_scene_types.h"
 
 #include "BKE_customdata.hh"
+#include "BKE_geometry_set.hh"
 #include "BKE_global.hh"
 #include "BKE_main.hh"
 #include "BKE_mesh.hh"
@@ -110,6 +111,19 @@ BitGroupVector<> hidden_for_restore(const BitGroupVector<0> &source)
   return result;
 }
 
+/**
+ * Whether an evaluated mesh Object owns its evaluated mesh, so the Multires grids on that mesh belong to this graph and
+ * stay readable while it lives. Blender 5.3 keeps the ownership in the evaluated GeometrySet and no longer sets
+ * `is_data_eval_owned` for meshes (1422f044cbf), which left every Multires owner out of the inventory; upstream reads
+ * it the same way (`object_update_from_subsurf_ccg`, 6b63bb0ae9f).
+ */
+bool owns_evaluated_mesh(const Object &object)
+{
+  const bke::GeometrySet *geometry = object.runtime->geometry_set_eval;
+  const bke::MeshComponent *component = geometry ? geometry->get_component<bke::MeshComponent>() : nullptr;
+  return component && component->owns_direct_data();
+}
+
 struct EvaluatedOwner {
   DEGRegisteredGraph graph;
   uint32_t object_uid;
@@ -164,7 +178,7 @@ bool inventory(Main &bmain, Vector<EvaluatedOwner> &r_owners, const char **r_err
       }
       if (transient && !selected.contains(id.original_session_uid)) { continue; }
       const Object *object = id_cast<const Object *>(id.evaluated_id);
-      if (object->type != OB_MESH || !object->runtime->is_data_eval_owned) {
+      if (object->type != OB_MESH || !owns_evaluated_mesh(*object)) {
         continue;
       }
       /* This accessor never creates CPU subdivision data. The evaluated Object owns the result. */
@@ -359,6 +373,20 @@ bool collect_live_owners(Main &bmain,
     }
   }
   return true;
+}
+
+/** Bind the original SculptSession to this owner's grids, as Sculpt Mode binds its active graph's
+ * (sculpt_update_object). Any graph that runs the Multires modifier rebinds the shared session, so
+ * the last one evaluated can differ from the session's authority. An existing PBVH would otherwise
+ * keep the wrong graph's pending normal work. Resets only disposable G0 session data; never frees
+ * owned evaluated caches. */
+void bind_session_authority(const LiveOwner &owner)
+{
+  Object &object = *const_cast<Object *>(owner.original);
+  BKE_sculptsession_free_pbvh(object);
+  BKE_sculptsession_free_deformMats(object.runtime->sculpt_session);
+  BKE_sculptsession_update_for_edit(
+      const_cast<Depsgraph *>(owner.evaluated.graph.depsgraph), &object, false);
 }
 
 /** Values that affect evaluation; addresses and graph activity are not saved identities. */
@@ -951,7 +979,7 @@ bool main_undo_grids_replay_checkpoint(Main &bmain, MainUndoGridState &state,
         if (id.original_type != ID_OB || id.original_session_uid != saved.object_uid ||
             id.evaluated_id != reinterpret_cast<const ID *>(saved.observed_object)) { return true; }
         const Object &evaluated = *reinterpret_cast<const Object *>(id.evaluated_id);
-        if (!evaluated.runtime->is_data_eval_owned) { return false; }
+        if (!owns_evaluated_mesh(evaluated)) { return false; }
         const bool owns_base = DEG_checkpoint_foreach_evaluated_ID(graph.depsgraph, [&](const DEGEvaluatedID &source) {
           if (source.original_type == ID_ME && source.original_session_uid == saved.mesh_uid &&
               source.evaluated_id == evaluated.runtime->data_orig) {
@@ -1073,6 +1101,33 @@ bool main_undo_grids_collect_owner_keys(Main &bmain,
   return true;
 }
 
+bool main_undo_grids_rebind_authorities(Main &bmain,
+                                        const Span<MainUndoGridOwnerKey> authorities,
+                                        const char **r_error)
+{
+  *r_error = nullptr;
+  Vector<LiveOwner> owners;
+  if (!collect_live_owners(bmain, false, owners, r_error)) {
+    return false;
+  }
+  for (const MainUndoGridOwnerKey &key : authorities) {
+    if (!key.authority) {
+      continue;
+    }
+    const LiveOwner *owner = std::find_if(owners.begin(), owners.end(), [&](const LiveOwner &live) {
+      return key_equal(live.key, key);
+    });
+    if (owner == owners.end()) {
+      *r_error = "The Sculpt owner set changed during synchronization";
+      return false;
+    }
+    if (!owner->key.authority) {
+      bind_session_authority(*owner);
+    }
+  }
+  return true;
+}
+
 bool main_undo_grids_suppress_old_writeback(Main &bmain, const char **r_error)
 {
   *r_error = nullptr;
@@ -1090,7 +1145,7 @@ bool main_undo_grids_suppress_old_writeback(Main &bmain, const char **r_error)
         return true;
       }
       const Object *object = id_cast<const Object *>(id.evaluated_id);
-      if (object->type != OB_MESH || !object->runtime->is_data_eval_owned) {
+      if (object->type != OB_MESH || !owns_evaluated_mesh(*object)) {
         return true;
       }
       const Mesh *mesh = BKE_object_get_evaluated_mesh_no_subsurf_unchecked(object);
@@ -1304,19 +1359,11 @@ MainUndoGridRestore *main_undo_grids_prepare(Main &bmain,
   if (!restored_owners_match(bmain, state, false, owners, r_error)) {
     return nullptr;
   }
-  /* The last evaluated graph can differ from the saved authority. An existing PBVH would otherwise
-   * keep the wrong graph's pending normal work after sculpt_update_object changes ss.subdiv_ccg.
-   * Reset only disposable G0 session data, once per Object; never free owned evaluated caches. */
+  /* The last evaluated graph can differ from the saved authority: bind it, once per Object. */
   for (const int64_t i : state.owners.index_range()) {
-    if (!state.owners[i].authority) {
-      continue;
+    if (state.owners[i].authority) {
+      bind_session_authority(owners[i]);
     }
-    const LiveOwner &owner = owners[i];
-    Object &object = *const_cast<Object *>(owner.original);
-    BKE_sculptsession_free_pbvh(object);
-    BKE_sculptsession_free_deformMats(object.runtime->sculpt_session);
-    BKE_sculpt_update_object_for_edit(
-        const_cast<Depsgraph *>(owner.evaluated.graph.depsgraph), &object, false);
   }
   /* This helper can rebuild PBVH, normals and visibility on G0. Requery every owner before retaining
    * final CCG pointers. There is no evaluation or callback-bearing work after this barrier. */

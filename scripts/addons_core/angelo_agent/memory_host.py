@@ -16,7 +16,7 @@ from itertools import islice
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import change_clock
+from . import change_clock, save_failure
 from .stale_binding import same as same_binding
 from .chat_settings import clean_options
 from .files import MAX_FILE
@@ -389,8 +389,8 @@ def execute(controller, name, arguments):
         controller.state = updated
         try:
             controller.save()
-        except (OSError, ValueError, TypeError, UnicodeError):
+        except (OSError, ValueError, TypeError, UnicodeError) as error:
             controller.state = previous
-            raise ValueError("Task memory could not be saved; no memory update was retained") from None
+            raise ValueError("Task memory could not be saved; no memory update was retained. " + save_failure.cause(error)) from None
         controller.version += 1
         return {"success": True, "memory": _public_memory(controller, read_memory(updated, document, profile_id=_profile(controller)))}

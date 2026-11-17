@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 import stat
 
-from . import private_roots
+from . import owned_paths, private_roots
 from .fab_browser_process import BrowserUnavailable
 from .team_library_files import MAX_BYTES
 from .fab_browser_profile import _read
@@ -126,13 +126,14 @@ class Landing:
   self.path=None;self.identity=None;self.token=None
   try:
    self.path=private_roots.allocate(private_roots.FAB_BROWSER_PREFIX)
-   os.chmod(self.path,0o700)
+   os.chmod(owned_paths.require_writable(self.path),0o700)
    self.identity=private_roots.hold(self.path);self.token=private_roots.owner_token(self.identity)
    if self.identity is None or self.token is None:raise BrowserUnavailable('DOWNLOAD_LANDING_UNPROVED')
   except BaseException:
    error=BrowserUnavailable('DOWNLOAD_LANDING_UNPROVED');error.owner=self;raise error from None
  def remove(self):
   if self.path is None:return
+  owned_paths.require_writable(self.path)
   import shutil
   info=os.lstat(self.path)
   if (not stat.S_ISDIR(info.st_mode)or (info.st_dev,info.st_ino)!=self.identity

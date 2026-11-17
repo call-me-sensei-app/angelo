@@ -13,6 +13,7 @@
 Against a loopback server that holds each response half sent until the test lets it finish."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import hashlib
 import os
@@ -47,7 +48,7 @@ class HeldServer:
                 self.wfile.write(body[:len(body) // 2])
                 self.wfile.flush()
                 owner.started.set()
-                owner.release.wait(10)
+                owner.release.wait(CAP_S)
                 try:
                     self.wfile.write(body[len(body) // 2:])
                 except OSError:   # The client stopped reading.
@@ -89,7 +90,7 @@ class SharingCase(unittest.TestCase):
                 "url": self.server.base + path, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}]}
 
     def started(self):
-        self.assertTrue(self.server.started.wait(5), "the download never started")
+        self.assertTrue(self.server.started.wait(CAP_S), "the download never started")
 
 
 class StopTests(SharingCase):
@@ -144,7 +145,7 @@ class RetryTests(SharingCase):
             stopping = original(transfer)
             if stopping:
                 decided.set()
-                go.wait(5)   # Held between the decision and the download's end: a retry arrives here.
+                go.wait(CAP_S)   # Held between the decision and the download's end: a retry arrives here.
             return stopping
         with unittest.mock.patch.object(library_host.Transfer, "is_set", is_set):
             item, stop = self.item(), threading.Event()
@@ -152,7 +153,7 @@ class RetryTests(SharingCase):
             self.started()
             stop.set()
             self.server.release.set()
-            self.assertTrue(decided.wait(5), "the download never decided to stop")
+            self.assertTrue(decided.wait(CAP_S), "the download never decided to stop")
             retry = self.library.fetch(item)
             go.set()
             self.assertEqual(Path(retry.result(10)["thing.glb"]).read_bytes(), b"a" * SIZE)
@@ -170,14 +171,14 @@ class RetryTests(SharingCase):
 
         def finish(transfer, shared):
             finishing.set()
-            go.wait(5)   # Held between the download's end and its outcome reaching the callers: a retry arrives.
+            go.wait(CAP_S)   # Held between the download's end and its outcome reaching the callers: a retry arrives.
             original(transfer, shared)
         with unittest.mock.patch.object(library_files, "check_item", check), \
                 unittest.mock.patch.object(library_host.Transfer, "finish", finish):
             item = self.item()
             self.server.release.set()
             first = self.library.fetch(item)
-            self.assertTrue(finishing.wait(5))
+            self.assertTrue(finishing.wait(CAP_S))
             retry = self.library.fetch(item)
             go.set()
             with self.assertRaises(ValueError):

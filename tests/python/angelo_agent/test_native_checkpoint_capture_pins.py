@@ -9,6 +9,7 @@ release/abandon of one owner is outside this contract.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import errno
 import json
@@ -39,7 +40,7 @@ from angelo_agent.checkpoint_capture_pins import acquire_capture_pin, capture_is
 from angelo_agent.checkpoint_transactions import _transaction, holds_transaction
 root, session, capture, mode, signal = Path(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5], Path(sys.argv[6])
 def await_signal():
-    deadline = time.monotonic() + 10
+    deadline = time.monotonic() + 60  # The parent's signal; a hang only (host_waits.CAP_S).
     while not signal.exists():
         if time.monotonic() >= deadline:
             raise RuntimeError("Owned child handshake timed out")
@@ -111,12 +112,12 @@ class CapturePinTests(unittest.TestCase):
                 if child.poll() is None:
                     child.terminate()
                     try:
-                        child.wait(timeout=2)
+                        child.wait(timeout=CAP_S)
                     except subprocess.TimeoutExpired:
                         child.kill()
-                        child.wait(timeout=2)
+                        child.wait(timeout=CAP_S)
             for thread in self.threads:
-                thread.join(timeout=3)
+                thread.join(timeout=CAP_S)
                 self.assertFalse(thread.is_alive(), "Owned probe thread did not stop")
             for pin in self.owned:
                 if pin._resource is not None:
@@ -129,7 +130,7 @@ class CapturePinTests(unittest.TestCase):
                 for pin in self.owned:
                     pins.abandon_capture_pin(pin)
                 for thread in self.threads:
-                    thread.join(timeout=3)
+                    thread.join(timeout=CAP_S)
             finally:
                 self.temp.cleanup()
 
@@ -167,7 +168,7 @@ class CapturePinTests(unittest.TestCase):
         return child, output, signal
 
     def await_ready(self, child, output):
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             text = output.read_text()
             if text.startswith("READY\n"):
@@ -239,14 +240,14 @@ class CapturePinTests(unittest.TestCase):
         thread = threading.Thread(target=observe, daemon=True)
         self.threads.append(thread)
         thread.start()
-        self.assertTrue(done.wait(3), "Capture retained the profile mutex or a probe waited")
-        thread.join(timeout=3)
+        self.assertTrue(done.wait(CAP_S), "Capture retained the profile mutex or a probe waited")
+        thread.join(timeout=CAP_S)
         self.assertEqual(result, {"profile": True, "active": True})
 
     def test_real_second_process_observes_parent_pin(self):
         self.acquire()
         child, output, _ = self.start_child("probe")
-        self.assertEqual(child.wait(timeout=5), 0, output.read_text())
+        self.assertEqual(child.wait(timeout=CAP_S), 0, output.read_text())
         self.assertEqual(json.loads(output.read_text()), {"active": True, "profile": True})
         self.assertTrue(self.probe())
 
@@ -263,7 +264,7 @@ class CapturePinTests(unittest.TestCase):
         self.threads.append(thread)
         thread.start()
         # The previous owner performs no pin operation until the recipient exits.
-        thread.join(timeout=3)
+        thread.join(timeout=CAP_S)
         self.assertFalse(thread.is_alive(), "Quiescent recipient did not finish")
         self.assertEqual(errors, [])
         self.assertIsNone(pin._resource)
@@ -280,7 +281,7 @@ class CapturePinTests(unittest.TestCase):
         self.await_ready(child, output)
         self.assertTrue(self.probe())
         signal.write_text("release")
-        self.assertEqual(child.wait(timeout=5), 0, output.read_text())
+        self.assertEqual(child.wait(timeout=CAP_S), 0, output.read_text())
         self.assertIn("DONE", output.read_text())
         self.assertFalse(self.probe())
         self.assertFalse(self.pin_path.exists())
@@ -290,10 +291,10 @@ class CapturePinTests(unittest.TestCase):
         self.await_ready(child, output)
         self.assertTrue(self.probe())
         signal.write_text("crash")
-        self.assertEqual(child.wait(timeout=5), 23, output.read_text())
+        self.assertEqual(child.wait(timeout=CAP_S), 23, output.read_text())
         self.assertTrue(self.pin_path.is_file())
         # OS release may be briefly delayed on Windows; never age-delete the pin.
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + CAP_S
         while self.probe() and time.monotonic() < deadline:
             time.sleep(.01)
         self.assertFalse(self.probe())
@@ -453,7 +454,7 @@ class CapturePinTests(unittest.TestCase):
         self.assertTrue(self.pin_path.exists())
         self.assertEqual(metadata.read_bytes(), before_metadata)
         child, output, _ = self.start_child("probe")
-        self.assertEqual(child.wait(timeout=5), 0, output.read_text())
+        self.assertEqual(child.wait(timeout=CAP_S), 0, output.read_text())
         self.assertEqual(json.loads(output.read_text()), {"active": False, "profile": True})
 
     def test_abandon_keeps_replaced_pin_and_directory(self):
@@ -554,7 +555,7 @@ class CapturePinTests(unittest.TestCase):
             self.assertEqual(metadata.read_bytes(), b'{"state":"READY","capture_validation":"PENDING"}')
         finally:
             signal.write_text("release")
-            child.wait(timeout=5)
+            child.wait(timeout=CAP_S)
         self.assertEqual(child.returncode, 0, output.read_text())
         self.assertFalse(self.probe())
 

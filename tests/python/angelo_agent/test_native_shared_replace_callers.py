@@ -9,8 +9,10 @@ on the host's files elsewhere). On the old code (a bare ``os.replace``, a plain 
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import json
+import math
 import os
 import sys
 import tempfile
@@ -31,12 +33,43 @@ import ntfs_sharing  # noqa: E402
 from test_native_usage_meter import receipt  # noqa: E402
 
 
+def due(refused_at):
+    """The instant a test moves the clock to for a save refused at ``refused_at`` to be tried again: well past
+    ``RETRY_SECONDS``, never exactly on it. The product asks ``now - refused >= RETRY_SECONDS``, and
+    ``(refused + RETRY_SECONDS) - refused`` is a hair under ``RETRY_SECONDS`` at some clock values (``clock_edge``),
+    so a test that moved the clock to exactly the interval waited on arithmetic, not on the retry. The exact
+    instant is not what these tests are about: "not before the pause, and once free" is."""
+    return refused_at + 2 * shared_replace.RETRY_SECONDS
+
+
+def clock_edge():
+    """A clock value at which ``(value + RETRY_SECONDS) - value`` is under ``RETRY_SECONDS``: just below a power
+    of two, with an odd last bit. The sum crosses into doubles half as fine, a tie that rounds down for a quarter
+    of the values within ``RETRY_SECONDS`` below each power of two (a machine up 507 to 512 s, 1019 to 1024 s...)."""
+    interval = shared_replace.RETRY_SECONDS
+    for power in range(4, 40):
+        value = 2.0 ** power - interval / 2
+        for _ in range(8):
+            value = math.nextafter(value, math.inf)
+            if (value + interval) - value < interval:
+                return value
+    raise AssertionError("no clock value rounds RETRY_SECONDS short")
+
+
 class Case(unittest.TestCase):
     def setUp(self):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         self.folder = Path(folder.name)
         self.sharing = ntfs_sharing.Sharing(self)   # After the folder: let go of before it is removed.
+
+    @staticmethod
+    def still_owed(refused_before, refused_now):
+        """Why a save is still owed after its pause, for the failure's text, from the store's own record of its
+        last refusal (the same on a Windows host, where the sharing fixture emulates and counts nothing): unchanged
+        means the save was never tried (the clock), changed means it was tried and refused again (the file)."""
+        return "still owed after the pause: the save was %s" % (
+            "never tried (the retry was not due)" if refused_now == refused_before else "tried and refused again")
 
     def during_read(self, path, save):
         """``save()`` while a reader holds ``path`` (``while_open``); returns what it returned."""
@@ -75,7 +108,8 @@ class JobStoreTests(Case):
         self.assertEqual(len(self.sharing.refusals), tries, "never the retries' pauses at every tick")
         self.assertTrue(store.retry_refused(now=store.refused_at))   # Not yet: never at every tick.
         self.sharing.let_go(held)
-        self.assertFalse(store.retry_refused(now=store.refused_at + shared_replace.RETRY_SECONDS))
+        refused = store.refused_at
+        self.assertFalse(store.retry_refused(now=due(refused)), self.still_owed(refused, store.refused_at))
         self.assertEqual(json.loads(store.path.read_text())["next"], 9)
 
     def test_a_save_that_must_land_is_tried_at_once_after_a_refusal(self):
@@ -245,6 +279,49 @@ class ConnectionsTests(Case):
                          {"codex_subscription", "claude_subscription"})
 
 
+class ClockEdgeTests(Case):
+    """The two stores whose tests read the real clock, with the clock forced to a value at which the interval
+    rounds short. They failed that way on Windows VM CI legs (34d25e7cf7d8 win-3, 9c846224cce9 win-4): the product
+    asks ``now - refused >= RETRY_SECONDS``, and a test that moved the clock to exactly ``refused + RETRY_SECONDS``
+    was a hair early there (``due`` no longer does). In the product the clock moves on and the next tick saves."""
+
+    def test_such_a_clock_value_exists(self):
+        edge = clock_edge()
+        self.assertLess((edge + shared_replace.RETRY_SECONDS) - edge, shared_replace.RETRY_SECONDS)
+
+    def test_the_chat_list_is_written_later_at_such_a_clock_value(self):
+        edge = clock_edge()
+        now = [edge - 60.0]
+        with patch.object(sessions.time, "monotonic", side_effect=lambda: now[0]):
+            collection = sessions.SessionCollection(self.folder)
+            collection.save()
+            held = self.sharing.hold(collection.path)
+            now[0] = edge
+            with patch("builtins.print"):
+                collection.save()
+            self.assertEqual((collection._dirty, collection._refused_at), (True, edge))
+            collection.save_if_due(interval=0)   # Not at the next tick.
+            self.assertTrue(collection._dirty)
+            self.sharing.let_go(held)
+            now[0] = due(edge)
+            collection.save_if_due(interval=0)
+        self.assertFalse(collection._dirty)
+
+    def test_the_jobs_are_saved_again_at_such_a_clock_value(self):
+        edge = clock_edge()
+        store = job_store.JobStore(self.folder)
+        store.save(now=edge - 60.0)
+        held = self.sharing.hold(store.path)
+        store.next_number = 9
+        with patch("builtins.print"):
+            self.assertFalse(store.save(now=edge))
+        self.assertEqual(store.refused_at, edge)
+        self.assertTrue(store.retry_refused(now=edge))   # Not yet.
+        self.sharing.let_go(held)
+        self.assertFalse(store.retry_refused(now=due(edge)))
+        self.assertEqual(json.loads(store.path.read_text())["next"], 9)
+
+
 class ChatListTests(Case):
     def test_a_refused_save_of_the_chat_list_never_raises_into_the_pump_and_is_written_later(self):
         collection = sessions.SessionCollection(self.folder)
@@ -256,10 +333,10 @@ class ChatListTests(Case):
         collection.save_if_due(interval=0)   # Not at the next tick: the refusal's wait is not over.
         self.assertTrue(collection._dirty)
         self.sharing.let_go(held)
-        later = collection._refused_at + shared_replace.RETRY_SECONDS
-        with patch.object(sessions.time, "monotonic", return_value=later):
+        refused = collection._refused_at
+        with patch.object(sessions.time, "monotonic", return_value=due(refused)):
             collection.save_if_due(interval=0)
-        self.assertFalse(collection._dirty)
+        self.assertFalse(collection._dirty, self.still_owed(refused, collection._refused_at))
 
 
     def test_a_chat_list_owed_at_quit_lists_every_chat_on_disk_at_the_next_load(self):
@@ -284,7 +361,7 @@ class AlwaysAllowTests(Case):
         self.addCleanup(always_allow.detach)
         with patch.object(always_allow.managed_policy, "current",
                           return_value=SimpleNamespace(allow_auto_approval=True)):
-            always_allow.set_enabled(True)
+            angelo_guard_twin.harness(always_allow.set_enabled, True)
             held = self.sharing.hold(self.folder / always_allow.FILE)
             with self.assertRaises(PermissionError):
                 always_allow.set_enabled(False)
@@ -301,7 +378,7 @@ class AlwaysAllowTests(Case):
         with patch.object(always_allow.managed_policy, "current",
                           return_value=SimpleNamespace(allow_auto_approval=True)), patch("builtins.print"):
             always_allow.attach(self.folder)
-            always_allow.set_enabled(True)
+            angelo_guard_twin.harness(always_allow.set_enabled, True)
             self.sharing.hold(self.folder / always_allow.FILE)
             with self.assertRaises(PermissionError):
                 always_allow.set_enabled(False)

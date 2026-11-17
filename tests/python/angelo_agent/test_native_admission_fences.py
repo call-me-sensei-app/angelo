@@ -3,6 +3,7 @@
 """Yielding admission cannot relabel an old delivery with a new warm turn."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import tempfile
@@ -59,7 +60,7 @@ class AdmissionFenceTests(unittest.TestCase):
             def pause(function):
                 def wrapped(*args, **kwargs):
                     entered.set()
-                    if not release.wait(5):
+                    if not release.wait(CAP_S):
                         raise AssertionError("Admission fixture release timed out")
                     return function(*args, **kwargs)
                 return wrapped
@@ -68,7 +69,7 @@ class AdmissionFenceTests(unittest.TestCase):
                 c._connect_runtime(context)  # Rebind the actual warm provider.
                 p._scope.bind_turn("turn-b")
                 new_bound.set()
-                finish_new.wait(5)
+                finish_new.wait(CAP_S)
             original_journal = c._journal_tool
             def journal(call, marker):
                 captured.append((call.epoch, call.generation, call.metrics))
@@ -98,11 +99,11 @@ class AdmissionFenceTests(unittest.TestCase):
                         c._finish_metrics("completed")
                     late.start()
                     if idle_before_guard:
-                        late.join(5)
+                        late.join(CAP_S)
                         self.assertFalse(late.is_alive())
                         self.assertFalse(entered.is_set(), "Closed delivery never reaches mutation guard lookup")
                     else:
-                        self.assertTrue(entered.wait(5))
+                        self.assertTrue(entered.wait(CAP_S))
                     if stop:
                         c.stop()
                         # Prior worker retirement: completion flags precede
@@ -118,7 +119,7 @@ class AdmissionFenceTests(unittest.TestCase):
                         c.busy = False
                         c._finish_metrics("completed")
                     c.send("A genuinely new unrelated human request")
-                    self.assertTrue(new_bound.wait(5))
+                    self.assertTrue(new_bound.wait(CAP_S))
                     self.assertEqual(c._request_generation, old.request_fence.generation + 1)
                     self.assertTrue(old.cancelled)
                     self.assertIs(c.provider, p)
@@ -126,7 +127,7 @@ class AdmissionFenceTests(unittest.TestCase):
                     self.assertTrue(p.has_warm_runtime())
                     self.assertIsNot(c._request_metrics, old_metrics)
                     release.set()
-                    late.join(5)
+                    late.join(CAP_S)
                     self.assertFalse(late.is_alive())
                     self.assertFalse(errors)
                     executor = Executor()
@@ -162,9 +163,9 @@ class AdmissionFenceTests(unittest.TestCase):
             finally:
                 release.set()
                 finish_new.set()
-                late.join(5)
+                late.join(CAP_S)
                 if c._worker:
-                    c._worker.join(5)
+                    c._worker.join(CAP_S)
                 c.close()
 
     def test_idle_completion_suppresses_before_guard_lookup_on_same_warm_provider(self):

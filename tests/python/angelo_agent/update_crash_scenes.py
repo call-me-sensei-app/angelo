@@ -179,7 +179,7 @@ def update_notice(fx):
     cx, cy, cw, ch = plan.card
     c["the_notice_sits_in_the_3d_views_bottom_right_corner"] = abs(cx + cw - (region.width - 20)) < 6 and abs(cy - 20) < 6
     c["the_notice_is_not_modal"] = not [op for op in plan.ops if op[0] == "scrim"]
-    c["the_status_bar_offers_the_update"] = update_ui.offer is not None and update_ui.offer.release.version == "1.1.0"
+    c["the_status_bar_offers_the_update"] = update_ui.offer is not None and update_ui.offer.release.version == fx.offered()
     request = next(r for r in fx.server.requests if r.path == "/updates/v1/stable.json")
     c["the_feed_request_carries_only_the_product_user_agent"] = (
         sorted(set(request.headers) - {"host", "accept-encoding", "connection", "accept"}) == ["user-agent"]
@@ -201,7 +201,7 @@ def update_notice(fx):
 
     click("notes")
     yield from settle()
-    c["release_notes_button_opens_the_notes_link"] = fx.links[-1] == "https://angelo.studio/releases#1.1.0"
+    c["release_notes_button_opens_the_notes_link"] = fx.links[-1] == "https://angelo.studio/releases#" + fx.offered()
     download = hit_rect("download")
     park_pointer()
     yield from settle()
@@ -216,10 +216,10 @@ def update_notice(fx):
                                                         and close_to(pressed, TEAL_PRESSED))
     release_at(*center(download))
     yield from settle()
-    c["download_opens_the_installer_link_in_the_browser"] = fx.links[-1].endswith("Angelo-1.1.0-macos-arm64.dmg")
+    c["download_opens_the_installer_link_in_the_browser"] = fx.links[-1].endswith("Angelo-%s-macos-arm64.dmg" % fx.offered())
     c["download_closes_the_notice"] = not gui.host().is_active("update")
     saved = update_state.load(state_directory())
-    c["download_counts_as_later_for_three_days"] = saved.snoozed_version == "1.1.0" and saved.snoozed_until > time.time() + 2 * 86400
+    c["download_counts_as_later_for_three_days"] = saved.snoozed_version == fx.offered() and saved.snoozed_until > time.time() + 2 * 86400
     c["the_status_item_remains_after_later"] = update_ui.offer is not None
     yield from settle(2)
     capture("update-5-status-bar.png")
@@ -231,7 +231,7 @@ def update_notice(fx):
     click("skip")
     yield from settle()
     c["skip_hides_the_notice_and_the_status_item"] = not gui.host().is_active("update") and update_ui.offer is None
-    c["skip_is_remembered_for_that_version"] = update_state.load(state_directory()).skipped_version == "1.1.0"
+    c["skip_is_remembered_for_that_version"] = update_state.load(state_directory()).skipped_version == fx.offered()
 
 
 def _manual_check(name):
@@ -445,16 +445,16 @@ def preferences_and_themes(fx):
     fx.state["fonts_after_the_fallback"] = gui.chat_fonts()
     c["a_freed_font_is_loaded_again_and_measures"] = all(
         width > 0 for _, width in fx.state["fonts_after_the_fallback"].values())
-    fx.set_feed("1.2.0")
+    fx.set_feed(fx.offered(2))
     with bpy.context.temp_override(window=window()):
         bpy.ops.angelo.check_for_updates()
     yield from until("the 1.2 notice", lambda: active("update"))
     park_pointer()
     yield from settle(3)
     light = capture("light-1-update-notice-and-top-bar.png")
-    c["a_newer_version_is_offered_after_a_skipped_one"] = card().offer.release.version == "1.2.0"
+    c["a_newer_version_is_offered_after_a_skipped_one"] = card().offer.release.version == fx.offered(2)
     c["the_card_still_has_text_after_the_theme_change"] = gui.bright_pixels(light, gui.card_rect()) > 200
-    c["the_top_bar_offers_the_update_in_director"] = update_ui.offer is not None and update_ui.offer.release.version == "1.2.0"
+    c["the_top_bar_offers_the_update_in_director"] = update_ui.offer is not None and update_ui.offer.release.version == fx.offered(2)
     click("later")
     yield from settle()
     # Manual mode shows Blender's status bar: the pending update is there, beside the version.

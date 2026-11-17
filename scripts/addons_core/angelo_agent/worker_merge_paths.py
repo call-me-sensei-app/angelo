@@ -12,8 +12,8 @@ or by its spelled path where no folder exists to compare. The chat's default wor
 the file tools: a file there is a working file of the person's chats, kept where it is.
 
 ``clean`` cuts each private path in a string to its file name: a whole string that is one path by where it resolves,
-and in text each path found by a spelling of its folder (every spelling, any run of separators, both Unicode forms,
-home-relative, JSON-escaped and URL-encoded; text and spellings folded alike, ``str.casefold``), its end found after
+and in text each path found by a spelling of its folder (``worker_merge_spellings``: every spelling, through a variable
+or the home folder too, any run of separators; text and spellings folded alike, ``str.casefold``), its end found after
 that spelling, never inside it (a folder named with a space, as macOS's Application Support, BREAKIT-C7A-2 H1).
 Text is searched only where it holds a folder's own name, each spelling matched backwards from there, so a long text
 costs its length and its hits, never its length times the spellings (BREAKIT-C7A-5 L1). ``blender_paths`` cuts what
@@ -24,106 +24,20 @@ Blender's own path walk visits, after ``worker_merge_media`` keeps what can be k
 import bisect
 import os
 import re
-import unicodedata
 from pathlib import Path
-from urllib.parse import quote
+
+from .worker_merge_spellings import (CACHED, DETOUR, Components, Detours, cached as _cached,  # noqa: F401
+                                     expanded as _expanded,
+                                     fold, folded_path as _folded, looks_absolute as _looks_absolute,
+                                     needles as _needles, reversed_alternation as _alternation, within as _within)
 
 FILL = "_" * 4095   # Longer than any path buffer: Blender's copy cuts it to the buffer's size, filling it whole.
 ENDS = re.compile(r"[\s\"'`,;()<>|]")   # Where a path in text ends, after its folder's spelling.
-
-
-def _folded(path):
-    """A folder's spelling compared without case, Unicode form or the system's own spelling."""
-    return unicodedata.normalize("NFC", os.path.normcase(os.path.normpath(str(path)))).casefold()
-
-
-# Between two folder names in text, read backwards: any run of separators, either way round, either URL-encoded ("%2f"
-# and "%5c" reversed: Windows' backslash encodes as "%5c", BREAKIT-C7A-6), "." folders, and detours through other folders and back ("x/.."), so a doubled or mixed separator
-# or a ".." spells the same path (BREAKIT-C7A-4 M1, BREAKIT-C7A-6). A detour may be matched wider than it resolves:
-# ``holds`` decides each path found, by where it resolves.
-_ONE = r"(?:[\\/]|f2%|c5%)"
-_RUN = _ONE + "+"
-_LEADING = r"(?:\\\\|[\\/]|f2%|c5%)"
-_NAME = r"(?:(?![\\/]|f2%|c5%).)+"
-REVERSED_SEPARATOR = r"%s(?:\.%s|(?:\.\.%s)+(?:%s%s)+)*" % (_RUN, _RUN, _RUN, _NAME, _RUN)
-
-
-def fold(text):
-    """``text`` folded as the spellings are (``str.casefold``), and a function from a folded offset back to ``text``'s
-    (None when one for one, as for every text without a letter that folds to two: "İ", "ß", BREAKIT-C7A-5 M3). Built
-    from where such letters are, never character by character, so a long text costs its length in C."""
-    folded = text.casefold()
-    if len(folded) == len(text):
-        return folded, None
-    starts, shifts, ends, shift = [], [], [], 0
-    for match in _expanding().finditer(text):
-        extra = len(match.group().casefold()) - 1
-        starts.append(match.start() + shift)   # Where its folded letters begin, and how far later text moved.
-        shifts.append(shift)
-        shift += extra
-        ends.append(match.start() + shift + 1)
-
-    def back(offset):
-        at = bisect.bisect_right(starts, offset) - 1
-        if at < 0:
-            return offset
-        if offset < ends[at]:   # Inside one letter's folding: that letter.
-            return starts[at] - shifts[at]
-        return offset - shifts[at] - (ends[at] - starts[at] - 1)
-    return folded, back
-
-
-_EXPANDS = []
-
-
-def _expanding():
-    """A pattern of every character that folds to more than one."""
-    if not _EXPANDS:
-        letters = "".join(chr(code) for code in range(0x110000)
-                          if not 0xD800 <= code <= 0xDFFF and len(chr(code).casefold()) > 1)
-        _EXPANDS.append(re.compile("[%s]" % re.escape(letters)))
-    return _EXPANDS[0]
-
-
-def _spellings(path, suffix=""):
-    """Every way text can spell ``path`` (then ``suffix``), separators aside: as given and resolved, from the home
-    folder, both Unicode forms, as JSON escapes its letters (``\\u``) and URL-encoded (BREAKIT-C7A-3 H2)."""
-    import json
-    found = set()
-    for spelled in {str(Path(path).absolute()), os.path.realpath(str(path))}:
-        spelled += suffix
-        home = os.path.expanduser("~")
-        forms = {spelled, "~" + spelled[len(home):] if home and spelled.startswith(home + os.sep) else spelled}
-        for form in list(forms):
-            forms |= {unicodedata.normalize("NFC", form), unicodedata.normalize("NFD", form)}
-        for form in forms:
-            found |= {form, json.dumps(form)[1:-1].replace("\\\\", "/"), quote(form.replace("\\", "/"))}
-    return {item for item in found if len(item) > 3}
-
-
-def _reversed(needle):
-    """``needle`` read backwards as a pattern, each separator any run of them (``REVERSED_SEPARATOR``) but a leading
-    one, which is one separator in any of its spellings (JSON's escaped backslash is two characters): what comes
-    before it ("file://") is not the path's."""
-    parts = needle.split("/")
-    pattern = re.escape(parts[-1][::-1])
-    for index in range(len(parts) - 2, -1, -1):
-        pattern += (_LEADING if index == 0 and not parts[0] else REVERSED_SEPARATOR) + re.escape(parts[index][::-1])
-    return pattern
-
-
-def _needles(roots, families):
-    """The fewest spellings that find every private path: each root no other root holds, each family as its parent
-    and prefix (so leftover members cost nothing), every spelling that holds another left out."""
-    bases = [root for root in roots
-             if not any(other != root and _folded(root).startswith(_folded(other).rstrip(os.sep) + os.sep)
-                        for other in roots)]
-    found = set().union(*(_spellings(base) for base in bases)) if bases else set()
-    for parent, prefix in families:
-        found |= _spellings(Path(parent), os.sep + prefix)
-    ordered = sorted({re.sub(r"[\\/]+", "/", item).casefold().rstrip("/") for item in found}, key=len)
-    return [needle for index, needle in enumerate(ordered)
-            if not any(shorter in needle for shorter in ordered[:index])]
+_LINE_END = re.compile(r"[\n\0]")   # Where it ends at the latest.
+_RELATIVE = re.compile(r"(?<![^\s\"'`,;()<>|=])//(?!/)")   # Blender's "//" starting a token (never a URL's).
+_SEPARATOR = re.compile(r"[\\/]|%2[fF]|%5[cC]")
+_BREAKS = re.compile("[\n\0]")   # Where a line ends: a path never reads past one.
+_UP = re.compile(r"(?:^|[\\/]|%2[fF]|%5[cC])\.\.(?=[\\/]|%2[fF]|%5[cC]|[\s\"'`,;()<>|]|$)")   # A ".." folder.
 
 
 class PrivateFolders:
@@ -132,6 +46,7 @@ class PrivateFolders:
     def __init__(self, part_paths):
         from . import private_roots
         parts = [Path(path).parent for path in part_paths]
+        self.parts = [os.path.abspath(part) for part in parts]   # Where Blender's "//" in a part's text resolves.
         roots = parts + [Path(item) for item in private_roots.registered()] + _registry()
         families = private_roots.families()
         members, prefixes = [], {}
@@ -146,7 +61,7 @@ class PrivateFolders:
                 continue
         bases = list(roots)   # Members are found by their family's needle, never one each.
         roots += members
-        self._identities, self._owned = {}, {}
+        self._identities, self._owned, self._decided, self._exists = {}, {}, {}, {}
         self.identities = {identity for identity in map(self._identity, roots) if identity is not None}
         self.lexical = {_folded(Path(root).absolute()) for root in roots}
         self.families = [(self._identity(parent), _folded(Path(parent).absolute()), _folded(prefix))
@@ -157,12 +72,18 @@ class PrivateFolders:
         # adds its spellings to every search (BREAKIT-C7A-3 H3), so only folders here now are searched for.
         self.needles = _needles([base for base in bases if os.path.isdir(base)], families)
         # Where a spelling can end: each needle's last folder name, folded. Text is searched only there, by the
-        # spellings that end in that name, read backwards from it (the longest first).
+        # spellings that end in that name, read backwards from it, as one pattern sharing their common pieces.
         ending = {}
         for needle in sorted(self.needles, key=len, reverse=True):
-            ending.setdefault(needle.rsplit("/", 1)[-1], []).append(_reversed(needle))
+            ending.setdefault(needle.rsplit("/", 1)[-1], []).append(needle)
         self.literals = sorted(set(ending) - {""})
-        self.backwards = {literal: re.compile("|".join(ending[literal])) for literal in self.literals}
+        self.backwards = {literal: re.compile(_alternation(ending[literal])) for literal in self.literals}
+        reversed_parts = {}   # Each spelling's folder names last first, and whether it starts at a separator.
+        for needle in self.needles:   # (Its own name: ``parts`` is this merge's part folders, read below.)
+            pieces = needle.split("/")
+            reversed_parts.setdefault(pieces[-1], []).append(([piece for piece in reversed(pieces) if piece],
+                                                              not pieces[0]))
+        self.detours = {literal: Detours(spellings) for literal, spellings in reversed_parts.items()}
         # Also found in written bytes (``worker_merge_verify``): each of this merge's part folders and this process's
         # own private folders by name (a path relative to the person's file spells no root).
         self.names = sorted({Path(root).name.casefold() for root in parts + [Path(item) for item in
@@ -170,54 +91,87 @@ class PrivateFolders:
                              if len(Path(root).name) >= 8})
 
     def _identity(self, folder):
-        key = str(folder)
-        if key not in self._identities:
+        def identity(key):
             try:
                 info = os.stat(key)
-                self._identities[key] = (info.st_dev, info.st_ino) if info.st_ino else None
+                return (info.st_dev, info.st_ino) if info.st_ino else None
             except (OSError, ValueError):
-                self._identities[key] = None
-        return self._identities[key]
+                return None
+        return _cached(self._identities, str(folder), identity)
 
     def _owner(self, folder):
         """Whether ``folder`` holds Angelo's owner file (``private_roots.OWNER``): an allocated folder, moved too."""
-        key = str(folder)
-        if key not in self._owned:
-            from .private_roots import OWNER
-            self._owned[key] = os.path.isfile(os.path.join(key, OWNER))
-        return self._owned[key]
+        from .private_roots import OWNER
+        return _cached(self._owned, str(folder), lambda key: os.path.isfile(os.path.join(key, OWNER)))
 
     def holds(self, path):
         """Whether ``path`` (absolute, or from the home folder) is in a private folder: the nearest of its folders that
-        is private, or the default workspace, decides."""
+        is private, or the default workspace, decides; each folder's decision kept (review H-C)."""
         text = str(path)
+        if text.startswith("//"):   # Blender's relative path: where it resolves (``_relative_holds``).
+            return self._relative_holds(text[2:])
         if os.sep == "/" and "\\" in text:   # A Windows spelling of a path here: its folders are the same folders.
             text = text.replace("\\", "/")
         try:
-            path = Path(os.path.abspath(os.path.expanduser(text)))
+            folder = os.path.abspath(_expanded(text))
         except (TypeError, ValueError):
             return False
-        for folder in (path, *path.parents):
-            identity, folded = self._identity(folder), _folded(folder)
-            if self.workspace is not None and ((identity is not None and identity == self.workspace[0])
-                                               or folded == self.workspace[1]):
-                return False
-            if (identity is not None and identity in self.identities) or folded in self.lexical or (
-                    identity is not None and self._owner(folder)):
+        walked, found = [], False
+        while True:
+            if folder in self._decided:
+                found = self._decided[folder]
+                break
+            walked.append(folder)
+            here = self._decides(folder)
+            if here is not None:
+                found = here
+                break
+            parent = os.path.dirname(folder)
+            if parent == folder:
+                break
+            folder = parent
+        for key in walked:   # A folder no rule decides takes its nearest decided folder's answer.
+            _cached(self._decided, key, lambda _key: found)
+        return found
+
+    def _decides(self, folder):
+        """True when ``folder`` (a normal absolute path) itself is private, False when it is the default workspace,
+        else None."""
+        identity, folded = self._identity(folder), _folded(folder)
+        if self.workspace is not None and ((identity is not None and identity == self.workspace[0])
+                                           or folded == self.workspace[1]):
+            return False
+        if (identity is not None and identity in self.identities) or folded in self.lexical or (
+                identity is not None and self._owner(folder)):
+            return True
+        name, parent = _folded(os.path.basename(folder)), os.path.dirname(folder)
+        for family_identity, family_folded, prefix in self.families:
+            if name.startswith(prefix) and parent != folder and (
+                    (family_identity is not None and self._identity(parent) == family_identity)
+                    or _folded(parent) == family_folded):
                 return True
-            name, parent = _folded(folder.name), folder.parent
-            for family_identity, family_folded, prefix in self.families:
-                if name.startswith(prefix) and parent != folder and (
-                        (family_identity is not None and self._identity(parent) == family_identity)
-                        or _folded(parent) == family_folded):
-                    return True
+        return None
+
+    def _elsewhere(self, longer, private, seen):
+        """Whether the spelling ``longer`` names a file or folder here besides the ``private`` path it starts with: it,
+        or a folder it is in past ``private``, exists ("state backup" beside "state", its file gone or not;
+        BREAKIT-C7A-7 L4). ``seen``: folders found missing already."""
+        try:
+            folder, cut = os.path.normpath(_expanded(longer)), os.path.normpath(_expanded(private))
+        except (TypeError, ValueError):
+            return False
+        while not _within(cut, folder) and os.path.dirname(folder) != folder and folder not in seen:
+            if _cached(self._exists, folder, os.path.lexists):
+                return True
+            seen.add(folder)
+            folder = os.path.dirname(folder)
         return False
 
     def finds(self, text):
         """``(start, end)`` in ``text`` of each private folder's spelling, in order: where one's last folder name ends
         in the folded text, the longest spelling that ends there."""
         folded, index = fold(text)
-        backwards, size, starts = None, len(folded), {}
+        backwards, components, breaks, size, starts = None, None, None, len(folded), {}
         for literal in self.literals:
             at = folded.find(literal)
             while at >= 0:
@@ -225,11 +179,115 @@ class PrivateFolders:
                     backwards = folded[::-1]
                 end = at + len(literal)
                 match = self.backwards[literal].match(backwards, size - end)
-                if match:   # The longest spelling ending here.
-                    starts[end] = min(starts.get(end, end), size - match.end())
+                start = size - match.end() if match else None
+                if start is None and literal in self.detours:
+                    if components is None:   # Read once per text: its names, and where its lines break.
+                        components = Components(folded)
+                        breaks = [match.start() for match in _BREAKS.finditer(folded)]
+                    line = bisect.bisect_left(breaks, end) - 1   # A path never goes past a line's start (path_end's).
+                    low = max(0, end - DETOUR, breaks[line] + 1 if line >= 0 else 0)
+                    if components.up_between(low, end):
+                        start = self.detours[literal].start(folded, components, low, end)
+                if start is not None:   # The longest spelling ending here.
+                    starts[end] = min(starts.get(end, end), start)
                 at = folded.find(literal, at + 1)
         found = sorted((start, end) for end, start in starts.items())
-        return [(index(start), index(end - 1) + 1) for start, end in found] if index else found
+        found = [(index(start), index(end - 1) + 1) for start, end in found] if index else found
+        relative = self._relative(text)
+        if relative:   # Each end's longest spelling, either way it was found.
+            ends = {end: start for start, end in found}
+            for start, end in relative:
+                ends[end] = min(ends.get(end, end), start)
+            found = sorted((start, end) for end, start in ends.items())
+        return found
+
+    def _relative_holds(self, rest):
+        """Whether a path relative to a .blend file (``rest``: after Blender's "//") reaches a private folder from a
+        part's folder (the worker wrote it there) or from the person's saved file's (where it resolves once merged):
+        outside the part folders themselves, where the cleaning's own "//" + file name points (port review NIT)."""
+        bases = list(self.parts)
+        try:
+            import bpy
+            if isinstance(bpy.data.filepath, str) and bpy.data.filepath:
+                bases.append(os.path.dirname(os.path.abspath(bpy.data.filepath)))
+        except (ImportError, AttributeError):
+            pass
+        for base in bases:
+            try:
+                resolved = os.path.abspath(os.path.join(base, rest.replace("\\", "/") if os.sep == "/" else rest))
+            except (TypeError, ValueError):
+                continue
+            if not any(_within(resolved, part) for part in self.parts) and self.holds(resolved):
+                return True
+        return False
+
+    def _relative(self, text):
+        """``[(start, end)]`` of each spelling relative to a part's file (Blender's "//" starting a token) that
+        resolves into a private folder: its first end where it does, tried at each place a path could end up to the
+        line's end, the next such spelling or ``DETOUR`` on (so a name with a space is read through, and each
+        spelling's stretch is read once). Found by where it resolves, never by a name's length (port review NIT)."""
+        if "//" not in text or not self.parts:
+            return []
+        places, found = [match.start() for match in _RELATIVE.finditer(text)], []
+        for number, start in enumerate(places):
+            limit = min(len(text), start + DETOUR, places[number + 1] if number + 1 < len(places) else len(text))
+            line = _LINE_END.search(text, start, limit)
+            limit, at = (line.start() if line else limit), start + 2
+            while at <= limit:
+                stop = ENDS.search(text, at, limit)
+                end = stop.start() if stop else limit
+                if end > start + 2 and self.holds(_unquoted(text[start:end])):
+                    found.append((start, end))
+                    break
+                if stop is None:
+                    break
+                at = end + 1
+        return found
+
+    def path_end(self, text, start, found):
+        """Where the private path from ``start`` (a folder's spelling ending at ``found``) ends in ``text``, or None.
+        Each place a path could end (a space, a quote, a bracket), up to the line's end, is tried while what follows
+        could take it elsewhere (BREAKIT-C7A-7 M1: "My Renders" in the workspace, then "../.."): the rest of a folder's
+        name ("workspace backup"), or past a ".." folder (review H-C). A longer spelling naming a file or folder here
+        that is not private ("state backup" beside "state") is that one, read until its folder is missing."""
+        limit = min(len(text), found + DETOUR)
+        line = _LINE_END.search(text, found, limit)
+        limit = line.start() if line else limit
+        at, private, seen = found, None, set()
+        while True:
+            stop = ENDS.search(text, at, limit)
+            end = stop.start() if stop else limit
+            if private is None:
+                if self.holds(_unquoted(text[start:end])):
+                    private = end
+                elif stop is None:
+                    return None
+                else:
+                    separator = _SEPARATOR.search(text, end, limit)
+                    if separator is None or not self.holds(_unquoted(text[start:separator.start()])):
+                        up = _UP.search(text, end, limit)   # Only a ".." folder can take it elsewhere now.
+                        if up is None:
+                            return None
+                        at = up.end()
+                        continue
+            else:
+                longer = _unquoted(text[start:end])
+                cut = _unquoted(text[start:private])
+                if not self.holds(longer) and self._elsewhere(longer, cut, seen):
+                    return None
+                if self._past(longer, cut, seen):   # Nothing longer can be here either.
+                    return private
+            if stop is None:
+                return private
+            at = end + 1
+
+    def _past(self, longer, private, seen):
+        """Whether the folder the spelling ``longer`` is in lies past the ``private`` path and is missing."""
+        try:
+            folder, cut = os.path.dirname(os.path.normpath(_expanded(longer))), os.path.normpath(_expanded(private))
+        except (TypeError, ValueError):
+            return False
+        return not _within(cut, folder) and (folder in seen or not _cached(self._exists, folder, os.path.lexists))
 
     def clean(self, text, item, path_like):
         """``text`` with every private path in it cut to its file name, or None when it holds none. ``path_like``: a
@@ -238,7 +296,7 @@ class PrivateFolders:
         stripped = text.strip()
         if stripped and "\n" not in stripped and (path_like or _looks_absolute(stripped)):
             try:
-                resolved = os.path.expanduser(bpy.path.abspath(stripped, library=getattr(item, "library", None)))
+                resolved = _expanded(bpy.path.abspath(stripped, library=getattr(item, "library", None)))
             except (TypeError, ValueError):
                 resolved = None
             if resolved and os.path.isabs(resolved) and self.holds(resolved):
@@ -247,9 +305,8 @@ class PrivateFolders:
         for start, found in self.finds(text):
             if start < at:
                 continue
-            end = ENDS.search(text, found)
-            end = end.start() if end else len(text)
-            if self.holds(_unquoted(text[start:end])):
+            end = self.path_end(text, start, found)
+            if end is not None:
                 pieces += [text[at:start], _basename(text[start:end])]
                 at = end
         return "".join(pieces + [text[at:]]) if pieces else None
@@ -296,10 +353,6 @@ def _workspace():
         return None
 
 
-def _looks_absolute(text):
-    return text.startswith(("/", "\\", "~")) or bool(re.match(r"^[A-Za-z]:[\\/]", text))
-
-
 def _basename(path):
     return os.path.basename(_unquoted(path).replace("\\", "/").rstrip("/")) or "file"
 
@@ -320,7 +373,7 @@ def overwrite(owner, name, value):
 def blender_paths(bpy, kept, private):
     """Blender's own path walk over ``kept`` (local datablocks): what a worker's file brings written again from what
     Blender decoded (``worker_merge_media``), then every path written again whole, a private one cut to its file name.
-    Returns (packed, detached, unsafe) names."""
+    Returns (packed, detached, unsafe) names and the datablocks written again."""
     from . import private_roots, worker_merge_media
     found, seen, subset = [], set(), set(kept)
 
@@ -331,7 +384,7 @@ def blender_paths(bpy, kept, private):
             found.append(item)
     bpy.data.file_path_foreach(visit, subset=subset, flags=set())
     with private_roots.TemporaryDirectory(prefix="angelo-merge-check-") as scratch:
-        packed, detached, unsafe = worker_merge_media.secure(bpy, kept, found, private, scratch)
+        written, detached, unsafe = worker_merge_media.secure(bpy, kept, found, private, scratch)
     values = []   # In visiting order, which two walks of the same set share.
 
     def fill(item, path, meta):
@@ -345,4 +398,4 @@ def blender_paths(bpy, kept, private):
         return values.pop(0) if path == FILL[:len(path)] and len(path) > 1 and values else None
     bpy.data.file_path_foreach(fill, subset=subset, flags=set())
     bpy.data.file_path_foreach(value, subset=subset, flags=set())
-    return packed, detached, unsafe
+    return sorted(item.name for item in written), detached, unsafe, written

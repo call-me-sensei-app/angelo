@@ -99,8 +99,9 @@ and add-on engines, which all read the scene's render region.
     composite, are copied aside (the *kept* pixels).
   - **While rendering**: ``RE_AcquireResultImage`` shows the previous frame's passes (never its composite, which the
     region render does not update), and every tile an engine merges
-    (``RE_engine_update_result``, ``RE_engine_end_result``) also lands on it inside the region. The Image Editor's
-    tile updates are offset into the full frame (``region_render_display_offset``). An engine that draws its own
+    (``RE_engine_update_result``, ``RE_engine_end_result``) also lands on it inside the region, and marks that
+    region of each pass's image buffer for a partial GPU update (``IMB_partial_update_mark_region``), so the Image
+    Editor shows each tile as it lands. An engine that draws its own
     progress (Cycles) draws it over the previous frame: the draw manager runs the image engine before the external
     engine (they are otherwise never used together), and the external engine neither clears nor shifts by the
     border's offset (``DRW_engine_external_region_underlay``).

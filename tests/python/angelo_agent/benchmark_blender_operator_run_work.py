@@ -38,6 +38,8 @@ sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import action_operator_families as families  # noqa: E402
 from angelo_agent.action_kernels import StagedActionContext, apply_operation  # noqa: E402
 from angelo_agent.action_operator_spec import WORK_BOUNDS, target_types  # noqa: E402
+from angelo_agent import action_operator_spec  # noqa: E402
+import sealed_tables  # noqa: E402
 
 PROPERTIES = {"transform.translate": {"value": [0, 0, .1]}, "transform.rotate": {"value": .3, "orient_axis": "Z"},
               "transform.resize": {"value": [1.1, 1.1, 1.1]}, "transform.mirror": {"constraint_axis": [True, False, False]},
@@ -210,8 +212,9 @@ def main():
     parser.add_argument("--scale", type=float, default=1, help="multiply every base size")
     args = parser.parse_args(argv)
     bpy.data.curves.remove(bpy.data.curves.new("Font warm-up", "FONT"))
-    for name in families.WORK_BOUNDS:  # Measure the operator itself, not the bound that refuses it.
-        WORK_BOUNDS[name] = float("inf")
+    # Measure the operator itself, not the bound that refuses it (the table is sealed: replaced, never edited).
+    unbounded = dict.fromkeys(families.WORK_BOUNDS, float("inf"))
+    sealed_tables.start(action_operator_spec, "WORK_BOUNDS", {**WORK_BOUNDS, **unbounded})
     report = {}
     for idname in sorted(families.ALLOWED):
         if idname.startswith(tuple(args.only.split(","))):

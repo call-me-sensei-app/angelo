@@ -16,12 +16,15 @@
  * are `Image.angelo_pixel_revision`'s.
  *
  * File records describe the actual decoder descriptor before the read. Metadata is change
- * evidence, not an exact byte-content guarantee. Opaque movie decoders are unsupported.
+ * evidence, not an exact byte-content guarantee; a load that finds the file changed so recently
+ * that a later write could share its time stamps also digests the bytes read ("racily clean").
+ * Opaque movie decoders are unsupported.
  * This counter alone must not authorize exact byte/pixel-sensitive work.
  */
 
 #include <array>
 #include <cstdint>
+#include <optional>
 
 namespace blender {
 
@@ -46,14 +49,23 @@ void angelo_image_source_changed(Image &image);
 struct AngeloImageSourceFileWitness {
   std::array<uint8_t, 16> identity{};
   bool supported = false;
+  /** The file had changed within the racy window (its time stamps cannot tell the next write). */
+  bool racy = false;
+  /** The bytes' digest, taken when this load or the slot's last one was racy. */
+  std::optional<std::array<uint8_t, 16>> content;
 };
 
 /**
  * Capture the actual descriptor BEFORE decoding. Caller owns it and must pass this SAME open
- * descriptor to the decoder. A failed open/stat is unsupported, never a source witness.
+ * descriptor to the decoder. A failed open/stat is unsupported, never a source witness. With the
+ * image and the slot the load fills, a load right after a racy one digests the bytes too.
  */
 AngeloImageSourceFileWitness angelo_image_source_prepare_file_load(int file_descriptor,
-                                                                  const char *filepath);
+                                                                  const char *filepath,
+                                                                  const Image *image = nullptr,
+                                                                  int view = 0,
+                                                                  int tile = 0,
+                                                                  int frame = 0);
 
 /**
  * Record captured source evidence AFTER decoding, with the effective color space the decoder used.
@@ -89,6 +101,15 @@ void angelo_image_source_restore_after_undo(Image &image);
 
 /** Free the load record (the image's runtime data is being freed). */
 void angelo_image_source_free(Image &image);
+
+/** Load records allocated and not yet freed, in the whole process (leak checks). */
+int64_t angelo_image_source_records_in_use();
+
+/** Testing: how many file loads digested their bytes in this process. */
+int64_t angelo_image_source_content_digests();
+
+/** Testing: set the racy window (nanoseconds; default 3 s); returns the previous one. */
+int64_t angelo_image_source_set_racy_window_ns(int64_t window_ns);
 
 }  // namespace bke
 }  // namespace blender

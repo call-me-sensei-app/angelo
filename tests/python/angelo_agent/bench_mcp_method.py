@@ -29,6 +29,10 @@ METHOD = [
     "grading runs over the add-on socket. Failed checks count as failures; their time is still reported.",
     "Both sides start from a minimal environment (PATH, HOME, USER, locale; DISABLE_AUTOUPDATER=1) so no "
     "inherited ANTHROPIC_*/CLAUDE_CODE_* routing or session variable reaches either runtime.",
+    "On a Claude run both sides write their prompt cache at one lifetime (plan.claude_cache_ttl): the one a new "
+    "Angelo chat uses, or --angelo-cache-ttl. The MCP side's Claude Code is started with "
+    "CLAUDE_CODE_PROMPT_CACHE_TTL set to it. On a subscription that is Claude Code's own default (1 hour); on a "
+    "key-billed route its own default would be 5 minutes.",
     "Trials alternate MCP, Angelo, MCP, Angelo...; each trial is a fresh process pair, scene and session; "
     "nothing is retried.",
 ]

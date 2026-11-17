@@ -11,6 +11,7 @@ message instead of 16-20 s.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import sys
@@ -186,7 +187,7 @@ class ClaudeBoundaryTests(unittest.TestCase):
         claude_direct.answer(provider, transport, event)
         for thread in threading.enumerate():
             if thread.name == "AngeloClaudeCall":
-                thread.join(5)
+                thread.join(CAP_S)
 
     def test_a_written_reply_tells_what_it_showed_and_never_carries_the_bookkeeping(self):
         written = []

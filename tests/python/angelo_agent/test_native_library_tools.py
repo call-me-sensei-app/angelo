@@ -13,6 +13,7 @@ nothing here reaches the network or Blender.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import concurrent.futures
 import json
@@ -115,7 +116,7 @@ def encoded(value):
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
 
 
-def wait_for(pending, seconds=5.0):
+def wait_for(pending, seconds=CAP_S):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         result = pending.poll()

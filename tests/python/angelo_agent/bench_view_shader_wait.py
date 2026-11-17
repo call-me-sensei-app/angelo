@@ -18,7 +18,8 @@ measures. Steps, each on a new batch (BATCH objects, BATCH new shaders), after o
 (``WARM``), the new path first in each pair (whatever a step leaves warm helps the old path after it):
   OLD_n  view_capture.execute(..., wait_shaders=False): the image render compiles on the main thread (as before);
   NEW_n  the tool path (BlenderExecutor "angelo_view"): queue, pending while Blender compiles, then the view;
-  MERGE_n  view_warm.soon right after the change (as a merge does), the view asked 2 s later (the lead's next request).
+  MERGE_n  view_warm.soon right after the change (as a merge does), the view asked 2 s later (the lead's next request);
+  NEWWORLD_n  a new LIT world of its own code (no new material), then the tool path's LIT view (inventory C5).
 Writes view-shader-wait.json in ANGELO_QA_DIR.
 """
 
@@ -135,9 +136,27 @@ def new_batch(count=None, slots=1):
     bpy.context.view_layer.update()
 
 
+def new_world(n):
+    """A LIT world of its own code (fresh_shader), as an artist's new sky or HDRI setup brings one."""
+    world = bpy.data.worlds.new("Probe world %d" % n)
+    world.use_nodes = True
+    tree = world.node_tree
+    background = tree.nodes["Background"]
+    coords, noise = tree.nodes.new("ShaderNodeTexCoord"), tree.nodes.new("ShaderNodeTexNoise")
+    tree.links.new(coords.outputs["Generated"], noise.inputs["Vector"])
+    strength = fresh_shader.chain(tree, noise.outputs["Fac"], FRESH, "probe world %d" % n)
+    tree.links.new(strength, background.inputs["Strength"])
+    tree.links.new(noise.outputs["Color"], background.inputs["Color"])
+    bpy.context.scene.world = world
+    bpy.context.view_layer.update()
+
+
 def start(step):
     if step == "SAME_MATERIAL":
         pass
+    elif step.startswith("NEWWORLD"):
+        state["made"] += 1
+        new_world(state["made"])
     elif step[-2:] == "_M" or step[-3:-1] == "_M":
         new_batch(BATCH_M, SLOTS)
     else:
@@ -153,7 +172,7 @@ def start(step):
         record["call_ms"] = round((time.perf_counter() - state["began"]) * 1000, 1)
         record["draw_wall_ms"] = result["timing"]["draw_wall_ms"]
         state["done_at"] = time.perf_counter()
-    elif step.startswith("NEW") or step == "SAME_MATERIAL":
+    elif step.startswith("NEW") or step == "SAME_MATERIAL":   # NEWWORLD too: the tool path.
         ask(record)
     else:
         view_warm.soon(state["window"])

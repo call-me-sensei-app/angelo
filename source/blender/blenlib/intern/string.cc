@@ -17,11 +17,11 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_string.h"
+#include "BLI_string.hh"
 
-#include "BLI_utildefines.h"
+#include "BLI_utildefines.hh"
 
-#include "BLI_strict_flags.h" /* IWYU pragma: keep. Keep last. */
+#include "BLI_strict_flags.hh" /* IWYU pragma: keep. Keep last. */
 
 namespace blender {
 
@@ -95,21 +95,21 @@ char *BLI_strncpy_ensure_pad(char *__restrict dst,
     size_t idx = 0;
     size_t srclen;
 
-    if (src[idx] != pad) {
+    dst_maxncpy--; /* trailing '\0' */
+    if ((dst_maxncpy != 0) && (src[idx] != pad)) {
       dst[idx++] = pad;
       dst_maxncpy--;
     }
-    dst_maxncpy--; /* trailing '\0' */
 
     srclen = BLI_strnlen(src, dst_maxncpy);
-    if ((src[srclen - 1] != pad) && (srclen == dst_maxncpy)) {
+    if ((srclen != 0) && (srclen == dst_maxncpy) && (src[srclen - 1] != pad)) {
       srclen--;
     }
 
     memcpy(&dst[idx], src, srclen);
     idx += srclen;
 
-    if (dst[idx - 1] != pad) {
+    if ((idx != 0) && (dst[idx - 1] != pad)) {
       dst[idx++] = pad;
     }
     dst[idx] = '\0';
@@ -138,7 +138,7 @@ size_t BLI_strncpy_rlen(char *__restrict dst, const char *__restrict src, const 
 
 char *BLI_strncat(char *__restrict dst, const char *__restrict src, const size_t dst_maxncpy)
 {
-  BLI_string_debug_size(dst, dst_maxncpy);
+  BLI_string_debug_size_after_nil(dst, dst_maxncpy);
 
   size_t len = BLI_strnlen(dst, dst_maxncpy);
   if (len < dst_maxncpy) {
@@ -225,24 +225,27 @@ size_t BLI_snprintf_rlen(char *__restrict dst,
   return n;
 }
 
-char *BLI_sprintfN_with_buffer(
-    char *fixed_buf, size_t fixed_buf_size, size_t *result_len, const char *__restrict format, ...)
+char *BLI_sprintfN_with_buffer(char *fixed_buf,
+                               size_t fixed_buf_maxncpy,
+                               size_t *result_len,
+                               const char *__restrict format,
+                               ...)
 {
   va_list args;
   va_start(args, format);
-  int retval = vsnprintf(fixed_buf, fixed_buf_size, format, args);
+  int retval = vsnprintf(fixed_buf, fixed_buf_maxncpy, format, args);
   va_end(args);
-  if (UNLIKELY(retval < 0)) {
+  if (retval < 0) [[unlikely]] {
     /* Return an empty string as there was an error there is no valid output. */
     *result_len = 0;
-    if (UNLIKELY(fixed_buf_size == 0)) {
+    if (fixed_buf_maxncpy == 0) [[unlikely]] {
       return MEM_new_array_zeroed<char>(1, __func__);
     }
     *fixed_buf = '\0';
     return fixed_buf;
   }
   *result_len = size_t(retval);
-  if (size_t(retval) < fixed_buf_size) {
+  if (size_t(retval) < fixed_buf_maxncpy) {
     return fixed_buf;
   }
 
@@ -258,26 +261,26 @@ char *BLI_sprintfN_with_buffer(
 }
 
 char *BLI_vsprintfN_with_buffer(char *fixed_buf,
-                                size_t fixed_buf_size,
+                                size_t fixed_buf_maxncpy,
                                 size_t *result_len,
                                 const char *__restrict format,
                                 va_list args)
 {
   va_list args_copy;
   va_copy(args_copy, args);
-  int retval = vsnprintf(fixed_buf, fixed_buf_size, format, args_copy);
+  int retval = vsnprintf(fixed_buf, fixed_buf_maxncpy, format, args_copy);
   va_end(args_copy);
-  if (UNLIKELY(retval < 0)) {
+  if (retval < 0) [[unlikely]] {
     /* Return an empty string as there was an error there is no valid output. */
     *result_len = 0;
-    if (UNLIKELY(fixed_buf_size == 0)) {
+    if (fixed_buf_maxncpy == 0) [[unlikely]] {
       return MEM_new_array_zeroed<char>(1, __func__);
     }
     *fixed_buf = '\0';
     return fixed_buf;
   }
   *result_len = size_t(retval);
-  if (size_t(retval) < fixed_buf_size) {
+  if (size_t(retval) < fixed_buf_maxncpy) {
     return fixed_buf;
   }
 
@@ -329,14 +332,16 @@ char *BLI_vsprintfN(const char *__restrict format, va_list args)
 /** \name String Escape/Un-Escape
  * \{ */
 
-size_t BLI_str_escape(char *__restrict dst, const char *__restrict src, const size_t dst_maxncpy)
+size_t BLI_str_escape(char *__restrict dst, StringRef src, const size_t dst_maxncpy)
 {
   BLI_assert(dst_maxncpy != 0);
   BLI_string_debug_size(dst, dst_maxncpy);
 
-  size_t len = 0;
-  for (; (len < dst_maxncpy) && (*src != '\0'); dst++, src++, len++) {
-    char c = *src;
+  const size_t dst_len_max = dst_maxncpy - 1;
+  size_t dst_len = 0;
+  int64_t src_idx = 0;
+  for (; (dst_len < dst_len_max) && (src_idx < src.size()); src_idx++, dst++, dst_len++) {
+    char c = src[src_idx];
     if (ELEM(c, '\\', '"') ||                       /* Use as-is. */
         ((c == '\t') && ((void)(c = 't'), true)) || /* Tab. */
         ((c == '\n') && ((void)(c = 'n'), true)) || /* Newline. */
@@ -345,26 +350,26 @@ size_t BLI_str_escape(char *__restrict dst, const char *__restrict src, const si
         ((c == '\b') && ((void)(c = 'b'), true)) || /* Backspace. */
         ((c == '\f') && ((void)(c = 'f'), true)))   /* Form-feed. */
     {
-      if (UNLIKELY(len + 1 >= dst_maxncpy)) {
+      if (dst_len + 1 >= dst_len_max) [[unlikely]] {
         /* Not enough space to escape. */
         break;
       }
       *dst++ = '\\';
-      len++;
+      dst_len++;
     }
     *dst = c;
   }
   *dst = '\0';
 
-  return len;
+  return dst_len;
 }
 
-std::string BLI_str_escape(const char *str)
+std::string BLI_str_escape(StringRef str)
 {
-  if (!str) {
+  if (str.is_empty()) {
     return {};
   }
-  const size_t max_result_size = strlen(str) * 2 + 1;
+  const size_t max_result_size = size_t(str.size()) * 2 + 1;
   std::string result;
   result.resize(max_result_size);
   const size_t result_size = BLI_str_escape(result.data(), str, max_result_size);
@@ -395,23 +400,24 @@ BLI_INLINE bool str_unescape_pair(char c_next, char *r_out)
 
 size_t BLI_str_unescape_ex(char *__restrict dst,
                            const char *__restrict src,
-                           const size_t src_maxncpy,
+                           const size_t src_len,
                            /* Additional arguments to #BLI_str_unescape */
                            const size_t dst_maxncpy,
                            bool *r_is_complete)
 {
   BLI_string_debug_size(dst, dst_maxncpy);
+  BLI_assert(dst_maxncpy != 0);
 
   size_t len = 0;
   bool is_complete = true;
   const size_t max_strlen = dst_maxncpy - 1; /* Account for trailing zero byte. */
-  for (const char *src_end = src + src_maxncpy; (src < src_end) && *src; src++) {
-    if (UNLIKELY(len == max_strlen)) {
+  for (const char *src_end = src + src_len; (src < src_end) && *src; src++) {
+    if (len == max_strlen) [[unlikely]] {
       is_complete = false;
       break;
     }
     char c = *src;
-    if (UNLIKELY(c == '\\') && str_unescape_pair(*(src + 1), &c)) {
+    if (UNLIKELY(c == '\\') && (src + 1 < src_end) && str_unescape_pair(*(src + 1), &c)) {
       src++;
     }
     dst[len++] = c;
@@ -421,14 +427,14 @@ size_t BLI_str_unescape_ex(char *__restrict dst,
   return len;
 }
 
-size_t BLI_str_unescape(char *__restrict dst, const char *__restrict src, const size_t src_maxncpy)
+size_t BLI_str_unescape(char *__restrict dst, const char *__restrict src, const size_t src_len)
 {
-  BLI_string_debug_size(dst, src_maxncpy); /* `dst` must be at least as big as `src`. */
+  BLI_string_debug_size(dst, src_len + 1); /* `dst` must be at least as big as `src`. */
 
   size_t len = 0;
-  for (const char *src_end = src + src_maxncpy; (src < src_end) && *src; src++) {
+  for (const char *src_end = src + src_len; (src < src_end) && *src; src++) {
     char c = *src;
-    if (UNLIKELY(c == '\\') && str_unescape_pair(*(src + 1), &c)) {
+    if (UNLIKELY(c == '\\') && (src + 1 < src_end) && str_unescape_pair(*(src + 1), &c)) {
       src++;
     }
     dst[len++] = c;
@@ -465,7 +471,7 @@ bool BLI_str_quoted_substr_range(const char *__restrict str,
     return false;
   }
   const size_t prefix_len = strlen(prefix);
-  if (UNLIKELY(prefix_len == 0)) {
+  if (prefix_len == 0) [[unlikely]] {
     BLI_assert_msg(0,
                    "Zero length prefix passed in, "
                    "caller must prevent this from happening!");
@@ -476,12 +482,12 @@ bool BLI_str_quoted_substr_range(const char *__restrict str,
                  "caller must prevent this from happening!");
 
   str_start += prefix_len;
-  if (UNLIKELY(*str_start != '\"')) {
+  if (*str_start != '\"') [[unlikely]] {
     return false;
   }
   str_start += 1;
   const char *str_end = BLI_str_escape_find_quote(str_start);
-  if (UNLIKELY(str_end == nullptr)) {
+  if (str_end == nullptr) [[unlikely]] {
     return false;
   }
 
@@ -1015,7 +1021,8 @@ int BLI_str_rstrip_digits(char *str)
 {
   int totstrip = 0;
   int str_len = int(strlen(str));
-  while (str_len > 0 && isdigit(str[--str_len])) {
+  while (str_len > 0 && isdigit(str[str_len - 1])) {
+    --str_len;
     str[str_len] = '\0';
     totstrip++;
   }
@@ -1206,91 +1213,187 @@ size_t BLI_str_format_int64_grouped(char dst[BLI_STR_FORMAT_INT64_GROUPED_SIZE],
   return BLI_str_format_int_grouped_ex(src, dst, num_len);
 }
 
+static uint64_t abs_as_uint64(const int64_t value)
+{
+  return (value < 0) ? -uint64_t(value) : uint64_t(value);
+}
+
 void BLI_str_format_byte_unit(char dst[BLI_STR_FORMAT_INT64_BYTE_UNIT_SIZE],
-                              long long int bytes,
+                              int64_t bytes,
                               const bool base_10)
 {
+  /* Integer rounding follows BusyBox's `make_human_readable_str` (version 1.38.0),
+   * with differences:
+   * - The fraction is calculated from the full remainder (not the last division's remainder),
+   *   so lower digits aren't discarded before rounding.
+   * - The number of decimal places grows with the unit (not always one).
+   * - Rounding up to the next unit uses it ("1.0 MiB" instead of "1024.0K"). */
   const size_t dst_maxncpy = BLI_STR_FORMAT_INT64_BYTE_UNIT_SIZE;
   BLI_string_debug_size(dst, dst_maxncpy);
 
-  double bytes_converted = double(bytes);
+  const uint64_t bytes_abs = abs_as_uint64(bytes);
+  uint64_t divisor = 1;
+  uint64_t number = bytes_abs;
+  uint64_t number_fraction = 0;
   int order = 0;
-  int decimals;
-  const int base = base_10 ? 1000 : 1024;
+  int decimal_places_num = 0;
+  /* Multiplier to represent the fraction as an integer (`10^decimal_places_num`). */
+  uint64_t scale = 1;
+  const uint64_t base = base_10 ? 1000 : 1024;
+  /* Exabytes would overflow the fraction (unlike the compact version, which has no fraction). */
   const char *units_base_10[] = {"B", "KB", "MB", "GB", "TB", "PB"};
   const char *units_base_2[] = {"B", "KiB", "MiB", "GiB", "TiB", "PiB"};
   const int units_num = int(ARRAY_SIZE(units_base_2));
 
   BLI_STATIC_ASSERT(ARRAY_SIZE(units_base_2) == ARRAY_SIZE(units_base_10), "array size mismatch");
 
-  while ((fabs(bytes_converted) >= base) && ((order + 1) < units_num)) {
-    bytes_converted /= base;
+  /* Use the rounded value to pick the unit, so 999.9 KB is shown as "1.0 MB" (not "1000 KB").
+   * The fraction can't overflow as the remainder is below `1024^5` & the scale at most `10^4`. */
+  while ((number >= base) && ((order + 1) < units_num)) {
+    divisor *= base;
+    decimal_places_num = order;
+    order++;
+    number = bytes_abs / divisor;
+    /* The remainder as `decimal_places_num` digits, rounded to nearest. */
+    number_fraction = (((bytes_abs % divisor) * scale) + (divisor / 2)) / divisor;
+    /* Rounding up to a whole unit (0.99 -> 1.00) carries into the number. */
+    if (number_fraction == scale) {
+      number++;
+      number_fraction = 0;
+    }
+    scale *= 10;
+  }
+
+  /* Strip trailing zeros, keeping at least one decimal. */
+  while ((decimal_places_num > 1) && (number_fraction % 10 == 0)) {
+    number_fraction /= 10;
+    decimal_places_num--;
+  }
+
+  /* With no decimal places, the fraction is zero & a precision of zero prints nothing. */
+  BLI_snprintf(dst,
+               dst_maxncpy,
+               "%s"         /* Sign (or "" when positive). */
+               "%" PRIu64   /* Number. */
+               "%s"         /* Decimal point (or "" without decimal places). */
+               "%.*" PRIu64 /* Fraction, zero padded (or "" without decimal places). */
+               " %s"        /* Unit. */
+               ,
+               (bytes < 0) ? "-" : "",
+               number,
+               decimal_places_num ? "." : "",
+               decimal_places_num,
+               number_fraction,
+               base_10 ? units_base_10[order] : units_base_2[order]);
+}
+
+static void str_format_unit_compact_impl(char *dst,
+                                         const size_t dst_maxncpy,
+                                         const char *sign,
+                                         const uint64_t number_abs,
+                                         const uint64_t base,
+                                         const char *const units[],
+                                         const int units_num)
+{
+  uint64_t number = number_abs;
+  int order = 0;
+
+  /* Switch units at 1000 (not the base) so the number never needs 4 digits. */
+  while ((number >= 1000) && ((order + 1) < units_num)) {
+    number /= base;
     order++;
   }
-  decimals = std::max(order - 1, 0);
 
-  /* Format value first, stripping away floating zeroes. */
-  size_t len = BLI_snprintf_rlen(dst, dst_maxncpy, "%.*f", decimals, bytes_converted);
-  len -= size_t(BLI_str_rstrip_float_zero(dst, '\0'));
-  dst[len++] = ' ';
-  BLI_strncpy(dst + len, base_10 ? units_base_10[order] : units_base_2[order], dst_maxncpy - len);
+  const bool add_dot = (order > 0) && (number >= 100) && ((order + 1) < units_num);
+
+  if (add_dot) {
+    number /= 100;
+    order++;
+  }
+  else if (order > 0) {
+    /* With binary units, 1000-1023 of a unit is shown as 1 of the next unit,
+     * an acceptable approximation for a compact representation. */
+    number = std::max(number, uint64_t(1));
+  }
+
+  BLI_snprintf(dst,
+               dst_maxncpy,
+               "%s" /* Sign (or "" when positive or not shown). */
+               "%s" /* Decimal point (or "" unless shown as a fraction of the next unit). */
+               "%u" /* Number. */
+               "%s" /* Unit. */
+               ,
+               sign,
+               add_dot ? "." : "",
+               uint(number),
+               units[order]);
 }
 
 void BLI_str_format_byte_unit_compact(char dst[BLI_STR_FORMAT_INT64_BYTE_UNIT_COMPACT_SIZE],
-                                      long long int bytes,
+                                      int64_t bytes,
                                       const bool base_10)
 {
   const size_t dst_maxncpy = BLI_STR_FORMAT_INT64_BYTE_UNIT_COMPACT_SIZE;
   BLI_string_debug_size(dst, dst_maxncpy);
 
-  float number_to_format_converted = float(bytes);
-  int order = 0;
-  const float base = base_10 ? 1000.0f : 1024.0f;
-  const char *units[] = {"B", "K", "M", "G", "T", "P"};
-  const int units_num = int(ARRAY_SIZE(units));
-
-  while ((fabsf(number_to_format_converted) >= base) && ((order + 1) < units_num)) {
-    number_to_format_converted /= base;
-    order++;
-  }
-
-  const bool add_dot = (llabs(bytes) > 99999) && fabsf(number_to_format_converted) > 99;
-
-  if (add_dot) {
-    number_to_format_converted /= 100.0f;
-    order++;
-  }
-
-  BLI_snprintf(dst,
-               dst_maxncpy,
-               "%s%d%s",
-               add_dot ? "." : "",
-               int(floorf(fabsf(number_to_format_converted))),
-               units[order]);
+  const char *units[] = {"B", "K", "M", "G", "T", "P", "E"};
+  str_format_unit_compact_impl(dst,
+                               dst_maxncpy,
+                               "",
+                               abs_as_uint64(bytes),
+                               base_10 ? 1000 : 1024,
+                               units,
+                               int(ARRAY_SIZE(units)));
 }
 
 void BLI_str_format_decimal_unit(char dst[BLI_STR_FORMAT_INT32_DECIMAL_UNIT_SIZE],
                                  int number_to_format)
 {
-  BLI_string_debug_size(dst, BLI_STR_FORMAT_INT32_DECIMAL_UNIT_SIZE);
+  const size_t dst_maxncpy = BLI_STR_FORMAT_INT32_DECIMAL_UNIT_SIZE;
+  BLI_string_debug_size(dst, dst_maxncpy);
 
-  float number_to_format_converted = float(number_to_format);
+  const uint64_t number_abs = abs_as_uint64(number_to_format);
+  uint64_t divisor = 1;
+  uint64_t number = number_abs;
   int order = 0;
-  const float base = 1000.0f;
+  const uint64_t base = 1000;
   const char *units[] = {"", "K", "M", "B"};
   const int units_num = int(ARRAY_SIZE(units));
 
-  while ((fabsf(number_to_format_converted) >= base) && ((order + 1) < units_num)) {
-    number_to_format_converted /= base;
+  /* Use the rounded value to pick the unit, so 999.5K is shown as "1.0M" (not "1000K"). */
+  while ((number >= base) && ((order + 1) < units_num)) {
+    divisor *= base;
     order++;
+    number = (number_abs + (divisor / 2)) / divisor;
   }
 
-  const size_t dst_maxncpy = BLI_STR_FORMAT_INT32_DECIMAL_UNIT_SIZE;
-  int decimals = 0;
-  if ((order > 0) && fabsf(number_to_format_converted) < 100.0f) {
-    decimals = 1;
+  uint number_fraction = 0;
+  int decimal_places_num = 0;
+  if (order > 0) {
+    /* Check the value rounded to one decimal, so 99.95 is shown as "100" (not "100.0"). */
+    const uint64_t tenths = ((number_abs * 10) + (divisor / 2)) / divisor;
+    if (tenths < 1000) {
+      number = tenths / 10;
+      number_fraction = uint(tenths % 10);
+      decimal_places_num = 1;
+    }
   }
-  BLI_snprintf(dst, dst_maxncpy, "%.*f%s", decimals, number_to_format_converted, units[order]);
+
+  /* With no decimal places, the fraction is zero & a precision of zero prints nothing. */
+  BLI_snprintf(dst,
+               dst_maxncpy,
+               "%s"   /* Sign (or "" when positive). */
+               "%u"   /* Number. */
+               "%s"   /* Decimal point (or "" without decimal places). */
+               "%.*u" /* Fraction (or "" without decimal places). */
+               "%s"   /* Unit (or "" below 1000). */
+               ,
+               (number_to_format < 0) ? "-" : "",
+               uint(number),
+               decimal_places_num ? "." : "",
+               decimal_places_num,
+               number_fraction,
+               units[order]);
 }
 
 void BLI_str_format_integer_unit(char dst[BLI_STR_FORMAT_INT32_INTEGER_UNIT_SIZE],
@@ -1299,31 +1402,14 @@ void BLI_str_format_integer_unit(char dst[BLI_STR_FORMAT_INT32_INTEGER_UNIT_SIZE
   const size_t dst_maxncpy = BLI_STR_FORMAT_INT32_INTEGER_UNIT_SIZE;
   BLI_string_debug_size(dst, dst_maxncpy);
 
-  float number_to_format_converted = float(number_to_format);
-  int order = 0;
-  const float base = 1000;
   const char *units[] = {"", "K", "M", "B"};
-  const int units_num = int(ARRAY_SIZE(units));
-
-  while ((fabsf(number_to_format_converted) >= base) && ((order + 1) < units_num)) {
-    number_to_format_converted /= base;
-    order++;
-  }
-
-  const bool add_dot = (abs(number_to_format) > 99999) && fabsf(number_to_format_converted) > 99;
-
-  if (add_dot) {
-    number_to_format_converted /= 100;
-    order++;
-  }
-
-  BLI_snprintf(dst,
-               dst_maxncpy,
-               "%s%s%d%s",
-               number_to_format < 0 ? "-" : "",
-               add_dot ? "." : "",
-               int(floorf(fabsf(number_to_format_converted))),
-               units[order]);
+  str_format_unit_compact_impl(dst,
+                               dst_maxncpy,
+                               (number_to_format < 0) ? "-" : "",
+                               abs_as_uint64(number_to_format),
+                               1000,
+                               units,
+                               int(ARRAY_SIZE(units)));
 }
 
 /** \} */

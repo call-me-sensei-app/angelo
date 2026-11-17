@@ -45,7 +45,20 @@ to gets the window's object mode for the build and its own back after, since Ble
 each switch (a sculpting object was left in Object Mode); one that stops
 part-way deletes the tab it half-made, puts the window back where it was and is tried again at the next quiet
 moment (1.0.5 first launch: a build that ran under the setup card lost the card, the welcome and the chat; one that
-ran while a person clicked left UI blocks unfreed at quit). The strip reads Director · Media Studio · Generation Flows ·
+ran while a person clicked left UI blocks unfreed at quit). No half-made tab is deleted under a window that shows it:
+Blender would move that window to the tab's neighbour, with the neighbour's object mode (2.0.0: a sculpt reopened with
+Load UI off mid-build went into Edit Mode). The tab records the workspace its build started from in
+``angelo_tab_unfinished``; each window showing it goes there first, given the active object's mode, and the delete is
+queued on the last of them, so every switch applies before it (``tab_removal.remove``). Delete Workspace deletes the
+window's own workspace (a ``temp_override`` workspace is not the context's: the stock Layout tab was deleted so), so
+a tab no window shows is shown first, given the window's mode, and the window goes back as it is deleted. Blender's
+Delete Workspace itself leaves a deleted copy's screen behind as an orphan (a duplicated workspace's screen is
+over-counted) and, after a load, logs "ID user decrement error" for the screen of a workspace a window showed: that is
+so for any workspace, with or without Angelo's builds, and ``test_blender_tab_build_keeps_mode`` records both. Only a tab a build made,
+by its tab's own name, is ever removed: Blender's Duplicate Workspace copies a workspace's properties, and Director's
+workspace, copied from a half-made tab, carried its markers and was deleted as one. Every copy Angelo makes (the
+tabs, Director's workspace) drops its source's markers, and a workspace still carrying a tab's marker it was never
+given loses the marker and is kept (``tab_removal.drop_copied``, ``clear_strays``). The strip reads Director · Media Studio · Generation Flows ·
 Layout, placed with ``WorkSpace.angelo_move_after`` (no switch to Director, which would change mode) when the tabs
 or Director's workspace are made, and restored on load. The tabs' editors, and a flow's own window, keep no stock header, sidebar or toolbar by construction
 (``chrome_guard``): hidden when made and on load, then kept by ``bpy.msgbus`` subscriptions on the editor's own
@@ -806,7 +819,11 @@ left "Sending to fal" (Angelo closed while the one billable request was in fligh
 pointer to the fal dashboard; one left "Uploading" had sent nothing billable and is marked stopped.
 
 **Results.** A ready video's card shows its first frame (``preview.png``, made once with Blender's movie reader; a
-build that can't read the file keeps the card's "Video" text and the video itself). Its popup and right-click menu
+build that can't read the file keeps the card's "Video" text and the video itself). The picture is an
+8-bit PNG that shows the clip as Blender shows it whatever its bit depth or colour space: the reader hands an 8-bit
+clip over as bytes in the clip's own colour space, which Blender converts when it saves the picture, and a clip of
+more than 8 bits a channel as scene-linear floats, which are put through the Standard view's sRGB display first
+(``test_blender_video_card_picture``; before 2.0.0 every 10-bit clip's picture came out far too dark). Its popup and right-click menu
 offer **Play** (the animation player: this executable with ``-a``), **Add to Sequencer** (movie and sound
 strips at the current frame on the first free channels, one Undo step), **Show File** and Export. Dragging the card
 onto the Sequencer adds it through Blender's own file drop.

@@ -14,6 +14,7 @@ what waits for the next start and files that could not be copied.
 import os
 
 from . import card_kit as kit
+from .ui_formats import format_list
 from .ui_text import iface_, join, language, n_
 
 IMPORT_TITLE = n_("Import your Blender settings?")
@@ -35,6 +36,10 @@ PUT_BACK = n_("Put back")
 DONE_TITLE = n_("Your {app} {version} settings are in")
 DONE_BODY = n_("Preferences, shortcuts, add-ons and presets came over.")
 NOT_LOADED = n_("Did not load: {names}. You can fix or turn off an add-on in Preferences > Add-ons.")
+# The ones that raised as they loaded are only counted here: their own notice names each, why, and can turn it off.
+FAILED_COUNT = n_("Add-ons that failed as they loaded: {count}. Their own notice says why and can turn each off.")
+MORE_NAMES = n_("{count} more")   # The last item of a list cut short.
+MOST_NAMES = 5
 NEXT_START = n_("Startup scripts, fonts and color management take effect the next time you open Angelo.")
 NOT_COPIED = n_("Some files could not be copied; the log names them.")
 FAILED_TITLE = n_("Your settings could not be brought over")
@@ -118,13 +123,29 @@ class ImportCard(kit.BaseCard):
         self.decide(self.choice or "cancel")
 
 
+def not_loaded(outcome):
+    """The lines about the add-ons an import enabled that did not load: the ones not installed named (``MOST_NAMES``,
+    then how many more), the ones that raised only counted, so no add-on is named on two notices."""
+    causes = outcome.get("causes") or {}
+    absent = [name for name in outcome["failed"] if name not in causes]
+    failed = len(outcome["failed"]) - len(absent)
+    lines = []
+    if absent:
+        shown = absent[:MOST_NAMES] + ([iface_(MORE_NAMES, count=str(len(absent) - MOST_NAMES))]
+                                       if len(absent) > MOST_NAMES else [])
+        lines.append(iface_(NOT_LOADED, names=format_list(shown)))
+    if failed:
+        lines.append(iface_(FAILED_COUNT, count=str(failed)))
+    return join(lines, " ")
+
+
 def notice_text(outcome):
     """``(icon, title, body, calm)`` for the corner notice after an import's ``outcome`` (settings_import_apply)."""
     if outcome.get("exception"):
         return "alert", iface_(FAILED_TITLE), iface_(FAILED_BODY), False
     lines = [iface_(DONE_BODY)]
     if outcome.get("failed"):
-        lines.append(iface_(NOT_LOADED, names=", ".join(outcome["failed"])))
+        lines.append(not_loaded(outcome))
     if outcome.get("restart"):
         lines.append(iface_(NEXT_START))
     if outcome.get("errors"):

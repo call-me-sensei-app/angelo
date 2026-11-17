@@ -191,6 +191,31 @@ fallback fail) instead of reporting an error; a factory-startup Workbench still 
 (build3, 2026-11-11, offset 0x4790B0 in Angelo.exe). The windowless native suites that render on the GPU are therefore
 ``needs_opengl`` and skipped on the GPU-less Windows builders (``test_native_suite_opengl``).
 
+Open Shading Language on OptiX and the NVIDIA driver
+----------------------------------------------------
+
+NVIDIA's drivers from 590 up to, not including, 610 cannot link the OptiX pipeline of Cycles' Open Shading Language
+kernels in Blender 5.3 (Blender issue #163420, a driver fault NVIDIA fixed in the 610 drivers; the 580 drivers never
+had it, and Blender 5.2's kernels still linked). A render with Open Shading Language on an OptiX device compiled those
+kernels for about six minutes on a Tesla T4 and then ended with ``OPTIX_ERROR_PIPELINE_LINK_ERROR``, which names no
+cause. A camera whose lens is an OSL script fails the same way with node shading, within seconds.
+
+Cycles' OptiX device now reads the installed driver's version before it loads anything
+(``intern/cycles/device/optix/driver.cpp``, called first in ``OptiXDevice::load_kernels``) and ends the render at
+once with one sentence: "Open Shading Language cannot render on OptiX with the installed NVIDIA driver because of a
+driver bug. Update the NVIDIA driver to version 610 or newer, or use a 580 series driver".
+
+* The version comes from NVML, the management library every NVIDIA driver installs (``nvml.dll`` from the Windows
+  system directory only, ``libnvidia-ml.so.1`` on Linux). It is loaded only when a render asks for Open Shading
+  Language on OptiX, read once per process, and logged (``NVIDIA driver version: 596.86``).
+* When the version cannot be read (no library, a failed call, text that is not a version) the check refuses nothing:
+  the render goes on exactly as it did before this check, a broken driver's link error included.
+* The check covers Open Shading Language as the shading system and an OSL camera script, together or alone.
+  Renders with neither, CUDA, the CPU and every other device never reach it.
+* The sentence is a constant, so it is translated like any report: Cycles hands its error to the render's report,
+  which Blender looks up, and the Image Editor's render line now looks the same text up. It is listed in
+  ``sources.EXTRA_MSGIDS`` because the extractor does not read Cycles.
+
 V-Ray for Blender
 -----------------
 
@@ -270,9 +295,28 @@ change it.
   was closed brings it back once with the result.
 * **Remembered** (``ai-render.json`` in the state folder): the last style, account and model, per person.
 
+Colour configuration
+====================
+
+Blender 5.3 lets a Project switch the OCIO configuration at runtime (ACES 1.3 and 2.0 among the built-in ones, as
+``ocio://`` URIs), and reopens a project on start-up. Those configurations name their colour spaces and views
+differently ("sRGB - Texture", "Raw", "Un-tone-mapped"; no "Non-Color", "sRGB" or "Standard"), so Angelo never
+writes or compares one by name (``color_spaces.py``; ``test_native_color_spaces.py`` refuses names elsewhere):
+
+* **Stored values** (pictures drawn as they are, data maps) use the configuration's data role (``is_data``).
+* **sRGB** is found as Blender finds it: the interop IDs ``srgb_rec709_scene`` and ``srgb_rec709_display``, then
+  the common names of configurations without them, then the default byte role.
+* **An un-tone-mapped view** (the video encode) is "Standard", else "Un-tone-mapped", else "Raw".
+* **Rules** judge a kind (``srgb``, ``data``, ``other``) that the facts record beside the name
+  (``engine_preflight.rst``, ``colour_space``).
+
 Validation
 ==========
 
+* Unit: ``device_optix_driver.*`` in ``cycles_test`` (version text that is and is not a version, the drivers on
+  both sides of each bound, Open Shading Language on and off, an OSL camera alone, an unknown version). Host:
+  ``test_native_cycles_optix_osl_driver`` (the check runs before anything is loaded, the library comes from the
+  system only, the sentence is one constant every language translates, the report and the Image Editor look it up).
 * Host: ``test_native_render_engines`` (choices and order, installed engines, presets read back, GPU only when set up, refused
   engines, the button's width, the dropdown kind and pressed states, glyphs, the template, accounts, ratio, memory,
   and the click as the approval: one priced generation, a new take, refusals); ``test_native_flow_menu``,

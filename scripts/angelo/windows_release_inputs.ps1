@@ -13,25 +13,25 @@
   into C:\angelo\release-signing, every file checked against its SHA256SUMS and none admitted without one, and named
   in ANGELO_RELEASE_SIGNING_DIR, only when the run's metadata angelo-release-sign is presigned.
 #>
+if (-not (Get-Command Invoke-NativeCapture -ErrorAction SilentlyContinue)) {   # Its caller may have loaded it.
+    . (Join-Path $PSScriptRoot "windows_native_call.ps1")
+}
 # The libraries at the commit this source pins (the source stage cloned them once, at the pin of that time).
 $libs = Join-Path $src "lib\windows_x64"
 $want = Get-Meta "angelo-libs-sha" ""
-$old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-$have = (git -C $libs rev-parse HEAD 2>$null)
+$have = (Invoke-NativeCapture git @("-C", $libs, "rev-parse", "HEAD")).Out | Select-Object -First 1
 if ($want -and $have -ne $want) {
     Write-Host "== stage: libraries $have -> $want"
     $env:GIT_LFS_SKIP_SMUDGE = "1"
-    git -C $libs fetch -q origin 2>&1 | Out-Host
-    git -C $libs checkout -q $want 2>&1 | Out-Host
+    (Invoke-NativeCapture git @("-C", $libs, "fetch", "-q", "origin")).Text | Where-Object { $_ } | Out-Host
+    (Invoke-NativeCapture git @("-C", $libs, "checkout", "-q", $want)).Text | Where-Object { $_ } | Out-Host
     $env:GIT_LFS_SKIP_SMUDGE = ""
-    git -C $libs lfs pull 2>&1 | Out-Host
-    if ($LASTEXITCODE -ne 0 -or (git -C $libs rev-parse HEAD 2>$null) -ne $want) {
-        $ErrorActionPreference = $old
-        throw "the Windows libraries could not be brought to $want"
-    }
+    $pulled = Invoke-NativeCapture git @("-C", $libs, "lfs", "pull")
+    $pulled.Text | Where-Object { $_ } | Out-Host
+    $now = (Invoke-NativeCapture git @("-C", $libs, "rev-parse", "HEAD")).Out | Select-Object -First 1
+    if ($pulled.Code -ne 0 -or $now -ne $want) { throw "the Windows libraries could not be brought to $want" }
 }
-$ErrorActionPreference = $old
-foreach ($name in "CUDA_PATH", "HIP_PATH", "OPTIX_ROOT_DIR", "OCLOC_INSTALL_DIR") {
+foreach ($name in "CUDA_PATH", "HIP_PATH", "OPTIX_ROOT_DIR", "OCLOC_INSTALL_DIR", "DLSS_SDK_ROOT") {
     $value = [Environment]::GetEnvironmentVariable($name, "Machine")
     if ($value) { Set-Item "env:$name" $value }
 }
@@ -42,13 +42,11 @@ $env:ANGELO_LIBS_SHA = $want
 $runtimeDir = Join-Path $root "agent-runtime"
 Remove-Item $runtimeDir -Recurse -Force -ErrorAction SilentlyContinue
 $env:ANGELO_AGENT_RUNTIME_DIR = ""
-$old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-$runtimeObjects = @(& $gcloud storage ls "gs://$bucket/agent-runtime/" 2>$null | Where-Object { $_ -is [string] -and $_ -notmatch "/$" })
+$runtimeObjects = @((Invoke-NativeCapture $gcloud @("storage", "ls", "gs://$bucket/agent-runtime/")).Out | Where-Object { $_ -notmatch "/$" })
 if ($runtimeObjects) {
     New-Item -ItemType Directory -Force $runtimeDir | Out-Null
-    & $gcloud storage cp --quiet "gs://$bucket/agent-runtime/*" $runtimeDir 2>&1 | Out-Null
+    [void](Invoke-NativeCapture $gcloud @("storage", "cp", "--quiet", "gs://$bucket/agent-runtime/*", $runtimeDir))
 }
-$ErrorActionPreference = $old
 if ($runtimeObjects) {
     $sums = Join-Path $runtimeDir "SHA256SUMS"
     if (-not (Test-Path $sums)) { throw "gs://$bucket/agent-runtime/ has no SHA256SUMS" }
@@ -72,16 +70,12 @@ $env:ANGELO_RELEASE_SIGNING_DIR = ""
 # bucket by an earlier release never switch a later run, a bench preparation included, to signing.
 $signMode = Get-Meta "angelo-release-sign" ""
 if ($signMode -and $signMode -cne "presigned") { throw "metadata angelo-release-sign is '$signMode', not presigned" }
-$old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-$signingSums = if ($signMode) { @(& $gcloud storage ls "gs://$bucket/release-signing/SHA256SUMS" 2>$null) } else { @() }
-$ErrorActionPreference = $old
+$signingSums = if ($signMode) { @((Invoke-NativeCapture $gcloud @("storage", "ls", "gs://$bucket/release-signing/SHA256SUMS")).Out) } else { @() }
 if ($signMode -and -not $signingSums) { throw "this run signs (angelo-release-sign=presigned), but gs://$bucket/release-signing/ has no SHA256SUMS" }
-$old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
 if ($signingSums) {
     New-Item -ItemType Directory -Force $signingDir | Out-Null
-    & $gcloud storage cp --quiet --recursive "gs://$bucket/release-signing/*" $signingDir 2>&1 | Out-Null
+    [void](Invoke-NativeCapture $gcloud @("storage", "cp", "--quiet", "--recursive", "gs://$bucket/release-signing/*", $signingDir))
 }
-$ErrorActionPreference = $old
 if ($signingSums) {
     $named = @{}
     foreach ($line in Get-Content (Join-Path $signingDir "SHA256SUMS")) {

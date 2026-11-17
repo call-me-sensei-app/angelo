@@ -130,7 +130,7 @@ static wmOperatorStatus angelo_drag_invoke(bContext *C, wmOperator *op, const wm
     }
     return OPERATOR_FINISHED;
   }
-  const Vector<std::string> identifiers = lines(RNA_string_get(op->ptr, "items"));
+  const Vector<std::string> identifiers = lines(RNA_string_get(op->ptr, "item_lines"));
   const Vector<asset_system::AssetRepresentation *> assets =
       reference && !identifiers.is_empty() ? find_assets(*C, *reference, identifiers) :
                                              Vector<asset_system::AssetRepresentation *>();
@@ -179,7 +179,7 @@ void ASSET_OT_angelo_drag(wmOperatorType *ot)
 
   ot->flag = OPTYPE_INTERNAL;
 
-  for (const char *name : {"library", "items", "paths"}) {
+  for (const char *name : {"library", "item_lines", "paths"}) {
     PropertyRNA *prop = RNA_def_string(ot->srna, name, nullptr, 0, name, "");
     RNA_def_property_flag(prop, PropertyFlag(PROP_HIDDEN | PROP_SKIP_SAVE));
   }

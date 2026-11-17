@@ -265,6 +265,18 @@ def details_preparing(call, owner):
     return layout is not None and not _shown(layout)[1]
 
 
+CANVAS_INSET = 64   # A program card's rows are this much narrower than the chat (chat_card_draw.REVIEW_INSET).
+
+
+def canvas_geometry(area, region):
+    """``(width, size)`` a chat canvas's program review rows are prepared for and looked up by: the region's width in
+    the chat's unscaled pixels (``chat_view.ui_scale``) less the card's inset, and the chat's text size. The timer
+    and anything that asks for those rows (``review_rows``) take it from here, so they agree at every UI scale."""
+    from . import chat_view
+    return (max(40, region.width / chat_view.ui_scale() - CANVAS_INSET),
+            max(12, int(area.spaces.active.font_size * 0.8)))
+
+
 def prepare_canvas_reviews():
     """Existing canvas timer hook; font calls remain on Blender's main thread."""
     import bpy
@@ -286,11 +298,10 @@ def prepare_canvas_reviews():
     for area in areas:
         region = next((region for region in area.regions if region.type == 'WINDOW'), None)
         if region is not None:
-            size = max(12, int(area.spaces.active.font_size * 0.8))
+            width, size = canvas_geometry(area, region)   # The width the chat's draw asks for (unscaled pixels).
             previous = review.layouts.get(area.as_pointer())
             preview, details = (previous.preview, previous.details) if previous else ((), ())
-            # The chat lays out in unscaled pixels (chat_view.ui_scale): prepare for the width its draw asks for.
-            working |= advance_review_layout(call, area.as_pointer(), max(40, region.width / chat_view.ui_scale() - 64), size,
+            working |= advance_review_layout(call, area.as_pointer(), width, size,
                                              chat_view._font, chat_view._mono, chat_view.iter_wrap, deadline)
             current = review.layouts[area.as_pointer()]
             if current.preview is not preview or current.details is not details:

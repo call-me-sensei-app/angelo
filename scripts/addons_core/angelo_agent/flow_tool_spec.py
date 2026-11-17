@@ -11,6 +11,7 @@ import json
 import re
 
 from .flow_spec import BASE_NODE_TYPES, FlowError, MAX_LINKS, MAX_NODES, NODE_TYPES, REVISION_LENGTH, SCOPES, flow_name, _choice, _name, _uuid
+from . import read_only
 
 
 # Tool schemas: one compact node shape (type-specific fields are checked by
@@ -101,9 +102,12 @@ FLOW_USAGE = frozenset({"angelo_flow_run"})
 FLOW_EDITS = frozenset({"angelo_flow_build", "angelo_flow_choose"})
 
 
+FLOW_SCHEMAS = read_only.frozen({tool["name"]: tool["inputSchema"] for tool in FLOW_TOOLS})   # As registered, read only: an agent script's change to a spec's dict reaches no check (read_only).
+
+
 def validate_flow_tool(name, arguments):
     """Shape checks for a tool call; graph rules are checked by ``normalize`` and the host."""
-    schema = next(tool["inputSchema"] for tool in FLOW_TOOLS if tool["name"] == name)
+    schema = FLOW_SCHEMAS[name]
     if not isinstance(arguments, dict) or set(arguments) - set(schema["properties"]):
         raise FlowError("Unexpected Generation Flow argument")
     if set(schema["required"]) - set(arguments):

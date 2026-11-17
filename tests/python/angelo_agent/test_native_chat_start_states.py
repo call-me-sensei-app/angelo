@@ -338,7 +338,9 @@ class WiringTests(unittest.TestCase):
         self.assertIn("    @_kept_alive\n    def modal(self, context, event):", source)
         kept = source.split("\ndef _kept_alive(", 1)[1].split("\nclass ", 1)[0]
         self.assertIn("return modal(self, context, event)", kept)
-        self.assertIn("except Exception:", kept)
+        self.assertRegex(kept, r"except Exception( as \w+)?:")
+        # Logged, never swallowed: a grant's refusal of input no person made in one line, anything else in full.
+        self.assertIn("grant_guard.said_refusal(error) or traceback.print_exc()", kept)
         self.assertIn("return {'PASS_THROUGH'}", kept)
         ensure = source.split("\ndef ensure_input(", 1)[1].split("\ndef ", 1)[0]
         self.assertIn('handler_running(window, "angelo.chat_input")', ensure)

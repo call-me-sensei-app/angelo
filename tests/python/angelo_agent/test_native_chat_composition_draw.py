@@ -13,6 +13,8 @@ import unittest
 from unittest import mock
 
 ADDON = Path(__file__).resolve().parents[3] / "scripts" / "addons_core" / "angelo_agent"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import module_namespace  # noqa: E402
 NS = types.SimpleNamespace
 
 
@@ -31,6 +33,8 @@ def definitions(name, wanted, namespace):
     selected = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in wanted]
     if len(selected) != len(wanted):
         raise AssertionError("Every requested production function must exist")
+    for imported, value in module_namespace.relative_imports(ADDON / name).items():
+        namespace.setdefault(imported, value)   # What the module imports, unless the test stands in for it.
     exec(compile(ast.Module(body=selected, type_ignores=[]), str(ADDON / name), "exec"), namespace)
 
 
@@ -66,7 +70,7 @@ class ComposedDrawTests(unittest.TestCase):
             "chat_settings": module("angelo_agent.chat_settings", clean_options=noop, selected_model=noop),
             "chat_layout": module("angelo_agent.chat_layout", composer_layout=lambda *args: geometry),
             "chat_popovers": module("angelo_agent.chat_popovers", effective_effort=noop, effort_name=noop,
-                                     model_name=noop, supports_fast=noop),
+                                     model_name=noop, supports_fast=noop, key_focus=lambda state: ("", None)),
             "agent_workspace_ui": module("angelo_agent.agent_workspace_ui", native_cards=lambda c: [],
                                           control_lines=noop, preview_available=noop, draw_native_preview=noop),
             "chat_usage": module("angelo_agent.chat_usage", bar_height=lambda *args: 0),
@@ -74,7 +78,7 @@ class ComposedDrawTests(unittest.TestCase):
         probe = module("composed_chat_draw", __package__="angelo_agent")
         tokens = NS(CANVAS=object(), BUBBLE=object(), MUTED=object())
         vars(probe).update(
-            sys=sys, time=time, bpy=NS(context=NS(area=area, region=NS(width=800, height=600))),
+            sys=sys, time=time, bpy=NS(context=NS(area=area, region=NS(width=800, height=600), window=None)),
             gpu=NS(matrix=NS(push=noop, pop=noop, scale=noop), state=gpu_state),
             _enabled=True, _scale=1, _font=0, ui_scale=lambda: 1, _views={71: state},
             _scroll={(71, "chat-a"): 37}, _errors={}, draw_count=0, last_error=None,
@@ -97,7 +101,8 @@ class ComposedDrawTests(unittest.TestCase):
             clip_rect=lambda rect, viewport: rect, _this_module=lambda: probe,
             chat_card_draw=NS(draw_pills=noop), chat_start_states=NS(draw_blocked=noop),
             chat_notices=NS(draw=noop), chat_replies=NS(draw=noop),
-            canvas_controls=NS(draw_canvas=noop), draw_popover=noop)
+            canvas_controls=NS(draw_canvas=noop), draw_popover=noop,
+            grant_guard=NS(canvas_regions=noop))   # C's consent regions: grant_guard's own tests.
         package = module("angelo_agent", __path__=[])
         for name, child in modules.items():
             setattr(package, name, child)

@@ -19,7 +19,8 @@ for the same camera.
   ``inputImage`` and a Claude plan round as an ``image`` block.
 * ``image`` returns a finished ``RENDER_STILL`` job's own file, or Blender's
   Render Result, downscaled and without rendering.
-* Seconds per look are recorded (median of five, the tiny scene).
+* Seconds per look are recorded (median of five, the tiny scene). A look first answered in Solid while its shaders
+  warm up is asked again, as that answer tells the agent, and named in ``warmed_first``.
 
 Run through ``run_native_suites.py --gui --include test_blender_rendered_view``;
 check ``rendered-view.json`` for ``success`` and ``phase == "complete"``. No
@@ -73,7 +74,7 @@ from angelo_agent.view_spec import RENDER_SAMPLES, SHADINGS  # noqa: E402
 REPORT = OUT / "rendered-view.json"
 VIEWPORT_SHADINGS = ("SOLID", "WIREFRAME", "MATERIAL")
 state = {"phase": "boot", "success": False, "checks": {}, "colours": {}, "seconds": {}, "paid_requests": 0,
-         "binary": bpy.app.binary_path, "shadings": list(SHADINGS)}
+         "binary": bpy.app.binary_path, "shadings": list(SHADINGS), "warmed_first": []}
 ctx = {"case": "boot"}
 controller = fx.conversation(WS)
 references = ReferenceStore(OUT, "5c1f2f0e-6a8e-4b7e-9c56-2a54b5b8d1a1")
@@ -101,13 +102,22 @@ def keep(result, label):
 
 
 def view(shading, resolution=256):
-    """Generator: one viewport view through the executor. A look whose shaders are still compiling is pending
-    (``view_warm``): it is awaited through the event loop, as ``Controller._pump_events`` does."""
-    view_cache.images.clear()
-    result = executor().execute("angelo_view", {"views": ["SCENE_CAMERA"], "shading": shading,
+    """Generator: one viewport view through the executor, answered in its look as the agent gets it
+    (``fx.agent_view``): a look whose shaders are still compiling is pending, awaited through the event loop as
+    ``Controller._pump_events`` does; one first answered in Solid while they warm up (``view_warm.GRACE_SECONDS``,
+    a Windows T4 compiling the Cycles case's volume) is asked again. Each look first answered Solid is recorded
+    (``warmed_first``)."""
+    answers = []
+
+    def execute(arguments):
+        view_cache.images.clear()
+        answers.append(executor().execute("angelo_view", arguments))
+        return answers[-1]
+
+    result = yield from fx.agent_view(execute, {"views": ["SCENE_CAMERA"], "shading": shading,
                                                 "resolution": resolution})
-    if not isinstance(result, dict):
-        result = yield from fx.pending_result(result)
+    if len(answers) > 1:
+        state["warmed_first"].append("%s_%s" % (ctx["case"], shading.lower()))
     return result, keep(result, shading.lower())
 
 

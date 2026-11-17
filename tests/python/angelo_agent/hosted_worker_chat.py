@@ -31,6 +31,7 @@ import bpy
 import hosted_codex_stand_in as stand_in
 import pump_blocking
 from angelo_agent import ui, worker_consent_lead, worker_routing
+from qa_person import choose_approval  # The person's approval choice (C's ledger).
 
 TURN_SECONDS = 180.0
 BUSY_SECONDS = 5.0
@@ -132,7 +133,7 @@ class HostedWorkerChat:
         connect(self.lead)
         self.lead.state["options"] = dict(self.lead.state.get("options") or {})
         options = dict(self.lead.state["options"])
-        self.lead.state["options"]["approval"] = approval   # The new chat inherits the lead's mode, as it does.
+        choose_approval(self.lead, approval)   # The new chat inherits the lead's mode as C holds it, as it does.
         try:
             self.controller = worker_sessions._new_chat(self.lead)
         finally:
@@ -140,9 +141,7 @@ class HostedWorkerChat:
         self.session = self.controller.state["id"]
         started = time.perf_counter()
         if worker is None:
-            self.executor = worker_routing.start(self.controller, part, binary=bpy.app.binary_path,
-                                                 script=Path(root) / "scripts/angelo/angelo_headless.py",
-                                                 environ=environ)
+            self.executor = worker_routing.start(self.controller, part, environ=environ)   # Angelo's own program.
         else:   # A running worker that took ``part`` (warm reuse): bound as ``worker_sessions._launching`` binds it.
             worker.part = Path(part)
             worker_routing.ready(worker)
@@ -198,10 +197,9 @@ class HostedWorkerChat:
     def model_log(self, kind=None):
         """What the stand-in model saw, in order (its ``log.jsonl``); only ``kind`` rows when given."""
         try:
-            lines = (self.folder / "log.jsonl").read_text(encoding="utf-8").splitlines()
+            rows = stand_in.read_rows(self.folder / "log.jsonl")   # The stand-in may be writing a row now.
         except OSError:
             return []
-        rows = [json.loads(line) for line in lines if line.strip()]
         return [row for row in rows if kind is None or row.get("kind") == kind]
 
     def release(self, name):
@@ -434,9 +432,9 @@ class HostedWorkerChat:
         self.operators()
         self.draw(call)
         with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-            done = bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=self.session)
+            done = __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=self.session)
             if done != {'FINISHED'} and call.id in self.controller.reviewed_calls:
-                done = bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=self.session)
+                done = __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=self.session)
         return done
 
     def decline(self, call):

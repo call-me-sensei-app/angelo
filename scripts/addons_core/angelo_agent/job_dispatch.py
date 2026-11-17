@@ -22,7 +22,8 @@ def runner(window, request, workspace, target, resolved):
         return job_bakes.TextureBakeRunner(window, request, workspace, target, **(resolved or {}))
     if kind == "BAKE_MAPS":
         from .job_bake_maps import TextureSetRunner
-        return TextureSetRunner(window, request, workspace, (resolved or {}).get("targets", ()),
+        aimed = (resolved or {}).get("targets") or ([target] if target is not None else ())   # One: ``target``.
+        return TextureSetRunner(window, request, workspace, aimed,
                                 (resolved or {}).get("sources", ()), (resolved or {}).get("cage"))
     if kind == "BAKE_PHYSICS":
         return job_bakes.PhysicsBakeRunner(window, request, workspace)

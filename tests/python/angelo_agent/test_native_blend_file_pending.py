@@ -3,6 +3,7 @@
 """Workspace metadata yields, cancels and bounds worker count without moving live bpy access off-thread."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import threading
@@ -27,7 +28,7 @@ class PendingMetadataTests(unittest.TestCase):
         self.args = validate_read("angelo_blend_file", {"file": "stages/s8.blend"})
 
     def finished(self, result):
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             value = result.poll()
             if value is not None:
@@ -41,11 +42,11 @@ class PendingMetadataTests(unittest.TestCase):
         def blocked(_descriptor, _token):
             workers.append(threading.get_ident())
             entered.set()
-            release.wait(2)
+            release.wait(CAP_S)
         self.metadata.before_scan = blocked
         result = pending.begin(self.args, self.workspace)
         self.assertIsInstance(result, StudioPending)
-        self.assertTrue(entered.wait(1))
+        self.assertTrue(entered.wait(CAP_S))
         self.assertIsNone(result.poll())
         self.assertNotEqual(workers, [threading.get_ident()])
         release.set()
@@ -59,10 +60,10 @@ class PendingMetadataTests(unittest.TestCase):
         entered = threading.Event()
         def blocked(_descriptor, token):
             entered.set()
-            token.wait(2)
+            token.wait(CAP_S)
         self.metadata.before_scan = blocked
         result = pending.begin(self.args, self.workspace)
-        self.assertTrue(entered.wait(1))
+        self.assertTrue(entered.wait(CAP_S))
         descriptor = self.metadata.calls[0][0]
         result.cancel()
         value = self.finished(result)
@@ -78,11 +79,11 @@ class PendingMetadataTests(unittest.TestCase):
                 entered.append(descriptor)
                 if len(entered) == pending.MAX_ACTIVE:
                     both_entered.set()
-            token.wait(2)
+            token.wait(CAP_S)
         self.metadata.before_scan = blocked
         active = [pending.begin(self.args, self.workspace) for _ in range(pending.MAX_ACTIVE)]
         try:
-            self.assertTrue(both_entered.wait(1))
+            self.assertTrue(both_entered.wait(CAP_S))
             self.assertEqual(pending.begin(self.args, self.workspace)["code"], "BUSY")
             self.assertEqual(len(self.metadata.calls), pending.MAX_ACTIVE)
         finally:
@@ -113,13 +114,13 @@ class PendingMetadataTests(unittest.TestCase):
             path.unlink()
             os.mkfifo(path)
             entered.set()
-            release.wait(2)
+            release.wait(CAP_S)
             return original(folder, name, flags, mode)
 
         with patch.object(pending.listing, "_open_file", swapped):
             result = pending.begin(self.args, self.workspace)
             try:
-                self.assertTrue(entered.wait(1))
+                self.assertTrue(entered.wait(CAP_S))
                 result.cancel()
                 release.set()
                 value = self.finished(result)

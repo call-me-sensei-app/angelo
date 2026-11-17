@@ -2,9 +2,9 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 #include "BLI_string_ref.hh"
 #include "BLI_vector.hh"
 
@@ -20,10 +20,17 @@
 #include "testing/testing.h"
 #include "gmock/gmock.h"
 
+#include <atomic>
+#include <chrono>
+#include <thread>
+
+#include "BLI_threads.hh"
+
 #include "IMB_cache.hh"
 #include "IMB_imbuf.hh"
 
 #include "DNA_image_types.h"
+#include "DNA_userdef_types.h"
 
 #include "RE_pipeline.h"
 
@@ -287,6 +294,80 @@ class ImageTest : public BlenderGTestBase {
     return {};
   }
 };
+
+/* BKE_image_is_float releases exactly what it acquired, buffer or none. On a failed load
+ * (a missing file) it once released the address of the lock (7eb8cd0aba98), which unlocks the
+ * viewer lock it never took and releases a bogus render result. The test thread holds the viewer
+ * lock across the call; another thread must still be unable to take it afterwards. */
+TEST_F(ImageTest, is_float_releases_only_what_it_acquired)
+{
+  const float color[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+  Main *bmain = BKE_main_new();
+  EXPECT_FALSE(BKE_image_is_float(nullptr));
+  Image *floats = BKE_image_add_generated(
+      bmain, 8, 8, "floats", 32, true, IMA_GENTYPE_BLANK, color, false, false, false);
+  Image *bytes = BKE_image_add_generated(
+      bmain, 8, 8, "bytes", 32, false, IMA_GENTYPE_BLANK, color, false, false, false);
+  EXPECT_TRUE(BKE_image_is_float(floats));
+  EXPECT_FALSE(BKE_image_is_float(bytes));
+
+  Image *missing = BKE_image_add_generated(
+      bmain, 8, 8, "missing", 32, false, IMA_GENTYPE_BLANK, color, false, false, false);
+  missing->source = IMA_SRC_FILE;
+  STRNCPY(missing->filepath, "//angelo-image-test-missing/does-not-exist.png");
+  BKE_image_free_buffers(missing);
+
+  BLI_thread_lock(LOCK_VIEWER);
+  EXPECT_FALSE(BKE_image_is_float(missing));
+  std::atomic<bool> taken = false;
+  std::thread other([&taken]() {
+    BLI_thread_lock(LOCK_VIEWER);
+    taken = true;
+    BLI_thread_unlock(LOCK_VIEWER);
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  const bool taken_while_held = taken;
+  BLI_thread_unlock(LOCK_VIEWER);
+  other.join();
+  EXPECT_FALSE(taken_while_held) << "the failed load released the viewer lock it never took";
+  EXPECT_TRUE(taken);
+  BKE_main_free(bmain);
+}
+
+TEST_F(ImageTest, garbage_collection_keeps_unsaved_edits)
+{
+  /* #164448: painted pixels are only in the buffer, so a timed-out edited image keeps it; an
+   * unedited one can be reloaded and is collected. */
+  const float color[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+  Main *bmain = BKE_main_new();
+  Image *edited = BKE_image_add_generated(
+      bmain, 8, 8, "edited", 32, false, IMA_GENTYPE_BLANK, color, false, false, false);
+  Image *clean = BKE_image_add_generated(
+      bmain, 8, 8, "clean", 32, false, IMA_GENTYPE_BLANK, color, false, false, false);
+  for (Image *image : {edited, clean}) {
+    ImBuf *ibuf = BKE_image_acquire_ibuf(image, nullptr, nullptr);
+    ASSERT_NE(ibuf, nullptr);
+    if (image == edited) {
+      ibuf->userflags |= IB_BITMAPDIRTY;
+    }
+    ibuf->lastused = 0;
+    ibuf->gpu.lastused = 0;
+    BKE_image_release_ibuf(image, ibuf, nullptr);
+  }
+
+  const int textimeout = U.textimeout;
+  const int texcollectrate = U.texcollectrate;
+  U.textimeout = 1;
+  U.texcollectrate = 1;
+  BKE_image_free_old_buffers(bmain);
+  U.textimeout = textimeout;
+  U.texcollectrate = texcollectrate;
+
+  EXPECT_TRUE(BKE_image_has_loaded_ibuf(edited));
+  EXPECT_TRUE(BKE_image_is_dirty(edited));
+  EXPECT_FALSE(BKE_image_has_loaded_ibuf(clean));
+  BKE_main_free(bmain);
+}
 
 TEST_F(ImageTest, multilayer)
 {

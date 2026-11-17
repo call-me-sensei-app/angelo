@@ -42,8 +42,11 @@ def ui_class(name, namespace):
         path = path.with_name("trusted_scripts_ui.py")
     module = ast.parse(path.read_text())
     definition = next(node for node in module.body if isinstance(node, ast.ClassDef) and node.name == name)
+    # The operator's own body: its grant guard (only the person's click) has its own test (test_native_grant_operators).
+    definition.decorator_list = [d for d in definition.decorator_list if "grant_guard" not in ast.unparse(d)]
     code = ast.Module(body=[definition], type_ignores=[])
-    namespace = {"Operator": object, "StringProperty": lambda **_: None, **UI_NAMES} | namespace
+    from angelo_agent import grant_guard
+    namespace = {"Operator": object, "StringProperty": lambda **_: None, "grant_guard": grant_guard, **UI_NAMES} | namespace
     exec(compile(code, str(path), "exec"), namespace)
     return namespace[name]
 

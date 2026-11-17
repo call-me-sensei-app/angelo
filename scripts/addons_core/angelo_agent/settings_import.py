@@ -34,7 +34,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import blender_folders, shared_replace, user_copies
+from . import blender_folders, owned_paths, shared_replace, state_paths, user_copies, version_carry_over
 
 ANGELO, BLENDER = "Angelo", "Blender"   # Product names, shown as they are.
 FOUND, NONE, SHARED = "found", "none", "shared"
@@ -44,6 +44,29 @@ MERGED = frozenset({("config", "recent-files.txt"), ("config", "bookmarks.txt")}
 MANIFEST = "manifest.json"
 MANIFEST_VERSION = 1
 ROOT = ""   # The destinations key of the per-version folder itself (entries outside the four parts).
+BACKUP_FOLDER = "settings-import-backup"   # In Angelo's per-version folder (settings_import_apply).
+# The record of a Vulkan start that did not reach its first frame (wm_angelo_gpu_startup.cc): evidence about one
+# build and one driver, never a setting to bring to another version.
+GPU_STARTUP_RECORD = "angelo-gpu-startup.txt"
+# An earlier Angelo version's folder is copied whole, as Blender's own import copies it (``previous_ignore``), except
+# what is not a setting: the agent state, which ``version_carry_over`` moves instead (``preferences.copy_prev`` calls this) (a copy would duplicate gigabytes
+# of snapshots and every native sign-in profile), its carry-over record and lock, and the settings-import backup,
+# which belongs to the version folder it was made in.
+PREVIOUS_LEFT_OUT = frozenset({("config", state_paths.STATE_FOLDER), ("config", state_paths.LEGACY_STATE_FOLDER),
+                               ("config", state_paths.CARRY_OVER_RECORD), ("config", version_carry_over.LOCK),
+                               ("config", GPU_STARTUP_RECORD), (ROOT, BACKUP_FOLDER)})
+
+
+def previous_ignore(root):
+    """``shutil.copytree``'s ``ignore`` for copying an earlier Angelo version's folder ``root``."""
+    root = os.path.normpath(str(root))
+
+    def ignore(folder, names):
+        relative = os.path.relpath(os.path.normpath(folder), root)
+        part = ROOT if relative == os.curdir else relative.replace(os.sep, "/")
+        return {name for name in names if (part, name) in PREVIOUS_LEFT_OUT
+                or (part == "config" and name.startswith(state_paths.CARRY_OVER_RECORD))}   # Its temporary files too.
+    return ignore
 
 
 @dataclass(frozen=True)
@@ -255,6 +278,7 @@ def _new_folders(target, destinations):
 
 
 def _clone(path, destination):
+    owned_paths.require_writable(destination)   # Inside the import's destinations, vouched for this call (C).
     destination.parent.mkdir(parents=True, exist_ok=True)
     if os.path.islink(path):
         os.symlink(os.readlink(path), destination)
@@ -264,6 +288,7 @@ def _clone(path, destination):
 
 def _place(item):
     """Write one item next to its target, then swap it in, so a failure never leaves half a file."""
+    owned_paths.require_writable(item.target)
     item.target.parent.mkdir(parents=True, exist_ok=True)
     if item.target.is_dir() and not item.target.is_symlink():
         raise IsADirectoryError("A folder is in the way of " + item.target.name)
@@ -347,6 +372,9 @@ def undo(backup, destinations):
     for path, stored in manifest["replaced"].items():
         if not inside(path):
             continue
+        if os.path.islink(backup / stored) or os.path.islink(path):   # A link put back could point anywhere.
+            result.errors.append((path, "A link is never put back by Undo"))
+            continue
         try:
             _place(Item(backup / stored, Path(path), os.readlink(backup / stored) if os.path.islink(backup / stored)
                         else None))
@@ -380,3 +408,7 @@ def _write_json(path, value):
     except OSError:
         shared_replace.discard(temporary)
         raise
+
+
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
+undo = _grant_guard.entry(undo)   # It copies files into startup and add-on folders.

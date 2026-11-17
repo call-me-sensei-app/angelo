@@ -166,10 +166,10 @@ class SelectThroughSources(unittest.TestCase):
         condition = mesh[mesh.index("    show_hidden_selection_ = ("):][:200]
         for term in ("V3D_SELECT_THROUGH", "!state.xray_flag_enabled", "!state.is_depth_only_drawing"):
             self.assertIn(term, condition)
-        # Set up only when shown, submitted only in the color-only stage (which can read the depth).
+        # Set up only when shown, submitted only in the line-only stage (which can read the depth).
         self.assertEqual(mesh.count("manager.submit(edit_mesh_hidden_selection_ps_, view);"), 1)
-        color_only = mesh[mesh.index("void draw_color_only("):]
-        self.assertIn("manager.submit(edit_mesh_hidden_selection_ps_, view);", color_only[:1200])
+        line_only = mesh[mesh.index("void draw_line_only("):]
+        self.assertIn("manager.submit(edit_mesh_hidden_selection_ps_, view);", line_only[:1200])
         self.assertIn("if (show_hidden_selection_) {", mesh[mesh.index("hidden_selection_edges_ = hidden_selection_verts_"):][:200])
         infos = (overlay / "shaders/infos/overlay_edit_mode_infos.hh").read_text()
         self.assertEqual(infos.count('DEFINE("SELECTED_HIDDEN_ONLY")'), 3)

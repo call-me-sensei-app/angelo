@@ -4,9 +4,9 @@
 
 The bar (search field, Attach), then the top level's grid of tiles, a group's page (Back and the group's rows, drawn by
 ``chat_add_menu.draw_rows`` as the Flows popup draws them) or the search results, then the footer: the strip that
-describes the pointed-at tile, and the footer's text buttons (Report a bug, Request a feature). Every clickable thing
-records its hit (action, value) and, for the keyboard, its stop (row, column) in reading order. Tiles are pictures:
-in a right-to-left language the canvas mirrors the grid and ``canvas_rtl.upright`` keeps each tile unmirrored.
+describes the pointed-at tile, and the footer's text buttons (Learn, Report a bug, Request a feature). Every clickable
+thing records its hit (action, value) and, for the keyboard, its stop (row, column) in reading order. Tiles are
+pictures: in a right-to-left language the canvas mirrors the grid and ``canvas_rtl.upright`` keeps each tile unmirrored.
 """
 
 import functools
@@ -153,12 +153,19 @@ def _footer(view, state, popup, geometry, items, text, width, height, name=""):
         item = items[index]
         lit = popup.get("hover") == (item["action"], item["value"]) or _focused(popup, item["action"], item["value"])
         _highlight(view, popup, (lx - 4, ly + 3, lw + 8, lh - 6), item["action"], item["value"], 7)
-        view.shape(lx, ly + 10, 14, 10, ui_tokens.TEAL, 3.5)   # A speech bubble: a teal rim, the popover inside,
-        view.shape(lx + 1.5, ly + 11.5, 11, 7, ui_tokens.MENU, 2.2)   # and its tail at the lower left.
-        view.stroke(lx + 3, ly + 10.5, lx + 1.5, ly + 6.5, ui_tokens.TEAL, 1.4)
-        view.stroke(lx + 1.5, ly + 6.5, lx + 6.5, ly + 10.5, ui_tokens.TEAL, 1.4)
+        ly += (lh - layout.LINK) / 2   # Centred in a wrapped footer's lower row (layout.LINK_WRAPPED).
+        if item.get("glyph") == "learn":   # An open book: two pages at the spine, rimmed as the bubbles are (Learn).
+            for px in (lx, lx + 7.5):
+                view.shape(px, ly + 9, 6.5, 11, ui_tokens.TEAL, 1.5)
+                view.shape(px + 1.4, ly + 10.4, 3.7, 8.2, ui_tokens.MENU, 0.8)
+        else:
+            view.shape(lx, ly + 10, 14, 10, ui_tokens.TEAL, 3.5)   # A speech bubble: a teal rim, the popover inside,
+            view.shape(lx + 1.5, ly + 11.5, 11, 7, ui_tokens.MENU, 2.2)   # and its tail at the lower left.
+            view.stroke(lx + 3, ly + 10.5, lx + 1.5, ly + 6.5, ui_tokens.TEAL, 1.4)
+            view.stroke(lx + 1.5, ly + 6.5, lx + 6.5, ly + 10.5, ui_tokens.TEAL, 1.4)
         view.text(item["title"], lx + layout.LINK_ICON + 6, ly + 10, layout.WHY,
                   ui_tokens.TEXT if lit else ui_tokens.MUTED)
+        ly -= (lh - layout.LINK) / 2
         _hit(view, state, (lx - 4, ly, lw + 8, lh), item["action"], item["value"], None, width, height)
         stops.append((item["action"], item["value"], 10 ** 6, len(stops)))
     return stops

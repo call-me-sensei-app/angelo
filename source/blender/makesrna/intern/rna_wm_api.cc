@@ -18,6 +18,7 @@
 
 #include "ED_screen.hh"
 
+#include "UI_interface_c.hh"
 #include "UI_interface_icons.hh"
 #include "UI_interface_types.hh"
 
@@ -75,9 +76,9 @@ const EnumPropertyItem rna_enum_window_cursor_items[] = {
 #  include "ED_geometry.hh"
 #  include "ED_screen.hh"
 
-#  include "BLI_listbase.h"
-#  include "BLI_string.h"
-#  include "BLI_string_utf8.h"
+#  include "BLI_listbase.hh"
+#  include "BLI_string.hh"
+#  include "BLI_string_utf8.hh"
 
 #  include "BKE_angelo_legacy_names.hh"
 #  include "BKE_context.hh"
@@ -262,6 +263,36 @@ static int rna_Operator_confirm(bContext *C,
                                 message_str ? message_str->c_str() : nullptr,
                                 confirm_text_str ? confirm_text_str->c_str() : nullptr,
                                 ui::AlertIcon(icon));
+}
+
+static void rna_WM_try_activate_rna_button(blender::wmWindowManager * /*wm*/,
+                                           bContext *C,
+                                           ARegion *region,
+                                           PointerRNA *ptr,
+                                           const char *propname,
+                                           int state,
+                                           bool warp_cursor_at_button,
+                                           int index,
+                                           int **r_xy,
+                                           int *r_xy_total)
+{
+  PropertyRNA *prop = RNA_struct_find_property(ptr, propname);
+  if (!prop) {
+    RNA_warning_bare("WindowManager.try_activate_rna_button(): property not found: %s.%s",
+                     RNA_struct_identifier(ptr->type),
+                     propname);
+    return;
+  }
+  std::optional<int2> xy = ui::try_activate_rna_button(
+      C, region, ui::ActivationButtonState(state), ptr, prop, warp_cursor_at_button, index);
+
+  if (!xy) {
+    return;
+  }
+  *r_xy = MEM_new_array_uninitialized<int>(2, __func__);
+  (*r_xy)[0] = (*xy)[0];
+  (*r_xy)[1] = (*xy)[1];
+  *r_xy_total = 2;
 }
 
 static int rna_Operator_props_popup(bContext *C, wmOperator *op, wmEvent *event)
@@ -453,7 +484,7 @@ static void rna_KeyMap_item_remove(wmKeyMap *km, ReportList *reports, PointerRNA
 {
   wmKeyMapItem *kmi = static_cast<wmKeyMapItem *>(kmi_ptr->data);
 
-  if (UNLIKELY(BLI_findindex(&km->items, kmi) == -1)) {
+  if (BLI_findindex(&km->items, kmi) == -1) [[unlikely]] {
     BKE_reportf(
         reports, RPT_ERROR, "KeyMapItem '%s' not found in KeyMap '%s'", kmi->idname, km->idname);
     return;
@@ -470,7 +501,7 @@ static PointerRNA rna_KeyMap_item_find_match(
   if (kmi_base) {
     return RNA_pointer_create_discrete(id, RNA_KeyMapItem, kmi_base);
   }
-  return PointerRNA_NULL;
+  return {};
 }
 
 static PointerRNA rna_KeyMap_item_find_from_operator(ID *id,
@@ -510,7 +541,7 @@ static wmKeyMap *rna_KeyMaps_new(wmKeyConfig *keyconf,
      * add-ons can define modal key-maps.
      * Currently this is only useful for add-ons to override built-in modal keymaps
      * which is not the intended use for add-on keymaps. */
-    wmWindowManager *wm = static_cast<wmWindowManager *>(G_MAIN->wm.first);
+    wmWindowManager *wm = G_MAIN->wm.first();
     if (keyconf == wm->runtime->addonconf) {
       BKE_reportf(reports, RPT_ERROR, "Modal key-maps not supported for add-on key-config");
       return nullptr;
@@ -561,7 +592,7 @@ static void rna_KeyMaps_remove(wmKeyConfig *keyconfig, ReportList *reports, Poin
 {
   wmKeyMap *keymap = static_cast<wmKeyMap *>(keymap_ptr->data);
 
-  if (UNLIKELY(BLI_findindex(&keyconfig->keymaps, keymap) == -1)) {
+  if (BLI_findindex(&keyconfig->keymaps, keymap) == -1) [[unlikely]] {
     BKE_reportf(reports,
                 RPT_ERROR,
                 "KeyMap '%s' not found in KeyConfig '%s'",
@@ -587,7 +618,7 @@ wmKeyConfig *rna_KeyConfig_new(wmWindowManager *wm, const char *idname)
 static void rna_KeyConfig_remove(wmWindowManager *wm, ReportList *reports, PointerRNA *keyconf_ptr)
 {
   wmKeyConfig *keyconf = static_cast<wmKeyConfig *>(keyconf_ptr->data);
-  if (UNLIKELY(BLI_findindex(&wm->runtime->keyconfigs, keyconf) == -1)) {
+  if (BLI_findindex(&wm->runtime->keyconfigs, keyconf) == -1) [[unlikely]] {
     BKE_reportf(reports, RPT_ERROR, "KeyConfig '%s' cannot be removed", keyconf->idname);
     return;
   }
@@ -642,7 +673,7 @@ static PointerRNA rna_PopMenuBegin(bContext *C,
                                    const int icon)
 {
   if (!rna_popup_context_ok_or_report(C, reports)) {
-    return PointerRNA_NULL;
+    return {};
   }
 
   void *data = static_cast<void *>(ui::popup_menu_begin(C, title, icon));
@@ -659,14 +690,15 @@ static void rna_PopMenuEnd(bContext *C, PointerRNA *handle)
 static PointerRNA rna_PopoverBegin(bContext *C,
                                    ReportList *reports,
                                    const int ui_units_x,
-                                   const bool from_active_button)
+                                   const bool from_active_button,
+                                   const bool auto_keymap)
 {
   if (!rna_popup_context_ok_or_report(C, reports)) {
-    return PointerRNA_NULL;
+    return {};
   }
 
   void *data = static_cast<void *>(
-      ui::popover_begin(C, U.widget_unit * ui_units_x, from_active_button));
+      ui::popover_begin(C, U.widget_unit * ui_units_x, from_active_button, auto_keymap));
   PointerRNA ptr_result = RNA_pointer_create_discrete(nullptr, RNA_UIPopover, data);
   return ptr_result;
 }
@@ -681,7 +713,7 @@ static PointerRNA rna_PieMenuBegin(
     bContext *C, ReportList *reports, const char *title, const int icon, PointerRNA *event)
 {
   if (!rna_popup_context_ok_or_report(C, reports)) {
-    return PointerRNA_NULL;
+    return {};
   }
 
   void *data = (void *)ui::pie_menu_begin(
@@ -716,7 +748,7 @@ static PointerRNA rna_WindoManager_operator_properties_last(const char *idname)
     WM_operator_last_properties_ensure(ot, &ptr);
     return ptr;
   }
-  return PointerRNA_NULL;
+  return {};
 }
 
 static wmEvent *rna_Window_event_add_simulate(wmWindow *win,
@@ -802,6 +834,59 @@ static wmEvent *rna_Window_event_add_simulate(wmWindow *win,
   WM_event_tablet_data_default_set(&e.tablet);
 
   return WM_event_add_simulate(win, &e);
+}
+
+/* Angelo: a script's own text field and the window's input method
+ * (#bke::wmIMEOwnerType::Script). Without IME support they do nothing. */
+static bool rna_Window_ime_attach(wmWindow *win, const int x, const int y, const int height)
+{
+#  ifdef WITH_INPUT_IME
+  return WM_window_IME_script_attach(win, x, y, height);
+#  else
+  UNUSED_VARS(win, x, y, height);
+  return false;
+#  endif
+}
+
+static void rna_Window_ime_detach(wmWindow *win)
+{
+#  ifdef WITH_INPUT_IME
+  WM_window_IME_script_detach(win);
+#  else
+  UNUSED_VARS(win);
+#  endif
+}
+
+static void rna_Window_ime_simulate(wmWindow *win,
+                                    ReportList *reports,
+                                    const int phase,
+                                    const char *composition,
+                                    const int cursor,
+                                    const char *result,
+                                    const int selection[2])
+{
+  if ((G.f & G_FLAG_EVENT_SIMULATE) == 0) {
+    BKE_report(reports, RPT_ERROR, "Not running with '--enable-event-simulate' enabled");
+    return;
+  }
+#  ifdef WITH_INPUT_IME
+  /* What GHOST reports: UTF-8 strings, offsets in bytes into the composition (-1 unknown). */
+  wmIMEData data{};
+  data.composite = composition ? composition : "";
+  data.result = result ? result : "";
+  auto byte_offset = [&](const int column) {
+    return column < 0 ? -1 :
+                        BLI_str_utf8_offset_from_index(
+                            data.composite.c_str(), data.composite.size(), column);
+  };
+  data.cursor_pos = byte_offset(cursor);
+  data.sel_start = byte_offset(selection[0]);
+  data.sel_end = byte_offset(selection[1]);
+  WM_event_IME_apply(win, wmIMEPhase(phase), phase == int(wmIMEPhase::End) ? nullptr : &data);
+#  else
+  UNUSED_VARS(win, phase, composition, cursor, result, selection);
+  BKE_report(reports, RPT_ERROR, "Built without input method (IME) support");
+#  endif
 }
 
 static Scene *rna_Window_find_playing_scene(wmWindow *win, const bool scrub)
@@ -920,7 +1005,7 @@ static void rna_generic_op_invoke(FunctionRNA *func, int flag)
 
   RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_CONTEXT);
   parm = RNA_def_pointer(func, "operator", "Operator", "", "Operator to call");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
 
   if (flag & WM_GEN_INVOKE_EVENT) {
     parm = RNA_def_pointer(func, "event", "Event", "", "Event");
@@ -966,6 +1051,69 @@ void RNA_api_window(StructRNA *srna)
   RNA_def_function_ui_description(
       func, "Restore the previous cursor after calling ``cursor_modal_set``");
 
+  /* Angelo: the input method (IME) for a text field a script draws (Angelo's chat composer). */
+  func = RNA_def_function(srna, "ime_attach", "rna_Window_ime_attach");
+  RNA_def_function_ui_description(
+      func,
+      "Give the window's input method to a text field the script draws, its caret at x, y "
+      "(window pixels, the caret's bottom), height tall. Call on every draw while the field "
+      "has the keyboard: the candidate window follows the caret, keeping the composition");
+  parm = RNA_def_int(func, "x", 0, INT_MIN, INT_MAX, "", "", INT_MIN, INT_MAX);
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  parm = RNA_def_int(func, "y", 0, INT_MIN, INT_MAX, "", "", INT_MIN, INT_MAX);
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  parm = RNA_def_int(func, "height", 1, 1, INT_MAX, "", "", 1, INT_MAX);
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  parm = RNA_def_boolean(func,
+                         "attached",
+                         false,
+                         "",
+                         "The field has the input method (false while a text field being edited "
+                         "or a popup has it, or without IME support)");
+  RNA_def_function_return(func, parm);
+
+  func = RNA_def_function(srna, "ime_detach", "rna_Window_ime_detach");
+  RNA_def_function_ui_description(
+      func, "End the input method session ime_attach began, when it is still the window's");
+
+  static const EnumPropertyItem ime_phase_items[] = {
+      {0, "START", 0, "Start", "A composition begins"},
+      {1, "UPDATE", 0, "Update", "The composition changes, or text is committed (result)"},
+      {2, "END", 0, "End", "The composition ends"},
+      {0, nullptr, 0, nullptr, nullptr},
+  };
+  func = RNA_def_function(srna, "ime_simulate", "rna_Window_ime_simulate");
+  RNA_def_function_flag(func, FUNC_USE_REPORTS);
+  RNA_def_function_ui_description(func,
+                                  "Simulate an input method event, as GHOST reports one "
+                                  "(only with '--enable-event-simulate')");
+  parm = RNA_def_enum(func, "phase", ime_phase_items, 0, "Phase", "");
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  parm = RNA_def_string(func, "composition", nullptr, 0, "", "The text being composed");
+  RNA_def_parameter_clear_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
+  RNA_def_int(func,
+              "cursor",
+              -1,
+              -1,
+              INT_MAX,
+              "",
+              "The caret in the composition, in characters",
+              -1,
+              INT_MAX);
+  parm = RNA_def_string(func, "result", nullptr, 0, "", "Text committed with this event");
+  RNA_def_parameter_clear_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
+  static const int no_selection[2] = {-1, -1};
+  RNA_def_int_array(func,
+                    "selection",
+                    2,
+                    no_selection,
+                    -1,
+                    INT_MAX,
+                    "",
+                    "The segment being converted, in characters",
+                    -1,
+                    INT_MAX);
+
   /* Arguments match 'rna_KeyMap_item_new'. */
   func = RNA_def_function(srna, "event_simulate", "rna_Window_event_add_simulate");
   RNA_def_function_flag(func, FUNC_USE_REPORTS);
@@ -985,6 +1133,7 @@ void RNA_api_window(StructRNA *srna)
   RNA_def_boolean(func, "oskey", false, "OS Key", "");
   RNA_def_boolean(func, "hyper", false, "Hyper", "");
   parm = RNA_def_pointer(func, "event", "Event", "Item", "Added key map item");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
   RNA_def_function_return(func, parm);
 
   func = RNA_def_function(srna, "find_playing_scene", "rna_Window_find_playing_scene");
@@ -1015,6 +1164,14 @@ const EnumPropertyItem rna_operator_popup_icon_items[] = {
     {0, nullptr, 0, nullptr, nullptr},
 };
 
+const EnumPropertyItem rna_button_activation[] = {
+    {int(ui::ActivationButtonState::Highlight), "HIGHLIGHT", 0, "HIGHLIGHT", ""},
+    {int(ui::ActivationButtonState::WaitKeyEvent), "WAIT_KEY_EVENT", 0, "WAIT_KEY_EVENT", ""},
+    {int(ui::ActivationButtonState::NumEditing), "NUM_EDITING", 0, "NUM_EDITING", ""},
+    {int(ui::ActivationButtonState::TextEditing), "TEXT_EDITING", 0, "TEXT_EDITING", ""},
+    {0, nullptr, 0, nullptr, nullptr},
+};
+
 void RNA_api_wm(StructRNA *srna)
 {
   FunctionRNA *func;
@@ -1033,7 +1190,7 @@ void RNA_api_wm(StructRNA *srna)
       "(called by invoke() with self, just before returning {'RUNNING_MODAL'})");
   RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
   parm = RNA_def_pointer(func, "operator", "Operator", "", "Operator to call");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   RNA_def_function_return(
       func,
       RNA_def_boolean(func, "handle", true, "", "Whether adding the handler was successful"));
@@ -1047,6 +1204,7 @@ void RNA_api_wm(StructRNA *srna)
   RNA_def_property_ui_text(parm, "Time Step", "Interval in seconds between timer events");
   RNA_def_pointer(func, "window", "Window", "", "Window to attach the timer to, or None");
   parm = RNA_def_pointer(func, "result", "Timer", "", "");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
   RNA_def_function_return(func, parm);
 
   func = RNA_def_function(srna, "event_timer_remove", "rna_event_timer_remove");
@@ -1161,6 +1319,42 @@ void RNA_api_wm(StructRNA *srna)
 
   api_ui_item_common_translation(func);
 
+  func = RNA_def_function(srna, "try_activate_rna_button", "rna_WM_try_activate_rna_button");
+  RNA_def_function_ui_description(
+      func,
+      "Attempt to activate an button referencing an RNA property. If any other button in the "
+      "screen is active, it will be deactivated");
+  RNA_def_function_flag(func, FUNC_USE_CONTEXT);
+  parm = RNA_def_pointer(func, "region", "Region", "", "");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
+  parm = RNA_def_pointer(func, "data", "AnyType", "", "");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
+  parm = RNA_def_string(func, "property", nullptr, 0, "", "Identifier of property in data");
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  parm = RNA_def_property(func, "state", PROP_ENUM, PROP_NONE);
+  RNA_def_property_ui_text(
+      parm,
+      "State",
+      "Activation state for button. Some states are specific to certain button types; when an "
+      "incompatible state is provided, the button will be activated with the 'HIGHLIGHT' state.");
+  RNA_def_property_enum_items(parm, rna_button_activation);
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  parm = RNA_def_property(func, "warp_cursor_at_button", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_default(parm, true);
+  parm = RNA_def_property(func, "index", PROP_INT, PROP_NONE);
+  RNA_def_property_ui_text(
+      parm,
+      "Index",
+      "RNA index of the button when a single member of the referenced RNA property is accessed");
+  RNA_def_property_int_default(parm, 0);
+  parm = RNA_def_property(func, "xy", PROP_INT, PROP_NONE);
+  RNA_def_property_ui_text(
+      parm,
+      "xy",
+      "The center point of the button in window coordinates when successfully activated");
+  RNA_def_property_array(parm, 2);
+  RNA_def_parameter_flags(parm, PROP_DYNAMIC, PARM_OUTPUT);
+
   /* wrap popup_menu_begin */
   func = RNA_def_function(srna, "popmenu_begin__internal", "rna_PopMenuBegin");
   RNA_def_function_flag(func, FUNC_NO_SELF | FUNC_USE_CONTEXT | FUNC_USE_REPORTS);
@@ -1189,6 +1383,11 @@ void RNA_api_wm(StructRNA *srna)
   RNA_def_function_return(func, parm);
   RNA_def_boolean(
       func, "from_active_button", false, "Use Button", "Use the active button for positioning");
+  RNA_def_boolean(func,
+                  "auto_keymap",
+                  false,
+                  "Auto Keymap",
+                  "Assign accelerator keys to buttons, shown as underlined characters");
 
   /* wrap popover_end */
   func = RNA_def_function(srna, "popover_end__internal", "rna_PopoverEnd");
@@ -1205,7 +1404,8 @@ void RNA_api_wm(StructRNA *srna)
   parm = RNA_def_property(func, "icon", PROP_ENUM, PROP_NONE);
   RNA_def_property_enum_items(parm, rna_enum_icon_items);
   parm = RNA_def_pointer(func, "event", "Event", "", "");
-  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_RNAPTR);
+  /* Required: an omitted event is an empty pointer pie_menu_begin reads (its wrapper always passes one). */
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_RNAPTR | PARM_REQUIRED);
   /* return */
   parm = RNA_def_pointer(func, "menu_pie", "UIPieMenu", "", "");
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_RNAPTR);
@@ -1398,6 +1598,7 @@ void RNA_api_keymap(StructRNA *srna)
   func = RNA_def_function(srna, "active", "rna_keymap_active");
   RNA_def_function_flag(func, FUNC_USE_CONTEXT);
   parm = RNA_def_pointer(func, "keymap", "KeyMap", "Key Map", "Active key map");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
   RNA_def_function_return(func, parm);
 
   func = RNA_def_function(srna, "restore_to_default", "rna_keymap_restore_to_default");
@@ -1416,7 +1617,7 @@ void RNA_api_keymapitem(StructRNA *srna)
 
   func = RNA_def_function(srna, "compare", "rna_KeyMapItem_compare");
   parm = RNA_def_pointer(func, "item", "KeyMapItem", "Item", "");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   parm = RNA_def_boolean(func, "result", false, "Comparison result", "");
   RNA_def_function_return(func, parm);
 
@@ -1456,6 +1657,7 @@ void RNA_api_keymapitems(StructRNA *srna)
                   "Force item to be added at start (not end) of key map so that "
                   "it doesn't get blocked by an existing key map item");
   parm = RNA_def_pointer(func, "item", "KeyMapItem", "Item", "Added key map item");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
   RNA_def_function_return(func, parm);
 
   func = RNA_def_function(srna, "new_modal", "rna_KeyMap_item_new_modal");
@@ -1476,6 +1678,7 @@ void RNA_api_keymapitems(StructRNA *srna)
   RNA_def_enum(func, "direction", rna_enum_event_direction_items, KM_ANY, "Direction", "");
   RNA_def_boolean(func, "repeat", false, "Repeat", "When set, accept key-repeat events");
   parm = RNA_def_pointer(func, "item", "KeyMapItem", "Item", "Added key map item");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
   RNA_def_function_return(func, parm);
 
   func = RNA_def_function(srna, "new_from_item", "rna_KeyMap_item_new_from_item");
@@ -1484,6 +1687,7 @@ void RNA_api_keymapitems(StructRNA *srna)
   RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   RNA_def_boolean(func, "head", false, "At Head", "");
   parm = RNA_def_pointer(func, "result", "KeyMapItem", "Item", "Added key map item");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
   RNA_def_function_return(func, parm);
 
   func = RNA_def_function(srna, "remove", "rna_KeyMap_item_remove");
@@ -1517,7 +1721,7 @@ void RNA_api_keymapitems(StructRNA *srna)
   func = RNA_def_function(srna, "find_match", "rna_KeyMap_item_find_match");
   RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_REPORTS);
   parm = RNA_def_pointer(func, "keymap", "KeyMap", "", "The matching keymap");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   parm = RNA_def_pointer(func, "item", "KeyMapItem", "", "The matching keymap item");
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
   parm = RNA_def_pointer(func,
@@ -1532,7 +1736,7 @@ void RNA_api_keymapitems(StructRNA *srna)
   func = RNA_def_function(srna, "match_event", "rna_KeyMap_item_match_event");
   RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_CONTEXT);
   parm = RNA_def_pointer(func, "event", "Event", "", "Event to match against");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   parm = RNA_def_pointer(func, "item", "KeyMapItem", "", "");
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_RNAPTR);
   RNA_def_function_return(func, parm);
@@ -1563,6 +1767,7 @@ void RNA_api_keymaps(StructRNA *srna)
                   "Modal keymaps are not supported for :class:`KeyConfigs.addons`.");
   RNA_def_boolean(func, "tool", false, "Tool", "Keymap for active tools");
   parm = RNA_def_pointer(func, "keymap", "KeyMap", "Key Map", "Added key map");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
   RNA_def_function_return(func, parm);
 
   func = RNA_def_function(srna, "remove", "rna_KeyMaps_remove");
@@ -1585,7 +1790,7 @@ void RNA_api_keymaps(StructRNA *srna)
 
   func = RNA_def_function(srna, "find_match", "rna_KeyMaps_find_match");
   parm = RNA_def_pointer(func, "keymap", "KeyMap", "Key Map", "The key map for comparison");
-  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   parm = RNA_def_pointer(func, "result", "KeyMap", "Key Map", "Corresponding key map");
   RNA_def_function_return(func, parm);
 
@@ -1606,6 +1811,7 @@ void RNA_api_keyconfigs(StructRNA *srna)
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
   parm = RNA_def_pointer(
       func, "keyconfig", "KeyConfig", "Key Configuration", "Added key configuration");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
   RNA_def_function_return(func, parm);
 
   func = RNA_def_function(srna, "remove", "rna_KeyConfig_remove"); /* remove_keyconfig */
@@ -1733,7 +1939,7 @@ void RNA_api_asset_library_loading_status(StructRNA *srna)
       nullptr,
       0,
       "URL",
-      "The full path (not URL!) pointing to the the asset preview that should be available now");
+      "The full path (not URL!) pointing to the asset preview that should be available now");
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
 
   func = RNA_def_function(srna,

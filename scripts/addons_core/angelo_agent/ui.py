@@ -16,9 +16,11 @@ from bpy.app.handlers import persistent
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntProperty, StringProperty
 from bpy.types import AddonPreferences, Menu, Operator
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import console, docking, preferences_ui, chat_popovers, chat_titles, chat_view, saved_keys_ui, state_paths, native_suggestions, team_account_ui
+from . import shared_keys_ui
 from . import agent_runtime, camera_preview_setting, runtime_bindings, document_identity, document_scene, external_ui, fab_preferences, job_desktop_prefs, live_windows, parallel_setting, script_errors, text_layout, worker_consent_lead, worker_dispatch, worker_mirror_reader, worker_resume
-from . import approval_wait, changes_popup, chat_guard, chat_pending, chat_start_states, conversations_ui, goal_loop, model_picker_ui, layout_hold, timer_jobs
+from . import approval_wait, changes_popup, chat_guard, chat_pending, chat_start_states, conversations_ui, edit_tool_hold, goal_loop, model_picker_ui, layout_hold, timer_jobs
 from .ui_kit import paragraph   # Dialog sentences wrap, so a longer translation is never clipped.
 from .pump_guard import keep_alive
 from .connection_access import (collaborators_allowed, connection_records, find_connection, gemini_text_binding,  # noqa: F401
@@ -34,13 +36,14 @@ from .connections import ConnectionStore
 from .catalogs import ModelCatalogs
 from .api_connections import ApiConnections, clean_key
 from .provider_registry import (CODING, GENAI, GROUPS, SPECS, MODE_BY_CONNECTION, plan_terms, billing_label, runtime_kind,
-    HTTP_MODES, CUSTOM_PROVIDER_MODES, PROVIDER_NAMES, provider_items, methods, is_coding, is_team, spec_for)
+    HTTP_MODES, PROVIDER_NAMES, provider_choice_items, methods, custom_provider, is_coding, is_endpoint, is_team, spec_for)
 from .references import FILE_FILTER, FILE_TYPES
 from .storage import connection_directory as persistent_connection_directory
 from .display_text import Text, error_message, shown
 from .ui_text import iface_, n_, notice, rpt_
-from .trusted_scripts_ui import (ANGELO_OT_trusted_scripts, ANGELO_MT_approval, ANGELO_OT_set_approval, always_allow_get,
-                                 always_allow_set, draw_always_allow)
+from . import agent_changes_forget
+from .trusted_scripts_ui import (ANGELO_OT_trusted_scripts, ANGELO_MT_approval, ANGELO_OT_set_approval,
+                                 ANGELO_OT_approval_policy, always_allow_get, always_allow_set, draw_always_allow)
 
 _controller = None
 _document_serial = str(uuid.uuid4())
@@ -79,7 +82,9 @@ PROVIDERS = [
 
 def preferences():
     addon = bpy.context.preferences.addons.get(__package__)
-    return addon.preferences if addon else None
+    prefs = addon.preferences if addon else None
+    grant_guard.remember(prefs)   # The widening settings as saved, once (grant_guard.setting).
+    return prefs
 
 
 def main_window():   # The docked window, even between screens (never swapped, areas empty); once gone, a main window.
@@ -94,8 +99,8 @@ def document_key():
 
 def state_directory():
     override, _variable = state_paths.state_override()
-    if override is not None:
-        return str(override)
+    if override is not None or state_paths.session_redirect is not None:   # version_carry_over: earlier in place
+        return str(override if override is not None else state_paths.session_redirect)
     return bpy.utils.user_resource("CONFIG", path=state_paths.STATE_FOLDER, create=True)
 
 
@@ -181,7 +186,13 @@ def choose_model_connection(controller, connection_id, model=""):
     refresh_connected_models()
 
 
+choose_model_connection = grant_guard.entry(choose_model_connection)
+
+
 def connection_status(record):
+    if is_endpoint(record["mode"]):
+        from . import endpoint_ui
+        return endpoint_ui.status(record)
     if is_team(record["mode"]):
         return team_account_ui.status(record)
     if record["mode"] in HTTP_MODES:
@@ -200,6 +211,9 @@ def connection_status(record):
 
 
 def connection_ready(record):
+    if is_endpoint(record["mode"]):   # Signed in with a seat, the endpoint still offered and the person's key in memory.
+        from . import endpoint_ui
+        return endpoint_ui.ready(record)
     if is_team(record["mode"]):  # Signed in with a seat, the provider offered and (coding) a grant key in memory.
         return team_account_ui.ready(record) and (not is_coding(record) or bool(_memory_keys.get(record["id"])))
     if record["mode"] in HTTP_MODES:
@@ -242,6 +256,9 @@ def capture_checkpoint(controller, *, purpose="request", _retain_native=False):
     is_staging = getattr(native_programs, "runtime_is_staging", native_programs.has_active_programs)
     if is_staging():
         raise RuntimeError(Text(n_("Finish the current native program or press Stop before starting another request; its isolated stage cannot be included in a request snapshot")))
+    from . import edit_tool_hold
+    if edit_tool_hold.running():   # Blender's own autosave refuses this state too (edit_tool_hold).
+        raise RuntimeError(Text(n_("Finish the tool you are using first: a snapshot is never taken while a tool is changing the scene")))
     original = bpy.data.filepath   # The person's file, after a Restore too (restored_document).
     from .checkpoint_policy import clean_policy
     policy = clean_policy(getattr(controller, "_turn_checkpoint_policy", None)) if purpose == "request" else clean_policy()
@@ -329,10 +346,12 @@ def create_session(mode=None, connection_id=None):
 
 def connection_settings(mode, prefs=None, record=None):
     prefs = prefs or preferences()
+    # The executables chosen in Preferences go to the launches by ``cli_runtime.choose``, never in settings, which a
+    # chat keeps for its lifetime (where a script could change them in place).
+    from . import cli_runtime
+    cli_runtime.choose(prefs.codex_path if prefs else "", prefs.claude_path if prefs else "")
     settings = {
-        "codex_path": prefs.codex_path if prefs else "",
-        "claude_path": prefs.claude_path if prefs else "",
-        "model": (prefs.claude_model if mode.startswith("claude_") else prefs.codex_model) if prefs and mode not in CUSTOM_PROVIDER_MODES else "",
+        "model": (prefs.claude_model if mode.startswith("claude_") else prefs.codex_model) if prefs and not custom_provider(mode) else "",
         "reuse_codex_login": prefs.reuse_codex_login if prefs else True,
         "reasoning": prefs.reasoning if prefs else "low",
         "auth_directory": connection_directory(),
@@ -399,7 +418,7 @@ def prepare_controller(controller=None):   # An app's External conversation for 
                       catalogs().entries.get(record["id"]) if record else None)
     from .files import FileWorkspace
     from .private_roots import private_roots   # Every active and retained application-state folder.
-    project_path = bpy.data.filepath
+    project_path = bpy.data.filepath   # The file tools' folder: anchored by checkpoint_filesystem (document_folder),
     controller.files = FileWorkspace(Path(project_path).parent if project_path else controller.workspace, own=controller.workspace,
                                     excluded=private_roots(state_directory(), connection_directory(), connections().records.values()))
     refresh_connected_models()
@@ -407,6 +426,9 @@ def prepare_controller(controller=None):   # An app's External conversation for 
         "billing": {"API billing": "API account"}.get(billing_label(r["mode"]), billing_label(r["mode"])),
         "models": {m["id"]: m["name"] for m in catalogs().entries.get(r["id"], [])}}  # {id: name}: compact JSON (context_ledger).
         for r in ready_connections() if catalogs().entries.get(r["id"]) and collaborators_allowed()]
+
+
+prepare_controller = grant_guard.entry(prepare_controller)
 
 
 def draw_ai_providers(layout, context):
@@ -419,12 +441,11 @@ def draw_ai_providers(layout, context):
     if prefs is None:
         layout.operator("preferences.addon_enable", text="Enable Agent Chat").module = "angelo_agent"
         return
-    from . import data_migration, state_migration
-    for notice in (data_migration.attention_message(), state_migration.attention_message()):
-        if notice:
-            (box := layout.box()).label(text="A pre-rename folder needs attention", icon='ERROR')
-            for line in text_layout.label_rows(iface_(notice)):
-                box.label(text=line, translate=False)
+    from . import version_carry_over
+    for title, notice in version_carry_over.attention_notices():
+        (box := layout.box()).label(text=title, icon='ERROR')
+        for line in text_layout.label_rows(shown(notice)):   # A Text keeps its fields.
+            box.label(text=line, translate=False)
     store = connections()
     for problem in saved_keys_ui.notices():
         layout.label(text=shown(problem), icon='ERROR', translate=False)
@@ -466,6 +487,7 @@ def draw_ai_providers(layout, context):
                 box.label(text=iface_("API credits available: {balance}", balance=format(result.balance, "g")), translate=False)
     layout.separator()
     draw_always_allow(layout, prefs)  # Outside the connection groups: a team-only organization still sees it.
+    agent_changes_forget.draw_preferences(layout)
     from . import studio
     studio.draw_enhancer_settings(layout)
     layout.separator()
@@ -495,17 +517,24 @@ class ANGELO_Preferences(fab_preferences.FabPreferences, job_desktop_prefs.JobDe
     codex_model: StringProperty(name="Codex model", default="")
     claude_model: StringProperty(name="Claude model", default="")
     reasoning: EnumProperty(name="Reasoning", items=[("low", "Low — responsive edits", ""), ("medium", "Medium", ""), ("high", "High — complex planning", "")], default="low")
-    codex_path: StringProperty(name="Codex executable", subtype="FILE_PATH")
-    claude_path: StringProperty(name="Claude Code executable", subtype="FILE_PATH")
+    # Settings that widen take a change only from the person (grant_guard.setting: the Preferences editor, Angelo's own
+    # click paths, never a script, an add-on or a keymap entry, never in background); narrowing is always taken.
+    codex_path: StringProperty(name="Codex executable", subtype="FILE_PATH",
+                               update=grant_guard.setting("codex_path"))
+    claude_path: StringProperty(name="Claude Code executable", subtype="FILE_PATH",
+                                update=grant_guard.setting("claude_path"))
     reuse_codex_login: BoolProperty(name="Use existing native Codex sign-in", default=True,
+                                   update=grant_guard.setting("reuse_codex_login"),
                                    description="Use your CLI's existing login; configuration overrides are process-local. API-key mode always uses its own profile")
     allow_local_cli: BoolProperty(name="Allow apps on this computer to reach Angelo", default=False,
+                                  update=grant_guard.setting("allow_local_cli"),
                                   description="Let AI apps and coding agents on this computer, running as you, use Angelo through "
                                               "its MCP server and `angelo` CLI; edits wait for your approval. Off by default")
     # Standing helper consent (doc/angelo/model_routing.rst): drawn in
     # AI Providers and the add-on preferences so it can be turned off.
     helper_standing_consent: BoolProperty(
         name="Run fast helper models without asking", default=True,
+        update=grant_guard.setting("helper_standing_consent"),
         description="Let the agent consult a fast model (for example Claude Haiku) on the same connection "
                     "without an approval click. Each consultation is still shown in the chat and recorded with "
                     "its usage; other accounts or providers always ask")
@@ -530,6 +559,7 @@ class ANGELO_Preferences(fab_preferences.FabPreferences, job_desktop_prefs.JobDe
         self.layout.label(text="Connections are in Preferences > AI Providers.")
         self.layout.prop(self, "helper_standing_consent")
         draw_always_allow(self.layout, self)
+        agent_changes_forget.draw_preferences(self.layout)
         draw_platform_preference(self.layout, self, "experimental_voice")
         self.layout.operator("angelo.settings", text="Open AI Providers", icon='PREFERENCES')
 
@@ -549,15 +579,12 @@ def draw_platform_preference(layout, owner, name):
     column.label(text=iface_(NOT_ON_THIS_SYSTEM), translate=False, icon='INFO')
 
 
-_connection_provider_items = {group: provider_items(group) for group, _, _ in GROUPS}
-
-
 def new_connection_providers(self, context):
-    return _connection_provider_items[self.group]
+    return provider_choice_items(self.group)   # Live: availability can change while the app runs.
 
 
 def new_connection_group_changed(self, context):
-    self.provider = _connection_provider_items[self.group][0][0]
+    self.provider = provider_choice_items(self.group)[0][0]
 
 
 def new_connection_provider_changed(self, context):
@@ -574,7 +601,7 @@ def connection_in_use(identity):
 
 def replace_connection_key(record, secret):
     identity = record["id"]
-    if connection_in_use(identity):
+    if connection_in_use(identity) or shared_keys_ui.in_use(identity):
         raise RuntimeError(Text(n_("Stop this connection's active turns before replacing its API key")))
     secret = clean_key(secret)
     for controller in _controllers.values():
@@ -588,6 +615,7 @@ def replace_connection_key(record, secret):
     _api_connections.invalidate(identity)
     _memory_keys[identity] = secret
     runtime_bindings.retire_connection(identity)   # Its children end whichever chats are open (worker chats' too).
+    shared_keys_ui.share(identity)   # Connections that use this key (shared_keys) get the new one too.
 
 
 def remember_saved_key(record, remember, new_key, existing):
@@ -616,12 +644,19 @@ class ANGELO_OT_new_connection(Operator):
                                                        ("API_KEY", "API key", "Use your own API key")], default="SUBSCRIPTION")
     connection_name: StringProperty(name="Name", description="Optional name for this connection", options={'SKIP_SAVE'})
     api_key: StringProperty(name="API key", subtype='PASSWORD', options={'SKIP_SAVE'})
+    key_source: EnumProperty(name="API key from", items=shared_keys_ui.key_source_items, options={'SKIP_SAVE'},
+                             description="One API key can serve several connections of the same account")
     remember_key: BoolProperty(name=saved_keys_ui.TEXT.remember, default=True, options={'SKIP_SAVE'},
                                description=saved_keys_ui.TEXT.remember_description)
     advanced: BoolProperty(name="Advanced", default=False, options={'SKIP_SAVE'})
     model: StringProperty(name="Model", options={'SKIP_SAVE'})
     runtime_path: StringProperty(name="Executable", subtype='FILE_PATH', options={'SKIP_SAVE'})
     reuse_existing: BoolProperty(name="Use existing sign-in on this computer", default=True, options={'SKIP_SAVE'})
+
+    def consent_target(self, context):
+        """The connection record it completes, read again at the confirm (a removed or changed one is not what the dialog showed)."""
+        record = connections().records.get(self.connection_id) if self.connection_id else None
+        return [record.get("mode"), record.get("provider"), record.get("method")] if record else None
 
     def invoke(self, context, event):
         record = connections().records.get(self.connection_id)
@@ -630,6 +665,9 @@ class ANGELO_OT_new_connection(Operator):
             self.provider, self.method = record["provider"], record["method"]
             self.connection_name, self.model = record["name"], record.get("model") or ""
             self.remember_key = saved_keys_ui.is_remembered(record["id"]) is not False
+        choice = shared_keys_ui.initial_choice(record)
+        if choice != shared_keys_ui.NEW:
+            self.key_source = choice
         return context.window_manager.invoke_props_dialog(self, width=480,
                                                         title=iface_("Edit connection") if record else iface_("New connection"), confirm_text=iface_("Save") if record else iface_("Connect"))
 
@@ -652,24 +690,30 @@ class ANGELO_OT_new_connection(Operator):
         layout.prop(self, "connection_name", text="Name (optional)")
         method = self.method if len(supported) > 1 else "API_KEY"
         if method == "API_KEY":
-            layout.prop(self, "api_key", text="New API key" if self.connection_id else "API key")
-            if self.connection_id:
-                paragraph(layout, iface_("Leave the key blank to keep the current credential."), 420)
-            else:
-                paragraph(layout, iface_("API usage is billed to your API account."), 420)
             mode = MODE_BY_CONNECTION[(self.group, self.provider, method)]
-            if mode == "codex_api":
-                paragraph(layout, iface_("The Codex CLI stores this key in its own OS keyring."), 420)
-            elif saved_keys_ui.available():
-                layout.prop(self, "remember_key")
-                paragraph(layout, iface_("On: saved in {location} for this profile.", location=shown(saved_keys_ui.store_text().location)), 420)
-                paragraph(layout, iface_("Off: memory only; enter it again after restarting."), 420)
+            if shared_keys_ui.offers_choice(self, mode):
+                layout.prop(self, "key_source")
+            if shared_keys_ui.chosen_source(self, mode):
+                paragraph(layout, iface_("Both connections use one key and one bill; replacing the key there changes "
+                                         "it here too."), 420)
             else:
-                paragraph(layout, shown(saved_keys_ui.unavailable_reason()), 420)
-            if mode in HTTP_MODES:
-                paragraph(layout, iface_("Connection checks never generate content or consume inference tokens."), 420)
-            if mode == "seedream_api":
-                paragraph(layout, iface_("BytePlus Singapore key. Verification is deferred until generation."), 420)
+                layout.prop(self, "api_key", text="New API key" if self.connection_id else "API key")
+                if self.connection_id:
+                    paragraph(layout, iface_("Leave the key blank to keep the current credential."), 420)
+                else:
+                    paragraph(layout, iface_("API usage is billed to your API account."), 420)
+                if mode == "codex_api":
+                    paragraph(layout, iface_("The Codex CLI stores this key in its own OS keyring."), 420)
+                elif saved_keys_ui.available():
+                    layout.prop(self, "remember_key")
+                    paragraph(layout, iface_("On: saved in {location} for this profile.", location=shown(saved_keys_ui.store_text().location)), 420)
+                    paragraph(layout, iface_("Off: memory only; enter it again after restarting."), 420)
+                else:
+                    paragraph(layout, shown(saved_keys_ui.unavailable_reason()), 420)
+                if mode in HTTP_MODES:
+                    paragraph(layout, iface_("Connection checks never generate content or consume inference tokens."), 420)
+                if mode == "seedream_api":
+                    paragraph(layout, iface_("BytePlus Singapore key. Verification is deferred until generation."), 420)
         else:
             service = "ChatGPT" if self.provider == "OPENAI" else "Claude"
             mode = "codex_subscription" if self.provider == "OPENAI" else "claude_subscription"
@@ -698,8 +742,13 @@ class ANGELO_OT_new_connection(Operator):
             self.report({'ERROR'}, rpt_("Choose a provider available in this connection group"))
             return {'CANCELLED'}
         self.method = self.method if self.method in supported else supported[0]
-        if self.method == "API_KEY" and not record and not secret:
-            self.report({'ERROR'}, rpt_("Enter an API key to create this connection"))
+        mode = MODE_BY_CONNECTION[(self.group, self.provider, self.method)]
+        source = shared_keys_ui.chosen_source(self, mode) if self.method == "API_KEY" else None
+        if source:
+            secret = ""   # The key field is hidden while another connection's key is chosen.
+        elif self.method == "API_KEY" and not secret and (not record or record.get("key_from")):
+            self.report({'ERROR'}, rpt_("Enter an API key to create this connection") if not record
+                        else rpt_("Enter an API key for this connection, or choose a connection whose key it uses"))
             return {'CANCELLED'}
         if secret:
             try:
@@ -721,6 +770,14 @@ class ANGELO_OT_new_connection(Operator):
             setattr(preferences(), "codex_path" if runtime_kind(record["mode"]) == "codex" else "claude_path", self.runtime_path)
         mode = record["mode"]
         try:
+            if self.method == "API_KEY" and source:
+                if connection_in_use(record["id"]):
+                    raise RuntimeError(Text(n_("Stop this connection's active turns before replacing its API key")))
+                shared_keys_ui.link(record, source)
+                preferences_ui.redraw()
+                return {'FINISHED'}
+            if self.method == "API_KEY" and secret and record.get("key_from"):
+                shared_keys_ui.unlink(record)   # A key of its own replaces the shared one.
             if self.method == "API_KEY":
                 if secret:
                     replace_connection_key(record, secret)
@@ -883,6 +940,11 @@ class ANGELO_OT_connection_remove(Operator):
             return self.report({'ERROR'}, rpt_("The connection was not saved")) or {'CANCELLED'}
         if record:
             _authentication.cancel(record["mode"] if record["reuse_native"] else record["id"])
+        if shared_keys_ui.strand(self.connection_id):   # Connections that used its key need one of their own now.
+            try:
+                connections().save()
+            except OSError:   # A link to a removed connection reads as no link (shared_keys.source_of) anyway.
+                pass
         _api_connections.invalidate(self.connection_id)
         for controller in _controllers.values():
             controller.invalidate_runtime(self.connection_id)
@@ -924,6 +986,10 @@ class ANGELO_OT_api_key(Operator):
     bl_label = "Enter API Key"
     key: StringProperty(name="API key", subtype="PASSWORD", options={'SKIP_SAVE'})
     mode: StringProperty(options={'SKIP_SAVE'})
+
+    def consent_target(self, context):
+        """The connection the key goes to when its form names none: the selected provider."""
+        return getattr(preferences(), "provider", None)
 
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self, width=500)
@@ -1477,7 +1543,8 @@ class ANGELO_OT_approve(Operator):
             return {'CANCELLED'}
         if call.name == "angelo_execute_python" and not controller.script_authorized(call):
             self.report({'INFO'}, rpt_("Read the script shown in the chat, then click Approve to run it"))
-            bpy.ops.angelo.review_tool(call_id=call.id, session_id=controller.state["id"])   # This chat's, not the shown one.
+            grant_guard.clicked(bpy.ops.angelo).review_tool(call_id=call.id,   # This chat's, not the shown one.
+                                                            session_id=controller.state["id"])
             return {'CANCELLED'}
         if call.name == "angelo_accept_preview":
             from .agent_workspace_ui import approval_preview_reviewed
@@ -1576,6 +1643,7 @@ class ANGELO_OT_multiline(Operator):
 
 class ANGELO_MT_chat(Menu):
     """The chat header's settings menu (its gear), in Director and Manual modes: AI Providers and the chat's tools."""
+    bl_description = ""   # No tooltip. Blender shows a class docstring as one; this one is a note for developers.
     bl_label = "Chat Settings"
 
     def draw(self, context):
@@ -1640,7 +1708,22 @@ def draw_header(self, context):
     _header_states[context.area.as_pointer()] = (controller.status, controller.busy, pending.id if pending else None)
 
 
+_connections_seen = 0   # The store's own-save count (ConnectionStore.revision) the chats were last redrawn for.
+
+
+def _redraw_after_own_save(store):
+    """A connection this instance saved (the AI Providers form, a script, the chat's own connect) shows at once: the
+    chats redraw, as for another instance's save (``reload_if_changed``, below), which a save of its own never
+    reports. An idle window is redrawn only when what it shows changed (01565db3fa9), so nothing else would. Not
+    Preferences: a redraw there closes a dialog open over the page, whose own actions redraw it."""
+    global _connections_seen
+    if store.revision != _connections_seen:
+        _connections_seen = store.revision
+        console.redraw_chats(_controllers.values())
+
+
 @keep_alive(0.1)  # Blender drops a timer that raises; the chat must keep following async changes.
+@edit_tool_hold.ticked   # One read of the person's operation for every stage; those touching data hold themselves.
 def pump():
     global _tool_pump_cursor
     from .memory_project_ui import pump as prepare_project_memory
@@ -1654,6 +1737,7 @@ def pump():
     if references.refresh_readers():
         console.redraw_chats(_controllers.values())
     store = connections()
+    _redraw_after_own_save(store)
     previous = dict(store.records)
     if store.reload_if_changed():
         for identity in previous.keys() - store.records.keys():
@@ -1677,9 +1761,14 @@ def pump():
                         _authentication.status[scope] = Text(n_("Unable to check native sign-in"))
         console.redraw_chats(_controllers.values())
         preferences_ui.redraw()
-    if saved_keys_ui.pump(sys.modules[__name__]):
+    if saved_keys_ui.pump(sys.modules[__name__]):   # A saved key loaded: the chats' connect card reads it too.
+        console.redraw_chats(_controllers.values())
         preferences_ui.redraw()
     team_account_ui.pump(sys.modules[__name__])
+    from . import endpoint_ui
+    if endpoint_ui.pump():   # Saved endpoint keys asked for, finished Test connection checks shown.
+        console.redraw_chats(_controllers.values())
+        preferences_ui.redraw()
     api_changes = _api_connections.pump()
     if api_changes:
         for identity in api_changes:
@@ -1754,26 +1843,27 @@ def pump():
                                saved=_drafts, read=read_chat_draft, write=write_chat_draft)
             chat_pending.when_idle(controller)   # A connection chosen during its turn, then its pending messages.
             identity = controller.state.get("connection_id")
+            if catalog_changed:   # Every chat draws from the catalogs, bound or not: an unbound chat's model card too.
+                controller.version += 1
             if catalog_changed and identity in catalog.entries:
                 controller.models = list(catalog.entries[identity])
                 controller.models_error = catalog.errors.get(identity, "")
-                controller.version += 1
             if catalog_changed and controller._next_binding and controller.selection_connection_id in catalog.entries:
                 controller._next_binding["models"] = list(catalog.entries[controller.selection_connection_id])
-                controller.version += 1
             catalog.seed(identity, controller.models)
             _sessions.note(controller.state)  # The switcher index, written at most once a second below.
         from .studio_tab_build import tools_wait   # Manual's tab build edits the window's areas: tools wait (capped).
         if window and controllers and not held and not tools_wait():
             from . import agent_target_labels
-            for target in controllers:
+            for target in controllers if not edit_tool_hold.running() else ():   # It reads objects: never under it.
                 agent_target_labels.prepare(target, window, document_key())
             # One shared native-operation budget across every chat. Advance
             # from the last chat that admitted work, rather than from empty
             # chats, so a busy background session cannot starve another one.
             def apply_mutation(target, call):
                 with bpy.context.temp_override(window=window):
-                    bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
+                    grant_guard.automatic(bpy.ops.angelo).approve('EXEC_DEFAULT', True, call_id=call.id,
+                                                    session_id=target.state["id"])
             def commit_mutation(target, call):
                 with bpy.context.temp_override(window=window):
                     return bpy.ops.angelo.commit_native_job('EXEC_DEFAULT', True,
@@ -1782,7 +1872,8 @@ def pump():
                 controllers, _tool_pump_cursor, BlenderExecutor(window), document_key(), apply_mutation,
                 commit_mutation=commit_mutation)
         from .native_preview_images import prepare
-        prepare([_controller, *(target for target in controllers if target is not _controller)])
+        if not edit_tool_hold.running():   # It loads an image datablock: never under the person's operation.
+            prepare([_controller, *(target for target in controllers if target is not _controller)])
         refresh_connected_models()
         _sessions.save_if_due()
         goal_loop.pump(sys.modules[__name__], held)   # A held goal's next round, once its chat is idle (goal_mode.rst).
@@ -1822,6 +1913,8 @@ def document_load_pre(filepath, *_args):
     global _document_serial
     left = document_identity.leaving(sys.modules[__name__], filepath if isinstance(filepath, str) else "")
     _document_serial = str(uuid.uuid4())
+    from . import edit_tool_hold
+    edit_tool_hold.clear()   # Its nudge timers while this window manager is valid, and Angelo's own operators.
     from . import scene_queries, agent_workspace_ui, change_feed, view_cache, agent_target_labels
     scene_queries.invalidate()
     view_cache.clear()
@@ -1889,6 +1982,10 @@ def workspace_redo_post(_):
     invalidate_workspace_state("redo")
 
 
+grant_guard.guard(ANGELO_OT_new_connection, ANGELO_OT_connection_use, ANGELO_OT_connection_load_key,
+                  ANGELO_OT_connection_signin, ANGELO_OT_api_key, ANGELO_OT_use_connection, ANGELO_OT_native_signin)
+grant_guard.guard(ANGELO_OT_review_tool)   # Opening a script's text approves it in C (the inventory review, M1).
+grant_guard.guard(ANGELO_OT_approve, ANGELO_OT_apply_approved_tool, auto=True)   # Before CLASSES: grouped() copies it.
 CLASSES = [ANGELO_Preferences, ANGELO_OT_settings, ANGELO_OT_api_key, ANGELO_OT_copy_login,
            ANGELO_OT_new_connection, ANGELO_OT_connection_use, ANGELO_OT_connection_menu,
            ANGELO_OT_connection_check, ANGELO_OT_connection_load_key, ANGELO_OT_connection_signin, ANGELO_OT_connection_remove,
@@ -1897,9 +1994,10 @@ CLASSES = [ANGELO_Preferences, ANGELO_OT_settings, ANGELO_OT_api_key, ANGELO_OT_
            ANGELO_OT_dock_side, ANGELO_OT_pop_out, ANGELO_OT_return_dock, ANGELO_OT_new_chat,
            ANGELO_OT_switch_session, ANGELO_MT_sessions, *conversations_ui.CLASSES,
            *model_picker_ui.CLASSES, ANGELO_MT_approval, ANGELO_OT_set_approval, ANGELO_OT_trusted_scripts,
+           ANGELO_OT_approval_policy,
            ANGELO_OT_attach_reference, ANGELO_FH_references, ANGELO_OT_remove_reference, ANGELO_OT_changes, ANGELO_OT_restore_checkpoint,
            ANGELO_OT_stop, ANGELO_OT_approve, ANGELO_OT_apply_approved_tool, script_errors.grouped(ANGELO_OT_apply_approved_tool), ANGELO_OT_review_tool, ANGELO_OT_decline, ANGELO_OT_multiline,
-           ANGELO_MT_chat, ANGELO_MT_view, *external_ui.CLASSES]
+           ANGELO_MT_chat, ANGELO_MT_view, *external_ui.CLASSES, *agent_changes_forget.CLASSES]
 
 
 def register():
@@ -1925,9 +2023,10 @@ def register():
     from . import native_programs
     native_programs.register()
     chat_view.register()
-    from . import quick_connect, voice_ui, intro
+    from . import narrowing_ui, quick_connect, voice_ui, intro
     quick_connect.register()
     voice_ui.register()
+    narrowing_ui.register()   # Narrowing open to anything (grant_operators.rst, "Scopes").
     intro.register()
     from . import studio
     studio.register()
@@ -1950,6 +2049,8 @@ def register():
     # Prompt-free loads on the saved-key worker (Keychain, Credential Manager or keyring); results apply in pump().
     saved_keys_ui.start(sys.modules[__name__], background=bpy.app.background)
     team_account_ui.register()  # A stored team sign-in resumes on its worker; team connections appear in pump().
+    from . import providers_page_endpoints
+    providers_page_endpoints.register()   # The organization's model servers' key sheet and Test connection.
     team_account_ui.start(sys.modules[__name__], background=bpy.app.background)
     _header_draw = bpy.types.CONSOLE_HT_header.draw
     header_type = bpy.types.CONSOLE_HT_header
@@ -2010,10 +2111,11 @@ def unregister():
     flow_ui.unregister()
     studio.unregister()
     chat_view.unregister()
-    from . import quick_connect, voice_ui, intro
+    from . import narrowing_ui, quick_connect, voice_ui, intro
     intro.unregister()
     quick_connect.unregister()
     voice_ui.unregister()
+    narrowing_ui.unregister()
     from .memory_project_ui import clear
     clear()
     from . import view_cache
@@ -2027,11 +2129,16 @@ def unregister():
     _api_connections.close()
     saved_keys_ui.close()
     team_account_ui.unregister()
+    from . import endpoint_ui, providers_page_endpoints
+    endpoint_ui.close()
+    providers_page_endpoints.unregister()
     if _catalogs:
         _catalogs.close()
         _catalogs = None
     if bpy.app.timers.is_registered(pump):
         bpy.app.timers.unregister(pump)
+    from . import edit_tool_hold
+    edit_tool_hold.clear()
     if document_load_pre in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.remove(document_load_pre)
     if document_load_post in bpy.app.handlers.load_post:

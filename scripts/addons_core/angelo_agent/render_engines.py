@@ -25,6 +25,7 @@ import bpy
 from bpy.props import EnumProperty, StringProperty
 from bpy.types import Menu, Operator
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from .ui_text import iface_, n_, rpt_
 
 EEVEE, CYCLES, WORKBENCH = "BLENDER_EEVEE", "CYCLES", "BLENDER_WORKBENCH"
@@ -248,7 +249,7 @@ def apply(scene, engine, preset=None, preferences=None):
 
 
 class ANGELO_OT_render_engine_set(Operator):
-    """Render with this engine; Cycles' Preview and Final set its samples and denoising and use the GPU"""
+    bl_description = "Render with this engine; Cycles' Preview and Final set its samples and denoising and use the GPU"
     bl_idname = "angelo.render_engine_set"
     bl_label = "Set Render Engine"
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
@@ -273,7 +274,7 @@ class ANGELO_OT_render_engine_set(Operator):
 
 
 class ANGELO_OT_render_engine_setup(Operator):
-    """Turn this installed render engine on in Angelo and render with it"""
+    bl_description = "Turn this installed render engine on in Angelo and render with it"
     bl_idname = "angelo.render_engine_setup"
     bl_label = "Set Up Render Engine"
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
@@ -412,3 +413,6 @@ def unregister():
         bpy.utils.unregister_class(cls)
     from . import render_glyphs
     render_glyphs.release()
+
+
+grant_guard.guard(ANGELO_OT_render_engine_setup)   # Only the person's click grants (grant_guard).

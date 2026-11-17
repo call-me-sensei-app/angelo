@@ -163,7 +163,10 @@ and who will see it ("everyone in <team>" or "only you"). On the main thread
 the file is prepared: a Studio output as stored (GLB models with the Studio
 preview as thumbnail, provenance ``generated`` with prompt, model, provider and
 options); scene objects exported as one GLB with modifiers applied and the
-selection restored, plus a 512-pixel Material Preview capture written as WebP
+selection restored, from the window's scene only (``use_active_scene``: the
+glTF exporter otherwise also writes the selected objects of every other scene
+of the file; ``test_native_gltf_export_scope`` holds every glTF export of the
+add-on to it), plus a 512-pixel Material Preview capture written as WebP
 (the console's model thumbnails must be ``image/webp``), provenance ``derived``
 when they came from team items, else ``upload``; an ``angelo_view`` image (PNG)
 or a chat attachment as they are. A worker then reserves the item (``POST

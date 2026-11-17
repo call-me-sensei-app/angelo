@@ -13,8 +13,8 @@
 #include <cstring>
 
 #include "BLI_listbase_iterator.hh"
-#include "BLI_string.h"
-#include "BLI_utildefines.h"
+#include "BLI_string.hh"
+#include "BLI_utildefines.hh"
 
 #include "DNA_userdef_types.h"
 #include "DNA_windowmanager_types.h"

@@ -28,7 +28,7 @@ import unicodedata
 import zipfile
 import zlib
 
-from . import fab_formats
+from . import fab_formats, owned_paths
 
 MiB = 1024 * 1024
 MAX_ENTRIES = 4096
@@ -201,7 +201,7 @@ def _write(archive, info, folder, path, check):
     for part in path.parts[:-1]:
         target = target / part
         try:
-            target.mkdir(mode=0o700)
+            owned_paths.require_writable(target).mkdir(mode=0o700)
         except FileExistsError:
             pass
         if not stat.S_ISDIR(target.lstat().st_mode):
@@ -209,6 +209,7 @@ def _write(archive, info, folder, path, check):
     target = target / path.parts[-1]
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0) | getattr(os, 'O_NOFOLLOW', 0)
     done = 0
+    owned_paths.require_writable(target)   # Each member, beside each folder made above: only where C says yes.
     with archive.open(info) as member, os.fdopen(os.open(target, flags, 0o600), 'wb') as handle:
         while data := member.read(CHUNK):
             check()

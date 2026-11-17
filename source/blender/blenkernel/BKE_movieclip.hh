@@ -8,6 +8,7 @@
  * \ingroup bke
  */
 
+#include "BLI_angelo_writers.hh"
 #include "BLI_enum_flags.hh"
 #include "DNA_movieclip_types.h"
 
@@ -48,13 +49,6 @@ MovieClip *BKE_movieclip_file_add_exists(Main *bmain, const char *filepath);
 void BKE_movieclip_reload(Main *bmain, MovieClip *clip);
 void BKE_movieclip_clear_cache(MovieClip *clip);
 void BKE_movieclip_clear_proxy_cache(MovieClip *clip);
-
-/**
- * Will try to make image buffer usable when originating from the multi-layer source.
- * Internally finds a first combined pass and uses that as a buffer.
- * Not ideal, but is better than a complete empty buffer.
- */
-void BKE_movieclip_convert_multilayer_ibuf(ImBuf *ibuf);
 
 ImBuf *BKE_movieclip_get_ibuf(MovieClip *clip, const MovieClipUser *user);
 ImBuf *BKE_movieclip_get_postprocessed_ibuf(MovieClip *clip,
@@ -109,6 +103,10 @@ void BKE_movieclip_build_proxy_frame(MovieClip *clip,
  * \note currently used by proxy job for sequences, threading happens within sequence
  * (different threads handles different frames, no threading within frame is needed)
  */
+/** Angelo: what a clip's proxy paths are built from (`BLI_angelo_writers.hh`): its proxy folder (the tag) and the
+ * clip's own file. */
+Vector<angelo_writers::Input, 8> BKE_movieclip_angelo_proxy_inputs(const MovieClip *clip);
+
 void BKE_movieclip_build_proxy_frame_for_ibuf(MovieClip *clip,
                                               ImBuf *ibuf,
                                               MovieDistortion *distortion,

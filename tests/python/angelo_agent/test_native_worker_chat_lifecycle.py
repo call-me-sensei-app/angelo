@@ -15,6 +15,7 @@ answered on its reader thread; no credential or connections folder reaches a wor
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import queue
@@ -285,7 +286,7 @@ class ParkTests(queue_base.Fixture, Base):
 
     def park(self, session):
         worker_queue.tick()
-        self.assertTrue(worker_queue._parking[session]["done"].wait(1))
+        self.assertTrue(worker_queue._parking[session]["done"].wait(CAP_S))
 
     def test_a_park_closes_the_chat_before_its_save_then_parks(self):
         chat_, process = self.running("w1", self.worker())
@@ -460,7 +461,7 @@ class PartLeaseTests(unittest.TestCase):
         thread.start()
         self.assertFalse(saved.wait(0.1))
         self.assertTrue(table.unlease(token))
-        self.assertTrue(saved.wait(2))
+        self.assertTrue(saved.wait(CAP_S))
         self.assertFalse(table.unlease(token))   # Twice: harmless.
 
     def test_a_lease_holds_a_save_back_at_most_its_bound(self):
@@ -495,14 +496,14 @@ class PartLeaseTests(unittest.TestCase):
         host = SimpleNamespace(part="/w/a/part.blend", endpoint=SimpleNamespace(send=sent.put))
         self.assertFalse(part_leases.answers(host, 3, {"op": "execute"}))
         self.assertTrue(part_leases.answers(host, 4, {"op": "part.lease", "part": "/w/a/part.blend", "seconds": 1}))
-        frame = sent.get(timeout=5)
+        frame = sent.get(timeout=CAP_S)
         answer = frame["response"]
         self.assertEqual((frame["seq"], answer["ok"], answer["seconds"]), (4, True, 1.0))
         self.assertTrue(part_leases.leases_of(host).held("/w/a/part.blend"))
         part_leases.answers(host, 5, {"op": "part.unlease", "lease": answer["lease"]})
-        self.assertEqual(sent.get(timeout=5)["response"], {"ok": True, "released": True})
+        self.assertEqual(sent.get(timeout=CAP_S)["response"], {"ok": True, "released": True})
         part_leases.answers(host, 6, {"op": "part.lease", "part": "/w/b/part.blend"})
-        self.assertIn("error", sent.get(timeout=5)["response"])
+        self.assertIn("error", sent.get(timeout=CAP_S)["response"])
         self.assertFalse(part_leases.leases_of(host).held())
 
     def test_the_worker_host_routes_lease_ops_before_its_inbox_and_saves_under_the_table(self):

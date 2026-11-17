@@ -26,6 +26,8 @@ const SLOT_SCENE_TREE: int = 0   # EditorContextMenuPlugin.CONTEXT_SLOT_SCENE_TR
 const SLOT_FILESYSTEM: int = 1   # EditorContextMenuPlugin.CONTEXT_SLOT_FILESYSTEM
 const SEVERITY_INFO: int = 0     # EditorToaster.SEVERITY_INFO
 const SEVERITY_WARNING: int = 1  # EditorToaster.SEVERITY_WARNING
+const REIMPORT_RETRY: float = 0.25    # Seconds between tries of a re-import Godot refused while importing.
+const REIMPORT_GIVE_UP: float = 30.0  # Seconds after the save that a refused re-import stops being tried.
 
 enum Item { EDIT, STOP, USE_ANGELO, STATUS, DISMISS }
 
@@ -35,6 +37,15 @@ var linked: String = ""          # res:// path of the asset linked to Angelo, or
 var waiting: String = ""         # res:// path of a request Angelo hasn't answered yet.
 var lost: String = ""            # res:// path that was live when the connection dropped, until relinked or dismissed.
 var saving: int = -1             # The "save" of Angelo's newest "saved" for the linked asset, until it's re-imported.
+## Saved assets this plugin's own reimport_files() has not run for yet (_try_reimport), each with its own clock:
+## {res:// path: [seconds since the save, seconds until the next try]}. One per asset, so a save of another asset (the
+## link switched while Godot imported) never drops one still owed.
+var _owed: Dictionary = {}
+var _reimporting_now: String = ""   # The asset _try_reimport is asking Godot to re-import right now.
+## An owed asset, or "" when nothing is owed (fixtures read it).
+var reimport_owed: String:
+	get:
+		return "" if _owed.is_empty() else str(_owed.keys()[0])
 var last_message: String = ""    # The newest notice shown to the person (fixtures read it).
 var _menus: Array[RefCounted] = []
 var _button: MenuButton = null
@@ -106,6 +117,18 @@ func _exit_tree() -> void:
 
 func _process(delta: float) -> void:
 	client.poll()
+	for asset: String in _owed.keys():   # Refused last time: Godot was importing (its own scan of the file, say).
+		var clock: Array = _owed[asset]
+		clock[0] += delta
+		clock[1] -= delta
+		if clock[1] > 0.0 and clock[0] <= REIMPORT_GIVE_UP:
+			continue
+		clock[1] = REIMPORT_RETRY
+		_try_reimport(asset)   # Also once past the limit: a long blocking import ends in one long frame, Godot now free.
+		if _owed.has(asset) and clock[0] > REIMPORT_GIVE_UP:
+			var _given_up: bool = _owed.erase(asset)
+			_notify("Godot was busy importing and didn't re-import %s. Use Reload Saved Scene to see the saved asset."
+					% asset.get_file(), true)
 	_since_refresh += delta
 	if _since_refresh > 0.5:
 		_since_refresh = 0.0
@@ -280,10 +303,28 @@ func _reimport(asset: String) -> void:
 	if asset.get_extension().to_lower() == "blend" and not _blender_import_ready():
 		_offer_angelo_importer(asset)
 		return
-	EditorInterface.get_resource_filesystem().reimport_files(PackedStringArray([asset]))
+	_owed[asset] = [0.0, REIMPORT_RETRY]
+	_try_reimport(asset)
+
+
+## Ask Godot to re-import the owed asset. reimport_files() runs at once and emits resources_reimported, which settles
+## it (_on_reimported); while Godot is importing already it refuses, with only an error in its log, so the asset stays
+## owed and _process asks again next frame. Godot's own import of the file never settles it: it may have read the
+## bytes from before Angelo's save, and showed them until Reload Saved Scene (Godot showcase, 2026-11-15).
+func _try_reimport(asset: String) -> void:
+	var filesystem: EditorFileSystem = EditorInterface.get_resource_filesystem()
+	if filesystem.is_scanning() or _reimporting_now != "":
+		return
+	_reimporting_now = asset
+	filesystem.reimport_files(PackedStringArray([asset]))
+	_reimporting_now = ""
 
 
 func _on_reimported(resources: PackedStringArray) -> void:
+	if _reimporting_now != "" and _reimporting_now in resources:
+		var _settled: bool = _owed.erase(_reimporting_now)   # This plugin's own re-import ran: the saved bytes are in.
+	elif linked != "" and _owed.has(linked) and linked in resources:
+		return   # Godot's own import of it, perhaps of the earlier bytes: the owed one follows and reports.
 	if linked != "" and linked in resources:
 		preview.clear()   # The instances were rebuilt from the saved asset; the next change brings a new preview.
 		preview.asset = linked

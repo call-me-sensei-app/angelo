@@ -16,6 +16,7 @@ import bpy
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, StringProperty
 from bpy.types import Operator, Panel, PropertyGroup
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import flow_capture, flow_host, flow_nodes, flow_prices, flow_tree
 from .studio_state import MEDIA_KINDS
 from .flow_approvals import price_text
@@ -47,7 +48,7 @@ def show_connect_notice(context, lines):
 
 
 class ANGELO_OT_flow_connect(Operator):
-    """Open AI Providers to connect an image or 3D generation account"""
+    bl_description = "Open AI Providers to connect an image or 3D generation account"
     bl_idname = "angelo.flow_connect"
     bl_label = "Connect in AI Providers"
     bl_options = {'INTERNAL'}
@@ -114,7 +115,7 @@ class ANGELO_FlowRunLine(PropertyGroup):
 
 
 class ANGELO_OT_flow_run(Operator):
-    """Run this flow's stale or missing steps after you confirm every paid generation"""
+    bl_description = "Run this flow's stale or missing steps after you confirm every paid generation"
     bl_idname = "angelo.flow_run"
     bl_label = "Run Generation Flow"
     # Not REGISTER: Repeat Last and Repeat History re-ran execute with the last properties and no dialog, starting
@@ -129,6 +130,11 @@ class ANGELO_OT_flow_run(Operator):
     # A step to make again (a new take of an unchanged request): planned as such, applied only once the run is approved,
     # so declining the dialog leaves the flow exactly as it was (Media Studio's Redo sheet).
     retake: StringProperty(options={'SKIP_SAVE', 'HIDDEN'})
+
+    def consent_target(self, context):
+        """The flow's selected nodes: a run of the selection reads them (the plan's digest is checked at execute too)."""
+        tree = bpy.data.node_groups.get(self.tree)
+        return sorted(node.name for node in tree.nodes if node.select) if tree is not None else None
 
     def invoke(self, context, event):
         try:
@@ -238,7 +244,7 @@ class ANGELO_OT_flow_run(Operator):
 
 
 class ANGELO_OT_flow_choose(Operator):
-    """Pass this output to the steps after it"""
+    bl_description = "Pass this output to the steps after it"
     bl_idname = "angelo.flow_choose"
     bl_label = "Choose Output"
     bl_options = {'UNDO', 'INTERNAL'}
@@ -295,7 +301,8 @@ def _use_image(tree, name, socket_name, asset_id):
 
 
 class ANGELO_OT_flow_pick_image(Operator):
-    """Pick a reference image from the Media Studio library or a file. Picking adds an Image node wired into the input"""
+    bl_description = ("Pick a reference image from the Media Studio library or a file. Picking adds an Image node "
+                      "wired into the input")
     bl_idname = "angelo.flow_pick_image"
     bl_label = "Pick Image"
     bl_options = {'UNDO', 'INTERNAL'}
@@ -322,7 +329,7 @@ class ANGELO_OT_flow_pick_image(Operator):
 
 
 class ANGELO_OT_flow_pick_image_file(Operator):
-    """Import an image file into the Media Studio library and use it as a reference"""
+    bl_description = "Import an image file into the Media Studio library and use it as a reference"
     bl_idname = "angelo.flow_pick_image_file"
     bl_label = "Use Image File"
     bl_options = {'UNDO', 'INTERNAL'}
@@ -348,7 +355,7 @@ class ANGELO_OT_flow_pick_image_file(Operator):
 
 
 class ANGELO_OT_flow_place(Operator):
-    """Import the chosen 3D output into the scene (undoable)"""
+    bl_description = "Import the chosen 3D output into the scene (undoable)"
     bl_idname = "angelo.flow_place"
     bl_label = "Place in Scene"
     bl_options = {'UNDO', 'INTERNAL'}
@@ -376,7 +383,7 @@ class ANGELO_OT_flow_place(Operator):
 
 
 class ANGELO_OT_flow_stop(Operator):
-    """Stop this flow's runs. Submitted provider work may still finish and be billed"""
+    bl_description = "Stop this flow's runs. Submitted provider work may still finish and be billed"
     bl_idname = "angelo.flow_stop"
     bl_label = "Stop Flow Runs"
     bl_options = {'INTERNAL'}
@@ -389,7 +396,7 @@ class ANGELO_OT_flow_stop(Operator):
 
 
 class ANGELO_OT_flow_new(Operator):
-    """Create a Generation Flow and show it in this Node Editor"""
+    bl_description = "Create a Generation Flow and show it in this Node Editor"
     bl_idname = "angelo.flow_new"
     bl_label = "New Generation Flow"
     bl_options = {'UNDO'}
@@ -460,3 +467,6 @@ def unregister():
         bpy.utils.unregister_class(cls)
     flow_host.unregister()
     _dialog.clear()
+
+
+grant_guard.guard(ANGELO_OT_flow_run)   # Only the person's click grants (grant_guard).

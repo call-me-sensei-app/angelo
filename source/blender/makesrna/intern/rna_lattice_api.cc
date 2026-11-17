@@ -65,7 +65,8 @@ void RNA_api_lattice(StructRNA *srna)
   RNA_def_function(srna, "update_gpu_tag", "rna_Lattice_update_gpu_tag");
 
   func = RNA_def_function(srna, "unit_test_compare", "rna_Lattice_unit_test_compare");
-  RNA_def_pointer(func, "lattice", "Lattice", "", "Lattice to compare to");
+  parm = RNA_def_pointer(func, "lattice", "Lattice", "", "Lattice to compare to");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   RNA_def_float_factor(func,
                        "threshold",
                        FLT_EPSILON * 60,

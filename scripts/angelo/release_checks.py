@@ -17,6 +17,8 @@ webpki-roots) are older than the newest release or hold a distrusted key (``trus
 before signing). ``builder-paths <bundle or unpacked payload>`` refuses any builder path or credential in what ships
 (``builder_paths.py``; every release stage runs it). ``windows-toolset --binary <Angelo.exe>`` refuses a Windows
 build that clang-cl and lld-link did not make (``windows_toolset.py``; the Windows release build and stage run it).
+``gpu-sdks --source <tree> --record <angelo-release-build.json>`` refuses a build made with a GPU SDK other than the
+version Blender pins for its own release, unless an approved exception covers it (``gpu_sdk_pins.py``).
 ``prompt-audit <recordings folder>... [--build COMMIT]`` refuses a release whose recordings (the gates' and
 ``prompt_route_probe.py``'s) show a route that lacks a fact meant for it, receives one it must not, or was not
 recorded at all (``prompt_audit.py``, doc/angelo/prompt_audit.rst).
@@ -37,6 +39,8 @@ sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # builder_paths beside this file, also under python -I
 from angelo_agent import update_feed  # noqa: E402  (standard library only)
 from shipped_sources import LFS_POINTER, is_lfs_pointer  # noqa: E402,F401  (one owner; release_checks.* still works)
+from runtime_wires import WIRE_CHECK_PROVIDER, wire_check_argv, wire_problems  # noqa: E402,F401  (release_checks.*)
+from runtime_capabilities import capability_check_argv, capability_problems  # noqa: E402,F401  (release_checks.*)
 # Where the add-on's key list sits inside an installed tree, below the Blender version folder (5.2).
 KEYS_IN_INSTALL = "scripts/addons_core/angelo_agent/update_keys.json"
 
@@ -318,7 +322,8 @@ def _run_problems(folder, files, pin, runner):
         text = "".join(path.read_text(encoding="utf-8", errors="replace") for path in sorted(out.rglob("*.json")))
         problems += ["%s's app-server schema has no %s notification: this is not the patched build"
                      % (codex.name, method) for method in pin.get("notifications", ()) if '"%s"' % method not in text]
-        return problems
+        return problems + wire_problems(codex, pin, runner, env) + capability_problems(codex, pin, runner, env)
+
 
 
 def _config_key_problems(codex, pin):
@@ -343,8 +348,9 @@ def agent_runtime_problems(folder, platform, runner=None, exclusive=False):
     executable), and on Windows the pin's ``upstream_signed`` files must carry OpenAI's own signature.
     ``runner(argv, check=False, timeout=..., env=...)`` runs the binaries when this host can: then
     ``codex --version`` must name the pinned version and the app-server schema must offer each pinned
-    feature on thread/start, thread/resume and thread/fork. Both are offline; the runtime writes only to a
-    temporary ``CODEX_HOME``.
+    feature on thread/start, thread/resume and thread/fork; each pinned wire must list models
+    (``runtime_wires``) and each pinned provider capability must load its pinned values and refuse an unpinned one
+    (``runtime_capabilities``). All offline; the runtime writes only to a temporary ``CODEX_HOME``.
     """
     pin = agent_runtime_pin()
     files = pin["platforms"][platform]
@@ -434,6 +440,8 @@ def main(argv=None):
     same.add_argument("--signed", required=True, help="the signing VM's signed copy of it")
     commands.add_parser("windows-toolset", add_help=False,
                         help="refuse a Windows build that clang-cl and lld-link did not make (windows_toolset.py)")
+    commands.add_parser("gpu-sdks", add_help=False,
+                        help="refuse a build whose GPU SDKs are not the versions Blender pins (gpu_sdk_pins.py)")
     argv = sys.argv[1:] if argv is None else list(argv)
     if argv[:1] == ["prompt-audit"]:
         import prompt_audit  # noqa: E402  (beside this file; standard library only)
@@ -444,6 +452,9 @@ def main(argv=None):
     if argv[:1] == ["trust-store"]:
         import trust_store  # noqa: E402  (beside this file; standard library only)
         return trust_store.main(["check"] + argv[1:])
+    if argv[:1] == ["gpu-sdks"]:
+        import gpu_sdk_pins  # noqa: E402  (beside this file; standard library only)
+        return gpu_sdk_pins.main(["check"] + argv[1:])
     if argv[:1] == ["windows-toolset"]:
         import windows_toolset  # noqa: E402  (beside this file; standard library only)
         return windows_toolset.main(argv[1:])

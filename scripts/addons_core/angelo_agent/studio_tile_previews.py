@@ -13,6 +13,7 @@ least recently drawn first within ``GPU_BYTES`` of GPU memory; a file that can't
 as the empty tile. The cache is released with Media Studio (``clear``).
 """
 
+from . import edit_tool_hold
 import time
 from array import array
 from collections import OrderedDict, deque
@@ -61,7 +62,8 @@ def decode(path):
     import numpy as np
     image = bpy.data.images.load(str(path), check_existing=False)
     try:
-        image.colorspace_settings.name = 'Non-Color'   # Stored values: what the screen shows, drawn with IMAGE.
+        from . import color_spaces
+        color_spaces.mark_stored(image.colorspace_settings)   # Stored values: what the screen shows, drawn with IMAGE.
         width, height = image.size
         if not 0 < width * height <= PIXEL_LIMIT:
             raise ValueError("no usable pixels")
@@ -140,6 +142,7 @@ class Previews:
         self.used = 0
 
 
+@edit_tool_hold.guarded(waiting=lambda: _previews is not None and _previews.pending())   # Pictures wait.
 def _tick():
     if _previews is None:
         return None

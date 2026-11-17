@@ -14,6 +14,8 @@ Features and their actions (``ACTIONS``):
   ``engine``'s project; Angelo copies its plugin there and turns the link on (``engine_link_ui``).
 """
 
+from . import read_only
+
 TOOL = "angelo_app_feature"
 ACTIONS = {"ENGINE_LINK": ("ON", "OFF", "ADD_TO_PROJECT")}   # Enum values in Blender's identifier style.
 ENGINES = ("GODOT", "UNITY", "UNREAL", "WEB")   # WEB: a Three.js page through its dev server.
@@ -52,3 +54,6 @@ def validate_app_feature(name, args):
     elif "engine" in args:
         raise ValueError("engine goes with ADD_TO_PROJECT only (one link serves every engine)")
     return request
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), 'ACTIONS')

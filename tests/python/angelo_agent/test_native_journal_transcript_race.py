@@ -27,6 +27,7 @@ failures do not.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import io
 import sys
@@ -107,7 +108,7 @@ class JournalTranscriptRaceTests(unittest.TestCase):
 
     def tearDown(self):
         if self.pump is not None:
-            self.pump.join(10)
+            self.pump.join(CAP_S)
             self.assertFalse(self.pump.is_alive(), "the UI pump never finished")
 
     def switch_to_pump(self):
@@ -119,7 +120,7 @@ class JournalTranscriptRaceTests(unittest.TestCase):
                 self.progress.set()
         self.pump = threading.Thread(target=pump, name="UI pump stand-in", daemon=True)
         self.pump.start()
-        self.assertTrue(self.progress.wait(10), "the UI pump neither finished nor waited")
+        self.assertTrue(self.progress.wait(CAP_S), "the UI pump neither finished nor waited")
 
     def admit_while_row_serializes(self, index):
         """Admit a protected call on this thread while the pump applies its queued event to row ``index``.
@@ -137,7 +138,7 @@ class JournalTranscriptRaceTests(unittest.TestCase):
         replies = []
         self.c.request_tool("race-call", "angelo_create_cube", CUBE, replies.append)
         self.assertIsNone(row.other_thread, "the save never serialized the row")
-        self.pump.join(10)
+        self.pump.join(CAP_S)
         self.assertFalse(self.pump.is_alive())
         self.c.store.save = save
         return replies, journals[0]

@@ -12,6 +12,10 @@
 #include <utility>
 #include <string>
 
+/* First: glog (in the testing header) does not compile once `windows.h` has defined `ERROR`, and
+ * `BLI_filereader.hh` below includes it on Windows (`BLI_winstuff.hh`). */
+#include "testing/testing.h"
+
 #include "BKE_idprop.hh"
 #include "BKE_global.hh"
 #include "BKE_lib_id.hh"
@@ -29,10 +33,10 @@
 #include "DNA_windowmanager_types.h"
 #include "DNA_workspace_types.h"
 
-#include "BLI_compiler_compat.h"
-#include "BLI_listbase.h"
+#include "BLI_compiler_compat.hh"
+#include "BLI_listbase.hh"
 #include "BLI_memory_utils.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 
 #include "MEM_guardedalloc.h"
 
@@ -42,7 +46,7 @@
 #include "BLO_read_write.hh"
 #include "BLO_core_bhead.hh"
 #include "BLO_core_blend_header.hh"
-#include "BLI_filereader.h"
+#include "BLI_filereader.hh"
 #include "BLO_undofile.hh"
 #include "BLO_writefile.hh"
 
@@ -54,7 +58,7 @@ namespace {
 
 static const MemFileChunk *first_chunk(const MemFile &file)
 {
-  return static_cast<const MemFileChunk *>(file.chunks.first);
+  return static_cast<const MemFileChunk *>(file.chunks.first());
 }
 
 struct OwnedMemFile {
@@ -166,7 +170,7 @@ TEST(WritefileMemBudget, chunk_payload_and_record_admission_precede_allocation)
   BLO_memfile_chunk_add(&data, payload, sizeof(payload));
   EXPECT_FALSE(accepted.failed);
   EXPECT_EQ(accepted.accounted, accepted.limit);
-  ASSERT_NE(output.file.chunks.first, nullptr);
+  ASSERT_NE(output.file.chunks.first(), nullptr);
   EXPECT_EQ(std::memcmp(first_chunk(output.file)->buf, payload, sizeof(payload)), 0);
   EXPECT_EQ(output.file.size, sizeof(payload));
 }
@@ -182,9 +186,9 @@ TEST(WritefileMemBudget, identical_chunk_charges_only_new_record)
   MemFileWriteData data{};
   data.budget = &budget;
   data.written_memfile = &output.file;
-  data.reference_current_chunk = static_cast<MemFileChunk *>(reference.file.chunks.first);
+  data.reference_current_chunk = static_cast<MemFileChunk *>(reference.file.chunks.first());
   BLO_memfile_chunk_add(&data, payload, sizeof(payload));
-  ASSERT_NE(output.file.chunks.first, nullptr);
+  ASSERT_NE(output.file.chunks.first(), nullptr);
   EXPECT_TRUE(first_chunk(output.file)->is_identical);
   EXPECT_EQ(first_chunk(output.file)->buf, first_chunk(reference.file)->buf);
   EXPECT_EQ(budget.accounted, sizeof(MemFileChunk));
@@ -206,7 +210,7 @@ TEST(WritefileMemBudget, shared_retention_is_metadata_only_and_cleanup_drops_one
   wd.mem.written_memfile = &output.file;
   BlendWriter writer{&wd};
   bool copied = false;
-  BLO_write_shared(&writer, &owner->data, SIZE_MAX / 4, owner.get(), [&]() { copied = true; });
+  writer.write_shared(&owner->data, SIZE_MAX / 4, owner.get(), [&]() { copied = true; });
   EXPECT_FALSE(copied);
   EXPECT_FALSE(budget.failed);
   EXPECT_LT(budget.accounted, 64u * 1024);
@@ -235,7 +239,7 @@ TEST(WritefileMemBudget, failed_shared_owner_admission_does_not_acquire_user)
   wd.mem.written_memfile = &output.file;
   BlendWriter writer{&wd};
   bool copied = false;
-  BLO_write_shared(&writer, &owner->data, 1024, owner, [&]() { copied = true; });
+  writer.write_shared(&owner->data, 1024, owner, [&]() { copied = true; });
   EXPECT_FALSE(copied);
   EXPECT_TRUE(wd.validation_data.critical_error);
   EXPECT_EQ(output.file.shared_storage, nullptr);
@@ -458,7 +462,7 @@ class WritefileMemBudgetTest : public BlendfileLoadingBaseTest {
     wmWindow *window = wm_window_new(main_, manager, nullptr, false);
     BKE_workspace_active_set(window->workspace_hook, workspace);
     window->scene = scene_;
-    const ViewLayer &layer = *static_cast<const ViewLayer *>(scene_->view_layers.first);
+    const ViewLayer &layer = *static_cast<const ViewLayer *>(scene_->view_layers.first());
     STRNCPY(window->view_layer_name, layer.name);
     return window;
   }
@@ -537,7 +541,7 @@ TEST_F(WritefileMemBudgetTest, private_witness_metadata_is_exact_across_live_cal
         FileGlobal global;
         ASSERT_EQ(reader->read(reader.get(), &global, sizeof(global)), int64_t(sizeof(global)));
         EXPECT_EQ(global.curscene, scene_);
-        EXPECT_EQ(global.cur_view_layer, scene_->view_layers.first);
+        EXPECT_EQ(global.cur_view_layer, scene_->view_layers.first());
         continue;
       }
     }
@@ -704,7 +708,7 @@ TEST_F(WritefileMemBudgetTest, zero_budget_refuses_before_source_recalc_and_reje
   const MemFileChunk *chunk = first_chunk(output.file);
   EXPECT_EQ(BLO_write_file_mem_bounded(main_, &output.file, 0, SIZE_MAX),
             BlendMemFileWriteResult::InvalidArguments);
-  EXPECT_EQ(output.file.chunks.first, chunk);
+  EXPECT_EQ(output.file.chunks.first(), chunk);
   EXPECT_EQ(output.file.size, sizeof(payload));
   EXPECT_EQ(std::memcmp(chunk->buf, payload, sizeof(payload)), 0);
 }

@@ -14,6 +14,7 @@ names and keys: its fixtures are records made by ``bench_mcp_report.angelo_recor
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import platform_env
 import struct
 import zlib
 
@@ -63,8 +64,8 @@ class GraderTests(unittest.TestCase):
     def test_grader_keeps_only_the_bounded_qa_owner_beside_its_fixed_environment(self):
         for owner in ("a" * 32, "", "a" * 31, "A" * 32, "g" * 32, "a" * 31 + "\n"):
             inherited = {"ANGELO_QA_PROCESS_OWNER": owner, "ANTHROPIC_BASE_URL": "unused", "ANTHROPIC_API_KEY": "unused"}
-            # Path.home() reads USERPROFILE on Windows, which the cleared environment no longer has: the home is faked.
-            with self.subTest(owner=owner), mock.patch.dict(os.environ, inherited, clear=True), \
+            # The grader's home is a made-up folder, the same on every platform.
+            with self.subTest(owner=owner), platform_env.cleared(inherited), \
                     mock.patch.object(grade.Path, "home", return_value=Path("/home/grader")), \
                     mock.patch.object(grade.subprocess, "run") as run:
                 run.return_value.stdout = '{"result": "ok"}'
@@ -265,7 +266,7 @@ class EveryChatTests(unittest.TestCase):
         for _ in range(200):
             if mine["worker"].stop.called:
                 break
-            threading.Event().wait(0.01)
+            threading.Event().wait(0.01)  # window: a fixed delay, not a wait for work
         mine["worker"].stop.assert_called_once()
         theirs["worker"].stop.assert_not_called()
         self.assertTrue(all(chat.stop.called for chat in self.workers))

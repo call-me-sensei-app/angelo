@@ -26,6 +26,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(1, str(HERE.parents[2] / "scripts/addons_core"))
 import account_fixtures as fixtures  # noqa: E402  (made-up sign-ins: no real token)
 import provider_isolation as isolation  # noqa: E402
+from host_test_policy import environment_skip  # noqa: E402
 import platform_env  # noqa: E402
 
 HOST_ENTRY, BLENDER_ENTRY = isolation.HOST_ENTRY, isolation.BLENDER_ENTRY
@@ -87,7 +88,7 @@ class EveryFileStartsIsolated(unittest.TestCase):
         self.assertGreater(len([name for name in names if name.startswith("test_blender_")]), 300)
         missing = []
         for path in files:
-            expected = ast.parse(HOST_ENTRY if path.name.startswith("test_native_") else BLENDER_ENTRY).body
+            expected = ast.parse(isolation.entry_for(path)).body
             body, start = entry_statements(path)
             found = body[start:start + len(expected)]
             if [ast.dump(node) for node in found] != [ast.dump(node) for node in expected]:
@@ -139,14 +140,14 @@ class HandStartedFiles(unittest.TestCase):
         """Run ``name``'s own lines up to its first import, then PROBE, as that file (its ``__file__``)."""
         path = HERE / name
         body, start = entry_statements(path)
-        expected = len(ast.parse(HOST_ENTRY if name.startswith("test_native_") else BLENDER_ENTRY).body)
+        expected = len(ast.parse(isolation.entry_for(name)).body)
         lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
         entry = "".join(lines[:body[start + expected - 1].end_lineno])
         script = self.root / ("probe-" + name)
         # A host test's folder is on sys.path however it is started (unittest, pytest, the runner, the file
         # itself); Blender's --python adds none, so a Blender file's own entry must put it there.
         header = "__file__ = %r\n" % str(path)
-        if name.startswith("test_native_"):
+        if isolation.entry_for(name) == HOST_ENTRY:
             header += "import sys\nsys.path.insert(0, %r)\n" % str(HERE)
         script.write_text(header + entry + PROBE, encoding="utf-8")
         result = subprocess.run([sys.executable, "-S", str(script)], env=env, capture_output=True, text=True,
@@ -243,8 +244,9 @@ class InsideBlender(unittest.TestCase):
         self.assertTrue(calls[0][1], "the relaunched suite finds its environment isolated")
         self.assertTrue(isolation.inside(environ["HOME"], home), "the caller's process is not changed in place")
         command = []
-        self.assertEqual(isolation.relaunch({"A": "1"}, argv=argv, binary=argv[0],
-                                            call=lambda c, env: command.append((c, env)) or -9), 1)
+        with mock.patch("sys.stderr"):
+            self.assertEqual(isolation.relaunch({"A": "1"}, argv=argv, binary=argv[0],
+                                                call=lambda c, env: command.append((c, env)) or -9), 128 + 9)
         self.assertEqual(command, [(argv, {"A": "1"})])
 
     def test_a_relaunched_suite_never_relaunches_again(self):
@@ -416,6 +418,44 @@ def setUpModule():   # Billed starts here check the fixture evaluation account, 
 
 def tearDownModule():
     fixtures.unname_account_2()
+
+
+class RelaunchedExit(unittest.TestCase):
+    """A relaunched suite's end is reported as itself. Found on 1.1.0's cut 08e2b0f7842 (macOS, 2026-11-13):
+    test_blender_prefs_and_quit's quit-open phase ended with exit status 1, no receipt and nothing printed after
+    start-up, because a child ended by a signal (a negative status from subprocess) was reported as plain 1, so the
+    receipt could not tell a crash or a kill from an exit."""
+
+    def status(self, code, raw=None):
+        with mock.patch("sys.stderr", new_callable=__import__("io").StringIO) as err:
+            value = isolation.exit_status(code, raw)
+        return value, err.getvalue()
+
+    def test_an_exit_keeps_its_own_status_and_says_nothing(self):
+        for code in (0, 1, 3, 255):
+            with self.subTest(code=code):
+                self.assertEqual(self.status(code), (code, ""))
+
+    def test_a_signal_death_exits_128_plus_its_number_and_says_so(self):
+        value, said = self.status(-11, 11)
+        self.assertEqual(value, 139)
+        self.assertIn("ended by signal 11 (SIGSEGV", said)
+        self.assertIn("waitpid status 11", said)
+        self.assertEqual(self.status(-9)[0], 137)
+
+    @unittest.skipIf(os.name == "nt", environment_skip("POSIX signals"))
+    def test_a_real_child_killed_by_a_signal_is_reported_as_killed(self):
+        script = "import os, signal; os.kill(os.getpid(), signal.SIGTERM)"
+        code, raw = isolation.run_child([sys.executable, "-c", script], dict(os.environ))
+        self.assertEqual(code, -15)
+        self.assertTrue(os.WIFSIGNALED(raw) and os.WTERMSIG(raw) == 15, raw)
+        value, said = self.status(code, raw)
+        self.assertEqual(value, 143)
+        self.assertIn("ended by signal 15 (SIGTERM", said)
+
+    def test_a_real_childs_own_exit_status_comes_back(self):
+        code, _raw = isolation.run_child([sys.executable, "-c", "raise SystemExit(7)"], dict(os.environ))
+        self.assertEqual(code, 7)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@
 
 #include "MEM_guardedalloc.h"
 
+#include "BLI_set.hh"
+
 #include "GPU_batch.hh"
 #include "GPU_capabilities.hh"
 #include "GPU_shader.hh"
@@ -17,6 +19,7 @@
 
 #include <Metal/Metal.h>
 #include <QuartzCore/QuartzCore.h>
+#include <atomic>
 #include <functional>
 #include <unordered_map>
 
@@ -41,13 +44,6 @@ class MTLContext;
 /* Debug control. */
 #define MTL_SHADER_DEBUG_EXPORT_SOURCE 0
 #define MTL_SHADER_TRANSLATION_DEBUG_OUTPUT 0
-
-/* Separate print used only during development and debugging. */
-#if MTL_SHADER_TRANSLATION_DEBUG_OUTPUT
-#  define shader_debug_printf printf
-#else
-#  define shader_debug_printf(...) /* Null print. */
-#endif
 
 /* Maximum threshold for specialized shader variant count.
  * This is a catch-all to prevent excessive PSO permutations from being created and also catch
@@ -74,7 +70,8 @@ struct MTLRenderPipelineStateInstance {
   /**
    * Reflection Data.
    * This information can also be used to eliminate redundant/unused bindings.
-   * Does only contains SSBO, UBO, Argument and Push Constant buffers. VBO bindings are masked out.
+   * Does only contains SSBO, UBO, Acceleration Structure, Argument and Push Constant buffers.
+   * VBO bindings are masked out.
    */
   uint32_t used_buf_vert_mask = 0;
   uint32_t used_buf_frag_mask = 0;
@@ -154,7 +151,17 @@ class MTLShader : public Shader {
   MTLRenderPipelineStateDescriptor current_pipeline_state_;
   /* Cache of compiled PipelineStateObjects. */
   Map<MTLRenderPipelineStateDescriptor, MTLRenderPipelineStateInstance *> pso_cache_;
+  /* Queued to the background (compile-ahead draws, #warm_cache_async) and not built yet, and those whose queued
+   * build failed (both guarded by `pso_cache_lock_`): each is queued once. */
+  Set<MTLRenderPipelineStateDescriptor> pso_prebuilding_;
+  Set<MTLRenderPipelineStateDescriptor> pso_prebuild_failed_;
   std::mutex pso_cache_lock_;
+  /* Read without the lock by #warm_cache_async, which is asked for every object in every draw: how many PSOs
+   * `pso_cache_` holds, how many descriptors `pso_prebuilding_` holds, and how many PSOs the parent held when this
+   * shader last went through them (-1: never). */
+  std::atomic<int> pso_built_count_ = 0;
+  std::atomic<int> pso_prebuilding_count_ = 0;
+  std::atomic<int> warm_parent_built_ = -1;
 
   /** Compute pipeline state and Compute PSO caching. */
   MTLComputePipelineStateCommon compute_pso_common_state_;
@@ -184,6 +191,7 @@ class MTLShader : public Shader {
   bool finalize(const shader::ShaderCreateInfo *info = nullptr) override;
   bool finalize_compute(const shader::ShaderCreateInfo *info);
   void warm_cache(int limit) override;
+  bool warm_cache_async(Shader *parent) override;
 
   /* Utility. */
   bool is_valid()
@@ -248,13 +256,26 @@ class MTLShader : public Shader {
   void uniform_float(int location, int comp_len, int array_size, const float *data) override;
   void uniform_int(int location, int comp_len, int array_size, const int *data) override;
 
+  /* \param r_queued: set when a compile-ahead draw queued the PSO's build instead (it returns nullptr then). */
   MTLRenderPipelineStateInstance *bake_current_pipeline_state(MTLContext *ctx,
-                                                              MTLPrimitiveTopologyClass prim_type);
-  /* Bakes and caches a PSO for graphic. */
+                                                              MTLPrimitiveTopologyClass prim_type,
+                                                              bool *r_queued = nullptr);
+  /* Bakes and caches a PSO for graphic. \param in_draw: whether a draw call waits for it (statistics). */
   MTLRenderPipelineStateInstance *bake_graphic_pipeline_state(
       MTLContext *ctx,
       MTLPrimitiveTopologyClass prim_type,
+      const MTLRenderPipelineStateDescriptor &pipeline_descriptor,
+      bool in_draw = false);
+  /* In a compile-ahead draw (#GPU_compile_ahead_begin): the cached PSO, else nullptr once its build is queued to
+   * the background (#MTLPipelinePrebuilder), so the draw call is skipped. */
+  MTLRenderPipelineStateInstance *queue_graphic_pipeline_state(
+      MTLContext *ctx,
+      MTLPrimitiveTopologyClass prim_type,
       const MTLRenderPipelineStateDescriptor &pipeline_descriptor);
+  /* A queued build, on a background thread: bakes and caches the PSO with a descriptor object of its own. */
+  void prebuild_graphic_pipeline_state(id<MTLDevice> device,
+                                       MTLPrimitiveTopologyClass prim_type,
+                                       const MTLRenderPipelineStateDescriptor &pipeline_descriptor);
 
   /* Bakes and caches a PSO for compute. */
   MTLComputePipelineStateInstance *bake_compute_pipeline_state(
@@ -266,6 +287,13 @@ class MTLShader : public Shader {
   }
 
  private:
+  MTLRenderPipelineStateInstance *bake_graphic_pipeline_state(
+      id<MTLDevice> device,
+      ::MTLRenderPipelineDescriptor *desc,
+      MTLPrimitiveTopologyClass prim_type,
+      const MTLRenderPipelineStateDescriptor &pipeline_descriptor,
+      bool in_draw);
+
   /** Create, compile and attach the shader stage to the shader program. */
   id<MTLLibrary> create_shader_library(const shader::ShaderCreateInfo &info,
                                        ShaderStage stage,

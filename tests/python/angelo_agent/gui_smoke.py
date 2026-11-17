@@ -195,10 +195,10 @@ def tick():
                                                    "serviceTiers": [{"id": "fast"}], "inputModalities": ["text", "image"],
                                                    "supportedReasoningEfforts": [{"reasoningEffort": "low"}, {"reasoningEffort": "high"}]}])
             with bpy.context.temp_override(window=main_window, area=chat):
-                bpy.ops.angelo.select_model(model="qa-fixture")
-                bpy.ops.angelo.set_effort(effort="high")
-                bpy.ops.angelo.toggle_fast()
-                bpy.ops.angelo.set_approval(mode="READ_ONLY")
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().select_model(model="qa-fixture")
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().set_effort(effort="high")
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().toggle_fast()
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().set_approval(mode="READ_ONLY")
             state["checks"]["model_fast_effort_approval_controls"] = controller.state["options"] == {"model": "qa-fixture", "effort": "high", "fast": True, "approval": "READ_ONLY"}
             controller.state["options"] = prior_options
             controller.models = []
@@ -241,11 +241,12 @@ def tick():
                                                focused_area=chat.as_pointer(), session=controller.state["id"],
                                                selected_all=False, anchor=None, dragging=False, pending_click=None)
                 with bpy.context.temp_override(window=main_window, area=chat, region=region):
+                    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
                     for wanted in ("model", "approval"):
                         rect = next(rect for rect, action, _ in source_view["hits"] if action == wanted)
                         def event(value):
-                            return SimpleNamespace(type='LEFTMOUSE', value=value, mouse_x=region.x + rect[0] + rect[2] / 2,
-                                                   mouse_y=region.y + rect[1] + rect[3] / 2, ctrl=False, oskey=False, shift=False, alt=False, unicode="")
+                            return SimpleNamespace(type='LEFTMOUSE', value=value, mouse_x=chat_point(region, rect)[0],
+                                                   mouse_y=chat_point(region, rect)[1], ctrl=False, oskey=False, shift=False, alt=False, unicode="")
                         before = len(calls)
                         chat_view.ANGELO_OT_chat_input.modal(handler, bpy.context, event('PRESS'))
                         assert len(calls) == before, "A dropdown must not open with a held-button gesture"
@@ -271,8 +272,8 @@ def tick():
                     state["checks"]["approval_gate"] = "AngeloLiveDemo" not in main_window.scene.objects
                     capture("general-python-approval.png", main_window)
                     with bpy.context.temp_override(window=main_window):
-                        bpy.ops.angelo.review_tool(call_id=call.id)
-                        bpy.ops.angelo.approve(call_id=call.id)
+                        __import__("angelo_agent.grant_guard").grant_guard.stand_in().review_tool(call_id=call.id)
+                        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve(call_id=call.id)
             if controller.busy:
                 return 0.05
             state["checks"]["optimized_live_turn"] = controller.status == "Completed" and "AngeloLiveDemo" in main_window.scene.objects
@@ -311,7 +312,7 @@ def tick():
                     assert call.name == "angelo_write_file" and call.arguments == {"path": "angelo-test-note.md", "content": "Native file tools work.\n"}, "Unexpected file change: do not autoapprove"
                     capture("human-file-approval.png", main_window)
                     with bpy.context.temp_override(window=main_window):
-                        bpy.ops.angelo.approve(call_id=call.id)
+                        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve(call_id=call.id)
             if controller.busy:
                 return 0.1
             target = controller.files.root / "angelo-test-note.md"
@@ -376,7 +377,7 @@ def tick():
             area = next(a for a in prefs_window.screen.areas if a.type == "PREFERENCES")
             region = next(r for r in area.regions if r.type == "WINDOW")
             with bpy.context.temp_override(window=prefs_window, area=area, region=region):
-                bpy.ops.angelo.new_connection('INVOKE_DEFAULT')
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().new_connection('INVOKE_DEFAULT')
             state["phase"] = "connection_form"
             record()
             return 0.5

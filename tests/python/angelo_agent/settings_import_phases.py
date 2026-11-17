@@ -267,37 +267,6 @@ def phase_none():
     yield Until(lambda: not intro.is_open(), "the welcome to close")
 
 
-def phase_broken():
-    from angelo_agent import card_host, intro, settings_import_ui
-    yield Until(lambda: card_ready("setup"), "the setup card")
-    yield 0.6
-    click_card("import")
-    yield 0.4
-    click_card("continue")
-    yield Until(lambda: settings_import_ui.last_outcome is not None, "the import")
-    outcome = report["outcome"] = settings_import_ui.last_outcome
-    check("broken_addon_named", outcome["failed"] == ["Broken Tool"] and not outcome.get("exception"))
-    check("good_addon_loaded", addon_utils.check("switcher_tool") == (True, True))
-    yield Until(lambda: intro.is_open() and "plan" in intro._open, "the welcome")
-    check_agent()
-    click_welcome("start")
-    yield Until(lambda: card_ready("notice"), "the result notice")
-    yield 0.6
-    notice = card_host._active.card
-    check("notice_names_the_broken_addon_calmly", "Broken Tool" in notice.body and notice.icon == "alert")
-    capture("import-notice-broken.png")
-
-
-def phase_broken_restart():
-    yield Until(lambda: card_ready("start"), "the start panel")
-    yield 0.6
-    check_agent()
-    check("broken_addon_listed_not_loaded", "broken_tool" in bpy.context.preferences.addons
-          and not addon_utils.check("broken_tool")[1])
-    check("good_addon_loaded", addon_utils.check("switcher_tool") == (True, True))
-    capture("broken-restart.png")
-
-
 def phase_menu():
     from angelo_agent import card_host, intro, settings_import_apply as apply, settings_import_ui, splash_setup
     prefs = bpy.context.preferences
@@ -321,7 +290,7 @@ def phase_menu():
     prefs_window = preferences_window()
     area = next(a for a in prefs_window.screen.areas if a.type == 'PREFERENCES')
     with bpy.context.temp_override(window=prefs_window, area=area):
-        bpy.ops.angelo.import_blender_settings()
+        __import__("angelo_agent.grant_guard").grant_guard.stand_in().import_blender_settings()
     yield Until(lambda: card_ready("settings_import"), "the confirmation card")
     yield 0.6
     check("preferences_window_gives_way_to_the_card", preferences_window() is None)
@@ -373,23 +342,19 @@ def phase_menu():
 
 
 def phase_upgrade():
-    from angelo_agent import card_host, intro, settings_import_ui
-    yield Until(lambda: card_ready("setup"), "the setup card")
-    yield 0.6
-    card = card_host._active.card
-    check("card_found_angelo_5_1", card.source is not None
-          and (card.source.app, card.source.version_label) == ("Angelo", "5.1"))
-    text = plan_text()
-    check("card_says_earlier_angelo_5_1", "Use my earlier Angelo settings" in text and "from Angelo 5.1" in text)
-    capture("setup-card-upgrade.png")
-    click_card("import")
-    yield 0.4
-    click_card("continue")
-    yield Until(lambda: settings_import_ui.last_outcome is not None, "the import")
-    outcome = report["outcome"] = settings_import_ui.last_outcome
-    check("blenders_own_import_ran", outcome.get("app") == "Angelo" and outcome.get("reloaded_layout")
-          and not outcome.get("exception"))
-    yield Until(lambda: intro.is_open() and "plan" in intro._open, "the welcome", limit=90)
+    """An Angelo update (a newer Blender base): no setup card, the earlier settings and chats come over on their own
+    (version_carry_over, version_carry_over_ui) and one notice says so."""
+    from angelo_agent import card_host, splash_setup, version_carry_over, version_carry_over_ui as update
+    yield Until(lambda: update.last_outcome is not None, "the automatic import", limit=90)
+    outcome = report["outcome"] = update.last_outcome
+    check("no_setup_card", "setup" not in splash_setup.sequence)
+    check("found_angelo_5_1", (outcome.get("app"), outcome.get("version")) == ("Angelo", "5.1"))
+    check("blenders_own_import_ran", outcome.get("reloaded_layout") and not outcome.get("exception"))
+    # The fixture's ANGELO_STATE_DIR selects an isolated state folder, so the carry-over runs and moves nothing; the
+    # move itself is update_carry_over_gate.py's, which runs without it.
+    report["carry_over"] = getattr(version_carry_over.last_result, "status", None)
+    check("carry_over_ran_and_kept_the_isolated_state", report["carry_over"] == "isolated")
+    yield Until(lambda: card_ready("notice"), "the update notice", limit=90)
     yield 0.6
     prefs = bpy.context.preferences
     check("preference_undo_steps", prefs.edit.undo_steps == 77)
@@ -399,15 +364,12 @@ def phase_upgrade():
     from angelo_agent import ui
     check("chat_follows_the_reloaded_file", not any("Document changed" in str(message.get("text"))
                                                     for message in ui.get_controller().state["messages"]))
-    click_welcome("start")
-    yield Until(lambda: card_ready("notice"), "the result notice")
-    yield 0.6
-    check("notice_names_angelo_5_1", "Angelo 5.1" in card_host._active.card.title)
-    capture("import-notice-upgrade.png")
+    check("notice_says_the_update_is_ready", "is ready" in card_host._active.card.title)
+    capture("update-notice-upgrade.png")
 
 
-PHASES = {"card": phase_card, "restart": phase_restart, "none": phase_none, "broken": phase_broken,
-          "broken-restart": phase_broken_restart, "menu": phase_menu, "upgrade": phase_upgrade}
+PHASES = {"card": phase_card, "restart": phase_restart, "none": phase_none, "menu": phase_menu,
+          "upgrade": phase_upgrade}   # The broken and crashing groups' phases are added by their own modules.
 
 
 def finish(error=None):

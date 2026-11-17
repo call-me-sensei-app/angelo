@@ -15,6 +15,7 @@ Pinned here on the real reader thread (``WorkerHost._read``) with the real journ
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import threading
 import time
@@ -42,7 +43,7 @@ class GatedConsent:
         return getattr(self.real, name)
 
     def apply_consent(self, *args):
-        self.gate.wait(10)
+        self.gate.wait(CAP_S)
         return self.real.apply_consent(*args)
 
 
@@ -78,7 +79,7 @@ class BlockedSaveFixture(ArrivalFixture):
                                      automatic=True)
         provider = threading.Thread(target=tool_finalization.journal_tool, args=(chat, call, "queued"), daemon=True)
         provider.start()
-        self.assertTrue(in_save.wait(5))
+        self.assertTrue(in_save.wait(CAP_S))
         self.assertFalse(chat.lock.acquire(blocking=False), "the provider thread holds the chat's lock")
         return provider
 
@@ -92,7 +93,7 @@ class BlockedSaveFixture(ArrivalFixture):
 
     def free_lock(self, chat, provider):
         self.release.set()
-        provider.join(5)
+        provider.join(CAP_S)
         self.assertFalse(provider.is_alive())
         self.assertTrue(chat.lock.acquire(timeout=1))
         chat.lock.release()
@@ -124,7 +125,7 @@ class ARevocationAndAStopDuringABlockedSave(BlockedSaveFixture):
         self.assertFalse(call.executing)
 
         self.consent.gate.set()
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while chat.consent_lease.epoch != 2 and time.monotonic() < deadline:
             time.sleep(0.002)
         self.assertFalse(chat.consent_lease.granted_auto())
@@ -173,7 +174,7 @@ class ANarrowingDuringAFiveSecondSave(BlockedSaveFixture):
         self.assertEqual(script.revoked, worker_consent.CONSENT_REVOKED)
         self.assertTrue(worker_consent.admit_autonomous(chat, unstarted_call()))   # Auto itself was not withdrawn.
         self.consent.gate.set()
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while chat.consent_lease.epoch != 2 and time.monotonic() < deadline:
             time.sleep(0.002)
         self.assertEqual((chat.consent_lease.epoch, chat.chat_consents()), (2, ()))

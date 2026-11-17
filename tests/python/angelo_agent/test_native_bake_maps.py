@@ -55,11 +55,15 @@ def read_png(data):
 
 class RequestTests(unittest.TestCase):
     def test_target_or_targets_and_defaults(self):
+        # One target stays ``target`` and the margin's default is the runner's: the canonical request is the agent's
+        # own shape, so the executor's and the job host's later validations take it unchanged
+        # (test_native_job_request_canonical).
         request = start(target=A, output="maps")
-        self.assertEqual(request["targets"], [A])
-        self.assertNotIn("target", request)
-        self.assertEqual((request["packing"], request["format"], request["margin"], request["resolution"]),
-                         ("SEPARATE", "PNG", spec.DEFAULT_MARGIN, spec.DEFAULT_RESOLUTION))
+        self.assertEqual(request["target"], A)
+        self.assertNotIn("targets", request)
+        self.assertNotIn("margin", request)
+        self.assertEqual((request["packing"], request["format"], request["resolution"]),
+                         ("SEPARATE", "PNG", list(spec.DEFAULT_RESOLUTION)))   # A plain list in the request.
         self.assertEqual(start(targets=[A, B], output="m")["targets"], [A, B])
 
     def test_refusals_name_the_fix(self):

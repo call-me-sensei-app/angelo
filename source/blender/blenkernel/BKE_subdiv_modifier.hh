@@ -12,6 +12,7 @@
 #include "BKE_subdiv.hh"
 
 #include "DNA_mesh_types.h"
+#include "DNA_modifier_types.h"
 
 namespace blender {
 
@@ -82,6 +83,16 @@ bool BKE_subsurf_modifier_force_disable_gpu_evaluation_for_mesh(const SubsurfMod
  * GPU are compatible.
  */
 bool BKE_subsurf_modifier_can_do_gpu_subdiv(const SubsurfModifierData *smd, const Mesh *mesh);
+
+/**
+ * Whether the viewport can subdivide this modifier on the GPU (#SUBSURF_GPU_STATUS_GPU), or the
+ * first reason it cannot, in the order a person would act on them: the preference, the GPU, the
+ * modifier's place in the stack, then its input `mesh`. #BKE_subsurf_modifier_can_do_gpu_subdiv
+ * is this with `is_last_enabled` true, so the two always agree.
+ */
+eSubsurfGPUStatus BKE_subsurf_modifier_gpu_status(const SubsurfModifierData *smd,
+                                                  const Mesh *mesh,
+                                                  bool is_last_enabled);
 
 inline bool BKE_subsurf_modifier_has_gpu_subdiv(const Mesh *mesh)
 {

@@ -14,6 +14,7 @@
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import subprocess
@@ -37,7 +38,7 @@ from angelo_agent.refusal_codes import RefusalError  # noqa: E402
 from angelo_agent.worker_mirror import EventRouter, MirrorController  # noqa: E402
 
 
-def until(predicate, timeout=5.0):
+def until(predicate, timeout=CAP_S):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
@@ -251,7 +252,7 @@ class LingeringProcess:
 
     def wait(self, timeout=None):
         if timeout is None:
-            self.reaped.wait(10)
+            self.reaped.wait(CAP_S)
             return self.code
         if self.killed and self.ended_after_kill:
             self.code = -9   # Reaped just after its wait gave up.

@@ -1,25 +1,84 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""What a test that clears ``os.environ`` keeps: the variables the operating system gives every process.
+"""What a test that clears ``os.environ`` keeps: the variables the operating system gives every process
+(``cleared``, ``essential_environ``).
 
-Windows starts no process without them: ``Path.home()`` reads ``USERPROFILE`` (POSIX falls back to the account's
-entry), the per-user folders come from ``APPDATA`` and ``LOCALAPPDATA``, and Winsock (``socket``, ``asyncio``) needs
-``SYSTEMROOT``. POSIX sets none of these names, so keeping them changes nothing there.
+No real process runs without them, so a test that removes them tests a process that cannot exist. The names are
+the ones Angelo's own child processes keep (``angelo_agent.essential_environment``, which says what each is for):
+one list for the product and its tests.
+
+* Windows: Winsock (``socket``, ``asyncio``) and the first SSL context a process makes need ``SYSTEMROOT`` (without
+  it OpenSSL's start fails with "[SSL] unknown error", and only for the test that happens to make the process's
+  first context); ``Path.home()`` reads ``USERPROFILE`` and the per-user folders come from ``APPDATA`` and
+  ``LOCALAPPDATA``.
+* macOS and Linux: without ``HOME``, ``Path.home()`` falls back to the account's own folder, outside the suite's
+  isolated one (``provider_isolation``).
+
+Every platform's names are kept on every platform: one that does not set a name has nothing to keep, and the
+suite's isolated profile sets the Windows profile folders on macOS and Linux too. A test that means to replace one
+passes its own value; one that means a variable to be absent says so (``without``). No host test clears
+``os.environ`` any other way (``test_native_cleared_environment``).
 """
 
+import functools
 import os
 import sys
 from pathlib import Path
+from unittest import mock
 
-WINDOWS_ESSENTIALS = ("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "SYSTEMROOT")
+_ADDONS = str(Path(__file__).resolve().parents[3] / "scripts/addons_core")
+if _ADDONS not in sys.path:   # As suite_isolation adds it: a test's own earlier entries still win.
+    sys.path.append(_ADDONS)
+from angelo_agent import essential_environment  # noqa: E402
+
+# The shared list and nothing else: a name every process needs is added there, for the product's children too.
+ESSENTIALS = tuple(dict.fromkeys(essential_environment.POSIX + essential_environment.WINDOWS))
 
 
-def essential_environ(**extra):
-    """The present ``WINDOWS_ESSENTIALS``, with ``extra`` on top: ``patch.dict(os.environ, essential_environ(),
-    clear=True)`` clears what a test controls and keeps what every real process has."""
-    kept = {name: value for name, value in os.environ.items() if name.upper() in WINDOWS_ESSENTIALS}
-    kept.update(extra)
+def essential_environ(values=None, without=(), **named):
+    """The present ``ESSENTIALS`` (not the ones named in ``without``), with ``values`` and ``named`` on top: a
+    child process's whole environment, or what ``cleared`` leaves. ``without`` and a given name match a kept one
+    whatever their case, as Windows reads them."""
+    given = dict(values or {}, **named)
+    gone = {name.upper() for name in (*without, *given)}
+    kept = {name: value for name, value in essential_environment.environment(ESSENTIALS).items()
+            if name.upper() not in gone}
+    kept.update(given)
     return kept
+
+
+class cleared:
+    """``os.environ`` holding only ``essential_environ(values, without, **named)`` for a block, a started patch
+    (``start``/``stop``) or a decorated function, and as it was afterwards: what
+    ``patch.dict(os.environ, values, clear=True)`` was written for, without removing what every process has. The
+    environment is read when the block is entered, not when this is made."""
+
+    def __init__(self, values=None, without=(), **named):
+        self._values, self._without, self._entered = dict(values or {}, **named), tuple(without), []
+
+    def _patch(self):
+        return mock.patch.dict(os.environ, essential_environ(self._values, self._without), clear=True)
+
+    def __enter__(self):
+        self._entered.append(self._patch())
+        return self._entered[-1].__enter__()
+
+    def __exit__(self, *raised):
+        return self._entered.pop().__exit__(*raised)
+
+    def start(self):
+        return self.__enter__()
+
+    def stop(self):
+        if self._entered:
+            self.__exit__(None, None, None)
+
+    def __call__(self, function):
+        @functools.wraps(function)
+        def inside(*args, **kwargs):
+            with self._patch():
+                return function(*args, **kwargs)
+        return inside
 
 
 def home_environ(home):

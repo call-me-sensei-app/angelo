@@ -31,6 +31,7 @@ from pathlib import Path
 import numpy as np
 
 from .blend_file_paths import located
+from . import owned_paths
 
 WIDTH = 1024            # Pixels around the horizon: enough for lighting and a soft background, ~2 MB as RGBE.
 SAMPLES = 16            # A bake's samples per pixel: camera rays only, so these only smooth edges.
@@ -154,6 +155,7 @@ def _from_image(job, source, config_path, colour_space, turn, scratch):
     try:
         if isinstance(source, bytes):   # A packed image: OpenImageIO reads files.
             path = os.path.join(scratch, "packed")
+            owned_paths.require_writable(path)
             with open(path, "wb") as handle:
                 handle.write(source)
             source = path
@@ -174,12 +176,14 @@ def _wait_for_bake(job, command, out, scratch):
     started = time.perf_counter()
     log_path = os.path.join(scratch, "bake.log")
     try:
+        owned_paths.require_writable(log_path)
         with open(log_path, "wb") as log:
             options = {"stdin": subprocess.DEVNULL, "stdout": log, "stderr": subprocess.STDOUT, "cwd": scratch}
             if sys.platform == "win32":
                 options["creationflags"] = subprocess.CREATE_NO_WINDOW
             else:
                 options["start_new_session"] = True
+            owned_paths.require_runnable(command[0])
             job.process = subprocess.Popen(command, **options)
             try:
                 code = job.process.wait(timeout=BAKE_SECONDS)
@@ -201,6 +205,7 @@ def _wait_for_bake(job, command, out, scratch):
 
 
 def _remove(folder):
+    owned_paths.require_writable(folder)
     import shutil
     shutil.rmtree(folder, ignore_errors=True)
 
@@ -223,6 +228,9 @@ def _start_bake(job, scene):
     scratch = private_roots.mkdtemp("angelo-web-world-")
     library, out = os.path.join(scratch, "world.blend"), os.path.join(scratch, "world.exr")
     try:
+        # The bake child is a Blender where no script region begins (C answers yes there): what it writes is asked
+        # of C here, before its command exists.
+        owned_paths.require_writable(out)
         bpy.data.libraries.write(library, {scene.world}, path_remap="ABSOLUTE", fake_user=True)
     except BaseException:
         _remove(scratch)

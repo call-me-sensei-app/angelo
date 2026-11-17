@@ -25,7 +25,7 @@ The codex program (codex.exe on Windows) was modified for Angelo. It, codex-code
 Windows sandbox setup helper are built from Angelo's fork. On Windows these rebuilt executables require
 Angelo's signature. Only the exact upstream codex-command-runner.exe is retained unchanged with
 OpenAI's own signature, verified valid. The fork refreshes webpki-roots to 1.0.11; rustls-webpki remains
-0.103.16. Its application changes add five optional settings,
+0.103.16. Its application changes add five optional settings, one model-provider wire,
 two notifications, one request field and more detail to one kind of error message:
 
   * cacheAffinityKey, an experimental parameter of Codex's app-server (1 to 64 visible ASCII characters)
@@ -68,18 +68,26 @@ two notifications, one request field and more detail to one kind of error messag
     number as the turn sends it, before the request's input is built.
   * serial_dynamic_tools, a setting listing app tools whose calls run one at a time, as every app tool's
     did before Codex 0.164 (Angelo lists every one of its tools, which it answers in order).
+  * wire_api = "gemini", a model-provider wire for Google's Gemini API (generateContent streaming). For a
+    provider configured with it, Codex sends the request it always builds in Gemini's own format: the
+    instructions as the system instruction, the conversation as contents, Codex's and the app's tools as
+    function declarations, and the reasoning effort as Gemini's thinking level. It hands back the opaque
+    thought signatures Gemini attaches to its replies on the next request, as Gemini requires, and reads
+    Gemini's streamed reply, tool calls and token usage (cached and thinking tokens included) into Codex's
+    own events. A rate-limit answer (HTTP 429) ends the request with Codex's usual too-many-failed-attempts
+    error, without a resend. Providers on Codex's own wire are unchanged.
   * On every new input, app-server checks that the conversation's model provider is still the one the
     configuration selects. It now builds the whole configuration for that check only when the configuration
     has changed since the last check for the same folder, instead of on every input; the outcome is the same.
 
-Without the five settings, Codex behaves as released apart from that error detail, the notifications and
-the request field (which clients that do not read them ignore). Everything else is OpenAI's code,
+Without the five settings and the Gemini wire, Codex behaves as released apart from that error detail, the
+notifications and the request field (which clients that do not read them ignore). Everything else is OpenAI's code,
 unchanged apart from the root-store update described above. Rebuilding the host and sandbox setup
 also refreshes their compiled-in Mozilla trust anchors; their source-level program behavior is unchanged.
 
-The modified source is the branch angelo/rust-v0.166.0-call-steps of
+The modified source is the branch angelo/rust-v0.166.0-gemini-wire of
 https://github.com/call-me-sensei-app/codex, a fork of https://github.com/openai/codex based on the tag
-rust-v0.166.0: commit 2dfdc4c72e3b497b2c463bce3631eec05475cb3c. Rebuilt executables use that source plus a reviewed
+rust-v0.166.0: commit caab709d09b56e552daa83c5f640996325affeb0. Rebuilt executables use that source plus a reviewed
 Cargo.lock overlay that normalizes only local workspace versions to the already-declared 0.166.0.
 No external dependency is changed by that overlay. ANGELO.md at the root of
 that branch describes the changes and their tests.

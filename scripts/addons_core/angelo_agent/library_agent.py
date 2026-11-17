@@ -20,7 +20,6 @@ Schemas and validation: ``library_spec``; the catalog, downloads and checks: ``l
   Library overlay and holds only public files), and nothing is imported.
 """
 
-import shutil
 import threading
 import time
 
@@ -29,6 +28,7 @@ from .library_spec import DEFAULT_RESULTS, IMPORT, MAX_PREVIEWS, SEARCH, compact
 from .refusal_codes import RefusalError, refusal_code, refusal_details, coded
 from .studio_agent import StudioPending
 from .team_library_files import ImportFailed, NotImported, Refused
+from . import owned_paths  # noqa: E402  (what Angelo made: its cleanups remove only that)
 
 CATALOG_WAIT = 20.0              # Seconds a call waits for the catalog to load before it refuses.
 SEARCH_SECONDS, IMPORT_SECONDS = 120, 900
@@ -104,6 +104,7 @@ class _Worker:
 
 def _previews(root, entries, folder, cancel):
     """Download (or reuse) thumbnails and copy each under its image suffix: ``[(item id, Path)]``. Worker thread."""
+    owned_paths.require_writable(folder)   # Every target below is made in it.
     from . import library_fetch
     found = []
     for identity, url in entries:
@@ -285,7 +286,7 @@ class LibraryService:
         def cleanup():
             folder = state["folder"]
             if folder is not None:   # import_images copied the pictures; a still-running worker only writes here.
-                shutil.rmtree(folder, ignore_errors=True)
+                owned_paths.remove_tree(folder)   # Only the folder Angelo made (owned_paths).
 
         return LibraryPending(poll, cancel=cancel, cleanup=cleanup, status_text="Searching the Angelo Library",
                               activity_note="Searching the Angelo Library; nothing changes.", timeout=SEARCH_SECONDS)

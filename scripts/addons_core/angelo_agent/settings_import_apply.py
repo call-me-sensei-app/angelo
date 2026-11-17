@@ -8,15 +8,16 @@ Main thread only. ``run`` copies, has Blender read the copied preferences, keeps
   new preferences list. A stock Blender's preferences do not list ``angelo_agent``, so ``prefs_reload`` (every
   preference read, not only this one) leaves it out of the disabling and lists it before the enabling: the chat,
   its sessions and any card stay as they are. An earlier Angelo's import is Blender's own
-  (``preferences.copy_prev``), which also copies that version's agent state and reloads the start-up file: there
-  Angelo's add-on is only kept listed (``keep_loaded=False``), so it reloads with the copied state and binds its
-  chat to the reloaded file, as before this module existed.
+  (``preferences.copy_prev``): the earlier folder whole except the agent state, which ``version_carry_over`` moved
+  when the add-on registered (``settings_import.previous_ignore``), and it reloads the start-up file. There Angelo's
+  add-on is only kept listed (``keep_loaded=False``), so it reloads and binds its chat to the reloaded file.
 * **What the person chose in Angelo is kept** (``Kept``): the language (and its translation switches), the exact
   theme (the setup card's look; captured as Blender's own theme preset XML and put back without changing which
   preset the menu names), Angelo's own add-on preferences, and the setup card's mouse and Spacebar choices when
   they were changed there.
 * **A failed add-on is reported, never fatal.** Blender prints its traceback; ``failed_addons`` names every add-on
-  the preferences enable that did not load, for one calm line.
+  the preferences enable that did not load, for one calm line, and ``outcome["causes"]`` gives why for each that
+  raised (``angelo_safe_start.causes``). It stays enabled: the failed add-ons' own notice offers to turn it off.
 
 ``undo`` puts back the backup the last import made (the menu's Undo Settings Import), with the same protections.
 """
@@ -27,11 +28,11 @@ from pathlib import Path
 
 import bpy
 
-from . import private_roots
+from . import owned_paths, private_roots
 from . import settings_import as si
 from .prefs_reload import CORE_ADDONS, angelo_stays_enabled
 
-BACKUP_FOLDER = "settings-import-backup"   # In Angelo's per-version folder; one import is kept.
+BACKUP_FOLDER = si.BACKUP_FOLDER   # In Angelo's per-version folder; one import is kept.
 LANGUAGE_SETTINGS = ("language", "use_translate_interface", "use_translate_tooltips", "use_translate_reports",
                      "use_translate_new_dataname")
 THEME_MENU = "USERPREF_MT_interface_theme_presets"
@@ -117,14 +118,30 @@ def _set_values(settings):
 
 def failed_addons():
     """Display names of the add-ons the preferences enable that did not load."""
+    return [name for _module, name in _failed_entries()]
+
+
+def _failed_entries():
+    """``(module, display name)`` of each add-on the preferences enable that did not load."""
     import addon_utils
     modules = {module.__name__: module for module in addon_utils.modules(refresh=False)}
-    names = []
+    found = []
     for entry in bpy.context.preferences.addons:
         if not addon_utils.check(entry.module)[1]:
             module = modules.get(entry.module)   # None when the add-on is not installed at all.
-            names.append((addon_utils.module_bl_info(module).get("name") if module else None) or entry.module)
-    return names
+            found.append((entry.module,
+                          (addon_utils.module_bl_info(module).get("name") if module else None) or entry.module))
+    return found
+
+
+def _causes(failed):
+    """``{display name: cause}`` of the failed add-ons that raised as they loaded (``angelo_safe_start``)."""
+    try:
+        import angelo_safe_start
+        causes = angelo_safe_start.causes()
+    except Exception:   # A cause is a courtesy: the names stand.
+        return {}
+    return {name: causes[module] for module, name in failed if module in causes}
 
 
 def _reload(read_preferences):
@@ -145,19 +162,23 @@ def run(source, keymap_choices=None):
         if source.app == si.ANGELO:
             # An Angelo upgrade: Blender's own import, unchanged (it may reload the start-up file). Angelo's add-on
             # reloads with the copied agent state; it only has to stay listed.
+            # Blender reloads the start-up file only over no work of the person's (PREFERENCES_OT_copy_prev).
+            outcome["reloaded_layout"] = bpy.data.is_saved is bpy.data.is_dirty is False
             with angelo_stays_enabled(keep_loaded=False):
                 bpy.ops.preferences.copy_prev()
-            outcome["reloaded_layout"] = True
         else:
             places = destinations()
             items = si.plan(source, places)
             outcome["summary"] = si.summary(items, places)
-            result = si.copy(items, backup_folder(), source, places)
+            with owned_paths.vouched_during(places.values()):   # Blender's own folders, for this import only.
+                result = si.copy(items, backup_folder(), source, places)
             outcome.update(copied=result.copied, errors=result.errors, restart=outcome["summary"]["restart"])
             _reload(outcome["summary"]["preferences"])
     finally:
         kept.restore()
-    outcome["failed"] = failed_addons()
+    failed = _failed_entries()
+    outcome["failed"] = [name for _module, name in failed]
+    outcome["causes"] = _causes(failed)
     for name in outcome["failed"]:
         print("Angelo: an imported add-on did not load:", name)
     for path, message in outcome["errors"]:
@@ -170,7 +191,9 @@ def undo():
     """Put back the settings from before the last import; returns ``{"restored", "errors"}``."""
     kept, result = Kept(), si.Result()
     try:
-        result = si.undo(backup_folder(), destinations())
+        places = destinations()
+        with owned_paths.vouched_during(places.values()):   # Blender's own folders, for this Undo only.
+            result = si.undo(backup_folder(), places)
         _reload(True)
     finally:
         kept.restore()

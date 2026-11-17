@@ -13,6 +13,7 @@ failure), and every thread a test started has ended before its stand-ins are tak
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import sys
@@ -87,7 +88,7 @@ class PartCountLeases(unittest.TestCase):
 
     def granted(self, token, saved=False):
         def grant(path, wait):
-            self.gate.wait(5)
+            self.gate.wait(CAP_S)
             if saved:   # The worker saved between the count's stat and its grant.
                 os.utime(self.part, ns=(time.time_ns(), time.time_ns() + 10**9))
                 self.part.write_bytes(b"v2-longer")

@@ -17,7 +17,7 @@
 
 #include "BLI_memory_utils.hh"
 #include "BLI_set.hh"
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 #include "BLI_vector.hh"
 
 #include "ANIM_action.hh"

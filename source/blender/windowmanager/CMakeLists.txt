@@ -25,7 +25,12 @@ set(INC_SYS
 set(SRC
   intern/wm.cc
   intern/wm_cursors.cc
+  intern/wm_angelo_consumed_input.cc
+  intern/wm_angelo_consumed_input.hh
   intern/wm_angelo_cover.cc
+  intern/wm_angelo_gpu_startup.cc
+  intern/wm_angelo_gpu_startup_record.cc
+  intern/wm_angelo_gpu_startup_intern.hh
   intern/wm_angelo_input_hold.cc
   intern/wm_dragdrop.cc
   intern/wm_draw.cc
@@ -65,6 +70,7 @@ set(SRC
   intern/wm_uilist_type.cc
   intern/wm_utils.cc
   intern/wm_window.cc
+  intern/wm_window_ime_draw.cc
   gizmo/intern/wm_gizmo.cc
   gizmo/intern/wm_gizmo_group.cc
   gizmo/intern/wm_gizmo_group_type.cc
@@ -76,6 +82,7 @@ set(SRC
   message_bus/intern/wm_message_bus_rna.cc
   message_bus/intern/wm_message_bus_static.cc
 
+  WM_angelo_gpu_startup.hh
   WM_angelo_input_hold.hh
   WM_angelo_job_reports.hh
   WM_api.hh
@@ -243,6 +250,8 @@ if(WITH_GTESTS)
     ../../../intern/ghost/intern
   )
   set(TEST_SRC
+    intern/wm_angelo_consumed_input_test.cc
+    intern/wm_angelo_gpu_startup_test.cc
     intern/wm_angelo_job_reports_test.cc
     intern/wm_checkpoint_resources_test.cc
     intern/wm_checkpoint_write_test.cc

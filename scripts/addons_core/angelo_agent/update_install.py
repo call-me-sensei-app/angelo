@@ -34,7 +34,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import product_env
+from . import essential_environment, owned_paths, product_env
 
 HELPERS = {"macos": "install_update_macos.sh", "windows": "install_update_windows.cmd"}
 # Files a script runs beside it, copied out with it: the Windows script's check for another copy of this install.
@@ -138,11 +138,8 @@ def inputs(request, environ):
 
 def helper_environment(request, environ):
     """The script's whole environment."""
-    if request.family == "macos":
-        base = {"PATH": MAC_TOOL_PATH}
-        for name in ("HOME", "TMPDIR", "USER", "LANG"):
-            if name in environ:
-                base[name] = environ[name]
+    if request.family == "macos":   # The OS's own variables, with only the system's tools on PATH.
+        base = essential_environment.environment((), environ, "darwin", PATH=MAC_TOOL_PATH)
     else:
         base = {name: value for name, value in environ.items()
                 if not name.startswith("ANGELO_UPDATE_") and not _set_by_angelo(name, value, request.root)}
@@ -153,6 +150,7 @@ def helper_environment(request, environ):
 def prepare_folder(request):
     """Copy the script and its companions into the update's folder (clearing an earlier attempt's marker and result);
     the script's path."""
+    owned_paths.require_writable(request.work)
     work = Path(request.work)
     work.mkdir(parents=True, exist_ok=True)
     for name in (READY_FILE, RESULT_FILE):
@@ -180,6 +178,7 @@ def start(request, environ=None, popen=subprocess.Popen):
         return popen(["/bin/bash", "--noprofile", "--norc", str(script)], env=env, start_new_session=True, close_fds=True, **quiet)
     flags = CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
     command = [os.path.join(environ.get("SystemRoot", r"C:\Windows"), "System32", "cmd.exe"), "/d", "/c", str(script)]
+    owned_paths.require_runnable(command[0])   # Never a program from state (C).
     try:
         return popen(command, env=env, creationflags=flags | CREATE_BREAKAWAY_FROM_JOB, close_fds=True, **quiet)
     except OSError:   # A job that forbids breaking away: Angelo's own exit does not end the script anyway.

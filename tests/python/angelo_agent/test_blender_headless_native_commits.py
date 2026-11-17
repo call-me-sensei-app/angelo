@@ -162,7 +162,8 @@ def main():
         failing = out / "fails.py"
         failing.write_text("import bpy\nbpy.data.objects.new('NeverSaved', None)\nraise RuntimeError('on purpose')\n")
         script_files.attach(state)   # What the window's "Always allow this file while it's unchanged" saves.
-        script_files.allow(name, os.path.realpath(source), script_files.read_script(str(failing)))
+        from angelo_agent import grant_guard   # The person's Allow on the script file: the harness.
+        grant_guard.harness(script_files.allow, name, os.path.realpath(source), script_files.read_script(str(failing)))
         script_files.detach()
         client = Client([str(python), "-I", str(scripts / "angelo" / "angelo_mcp.py"), "--client", name,
                          "--state-dir", str(state)], environ)

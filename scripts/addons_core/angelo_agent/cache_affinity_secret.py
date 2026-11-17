@@ -13,11 +13,14 @@ HMAC-SHA256 under 32 random bytes that only this user's Angelo knows.
   (``ANGELO_STATE_DIR``) or the account store (``ANGELO_CONNECTIONS_DIR``), which a benchmark sets per trial:
   every process and trial of one user on one machine shares the secret, so they share the key.
 * Written to a private temporary file and linked into place, so a concurrent launch either wins and is
-  read, or finds the finished file; a file that is not a valid secret is replaced.
+  read, or finds the finished file; a file that is not a valid secret is replaced. On Windows a replace is
+  refused while another program holds the file (a scan of one just written): it is tried again for up to 1.9 s
+  (``shared_replace.replace`` with its ``PATIENT_ATTEMPTS``), because this store is not tried again in the
+  launch. It runs on a provider's or the relay's worker thread, never the main thread.
 * ``ANGELO_CACHE_KEY_SECRET`` (64 hexadecimal digits, only that spelling) replaces it, for a measurement
   run that must reproduce its keys on another machine or user. Any other value is an error.
-* When the folder cannot be written, a secret held only by this process is used and said once on standard
-  error: keys still reveal nothing, but they change with every launch.
+* When the folder cannot be written, or the file is still held after that wait, a secret held only by this
+  process is used and said once on standard error: keys still reveal nothing, but they change with every launch.
 
 Read once per process. Standard library only; no ``bpy``.
 """
@@ -30,7 +33,7 @@ import threading
 import uuid
 from pathlib import Path
 
-from . import product_env, shared_replace, storage
+from . import owned_paths, product_env, shared_replace, storage
 from .protocol import RpcError
 
 FILE = "cache-affinity-secret"
@@ -66,6 +69,7 @@ def _read(path):
 
 
 def _stored(folder):
+    owned_paths.require_writable(folder)
     path = folder / FILE
     found = _read(path)
     if found is not None:
@@ -83,9 +87,10 @@ def _stored(folder):
             found = _read(path)
             if found is not None:
                 return found
-            shared_replace.replace(temporary, path)  # Not a secret (a damaged file): this one replaces it.
-        except OSError:
-            shared_replace.replace(temporary, path)  # A file system without hard links.
+            # Not a secret (a damaged file): this one replaces it, waiting out a moment's holder (module docstring).
+            shared_replace.replace(temporary, path, shared_replace.PATIENT_ATTEMPTS)
+        except OSError:   # A file system without hard links.
+            shared_replace.replace(temporary, path, shared_replace.PATIENT_ATTEMPTS)
         return value
     except OSError as error:
         return _process_only(folder, error.strerror or error, value)

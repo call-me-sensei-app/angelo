@@ -87,7 +87,7 @@ def claude_session(executable, context, native_id=None, default_model=None):
     (``tests/python/angelo_agent/claude_prompt_probe.py``) both build a launch here.
     """
     from . import claude_direct, debug_thinking
-    from .chat_settings import claude_effort, clean_options
+    from .chat_settings import clean_options, request_effort
     from .claude_text import NO_WEB_SEARCH
     from .tool_specs import native_plan_schema
     options = context.turn_options or clean_options(context.state.get("options"))
@@ -117,9 +117,17 @@ def claude_session(executable, context, native_id=None, default_model=None):
         raise RpcError("Select a supported Opus model before enabling Claude Fast mode; no automatic model switch is allowed")
     # Diagnostic runs only (debug_thinking.py): the thinking summaries a harness reads to find where a miss began.
     values = {"tools": native_tools, "direct": direct, "fast": options["fast"], "model": model or "",
-              "effort": claude_effort(options["effort"]), "thinking": bool(debug_thinking.claude_arguments(context)),
-              "resume": native_id or "", "gateway": gateway_session(context)}
+              "effort": request_effort(context, options, "claude"),
+              "thinking": bool(debug_thinking.claude_arguments(context)),
+              "resume": native_id or "", "gateway": gateway_session(context),
+              "overrides": model_overrides(context.state.get("provider"))}
     return claude_arguments(executable, values), initialize
+
+
+def model_overrides(mode):
+    """An organization endpoint's mapped Claude models, as Claude Code's ``modelOverrides`` (endpoint_connections)."""
+    from .endpoint_connections import claude_model_overrides
+    return claude_model_overrides(mode)
 
 
 def gateway_session(context):
@@ -143,6 +151,14 @@ def check_access(mode, api_key, executable, env, local=False):
         raise RpcError("Add or load a Claude API key in Preferences > AI Providers")
     if mode == "claude_team" and not api_key:
         raise RpcError(team_runtime.SIGN_IN)
+    from .provider_registry import is_endpoint, spec_for
+    if is_endpoint(mode):
+        from .endpoint_connections import REMOVED, needs_key
+        spec = spec_for(mode)
+        if spec["removed"]:
+            raise RpcError(REMOVED)
+        if needs_key(spec["credential"]) and not api_key:
+            raise RpcError(team_runtime.ENDPOINT_KEY)
     if mode == "claude_subscription":
         check = run_cli([executable, "auth", "status"], env=dict(env), capture_output=True, text=True, timeout=30)
         try:
@@ -162,6 +178,8 @@ def claude_arguments(executable, values):
     # A team session's WebFetch goes through its gateway (team_network.settings); no other session sets hooks.
     settings = {"fastMode": values["fast"], "hooks": {},
                 **team_network.settings(values.get("gateway", False), values.get("hooks_blocked"))}
+    if values.get("overrides"):   # A gateway's names for the Claude models they are: their real context windows.
+        settings["modelOverrides"] = dict(values["overrides"])
     # Never --bare: its built-in tools are only shell and file tools (runtime_environment.require_angelo_profile).
     command = [executable, "-p", "--input-format", "stream-json", "--output-format", "stream-json",
                "--verbose", "--include-partial-messages", "--tools", values["tools"], "--allowedTools", allowed_tools,
@@ -179,6 +197,21 @@ def claude_arguments(executable, values):
 
 
 _MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@/\[\]-]{0,127}")
+_OVERRIDE_TARGET = re.compile(r"[\x21-\x7e]{1,200}")   # A server's own model name (custom_endpoints.model_name).
+
+
+def _overrides(settings):
+    """The ``modelOverrides`` of a launch's settings, or None when they are not ones Angelo writes."""
+    import json
+    try:
+        value = json.loads(settings or "{}").get("modelOverrides", {})
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(value, dict) or len(value) > 8 or not all(
+            isinstance(k, str) and _MODEL.fullmatch(k) and isinstance(v, str) and _OVERRIDE_TARGET.fullmatch(v)
+            for k, v in value.items()):
+        return None
+    return value
 _RESUME = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,127}")
 
 
@@ -198,11 +231,13 @@ def launch_values(arguments):
               "fast": '"fastMode": true' in (after("--settings") or ""), "model": after("--model") or "",
               "effort": after("--effort") or "", "thinking": "--thinking-display" in arguments,
               "resume": next((part[len("--resume="):] for part in arguments if part.startswith("--resume=")), ""),
-              "gateway": '"skipWebFetchPreflight": true' in (after("--settings") or "")}
+              "gateway": '"skipWebFetchPreflight": true' in (after("--settings") or ""),
+              "overrides": _overrides(after("--settings"))}
     # A worker built the hook settings from its own reading of the administrator's Claude Code policy; rebuild the same
     # form here (the host decides the launch it runs from its own reading: runtime_plan).
     values["hooks_blocked"] = False if values["gateway"] else None
-    sound = (set(filter(None, tools.split(","))) <= {"WebSearch", "WebFetch"} and values["effort"] in CLAUDE_EFFORTS
+    sound = (values["overrides"] is not None
+             and set(filter(None, tools.split(","))) <= {"WebSearch", "WebFetch"} and values["effort"] in CLAUDE_EFFORTS
              and (not values["model"] or _MODEL.fullmatch(values["model"]))
              and (not values["resume"] or _RESUME.fullmatch(values["resume"])))
     if not sound or claude_arguments("", values)[1:] != arguments:
@@ -400,10 +435,10 @@ def launch_options(controller):
 
 def session_effort(provider, transport, owner, controller):
     """``apply_effort`` on ``provider``'s session with the effort ``controller``'s request launches with (``--effort``)."""
-    from .chat_settings import claude_effort, clean_options
+    from .chat_settings import clean_options, request_effort
     options = controller.turn_options or clean_options(controller.state.get("options"))
     return apply_effort(lambda message: provider._write(message, transport, owner=owner), transport,
-                        claude_effort(options["effort"]))
+                        request_effort(controller, options, "claude"))
 
 
 def discard_stderr(pipe):

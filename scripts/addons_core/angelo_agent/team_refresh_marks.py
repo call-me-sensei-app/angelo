@@ -41,7 +41,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import shared_replace
+from . import owned_paths, shared_replace
 from .team_access_share import fingerprint
 from .team_lock import Holder
 
@@ -118,9 +118,10 @@ class RefreshRecord:
         return {"v": _FORMAT, "accounts": {}}
 
     def _save(self, value):
-        if self.path is None:
+        if self.path is None:   # No folder: the marks are kept in memory, nothing is written.
             self._memory = value
             return
+        owned_paths.require_writable(self.path)
         data = json.dumps(value, separators=(",", ":"), sort_keys=True)
         temporary = self.path.with_name("%s.%d.tmp" % (NAME, os.getpid()))
         try:

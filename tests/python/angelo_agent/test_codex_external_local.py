@@ -7,6 +7,8 @@ this test, keys are synthetic, and profiles/workspaces are new temporary dirs.
 This proves native protocol/tool plumbing, not remote credentials or latency.
 """
 
+import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+
 import json
 import os
 import sys
@@ -94,12 +96,15 @@ class ExternalNativeRuntimeTests(unittest.TestCase):
                         calls.append((name, arguments))
                         callback({"success": True, "scene": "SyntheticLocalScene", "objects": []})
                     context = SimpleNamespace(state={"provider": mode, "native_id": None, "toolset_version": TOOLSET_VERSION,
-                            "options": clean_options({"model": model["id"], "effort": model["default_effort"]})},
+                            "options": clean_options({"model": model["id"]})},
                         store=SimpleNamespace(directory=Path(directory)), workspace=Path(directory), api_key=KEY,
-                        models=[model], turn_options=clean_options({"model": model["id"], "effort": model["default_effort"]}),
+                        models=[model], turn_options=clean_options({"model": model["id"]}),
                         turn_attachments=[], references=SimpleNamespace(codex_inputs=lambda attachments: []), cancelled=False,
                         voice=None, allowed_tools={"angelo_inspect_scene"}, emit=lambda kind, data=None: events.append((kind, data)), request_tool=request)
-                    provider = providers.CodexProvider(context, {"codex_path": executable, "reuse_codex_login": False})
+                    from angelo_agent import cli_runtime
+                    cli_runtime.choose(codex_path=executable)   # Preferences' pick: launches read it, never settings.
+                    self.addCleanup(cli_runtime.choose)
+                    provider = providers.CodexProvider(context, {"reuse_codex_login": False})
                     context.settings = provider.settings
                     begin = len(CAPTURE)
                     with patch("angelo_agent.providers.codex_command", side_effect=local_command), patch(

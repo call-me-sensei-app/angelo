@@ -37,6 +37,7 @@ os.environ.update(ANGELO_STATE_DIR=str(OUT / 'state'), ANGELO_CONNECTIONS_DIR=st
 sys.path.insert(0, str(ROOT / 'scripts/addons_core'))
 from angelo_agent import ui, console, chat_view, agent_workspace_ui, approval_review, native_programs, scene_queries, native_preview_images
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, inside the app.
+import qa_input  # noqa: E402  (chat_point: canvas points to window pixels, in event())
 import qa_operator  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor
 from angelo_agent.tool_specs import TOOL_MAP
@@ -122,8 +123,9 @@ def capture(name, dialog=False):
 def event(kind, value='PRESS', x=40, y=40):
     parts = context_parts()
     region = parts['region']
-    data = SimpleNamespace(type=kind, value=value, mouse_x=region.x + x, mouse_y=region.y + y,
-                           mouse_prev_y=region.y + y, ctrl=False, oskey=False, shift=False, alt=False, unicode='')
+    px, py = qa_input.chat_point(region, (x, y, 0, 0))   # Canvas points to window pixels, as the chat maps them back.
+    data = SimpleNamespace(type=kind, value=value, mouse_x=px, mouse_y=py,
+                           mouse_prev_y=py, ctrl=False, oskey=False, shift=False, alt=False, unicode='')
     with bpy.context.temp_override(**parts):
         return chat_view.ANGELO_OT_chat_input.modal(handler, bpy.context, data)
 
@@ -152,24 +154,90 @@ def review_details_published(call_id):
     parts = context_parts()
     area, region = parts['area'], parts['region']
     preview, details = approval_review.review_rows(
-        controller.pending[call_id], area.as_pointer(), max(40, region.width - 64),
-        max(12, int(area.spaces.active.font_size * 0.8)), chat_view._font, chat_view._mono, chat_view.wrap, True)
+        controller.pending[call_id], area.as_pointer(), *approval_review.canvas_geometry(area, region),
+        chat_view._font, chat_view._mono, chat_view.wrap, True)
     return bool(preview) and bool(details)
 
 
 def click(action, value=None):
+    dismiss_reports()
     redraw()
     area = context_parts()['area']
     hits = chat_view._views[area.as_pointer()]['hits']
     rect = next(rect for rect, found, argument in hits if found == action and (value is None or argument == value))
     x, y = rect[0] + rect[2] / 2, rect[1] + rect[3] / 2
-    event('LEFTMOUSE', 'PRESS', x, y)
+    import qa_input
+    if action in qa_input.GRANT_ACTIONS:   # Through the window: C mints its ticket only from a real press.
+        from angelo_agent import approval_arming
+        if action == 'accept_native_preview':   # The next phase reads the review this press opens (heartbeat waits).
+            state['awaiting_invoke'] = (len(state.get('invokes', [])), time.monotonic())
+        view = chat_view._views[area.as_pointer()]
+        qa_input.window_click(window, context_parts()['region'], rect, action,
+                              ready=lambda: approval_arming.view(view).key_armed((action, value)),
+                              scale=chat_view.ui_scale())
+        return
+    from angelo_agent.approval_arming import GRANTS
+    if action in GRANTS:   # Aimed, as a person aims (approval_arming): below it while its shield passes, then into it.
+        from angelo_agent import approval_arming
+        event('MOUSEMOVE', 'NOTHING', x, rect[1] - 6)
+        deadline = time.monotonic() + 10
+        while not approval_arming.view(chat_view._views[area.as_pointer()]).key_armed((action, value)) and time.monotonic() < deadline:
+            time.sleep(0.02)   # Until its shield has passed (the arming's own signal), capped against a hang.
+    event('MOUSEMOVE', 'NOTHING', x, y)   # Every click arrives where the pointer is, as a person's does: an aimed
+    event('LEFTMOUSE', 'PRESS', x, y)     # click on a card elsewhere (close_dialog) left it there.
     event('LEFTMOUSE', 'RELEASE', x, y)
 
 
+def report_open():
+    """Whether Blender's report popup (an error the person reads) is open in the window."""
+    from _bpy import _angelo_jobs
+    return any(pointer == window.as_pointer() and text.startswith('Report:')
+               for pointer, _block, text, *_rest in _angelo_jobs.popup_buttons())
+
+
+def dismiss_reports():
+    """Blender's report popup (an error the person reads: a rejected stale Accept) takes the next click, so the person
+    closes it first: Escape, queued ahead of the press that follows."""
+    if report_open():
+        window.event_simulate(type='ESC', value='PRESS')
+        window.event_simulate(type='ESC', value='RELEASE')
+        state['reports_dismissed'] = state.get('reports_dismissed', 0) + 1
+
+
 def close_dialog(confirm=True):
-    window.event_simulate(type='RET' if confirm else 'ESC', value='PRESS')
-    window.event_simulate(type='RET' if confirm else 'ESC', value='RELEASE')
+    """Escape cancels the review card; Accept is the card's own button, aimed at as a person aims (Return with
+    nothing focused accepts nothing since 2.0.0: approval_arming). Blender's own dialog: a press on its confirm."""
+    if not confirm:
+        window.event_simulate(type='ESC', value='PRESS')
+        window.event_simulate(type='ESC', value='RELEASE')
+        return
+    import qa_input
+    from _bpy import _angelo_jobs
+    from angelo_agent import card_host
+    dismiss_reports()
+    confirms = ('Save Brief', 'Close', 'Restore', 'OK')   # The confirm labels of the dialogs this suite opens.
+
+    def confirm():   # Blender's own dialog's confirm button, read at the press (the person presses it).
+        found = [(x, y, w, h) for pointer, _block, text, _idname, x, y, w, h in _angelo_jobs.popup_buttons()
+                 if pointer == window.as_pointer() and text in confirms and w > 0 and h > 0]
+        x, y, w, h = found[0]
+        return x + w / 2, y + h / 2
+    if card_host._active is None and any(pointer == window.as_pointer()
+                                         for pointer, *_ in _angelo_jobs.popup_buttons()):
+        qa_input.press(window, confirm)   # The brief, the performance summary, a restore: a stock dialog.
+        return
+
+    def accept():   # Read at the click: the card shows a moment after the operator asked for it.
+        shown = card_host._active
+        area = next(a for a in window.screen.areas if a.as_pointer() == shown.area)
+        region = next(r for r in area.regions if r.type == 'WINDOW')
+        rect = next(r for r, action, _value in shown.plan.hits if action == 'accept')
+        return region.x + rect[0], region.y + rect[1], rect[2], rect[3]
+
+    def ready():   # The arming's own signal that Accept's shield has passed where it is drawn (card_host_input).
+        shown = card_host._active
+        return shown is not None and shown.arming is not None and shown.arming.key_armed(('accept', None))
+    qa_input.aim(window, accept, ready=ready)
 
 
 def track_dialog(class_name):
@@ -177,8 +245,20 @@ def track_dialog(class_name):
     original = cls.invoke
     def invoke(operator, context, event):
         state['dialogs'][class_name] = operator
-        return original(operator, context, event)
+        result = original(operator, context, event)
+        state.setdefault('invokes', []).append((class_name, sorted(result)))   # A failure says how each invoke ended.
+        return result
     cls.invoke = invoke
+    from angelo_agent import review_card
+    if not getattr(review_card.ReviewAcceptCard.act, 'tracked', False):   # Each action the card took, and from where.
+        act = review_card.ReviewAcceptCard.act
+
+        def tracked(card, action, value, host):
+            import qa_input
+            state.setdefault('card_actions', []).append((action, qa_input.sent[-1:] if qa_input.sent else None))
+            return act(card, action, value, host)
+        tracked.tracked = True
+        review_card.ReviewAcceptCard.act = tracked
 
 
 def create_program(name='Workspace UI staged cube'):
@@ -261,6 +341,14 @@ def heartbeat():
             return .5
         if not qa_boot.started():
             return .05
+        if state.get('awaiting_invoke'):   # A press is handled a pass after it is sent: its invoke first.
+            count, since = state['awaiting_invoke']
+            if len(state.get('invokes', [])) <= count:
+                if time.monotonic() - since > 10:
+                    raise AssertionError('Accept opened no review: invokes %r, presses %r' % (
+                        state.get('invokes'), __import__('qa_input').sent))
+                return .05
+            state.pop('awaiting_invoke')
         area = context_parts()['area']
         source = chat_view._views.setdefault(area.as_pointer(), {})
         if phase == 'layout':
@@ -350,12 +438,40 @@ def heartbeat():
             state['phase'] = 'unchecked_closed'
             return .35
         elif phase == 'unchecked_closed':
+            # The unconfirmed Accept says why in Blender's report popup; the person's next click would close it, so
+            # they close it first (Escape), then Accept again.
+            from _bpy import _angelo_jobs
+            said = [text for _w, _b, text, *_rest in _angelo_jobs.popup_buttons()]
+            if not any('Open the exact preview review' in text for text in said):
+                state.setdefault('report_wait', time.monotonic())
+                if time.monotonic() - state['report_wait'] < 5:
+                    return .1
+            check('unchecked_accept_says_why', any('Open the exact preview review' in text for text in said))
             check('unchecked_confirmation_never_commits', not controller.busy and bpy.data.objects.get('Workspace UI staged cube') is None)
+            window.event_simulate(type='ESC', value='PRESS')
+            window.event_simulate(type='ESC', value='RELEASE')
+            state['phase'] = 'unchecked_dismissed'
+            return .2
+        elif phase == 'unchecked_dismissed':
+            from _bpy import _angelo_jobs
+            if any(pointer == window.as_pointer() for pointer, *_rest in _angelo_jobs.popup_buttons()):
+                state.setdefault('dismiss_wait', time.monotonic())
+                if time.monotonic() - state['dismiss_wait'] > 5:
+                    raise AssertionError('The report popup stayed open after Escape')
+                return .1
             click('accept_native_preview')
             state['phase'] = 'confirmed_review'
             return .3
         elif phase == 'confirmed_review':
-            state['dialogs']['ANGELO_OT_accept_native_preview'].review_confirmed = True
+            from angelo_agent import card_host
+            try:
+                state['dialogs']['ANGELO_OT_accept_native_preview'].review_confirmed = True
+            except ReferenceError:   # The second Accept opened no review that is still waiting: say how it ended.
+                import qa_input
+                raise AssertionError('No review is waiting after the second Accept: invokes %r, card actions %r, '
+                                     'aimed presses %r, card %r' % (
+                                         state.get('invokes'), state.get('card_actions'), qa_input.sent,
+                                         getattr(card_host.active_card(), 'kind', None))) from None
             close_dialog()
             state['phase'] = 'await_commit'
         elif phase == 'await_commit' and not controller.busy and bpy.data.objects.get('Workspace UI staged cube') is None:
@@ -451,6 +567,9 @@ def heartbeat():
             close_dialog()
             state['phase'] = 'stale_rejected'
             return .4
+        elif phase == 'stale_rejected' and report_open():
+            dismiss_reports()   # The rejection says why in a report; the person closes it before going on.
+            return .3
         elif phase == 'stale_rejected':
             check('fresh_revision_rejects_stale_accept_without_overwrite', abs(bpy.data.objects['Cube'].location.x - .25) < 1e-7 and not controller.busy)
             check('factory_fixture_never_started_a_provider', all(c.provider is None for c in ui._controllers.values()))
@@ -475,7 +594,15 @@ def heartbeat():
             state['phase'] = 'every_restored'
             return .5
         elif phase == 'every_restored':
-            check('every_request_restore_reverts_manual_edit_after_request', abs(bpy.data.objects['Cube'].location.x - state['every_x']) < 1e-7)
+            restored = abs(bpy.data.objects['Cube'].location.x - state['every_x']) < 1e-7
+            if not restored and time.monotonic() - state.setdefault('restore_wait', time.monotonic()) < 10:
+                return .2   # The restore loads the snapshot: read once it has.
+            if not restored:
+                from _bpy import _angelo_jobs
+                state['restore_left_open'] = [(t, i, int(w), int(h)) for _p, _b, t, i, _x, _y, w, h
+                                              in _angelo_jobs.popup_buttons() if t or i]
+                print('Angelo QA: no restore; open popup texts', state['restore_left_open'], flush=True)
+            check('every_request_restore_reverts_manual_edit_after_request', restored)
             check('native_restore_rebinds_readable_chat_fonts', blf.dimensions(chat_view._font, 'Composer draft stays visible')[0] > 0)
             controller._turn_checkpoint_policy = {'capture_mode': 'BEFORE_FIRST_EDIT'}
             request = {'role': 'user', 'text': 'Deferred native-staging restore-boundary fixture', 'checkpoint_scope': 'before_first_approved_edit'}
@@ -580,4 +707,5 @@ def heartbeat():
         return finish(traceback.format_exc())
 
 
-bpy.app.timers.register(heartbeat, first_interval=.3, persistent=True)
+import qa_input  # noqa: E402  (aimed clicks: qa_input.aim)
+bpy.app.timers.register(qa_input.after_clicks(heartbeat), first_interval=.3, persistent=True)   # An aimed click lands first.

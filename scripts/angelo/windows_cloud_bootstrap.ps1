@@ -12,20 +12,46 @@
   also copied to gs://<angelo-bucket>/logs/ so progress is visible from outside; the final results go
   to gs://<angelo-bucket>/result/ and the last object written there is DONE.
 
-  Metadata it reads: angelo-bucket (required), angelo-libs-sha (the pinned lib-windows_x64 commit),
-  angelo-gpu (1 to install the NVIDIA GRID driver), angelo-stages, and angelo-hold-minutes (above zero: run remote
-  commands from the bucket before powering off, windows_command_queue.ps1). The 'release' stage (the full-feature
-  build, windows_release_validate.ps1) also installs the GPU toolkits found in gs://<angelo-bucket>/toolkits/
+  Metadata it reads: angelo-bucket (required), angelo-libs-sha (the pinned lib-windows_x64 commit), angelo-gpu (1 to
+  install the NVIDIA GRID driver), angelo-stages, and angelo-hold-minutes (above zero: run remote commands from the
+  bucket before powering off, windows_command_queue.ps1 through angelo-queue-loader). The 'release' stage (the full-
+  feature build, windows_release_validate.ps1) also installs the GPU toolkits found in gs://<angelo-bucket>/toolkits/
   (windows_toolkits.ps1: each installer's signature is checked first; angelo-cuda-components and angelo-hip-args
-  override their installers' arguments), brings the libraries to
-  angelo-libs-sha, fetches the agent runtime from gs://<angelo-bucket>/agent-runtime/ (put there by
-  `gcp_windows_validate.sh agent-runtime`; checked against its SHA256SUMS) into C:\angelo\agent-runtime as
-  ANGELO_AGENT_RUNTIME_DIR, and passes angelo-release-allow-missing (parts joined by +) to the build. It never reads or stores credentials: the VM's
-  service account can only reach that one bucket. Not run on a real VM before its first use: read the
-  logs rather than trusting a green status.
+  override their installers' arguments), brings the libraries to angelo-libs-sha, fetches the agent runtime from
+  gs://<angelo-bucket>/agent-runtime/ (put there by `gcp_windows_validate.sh agent-runtime`; checked against its
+  SHA256SUMS) into C:\angelo\agent-runtime as ANGELO_AGENT_RUNTIME_DIR, and passes angelo-release-allow-missing (parts
+  joined by +) to the build. It never reads or stores credentials: the VM's service account can only reach that one
+  bucket. Not run on a real VM before its first use: read the logs rather than trusting a green status.
 #>
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+# Invoke-NativeCapture, byte for byte windows_native_call.ps1's (this startup script runs before a checkout exists):
+# every program whose error output is redirected runs through it (test_native_windows_native_call.py).
+$NativeCallDefinition = @'
+function Invoke-NativeCapture([string]$Exe, [string[]]$Arguments = @(), [string[]]$InputText = $null, [string]$Log = "") {
+    if (-not (Get-Command $Exe -ErrorAction SilentlyContinue)) {
+        $said = "$Exe was not found"
+        return [pscustomobject]@{ Code = -1; Out = @(); Err = @($said); Lines = @($said); Text = $said }
+    }
+    $writer = $null
+    if ($Log) {
+        $stream = New-Object IO.FileStream($Log, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
+        $writer = New-Object IO.StreamWriter($stream, [Text.Encoding]::Unicode); $writer.AutoFlush = $true
+    }
+    $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    try {
+        $each = { if ($writer) { $line = "$_"; $writer.WriteLine($line); Write-Host $line }; $_ }
+        if ($null -ne $InputText) { $records = @($InputText | & $Exe @Arguments 2>&1 | ForEach-Object $each) }
+        else { $records = @(& $Exe @Arguments 2>&1 | ForEach-Object $each) }
+        $code = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $old; if ($writer) { $writer.Dispose() } }
+    $out = @($records | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
+    $err = @($records | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
+    $lines = @($records | ForEach-Object { "$_" })   # Both, in the order the program wrote them.
+    return [pscustomobject]@{ Code = $code; Out = $out; Err = $err; Lines = $lines; Text = ($lines -join "`r`n") }
+}
+'@
+. ([scriptblock]::Create($NativeCallDefinition))
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $root = "C:\angelo"
@@ -97,7 +123,7 @@ try {
                 if ($item.PSIsContainer) { [IO.Directory]::Delete("\\?\" + $item.FullName, $true) }   # Does not follow links.
                 else { [IO.File]::Delete($item.FullName) }
             } catch {
-                if ($item.PSIsContainer) { & cmd.exe /d /c "rd /s /q `"\\?\$($item.FullName)`"" 2>&1 | Out-Null }
+                if ($item.PSIsContainer) { [void](Invoke-NativeCapture cmd.exe @("/d", "/c", "rd /s /q `"\\?\$($item.FullName)`"")) }
             }
             $gone = -not (Test-Path -LiteralPath $item.FullName)
             $hygiene += ("{0} {1:N2} GB {2}" -f $(if ($gone) { "removed" } else { "NOT REMOVED" }), ($bytes / 1GB), $item.FullName)
@@ -142,13 +168,13 @@ function Sync-Logs {
         Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
         New-Item -ItemType Directory $tmp | Out-Null
         Get-ChildItem $logs -File | ForEach-Object { Copy-Item $_.FullName $tmp -ErrorAction SilentlyContinue }
-        & $gcloud storage cp --quiet "$tmp\*" "gs://$bucket/logs/" 2>&1 | Out-Null
+        [void](Invoke-NativeCapture $gcloud @("storage", "cp", "--quiet", "$tmp\*", "gs://$bucket/logs/"))
     } catch { } finally { $ErrorActionPreference = $old }
 }
 function Upload-Results {
     $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
     $folder = Join-Path $root "results"
-    if (Test-Path $folder) { & $gcloud storage cp --quiet --recursive "$folder\*" "gs://$bucket/result/" 2>&1 | Out-Null }
+    if (Test-Path $folder) { [void](Invoke-NativeCapture $gcloud @("storage", "cp", "--quiet", "--recursive", "$folder\*", "gs://$bucket/result/")) }
     $ErrorActionPreference = $old
 }
 function Stage-Done([string]$Name) { Test-Path (Join-Path $state "$Name.done") }
@@ -176,8 +202,8 @@ function Add-MissingVsParts {
     $vswhere = Join-Path $installer "vswhere.exe"; if (-not (Test-Path $vswhere)) { return }
     $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
     try {
-        $has = { param($Parts) @(& $vswhere -products * -version "[17.0,18.0)" -requires @Parts -property installationPath 2>$null) }
-        foreach ($path in @(& $vswhere -products * -version "[17.0,18.0)" -property installationPath 2>$null)) {
+        $has = { param($Parts) @((Invoke-NativeCapture $vswhere (@("-products", "*", "-version", "[17.0,18.0)", "-requires") + @($Parts) + @("-property", "installationPath"))).Out) }
+        foreach ($path in @((Invoke-NativeCapture $vswhere @("-products", "*", "-version", "[17.0,18.0)", "-property", "installationPath")).Out)) {
             if ((& $has $vsParts) -contains $path) { continue }
             $missing = @($vsParts | Where-Object { -not ((& $has @($_)) -contains $path) })
             Write-Host "== Visual Studio at $path lacks $($missing -join ', '): adding them"
@@ -194,25 +220,27 @@ function Add-MissingVsParts {
 
 # A background job keeps the bucket's copy of the logs fresh while the long stages run.
 $syncer = Start-Job -ScriptBlock {
-    param($gcloud, $logs, $bucket, $root)
+    param($gcloud, $logs, $bucket, $root, $NativeCallDefinition)
     $ErrorActionPreference = "Continue"
+    . ([scriptblock]::Create($NativeCallDefinition))   # A job's own runspace: the helper is loaded again here.
     while ($true) {
         Start-Sleep 90
         $tmp = Join-Path $root "logs-upload-job"
         Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
         New-Item -ItemType Directory $tmp | Out-Null
         Get-ChildItem $logs -File | ForEach-Object { Copy-Item $_.FullName $tmp -ErrorAction SilentlyContinue }
-        & $gcloud storage cp --quiet "$tmp\*" "gs://$bucket/logs/" 2>&1 | Out-Null
+        [void](Invoke-NativeCapture $gcloud @("storage", "cp", "--quiet", "$tmp\*", "gs://$bucket/logs/"))
     }
-} -ArgumentList $gcloud, $logs, $bucket, $root
+} -ArgumentList $gcloud, $logs, $bucket, $root, $NativeCallDefinition
 
 # A second job, never stopped by a stage, proves the run alive and moving to the Mac's wait (gcp_windows_validate.sh
 # wait_off): every 5 minutes gs://<bucket>/live/HEARTBEAT holds the time, the last write in any folder a stage writes
 # (progress; windows_final_runs.ps1's bench\state, bench\out, bench\campaign-<candidate> too, never a load sample, which a
 # hung trial keeps writing) and the newest log's tail. A stage that hangs keeps the heartbeat but stops the progress.
 $heartbeat = Start-Job -ScriptBlock {
-    param($gcloud, $logs, $bucket, $root)
+    param($gcloud, $logs, $bucket, $root, $NativeCallDefinition)
     $ErrorActionPreference = "Continue"
+    . ([scriptblock]::Create($NativeCallDefinition))   # A job's own runspace: the helper is loaded again here.
     $watched = @($logs, "state", "results", "download", "bench\download", "bench\ab\out", "bench\state", "bench\out",
                  "bench\campaign-*") | ForEach-Object { if ($_ -eq $logs) { $_ } else { Join-Path $root $_ } }
     while ($true) {
@@ -230,11 +258,11 @@ $heartbeat = Start-Job -ScriptBlock {
             Set-Content $file (@(("at: " + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()), "progress: $progress", "free_gb: $free",
                                  ("newest: " + $(if ($newest) { $newest.FullName } else { "none" })),
                                  ("log: " + $(if ($log) { $log.Name } else { "none" })), "--") + $tail)
-            & $gcloud storage cp --quiet $file "gs://$bucket/live/HEARTBEAT" 2>&1 | Out-Null
+            [void](Invoke-NativeCapture $gcloud @("storage", "cp", "--quiet", $file, "gs://$bucket/live/HEARTBEAT"))
         } catch { }
         Start-Sleep 300
     }
-} -ArgumentList $gcloud, $logs, $bucket, $root
+} -ArgumentList $gcloud, $logs, $bucket, $root, $NativeCallDefinition
 
 try {
     # A send needs room: starting below angelo-min-free-gb (the sender sets it on every send; 30 by default) free on
@@ -256,11 +284,8 @@ try {
     # --- 1. GPU driver (NVIDIA GRID / RTX Virtual Workstation) ---------------------------------------
     if ($wantGpu -and -not (Stage-Done "driver")) {
         Write-Host "== stage: GPU driver"
-        # A hidden stderr line under Stop would end the script (Windows PowerShell 5.1 makes it an error record).
-        $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        $name = & $gcloud storage ls "gs://nvidia-drivers-us-public/GRID/vGPU20.2/" 2>$null |
+        $name = (Invoke-NativeCapture $gcloud @("storage", "ls", "gs://nvidia-drivers-us-public/GRID/vGPU20.2/")).Out |
             Where-Object { $_ -match "grid_win10_win11_server2022.*international\.exe$" } | Select-Object -First 1
-        $ErrorActionPreference = $old
         if (-not $name) { throw "no Windows GRID driver found in the public bucket" }
         $installer = Join-Path $root "grid-driver.exe"
         & $gcloud storage cp --quiet $name $installer
@@ -385,73 +410,47 @@ try {
         Remove-Item $results -Recurse -Force -ErrorAction SilentlyContinue
         New-Item -ItemType Directory -Force $results | Out-Null
         $code = 0
-        # Every check script runs with its output merged (*>&1): a stderr line of one of its programs would be an error
-        # record, which under this script's Stop preference ends the stage early. Each runs under Continue; its exit
-        # code decides.
+        # Every check script runs through Invoke-NativeCapture -Log (its output merged and logged as it arrives): a stderr
+        # line of one of its programs would otherwise be an error record, which under this script's Stop preference ends
+        # the stage early. Its exit code decides; a script that could not run counts as failed.
+        function Invoke-CheckScript([string]$Name, [string[]]$Arguments, [string]$Log, [string]$What) {
+            try {
+                $ran = Invoke-NativeCapture powershell.exe (@("-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                    (Join-Path $src "scripts\angelo\$Name")) + @($Arguments)) -Log (Join-Path $logs $Log)
+                if ($ran.Code -ne 0) { $script:code = $ran.Code }
+            } catch { Write-Host "$What failed: $_"; $script:code = 1 }
+        }
         if ($stages -contains "identity") {
-            $ErrorActionPreference = "Continue"
-            try {
-                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $src "scripts\angelo\windows_validate.ps1") `
-                    -SourceDir $src -SkipLibs -MakeArgs 2022b -ResultsDir $results @stockArgs *>&1 | Tee-Object (Join-Path $logs "validate.log")
-                if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
-            } catch { Write-Host "validate failed: $_"; $code = 1 }
-            finally { $ErrorActionPreference = "Stop" }
+            Invoke-CheckScript "windows_validate.ps1" (@("-SourceDir", $src, "-SkipLibs", "-MakeArgs", "2022b", "-ResultsDir", $results) +
+                @($stockArgs)) "validate.log" "validate"
         }
-        if ($stages -contains "teams") {
-            $ErrorActionPreference = "Continue"
-            try {
-                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $src "scripts\angelo\windows_teams_validate.ps1") `
-                    -SourceDir $src -ResultsDir $results *>&1 | Tee-Object (Join-Path $logs "teams.log")
-                if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
-            } catch { Write-Host "teams checks failed: $_"; $code = 1 }
-            finally { $ErrorActionPreference = "Stop" }
-        }
+        if ($stages -contains "teams") { Invoke-CheckScript "windows_teams_validate.ps1" @("-SourceDir", $src, "-ResultsDir", $results) "teams.log" "teams checks" }
         if ($stages -contains "agent") {
             # The agent's Windows checks without a desktop: host suite, storage suites, NTFS, BACKGROUND native suites.
             $agentArgs = @("-SourceDir", $src, "-ResultsDir", (Join-Path $results "agent"))
             if ($stages -contains "identity") { $agentArgs += "-SkipBuild" }   # windows_validate.ps1 just built it
-            # Its programs write to stderr; under this script's Stop preference that would end the stage early.
-            $ErrorActionPreference = "Continue"
-            try {
-                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $src "scripts\angelo\windows_agent_validate.ps1") `
-                    @agentArgs *>&1 | Tee-Object (Join-Path $logs "agent.log")
-                if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
-            } catch { Write-Host "agent checks failed: $_"; $code = 1 }
-            finally { $ErrorActionPreference = "Stop" }
+            Invoke-CheckScript "windows_agent_validate.ps1" $agentArgs "agent.log" "agent checks"
         }
         if ($stages -contains "release") {
             # The full-feature build (blender_release, every GPU device), its MSI and the BACKGROUND native suites on it.
-            $ErrorActionPreference = "Continue"
-            # -AllowMissing only when set: PowerShell drops an empty argument to a program, and the script's parameter
-            # then has no value (the first full-feature run stopped there before building).
+            # -AllowMissing only when set (PowerShell drops an empty argument, leaving the parameter without a value);
+            # angelo-release-dlss (on/off) reaches the build as ANGELO_RELEASE_DLSS (windows_release_toolchain.ps1).
             $releaseArgs = @("-SourceDir", $src, "-ResultsDir", (Join-Path $results "release"))
-            $allowMissing = Get-Meta "angelo-release-allow-missing" ""
+            $allowMissing = Get-Meta "angelo-release-allow-missing" ""; $env:ANGELO_RELEASE_DLSS = Get-Meta "angelo-release-dlss" ""
             if ($allowMissing) { $releaseArgs += @("-AllowMissing", $allowMissing) }
-            try {
-                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $src "scripts\angelo\windows_release_validate.ps1") `
-                    @releaseArgs *>&1 | Tee-Object (Join-Path $logs "release.log")
-                if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
-            } catch { Write-Host "release stage failed: $_"; $code = 1 }
-            finally { $ErrorActionPreference = "Stop" }
+            Invoke-CheckScript "windows_release_validate.ps1" $releaseArgs "release.log" "release stage"
         }
         if ($stages -contains "release") { Upload-Results }   # release-results.json now: wait-off stops on a FAIL
-        if ($stages -contains "thumbs") {
-            $ErrorActionPreference = "Continue"
-            try {
-                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $src "scripts\angelo\windows_thumbnailer_build.ps1") `
-                    -SourceDir $src -ResultsDir $results *>&1 | Tee-Object (Join-Path $logs "thumbs.log")
-                if ($LASTEXITCODE -ne 0) { $code = $LASTEXITCODE }
-            } catch { Write-Host "thumbnailer build failed: $_"; $code = 1 }
-            finally { $ErrorActionPreference = "Stop" }
-        }
+        if ($stages -contains "thumbs") { Invoke-CheckScript "windows_thumbnailer_build.ps1" @("-SourceDir", $src, "-ResultsDir", $results) "thumbs.log" "thumbnailer build" }
         Set-Content (Join-Path $state "validate.exit") $code
         Report-Leftovers $src "validate"
         Stage-Mark "validate"
     }
 
-    # --- 4a. Remote commands before the desktop stage (validation work; windows_command_queue.ps1) ----------
+    # --- 4a. Remote commands before the desktop stage: the queue tool as the sender's windows_queue_loader.ps1 picks it
     $holdMinutes = [int](Get-Meta "angelo-hold-minutes" "0")
-    if ($holdMinutes -gt 0) { . (Join-Path $src "scripts\angelo\windows_command_queue.ps1") }
+    $loader = Get-Meta "angelo-queue-loader" ". (Join-Path `$src 'scripts\angelo\windows_command_queue.ps1')"
+    if ($holdMinutes -gt 0) { . ([ScriptBlock]::Create($loader)) }
     if ($holdMinutes -gt 0 -and -not (Stage-Done "hold")) {
         Upload-Results
         Write-Host "== stage: hold (remote commands from gs://$bucket/cmd/, released by cmd-release or $holdMinutes idle minutes)"
@@ -483,9 +482,9 @@ try {
     $ErrorActionPreference = "Continue"   # On a full disk the file may not be written: the text goes up from memory.
     Set-Content (Join-Path $root "FAILED") $failedText -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath (Join-Path $root "FAILED")) {
-        & $gcloud storage cp --quiet (Join-Path $root "FAILED") "gs://$bucket/result/FAILED" 2>&1 | Out-Null
+        [void](Invoke-NativeCapture $gcloud @("storage", "cp", "--quiet", (Join-Path $root "FAILED"), "gs://$bucket/result/FAILED"))
     } else {
-        $failedText | & $gcloud storage cp --quiet - "gs://$bucket/result/FAILED" 2>&1 | Out-Null
+        [void](Invoke-NativeCapture $gcloud @("storage", "cp", "--quiet", "-", "gs://$bucket/result/FAILED") -InputText $failedText)
     }
     $failedRun = $true
 } finally {

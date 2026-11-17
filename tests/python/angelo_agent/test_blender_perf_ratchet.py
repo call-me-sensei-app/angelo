@@ -21,7 +21,10 @@ the suite fails with the load it saw. Operations whose run spread exceeds a
 third of their tolerance are ``noisy`` (``perf_ratchet``): with
 ``--baseline-binary`` (the last stamped build) the suite decides them with an
 interleaved ABAB (``perf_abab``); without it they fail the gate with that
-advice. The receipt keeps each operation's spread, validity, unit, source
+advice. With it, an instruction count over its ceiling is run in the same ABAB
+and judged side by side (``perf_side_by_side``, maintainer 2026-11-12): a native
+read, or one the stamped build no longer reproduces, passes when its B/A is
+within its tolerance. The receipt keeps each operation's spread, validity, unit, source
 benchmark and the values reported beside the ratcheted ones, never compared (gross
 counts, the snapshot paired net).
 
@@ -92,11 +95,9 @@ def sha256(path):
 
 
 def commit():
-    try:
-        return subprocess.run(["git", "-C", str(perf_ratchet.ROOT), "rev-parse", "HEAD"], capture_output=True,
-                              text=True, timeout=20).stdout.strip() or None
-    except (OSError, subprocess.TimeoutExpired):
-        return None
+    """This tree's own HEAD, or None: never the HEAD of a repository around it (own_checkout)."""
+    import own_checkout
+    return own_checkout.revision(perf_ratchet.ROOT)
 
 
 QUIET = {"limit": perf_counters.QUIET_LOAD, "timeout_s": 1200}
@@ -221,7 +222,9 @@ def main(argv=None):
             measured, run_details = perf_ratchet.load_results(receipt)[1], perf_ratchet.load_details(receipt)
             rows = perf_ratchet.compare(ceilings, platform, measured, run_details)
             noisy = {row["operation"]: row["tolerance"] for row in rows if row["status"] == "noisy"}
-            if noisy and args.baseline_binary:
+            # And every ceiling regression, judged side by side (perf_side_by_side; maintainer 2026-11-12).
+            judged = dict(noisy, **perf_ratchet.side_by_side_candidates(rows))
+            if judged and args.baseline_binary:
                 problem = perf_abab.baseline_problem(ceilings, platform, sha256(args.baseline_binary),
                                                      perf_ratchet.binary_uuid(args.baseline_binary), args.baseline_approval)
                 receipt["abab_baseline"] = {"binary": args.baseline_binary, "sha256": sha256(args.baseline_binary),
@@ -230,9 +233,10 @@ def main(argv=None):
                 if problem:
                     receipt["problems"].append("ABAB refused: " + problem)
                 else:
-                    receipt["abab"] = abab_for(out, Path(args.baseline_binary), binary, receipt, noisy)
+                    receipt["abab"] = abab_for(out, Path(args.baseline_binary), binary, receipt, judged)
                     receipt["abab_verdicts"] = {name: entry["verdict"] for name, entry in receipt["abab"].items()}
-                    rows = perf_ratchet.compare(ceilings, platform, measured, run_details, receipt["abab_verdicts"])
+                    rows = perf_ratchet.compare(ceilings, platform, measured, run_details, receipt["abab_verdicts"],
+                                                side_by_side=receipt["abab"])
         except (OSError, ValueError) as error:
             receipt["problems"].append("Cannot compare with the ceilings: %s" % error)
         else:

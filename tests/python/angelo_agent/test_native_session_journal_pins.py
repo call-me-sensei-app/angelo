@@ -10,6 +10,7 @@ badges, and the purity the writer's task-memory cache relies on.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import os
@@ -276,12 +277,12 @@ class WriterTests(Case):
             if not raced and os.fstat(descriptor).st_ino == self.store.path.stat().st_ino:
                 raced.append(threading.Thread(target=rewrite_elsewhere))
                 raced[0].start()
-                raced[0].join(0.2)
+                raced[0].join(0.2)  # window: the rewrite must still be waiting after it
                 self.assertTrue(raced[0].is_alive(), "the rewrite waits for the append's lock")
             return write(descriptor, data)
         with patch.object(session_journal.os, "write", other_app_starts_its_rewrite):
             self.edit(2)
-        raced[0].join(5)
+        raced[0].join(CAP_S)
         self.assertEqual(outcome, ["refused"])
         self.assertEqual(self.store.last_write, "append")
         self.assertIn(self.state["id"] + "/call-2", read_transcript(self.store.path)["invocations"]["entries"])

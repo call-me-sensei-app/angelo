@@ -34,6 +34,7 @@ request. Writes program-names.json in ANGELO_QA_DIR.
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+from qa_person import as_person  # noqa: E402  The person's own action (C's harness scope).
 
 import contextlib
 import json
@@ -181,7 +182,7 @@ def production_call(controller, name, tool, arguments, commit=True, before_commi
     for _ in range(400):
         controller.pump_tools(executor, document, budget=ToolDispatchBudget(seconds=60))
         if call.approval and not call.authorized and not responses:
-            controller.approve_tool(call, executor, document)
+            as_person(controller.approve_tool, call, executor, document)
             continue
         job = controller.native_jobs.get(call.id)
         if responses or job is not None and job.ready_to_commit:

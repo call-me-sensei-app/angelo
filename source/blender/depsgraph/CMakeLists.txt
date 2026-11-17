@@ -186,6 +186,7 @@ if(WITH_GTESTS)
     intern/depsgraph_angelo_upstream_test.cc
     intern/depsgraph_angelo_upstream_test_fixture.hh
     intern/depsgraph_query_foreach_test.cc
+    intern/depsgraph_query_iter_test.cc
     intern/node/deg_node_component_test.cc
   )
   set(TEST_LIB

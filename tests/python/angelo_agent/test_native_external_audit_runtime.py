@@ -9,6 +9,7 @@ no signal (``test_native_runtime_bindings``).
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import sys
@@ -88,7 +89,7 @@ class LaunchInFlightEndsWithItsService(Case):
 
         def spawn(command, env, cwd):
             entered.set()
-            gate.wait(10)
+            gate.wait(CAP_S)
             process = FakeProcess()
             spawned.append(process)
             return process
@@ -106,10 +107,10 @@ class LaunchInFlightEndsWithItsService(Case):
                 outcome.append(error)
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
-        self.assertTrue(entered.wait(10))
+        self.assertTrue(entered.wait(CAP_S))
         cancel()
         gate.set()
-        thread.join(10)
+        thread.join(CAP_S)
         self.assertFalse(thread.is_alive())
         self.assertEqual(len(spawned), 1)
         self.assertFalse(spawned[0].alive, "the child spawned during the cancel still runs")
@@ -149,10 +150,10 @@ class LaunchInFlightEndsWithItsService(Case):
         thread = threading.Thread(target=lambda: result.append(self.service.launch(
             {"op": "runtime.launch", "session": A}, self.hosted[A])), daemon=True)
         thread.start()
-        self.assertTrue(entered.wait(10))
+        self.assertTrue(entered.wait(CAP_S))
         self.service.kill_session(B)
         gate.set()
-        thread.join(10)
+        thread.join(CAP_S)
         self.assertTrue(result and result[0]["ok"])
         self.assertTrue(spawned[0].alive)
 

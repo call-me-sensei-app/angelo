@@ -8,6 +8,7 @@ These fixtures prove the host's arithmetic and wording, not a provider's reporti
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import sys
@@ -157,7 +158,7 @@ class LedgerTests(unittest.TestCase):
         ledger = self.ledger()
         for _ in range(50):
             ledger.add("chat", receipt())
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             path = Path(self.temp.name) / "usage.json"
             if path.exists() and json.loads(path.read_text())["chats"]["chat"]["modes"]["claude_api"]["requests"] == 50:

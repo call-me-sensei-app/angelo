@@ -120,7 +120,10 @@ class SourceTests(unittest.TestCase):
         # angelo.settings' tooltip ("Connection setup lives here, not in the chat editor") is about the chat.
         tree = ast.parse((ADDON / "flow_ui.py").read_text())
         operator = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "ANGELO_OT_flow_connect")
-        tooltip = ast.get_docstring(operator)
+        # The tooltip Blender shows is the class's bl_description. It shows a docstring only for a class that sets
+        # none, and no registered class leaves its tooltip to one (test_native_translation_class_text).
+        tooltip = next(statement.value.value for statement in operator.body if isinstance(statement, ast.Assign)
+                       and getattr(statement.targets[0], "id", "") == "bl_description")
         self.assertIn("AI Providers", tooltip)
         self.assertIn("generation account", tooltip)
         self.assertIn("ANGELO_OT_flow_connect", self.source("flow_ui.py", "\nCLASSES =", ")\n"))

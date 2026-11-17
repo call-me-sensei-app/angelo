@@ -7,6 +7,7 @@ unbilled stdio fixture: no Claude process, credentials or inference.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import copy
 from contextlib import ExitStack
@@ -377,8 +378,10 @@ class TurnBlockTests(unittest.TestCase):
 
 class OfflineClaude(ClaudeProvider):
     def connect(self):
-        self.executable, self.env = "claude", {"FIXTURE": "only"}
         return self.controller.state["native_id"]
+
+    def launch_inputs(self, controller):   # Built at each start in the app (providers.claude_launch).
+        return "claude", {"FIXTURE": "only"}
 
 
 class ProgramExecutor:
@@ -455,7 +458,7 @@ class ControllerFixture(unittest.TestCase):
         controller = controller or self.c
         controller.send(text, LEGACY_OBSERVATION if observation is None else observation)
         apply = lambda call: controller.execute_tool(call, self.executor, controller.document)
-        deadline = time.monotonic() + 60   # returns when the turn ends; the cap only stops a hang
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             controller.pump_events()
             controller.pump_tools(self.executor, controller.document, apply_mutation=apply,
@@ -613,7 +616,7 @@ class ControllerDeltaTests(ControllerFixture):
         def turn(text, sizes=(), compact=False):
             CodexProvider.sizes, CodexProvider.compact = list(sizes), compact
             codex.send(text, LEGACY_OBSERVATION)
-            deadline = time.monotonic() + 60   # returns when the turn ends; the cap only stops a hang
+            deadline = time.monotonic() + CAP_S
             while (codex.busy or (codex._worker and codex._worker.is_alive())) and time.monotonic() < deadline:
                 codex.pump_events()
                 time.sleep(.002)

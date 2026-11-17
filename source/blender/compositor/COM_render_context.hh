@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 
+#include "BLI_angelo_writers.hh"
 #include "BLI_map.hh"
 #include "BLI_math_vector_types.hh"
 
@@ -49,6 +50,8 @@ class FileOutput {
   RenderResult *render_result_;
   bool save_as_render_;
   Map<std::string, std::string> meta_data_;
+  /* Angelo: what the File Output node built these files' paths from (BLI_angelo_writers.hh). */
+  Vector<angelo_writers::Input, 16> angelo_inputs_;
 
  public:
   /* Allocate and initialize the internal render result of the file output using the give
@@ -81,6 +84,12 @@ class FileOutput {
 
   /* Add meta data that will eventually be saved to the file if the format supports it. */
   void add_meta_data(std::string key, std::string value);
+
+  /* Angelo: what the File Output node built these files' paths from (BKE_angelo_file_output_inputs). */
+  void set_angelo_inputs(Span<angelo_writers::Input> inputs)
+  {
+    angelo_inputs_ = Vector<angelo_writers::Input, 16>(inputs);
+  }
 
   /* Save the file to the path along with its meta data, reporting any reports to the standard
    * output. */

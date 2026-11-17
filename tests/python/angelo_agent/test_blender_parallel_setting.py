@@ -44,7 +44,7 @@ ui._authentication.start = lambda *args, **kwargs: None
 type(ui._authentication).start = lambda *args, **kwargs: None
 ui.refresh_connected_models = lambda *args, **kwargs: None
 addon_utils.enable('angelo_agent', default_set=False, persistent=False)
-from angelo_agent import parallel_access, parallel_capability, providers_page_model, tool_specs  # noqa: E402
+from angelo_agent import parallel_access, parallel_capability, tool_specs  # noqa: E402
 from angelo_agent import providers_page_host as page  # noqa: E402
 
 bpy.context.preferences.view.show_splash = False
@@ -171,8 +171,7 @@ def tick():
             return .5
         target, area, region = prefs_window()
         if phase == 'page':
-            if not wait(lambda: plan() is not None and providers_page_model.ART['done']
-                        and target.as_pointer() in page._modals):
+            if not wait(lambda: plan() is not None and target.as_pointer() in page._modals):
                 return .2
             if not parallel_access.enabled():   # Below the bar: the section says what it needs, with no choice.
                 check('below_the_bar_offers_no_choice', not choices() and 'Parallel edit needs' in texts())

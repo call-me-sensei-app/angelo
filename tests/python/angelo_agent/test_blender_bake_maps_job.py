@@ -81,8 +81,8 @@ def view():
 
 
 def at(rect, region=None):
-    region = region or chat()[1]
-    return int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    return chat_point(region or chat()[1], rect)
 
 
 def card_hit(action, value=None):
@@ -154,14 +154,22 @@ def record():
     return job_ui.manager().record(card.job) if card is not None and getattr(card, "job", None) else None
 
 
-def tick():
-    from angelo_agent import card_host, director
-    phase = state["phase"]
+def probe():
+    """The main thread's longest gap while the bake runs or stops, by a timer of its own every 50 ms. The suite's tick
+    can't measure it: ``qa_input.after_clicks`` holds the tick while a synthetic press is on its way (the ARM rule's
+    half second), which is the harness waiting, not the main thread; counted there it read as a 0.57 s stall on every
+    app (3e36393's app with 3fc1f94's harness fails, 3fc1f94's app with 3e36393's passes: Mac, 2026-11-17)."""
     now = time.monotonic()
-    if ticks["last"] is not None and phase in {"running", "stopping"}:
+    if ticks["last"] is not None and state["phase"] in {"running", "stopping"}:
         ticks["longest"] = max(ticks["longest"], now - ticks["last"])
         ticks["count"] += 1
     ticks["last"] = now
+    return .05
+
+
+def tick():
+    from angelo_agent import card_host, director
+    phase = state["phase"]
     try:
         assert time.monotonic() - started < 420, "Suite timed out"
         if phase == "boot":
@@ -262,6 +270,8 @@ def tick():
                 binding.digest == export_baked.digest(crate, bpy.context.evaluated_depsgraph_get(), ao=True)
             checks["a_glTF_export_says_the_unreal_packing_stays_out"] = found["packing"] == [(crate.name, "UNREAL")]
             checks["the_main_thread_never_stalled_half_a_second"] = ticks["longest"] < 0.5
+            # A probe that stopped (or never ran) would pass the bound above: it ran at least twice a second.
+            checks["the_probe_measured_the_whole_bake"] = ticks["count"] >= 2 * state["measured"]["job_seconds"]
             shown = state["measured"]["device"] or {}
             from angelo_agent import render_device
             checks["the_bake_ran_on_the_gpu_where_one_is_set_up"] = bool(shown.get("gpu")) or \
@@ -346,3 +356,4 @@ def tick():
 
 import qa_input  # noqa: E402  (synthetic clicks; after_clicks)
 bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.5)
+bpy.app.timers.register(probe, first_interval=.5)   # Never held by a press on its way (after_clicks).

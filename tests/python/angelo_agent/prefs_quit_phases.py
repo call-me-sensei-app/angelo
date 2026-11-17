@@ -78,7 +78,11 @@ def press(x, y, kind='LEFTMOUSE'):
 def click_chat(action, value=None):
     area, region = chat()
     rect = next(r for r, a, v in view_state()["hits"] if a == action and (value is None or v == value))
-    press(region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2)
+    import qa_input
+    x, y = qa_input.chat_point(region, rect)   # The chat's points as window pixels (scale, right to left mirrored).
+    if action in qa_input.GRANT_ACTIONS:   # It reaches a grant: only a person's click (move, then press).
+        return qa_input.press(window(), x, y)
+    press(x, y)
 
 
 def viewport():

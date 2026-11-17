@@ -12,6 +12,9 @@ Run by ``run_native_suites.py --include test_blender_script_operator_time`` (BAC
 * a Python operator that calls ``bpy.ops`` itself counts once; an operator's ``__doc__``, ``str`` and ``repr`` inside a
   script are its own;
 * a callable a script kept past its end counts nothing in a later script; ``bpy.ops`` is put back after every script;
+* a call that returned without FINISHED is named right after ``success`` (Devin audit Agent-B1/Agent-F1:
+  ``object.modifier_apply`` of a missing modifier, ``object.delete`` with nothing selected), the edits around it stand
+  and ``success`` stays true; a script whose calls all finished carries no ``not_finished``;
 * recorded, not asserted: milliseconds per primitive add and per ``bpy.data`` object at 4,000 objects.
 
 No provider, account or network. Writes script-operator-time.json under ANGELO_QA_DIR.
@@ -41,6 +44,8 @@ os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_CONNECTIONS_DIR=str(OU
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import script_operator_time  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
+from qa_person import reviewing  # noqa: E402
+BlenderExecutor = reviewing(BlenderExecutor)   # Each script runs as one the person approved (qa_person).
 
 bpy.context.preferences.filepaths.file_preview_type = "NONE"
 report = {"checks": {}, "observed": {}, "binary": bpy.app.binary_path, "success": False}
@@ -173,12 +178,42 @@ def kept():
           first=first.get("bpy_ops"), later=later.get("bpy_ops"), error=later.get("error"))
 
 
+
+def not_finished():
+    fresh(0)
+    result, _ms = script("import bpy\n"
+                         "bpy.ops.mesh.primitive_cube_add(size=2)\n"
+                         "first = bpy.ops.object.modifier_apply(modifier='DoesNotExist')\n"
+                         "bpy.ops.object.select_all(action='DESELECT')\n"
+                         "second = bpy.ops.object.delete()\n"
+                         "result = {'first': sorted(first), 'second': sorted(second),\n"
+                         "          'objects': len(bpy.data.objects)}\n")
+    keys = list(result)
+    entry = result.get("not_finished") or {}
+    check("a_call_that_did_not_finish_is_named_right_after_success",
+          result.get("success") is True and "success" in keys
+          and keys[keys.index("success") + 1:][:1] == ["not_finished"]
+          and (result.get("result") or {}).get("first") == ["CANCELLED"]
+          and (result.get("result") or {}).get("second") == ["CANCELLED"]
+          and entry.get("operators") == [["object.modifier_apply", "CANCELLED", 1], ["object.delete", "CANCELLED", 1]]
+          and entry.get("calls") == 2 and entry.get("fact") == script_operator_time.NOT_FINISHED
+          and (result.get("result") or {}).get("objects") == 1,
+          result={key: result.get(key) for key in ("success", "not_finished", "result", "error")}, keys=keys[:8])
+    report["observed"]["not_finished_bytes"] = len(json.dumps({"not_finished": entry}, separators=(",", ":")))
+    fresh(0)
+    plain, _ms = script("import bpy\nbpy.ops.mesh.primitive_cube_add(size=2)\nresult = {'ok': True}\n")
+    check("a_script_whose_calls_all_finished_carries_no_not_finished",
+          plain.get("success") is True and "not_finished" not in plain,
+          result={key: plain.get(key) for key in ("success", "not_finished", "error")})
+
+
 try:
     counted()
     failed()
     stacked()
     nested_and_documented()
     kept()
+    not_finished()
     check("bpy_ops_is_restored_after_every_script", restored and all(restored), scripts=len(restored))
     report["success"] = all(report["checks"].values()) and bool(report["checks"])
 except Exception:

@@ -3,6 +3,7 @@
 """Typed Media Studio tools. Accounts, assets and references are explicit IDs."""
 
 import uuid
+from . import read_only
 
 ID = {"type": "string", "format": "uuid"}
 TEXT = {"type": "string", "maxLength": 16000}
@@ -94,8 +95,11 @@ def _validate(value, schema):
     return value
 
 
+STUDIO_SCHEMAS = read_only.frozen({t["name"]: t["inputSchema"] for t in STUDIO_TOOLS})   # As registered, read only: an agent script's change to a spec's dict reaches no check (read_only).
+
+
 def validate_studio(name, arguments):
-    schema = next(t["inputSchema"] for t in STUDIO_TOOLS if t["name"] == name)
+    schema = STUDIO_SCHEMAS[name]
     args = _validate(arguments, schema)
     if name == "angelo_studio_enhance" and (("connection_id" in args) != ("model" in args)):
         raise ValueError("Enhancement overrides require both exact connection_id and model")
@@ -107,3 +111,6 @@ def validate_studio(name, arguments):
     if name != "angelo_studio_list" and args.get("folder") in {"ALL", "UNFILED"}:
         args["folder"] = ""
     return args
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), 'ID')

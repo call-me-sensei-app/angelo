@@ -10,10 +10,21 @@ Contract: doc/angelo/ai_providers.rst, "Agent usage reports"; the console's
 
 * ``counts``: agent tasks and the longest task (ms) per UTC day, gateway
   provider and model, not yet in a report;
+* ``endpoint_counts``: per UTC day, custom endpoint, format, model (the server's
+  own name) and the Angelo model it maps to ("" when untested, ``null`` on the
+  wire), agent tasks and the requests' tokens (input, cached input, output,
+  reasoning; Codex's TokenUsage meaning), for connections that bypass the
+  gateway (``customEndpoints``);
 * ``batch``: at most one report body, formed once with a random ``batchId``
-  and sent verbatim until the console answers 2xx. Counts that arrive later
+  and sent verbatim until the console answers 2xx. A batch holds either gateway
+  ``entries`` or ``customEndpoints`` (with ``entries`` empty), never both kinds,
+  so a console that refuses the newer kind drops only those, never gateway counts. Counts that arrive later
   go to the next batch, so a retry never changes what the id stands for and
   the console adds a batch at most once;
+* ``parked``: a ``customEndpoints`` batch a console refused (HTTP 400, a console
+  older than the field), with when it was first refused. Gateway batches go
+  ahead of it; it is sent again with the scheduled reports for ``PARK`` (6 h, so
+  a console deployed after the first apps report still counts it), then dropped;
 * ``hold_until`` (a 429's ``Retry-After``, or a short lease while one process
   sends) and ``next_at`` (the next scheduled report, shared so that several
   processes report about every 15 minutes in all): wall-clock seconds.
@@ -40,7 +51,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import kept_state, shared_replace, team_lock
+from . import kept_state, owned_paths, shared_replace, team_lock
 
 FILE = "team-usage.json"
 LOCK = "team-usage.lock"
@@ -56,8 +67,16 @@ _UNREAD, _DAMAGED = object(), object()   # ``_read``: a file it can't read now /
 LEASE = 30                    # seconds other processes leave a batch being sent alone (the send's 20 s timeout)
 SPACING = 14 * 60             # seconds after a delivered report before the next scheduled one
 MAX_HOLD = 3600               # a hold further out is a clock change, and ignored
+PARK = 6 * 3600               # seconds a refused customEndpoints batch is sent again before it is dropped
 LOCK_TIMEOUT = 2.0
 _DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+MAX_TOKENS = 10 ** 10         # each token field of a custom endpoint item (the console's bound)
+TOKEN_FIELDS = ("inputTokens", "cachedInputTokens", "outputTokens", "reasoningTokens")
+ENDPOINT_FORMATS = ("openai-responses", "gemini", "anthropic-messages")
+_ENDPOINT_ID = re.compile(r"[0-9a-f]{32}")
+_MODEL_NAME = re.compile(r"[\x21-\x7e]{1,200}")   # A server's own model name (custom_endpoints' rule).
+_PROFILE = re.compile(r"[\x20-\x7e]{1,64}")
+ENDPOINT_KEYS = ("day", "endpointId", "format", "model", "profile", "agentTasks") + TOKEN_FIELDS
 
 
 def day_of(seconds):
@@ -94,6 +113,30 @@ def entry(day, provider, model, tasks, longest):
     return {"day": day, "provider": provider, "model": model, "agentTasks": tasks, "longestTaskMs": longest}
 
 
+def endpoint_entry(day, endpoint_id, format_id, model, profile, tasks, *tokens):
+    """One ``customEndpoints`` item in the contract's shape, or None when a field is out of its range. ``profile`` is
+    "" for an untested model (sent as null); cached input never exceeds input, nor reasoning output."""
+    if (_date(day) is None or not isinstance(endpoint_id, str) or not _ENDPOINT_ID.fullmatch(endpoint_id)
+            or format_id not in ENDPOINT_FORMATS or not isinstance(model, str) or not _MODEL_NAME.fullmatch(model)
+            or not isinstance(profile, str) or profile and not _PROFILE.fullmatch(profile)
+            or _whole(tasks, MAX_TASKS) is None or len(tokens) != len(TOKEN_FIELDS)
+            or any(_whole(number, MAX_TOKENS) is None for number in tokens)
+            or tokens[1] > tokens[0] or tokens[3] > tokens[2]):
+        return None
+    return dict(zip(ENDPOINT_KEYS, (day, endpoint_id, format_id, model, profile or None, tasks) + tuple(tokens)))
+
+
+def merge_endpoint(counts, more):
+    """Add ``more`` to ``counts`` in place: ``{(day, endpoint, format, model, profile): [tasks, *tokens]}``. The
+    profile is part of the key: a name an admin maps again during the day keeps one item per profile that ran."""
+    for key, (tasks, *tokens) in more.items():
+        current = counts.setdefault(key, [0] + [0] * len(TOKEN_FIELDS))
+        current[0] = min(MAX_TASKS, current[0] + tasks)
+        for index, number in enumerate(tokens):
+            current[1 + index] = min(MAX_TOKENS, current[1 + index] + number)
+    return counts
+
+
 def merge(counts, more):
     """Add ``more`` to ``counts`` in place: ``{(day, provider, model): [tasks, longest ms or None]}``."""
     for key, (tasks, longest) in more.items():
@@ -104,8 +147,30 @@ def merge(counts, more):
     return counts
 
 
+def _endpoint_batch(value):
+    """A stored ``customEndpoints`` report body (``entries`` empty), checked, or None."""
+    try:
+        identity = str(uuid.UUID(value["batchId"]))
+    except (ValueError, TypeError, AttributeError):
+        return None
+    items = value["customEndpoints"] if isinstance(value["customEndpoints"], list) else []
+    cleaned = [endpoint_entry(*((item.get(k) or "") if k == "profile" else item.get(k) for k in ENDPOINT_KEYS))
+               for item in items if isinstance(item, dict) and set(item) == set(ENDPOINT_KEYS)]
+    keys = {(e["day"], e["endpointId"], e["format"], e["model"], e["profile"]) for e in cleaned if e}
+    if (identity != value["batchId"] or value["entries"] != [] or not 1 <= len(items) <= MAX_ENTRIES
+            or None in cleaned or len(keys) != len(items)):
+        return None
+    return {"batchId": identity, "entries": [], "customEndpoints": cleaned}
+
+
+def _batch_days(batch):
+    return [item["day"] for item in batch.get("entries") or batch.get("customEndpoints") or ()]
+
+
 def _batch(value):
-    """A stored report body, checked against the contract, or None."""
+    """A stored report body, checked against the contract, or None: gateway ``entries``, or ``customEndpoints``."""
+    if isinstance(value, dict) and set(value) == {"batchId", "entries", "customEndpoints"}:
+        return _endpoint_batch(value)
     if not isinstance(value, dict) or set(value) != {"batchId", "entries"}:
         return None
     try:
@@ -140,9 +205,18 @@ def _owner(value):
         if cleaned and len(counts) < MAX_KEYS:
             merge(counts, {(cleaned["day"], cleaned["provider"], cleaned["model"]):
                            (cleaned["agentTasks"], cleaned["longestTaskMs"])})
-    return owner, {"counts": counts, "batch": _batch(value.get("batch")),
+    endpoint_counts = {}
+    for item in value.get("endpoint_counts") if isinstance(value.get("endpoint_counts"), list) else ():
+        cleaned = endpoint_entry(*item) if isinstance(item, list) and len(item) == len(ENDPOINT_KEYS) else None
+        if cleaned and len(endpoint_counts) < MAX_KEYS:
+            merge_endpoint(endpoint_counts, {tuple(item[:5]): tuple(item[5:])})
+    parked = value.get("parked") if isinstance(value.get("parked"), dict) else {}
+    parked_batch = _batch(parked.get("batch"))
+    return owner, {"counts": counts, "endpoint_counts": endpoint_counts, "batch": _batch(value.get("batch")),
                    "hold_until": _seconds(value.get("hold_until")), "next_at": _seconds(value.get("next_at")),
-                   "updated": _seconds(value.get("updated"))}
+                   "updated": _seconds(value.get("updated")),
+                   "parked": {"batch": parked_batch, "since": _seconds(parked.get("since"))}
+                   if parked_batch and "customEndpoints" in parked_batch else None}
 
 
 def _encode(owners):
@@ -150,7 +224,9 @@ def _encode(owners):
     for (console, org, user), record in owners.items():
         rows.append({"console": console, "org": org, "user": user, "updated": record["updated"],
                      "hold_until": record["hold_until"], "next_at": record["next_at"], "batch": record["batch"],
-                     "counts": [[*key, *value] for key, value in sorted(record["counts"].items())]})
+                     "parked": record["parked"],
+                     "counts": [[*key, *value] for key, value in sorted(record["counts"].items())],
+                     "endpoint_counts": [[*key, *value] for key, value in sorted(record["endpoint_counts"].items())]})
     return json.dumps({"version": FORMAT, "owners": rows}, separators=(",", ":"), allow_nan=False)
 
 
@@ -166,14 +242,16 @@ class UsageBuffer:
     # Each call: lock, read, change, write. ``team_lock.LockTimeout`` and ``OSError`` reach the caller, which keeps
     # its counts in memory and tries again later.
 
-    def add(self, owner, counts, now):
-        """Keep ``counts`` (``merge``'s shape) for ``owner``; days the console wouldn't count are dropped."""
+    def add(self, owner, counts, now, endpoint_counts=None):
+        """Keep ``counts`` (``merge``'s shape) and ``endpoint_counts`` (``merge_endpoint``'s) for ``owner``; days the
+        console wouldn't count are dropped."""
         def change(owners):
             record = owners.setdefault(owner, _empty())
-            kept = record["counts"]
-            for key, value in counts.items():
-                if in_window(key[0], now) and (key in kept or len(kept) < MAX_KEYS):
-                    merge(kept, {key: value})
+            for kept, more, add in ((record["counts"], counts, merge),
+                                    (record["endpoint_counts"], endpoint_counts or {}, merge_endpoint)):
+                for key, value in more.items():
+                    if in_window(key[0], now) and (key in kept or len(kept) < MAX_KEYS):
+                        add(kept, {key: value})
             record["updated"] = now
         self._change(change, now)
 
@@ -193,6 +271,15 @@ class UsageBuffer:
                 keys = sorted(record["counts"])[:MAX_ENTRIES]
                 entries = [entry(*key, *record["counts"].pop(key)) for key in keys]
                 record["batch"] = {"batchId": str(uuid.uuid4()), "entries": entries}
+            elif record["batch"] is None and record["parked"] is not None:   # A refused batch, again (``PARK``).
+                if _parked(record["parked"]["since"], now):
+                    record["batch"] = record["parked"]["batch"]
+                else:
+                    record["parked"] = None
+            if record["batch"] is None and record["endpoint_counts"] and record["parked"] is None:
+                keys = sorted(record["endpoint_counts"])[:MAX_ENTRIES]
+                items = [endpoint_entry(*key, *record["endpoint_counts"].pop(key)) for key in keys]
+                record["batch"] = {"batchId": str(uuid.uuid4()), "entries": [], "customEndpoints": items}
             if record["batch"] is not None:
                 record["hold_until"] = now + lease if lease else record["hold_until"]
                 taken.append(record["batch"])
@@ -200,21 +287,29 @@ class UsageBuffer:
         return taken[0] if taken else None
 
     def settle(self, owner, batch_id, outcome, now, hold=0):
-        """After sending ``batch_id``: ``sent`` or ``drop`` removes it; ``retry`` keeps it; ``hold`` (seconds,
-        a 429's Retry-After) keeps every process from sending before then. True when more is waiting."""
+        """After sending ``batch_id``: ``sent`` or ``drop`` removes it; ``retry`` keeps it; ``park`` (a refused
+        ``customEndpoints`` batch) sets it aside for the next scheduled reports until ``PARK`` has passed since it
+        was first refused; ``hold`` (seconds, a 429's Retry-After) keeps every process from sending before then.
+        True when more is waiting."""
         more = []
 
         def change(owners):
             record = owners.get(owner)
             if record is None:
                 return
-            batch = record["batch"]
-            if batch is not None and batch["batchId"] == batch_id and outcome in {"sent", "drop"}:
+            batch, parked = record["batch"], record["parked"]
+            same = parked is not None and parked["batch"]["batchId"] == batch_id
+            if batch is not None and batch["batchId"] == batch_id and outcome in {"sent", "drop", "park"}:
                 record["batch"] = None
+                if outcome == "park" and "customEndpoints" in batch:
+                    record["parked"] = {"batch": batch, "since": parked["since"] if same else now}
+                    record["next_at"] = now + SPACING
+                elif same:
+                    record["parked"] = None
             if outcome == "sent":
                 record["next_at"] = now + SPACING
             record["hold_until"] = now + min(hold, MAX_HOLD) if hold else 0
-            more.append(bool(record["batch"] or record["counts"]))
+            more.append(bool(record["batch"] or record["counts"] or record["endpoint_counts"] and not record["parked"]))
         self._change(change, now)
         return bool(more and more[0])
 
@@ -223,6 +318,11 @@ class UsageBuffer:
         with self._thread_lock, team_lock.held(self.directory, self.lock_timeout, name=LOCK):
             record = _prune(self._read()[0], now).get(owner) or _empty()
         return record["counts"], record["batch"]
+
+    def pending_endpoints(self, owner, now):
+        """``endpoint_counts`` kept for ``owner`` (tests and diagnostics)."""
+        with self._thread_lock, team_lock.held(self.directory, self.lock_timeout, name=LOCK):
+            return (_prune(self._read()[0], now).get(owner) or _empty())["endpoint_counts"]
 
     def _change(self, change, now):
         with self._thread_lock, team_lock.held(self.directory, self.lock_timeout, name=LOCK):
@@ -263,6 +363,7 @@ class UsageBuffer:
 
     def _write(self, owners):
         """Replace the file atomically (the caller holds the lock, so the one temporary name is safe)."""
+        owned_paths.require_writable(self.path)
         if not owners:
             try:
                 os.remove(self.path)
@@ -279,7 +380,14 @@ class UsageBuffer:
 
 
 def _empty():
-    return {"counts": {}, "batch": None, "hold_until": 0, "next_at": 0, "updated": 0}
+    return {"counts": {}, "endpoint_counts": {}, "batch": None, "hold_until": 0, "next_at": 0, "updated": 0,
+            "parked": None}
+
+
+def _parked(since, now):
+    """Whether a batch first refused at ``since`` is still sent again; a ``since`` ahead of now means the clock
+    moved back."""
+    return now - PARK <= since <= now + SPACING
 
 
 def _held(until, now):
@@ -290,11 +398,15 @@ def _held(until, now):
 def _prune(owners, now):
     """Drop days the console no longer counts, batches that would add nothing, idle and surplus people."""
     for record in owners.values():
-        record["counts"] = {key: value for key, value in record["counts"].items() if in_window(key[0], now)}
+        for name in ("counts", "endpoint_counts"):
+            record[name] = {key: value for key, value in record[name].items() if in_window(key[0], now)}
         batch = record["batch"]
-        if batch is not None and not any(in_window(e["day"], now) for e in batch["entries"]):
+        if batch is not None and not any(in_window(day, now) for day in _batch_days(batch)):
             record["batch"] = None
-    active = {owner: record for owner, record in owners.items() if record["counts"] or record["batch"]
+        if record["parked"] is not None and not _parked(record["parked"]["since"], now):
+            record["parked"] = None
+    active = {owner: record for owner, record in owners.items() if record["counts"] or record["endpoint_counts"]
+              or record["batch"] or record["parked"]
               or _held(record["hold_until"], now) or _held(record["next_at"], now)}
     newest = sorted(active, key=lambda owner: active[owner]["updated"], reverse=True)[:MAX_OWNERS]
     return {owner: active[owner] for owner in newest}

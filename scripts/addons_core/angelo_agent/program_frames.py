@@ -113,7 +113,7 @@ def writes_frame(program):
 FRAME_UPDATE_PATHS = frozenset({
     "frame_current", "frame_subframe", "frame_float", "frame_step", "lock_frame_selection_to_range", "allow_preroll",
     "use_preview_range", "frame_preview_start", "frame_preview_end", "show_subframe", "show_keys_from_selected_only",
-    "render.frame_map_old", "render.frame_map_new"})
+    "wrap_timeline_navigation", "render.frame_map_old", "render.frame_map_new"})
 FRAME_PATHS = frozenset({"frame_current", "frame_subframe", "frame_float"})  # The frame itself.
 
 

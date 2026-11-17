@@ -13,9 +13,10 @@ each fixed-size buffer written whole first. What a string cannot show (a field B
 bytes after a terminator) is ``worker_merge_verify``'s.
 """
 
-from .worker_merge_paths import overwrite
+from .worker_merge_paths import DETOUR, _basename, overwrite
 
 PATH_SUBTYPES = ("FILE_PATH", "DIR_PATH", "FILE_NAME", "BYTE_STRING")
+LARGE = 1 << 22   # Text or bytes longer than this are cleaned a window at a time (BREAKIT-C7A-9 L2).
 _STRINGY = {}
 
 
@@ -141,7 +142,7 @@ def _clean_one(found, item, private):
     if found[0] == "rna":
         _kind, struct, name, subtype, writable = found
         text = getattr(struct, name)
-        new = private.clean(text, item, subtype in PATH_SUBTYPES) if isinstance(text, str) and text else None
+        new = _clean_text(text, item, private, subtype in PATH_SUBTYPES) if isinstance(text, str) and text else None
         if new is None or not writable:
             return False
         overwrite(struct, name, new)
@@ -156,12 +157,8 @@ def _clean_one(found, item, private):
 
 def _clean_value(value, item, private, depth=0):
     """``value`` (text, bytes, or a list of them and of groups) with its private paths cut, or None when unchanged."""
-    if isinstance(value, str):
-        return private.clean(value, item, False) if value else None
-    if isinstance(value, bytes):
-        text = value.decode("utf-8", "surrogateescape")
-        new = private.clean(text, item, False) if text else None
-        return new.encode("utf-8", "surrogateescape") if new is not None else None
+    if isinstance(value, (str, bytes)):
+        return _clean_text(value, item, private) if value else None
     if depth > 8 or not isinstance(value, (list, tuple)) and type(value).__name__ != "IDPropertyArray":
         return None
     items, changed = list(value), False
@@ -178,3 +175,63 @@ def _clean_value(value, item, private, depth=0):
     if not changed:
         return None
     return [element.to_dict() if hasattr(element, "to_dict") else element for element in items]
+
+
+def _clean_text(value, item, private, path_like=False):
+    """``value`` (text or bytes, UTF-8 read loosely) with its private paths cut, or None when unchanged. One longer than
+    ``LARGE`` is read a window at a time, each with the context the path rule reads around its own part, so memory is
+    the value, its result and a window, never the value decoded and folded whole (BREAKIT-C7A-9 L2: a 1 GB bytes
+    property peaked at 12.9 GB)."""
+    wide = isinstance(value, bytes)
+    if len(value) <= LARGE:
+        text = value.decode("utf-8", "surrogateescape") if wide else value
+        new = private.clean(text, item, path_like and not wide)
+        return new.encode("utf-8", "surrogateescape") if wide and new is not None else new
+    from .worker_merge_scan import NARROW, Scanner
+    margin = DETOUR + max(map(len, private.needles), default=0) + 64
+    scanner, cuts = Scanner(private), []   # A window with none of its names' letters (in any ASCII case) is skipped.
+    anchors = [anchor if wide else anchor.decode("ascii") for anchor, families in scanner.anchors if families == NARROW]
+    for base in range(0, len(value), LARGE):
+        low, high = max(0, base - margin), min(len(value), base + LARGE + margin)
+        window = value[low:high]
+        lowered = window.lower()
+        if not scanner.plain and not any(anchor in lowered for anchor in anchors):
+            continue
+        del lowered
+        text = window.decode("utf-8", "surrogateescape") if wide else window
+        places = private.finds(text)
+        at = _offsets(text, low, wide, (found for _start, found in places))
+        places = [(start, found) for start, found in places if base <= at[found] < base + LARGE]   # Its own part.
+        ends, reach = [], 0
+        for start, found in places:   # One cut decides where a place inside it ends: never read again (SHOULD 1).
+            if start < reach:
+                continue
+            end = private.path_end(text, start, found)
+            if end is not None:
+                ends.append((start, end))
+                reach = end
+        at = _offsets(text, low, wide, (index for pair in ends for index in pair))
+        cuts += [(at[start], at[end], _basename(text[start:end])) for start, end in ends]
+    if not cuts:
+        return None
+    pieces, at = [], 0
+    for start, end, name in sorted(cuts):
+        if start >= at:
+            pieces += [value[at:start], name.encode("utf-8", "surrogateescape") if wide else name]
+            at = end
+    pieces.append(value[at:])
+    return (b"" if wide else "").join(pieces)
+
+
+def _offsets(text, low, wide, indices):
+    """``{index: the value's own offset}`` for characters of a window starting at ``low``: as UTF-8 bytes when
+    ``wide``, each found by encoding only the text since the one before, so a window's places cost its length once
+    (BREAKIT-C7A-10 M3: per place, its whole prefix again)."""
+    found, at, offset = {}, 0, low
+    for index in sorted(set(indices)):
+        if wide:
+            offset += len(text[at:index].encode("utf-8", "surrogateescape"))
+        else:
+            offset = low + index
+        found[index], at = offset, index
+    return found

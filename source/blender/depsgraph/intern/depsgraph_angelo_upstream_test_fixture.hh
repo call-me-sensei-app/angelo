@@ -37,10 +37,10 @@
 #include "BKE_scene.hh"
 #include "BKE_wm_runtime.hh"
 
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_map.hh"
 #include "BLI_set.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 
 #include "DNA_action_types.h"
 #include "DNA_anim_types.h"
@@ -117,7 +117,7 @@ class DegAngeloUpstreamTest : public bke::BlenderGTestBase {
   {
     bmain = BKE_main_new();
     scene = BKE_id_new<Scene>(bmain, "Scene");
-    view_layer = static_cast<ViewLayer *>(scene->view_layers.first);
+    view_layer = static_cast<ViewLayer *>(scene->view_layers.first());
     /* A two-bone rig whose tip has an IK constraint on a mesh object and a custom-shape widget,
      * and a mesh deformed by it through an Armature modifier. */
     bArmature *armature = BKE_armature_add(bmain, "Armature");
@@ -201,7 +201,7 @@ class DegAngeloUpstreamTest : public bke::BlenderGTestBase {
   {
     AnimData *adt = BKE_animdata_ensure_id(&rig->id);
     FCurve *fcu = BKE_fcurve_create();
-    fcu->rna_path = BLI_strdup("pose.bones[\"Root\"].location");
+    fcu->rna_path_set("pose.bones[\"Root\"].location");
     fcu->driver = MEM_new<ChannelDriver>("ChannelDriver");
     fcu->driver->type = DRIVER_TYPE_PYTHON;
     STRNCPY(fcu->driver->expression, expression);

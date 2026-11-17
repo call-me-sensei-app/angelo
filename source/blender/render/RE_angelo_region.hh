@@ -106,12 +106,6 @@ bool region_render_is_armed(const Render *re);
  */
 RegionOutcome region_render_finish(Render *re);
 
-/**
- * While a region render shows the previous frame, the offset of the rendered (cropped) result in
- * it, so a display can place the rendered tiles. False when no region render is displayed.
- */
-bool region_render_display_offset(const Render *re, int r_offset[2]);
-
 /** Whether the last render of `re` was a region render whose previous pixels are still kept. */
 bool region_render_can_revert(const Render *re);
 

@@ -15,7 +15,7 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_string.h"
+#include "BLI_string.hh"
 
 #include "BKE_report.hh"
 
@@ -46,7 +46,7 @@ short BPy_reports_to_error(ReportList *reports, PyObject *exception, const bool 
 void BPy_reports_write_stdout(const ReportList *reports, const char *header)
 {
   const Report *report;
-  for (report = static_cast<const Report *>(reports->list.first); report; report = report->next) {
+  for (report = reports->list.first(); report; report = report->next) {
     if (report->type < reports->printlevel) {
       continue;
     }

@@ -15,6 +15,7 @@ Pinned, each across both sides at once (the lanes' own tests fake the other side
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import sys
@@ -127,7 +128,7 @@ class Flows(Fixture):
         self.executor.execute = blocked
         self.mirror.send("a box")
         self.approve_drawn(self.card())
-        self.assertTrue(entered.wait(10), "The edit never started")
+        self.assertTrue(entered.wait(CAP_S), "The edit never started")
         child = self.child()
         worker_chat = self.chats.hosted(self.session)
         self.mirror.stop()

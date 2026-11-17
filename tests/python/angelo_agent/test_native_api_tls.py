@@ -7,6 +7,7 @@ real key. OpenSSL is also required by the managed-policy host tests.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import shutil
@@ -68,7 +69,7 @@ class ManagedConnectionTrustTests(unittest.TestCase):
     @classmethod
     def stop_server(cls):
         cls.server.shutdown()
-        cls.worker.join(timeout=5)
+        cls.worker.join(timeout=CAP_S)
 
     def probe(self, host, policy):
         request = urllib.request.Request("https://%s:%s/models" % (host, self.server.server_port),

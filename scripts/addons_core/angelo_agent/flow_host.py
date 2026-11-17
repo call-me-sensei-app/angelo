@@ -22,16 +22,20 @@ import time
 import bpy
 from bpy.utils import previews as bpy_previews
 
-from . import flow_capture, flow_nodes, flow_split_host, flow_tree, live_windows
+from . import flow_capture, flow_nodes, flow_split_host, flow_tree, edit_tool_hold
 from .studio_state import MEDIA_KINDS
 from .flow_fanout import expand_parts, part_summaries
 from .flow_graph import LibraryIndex, connection_needs, evaluate, request_for
-from .flow_runner import DONE, FlowRun
+from .flow_redraw import redraw as _redraw, shown as _shown   # When its surfaces are redrawn, and what they show.
+from .flow_runner import DONE, FlowRun, advance
 from .flow_spec import GENERATOR_KINDS, GENERATOR_TYPES, RUNS_AS, FlowError
 from .flow_steps import flow_trees, per_step, recipe_trees, slot_get, slot_set, step_slot, subflow_summaries
 from .flow_subflows import expand
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 PUMP_SECONDS = 0.25
+# Every flow is evaluated again this often, for what nobody announces (a library another Angelo wrote to). It is a
+# read: it asks for a redraw only when an evaluation differs from the last, or while work is in progress (``pump``).
 IDLE_REFRESH_SECONDS = 2.0
 MAX_PREVIEWS = 256
 
@@ -41,6 +45,7 @@ _runs = {}         # run id -> {"run", "tree", "owner", "flow_id"}
 _previews = None
 _preview_ids = {}  # asset id -> icon id
 _last_refresh = 0.0
+_catalog_seen = None  # The generation catalog at the last refresh (``_catalog``): a change in it is shown.
 last_placement = {}  # tree name -> the last Place Character receipt (fixtures and the sidebar read it)
 
 
@@ -127,6 +132,19 @@ def refresh(tree, index=None):
 def cached(name):
     """The last evaluation of a flow by name (definition, flow, states, ...), or None. Draw-safe."""
     return _cache.get(name)
+
+
+def _catalog():
+    """The generation catalog as the surfaces here read it (flow nodes, Media Studio, the chat's cards): every kind's
+    accounts and models, ready or not. Nobody announces a change in it (a key checked, an account connected or
+    signed out), so the refresh compares it."""
+    return {kind: catalog_entries(kind) for kind in MEDIA_KINDS}
+
+
+def _working():
+    """Whether work of the person's is in progress here: a Studio job, or a run that has not finished. Its row
+    shows time passing, so its surfaces are redrawn at the refresh's pace until it ends."""
+    return bool(jobs().active) or any(not record["run"].finished for record in _runs.values())
 
 
 def node_state(tree, name):
@@ -333,6 +351,9 @@ def start_run(tree, selection, owner):
     return run
 
 
+start_run = _grant_guard.entry(start_run)
+
+
 def run_for(run_id):
     record = _runs.get(run_id)
     return record["run"] if record else None
@@ -374,18 +395,30 @@ def _after_tick(run):
 
 # --- Timer -------------------------------------------------------------------
 
+@edit_tool_hold.guarded(waiting=lambda: any(not record["run"].finished for record in _runs.values()))   # A run waits.
 def pump():
-    global _last_refresh
+    """Jobs, runs and the flows' evaluations, every ``PUMP_SECONDS``. A surface is redrawn when what it shows changed:
+    a job's event (Media Studio and the chat follow their jobs here, flow or no flow), a run's step, an edit or a
+    started or stopped run (``_dirty``), a finished split, an evaluation or a generation catalog that differs from
+    the last, a flow gone; and at the refresh's pace while work is in progress (``_working``). Left alone it asks for nothing: a redraw at
+    every refresh kept an idle chat drawing every 2 s, each time taking about 130 MB of graphics memory that Metal
+    released a second later (an-blender53, 2026-11-16; ``test_native_flow_idle_redraw``,
+    ``test_blender_idle_redraw``)."""
+    global _last_refresh, _catalog_seen
     try:
-        if jobs().pump():
+        changed = False
+        if jobs().pump():   # Its results landed (StudioJobs.pump notes it).
             _dirty.update(t.name for t in flow_trees())
+            changed = True
         for record in list(_runs.values()):
             run = record["run"]
             if run.finished:
                 continue
-            if run.tick():
+            if advance(run):   # A step that finished lands its output (flow_runner.advance); a start lands nothing.
                 _after_tick(run)
                 _dirty.add(record["tree"])
+        # Before the refresh marks anything of its own (the recipes' sync below): what an edit, a run or a job asked.
+        changed = changed or bool(_dirty)
         now = time.monotonic()
         trees = flow_trees()
         due = now - _last_refresh >= IDLE_REFRESH_SECONDS
@@ -398,30 +431,29 @@ def pump():
         for tree in trees:
             if flow_split_host.collect(tree, library(), flow_tree.flow_id(tree)):
                 _dirty.add(tree.name)
+                changed = True
+        if due:
+            catalog_now = _catalog()
+            changed = changed or catalog_now != _catalog_seen
+            _catalog_seen = catalog_now
         if _dirty or due:
             index = LibraryIndex(library().assets)
             for tree in trees:
                 if due or tree.name in _dirty:
+                    before = _shown(_cache.get(tree.name))
                     entry = refresh(tree, index)
+                    changed = changed or _shown(entry) != before
                     _prepare_previews(_visible_assets(entry, tree))
                     flow_split_host.start(tree, entry["states"], library())
             _last_refresh = now
-            _redraw()
         for name in [n for n in _cache if n not in {t.name for t in trees}]:
             _cache.pop(name, None)
+            changed = True
+        if changed or (due and _working()):
+            _redraw()
     except Exception as error:  # A timer that raises is unregistered; keep flows alive.
         print("Angelo: Generation Flow update failed:", error)
     return PUMP_SECONDS
-
-
-def _redraw():
-    if bpy.app.background:
-        return
-    for _window, area in live_windows.window_areas(bpy.context.window_manager):
-        if area.type == 'NODE_EDITOR' and getattr(area.spaces.active, "tree_type", "") == flow_nodes.TREE:
-            area.tag_redraw()
-        elif area.type == 'CONSOLE':
-            area.tag_redraw()
 
 
 def _load_pre(*_):

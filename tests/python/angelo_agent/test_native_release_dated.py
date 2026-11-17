@@ -109,7 +109,7 @@ class ReleaseDatedTests(unittest.TestCase):
         self.assertIn('release_checks.py" release-dated "$SOURCE"', mac)
         self.assertLess(mac.index("release-dated"), mac.index("cmake -S"), "refused before anything is built")
         windows = (ROOT / "scripts/angelo/windows_release_validate.ps1").read_text(encoding="utf-8")
-        self.assertIn("release-dated $SourceDir", windows)
+        self.assertIn('"release-dated", $SourceDir', windows)
         self.assertLess(windows.index("release-dated"), windows.index("$build = Join-Path"), "checked before the build runs")
 
 

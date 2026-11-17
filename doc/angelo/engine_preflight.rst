@@ -108,7 +108,7 @@ Code                      Targets (formats)                   Looks for         
                                                               ``glTF_not_exported`` collection)
 ``absolute_paths``        Unity, Unreal (.fbx)                packed images (FBX writes each one's full path)   none
 ``path_properties``       where custom properties are         no local paths in exported custom properties      none
-                          written
+                          written                             (Angelo's own records are never exported: below)
 ``collision_empty``       Godot (.glb)                        a mesh, not an empty, with a collision suffix     ``collision_mesh``
                                                               (an empty written as an OMI collider is fine)
 ``suffix_numbered``       Godot 4.0 (stated version)          a Godot suffix at the very end: 4.0 reads none    none
@@ -123,6 +123,10 @@ Code                      Targets (formats)                   Looks for         
 ``colour_space``          all                                 sRGB for colour maps, Non-Color for data maps     ``colour_space``
 ========================  ==================================  ================================================  ====================
 
+``colour_space`` judges the image's colour-space kind, which the facts record beside its name
+(``colorspace_kind``), so an ACES configuration's "sRGB - Texture" and "Raw" are judged as sRGB and Non-Color are
+(``render_engines.rst``, "Colour configuration").
+
 The name matching is the engines' own: Godot's ``_teststr`` (trailing digits, spaces and underscores dropped, so
 Blender's ``.001`` still matches; ``-``, ``_`` or ``$`` before the token) and Interchange's collision match (the rest
 of the name, or it without its last ``_suffix``, equals a mesh name in any case). An object named for one engine's
@@ -134,6 +138,32 @@ Not every report item is a rule. Curves and text: Blender 5.2's glTF and FBX exp
 mesh, so only a curve with no faces loses anything. Shape keys: the glTF exporter keeps them with modifiers applied.
 Actions: the glTF exporter's ``ACTIONS`` mode writes every action with a slot for the object, so only an action with
 no user (lost when the file is saved, which is what an engine imports) is a finding.
+
+Angelo's own records are never exported
+---------------------------------------
+
+Angelo saves records of its own as custom properties on the person's data (where
+a library or team item came from, which character part an object is, a scene's
+merged parts, a render region) and as properties its add-on registers on
+data-blocks. They are the app's bookkeeping, not the person's data, and no
+exporter that writes custom properties writes one: glTF extras
+(``io_scene_gltf2`` ``com/extras.py``, custom and registered properties), FBX
+custom properties (``fbx_data_element_custom_properties``), USD
+(``USDAbstractWriter::write_user_properties``) and Alembic
+(``CustomPropertiesExporter::write_all``), the last two of which write custom
+properties by default. The rule is the name, in one place for Python
+(``scripts/modules/angelo_own_properties.py``) and one for C++
+(``BKE_angelo_own_properties.hh``), kept equal by
+``test_native_own_properties``: the reserved prefixes ``angelo_`` and
+``_angelo_``, and exactly the pre-rename keys a file saved before the rename may
+still hold (``native_editor_build.rst``, "Legacy names"), so a person's own
+``sensei_notes`` is theirs and is written. What Angelo's own exports add to a
+glTF (the web export's look, the web link's ``extras.angelo_uid``) is written by
+their hooks, not from custom properties, and is unchanged. Reason: every
+exporter wrote every key it found, so a file handed to another tool or another
+company carried Angelo's records (``test_blender_export_internal_properties``
+exports through each and reads the files). Imports are unchanged: a file made
+before this fix can still carry such keys in.
 
 Fixes
 =====

@@ -13,7 +13,7 @@ corner and non-modal, so the render stays in view:
 
 import bpy
 
-from . import card_kit as kit, live_windows, render_region
+from . import card_kit as kit, live_windows, render_region, edit_tool_hold
 from .ui_text import iface_, language, n_
 
 WIDTH = 400
@@ -88,7 +88,7 @@ class RegionRenderCard(kit.BaseCard):
             host.close("done")
             return
         host.close("done")   # Each choice changes the render (or starts one): the card's reading is over.
-        bpy.app.timers.register(lambda: _run(action), first_interval=0.0)
+        bpy.app.timers.register(edit_tool_hold.guarded(lambda: _run(action), waiting=True), first_interval=0.0)   # A render reads the scene.
 
 
 def _run(action):

@@ -20,6 +20,7 @@ from pathlib import Path
 
 import bpy
 
+from . import compositor_stack
 from . import job_render_outputs as outputs
 from .job_settings import scene_value
 import re
@@ -114,9 +115,10 @@ def split_name(name):
 
 
 def file_output_nodes(scene):
-    """``[(RNA path from the scene, node)]`` of the unmuted File Output nodes a render of ``scene`` runs."""
-    tree = getattr(scene, "compositing_node_group", None)
-    if not scene.render.use_compositing or tree is None:
+    """``[(RNA path from the scene, node)]`` of the unmuted File Output nodes a render of ``scene`` runs, in every
+    compositor effect enabled for render."""
+    trees = compositor_stack.render_trees(scene)
+    if not scene.render.use_compositing or not trees:
         return []
     found, seen = [], set()
 
@@ -141,7 +143,8 @@ def file_output_nodes(scene):
                                           code="LIMIT_EXCEEDED")
                 walk(node.node_tree, node_path + ".node_tree", depth + 1)
 
-    walk(tree, "compositing_node_group", 0)
+    for path, tree in trees:
+        walk(tree, path, 0)
     return found
 
 

@@ -13,6 +13,7 @@ stages and commits a resolved orbit inside the Angelo binary.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import copy
 import json
@@ -290,7 +291,7 @@ class ControllerResolutionTests(unittest.TestCase):
                          [op["parameters"]["location"] for op in call.program_arguments["operations"]])
         self.assertIn([op["parameters"]["location"] for op in call.program_arguments["operations"]][0],
                       [check["expected"] for check in shown["expected_checks"] if check["kind"] == "transform"])
-        self.c.approve_tool(call, executor, self.c.document)
+        angelo_guard_twin.harness(self.c.approve_tool, call, executor, self.c.document)
         self.c.pump_tools(executor, self.c.document, budget=ToolDispatchBudget(seconds=60))
         self.assertEqual(executor.started, [("angelo_scene_program", call.program_arguments)])
         self.assertEqual(executor.resolutions, 1, "Later preconditions bind the resolved program, never a new one")

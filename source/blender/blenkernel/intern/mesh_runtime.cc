@@ -7,8 +7,9 @@
  */
 
 #include "BLI_array_utils.hh"
-#include "BLI_math_geom.h"
+#include "BLI_math_geom_c.hh"
 
+#include "BKE_attribute_storage.hh"
 #include "BKE_bake_data_block_id.hh"
 #include "BKE_bvhutils.hh"
 #include "BKE_customdata.hh"
@@ -46,7 +47,6 @@ static void free_batch_cache(MeshRuntime &mesh_runtime)
 
 static void free_bvh_caches(MeshRuntime &mesh_runtime)
 {
-  mesh_runtime.bvh_cache_verts.tag_dirty();
   mesh_runtime.bvh_cache_edges.tag_dirty();
   mesh_runtime.bvh_cache_faces.tag_dirty();
   mesh_runtime.bvh_cache_corner_tris.tag_dirty();
@@ -55,9 +55,147 @@ static void free_bvh_caches(MeshRuntime &mesh_runtime)
   mesh_runtime.bvh_cache_loose_verts_no_hidden.tag_dirty();
   mesh_runtime.bvh_cache_loose_edges.tag_dirty();
   mesh_runtime.bvh_cache_loose_edges_no_hidden.tag_dirty();
+  mesh_runtime.bvh_embree_tris_cache.tag_dirty();
+  mesh_runtime.bvh_embree_verts_cache.tag_dirty();
+  mesh_runtime.bvh_embree_edges_cache.tag_dirty();
 }
 
 MeshRuntime::MeshRuntime() = default;
+
+/* -------------------------------------------------------------------- */
+/** \name Topology Seal
+ * \{ */
+
+static std::array<const ImplicitSharingInfo *, 4> topology_sharing_infos(const Mesh &mesh)
+{
+  const AttributeStorage &storage = mesh.attribute_storage.wrap();
+  const auto attribute_info = [&](const StringRef name) -> const ImplicitSharingInfo * {
+    const Attribute *attribute = storage.lookup(name);
+    if (attribute == nullptr) {
+      return nullptr;
+    }
+    return std::visit([](const auto &data) { return data.sharing_info.get(); }, attribute->data());
+  };
+  return {attribute_info(".edge_verts"),
+          attribute_info(".corner_vert"),
+          attribute_info(".corner_edge"),
+          mesh.runtime->face_offsets_sharing_info};
+}
+
+static std::array<int, 4> topology_counts(const Mesh &mesh)
+{
+  return {mesh.verts_num, mesh.edges_num, mesh.corners_num, mesh.faces_num};
+}
+
+static const ImplicitSharingInfo *positions_sharing_info(const Mesh &mesh)
+{
+  const Attribute *attribute = mesh.attribute_storage.wrap().lookup("position");
+  if (attribute == nullptr) {
+    return nullptr;
+  }
+  return std::visit([](const auto &data) { return data.sharing_info.get(); }, attribute->data());
+}
+
+void mesh_topology_seal(Mesh &mesh)
+{
+  MeshTopologySeal &seal = mesh.runtime->topology_seal;
+  const std::array<const ImplicitSharingInfo *, 4> infos = topology_sharing_infos(mesh);
+  for (const int i : IndexRange(infos.size())) {
+    if (infos[i] != nullptr) {
+      infos[i]->add_weak_user();
+    }
+    /* Takes over the weak user added above, and releases the one it held. */
+    seal.arrays[i] = WeakImplicitSharingPtr(infos[i]);
+    seal.versions[i] = infos[i] != nullptr ? infos[i]->version() : 0;
+  }
+  seal.counts = topology_counts(mesh);
+  const ImplicitSharingInfo *positions = positions_sharing_info(mesh);
+  if (positions != nullptr) {
+    positions->add_weak_user();
+  }
+  seal.positions = WeakImplicitSharingPtr(positions);
+  seal.positions_version = positions != nullptr ? positions->version() : 0;
+  seal.is_set = true;
+}
+
+bool mesh_topology_is_sealed(const Mesh &mesh)
+{
+  const MeshTopologySeal &seal = mesh.runtime->topology_seal;
+  if (!seal.is_set || seal.counts != topology_counts(mesh)) {
+    return false;
+  }
+  const std::array<const ImplicitSharingInfo *, 4> infos = topology_sharing_infos(mesh);
+  for (const int i : IndexRange(infos.size())) {
+    if (seal.arrays[i].get() != infos[i]) {
+      return false;
+    }
+    if (infos[i] != nullptr && infos[i]->version() != seal.versions[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool mesh_geometry_is_sealed(const Mesh &mesh)
+{
+  if (!mesh_topology_is_sealed(mesh)) {
+    return false;
+  }
+  const MeshTopologySeal &seal = mesh.runtime->topology_seal;
+  const ImplicitSharingInfo *positions = positions_sharing_info(mesh);
+  if (seal.positions.get() != positions) {
+    return false;
+  }
+  /* Also false after #mesh_positions_unseal with no position array: its -1 is no array's. */
+  return seal.positions_version == (positions != nullptr ? positions->version() : 0);
+}
+
+void mesh_topology_unseal(Mesh &mesh)
+{
+  if (mesh.runtime->topology_seal.is_set) {
+    mesh.runtime->topology_seal = {};
+  }
+}
+
+void mesh_positions_unseal(Mesh &mesh)
+{
+  mesh.runtime->topology_seal.positions_version = -1;
+}
+
+void mesh_topology_unseal_if_written_at(Mesh &mesh, const void *address)
+{
+  if (!mesh.runtime->topology_seal.is_set) {
+    return;
+  }
+  const AttributeStorage &storage = mesh.attribute_storage.wrap();
+  const std::array<std::pair<StringRef, size_t>, 3> arrays = {{{".edge_verts", sizeof(int2)},
+                                                               {".corner_vert", sizeof(int)},
+                                                               {".corner_edge", sizeof(int)}}};
+  for (const auto &[name, item_size] : arrays) {
+    const Attribute *attribute = storage.lookup(name);
+    const auto *data = attribute ? std::get_if<Attribute::ArrayData>(&attribute->data()) : nullptr;
+    if (data == nullptr || data->data == nullptr) {
+      continue;
+    }
+    const char *begin = static_cast<const char *>(data->data);
+    const char *written = static_cast<const char *>(address);
+    if (written >= begin && written < begin + item_size * size_t(data->size)) {
+      mesh_topology_unseal(mesh);
+      return;
+    }
+  }
+  const Attribute *attribute = storage.lookup("position");
+  const auto *data = attribute ? std::get_if<Attribute::ArrayData>(&attribute->data()) : nullptr;
+  if (data != nullptr && data->data != nullptr) {
+    const char *begin = static_cast<const char *>(data->data);
+    const char *written = static_cast<const char *>(address);
+    if (written >= begin && written < begin + sizeof(float3) * size_t(data->size)) {
+      mesh_positions_unseal(mesh);
+    }
+  }
+}
+
+/** \} */
 
 MeshRuntime::~MeshRuntime()
 {
@@ -151,6 +289,20 @@ GroupedSpan<int> Mesh::vert_to_corner_map() const
     r_data = bke::mesh::build_vert_to_corner_indices(this->corner_verts(), offsets);
   });
   return {offsets, this->runtime->vert_to_corner_map_cache.data()};
+}
+
+GroupedSpan<int> Mesh::edge_to_corner_map() const
+{
+  this->runtime->edge_to_corner_offset_cache.ensure([&](Array<int> &r_data) {
+    r_data = Array<int>(this->edges_num + 1, 0);
+    offset_indices::build_reverse_offsets(this->corner_edges(), r_data);
+  });
+  const OffsetIndices<int> offsets(this->runtime->edge_to_corner_offset_cache.data());
+  this->runtime->edge_to_corner_map_cache.ensure([&](Array<int> &r_data) {
+    r_data.reinitialize(offsets.total_size());
+    offset_indices::reverse_indices_in_groups(this->corner_edges(), offsets, r_data);
+  });
+  return {offsets, this->runtime->edge_to_corner_map_cache.data()};
 }
 
 const IndexMask &Mesh::loose_verts() const
@@ -318,6 +470,8 @@ void BKE_mesh_runtime_clear_geometry(Mesh *mesh)
   mesh->runtime->vert_to_corner_map_cache.tag_dirty();
   mesh->runtime->corner_to_face_map_cache.tag_dirty();
   mesh->runtime->vert_to_edge_map_cache.tag_dirty();
+  mesh->runtime->edge_to_corner_offset_cache.tag_dirty();
+  mesh->runtime->edge_to_corner_map_cache.tag_dirty();
   mesh->runtime->vert_normals_cache.tag_dirty();
   mesh->runtime->vert_normals_true_cache.tag_dirty();
   mesh->runtime->face_normals_cache.tag_dirty();
@@ -347,6 +501,8 @@ void Mesh::tag_edges_split()
   this->runtime->vert_to_face_map_cache.tag_dirty();
   this->runtime->vert_to_corner_map_cache.tag_dirty();
   this->runtime->vert_to_edge_map_cache.tag_dirty();   /* Angelo: split edges are new edges. */
+  this->runtime->edge_to_corner_offset_cache.tag_dirty();
+  this->runtime->edge_to_corner_map_cache.tag_dirty();
   if (this->runtime->loose_edges_cache.is_cached() &&
       !this->runtime->loose_edges_cache.data().mask.is_empty())
   {
@@ -389,6 +545,9 @@ void Mesh::tag_face_winding_changed()
   this->runtime->face_normals_true_cache.tag_dirty();
   this->runtime->corner_normals_cache.tag_dirty();
   this->runtime->vert_to_corner_map_cache.tag_dirty();
+  /* Reversing faces swaps edges stored for each of its corners, but the number of corners using
+   * each edge doesn't change, so only the indices are recalculated, not the offsets. */
+  this->runtime->edge_to_corner_map_cache.tag_dirty();
   this->runtime->shrinkwrap_boundary_cache.tag_dirty();
 }
 

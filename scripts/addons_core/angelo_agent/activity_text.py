@@ -46,7 +46,7 @@ _KIND = {
     "angelo_read_file": "file", "angelo_write_file": "file", "angelo_job_start": "job", "angelo_web_check": "check",
     "angelo_game_ready_check": "check",
     "angelo_web_export": "file", "angelo_web_preview": "look", "angelo_app_feature": "edit",
-    "angelo_engine_link_status": "check", "angelo_engine_link": "edit",
+    "angelo_engine_link_status": "check", "angelo_engine_link": "edit", "angelo_download": "edit",
     "angelo_engine_check": "check", "angelo_engine_fix": "edit",
     "angelo_skeleton_check": "check",
     "angelo_job_cancel": "job", "angelo_delegate": "consult", "angelo_memory_update": "memory",
@@ -230,7 +230,12 @@ def status_tone(status):
 
 
 def friendly_error(text):
-    """A one-line headline for an error: its code or exception class, translated; never the code itself."""
+    """A one-line headline for an error: its code or exception class, translated; never the code itself. A script
+    the confinement refused shows the refusal itself (script_confinement.REASONS)."""
+    from .script_confinement import REASONS
+    for reason in REASONS:
+        if reason in str(text or ""):
+            return iface_(reason)
     for match in _CODE.finditer(str(text or "")):
         if match.group(1) in _CODES:
             return iface_(_CODES[match.group(1)])
@@ -319,6 +324,14 @@ def notice_view(message):
     text = message.get("text") or ""
     if message.get("notice") and message.get("job"):
         return job_view(message)
+    from .request_rows import drawn_as_notice
+    if drawn_as_notice(message) and message.get("checkpoint"):
+        # Angelo's own request drawn as a notice (``chat_blocks``): its snapshot's Restore, as the person's bubble
+        # has (R2-L-1: an unrequested turn, which also runs in Ask, was undone only through Blender Undo).
+        from .console import display_text
+        label = iface_("Restore")   # The bubble's own label (chat_view): no new interface text.
+        return {"tone": "neutral", "headline": display_text(message), "body": "",
+                "actions": (("restore", message["checkpoint"], label, "secondary"),)}
     if message.get("open_studio"):   # A result waiting in Media Studio (camera to video): a card that opens it.
         from .console import display_text
         return {"tone": "teal", "headline": iface_("Your shot is ready"), "body": display_text(message),

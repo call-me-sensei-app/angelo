@@ -24,6 +24,8 @@ param(
 $ErrorActionPreference = "Continue"
 New-Item -ItemType Directory -Force $ResultsDir | Out-Null
 Start-Transcript (Join-Path $ResultsDir "gui-transcript.log") -Force | Out-Null
+# First: the stage's proof that this sign-in's session started (windows_session_start.ps1).
+Set-Content (Join-Path $ResultsDir "STARTED") "started $(Get-Date -Format o) as $env:USERNAME in session $((Get-Process -Id $PID).SessionId)"
 $results = New-Object System.Collections.ArrayList
 function Add-Result([string]$Name, [string]$Status, [string]$Detail = "") {
     [void]$results.Add([pscustomobject]@{ Check = $Name; Status = $Status; Detail = $Detail })
@@ -260,7 +262,15 @@ public static class ShellThumbnail {
         $json = $results | ConvertTo-Json
         [System.IO.File]::WriteAllText((Join-Path $ResultsDir "gui-results.json"), $json, (New-Object System.Text.UTF8Encoding($true)))
         & $gcloud storage cp --quiet --recursive "$ResultsDir\*" "gs://$(Get-Meta 'angelo-bucket')/result/gui/" 2>&1 | Out-Null
-        . (Join-Path $SourceDir "scripts\angelo\windows_command_queue.ps1")
+        # The copy the boot chose (windows_cloud_bootstrap.ps1, Resolve-QueueTool: the published one when it checked
+        # out), else this tree's.
+        $queue, $chosen = (Join-Path $SourceDir "scripts\angelo\windows_command_queue.ps1"), "C:\angelo\state\queue-tool.txt"
+        if (Test-Path $chosen) {
+            $named = (Get-Content $chosen -Raw).Trim()
+            if ($named -and (Test-Path $named)) { $queue = $named }
+        }
+        Write-Host "queue tool: $queue"
+        . $queue
         Wait-QueuedCommands $gcloud (Get-Meta "angelo-bucket") "cmd-gui" $ResultsDir (Join-Path $env:TEMP "angelo-cmd") $holdMinutes
     }
 } catch {

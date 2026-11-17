@@ -7,6 +7,17 @@
  * `bmesh_operators.cc`), so an operator that creates elements while iterating one (extrude's side
  * faces) gives the same element order wherever the heap put the elements. Bevel frees the faces it
  * rebuilds in insertion order too, so the next operation's new faces land in the same slots.
+ *
+ * The contract is the same element order for the same history at other addresses, which is what
+ * repeats an operation across processes. A BMesh's element order follows its own history by
+ * design (a freed slot is the next one used), so the tests change only the addresses: live padding
+ * elements, a different number per run, sit before the scene in every pool, hidden and outside
+ * every operator's input. Each pool's order and every operator's history stay the same while
+ * each scene element sits a different number of elements further on, low address bits included.
+ * An operator that walked a pointer-keyed container on its output path would order its results
+ * differently. (The first version freed a large grid in shuffled order instead; pools of one
+ * chunk keep such a shuffled free list, so it compared different histories and failed on every
+ * platform once run: 2.0.0's Windows and macOS GTests.)
  */
 
 #include <algorithm>
@@ -42,52 +53,54 @@ static void create_grid(BMesh *bm, const int segments)
 }
 
 /**
- * Make and free a grid in a shuffled order, so the element pools' free lists hand the next
- * elements out at addresses in an order unrelated to their creation order.
+ * `count` loose triangles, hidden, far from the scene: live elements in every pool (vertices,
+ * edges, loops, faces) before the scene's, which no operator here takes as input.
  */
-static void scramble_pools(BMesh *bm, const uint32_t seed)
+static void pad_pools(BMesh *bm, const int count)
 {
-  create_grid(bm, 24);
-  RandomNumberGenerator rng(seed);
-  Vector<BMFace *> faces;
-  Vector<BMEdge *> edges;
-  Vector<BMVert *> verts;
-  BMIter iter;
-  BMFace *f;
-  BMEdge *e;
-  BMVert *v;
-  BM_ITER_MESH (f, &iter, bm, BM_FACES_OF_MESH) {
-    faces.append(f);
-  }
-  BM_ITER_MESH (e, &iter, bm, BM_EDGES_OF_MESH) {
-    edges.append(e);
-  }
-  BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
-    verts.append(v);
-  }
-  rng.shuffle<BMFace *>(faces);
-  rng.shuffle<BMEdge *>(edges);
-  rng.shuffle<BMVert *>(verts);
-  for (BMFace *face : faces) {
-    BM_face_kill(bm, face);
-  }
-  for (BMEdge *edge : edges) {
-    BM_edge_kill(bm, edge);
-  }
-  for (BMVert *vert : verts) {
-    BM_vert_kill(bm, vert);
+  for (int i = 0; i < count; i++) {
+    BMVert *verts[3];
+    for (int j = 0; j < 3; j++) {
+      const float co[3] = {float(i), float(j), 1000.0f};
+      verts[j] = BM_vert_create(bm, co, nullptr, BM_CREATE_NOP);
+    }
+    BMFace *f = BM_face_create_verts(bm, verts, 3, nullptr, BM_CREATE_NOP, true);
+    BM_face_select_set(bm, f, false);
+    BM_elem_flag_enable(f, BM_ELEM_HIDDEN);
+    for (int j = 0; j < 3; j++) {
+      BM_elem_flag_enable(verts[j], BM_ELEM_HIDDEN);
+    }
+    BMIter iter;
+    BMEdge *e;
+    BM_ITER_ELEM (e, &iter, f, BM_EDGES_OF_FACE) {
+      BM_elem_flag_enable(e, BM_ELEM_HIDDEN);
+    }
   }
 }
 
-/** Every face's vertex indices, in face order: the element order a mesh export would see. */
+/** Padding per run: a different number of elements in front of the scene each time. */
+static constexpr int padding_counts[] = {0, 1, 7, 33};
+
+/**
+ * Every scene face's vertex indices, in face order: the element order a mesh export would see.
+ * The padding is left out: scene vertices are numbered in pool order among scene vertices.
+ */
 static Vector<int> face_corner_order(BMesh *bm)
 {
-  BM_mesh_elem_index_ensure(bm, BM_VERT);
-  Vector<int> order;
   BMIter iter, liter;
+  BMVert *v;
+  int index = 0;
+  BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
+    BM_elem_index_set(v, BM_elem_flag_test(v, BM_ELEM_HIDDEN) ? -1 : index++); /* set_dirty! */
+  }
+  bm->elem_index_dirty |= BM_VERT; /* Not the mesh's own indices: the next user rebuilds them. */
+  Vector<int> order;
   BMFace *f;
   BMLoop *l;
   BM_ITER_MESH (f, &iter, bm, BM_FACES_OF_MESH) {
+    if (BM_elem_flag_test(f, BM_ELEM_HIDDEN)) {
+      continue;
+    }
     BM_ITER_ELEM (l, &liter, f, BM_LOOPS_OF_FACE) {
       order.append(BM_elem_index_get(l->v));
     }
@@ -146,20 +159,18 @@ TEST_F(BMeshOperatorMapOrderTest, MappingIteratesInInsertionOrder)
 
 TEST_F(BMeshOperatorMapOrderTest, ExtrudeOrderIgnoresElementAddresses)
 {
-  /* The same grid extruded in BMeshes whose elements sit at differently ordered addresses. */
+  /* The same grid extruded with its elements at other addresses, the same history. */
   Vector<Vector<int>> results;
-  for (const uint32_t seed : {0u, 1u, 2u, 3u}) {
+  for (const int padding : padding_counts) {
     BMesh *bm = new_bmesh();
-    if (seed != 0) {
-      scramble_pools(bm, seed);
-    }
+    pad_pools(bm, padding);
     create_grid(bm, 5);
-    BMO_op_callf(bm, BMO_FLAG_DEFAULTS, "extrude_face_region geom=%af");
+    BMO_op_callf(bm, BMO_FLAG_DEFAULTS, "extrude_face_region geom=%Hf", BM_ELEM_HIDDEN);
     results.append(face_corner_order(bm));
     BM_mesh_free(bm);
   }
   for (const int i : results.index_range().drop_front(1)) {
-    EXPECT_EQ(results[i], results[0]) << "pool scramble seed " << i;
+    EXPECT_EQ(results[i], results[0]) << "padding " << padding_counts[i];
   }
 }
 
@@ -168,25 +179,24 @@ TEST_F(BMeshOperatorMapOrderTest, FreeOrderIgnoresElementAddresses)
   /* Bevel frees its rebuilt faces in the order it found them; the next operation's faces fill
    * those slots, so their order must not follow the addresses the faces had. */
   Vector<Vector<int>> results;
-  for (const uint32_t seed : {0u, 1u, 2u, 3u}) {
+  for (const int padding : padding_counts) {
     BMesh *bm = new_bmesh();
-    if (seed != 0) {
-      scramble_pools(bm, seed);
-    }
+    pad_pools(bm, padding);
     create_grid(bm, 12);
     BMO_op_callf(bm,
                  BMO_FLAG_DEFAULTS,
-                 "bevel geom=%av offset=%f segments=%i profile=%f affect=%i",
+                 "bevel geom=%Hv offset=%f segments=%i profile=%f affect=%i",
+                 BM_ELEM_HIDDEN,
                  0.02f,
                  2,
                  0.5f,
                  int(BEVEL_AFFECT_VERTICES));
-    BMO_op_callf(bm, BMO_FLAG_DEFAULTS, "triangulate faces=%af");
+    BMO_op_callf(bm, BMO_FLAG_DEFAULTS, "triangulate faces=%Hf", BM_ELEM_HIDDEN);
     results.append(face_corner_order(bm));
     BM_mesh_free(bm);
   }
   for (const int i : results.index_range().drop_front(1)) {
-    EXPECT_EQ(results[i], results[0]) << "pool scramble seed " << i;
+    EXPECT_EQ(results[i], results[0]) << "padding " << padding_counts[i];
   }
 }
 

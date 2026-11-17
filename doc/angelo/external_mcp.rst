@@ -81,9 +81,12 @@ that starts before Angelo still sees its tools).
 Connecting an app
 =================
 
-Preferences > AI Providers > **External AI apps (MCP)** lists Claude Code and
-Codex, each with a button that names the app ("Connect Claude Code", "Connect
-Codex"; "Copy setup" when the app is not found). A click:
+Preferences > AI Providers > **External AI apps (MCP)** lists Claude Code,
+Codex, Claude Desktop, Cursor and VS Code, each MCP app connected by Copy setup,
+and *MCP app* for any other MCP client, each with a button that names what it
+does ("Connect Claude Code", "Connect Codex"; "Copy setup" for the others and
+for an app not found). Every button that grants takes only the person's click
+(``grant_operators.rst``). A click on Connect:
 
 1. records the app in ``<state>/mcp/clients.json`` (owner-only) under its
    client name (``claude-code``, ``codex``) and writes a fresh 32-byte key to
@@ -102,8 +105,33 @@ Codex           ``$CODEX_HOME/config.toml`` (``~/.codex``), ``[mcp_servers.angel
 =============== ======================================================================
 
 ``external_setup`` also knows Claude Desktop, Cursor and VS Code settings
-(tested), but the card offers only the two apps above for now. Any MCP client
-can use Angelo with the snippet **Copy setup** gives.
+(tested), but the card writes settings only for the two apps above for now.
+Any MCP client can use Angelo with the snippet **Copy setup** gives: the click
+is the person's act in the window, as Connect is, so it connects the app in
+Angelo (steps 1 and 3; ``external_copy``) and copies the snippet to paste into
+the app's MCP settings; it never writes the app's own settings.
+
+* **Connected** means a record with a key Angelo can read: a record whose key is
+  missing or unusable shows as not connected, and Copy setup registers it again
+  with the levels it had. Copying again otherwise keeps the key and levels.
+* **One client per app**, so attribution, script-file approvals and revocation
+  stay per app: Claude Desktop, Cursor and VS Code have their own clients
+  (``claude-desktop``, ``cursor``, ``vscode``), and each Copy setup on the *MCP
+  app* row connects a new one (``mcp-app``, ``mcp-app-2``, ...), shown as its own
+  row with its own Disconnect.
+* **The snippet takes the app's form**: a ``[mcp_servers.angelo]`` table for
+  Codex's ``config.toml``, ``servers`` with ``"type": "stdio"`` for VS Code, and
+  ``mcpServers`` JSON for the others. It holds no key or token (the launcher reads
+  the key from Angelo's private store). It does hold the absolute paths of Angelo's
+  bundled Python and state folder, which name the account: clipboard managers and
+  sync tools keep what is copied (accepted; nothing secret is in it).
+* A connected Claude Code or Codex that is installed without Angelo's entry (it was
+  copied before the app was installed) offers **Connect** again, on the card and
+  in the chat bar's menu.
+* **Disconnect** says what it did: "Removed Angelo from <app>" when it removed the
+  app's entry, or that it disconnected in Angelo and the entry, if the person
+  pasted one, is theirs to remove.
+* On Windows, Connect and Copy setup refuse alike until the named pipe ships.
 
 **Codex loads Angelo's tools on demand.** Claude Code gives its model every
 tool and the server's instructions with the first request. Codex 0.163 decides
@@ -199,10 +227,18 @@ calls run in **requests** there (``ExternalWork``):
   presentation and short identifiers (``o<n>`` handles, kept in memory per
   conversation). Approval, Undo, journaling, invocation guards, receipts and
   script consent are ``Controller.request_tool``'s. Calls of one app run in
-  arrival order. A call delivered again under its ID never runs twice: the host
-remembers each app's last 1,024 call IDs with the request that ran them, so a
-delivery after that request ended (Stop, a decline, a file change) gets its
-first answer, or "did not run", from that request.
+  arrival order. A call delivered again under its ID (the launcher asks every
+  25 s while it waits) never runs twice and gets exactly the answer its first
+  delivery was sent. The host keeps each app's calls with the request that ran
+  them, so a delivery after that request ended (Stop, a decline, a file change)
+  gets that answer, or "did not run", from it. Without the window that answer
+  is kept on the call's record once its save or reload is done, note or error
+  included, and a re-ask skips every admission check (a re-ask never runs). A
+  call still unanswered is never forgotten; past 1,024 calls the oldest answered
+  ones are, keeping their IDs (65,536), and a request keeps 1,024 results, then
+  16,384 IDs: within these bounds, asked again, a forgotten call is said to be
+  not kept, never a success, and does not run again. A re-ask that reaches the host before the
+  first answer went out waits for it, at most 60 s for the call.
 * Views come back as MCP image content; absolute private paths are replaced by
   placeholders, as in the CLI. Without the window, what the app named itself (the
   opened file's folder, where the output goes, and a script file it names) is
@@ -258,9 +294,16 @@ first answer, or "did not run", from that request.
   admitted or rotated while an earlier request's answer and its reload are
   still to come, and a failed edit reloads only when it ended its own request
   (``closed_by_call``), never because the host closed that request since.
-  Known gap (it predates this): calls an app sends together into one request
-  run as each ticket frees, so a later call's edit can run before an earlier
-  call's held answer reloads, and that reload then undoes it.
+  Calls an app sends together into one request run one at a time in the order
+  they arrived, and without the window a call's turn ends only when its answer
+  goes out, after its save or reload (``ExternalWork.count_out``): the next call
+  never runs before an earlier call's reload, which would undo its edit while
+  its answer said it succeeded (Agent-B2, 2026-11-13). Every admitted call ends
+  its turn, one refused before it ran included, so a later call never waits
+  forever behind it. A script file is read when its call's turn starts, after
+  the earlier calls of its request have finished, so the file runs as it is
+  then. Admission never reloads the session's file while a call is still
+  unanswered: that call's own save or reload comes first and says so.
 
 While a call waits for the person (an approval card) or a job, the launcher asks
 Angelo again under the same call ID every 25 s, sending
@@ -311,7 +354,8 @@ from Claude Code or Codex otherwise had to be at the screen for every run.
 * Angelo reads the file itself (``script_files.read_script``): the real path,
   opened without following a final link (one swapped in after resolving fails),
   a regular file, UTF-8, at most 32,768 characters (``angelo_execute_python``'s
-  limit), read once. It then runs exactly that text as an
+  limit, ``script_store.MAX_CODE``; the tool's description states it, and a
+  longer file is refused with the way on: split the work into steps), read once. It then runs exactly that text as an
   ``angelo_execute_python`` call through the same host code (``ExternalWork``),
   and the call carries what was read (``ToolCall.script_file``, host-only). A
   file edited or swapped after the read never changes what runs. It runs as
@@ -329,8 +373,8 @@ from Claude Code or Codex otherwise had to be at the screen for every run.
   at admission and again at dispatch (``TrustedScripts.script_file_allowed``):
   the same app, project, real path and SHA-256 of the text that will run,
   approval Approve for me, ``AllowAutoApproval`` on, and a script that names
-  neither preferences nor Angelo's add-on (``consent_excluded``). Anything else
-  asks again. When the file changed, the card says since when.
+  neither preferences nor Angelo's add-on nor an operator that replaces the
+  open file (``consent_excluded``). Anything else asks again. When the file changed, the card says since when.
 * The same text sent as ``angelo_execute_python`` code always asks: only
   Angelo's own read of the named file carries the approval.
 * The card's button never works while an agent script runs, so a script cannot
@@ -391,12 +435,15 @@ does not start and says to connect in Angelo. Angelo never signs in or adds a
 connection for an app.
 
 ``angelo_task_status`` (``task_id``, ``wait_seconds``) returns ``state``
-(``running``, ``waiting_for_approval_in_angelo``, ``done``, ``failed``,
-``stopped``), the latest progress rows (tool activity, assistant and system
-text), the agent's reply once it ends, the request's snapshot id and the
-connection kind that ran it (``runtime``, ``billing``: subscription, API key or
-team; ``model``), never an account identifier. ``angelo_task_stop`` is the
-person's Stop. One task runs at a time per app; tool calls wait while it runs.
+(``running``, ``waiting_for_approval_in_angelo``,
+``waiting_for_person_in_angelo``, ``done``, ``failed`` or ``stopped``; while
+``waiting_for_person_in_angelo``, ``held`` names the tool the person is using,
+and the task starts once they finish it), the latest progress rows (tool
+activity, assistant and system text), the agent's reply once it ends, the
+request's snapshot id and the connection kind that ran it (``runtime``,
+``billing``: subscription, API key or team; ``model``), never an account
+identifier. ``angelo_task_stop`` is the person's Stop. One task runs at a time
+per app; tool calls wait while it runs.
 
 Billing
 =======
@@ -483,8 +530,9 @@ approval, and any other script is refused with how to approve it.
 
 An app can work on a ``.blend`` file while Angelo's window is closed: scene
 reads, views and Angelo's bounded typed edits, with every edit saved to a **new
-file next to the source**. The source file is never written. Nothing waits for a
-person, so nothing that needs one runs: Python, background jobs, tasks and any
+file next to the source**. Angelo's own saves never write the source file (an
+approved script's writers can, in 2.0.0: doc/angelo/script_confinement.rst,
+"Known limits in 2.0.0"). Nothing waits for a person, so nothing that needs one runs: Python, background jobs, tasks and any
 call that would show an approval card answer ``needs_gui`` at once.
 
 Shape
@@ -664,7 +712,12 @@ Cycles device). ``headless_preferences`` owns it.
   lookup honours it, else the account's home; ``HOME`` on Linux). A
   ``BLENDER_USER_*`` variable in the connected app's environment is never
   honoured: the app never chooses what the child loads, as ``KEEP_ENVIRONMENT``
-  already drops those variables.
+  already drops those variables. Like every child Angelo starts from an
+  allow-list (worker Blenders, the endpoint catalog, Fab conversion and browser,
+  the PDF and EXR readers, macOS update helpers), it keeps the OS's own
+  variables first (``essential_environment``: on Windows ``SYSTEMROOT``,
+  ``COMSPEC``, ``TEMP``, ``USERPROFILE`` and the rest, without which OpenSSL,
+  shell commands, temporary files and ``~`` fail), then the names it allows.
 * **Read-only by construction:** the launcher opens the person's
   ``userpref.blend`` for reading only and copies it (a regular file, at most
   64 MiB) into the child's private folder; the child starts without
@@ -692,6 +745,28 @@ Cycles device). ``headless_preferences`` owns it.
   so later starts go straight to factory settings with the same words until that
   file changes (never on disk: one slow file must not cost a person their
   preferences in later sessions).
+* **Folders dead children left.** A child killed outright leaves its private
+  folder. The launcher's sweep (``headless_working_copy.sweep``, off the
+  session's open, on a thread) removes the folders of Angelo's own scratch root
+  whose name is a headless child's, that are this user's own, are not links,
+  and whose ``child.pid`` names a process that no longer runs. Its two
+  questions are asked the same way on every platform: ownership through
+  ``file_owner.owned_by_this_user`` (the owner ID; on Windows the folder's
+  owner SID against the process's own, never skipped) and liveness through
+  ``engine_link_protocol.process_alive`` (``OpenProcess`` and
+  ``GetExitCodeProcess`` on Windows). Reason: on Windows signal 0 is
+  ``signal.CTRL_C_EVENT``, so ``os.kill(pid, 0)`` asks nothing: it calls
+  ``GenerateConsoleCtrlEvent(CTRL_C_EVENT, pid)``, which sends Ctrl+C to the
+  console process group with that id (a live child and everything that shares
+  its console group) or fails for an id that names no group (CPython ends a
+  process with ``TerminateProcess`` only for other signal values). And
+  ``os.getuid`` does not exist there. So the sweep as first written would have
+  died on its first folder, and with only that repaired would have interrupted a
+  live child or read every pid as gone (external audit, 2026-11-14).
+  Headless is macOS and Linux only for now (``SUPPORTED_PLATFORMS``), so the
+  sweep did not run on Windows in 2.0.0; ``test_native_liveness_probes`` and
+  ``test_native_windows_user_identity`` hold every such call in Angelo's
+  sources to a Windows answer or a pinned platform gate.
 * **Said in results:** ``angelo_file_status`` carries ``preferences`` (and
   ``working_on_source`` in a read-only folder), and the child adds the same
   words to every ``angelo_blend_file`` result, which the open result's summary
@@ -736,6 +811,18 @@ change on disk by someone else. ``save_version`` stays the person's value and is
 opens the source itself (a plain save cannot replace it there: Blender writes a
 temporary file in the folder and renames it), the open result says the session
 works on the file itself, and a write to the file is still detected as above.
+
+The child names the files its own saves write, since C records what a process
+made for that process alone: the source, the working copy and a continued
+output, each as the real path ``headless_files`` checked from the launcher's
+arguments (``headless_main._vouch_saves``, before the host starts and so before
+any script); ``main`` vouches nothing from its raw arguments. Every output the
+session claims later (a reload's fresh copy, a new output when the last one
+changed on disk) is named the same way as it is claimed
+(``headless_files.claim_output``), so a plain save of the open copy (an
+approved script's ``save_mainfile``, an add-on) never strands the next save. In 2.0.0 a
+script's writers can write these files too (doc/angelo/script_confinement.rst,
+"Known limits in 2.0.0").
 
 Edits and the output file
 -------------------------

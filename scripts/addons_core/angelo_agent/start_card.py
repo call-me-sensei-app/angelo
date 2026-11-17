@@ -85,11 +85,19 @@ def modified_times(paths):
 
 class StartCard(kit.BaseCard):
     kind, modal, priority = "start", True, 80
+    pictures = property(lambda self: fc.banner_pictures())
     cancel_action, default_action, outside_dismisses = "new", "new", True
 
     def __init__(self, scenes, act, titles=None, mtimes=None):
         self.scenes, self.on_act = list(scenes)[:MAX_TILES], act
         self.titles, self.mtimes = titles or {}, mtimes or {}
+
+    def opened(self, host):
+        for path in self.scenes:   # Each tile's preview, read outside drawing; a reopened panel reads them again.
+            fc.thumbnail(path)
+
+    def closed(self, how):
+        fc.release()   # The tiles' textures and previews go with the panel.
 
     def layout(self, view, region_w, region_h, scale, ui):
         def plan(size):

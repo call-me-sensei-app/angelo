@@ -10,6 +10,8 @@ event stream and the page sends a PNG of its canvas back to the loopback server;
 page's report on each web shader (compiled or the compiler's error). No page open, no picture: the result says so.
 """
 
+from . import owned_paths
+
 CAPTURE_SECONDS = 8.0
 THEN = (" It shows the live web preview as the person's browser draws it now (Three.js), not Blender's viewport "
         "or a render.")
@@ -35,6 +37,7 @@ def source(window, checked, references, controller):
                            % CAPTURE_SECONDS)
     reference = references.new_observation("Web preview")
     try:
+        owned_paths.require_writable(reference["path"])
         with open(reference["path"], "wb") as handle:
             handle.write(png)
     except Exception:
@@ -58,6 +61,7 @@ def _linked(references, Source, engine_link_capture):
     png, facts = engine_link_capture.capture()
     reference = references.new_observation("Web page")
     try:
+        owned_paths.require_writable(reference["path"])
         with open(reference["path"], "wb") as handle:
             handle.write(png)
     except Exception:

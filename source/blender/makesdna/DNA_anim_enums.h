@@ -175,7 +175,7 @@ enum eDriverTarget_RotationMode : char {
   /** Automatic euler mode. */
   DTAR_ROTMODE_AUTO = 0,
 
-  /** Explicit euler rotation modes - must sync with BLI_math_rotation.h defines. */
+  /** Explicit euler rotation modes - must sync with BLI_math_rotation_c.hh defines. */
   DTAR_ROTMODE_EULER_XYZ = 1,
   DTAR_ROTMODE_EULER_XZY,
   DTAR_ROTMODE_EULER_YXZ,
@@ -291,6 +291,9 @@ enum eDriver_Flags : int {
   DRIVER_FLAG_PYTHON_BLOCKED = (1 << 5),
   /** Include 'self' in the drivers namespace. */
   DRIVER_FLAG_USE_SELF = (1 << 6),
+  /** Angelo: Python an agent script brought into the project (doc/angelo/script_confinement.rst). Saved; its
+   * Python doesn't run until the person edits the expression. */
+  DRIVER_FLAG_ANGELO_UNTRUSTED = (1 << 7),
 };
 ENUM_OPERATORS(eDriver_Flags);
 

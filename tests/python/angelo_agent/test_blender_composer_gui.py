@@ -83,8 +83,8 @@ def scale():
 
 def at(x, y):
     """Window pixels of a layout point on the composer's text (unmirrored ``x``, as the text field is drawn)."""
-    region, s = chat()[1], scale()
-    return region.x + x * s, region.y + y * s
+    from qa_input import chat_rect   # The chat's points as window pixels at its scale; the text is never mirrored.
+    return chat_rect(chat()[1], (x, y, 0, 0), rtl=False)[:2]
 
 
 def centre():
@@ -241,8 +241,9 @@ def scroll_steps(label):
     blink(False)
     hidden_image = pixels(label + "-no-caret.png")
     blink(True)
-    lo, hi = int(region.y + (row_y - 3) * s), int(region.y + (row_y + size + 2) * s) + 1
-    left, right = int(region.x + 24 * s), int(region.x + (24 + view_state()["composer"][2]) * s)
+    from qa_input import chat_rect   # The chat's points as window pixels at its scale; the text is never mirrored.
+    left, lo, wide, high = chat_rect(region, (24, row_y - 3, view_state()["composer"][2], size + 5), rtl=False)
+    left, right, lo, hi = int(left), int(left + wide), int(lo), int(lo + high) + 1
     differs = np.abs(shown_image[lo:hi, left:right, :3] - hidden_image[lo:hi, left:right, :3]).sum(axis=2) > 0.3
     columns = np.flatnonzero(differs.sum(axis=0) >= max(2, (hi - lo) // 2)) + left
     check(label + "_the_caret_is_drawn_on_the_clicked_row", len(columns) > 0 and abs(columns.min() - cx) <= 3 * s,
@@ -266,7 +267,9 @@ def scroll_steps(label):
     first = view_state()["composer_first"]
     value, offset, row_y = view_state()["draft_rows"][2]
     px, py = at(chat_composer.column_x(value, 2, size, drawn) + 0.5, row_y + size * 0.35)
-    above = region.y + (view_state()["composer_view"]["rect"][1] + view_state()["composer_view"]["rect"][3] + 30) * s
+    from qa_input import chat_rect   # The chat's points as window pixels at its scale.
+    box = view_state()["composer_view"]["rect"]
+    above = chat_rect(region, (0, box[1] + box[3] + 30, 0, 0), rtl=False)[1]
     qa_input.send(window(), qa_input.drag_path((px, py), (px, above), s, release=False))
     yield 0.6
     held = view_state()["composer_first"]

@@ -251,7 +251,8 @@ def _measure(taken, stopped):
         clock.time("collider", started)
     clock.phases["total"] = round((time.perf_counter() - taken.started) * 1000.0, 1)
     answer["native_ms"] = clock.phases
-    answer["measured"] = G.glossary(request["resolution"], request["fov_degrees"], request["texture_size"])
+    answer["measured"] = G.glossary(request["resolution"], request["fov_degrees"], request["texture_size"],
+                                    facts=answer)   # Only the facts this result holds.
     return answer
 
 

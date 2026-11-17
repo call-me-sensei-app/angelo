@@ -21,8 +21,7 @@ never take a port Blender MCP or anything else uses. Every effect happens inside
 * ``notifications/cancelled`` stops waiting and sends nothing more, as MCP requires; work already in Angelo is not
   cancelled (only the person's Stop or ``angelo_task_stop`` stops it).
 
-Pure standard library and no ``bpy``; doc/angelo/external_mcp.rst.
-"""
+Pure standard library and no ``bpy``; doc/angelo/external_mcp.rst."""
 
 import argparse
 import json
@@ -56,6 +55,7 @@ IN_FLIGHT_UNANSWERED = ("Angelo already had this call when its answer could no l
                         "window, the session's output file) before repeating it.")
 CALL_DEADLINE = 900.0    # Least a call waits before it says so; a longer host lifetime wins (tool_deadlines).
 TASK_WAIT = 45.0         # angelo_task / angelo_task_status default wait (MAX_TASK_WAIT at most).
+WAITING_TASK_STATES = {"running", "waiting_for_approval_in_angelo", "waiting_for_person_in_angelo"}   # Not ended.
 NOT_CONNECTED = ("This app is not connected to Angelo. In Angelo open Preferences > AI Providers > External AI apps "
                  "and connect it, then retry.")
 NO_FILE = ("no_file: Angelo's window is not reachable ({reason}). To work on a .blend without it, call angelo_open_file "
@@ -296,11 +296,12 @@ class Server:
                             and AppRegistry(self.state).key(self.client)):
                         return _coded_error("no_file", NO_FILE.format(reason=value.get("message") or "not running"))
                     return _with_note(_mcp_result(value), note)
-                rounds += 1
+                rounds, started = rounds + 1, started + (ROUND_WAIT if value.get("held") else 0)   # Paused for the person.
                 if time.monotonic() - started >= (deadline := max(CALL_DEADLINE, provider_seconds(name))):
                     return _text_error("Still waiting in Angelo (for the person's approval or a long job) after %d "
                                        "minutes. It keeps going there; check the scene before repeating it." % round(deadline / 60))
-                self._progress(params, rounds, "Waiting in Angelo (approval or running work)")
+                self._progress(params, rounds, "Waiting in Angelo for the person to finish %s" % value["held"]
+                               if value.get("held") else "Waiting in Angelo (approval or running work)")
         finally:
             if headless:   # Answered, cancelled or past its deadline: never running for this launcher again.
                 self.headless.forget(call_id)
@@ -359,7 +360,7 @@ class Server:
         if name == "angelo_task":
             value = self.request({"command": "task", "args": {"action": "start", "text": arguments.get("task")}}, 0)
             result = value.get("result") if isinstance(value.get("result"), dict) else None
-            if result is None or result.get("state") not in {"running", "waiting_for_approval_in_angelo"} or not wait:
+            if result is None or result.get("state") not in WAITING_TASK_STATES or not wait:
                 return _task_result(value)
             self._progress(params, 1, result["state"])
             return self._task_wait(result["task_id"], wait, params)
@@ -374,7 +375,7 @@ class Server:
             step = max(0.0, min(5.0, deadline - time.monotonic()))
             value = self.request({"command": "task", "args": {"action": "status", "task": task, "wait": step}}, step)
             result = value.get("result") if isinstance(value.get("result"), dict) else {}
-            if result.get("state") not in {"running", "waiting_for_approval_in_angelo"} or time.monotonic() >= deadline:
+            if result.get("state") not in WAITING_TASK_STATES or time.monotonic() >= deadline:
                 return _task_result(value)
             count += 1
             self._progress(params, count, result["state"])

@@ -9,12 +9,14 @@
  * \brief external `writefile.cc` function prototypes.
  */
 
-#include "BLI_sys_types.h"
+#include "BLI_set.hh"
+#include "BLI_sys_types.hh"
 
 namespace blender {
 
 struct BlendThumbnail;
 struct FileIdentity;
+struct ID;
 struct Main;
 struct MemFile;
 struct ReportList;
@@ -67,6 +69,13 @@ struct BlendFileWriteParams {
    */
   FileIdentity *written = nullptr;
   bool *written_valid = nullptr;
+  /**
+   * Angelo: when set, only these IDs are written: the local ones, and the linked ones' placeholders
+   * with the libraries listed here or holding one of them; each from its own data, exactly as a
+   * save writes it. The parallel merge's privacy check reads what a save would write of the
+   * datablocks a merge keeps at their own cost, never the whole document's (worker_merge_verify).
+   */
+  const blender::Set<const ID *> *only_ids = nullptr;
 };
 
 /**

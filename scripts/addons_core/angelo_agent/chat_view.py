@@ -18,13 +18,14 @@ import blf
 import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
-from .input_policy import modal_options
-from . import canvas_controls, canvas_rtl, canvas_wrap, chat_card_draw, chat_cards, chat_composer, chat_goal, chat_welcome, text_layout
-from . import approval_wait, chat_rows, chat_blocks, chat_history, chat_guard, chat_notices, review_again, chat_replies, chat_scrollbar, live_windows, marble_draw, scroll_input, ui_tokens
-from . import composer_input, composer_scroll  # The composer's keys, pointer and own scroll.
+from .input_policy import modal_options, refresh_move
+from . import canvas_controls, canvas_pixels, canvas_rtl, canvas_wrap, chat_card_draw, chat_cards, chat_composer, chat_goal, chat_welcome, text_layout
+from . import grant_gestures, grant_guard  # noqa: E402  (only the person grants: a click, a drag, a focused key)
+from . import approval_arming, approval_wait, chat_rows, chat_blocks, chat_history, chat_guard, chat_notices, review_again, chat_replies, chat_scrollbar, live_windows, marble_draw, scroll_input, ui_tokens
+from . import composer_ime, composer_input, composer_scroll  # The composer's keys, pointer, input method, scroll.
 from . import chat_pending, chat_start_states  # Pending messages; progress rows, work groups, notices.
 from . import canvas_focus, chat_key_arming, ui_tokens as tk
-from .ui_text import iface_, plural_
+from .ui_text import iface_, is_rtl, plural_
 from .chat_changes import change_counts, file_counts
 from .chat_titles import tool_title  # Re-exported: console and ui read titles through this module.
 from .chat_hit_testing import clip_rect, clipped_hits, release_active
@@ -57,6 +58,8 @@ def shape(x, y, width, height, color, radius=0):
     if width <= 0 or height <= 0:
         return
     canvas_controls.note_shape(x, y, width, height, radius, color)
+    if min(width, height) < 4:   # A hairline (the caret, a divider) covers a device pixel (canvas_pixels).
+        x, y, width, height = canvas_pixels.covered(x, y, width, height, gpu.matrix.get_model_view_matrix())
     if color[3] < 1:
         gpu.state.blend_set('ALPHA')  # Text drawing resets blending; a translucent fill needs it back.
     radius = min(radius, width / 2, height / 2)
@@ -143,6 +146,7 @@ def stroke(x1, y1, x2, y2, color=None, thickness=1.2):
         return
     if color[3] < 1:
         gpu.state.blend_set('ALPHA')
+    thickness = canvas_pixels.thick(thickness, gpu.matrix.get_model_view_matrix())   # At least a pixel thick.
     dx, dy = -(y2 - y1) * thickness / length / 2, (x2 - x1) * thickness / length / 2
     points = [(x1 + dx, y1 + dy, 0), (x2 + dx, y2 + dy, 0), (x2 - dx, y2 - dy, 0), (x1 - dx, y1 - dy, 0)]
     batch = batch_for_shader(_shader, 'TRIS', {"pos": points}, indices=[(0, 1, 2), (0, 2, 3)])
@@ -231,6 +235,7 @@ def show_popover(context, kind="controls"):
                         "connection": controller.selection_connection_id, "scroll": 0, "query": "", "collapsed": set(),
                         "cursor": next((i for i, row in enumerate(rows) if row["selected"]), 0)}
     state["focused"] = False
+    grant_guard.opened(context.window, "chat:%d" % context.area.as_pointer())   # Theirs only in their press's scope.
     context.area.tag_redraw()
     return True
 
@@ -482,7 +487,8 @@ def _draw_chat():
         state["message_rects"] = {}
         expanded = state.setdefault("expanded", set())
         line = area.spaces.active.history[-1] if area.spaces.active.history else None
-        draft = line.body if line else ""
+        shown_ime = composer_ime.preview(state, line)   # An input method's composition, inline where it lands.
+        draft = shown_ime.value if shown_ime else line.body if line else ""
         draft_lines = wrap(draft, chat_composer.hint_width(width), size, _font, ordered=False)
         # The same wrapping for a draft edited between draws (composer_input), at this draw's scale.
         state["draft_wrap"] = lambda value, w=chat_composer.hint_width(width), s=size, f=_font, k=_scale: _wrap(value, w, s, f, False, k)
@@ -579,6 +585,7 @@ def _draw_chat():
             top = bottom
         chat_scrollbar.draw(state, scroll)
         state["hits"] = chat_guard.shown_approvals(controller, clipped_hits(state["hits"], message_viewport))
+        approval_arming.view(state).drawn(approval_arming.granting(state["hits"]))   # Where each grant is now.
         state["message_rects"] = {key: visible for key, rect in state["message_rects"].items()
             if (visible := clip_rect(rect, message_viewport)) is not None}
         gpu.state.scissor_set(*old_scissor)
@@ -609,7 +616,12 @@ def _draw_chat():
         state["hits"] = clipped_hits(state["hits"], (0, 0, width, height))
         state["hit_region"] = (region.width, region.height)
         canvas_controls.draw_canvas(state, width)
-        draw_popover(state, controller, width, height)
+        draw_popover(state, controller, width, height)   # Then every control as C's regions (the popover's if open).
+        grant_guard.canvas_regions(bpy.context.window, region, "chat:%d" % area.as_pointer(), state["popup_hits"]
+                                   if state.get("popover") else state["hits"], ui_scale(), is_rtl(),
+                                   focus=__import__("angelo_agent.chat_popovers").chat_popovers.key_focus(state),
+                                   popover=bool(state.get("popover")),   # A key acts on the open popover's cursor;
+                                   focus_moves=(state.get("popover") or {}).get("kind") == "controls")   # slider.
         gpu.state.blend_set('NONE')
         draw_count += 1
         _errors[area.as_pointer()] = chat_guard.errors()   # A part drawn plainly is still a failure (suites read it).
@@ -631,6 +643,16 @@ def _draw_chat():
         gpu.matrix.pop()
         _scale = 1.0
         draw_seconds = time.perf_counter() - started
+
+
+def _clicked(controller, action, value):
+    """A click's dispatch: a granting control's runs in its C ticket's grant scope, or says why it did nothing."""
+    try:
+        grant_guard.by_click(action, value, dispatch_action, bpy.context, controller, action, value)
+    except PermissionError as error:
+        from .ui_text import notice
+        controller.emit("message", {"role": "system", **notice(grant_guard.NOT_YOURS)})
+        print("Angelo: a click was not taken as a grant:", error)
 
 
 def dispatch_action(context, controller, action, value):
@@ -656,7 +678,7 @@ def dispatch_action(context, controller, action, value):
     elif action == "approve":   # A card asked again since its press, or still shielded, takes no click (review_again).
         from .approval_review import approve_current_review
         if review_again.mark_click(controller, value, state.pop("pressed_generation", None)) and approve_current_review(controller, value, state):
-            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=value, session_id=controller.state["id"])
+            grant_guard.clicked(bpy.ops.angelo).approve('EXEC_DEFAULT', True, call_id=value, session_id=controller.state["id"])
     elif action == "decline":
         bpy.ops.angelo.decline(call_id=value, session_id=controller.state["id"])   # The card's own chat.
     elif action == "settings":
@@ -696,7 +718,10 @@ def dispatch_action(context, controller, action, value):
         bpy.ops.angelo.changes('INVOKE_DEFAULT')
     elif action == "review":
         expanded = state.setdefault("expanded", set())
-        expanded.remove(("approval", value)) if ("approval", value) in expanded else bpy.ops.angelo.review_tool(call_id=value, session_id=controller.state["id"])
+        if ("approval", value) in expanded:
+            expanded.remove(("approval", value))
+        else:   # Opening a script's text approves it (grant_guard: the press's ticket scope).
+            grant_guard.clicked(bpy.ops.angelo).review_tool(call_id=value, session_id=controller.state["id"])
     elif action == "restore":
         bpy.ops.angelo.restore_checkpoint('INVOKE_DEFAULT', checkpoint_id=value)
     elif action == "open_studio":   # A notice's way to its result (chat_rows.OPEN_LABELS).
@@ -722,7 +747,6 @@ def dispatch_action(context, controller, action, value):
 
 def dispatch_popup(context, controller, state, action, value=None):
     from .chat_settings import clean_options, selected_model
-    from .chat_popovers import effective_effort
     popup = state.get("popover")
     if not popup:
         return
@@ -739,7 +763,7 @@ def dispatch_popup(context, controller, state, action, value=None):
         show_popover(context, "models")
     elif action == "popup_select_model":
         arguments = {"connection_id": value[0], "model": value[1]} if isinstance(value, (tuple, list)) else {"model": value}
-        if 'FINISHED' in bpy.ops.angelo.select_model(**arguments):
+        if 'FINISHED' in grant_guard.clicked(bpy.ops.angelo).select_model(**arguments):
             state.pop("popover", None)
     elif action == "popup_group":
         if popup.get("query"):
@@ -756,18 +780,18 @@ def dispatch_popup(context, controller, state, action, value=None):
         bpy.ops.angelo.refresh_models()
     elif action == "popup_custom_model":
         state.pop("popover", None)
-        bpy.ops.angelo.custom_model('INVOKE_DEFAULT')
+        grant_guard.clicked(bpy.ops.angelo).custom_model('INVOKE_DEFAULT')
     elif action == "popup_effort":
-        bpy.ops.angelo.set_effort(effort=value)
+        grant_guard.clicked(bpy.ops.angelo).set_effort(effort=value)
     elif action == "popup_reset":
         model = selected_model(controller)
         if model:
-            bpy.ops.angelo.set_effort(effort=effective_effort(model, model["default_effort"]))
+            grant_guard.clicked(bpy.ops.angelo).set_effort(effort="")   # No choice: the model's default (chat_settings.default_effort).
     elif action == "popup_fast":
         options = clean_options(controller.state.get("options"))
         model = selected_model(controller)
         if options["fast"]:
-            bpy.ops.angelo.toggle_fast('EXEC_DEFAULT')
+            grant_guard.clicked(bpy.ops.angelo).toggle_fast('EXEC_DEFAULT')
         elif model and model["fast_tier"]:
             popup.update(kind="fast_confirm", confirm_model=model["id"], hover=None, keyboard=False)
     elif action == "popup_cancel_fast":
@@ -780,17 +804,17 @@ def dispatch_popup(context, controller, state, action, value=None):
                 and popup["connection"] == controller.selection_connection_id and model
                 and model["id"] == value == popup.get("confirm_model") and model["fast_tier"]
                 and not clean_options(controller.state.get("options"))["fast"]):
-            bpy.ops.angelo.toggle_fast('EXEC_DEFAULT')
+            grant_guard.clicked(bpy.ops.angelo).toggle_fast('EXEC_DEFAULT')
         popup.update(kind="controls", hover=None)
     elif action == "popup_approval":
-        if 'FINISHED' in bpy.ops.angelo.set_approval(mode=value):
+        if 'FINISHED' in grant_guard.clicked(bpy.ops.angelo).set_approval(mode=value):
             state.pop("popover", None)
 
 
 def popover_event(context, controller, state, event, x, y):
     """Modal input shield: popup events must never send/type/scroll behind it."""
     from .chat_settings import clean_options, selected_model
-    from .chat_popovers import effort_choices, effective_effort, reveal_model, slider_value
+    from .chat_popovers import effort_choices, effective_effort, key_focus, reveal_model, slider_value
     popup = state.get("popover")
     if not popup:
         return False
@@ -798,12 +822,12 @@ def popover_event(context, controller, state, event, x, y):
     def slide():
         model = selected_model(controller)
         choice = slider_value(popup["layout"]["slider"], x, effort_choices(model))
-        if choice and choice != clean_options(controller.state.get("options"))["effort"]:
+        if choice and choice != effective_effort(model, clean_options(controller.state.get("options"))["effort"]):
             dispatch_popup(context, controller, state, "popup_effort", choice)
 
     if event.type == 'MOUSEMOVE':
         if popup.get("drag_slider") and popup["kind"] == "controls":
-            slide()
+            popup["drag_hold"] = grant_gestures.dragged(popup.get("drag_hold"), slide)   # The press's consent.
         else:
             hovered = next(((action, value) for rect, action, value in reversed(state.get("popup_hits", [])) if inside(rect, x, y)), None)
             if hovered != popup.get("hover"):
@@ -829,13 +853,13 @@ def popover_event(context, controller, state, event, x, y):
             if item and item[1] == "popup_slider":
                 popup["drag_slider"] = True
                 popup["pending"] = None
-                slide()
+                popup["drag_hold"] = grant_gestures.press_hold("canvas.", "popup_slider", item[2], slide)
         elif event.value == 'RELEASE':
-            if popup.pop("drag_slider", False):
-                slide()
+            if popup.pop("drag_slider", False):   # The release's value too, in the press's consent; then it ends.
+                grant_gestures.dragged(popup.pop("drag_hold", None), slide, final=True)
             item = popup.pop("pending", None)
             if item and release_active(item, state.get("popup_hits", []), x, y):
-                dispatch_popup(context, controller, state, item[1], item[2])
+                grant_guard.by_click(item[1], item[2], dispatch_popup, context, controller, state, item[1], item[2])
         return True
     if event.type == 'RIGHTMOUSE' and event.value == 'PRESS':
         state.pop("popover", None)
@@ -854,9 +878,9 @@ def popover_event(context, controller, state, event, x, y):
     if event.value == 'PRESS':
         if popup["kind"] == "add":
             from . import chat_add_menu
-            row = chat_add_menu.key(popup, event)
-            if row is not None:
-                dispatch_popup(context, controller, state, row["action"], row["value"])
+            focus, row = key_focus(state), chat_add_menu.key(popup, event)   # Focus as it was before the key moved it:
+            if row is not None:   # a key grants only on what the person focused.
+                grant_guard.by_click(*focus, dispatch_popup, context, controller, state, row["action"], row["value"])
         elif popup["kind"] == "conversations":
             from . import conversations_popover
             conversations_popover.key(context, controller, state, event)
@@ -895,14 +919,16 @@ def popover_event(context, controller, state, event, x, y):
             elif rows and event.type in {'RET', 'NUMPAD_ENTER'}:
                 row = rows[min(popup.get("cursor", 0), len(rows) - 1)]
                 if row["kind"] != "empty":
-                    dispatch_popup(context, controller, state, "popup_group" if row["kind"] == "provider" else "popup_select_model", row["value"])
+                    grant_guard.by_click(*key_focus(state), dispatch_popup, context, controller, state,
+                                         ("popup_select_model", "popup_group")[row["kind"] == "provider"], row["value"])
         elif popup["kind"] == "controls" and event.type in {'LEFT_ARROW', 'RIGHT_ARROW', 'HOME', 'END'}:
             model = selected_model(controller)
             choices = effort_choices(model)
             if choices:
                 index = choices.index(effective_effort(model, clean_options(controller.state.get("options"))["effort"]))
                 index = 0 if event.type == 'HOME' else len(choices) - 1 if event.type == 'END' else max(0, min(len(choices) - 1, index + (-1 if event.type == 'LEFT_ARROW' else 1)))
-                dispatch_popup(context, controller, state, "popup_effort", choices[index])
+                grant_guard.by_click(*key_focus(state), dispatch_popup, context, controller, state,
+                                     "popup_effort", choices[index])
         # Swallow typing/Enter while a picker is open, especially during billing
         # confirmation. Enable Fast requires its explicit button, not Enter.
         return True
@@ -916,8 +942,8 @@ def _kept_alive(modal):
     def kept(self, context, event):
         try:
             return modal(self, context, event)
-        except Exception:
-            traceback.print_exc()
+        except Exception as error:   # A grant refused to input no person made is said in one line, not a fault.
+            grant_guard.said_refusal(error) or traceback.print_exc()
             return {'PASS_THROUGH'}
     return kept
 
@@ -948,6 +974,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         """No chat holds the keyboard any more: keys go to the editor under the pointer (the draft stays as typed)
         until a click in a composer, or the composer appearing, gives it back."""
         self.focused_area = self.just_sent = None
+        composer_ime.release(self.window_pointer)   # The input method goes with the keyboard.
         for view in _views.values():
             chat_key_arming.leave(view)
             view["focused"] = False
@@ -961,9 +988,11 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         window = context.window
         if not window or window.as_pointer() != self.window_pointer:
             return {'PASS_THROUGH'}
+        approval_arming.window_input(window.as_pointer(), event.type, event.value)  # Focus changes disarm grants.
         ui.team_account_ui.note_window_event(event.type)  # Focus coming back re-checks the team's providers.
         from . import marble_host
         marble_host.note_event(event.type, event.value)  # The marble wait pauses while the person navigates or drags.
+        approval_wait.note_event(event.type, event.value, not refresh_move(event))  # A card being read keeps its time.
         areas = live_windows.areas(window)
         for chat in [a for a in areas if console.is_chat(a) and _views.get(a.as_pointer(), {}).pop("focus_request", False)]:
             self.focused_area, _views[chat.as_pointer()]["focused"] = chat.as_pointer(), True  # The composer appeared.
@@ -1016,11 +1045,14 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         if not region or (mouse_event and not (region.x <= event.mouse_x < region.x + region.width and region.y <= event.mouse_y < region.y + region.height)):
             if event.type == 'MOUSEMOVE':
                 canvas_controls.leave_areas(window, _views, console.is_chat)
+                approval_arming.left(_views.values())   # A return into a grant is a move into it.
             return {'PASS_THROUGH'}
         state = _views.get(area.as_pointer(), {})
         state["input_serial"] = state.get("input_serial", 0) + 1  # This chat's picture may change (marble_frames).
         scale = ui_scale()  # Hits are laid out unscaled (draw).
         x, y = canvas_rtl.pointer_x(event.mouse_x - region.x, region.width) / scale, (event.mouse_y - region.y) / scale
+        if event.type == 'MOUSEMOVE':
+            approval_arming.view(state, window.as_pointer()).moved((x, y))   # A move into a grant arms it.
         controller = ui.get_controller()
         if event.type == 'EVT_DROP':
             state.pop("popover", None)
@@ -1094,6 +1126,8 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             hits = state.get("hits", []) if state.get("hit_region") == (region.width, region.height) else []
             for rect, action, value in hits:
                 if inside(rect, x, y) and canvas_controls.live((rect, action, value)):   # A lapsed shield: no hit.
+                    if not approval_arming.press_lands(state, (rect, action, value)):
+                        return {'RUNNING_MODAL'}   # A grant not armed: the press lands on nothing.
                     # Activate on RELEASE like an ordinary desktop button. A
                     # popup created on PRESS inherits Blender's held-button
                     # menu gesture and incorrectly closes/selects on release.
@@ -1109,7 +1143,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             if (pointer == area.as_pointer() and state.get("hit_region") == (region.width, region.height)
                     and release_active((rect, action, value), state.get("hits", []), x, y)):
                 with context.temp_override(window=window, area=area, region=region):
-                    dispatch_action(bpy.context, controller, action, value)
+                    _clicked(controller, action, value)
                 if state.pop("focus_request", False):
                     self.focused_area, state["focused"] = area.as_pointer(), True
                 area.tag_redraw()
@@ -1124,8 +1158,12 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             if target is None:
                 return
             with context.temp_override(window=target, area=area, region=region):
-                dispatch_action(bpy.context, controller, action, value)
+                _clicked(controller, action, value)   # A granting one takes only a press (grant_guard.by_click).
 
+        if composer_ime.handle(event, window, state, area.spaces.active.history[-1], controller.state["id"], controller,
+                               accepts=not state.get("composer_hidden")):   # Composition, commit, the IME's own keys.
+            area.tag_redraw()
+            return {'RUNNING_MODAL'}
         handled = chat_key_arming.key(event, state, area.tag_redraw, controller, activate_control)
         if handled is not None:
             return {'RUNNING_MODAL'}
@@ -1244,4 +1282,5 @@ def unregister():
     _views.clear()
     _scroll.clear()
     composer_input.forget()
+    composer_ime.clear()
     wrap.cache_clear()

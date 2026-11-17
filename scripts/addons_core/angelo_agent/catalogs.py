@@ -7,6 +7,7 @@ import threading
 from types import SimpleNamespace
 from pathlib import Path
 
+from . import owned_paths
 from .providers import CodexProvider, ClaudeProvider
 from .chat_settings import clean_options
 from .routing import TOOLSET_VERSION
@@ -42,7 +43,7 @@ class ModelCatalogs:
         self.loading.add(identity)
         self.errors.pop(identity, None)
         workspace = self.directory / "workspace" / "catalogs" / identity
-        workspace.mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(workspace).mkdir(parents=True, exist_ok=True, mode=0o700)
         probe = SimpleNamespace(state={"provider": record["mode"], "native_id": None,
             "messages": [], "options": clean_options({}), "toolset_version": TOOLSET_VERSION},
             settings=dict(settings), api_key=api_key, store=SimpleNamespace(directory=self.directory),

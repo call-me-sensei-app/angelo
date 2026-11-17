@@ -17,7 +17,7 @@ here (doc/angelo/parallel_agents.rst, "Worker chats host their own controller").
   most ``SESSION_CHILDREN`` live children (a new launch beyond that ends its oldest) and a worker at most
   ``WORKER_CHILDREN`` (a launch beyond that is refused).
 * ``runtime.probe`` ``{session, what}``: ``coding_models``, ``check_connection``, ``list_models`` (a team or
-  external connection's catalog) or ``cache_affinity`` (the account's keyed digest, never the secret: a personal
+  external connection's catalog), ``endpoint_spec`` (a custom endpoint chat's spec) or ``cache_affinity`` (the account's keyed digest, never the secret: a personal
   one keyed by the account the chat's own child named to ``account/read``, never an identity the worker sends).
   Only non-secret results return.
 * ``runtime.kill`` ``{session, pid}``: ends that chat's child at once, whatever its worker is doing.
@@ -53,7 +53,7 @@ import weakref
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
-from . import runtime_threads, thread_start, worker_channel
+from . import activity_rows, runtime_threads, thread_start, worker_channel
 from .protocol import RpcError
 from .runtime_bindings import Churn, binding, matches
 from .runtime_child import RuntimeChild
@@ -94,11 +94,11 @@ def _log(text):
 
 def _spawn(command, env, cwd):
     """``cli_runtime.launch`` without its relay seam: Angelo's own child, in its own process group."""
-    from . import child_process
+    from . import child_process, owned_paths
     from .cli_runtime import runtime_command
-    return child_process.popen(runtime_command(command, env), env=env, cwd=cwd, stdin=subprocess.PIPE,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
-                               bufsize=1, start_new_session=os.name != "nt")
+    return child_process.popen(owned_paths.runnable_argv(runtime_command(command, env)), env=env, cwd=cwd,
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                               encoding="utf-8", bufsize=1, start_new_session=os.name != "nt")
 
 
 def _angelo_keys():
@@ -109,8 +109,8 @@ def _angelo_keys():
 
 
 def _executable(kind, settings):
-    from .cli_runtime import find_executable
-    return find_executable(kind, settings.get(kind + "_path", ""))
+    from .cli_runtime import chosen, find_executable
+    return find_executable(kind, chosen(kind))
 
 
 class Refused(RpcError):
@@ -427,10 +427,10 @@ class RuntimeService(Plans, Probes):
 
     def _keys(self, session):
         chat = self.chats(session)
-        return ([chat.api_key] if chat is not None else []) + list(self.secrets())
+        return (list(activity_rows.redaction_keys(chat)) if chat is not None else []) + list(self.secrets())
 
     def _redact(self, chat, text):
-        return Filter("codex", "", secrets=(chat.api_key,), live_secrets=self.secrets).redact(text)
+        return Filter("codex", "", secrets=activity_rows.redaction_keys(chat), live_secrets=self.secrets).redact(text)
 
     def _recorded(self, session):
         """The threads ``session``'s chat may resume or fork: ones Angelo saw its children open, and its

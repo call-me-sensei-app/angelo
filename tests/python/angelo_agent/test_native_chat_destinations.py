@@ -80,6 +80,8 @@ class RegistryTests(unittest.TestCase):
         cd.register(cd.Feature("web_export", "Web export", glyph="web", order=50, operator="angelo.web_export"))
         cd.register(cd.Feature("web_preview", "Live browser preview", glyph="web", order=51, operator="angelo.web_preview"))
         cd.register(cd.Feature("godot_link", "Game engine live link", glyph="link", order=52, children=lambda *_: []))
+        cd.register(cd.Feature("learn", "Learn", glyph="learn", order=89, section="Learn", operator="angelo.learn",
+                               placement="footer"))
         cd.register(cd.Feature("report_bug", "Report a bug…", glyph="feedback", order=90, section="Feedback",
                                operator="angelo.send_feedback", properties=(("kind", "BUG"),)))
         cd.register(cd.Feature("request_feature", "Request a feature…", glyph="feedback", order=91,
@@ -209,6 +211,8 @@ class AppStateCacheTests(unittest.TestCase):
             self.stack.enter_context(mock.patch.object(angelo_agent, name, module, create=True))
         self.stack.enter_context(mock.patch.object(cd, "_registry_seen", {}))
         self.installed = self.stack.enter_context(mock.patch.object(external_setup, "installed", return_value=True))
+        # Installed with Angelo's entry, so a registry record reads Connected (S3: without it, Connect is offered).
+        self.stack.enter_context(mock.patch.object(external_setup, "has_entry", return_value=True))
         original = self.registry_type.load
         self.load = self.stack.enter_context(mock.patch.object(
             self.registry_type, "load", autospec=True, side_effect=lambda registry: original(registry)))
@@ -236,9 +240,12 @@ class AppStateCacheTests(unittest.TestCase):
             states = cd._app_states(now=10.1)
             self.write("codex")
             cd._app_states(now=10.2)
-            self.assertEqual(self.installed.call_count, 2, "Each app lookup is reused within the install poll")
+            # One lookup per app per install poll: a connected app's too, since Connected needs it installed with
+            # Angelo's entry (Copy setup S3).
+            per_poll = len(cd.CONNECTED_APPS)
+            self.assertEqual(self.installed.call_count, per_poll, "Each app lookup is reused within the install poll")
             cd._app_states(now=12)
-            self.assertEqual(self.installed.call_count, 3, "A racy registry refresh must not postpone the poll")
+            self.assertEqual(self.installed.call_count, 2 * per_poll, "A racy registry refresh must not postpone the poll")
         self.assertEqual(states["codex"][0], "found")
         self.assertEqual(states["claude_code"][0], "connected")
         self.assertEqual(self.load.call_count, 4)

@@ -6,9 +6,10 @@
 changed, replaced by a colour again, read back by the derived check, undone
 and redone; a forced commit failure and a stale binding leave the World as it
 was. Cycles: every Python-defined setting ``rna_rules`` admits is compared
-with the definition the installed Cycles add-on registers (no get or set, an
-update that is absent or exactly ``update_render_passes``, constant enum
-items), the settings it refuses stay refused, and admitted settings are
+with the definition the installed Cycles add-on registers (no Python callback
+of any kind, ``python_property_audit``, except exactly ``update_render_passes``
+on three), every setting it refuses has a reason read from its definition or a
+stated choice, and admitted settings are
 written, verified, covered by the scene revision, undone and rolled back.
 Last, one program carries a whole lighting request: three area lights, the
 sky and the render settings. Run only in a disposable instance with the exact
@@ -45,6 +46,7 @@ from angelo_agent.action_world_spec import world_graph  # noqa: E402
 from angelo_agent.claude_outcomes import certified_completion, compact_receipt, terse_receipt  # noqa: E402
 from angelo_agent.tool_specs import validate_call  # noqa: E402
 from program_qa_helpers import no_stages, commit_operator  # noqa: E402
+from python_property_audit import python_callbacks  # noqa: E402
 
 report = {"checks": {}, "paid_requests": 0, "binary_path": bpy.app.binary_path, "version": bpy.app.version_string}
 window = bpy.context.window_manager.windows[0]
@@ -243,31 +245,39 @@ def cycles_definitions():
     admitted = {path.split(".", 1)[1] for path in rna_rules.PROVEN_RUNTIME}
     check("every_admitted_setting_is_a_cycles_render_setting", admitted <= set(definitions)
           and all(path.startswith("cycles.") and path.count(".") == 1 for path in rna_rules.PROVEN_RUNTIME))
+    # A callback is any keyword Blender calls (update, get, set, get/set_transform, poll, computed items, a later kind).
+    check("the_audit_sees_transform_callbacks",
+          python_callbacks(bpy.props.BoolProperty(set_transform=lambda self, value, current, is_set: value))
+          == ["set_transform"]
+          and python_callbacks(bpy.props.FloatProperty(get_transform=lambda self, value, is_set: value))
+          == ["get_transform"])
     problems = []
     for name in sorted(admitted):
-        keywords = definitions[name].keywords
-        update = keywords.get("update")
-        if keywords.get("get") or keywords.get("set") or keywords.get("poll") or callable(keywords.get("items")):
-            problems.append(name + ": get, set, poll or computed items")
-        elif name in rna_rules.CYCLES_PASS_UPDATE and update is not properties.update_render_passes:
-            problems.append(name + ": update is not update_render_passes")
-        elif name in rna_rules.CYCLES_PLAIN and update is not None:
-            problems.append(name + ": has an update callback")
+        callbacks = python_callbacks(definitions[name])
+        if name in rna_rules.CYCLES_PASS_UPDATE:
+            if callbacks != ["update"] or definitions[name].keywords["update"] is not properties.update_render_passes:
+                problems.append(name + ": runs " + (", ".join(callbacks) or "nothing") + ", not only update_render_passes")
+        elif callbacks:
+            problems.append(name + ": runs " + ", ".join(callbacks))
     report["audit_problems"] = problems
     check("admitted_settings_run_no_unaudited_python", not problems)
     body = [line.strip() for line in inspect.getsource(properties.update_render_passes).splitlines()[1:] if line.strip()]
     check("update_render_passes_is_the_audited_function", body == ["view_layer = context.view_layer",
                                                                    "view_layer.update_render_passes()"])
-    # Everything else the add-on defines has a reason to stay out; a new setting is refused until someone audits it.
+    # Everything else the add-on defines stays out for a reason read from its definition: it runs Python (refused
+    # until its callbacks are audited), it is a debug_ switch, or it is refused by choice below. A new setting that runs
+    # no Python has none of these reasons, so it fails here until someone audits it and admits or refuses it.
+    refused_by_choice = {"shading_system": "turns on Open Shading Language script nodes",
+                         "bake_type": "bake setup, which the bake tools own"}
     refused_names = sorted(set(definitions) - admitted)
-    report["refused_cycles_settings"] = refused_names
-    expected = {"preview_pause", "shading_system", "sampling_pattern", "denoiser", "preview_denoiser", "dicing_camera",
-                "bake_type"}
-    check("the_refused_settings_are_the_stated_ones", {name for name in refused_names if not name.startswith("debug_")}
-          == expected and len(admitted) == 88)
-    with_callbacks = {name for name, definition in definitions.items() if definition.keywords.get("update")
-                      or callable(definition.keywords.get("items")) or definition.keywords.get("poll")}
-    check("every_callback_was_looked_at", with_callbacks <= set(rna_rules.CYCLES_PASS_UPDATE) | expected)
+    report["refused_cycles_settings"] = {name: python_callbacks(definitions[name]) or refused_by_choice.get(name)
+                                         or ("debug switch" if name.startswith("debug_") else "NO REASON")
+                                         for name in refused_names}
+    unexplained = [name for name in refused_names if not python_callbacks(definitions[name])
+                   and not name.startswith("debug_") and name not in refused_by_choice]
+    report["unexplained_refusals"] = unexplained
+    check("every_refused_setting_has_a_reason", not unexplained and set(refused_by_choice) <= set(refused_names)
+          and len(admitted) == 89)
 
 
 CYCLES_VALUES = {"render.engine": "CYCLES", "cycles.samples": 128, "cycles.use_denoising": True, "cycles.device": "CPU",

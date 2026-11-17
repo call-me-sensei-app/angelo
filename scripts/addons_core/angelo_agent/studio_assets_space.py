@@ -20,7 +20,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import studio_assets
+from . import owned_paths, shared_replace, studio_assets
 
 FOLDERS = tuple(spec[2] for spec in studio_assets.CATALOGS.values())   # "models", "images"
 TOP_FILES = (studio_assets.MANIFEST,)   # Never the catalogue file: it keeps the person's own catalogues.
@@ -28,6 +28,7 @@ SIZE_AGE = 30.0   # Seconds a measured size is shown before it is measured again
 LOCK_WAIT = 3.0   # Seconds a free waits (on its worker) for this Angelo's writer to stop; it stops within 0.25 s once off.
 
 _size = {"bytes": None, "at": 0.0, "directory": "", "worker": None, "generation": 0}
+_off_owed = {}   # {asset folder: when its "removed" record was last refused} (``turn_off``, ``settle_off``)
 
 
 def linked(path):
@@ -122,6 +123,7 @@ def free(directory, active):
 
     Refused (ValueError) while the library is on: its writer would only write everything again.
     """
+    owned_paths.require_writable(directory)
     if active:
         raise ValueError("turn the library off first")
     with studio_assets.sync_lock(directory) as held:
@@ -174,11 +176,48 @@ def free_later(directory, active, done, wait=LOCK_WAIT):
 
 
 def turn_off(libraries, directory):
-    """Remove the Preferences entry and record the removal, as removing it in Preferences does."""
+    """Remove the Preferences entry and record the removal, as removing it in Preferences does.
+
+    The record is what keeps the library off: at the next launch an entry that is missing is added again unless the
+    record says it was removed. A record another program holds past the retries (``shared_replace.Refused``, Windows)
+    is raised as before, so the person is told, and stays owed: ``settle_off`` writes it again until it lands."""
     entry = studio_assets.find_library(libraries, directory)
     if entry is not None:
         libraries.remove(entry)
-    studio_assets.write_registration(directory, removed=True)
+    try:
+        studio_assets.write_registration(directory, removed=True)
+    except shared_replace.Refused:
+        _off_owed[str(directory)] = time.monotonic()
+        raise
+    _off_owed.pop(str(directory), None)
+
+
+def settle_off(directory, on, final=False):
+    """Main thread, each tick (``studio_assets_host.observe``): write a Turn off's record that is still owed, no sooner
+    than ``shared_replace.RETRY_SECONDS`` after its last refusal (``final``: now, as the add-on is unregistered). A
+    library that is on again (``on``: its entry is back, or Turn on) owes nothing. Costs one dictionary lookup while
+    nothing is owed."""
+    key = str(directory)
+    refused = _off_owed.get(key)
+    if refused is None:
+        return
+    if on:
+        del _off_owed[key]
+    elif final or time.monotonic() - refused >= shared_replace.RETRY_SECONDS:
+        try:
+            studio_assets.write_registration(directory, removed=True)
+        except shared_replace.Refused:
+            _off_owed[key] = time.monotonic()
+        except OSError:
+            del _off_owed[key]   # Not a holder (the folder is gone or cannot be written): nothing more to try.
+        else:
+            del _off_owed[key]
+
+
+def settle_all_off():
+    """As the add-on is unregistered: one more try for every Turn off still owed."""
+    for key in list(_off_owed):
+        settle_off(Path(key), False, final=True)
 
 
 def readable(count_bytes):

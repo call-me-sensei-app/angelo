@@ -120,12 +120,25 @@ void VKCommandBuilder::groups_extract_barriers(VKRenderGraph &render_graph,
 #endif
         barrier_list_.append(barrier);
       }
+
+      /* Reset the tracked layout of aliased images to undefined once their memory can be reused.
+       */
+      if (node.type == VKNodeType::SYNCHRONIZATION &&
+          node.synchronization.reset_layout_to_undefined)
+      {
+        for (const VKRenderGraphImage &link : render_graph.linked_images(node_handle)) {
+          VKResourceStateTracker::Resource &resource = render_graph.resources_.get_image_resource(
+              link.resource.handle);
+          resource.barrier_state.image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        }
+      }
+
       /* Check for additional barriers when resuming rendering.
        *
        * Between suspending rendering and resuming the state/layout of resources can change and
        * require additional barriers.
        */
-      if (node.type == VKNodeType::BEGIN_RENDERING) {
+      else if (node.type == VKNodeType::BEGIN_RENDERING) {
         /* Begin rendering scope. */
         BLI_assert(!rendering_active);
         rendering_scope = node_handle;
@@ -812,7 +825,7 @@ void VKCommandBuilder::add_image_read_barriers(VKRenderGraph &render_graph,
                           resource_state.image_layout,
                           link.vk_image_layout,
                           link.vk_image_aspect,
-                          {});
+                          link.subimage);
       }
       continue;
     }
@@ -892,7 +905,7 @@ void VKCommandBuilder::add_image_write_barriers(VKRenderGraph &render_graph,
                           resource_state.image_layout,
                           link.vk_image_layout,
                           link.vk_image_aspect,
-                          {});
+                          link.subimage);
       }
       continue;
     }
@@ -931,7 +944,13 @@ void VKCommandBuilder::add_image_barrier(VkImage vk_image,
        vk_image_memory_barriers_.as_mutable_span().drop_front(
            r_barrier.image_memory_barriers.start()))
   {
-    if (vk_image_memory_barrier.image == vk_image) {
+    /* Only merge barriers of the same subresources. Otherwise the layout transition of another
+     * layer or mip-map of the same image is lost. */
+    const VkImageSubresourceRange &range = vk_image_memory_barrier.subresourceRange;
+    if (vk_image_memory_barrier.image == vk_image && range.aspectMask == aspect_mask &&
+        range.baseMipLevel == subimage.mipmap_level && range.levelCount == subimage.mipmap_count &&
+        range.baseArrayLayer == subimage.layer_base && range.layerCount == subimage.layer_count)
+    {
       /* When registering read/write buffers, it can be that the node internally requires
        * read/write. In this case we adjust the dstAccessMask of the read barrier. An example is
        * EEVEE update HIZ compute shader and shadow tagging. */

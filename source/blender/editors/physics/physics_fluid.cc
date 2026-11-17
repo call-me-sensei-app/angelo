@@ -15,12 +15,13 @@
 /* types */
 #include "DNA_object_types.h"
 
-#include "BLI_fileops.h"
+#include "BLI_angelo_writers.hh"
+#include "BLI_fileops.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_string_utf8.h"
-#include "BLI_time.h"
-#include "BLI_utildefines.h"
+#include "BLI_string.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_time.hh"
+#include "BLI_utildefines.hh"
 
 #include "BLT_translation.hh"
 
@@ -132,7 +133,7 @@ static inline bool fluid_is_free_guiding(FluidJob *job)
 }
 
 static bool fluid_job_init(
-    bContext *C, FluidJob *job, wmOperator *op, char *error_msg, int error_size)
+    bContext *C, FluidJob *job, wmOperator *op, char *error_msg, int error_msg_maxncpy)
 {
   FluidModifierData *fmd = nullptr;
   FluidDomainSettings *fds;
@@ -140,12 +141,12 @@ static bool fluid_job_init(
 
   fmd = reinterpret_cast<FluidModifierData *>(BKE_modifiers_findby_type(ob, eModifierType_Fluid));
   if (!fmd) {
-    BLI_strncpy_utf8(error_msg, N_("No Fluid modifier found"), error_size);
+    BLI_strncpy_utf8(error_msg, N_("No Fluid modifier found"), error_msg_maxncpy);
     return false;
   }
   fds = fmd->domain;
   if (!fds) {
-    BLI_strncpy_utf8(error_msg, N_("Invalid domain"), error_size);
+    BLI_strncpy_utf8(error_msg, N_("Invalid domain"), error_msg_maxncpy);
     return false;
   }
   if (fds->cache_flag & (FLUID_DOMAIN_BAKING_DATA | FLUID_DOMAIN_BAKING_NOISE |
@@ -385,7 +386,7 @@ static void fluid_bake_endjob(void *customdata)
   DEG_id_tag_update(&job->ob->id, ID_RECALC_GEOMETRY);
 
   G.is_rendering = false;
-  WM_locked_interface_set(static_cast<wmWindowManager *>(G_MAIN->wm.first), false);
+  WM_locked_interface_set(G_MAIN->wm.first(), false);
 
   /* Bake was successful:
    * Report for ended bake and how long it took. */
@@ -422,6 +423,22 @@ static void fluid_bake_startjob(void *customdata, wmJobWorkerStatus *worker_stat
   job->progress = &worker_status->progress;
   job->start = BLI_time_now_seconds();
   job->success = 1;
+
+  /* Angelo: the bake makes and writes folders under the cache folder its data names
+   * (BLI_angelo_writers.hh). */
+  {
+    char cache_dir[FILE_MAX];
+    STRNCPY(cache_dir, fds->cache_directory);
+    BLI_path_abs(cache_dir, relbase);
+    if (const char *refusal = angelo_writers::refusal_folder(
+            cache_dir, BKE_fluid_angelo_cache_inputs(job->ob, fds)))
+    {
+      printf("%s: '%s'\n", refusal, cache_dir);
+      STRNCPY(fds->error, refusal); /* What the job's end reports. */
+      job->success = 0;
+      return;
+    }
+  }
 
   G.is_break = false;
   G.is_rendering = true;
@@ -494,7 +511,7 @@ static void fluid_free_endjob(void *customdata)
   FluidDomainSettings *fds = job->fmd->domain;
 
   G.is_rendering = false;
-  WM_locked_interface_set(static_cast<wmWindowManager *>(G_MAIN->wm.first), false);
+  WM_locked_interface_set(G_MAIN->wm.first(), false);
 
   /* Reflect the now empty cache in the viewport too. */
   DEG_id_tag_update(&job->ob->id, ID_RECALC_GEOMETRY);
@@ -616,7 +633,7 @@ static wmOperatorStatus fluid_bake_invoke(bContext *C, wmOperator *op, const wmE
 static wmOperatorStatus fluid_bake_modal(bContext *C, wmOperator * /*op*/, const wmEvent *event)
 {
   /* No running blender, remove handler and pass through. */
-  if (0 == WM_jobs_test(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_OBJECT_SIM_FLUID)) {
+  if (!WM_jobs_has_running(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_OBJECT_SIM_FLUID)) {
     return OPERATOR_FINISHED | OPERATOR_PASS_THROUGH;
   }
 
@@ -674,7 +691,7 @@ static wmOperatorStatus fluid_free_invoke(bContext *C, wmOperator *op, const wmE
 static wmOperatorStatus fluid_free_modal(bContext *C, wmOperator * /*op*/, const wmEvent *event)
 {
   /* No running blender, remove handler and pass through. */
-  if (0 == WM_jobs_test(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_OBJECT_SIM_FLUID)) {
+  if (!WM_jobs_has_running(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_OBJECT_SIM_FLUID)) {
     return OPERATOR_FINISHED | OPERATOR_PASS_THROUGH;
   }
 

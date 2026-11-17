@@ -24,7 +24,7 @@
 
 #include "MEM_guardedalloc.h"
 #include "AS_asset_catalog.hh"
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 #include "BKE_context.hh"
 #include "BKE_global.hh"
 #include "BKE_wm_runtime.hh"
@@ -34,6 +34,8 @@
 #include "wm_event_system.hh"
 #include "bpy_capi_utils.hh"
 #include "bpy_angelo_update_quit.hh"
+
+#include "BLI_fileops.hh" /* #BLI_file_descriptor_is_open. */
 
 namespace blender {
 namespace {
@@ -62,6 +64,8 @@ struct UpdateQuit {
     if (close_uncertain) {
       return false;
     }
+    /* This owner's own duplicate (`_dup` in the request), never a number Python chose: open until
+     * this close, so it needs no #BLI_file_descriptor_is_open. */
 #ifdef _WIN32
     const int result = _close(descriptor);
 #else
@@ -109,25 +113,14 @@ static void capsule_free(PyObject *capsule)
   }
 }
 
-#if defined(_WIN32) && defined(_MSC_VER)
-/* Invalid positive CRT descriptors otherwise invoke UCRT's terminating handler.
- * Match the existing B1 asset descriptor owner: thread-local, restored, never global. */
-struct CRTDescriptorGuard {
-  _invalid_parameter_handler previous;
-  CRTDescriptorGuard()
-      : previous(_set_thread_local_invalid_parameter_handler(
-            [](const wchar_t *, const wchar_t *, const wchar_t *, unsigned int, uintptr_t) {}))
-  {
-  }
-  ~CRTDescriptorGuard() { _set_thread_local_invalid_parameter_handler(previous); }
-};
-#endif
-
 static bool valid_pipe(const int descriptor)
 {
+  /* An invalid descriptor otherwise reaches the C runtime's terminating handler on Windows. */
+  if (!BLI_file_descriptor_is_open(descriptor)) {
+    return false;
+  }
 #ifdef _WIN32
 #  if defined(_MSC_VER)
-  const CRTDescriptorGuard guard;
   const HANDLE handle = reinterpret_cast<HANDLE>(_get_osfhandle(descriptor));
   DWORD state = 0;
   return handle != INVALID_HANDLE_VALUE && GetFileType(handle) == FILE_TYPE_PIPE &&
@@ -343,16 +336,13 @@ PyObject *BPY_angelo_update_quit_request(PyObject *, PyObject *args)
   Owner *handler_owner = MEM_new<Owner>(__func__, owner);
 #ifdef _WIN32
 #  if defined(_MSC_VER)
-  {
-    const CRTDescriptorGuard guard;
-    owner->descriptor = _dup(borrowed);
-  }
+  owner->descriptor = BLI_file_descriptor_is_open(borrowed) ? _dup(borrowed) : -1;
 #  else
   owner->revoke();
 #  endif
   if (owner->descriptor >= 0) {
 #  if defined(_MSC_VER)
-    const CRTDescriptorGuard guard;
+    /* The duplicate made above: open, and this owner's alone. */
     if (!SetHandleInformation(reinterpret_cast<HANDLE>(_get_osfhandle(owner->descriptor)),
                               HANDLE_FLAG_INHERIT,
                               0))

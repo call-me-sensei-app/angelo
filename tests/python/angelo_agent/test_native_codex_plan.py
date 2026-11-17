@@ -9,6 +9,7 @@ pure edit completes in one model round while tool calls still run in-turn.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import copy
 import json
@@ -164,9 +165,10 @@ class StrictSchemaContractTests(unittest.TestCase):
         doc/angelo/features.rst).
         37,085 -> 37,105 (measured 37,082 -> 37,102): the engine preflight's two deferred tools named (toolset 49,
         doc/angelo/engine_preflight.rst). 37,105 -> 37,127: the deferred engine link tools named (toolset 50,
-        doc/angelo/engine_link.rst, "The agent").
+        doc/angelo/engine_link.rst, "The agent"). 37,127 -> 37,141 (measured +14 B): the deferred angelo_download
+        named (toolset 55, doc/angelo/downloads.rst): agent scripts have no network.
         """
-        self.assertLessEqual(len(json.dumps(output_schema(), separators=(",", ":"))), 37127)
+        self.assertLessEqual(len(json.dumps(output_schema(), separators=(",", ":"))), 37141)
 
     def test_only_plan_tools_and_no_reads_python_or_files(self):
         tools = set()
@@ -688,7 +690,7 @@ class ScriptedAppServer:
         return {"turn": {"id": turn}}
 
     def play(self, thread, turn, steps):
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + CAP_S
         while self.provider.turn_id != turn and time.monotonic() < deadline:
             time.sleep(0.001)
         ids = {"threadId": thread, "turnId": turn}

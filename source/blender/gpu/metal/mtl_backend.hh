@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <mutex>
+
 #include "BLI_vector.hh"
 
 #include "gpu_backend.hh"
@@ -23,6 +25,7 @@ class Shader;
 class UniformBuf;
 class VertBuf;
 class MTLContext;
+class MTLPipelinePrebuilder;
 
 class MTLBackend : public GPUBackend {
   friend class MTLContext;
@@ -50,6 +53,9 @@ class MTLBackend : public GPUBackend {
   {
     return static_cast<MTLBackend *>(GPUBackend::get());
   }
+  /** The background builder of compile-ahead draws' pipeline states, or nullptr outside the backend's resources'
+   * lifetime (#init_resources to #delete_resources). */
+  static MTLPipelinePrebuilder *pipeline_prebuilder();
 
   void compute_dispatch(int groups_x_len, int groups_y_len, int groups_z_len) override;
   void compute_dispatch_indirect(StorageBuf *indirect_buf) override;
@@ -59,6 +65,7 @@ class MTLBackend : public GPUBackend {
   Context *context_alloc(GHOST_IWindow *ghost_window, GHOST_IContext *ghost_context) override;
   Batch *batch_alloc() override;
   Fence *fence_alloc() override;
+  WorkInFlight *work_in_flight_alloc(unsigned int max_in_flight) override;
   FrameBuffer *framebuffer_alloc(const char *name) override;
   IndexBuf *indexbuf_alloc() override;
   PixelBuffer *pixelbuf_alloc(size_t size) override;
@@ -69,6 +76,8 @@ class MTLBackend : public GPUBackend {
   UniformBuf *uniformbuf_alloc(size_t size, const char *name) override;
   StorageBuf *storagebuf_alloc(size_t size, GPUUsageType usage, const char *name) override;
   VertBuf *vertbuf_alloc() override;
+  TopLevelAS *tlas_alloc(const char *name) override;
+  BottomLevelAS *blas_alloc(const char *name) override;
   void shader_cache_dir_clear_old() override {}
 
   /* Render Frame Coordination. */
@@ -78,6 +87,20 @@ class MTLBackend : public GPUBackend {
   bool is_inside_render_boundary();
 
  private:
+  /**
+   * The platform and the capabilities are the same for all contexts of the back-end, because they
+   * all use the same device. They are initialized by the first context and freed with the
+   * back-end, see #platform_and_capabilities_ensure.
+   */
+  std::once_flag platform_and_capabilities_initialized_;
+
+  /**
+   * Initialize the platform and the capabilities when the first context of the back-end is
+   * created. Later contexts must not write them, because they can be created while other threads
+   * read them (like a render thread that creates its context while the user interface draws).
+   */
+  void platform_and_capabilities_ensure(MTLContext *ctx);
+
   static void platform_init(MTLContext *ctx);
   static void platform_exit();
 

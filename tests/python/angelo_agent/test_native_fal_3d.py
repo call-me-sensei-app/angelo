@@ -3,6 +3,7 @@
 """TRELLIS 2 through fal: the 3D tab's model list, bodies against fal's schemas, one submit, the GLB, resume, agent."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import sys
@@ -93,7 +94,7 @@ class TableTests(unittest.TestCase):
 
 class JobTests(unittest.TestCase):
     def wait(self, jobs):
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while jobs.active and time.monotonic() < deadline:
             jobs.pump()
             time.sleep(0.01)
@@ -152,7 +153,7 @@ class AgentTests(unittest.TestCase):
                     "options": {"polycount": 20000}, "references": [{"source": "ASSET", "id": image["id"]}]}
             with patch.object(fal_video, "POLL_SECONDS", 0):
                 pending = agent.execute("angelo_studio_generate", args)
-                deadline = time.monotonic() + 5
+                deadline = time.monotonic() + CAP_S
                 while jobs.active and time.monotonic() < deadline:
                     jobs.pump()
                     time.sleep(0.01)

@@ -60,7 +60,7 @@ void vert_tris_from_corner_tris(Span<int> corner_verts,
                                 Span<int3> corner_tris,
                                 MutableSpan<int3> vert_tris);
 
-/** Return the triangle's three edge indices they are real edges, otherwise -1. */
+/** Return the triangle's three edge indices if they are real edges, otherwise -1. */
 int3 corner_tri_get_real_edges(Span<int2> edges,
                                Span<int> corner_verts,
                                Span<int> corner_edges,
@@ -428,7 +428,8 @@ void mesh_sharp_edges_set_from_angle(Mesh &mesh, float angle, bool keep_sharp_ed
 
 /**
  * Calculate edge visibility based on vertex visibility, hides an edge when either of its
- * vertices are hidden. */
+ * vertices are hidden.
+ */
 void mesh_edge_hide_from_vert(Span<int2> edges, Span<bool> hide_vert, MutableSpan<bool> hide_edge);
 
 /* Hide faces when any of their vertices are hidden. */
@@ -478,6 +479,7 @@ void mesh_remove_invalid_attribute_strings(Mesh &mesh);
  *
  * \param allow_missing_edges: When true, faces with missing edges are not treated as errors.
  * Missing edges are still computed, but no error is printed and the return value is not affected.
+ * The corner-to-edge mapping may be uninitialized and is always rebuilt without checking it.
  * Useful for importers that produce faces without edges.
  *
  * \return True if the mesh was valid (fixes were not applied).
@@ -497,10 +499,58 @@ bool mesh_is_valid(const Mesh &mesh, bool verbose = true);
 bool mesh_validate_material_indices(Mesh &mesh);
 
 /**
+ * Record the mesh's topology arrays and element counts as they are now (#MeshTopologySeal), for
+ * a caller that has just found them valid.
+ */
+void mesh_topology_seal(Mesh &mesh);
+/**
+ * Whether nothing could have written the mesh's topology since #mesh_topology_seal: no edge,
+ * corner or face offset array was handed out for writing, replaced or resized, and no element
+ * count changed. False for a mesh that was never sealed. Reads only; constant time.
+ */
+bool mesh_topology_is_sealed(const Mesh &mesh);
+/**
+ * The same, and the vertex positions too: nothing could have written the mesh's topology or its
+ * coordinates since #mesh_topology_seal. A mesh that is topology-sealed but not geometry-sealed
+ * had only its positions written (or read through an accessor that hands them out for writing).
+ */
+bool mesh_geometry_is_sealed(const Mesh &mesh);
+/**
+ * Forget the seal. For a write that reaches a topology array without asking the mesh for it: an
+ * RNA item kept by a script points into the array itself.
+ */
+void mesh_topology_unseal(Mesh &mesh);
+/**
+ * Mark the positions as written, leaving the topology seal as it is. For a vertex an RNA item
+ * kept by a script moves: it points into the position array itself.
+ */
+void mesh_positions_unseal(Mesh &mesh);
+/**
+ * For a write through an attribute value kept by a script: #mesh_topology_unseal when
+ * \a address lies inside one of the mesh's topology attribute arrays, #mesh_positions_unseal
+ * when it lies inside the position array.
+ */
+void mesh_topology_unseal_if_written_at(Mesh &mesh, const void *address);
+
+/**
  * Check whether faces contain duplicate vertex indices.
  * \return a mask of all invalid faces.
  */
 IndexMask mesh_find_faces_duplicate_verts(const Mesh &mesh, IndexMaskMemory &memory);
+
+/**
+ * Find faces that use the same vertices as another face, in either winding direction. For every
+ * group of duplicates, the face that comes first in the mask isn't a part of the result. The faces
+ * must not contain the same vertex more than once.
+ *
+ * \param r_originals: Optional array with an element for every face, where the face that each
+ * duplicate face duplicates is stored.
+ */
+IndexMask find_duplicate_faces(OffsetIndices<int> faces,
+                               Span<int> corner_verts,
+                               const IndexMask &mask,
+                               IndexMaskMemory &memory,
+                               MutableSpan<int> r_originals = {});
 
 void mesh_apply_spatial_organization(Mesh &mesh);
 const AttributeAccessorFunctions &mesh_attribute_accessor_functions();

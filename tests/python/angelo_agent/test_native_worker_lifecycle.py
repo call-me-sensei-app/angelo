@@ -13,6 +13,7 @@ worker's stop ends the processes its scripts started, as the Job Object does on 
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import gc
 import sys
@@ -41,7 +42,7 @@ def lane_threads():
     return [thread for thread in threading.enumerate() if thread.name == "AngeloWorkerLane" and thread.is_alive()]
 
 
-def until(condition, seconds=5.0, step=None):
+def until(condition, seconds=CAP_S, step=None):
     deadline = time.monotonic() + seconds
     while not condition() and time.monotonic() < deadline:
         if step is not None:
@@ -69,11 +70,11 @@ class LaneLifecycleTests(unittest.TestCase):
         chat, gate = FakeChat("closed-in-flight"), Gate()
         chat.work.append(asking(gate))
         worker_dispatch.pump(chat, budget())
-        self.assertTrue(gate.sent.wait(5))
+        self.assertTrue(gate.sent.wait(CAP_S))
         lane = worker_dispatch.lane(chat, create=False)
         worker_dispatch.close_all()
         gate.release.set()
-        lane.thread.join(5)
+        lane.thread.join(CAP_S)
         self.assertFalse(lane.thread.is_alive())
         self.assertEqual(chat.log, ["before"])   # None of the chat's code ran after the close.
         self.assertEqual(chat._main_thread_block.__func__, FakeChat._main_thread_block)   # Its own clock back.
@@ -82,7 +83,7 @@ class LaneLifecycleTests(unittest.TestCase):
         chat, gate = FakeChat("left-mid-step"), Gate()
         chat.work.append(asking(gate))
         worker_dispatch.pump(chat, budget())
-        self.assertTrue(gate.sent.wait(5))
+        self.assertTrue(gate.sent.wait(CAP_S))
         lane = worker_dispatch.lane(chat, create=False)
         chat.remote_executor = None
         worker_dispatch.forget(chat)   # A step is under way: it finishes first, and reports how its call ended.
@@ -258,12 +259,8 @@ class GroupStopTests(unittest.TestCase):
 
 
 def _alive(pid):
-    import os
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    return True
+    from angelo_agent.engine_link_protocol import process_alive   # Never a signal-0 kill (liveness_probes).
+    return process_alive(pid)
 
 
 def _kill_quietly(pid):

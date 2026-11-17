@@ -15,6 +15,7 @@ suite that waits for a sign-in in progress holds the stand-in's login.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import json
@@ -118,14 +119,14 @@ class HoldTests(unittest.TestCase):
         self.addCleanup(fake_provider_cli.release, folder)
         thread = threading.Thread(target=fake_provider_cli.wait_for_gate, kwargs=item["gate"], daemon=True)
         thread.start()
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while not fake_provider_cli.held(folder) and time.monotonic() < deadline:
             time.sleep(0.01)
         self.assertTrue(fake_provider_cli.held(folder))
-        thread.join(0.2)
+        thread.join(0.2)  # window: it must still be held after it
         self.assertTrue(thread.is_alive(), "still held: the suite has not released it")
         fake_provider_cli.release(folder)
-        thread.join(5)
+        thread.join(CAP_S)
         self.assertFalse(thread.is_alive())
         self.assertFalse(fake_provider_cli.held(folder))
         fake_provider_cli.release(folder)   # Nothing waits: nothing happens.
@@ -141,13 +142,13 @@ class HoldTests(unittest.TestCase):
             process = subprocess.Popen([sys.executable, str(HERE / "fake_provider_cli.py"), "claude", "auth", "login",
                                         "--claudeai"], env=environ, stdout=subprocess.PIPE, text=True)
             self.addCleanup(process.kill)   # A hold only a release ends never outlives a failed test.
-            deadline = time.monotonic() + 10
+            deadline = time.monotonic() + CAP_S
             while not fake_provider_cli.held(gate) and time.monotonic() < deadline:
                 time.sleep(0.02)
             self.assertTrue(fake_provider_cli.held(gate), "login %d waits at the gate" % number)
             self.assertIsNone(process.poll(), "and has not signed in: the 600 s login time is not used")
             fake_provider_cli.release(gate)
-            self.assertEqual(process.wait(10), 0)
+            self.assertEqual(process.wait(CAP_S), 0)
             process.stdout.close()
         self.assertTrue((home / ".claude" / fake_provider_cli.MARKER).is_file())
 
@@ -159,12 +160,12 @@ class HoldTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"ANGELO_FAKE_CLI_STATE": str(state)}):
             thread = threading.Thread(target=fake_provider_cli._hold_listing, args=("codex_hold",))
             thread.start()
-            deadline = time.monotonic() + 5
+            deadline = time.monotonic() + CAP_S
             while not fake_provider_cli.held(gate) and time.monotonic() < deadline:
                 time.sleep(0.01)
             self.assertTrue(fake_provider_cli.held(gate))
             fake_provider_cli.release(gate)
-            thread.join(5)
+            thread.join(CAP_S)
             self.assertFalse(thread.is_alive())
             self.assertIsNone(fake_provider_cli._hold_listing("claude_hold"), "no hold named: no wait")
 
@@ -187,7 +188,7 @@ class HoldTests(unittest.TestCase):
             process.stdin.flush()
 
         def until(condition):
-            deadline = time.monotonic() + 10
+            deadline = time.monotonic() + CAP_S
             while not condition() and time.monotonic() < deadline:
                 time.sleep(0.01)
             return condition()
@@ -201,8 +202,8 @@ class HoldTests(unittest.TestCase):
         self.assertTrue(until(lambda: seen.count("turn/completed") == 2))
         self.assertFalse(fake_provider_cli.held(gate))
         process.stdin.close()
-        self.assertEqual(process.wait(10), 0)
-        reader.join(5)
+        self.assertEqual(process.wait(CAP_S), 0)
+        reader.join(CAP_S)
         process.stdout.close()
 
 

@@ -66,7 +66,10 @@ def apply(ui, controller):
     from angelo_agent import always_allow
     from angelo_agent.chat_settings import clean_options
     if os.environ.get("ANGELO_EVAL_ALWAYS_ALLOW_SCRIPTS") == "1":
-        always_allow.set_enabled(True)  # Saved in this trial's own state folder, as the card's button saves it.
+        # The person's press of the card's button (C's harness scope: --enable-event-simulate, which the live eval's
+        # input isolation adds), saved in this trial's own state folder.
+        from qa_person import as_person
+        as_person(always_allow.set_enabled, True)
     approval = clean_options(controller.state.get("options"))["approval"]
     return {"approval": approval, "approval_policy": approval + " with test-only typed allowlist for what still asks",
             "always_allow_scripts": bool(controller.always_allow_scripts)}

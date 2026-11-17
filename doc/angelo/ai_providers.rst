@@ -1398,8 +1398,8 @@ form never offers ``TEAM``.
   connection's own profile, launched as a personal Claude connection is.
   ``child_environment`` strips an inherited ``ANTHROPIC_BASE_URL`` for every
   mode and sets it only for this managed case. Billed per token like a
-  personal API key, a team chat writes the prompt cache at Claude Code's
-  5-minute default there (``model_routing.rst``, "Prompt-cache TTL per
+  personal API key, a new team chat writes the prompt cache at 1 hour, as
+  every interactive chat does (``model_routing.rst``, "Prompt-cache TTL per
   session"). Codex gets a process-local
   ``model_providers.codex_team`` entry whose ``base_url`` is the gateway route,
   ``env_key`` ``ANGELO_TEAM_GRANT_KEY`` (sent as ``Authorization: Bearer``),
@@ -1537,8 +1537,8 @@ token, scope ``api``; the console's ``appUsageReportBody``)::
                   "agentTasks": 3, "longestTaskMs": 95000}]}
 
 One entry per UTC day, gateway provider and model, at most 200 per report;
-the answer is ``{"applied", "skipped"}``. Tokens and cost are never sent,
-and the console refuses unknown fields.
+the answer is ``{"applied", "skipped"}``. Gateway entries never carry tokens
+or cost (the gateway meters those), and the console refuses unknown fields.
 
 * **What counts** (``team_usage_reports.task_entry``). One completed agent
   request (``Controller._finish_metrics`` with status ``completed``) on a team
@@ -1554,6 +1554,32 @@ and the console refuses unknown fields.
   the task), local preview acceptances (no route) or collaborator
   consultations (part of their request). Only the receipt's allowlisted route
   and phases are read: no prompt, path, token count or cost.
+* **Custom model endpoints** (``team_usage_reports.endpoint_entry``). A request
+  on an organization's own model server (`Custom model endpoints`_) never passes
+  the gateway, so its tokens are reported too, in batches of their own whose
+  ``entries`` is empty (a console that doesn't know ``customEndpoints`` refuses
+  only those; agreed with the console lane, 2026-11-12). Such a batch refused
+  with HTTP 400 is parked, not dropped: gateway batches go ahead of it and it is
+  sent again, with the same ``batchId``, at the scheduled reports for 6 hours
+  (``team_usage_buffer.PARK``), so apps that report before the console is
+  updated still count::
+
+      {"batchId": "<a UUID>", "entries": [],
+       "customEndpoints": [{"day": "2026-10-10", "endpointId": "<32 hex>", "format": "openai-responses",
+                            "model": "team-gpt-sol", "profile": "gpt-6.1-sol", "agentTasks": 3,
+                            "inputTokens": 3600, "cachedInputTokens": 3000, "outputTokens": 240,
+                            "reasoningTokens": 90}]}
+
+  One item per UTC day, endpoint, format, model (the server's own name) and
+  profile (the Angelo model it maps to; ``null`` when untested, so a name an
+  admin maps again during the day keeps one item per profile that ran), at most
+  200 per report. Tasks count completed requests as above, never also in
+  ``entries``; the tokens are every finished request's own (completed, failed
+  or stopped), from the runtime's usage in the request's receipt, with Codex's
+  TokenUsage meaning (cached input within input, reasoning within output;
+  Claude Code's cache reads and writes are part of its input there). Each count
+  is at most 10,000,000,000. Attributed to the signed-in member like gateway
+  entries; no prompt, path, key, address or header is read.
 * **Counting** does no I/O. The controller's one-line hook
   (``team_usage_reports.count_task``, attached by ``team_account_ui.start``)
   adds the task in memory for the signed-in person (console, organization,
@@ -1829,12 +1855,350 @@ Not yet
 * A Windows run of the Credential Manager items, the team lock and the policy
   registry reader (``doc/angelo/enterprise_policy.rst``, "What needs a Windows run").
 
+Custom model endpoints
+======================
+
+An organization that sends its model use through its own server (LiteLLM,
+Portkey, OpenRouter, Azure OpenAI, vLLM, Ollama, LM Studio or an in-house proxy)
+describes that server once, and each member uses it with their own key. The app
+calls the server directly: no Angelo gateway is in the path, so the server's own
+logging, limits and data rules see the traffic as it is, and a server reachable
+only from the member's network works. Coding agents only; media generation stays
+on the gateway. A server that speaks only OpenAI's Chat Completions is not
+supported: no runtime Angelo bundles speaks it.
+
+Configuration
+-------------
+
+The description (``custom_endpoints.py``, which parses it and trusts none of its
+shape) comes from one of two places:
+
+* the Angelo console: ``customEndpoints`` in the team's ``providers/available``
+  answer (``team_reads.custom_endpoints``), read with the account;
+* the machine policy: ``CustomEndpoints`` (``enterprise_policy.rst``). When the
+  policy sets the key it wins, even when it is empty; the console's are then
+  not used. It needs the policy's ``Organization``, and its servers run only for
+  that organization's signed-in members; without a usable ``Organization`` they
+  are off and the key is reported as a problem.
+
+Each endpoint has an ``id`` (a UUID), a ``name``, a ``baseUrl`` (``https://``,
+or plain ``http://`` for a loopback host only; never a user name, password,
+query or fragment), its ``formats`` (``openai-responses``: OpenAI's Responses
+API and ``gemini``: Google's ``streamGenerateContent``, both on Codex;
+``anthropic-messages``: Anthropic's Messages API, on Claude Code), each with its
+``path`` under the base URL and the header and scheme that carry the key
+(``authorization`` with ``Bearer`` by default; any other header such as
+``api-key``, ``x-api-key``, ``x-portkey-api-key`` or ``x-goog-api-key``; scheme
+``none`` writes the key alone), its ``models`` (the server's own names in whatever shape the
+server uses: any visible ASCII, 1 to 200 characters, so vLLM's served paths,
+Ollama's ``name:tag``, ``vendor/model``, Portkey's ``@provider/model`` and Azure's
+deployment names all fit, since each is only ever sent as data. Because the
+Gemini wire writes the name into its URL path unencoded
+(``models/{model}:streamGenerateContent``), a name with ``?``, ``#``, ``%``, ``\``,
+a ``.`` or ``..`` path segment or an empty one (``//``, a trailing ``/``) is
+refused in every format, and a ``gemini`` name may not start with ``/``; each in one format and optionally mapped to the
+Angelo model it is: ``profile``, a model the format's runtime runs), optional
+fixed ``extraHeaders`` that carry no secret (printable ASCII values; never a
+header that carries a credential on a supported server,
+``custom_endpoints.CREDENTIAL_HEADERS``, nor a name with a ``-`` part that holds
+``token``, ``secret``, ``auth``, ``passw`` or ``credential`` or is ``key``/``keys``,
+alone or after ``api``, ``access``, ``private``, ``secret``, ``auth``,
+``subscription`` or ``functions`` (words, so Portkey's ``x-portkey-provider``
+stays allowed), nor a value that starts with ``Bearer`` or ``Basic`` and a space;
+the console refuses the same. Portkey's ``x-portkey-virtual-key`` is such a
+credential header: route with a Portkey config id or ``@provider/model`` model
+names instead), and its
+``credential`` (`The key`_). An entry that is not usable is left out whole and reported:
+AI Providers says how many, and a policy value names ``CustomEndpoints`` among
+its problems. Unknown formats are ignored, so a newer console can describe more.
+
+Who can use them: a signed-in team member with a seat and model use, for both
+sources (maintainer, 2026-11-12: without the seat rule an organization could run
+Angelo on its own server with no team subscription). The connections are listed
+whenever someone is signed in; without a seat each says "needs a seat in your
+Angelo team", no key is read, fetched or made, and a launch is refused
+(``endpoint_connections.account_admits``, the one place that decides it, and
+``team_runtime.apply_endpoint_environment``).
+
+The rule applies to what runs, not only to what starts. The seat is the
+account's own, re-read with every access token (the console's tokens last 10
+minutes, and the account renews one at least with every ``providers/available``
+read, every 15 minutes and when a window regains focus, at most every 30
+seconds). When the account stops admitting endpoints (a seat removed, model use
+withdrawn), what runs on every endpoint connection ends, in the window and in
+every worker, whatever its credential (a server that checks no key holds none to
+withdraw), and each key leaves the runtimes, as a team connection's grant key
+does. A turn already running finishes on the process it started (its chat's copy
+of the key is cleared at once, and that process ends with the turn); until then
+the chat keeps a redaction-only copy, so what the turn still writes never holds
+the key (``activity_rows.redaction_keys``; it is never sent and is forgotten once
+the chat is idle with no runtime). A consultation any chat runs on the
+connection is cancelled. Nothing more starts: a send, and a prewarmed runtime,
+are refused (``endpoint_ui.send_refusal``). A sign-out forgets the keys. While the console
+can't be reached (the account ``OFFLINE``), the seat stays valid for
+``OFFLINE_GRACE`` (10 minutes, the console's own bound for a seat removal to
+apply) after the console issued the last token that confirmed it
+(``seat_confirmed_at``), however late the app noticed the console was
+unreachable: a token adopted from another Angelo process on the computer
+(``team_access_share``) confirms the seat as of its issue, not its adoption; then the connections stop
+("Couldn't reach your Angelo team to confirm your seat") until it is reached
+again; the person's keys stay in memory for that account meanwhile. They are the organization's connections, not personal ones: the policy's
+``AllowPersonalConnections`` set to false leaves them working, and a Team
+sign-out ends what runs on them.
+
+Connections and ids
+-------------------
+
+Each endpoint becomes one coding connection per format, named
+"<endpoint> · OpenAI", "<endpoint> · Gemini" or "<endpoint> · Anthropic", with its own mode
+``endpoint_<format>_<endpoint id>`` (``endpoint_connections.mode_for``) and
+method ``ENDPOINT``. Like team connections they are virtual: derived at run
+time, never written to ``connections.json``, and their ids are UUIDs over the
+console, organization, person and mode, so a chat finds its connection again
+after a restart or a new sign-in, and another person or organization on the
+same computer gets different ones.
+
+``provider_registry.spec_for`` resolves such a mode from the current endpoints
+(``endpoint_connections.spec``). Its ``personal`` is the format's own personal
+mode (``codex_api``, ``gemini_api`` or ``claude_api``), so request rules and the
+runtime follow that mode. The
+registry's static mode sets (``CODING_MODES``, ``CUSTOM_PROVIDER_MODES``,
+``TEAM_MODES``, ``HTTP_MODES``, ``MODE_BY_CONNECTION``) list only its own modes;
+code that must include endpoint modes asks ``is_coding_mode``,
+``custom_provider`` or ``organization_mode``. A worker chat (another Blender
+process, which has no account) asks Angelo for its own chat's spec over the
+relay (``runtime.probe`` ``endpoint_spec``); the spec never holds a key.
+
+An endpoint the organization removed still resolves, to a spec with no models,
+so a saved chat on it loads and says why it can't run ("Your organization no
+longer offers this model endpoint"), never a crash; the chat chooses another
+connection.
+
+The key
+-------
+
+``credential`` says where an endpoint's key comes from; its formats share it.
+**An organization's own secrets never reach the app** (maintainer, 2026-11-12):
+there is no shared organization key, and an entry with any other value
+(``org_key`` included) is left out and reported. A later need for one shared key
+is for a server of Angelo's near the organization's own, not for the app.
+
+* ``member_key`` (default): each member's own (below).
+* ``none``: the server checks no key; nothing is sent.
+* ``command``: a program, named only by the machine policy (a console entry with
+  it is left out), that prints a short-lived key (an SSO-issued token). Angelo reads
+  its argv from the policy again each time it runs it (never from the endpoint it
+  holds, which a script could change in place) and runs
+  it itself (argv, no shell) with the person's environment less Angelo's own
+  variables and every provider credential, outside the runtime's network lock so it
+  can reach its identity provider, and runs it again at 80 % of ``refreshSeconds``;
+  the new key restarts the runtime between turns, as a renewed team grant key does
+  (``endpoint_keys``). Codex's own command credential is not used: its program
+  would run inside the network lock.
+
+A member adds their own key in AI Providers ("Your organization's model
+servers" ▸ Add key), once per endpoint. It is kept like a
+personal API key: in the OS key store (Keychain, Credential Manager or the Linux
+keyring; `Saved API keys (OS key stores)`_) through the same worker, under the
+endpoint's own key slot (``endpoint_connections.key_identity``: console,
+organization, person and endpoint), and read again without a prompt at the next
+start. Remember off keeps it in memory for the session.
+
+**Every kept key is bound to the route it was given for** (``endpoint_routes``):
+the origin (scheme, host and port), each format's URL (its path), the header and
+scheme that carry the key, and the fixed extra headers that route it (a Portkey
+``x-portkey-custom-host``, say). A member's saved key is stored with that route,
+and any key in memory is dropped when any of them changes, so a changed route, by
+an admin or by someone with an admin's account, never receives a key meant for
+the old one. A member's key then has to be entered again, the message naming what
+changed, the most consequential first: the address ("Your admin changed this
+model server's address to <host>"), where it receives requests (the path), how it
+receives the key (the header), or its routing headers; a program's key is made
+again. A name, model or profile edit keeps the key. Every kind of key reaches
+a runtime only through the child's environment, never argv or a file, and is sent
+only to the endpoint's host.
+
+The runtime
+-----------
+
+The Codex formats run through a process-local
+``model_providers`` entry (``endpoint_connections.provider_entry``): the
+format's URL, ``wire_api`` ``responses`` or ``gemini`` (the Gemini wire needs the
+pinned runtime that declares it, as the Gemini API connection does),
+``requires_openai_auth = false``, ``supports_websockets = false``, no request
+compression, the key by ``env_key`` for ``Authorization: Bearer`` and by
+``env_http_headers`` for any other header or scheme, the fixed headers as
+``http_headers``, and the format's own provider settings (Gemini keeps
+``stream_idle_timeout_ms`` at 900,000). Web search is off: Codex's is a hosted
+OpenAI tool that a server may not pass through. Voice is refused.
+
+``anthropic-messages`` runs on Claude Code with ``ANTHROPIC_BASE_URL`` set to the
+format's URL (Claude Code adds ``/v1/messages``) and the key in Claude Code's own
+variable for its header: ``ANTHROPIC_AUTH_TOKEN`` for ``Authorization: Bearer``,
+``ANTHROPIC_API_KEY`` for ``x-api-key`` without a scheme, and any other header in
+``ANTHROPIC_CUSTOM_HEADERS`` beside the fixed ones
+(``endpoint_connections.claude_environment``). Claude Code needs one of its two
+variables to start, so a key carried elsewhere, or no key, leaves a placeholder
+that is never a secret in ``ANTHROPIC_API_KEY``. WebSearch and WebFetch are off
+(the network lock would refuse them). An unmapped model still gets Claude Code's
+``--effort``, which every Claude launch carries.
+
+Claude Code knows a model's context window only by its Anthropic name, and
+assumes 200K tokens for a name it doesn't know, compacting a 1M-token model's
+conversation five times too early. So each mapped Claude model reaches Claude
+Code as a ``modelOverrides`` setting from its Anthropic name to the server's
+name (``endpoint_connections.claude_model_overrides``, Claude Code's documented
+way to "correct the window for a gateway or custom model ID"); Claude Code then
+treats the server's name as that model. A worker's launch carries the overrides
+Angelo derives from the chat's own endpoint, never a list the worker sent.
+Unmapped models keep the 200K assumption.
+
+The child reaches the endpoint's host only (``team_network.apply`` with that
+host; every other connection is refused). The host names one server for every
+resolver (``custom_endpoints.hostname``, as the console's schema): an IP literal
+in canonical form (a dotted quad of four decimal parts without leading zeros, or
+IPv6 without a zone ID such as ``%eth0``), or a DNS name of LDH labels (letters,
+digits and hyphens; an underscore is invalid) whose last label does not begin
+with a digit, since some resolver reads such a name (``127.1``, ``0x7f.1``,
+``010.0.0.1``, ``example.1e3``) as an address. An internationalized name is
+written in its punycode ``xn--`` form (``xn--bcher-kva.example``, not
+``bücher.example``). One property of the
+runtimes' ``NO_PROXY`` to know: an entry also matches that host's subdomains
+(``llm.corp`` lets ``a.llm.corp`` through too), and a single-label host
+(``litellm``) is matched as written; an organization whose model server sits
+beside other services under its name gives it a host of its own. The policy's ``ExtraCACertificates``
+reach Codex as ``CODEX_CA_CERTIFICATE``, which Codex adds to the system's roots,
+so an internal server signed by the organization's own authority is trusted.
+
+Model profiles
+--------------
+
+A model mapped to an Angelo model inherits that model's efforts, image input and
+context window from the registry, and Codex gets that model's own catalog entry
+under the server's name (``endpoint_catalog``: copied from the runtime's bundled
+catalog, ``codex debug models --bundled``, and passed as ``model_catalog_json``),
+so its requests take the same form, tool-output budget and context as the model
+itself. An unmapped model is offered, labelled untested in the model picker; it
+has no effort control, and its turns send no reasoning level (the server's
+default applies), and Codex uses its generic metadata. A format whose every model
+maps to an OpenAI model gets the OpenAI request features (deferred tools, typed
+plans); any other gets the function-calling form every Responses server accepts,
+since a server may translate other models. Mapping a name to an OpenAI model
+therefore says the server passes OpenAI's Responses API through unchanged.
+
+Test connection
+---------------
+
+AI Providers' Test connection (and the key sheet's) says that it sends a few
+short requests to the organization's server with the member's key, and runs only
+when pressed (``endpoint_check``): per format, the server's model list when it
+has one (which configured names it lacks; a list naming none of them, empty or a
+pass-through route's own provider names, is said once in neutral words and left
+to the tool check, never warned about model by model); one streamed request with one tool in
+the shape the model gets it in a chat, for each shape the format's models use
+(``endpoint_check_tools``), and the call with its result sent back as after every
+tool a chat runs; the ``prompt_cache_key`` when the server echoes it; and a longer
+streamed reply whose pieces' arrival times show whether the server buffers
+streamed replies (a reply too short or fast to tell is reported as such, never
+as a pass). A refused key is named as the key's problem whatever status carries
+it (some servers answer a missing key with HTTP 500), with the server's own
+message and the key removed. Requests go straight to the host, without a proxy
+or redirects.
+
+The tool shape follows the mapped model's entry in the agent runtime's bundled
+catalog (``endpoint_catalog``). A code-mode model (``tool_mode`` ``code_mode*``,
+as gpt-6.1-sol) reaches every Angelo tool only through one freeform ``custom``
+tool (``exec``, with a grammar), and a Responses Lite model receives its tools
+in an ``additional_tools`` input item (role ``developer``), so the check sends
+exactly that: a server that
+drops or rewrites custom tools, or their ``custom_tool_call`` and
+``custom_tool_call_output`` items, leaves such a model no way to call Angelo,
+and the check says so in words an admin can act on (``CUSTOM_DROPPED``,
+``CUSTOM_REFUSED``). Unmapped models, Gemini and Messages get one function tool.
+A server that refuses a tool's result is an error in every shape
+(``RESULT_REFUSED``): no chat can continue after a tool runs. Each request keeps the
+tool layout the runtime itself sends, held to the layouts recorded from the
+pinned runtime (``test_native_endpoint_tool_layouts.py``; ``releasing.rst``,
+"Agent runtime"). One limit: the check doesn't send Claude Code's beta headers
+(Angelo ships the latest Claude Code, whose ``anthropic-beta`` values change with
+its version), so a proxy that refuses unknown ``anthropic-beta`` values can pass
+the check and still fail chats. The stand-in proxy
+runs prove each shape end to end: Codex's own ``exec`` call through the proxy
+and the result back, recording what reached the provider.
+
+Validation
+----------
+
+``test_native_custom_endpoints.py``: the parser, the policy key and the console
+answer, modes, specs and records, a removed endpoint, a worker's spec, the
+launch (entry, key only in the environment, the network lock, the catalog, no
+process-wide effort, other headers and schemes, the policy's roots), an
+untested model's turn, the chat's team-access answer, and the check against a
+local fake server. ``test_native_endpoint_usage_reports.py``: the usage entries
+of endpoint requests, their batches and the console's accepted shape.
+``test_blender_custom_endpoints.py`` (GUI) drives the real app: the server
+listed from the console, the key sheet and Test connection against a local fake
+server, the ready connection with its untested model, the seat removed and given
+back, and sign-out forgetting the key. A stand-in LiteLLM (and a second server
+type) through the built app is described in the coordinator's harness notes.
+
+The saved key goes through the same key store as personal API keys (`Saved API
+keys (OS key stores)`_); only its value differs (the key with its origin, as JSON). No suite
+reaches a real key store with it: every in-app suite runs with
+``ANGELO_DISABLE_KEYCHAIN=1``, which ``provider_isolation`` requires. The
+real stores are reached only by opt-in LIVE host drivers
+(``ANGELO_QA_LIVE_KEYCHAIN=1``, ``--allow-live``): ``test_blender_keychain_live.py``
+on macOS, and on Windows ``test_blender_credential_manager_live.py``, which
+round-trips an endpoint key's saved value under test-only targets, checks that
+another person's, organization's and profile's slots read nothing, that a value
+over 2560 bytes is refused without an item, and that the built app reads and
+deletes the item, and leaves nothing behind. It needs a signed-in desktop
+session. By hand on Windows, with a throwaway profile, a test team and a
+fixture key (never a real one):
+
+1. Save: AI Providers, the server's **Add key**, the fixture key with Remember
+   on, **Save**. Control Panel > Credential Manager > Windows Credentials lists
+   a generic ``Angelo API key:<connection id>@<profile>`` item whose comment
+   names an organization endpoint key.
+2. Read: quit and start Angelo, sign in to the team. The server reads
+   "Available in chat" without asking for the key.
+3. Forget: the key sheet's **Remove key** removes the item, and Credential
+   Manager no longer lists it. (Signing out forgets the key in memory only: the
+   item stays for that person's next sign-in, so remove it before signing out.)
+
+Windows stores at most 2560 bytes per item: a key longer than about 2500 bytes
+(with its origin) works for the session but is not remembered, as for a
+personal key above that size.
+
+Not yet: endpoints without a team seat (never, by the maintainer's ruling for
+organizations), personal endpoints, and OpenAI's Chat Completions format.
+
 Coding API adapters
 ===================
 
-All three adapters use official Codex app-server and Responses wire format.
+These adapters use the official Codex app-server and the Responses wire format.
 There is no protocol conversion, local proxy, OAuth token extraction or custom
-model/tool agent loop. Config overrides are process-local; keys are in explicit
+model/tool agent loop, with one exception, waived by the maintainer on
+2026-11-12 for Gemini only: Angelo's bundled Codex runtime may contain one
+native client for Google's documented Gemini API (v1beta ``generateContent`` /
+``streamGenerateContent`` at ``generativelanguage.googleapis.com``), selected by
+``wire_api = "gemini"``, which translates Codex's own turn model to that official
+API inside the runtime process, as Codex already does for the Responses API.
+Google serves Gemini over that API and an OpenAI Chat Completions layer only,
+not the Responses API, so no unmodified runtime can run it (`Gemini 4 Carbon`_).
+Everything else in the rule still holds:
+
+* no local proxy and no extra process;
+* API keys only, with no OAuth or Gemini CLI token use;
+* Codex's agent loop, tools, approvals and receipts unchanged, with no custom loop;
+* Gemini runs only on the bundled runtime: the person's own Codex is refused for
+  it (``runtime_launch.codex_command``), and a release build already refuses an
+  ``ANGELO_AGENT_RUNTIME`` override (development builds use one to test a new
+  runtime);
+* the patch is carried on every Codex rebase, checked by the release check (the
+  ``gemini`` entry of ``agent_runtime.json`` ``wire_apis``: ``codex debug models``
+  with a provider on that wire, offline), and offered upstream
+  (openai/codex#34459). Config overrides are process-local; keys are in explicit
 child environment variables, never CLI arguments or config files. Each account
 uses its own CODEX_HOME. OpenAI account/login RPCs and OpenAI's model catalog are
 not used for these providers. Team Codex connections (`Team account and team
@@ -1870,6 +2234,62 @@ document. The actual runtime request was inspected to confirm the multi-agent
 namespace and raw file/image tools are absent; configuration intent alone is
 not evidence of this boundary. Native clarification requests are rejected
 (there is no host handler for them); ordinary chat questions are supported.
+
+Gemini 4 Carbon
+===============
+
+Google's ``gemini-4-carbon`` is the one Gemini coding model Angelo offers
+(``provider_registry.SPECS["gemini_api"]``): connection type *Gemini API*, a
+Google AI Studio key, efforts low, medium and high (Carbon's thinking cannot be
+turned off), **medium** by default, its 1,048,576-token window shared by input,
+thinking and output. No other Gemini model is listed, whatever the key's
+catalog holds; the connection check reads that catalog
+(``GET /v1beta/models?pageSize=1000`` with the ``x-goog-api-key`` header, no
+inference) and admits only Carbon.
+
+Google serves Gemini over its own ``generateContent`` API and an OpenAI-style
+Chat Completions layer, not the Responses API the other coding connections use
+(checked 2026-11-12, AI Studio and Vertex AI). The connection therefore runs on
+a wire that only Angelo's agent runtime provides (``wire_api = "gemini"`` in its
+``model_providers`` entry). It is offered only while the pinned runtime declares
+that wire (the ``gemini`` entry of ``agent_runtime.json`` ``wire_apis``;
+``agent_runtime.supports_wire``, ``provider_registry.available``), so no build lists a connection its runtime
+would fail on, and ``runtime_launch.codex_command`` refuses to start it on the
+person's own Codex. Its provider entry raises Codex's stream idle limit to 15
+minutes (``provider_settings``): Carbon can think for minutes before its first
+byte, and Google advises client timeouts of at least 15 minutes. Angelo's Codex
+opening carries no date, time or per-chat path (``runtime_launch``), so Gemini's
+implicit prefix cache can reuse it across chats. There is no team route yet:
+the gateway's ``google`` routes admit the image paths only.
+
+Prices in ``model_profiles`` are Google's standard rates (from 2026-12-01; the
+introductory rates through 2026-11-30 are half).
+
+One key for several connections
+===============================
+
+One provider key can pay for several services Angelo connects separately: a
+Google AI Studio key runs Gemini Images (Media Studio) and the Gemini coding
+agent. Specs of such modes share a ``key_family`` (``google_ai_studio``). When a
+connection of that family already holds its own key, the New/Edit connection
+form shows **API key from**: *Enter a new key* (the default) or *Use the key of
+<connection>*. Separate keys stay possible.
+
+* A linked connection stores only ``key_from`` (the other connection's id) in
+  ``connections.json``; it keeps no saved key of its own
+  (``saved_keys_ui.uses_saved_key``), and AI Providers shows *Uses the API key
+  of <name>*.
+* Its key in memory mirrors its source's (``shared_keys.mirror``), set whenever
+  the source's key is entered or loaded from the OS key store, with its chats'
+  runtimes and checks refreshed (``shared_keys_ui.share``). Replacing the
+  source's key changes both; it is refused while either has an active turn.
+* Entering a key on the linked connection makes it its own again. Removing the
+  source keeps the linked connection, without a key: its turns stop and it asks
+  for one.
+* Links are one level deep (a source holds its own key) and hold only within a
+  family; a link that no longer holds reads as no link (``shared_keys.source_of``).
+
+Pinned by ``test_native_gemini_connection.py``.
 
 Generation service bindings
 ===========================

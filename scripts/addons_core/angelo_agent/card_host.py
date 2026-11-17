@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Shows one Angelo notice card at a time over the largest 3D view, and owns its input.
 
-A *card* (``update_card``, ``crash_card``, ``whatsnew_card``) lays itself out with
-``card_kit`` and reacts to actions; this module draws it (``card_draw``) from a
-POST_PIXEL handler on the 3D view and runs one modal operator for events, the same
-arrangement as the welcome screen (``intro.py``).
+A *card* (``update_card``, ``crash_card``, ``whatsnew_card``) lays itself out with ``card_kit`` and reacts to
+actions; this module draws it (``card_draw``) from a POST_PIXEL handler on the 3D view and runs one modal operator
+for events, as the welcome screen does (``intro.py``). A card's ``grants`` take only an aimed click (``card_input``).
 
 * A **modal** card (the crash dialog, What's New) takes every input event while the pointer
   is over the 3D view, so nothing behind it reacts; the chat and the rest of the
@@ -37,7 +36,8 @@ from bpy.app.handlers import persistent
 from bpy.types import Operator
 
 from .input_policy import modal_options
-from . import canvas_rtl, card_draw, card_kit as kit, font_watch, input_policy, live_windows, scroll_input, ui_tokens
+from . import approval_arming, canvas_rtl, card_draw, card_host_input as card_input, card_kit as kit
+from . import font_watch, input_policy, live_windows, scroll_input, ui_tokens
 from .card_view import View as _View   # Other canvases draw cards with it too (card_host._View).
 
 _handlers = {}            # Space type (bpy.types.Space subclass) -> its POST_PIXEL draw handler.
@@ -64,6 +64,7 @@ class HostState:
     plan_key: object = None
     keyboard: bool = False    # Focus ring visible.
     cursor: str = "DEFAULT"
+    arming: object = None     # Its grants' arming (card_host_input, approval_arming).
 
 
 class Host:
@@ -250,7 +251,7 @@ def close(how="done", requeue=False, wake=True):
         for area in live_windows.areas(window):
             if area.as_pointer() == state.area:
                 area.tag_redraw()
-    state.card.closed(how)
+    kit.closed(state.card, how)   # And its pictures let go (card_kit.closed).
     if requeue or (how == "lost" and getattr(state.card, "retry_when_lost", False)):
         _queue.append((-state.card.priority, _sequence, state.card))
         _queue.sort(key=lambda item: item[:2])
@@ -329,6 +330,7 @@ def _draw():
                _language(), variant)
         if state.plan is None or key != state.plan_key:
             state.plan, state.plan_key = card.layout(_view, region.width, region.height, scale, ui), key
+        card_input.sync(state, region)   # Where its grants are drawn now (a moved one arms again), in C too.
         from . import connect_hero
         connect_hero.paint_beneath(area, region)   # The showcase, if it covers this view, sits under the card.
         canvas_rtl.begin(region.width)  # Mirrored in a right-to-left language, like the chat; ended in ``finally``.
@@ -369,7 +371,7 @@ class ANGELO_OT_card_host(Operator):
         self.token = object()
         _active = HostState(card, window.as_pointer(), area.as_pointer(), self.token)
         _active.ui.time = time.monotonic()
-        card.opened(Host(_active))
+        kit.opened(card, Host(_active))   # Its pictures read first, outside drawing (card_kit.opened).
         context.window_manager.modal_handler_add(self)
         area.tag_redraw()
         return {'RUNNING_MODAL'}
@@ -379,6 +381,8 @@ class ANGELO_OT_card_host(Operator):
         if state is None or state.token is not self.token:
             _end_nudge()
             return {'FINISHED', 'PASS_THROUGH'}   # Closed: whatever this event is, it belongs to what is below.
+        if context.window:   # A focus change disarms its grants; the first press after it never grants.
+            approval_arming.window_input(context.window.as_pointer(), event.type, event.value)
         if input_policy.overlay_passes(event, context.window_manager):
             return {'PASS_THROUGH'}   # Timers are not input: they belong to whoever set them; the quit key quits.
         if context.window.as_pointer() != state.window:
@@ -391,6 +395,8 @@ class ANGELO_OT_card_host(Operator):
         card, plan, ui = state.card, state.plan, state.ui
         over = (region.x <= event.mouse_x < region.x + region.width and region.y <= event.mouse_y < region.y + region.height)
         if not over or plan is None:
+            if event.type == 'MOUSEMOVE':
+                card_input.moved(state, None)
             if ui.hover is not None or ui.pressed is not None:
                 ui.hover = ui.pressed = None
                 area.tag_redraw()
@@ -402,9 +408,10 @@ class ANGELO_OT_card_host(Operator):
         # so a click on its background never reaches the objects behind it.
         captures = modal or (event.type in POINTER_EVENTS and kit.inside(plan.card, x, y))
         if event.type == 'MOUSEMOVE':
+            card_input.moved(state, (x, y))   # A move into a grant arms it.
             if target != ui.hover:
                 ui.hover = target
-                _cursor(context.window, state, "HAND" if target else "DEFAULT")
+                card_input.cursor(context.window, state, "HAND" if target else "DEFAULT")
                 area.tag_redraw()
             return {'RUNNING_MODAL'} if modal and not input_policy.refresh_move(event) else {'PASS_THROUGH'}
         if event.type in scroll_input.SCROLL_EVENTS and (box := kit.scroll_box_at(plan, x, y)):
@@ -414,6 +421,8 @@ class ANGELO_OT_card_host(Operator):
             area.tag_redraw()
             return {'RUNNING_MODAL'}
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            if target is not None and not card_input.lands(state, target):
+                target = None   # A grant not armed: the press lands on nothing.
             ui.pressed, state.keyboard, ui.focus = target, False, None
             area.tag_redraw()
             if target is not None:
@@ -444,9 +453,12 @@ class ANGELO_OT_card_host(Operator):
             ui.focus = order[(index + (-1 if event.shift else 1)) % len(order)]
             state.keyboard = True
         elif event.type in {'RET', 'NUMPAD_ENTER', 'SPACE'}:
-            target = ui.focus if state.keyboard and ui.focus in order else (card.default_action, None) if event.type != 'SPACE' else None
+            target = (ui.focus if state.keyboard and ui.focus in order
+                      else (card_input.default(card), None) if event.type != 'SPACE' else None)
             if target is None or target[0] is None:
                 return event.type == 'SPACE'
+            if not card_input.key_lands(state, target):
+                return True   # A focused grant within its shield, or just after a focus change: nothing.
             self._act(target[0], target[1], state)
         elif event.type == 'ESC':
             self._act(card.cancel_action, None, state)
@@ -456,17 +468,8 @@ class ANGELO_OT_card_host(Operator):
         return True
 
     def _act(self, action, value, state):
-        state.card.act(action, value, Host(state))
+        card_input.act(state, action, value, Host(state))   # A grant: in its press's C ticket (grant_guard).
         _redraw()
-
-
-def _cursor(window, state, name):
-    if state.cursor != name:
-        state.cursor = name
-        try:
-            window.cursor_set(name)
-        except (RuntimeError, TypeError):
-            pass
 
 
 @persistent

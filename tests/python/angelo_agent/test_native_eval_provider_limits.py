@@ -9,11 +9,11 @@ pass-rate paths with mocked trials. No process, network or account.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import platform_env
 
 import contextlib
 import io
 import json
-import os
 import sys
 import tempfile
 import unittest
@@ -153,7 +153,7 @@ class LiveEvalTests(unittest.TestCase):
         args = eval_live_agent.parse(["--authorize-billed-runs", "--connection-id", CONNECTION, "--blender", "/x"])
         environment = eval_live_agent.trial_environment(Path("/private/tmp/t"), Path("/private/tmp/a"), args, 1)
         self.assertEqual(environment["CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK"], "1")
-        with mock.patch.dict(os.environ, {"PATH": "/usr/bin"}, clear=True):
+        with platform_env.cleared({"PATH": "/usr/bin"}):
             self.assertEqual(trial.clean_environment()["CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK"], "1")
 
 

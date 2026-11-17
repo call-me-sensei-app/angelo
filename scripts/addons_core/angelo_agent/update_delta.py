@@ -39,6 +39,8 @@ import sys
 import tarfile
 from pathlib import Path
 
+from . import owned_paths
+
 FORMAT = "angelo-bundle-delta-1"
 MANIFEST = "delta.json"
 MAX_MANIFEST = 64 * 1024 * 1024
@@ -221,6 +223,7 @@ def _check_entry(path, entry):
 
 def apply(package, installed, out, expect_from, expect_to):
     """Build the new bundle at ``out`` (must not exist) from ``installed`` and the delta ``package``."""
+    owned_paths.require_writable(out)
     installed, out = Path(installed), Path(out)
     if out.exists():
         raise DeltaError("io", "The output folder already exists")
@@ -255,6 +258,7 @@ def apply(package, installed, out, expect_from, expect_to):
 
 def _lay_out(installed, out, entries):
     """Directories and the files made from the installed bundle; returns ``{member: [paths]}`` still to write."""
+    owned_paths.require_writable(out)
     out.mkdir(parents=True)
     members, kinds = {}, {}
     for path in sorted(entries, key=lambda p: (p.count("/"), p)):
@@ -283,7 +287,7 @@ def _lay_out(installed, out, entries):
 def _write_member(stream, installed, out, paths, entries):
     first = None
     for path in paths:
-        entry, target = entries[path], out / path
+        entry, target = entries[path], owned_paths.require_writable(out / path)   # Each member: C, inside ``out``.
         if entry["from"]["kind"] == "patch":
             _apply_patch(stream, target, entry["size"])   # A patch member serves exactly one file.
         elif first is None:
@@ -295,6 +299,7 @@ def _write_member(stream, installed, out, paths, entries):
 
 
 def _link_and_seal(out, entries):
+    owned_paths.require_writable(out)
     for path, entry in entries.items():
         if entry["type"] == "file":
             os.chmod(out / path, entry["mode"])

@@ -7,6 +7,7 @@ stand-ins only (claude_protocol_fixtures, the DirectFixture of test_native_claud
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import sys
@@ -238,7 +239,7 @@ class DeliveryTests(unittest.TestCase):
         claude_direct.answer(provider, transport, event)
         for thread in threading.enumerate():
             if thread.name == "AngeloClaudeCall":
-                thread.join(5)
+                thread.join(CAP_S)
         claude_direct.answer(provider, transport, event)   # The same call again, after its answer.
         self.assertEqual(state.call.call_count, 1)
         self.assertEqual(len(written), 2, "every delivery is answered")
@@ -254,7 +255,7 @@ class DeliveryTests(unittest.TestCase):
         for thread in threads:
             thread.start()
         for thread in threads:
-            thread.join(5)
+            thread.join(CAP_S)
         self.assertEqual(order, ["call-%d" % ticket for ticket in tickets])
 
 

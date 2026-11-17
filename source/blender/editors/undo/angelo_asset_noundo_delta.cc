@@ -16,7 +16,7 @@
 #include "DNA_scene_types.h"
 
 #include "BLI_set.hh"
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 
 #include "BKE_global.hh"
 #include "BKE_idprop.hh"

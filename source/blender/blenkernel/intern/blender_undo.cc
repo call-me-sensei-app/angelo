@@ -24,13 +24,14 @@
 #include "DNA_userdef_types.h"
 
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 
 #include "BKE_appdir.hh"
 #include "BKE_blender_undo.hh" /* own include */
 #include "BKE_blendfile.hh"
 #include "BKE_context.hh"
 #include "BKE_global.hh"
+#include "BKE_lib_id.hh"
 #include "BKE_main.hh"
 #include "BKE_undo_system.hh"
 
@@ -132,10 +133,11 @@ MemFileUndoData *BKE_memfile_undo_encode(Main *bmain, MemFileUndoData *mfu_prev)
       BLO_memfile_clear_future(prevfile);
     }
     /* success = */ /* UNUSED */ BLO_write_file_mem(bmain, prevfile, &mfu->memfile, fileflags);
-    mfu->undo_size = mfu->memfile.size;
+    mfu->undo_size = BLO_memfile_undo_size(&mfu->memfile);
   }
 
   bmain->is_memfile_undo_written = true;
+  BKE_main_memfile_undo_synced(bmain);
 
   return mfu;
 }

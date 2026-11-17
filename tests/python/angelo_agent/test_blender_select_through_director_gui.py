@@ -294,7 +294,7 @@ def tick():
         if state["phase"] == "boot":
             if not director.is_director(window()) or not qa_boot.started():
                 return .2
-            bpy.ops.angelo.quick_connect(mode="claude_subscription")   # The composer's field, as people see it.
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().quick_connect(mode="claude_subscription")   # The composer's field, as people see it.
             state["phase"] = "connect"
             return .2
         if state["phase"] == "connect":

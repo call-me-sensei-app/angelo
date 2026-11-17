@@ -6,11 +6,12 @@ import json
 import threading
 import uuid
 
+from . import owned_paths
 from .providers import CodexProvider, ClaudeProvider
 from .provider_registry import billing_kind, runtime_kind
 from .routing import TOOLSET_VERSION, shared_context
 from .tool_specs import COLLABORATOR_TOOLS
-from .chat_settings import clean_options, claude_effort, codex_turn_options
+from .chat_settings import clean_options, request_effort
 from .model_routing import cache_ttl
 from .request_fences import DeliveryOwner, RequestFence
 
@@ -28,7 +29,7 @@ class DelegatedContext:
         self.turn_options = dict(self.state["options"])
         self.store = self.host.store
         self.workspace = self.host.workspace / "collaborators" / str(uuid.uuid4())
-        self.workspace.mkdir(parents=True, mode=0o700)
+        owned_paths.require_writable(self.workspace).mkdir(parents=True, mode=0o700)
         self.references = self.host.references
         self.turn_attachments = list(self.host.turn_attachments)
         self.voice = None
@@ -54,13 +55,7 @@ class DelegatedContext:
 
     def route(self):
         """What the receipt records about this consultation (never its text)."""
-        if runtime_kind(self.state["provider"]) == "claude":
-            effort = claude_effort(self.turn_options["effort"])
-        else:
-            try:
-                effort = codex_turn_options(self, self.turn_options)["effort"]
-            except ValueError:
-                effort = self.turn_options["effort"]
+        effort = request_effort(self, self.turn_options, runtime_kind(self.state["provider"]))
         return {"mode": self.state["provider"], "requested_model": self.turn_options["model"], "effort": effort,
                 "fast": False, "cache_ttl": self.prompt_cache_ttl}
 

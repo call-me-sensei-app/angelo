@@ -12,7 +12,7 @@ import json
 import os
 import secrets
 
-from . import shared_replace
+from . import owned_paths, shared_replace
 
 
 def read(path):
@@ -26,6 +26,7 @@ def read(path):
 
 def write(path, asset, sha256):
     """Record the supplied digest of imported/written bytes, never digest the asset after that read or write."""
+    owned_paths.require_writable(path)   # Inside the project's working folder C vouched for (engine_link_assets).
     temporary = "%s.%s.tmp" % (path, secrets.token_hex(4))
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(temporary, flags, 0o644)

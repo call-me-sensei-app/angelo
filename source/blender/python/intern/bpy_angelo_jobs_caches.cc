@@ -22,8 +22,8 @@
 
 #include <Python.h>
 
-#include "BLI_listbase.h"
-#include "BLI_threads.h"
+#include "BLI_listbase.hh"
+#include "BLI_threads.hh"
 
 #include "BKE_global.hh"
 #include "BKE_main.hh"

@@ -15,7 +15,7 @@ import os
 
 import numpy as np
 
-from . import hand_contact as C
+from . import hand_contact as C, owned_paths
 from . import hand_rig as H
 from .view_framing import orthographic_projection, view_matrix
 from .view_png import encode_png
@@ -164,6 +164,7 @@ def _draw(copies, camera, forward, width, height):
 def _write(references, label, png, width, height, extra):
     reference = references.new_observation(label)
     try:
+        owned_paths.require_writable(reference["path"])
         with open(reference["path"], "wb") as handle:
             handle.write(png)
         os.chmod(reference["path"], 0o600)

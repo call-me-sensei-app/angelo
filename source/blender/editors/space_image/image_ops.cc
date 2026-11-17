@@ -20,13 +20,14 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_fileops.h"
-#include "BLI_listbase.h"
+#include "BLI_angelo_writers.hh"
+#include "BLI_fileops.hh"
+#include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
 #include "BLI_set.hh"
-#include "BLI_string.h"
-#include "BLI_time.h"
-#include "BLI_utildefines.h"
+#include "BLI_string.hh"
+#include "BLI_time.hh"
+#include "BLI_utildefines.hh"
 
 #include "BLT_translation.hh"
 
@@ -58,6 +59,7 @@
 #include "IMB_colormanagement.hh"
 #include "IMB_imbuf.hh"
 #include "IMB_imbuf_types.hh"
+#include "IMB_partial_update.hh"
 
 #include "MOV_read.hh"
 
@@ -144,6 +146,8 @@ static void sima_zoom_set(
   Image *ima = ED_space_image(sima);
   if (ima) {
     ima->runtime->view_zoom = sima->zoom;
+    ima->runtime->view_offset[0] = sima->xof;
+    ima->runtime->view_offset[1] = sima->yof;
   }
 }
 
@@ -231,8 +235,7 @@ static ImageUser image_user_from_context_and_active_tile(const bContext *C, Imag
   if (ima && ima->source == IMA_SRC_TILED) {
     const ImageTile *active = static_cast<ImageTile *>(
         BLI_findlink(&ima->tiles, ima->active_tile_index));
-    iuser.tile = active ? active->tile_number :
-                          (static_cast<ImageTile *>(ima->tiles.first))->tile_number;
+    iuser.tile = active ? active->tile_number : (ima->tiles.first())->tile_number;
   }
 
   return iuser;
@@ -340,6 +343,13 @@ static void image_view_all(SpaceImage *sima, ARegion *region, wmOperator *op)
 
   sima->xof = xof;
   sima->yof = yof;
+
+  Image *ima = ED_space_image(sima);
+  if (ima) {
+    ima->runtime->view_zoom = sima->zoom;
+    ima->runtime->view_offset[0] = sima->xof;
+    ima->runtime->view_offset[1] = sima->yof;
+  }
 }
 
 bool space_image_poll(bContext *C)
@@ -1371,7 +1381,7 @@ static Image *image_open_single(Main *bmain,
   Image *ima = nullptr;
 
   errno = 0;
-  ima = BKE_image_load_exists_in_lib(bmain, owner_library, range->filepath, &exists);
+  ima = BKE_image_load_exists_in_lib(bmain, owner_library, range->filepath, true, &exists);
 
   if (!ima) {
     BKE_reportf(op->reports,
@@ -1404,9 +1414,9 @@ static Image *image_open_single(Main *bmain,
   }
 
   if (ima->source == IMA_SRC_FILE) {
-    if (range->udims_detected && range->udim_tiles.first) {
+    if (range->udims_detected && range->udim_tiles.first_) {
       ima->source = IMA_SRC_TILED;
-      ImageTile *first_tile = static_cast<ImageTile *>(ima->tiles.first);
+      ImageTile *first_tile = ima->tiles.first();
       first_tile->tile_number = range->offset;
       for (LinkData &node : range->udim_tiles) {
         BKE_image_add_tile(ima, POINTER_AS_INT(node.data), nullptr);
@@ -1485,9 +1495,12 @@ static wmOperatorStatus image_open_exec(bContext *C, wmOperator *op)
     iuser = iod->iuser;
   }
   else if (area && area->spacetype == SPACE_IMAGE) {
-    SpaceImage *sima = static_cast<SpaceImage *>(area->spacedata.first);
+    SpaceImage *sima = area->spacedata.first_as<SpaceImage>();
     ED_space_image_set(bmain, sima, ima, false);
     iuser = &sima->iuser;
+
+    /* Frame range is reinitialized below, even when reopening the same image. */
+    iuser->flag |= IMA_NEED_FRAME_RECALC;
   }
   else {
     Tex *tex = static_cast<Tex *>(CTX_data_pointer_get_type(C, "texture", RNA_Texture).data);
@@ -1819,7 +1832,7 @@ static wmOperatorStatus image_match_len_exec(bContext *C, wmOperator * /*op*/)
     return OPERATOR_CANCELLED;
   }
 
-  MovieReader *anim = (static_cast<ImageAnim *>(ima->anims.first))->anim;
+  MovieReader *anim = (ima->anims.first())->anim;
   if (!anim) {
     return OPERATOR_CANCELLED;
   }
@@ -2395,11 +2408,22 @@ static wmOperatorStatus image_save_sequence_exec(bContext *C, wmOperator *op)
   BLI_path_split_dir_part(first_ibuf->filepath.c_str(), di, sizeof(di));
   BKE_reportf(op->reports, RPT_INFO, "%d image(s) will be saved in %s", tot, di);
 
+  bool refused = false; /* Angelo: a frame the confinement refused. */
   iter = IMB_cacheIter_new(image->runtime->cache);
   while (!IMB_cacheIter_done(iter)) {
     ibuf = IMB_cacheIter_getImBuf(iter);
 
     if (ibuf != nullptr && ibuf->userflags & IB_BITMAPDIRTY) {
+      /* Angelo: each frame's file is named by the image's data (BLI_angelo_writers.hh; the re-read of 0a0d4e95743,
+       * MUST-3): judged by what names it, before it is written. */
+      const angelo_writers::Input inputs[] = {{&image->id, image, "Image", "filepath"},
+                                              {&image->id, nullptr, "Image", "filepath_raw"},
+                                              {&image->id, nullptr, "Image", "source"}};
+      if (const char *refusal = angelo_writers::refusal_for(ibuf->filepath.c_str(), inputs)) {
+        BKE_reportf(op->reports, RPT_ERROR, "%s: '%s'", refusal, ibuf->filepath.c_str());
+        refused = true; /* That frame and the rest stay modified, unsaved: never reported as saved. */
+        break;
+      }
       if (0 == IMB_save_image(ibuf, ibuf->filepath.c_str(), ImBufFlags::ByteData)) {
         BKE_reportf(op->reports, RPT_ERROR, "Could not write image: %s", strerror(errno));
         break;
@@ -2413,7 +2437,7 @@ static wmOperatorStatus image_save_sequence_exec(bContext *C, wmOperator *op)
   }
   IMB_cacheIter_free(iter);
 
-  return OPERATOR_FINISHED;
+  return refused ? OPERATOR_CANCELLED : OPERATOR_FINISHED;
 }
 
 void IMAGE_OT_save_sequence(wmOperatorType *ot)
@@ -2484,9 +2508,7 @@ int ED_image_save_all_modified_info(const Main *bmain, ReportList *reports)
 
   int num_saveable_images = 0;
 
-  for (Image *ima = static_cast<Image *>(bmain->images.first); ima;
-       ima = static_cast<Image *>(ima->id.next))
-  {
+  for (Image *ima = bmain->images.first(); ima; ima = static_cast<Image *>(ima->id.next)) {
     bool is_format_writable;
 
     if (image_should_be_saved(ima, &is_format_writable)) {
@@ -2542,9 +2564,7 @@ bool ED_image_save_all_modified(const bContext *C, ReportList *reports)
 
   bool ok = true;
 
-  for (Image *ima = static_cast<Image *>(bmain->images.first); ima;
-       ima = static_cast<Image *>(ima->id.next))
-  {
+  for (Image *ima = bmain->images.first(); ima; ima = static_cast<Image *>(ima->id.next)) {
     bool is_format_writable;
 
     if (image_should_be_saved(ima, &is_format_writable)) {
@@ -2569,9 +2589,7 @@ bool ED_image_save_all_modified(const bContext *C, ReportList *reports)
 
 void ED_image_internal_autosave_flush(const Main *bmain)
 {
-  for (Image *ima = static_cast<Image *>(bmain->images.first); ima;
-       ima = static_cast<Image *>(ima->id.next))
-  {
+  for (Image *ima = bmain->images.first(); ima; ima = static_cast<Image *>(ima->id.next)) {
     bool is_format_writable;
 
     if (image_should_be_saved(ima, &is_format_writable)) {
@@ -2959,12 +2977,10 @@ static wmOperatorStatus image_flip_exec(bContext *C, wmOperator *op)
     return OPERATOR_CANCELLED;
   }
 
-  ibuf->userflags |= IB_DISPLAY_BUFFER_INVALID;
-  BKE_image_mark_dirty(ima, ibuf);
+  IMB_partial_update_mark_full(ibuf);
+  IMB_mark_dirty(ibuf);
 
   ED_image_undo_push_end();
-
-  BKE_image_partial_update_mark_full_update(ima);
 
   DEG_id_tag_update(&ima->id, ID_RECALC_EDITORS);
   WM_event_add_notifier(C, NC_IMAGE | NA_EDITED, ima);
@@ -3029,12 +3045,10 @@ static wmOperatorStatus image_rotate_orthogonal_exec(bContext *C, wmOperator *op
     return OPERATOR_CANCELLED;
   }
 
-  ibuf->userflags |= IB_DISPLAY_BUFFER_INVALID;
-  BKE_image_mark_dirty(ima, ibuf);
+  IMB_partial_update_mark_full(ibuf);
+  IMB_mark_dirty(ibuf);
 
   ED_image_undo_push_end();
-
-  BKE_image_partial_update_mark_full_update(ima);
 
   WM_event_add_notifier(C, NC_IMAGE | NA_EDITED, ima);
 
@@ -3290,12 +3304,10 @@ static wmOperatorStatus image_invert_exec(bContext *C, wmOperator *op)
     return OPERATOR_CANCELLED;
   }
 
-  ibuf->userflags |= IB_DISPLAY_BUFFER_INVALID;
-  BKE_image_mark_dirty(ima, ibuf);
+  IMB_partial_update_mark_full(ibuf);
+  IMB_mark_dirty(ibuf);
 
   ED_image_undo_push_end();
-
-  BKE_image_partial_update_mark_full_update(ima);
 
   DEG_id_tag_update(&ima->id, ID_RECALC_EDITORS);
 
@@ -3387,9 +3399,9 @@ static wmOperatorStatus image_scale_exec(bContext *C, wmOperator *op)
     }
 
     ED_image_undo_push_begin_with_image(op->type->name, ima, ibuf, &iuser);
-    ibuf->userflags |= IB_DISPLAY_BUFFER_INVALID;
     IMB_scale(ibuf, size[0], size[1], IMBScaleFilter::Box, false);
-    BKE_image_mark_dirty(ima, ibuf);
+    IMB_partial_update_mark_full(ibuf);
+    IMB_mark_dirty(ibuf);
     BKE_image_release_ibuf(ima, ibuf, nullptr);
     ED_image_undo_push_end();
   }
@@ -3425,15 +3437,13 @@ static wmOperatorStatus image_scale_exec(bContext *C, wmOperator *op)
         RNA_property_int_set_array(op->ptr, prop, size);
       }
 
-      ibuf->userflags |= IB_DISPLAY_BUFFER_INVALID;
       IMB_scale(ibuf, size[0], size[1], IMBScaleFilter::Box, false);
-      BKE_image_mark_dirty(ima, ibuf);
+      IMB_partial_update_mark_full(ibuf);
+      IMB_mark_dirty(ibuf);
       BKE_image_release_ibuf(ima, ibuf, nullptr);
     }
     ED_image_undo_push_end();
   }
-
-  BKE_image_partial_update_mark_full_update(ima);
 
   DEG_id_tag_update(&ima->id, 0);
   WM_event_add_notifier(C, NC_IMAGE | NA_EDITED, ima);
@@ -3476,6 +3486,11 @@ static bool image_pack_test(Image *ima, const char **r_error_message)
 
   if (!ID_IS_EDITABLE(&ima->id)) {
     *r_error_message = N_("Image is not editable");
+    return false;
+  }
+
+  if (!BKE_image_is_dirty(ima) && ima->source == IMA_SRC_GENERATED) {
+    *r_error_message = N_("Unedited generated images do not support packing");
     return false;
   }
 
@@ -3632,9 +3647,7 @@ static wmOperatorStatus image_unpack_invoke(bContext *C, wmOperator *op, const w
               ima->id.name + 2,
               ima->filepath,
               "textures",
-              BKE_image_has_packedfile(ima) ?
-                  (static_cast<ImagePackedFile *>(ima->packedfiles.first))->packedfile :
-                  nullptr);
+              BKE_image_has_packedfile(ima) ? (ima->packedfiles.first())->packedfile : nullptr);
 
   return OPERATOR_FINISHED;
 }
@@ -4381,7 +4394,7 @@ static void tile_fill_init(PointerRNA *ptr, Image *ima, ImageTile *tile)
    * If the specified tile has no ibuf, try acquiring the main tile instead
    * (unless the specified tile already was the first tile). */
   ImBuf *ibuf = BKE_image_acquire_ibuf(ima, &iuser, nullptr);
-  if (ibuf == nullptr && (tile != nullptr) && (tile != ima->tiles.first)) {
+  if (ibuf == nullptr && (tile != nullptr) && (tile != ima->tiles.first_)) {
     ibuf = BKE_image_acquire_ibuf(ima, nullptr, nullptr);
   }
 

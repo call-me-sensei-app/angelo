@@ -42,7 +42,7 @@ TEST_F(DegQueryForeachTest, all_registered_graphs_and_metadata)
   MainPtr other_main(BKE_main_new(), BKE_main_free);
   Scene *scene = BKE_id_new<Scene>(bmain.get(), "Scene");
   Scene *other_scene = BKE_id_new<Scene>(other_main.get(), "Other scene");
-  ViewLayer *layer = static_cast<ViewLayer *>(scene->view_layers.first);
+  ViewLayer *layer = static_cast<ViewLayer *>(scene->view_layers.first());
   ASSERT_NE(layer, nullptr);
   GraphPtr first(DEG_graph_new(bmain.get(), scene, layer, DAG_EVAL_VIEWPORT), DEG_graph_free);
   GraphPtr second(DEG_graph_new(bmain.get(), scene, layer, DAG_EVAL_RENDER), DEG_graph_free);
@@ -118,7 +118,7 @@ TEST_F(DegQueryForeachTest, stale_owner_addresses_are_not_dereferenced)
   MainPtr bmain(BKE_main_new(), BKE_main_free);
   Scene *scene = BKE_id_new<Scene>(bmain.get(), "Scene");
   Scene *other_scene = BKE_id_new<Scene>(bmain.get(), "Other scene");
-  ViewLayer *layer = static_cast<ViewLayer *>(scene->view_layers.first);
+  ViewLayer *layer = static_cast<ViewLayer *>(scene->view_layers.first());
   GraphPtr graph(DEG_graph_new(bmain.get(), scene, layer, DAG_EVAL_VIEWPORT), DEG_graph_free);
   Depsgraph &source = internal_graph(graph);
   Scene *stale_scene = reinterpret_cast<Scene *>(uintptr_t(1));
@@ -139,7 +139,7 @@ TEST_F(DegQueryForeachTest, stale_owner_addresses_are_not_dereferenced)
     EXPECT_EQ(info.view_layer, nullptr);
     return true;
   }));
-  source.view_layer = static_cast<ViewLayer *>(other_scene->view_layers.first);
+  source.view_layer = static_cast<ViewLayer *>(other_scene->view_layers.first());
   EXPECT_TRUE(DEG_foreach_registered_graph(bmain.get(), [&](const DEGRegisteredGraph &info) {
     EXPECT_EQ(info.scene, scene);
     EXPECT_EQ(info.view_layer, nullptr);
@@ -154,12 +154,12 @@ TEST_F(DegQueryForeachTest, primary_scene_cached_identity_does_not_follow_live_a
   Scene *scene = BKE_id_new<Scene>(bmain.get(), "Primary scene");
   Scene *secondary_scene = BKE_id_new<Scene>(bmain.get(), "Secondary scene");
   ASSERT_TRUE(BKE_view_layer_synced_ensure(
-      *bmain, scene, static_cast<ViewLayer *>(scene->view_layers.first)));
+      *bmain, scene, static_cast<ViewLayer *>(scene->view_layers.first())));
   ASSERT_TRUE(BKE_view_layer_synced_ensure(
-      *bmain, secondary_scene, static_cast<ViewLayer *>(secondary_scene->view_layers.first)));
+      *bmain, secondary_scene, static_cast<ViewLayer *>(secondary_scene->view_layers.first())));
   GraphPtr graph(DEG_graph_new(bmain.get(),
                                scene,
-                               static_cast<ViewLayer *>(scene->view_layers.first),
+                               static_cast<ViewLayer *>(scene->view_layers.first()),
                                DAG_EVAL_VIEWPORT),
                  DEG_graph_free);
   Depsgraph &source = internal_graph(graph);

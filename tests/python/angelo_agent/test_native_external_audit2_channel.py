@@ -11,6 +11,7 @@
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import queue
 import socket
@@ -72,9 +73,9 @@ class AnswersAreDeliveredOnce(unittest.TestCase):
             if not waiting:
                 return
             self.lock.hook = None
-            frame = frames.get(timeout=5)
+            frame = frames.get(timeout=CAP_S)
             self.writer.send({"seq": frame["seq"], "response": {"ok": True, "lease": "token-1", "seconds": 10.0}})
-            deadline = time.monotonic() + 5
+            deadline = time.monotonic() + CAP_S
             while not waiting[0][0].is_set() and time.monotonic() < deadline:
                 time.sleep(0.001)
             time.sleep(0.05)   # The reader's hand-off to ``late`` (a thread of its own) runs now.
@@ -85,7 +86,7 @@ class AnswersAreDeliveredOnce(unittest.TestCase):
         answer = self.client.request({"op": "part.lease"}, 0.05, late=self.late.put)
         delivered = [answer] if answer is not None else []
         try:
-            delivered.append(self.late.get(timeout=1))
+            delivered.append(self.late.get(timeout=CAP_S))
         except queue.Empty:
             pass
         self.assertEqual(len(delivered), 1, "the answer reached both the caller and its late callback")
@@ -102,9 +103,9 @@ class AnswersAreDeliveredOnce(unittest.TestCase):
         frames = queue.Queue()
         threading.Thread(target=lambda: frames.put(self.end.receive()), daemon=True).start()
         self.assertIsNone(self.client.request({"op": "x"}, 0.05, late=self.late.put))
-        frame = frames.get(timeout=5)
+        frame = frames.get(timeout=CAP_S)
         self.writer.send({"seq": frame["seq"], "response": {"ok": True, "n": 1}})
-        self.assertEqual(self.late.get(timeout=5), {"ok": True, "n": 1})
+        self.assertEqual(self.late.get(timeout=CAP_S), {"ok": True, "n": 1})
         self.assertEqual(self.client._waiting, {})
 
 
@@ -135,7 +136,7 @@ class TheReaderNeverWaitsForASave(unittest.TestCase):
             with part_leases.leases_of(self.host).saving(self.part):
                 saved.set()
         threading.Thread(target=save, daemon=True).start()
-        self.assertTrue(saving.wait(5))
+        self.assertTrue(saving.wait(CAP_S))
         time.sleep(0.05)
         second = []
         threading.Thread(target=lambda: second.append(self.ask({"op": "part.lease", "part": self.part,
@@ -145,11 +146,11 @@ class TheReaderNeverWaitsForASave(unittest.TestCase):
         released = self.ask({"op": "part.unlease", "lease": first["lease"]}, 2.0)
         self.assertEqual(released, {"ok": True, "released": True}, "the release waited behind the lease request")
         began.assert_within(1.0)
-        self.assertTrue(saved.wait(2), "the save waited for the lease past its release")
+        self.assertTrue(saved.wait(CAP_S), "the save waited for the lease past its release")
         stop = (1 << 30)
         self.client.endpoint.send({"seq": stop, "request": {"op": "chat.stop", "session": "s"}})
-        self.assertEqual(self.host.inbox.get(timeout=1), (stop, {"op": "chat.stop", "session": "s"}))
-        deadline = time.monotonic() + 5
+        self.assertEqual(self.host.inbox.get(timeout=CAP_S), (stop, {"op": "chat.stop", "session": "s"}))
+        deadline = time.monotonic() + CAP_S
         while not second and time.monotonic() < deadline:
             time.sleep(0.01)
         self.assertTrue(second and second[0]["ok"], "the lease asked during the save was never granted")

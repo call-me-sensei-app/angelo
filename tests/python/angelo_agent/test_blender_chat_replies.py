@@ -95,8 +95,8 @@ def set_rows(rows):
 
 
 def to_window(rect):
-    area, region = chat()
-    return int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    return chat_point(chat()[1], rect)
 
 
 def click(rect):

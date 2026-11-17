@@ -9,6 +9,7 @@ Run Angelo --background --factory-startup --disable-autoexec
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+from qa_person import as_person  # noqa: E402  The person's own action (C's harness scope).
 
 import json
 import os
@@ -148,7 +149,7 @@ native, committed = executor(), []
 c.request_tool("staged-once", "angelo_scene_program", program, committed.append)
 c.pump_tools(native, c.document)
 call = next(iter(c.pending.values()))
-c.approve_tool(call, native, c.document)
+as_person(c.approve_tool, call, native, c.document)
 for _ in range(200):
     c.pump_tools(native, c.document, budget=ToolDispatchBudget(seconds=1))
     job = c.native_jobs.get(call.id)

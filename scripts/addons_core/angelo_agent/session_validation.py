@@ -6,7 +6,7 @@ import json
 import math
 import uuid
 
-from .provider_registry import CODING_MODES
+from .provider_registry import is_coding_mode
 from .ui_text import model_notice, n_, stored_recipe
 
 ROLES = frozenset({"user", "assistant", "system", "error", "activity", "thinking"})
@@ -91,7 +91,7 @@ def header(raw, state, *, session_id=None):
     elif session_id is None:
         state["id"] = supplied
     provider = raw.get("provider", state["provider"])
-    if type(provider) is not str or provider not in CODING_MODES:
+    if type(provider) is not str or not is_coding_mode(provider):
         verified = False
     else:
         state["provider"] = provider
@@ -125,7 +125,7 @@ def index_record(record):
         return None
     title, provider, updated = record.get("title"), record.get("provider"), record.get("updated")
     return {"id": identity(record["id"]), "title": title if public_string(title, 64) else "Recovered chat",
-            "provider": provider if type(provider) is str and provider in CODING_MODES else "codex_subscription",
+            "provider": provider if type(provider) is str and is_coding_mode(provider) else "codex_subscription",
             "updated": updated if timestamp(updated) else 0}
 
 

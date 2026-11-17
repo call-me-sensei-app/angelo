@@ -146,12 +146,13 @@ def chat_view_state():
 
 
 def chat_point(action):
-    """Window coordinates of a chat control's centre (its hit rectangle, region pixels)."""
+    """Window coordinates of a chat control's centre (its hit rectangle is in the chat's points)."""
     from angelo_agent import console
     area = next(a for a in window().screen.areas if console.is_chat(a))
     region = next(r for r in area.regions if r.type == 'WINDOW')
     rect = next(r for r, a, _ in chat_view_state().get("hits", []) if a == action)
-    return region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2
+    import qa_input   # The chat's points as window pixels (its scale, right to left mirrored).
+    return qa_input.chat_point(region, rect)
 
 
 def flows_button_point():

@@ -32,7 +32,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import thread_start
+from . import thread_start, edit_tool_hold, owned_paths
 
 IDLE_SECONDS = 120.0   # An untaken worker launched ahead stops after this: about 6x the lookup-to-start time measured.
 TICK = 0.5
@@ -106,6 +106,8 @@ def prelaunch(controller):
     launched = []
     for _index in range(max(0, places())):
         folder = Path(ui.state_directory()) / "parallel" / SCRATCH / uuid.uuid4().hex
+        folder.mkdir(parents=True, exist_ok=True)
+        owned_paths.own(folder)   # The worker's stop removes only this folder (owned_paths), whatever names it later.
         worker = worker_routing.launch(folder / "part.blend")
         worker.scratch, worker.ahead = folder, True
         entry = {"worker": worker, "lead": lead, "since": now, "done": threading.Event(), "error": None,
@@ -162,6 +164,7 @@ def take(part, lead=None):
         if entry["error"] is not None or (entry["done"].is_set() and not entry["worker"].alive()):
             continue
         _pool.remove(entry)
+        owned_paths.require_writable(part)   # Its part: only where C lets Angelo write (worker_routing.launch's).
         Path(part).parent.mkdir(parents=True, exist_ok=True)   # A worker saving into a missing folder cannot start.
         entry["worker"].part = Path(part)
         return entry["worker"]
@@ -201,7 +204,7 @@ def reuse(done_session_id, item):
         print("Angelo: worker reuse:", error)
         return False
     worker_routing.detach(chat)
-    Path(cold.part).parent.mkdir(parents=True, exist_ok=True)
+    Path(owned_paths.require_writable(cold.part)).parent.mkdir(parents=True, exist_ok=True)
     worker.part = Path(cold.part)
     item["worker"] = worker
     worker_sessions._launch(item, take=False)
@@ -225,6 +228,7 @@ def _schedule():
         bpy.app.timers.register(_timer, first_interval=TICK, persistent=True)
 
 
+@edit_tool_hold.guarded   # Keeps workers launched ahead warm: no one waits to take one (upkeep).
 def _timer():
     """``tick`` as Blender's timer runs it: one that fails stops the pool's workers rather than leave them unwatched."""
     try:

@@ -51,7 +51,7 @@ import datetime
 import re
 from pathlib import Path
 
-from . import live_target, view_picture
+from . import live_target, owned_paths, view_picture
 from .render_extensions import ViewRefused
 from .view_spec import CURRENT_SOURCES, JOB, LAST_JOB, RENDER_RESULT, RENDERED, split_image
 from .refusal_codes import coded
@@ -267,6 +267,7 @@ def file_source(scene, path, references, label, what, facts, *, stored=False, th
     private = references.new_observation(label + " · source copy")
     try:
         try:
+            owned_paths.require_writable(private["path"])
             with open(private["path"], "wb") as destination:
                 copy_output(path, destination, view_picture.MAX_BYTES)
         except (OSError, ValueError) as error:
@@ -388,6 +389,7 @@ def shown(window, checked, references, controller):
         if source.temporary is not None:
             references.discard_observation(source.temporary)
     reference = references.new_observation(source.label + " · rendered" + (" · region" if region else ""))
+    owned_paths.require_writable(reference["path"])
     Path(reference["path"]).write_bytes(png)
     reference["bytes"] = len(png)
     width, height = picture["size"]

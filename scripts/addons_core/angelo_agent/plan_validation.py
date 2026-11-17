@@ -50,13 +50,13 @@ from .plan_recovery import is_lookup
 from .plan_schema import deferred_schemas
 from .protocol import RpcError
 from .refusal_codes import error_result, refusal_code
-from .tool_specs import TOOL_MAP, validate_call
+from .tool_specs import READ_ONLY_TOOLS, TOOL_MAP, validate_call
 from .view_spec import RENDERED_CAMERA, TOOL_NAME as VIEW_TOOL, normalize_view, rendered_split
 
 # Tool -> fn(arguments) returning ``(calls, note)`` (each call's arguments already valid) or None. Lookups only.
 NORMALIZERS = {VIEW_TOOL: normalize_view}
 # Background job starts: refused alone, and the plan stops there (module docstring).
-STOPS = frozenset(name for name in JOB_NAMES if name in TOOL_MAP and not TOOL_MAP[name]["annotations"]["readOnlyHint"])
+STOPS = frozenset(name for name in JOB_NAMES if name in TOOL_MAP and name not in READ_ONLY_TOOLS)
 MAX_OPERATIONS = 64
 # Why a normalised view was refused instead: a fact of the request's budget, never the plan-level rejection's words
 # (this plan runs).
@@ -70,7 +70,7 @@ EMPTY_PLAN = ("Your last plan had neither a reply nor operations, so nothing ran
 def lookups_only(operations):
     """Whether every operation only reads (a standalone verification proves something by itself)."""
     return bool(operations) and all(isinstance(operation, dict) and operation.get("tool") != "angelo_scene_verify"
-        and TOOL_MAP.get(operation.get("tool"), {}).get("annotations", {}).get("readOnlyHint")
+        and operation.get("tool") in TOOL_MAP and operation.get("tool") in READ_ONLY_TOOLS
         for operation in operations)
 
 

@@ -14,6 +14,8 @@ consent reaches the chat in its worker in the order it was made (``worker_consen
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import threading
@@ -63,7 +65,7 @@ class LegacyKeyConnection(LeadFixture):
         self.keys["codex_api"] = "sk-legacy"
         lead_side.changed()   # Its first lease: Auto (it opened before the key was read here).
         self.assertTrue(worker.consent_lease.granted_auto())
-        lead.set_trusted_scripts(True)   # Turned on in the lead while the worker chat runs.
+        angelo_guard_twin.harness(lead.set_trusted_scripts, True)   # Turned on in the lead while the worker chat runs.
         self.assertIsNotNone(worker.consent_lease.token("scripts"))
         lead.set_trusted_scripts(False)
         self.assertIsNone(worker.consent_lease.token("scripts"))
@@ -87,7 +89,7 @@ class LegacyKeyConnection(LeadFixture):
 class WideningWithoutWait(Pending):
     def test_turning_trust_on_returns_before_the_worker_answers_and_applies_on_arrival(self):
         lead, mirror, worker = self.hosted_pair()
-        lead.set_trusted_scripts(True)   # Returns with the send still held: no window frame waits on a widening.
+        angelo_guard_twin.harness(lead.set_trusted_scripts, True)   # Returns with the send still held: no window frame waits on a widening.
         self.assertIsNone(worker.consent_lease.token("scripts"))
         self.run_send(0)
         lead_side.tick()
@@ -118,7 +120,7 @@ class Interleavings(Pending):
             self.answers.append(answer)
             applied.set()
             if not read:
-                gate.wait(5)
+                gate.wait(CAP_S)
             return answer
         self.channel.send = held
         if read:
@@ -126,13 +128,13 @@ class Interleavings(Pending):
             return
         thread = threading.Thread(target=function, daemon=True)
         thread.start()
-        applied.wait(5)
+        applied.wait(CAP_S)
         self.unread.append((gate, thread))
 
     def read_all(self):
         for gate, thread in self.unread:
             gate.set()
-            thread.join(5)
+            thread.join(CAP_S)
         self.unread.clear()
 
     def mode(self, approval):

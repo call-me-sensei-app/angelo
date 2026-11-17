@@ -12,6 +12,7 @@ thread. Measured timer slices are not promises about native font-call latency.
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+from qa_person import as_person  # noqa: E402  The person's own action (C's harness scope).
 
 import copy
 import hashlib
@@ -39,7 +40,8 @@ os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT='1', ANGELO_DISABLE_INTRO='1',
                   ANGELO_STATE_DIR=str(OUT / 'state'), ANGELO_CONNECTIONS_DIR=str(OUT / 'accounts'))
 sys.path.insert(0, str(ROOT / 'scripts/addons_core'))
 from angelo_agent import (approval_review, approvals, agent_workspace_ui, canvas_rtl, canvas_wrap,
-                          chat_view, console, native_programs, program_checks, rtl_text, ui, ui_text)  # noqa: E402
+                          chat_view, console, grant_guard, native_programs, program_checks, rtl_text, ui,
+                          ui_text)  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator, beside this suite.
 import qa_operator  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
@@ -58,7 +60,8 @@ report = {'checks': {}, 'cases': {}, 'screenshots': [], 'paid_requests': 0, 'suc
           'timing_instrumentation': 'Python wrappers observe draw, BLF, shaping and timer calls; snapshot timings include instrumentation'}
 state = {'phase': 'boot', 'started': time.monotonic(), 'done': False, 'tag': None,
          'in_draw': False, 'draw_text': [], 'last_draw_text': [], 'cold_slices': defaultdict(list),
-         'draws': defaultdict(list), 'font': {}, 'heavy_draw_calls': defaultdict(int), 'responses': []}
+         'draws': defaultdict(list), 'font': {}, 'heavy_draw_calls': defaultdict(int), 'responses': [],
+         'in_consent': False, 'consent': {'regions': 0, 'digests': 0}}
 window = controller = handler = steps = None
 capture_request = None
 originals = []
@@ -89,11 +92,41 @@ def wrap_function(module, name, wrapper):
 def expensive(label):
     def decorate(original):
         def counted(*args, **kwargs):
-            if state['in_draw']:
+            if state['in_draw'] and not state['in_consent']:
                 state['heavy_draw_calls'][label] += 1
             return original(*args, **kwargs)
         return counted
     return decorate
+
+
+# The grant guard's own cost at a draw (grant_guard.canvas_regions): each control drawn, and the one with keyboard
+# focus, becomes a C consent region ticketed by a digest of that control's own value (a call id, a row key). Those
+# hashes are not the review's derivation, so they are counted apart, and held to one per control the draw registered.
+def consent_regions(original):
+    def registered(window, region, surface, hits, *args, **kwargs):
+        if state['in_draw']:
+            state['consent']['regions'] += min(len(hits), grant_guard.MAX_REGIONS) + 1   # + the focus.
+        return original(window, region, surface, hits, *args, **kwargs)
+    return registered
+
+
+def consent_digest(original):
+    def digest(value):
+        if not state['in_draw']:
+            return original(value)
+        state['consent']['digests'] += 1
+        state['in_consent'] = True
+        try:
+            return original(value)
+        finally:
+            state['in_consent'] = False
+    return digest
+
+
+def guard_cost_per_control(name, before):
+    """The draws since ``before`` hashed no more consent values than the controls they registered."""
+    regions, digests = (state['consent'][key] - before[key] for key in ('regions', 'digests'))
+    check(name + '_guard_hashes_one_value_per_drawn_control', digests <= regions)
 
 
 def measured_font(label):
@@ -174,6 +207,8 @@ for module, name in ((program_checks, 'required_checks'), (program_checks, 'chec
                      (approval_review, '_immutable'), (approvals, 'approval_details'),
                      (agent_workspace_ui, 'iter_control_lines'), (copy, 'deepcopy'), (hashlib, 'sha256')):
     wrap_function(module, name, expensive(module.__name__ + '.' + name))
+wrap_function(grant_guard, 'canvas_regions', consent_regions)
+wrap_function(grant_guard, 'value_digest', consent_digest)
 wrap_function(blf, 'dimensions', measured_font('blf.dimensions'))
 for name in ('to_visual', 'to_logical', 'is_visual'):
     wrap_function(rtl_text, name, measured_font('rtl_text.' + name))
@@ -200,7 +235,7 @@ def parts():
 def geometry():
     context = parts()
     area, region = context['area'], context['region']
-    return area.as_pointer(), max(40, region.width - 64), max(12, int(area.spaces.active.font_size * .8))
+    return (area.as_pointer(), *approval_review.canvas_geometry(area, region))   # As the canvas timer prepares.
 
 
 def redraw():
@@ -244,22 +279,48 @@ def capture(name):
 def event(kind, value='PRESS', x=40, y=40):
     """Direct handler probe for bounded scroll geometry, not native event delivery."""
     context = parts()
-    region = context['region']
-    data = SimpleNamespace(type=kind, value=value, mouse_x=region.x + x, mouse_y=region.y + y,
-                           mouse_prev_y=region.y + y, ctrl=False, oskey=False, shift=False, alt=False, unicode='')
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    px, py = chat_point(context['region'], (x, y, 0, 0))   # A point on the chat's canvas, in its points.
+    data = SimpleNamespace(type=kind, value=value, mouse_x=px, mouse_y=py,
+                           mouse_prev_y=py, ctrl=False, oskey=False, shift=False, alt=False, unicode='')
     with bpy.context.temp_override(**context):
         return chat_view.ANGELO_OT_chat_input.modal(handler, bpy.context, data)
 
 
 def native_event(kind, value, x, y):
-    region = parts()['region']
-    window.event_simulate(type=kind, value=value, x=int(region.x + x), y=int(region.y + y))
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    px, py = chat_point(parts()['region'], (x, y, 0, 0))   # A point on the chat's canvas, in its points.
+    window.event_simulate(type=kind, value=value, x=px, y=py)
 
 
-def hit(action, call):
+def hit(action, call, below=False):
+    """A control's centre in region pixels (``below``: just under it instead): its hit is laid out in the chat's
+    unscaled units, left to right; the chat maps a pointer back the same way (``chat_view``: ``pointer_x(x) /
+    ui_scale``)."""
     view = chat_view._views[parts()['area'].as_pointer()]
     rect = next(rect for rect, found, argument in view['hits'] if found == action and argument == call.id)
-    return rect[0] + rect[2] / 2, rect[1] + rect[3] / 2
+    scale = chat_view.ui_scale()
+    x = canvas_rtl.pointer_x((rect[0] + rect[2] / 2) * scale, parts()['region'].width)
+    return x, (rect[1] - 6 if below else rect[1] + rect[3] / 2) * scale
+
+
+def press_approve(call):
+    """A person's press on Approve (``approval_arming``, 2.0.0, as ``qa_input.aim``): the pointer waits just below it
+    while the card's shield passes, then moves into it and presses; a window that lost focus first takes the press
+    that brings it forward, below the card. Yields while it waits; returns where it pressed, for the release."""
+    from angelo_agent import approval_arming
+    from angelo_agent.approval_wait import SHIELD_SECONDS
+    x, under = hit('approve', call, below=True)
+    if window.as_pointer() in approval_arming._returning:
+        for kind, value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
+            native_event(kind, value, x, under)
+    native_event('MOUSEMOVE', 'NOTHING', x, under)
+    yield SHIELD_SECONDS + .1
+    x, y = hit('approve', call)
+    native_event('MOUSEMOVE', 'NOTHING', x, y)
+    native_event('LEFTMOUSE', 'PRESS', x, y)
+    yield .08
+    return x, y
 
 
 def operation(kind, target=None, **parameters):
@@ -340,9 +401,10 @@ def mount(arguments, label):
     view = chat_view._views.setdefault(parts()['area'].as_pointer(), {})
     view['expanded'] = set()
     chat_view._scroll[(parts()['area'].as_pointer(), controller.state['id'])] = 0
-    before = dict(state['heavy_draw_calls'])
+    before, consent = dict(state['heavy_draw_calls']), dict(state['consent'])
     redraw()
     check(label + '_first_draw_does_not_build_review', before == dict(state['heavy_draw_calls']))
+    guard_cost_per_control(label + '_first_draw', consent)
     return call, prepared_ms
 
 
@@ -371,8 +433,13 @@ def old_wrap(value, width, size, font):
 
     Only ordinary cases use this intentionally expensive baseline. Long-control
     tests separately compare whole and incremental current-engine assembly.
+    Measured as the chat draws (``chat_view.measure``): rasterised at the size
+    times the UI scale, then scaled back. At the unscaled size the advances
+    round differently, so off scale 1 the oracle wrapped other rows than the
+    text the chat draws.
     """
     from angelo_agent import text_layout
+    scale = chat_view.ui_scale()
     rtl = canvas_rtl.has_rtl(value)
     output, offset = [], 0
     for paragraph in value.split('\n'):
@@ -384,8 +451,8 @@ def old_wrap(value, width, size, font):
             while low < high:
                 middle = (low + high + 1) // 2
                 candidate = rtl_text.to_visual(remaining[:middle]) if rtl else remaining[:middle]
-                blf.size(font, size)
-                if blf.dimensions(font, candidate)[0] <= width:
+                blf.size(font, size * scale)
+                if blf.dimensions(font, candidate)[0] / scale <= width:
                     low = middle
                 else:
                     high = middle - 1
@@ -418,7 +485,7 @@ def full_controls(call, layout, *, parity=False, baseline=False):
         tag = state['tag']
         state['tag'] = tag + '_parity_oracle'
         expected = old_wrap(text, width, size - 1, chat_view._mono) if baseline else tuple(
-            canvas_wrap.iter_wrap(text, width, size - 1, chat_view._mono))
+            canvas_wrap.iter_wrap(text, width, size - 1, chat_view._mono, scale=chat_view.ui_scale()))
         state['tag'] = tag
         check(tag + ('_native_font_baseline_wrap_parity' if baseline else '_whole_vs_incremental_visual_assembly'),
               [row[0].rstrip() for row in expected] == [row[0].rstrip() for row in layout.details])
@@ -481,7 +548,7 @@ def assert_bound_display(call, displayed):
 def warm_draws(call, expanded, repetitions=5):
     view = chat_view._views[parts()['area'].as_pointer()]
     view['expanded'] = {('approval', call.id)} if expanded else set()
-    before = dict(state['heavy_draw_calls'])
+    before, consent = dict(state['heavy_draw_calls']), dict(state['consent'])
     start = len(state['draws'][state['tag']])
     for _ in range(repetitions):
         redraw()
@@ -489,6 +556,7 @@ def warm_draws(call, expanded, repetitions=5):
     suffix = '_expanded' if expanded else '_collapsed'
     check(state['tag'] + suffix + '_real_draws_measured', len(samples) >= repetitions)
     check(state['tag'] + suffix + '_no_derivation_hash_copy_or_full_format', before == dict(state['heavy_draw_calls']))
+    guard_cost_per_control(state['tag'] + suffix, consent)
     limit = int(parts()['region'].height / (geometry()[2] + 8)) + 120
     check(state['tag'] + suffix + '_visible_rows_only', all(row['text_rows'] <= limit for row in samples))
     return samples
@@ -505,7 +573,7 @@ def scroll_to_last(call, marker, screenshot):
     wanted = bottom + view['content_height'] - 52 - len(layout.preview) * line_height - 14 - index * line_height
     desired = max(0, min(view['max_scroll'], wanted - (bottom + visible / 2)))
     chat_view._scroll[(parts()['area'].as_pointer(), controller.state['id'])] = min(view['max_scroll'], desired + 66)
-    event('WHEELDOWNMOUSE', x=parts()['region'].width / 2, y=bottom + visible / 2)
+    event('WHEELDOWNMOUSE', x=parts()['region'].width / 2 / chat_view.ui_scale(), y=bottom + visible / 2)
     redraw()
     check(state['tag'] + '_wheel_reaches_last_mandatory_control',
           any(marker in row['value'] and bottom <= row['y'] <= bottom + visible for row in state['last_draw_text']))
@@ -718,10 +786,7 @@ def stale_manual_approval_cases():
     call, _ = mount(ordinary(), state['tag'])
     yield from wait_layout(call)
     redraw()
-    x, y = hit('approve', call)
-    native_event('MOUSEMOVE', 'NOTHING', x, y)
-    native_event('LEFTMOUSE', 'PRESS', x, y)
-    yield .08
+    x, y = yield from press_approve(call)
     check('native_event_queue_reaches_actual_approval_handler',
           chat_view._views[parts()['area'].as_pointer()].get('pressed_approval_review') == (call.id, call._approval_review.token))
     native_event('LEFTMOUSE', 'RELEASE', x, y)
@@ -734,10 +799,7 @@ def stale_manual_approval_cases():
         call, _ = mount(ordinary(), label)
         yield from wait_layout(call)
         redraw()
-        x, y = hit('approve', call)
-        native_event('MOUSEMOVE', 'NOTHING', x, y)
-        native_event('LEFTMOUSE', 'PRESS', x, y)
-        yield .08
+        x, y = yield from press_approve(call)
         old_review = call._approval_review
         check(label + '_native_press_captured_review_token',
               chat_view._views[parts()['area'].as_pointer()].get('pressed_approval_review') == (call.id, old_review.token))
@@ -813,10 +875,7 @@ def bound_obligation_cases():
     original_bundle = call.precondition.obligations
     original_encoded = original_bundle.encoded
     redraw()
-    x, y = hit('approve', call)
-    native_event('MOUSEMOVE', 'NOTHING', x, y)
-    native_event('LEFTMOUSE', 'PRESS', x, y)
-    yield .08
+    x, y = yield from press_approve(call)
     check('bound_native_press_captures_frozen_review_token',
           chat_view._views[parts()['area'].as_pointer()].get('pressed_approval_review') == (call.id, call._approval_review.token))
     call.arguments['operations'][0]['parameters']['edits'][0]['settings']['setting_00'] = .8
@@ -841,7 +900,7 @@ def independent_approval_path():
     call, _ = mount(ordinary(), state['tag'])
     approval_review.clear_review(call)
     call.automatic = True
-    approved = controller.approve_tool(call, BlenderExecutor(window), ui.document_key())
+    approved = as_person(controller.approve_tool, call, BlenderExecutor(window), ui.document_key())
     check('configured_approval_does_not_depend_on_visible_layout', approved and call.authorized)
     check('display_fixture_never_starts_native_staging', not controller.native_jobs and not native_programs.runtime_is_staging())
     controller.cancel_tools('Discard authorized queue before any execution', persist=False)
@@ -902,6 +961,7 @@ def finish(error=None):
     if controller is not None:
         controller.cancel_tools('Complete review GUI fixture ended', persist=False)
     report.update(phase=state['phase'], heavy_draw_calls=dict(state['heavy_draw_calls']),
+                  guard_consent=dict(state['consent']),
                   provider_started=any(item.provider is not None for item in ui._controllers.values()))
     report['checks']['no_provider_started'] = not report['provider_started']
     report['checks']['no_staged_native_scene'] = not native_programs.runtime_is_staging() and not any(

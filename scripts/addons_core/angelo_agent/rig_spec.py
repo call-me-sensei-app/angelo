@@ -13,6 +13,7 @@ import math
 import re
 
 from .scene_spec import HANDLE
+from . import read_only
 
 MAX_LIMITS = 64
 BONE_NAME = {"type": "string", "minLength": 1, "maxLength": 64}
@@ -104,12 +105,14 @@ RIG_IMAGE_TOOLS = frozenset({"angelo_rig_hand_range", "angelo_rig_hand_fist", "a
 _HANDLE = re.compile(HANDLE["pattern"])
 
 
+RIG_PROPERTIES = read_only.frozen({t['name']: list(t['inputSchema']['properties']) for t in RIG_TOOLS})
+
+
 def validate_rig(name, args):
     """The checked arguments of a RIG tool call (ValueError with the reason)."""
-    tool = next((t for t in RIG_TOOLS if t["name"] == name), None)
-    if tool is None:
+    properties = RIG_PROPERTIES.get(name)   # As registered: a spec's dict changed later reaches no check.
+    if properties is None:
         raise ValueError("Unknown hand-rigging tool")
-    properties = tool["inputSchema"]["properties"]
     extra = set(args) - set(properties)
     if extra:
         raise ValueError("%s does not take: %s" % (name, ", ".join(sorted(extra))))

@@ -97,7 +97,7 @@ def draw(layout, node, prop, placeholder=""):
 
 
 class ANGELO_OT_flow_edit_text(Operator):
-    """Edit this text in a wide field"""
+    bl_description = "Edit this text in a wide field"
     bl_idname = "angelo.flow_edit_text"
     bl_label = "Edit"
     bl_options = {'INTERNAL', 'UNDO'}

@@ -19,6 +19,7 @@ the throwaway keys, as in the managed-policy and API TLS tests; every command wo
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import base64
 import glob
@@ -82,6 +83,7 @@ class _Server:
         self.context.load_cert_chain(chain, key)
         self.socket = socket.create_server(("127.0.0.1", 0))
         self.port = self.socket.getsockname()[1]
+        self.stopping = False
         self.worker = threading.Thread(target=self.serve, daemon=True)
         self.worker.start()
 
@@ -91,6 +93,9 @@ class _Server:
                 connection, _ = self.socket.accept()
             except OSError:
                 return
+            if self.stopping:   # close()'s own connection: the server's end.
+                connection.close()
+                return
             try:
                 with self.context.wrap_socket(connection, server_side=True) as tls:
                     tls.recv(1)
@@ -98,8 +103,15 @@ class _Server:
                 pass
 
     def close(self):
+        """Ends the server: a connection of its own wakes its accept(), which closing the socket does not on Linux
+        (each close's join ran to its cap there: 17 x 60 s in VM CI on 1.1 6a237933ecb)."""
+        self.stopping = True
+        try:
+            socket.create_connection(("127.0.0.1", self.port), timeout=CAP_S).close()
+        except OSError:
+            pass   # Its accept has already ended.
+        self.worker.join(timeout=CAP_S)
         self.socket.close()
-        self.worker.join(timeout=5)
 
 
 def handshake(port, context):

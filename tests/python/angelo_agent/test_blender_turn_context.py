@@ -31,6 +31,7 @@ Inspect results.json: a zero exit status alone is not proof.
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+from qa_person import as_person  # noqa: E402  The person's own action (C's harness scope).
 
 import json
 import os
@@ -399,7 +400,7 @@ def recipe_applies_in_one_call(objects):
         check("approval_shows_every_expanded_control", all(text in details for text in controls))
         check("nothing_runs_before_approval", len(target.modifiers) == 0 and not native.runtime_is_staging()
               and queries.object_revision(window(), target) == revision)
-        controller.approve_tool(call, executor, DOCUMENT)  # What Approve does, outside any Undo operator.
+        as_person(controller.approve_tool, call, executor, DOCUMENT)  # What Approve does, outside any Undo operator.
         result = drive(controller, executor, responses)
         # The recipe's own checks plus the host obligations its operations imply (every typed
         # program, recipe expansions included, gets the complete verification).
@@ -446,7 +447,7 @@ def recipe_applies_in_one_call(objects):
         check("second_recipe_awaits_approval", call.approval and call.program_arguments is not None)
         target.location = (0.0, 0.0, 9.0)  # Manual edit after the review.
         window().view_layer.update()
-        controller.approve_tool(call, executor, DOCUMENT)
+        as_person(controller.approve_tool, call, executor, DOCUMENT)
         result = drive(controller, executor, responses)
         check("manual_edit_after_review_fails_closed", "error" in result and len(target.material_slots) == 0
               and not native.runtime_is_staging() and not native.has_active_programs())

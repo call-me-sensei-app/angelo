@@ -10,6 +10,7 @@ calls the gate before it creates or resets a session (checked on its source).
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import json
@@ -267,7 +268,7 @@ class SessionGateTests(Base):
         with mock.patch.object(render_device, "_apply", side_effect=apply):
             render_device._poll(self.preferences)   # The app's timer, on the main thread.
         self.assertEqual(during, [True])
-        job.join(5)
+        job.join(CAP_S)
         self.assertEqual(done, [True])
         self.assertEqual(session.used_since(0)[1]["backend"], "METAL")
 
@@ -311,7 +312,7 @@ class ReviewRegressionTests(Base):
         started = machine_clock.start(self)
         job = threading.Thread(target=session.before_session, args=(scene(),))
         job.start()
-        job.join(5)
+        job.join(CAP_S)
         started.assert_within(0.5)
 
     def test_a_refresh_does_not_write_preferences_while_a_render_runs(self):
@@ -368,7 +369,7 @@ class ReviewRegressionTests(Base):
         started = machine_clock.start(self)
         job = threading.Thread(target=session.before_session, args=(scene(),), kwargs={"stop": lambda: True})
         job.start()
-        job.join(5)
+        job.join(CAP_S)
         started.assert_within(0.5)
 
     def test_cycles_abbreviated_option_counts(self):
@@ -427,7 +428,7 @@ class ReviewRoundTwoTests(Base):
         runner = SimpleNamespace(device_mark=0, scene_uid=None)
         job = threading.Thread(target=session.before_session, args=(scene(),))
         job.start()
-        job.join(5)
+        job.join(CAP_S)
         render_device._poll(self.preferences)   # The refresh reports (its writes wait for the render).
         job_manager._device_used(record, runner)
         self.assertEqual((record["detail"]["device"], record["detail"]["device_shown"]),

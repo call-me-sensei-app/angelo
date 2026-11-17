@@ -25,6 +25,7 @@ import bpy
 from bpy.props import EnumProperty
 from bpy.types import Operator
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import shot_capture
 from .ui_text import iface_, n_, notice
 
@@ -218,3 +219,6 @@ def unregister():
         chat_destinations.unregister(feature)
     shot_capture.clear()
     bpy.utils.unregister_class(ANGELO_OT_shot_to_video)
+
+
+grant_guard.guard(ANGELO_OT_shot_to_video)   # Only the person's click grants (grant_guard).

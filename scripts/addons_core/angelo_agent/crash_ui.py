@@ -26,8 +26,8 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Operator
 
-from . import (card_host, crash_card, crash_flow, crash_report, crash_state, crash_upload, managed_policy,
-               update_card, update_ui, updates_prefs)
+from . import (card_host, crash_card, crash_flow, crash_gpu, crash_report, crash_state, crash_upload, managed_policy,
+               pump_guard, shared_replace, update_card, update_ui, updates_prefs)
 from .ui_text import iface_, n_, rpt_
 
 _inbox = []
@@ -108,25 +108,51 @@ def _handle(pending, records):
     if pending is None:
         crash_state.save(directory, state)
         return
+    gpu = gpu_info() or ("", "", "", "")
+    offer = crash_gpu.offers_opengl(pending.parsed, gpu[3])   # A driver crash on Vulkan: whatever the card does.
     if managed_policy.current().disable_crash_reporting:
         crash_state.save(directory, state)   # Nothing offered, nothing recorded: a lifted policy can still ask.
+        _offer_opengl(offer)
         return
     if state.consent == crash_state.NEVER:
         state.mark(pending.fingerprint, crash_state.DECLINED)
         crash_state.save(directory, state)
+        _offer_opengl(offer)
         return
     if state.held_back(pending.fingerprint):
         crash_state.save(directory, state)   # The service asked to wait (Retry-After): ask again at a later launch.
+        _offer_opengl(offer)
         return
     crash_state.save(directory, state)
     endpoint = crash_upload.endpoint(update_ui.checker().crash_report_url())
     new = crash_flow.CrashFlow(directory, pending, build_document(pending), endpoint)
+    new.gpu_restart = offer
     if state.consent == crash_state.ALWAYS and new.can_send:
         if state.attempts(pending.fingerprint) < crash_state.MAX_ATTEMPTS:
             _send_automatically(new)
+        _offer_opengl(offer)
         return
     flow = new   # Ask (also "always" while no endpoint exists: the dialog still offers Save report… and the website).
     card_host.request(crash_card.CrashCard(new, Actions()))
+
+
+class _OpenGLNotice(update_card.NoticeCard):
+    kind = "gpu_backend"   # Its own kind: a notice queued beside it (a report sent automatically) never replaces it.
+
+
+def _offer_opengl(offer):
+    """The crash card's Restart with OpenGL as one notice, for a crash the card does not ask about (crash_gpu)."""
+    if not offer:
+        return
+    card_host.request(_OpenGLNotice("alert", iface_(crash_card.GPU_TITLE), iface_(crash_card.GPU_REASON),
+                                    [("opengl", iface_(crash_card.RESTART_OPENGL), "primary")],
+                                    on_action=_opengl_action, lifetime=0))
+
+
+def _opengl_action(action, host):
+    host.close(action)
+    if action == "opengl":
+        Actions().restart_opengl()
 
 
 def _send_automatically(automatic):
@@ -191,6 +217,9 @@ class Actions:
     def stop_automatic(self):
         set_consent(crash_state.ASK)
 
+    def restart_opengl(self):
+        crash_gpu.restart_with_opengl(bpy)
+
 
 def consent():
     return crash_state.load(update_ui.directory()).consent
@@ -249,13 +278,31 @@ class ANGELO_OT_crash_report_last(Operator):
 CLASSES = (ANGELO_OT_crash_save_report, ANGELO_OT_crash_report_last)
 
 
+@pump_guard.keep_alive(shared_replace.RETRY_SECONDS)
+def _settle():
+    """Main thread: write a crash state another program held again; the timer ends once nothing is owed."""
+    crash_state.settle()
+    return shared_replace.RETRY_SECONDS if crash_state.owed() else None
+
+
+def _settle_later():
+    """``crash_state.on_owed`` (any thread): start the timer that writes the owed state, unless it is running."""
+    if not bpy.app.timers.is_registered(_settle):
+        bpy.app.timers.register(_settle, first_interval=shared_replace.RETRY_SECONDS)
+
+
 def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
+    crash_state.on_owed = _settle_later
 
 
 def unregister():
     global flow
     flow = None
+    crash_state.on_owed = None
+    crash_state.settle(final=True)   # A state still owed gets one more try.
+    if bpy.app.timers.is_registered(_settle):
+        bpy.app.timers.unregister(_settle)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

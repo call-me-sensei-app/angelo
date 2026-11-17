@@ -31,6 +31,7 @@ from .skeleton_check_spec import SKELETON_NAMES
 from .game_ready_spec import GAME_READY_NAMES
 from .app_feature_spec import APP_FEATURE_NAMES
 from .engine_link_tool_spec import ENGINE_LINK_NAMES
+from .download_spec import DOWNLOAD_NAMES
 from .goal_spec import GOAL_NAMES
 
 
@@ -85,7 +86,7 @@ DEFERRED_TOOLS = frozenset(SCULPT_NAMES | STUDIO_NAMES | FLOW_NAMES | TEAM_NAMES
                            | ENGINE_NAMES
                            | SKELETON_NAMES
                            | GAME_READY_NAMES
-                           | RIG_NAMES | APP_FEATURE_NAMES | ENGINE_LINK_NAMES
+                           | RIG_NAMES | APP_FEATURE_NAMES | ENGINE_LINK_NAMES | DOWNLOAD_NAMES
                            | GOAL_NAMES   # A goal is held when the person asks for one (goal_mode.rst): looked up then.
                            | (WORKER_NAMES if parallel_agents() else frozenset())   # Listed only when in the build.
                            | {"angelo_memory_update", "angelo_expand_recipe", "angelo_scene_settings", "angelo_script",

@@ -27,7 +27,7 @@ import numpy as np
 
 import bpy
 
-from . import private_roots
+from . import owned_paths, private_roots
 from .flow_parts import SheetError, split_sheet
 
 _jobs = {}  # (tree name, node name, key) -> {"thread", "result", "error", "directory", "sheet"}
@@ -36,6 +36,7 @@ MAX_ACTIVE = 1
 
 def _png(path, rgba):
     """Write an 8-bit RGBA PNG (filter 0, zlib). Small and dependency-free; used off the main thread."""
+    owned_paths.require_writable(path)
     height, width = rgba.shape[:2]
     raw = b"".join(b"\x00" + rgba[row].tobytes() for row in range(height))
 
@@ -232,7 +233,8 @@ def collect(tree, library, flow_id):
                 node.split_json = json.dumps({"key": job["key"], "error": f"the parts couldn't be saved ({error})"})
                 changed = True
         finally:
-            shutil.rmtree(job["directory"], ignore_errors=True)
+            if owned_paths.may_write(job["directory"]):   # A cleanup: only what C says Angelo may remove.
+                shutil.rmtree(job["directory"], ignore_errors=True)
     return changed
 
 
@@ -248,5 +250,6 @@ def start(tree, states, library):
 def clear():
     """Forget jobs (file load or unregister); their threads finish on their own and are ignored."""
     for job in _jobs.values():
-        shutil.rmtree(job["directory"], ignore_errors=True)
+        if owned_paths.may_write(job["directory"]):   # A cleanup: only what C says Angelo may remove.
+            shutil.rmtree(job["directory"], ignore_errors=True)
     _jobs.clear()

@@ -9,6 +9,7 @@ test harness may read: ``controller.telemetry``. No model, process or Blender.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import copy
 import json
@@ -376,7 +377,7 @@ class ClaudeReceiptTests(unittest.TestCase):
                                    precondition=lambda name, arguments: "unchanged", execute=self.execute)
         self.c.send(text, {"objects": []})
         apply = lambda call: self.c.execute_tool(call, executor, self.c.document)
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             self.c.pump_events()
             self.c.pump_tools(executor, self.c.document, apply_mutation=apply, budget=ToolDispatchBudget(seconds=60))
@@ -462,7 +463,7 @@ class ClaudeReceiptTests(unittest.TestCase):
         self.hold = (2, threading.Event())
         self.assertIsNone(self.c.telemetry.running_usage(self.c.state["id"]), "No request yet")
         self.run_request(until=lambda: self.hold[1].is_set())
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         usage = None
         while time.monotonic() < deadline:  # The reader delivers the second round's message_start.
             usage = self.c.telemetry.running_usage(self.c.state["id"])
@@ -503,7 +504,7 @@ class ClaudeReceiptTests(unittest.TestCase):
         self.assertEqual(record["shown"], {}, "The runtime may not have recorded the message; it is listed again next time")
 
     def run_request_end(self):
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline and (self.c.busy or (self.c._worker and self.c._worker.is_alive())):
             self.c.pump_events()
             time.sleep(.002)
@@ -637,7 +638,7 @@ class CodexReceiptTests(PlanTurnFixture):
         with patch.object(ScriptedAppServer, "respond", raced):
             self.run_turns([("tool", "angelo_view", VIEW_ARGUMENTS)])
         for reader in readers:
-            reader.join(1)
+            reader.join(CAP_S)
             self.assertFalse(reader.is_alive())
         path = self.finish()["path"]
         self.assertEqual((path["images_unconfirmed"], path["image_delivery"]), (1, "unknown"))

@@ -24,6 +24,7 @@ import bpy
 
 import importlib
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import engine_link, engine_link_assets as assets, update_card
 from .ui_text import iface_, n_, rpt_
 
@@ -220,6 +221,9 @@ def turn_on():
     return None
 
 
+turn_on = grant_guard.entry(turn_on)
+
+
 def install(engine, project):
     """Copy ``engine``'s plugin into ``project`` and turn the link on. Returns the translated outcome; raises
     ValueError (translated) when the folder isn't that engine's project, OSError when the copy fails."""
@@ -246,6 +250,11 @@ class ANGELO_OT_godot_link(bpy.types.Operator):
                                           ("UNLINK", "Stop Editing", "")),
                                    default="TOGGLE", options={'SKIP_SAVE', 'HIDDEN'})
 
+    def widens(self, context):
+        """Off and Unlink narrow (grant_guard); On and a Toggle, read from this call's own property alone (never the
+        link's state, which a script could change), count as turning it on."""
+        return self.action not in {"OFF", "UNLINK"}
+
     def execute(self, context):
         action = self.action
         if action == "TOGGLE":
@@ -271,12 +280,17 @@ class ANGELO_OT_godot_link_install(bpy.types.Operator):
     bl_label = "Add Angelo Link to a Project"
     bl_description = ("Copy the Angelo Link plugin into a Godot, Unity or Unreal Engine project and turn on the "
                       "engine live link")
+    grant_browse = True   # Its invoke opens a file browser: the person's pick holds consent longer (grant_guard).
 
     engine: bpy.props.EnumProperty(items=(("GODOT", "Godot", ""), ("UNITY", "Unity", ""),
                                           ("UNREAL", "Unreal Engine", ""), ("WEB", "Three.js", "")),
                                    default="GODOT", options={'SKIP_SAVE', 'HIDDEN'})
     directory: bpy.props.StringProperty(subtype='DIR_PATH', options={'SKIP_SAVE'})
     filter_folder: bpy.props.BoolProperty(default=True, options={'HIDDEN', 'SKIP_SAVE'})
+
+    def consent_target(self, context):
+        """Nothing beyond its own fields (the engine and the folder the person picks)."""
+        return None
 
     def invoke(self, context, event):
         context.window_manager.fileselect_add(self)
@@ -437,3 +451,6 @@ def unregister():
     chat_destinations.unregister("godot_link")
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
+
+
+grant_guard.guard(ANGELO_OT_godot_link, ANGELO_OT_godot_link_install)   # Only the person's click grants (grant_guard).

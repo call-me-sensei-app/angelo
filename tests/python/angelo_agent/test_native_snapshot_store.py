@@ -9,6 +9,7 @@ and writer exclusion.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import hashlib
 import io
@@ -268,18 +269,18 @@ class SnapshotStoreTests(unittest.TestCase):
         def hold():
             with self.store.writer():
                 entered.set()
-                release.wait(5)
+                release.wait(CAP_S)
 
         worker = threading.Thread(target=hold)
         worker.start()
         try:
-            self.assertTrue(entered.wait(5))
+            self.assertTrue(entered.wait(CAP_S))
             with self.assertRaises(StoreBusy):
                 with self.store.writer(timeout=0.1):
                     pass
         finally:
             release.set()
-            worker.join(5)
+            worker.join(CAP_S)
         with self.store.writer():
             pass
 
@@ -404,7 +405,7 @@ class IndexSideFileTests(unittest.TestCase):
         thread = threading.Thread(target=churn)
         thread.start()
         try:
-            deadline = time.monotonic() + 1.5
+            deadline = time.monotonic() + 1.5  # window: the answer must hold throughout it
             while time.monotonic() < deadline:
                 try:
                     self.assertTrue(self.store.has_manifest(REF_A, whole(self.data)))

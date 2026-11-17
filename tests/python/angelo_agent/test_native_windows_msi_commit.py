@@ -202,7 +202,7 @@ class ScriptContractTests(unittest.TestCase):
         release = text("windows_release_validate.ps1")
         self.assertIn("Get-CommitMsi $SourceDir (Get-SentCommit $SourceDir) (Join-Path $BuildDir $manifest.msi.name)",
                       release)
-        self.assertIn('source-clean $SourceDir --commit "$sent"', release)
+        self.assertIn('"source-clean", $SourceDir, "--commit", "$sent"', release)
         # The commit under test comes from the proof, never from metadata or an environment variable set at boot (a
         # queued sync changes the tree while those keep the old value).
         for name in ("windows_cloud_bootstrap.ps1", "windows_teams_validate.ps1", "windows_gui_checks.ps1",

@@ -3,6 +3,7 @@
 """Cooperative controller jobs and request timing; no bpy, build or paid model."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import sys
 import threading
@@ -198,7 +199,7 @@ class AgentRuntimeTests(AgentRuntimeFixture, unittest.TestCase):
         fresh_checkpoint = str(uuid.uuid4())
         snapshot = Mock(return_value={"id": fresh_checkpoint})
         self.c.checkpoint_factory = snapshot
-        self.assertTrue(self.c.accept_native_preview(descriptor["preview_id"], self.executor, self.c.document, descriptor["preview_token"]))
+        self.assertTrue(angelo_guard_twin.harness(self.c.accept_native_preview, descriptor["preview_id"], self.executor, self.c.document, descriptor["preview_token"]))
         snapshot.assert_called_once()
         self.assertTrue(self.c.busy)
         self.c.pump_events()
@@ -239,7 +240,7 @@ class AgentRuntimeTests(AgentRuntimeFixture, unittest.TestCase):
         self.executor.studio_context = self.c
         snapshot = Mock(return_value={"id": fresh_checkpoint})
         self.c.checkpoint_factory = snapshot
-        self.assertTrue(self.c.accept_native_preview(descriptor["preview_id"], self.executor, self.c.document, descriptor["preview_token"]))
+        self.assertTrue(angelo_guard_twin.harness(self.c.accept_native_preview, descriptor["preview_id"], self.executor, self.c.document, descriptor["preview_token"]))
         self.c.pump_events()
         self.c.pump_events()
         intents = [message for message in self.c.state["messages"] if message.get("request_kind") == "native_preview_accept"]
@@ -264,11 +265,11 @@ class AgentRuntimeTests(AgentRuntimeFixture, unittest.TestCase):
         descriptor = self.c.native_previews()[0]
         self.executor.studio_context = self.c
         with self.assertRaises(ValueError):
-            self.c.accept_native_preview(descriptor["preview_id"], self.executor, self.c.document, "wrong")
+            angelo_guard_twin.harness(self.c.accept_native_preview, descriptor["preview_id"], self.executor, self.c.document, "wrong")
         self.c.pump_events()
         self.assertFalse(any(message.get("request_kind") == "native_preview_accept" for message in self.c.state["messages"]))
         self.assertTrue(self.c.native_previews())
-        self.assertTrue(self.c.accept_native_preview(descriptor["preview_id"], self.executor, self.c.document, descriptor["preview_token"]))
+        self.assertTrue(angelo_guard_twin.harness(self.c.accept_native_preview, descriptor["preview_id"], self.executor, self.c.document, descriptor["preview_token"]))
         self.pump(commit=False)  # Consumes retained preview but does not commit.
         backend = self.executor.backends[self.c.state["id"]]
         backend.revision += 1
@@ -288,12 +289,12 @@ class AgentRuntimeTests(AgentRuntimeFixture, unittest.TestCase):
         self.executor.studio_context = self.c
         self.c.checkpoint_factory = Mock(side_effect=RuntimeError("snapshot failed"))
         with self.assertRaises(ValueError):
-            self.c.accept_native_preview(descriptor["preview_id"], self.executor, self.c.document, descriptor["preview_token"])
+            angelo_guard_twin.harness(self.c.accept_native_preview, descriptor["preview_id"], self.executor, self.c.document, descriptor["preview_token"])
         self.c.pump_events()
         self.assertFalse(any(message.get("request_kind") == "native_preview_accept" for message in self.c.state["messages"]))
         self.c.checkpoint_factory = Mock(return_value={"id": str(uuid.uuid4())})
         self.executor.on_precondition = Mock(side_effect=ProgramError("stale native precondition"))
-        self.assertFalse(self.c.accept_native_preview(descriptor["preview_id"], self.executor, self.c.document, descriptor["preview_token"]))
+        self.assertFalse(angelo_guard_twin.harness(self.c.accept_native_preview, descriptor["preview_id"], self.executor, self.c.document, descriptor["preview_token"]))
         self.c.pump_events()
         self.assertFalse(any(message.get("request_kind") == "native_preview_accept" for message in self.c.state["messages"]))
         self.assertEqual(self.executor.backends[self.c.state["id"]].commits, 0)

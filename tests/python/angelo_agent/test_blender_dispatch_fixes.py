@@ -205,7 +205,7 @@ def heartbeat():
             call = state['approval']
             call.expires = time.monotonic() - 1
             with bpy.context.temp_override(**view_context()):
-                result = bpy.ops.angelo.approve('EXEC_DEFAULT', True,
+                result = __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True,
                     call_id=call.id, session_id=controller.state['id'])
             check('expired_manual_approval_is_cancelled', 'CANCELLED' in result)
             check('expired_manual_approval_retains_expired_result', state['responses'][0]['result'].get('expired') is True)
@@ -219,7 +219,7 @@ def heartbeat():
         elif phase == 'malformed' and state['approval'].approval:
             call = state['approval']
             with bpy.context.temp_override(**view_context()):
-                result = bpy.ops.angelo.approve('EXEC_DEFAULT', True,
+                result = __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True,
                     call_id=call.id, session_id=controller.state['id'])
             check('malformed_native_mutation_preserves_undo_dispatch', 'FINISHED' in result and len(state['executions']) == 1)
             check('malformed_readback_fixture_really_changed_geometry', not np.array_equal(state['baseline'], positions()))

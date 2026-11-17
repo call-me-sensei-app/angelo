@@ -21,7 +21,7 @@
 
 #ifdef RNA_RUNTIME
 
-#  include "BLI_string.h"
+#  include "BLI_string.hh"
 
 #  include "BKE_lib_id.hh"
 #  include "BKE_main.hh"
@@ -88,7 +88,7 @@ static PointerRNA rna_WorkSpaceTool_operator_properties(bToolRef *tref,
   }
 
   BKE_reportf(reports, RPT_ERROR, "Operator '%s' not found!", idname);
-  return PointerRNA_NULL;
+  return {};
 }
 
 static PointerRNA rna_WorkSpaceTool_gizmo_group_properties(bToolRef *tref,
@@ -103,7 +103,7 @@ static PointerRNA rna_WorkSpaceTool_gizmo_group_properties(bToolRef *tref,
   }
   BKE_reportf(reports, RPT_ERROR, "Gizmo group '%s' not found!", idname);
 
-  return PointerRNA_NULL;
+  return {};
 }
 
 /* Angelo: put a workspace right after another in the tab strip (first with no anchor), as

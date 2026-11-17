@@ -11,17 +11,22 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_endian_switch.h"
-#include "BLI_fileops.h"
-#include "BLI_math_base.h"
+#include "DNA_color_types.h"
+
+#include "BLI_angelo_writers.hh"
+#include "BLI_endian_switch.hh"
+#include "BLI_fileops.hh"
 #include "BLI_math_base.hh"
+#include "BLI_math_base_c.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 #include "BLI_string_utils.hh"
-#include "BLI_time.h"
-#include "BLI_utildefines.h"
+#include "BLI_time.hh"
+#include "BLI_utildefines.hh"
 
 #include "CLG_log.h"
+
+#include "IMB_colormanagement.hh"
 
 #include "MOV_read.hh"
 
@@ -75,6 +80,19 @@ static void get_proxy_dir(const MovieReader *anim, char *proxy_dir, size_t proxy
   else {
     BLI_strncpy(proxy_dir, anim->proxy_dir, proxy_dir_maxncpy);
   }
+}
+
+/** Angelo: whether a proxy file may not be written now (BLI_angelo_writers.hh, with the inputs the proxy job set:
+ * the movie or strip, its proxy folder and file), or the confinement's file gate refuses it (FFmpeg and renames
+ * write past Blender's own file operations' check for a thread of a job a script started). */
+static bool angelo_proxy_refused(const char *filepath)
+{
+  if (const char *refusal = angelo_writers::refusal(filepath)) {
+    CLOG_ERROR(&LOG, "%s: '%s'", refusal, filepath);
+    return true;
+  }
+  const BLI_FileGate *gate = BLI_fileops_gate_get();
+  return gate != nullptr && gate->refused(filepath, true);
 }
 
 static bool get_proxy_filepath(const MovieReader *anim,
@@ -145,6 +163,14 @@ static proxy_output_ctx *alloc_proxy_output_ffmpeg(MovieReader *anim,
   rv->anim = anim;
 
   get_proxy_filepath(rv->anim, rv->proxy_size, filepath, true);
+  {
+    char final_path[FILE_MAX];
+    get_proxy_filepath(rv->anim, rv->proxy_size, final_path, false);
+    if (angelo_proxy_refused(final_path) || angelo_proxy_refused(filepath)) {
+      MEM_delete(rv);
+      return nullptr;
+    }
+  }
   if (!BLI_file_ensure_parent_dir_exists(filepath)) {
     MEM_delete(rv);
     return nullptr;
@@ -433,7 +459,12 @@ static void free_proxy_output_ffmpeg(proxy_output_ctx *ctx, int rollback)
   }
   else {
     get_proxy_filepath(ctx->anim, ctx->proxy_size, filepath, false);
-    BLI_rename_overwrite(filepath_tmp, filepath);
+    if (angelo_proxy_refused(filepath)) { /* Angelo: as its open (the inputs may have changed meanwhile). */
+      BLI_delete(filepath_tmp, false, false);
+    }
+    else {
+      BLI_rename_overwrite(filepath_tmp, filepath);
+    }
   }
 
   MEM_delete(ctx);
@@ -934,7 +965,9 @@ MovieReader *movie_open_proxy(MovieReader *anim, IMB_Proxy_Size preview_size)
    *
    * Also skip any colorspace conversion to the color pipeline design as it helps performance and
    * the image buffers from the proxy builder are not used anywhere else in Blender. */
-  anim->proxy_anim[i] = MOV_open_file(filepath, ImBufFlags::Zero, 0, true, anim->colorspace);
+  ColorManagedColorspaceSettings colorspace_settings;
+  IMB_colormanagement_colorspace_settings_set(&colorspace_settings, anim->colorspace);
+  anim->proxy_anim[i] = MOV_open_file(filepath, ImBufFlags::Zero, 0, true, &colorspace_settings);
 
   anim->proxies_tried |= preview_size;
 

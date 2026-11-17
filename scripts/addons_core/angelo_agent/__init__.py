@@ -43,9 +43,11 @@ def register():
     from . import change_clock
     change_clock.prime()   # Windows: which volumes keep coarse times, listed on a thread; no settle waits for it.
     import bpy
-    from . import data_migration, product_env, state_migration
-    # Before anything opens the account store, Media Studio library or agent state.
+    from . import data_migration, product_env, state_migration, version_carry_over
+    # Before anything opens the account store, Media Studio library or agent state. An earlier Blender base's state
+    # moves first, so the pre-rename check then sees this version's folder as it is.
     data_migration.migrate_on_startup()
+    version_carry_over.carry_over_on_startup(bpy.utils.user_resource('CONFIG'))
     state_migration.migrate_on_startup(bpy.utils.user_resource('CONFIG'))
     deprecated = product_env.deprecated_in_use()
     if deprecated:
@@ -56,6 +58,9 @@ def register():
     sys.modules["_console_angelo"] = console
     sys.modules["_console_angelo_genai"] = studio
     ui.register()
+    from . import script_confinement_blender   # Before any agent script: they run confined (script_confinement.rst).
+    script_confinement_blender.install_app(bpy)
+    script_confinement_blender.register_fixed_folders()   # Before any script region: C refuses it after.
     from . import document_identity
     document_identity.register()   # The document's saved id (save_pre) and a failed load (load_post_fail).
     from . import restored_document   # Only a file under the state folder's checkpoints is a Restore's working copy.
@@ -72,6 +77,8 @@ def register():
     font_watch.register()    # Rebinds the chat's fonts after Blender reloads its own (a theme preset, Text Rendering).
     app_notices.register()   # Update notices, crash reports and What's New (doc/angelo/updates_and_reports.rst).
     job_ui.register()        # Background jobs: their timer, file events, status bar and operators.
+    from . import edit_tool_status
+    edit_tool_status.register()   # The status bar names the person's operation Angelo's work waits for.
     from . import refused_saves
     refused_saves.register()   # A save another program keeps refusing (Windows) is told on a card.
     about_card.register()    # The About Angelo card (the Angelo menu's About).
@@ -121,6 +128,8 @@ def register():
     director_select_through.register()   # Select Through's + menu row (the header and Director draw their own).
     from . import feedback_ui
     feedback_ui.register()   # Report a bug / Request a feature: the + menu's Feedback rows (app_identity.rst).
+    from . import learn_ui
+    learn_ui.register()   # Learn: the + menu's page and Teach me as you work (doc/angelo/learn_mode.rst).
 
 
 def unregister():
@@ -133,7 +142,9 @@ def unregister():
     from . import asset_shelf_add, chat_launcher, chat_toggle, media_shelf, studio_toggle, web_export_ui, web_shader_ui
     from . import game_physics_ui
     from . import director_select_through, engine_link_ui, engine_suggest_ui, library_ui, shelf_empty, shot_capture_ui
-    from . import feedback_ui
+    from . import feedback_ui, grant_hints, learn_ui
+    grant_hints.unregister()   # No hint or draw handler outlives the add-on.
+    learn_ui.unregister()
     feedback_ui.unregister()
     director_select_through.unregister()
     engine_suggest_ui.unregister()
@@ -171,6 +182,8 @@ def unregister():
     settings_import_ui.unregister()
     about_card.unregister()
     job_ui.unregister()
+    from . import edit_tool_status
+    edit_tool_status.unregister()
     from . import refused_saves
     refused_saves.unregister()
     app_notices.unregister()

@@ -36,10 +36,10 @@
 #include <cstring>
 
 #include "BLI_span.hh"
-#include "BLI_threads.h"
-#include "BLI_time.h"
-#include "BLI_utildefines.h"
-#include "BLI_listbase.h"
+#include "BLI_threads.hh"
+#include "BLI_time.hh"
+#include "BLI_utildefines.hh"
+#include "BLI_listbase.hh"
 
 #include "BKE_file_handler.hh"
 #include "BKE_attribute.h"
@@ -103,6 +103,18 @@ namespace blender {
 /* Existing source-bound locator, implemented in makesrna/intern/rna_ID.cc. */
 extern IDProperty **rna_ID_system_idprops(PointerRNA *ptr);
 
+/* Whether an ID is evaluated or runtime data rather than document data. Blender 5.3 removed
+ * ID_TAG_COPIED_ON_EVAL_FINAL_RESULT (1422f044cbf): a modifier stack's final mesh is now an
+ * untagged data-block outside Main, so 5.2's tag test is expressed by what the tag marked. Data
+ * outside every Main list that is not embedded in a Main ID cannot be original (upstream's
+ * reading, sound.cc and rna_ID_is_runtime_get); embedded IDs (node trees, master collections)
+ * are created outside the Main lists by design and remain document data. */
+static bool evaluated_or_runtime_id(const ID &id)
+{
+  return id.orig_id != nullptr || (id.tag & ID_TAG_COPIED_ON_EVAL) ||
+         ((id.tag & ID_TAG_NO_MAIN) && !(id.flag & ID_FLAG_EMBEDDED_DATA));
+}
+
 static constexpr int read_items_max = 64;
 static constexpr int read_string_bytes_max = 1024;
 
@@ -133,10 +145,7 @@ static const PointerRNA *live_pointer(PyObject *object, const StructRNA *type, b
     PyErr_SetString(PyExc_TypeError, "Expected live ID-owned Blender RNA");
     return nullptr;
   }
-  if (ptr->owner_id &&
-      (ptr->owner_id->orig_id != nullptr ||
-       (ptr->owner_id->tag & (ID_TAG_COPIED_ON_EVAL | ID_TAG_COPIED_ON_EVAL_FINAL_RESULT))))
-  {
+  if (ptr->owner_id && evaluated_or_runtime_id(*ptr->owner_id)) {
     PyErr_SetString(PyExc_ValueError, "Evaluated data is not supported by native data reads");
     return nullptr;
   }
@@ -937,12 +946,12 @@ static Value type_info(const StructRNA *type)
   }
   std::vector<Value> bases;
   for (const StructRNA *base = type->base; base && bases.size() < 15; base = base->base) {
-    bases.push_back(Value::string(base->identifier));
+    bases.push_back(Value::string(base->identifier.string()));
   }
-  return moved_dict(Field("identifier", Value::string(type->identifier)),
+  return moved_dict(Field("identifier", Value::string(type->identifier.string())),
                     Field("bases", Value::tuple(std::move(bases))),
                     Field("name_property", type->nameproperty ?
-                                               Value::string(type->nameproperty->identifier) :
+                                               Value::string(type->nameproperty->identifier.string()) :
                                                Value{}));
 }
 
@@ -953,9 +962,9 @@ static Value type_key(const StructRNA *type)
   }
   std::vector<Value> bases;
   for (const StructRNA *base = type->base; base && bases.size() < 15; base = base->base) {
-    bases.push_back(Value::string(base->identifier));
+    bases.push_back(Value::string(base->identifier.string()));
   }
-  return moved_tuple(Value::string(type->identifier), Value::tuple(std::move(bases)));
+  return moved_tuple(Value::string(type->identifier.string()), Value::tuple(std::move(bases)));
 }
 
 struct Owner {
@@ -1032,7 +1041,7 @@ static Value property_description(const StructRNA *type,
                                 Field("owner_is_bound_scene", Value::boolean_value(owner.bound_scene)),
                                 Field("virtual_kind", Value::string("NONE")));
   Value declaration = moved_dict(
-      Field("identifier", Value::string(property.identifier)),
+      Field("identifier", Value::string(property.identifier.string())),
       Field("type", Value::string(enum_identifier(rna_enum_property_type_items, property.type))),
       Field("subtype", Value::string(enum_identifier(rna_enum_property_subtype_items, property.subtype))),
       Field("name", Value::string(property.name ? property.name : "")),
@@ -1055,7 +1064,7 @@ static Value property_description(const StructRNA *type,
   if (fixed_type && fixed_type->nameproperty) {
     const PropertyRNA &name = *fixed_type->nameproperty;
     fixed_name = moved_dict(
-        Field("identifier", Value::string(name.identifier)),
+        Field("identifier", Value::string(name.identifier.string())),
         Field("type", Value::string(enum_identifier(rna_enum_property_type_items, name.type))),
         Field("subtype", Value::string(enum_identifier(rna_enum_property_subtype_items, name.subtype))));
   }
@@ -1065,8 +1074,21 @@ static Value property_description(const StructRNA *type,
                     Field("fixed_name", std::move(fixed_name)));
 }
 
-/* Mirrors rna_Struct_properties_begin/next inheritance order and builtin filtering directly.
- * The user-IDProperty tail from that iterator is intentionally outside the read grammar. */
+/* A registered type can declare an identifier its base also has: Blender 5.3 gives every registered
+ * PropertyGroup its own writable `name` over the base's read-only one (pyrna_register_class). Every
+ * lookup finds the derived declaration, so the shadowed one is not a member. */
+static bool shadowed_declaration(const StructRNA *type,
+                                 const StructRNA *level,
+                                 const PropertyRNA &property)
+{
+  return level != type && (type->flag & STRUCT_RUNTIME) &&
+         RNA_struct_type_find_property(const_cast<StructRNA *>(type), property.identifier.c_str()) !=
+             &property;
+}
+
+/* Mirrors rna_Struct_properties_begin/next inheritance order and builtin filtering directly, without
+ * shadowed declarations. The user-IDProperty tail from that iterator is intentionally outside the
+ * read grammar. */
 static std::vector<const PropertyRNA *> declarations(const StructRNA *type)
 {
   std::vector<const StructRNA *> hierarchy;
@@ -1076,7 +1098,9 @@ static std::vector<const PropertyRNA *> declarations(const StructRNA *type)
   std::vector<const PropertyRNA *> result;
   for (auto current = hierarchy.rbegin(); current != hierarchy.rend(); ++current) {
     for (const PropertyRNA &property : (*current)->cont.properties) {
-      if (!(property.flag_internal & PROP_INTERN_BUILTIN)) {
+      if (!(property.flag_internal & PROP_INTERN_BUILTIN) &&
+          !shadowed_declaration(type, *current, property))
+      {
         result.push_back(&property);
       }
     }
@@ -2015,7 +2039,7 @@ static RouteFacts compute_source_route_facts(const StructRNA &type, const Proper
       facts.active_material_special = &type == RNA_Object;
       return facts;
     }
-    if (type.identifier && STREQ(type.identifier, "Object") &&
+    if (type.identifier == "Object" &&
         manual_callback(property, RNAReadCallbackRole::GET, "rna_object.cc", "rna_Object_data_get"))
     {
       facts.value = "SOURCE_POINTER";
@@ -2365,7 +2389,7 @@ static Scene *live_scene(const Context &context)
 
 static bool original_id(const ID &id)
 {
-  return !id.orig_id && !(id.tag & (ID_TAG_COPIED_ON_EVAL | ID_TAG_COPIED_ON_EVAL_FINAL_RESULT));
+  return !evaluated_or_runtime_id(id);
 }
 
 static Owner target_owner(const Context &context, const Target &target)
@@ -2405,7 +2429,7 @@ static const char *target_refusal(const Context &context, const Target &target)
     return "DENIED";
   }
   for (const StructRNA *type = target.ptr.type; type; type = type->base) {
-    if (one_of(type->identifier, {"Depsgraph", "DepsgraphObjectInstance",
+    if (one_of(type->identifier.c_str(), {"Depsgraph", "DepsgraphObjectInstance",
               "DepsgraphUpdate", "Struct", "Property", "Function", "ImagePreview",
               "PackedFile", "TextLine"}))
     {
@@ -2465,11 +2489,11 @@ static RouteFacts routes_for(const Target &owner, const PropertyRNA &property)
     facts.value = "SOURCE_SCALAR";
     replaced = true;
   }
-  if (owner.weight && one_of(property.identifier, {"group", "weight"})) {
+  if (owner.weight && one_of(property.identifier.c_str(), {"group", "weight"})) {
     facts.value = "WEIGHTS";
     replaced = true;
   }
-  if (owner.ptr.type == RNA_MeshVertex && STREQ(property.identifier, "groups")) {
+  if (owner.ptr.type == RNA_MeshVertex && property.identifier == "groups") {
     facts.value = facts.length = facts.iterate = facts.lookup_index = "WEIGHTS";
     facts.refine = facts.lookup_name = "NONE";
     replaced = true;
@@ -2478,7 +2502,7 @@ static RouteFacts routes_for(const Target &owner, const PropertyRNA &property)
       !(property.flag_internal & PROP_INTERN_RUNTIME))
   {
     if (owner.ptr.type == RNA_Image &&
-        one_of(property.identifier, {"size", "channels", "depth", "is_float",
+        one_of(property.identifier.c_str(), {"size", "channels", "depth", "is_float",
               "resolution", "file_format", "frame_duration"}))
     {
       /* Cache-only copies; Blender's getters would load the image file. */
@@ -2487,7 +2511,7 @@ static RouteFacts routes_for(const Target &owner, const PropertyRNA &property)
       replaced = true;
     }
     if (owner.ptr.type == RNA_UDIMTile &&
-        one_of(property.identifier, {"size", "channels"}))
+        one_of(property.identifier.c_str(), {"size", "channels"}))
     {
       facts.value = "IMAGE_TILE_CACHE";
       facts.length = "NONE";
@@ -2617,13 +2641,13 @@ struct Fingerprint {
   {
     flag(value != nullptr);
     if (value) {
-      text(value->identifier);
+      text(value->identifier.c_str());
       int count = 0;
       for (const StructRNA *base = value->base; base && count < 15; base = base->base, count++) {
-        text(base->identifier);
+        text(base->identifier.c_str());
       }
       integer(count);
-      text(value->nameproperty ? value->nameproperty->identifier : nullptr);
+      text(value->nameproperty ? value->nameproperty->identifier.c_str() : nullptr);
     }
   }
   /* Non-negative and exactly representable as a Python int on every platform. */
@@ -2671,7 +2695,7 @@ static int64_t compute_fingerprint_from(uint64_t state,
   Fingerprint hash;
   hash.state = state;
   /* Declaration part. */
-  hash.text(property.identifier);
+  hash.text(property.identifier.c_str());
   hash.integer(property.type);
   hash.integer(property.subtype);
   hash.text(property.name ? property.name : "");
@@ -2827,7 +2851,7 @@ static int64_t compute_declarations_key(const Context &context, const Target &ow
   const StructRNA *type = owner.ptr.type;
   hash.integer(int64_t(uintptr_t(type)));
   for (const StructRNA *current = type; current; current = current->base) {
-    hash.text(current->identifier);
+    hash.text(current->identifier.c_str());
   }
   if (!type) {
     return hash.result();
@@ -2840,7 +2864,9 @@ static int64_t compute_declarations_key(const Context &context, const Target &ow
   std::optional<uint64_t> state; /* The owner part, computed once if any declaration needs it. */
   for (int level = levels - 1; level >= 0; level--) {
     for (const PropertyRNA &property : hierarchy[level]->cont.properties) {
-      if (property.flag_internal & PROP_INTERN_BUILTIN) {
+      if ((property.flag_internal & PROP_INTERN_BUILTIN) ||
+          shadowed_declaration(type, hierarchy[level], property))
+      {
         continue;
       }
       if (compiled_declaration(type, property)) {
@@ -2893,14 +2919,14 @@ static Value node_value(const Context &context,
   std::vector<Value> bases;
   if (type) {
     for (const StructRNA *base = type->base; base && bases.size() < 15; base = base->base) {
-      bases.push_back(Value::string(base->identifier));
+      bases.push_back(Value::string(base->identifier.string()));
     }
   }
   const Owner owner = target_owner(context, target);
   return moved_tuple(
       Value::string("NODE"), address_value(address),
-      type ? moved_tuple(Value::string(type->identifier), Value::tuple(std::move(bases)),
-                         type->nameproperty ? Value::string(type->nameproperty->identifier) : Value{}) :
+      type ? moved_tuple(Value::string(type->identifier.string()), Value::tuple(std::move(bases)),
+                         type->nameproperty ? Value::string(type->nameproperty->identifier.string()) : Value{}) :
              Value{},
       moved_tuple(Value::boolean_value(owner.exists),
                   owner.exists ? Value::string(owner.id_type) : Value{},
@@ -2971,7 +2997,7 @@ static const IDProperty *stored_member(const Target &owner,
     return nullptr;
   }
   valid = !group || (group->type == IDP_GROUP && storage_group_valid(*group));
-  return valid && group ? IDP_GetPropertyFromGroup(group, property.identifier) : nullptr;
+  return valid && group ? IDP_GetPropertyFromGroup(group, property.identifier.ref()) : nullptr;
 }
 
 static bool storage_matches(const PropertyRNA &declaration, const IDProperty &stored)
@@ -3272,8 +3298,8 @@ static bool pure_socket_node(const Target &socket, Target &child, Value &failure
   }
   const bNodeTree &tree = *reinterpret_cast<const bNodeTree *>(id);
   for (const bNode &node : tree.nodes) {
-    for (const ListBase *sockets : {&node.inputs, &node.outputs}) {
-      for (const bNodeSocket *candidate = static_cast<const bNodeSocket *>(sockets->first);
+    for (const ListBaseT<bNodeSocket> *sockets : {&node.inputs, &node.outputs}) {
+      for (const bNodeSocket *candidate = sockets->first();
            candidate; candidate = candidate->next) {
         if (candidate != socket.ptr.data) {
           continue;
@@ -4273,10 +4299,10 @@ static Value select_collection(const Context &context,
         const char *physical = nullptr;
         if (item.item_type == NodeTreeInterfaceItemType::Socket) {
           const auto &socket = *reinterpret_cast<const bNodeTreeInterfaceSocket *>(&item);
-          physical = pass == 0 ? socket.identifier : socket.name;
+          physical = pass == 0 ? socket.identifier : socket.name().c_str();
         }
         else if (pass == 1 && item.item_type == NodeTreeInterfaceItemType::Panel) {
-          physical = reinterpret_cast<const bNodeTreeInterfacePanel *>(&item)->name;
+          physical = reinterpret_cast<const bNodeTreeInterfacePanel *>(&item)->name().c_str();
         }
         else {
           continue;
@@ -4696,7 +4722,7 @@ static Value describe_target(const Context &context,
     if (!found && type) {
       properties = declarations(type);
       for (const PropertyRNA *property : properties) {
-        names.push_back(Value::string(property->identifier));
+        names.push_back(Value::string(property->identifier.string()));
       }
     }
     Value limits;
@@ -4749,16 +4775,16 @@ static Value describe_target(const Context &context,
       if (property->type == PROP_COLLECTION) {
         const StructRNA *item = static_cast<const CollectionPropertyRNA *>(property)->item_type;
         if (item) {
-          collections.push_back(Value::tuple({Value::string(item->identifier),
-                                              Value::string(property->identifier)}));
+          collections.push_back(Value::tuple({Value::string(item->identifier.string()),
+                                              Value::string(property->identifier.string())}));
         }
       }
     }
   }
   else {
     for (const PropertyRNA *property : declarations(RNA_ID)) {
-      if (!STREQ(property->identifier, "name")) {
-        bookkeeping.push_back(Value::string(property->identifier));
+      if (property->identifier != "name") {
+        bookkeeping.push_back(Value::string(property->identifier.string()));
       }
     }
   }
@@ -5299,7 +5325,7 @@ static Value fetch_target(const Context &context,
     return copy_geometry_value(target, routes);
   }
   if (target.attribute_source && target.ptr.type == RNA_MeshUVLoop &&
-      STREQ(property.identifier, "pin_uv") && STREQ(routes.value, "SOURCE_SCALAR"))
+      property.identifier == "pin_uv" && STREQ(routes.value, "SOURCE_SCALAR"))
   {
     bool pin;
     return const_legacy_uv_pin(target, pin) ?
@@ -5307,10 +5333,10 @@ static Value fetch_target(const Context &context,
                unavailable("NATIVE_READER_REQUIRED");
   }
   if (target.weight) {
-    if (STREQ(property.identifier, "group")) {
+    if (property.identifier == "group") {
       return value_result("INT", Value::int_value(target.weight->def_nr), Value{});
     }
-    if (STREQ(property.identifier, "weight")) {
+    if (property.identifier == "weight") {
       return value_result("FLOAT", Value::float_value(target.weight->weight), Value{});
     }
   }
@@ -5321,7 +5347,7 @@ static Value fetch_target(const Context &context,
     Image &image = *reinterpret_cast<Image *>(target.ptr.owner_id);
     Value metadata = STREQ(routes.value, "IMAGE_CACHE") ? copy_image_metadata(image) :
                          copy_tile_metadata(image, static_cast<ImageTile *>(target.ptr.data)->tile_number);
-    const Value *copied = find_field(metadata, property.identifier);
+    const Value *copied = find_field(metadata, property.identifier.c_str());
     if (!copied) {
       return unavailable("LOADS_FILE");
     }
@@ -5544,8 +5570,8 @@ static Value reference_target(const Context &context,
   if (STREQ(relation, "owner")) {
     std::vector<Value> needed;
     for (const PropertyRNA *declaration : declarations(node.ptr.type)) {
-      if (declaration == node.ptr.type->nameproperty || STREQ(declaration->identifier, "identifier") ||
-          STREQ(declaration->identifier, "type") || STREQ(declaration->identifier, "enabled"))
+      if (declaration == node.ptr.type->nameproperty || declaration->identifier == "identifier" ||
+          declaration->identifier == "type" || declaration->identifier == "enabled")
       {
         if (!ELEM(declaration->type, PROP_STRING, PROP_ENUM, PROP_BOOLEAN) ||
             declaration->totarraylength || declaration->getlength)
@@ -6195,7 +6221,7 @@ static Value fetch_members(const Context &context,
     size_t remaining = wanted.size();
     for (StructRNA *current = node.ptr.type; current && remaining; current = current->base) {
       for (PropertyRNA &property : current->cont.properties) {
-        const std::string_view name(property.identifier);
+        const std::string_view name(property.identifier.ref());
         auto match = std::lower_bound(wanted.begin(), wanted.end(),
                                       std::make_pair(name, size_t(0)));
         if (match != wanted.end() && match->first == name && !found[match->second]) {

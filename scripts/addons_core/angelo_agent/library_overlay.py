@@ -23,7 +23,8 @@ import bpy
 from bpy.app.handlers import persistent
 from bpy.types import Operator
 
-from . import fab_overlay, input_policy, library_actions as actions, library_overlay_draw as look, live_windows
+from . import fab_overlay, grant_guard, input_policy, library_actions as actions, live_windows
+from . import library_overlay_draw as look
 
 IDENTITY = "angelo.library_input"
 NOTICE_SECONDS = 4.0
@@ -136,7 +137,8 @@ def _draw():
             item = _drag["item"]
             look.draw_ghost(paint, _drag["x"] - region.x, _drag["y"] - region.y, library_host.library().texture(item),
                             item["title"])
-        draws += 1
+        draws += 1   # Its controls as C's consent regions (grant_guard: the Fab Connect click's ticket).
+        grant_guard.canvas_regions(window, region, "library:%d" % area.as_pointer(), state["hits"], 1, False, "library.")
         _ensure_input(window)
     except Exception as error:   # A failed overlay never breaks the view's own drawing.
         last_error = str(error)
@@ -308,8 +310,9 @@ class ANGELO_OT_library_input(Operator):
             if (target and target[0] == "tile" and state.get("source") != "fab"
                     and not str(target[1]).startswith("fab:")):
                 self.press = (area.as_pointer(), target[1], event.mouse_x, event.mouse_y)
-            if target:
-                click(window, area, region, state, target[0], target[1], double=event.value == 'DOUBLE_CLICK')
+            if target:   # In the press's ticket scope when it minted one (grant_guard.ticketed).
+                grant_guard.ticketed("library.", target[0], target[1], click, window, area, region, state, target[0],
+                                     target[1], double=event.value == 'DOUBLE_CLICK')
             return {'RUNNING_MODAL'}
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             self.press = None

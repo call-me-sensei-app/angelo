@@ -45,6 +45,8 @@ sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent import context_ledger, native_programs as native, scene_queries as queries  # noqa: E402
 from angelo_agent import revision_budget, scene_settings, turn_context  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
+from qa_person import reviewing  # noqa: E402
+BlenderExecutor = reviewing(BlenderExecutor)   # Each script runs as one the person approved (qa_person).
 from angelo_agent.identifiers import IdentifierTable, expand_call  # noqa: E402
 from angelo_agent.tool_specs import validate_call  # noqa: E402
 

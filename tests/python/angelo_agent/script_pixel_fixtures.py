@@ -100,17 +100,21 @@ def success_history_cases(report, build, run_script):
         row = {"result": result, "before_energy": before, "after_energy": bpy.data.lights["Light"].energy,
                "global_undo": preferences.use_global_undo, "undo_steps": preferences.undo_steps}
         report["cases"][key] = row
+        if name in {"disable_global", "zero_steps"}:
+            # A script can't change Preferences (doc/angelo/script_confinement.rst, "Preferences and the keymap"): the
+            # undo settings stay as the person set them, and the script stops before changing the scene.
+            report["checks"][key + ":refused"] = (
+                result.get("success") is not True and "Preferences" in str(result.get("error", "")))
+            report["checks"][key + ":preferences_untouched"] = (
+                preferences.use_global_undo is True and preferences.undo_steps == 32)
+            report["checks"][key + ":scene_unchanged"] = row["after_energy"] == before
+            continue
         report["checks"][key + ":script_executed"] = result.get("success") is True and row["after_energy"] == before * 2
         report["checks"][key + ":coverage_unverified"] = (
             result.get("undoable") is False and result.get("main_data_undoable") is False
             and "unverified" in result.get("undo", ""))
-        if name in {"disable_global", "zero_steps"}:
-            report["checks"][key + ":unavailable"] = result.get("undo_available") is False
-            report["checks"][key + ":preferences_untouched"] = (
-                preferences.use_global_undo is (name != "disable_global") and preferences.undo_steps == (0 if name == "zero_steps" else 32))
-        else:
-            report["checks"][key + ":availability_separate"] = result.get("undo_available") is True
-            bpy.ops.ed.undo()
-            row["first_undo_energy"] = bpy.data.lights["Light"].energy
-            report["checks"][key + ":native_undo_behavior_preserved"] = row["first_undo_energy"] == (
-                before if name == "ordinary" else before * 2)
+        report["checks"][key + ":availability_separate"] = result.get("undo_available") is True
+        bpy.ops.ed.undo()
+        row["first_undo_energy"] = bpy.data.lights["Light"].energy
+        report["checks"][key + ":native_undo_behavior_preserved"] = row["first_undo_energy"] == (
+            before if name == "ordinary" else before * 2)

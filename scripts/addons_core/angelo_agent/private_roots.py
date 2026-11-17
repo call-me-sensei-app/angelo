@@ -30,26 +30,13 @@ import tempfile
 import threading
 import uuid
 
-from . import change_clock, shared_replace, state_paths, storage
+from . import change_clock, owned_paths, shared_replace, state_paths, storage
 
 
-# Every family of folders Angelo's own processes keep private state in (prefix, parent or None for the temporary
-# folder): declared here, at this module's import, so a folder a crashed child left is private before any launcher
-# module loads (round 5 M-1). Their creators take their prefixes from here.
-# worker_process: a parallel-edit worker Blender's state, accounts and log; short, as its deepest path counts on
-# Windows (``worker_paths``). Folders of earlier builds keep their name's family: a crash left them private.
-WORKER_PREFIX, LEGACY_WORKER_PREFIX = "angw-", "angelo-worker-"
-FAB_BROWSER_PREFIX = "angelo-fab-browser-"  # Own browser credential profiles, including crashed leftovers.
-HEADLESS_PREFIX = "angelo-headless-"   # headless_session: a headless session's state, accounts and preferences.
-# Every other temporary or scratch folder Angelo makes (round 7 M-4: a converter's batch holds private prompts), by
-# its creator. ``allocate`` refuses a prefix that is not here, so the table is complete by construction.
-SCRATCH_PREFIXES = ("angelo-assets-", "angelo-flow-drop-", "angelo-split-", "angelo-save-", "angelo-native-preview-",
-                    "angelo-kept-", "angelo-team-", "angelo-web-preview-", "angelo-world-light-",
-                    "angelo-observations-", "angelo-engine-link-", "angelo-library-", "angelo-preflight-",
-                    "angelo-web-world-", "angelo-merge-check-", "angelo-render-")
-FAMILIES = ((WORKER_PREFIX, None), (LEGACY_WORKER_PREFIX, None), (HEADLESS_PREFIX, None),
-            (FAB_BROWSER_PREFIX, None)) + tuple(
-    (prefix, None) for prefix in SCRATCH_PREFIXES)
+# Every family of folders Angelo's own processes keep private state in, one prefix per line in ``private_families``:
+# re-exported, as creators take their prefixes from here, and declared at this module's import (``_families``).
+from .private_families import (FAB_BROWSER_PREFIX, FAMILIES, HEADLESS_PREFIX,  # noqa: E402,F401
+                               LEGACY_WORKER_PREFIX, SCRATCH_PREFIXES, WORKER_PREFIX)
 # Native CLI homes an inherited environment can point anywhere (a reused sign-in: round 7 M-1), as runtime_launch and
 # codex_runtime read them.
 RUNTIME_HOME_VARIABLES = ("CODEX_HOME", "CODEX_SQLITE_HOME", "CLAUDE_CONFIG_DIR")
@@ -344,9 +331,11 @@ def allocate(prefix, parent=None):
     """Make a private folder (``tempfile.mkdtemp``) and register it and its family before anything is written there.
     ``prefix`` must be one of ``FAMILIES``: a crashed process's folder is then private from a fresh start."""
     if prefix not in {name for name, _ in FAMILIES}:
-        raise ValueError("Add the private folder's prefix to private_roots.FAMILIES")
+        raise ValueError("Add the private folder's prefix to private_families (FAMILIES)")
     declare(prefix, parent)
-    folder = Path(tempfile.mkdtemp(prefix=prefix, dir=parent if parent is not None else scratch_root()))
+    where = parent if parent is not None else scratch_root()
+    made = owned_paths.make_dir(where, prefix)   # Made and recorded by C at once: no birth time needed (C's record).
+    folder = Path(made) if made is not None else Path(tempfile.mkdtemp(prefix=prefix, dir=where))
     _own(folder)
     return folder
 
@@ -434,6 +423,7 @@ def _own(folder):
     """Register ``folder`` with an owner token written inside it (its identity counts only while the token is there)."""
     token = uuid.uuid4().hex
     try:
+        owned_paths.require_writable(folder)   # Refused (OSError): no token; its path and family still protect it.
         descriptor = os.open(Path(folder) / OWNER, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
                              0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
@@ -441,6 +431,7 @@ def _own(folder):
     except OSError:
         token = None   # Unwritable: its path and family name still protect it.
     prune()
+    owned_paths.own(folder)   # C's record: what Angelo's cleanups may remove (owned_paths).
     identity = hold(folder)
     with _lock:
         _folders.append(Path(folder))
@@ -490,11 +481,20 @@ class TemporaryDirectory(tempfile.TemporaryDirectory):
     """Registered TemporaryDirectory; ordinary cleanup also prunes its retained directory handle."""
     def __init__(self, prefix, dir=None, **options):   # options: tempfile's, e.g. ignore_cleanup_errors.
         if prefix not in {name for name, _ in FAMILIES}:
-            raise ValueError("Add the private folder's prefix to private_roots.FAMILIES")
+            raise ValueError("Add the private folder's prefix to private_families (FAMILIES)")
         super().__init__(prefix=prefix, dir=dir if dir is not None else scratch_root(), **options)
         declare(prefix, dir)
         _own(self.name)
 
     def cleanup(self):
-        super().cleanup()
+        # The folder made here, never what ``name`` says now: the finalizer holds the name it was made with, and
+        # only a folder on C's record is removed (owned_paths), whatever an agent script changed in this object.
+        made = self._finalizer.peek()
+        if made is not None and made[2]:
+            self.name = made[2][0]
+        if owned_paths.owned(self.name):
+            owned_paths.disown(self.name)
+            super().cleanup()
+        else:
+            self._finalizer.detach()
         prune()   # Its handle goes with it.

@@ -113,7 +113,7 @@ class LocalChat:
 
         def apply(target, call):
             with bpy.context.temp_override(window=window):
-                bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
 
         def commit(target, call):
             with bpy.context.temp_override(window=window):
@@ -311,8 +311,7 @@ def run():
     parts.mkdir(exist_ok=True)
     starts = []
     for index in range(STARTS):
-        worker = WorkerProcess(parts / ("start-%d.blend" % index), binary=bpy.app.binary_path,
-                               script=ROOT / "scripts/angelo/angelo_headless.py")
+        worker = WorkerProcess(parts / ("start-%d.blend" % index))   # Angelo's own program and worker script.
         worker.start()
         starts.append(worker.ready_seconds)
         worker.stop()

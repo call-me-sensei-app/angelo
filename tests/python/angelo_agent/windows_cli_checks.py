@@ -27,7 +27,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from angelo_agent import child_process, cli_runtime, cli_windows
+from angelo_agent.chat_settings import default_effort
 from angelo_agent.protocol import JsonRpcProcess, RpcError
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 # Arguments cmd.exe would re-parse (quotes, %, ^, &, |, <, !) plus JSON, Unicode, an empty one and trailing backslashes.
 TRICKY = ['{"model":"gpt-6","effort":"low"}', 'model_provider="openai"', "two words", 'say "hi"', "back\\slash\\",
@@ -117,7 +119,7 @@ def alive(pid):
         _kernel32.CloseHandle(handle)
 
 
-def wait_gone(pids, seconds=10):
+def wait_gone(pids, seconds=CAP_S):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline and any(alive(pid) for pid in pids):
         time.sleep(0.1)
@@ -326,7 +328,8 @@ class Checks:
                       drift=cli_runtime.newer_than_gated("codex", version))
             configuration = rpc.request("config/read", {}).get("config", {})
             # The -c values carry quotes and dots: they arrive intact only when no cmd.exe re-parses them.
-            expected = {"sandbox_mode": "read-only", "approval_policy": "on-request", "model_reasoning_effort": "low"}
+            expected = {"sandbox_mode": "read-only", "approval_policy": "on-request",
+                        "model_reasoning_effort": default_effort()}
             seen = {key: configuration.get(key) for key in expected}
             self.step("codex_overrides_intact", seen == expected, seen=seen)
             account = rpc.request("account/read", {"refreshToken": False}).get("account")
@@ -412,7 +415,7 @@ class Checks:
         process = child_process.popen([self.python, "-c", _SLEEPER, "300"], stdout=subprocess.PIPE, text=True)
         grandchild = int(process.stdout.readline())
         process.terminate()
-        process.wait(10)
+        process.wait(CAP_S)
         survivors = wait_gone([process.pid, grandchild])
         self.step("terminate_ends_tree", not survivors, child=process.pid, grandchild=grandchild, survivors=survivors)
         kill(survivors)
@@ -486,7 +489,7 @@ class Checks:
                 time.sleep(2)
                 started = edges() - before
                 process.terminate()
-                process.wait(10)
+                process.wait(CAP_S)
                 helper = int(marker.read_text()) if marker.is_file() else None
                 survivors = wait_gone([pid for pid in (helper,) if pid], 10)
                 time.sleep(2)

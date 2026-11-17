@@ -107,6 +107,11 @@ class Shader {
    *
    * See `GPU_shader_warm_cache(..)` in `GPU_shader.hh` for more information. */
   virtual void warm_cache(int limit) = 0;
+  /* See #GPU_shader_warm_cache_async (Angelo): true where the backend builds no pipeline states. */
+  virtual bool warm_cache_async(Shader * /*parent*/)
+  {
+    return true;
+  }
 
   virtual void bind(const shader::SpecializationConstants *constants_state) = 0;
   virtual void unbind() = 0;
@@ -228,7 +233,7 @@ class ShaderCompiler {
 
   AsyncCompilationHandle async_compilation(const shader::ShaderCreateInfo *info,
                                            CompilationPriority priority);
-  void asyc_compilation_cancel(AsyncCompilationHandle &handle);
+  void async_compilation_cancel(AsyncCompilationHandle &handle);
   bool async_compilation_is_ready(AsyncCompilationHandle handle);
   Shader *async_compilation_finalize(AsyncCompilationHandle &handle);
 

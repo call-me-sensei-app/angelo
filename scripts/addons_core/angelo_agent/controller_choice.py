@@ -12,8 +12,9 @@ running; queue the connection for the next message" here when the person sent du
 import threading
 
 from . import ui_text
-from .chat_settings import stored_options
-from .routing import MODES, TOOLSET_VERSION, route_key
+from .chat_settings import carried_effort, stored_options
+from .provider_registry import is_coding_mode
+from .routing import TOOLSET_VERSION, route_key
 
 DEFERRED_CHOICE = ui_text.n_("Your new choice takes over from your next message; this turn finishes as it started.")
 
@@ -52,7 +53,7 @@ class ConnectionChoice:
 
     def _bind(self, provider, settings, api_key="", connection_id=None, models=None):
         """Bind the chat to ``provider``/``connection_id`` now: only between requests."""
-        if provider not in MODES:
+        if not is_coding_mode(provider):
             raise ValueError("Unknown provider profile")
         connection_id = connection_id if connection_id is not None else self.state.get("connection_id")
         old_key = route_key(self.state.get("connection_id"), self.state["provider"])
@@ -94,7 +95,7 @@ class ConnectionChoice:
 
     def choose_connection(self, provider, settings, api_key, connection_id, models=None, model=""):
         """Selection changes this chat's NEXT request, never its active billing."""
-        if provider not in MODES:
+        if not is_coding_mode(provider):
             raise ValueError("Unknown provider profile")
         choices = list(models or self._route_models.get(route_key(connection_id, provider), []))
         selected = next((m for m in choices if m["id"] == model), None) if model else next((m for m in choices if m["default"]), None)
@@ -102,10 +103,7 @@ class ConnectionChoice:
             raise ValueError("Refresh the models available to this connection")
         options = stored_options(self.state.get("options"))
         changed = connection_id != self.selection_connection_id or provider != self.selection_provider
-        effort = options["effort"]
-        if selected and selected["efforts"] and effort not in selected["efforts"]:
-            effort = selected["default_effort"] if selected["default_effort"] in selected["efforts"] else selected["efforts"][0]
-        self.state["options"] = stored_options(options | {"model": model, "effort": effort,
+        self.state["options"] = stored_options(options | {"model": model, "effort": carried_effort(options, selected),
             "fast": not changed and options["fast"] and bool(selected and selected["fast_tier"])})
         running = self.turn_running()
         if running:
@@ -134,6 +132,14 @@ class ConnectionChoice:
         self.state["next_route"] = {"provider": provider, "connection_id": connection_id}
         self.version += 1
         return changed
+
+    def require_endpoint_admitted(self):
+        """Refuse a request on an organization's model server the account doesn't admit now (no seat, the offline
+        grace over, the key withdrawn or the endpoint removed): nothing starts, whatever runtime the chat holds."""
+        from . import endpoint_ui
+        refusal = endpoint_ui.send_refusal(self.state["provider"], self.state.get("connection_id"))
+        if refusal:
+            raise RuntimeError(refusal)
 
     def apply_next_connection(self):
         # Not ``turn_running``: Controller.send calls this on a worker lane with its preparation marked.

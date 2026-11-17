@@ -47,6 +47,33 @@
 #>
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+# Invoke-NativeCapture, byte for byte windows_native_call.ps1's (this startup script runs before a checkout exists):
+# every program whose error output is redirected runs through it (test_native_windows_native_call.py).
+$NativeCallDefinition = @'
+function Invoke-NativeCapture([string]$Exe, [string[]]$Arguments = @(), [string[]]$InputText = $null, [string]$Log = "") {
+    if (-not (Get-Command $Exe -ErrorAction SilentlyContinue)) {
+        $said = "$Exe was not found"
+        return [pscustomobject]@{ Code = -1; Out = @(); Err = @($said); Lines = @($said); Text = $said }
+    }
+    $writer = $null
+    if ($Log) {
+        $stream = New-Object IO.FileStream($Log, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
+        $writer = New-Object IO.StreamWriter($stream, [Text.Encoding]::Unicode); $writer.AutoFlush = $true
+    }
+    $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    try {
+        $each = { if ($writer) { $line = "$_"; $writer.WriteLine($line); Write-Host $line }; $_ }
+        if ($null -ne $InputText) { $records = @($InputText | & $Exe @Arguments 2>&1 | ForEach-Object $each) }
+        else { $records = @(& $Exe @Arguments 2>&1 | ForEach-Object $each) }
+        $code = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $old; if ($writer) { $writer.Dispose() } }
+    $out = @($records | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
+    $err = @($records | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
+    $lines = @($records | ForEach-Object { "$_" })   # Both, in the order the program wrote them.
+    return [pscustomobject]@{ Code = $code; Out = $out; Err = $err; Lines = $lines; Text = ($lines -join "`r`n") }
+}
+'@
+. ([scriptblock]::Create($NativeCallDefinition))
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $root = "C:\angelo"
@@ -111,8 +138,7 @@ if (-not $gcloud) { Stop-Here "the Cloud SDK is not installed on this image" }
 # runner's) turns each redirected stderr line into an error record that $ErrorActionPreference = "Stop" throws: a bare
 # call under Stop fails on gcloud's first line, whatever its exit code. Returns the exit code; -Check throws on nonzero.
 function Invoke-Gcloud([string[]]$Arguments, [switch]$Check) {
-    $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    try { & $gcloud @Arguments 2>&1 | Out-Null; $code = $LASTEXITCODE } finally { $ErrorActionPreference = $old }
+    $code = (Invoke-NativeCapture $gcloud $Arguments).Code
     if ($Check -and $code -ne 0) { throw "gcloud $($Arguments[0..1] -join ' ') failed ($code)" }
     return $code
 }

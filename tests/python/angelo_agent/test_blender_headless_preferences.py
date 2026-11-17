@@ -230,7 +230,8 @@ def main():
     subprocess.run([str(binary), "--background", "--python-expr", MAKE_PREFERENCES, "--", str(made), str(folder)],
                    env=environ, capture_output=True, timeout=180, check=True)
     chosen = json.loads(made.read_text())
-    config = home / "Library/Application Support/Angelo/5.2/config"
+    import app_layout   # The app's own <major>.<minor>: Blender names the per-version user folder after it.
+    config = home / "Library/Application Support/Angelo" / app_layout.resources(binary).name / "config"
     userpref = config / "userpref.blend"
     check("the person's preferences exist where the window keeps them, with a bundled add-on turned on",
           userpref.is_file() and chosen["addon"], chosen)
@@ -251,7 +252,8 @@ def main():
     probe = project / "probe.py"
     probe.write_text(PROBE.format(addon=chosen["addon"] or ""))
     script_files.attach(state)
-    script_files.allow(name, os.path.realpath(source), script_files.read_script(str(probe)))
+    from angelo_agent import grant_guard   # The person's Allow on the script file: the harness.
+    grant_guard.harness(script_files.allow, name, os.path.realpath(source), script_files.read_script(str(probe)))
     script_files.detach()
 
     def session(extra=None):

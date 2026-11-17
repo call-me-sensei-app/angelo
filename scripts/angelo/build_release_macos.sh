@@ -115,19 +115,41 @@ if ! ANGELO_TEST_CODEX="$AGENT_RUNTIME/codex" python3 "$SOURCE/tests/python/ange
 fi
 rm -f "$HOLD_LOG"
 
+# Libraries changed since the last configure (a Blender bump): their old find results go first
+# (release_libdir_cache.sh, which says why).
+"$SOURCE/scripts/angelo/release_libdir_cache.sh" check "$BUILD" "$LIBDIR" "$ACTUAL"
+# The pinned Xcode only (ANGELO_XCODE_PIN; ANGELO_XCODE_OVERRIDE gives the reason for another). It is recorded after
+# the configure and must stay the same until the end: every link is checked first (CMake's linker launcher), and the
+# whole build after it (release_toolchain_macos.py says why).
+TOOLCHAIN="$SOURCE/scripts/angelo/release_toolchain_macos.py"
+python3 "$TOOLCHAIN" pin
+mkdir -p "$BUILD"
+BUILD="$(cd "$BUILD" && pwd)"   # absolute, as CMake records it: the linker launcher runs inside the build folder
+python3 "$TOOLCHAIN" check "$BUILD"   # a cache from another Xcode, or with a vanished SDK, goes aside first
+LINK_CHECK="python3;$TOOLCHAIN;link;$BUILD;--"
+
 cmake -S "$SOURCE" -B "$BUILD" -G Ninja \
   -C "$SOURCE/build_files/cmake/config/blender_release.cmake" \
   -DLIBDIR="$LIBDIR" \
   -DANGELO_AGENT_RUNTIME_DIR="$AGENT_RUNTIME" -DANGELO_REQUIRE_AGENT_RUNTIME=ON \
-  -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+  -DCMAKE_C_LINKER_LAUNCHER="$LINK_CHECK" -DCMAKE_CXX_LINKER_LAUNCHER="$LINK_CHECK" \
+  -DCMAKE_OBJC_LINKER_LAUNCHER="$LINK_CHECK" -DCMAKE_OBJCXX_LINKER_LAUNCHER="$LINK_CHECK"
+# Refused when the configure still names other libraries, or these are not at the source's pin.
+"$SOURCE/scripts/angelo/release_libdir_cache.sh" record "$BUILD" "$LIBDIR" "$ACTUAL" "$PINNED"
+python3 "$TOOLCHAIN" record "$BUILD"
 if [[ "${ANGELO_RELEASE_CONFIGURE_ONLY:-}" == "1" ]]; then
   echo "Configured: $BUILD"
   exit 0
 fi
 cmake --build "$BUILD" --target install --parallel "$JOBS"
+python3 "$TOOLCHAIN" verify "$BUILD" end
 # A file Git LFS never checked out would ship as a text stub: refuse the bundle (release_checks.lfs_pointer_files).
 python3 "$SOURCE/scripts/angelo/release_checks.py" lfs-pointers "$BUILD/bin/Angelo.app"
-python3 "$SOURCE/scripts/angelo/release_checks.py" tracked-scripts "$BUILD/bin/Angelo.app/Contents/Resources/5.2/scripts" \
+# The app's per-version folder ("5.3"), from the source's BKE_blender_version.h (as source_release.py reads it).
+SERIES="$(awk '$1 == "#define" && $2 == "BLENDER_VERSION" { printf "%d.%d", $3 / 100, $3 % 100 }' \
+  "$SOURCE/source/blender/blenkernel/BKE_blender_version.h")"
+python3 "$SOURCE/scripts/angelo/release_checks.py" tracked-scripts "$BUILD/bin/Angelo.app/Contents/Resources/$SERIES/scripts" \
   --source "$SOURCE" --libdir "$LIBDIR"
 # No builder path or credential may ship: every file of the bundle, binaries included (release_checks.py
 # builder-paths; doc/angelo/releasing.rst, "No builder paths"). The Windows build and publishing run it too.

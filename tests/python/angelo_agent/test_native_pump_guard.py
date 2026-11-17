@@ -38,8 +38,11 @@ class PumpGuardTests(unittest.TestCase):
         self.assertIsNone(pump_guard.keep_alive(1)(lambda: None)())
 
     def test_the_ui_pump_and_the_team_pump_are_guarded(self):
+        import ast
         ui = (ADDON / "ui.py").read_text()
-        self.assertIn("@keep_alive(0.1)", ui.split("\ndef pump():", 1)[0][-200:], "The decorator sits on ui.pump")
+        pump = next(node for node in ast.parse(ui).body if isinstance(node, ast.FunctionDef) and node.name == "pump")
+        # Outermost (applied last): a raise in anything below it, edit_tool_hold.ticked included, never drops the timer.
+        self.assertEqual(ast.unparse(pump.decorator_list[0]), "keep_alive(0.1)", "The decorator sits on ui.pump")
         team = (ADDON / "team_account_ui.py").read_text()
         self.assertIn('report("team account", error)', team)
         auth = ui.split("changes = _authentication.pump()", 1)[1].split("if _controller:", 1)[0]

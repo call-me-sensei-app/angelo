@@ -74,7 +74,8 @@ def image_mean(image, load=False):
         image.pixels.foreach_get(pixels)
         rgb = pixels.reshape(-1, channels)[:, :3] if channels >= 3 else numpy.repeat(
             pixels.reshape(-1, channels)[:, :1], 3, axis=1)
-        if not image.is_float and getattr(image.colorspace_settings, "name", "") == "sRGB":
+        from . import color_spaces
+        if not image.is_float and color_spaces.kind(image.colorspace_settings) == "srgb":
             rgb = numpy.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
         return tuple(float(c) for c in rgb.mean(axis=0))
     except (ReferenceError, RuntimeError, ValueError, TypeError, AttributeError, ImportError):

@@ -29,10 +29,10 @@ import sys
 import time
 import uuid
 
-from . import fab_archive, fab_formats, shared_replace
+from . import essential_environment, fab_archive, fab_formats, owned_paths, shared_replace
 from .fab_catalog import FabError
 
-VERSION = 1                       # Bump when the child's output changes: older cached conversions are redone.
+VERSION = 2                       # Bump when the child's output changes: older cached conversions are redone.
 TIMEOUT, SECONDS_PER_MIB = 120, 1.0
 MAX_TIMEOUT = 900
 MAX_RESULT = 64 * 1024
@@ -104,7 +104,7 @@ def _receipt(folder, download_digest):
 
 def cached(folder, download, download_digest, fmt, facts, item, check, progress=None):
     """``(path, size, sha256, result)`` of ``asset.blend`` for this download, converting it once."""
-    folder = Path(folder)
+    folder = owned_paths.require_writable(Path(folder))   # C first: the work folder is made only where it allows.
     hit = _receipt(folder, download_digest)
     if hit is not None:
         return hit[0], hit[1], hit[2], dict(hit[3], reused=True)
@@ -119,6 +119,7 @@ def cached(folder, download, download_digest, fmt, facts, item, check, progress=
             source.mkdir(mode=0o700)
             name = 'model' + {'usdc': '.usdc', 'usda': '.usda', 'usdz': '.usdz', 'blend': '.blend', 'glb': '.glb',
                               'gltf': '.gltf'}.get(facts['content'], '.' + facts['content'])
+            owned_paths.require_writable(source)
             shutil.copyfile(download, source / name)
             members = [(name, facts['content'])]
         images = sorted(path for path, kind in members if kind in fab_formats.IMAGES)
@@ -287,11 +288,13 @@ def command(binary, job_path, result_path, work, platform=sys.platform):
 
 def environment(work):
     home = Path(work) / 'home'
-    for sub in ('config', 'scripts', 'datafiles', 'extensions', 'tmp'):
+    for sub in ('config', 'scripts', 'datafiles', 'extensions', 'tmp', 'AppData/Roaming', 'AppData/Local'):
         (home / sub).mkdir(parents=True, exist_ok=True)
-    keep = {k: v for k, v in os.environ.items() if k in ('PATH', 'LANG', 'LC_ALL', 'SYSTEMROOT', 'WINDIR')}
-    return dict(keep, HOME=str(home), USERPROFILE=str(home), TMPDIR=str(home / 'tmp'), TEMP=str(home / 'tmp'),
-                TMP=str(home / 'tmp'), BLENDER_USER_CONFIG=str(home / 'config'),
+    # The OS's own variables (essential_environment), with every home, profile and temporary folder the private one.
+    return essential_environment.environment(
+        ('LC_ALL',), HOME=str(home), USERPROFILE=str(home), TMPDIR=str(home / 'tmp'), TEMP=str(home / 'tmp'),
+        TMP=str(home / 'tmp'), APPDATA=str(home / 'AppData' / 'Roaming'), LOCALAPPDATA=str(home / 'AppData' / 'Local'),
+        BLENDER_USER_CONFIG=str(home / 'config'),
                 BLENDER_USER_SCRIPTS=str(home / 'scripts'), BLENDER_USER_DATAFILES=str(home / 'datafiles'),
                 BLENDER_USER_EXTENSIONS=str(home / 'extensions'))
 
@@ -311,6 +314,7 @@ def run(job, work, check, *, timeout):
     else:
         options['start_new_session'] = True
     try:
+        owned_paths.require_runnable(_binary)
         process = subprocess.Popen(command(_binary, job_path, result_path, work), **options)
     except OSError:
         log.close()
@@ -393,7 +397,7 @@ def _close_job(job):
 
 _COUNTS = ('objects', 'meshes', 'models', 'drivers_removed', 'texts_removed', 'script_nodes_removed',
            'external_removed', 'missing_textures', 'relinked_textures', 'outside_removed', 'trimmed_tiles',
-           'single_view_images')
+           'single_view_images', 'filled_slots')
 
 
 def checked_result(path, job):

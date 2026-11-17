@@ -11,10 +11,12 @@ against a recording canvas (the module itself needs the running app's ``gpu``). 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import ast
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 SOURCE = ROOT / "scripts/addons_core/angelo_agent/studio_draw.py"
 
 

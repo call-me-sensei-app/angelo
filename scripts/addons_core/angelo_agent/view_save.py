@@ -25,6 +25,8 @@ Main thread only.
 
 from contextlib import contextmanager
 
+from . import owned_paths
+
 PICTURE = {"media_type": "IMAGE", "file_format": "PNG", "color_mode": "RGBA", "color_depth": "8", "compression": 0}
 MULTILAYER = {"media_type": "MULTI_LAYER_IMAGE", "file_format": "OPEN_EXR_MULTILAYER", "color_depth": "32",
               "exr_codec": "ZIP"}
@@ -42,6 +44,7 @@ def native():
 def display_copy(scene, path, *, image=None, source=None):
     """Save ``image``, or the file ``source``, at ``path`` as an 8-bit RGBA PNG in the scene's view transform,
     look and exposure, as Blender's render window shows it: ``(unrestored, exact, multilayer)``."""
+    owned_paths.require_writable(path)   # A reference picture's own file (C), whatever object named it.
     picture = native()
     if picture is not None:
         saved = picture.save_copy(scene, str(path), image=image, source=None if source is None else str(source),
@@ -59,6 +62,7 @@ def display_copy(scene, path, *, image=None, source=None):
 def multilayer_copy(scene, image, path):
     """Save ``image`` (the Render Result) at ``path`` as a 32-bit multilayer OpenEXR with every pass: the
     settings the earlier route could not put back (none with the helper)."""
+    owned_paths.require_writable(path)   # As display_copy: the native save writes where it is told.
     picture = native()
     if picture is not None:
         picture.save_copy(scene, str(path), image=image, settings=dict(MULTILAYER))
@@ -87,6 +91,7 @@ def _loaded(image, source):
 def _by_settings(scene, values, image, path):
     """The earlier route, after ``view_policy`` admitted it: the scene's image format set for the save and put
     back; the paths Blender did not take back."""
+    owned_paths.require_writable(path)   # A reference picture's own file (C), whatever object named it.
     from .view_render_restore import LookSettings
     settings = LookSettings(scene, "view")
     try:

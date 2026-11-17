@@ -9,6 +9,7 @@ The fake children never signal a real process or group: their pids are negative 
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import threading
@@ -38,7 +39,7 @@ class CancelledWhilePlanning(Case):
 
         def held(request, found):
             entered.set()
-            gate.wait(10)
+            gate.wait(CAP_S)
             return plan(request, found)
         self.service.plan = held
         return entered, gate
@@ -54,10 +55,10 @@ class CancelledWhilePlanning(Case):
                 outcome.append(error)
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
-        self.assertTrue(entered.wait(10))
+        self.assertTrue(entered.wait(CAP_S))
         cancel()
         gate.set()
-        thread.join(10)
+        thread.join(CAP_S)
         self.assertFalse(thread.is_alive())
         self.assertFalse([process for process in self.spawned if process.alive], "a child outlived its cancel")
         self.assertFalse([child for child in self.service.children() if child.alive()])
@@ -103,10 +104,10 @@ class CancelledWhilePlanning(Case):
         result = []
         thread = threading.Thread(target=lambda: result.append(self.launch_of(A)()), daemon=True)
         thread.start()
-        self.assertTrue(entered.wait(10))
+        self.assertTrue(entered.wait(CAP_S))
         self.service.kill_session(B)
         gate.set()
-        thread.join(10)
+        thread.join(CAP_S)
         self.assertTrue(result and result[0]["ok"])
         self.assertTrue(self.spawned[0].alive)
 

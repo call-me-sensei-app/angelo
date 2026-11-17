@@ -185,6 +185,10 @@ class ShaderNode : public Node {
   {
     return false;
   }
+  virtual bool has_dispersion()
+  {
+    return false;
+  }
   virtual bool has_bump()
   {
     return false;
@@ -248,7 +252,7 @@ class ShaderNode : public Node {
    * so it's possible to disable huge nodes inside of the required
    * nodes group.
    */
-  virtual uint get_feature()
+  virtual uint64_t get_feature()
   {
     return bump == SHADER_BUMP_NONE ? 0 : KERNEL_FEATURE_NODE_BUMP;
   }
@@ -356,6 +360,7 @@ class ShaderGraph : public NodeOwner {
   void compute_displacement_hash();
   void simplify(Scene *scene);
   void finalize(Scene *scene, bool do_bump = false, bool bump_in_object_space = false);
+  bool has_volume_connected();
 
   int get_num_closures();
 

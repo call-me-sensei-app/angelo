@@ -99,7 +99,9 @@ running, as *aborted*, and calls its release:
   ``load_post`` fires only for reads that replace the data (a preferences-only read fires no load handler and
   discards no timer). Every job works on the windows' layout: when the load replaced it (the workspaces there at
   ``load_pre`` are gone; unknown counts as replaced) the job closes with ``timer_jobs.leaving()`` True; when it kept
-  it (Load UI off, as Angelo's Restore opens a checkpoint) the job closes as after any stop and puts the layout back;
+  it (Load UI off, as Angelo's Restore opens a checkpoint) the job closes as after any stop and puts the layout back.
+  The workspaces are compared by address: Blender renews every ID's ``session_uid`` on a load, kept ones included;
+  compared by it, no load read as keeping the layout;
 - at ``exit_pre``, before quit.blend, the add-ons' unregister and ``BKE_blender_free``; ``leaving()`` stays True from
   then on, through Python's finalization;
 - at the add-on's ``unregister``, the file staying: each cleanup puts the file back as after any stop.

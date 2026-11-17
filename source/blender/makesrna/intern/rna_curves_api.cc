@@ -60,9 +60,9 @@ static std::optional<IndexMask> rna_indices_to_mask(const IndexRange universe,
     return IndexMask(universe);
   }
   const Span<int> indices(indices_ptr, indices_num);
-  if (std::any_of(indices.begin(), indices.end(), [&](const int index) {
-        return !universe.contains(index);
-      }))
+  if (std::any_of(indices.begin(),
+                  indices.end(),
+                  [&](const int index) { return !universe.contains(index); }))
   {
     BKE_report(&reports, RPT_ERROR, "Indices must be in range");
     return std::nullopt;
@@ -375,7 +375,8 @@ void RNA_api_curves(StructRNA *srna)
   RNA_def_parameter_flags(parm, PROP_DYNAMIC, ParameterFlag(0));
 
   func = RNA_def_function(srna, "unit_test_compare", "rna_Curves_unit_test_compare");
-  RNA_def_pointer(func, "curves", "Curves", "", "Curves to compare to");
+  parm = RNA_def_pointer(func, "curves", "Curves", "", "Curves to compare to");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED);
   RNA_def_float_factor(func,
                        "threshold",
                        FLT_EPSILON * 60,

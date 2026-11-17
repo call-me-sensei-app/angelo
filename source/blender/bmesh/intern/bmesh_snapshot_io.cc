@@ -21,13 +21,13 @@
 #include "DNA_customdata_types.h"
 #include "DNA_meshdata_types.h"
 
-#include "BLI_bitmap.h"
+#include "BLI_bitmap.hh"
 #include "BLI_checkpoint_budget.hh"
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_map.hh"
 #include "BLI_math_matrix_types.hh"
 #include "BLI_math_vector_types.hh"
-#include "BLI_mempool.h"
+#include "BLI_mempool.hh"
 
 #include "BKE_customdata.hh"
 
@@ -408,6 +408,27 @@ bool grid_bytes(const uint32_t level, size_t &bytes)
   return product(side, side, count) && product(count, sizeof(float), bytes);
 }
 
+/**
+ * Blender 5.3 removed `MDisps::level` (upstream b6cc81e2856): a displacement grid's level is
+ * implied by its `totdisp`. Version one keeps the four-byte level slot after `totdisp`, so
+ * streams written by Angelo 1.0.x (Blender 5.2) still read: the reader skips the slot. The writer
+ * fills it with the level a 5.2 `MDisps` would hold for this `totdisp` (`totdisp` is the square
+ * of a grid side `2^(level - 1) + 1`), and 0, the value 5.2 used for no grid, for an area that is
+ * no grid of any level. A 1.0.x reader therefore still receives a level consistent with the data.
+ */
+uint32_t displacement_wire_level(const int totdisp)
+{
+  const uint64_t target = uint64_t(std::max(totdisp, 0));
+  for (uint32_t level = 1; level < 32; level++) {
+    const uint64_t side = (uint64_t(1) << (level - 1)) + 1;
+    const uint64_t area = side * side;
+    if (area >= target) {
+      return area == target ? level : 0;
+    }
+  }
+  return 0;
+}
+
 bool bitmap_bytes(const uint32_t count, size_t &bytes)
 {
   const size_t words = size_t(count) / 32 + (count % 32 != 0);
@@ -593,7 +614,7 @@ bool skip_values(Reader &reader, const TypeInfo &info, const uint32_t count, siz
   for (uint32_t i = 0; i < count; i++) {
     const uint32_t number = reader.integer(4);
     if (info.payload != Payload::GridMask) {
-      reader.integer(4); /* Deform flag or displacement level. */
+      reader.integer(4); /* Deform flag or displacement level slot. */
     }
     const uint32_t presence = reader.integer(1);
     size_t bytes = 0;
@@ -963,7 +984,7 @@ bool value_read(Reader &reader, const TypeInfo &info, void *value)
   else if (info.payload == Payload::Displacements) {
     MDisps &data = *static_cast<MDisps *>(value);
     data.totdisp = int(reader.integer(4));
-    read_native(reader, &data.level, 4);
+    reader.integer(4); /* Level slot; see #displacement_wire_level. */
     const uint32_t presence = reader.integer(1);
     if (presence & 1) {
       data.disps = owned_array<float[3]>(size_t(data.totdisp));
@@ -1178,7 +1199,7 @@ void value_write(Writer &writer, const TypeInfo &info, const void *value)
   else if (info.payload == Payload::Displacements) {
     const auto &data = *static_cast<const MDisps *>(value);
     writer.integer(uint32_t(data.totdisp), 4);
-    write_native(writer, &data.level, 4);
+    writer.integer(displacement_wire_level(data.totdisp), 4);
     writer.integer(uint32_t(bool(data.disps)) | (uint32_t(bool(data.hidden)) << 1), 1);
     if (data.disps) {
       for (int i = 0; i < data.totdisp; i++) {

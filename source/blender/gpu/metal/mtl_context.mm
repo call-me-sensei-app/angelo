@@ -11,6 +11,7 @@
 #include "mtl_immediate.hh"
 #include "mtl_memory.hh"
 #include "mtl_primitive.hh"
+#include "mtl_ray_tracing.hh"
 #include "mtl_shader.hh"
 #include "mtl_shader_generate.hh"
 #include "mtl_shader_interface.hh"
@@ -30,7 +31,7 @@
 #include "GPU_vertex_buffer.hh"
 #include "intern/gpu_matrix_private.hh"
 
-#include "BLI_time.h"
+#include "BLI_time.hh"
 
 #include <fstream>
 #include <string>
@@ -62,6 +63,8 @@ using namespace blender::gpu;
 #endif
 
 namespace blender::gpu {
+
+static CLG_LogRef LOG = {"gpu.metal"};
 
 /* Global memory manager. */
 std::mutex MTLContext::global_memory_manager_reflock;
@@ -204,17 +207,9 @@ MTLContext::MTLContext(GHOST_IWindow *ghost_window, GHOST_IContext *ghost_contex
   default_fbo_mtltexture_ = nil;
   default_fbo_gputexture_ = nullptr;
 
-  /** Fetch GHOSTContext and fetch Metal device/queue. */
   ghost_window_ = ghost_window;
-  if (ghost_window_ && ghost_context == nullptr) {
-    /* NOTE(Metal): Fetch ghost_context from ghost_window if it is not provided.
-     * Regardless of whether windowed or not, we need access to the GhostContext
-     * for presentation, and device/queue access. */
-    GHOST_Window *ghostWin = reinterpret_cast<GHOST_Window *>(ghost_window_);
-    ghost_context = (ghostWin ? ghostWin->getContext() : nullptr);
-  }
-  BLI_assert(ghost_context);
   this->ghost_context_ = static_cast<GHOST_ContextMTL *>(ghost_context);
+  /** Fetch Metal device/queue. */
   this->queue = (id<MTLCommandQueue>)this->ghost_context_->metalCommandQueue();
   this->device = (id<MTLDevice>)this->ghost_context_->metalDevice();
   BLI_assert(this->queue);
@@ -245,8 +240,7 @@ MTLContext::MTLContext(GHOST_IWindow *ghost_window, GHOST_IContext *ghost_contex
 
   /* Prepare platform and capabilities. (NOTE: With METAL, this needs to be done after CTX
    * initialization). */
-  MTLBackend::platform_init(this);
-  MTLBackend::capabilities_init(this);
+  MTLBackend::get()->platform_and_capabilities_ensure(this);
 
   /* Ensure global memory manager is initialized. */
   MTLContext::global_memory_manager_acquire_ref();
@@ -407,6 +401,9 @@ void MTLContext::activate()
 {
   /* Make sure no other context is already bound to this thread. */
   BLI_assert(is_active_ == false);
+  /* Make sure the active GHOST context matches the one this GPU Context was created for. */
+  BLI_assert(ghost_context_ == GHOST_IContext::getActiveDrawingContext());
+
   is_active_ = true;
   thread_ = pthread_self();
 
@@ -923,8 +920,14 @@ static void ensure_buffer_bindings(MTLContext &ctx,
   uint32_t dirty_ubo_mask = ~uint32_t(0u);
   uint32_t dirty_ssbo_mask = ~uint32_t(0u);
 
-  uint32_t dirty_enabled_ubo_mask = shader_interface.enabled_ubo_mask_ & dirty_ubo_mask;
-  uint32_t dirty_enabled_ssbo_mask = shader_interface.enabled_ssbo_mask_ & dirty_ssbo_mask;
+  /* Ignore slots beyond the context bindings, declared by invalid shaders. */
+  const uint32_t valid_ubo_mask = (1u << MTL_MAX_UBO) - 1u;
+  const uint32_t valid_ssbo_mask = (1u << MTL_MAX_SSBO) - 1u;
+
+  uint32_t dirty_enabled_ubo_mask = shader_interface.enabled_ubo_mask_ & dirty_ubo_mask &
+                                    valid_ubo_mask;
+  uint32_t dirty_enabled_ssbo_mask = shader_interface.enabled_ssbo_mask_ & dirty_ssbo_mask &
+                                     valid_ssbo_mask;
 
   uint32_t bind_ubo = dirty_enabled_ubo_mask & (stage_buf_mask >> MTL_UBO_SLOT_OFFSET);
   for (const uint slot : bits::iter_1_indices(bind_ubo)) {
@@ -952,6 +955,24 @@ static void ensure_buffer_bindings(MTLContext &ctx,
       MTL_LOG_ERROR("Shader %s: Missing SSBO bind: %s slot(%d).",
                     shader.name_get().c_str(),
                     shader_interface.name_at_offset(name_ofs),
+                    slot);
+    }
+  }
+
+  /* Bind acceleration structures for any shader stage that declares one. */
+  uint32_t bind_accel = shader_interface.enabled_accel_mask() &
+                        (stage_buf_mask >> MTL_ACCELERATION_STRUCTURE_SLOT);
+  for (const uint slot : bits::iter_1_indices(bind_accel)) {
+    MTLAccelerationStructureBinding &bind =
+        ctx.pipeline_state.acceleration_structure_bindings[slot];
+    if (bind.tlas) {
+      enc.set_acceleration_structure(bind.tlas->acceleration_structure(),
+                                     MTL_ACCELERATION_STRUCTURE_SLOT + slot);
+      bind.tlas->make_resident(enc);
+    }
+    else {
+      MTL_LOG_ERROR("Shader %s: Missing acceleration structure bind at slot(%d).",
+                    shader.name_get().c_str(),
                     slot);
     }
   }
@@ -1113,6 +1134,7 @@ void MTLContext::set_scissor_enabled(bool scissor_enabled)
 
 bool MTLContext::ensure_render_pipeline_state(MTLPrimitiveType mtl_prim_type)
 {
+  pipeline_state_queued_ = false;
   MTLShader *shader = this->pipeline_state.active_shader;
   /* Check if an active shader is bound. */
   if (!shader) {
@@ -1143,11 +1165,14 @@ bool MTLContext::ensure_render_pipeline_state(MTLPrimitiveType mtl_prim_type)
    * shader and state combination. This PSO represents the final GPU-executable
    * permutation of the shader. */
   MTLRenderPipelineStateInstance *psi = shader->bake_current_pipeline_state(
-      this, mtl_prim_type_to_topology_class(mtl_prim_type));
+      this, mtl_prim_type_to_topology_class(mtl_prim_type), &pipeline_state_queued_);
 
   if (!psi) {
-    MTL_LOG_ERROR("Failed to bake Metal pipeline state for shader: %s",
-                  shader_interface.name_get());
+    /* A compile-ahead draw queued its build instead (#GPU_compile_ahead_begin): this draw call is skipped. */
+    if (!pipeline_state_queued_) {
+      MTL_LOG_ERROR("Failed to bake Metal pipeline state for shader: %s",
+                    shader_interface.name_get());
+    }
     return false;
   }
 
@@ -1945,7 +1970,9 @@ id<MTLComputePipelineState> MTLContextComputeUtils::get_buffer_clear_pso()
       if ([[error localizedDescription] rangeOfString:@"Compilation succeeded"].location ==
           NSNotFound)
       {
-        NSLog(@"Compile Error - Metal Shader Library error %@ ", error);
+        CLOG_ERROR(&LOG,
+                   "Compile Error - Metal Shader Library error %s",
+                   [[error localizedDescription] UTF8String]);
         BLI_assert(false);
         return nil;
       }
@@ -1961,7 +1988,9 @@ id<MTLComputePipelineState> MTLContextComputeUtils::get_buffer_clear_pso()
     buffer_clear_pso_ = [ctx->device newComputePipelineStateWithFunction:temp_compute_function
                                                                    error:&error];
     if (error || buffer_clear_pso_ == nil) {
-      NSLog(@"Failed to prepare compute_buffer_clear MTLComputePipelineState %@", error);
+      CLOG_ERROR(&LOG,
+                 "Failed to prepare compute_buffer_clear MTLComputePipelineState %s",
+                 [[error localizedDescription] UTF8String]);
       BLI_assert(false);
       return nil;
     }
@@ -2018,6 +2047,13 @@ void present(MTLRenderPassDescriptor *blit_descriptor,
   id<MTLCommandBuffer> cmdbuf = [ctx->queue commandBuffer];
   ctx->main_command_buffer.inc_active_command_buffer_count();
 
+  /* Ensure freed buffers have usage tracked against active CommandBuffer submissions. Referenced
+   * from creation until completion of the command buffer, like
+   * #MTLCommandBufferManager::ensure_begin. */
+  MTLSafeFreeList *cmd_free_buffer_list =
+      MTLContext::get_global_memory_manager()->acquire_current_safe_list();
+  BLI_assert(cmd_free_buffer_list);
+
   /* Do Present Call and final Blit to MTLDrawable. */
   id<MTLRenderCommandEncoder> enc = [cmdbuf renderCommandEncoderWithDescriptor:blit_descriptor];
   [enc setRenderPipelineState:blit_pso];
@@ -2029,17 +2065,11 @@ void present(MTLRenderPassDescriptor *blit_descriptor,
   BLI_assert(drawable);
   [cmdbuf presentDrawable:drawable];
 
-  /* Ensure freed buffers have usage tracked against active CommandBuffer submissions. */
-  MTLSafeFreeList *cmd_free_buffer_list =
-      MTLContext::get_global_memory_manager()->get_current_safe_list();
-  BLI_assert(cmd_free_buffer_list);
-
   /* Increment drawables in flight limiter. */
   MTLContext::max_drawables_in_flight++;
   std::chrono::time_point submission_time = std::chrono::high_resolution_clock::now();
 
-  /* Increment free pool reference and decrement upon command buffer completion. */
-  cmd_free_buffer_list->increment_reference();
+  /* Decrement free pool reference upon command buffer completion. */
   [cmdbuf addCompletedHandler:^(id<MTLCommandBuffer> /*cb*/) {
     /* Flag freed buffers associated with this CMD buffer as ready to be freed. */
     cmd_free_buffer_list->decrement_reference();
@@ -2071,7 +2101,7 @@ void present(MTLRenderPassDescriptor *blit_descriptor,
     [cmdbuf waitUntilCompleted];
     NSError *error = [cmdbuf error];
     if (error != nil) {
-      NSLog(@"%@", error);
+      CLOG_ERROR(&LOG, "Command buffer error: %s", [[error localizedDescription] UTF8String]);
       BLI_assert(false);
     }
   }

@@ -32,7 +32,7 @@
 
 #include <optional>
 
-#include "BLI_compiler_attrs.h"
+#include "BLI_compiler_attrs.hh"
 #include "BLI_enum_flags.hh"
 #include "BLI_set.hh"
 #include "BLI_string_ref.hh"
@@ -54,6 +54,20 @@ struct Main;
 struct PointerRNA;
 struct PropertyRNA;
 struct bContext;
+
+/**
+ * Angelo: an ID pointer of `id` (or of its embedded data) changed in place. While memfile undo
+ * records for `bmain`, adds its session UID to #Main::angelo_memfile_undo_reread_session_uids
+ * when memfile undo stores its type (not windows, screens, workspaces nor
+ * #IDTYPE_FLAGS_NO_MEMFILE_UNDO types) and it is in `bmain`.
+ */
+void BKE_main_memfile_undo_id_changed_in_place(Main *bmain, const ID *id);
+
+/**
+ * Angelo: `bmain` now matches a memfile undo step exactly (it was just written, published or
+ * read): forget the changes in place recorded so far, and record from now on.
+ */
+void BKE_main_memfile_undo_synced(Main *bmain);
 
 namespace bke::id {
 
@@ -77,6 +91,17 @@ struct ID_Runtime {
    * The last modifification time of the source .blend file where this ID was loaded from.
    */
   int64_t src_blend_modifification_time;
+  /**
+   * Angelo: the version of that file when this ID was read, when known (all 0 otherwise): its
+   * device, file index, size, modification and status change times in nanoseconds. A file written
+   * again within the same second keeps its time in seconds (see `bke::id_hash::FileVersion`).
+   */
+  uint64_t src_blend_device = 0;
+  uint64_t src_blend_index_low = 0;
+  uint64_t src_blend_index_high = 0;
+  int64_t src_blend_size = 0;
+  int64_t src_blend_modified_ns = 0;
+  int64_t src_blend_changed_ns = 0;
 
   ID_Runtime_Remap remap = {};
   /**
@@ -164,6 +189,9 @@ void BKE_libblock_runtime_reset_remapping_status(ID *id) ATTR_NONNULL(1);
  * loaded or created, undo history is cleared/reset, and so is the UID counter.
  */
 void BKE_lib_libblock_session_uid_ensure(ID *id);
+/** Angelo: the .blend whose data-blocks `BKE_lib_libblock_session_uid_ensure` is about to number on this thread
+ * (readfile sets it around each, null after): who authored read data is decided by its file. */
+void BKE_lib_libblock_session_uid_read_source(const char *filepath);
 /**
  * Re-generate a new session-wise UID for the given \a id.
  *
@@ -295,7 +323,8 @@ enum {
   LIB_ID_COPY_SHAPEKEY = 1 << 26,
   /**
    * EXCEPTION! Deep-copy screen used by copied workspace ID.
-   * WARNING: Should always be used, except in `NO_MAIN` cases of copying. */
+   * WARNING: Should always be used, except in `NO_MAIN` cases of copying.
+   */
   LIB_ID_COPY_SCREEN = 1 << 27,
   /** EXCEPTION! Specific deep-copy of node trees used e.g. for rendering purposes. */
   LIB_ID_COPY_NODETREE_LOCALIZE = 1 << 28,
@@ -686,11 +715,19 @@ void BKE_libblock_management_usercounts_clear(Main *bmain, void *idv);
  *
  * This is a no-op when `id` is `nullptr` or not linked.
  *
+ * \param enforce_fix: if true, unconditionally set the linked data as extern (even if it was
+ * already defined as such, or if it was in a broken state with e.g. no direct/indirect status
+ * defined).
+ *
  * This status is rechecked for the whole Main data-base as a step of pre-blend-file writing
  * (see #write_id_direct_linked_data_process_cb() and its usage in #write_file_handle).
  * This ensures that no reference to indirectly used IDs are kept in the written blend-file.
  */
-void id_lib_extern(ID *id);
+void id_lib_extern(ID *id, bool enforce_fix = false);
+/**
+ * Same as #id_lib_extern, but defines the ID as indirectly linked instead.
+ */
+void id_lib_indirect(ID *id, bool enforce_fix = false);
 void id_lib_indirect_weak_link(ID *id);
 /**
  * Ensure we have a real user

@@ -34,6 +34,7 @@ import weakref
 from pathlib import Path
 
 from . import goal_state as G, kept_state, shared_replace, write_turn
+from . import owned_replace  # noqa: E402  (saves over only the file Angelo keeps)
 
 VERSION = 1
 MAX_CHATS = 200
@@ -104,6 +105,7 @@ class GoalStore:
 
     def __init__(self, directory, clock=time.time):
         self.path = Path(directory) / "goals.json"
+        owned_replace.adopt(self.path)   # Saved over only while it is this file (owned_replace).
         self.clock = clock
         self.lock = threading.Lock()
         self.goals = {}
@@ -268,6 +270,8 @@ class GoalStore:
         return self._write() if owed else True
 
     def _write(self):
+        if not owned_replace.mine(self.path):   # Only over the file Angelo keeps: nothing is read, kept or
+            return False                      # written beside a file a name in Python state points at.
         if self._later:
             return False
         saved = self._saved()   # Merged on each write: another process's goals in this folder are kept.
@@ -305,7 +309,7 @@ class GoalStore:
             fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
             with os.fdopen(fd, "wb") as handle:
                 handle.write(encoded)
-            shared_replace.replace(temporary, self.path)   # Refused while held: retried, else said; owed.
+            owned_replace.replace(temporary, self.path)   # Refused while held: retried, else said; owed.
         except OSError:
             try:
                 temporary.unlink(missing_ok=True)

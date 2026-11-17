@@ -157,7 +157,8 @@ def changes_position():
     current = chat_view._views.get(area_pointer, {})
     rect = next(h[0] for h in current.get('hits', []) if h[1] == 'changes')
     assert rect[2] > 0 and rect[3] > 0
-    return int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    return chat_point(region, rect)
 
 
 def advance(phase):

@@ -62,6 +62,16 @@ bool main_undo_grids_collect_owner_keys(Main &bmain,
                                       Vector<MainUndoGridOwnerKey> &r_owners,
                                       const char **r_error);
 
+/**
+ * Bind each Object's original SculptSession back to the graph that held its authority in
+ * \a authorities (keys from #main_undo_grids_collect_owner_keys). Evaluating several graphs that
+ * hold one Multires Object leaves the session on whichever ran its modifier last; synchronization
+ * must not move the artist's session. Same exclusive access as discovery; evaluates nothing.
+ */
+bool main_undo_grids_rebind_authorities(Main &bmain,
+                                        Span<MainUndoGridOwnerKey> authorities,
+                                        const char **r_error);
+
 #ifdef WITH_GTESTS
 /** The parent binds this selector to one decode; no process-global failure switch. */
 struct MainUndoGridPrepareTestFault {

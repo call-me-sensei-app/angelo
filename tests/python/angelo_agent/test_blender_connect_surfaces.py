@@ -41,6 +41,7 @@ import fake_provider_cli  # noqa: E402
 from angelo_agent import product_env  # noqa: E402  (bundled add-on path)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import qa_input  # noqa: E402  (the person's press on Connect Claude, which C mints its ticket for)
 
 assert Path(os.environ["HOME"]).resolve() != Path(pwd.getpwuid(os.getuid()).pw_dir).resolve(), \
     "Run through run_native_suites.py: this suite marks a stand-in sign-in in HOME"
@@ -209,7 +210,7 @@ def tick():
         if phase == "page":
             from angelo_agent import providers_page_model
             target, _, _ = prefs()
-            if not wait(phase, lambda: page_plan() is not None and providers_page_model.ART["done"]
+            if not wait(phase, lambda: page_plan() is not None and providers_page_model.art_settled()
                         and target.as_pointer() in page._modals):
                 return .2
             if not fresh_shot("a3-ai-providers.png", target):
@@ -229,8 +230,8 @@ def tick():
             target, area, region = prefs()
             if not fresh_shot("a3b-ai-providers-get-started.png", target):
                 return .4
-            with bpy.context.temp_override(window=target, area=area, region=region):
-                bpy.ops.view2d.scroll_up(deltay=4000)
+            import view_scroll   # Back to the page's top (view2d.scroll_up ignores a distance: view_scroll.py).
+            view_scroll.up(target, area, region)
             page.act("add", "CODING", target, area, region)
             state["phase"] = "sheet"
             return .5
@@ -277,7 +278,23 @@ def tick():
             # The sign-in waits until the suite has seen it in progress (fake_provider_cli.LOGIN_GATE): its frame is
             # taken on any machine load, not only when a tick lands inside a 1 s login.
             os.environ[fake_provider_cli.LOGIN_GATE] = str(fake_provider_cli.fresh(OUT / "holds" / "claude-login"))
-            page.act("quick_connect", CLAUDE, target, area, region)
+            from angelo_agent import grant_guard, quick_connect
+            try:   # A script's Connect (no press C saw): refused, no sign-in starts.
+                page.act("quick_connect", CLAUDE, target, area, region)
+                scripted = "ran"
+            except RuntimeError as error:
+                scripted = str(error)
+            signing_in = quick_connect.flow(CLAUDE) is not None
+            checks["a_scripted_connect_is_refused"] = grant_guard.NOT_YOURS in scripted and not signing_in
+            state["phase"] = "page_press"
+            return 1.5   # The scroll moved the rows: past C's shield where they are drawn now, as a person's eye.
+        if phase == "page_press":
+            target, _area, region = prefs()
+
+            def point():   # Read at the press: where the row is drawn then.
+                rect = next(r for r, action, value in page_plan().hits if action == "quick_connect" and value == CLAUDE)
+                return region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2
+            qa_input.press(target, point)   # The person's.
             state["phase"], state["connect_started"] = "connecting", time.monotonic()
             return .2
         if phase == "connecting":
@@ -324,4 +341,4 @@ def fake_calls():
     return [json.loads(line) for line in path.read_text().splitlines()] if path.is_file() else []
 
 
-bpy.app.timers.register(tick, first_interval=1.0, persistent=True)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=1.0, persistent=True)   # After a press.

@@ -76,7 +76,12 @@ def aborted(job):
 def layout_kept():
     """During ``load_post``: whether the load kept the windows' layout, every workspace there before it still there
     (Load UI off swaps the old ones into the new file). Unknown (no ``load_pre`` seen, unreadable) reads as replaced:
-    nothing is put back into a layout that may be another file's."""
+    nothing is put back into a layout that may be another file's.
+
+    By address, never ``session_uid``: Blender renews every ID's session_uid on a load, the kept workspaces included
+    (blendfile.cc, ``swap_old_bmain_data_for_blendfile``), so no load read as keeping the layout, and a build it
+    interrupted was never rolled back (2.0.0: its half-made tab, deleted later under the window, put a sculpt into
+    Edit Mode). A kept workspace keeps its address; a new file's are allocated while the old ones still exist."""
     recorded = _state["layout"]
     return recorded is not None and recorded <= (_layout() or frozenset())
 
@@ -84,7 +89,7 @@ def layout_kept():
 def _layout():
     try:
         import bpy
-        return frozenset(w.session_uid for w in bpy.data.workspaces)
+        return frozenset(w.as_pointer() for w in bpy.data.workspaces)
     except Exception:   # noqa: BLE001 - unknown: replaced (layout_kept)
         return None
 

@@ -86,6 +86,8 @@ Module                               Responsibility
                                      endpoint/runtime-directory checks, escaping
 ``external_cli.py``                  Listener, peer credentials, endpoint
                                      record, connection limits, Windows refusal
+``file_owner.py``                    "Is this file this user's own?" on every
+                                     platform (owner ID; owner SID on Windows)
 ``external_requests.py``             Read-only allowlist and exclusion reasons,
                                      ``tools`` catalog, result codes, path
                                      projection, work queue, rate limit, audit
@@ -147,7 +149,12 @@ Transport and authentication
   ``$XDG_RUNTIME_DIR/angelo``, else per user ``$TMPDIR/angelo-<uid>`` on macOS
   and ``/tmp/angelo-<uid>`` elsewhere. Created ``0700``; ``lstat`` must show a
   real directory owned by the effective UID with no group/other bits, or
-  listening is refused. The socket is ``angelo-cli-<digest of the state
+  listening is refused. The owner question is asked through
+  ``file_owner.owned_by_this_user`` here and for the endpoint record and an
+  app's key file: the client and an app's launcher run these checks on any
+  platform, and Windows has no ``os.geteuid`` (it answers with the owner SID
+  against the process's own; the mode bits then refuse there, as "unsafe",
+  where an ``AttributeError`` used to end the command). The socket is ``angelo-cli-<digest of the state
   directory>.sock``, bound under umask ``077`` and set ``0600``; a path over
   103 bytes is refused with advice to shorten the runtime directory.
 * **Endpoint record:** ``<state>/cli/endpoint.json`` (directory ``0700``,

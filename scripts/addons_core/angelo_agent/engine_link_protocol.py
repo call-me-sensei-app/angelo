@@ -193,7 +193,8 @@ def write_record(path, record):
     record. A leftover record (its process gone) is replaced. Raises FileExistsError when another live Angelo owns
     it, OSError when the folder can't be written."""
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    from . import owned_paths
+    owned_paths.require_writable(path).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     existing = read_record(path)
     if (existing is not None and existing["pid"] != os.getpid() and process_alive(existing["pid"])
             and listening(existing["port"])):
@@ -206,6 +207,7 @@ def write_record(path, record):
         os.write(descriptor, data)
     finally:
         os.close(descriptor)
+    owned_paths.own(path)   # What ``remove_record`` may remove later: C's record, not the path Angelo keeps.
 
 
 def read_record(path):
@@ -244,6 +246,11 @@ def remove_record(path, pid=None, any_owner=False):
         return False
     if record is not None and not any_owner and record["pid"] != (pid or os.getpid()):
         return False
+    from . import owned_paths
+    if not any_owner and not owned_paths.owned(path):
+        return False   # Not the record this process wrote (C's record), whatever path it was given.
+    if any_owner and not owned_paths.may_write(path):
+        return False   # Any owner's record, only where C says Angelo may remove (never a path from state elsewhere).
     try:
         os.unlink(path)
         return True

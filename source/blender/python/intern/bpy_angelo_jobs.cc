@@ -43,8 +43,8 @@
  * `quit_activity_set` and `quit_activities` name running work (a live motion capture with a phone,
  * an upload) that quitting, or reading another file, would end: the quit and close-file
  * confirmation lists it (`WM_quit_activity_set`, `wm_quit_activities.cc`), whatever the Save Prompt
- * preference says. `close_dialog_open`, `close_dialog_texts` and `quit_request_simulate` are test
- * seams that exist only with `--enable-event-simulate`.
+ * preference says. `close_dialog_open`, `close_dialog_texts`, `popup_buttons`, `region_buttons`
+ * and `quit_request_simulate` are test seams that exist only with `--enable-event-simulate`.
  *
  * `msgbus_subscribers` lists the `bpy.msgbus` subscribers that writing given settings
  * would notify. A look's or strip's own temporary writes publish to the message bus, and
@@ -64,9 +64,9 @@
 
 #include <cmath>
 
-#include "BLI_string.h"
-#include "BLI_threads.h"
-#include "BLI_utildefines.h"
+#include "BLI_string.hh"
+#include "BLI_threads.hh"
+#include "BLI_utildefines.hh"
 #include "BLI_vector.hh"
 
 #include "BKE_angelo_job_deadline.hh"
@@ -75,6 +75,7 @@
 #include "BKE_fluid.h"
 #include "BKE_global.hh"
 #include "BKE_modifier.hh"
+#include "BKE_report.hh"
 #include "BKE_scene.hh"
 #include "BKE_main.hh"
 #include "BKE_wm_runtime.hh"
@@ -85,6 +86,7 @@
 #include "DNA_layer_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
+#include "DNA_screen_types.h"
 #include "DNA_windowmanager_types.h"
 
 #include "DEG_depsgraph.hh"
@@ -99,6 +101,10 @@
 #include "WM_api.hh"
 #include "WM_message.hh"
 #include "WM_types.hh"
+
+#include "ED_screen.hh"
+
+#include "bpy_angelo_guard_confine.hh"
 
 #include "bpy_angelo_desktop.hh"
 #include "bpy_angelo_jobs.hh"
@@ -173,7 +179,7 @@ static bool parse_job(PyObject *args,
     PyErr_Format(PyExc_ValueError, "Unsupported job type '%s'", name);
     return false;
   }
-  *r_wm = static_cast<wmWindowManager *>(G_MAIN->wm.first);
+  *r_wm = static_cast<wmWindowManager *>(G_MAIN->wm.first());
   if (*r_wm == nullptr) {
     PyErr_SetString(PyExc_RuntimeError, "No window manager");
     return false;
@@ -190,7 +196,7 @@ static PyObject *jobs_progress(PyObject * /*self*/, PyObject *args)
   if (!require_main_thread() || !parse_job(args, "progress", &scene, &type, &wm)) {
     return nullptr;
   }
-  if (!WM_jobs_test(wm, scene, type->type)) {
+  if (!WM_jobs_has_running(wm, scene, eWM_JobType(type->type))) {
     Py_RETURN_NONE;
   }
   return PyFloat_FromDouble(double(WM_jobs_progress_type(wm, scene, type->type)));
@@ -204,7 +210,7 @@ static PyObject *jobs_stop(PyObject * /*self*/, PyObject *args)
   if (!require_main_thread() || !parse_job(args, "stop", &scene, &type, &wm)) {
     return nullptr;
   }
-  if (!WM_jobs_test(wm, scene, type->type)) {
+  if (!WM_jobs_has_running(wm, scene, eWM_JobType(type->type))) {
     Py_RETURN_FALSE;
   }
   WM_jobs_stop_type(wm, scene, type->type);
@@ -363,7 +369,7 @@ static PyObject *jobs_tag_file_modified(PyObject * /*self*/, PyObject * /*args*/
     PyErr_SetString(PyExc_RuntimeError, "tag_file_modified requires Blender's main thread");
     return nullptr;
   }
-  if (G_MAIN == nullptr || G_MAIN->wm.first == nullptr) {
+  if (G_MAIN == nullptr || G_MAIN->wm.first() == nullptr) {
     PyErr_SetString(PyExc_RuntimeError, "tag_file_modified requires a window manager");
     return nullptr;
   }
@@ -492,6 +498,32 @@ static PyObject *jobs_close_dialog_open(PyObject * /*self*/, PyObject * /*args*/
   Py_RETURN_FALSE;
 }
 
+static PyObject *jobs_window_reports(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!require_main_thread() || !require_event_simulate("window_reports")) {
+    return nullptr;
+  }
+  wmWindowManager *wm = CTX_wm_manager(BPY_context_get());
+  PyObject *list = PyList_New(0);
+  if (list == nullptr || wm == nullptr) {
+    return list;
+  }
+  ReportList &reports = wm->runtime->reports;
+  BKE_reports_lock(&reports);
+  for (const Report &report : reports.list) {
+    PyObject *item = Py_BuildValue("(is)", int(report.type), report.message ? report.message : "");
+    if (item == nullptr || PyList_Append(list, item) != 0) {
+      Py_XDECREF(item);
+      BKE_reports_unlock(&reports);
+      Py_DECREF(list);
+      return nullptr;
+    }
+    Py_DECREF(item);
+  }
+  BKE_reports_unlock(&reports);
+  return list;
+}
+
 static PyObject *jobs_close_dialog_texts(PyObject * /*self*/, PyObject * /*args*/)
 {
   if (!require_main_thread() || !require_event_simulate("close_dialog_texts")) {
@@ -525,6 +557,141 @@ static PyObject *jobs_close_dialog_texts(PyObject * /*self*/, PyObject * /*args*
   PyObject *result = PyList_AsTuple(list);
   Py_DECREF(list);
   return result;
+}
+
+/** `popup_buttons` and `region_buttons`: every button of the open popups, or of the editors'
+ * regions. */
+static PyObject *button_places(const char *function,
+                               Vector<ui::PopupButtonPlace> (*places)(const bScreen *))
+{
+  if (!require_main_thread() || !require_event_simulate(function)) {
+    return nullptr;
+  }
+  bContext *C = BPY_context_get();
+  wmWindowManager *wm = CTX_wm_manager(C);
+  PyObject *list = PyList_New(0);
+  if (list == nullptr) {
+    return nullptr;
+  }
+  for (wmWindow &win : wm->windows) {
+    const bScreen *screen = WM_window_get_active_screen(&win);
+    if (screen == nullptr) {
+      continue;
+    }
+    for (const ui::PopupButtonPlace &place : places(screen)) {
+      PyObject *item = Py_BuildValue("(Ns#s#s#ffff)",
+                                     PyLong_FromVoidPtr(&win),
+                                     place.block.data(),
+                                     Py_ssize_t(place.block.size()),
+                                     place.text.data(),
+                                     Py_ssize_t(place.text.size()),
+                                     place.operator_idname.data(),
+                                     Py_ssize_t(place.operator_idname.size()),
+                                     place.xmin,
+                                     place.ymin,
+                                     place.xmax - place.xmin,
+                                     place.ymax - place.ymin);
+      if (item == nullptr || PyList_Append(list, item) == -1) {
+        Py_XDECREF(item);
+        Py_DECREF(list);
+        return nullptr;
+      }
+      Py_DECREF(item);
+    }
+  }
+  PyObject *result = PyList_AsTuple(list);
+  Py_DECREF(list);
+  return result;
+}
+
+static PyObject *jobs_popup_buttons(PyObject * /*self*/, PyObject * /*args*/)
+{
+  return button_places("popup_buttons", ui::popup_button_places);
+}
+
+/** `menu_as_agent(name)`: the menu opened as an agent script would open it (this thread confined
+ * while it opens, through `WM_menu_name_call` as a C operator's invoke does), so a GUI suite shows
+ * a real press on its items mints nothing (the review of d3024be, SHOULD 1). */
+static PyObject *jobs_menu_as_agent(PyObject * /*self*/, PyObject *args)
+{
+  const char *name = nullptr;
+  if (!PyArg_ParseTuple(args, "s:menu_as_agent", &name)) {
+    return nullptr;
+  }
+  if (!require_main_thread() || !require_event_simulate("menu_as_agent")) {
+    return nullptr;
+  }
+  BPY_angelo_guard_thread_enter(1);
+  WM_menu_name_call(BPY_context_get(), name, wm::OpCallContext::InvokeDefault);
+  BPY_angelo_guard_thread_leave(1);
+  Py_RETURN_NONE;
+}
+
+/** `button_arming()`: every drawn button, in the editors' regions and the open popups, as
+ * (window pointer, text, armed, x, y, width, height): whether the person's move has armed it for a
+ * grant ticket (`Button::angelo_armed`), so a GUI suite shows when arming starts and ends. */
+static PyObject *jobs_button_arming(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!require_main_thread() || !require_event_simulate("button_arming")) {
+    return nullptr;
+  }
+  PyObject *list = PyList_New(0);
+  if (list == nullptr) {
+    return nullptr;
+  }
+  for (wmWindow &win : CTX_wm_manager(BPY_context_get())->windows) {
+    const bScreen *screen = WM_window_get_active_screen(&win);
+    if (screen == nullptr) {
+      continue;
+    }
+    Vector<ui::PopupButtonPlace> places = ui::area_button_places(screen);
+    places.extend(ui::popup_button_places(screen));
+    for (const ui::PopupButtonPlace &place : places) {
+      PyObject *item = Py_BuildValue("(Ns#Nffff)",
+                                     PyLong_FromVoidPtr(&win),
+                                     place.text.data(),
+                                     Py_ssize_t(place.text.size()),
+                                     PyBool_FromLong(place.armed),
+                                     place.xmin,
+                                     place.ymin,
+                                     place.xmax - place.xmin,
+                                     place.ymax - place.ymin);
+      if (item == nullptr || PyList_Append(list, item) != 0) {
+        Py_XDECREF(item);
+        Py_DECREF(list);
+        return nullptr;
+      }
+      Py_DECREF(item);
+    }
+  }
+  PyObject *result = PyList_AsTuple(list);
+  Py_DECREF(list);
+  return result;
+}
+
+/** `refresh_popups()`: every open popup rebuilds its layout on the next redraw, as a change inside
+ * it or a window resize makes it do (`RGN_REFRESH_UI`), on the main thread, unconfined. */
+static PyObject *jobs_refresh_popups(PyObject * /*self*/, PyObject * /*args*/)
+{
+  if (!require_main_thread() || !require_event_simulate("refresh_popups")) {
+    return nullptr;
+  }
+  for (wmWindow &win : CTX_wm_manager(BPY_context_get())->windows) {
+    if (bScreen *screen = WM_window_get_active_screen(&win)) {
+      for (ARegion &region : screen->regionbase) {
+        if (region.regiontype == RGN_TYPE_TEMPORARY) {
+          ED_region_tag_refresh_ui(&region);
+          ED_region_tag_redraw(&region);
+        }
+      }
+    }
+  }
+  Py_RETURN_NONE;
+}
+
+static PyObject *jobs_region_buttons(PyObject * /*self*/, PyObject * /*args*/)
+{
+  return button_places("region_buttons", ui::area_button_places);
 }
 
 static PyObject *jobs_quit_request_simulate(PyObject * /*self*/, PyObject * /*args*/)
@@ -708,7 +875,7 @@ static PyObject *jobs_msgbus_subscribers(PyObject * /*self*/, PyObject *keys)
     return nullptr;
   }
   PyObject *found = PyList_New(0);
-  wmWindowManager *wm = G_MAIN ? static_cast<wmWindowManager *>(G_MAIN->wm.first) : nullptr;
+  wmWindowManager *wm = G_MAIN ? static_cast<wmWindowManager *>(G_MAIN->wm.first()) : nullptr;
   if (found == nullptr || wm == nullptr || wm->runtime == nullptr ||
       wm->runtime->message_bus == nullptr)
   {
@@ -870,6 +1037,40 @@ static PyMethodDef methods[] = {
      "close_dialog_texts(): (tests, --enable-event-simulate only) every text the open quit or "
      "close-file confirmation, or an operator's own confirmation, shows (labels and buttons, as "
      "drawn), in every window."},
+    {"window_reports",
+     jobs_window_reports,
+     METH_NOARGS,
+     "window_reports(): (tests, --enable-event-simulate only) every report the window manager "
+     "holds (the status bar's and the Info editor's), as (type flag, message): whether anything "
+     "showed the person an error."},
+    {"button_arming",
+     jobs_button_arming,
+     METH_NOARGS,
+     "button_arming(): (tests, --enable-event-simulate only) every drawn button as (window "
+     "pointer, text, armed, x, y, width, height): whether the person's move armed it."},
+    {"refresh_popups",
+     jobs_refresh_popups,
+     METH_NOARGS,
+     "refresh_popups(): (tests, --enable-event-simulate only) every open popup rebuilds its "
+     "layout, as a change inside it or a window resize makes it."},
+    {"menu_as_agent",
+     jobs_menu_as_agent,
+     METH_VARARGS,
+     "menu_as_agent(name): (tests, --enable-event-simulate only) open menu `name` as an agent "
+     "script would: its thread confined while it opens."},
+    {"popup_buttons",
+     jobs_popup_buttons,
+     METH_NOARGS,
+     "popup_buttons(): (tests, --enable-event-simulate only) every button of every open popup "
+     "(a menu, a dialog, a popover) as (window pointer, block name, text, operator idname or "
+     "\"\", x, y, width, height) in window pixels, so a GUI suite clicks a menu item where it is "
+     "drawn, as a person does. Where only: a click still mints its ticket only as a real press "
+     "does."},
+    {"region_buttons",
+     jobs_region_buttons,
+     METH_NOARGS,
+     "region_buttons(): (tests, --enable-event-simulate only) as popup_buttons, for the buttons "
+     "drawn in the editors' regions (panels, headers, sidebars)."},
     {"quit_request_simulate",
      jobs_quit_request_simulate,
      METH_NOARGS,

@@ -9,8 +9,8 @@
 #pragma once
 
 #include "BLI_enum_flags.hh"
-#include "BLI_implicit_sharing.h"
-#include "BLI_math_constants.h"
+#include "BLI_implicit_sharing.hh"
+#include "BLI_math_constants.hh"
 #include "BLI_span.hh"
 
 #include "DNA_armature_types.h"
@@ -24,8 +24,8 @@
 namespace blender {
 
 struct NodesModifierRuntime;
-namespace bke {
-struct BVHTreeFromMesh;
+namespace bke::bvh {
+class Tree;
 }
 
 struct LineartModifierRuntime;
@@ -260,6 +260,26 @@ enum eSubsurfBoundarySmooth : short {
   SUBSURF_BOUNDARY_SMOOTH_PRESERVE_CORNERS = 1,
 };
 
+/**
+ * #SubsurfModifierData.gpu_subdivision_status: whether the viewport subdivides the modifier on the
+ * GPU, or the first reason it does not (Blender #58191).
+ */
+enum eSubsurfGPUStatus : char {
+  /** Not evaluated for the viewport: disabled, at level 0, its object hidden, or not yet. */
+  SUBSURF_GPU_STATUS_NOT_EVALUATED = 0,
+  SUBSURF_GPU_STATUS_GPU = 1,
+  /** The GPU Subdivision preference is off. */
+  SUBSURF_GPU_STATUS_PREFERENCE_OFF = 2,
+  /** No GPU back-end (background mode). */
+  SUBSURF_GPU_STATUS_NO_GPU = 3,
+  /** The GPU lacks what GPU subdivision needs (compute shader storage buffers). */
+  SUBSURF_GPU_STATUS_UNSUPPORTED_GPU = 4,
+  /** Another enabled modifier comes after it. */
+  SUBSURF_GPU_STATUS_NOT_LAST = 5,
+  /** Its input mesh has split normals: sharp edges, mixed sharp faces or custom normals. */
+  SUBSURF_GPU_STATUS_SPLIT_NORMALS = 6,
+};
+
 struct SubsurfModifierData {
   ModifierData modifier;
 
@@ -274,6 +294,12 @@ struct SubsurfModifierData {
   eSubsurfAdaptiveSpace adaptive_space = SUBSURF_ADAPTIVE_SPACE_PIXEL;
   float adaptive_pixel_size = 1.0f;
   float adaptive_object_edge_length = 0.01f;
+  /**
+   * Runtime only (#eSubsurfGPUStatus): set by each viewport evaluation and copied back to the
+   * original by the active depsgraph, like modifier errors. Reset when a file is read.
+   */
+  eSubsurfGPUStatus gpu_subdivision_status = SUBSURF_GPU_STATUS_NOT_EVALUATED;
+  char _pad[7] = {};
 };
 
 /** #LatticeModifierData.flag */
@@ -983,8 +1009,11 @@ struct SurfaceModifierData_Runtime {
 
   struct Mesh *mesh = nullptr;
 
-  /** Bounding volume hierarchy of the mesh faces. */
-  bke::BVHTreeFromMesh *bvhtree = nullptr;
+  /**
+   * Bounding volume hierarchy of the mesh triangles, or of the edges when the mesh has no faces.
+   * Owned by #mesh's tree cache rather than by this struct.
+   */
+  const bke::bvh::Tree *bvhtree = nullptr;
 
   int cfra_prev = 0, verts_num = 0;
 };
@@ -1199,7 +1228,8 @@ ENUM_OPERATORS(ExplodeModifierFlag);
 struct ExplodeModifierData {
   ModifierData modifier;
 
-  int *facepa = nullptr;
+  /** Runtime pointer to `blender::Array<int, 0>`, or null. */
+  void *facepa = nullptr;
   ExplodeModifierFlag flag = eExplodeFlag_Unborn | eExplodeFlag_Alive | eExplodeFlag_Dead;
   short vgroup = 0;
   float protect = 0.0f;
@@ -2541,12 +2571,6 @@ struct NodesModifierBake {
   int64_t bake_size = 0;
 };
 
-struct NodesModifierPanel {
-  /** ID of the corresponding panel from #bNodeTreeInterfacePanel::identifier. */
-  int id = 0;
-  NodesModifierPanelFlag flag = {};
-};
-
 struct NodesModifierData {
   ModifierData modifier;
   struct bNodeTree *node_group = nullptr;
@@ -2561,10 +2585,6 @@ struct NodesModifierData {
   char _pad[2] = {};
   int bakes_num = 0;
   NodesModifierBake *bakes = nullptr;
-
-  char _pad2[4] = {};
-  int panels_num = 0;
-  NodesModifierPanel *panels = nullptr;
 
   NodesModifierRuntime *runtime = nullptr;
 

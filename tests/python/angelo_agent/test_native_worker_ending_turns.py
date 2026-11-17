@@ -17,6 +17,7 @@ turn first (pinned below), so a new route cannot forget it.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import contextlib
@@ -43,7 +44,7 @@ STOPPED = 3.0      # How long a stopped request may take to end.
 SCRIPT = {"description": "Set a value", "code": "result = 1"}
 
 
-def until(condition, seconds=5.0, step=None):
+def until(condition, seconds=CAP_S, step=None):
     deadline = time.monotonic() + seconds
     while not condition() and time.monotonic() < deadline:
         if step is not None:
@@ -105,7 +106,7 @@ class BlockingProcess(Process):
     def request(self, op, timeout, **fields):
         if op == "prepare_turn":
             self.entered.set()
-            self.gate.wait(5)
+            self.gate.wait(CAP_S)
         return super().request(op, timeout, **fields)
 
 
@@ -127,11 +128,11 @@ class EndingFixture(ParkedFixture):
     def in_flight(self, chat, provider=None):
         """The chat's turn, its model request running (sent as the brief is: ``Controller.send``)."""
         provider = provider or Provider()
-        self.addCleanup(lambda: (provider.ended.set(), chat._worker and chat._worker.join(5)))
+        self.addCleanup(lambda: (provider.ended.set(), chat._worker and chat._worker.join(CAP_S)))
         chat.checkpoint_factory = lambda: None   # The stand-in worker keeps no part file to snapshot.
         chat.provider, chat.state["native_id"] = provider, "warm-thread"
         chat.send("Build the sofa.")
-        self.assertTrue(provider.running.wait(5))
+        self.assertTrue(provider.running.wait(CAP_S))
         return provider
 
     def notices(self, chat):
@@ -159,7 +160,7 @@ class EndingRoutesTests(EndingFixture):
         worker_queue.document_replaced()
         self.assertIsNone(worker_routing.bound(chat))
         self.assert_turn_ended(chat, provider, worker_routing.END_REPLACED)
-        self.assertTrue(process.stopped.wait(5))
+        self.assertTrue(process.stopped.wait(CAP_S))
 
     def test_a_lead_invalidated_with_no_load_as_another_scene_is_shown_in_a_background_angelo(self):
         from angelo_agent import document_scene
@@ -197,7 +198,7 @@ class EndingRoutesTests(EndingFixture):
         provider = self.in_flight(chat)
         worker_routing.unbind(chat, worker_routing.END_MERGED)   # What the merge does to each merged part's chat.
         self.assert_turn_ended(chat, provider, worker_routing.END_MERGED)
-        self.assertTrue(process.stopped.wait(5))
+        self.assertTrue(process.stopped.wait(CAP_S))
 
     def test_the_add_on_ending(self):
         chat, process = self.worker_chat()
@@ -247,9 +248,10 @@ class EndedTurnTests(EndingFixture):
     def test_a_failed_turn_still_closing_its_provider_is_left_as_it_ended(self):
         chat, _process = self.worker_chat()
         provider = FailingProvider()
-        self.addCleanup(provider.release.set)
+        self.addCleanup(provider.release.set)   # Should in_flight fail: its provider still let go.
         self.in_flight(chat, provider)
-        self.assertTrue(provider.closing.wait(5))
+        self.addCleanup(provider.release.set)   # Runs before in_flight's join: the turn's thread is closing on it.
+        self.assertTrue(provider.closing.wait(CAP_S))
         self.assertTrue(until(lambda: not chat.busy, step=chat.pump_events))
         self.assertTrue(chat._worker.is_alive())   # The tail: its provider still closing.
         before = (chat.stops, chat.status, chat.cancelled)
@@ -272,7 +274,7 @@ class SweepTests(EndingFixture):
         self.assertEqual(chat1.stop.call_count, 1)
         self.assertIn("could not be stopped", log.getvalue())
         self.assertEqual((worker_routing.bound(chat1), worker_routing.bound(chat2)), (None, None))
-        self.assertTrue(process1.stopped.wait(5) and process2.stopped.wait(5))
+        self.assertTrue(process1.stopped.wait(CAP_S) and process2.stopped.wait(CAP_S))
 
 
 class LaneDeliveryTests(EndingFixture):
@@ -294,7 +296,7 @@ class LaneDeliveryTests(EndingFixture):
         chat.state["messages"].append({"role": "user", "text": "Build the sofa."})
         shown = self.deliver(chat, "Make it blue.")
         worker_dispatch.pump(chat)
-        self.assertTrue(process.entered.wait(5))   # Its lane waits on the worker for the turn's observation.
+        self.assertTrue(process.entered.wait(CAP_S))   # Its lane waits on the worker for the turn's observation.
         self.lead.document_invalid = True
         worker_queue.document_replaced()
         process.gate.set()

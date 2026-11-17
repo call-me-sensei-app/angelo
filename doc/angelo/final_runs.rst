@@ -69,9 +69,18 @@ The two sides are matched:
 
 * Sides alternate inside every trial, so neither always goes first. Two trials
   never run at once on one machine: they would contend each other's timings.
-* Every bench step runs with the same model, effort and prompts on both sides
-  and ``final_runs_plan.COMMON`` (effort low, one stable working folder, the
-  chat editor's turn context, real input ignored in the trial windows).
+* Every bench step runs with the same model and prompts on both sides and
+  ``final_runs_plan.COMMON`` (one stable working folder, the chat editor's turn
+  context, real input ignored in the trial windows).
+* Effort (maintainer, 2026-11-12: "Shipping default (high)"): a gate step passes
+  no ``--effort``, so each model runs at the app's shipping effort (a new chat's,
+  high where the model offers it: ``performance.rst``, "Reasoning effort policy"), and its
+  report records the effort the chat resolved (``eval_effort``). A
+  head-to-head adds ``final_runs_plan.H2H_EFFORT``, one named effort for both
+  sides; ``bench_mcp_vs_angelo`` refuses the shipping default with an MCP side,
+  which has no such default to match (``test_native_gate_effort``). Gate numbers
+  at the shipping effort are never compared like for like with an earlier
+  release's gate at low effort (1.0.11 and before): each is labelled with its effort.
 * Both sides get the same window state (``final_runs_plan.window_state``):
   behind other applications where stock Blender honours ``--no-window-focus``
   as Angelo does, and on macOS, where stock Blender activates and opens in front
@@ -237,17 +246,24 @@ own estimate (``provider_usage.cost_usd``) within rounding:
 
 * Claude's usage splits every response's writes into 5-minute and 1-hour
   ones (``usage.cache_creation``). On a subscription Claude Code on the MCP
-  side writes 1-hour entries, as Angelo's chats do; on an API-key or team
-  route both write 5-minute ones (``model_routing.rst``, "Prompt-cache TTL
-  per session"). The MCP side's ``provider_usage`` carries
+  side writes 1-hour entries, as Angelo's chats do. On an API-key or team
+  route Claude Code's own default is 5 minutes, where a new Angelo chat writes
+  1-hour entries (``model_routing.rst``, "Prompt-cache TTL per session"). Both
+  sides of a comparison get the same setting, so the launcher starts the MCP
+  side's Claude Code with the run's lifetime
+  (``bench_mcp_trial.claude_environment``: ``CLAUDE_CODE_PROMPT_CACHE_TTL``,
+  the variable Angelo sets for its own chats; ``plan.claude_cache_ttl``), for
+  its trials and its warm-up alike, and earlier MCP trials recorded at another
+  lifetime are never paired with a run (``bench_integrity.reuse_problems``). The MCP side's ``provider_usage`` carries
   the turn's split (``cache_write_5m_input_tokens``,
   ``cache_write_1h_input_tokens``), summed over its distinct responses in the
   raw stream (``oneshot_metrics.claude_write_split``).
 * Writes without a reported TTL are priced at an assumed one: Angelo's
   session TTL, the one each task's receipt recorded (``cache_ttl`` in the
   bench record; for records without it, 1 hour unless ``--angelo-cache-ttl``
-  set another; Angelo's receipts carry no split) and 5 minutes for Claude
-  Code (a response without a split).
+  set another; Angelo's receipts carry no split) and, for Claude Code (a
+  response without a split), the lifetime the launcher set, or 5 minutes for
+  a record from before the launcher set one.
 * Codex usage has no split. GPT models have one write rate, which prices
   every write; a Codex-served model with two rates is priced at its
   5-minute one.
@@ -265,6 +281,14 @@ Every failure is kept: a trial a limit cut short is set aside under
 ``JOURNAL.jsonl`` records every trial, pause, refusal and wait with its
 reasons, and ``STATE.json`` each step's progress.
 
+A Codex chat's per-request record is its rollout, which Codex keeps in the
+profile. The bench copies each Angelo trial's rollouts beside the trial
+(``angelo-trial-NN-rollouts``); a step that runs the live eval directly (the
+gate7 and survey smokes) copies its one trial's into its own folder under the
+same name (``final_runs.eval_rollouts``), and its journal entry lists them
+(``rollouts``, or ``rollouts_error`` when the copy failed, which never changes
+the trial's result). Claude steps keep no such copy from the live eval.
+
 Cache-read floors
 =================
 
@@ -273,36 +297,44 @@ break (a timestamp in the instructions, a tool list in another order, a cache
 key that changes per process) multiplies a chat's input cost by up to 20 while
 every task still passes. ``cache_floor.py`` therefore checks every finished
 gate step's prompt-cache reads against floors recorded in
-``cache_floors.json``, and a read below its floor is a **cache SEV**: the gate
-is not clear (``final_runs.gates_clear``), ``run`` ends with exit code 1 and a
-``cache_sev`` journal event, and ``final_runs.py cache --output CAMPAIGN``
+``cache_floors.json``, and a session below its floor is a **cache SEV**: the
+gate is not clear (``final_runs.gates_clear``), ``run`` ends with exit code 1
+and a ``cache_sev`` journal event, and ``final_runs.py cache --output CAMPAIGN``
 prints the check (exit 1 on a SEV). It reads only the receipts Angelo already
-writes (each task's ``receipt.usage`` and ``receipt.route``):
+writes (each task's ``receipt.usage`` and ``receipt.route``). The rule is the
+maintainer's (2026-11-04, "Measure over all calls"), the same for every route
+and model:
 
-* a **cell** is route mode | model | variant, the variant being the task set
-  with the approval mode when it is not the default and
+* a **cell** is platform | route mode | model | variant: the platform is the
+  campaign's (``CONFIG.json``; ``unknown``, never gated, without one), the
+  variant the task set with the approval mode when it is not the default and
   ``new-chat-per-task`` for returning-user runs;
-* **calls 2+**: per step and cell, the token-weighted cached share of every
-  turn after a chat's first, leaving out turns after a gap of 5 minutes or
-  more (``cache_gap``: the shortest provider cache lifetime), a first turn
-  of several requests (its later requests cannot be separated), and the one
-  turn with the lowest share. Providers occasionally serve one request
-  without its cache, even under a minute after the previous turn (9 of 6,032
-  later turns in the recorded runs read nothing), and leaving out the lowest
-  turn absorbs one such request while a prefix or key break lowers every turn;
-* **first call**, on routes with a cache-affinity key only
-  (``route.cache_affinity``: Codex keyed and team routes): per step and cell,
-  the median first-call share of the chats after the cell's first, which may
-  be the one that warms a key the provider had expired. Claude has no key,
-  so its first call is shown, never gated.
+* **session share**: per chat (one native session), its cached input tokens
+  over its input tokens summed over all its measured calls, the first call and
+  turns after a long gap included. A turn without usage is left out and
+  counted. One request the provider serves without its cache costs only that
+  request's part of the session (cut-15's Astra long trial 03: a cold first
+  call under the same key and prefix, 95.6% over 40 calls), while a prefix or
+  key break lowers every call. The first chat of its cell in each step is
+  judged without its first turn (maintainer, "Skip first turn"): it may warm a
+  key the provider had expired, and a smoke step's only chat always is that
+  chat. A chat below its cell's floor is a SEV;
+* **first-call warning**: two or more first calls in one run (one check over
+  a campaign's gate steps) that read under 90% of their input
+  (``FULL_READ``: full reads sit at 93-97% on all three launch models, partial
+  and cold ones at 75% or less) are a **cache warning**: a ``cache_warning``
+  journal event and a ``CACHE WARNING`` line, never a failure. The first chat
+  of each cell in each step is left out, since it may warm a key the provider
+  had expired. The ruling "investigate; block if it repeats" applies to what
+  the check raises.
 
 Unknown values are never a SEV, and a cell without a floor is listed as
-unfloored, never failed. Each step cell also reports its full misses and its
-lowest chat, for forensics.
+unfloored, never failed. Each step cell also reports its chats, its lowest
+chat and its full misses (later turns that read nothing), for forensics.
 
-**Floors.** For every cell, the lowest step value across the passing gate
-campaigns ``regenerate`` was given, minus 5 percentage points, rounded down to
-a whole percent: one rule for every cell and both metrics. A campaign with a
+**Floors.** For every cell, the lowest session share of any chat across the
+passing gate campaigns ``regenerate`` was given, minus 5 percentage points,
+rounded down to a whole percent: one rule for every cell. A campaign with a
 failed, inconclusive, skipped or unrun gate task is refused; ungraded survey
 questions (no check exists) are not failures. The file names its source
 campaigns and commits only, never a path::
@@ -311,16 +343,35 @@ campaigns and commits only, never a path::
    python3 tests/python/angelo_agent/cache_floor.py check STEP_OR_RECEIPT...
    python3 tests/python/angelo_agent/cache_floor.py show STEP_OR_RECEIPT...   # per-chat shares
 
-The checked-in floors come from the four latest passing macOS release gates
-(the file names each campaign and its commit): calls 2+ floors of 91-93%
-(lowest step values 96.1-98.6%) and first-call floors of 88-89% on the keyed
-Codex routes (lowest 93.7-94.1%). Regenerate them after a gate-set or toolset
-change that moves the reads, from passing gates only, and say why in the
-review. Against 115 held-out step cells of older gate, head-to-head, smoke and
-A/B runs the check raised no SEV; a synthetic broken prefix (only the first
-3,072 tokens matching) and a key that changes per process both fail
+The checked-in floors are per platform (maintainer, 2026-11-04, "Skip first
+turn + per-platform floors") and come from every passing gate of record on
+disk: 63 campaigns (32 macOS, 31 Windows) of 1.0.0-1.0.9. Dry runs,
+smoke-only runs, head-to-heads, rehearsals, moved-aside attempts and that
+day's runs are left out, and so is any campaign with a failed gate task. The
+file names each campaign and its commit. The floors are 73-93%. The lowest
+(73-76%) are the Codex ``default`` cells and Windows Sol's ``approval-ask``
+and ``long`` cells: short chats where one request the provider served without
+its cache lowers the whole chat.
+
+The validation left one release out at a time: floors from the other
+releases, checked against every campaign of the held-out one. 61 of the 63
+passed:
+
+* 1.0.0 12/12, 1.0.1 3/3, 1.0.3 9/9, 1.0.5 7/7, 1.0.9 9/9.
+* 1.0.2 2/3: macOS Sol survey-questions, 87.9% against 90%. Its
+  ``view_check_cropped`` turn read 30,720 of 63,292 tokens over two requests.
+* 1.0.4 19/20: Windows Sol approval-ask, 78.1% against 90%. Its ``transform``
+  turn read nothing, under a minute after the previous turn.
+
+Both are one request in a short smoke. The rule has no "leave out the lowest
+turn", so in a chat of six to eight turns one request costs 13-17%. That is
+reported to the maintainer; the rule was not changed after the results. A
+synthetic broken prefix (only the first 3,072 tokens matching) fails on every
+route, and a single provider cold first call passes
 (``test_native_cache_floor.py``). Routes without gate receipts (the API-key
-and team routes) have unfloored cells.
+and team routes) have unfloored cells. Regenerate the floors after a gate-set
+or toolset change that moves the reads, from passing gates only, and say why
+in the review.
 
 The candidate
 =============
@@ -390,7 +441,13 @@ so one connection's limit recovers while the other runs and an early stop
 still leaves results. Before each step on the ChatGPT connection (the Codex
 runtime) the driver reads its rate-limit window without a model request
 (``account/rateLimits/read``, also printed by ``headroom``) and, above 95 %,
-waits for its reset so no trial is cut short. Claude Code has no such read.
+waits for its reset so no trial is cut short, unless the account's credits pay
+past the window (``credits.hasCredits`` or ``unlimited``, no spend control
+reached): its requests then run on, charged to the credits, and the journal's
+``chatgpt_window`` line says ``credits_cover``. For the same reason a Codex
+turn that completed while ``rateLimitReachedType`` was set on such an account
+is not limit evidence (``eval_provider_limits.codex_limit``). Claude Code has
+no such read.
 
 Commands
 ========
@@ -406,7 +463,8 @@ is not the app's), with the Python the harnesses use (``P``)::
         --connections-dir <connection store> --codex-home <signed-in Codex profile> \
         --claude-connection <id> --chatgpt-connection <id> \
         --stock-blender <stock Blender> --mcp-server-dir <Blender MCP server> \
-        --mcp-addon-dir <Blender MCP add-on> [--pilot-dir <pilot runner> --pilot-python <its Python>]
+        --mcp-addon-dir <Blender MCP add-on> [--pilot-dir <pilot runner> --pilot-python <its Python>] \
+        [--only GLOB ...]
     $P tests/python/angelo_agent/final_runs.py plan --output <campaign>       # order, commands, estimates
     $P tests/python/angelo_agent/final_runs.py dry-run --output <campaign>    # no provider
     $P tests/python/angelo_agent/final_runs.py headroom --output <campaign>   # rate-limit windows, no model request
@@ -414,6 +472,14 @@ is not the app's), with the Python the harnesses use (``P``)::
         [--phase gate|h2h] [--only GLOB] [--stop-after-hours H]
     $P tests/python/angelo_agent/final_runs.py status --output <campaign>
     $P tests/python/angelo_agent/final_runs.py report --output <campaign>
+
+``init --only`` scopes a campaign to the steps its globs select. A scope whose
+steps all run Angelo's side alone (the gates and smokes) needs no stock Blender
+and no MCP add-on or server, so ``--stock-blender``, ``--mcp-server-dir`` and
+``--mcp-addon-dir`` may be left out; ``CONFIG.json`` records ``scope`` and
+``mcp_side``, and a later selection that runs the MCP side on such a campaign
+is refused. ``final_runs_plan.py needs --platform P [--only GLOB ...]`` prints
+whether a selection runs the MCP side, without a campaign.
 
 Every billed step reads its profile's account first (``provider_accounts.py``):
 the Codex profile must be signed in to the dedicated evaluation account, and a
@@ -432,6 +498,57 @@ unsigned, each with its own CLI profile, and ``check-sign-in --connections-dir
 profile is signed in (existence of its sign-in files only; nothing is read or
 sent). ``run`` sends model messages on those connections, so it refuses
 without ``--authorize-billed-runs``; every other action sends nothing.
+
+A pay-per-token API-key account (``final_runs_plan.API_KEY_ACCOUNTS``: ``gemini``,
+for Gemini 4 Carbon's gate) has no subscription to sign in. Its one connection
+runs in place from a folder that holds only it, where its owner saved the key in
+Angelo's AI Providers (``ANGELO_CONNECTIONS_DIR`` set to that folder), so the key
+stays in that folder's key-store item and is never copied or read by the harness:
+``init --gemini-connections-dir <folder>`` (with ``--gemini-connection <id>`` or
+``--discover-connections``) and ``check-sign-in --account gemini
+--gemini-connections-dir <folder>`` (the connection's existence; whether its key
+loads is the trial's own check, which sends nothing without it). Its steps pass
+``--allow-api-key-connection`` (``--angelo-allow-api-key-connection`` through the
+bench) and never the ChatGPT ``--codex-home``; ``init`` asks only for the accounts
+the selected steps bill, so a machine running Carbon's steps alone needs no
+subscription. The live harness accepts every coding API-key mode of the provider
+registry (``eval_live_agent.API_KEY_MODES``).
+
+On the Windows VM the trials run as ``angelobench``, recreated at every request,
+so no key saved in its Credential Manager outlives one. The maintainer stores the
+key once in Secret Manager (``angelo-bench-gemini-key`` in the VM's project) and
+grants the VM's service account ``roles/secretmanager.secretAccessor`` on that one
+secret; ``ANGELO_BENCH_GEMINI_SECRET_NAME`` names it to ``gcp_windows_validate.sh``
+(an ``angelo-bench-...`` name, never the key: anything else is refused without
+being shown), which writes metadata ``angelo-bench-gemini-secret`` on every send
+(empty when unset). The key is loaded only when the selection bills the account
+(``final_runs_plan.py needs``: ``api_key_accounts``, kept in ``facts.json``):
+before init the session runs ``bench_api_key.py load`` (``Use-GateKey``), which
+removes any item an earlier request left, keeps the folder
+``C:\angelo\bench\gemini-connections`` at its one Gemini API connection, reads
+the secret with the VM's own token and saves the key in that connection's
+Credential Manager item (the one AI Providers saves), held only in that process's
+memory; ``unload`` (which needs no secret, so it runs for every billed account)
+deletes the item in the session's ``finally``, and a failure there is written to
+the session's DONE line. A request the VM's stop ends mid-run skips both, so each
+stage start and end signs a bench user out, waits up to two minutes for Windows to
+unload its profile and removes it, or else deletes its credential vaults
+directly (``Remove-BenchUser``); anything that stays is put in the request's
+result, which fails it. A selection
+that bills the account without the metadata, scopes without ``cloud-platform``,
+the API turned off, a missing binding, secret or version, a disabled version and a
+value that is not one key each stop the session with a message saying which.
+``bench_api_key.py check`` proves the secret is readable without saving it.
+
+Secret Manager accepts only the ``cloud-platform`` access scope, and any process
+on a VM can ask its metadata server for the VM's token, trial agents included.
+So only the VM that runs the account's gate (the Windows test VM for
+Carbon) has that scope; the others keep ``devstorage.read_write``. On that VM,
+any process of any request (an Astra-only one included, which loads no key)
+can read the secret itself once the VM has the scope: loading by selection
+limits the Credential Manager copy, not access to the secret there. Changing a
+VM's scopes needs it stopped (``gcloud compute instances set-service-account``)
+and is the maintainer's. Use a bench-only key with a quota or budget cap.
 
 ``dry-run`` checks every step without a provider, deeper with ``--depth``:
 ``plan`` runs each step's plan-only form; ``preflight`` also each harness's
@@ -489,6 +606,10 @@ What a machine holds
 
 ``scripts/angelo/windows_final_runs.ps1`` (``Prepare-Bench``, with
 ``windows_bench_tools.ps1``) installs these once, checks them every time, and
+installs stock Blender and the MCP side only when a step the machine runs
+(``angelo-bench-only``) runs the MCP side (``final_runs_plan.py needs``): a
+gates-only machine never downloads stock Blender (in the 1.1 rehearsal its
+5.3.0 build was not yet published and every gate preparation failed on it). It
 records every version and SHA-256 in ``C:\angelo\bench\state\facts.json``
 (copied to the machine's bucket after each session):
 
@@ -580,6 +701,31 @@ Per machine, in order
    machine is TERMINATED, stopping it if it is not; ``status`` must say so. A
    session ends after ``ANGELO_GCP_BENCH_HOURS`` (7): ``bench run`` again
    resumes the campaign. ``bench wait`` re-attaches to a running session.
+
+One boot for a signed-in machine
+--------------------------------
+
+``bench prepdry`` is ``bench prep`` and ``bench dry`` in one request: the
+preparation, then the dry run's desktop session, without the shutdown and the
+second boot between them. It needs a kept sign-in and refuses without one,
+saying so; a first sign-in still goes through ``bench prep``.
+
+A machine can also boot and check itself while the candidate is still being
+built (pre-boot). ``ANGELO_BENCH_CANDIDATE_WAIT_MINUTES=N`` with ``bench
+prepdry`` (or ``prep``) and no ``ANGELO_BENCH_CANDIDATE_MSI`` sends the tree,
+boots the machine and returns once it reports ``PREBOOT READY``, after these
+checks, each of which ends the run with its reason when it fails:
+
+* the sign-in its marker names is still there (``check-sign-in``);
+* no Angelo is installed (the install folder is empty and no Angelo is
+  registered for uninstall): a candidate is installed only while it is frozen;
+* stock Blender is as the selected steps need it: none without the MCP side,
+  otherwise the stock URL's version, and an unpacked copy reports it.
+
+``bench deliver MSI`` then uploads the candidate, names it in the machine's
+metadata, and waits for the run's end as ``bench prep`` does. A machine that
+gets no candidate within N minutes fails its run and powers itself off; one
+that is not ready within ``ANGELO_GCP_PREBOOT_READY_MINUTES`` (30) is stopped.
 
 Several machines
 ----------------

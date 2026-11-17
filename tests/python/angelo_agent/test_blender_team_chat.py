@@ -75,8 +75,12 @@ def drawn():
 def click(action, value=None):
     area, region = chat()
     rect = next(r for r, a, v in view().get("hits", []) if a == action and (value is None or v == value))
-    x, y = int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    x, y = chat_point(region, rect)
     window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=x - 4, y=y)
+    import qa_input
+    if action in qa_input.GRANT_ACTIONS:   # It reaches a grant: only a person's click (move, then press).
+        return qa_input.press(window(), x, y)
     for kind, event_value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
         window().event_simulate(type=kind, value=event_value, x=x, y=y)
 
@@ -199,11 +203,15 @@ def tick():
             account = team_account_ui.account()
             if account.view().signed_in:  # The background browser finished; from here nothing but timers runs.
                 state["timings"]["signed_in"] = time.monotonic()
-                state["draws_at_sign_in"] = chat_view.draw_count
+                # Counted from the last draw that still showed the sign-in in progress: the pump and the chat's
+                # redraw can run in the same tick as the sign-in, before this timer sees it (Linux Xvfb, 9d7a54eab7f:
+                # draw 7 already showed the new row), and that draw reflects it as much as a later one.
+                state["draws_at_sign_in"] = state.get("in_progress_draws", chat_view.draw_count)
                 state["phase"] = "reflect"
                 return .02
             if drawn().get("team", (0, 0, ""))[2] == "Finish signing in in your browser":
                 state["saw_signing_in"] = True
+                state["in_progress_draws"] = chat_view.draw_count
                 ALLOWED.set()
             wait(phase, ALLOWED.is_set)   # Fails loudly, naming the phase, if the in-progress row never shows.
             return .02
@@ -352,4 +360,5 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=.05)
+import qa_input  # noqa: E402  (a click on its way holds the tick: qa_input.after_clicks)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.05)

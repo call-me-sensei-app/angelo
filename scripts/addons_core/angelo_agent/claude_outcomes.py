@@ -473,12 +473,12 @@ def correctable_failure(operations, results):
     """
     if not operations or len(results) != len(operations) or not results:
         return None
-    from .tool_specs import TOOL_MAP
+    from .tool_specs import READ_ONLY_TOOLS
     for operation, result in zip(operations[:-1], results[:-1]):
         # Unchanged only on evidence: a lookup, a failure, or scene_changed False (a move's success states nothing).
         if (not isinstance(result, dict) or result.get("scene_changed") is True or result.get("partial_changes_possible")
                 or result.get("mutation_started") or result.get("error") is None and result.get("scene_changed") is not False
-                and not TOOL_MAP.get(operation.get("tool"), {}).get("annotations", {}).get("readOnlyHint")):
+                and operation.get("tool") not in READ_ONLY_TOOLS):
             return None
     failed, tool = results[-1], operations[-1]["tool"]
     # A cube/location batch qualifies only when its refusal says nothing ran (otherwise a batch refused at dispatch

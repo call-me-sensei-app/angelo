@@ -76,7 +76,7 @@ addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 from angelo_agent import ui  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.scene_validation import VerificationContext, verify  # noqa: E402
-import bench_gpu, eval_approval, eval_grading_live, eval_parallel, eval_rig_tasks as rig  # noqa: E402,E401  (GPU; approval; --parallel-agents; rig arm)
+import bench_gpu, eval_approval, eval_effort, eval_grading_live, eval_parallel, eval_rig_tasks as rig  # noqa: E402,E401  (GPU; approval; effort; --parallel-agents; rig arm)
 import eval_abnormal_end as end, eval_diagnostics, eval_send_record, eval_warm_up  # noqa: E402,E401  (stops; diagnostics; record at send; warm-up)
 import eval_live_tasks as live  # noqa: E402
 import eval_provider_limits as limits  # noqa: E402
@@ -185,13 +185,13 @@ class Trial:
 
     def configure(self):
         """Both boot paths: effort, model, approval, Trusted scripts, context, cache, GPU (bench_gpu) then opening."""
-        options = {"effort": os.environ.get("ANGELO_EVAL_EFFORT", "low"), "fast": False, **eval_approval.options()}
+        options, effort = eval_effort.chat_options(fast=False, **eval_approval.options())   # "default": the app's own
         if os.environ.get("ANGELO_EVAL_MODEL"):
             options["model"] = os.environ["ANGELO_EVAL_MODEL"]
         self.controller.set_options(**options)
         approval = eval_approval.apply(ui, self.controller)  # The chat's actual mode, for the report.
         if TRUSTED_SCRIPTS:
-            self.controller.set_trusted_scripts(True)
+            __import__("angelo_agent.grant_guard").grant_guard.harness(self.controller.set_trusted_scripts, True)
         self.controller.context_rebase_tokens = CONTEXT_REBASE_TOKENS
         if CACHE_TTL:
             self.controller.prompt_cache_ttl_override = CACHE_TTL
@@ -199,7 +199,7 @@ class Trial:
         diagnostics = eval_diagnostics.configure(self.controller)   # Debug thinking before the chat's first launch.
         self.report["gpu_preference"], self.opening = bench_gpu.run_if_required(bpy), begin_opening(self.controller)
         return {"cache_ttl": CACHE_TTL or "product default", "trusted_scripts": bool(self.controller.trusted_scripts),
-                "refusal_fallback": "disabled", "approve_delegation": DELEGATION_MODEL or None, **approval, **diagnostics}
+                "refusal_fallback": "disabled", "approve_delegation": DELEGATION_MODEL or None, **approval, **diagnostics, **eval_effort.report(effort, self.controller)}
 
     def on_team_boot(self, records):
         """Wait for the team sign-in to restore and its connection of TEAM_MODE to be usable, then bind it."""
@@ -319,10 +319,10 @@ class Trial:
                 else live.approval_decision(call.name, call.arguments, delegation=delegation))
             if decision == "approve":
                 with bpy.context.temp_override(window=self.window):
-                    result = bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.state["id"])
+                    result = __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.state["id"])
                     if 'CANCELLED' in result and call.id in chat.reviewed_calls:
                         # Reviewed Python takes two clicks: the first opens the script, the second runs it.
-                        bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.state["id"])
+                        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=chat.state["id"])
                 self.record["approved"].append(call.name if lead else "worker:" + call.name)
             else:
                 chat.decline_tool(call.id)
@@ -394,8 +394,8 @@ class Trial:
         executor.studio_context = self.controller  # As the accept operator does: the stage belongs to this chat.
         self.receipts = receipt_marker(self.controller)
         self.accept_started = time.monotonic()
-        accepted = self.controller.accept_native_preview(descriptor["preview_id"], executor, ui.document_key(),
-                                                         descriptor["preview_token"])
+        accepted = __import__("angelo_agent.grant_guard").grant_guard.harness(self.controller.accept_native_preview,
+            descriptor["preview_id"], executor, ui.document_key(), descriptor["preview_token"])   # The person's Accept.
         self.record["accept"] = {"accepted": bool(accepted)}
         if not accepted:
             return self.grade(note="the preview acceptance was rejected")

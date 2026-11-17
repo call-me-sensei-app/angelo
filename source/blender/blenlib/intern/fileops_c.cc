@@ -20,9 +20,9 @@
 #include <zstd.h>
 
 #ifdef WIN32
-#  include "BLI_fileops_types.h"
+#  include "BLI_fileops_types.hh"
 #  include "BLI_string_utils.hh"
-#  include "BLI_winstuff.h"
+#  include "BLI_winstuff.hh"
 #  include "utf_winfunc.hh"
 #  include "utfconv.hh"
 #  include <io.h>
@@ -43,13 +43,56 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_fileops.h"
+#include "BLI_fileops.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_sys_types.h" /* For `intptr_t` support. */
-#include "BLI_utildefines.h"
+#include "BLI_string.hh"
+#include "BLI_sys_types.hh" /* For `intptr_t` support. */
+#include "BLI_utildefines.hh"
 
 namespace blender {
+
+/* -------------------------------------------------------------------- */
+/** \name The confinement's file gate (Angelo)
+ *
+ * While a thread runs a confined agent script (doc/angelo/script_confinement.rst), Blender's own file operations
+ * refuse Angelo's private folders (any access) and the folders Blender loads code and preferences from (changes):
+ * every C writer that goes through these functions (`.blend`, text and library saves, caches, exports) is covered
+ * whatever path it was given. The Python layer installs the gate (`BLI_fileops_gate_set`); without it, or on a
+ * thread that runs no agent code, nothing changes.
+ * \{ */
+
+static const BLI_FileGate *file_gate = nullptr;
+
+void BLI_fileops_gate_set(const BLI_FileGate *gate)
+{
+  file_gate = gate;
+}
+
+const BLI_FileGate *BLI_fileops_gate_get()
+{
+  return file_gate;
+}
+
+static bool gate_refuses(const char *path, bool write)
+{
+  if (file_gate != nullptr && path != nullptr && file_gate->refused(path, write)) {
+    errno = EACCES;
+    return true;
+  }
+  return false;
+}
+
+static bool mode_writes(const char *mode)
+{
+  return mode != nullptr && strpbrk(mode, "wa+") != nullptr;
+}
+
+static bool flags_write(int oflag)
+{
+  return (oflag & (O_WRONLY | O_RDWR | O_CREAT | O_TRUNC | O_APPEND)) != 0;
+}
+
+/** \} */
 
 /** Sizes above this must be allocated. */
 #define FILE_MAX_STATIC_BUF 256
@@ -127,7 +170,7 @@ int64_t BLI_read(int fd, void *buf, size_t nbytes)
       return nbytes_read;
     }
 
-    if (UNLIKELY(nbytes_read > nbytes)) {
+    if (nbytes_read > nbytes) [[unlikely]] {
       /* Badly behaving LIBC, reading more bytes than requested should never happen.
        * Possibly an invalid internal state/corruption, only check to prevent an eternal loop. */
       BLI_assert_unreachable();
@@ -317,6 +360,9 @@ bool BLI_file_is_writable(const char *filepath)
 
 bool BLI_file_touch(const char *filepath)
 {
+  if (gate_refuses(filepath, true)) {
+    return false;
+  }
   FILE *f = BLI_fopen(filepath, "r+b");
 
   if (f != nullptr) {
@@ -415,6 +461,9 @@ static bool dir_create_recursive(const char *dirname, const int len)
 
 bool BLI_dir_create_recursive(const char *dirname)
 {
+  if (gate_refuses(dirname, true)) {
+    return false;
+  }
   const int mode = BLI_file_stat_mode(dirname);
   if (mode != 0) {
     /* The file exists, either it's a directory (ok), or not,
@@ -473,6 +522,9 @@ bool BLI_file_ensure_parent_dir_exists(const char *filepath)
 
 int BLI_rename(const char *from, const char *to)
 {
+  if (gate_refuses(from, true) || gate_refuses(to, true)) {
+    return -1;
+  }
   if (!BLI_exists(from)) {
     return 1;
   }
@@ -540,6 +592,9 @@ int BLI_rename(const char *from, const char *to)
 
 int BLI_rename_overwrite(const char *from, const char *to)
 {
+  if (gate_refuses(from, true) || gate_refuses(to, true)) {
+    return -1;
+  }
   if (!BLI_exists(from)) {
     return 1;
   }
@@ -568,6 +623,9 @@ static void callLocalErrorCallBack(const char *err)
 
 FILE *BLI_fopen(const char *filepath, const char *mode)
 {
+  if (gate_refuses(filepath, mode_writes(mode))) {
+    return nullptr;
+  }
   BLI_assert(!BLI_path_is_rel(filepath));
 
   return ufopen(filepath, mode);
@@ -591,6 +649,9 @@ void BLI_get_short_name(char short_name[256], const char *filepath)
 
 void *BLI_gzopen(const char *filepath, const char *mode)
 {
+  if (gate_refuses(filepath, mode_writes(mode))) {
+    return nullptr;
+  }
   gzFile gzfile;
 
   BLI_assert(!BLI_path_is_rel(filepath));
@@ -625,6 +686,9 @@ void *BLI_gzopen(const char *filepath, const char *mode)
 
 int BLI_open(const char *filepath, int oflag, int pmode)
 {
+  if (gate_refuses(filepath, flags_write(oflag))) {
+    return -1;
+  }
   BLI_assert(!BLI_path_is_rel(filepath));
 
   return uopen(filepath, oflag, pmode);
@@ -632,11 +696,17 @@ int BLI_open(const char *filepath, int oflag, int pmode)
 
 int BLI_open_replacing(const char *filepath, int oflag, int pmode)
 {
+  if (gate_refuses(filepath, true)) {
+    return -1;
+  }
   BLI_assert(!BLI_path_is_rel(filepath));
   UNUSED_VARS(pmode); /* A new file is always writable; Windows has no permission bits here. */
 
   HANDLE handle = INVALID_HANDLE_VALUE;
   DWORD error = ERROR_SUCCESS;
+  /* Whether the delete below left an entry at the name. Declared here: the two macros open and
+   * close a block. */
+  bool entry_at_name = false;
   UTF16_ENCODE(filepath);
   /* `DeleteFileW` removes a file symbolic link itself, never its target, and a hard link only
    * drops this name. A directory, a junction or directory link, or an entry another process
@@ -652,13 +722,17 @@ int BLI_open_replacing(const char *filepath, int oflag, int pmode)
                        CREATE_NEW,
                        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
                        nullptr);
+  /* An entry the delete left at the name. For a directory, a junction or a directory link the
+   * create answers "access denied", not "exists": only what is at the name tells them apart.
+   * An entry whose attributes cannot be read is reported as the create reported it. */
   if (handle == INVALID_HANDLE_VALUE) {
     error = GetLastError();
+    entry_at_name = GetFileAttributesW(filepath_16) != INVALID_FILE_ATTRIBUTES;
   }
   UTF16_UN_ENCODE(filepath);
 
   if (handle == INVALID_HANDLE_VALUE) {
-    if (ELEM(error, ERROR_FILE_EXISTS, ERROR_ALREADY_EXISTS)) {
+    if (ELEM(error, ERROR_FILE_EXISTS, ERROR_ALREADY_EXISTS) || entry_at_name) {
       errno = EEXIST;
     }
     else if (ELEM(error, ERROR_PATH_NOT_FOUND, ERROR_FILE_NOT_FOUND)) {
@@ -678,6 +752,10 @@ int BLI_open_replacing(const char *filepath, int oflag, int pmode)
 
 int BLI_file_sync(const int file)
 {
+  if (!BLI_file_descriptor_is_open(file)) {
+    errno = EBADF;
+    return -1;
+  }
   /* `FlushFileBuffers` directly rather than `_commit`, which reports every failure as `EBADF`. */
   const HANDLE handle = HANDLE(_get_osfhandle(file));
   if (handle == INVALID_HANDLE_VALUE) {
@@ -857,6 +935,9 @@ static bool delete_recursive(const char *dir)
 
 int BLI_delete(const char *path, bool dir, bool recursive)
 {
+  if (gate_refuses(path, true)) {
+    return -1;
+  }
   int err;
 
   BLI_assert(!BLI_path_is_rel(path));
@@ -879,6 +960,9 @@ int BLI_delete(const char *path, bool dir, bool recursive)
  */
 int BLI_delete_soft(const char *file, const char **r_error_message)
 {
+  if (gate_refuses(file, true)) {
+    return -1;
+  }
   int err;
 
   BLI_assert(!BLI_path_is_rel(file));
@@ -949,6 +1033,9 @@ int BLI_path_move(const char *path_src, const char *path_dst)
 
 int BLI_copy(const char *path_src, const char *path_dst)
 {
+  if (gate_refuses(path_src, false) || gate_refuses(path_dst, true)) {
+    return -1;
+  }
   char path_dst_buf[FILE_MAX_STATIC_BUF];
   const char *path_dst_with_filename = path_destination_ensure_filename(
       path_src, path_dst, path_dst_buf, sizeof(path_dst_buf));
@@ -1062,16 +1149,16 @@ static void strbuf_append_path(StrBuf *buf, const char *filename)
   const size_t filename_len = strlen(filename);
   const size_t len = buf->str_len + (has_slash ? 0 : 1) + filename_len;
 
-  if (buf->str_len_alloc < len) {
+  if (buf->str_len_alloc <= len) {
     buf->str = static_cast<char *>(realloc(static_cast<void *>(buf->str), len + 1));
-    buf->str_len_alloc = len;
+    buf->str_len_alloc = len + 1;
   }
   if (has_slash == false) {
     buf->str[buf->str_len++] = SEP;
   }
   memcpy(buf->str + buf->str_len, filename, filename_len + 1);
   buf->str_len += filename_len;
-  BLI_assert(buf->str_len <= buf->str_len_alloc);
+  BLI_assert(buf->str_len < buf->str_len_alloc);
 }
 
 static void strbuf_trim(StrBuf *buf, size_t len)
@@ -1287,6 +1374,9 @@ static int delete_single_file(const char *from, const char * /*to*/)
 
 FILE *BLI_fopen(const char *filepath, const char *mode)
 {
+  if (gate_refuses(filepath, mode_writes(mode))) {
+    return nullptr;
+  }
   BLI_assert(!BLI_path_is_rel(filepath));
 
   return fopen(filepath, mode);
@@ -1294,6 +1384,9 @@ FILE *BLI_fopen(const char *filepath, const char *mode)
 
 void *BLI_gzopen(const char *filepath, const char *mode)
 {
+  if (gate_refuses(filepath, mode_writes(mode))) {
+    return nullptr;
+  }
   BLI_assert(!BLI_path_is_rel(filepath));
 
   return gzopen(filepath, mode);
@@ -1301,6 +1394,9 @@ void *BLI_gzopen(const char *filepath, const char *mode)
 
 int BLI_open(const char *filepath, int oflag, int pmode)
 {
+  if (gate_refuses(filepath, flags_write(oflag))) {
+    return -1;
+  }
   BLI_assert(!BLI_path_is_rel(filepath));
 
   return open(filepath, oflag, pmode);
@@ -1308,6 +1404,9 @@ int BLI_open(const char *filepath, int oflag, int pmode)
 
 int BLI_open_replacing(const char *filepath, int oflag, int pmode)
 {
+  if (gate_refuses(filepath, true)) {
+    return -1;
+  }
   BLI_assert(!BLI_path_is_rel(filepath));
 
   /* `unlink` removes a symbolic link itself, never its target, and a hard link only drops this
@@ -1405,6 +1504,9 @@ int BLI_access(const char *filepath, int mode)
 
 int BLI_delete(const char *path, bool dir, bool recursive)
 {
+  if (gate_refuses(path, true)) {
+    return -1;
+  }
   BLI_assert(!BLI_path_is_rel(path));
   /* Not an error but avoid ambiguous arguments (recursive file deletion isn't meaningful). */
   BLI_assert(!(dir == false && recursive == true));
@@ -1422,6 +1524,9 @@ int BLI_delete(const char *path, bool dir, bool recursive)
 #  ifndef __APPLE__
 int BLI_delete_soft(const char *filepath, const char **r_error_message)
 {
+  if (gate_refuses(filepath, true)) {
+    return -1;
+  }
   BLI_assert(!BLI_path_is_rel(filepath));
 
   const char *args[5];
@@ -1460,7 +1565,7 @@ int BLI_delete_soft(const char *filepath, const char **r_error_message)
   errno = 0;
 
   int pid = fork();
-  if (UNLIKELY(pid == -1)) {
+  if (pid == -1) [[unlikely]] {
     *r_error_message = errno ? strerror(errno) : "unable to fork process";
     return -1;
   }
@@ -1740,6 +1845,9 @@ static const char *path_destination_ensure_filename(const char *path_src,
 
 int BLI_copy(const char *path_src, const char *path_dst)
 {
+  if (gate_refuses(path_src, false) || gate_refuses(path_dst, true)) {
+    return -1;
+  }
   char path_dst_buf[FILE_MAX_STATIC_BUF];
   const char *path_dst_with_filename = path_destination_ensure_filename(
       path_src, path_dst, path_dst_buf, sizeof(path_dst_buf));

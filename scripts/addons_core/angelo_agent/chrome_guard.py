@@ -140,6 +140,7 @@ def _loaded(*_args):
 
 class ANGELO_OT_owned_area_key(bpy.types.Operator):
     """N or T over an editor Angelo draws whole: nothing to show there (its sidebar and toolbar stay hidden)."""
+    bl_description = ""   # No tooltip. Blender shows a class docstring as one; this one is a note for developers.
     bl_idname = "angelo.owned_area_key"
     bl_label = "Angelo editor key"
     bl_options = {'INTERNAL'}

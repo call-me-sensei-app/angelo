@@ -22,7 +22,7 @@ import time
 import unicodedata
 from pathlib import Path
 
-from . import shared_replace   # Standard library only, as this module is.
+from . import file_owner, shared_replace   # Standard library only, as this module is.
 
 # Protocol 2 (2026-10-07) changed only the HMAC domain separators below to the
 # Angelo name; a protocol 1 peer gets ``incompatible`` instead of a failed proof.
@@ -73,7 +73,7 @@ def check_private_directory(path):
     info = os.lstat(path)  # FileNotFoundError propagates: "not running" is not "unsafe".
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
         raise UnsafePath(f"{path} must be a real directory, not a link")
-    if info.st_uid != os.geteuid():
+    if not file_owner.owned_by_this_user(path, info):
         raise UnsafePath(f"{path} is owned by another user")
     if stat.S_IMODE(info.st_mode) & 0o077:
         raise UnsafePath(f"{path} must be private to its owner (mode 0700)")
@@ -91,7 +91,7 @@ def read_endpoint(path):
         raise UnsafePath(f"{path} cannot be opened safely (links are refused)") from error
     try:
         info = os.fstat(descriptor)
-        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+        if (not stat.S_ISREG(info.st_mode) or not file_owner.owned_by_this_user(path, info)
                 or stat.S_IMODE(info.st_mode) & 0o077 or info.st_size > MAX_ENDPOINT_BYTES):
             raise UnsafePath(f"{path} must be a small regular file readable only by its owner")
         data = os.read(descriptor, MAX_ENDPOINT_BYTES + 1)
@@ -186,6 +186,20 @@ def app_proof(key, server_nonce, client_nonce):
     return _proof(_APP_CONTEXT, key, server_nonce, client_nonce)
 
 
+def _private_file(path, info):
+    """``info`` (from the open descriptor of ``path``) is a regular file only its owner can use. POSIX: this user's,
+    mode 0600 or stricter, and never a link (``O_NOFOLLOW`` refused it). Windows has neither owner ids nor mode bits
+    in ``stat``: the per-user profile folder's ACL holds it, and a link at the name is refused by ``lstat``."""
+    if not stat.S_ISREG(info.st_mode):
+        return False
+    if hasattr(os, "geteuid"):
+        return info.st_uid == os.geteuid() and not stat.S_IMODE(info.st_mode) & 0o077
+    try:
+        return not stat.S_ISLNK(os.lstat(path).st_mode)
+    except OSError:
+        return False   # Gone since it was opened: never taken for the file that was.
+
+
 def read_key(path):
     """An owner-only app key file, read without following a link: 32 bytes, or None when missing or unsafe."""
     try:
@@ -195,7 +209,10 @@ def read_key(path):
         return None
     try:
         info = os.fstat(descriptor)
-        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) & 0o077
+        # Both rules (merge of the C guard with the candidate): the guard's private-file test (POSIX: owner ID and
+        # mode; Windows: the profile ACL and no link) and, on Windows, the owner SID file_owner reads (POSIX's owner
+        # ID is already the first rule's, and file_owner asks it only where geteuid exists).
+        if (not _private_file(path, info) or (file_owner.WINDOWS and not file_owner.owned_by_this_user(path, info))
                 or info.st_size > MAX_KEY_FILE_BYTES):
             return None
         text = os.read(descriptor, MAX_KEY_FILE_BYTES + 1).decode("ascii", "replace").strip()

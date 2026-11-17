@@ -2,6 +2,10 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
+/** \file
+ * \ingroup bke
+ */
+
 #include "BKE_subdiv_modifier.hh"
 
 #include "MEM_guardedalloc.h"
@@ -84,17 +88,23 @@ bool BKE_subsurf_modifier_has_split_normals(const SubsurfModifierData *smd, cons
          mesh->normals_domain() == MeshNormalDomain::Corner;
 }
 
-static bool is_subdivision_evaluation_possible_on_gpu()
+/** #SUBSURF_GPU_STATUS_GPU when this GPU can subdivide, otherwise why not. */
+static eSubsurfGPUStatus subdivision_evaluation_status_on_gpu()
 {
   if (GPU_backend_get_type() == GPU_BACKEND_NONE) {
-    return false;
+    return SUBSURF_GPU_STATUS_NO_GPU;
   }
 
   if (GPU_max_compute_shader_storage_blocks() < MAX_GPU_SUBDIV_SSBOS) {
-    return false;
+    return SUBSURF_GPU_STATUS_UNSUPPORTED_GPU;
   }
 
-  return true;
+  return SUBSURF_GPU_STATUS_GPU;
+}
+
+static bool is_subdivision_evaluation_possible_on_gpu()
+{
+  return subdivision_evaluation_status_on_gpu() == SUBSURF_GPU_STATUS_GPU;
 }
 
 bool BKE_subsurf_modifier_force_disable_gpu_evaluation_for_mesh(const SubsurfModifierData *smd,
@@ -115,11 +125,29 @@ bool BKE_subsurf_modifier_force_disable_gpu_evaluation_for_mesh(const SubsurfMod
   return BKE_subsurf_modifier_has_split_normals(smd, mesh);
 }
 
+eSubsurfGPUStatus BKE_subsurf_modifier_gpu_status(const SubsurfModifierData *smd,
+                                                  const Mesh *mesh,
+                                                  const bool is_last_enabled)
+{
+  if ((U.gpu_flag & USER_GPU_FLAG_SUBDIVISION_EVALUATION) == 0) {
+    return SUBSURF_GPU_STATUS_PREFERENCE_OFF;
+  }
+  const eSubsurfGPUStatus gpu_status = subdivision_evaluation_status_on_gpu();
+  if (gpu_status != SUBSURF_GPU_STATUS_GPU) {
+    return gpu_status;
+  }
+  if (!is_last_enabled) {
+    return SUBSURF_GPU_STATUS_NOT_LAST;
+  }
+  if (BKE_subsurf_modifier_has_split_normals(smd, mesh)) {
+    return SUBSURF_GPU_STATUS_SPLIT_NORMALS;
+  }
+  return SUBSURF_GPU_STATUS_GPU;
+}
+
 bool BKE_subsurf_modifier_can_do_gpu_subdiv(const SubsurfModifierData *smd, const Mesh *mesh)
 {
-  return (U.gpu_flag & USER_GPU_FLAG_SUBDIVISION_EVALUATION) &&
-         is_subdivision_evaluation_possible_on_gpu() &&
-         !BKE_subsurf_modifier_has_split_normals(smd, mesh);
+  return BKE_subsurf_modifier_gpu_status(smd, mesh, true) == SUBSURF_GPU_STATUS_GPU;
 }
 
 void (*BKE_subsurf_modifier_free_gpu_cache_cb)(subdiv::Subdiv *subdiv) = nullptr;

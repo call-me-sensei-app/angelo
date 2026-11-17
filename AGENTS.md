@@ -106,6 +106,9 @@ new code, tests and documentation never introduce them.
   isolated macOS arm64 development build and the full-feature macOS arm64 build
   with its signing-readiness findings, and how .blend saves replace a link
   planted at their temporary name (a change from upstream Blender).
+- [Python API changes](doc/angelo/python_api_changes.rst): what Angelo changes in
+  Blender's Python API, by release (arguments that may not be None, parameters now
+  required), for add-on and script authors.
 - [Application identity](doc/angelo/app_identity.rst): the one JSON source of
   product, vendor, bundle/package ids, GUIDs, folder names and links, the
   side-by-side rules with a stock Blender, the window chrome colour (title bar
@@ -122,6 +125,10 @@ new code, tests and documentation never introduce them.
   Image pixels, UV layouts, weights, colour attributes, render passes, the
   person's editors and motion strips, never loading a file or showing code,
   credentials or paths.
+- [Agent-script confinement](doc/angelo/script_confinement.rst) and
+  [grant operators](doc/angelo/grant_operators.rst): what every agent script is
+  refused at run time (Angelo's private state, grants, other programs, native
+  code, unhooking), work it leaves running confined, and the residual risk.
 - [Native agent chat](doc/angelo/agent_chat.rst): the chat editor's composer, usage meter,
   model, effort and Fast controls, approval modes and cards, attachments,
   collaborators, web and file tools, request snapshots and opt-in voice.
@@ -137,9 +144,15 @@ new code, tests and documentation never introduce them.
   and sculpt/Undo safety.
 - [Voxel remesh guard](doc/angelo/voxel_remesh_guard.rst):
   the measured estimate every voxel remesh is checked against, and its dialogs.
+- [Rigid body teardown](doc/angelo/rigid_body_teardown.rst): Bullet bodies,
+  constraints and worlds freed in any order (Undo, file load, removed objects).
 - [Hand rigging](doc/angelo/hand_rigging.rst): the read-only hand tools (detection
   by bone layout, joint frames from the forearm, skin contact, the fold-to-limit
   fist as ``bone_set`` operations), their guidance and the glTF weld of agent imports.
+- [Bake Auto Smooth](doc/angelo/bake_auto_smooth.rst): Object > Bake Auto Smooth
+  writes Smooth by Angle into a mesh shared by many objects once, exactly or not at all.
+- [GPU subdivision status](doc/angelo/gpu_subdivision_status.rst): why the Subdivision
+  modifier subdivides on the CPU, its runtime status field and its panel labels.
 - [Select Through](doc/angelo/select_through.rst): the 3D viewport toggle that lets
   box, lasso and circle selection reach hidden elements in solid display, which
   native paths read it and which never do.
@@ -207,6 +220,9 @@ new code, tests and documentation never introduce them.
   ToonLab: its static versioned index and how it is built, the verified download
   cache, the 3D view's search pill and browser, drag-and-drop import (models,
   materials, HDRI worlds), provenance and credits, and the agent's library tools.
+- [Files from the web](doc/angelo/downloads.rst): ``angelo_download``, the one
+  way an agent brings a file from a link (scripts have no network): its card,
+  public pinned addresses only, redirects, caps, type checks and safe names.
 - [Team library and IPs](doc/angelo/team_library.rst): the signed-in team's
   library and IP tools, their untrusted-file checks, approvals and prompt cost.
 - [Photo drop](doc/angelo/photo_drop.rst): a photo dropped on the 3D view opens

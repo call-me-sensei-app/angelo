@@ -15,15 +15,17 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_build_config.h"
-#include "BLI_listbase.h"
-#include "BLI_string.h"
-#include "BLI_threads.h"
-#include "BLI_time.h"
-#include "BLI_utildefines.h"
+#include "BLI_angelo_writers.hh"
+#include "BLI_build_config.hh"
+#include "BLI_fileops.hh"
+#include "BLI_listbase.hh"
+#include "BLI_string.hh"
+#include "BLI_threads.hh"
+#include "BLI_time.hh"
+#include "BLI_utildefines.hh"
 
 #if OS_WINDOWS
-#  include "BLI_winstuff.h"
+#  include "BLI_winstuff.hh"
 #endif
 
 #include "BKE_context.hh"
@@ -74,6 +76,14 @@ struct ThreadSlot;
 
 struct wmJob {
   wmJob *next, *prev;
+
+  /** Angelo: the confinement a confined agent script's thread had when it started this job
+   * (doc/angelo/script_confinement.rst): the job's thread runs under it too. Zero from `MEM_callocN`: the struct
+   * stays trivial. */
+  int angelo_confined;
+  /** Angelo: what the confinement knew when this run started, for the writers it runs
+   * (BLI_angelo_writers.hh): a path it reads later is judged if a script region could have changed it. */
+  angelo_writers::Job angelo_writer;
 
   /** Job originating from, keep track of this when deleting windows. */
   wmWindow *win;
@@ -443,7 +453,7 @@ wmJob *WM_jobs_get(wmWindowManager *wm,
   return wm_job;
 }
 
-bool WM_jobs_test(const wmWindowManager *wm, const void *owner, int job_type)
+bool WM_jobs_progress_test(const wmWindowManager *wm, const void *owner, int job_type)
 {
   /* Job can be running or about to run (suspended). */
   for (wmJob &wm_job : wm->runtime->jobs) {
@@ -491,7 +501,7 @@ static void wm_jobs_update_progress_bars(wmWindowManager *wm)
   float jobs_progress = 0;
 
   for (wmJob &wm_job : wm->runtime->jobs) {
-    if (wm_job.threads.first && !wm_job.ready) {
+    if (wm_job.threads.first() && !wm_job.ready) {
       if (wm_job.flag & WM_JOB_PROGRESS) {
         /* Accumulate global progress for running jobs. */
         jobs_progress++;
@@ -643,7 +653,17 @@ static void *do_job_thread(void *job_v)
         angelo_thread_job = nullptr;
       }
     } scope(wm_job);
+    /* Angelo: the writers this job runs (and the task pools it hands work to) judge against its start. */
+    const angelo_writers::JobScope writer_scope(&wm_job->angelo_writer);
+    /* Angelo: a job a confined agent script started runs confined (the file gate reads this thread's depth). */
+    const BLI_FileGate *gate = wm_job->angelo_confined ? BLI_fileops_gate_get() : nullptr;
+    if (gate) {
+      gate->enter(wm_job->angelo_confined);
+    }
     wm_job->startjob(wm_job->run_customdata, &wm_job->worker_status);
+    if (gate) {
+      gate->leave(wm_job->angelo_confined);
+    }
   }
   wm_job->ready = true;
 
@@ -753,6 +773,10 @@ void WM_jobs_start(wmWindowManager *wm, wmJob *wm_job)
 
         // printf("job started: %s\n", wm_job->name);
 
+        if (const BLI_FileGate *gate = BLI_fileops_gate_get()) {
+          wm_job->angelo_confined = gate->depth();
+        }
+        wm_job->angelo_writer = angelo_writers::job_begin();
         BLI_threadpool_init(&wm_job->threads, do_job_thread, 1);
         BLI_threadpool_insert(&wm_job->threads, wm_job);
       }
@@ -884,7 +908,7 @@ void WM_jobs_kill_all(wmWindowManager *wm)
 {
   wmJob *wm_job;
 
-  while ((wm_job = static_cast<wmJob *>(wm->runtime->jobs.first))) {
+  while ((wm_job = wm->runtime->jobs.first())) {
     wm_jobs_kill_job(wm, wm_job);
   }
 
@@ -983,7 +1007,7 @@ void wm_jobs_timer(wmWindowManager *wm, wmTimer *wt)
 
   if (wm_job) {
     /* Running threads. */
-    if (wm_job->threads.first) {
+    if (wm_job->threads.first()) {
       /* Let threads get temporary lock over main thread if needed. */
       wm_job_main_thread_yield(wm_job);
 
@@ -1013,7 +1037,7 @@ void wm_jobs_handle_finished(const bContext *C)
 {
   wmWindowManager *wm = CTX_wm_manager(C);
   for (wmJob &job : wm->runtime->jobs.items_reversed_mutable()) {
-    if (!job.threads.first) {
+    if (!job.threads.first()) {
       continue;
     }
 
@@ -1072,27 +1096,6 @@ bool WM_jobs_has_pending_or_running(const wmWindowManager *wm)
 {
   for (const wmJob &job : wm->runtime->jobs) {
     if (job.running || job.customdata || job.run_customdata) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool WM_jobs_has_running(const wmWindowManager *wm)
-{
-  for (const wmJob &wm_job : wm->runtime->jobs) {
-    if (wm_job.running) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-bool WM_jobs_has_running_type(const wmWindowManager *wm, int job_type)
-{
-  for (wmJob &wm_job : wm->runtime->jobs) {
-    if (wm_job.running && wm_job.job_type == job_type) {
       return true;
     }
   }

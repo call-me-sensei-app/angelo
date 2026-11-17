@@ -17,10 +17,11 @@ VERSION = 1
 
 
 def _config_path():
-    """The OpenColorIO configuration Blender uses: ``$OCIO`` (Blender exports its bundled one there), else bundled."""
+    """The OpenColorIO configuration Blender is using: the bundled one, ``$OCIO``, or a project's own (a path or an
+    ``ocio://`` built-in one, which PyOpenColorIO opens the same way). Bundled when Blender reports none."""
     import bpy
-    path = os.environ.get("OCIO", "")
-    if path and os.path.isfile(path):
+    path = bpy.data.colorspace.ocio_config_path
+    if path:
         return path
     folder = bpy.utils.system_resource("DATAFILES", path="colormanagement") or ""
     return os.path.join(folder, "config.ocio")

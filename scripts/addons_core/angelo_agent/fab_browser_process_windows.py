@@ -18,7 +18,7 @@ import uuid
 from .child_process import ChildProcess, ChildCleanupUnavailable
 from .fab_browser_pipes_windows import WindowsPipes, PipeCleanupUnavailable
 from .fab_browser_profile_windows import PrivateWindowsProfile, ProfileUnavailable
-from .fab_browser_process import BrowserUnavailable, MAX_MESSAGE
+from .fab_browser_process import BrowserUnavailable, MAX_MESSAGE, browser_environment
 
 
 class WindowsBrowserCleanupUnavailable(BrowserUnavailable):
@@ -99,9 +99,7 @@ class WindowsBrowserProcess:
                 self._pipes=pipes_factory()
             # Pin/verify profile before native creation. The helper holds all ancestors against rename.
             self._verify_profile()
-            environment={key:value for key,value in os.environ.items() if key.upper() in
-                         ('SYSTEMROOT','WINDIR','TEMP','TMP','USERPROFILE','LOCALAPPDATA','APPDATA',
-                          'PATH','HOMEDRIVE','HOMEPATH','LANG','LC_ALL')}
+            environment=browser_environment(True)   # The OS's own variables (essential_environment), the home drive.
             pipe_scope=nullcontext(([], {'close_fds':True})) if manual_login else self._pipes.spawn_kwargs()
             with pipe_scope as (pipe_arguments,spawn_options):
                 managed_arguments=() if manual_login else ('--restore-last-session', '--no-startup-window')

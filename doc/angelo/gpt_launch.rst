@@ -201,6 +201,16 @@ and licensed is in ``releasing.rst``, "Agent runtime".
   model request that wrote a dynamic call and its exec cell, which the recovery
   hold judges the call by (``agent_execution.rst``, ``record_call_step``); a
   runtime without it keeps the step a call is checked in.
+* **Provider capabilities** (the pin's ``provider_capabilities``). A build may
+  read a custom model provider's ``capabilities.<name>``. Angelo writes
+  ``request_compression = "zstd"`` (``unsupported`` or ``zstd``) into a team
+  Codex mode's provider when its gateway decodes zstd
+  (``team_runtime.request_compression``): an opening is about 3.7x smaller.
+  Codex ignores a capability it does not read, so a stale build would silently
+  send plain JSON, and no app-server schema shows one. The release checks load,
+  offline, a throwaway provider declaring each pinned value (each must load)
+  and an unpinned value (it must be refused as unknown). Stock Codex 0.163.0
+  accepts the unknown value and is refused; the pinned 0.166.0 build passes.
 * **First run.** Where Angelo carries the runtime, the connect card always
   offers ChatGPT (``first_run.built_in``) and never asks for a Codex CLI to be
   installed; Claude Code is still found as before.
@@ -233,7 +243,11 @@ and licensed is in ``releasing.rst``, "Agent runtime".
   it, nobody outside this user's Angelo can. ``ANGELO_CACHE_KEY_SECRET`` (64
   hexadecimal digits, only that spelling) replaces it, for a campaign that must
   reproduce its keys across machines or users; a folder that cannot be written
-  gives a launch its own secret, said on standard error. Reasoning effort is left out: it is a request
+  gives a launch its own secret, said on standard error. So does a file that
+  is not a secret and cannot be replaced: on Windows another program holding it
+  (a scan of a file just written) refuses the replace, which is tried again for
+  up to 1.9 s first (``shared_replace.PATIENT_ATTEMPTS``), since the secret is
+  stored once per launch and never tried again. Reasoning effort is left out: it is a request
   parameter, not prompt bytes (no part of the static prefix depends on it), so
   a key per effort could only route a chat away from a warm cache, and where
   the backend does keep efforts apart a hit fails either way. The same holds

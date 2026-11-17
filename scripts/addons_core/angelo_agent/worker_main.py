@@ -18,7 +18,7 @@ import stat
 import sys
 from pathlib import Path
 
-from . import headless_preferences
+from . import headless_preferences, owned_paths
 from .worker_process import PRIVATE_PREFIX, STATE
 
 
@@ -50,6 +50,10 @@ def open_part(bpy, part):
     binary to keep one for every later load: ``program_undo.keep_background_document``). Empty includes the start-up
     file's collection: a part's collections are the ones its worker made, and the merge keeps exactly those
     (``worker_merge``), never a "Collection.006" around every part."""
+    # A part comes only from the launching Angelo (its argument, a switch request on its pipe): vouched for in this
+    # process (C refuses it to a script), so a part a script named in the host's state is never saved over.
+    owned_paths.vouch(part, persist=False)
+    owned_paths.require_writable(part)
     part = Path(part)
     if part.exists():
         result = bpy.ops.wm.open_mainfile(filepath=str(part), load_ui=False, use_scripts=False)
@@ -118,7 +122,7 @@ def _crash_folder(bpy, private):
     saved (``headless_preferences.protect``); Python's own temporary files stay where they were."""
     from .worker_crash_evidence import blender_temp
     folder = blender_temp(private)
-    folder.mkdir(mode=0o700, exist_ok=True)
+    owned_paths.require_writable(folder).mkdir(mode=0o700, exist_ok=True)
     bpy.context.preferences.filepaths.temporary_directory = str(folder)
 
 

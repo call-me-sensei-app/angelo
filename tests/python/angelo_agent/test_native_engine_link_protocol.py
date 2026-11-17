@@ -12,6 +12,7 @@ version and what the editor can show.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import os
@@ -194,7 +195,7 @@ class ServerTests(unittest.TestCase):
         self.addCleanup(client.sock.close)
         return client
 
-    def wait_for(self, condition, timeout=5):
+    def wait_for(self, condition, timeout=CAP_S):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             value = condition()

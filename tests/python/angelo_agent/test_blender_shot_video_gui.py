@@ -43,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_operator and qa_b
 import qa_operator  # noqa: E402
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
 import qa_plus_menu  # noqa: E402  (the + menu's pages, read from the chat's canvas state)
+import qa_input  # noqa: E402  (the person's real press, which C mints the row's ticket for)
 from angelo_agent import product_env  # noqa: E402
 product_env.clear('DISABLE_DEFAULT_CHAT')   # The default startup builds Director (the runner's opt-out skips it).
 
@@ -156,7 +157,9 @@ def attachment_pictures():
 
 def event(kind, value='PRESS', x=None, y=None):
     area, region = area_region()
-    data = SimpleNamespace(type=kind, value=value, mouse_x=region.x + x, mouse_y=region.y + y, mouse_prev_y=region.y + y,
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    px, py = chat_point(region, (x, y, 0, 0))   # A point on the chat's canvas, in its points.
+    data = SimpleNamespace(type=kind, value=value, mouse_x=px, mouse_y=py, mouse_prev_y=py,
                            ctrl=False, oskey=False, shift=False, alt=False, unicode="")
     with bpy.context.temp_override(window=window, area=area, region=region):
         return chat_view.ANGELO_OT_chat_input.modal(handler, bpy.context, data)
@@ -169,6 +172,18 @@ def click(action, value=None, popup=True):
     x, y = rect[0] + rect[2] / 2, rect[1] + rect[3] / 2
     event('LEFTMOUSE', 'PRESS', x, y)
     event('LEFTMOUSE', 'RELEASE', x, y)
+
+
+def real_press(action, value):
+    """The person's press on a drawn + menu row, sent through the window (``qa_input.press``): the event C notes and
+    mints the row's ticket for, so its dispatch runs in the person's grant scope (grant_operators.rst). ``click``
+    above calls the chat's handler straight from Python, which no person's press does: a grant refuses it."""
+    _area, region = area_region()
+
+    def point():   # The chat's points as window pixels (its scale, right to left mirrored): qa_input.chat_point.
+        return qa_input.chat_point(region, next(r for r, found, arg in view()["popup_hits"]
+                                                if found == action and arg == value))
+    qa_input.press(window, point)
 
 
 def blocking_shot(scene):
@@ -289,8 +304,22 @@ def tick():
             check("video_rows_use_the_video_icon", row is not None and row.get("glyph") == "video"
                   and motion_row is not None and motion_row.get("glyph") == "video")
             capture_menu("shot-1-plus-menu.png")
+            # A click no person made (the handler called from Python, no press C saw): the row's grant refuses it
+            # (the chat reports that in one line and keeps going), and it starts nothing.
             click("popup_add_open", "shot_to_video")
+            check("a_scripted_click_starts_no_shot", not shot_capture.pending())
+            redraw()
+            if not any(found == "popup_add_open" and arg == "shot_to_video" for _r, found, arg in view()["popup_hits"]):
+                click("attach", popup=False)   # The menu again, on its page (opening it grants nothing).
+                click("popup_add_group", group)
+                redraw()
+            real_press("popup_add_open", "shot_to_video")
+            state["phase"] = "pressed"
+            return 0.5
+        if state["phase"] == "pressed":
             pending = shot_capture.pending()
+            if not pending and time.monotonic() - state.setdefault("pressed_at", time.monotonic()) < 15:
+                return 0.2
             check("click_started_one_shot", len(pending) == 1)
             state["shot"] = pending[0] if pending else None
             parts = set(state["shot"].jobs) if state["shot"] else set()
@@ -377,7 +406,7 @@ def tick():
                 check("frames_shown_as_pictures", all(tab.get(key) and tab[key]["path"] in shown
                                                       for key in ("video_first", "video_last")))
             with bpy.context.temp_override(window=window):   # The camera-move entry, as the Render menu runs it.
-                bpy.ops.angelo.shot_to_video(mode='MOTION')
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().shot_to_video(mode='MOTION')
             pending = shot_capture.pending()
             state["motion_shot"] = pending[0] if pending else None
             check("motion_entry_queued_the_move", bool(pending) and set(pending[0].jobs) == (
@@ -458,4 +487,4 @@ def finish():
     os._exit(0 if state["success"] else 1)
 
 
-bpy.app.timers.register(tick, first_interval=1)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=1)   # Never a phase while a press is on its way.

@@ -17,10 +17,13 @@ API (for ``setup_card`` and ``start_card``; the kit stream may fold these into `
   ``row_panel`` (a bordered row whose text wraps), ``tile`` (a scene thumbnail). ``state`` is
   ``(hover, pressed, focus, enabled)`` like every card control. The segmented controls and the switch are the
   kit's (``ui_kit_controls``).
-* ``thumbnail(path)`` reads a ``.blend`` file's preview pixels once, outside drawing; ``release()`` frees them.
+* ``thumbnail(path)`` reads a ``.blend`` file's preview once, outside drawing (the start panel, when it opens); its
+  first draw makes the texture and drops the pixels; ``release()`` (the panel closed) frees the textures.
 
 Every label reaching a painter is already translated. GPU only while drawing; no file or Blender data access.
 """
+
+from array import array
 
 from . import card_kit as kit, ui_kit, ui_tokens as tokens
 
@@ -32,7 +35,7 @@ BANNER_FALLBACK = ((0.035, 0.137, 0.161, 1), (0.055, 0.075, 0.090, 1))  # The ar
 
 BANNER_ASPECT = 480 / 1520   # The welcome art's proportions (welcome_screen.BANNER_ASPECT).
 
-_thumbs = {}   # path -> {"pixels", "size", "texture"}
+_thumbs = {}   # path -> {"pixels" (until its first draw), "size" (None without a preview), "texture"}
 _shader = None
 
 
@@ -78,10 +81,16 @@ def _nothing(*args):
 
 
 def banner_ready():
-    """The welcome art's pixels were read (``welcome_screen.prepare_banner``); a wash is drawn otherwise."""
+    """The welcome art can be drawn (read while a card shows it: ``banner_pictures``); a wash is drawn otherwise."""
     import sys
     module = sys.modules.get(__package__ + ".welcome_screen")
-    return bool(module and module._banner["pixels"] is not None)
+    return bool(module and module.banner_ready())
+
+
+def banner_pictures():
+    """A first-launch card's ``pictures``: the welcome art, read when the card opens and let go when it closes."""
+    from . import welcome_screen
+    return (welcome_screen.BANNER_PICTURE,)
 
 
 def _paint(view, rect, scale, ui, painter, state, args):
@@ -189,7 +198,7 @@ def tile(view, rect, state, s, path, lines):
     image = (x + pad, y + h - pad - image_h, w - 2 * pad, image_h)
     view.shape(*image, TRACK, tokens.RADIUS_CONTROL * s)
     thumb = _thumbs.get(path)
-    if thumb and thumb.get("pixels") is not None:
+    if thumb and thumb.get("size") is not None:
         _image(gpu, thumb, _fit(image, thumb["size"]))
     else:
         cx, cy, r = image[0] + image[2] / 2, image[1] + image[3] / 2, image[3] * 0.18
@@ -219,6 +228,7 @@ def _image(gpu, entry, rect):
         width, height = entry["size"]
         entry["texture"] = gpu.types.GPUTexture((width, height), format='RGBA16F',
                                                 data=gpu.types.Buffer('FLOAT', [width * height * 4], entry["pixels"]))
+        entry["pixels"] = None   # On the GPU now: no float copy beside it.
     if _shader is None:
         _shader = gpu.shader.from_builtin('IMAGE')
     x, y, w, h = rect
@@ -240,7 +250,7 @@ def thumbnail(path):
     global _previews
     entry = _thumbs.get(path)
     if entry is not None:
-        return entry.get("pixels") is not None
+        return entry.get("size") is not None
     entry = _thumbs[path] = {"pixels": None, "size": None, "texture": None}
     try:
         import bpy.utils.previews
@@ -249,12 +259,12 @@ def thumbnail(path):
         preview = _previews.get(path) or _previews.load(path, path, 'BLEND')
         width, height = preview.image_size
         if width and height:
-            pixels = [0.0] * (width * height * 4)
+            pixels = array('f', bytes(width * height * 16))   # 4 bytes a value, until the first draw drops it.
             preview.image_pixels_float.foreach_get(pixels)
             entry.update(pixels=pixels, size=(width, height))
     except (RuntimeError, ValueError, KeyError, OSError, AttributeError, TypeError):
         pass   # No preview saved in the file: the tile draws a placeholder.
-    return entry["pixels"] is not None
+    return entry["size"] is not None
 
 
 def release():

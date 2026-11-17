@@ -3,6 +3,7 @@
 """Failed saves retain data, expose their cause and recover an idle lead without model work."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import tempfile
 from unittest import mock
@@ -35,7 +36,7 @@ class SaveRecoveryTests(base.Fixture):
 
     def park(self, session):
         worker_queue.tick()
-        self.assertTrue(worker_queue._parking[session]["done"].wait(1))
+        self.assertTrue(worker_queue._parking[session]["done"].wait(CAP_S))
         worker_queue.tick()
 
     def success(self, process, revision=3):
@@ -111,7 +112,7 @@ class SaveRecoveryTests(base.Fixture):
         worker_queue.admit(self.lead, [base.item(self.lead, 3, folder=self.folder.name)])
         worker_queue.tick()
         for record in list(worker_queue._parking.values()):
-            self.assertTrue(record["done"].wait(1))
+            self.assertTrue(record["done"].wait(CAP_S))
         worker_queue.tick()
         self.assertIn("w1", worker_queue._held)
         self.assertIn("w2", worker_queue.parked)
@@ -161,7 +162,7 @@ class SaveRecoveryTests(base.Fixture):
                     self.clock = worker_queue._held[session]["retry_at"]
                 self.success(process)
                 worker_queue._park(session, self.ui)
-                self.assertTrue(worker_queue._parking[session]["done"].wait(1))
+                self.assertTrue(worker_queue._parking[session]["done"].wait(CAP_S))
                 chat._request_generation = 2
                 chat.state["messages"].extend([{"role": "user", "text": "New edit"},
                                                {"role": "error", "text": "New edit save failed"}])

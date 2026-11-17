@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Synthetic owners on actual Driver/Host/Worker; no browser, account, profile or native acceptance."""
 import suite_isolation  # noqa: F401
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 import threading
 import time
 import unittest
@@ -47,7 +48,7 @@ class Manual:
         self.trace.append(('finish', threading.get_ident()))
         if self.entered is not None:
             self.entered.set()
-            assert self.release.wait(1), 'Synthetic transition release timed out'
+            assert self.release.wait(CAP_S), 'Synthetic transition release timed out'
         try:
             stop.check()
         except FabError as error:
@@ -72,7 +73,7 @@ class Session:
 def wait_job(host):
     exact = host.job  # Capture before any pump can consume/clear the completed non-agent slot.
     if exact is None: raise AssertionError('No exact synthetic job was enqueued')
-    deadline = time.monotonic() + 1
+    deadline = time.monotonic() + CAP_S
     while time.monotonic() < deadline:
         host.pump()
         if exact.done.is_set():
@@ -213,7 +214,7 @@ class ManualTransitionTests(unittest.TestCase):
             self.assertNotIn(threading.get_ident(), worker_ids)
             self.assertEqual(sessions, [threading.get_ident()])  # Cached Session construction stays on Main.
         finally:
-            host.disconnect(); self.assertTrue(host.worker.join(1)); host.pump()
+            host.disconnect(); self.assertTrue(host.worker.join(CAP_S)); host.pump()
 
     def test_actual_completed_job_stop_and_clock_advance_do_not_cancel_new_runtime_lifetime(self):
         _, manual, managed, transport, _, _ = self.setup_driver()
@@ -247,7 +248,7 @@ class ManualTransitionTests(unittest.TestCase):
                 self.assertEqual(host.view['search_status'], 'ready')
                 self.assertIs(host.driver.connection, managed)
             finally:
-                host.disconnect(); self.assertTrue(host.worker.join(1)); host.pump()
+                host.disconnect(); self.assertTrue(host.worker.join(CAP_S)); host.pump()
 
     def test_disconnect_during_transition_cancels_and_closes_exact_owner_on_same_worker(self):
         driver, manual, _, _, trace, _ = self.setup_driver()
@@ -255,9 +256,9 @@ class ManualTransitionTests(unittest.TestCase):
         host = fab_host.Host(lambda **kwargs: manual, observe=driver.observe, session_factory=lambda value: None)
         try:
             host.connect(); wait_job(host)
-            host.connect(); self.assertTrue(manual.entered.wait(1))
+            host.connect(); self.assertTrue(manual.entered.wait(CAP_S))
             host.disconnect(); self.assertTrue(host.driver.lifetime.is_set())
-            manual.release.set(); self.assertTrue(host.worker.join(1)); host.pump()
+            manual.release.set(); self.assertTrue(host.worker.join(CAP_S)); host.pump()
             self.assertIsNone(host.driver.connection); self.assertIsNone(host.driver.partial)
             self.assertTrue(manual.closed)
             self.assertNotIn('observe-new', [name for name, _ in trace])
@@ -266,7 +267,7 @@ class ManualTransitionTests(unittest.TestCase):
         finally:
             manual.release.set()
             if host.driver.connection is not None or host.driver.partial is not None:
-                host.disconnect(); self.assertTrue(host.worker.join(1)); host.pump()
+                host.disconnect(); self.assertTrue(host.worker.join(CAP_S)); host.pump()
 
 
 if __name__ == '__main__': unittest.main()

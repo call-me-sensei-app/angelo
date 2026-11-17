@@ -15,6 +15,7 @@ in-Blender proof is ``test_blender_parallel_workers.py`` and ``test_blender_para
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import sys
@@ -41,7 +42,7 @@ LAUNCH = worker_sessions._launch   # The real start (the fixture records starts 
 CARDS_SHOWN = worker_status.cards_shown   # The real check (WaitTests set what windows show).
 
 
-def until(condition, seconds=5.0, step=None):
+def until(condition, seconds=CAP_S, step=None):
     deadline = time.monotonic() + seconds
     while not condition() and time.monotonic() < deadline:
         if step is not None:
@@ -212,7 +213,7 @@ class DoneWorkerTests(Fixture):
         chat.remote_executor.part_layout = {"revision": 3, "size": [1, 1, 1]}
         self.park("w1")
         self.assertIn("w1", worker_queue.parked)
-        self.assertTrue(worker.stopped.wait(5))
+        self.assertTrue(worker.stopped.wait(CAP_S))
         self.assertEqual(worker.requests, [{"op": "save", "if_dirty": True}])   # Saved only what is unsaved.
         self.assertEqual((worker_sessions.died, parallel_sessions.ended("w1")), ({}, False))   # Never died, never ended.
         self.assertEqual(worker_sessions._running(), [])
@@ -245,7 +246,7 @@ class DoneWorkerTests(Fixture):
 
     def test_a_message_that_reaches_it_while_it_saves_keeps_it_running(self):
         gate = threading.Event()
-        chat, worker = self.running("w1", Process(save=lambda fields: gate.wait(5) and {"value": None}))
+        chat, worker = self.running("w1", Process(save=lambda fields: gate.wait(CAP_S) and {"value": None}))
         worker_queue.tick()
         chat.busy = True   # The person wrote to it meanwhile.
         gate.set()
@@ -581,7 +582,7 @@ class DeadWorkerTests(Fixture):
         self.assertEqual([entry["worker"] for entry in answer["starting"]], [2])   # Its place went to the new part.
         self.assertIn("exit code -9", worker_sessions.died["w1"])
         self.assertTrue(parallel_sessions.ended("w1"))
-        self.assertTrue(worker.stopped.wait(5))
+        self.assertTrue(worker.stopped.wait(CAP_S))
         self.assertIn("its worker ended", worker_sessions.merge_blocker(chat))   # Its turn still runs.
         chat.busy = False
         self.assertIsNone(worker_sessions.merge_blocker(chat))   # Merged with the death's warning, as a death is.
@@ -620,7 +621,7 @@ class AdoptGuardTests(Fixture):
                 adopt = mock.patch.object(worker_routing, "bind", side_effect=RuntimeError("cannot bind"))
                 with new_chat, adopt, mock.patch.object(parallel_sessions, "note_active", lambda session: None):
                     worker_sessions._tick()
-                self.assertTrue(entry["worker"].stopped.wait(5))   # Never left running, untracked.
+                self.assertTrue(entry["worker"].stopped.wait(CAP_S))   # Never left running, untracked.
                 self.assertEqual(worker_sessions._launching, [])
                 self.assertIn("disk full" if failing == "_new_chat" else "cannot bind",
                               worker_sessions.failures["lead/7"])
@@ -681,7 +682,7 @@ class DocumentReplacedTests(ResumeTests):
 
         def launch(part):
             worker = Process(part)
-            worker.start = lambda: (hold.wait(5), worker.ready)[1]
+            worker.start = lambda: (hold.wait(CAP_S), worker.ready)[1]
             launched.append(worker)
             return worker
         self.running("w0")
@@ -811,7 +812,7 @@ class HeadOfLineTests(ParkedFixture):
         from angelo_agent import worker_pool
         chat, failures, delivered = self.controller(str(uuid.uuid4())), [], []
         newest, gate = self.ahead[1]["worker"], threading.Event()
-        newest.stop = lambda: (gate.wait(5), Process.stop(newest))   # A Blender takes a moment to exit.
+        newest.stop = lambda: (gate.wait(CAP_S), Process.stop(newest))   # A Blender takes a moment to exit.
         with mock.patch.object(worker_routing, "launch", lambda part: Process(part)):
             worker_queue.resume(chat, lambda: delivered.append(True), failures.append)   # No free place: queued.
             parts = [item(self.lead, 1, "Seat"), item(self.lead, 2, "Back")]

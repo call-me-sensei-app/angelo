@@ -8,6 +8,7 @@ The measured results used here are invented test data, not benchmark results.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import copy
 import json
@@ -95,12 +96,12 @@ class ConfidenceRuntimeTests(ClaudeAdapterFixture, unittest.TestCase):
 class AutoPolicyTests(unittest.TestCase):
     def profile(self, measured, billing="SUBSCRIPTION"):
         return model_profiles.capability_profile(str(uuid.uuid4()), "claude", billing, CATALOG,
-                                                 measured=measured)
+                                                 effort="low", measured=measured)   # The invented results' effort.
 
     def test_profiles_list_only_this_connections_catalog_under_its_ids(self):
         profile = self.profile({})
         self.assertEqual({m["id"] for m in profile["models"]}, {"claude-opus-5-5", "claude-sonnet-5-5", "haiku"})
-        self.assertIsNone(model_profiles.capability_profile("c", "codex", "SUBSCRIPTION", CATALOG))
+        self.assertIsNone(model_profiles.capability_profile("c", "codex", "SUBSCRIPTION", CATALOG, effort="low"))
 
     def test_no_measured_pair_keeps_default(self):
         self.assertIsNone(model_routing.auto_route(self.profile({})))
@@ -109,8 +110,8 @@ class AutoPolicyTests(unittest.TestCase):
     def test_parity_moves_work_to_the_cheaper_tier_with_a_ladder(self):
         route = model_routing.auto_route(self.profile(PARITY))
         self.assertEqual((route.model, route.tier, route.cache_ttl), ("haiku", "fast", "1h"))
-        # A key-billed connection's Auto route carries Claude Code's 5-minute default there.
-        self.assertEqual(model_routing.auto_route(self.profile(PARITY, "API_KEY")).cache_ttl, "5m")
+        # A key-billed connection's Auto route is an interactive chat's too: 1 hour, as on a subscription.
+        self.assertEqual(model_routing.auto_route(self.profile(PARITY, "API_KEY")).cache_ttl, "1h")
         self.assertEqual([rung.model for rung in route.ladder], ["claude-sonnet-5-5", "claude-opus-5-5"])
 
     def test_below_the_bar_or_at_the_top_keeps_default(self):
@@ -176,6 +177,7 @@ class ControllerAutoTests(unittest.TestCase):
         self.c.set_document(("scratch", 1))
         self.connection = str(uuid.uuid4())
         self.c.choose_connection("claude_subscription", {"model": ""}, "", self.connection, CATALOG, "")
+        self.c.set_options(effort="low")   # PARITY's invented results are measured at low: Auto reads the chat's effort.
         ScriptedRuntime.instances = []
         self.patch = patch("angelo_agent.controller.ClaudeProvider", ScriptedRuntime)
         self.patch.start()
@@ -187,7 +189,7 @@ class ControllerAutoTests(unittest.TestCase):
 
     def send_and_wait(self, text="How many cubes?"):
         self.c.send(text, {"objects": []})
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             self.c.pump_events()
             if not self.c.busy and not (self.c._worker and self.c._worker.is_alive()):
@@ -331,7 +333,8 @@ class MeasuredResultsTests(unittest.TestCase):
         edit = entries["claude-haiku-5-5"]["low"]["scene_edit"]
         self.assertEqual((edit["tasks"], edit["pass_rate"], edit["source"]), (3, round(2 / 3, 4), "haiku-5task"))
         self.assertEqual(entries["claude-haiku-5-5"]["low"]["scene_read"]["cost_usd"], 0.002)
-        profile = model_profiles.capability_profile("c", "claude", "SUBSCRIPTION", CATALOG, measured=entries)
+        profile = model_profiles.capability_profile("c", "claude", "SUBSCRIPTION", CATALOG, effort="low",
+                                                    measured=entries)
         self.assertIsNone(model_routing.auto_route(profile), "3 tasks are far below MIN_TRIALS")
 
 

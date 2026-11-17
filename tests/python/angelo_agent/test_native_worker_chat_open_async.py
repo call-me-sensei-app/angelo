@@ -11,6 +11,7 @@ nothing is deferred and the brief goes at once, as before.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import sys
@@ -42,7 +43,7 @@ class WedgedWorker(base.OpWorker):
         if op == "chat.open":
             self.requests.append(dict(fields, op=op))
             self.entered.set()
-            self.gate.wait(10)
+            self.gate.wait(CAP_S)
             if isinstance(self.answer, BaseException):
                 raise self.answer
             return self.answer or {"ok": True}
@@ -61,7 +62,7 @@ class Chat(SimpleNamespace):
         self.said.append((kind, dict(data or {})))
 
 
-def until(predicate, seconds=5.0):
+def until(predicate, seconds=CAP_S):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         if predicate():
@@ -95,7 +96,7 @@ class OpenTests(Deferred):
     def test_a_wedged_worker_never_holds_the_main_thread(self):
         controller, worker, heard = Chat(), WedgedWorker(WorkerUnavailable("no answer", timed_out=True)), []
         machine_clock.assert_within(self, self.open(controller, worker), AT_ONCE)
-        self.assertTrue(worker.entered.wait(5))   # Sent, and still unanswered.
+        self.assertTrue(worker.entered.wait(CAP_S))   # Sent, and still unanswered.
         self.assertIs(lifecycle.hosted("w1"), worker)   # Hosted from the send on: a stop closes it.
         self.assertTrue(lifecycle.when_open(controller, heard.append))
         begun = machine_clock.start(self)

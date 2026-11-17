@@ -8,7 +8,7 @@ one call, without their plan sentences (``call_note``).
 """
 
 from . import request_recovery
-from .tool_specs import TOOL_MAP
+from .tool_specs import READ_ONLY_TOOLS
 
 NOT_CURRENT = "This request no longer owns the turn; this call did not run. Inspect before retrying."
 # A call refused because an earlier call ended the request, and the ending said in the call that ended it. Each says
@@ -20,6 +20,9 @@ ENDED = ("The request ended with this call: {why} {state} Nothing further runs b
 UNCHANGED, MAY_HAVE_CHANGED, NOT_RUN = ("This call changed nothing.", "Its changes may be in the scene.",
                                         "This call did not run.")
 DECLINED = "This call did not run: the person declined it."
+# A delivery asked for again whose answer is not kept (past a cache's bound): never a success, never a second run.
+NOT_KEPT = ("Angelo no longer has this call's answer, so it cannot repeat it; the call did not run again. "
+            "Observe the scene again before deciding what to do.")
 # Sentences of the plan route's notes that describe a plan or its next round, left out of a call's note.
 PLAN_SENTENCES = ("The host ran your plan in order.",
                   "The results of what ran, the current observation and any fresh views follow.",
@@ -35,7 +38,7 @@ def change_state(tool, result, unchanged, dispatched):
         return NOT_RUN
     if request_recovery.may_have_changed(result):
         return MAY_HAVE_CHANGED
-    if unchanged is not None or request_recovery.unchanged(result) or TOOL_MAP[tool]["annotations"]["readOnlyHint"]:
+    if unchanged is not None or request_recovery.unchanged(result) or tool in READ_ONLY_TOOLS:
         return UNCHANGED
     if "The user declined" in str(result.get("error", "")):   # plan_recovery's decision: the approval was refused.
         return DECLINED

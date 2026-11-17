@@ -16,6 +16,7 @@ scene units; angles in radians; energy in watts (SUN: irradiance in W/m^2).
 
 import math
 from .action_schema_types import ALIAS, ANGLES, number, enum, text, array, vector, obj
+from . import read_only
 
 PROJECTIONS = ('PERSP', 'ORTHO')
 SENSOR_FITS = ('AUTO', 'HORIZONTAL', 'VERTICAL')
@@ -178,11 +179,11 @@ def canonical_camera_light(kind, params, given=None):
     if not create and 'settings' not in params and 'look_at' not in params:
         raise ValueError(kind + ' requires settings or look_at')
     settings = params.setdefault('settings', {}) if create else params.get('settings', {})
-    if create:
+    if create:   # Defaults from the sealed tables, each a plain copy of its own (read_only.thawed: a list stays one).
         for key, value in common_defaults.items():
-            settings.setdefault(key, list(value) if isinstance(value, list) else value)
+            settings.setdefault(key, read_only.thawed(value))
         for key, value in type_defaults[settings[type_key]].items():
-            settings.setdefault(key, value)
+            settings.setdefault(key, read_only.thawed(value))
         if settings.get('shape') in RECTANGULAR_SHAPES:
             settings.setdefault('size_y', RECTANGULAR_SIZE_Y_DEFAULT)
     fields = data_fields(kind, params)
@@ -324,3 +325,6 @@ CAMERA_LIGHT_CAPABILITIES = {
     'light_node_tree': "Only Blender's default Emission -> Light Output light graph is supported.",
     'preview': 'Solid previews neither draw cameras/lights nor shade with scene lights; review settings and checks.',
 }
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), 'FAMILIES')

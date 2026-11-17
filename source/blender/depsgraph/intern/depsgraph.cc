@@ -19,8 +19,8 @@
 #include <utility>
 #include <type_traits>
 
-#include "BLI_utildefines.h"
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
+#include "BLI_utildefines.hh"
 
 #include "BKE_global.hh"
 #include "BKE_idtype.hh"

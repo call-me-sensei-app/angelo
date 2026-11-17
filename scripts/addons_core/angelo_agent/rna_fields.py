@@ -14,6 +14,8 @@ _RNA_SKIP = frozenset({"rna_type", "users", "users_collection", "users_scene", "
                        "depsgraph", "object_instances", "evaluated_geometry", "storage_type",
                        # A point cache's status text, rewritten by playback; not a setting.
                        "info",
+                       # Why a Subdivision modifier is not on the GPU, rewritten by evaluation; not a setting.
+                       "gpu_subdivision_status",
                        # Hashed explicitly by _fingerprint with its per-assignment charge.
                        "angelo_vertex_group_weights"})
 

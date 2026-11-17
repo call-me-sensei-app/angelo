@@ -12,6 +12,7 @@ the console round trip, quit and several processes are in
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import os
@@ -184,8 +185,9 @@ class BufferTests(BufferCase):
         path = Path(self.folder.name, buffer.FILE)
         if os.name != "nt":
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        # Custom endpoint counts and a refused endpoint batch kept for later (``parked``) are the 1.1.1 additions.
         self.assertEqual(set(self.stored()["owners"][0]), {"console", "org", "user", "updated", "hold_until",
-                                                           "next_at", "batch", "counts"})
+                                                           "next_at", "batch", "counts", "endpoint_counts", "parked"})
         # A hand-edited batch with an extra field (a token, say) is never sent; damaged files read as empty.
         value = self.stored()
         value["owners"][0]["batch"] = {"batchId": str(uuid.uuid4()), "entries": [
@@ -241,7 +243,7 @@ class CrashTests(BufferCase):
         with self.assertRaises(team_lock.LockTimeout):  # It holds the lock while it writes.
             buffer.UsageBuffer(self.folder.name, lock_timeout=0.2).pending(OWNER, NOW)
         child.kill()
-        child.wait(10)
+        child.wait(CAP_S)
         self.assertEqual(Path(self.folder.name, buffer.FILE).read_text(), before)
         started = machine_clock.start(self)
         self.add({(TODAY, "anthropic", "m"): (2, 3)})  # The OS released its lock; the leftover is overwritten.

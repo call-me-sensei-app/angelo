@@ -27,13 +27,14 @@
 
   Never fetches dependencies or Git LFS objects, never signs unless -Sign is given, never installs or touches an
   installed Blender.
-  GPU toolkits are found where Blender's CMake looks for them (doc/angelo/native_editor_build.rst):
-    CUDA    CUDA_PATH (set by the CUDA Toolkit installer); 12.8 or newer for the sm_120 kernels
+  GPU toolkits, each at the version Blender pins (gpu_sdk_pins.py; doc/angelo/native_editor_build.rst):
+    CUDA    CUDA_PATH_V<major>_<minor> or CUDA_PATH (set by the CUDA Toolkit installers): one per pinned major
     ocloc   OCLOC_INSTALL_DIR, the folder with Intel's ocloc.exe (the oneAPI kernels; not in Blender's libraries)
-    OptiX   OPTIX_ROOT_DIR, the SDK's root with include\optix.h; 8.0 or newer
-    HIP     HIP_PATH (set by the AMD HIP SDK installer), with bin\hipcc.exe; 6.0 or newer
+    OptiX   OPTIX_ROOT_DIR, the SDK's root with include\optix.h
+    HIP     HIP_PATH (set by the AMD HIP SDK installer), with bin\hipcc.exe
+    DLSS    DLSS_SDK_ROOT, NVIDIA's DLSS SDK headers at Blender's DLSS_VERSION (headers only; nothing of it ships)
     HIP RT, oneAPI and Level Zero come with the pinned libraries (lib\windows_x64\hiprt, dpcpp, level-zero).
-  -AllowMissing cuda,optix,hip,hiprt,oneapi builds without the named GPU parts: the manifest records them, and
+  -AllowMissing cuda,optix,hip,hiprt,oneapi,dlss builds without the named GPU parts: the manifest records them, and
   such a build is not equivalent to Blender's Windows release.
 
   The agent runtime (the patched OpenAI Codex build Angelo bundles; scripts\addons_core\angelo_agent\agent_runtime.json)
@@ -47,7 +48,7 @@
   person's own Codex), which the manifest records, and which -Sign refuses.
 
 .EXAMPLE
-  .\scripts\angelo\build_release_windows.ps1 -BuildDir C:\angelo\build_windows_Release_x64_vc17_clangcl_Release -Package
+  .\scripts\angelo\build_release_windows.ps1 -BuildDir C:\angelo\build_windows_Release_x64_vc17_clangcl_Release_5.3 -Package
 
 .EXAMPLE
   .\scripts\angelo\build_release_windows.ps1 -Package -Sign -SignCertificate C:\angelo\codesign.crt `
@@ -56,7 +57,7 @@
 #>
 param(
     [string]$SourceDir = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path,
-    # Default: build_windows_Release_x64_vc17_clangcl_Release next to the source: make.bat's name, with the toolset.
+    # Default: build_windows_Release_x64_vc17_clangcl_Release_<series> next to the source: make.bat's name, with the toolset and Blender series.
     [string]$BuildDir = "",
     # Default: <source>\lib\windows_x64, as Blender's CMake expects it (a git clone with its LFS objects).
     [string]$LibDir = "",
@@ -104,7 +105,7 @@ New-Item -ItemType Directory -Force $BuildDir | Out-Null
 if ($ResultsDir) { New-Item -ItemType Directory -Force $ResultsDir | Out-Null }
 $allowed = @($AllowMissing | ForEach-Object { $_ -split "[,+ ]" } | Where-Object { $_ } | ForEach-Object { $_.ToLowerInvariant() })
 foreach ($name in $allowed) {
-    if ($name -notin "cuda", "optix", "hip", "hiprt", "oneapi", "agent-runtime") { throw "-AllowMissing knows cuda, optix, hip, hiprt, oneapi and agent-runtime, not '$name'" }
+    if ($name -notin "cuda", "optix", "hip", "hiprt", "oneapi", "dlss", "agent-runtime") { throw "-AllowMissing knows cuda, optix, hip, hiprt, oneapi, dlss and agent-runtime, not '$name'" }
 }
 $presigned = $Sign -and $env:ANGELO_SIGN_BACKEND -eq "Presigned"
 if ($SignedMsi -and -not ($presigned -and (Test-Path -LiteralPath $SignedMsi -PathType Leaf))) { throw "-SignedMsi finishes a remote-signed release (-Sign, ANGELO_SIGN_BACKEND=Presigned) with the signing VM's MSI: $SignedMsi" }
@@ -134,9 +135,9 @@ if ($Sign) {
 if (-not (Test-Path (Join-Path $LibDir ".git"))) {
     throw "$LibDir is not a clone of Blender's lib-windows_x64; fetch the pinned libraries first (doc/angelo/native_editor_build.rst)."
 }
-$libsHead = Invoke-Quiet { git -C $LibDir rev-parse HEAD }
+$libsHead = (Invoke-NativeCapture git @("-C", $LibDir, "rev-parse", "HEAD")).Out | Select-Object -First 1
 # The validation machine's source is an archive (git init, no commits): it reads the pin from ANGELO_LIBS_SHA.
-$pinned = Invoke-Quiet { git -C $SourceDir ls-tree HEAD lib/windows_x64 } | ForEach-Object { ($_ -split "\s+")[2] }
+$pinned = (Invoke-NativeCapture git @("-C", $SourceDir, "ls-tree", "HEAD", "lib/windows_x64")).Out | ForEach-Object { ($_ -split "\s+")[2] }
 if (-not $pinned) { $pinned = $env:ANGELO_LIBS_SHA }
 if ($pinned -and $libsHead -and $pinned -ne $libsHead) { Write-Warning "$LibDir is at $libsHead, this source pins $pinned" }
 $fetchHint = "the pinned libraries are not fully fetched (git -C lib\windows_x64 lfs pull)"
@@ -159,7 +160,7 @@ foreach ($folder in "assets", "release\windows", "release\branding", "scripts\ad
     $pointer = Get-ChildItem $path -Recurse -File | Where-Object { Test-Pointer $_.FullName } | Select-Object -First 1
     if ($pointer) { throw "$($pointer.FullName) is a Git LFS pointer; materialize the build's large files first." }
 }
-Write-Host "Libraries: $LibDir ($libsHead)"
+Write-Host "Libraries: $LibDir ($libsHead)"; Reset-BuildDirForLibraries $BuildDir $LibDir $libsHead   # stale find results go (windows_release_toolchain.ps1)
 
 # --- Agent runtime (scripts\addons_core\angelo_agent\agent_runtime.json; checked before anything compiles) ----------
 $runtimePin = Get-Content (Join-Path $SourceDir "scripts\addons_core\angelo_agent\agent_runtime.json") -Raw | ConvertFrom-Json
@@ -208,12 +209,12 @@ if (-not $AgentRuntimeDir) {
     New-Item -ItemType Directory -Force $runtimeHome | Out-Null
     $savedHome = $env:CODEX_HOME; $env:CODEX_HOME = $runtimeHome
     try {
-        $reported = ((Invoke-Quiet { & $codexExe --version }) | Select-Object -First 1)
+        $reported = (Invoke-NativeCapture $codexExe @("--version")).Out | Select-Object -First 1
         if ("$reported".Trim() -notmatch ("\s" + [regex]::Escape($runtimePin.version) + "$")) {
             throw "$codexExe --version says '$reported'; this source pins Codex $($runtimePin.version)"
         }
         $schema = Join-Path $runtimeHome "schema"
-        Invoke-Quiet { & $codexExe app-server generate-json-schema --experimental --out $schema } | Out-Null
+        [void](Invoke-NativeCapture $codexExe @("app-server", "generate-json-schema", "--experimental", "--out", $schema)); Assert-RuntimeWires $codexExe @($runtimePin.wire_apis); Assert-RuntimeCapabilities $codexExe $runtimePin.provider_capabilities
         foreach ($request in "ThreadStartParams", "ThreadResumeParams", "ThreadForkParams") {
             $file = Join-Path $schema "v2\$request.json"
             $properties = if (Test-Path $file) { (Get-Content $file -Raw | ConvertFrom-Json).properties } else { $null }
@@ -251,8 +252,8 @@ $toolset = Find-ClangClToolset $vs $vswhere
 Write-Host ("Toolset: {0}, {1}, {2} -T {3}" -f $toolset.compiler, $toolset.linker, $toolset.generator, $toolset.generator_toolset)
 
 # --- GPU toolkits (checked here: a missing one fails in seconds, not after hours of compiling) ------------------
-$gpu = Get-GpuToolkits $allowed $LibDir
-$toolkits = $gpu.toolkits; $cmakeGpu = $gpu.cmake
+$gpu = Get-GpuToolkits $allowed $LibDir $SourceDir
+$toolkits = $gpu.toolkits; $cmakeGpu = $gpu.cmake; Invoke-ToolkitCacheCheck "before" $BuildDir $gpu $SourceDir
 $toolkits.GetEnumerator() | ForEach-Object { Write-Host ("GPU {0}: {1}" -f $_.Key, $_.Value) }
 
 # --- Configure --------------------------------------------------------------------------------------------
@@ -263,16 +264,16 @@ $configureLog = Join-Path $BuildDir "angelo-configure.log"
 # print "error: malformed object name HEAD" and MSBuild fails the build on that line; there the build info is off
 # (the hash unknown) and the manifest records the archive's commit (ANGELO_SRC_COMMIT). That fallback is never a
 # release: a package needs the commit checked out (release-build sends it to the validation machine).
-$history = Invoke-Quiet { git -C $SourceDir rev-parse --verify -q "HEAD^{commit}" }
+$history = (Invoke-NativeCapture git @("-C", $SourceDir, "rev-parse", "--verify", "-q", "HEAD^{commit}")).Out | Select-Object -First 1
 if ($Package -and -not $history) {
     throw "A release MSI needs Blender's build info (the commit's hash in About): build from a git checkout of the commit (gcp_windows_validate.sh release-build sends one)"
 }
 $arguments = @(
-    "-S", "`"$SourceDir`"", "-B", "`"$BuildDir`"", "-G", "`"$($toolset.generator)`"", "-A", "x64", "-T", $toolset.generator_toolset,
-    "`"-DCMAKE_GENERATOR_INSTANCE=$($vs.installationPath)`"", "-C", "`"$release`"",
-    # Forward slashes: CMake writes LIBDIR into generated CMake code (cmake_install.cmake installs OSL's oslquery from
-    # it), where C:\angelo\... reads as the invalid escape \a and INSTALL fails after the whole build.
-    "`"-DLIBDIR=$($LibDir.Replace('\', '/'))`"",
+    "-S", "`"$(ConvertTo-CMakePath $SourceDir)`"", "-B", "`"$(ConvertTo-CMakePath $BuildDir)`"", "-G", "`"$($toolset.generator)`"", "-A", "x64", "-T", $toolset.generator_toolset,
+    "`"-DCMAKE_GENERATOR_INSTANCE=$($vs.installationPath)`"", "-C", "`"$(ConvertTo-CMakePath $release)`"",
+    # Every path with forward slashes (ConvertTo-CMakePath): CMake writes LIBDIR into generated CMake code, where
+    # C:\angelo\... reads as the invalid escape \a. The generator instance alone stays as Visual Studio spells it.
+    "`"-DLIBDIR=$(ConvertTo-CMakePath $LibDir)`"",
     # A library or toolkit CMake cannot find is an error, never a release feature quietly turned off.
     "-DWITH_STRICT_BUILD_OPTIONS=ON",
     # Explorer thumbnails (BlendThumb.dll; blender_release.cmake switches the handler on only for macOS).
@@ -281,7 +282,7 @@ $arguments = @(
     "-DHIPRT_COMPILER_PARALLEL_JOBS=6", "-DSYCL_OFFLINE_COMPILER_PARALLEL_JOBS=6",
     # The agent runtime, installed into <install>\agent-runtime (build_files\cmake\angelo_agent_runtime.cmake); a
     # release configure fails without it.
-    "`"-DANGELO_AGENT_RUNTIME_DIR=$(if ($AgentRuntimeDir) { $AgentRuntimeDir.Replace('\', '/') } else { '' })`"",
+    "`"-DANGELO_AGENT_RUNTIME_DIR=$(ConvertTo-CMakePath $AgentRuntimeDir)`"",
     $(if ("agent-runtime" -in $allowed) { "-DANGELO_REQUIRE_AGENT_RUNTIME=OFF" } else { "-DANGELO_REQUIRE_AGENT_RUNTIME=ON" }),
     $(if ($history) { "-DWITH_BUILDINFO=ON" } else { "-DWITH_BUILDINFO=OFF" })
 ) + ($cmakeGpu | ForEach-Object { "`"$_`"" })
@@ -296,7 +297,7 @@ if ($code -ne 0) {
 }
 $disabled = Select-String -Path $configureLog -Pattern "not found, disabling (WITH_\w+)" | ForEach-Object { $_.Matches[0].Groups[1].Value }
 if ($disabled) { throw "configure turned off $($disabled -join ', ') ($configureLog)" }
-Assert-ConfiguredToolset $BuildDir $toolset
+Assert-ConfiguredToolset $BuildDir $toolset; Confirm-BuildDirLibraries $BuildDir $LibDir $libsHead $pinned; Invoke-ToolkitCacheCheck "after" $BuildDir $gpu $SourceDir
 # nvcc's host cl.exe (and the other GPU kernel compilers) must not see clang's own headers.
 Write-CustomCommandIncludePath $BuildDir
 $toolset.custom_commands = "the MSVC toolset's include path (Directory.Build.targets)"
@@ -309,20 +310,16 @@ Get-Content (Join-Path $BuildDir "CMakeCache.txt") | ForEach-Object {
 }
 $required = @(
     "WITH_ALEMBIC", "WITH_AUDASPACE", "WITH_BULLET", "WITH_CODEC_FFMPEG", "WITH_CODEC_SNDFILE", "WITH_CYCLES",
-    "WITH_CYCLES_EMBREE", "WITH_CYCLES_OSL", "WITH_CYCLES_PATH_GUIDING", "WITH_DRACO", "WITH_FFTW3", "WITH_FREESTYLE",
+    "WITH_EMBREE", "WITH_CYCLES_OSL", "WITH_CYCLES_PATH_GUIDING", "WITH_DRACO", "WITH_FFTW3", "WITH_FREESTYLE",
     "WITH_HARU", "WITH_IMAGE_OPENJPEG", "WITH_IMAGE_WEBP", "WITH_INTERNATIONAL", "WITH_IO_FBX", "WITH_IO_PLY",
     "WITH_IO_STL", "WITH_IO_WAVEFRONT_OBJ", "WITH_MANIFOLD", "WITH_MATERIALX", "WITH_HYDRA", "WITH_MOD_FLUID",
     "WITH_MOD_OCEANSIM", "WITH_MOD_REMESH", "WITH_NANOVDB", "WITH_OPENAL", "WITH_OPENIMAGEDENOISE", "WITH_OPENSUBDIV",
     "WITH_OPENVDB", "WITH_OPENVDB_BLOSC", "WITH_POTRACE", "WITH_PYTHON_INSTALL", "WITH_QUADRIFLOW", "WITH_RUBBERBAND",
     "WITH_TBB", "WITH_TBB_MALLOC_PROXY", "WITH_USD", "WITH_WASAPI", "WITH_XR_OPENXR", "WITH_BLENDER_THUMBNAILER",
-    "WITH_CYCLES_DEVICE_CUDA", "WITH_CYCLES_DEVICE_HIP"
+    "WITH_CYCLES_DEVICE_CUDA", "WITH_CYCLES_DEVICE_HIP", "WITH_VULKAN_BACKEND"
 )
-if ("cuda" -notin $allowed) { $required += "WITH_CYCLES_CUDA_BINARIES" }
-if ("optix" -notin $allowed) { $required += "WITH_CYCLES_DEVICE_OPTIX" }
-if ("hip" -notin $allowed) { $required += "WITH_CYCLES_HIP_BINARIES" }
-if ("hiprt" -notin $allowed) { $required += "WITH_CYCLES_DEVICE_HIPRT" }
-if ("oneapi" -notin $allowed) { $required += "WITH_CYCLES_DEVICE_ONEAPI", "WITH_CYCLES_ONEAPI_BINARIES" }
-$off = @($required | Where-Object { $cache[$_] -ne "ON" })
+$required += @($gpu.options.Keys | Where-Object { $_ -notin $allowed } | ForEach-Object { $gpu.options[$_] })
+$off = @($required | Where-Object { $cache[$_] -ne "ON" } | ForEach-Object { if ($cache.ContainsKey($_)) { $_ } else { "$_ (not an option of this tree: renamed upstream?)" } })
 if ($off) { throw "release features off after configure: $($off -join ', ')" }
 $features = [ordered]@{}
 $required | Sort-Object | ForEach-Object { $features[$_] = $cache[$_] }
@@ -334,7 +331,7 @@ $manifest = [ordered]@{
     kind = "angelo-windows-release-build"; source_commit = $commit; libraries = $LibDir; libraries_commit = $libsHead
     build_info = $(if ($history) { "from the source's git history" } else { "off: the source is an archive without git history" })
     libraries_pinned = $pinned; visual_studio = "$($vs.displayName) $($vs.installationVersion)"; toolset = $toolset
-    toolkits = $toolkits; allowed_missing = $allowed; release_equivalent = (-not $allowed); features = $features
+    toolkits = $toolkits; toolkit_versions = $gpu.versions; toolkit_installers = $gpu.installers; allowed_missing = $allowed; release_equivalent = (-not $allowed); features = $features
     agent_runtime = $agentRuntime
     configured = (Get-Date -Format o); built = $null; msi = $null; signed = [bool]$Sign
 }
@@ -355,7 +352,7 @@ if ($ConfigureOnly) { Write-Host "Configured: $BuildDir"; exit 0 }
 $buildLog = Join-Path $BuildDir "angelo-build.log"
 if ($Jobs -le 0) { $Jobs = Get-DefaultBuildJobs }
 Write-Host "MSBuild projects at once: $Jobs"
-$code = Invoke-Logged $buildLog "cmake --build `"$BuildDir`" --config Release --target INSTALL --parallel $Jobs -- /nologo /verbosity:minimal $($toolset.msbuild)"
+$code = Invoke-Logged $buildLog "cmake --build `"$(ConvertTo-CMakePath $BuildDir)`" --config Release --target INSTALL --parallel $Jobs -- /nologo /verbosity:minimal $($toolset.msbuild)"
 if ($code -ne 0) { Save-Manifest; throw "build failed with $code ($buildLog)" }
 $bin = Join-Path $BuildDir "bin\Release"
 $exe = Join-Path $bin ($identity.windows.exe_stem + ".exe")
@@ -398,7 +395,7 @@ if ($LASTEXITCODE -ne 0) { Save-Manifest; throw "builder paths or credentials wo
 $manifest.built = Get-Date -Format o
 $manifest.binary = $exe
 # The hash the build reports is the commit's: what About and crash reports will name.
-$version = @(Invoke-Quiet { & $exe --factory-startup --version })
+$version = @((Invoke-NativeCapture $exe @("--factory-startup", "--version")).Out)
 $reported = @($version | ForEach-Object { if ($_ -match "build hash:\s*(\S+)") { $Matches[1] } }) | Select-Object -First 1
 $manifest.build_hash = $reported
 if ($history -and (-not $reported -or -not $history.StartsWith($reported))) {
@@ -421,15 +418,15 @@ if ($Package -and -not $SignedMsi) {
     try { $longestStaged = Assert-StagedPathLengths $BuildDir $packageDir ([IO.Path]::GetFileNameWithoutExtension($msiName)) $bin $installedFiles }
     catch { Save-Manifest; throw }
     $manifest.package_staging = [ordered]@{ folder = $packageDir; longest_path = $longestStaged }
-    $cpack = "cpack -G WIX -C Release -B `"$packageDir`""
+    $cpack = "cpack -G WIX -C Release -B `"$(ConvertTo-CMakePath $packageDir)`""
     if ($Sign) {
         # CPack installs into its own staging folder (third-party DLLs come from lib\windows_x64 again), so the files
         # are signed there, just before WiX packs them (windows_sign_staging.cmake).
         $env:ANGELO_SIGN_SCRIPT = $signScript
         $env:ANGELO_SIGN_EXPECT = $identity.windows.exe_stem + ".exe"
         $env:ANGELO_SIGN_REPORT = Join-Path $BuildDir "angelo-sign-staging.json"
-        $hook = (Join-Path $SourceDir "scripts\angelo\windows_sign_staging.cmake") -replace "\\", "/"
-        $cpack += " -D `"CPACK_PRE_BUILD_SCRIPTS=$hook`""
+        $hook = Join-Path $SourceDir "scripts\angelo\windows_sign_staging.cmake"
+        $cpack += " -D `"CPACK_PRE_BUILD_SCRIPTS=$(ConvertTo-CMakePath $hook)`""
     }
     $code = Invoke-Logged $packageLog "cd /d `"$BuildDir`" && $cpack"
     Get-ChildItem $packageDir -Filter "*.msi" -ErrorAction SilentlyContinue | Move-Item -Destination $BuildDir -Force
@@ -481,8 +478,11 @@ if ($Package) {
         --report (Join-Path $BuildDir "angelo-builder-paths-msi.json")
     if ($LASTEXITCODE -ne 0) { Save-Manifest; throw "the MSI's payload carries builder paths or credentials" }
     # Only what the commit tracks (or builds from it) ships: an untracked file in the source tree would be in here.
-    & $bundledPython.FullName -I -B $releaseChecks tracked-scripts (Join-Path $payload "Angelo\5.2\scripts") --source $SourceDir --libdir $LibDir
+    & $bundledPython.FullName -I -B $releaseChecks tracked-scripts (Join-Path $payload "Angelo\$(Get-AngeloBlenderSeries $SourceDir)\scripts") --source $SourceDir --libdir $LibDir
     if ($LASTEXITCODE -ne 0) { Save-Manifest; throw "the MSI's payload ships script files the commit does not track" }
+    # NVIDIA's DLSS runtime comes with the person's driver; its licence lets nothing of the SDK but our object code ship.
+    $nvngx = @(Get-ChildItem $payload -Recurse -File -Filter "nvngx*" | ForEach-Object Name)
+    if ($nvngx) { Save-Manifest; throw "the MSI's payload ships NVIDIA DLSS binaries: $($nvngx -join ', ')" }
     # The last gate: what this release is, declared by -Sign and never inferred, recorded for exactly these bytes
     # (msi_signing.py). Signed: the publisher check again; unsigned: neither the MSI nor the app carries a signature.
     # publish_installers.py publishes the MSI only as the kind its record names.

@@ -13,6 +13,7 @@ never sent, and only theirs takes their staged files, never a connected app's ta
 WORKER_BRIEF = "worker_brief"
 EVENT, GOAL = "angelo_event", "angelo_goal"
 HOST_REQUESTS = frozenset({"native_preview_accept", EVENT, GOAL, WORKER_BRIEF})
+NOTICE_REQUESTS = frozenset({EVENT, GOAL})   # Angelo's own requests the chat draws as a notice (``chat_blocks``).
 GOAL_FACT_KEYS = ("round", "score", "pass_at", "check", "minutes", "limit_minutes", "last_seconds", "last_tokens",
                   "last_usd")
 IMAGE_ONLY_TEXT = "Use these reference files."   # A send with images and no words: its row's text, never theirs.
@@ -79,6 +80,12 @@ def persons_send(sender):
     records it): never Angelo's request, a connected app's task or a worker's brief."""
     found = getattr(sender, "_persons_send", None)
     return getattr(sender, "_host_request", None) is None if found is None else bool(found)
+
+
+def drawn_as_notice(row):
+    """A request row Angelo made that the chat draws as a notice, never a bubble (``chat_blocks``). Its snapshot's
+    Restore goes on that notice (``activity_text.notice_view``, R2-L-1), as a bubble's goes under it."""
+    return isinstance(row, dict) and row.get("role") == "user" and row.get("request_kind") in NOTICE_REQUESTS
 
 
 def starts_request(row):

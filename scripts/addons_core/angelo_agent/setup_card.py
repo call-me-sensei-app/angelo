@@ -129,6 +129,7 @@ class Effects:
 
 class SetupCard(kit.BaseCard):
     kind, modal, priority = "setup", True, 90
+    pictures = property(lambda self: fc.banner_pictures())
     cancel_action, default_action, outside_dismisses = "escape", "continue", False
     retry_when_lost = False
 

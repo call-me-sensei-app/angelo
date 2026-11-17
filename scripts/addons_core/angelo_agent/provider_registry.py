@@ -17,13 +17,14 @@ GROUPS = ((CODING, n_("Coding agents"), n_("Models that operate Angelo through t
           (GENAI, n_("Media generation"), n_("Image, 3D and video providers used by Media Studio and Generation Flows")))
 PROVIDER_NAMES = {"OPENAI": "OpenAI", "ANTHROPIC": "Anthropic", "XAI": "Grok / xAI",
                   "MINIMAX": "MiniMax", "KIMI": "Kimi / Moonshot", "GOOGLE": "Google Gemini",
-                  "BYTEPLUS": "BytePlus", "TRIPO": "Tripo", "MESHY": "Meshy", "FAL": "fal"}
+                  "BYTEPLUS": "BytePlus", "TRIPO": "Tripo", "MESHY": "Meshy", "FAL": "fal",
+                  "ENDPOINT": "Organization endpoint"}
 
 
-def _model(identity, name, *, efforts=(), default_effort="low", images=False,
-           fast=None, context=0, default=False, kind=None):
+def _model(identity, name, *, efforts=(), images=False, fast=None, context=0, default=False, kind=None):
+    # No default effort here: ``chat_settings.default_effort`` decides it for every model, from ``efforts``.
     model = {"id": identity, "name": name, "description": "", "efforts": list(efforts),
-             "default_effort": default_effort, "images": images, "fast_tier": fast,
+             "images": images, "fast_tier": fast,
              "context_window": context, "default": default, "runtime_default_alias": False}
     if kind:   # A model of another kind than its connection's (fal: video, and TRELLIS 3D).
         model["kind"] = kind
@@ -39,19 +40,37 @@ SPECS = {
                  "base_url": "https://api.x.ai/v1", "probe": "/models", "env_key": "ANGELO_XAI_API_KEY",
                  "docs": "https://docs.x.ai/developers/models/grok-4.6", "web_search": True,
                  "models": [_model("grok-4.6", "Grok 4.6", efforts=("low", "medium", "high", "xhigh"),
-                                   default_effort="high", images=True, default=True)]},
+                                   images=True, default=True)]},
     "minimax_api": {"group": CODING, "provider": "MINIMAX", "method": "API_KEY", "runtime": "codex", "name": "MiniMax API",
                     "base_url": "https://api.minimax.io/v1", "probe": "/models", "env_key": "ANGELO_MINIMAX_API_KEY",
                     "docs": "https://platform.minimax.io/docs/api-reference/responses-create",
                     # M3's effort is an on/off control, NOT a graduated depth slider.
                     # Do not advertise Fast until Codex's tier mapping is verified.
                     "models": [_model("MiniMax-M3", "MiniMax M3", efforts=("none", "high"),
-                                      default_effort="high", images=True, context=1000000, default=True)]},
+                                      images=True, context=1000000, default=True)]},
     "kimi_api": {"group": CODING, "provider": "KIMI", "method": "API_KEY", "runtime": "codex", "name": "Kimi API",
                  "base_url": "https://api.moonshot.ai/v1", "probe": "/models", "env_key": "ANGELO_KIMI_API_KEY",
                  "docs": "https://platform.kimi.ai/docs/guide/codex-kimi", "web_search": True,
                  "models": [_model("kimi-k3", "Kimi K3", efforts=("low", "high", "max"),
-                                   default_effort="high", images=True, context=1048576, default=True)]},
+                                   images=True, context=1048576, default=True)]},
+    # Gemini 4 Carbon through the agent runtime's native Gemini wire (doc/angelo/ai_providers.rst, "Gemini 4
+    # Carbon"): Carbon is the only Gemini coding model Angelo offers (maintainer ruling 2026-11-12), at medium by
+    # default (chat_settings.DEFAULT_EFFORT_EXCEPTIONS). Listed only when the pinned runtime declares the wire
+    # (``runtime_wire``, ``available``) and run only by that runtime, never the person's own Codex
+    # (``runtime_launch.codex_command``). Facts read 2026-11-12:
+    # aistudio.google.com/docs/whats-new-gemini-4-carbon (1,048,576-token window shared by input, thinking and
+    # output; thinking low, medium or high, not off; images in).
+    "gemini_api": {"group": CODING, "provider": "GOOGLE", "method": "API_KEY", "runtime": "codex", "name": "Gemini API",
+                   "base_url": "https://generativelanguage.googleapis.com/v1beta", "probe": "/models?pageSize=1000",
+                   "auth_header": "x-goog-api-key", "env_key": "ANGELO_GEMINI_API_KEY", "wire_api": "gemini",
+                   "key_family": "google_ai_studio",
+                   # Carbon can think for minutes before its first byte (Google: client timeouts of at least 15
+                   # minutes); Codex's default stream idle limit would cut such a request and re-send it.
+                   "provider_settings": {"stream_idle_timeout_ms": 900000},
+                   "key_url": "https://aistudio.google.com/app/api-keys",
+                   "docs": "https://aistudio.google.com/docs/whats-new-gemini-4-carbon",
+                   "models": [_model("gemini-4-carbon", "Gemini 4 Carbon", efforts=("low", "medium", "high"),
+                                     images=True, context=1048576, default=True)]},
     "openai_images_api": {"group": GENAI, "provider": "OPENAI", "method": "API_KEY", "runtime": None, "name": "OpenAI Images",
                           "base_url": "https://api.openai.com/v1", "probe": "/models", "kind": "IMAGE",
                           "docs": "https://developers.openai.com/api/docs/guides/image-generation",
@@ -59,7 +78,7 @@ SPECS = {
                                      _model("gpt-image-2.5-sunburst", "GPT Image 2.5 Sunburst")]},
     "gemini_images_api": {"group": GENAI, "provider": "GOOGLE", "method": "API_KEY", "runtime": None, "name": "Gemini Images",
                           "base_url": "https://generativelanguage.googleapis.com/v1beta", "probe": "/models?pageSize=1000",
-                          "auth_header": "x-goog-api-key", "kind": "IMAGE",
+                          "auth_header": "x-goog-api-key", "kind": "IMAGE", "key_family": "google_ai_studio",
                           "docs": "https://ai.google.dev/gemini-api/docs/image-generation",
                           # Google recommends 2.1 for new projects. A key whose
                           # catalog doesn't list it keeps 2 as its default.
@@ -170,6 +189,49 @@ TEAM_PROVIDERS = frozenset(s["team_provider"] for s in SPECS.values() if s["meth
 CUSTOM_PROVIDER_MODES = EXTERNAL_CODEX_MODES | frozenset(m for m in TEAM_MODES if SPECS[m]["runtime"] == "codex")
 
 
+# Custom model endpoints (method ENDPOINT, doc/angelo/ai_providers.rst "Custom model endpoints"): an organization's
+# own model server, a mode per endpoint and format (``endpoint_connections``). They are resolved at run time and are
+# in none of the sets above, which list only the registry's own modes: a caller that must include them asks
+# ``is_coding_mode``, ``custom_provider`` or ``organization_mode`` instead.
+ENDPOINT = "ENDPOINT"
+
+
+def is_endpoint(mode):
+    """Whether ``mode`` names a custom endpoint format (``endpoint_connections.mode_for``)."""
+    from .endpoint_connections import is_endpoint as matches
+    return matches(mode)
+
+
+def is_coding_mode(mode):
+    """A coding connection's mode: the registry's own, or a custom endpoint's (removed endpoints included, so a
+    saved chat on one keeps its connection and reports why it can't run)."""
+    return mode in CODING_MODES or is_endpoint(mode)
+
+
+def custom_provider(mode):
+    """Whether a Codex mode runs through a process-local ``model_providers`` entry with its key in the child's
+    environment (``CUSTOM_PROVIDER_MODES``, or a custom endpoint)."""
+    if mode in CUSTOM_PROVIDER_MODES:
+        return True
+    from .endpoint_connections import runtime_of
+    return is_endpoint(mode) and runtime_of(mode) == "codex"   # anthropic-messages runs on Claude Code instead.
+
+
+def organization_mode(mode):
+    """A connection the organization provides (a team one through the gateway, or its own endpoint): never a
+    personal one, so the policy's ``AllowPersonalConnections`` doesn't refuse it."""
+    return mode in TEAM_MODES or is_endpoint(mode)
+
+
+def profile_model(profile):
+    """The registry's coding model entry for an Angelo model id (``model_profiles.MODELS``), or None: what a custom
+    endpoint's model mapped to it inherits (efforts, images, context)."""
+    for entry in list(_CODEX_TEAM_MODELS) + [m for s in SPECS.values() if s["group"] == CODING for m in s.get("models", ())]:
+        if entry["id"] == profile:
+            return entry
+    return None
+
+
 # A flat-rate coding-plan key (for example Kimi Code or MiniMax M Plan) is a
 # connection spec with "plan_terms": {"note": <one short line>, "url": <the
 # plan's terms page>}. People may connect their own plan; AI Providers shows the
@@ -189,11 +251,47 @@ def plan_terms(mode):
     return spec_for(mode).get("plan_terms")
 
 
+def runtime_wire(mode):
+    """The model-provider wire a coding mode needs beyond Codex's own Responses wire (``agent_runtime.json``
+    ``wire_apis``: Gemini's), or None."""
+    from . import agent_runtime
+    wire = spec_for(mode).get("wire_api")
+    return wire if wire and wire != agent_runtime.DEFAULT_WIRE else None
+
+
+def available(mode):
+    """Whether this build can run ``mode``: a mode on a wire only Angelo's agent runtime adds is offered only when
+    the pinned runtime declares that wire, so no build lists a connection its runtime would fail on at the first
+    turn."""
+    spec = spec_for(mode)
+    switch = spec.get("remote_switch")
+    if switch:   # One a release manager can turn off without a release (remote_features).
+        from . import remote_features
+        if not remote_features.enabled(switch):
+            return False
+    wire = runtime_wire(mode)
+    if not wire:
+        return True
+    from . import agent_runtime
+    return agent_runtime.supports_wire(wire)
+
+
+def key_family(mode):
+    """The account family whose one API key serves several connection modes (a Google AI Studio key: Gemini
+    Images and the Gemini coding agent), or None: such connections may share one key (``shared_keys``)."""
+    return spec_for(mode).get("key_family")
+
+
 def spec_for(mode):
     try:
         return SPECS[mode]
     except KeyError:
-        raise ValueError("Unknown AI connection type") from None
+        pass
+    from .endpoint_connections import spec
+    found = spec(mode)
+    if found is not None:
+        return found
+    raise ValueError("Unknown AI connection type")
 
 
 def runtime_kind(mode):
@@ -204,14 +302,27 @@ def runtime_kind(mode):
 
 
 def provider_items(group):
-    providers = dict.fromkeys(s["provider"] for s in SPECS.values() if s["group"] == group)
+    providers = dict.fromkeys(s["provider"] for m, s in SPECS.items()
+                              if s["group"] == group and s["method"] != TEAM and available(m))
     return [(p, PROVIDER_NAMES[p], "Connect to " + PROVIDER_NAMES[p]) for p in providers]
+
+
+_CHOICE_ITEMS = {}
+
+
+def provider_choice_items(group):
+    """``provider_items`` for a Blender enum, computed whenever the form asks: a provider's availability changes
+    while the app runs (a remote switch the signed feed turns off or back on, ``remote_features``; the runtime's
+    wires). Blender needs the strings of the enum items it shows to stay alive, so each distinct list is kept (a
+    handful per group) and an unchanged one is the same object."""
+    items = provider_items(group)
+    return _CHOICE_ITEMS.setdefault((group, tuple(items)), items)
 
 
 def methods(group, provider):
     """Methods a person can add in the New connection form; team connections come from signing in."""
-    return tuple(s["method"] for s in SPECS.values()
-                 if s["group"] == group and s["provider"] == provider and s["method"] != TEAM)
+    return tuple(s["method"] for m, s in SPECS.items()
+                 if s["group"] == group and s["provider"] == provider and s["method"] != TEAM and available(m))
 
 
 def is_coding(record):
@@ -234,7 +345,7 @@ def team_mode(mode):
 
 def billing_kind(mode):
     """``API_KEY`` for pay-per-token connections (an org's keys included), else ``SUBSCRIPTION``."""
-    return "API_KEY" if spec_for(mode)["method"] in {"API_KEY", TEAM} else "SUBSCRIPTION"
+    return "API_KEY" if spec_for(mode)["method"] in {"API_KEY", TEAM, ENDPOINT} else "SUBSCRIPTION"
 
 
 # The words of a usage label (``account · model · billing · ...``): English on the call, in logs and in the worker
@@ -249,4 +360,4 @@ USAGE_WORDS = frozenset({API_BILLING, TEAM_BILLING, SUBSCRIPTION, UNVERIFIED, ST
 
 def billing_label(mode):
     method = spec_for(mode)["method"]
-    return {"API_KEY": API_BILLING, TEAM: TEAM_BILLING}.get(method, SUBSCRIPTION)
+    return {"API_KEY": API_BILLING, TEAM: TEAM_BILLING, ENDPOINT: API_BILLING}.get(method, SUBSCRIPTION)

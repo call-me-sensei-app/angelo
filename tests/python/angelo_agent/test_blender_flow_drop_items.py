@@ -75,7 +75,7 @@ def main():
         items = "\n".join(["image-id:%d" % on_disk.session_uid, "image-id:%d" % packed.session_uid,
                            "model:Chair", "image-id:%d" % generated.session_uid, "image-file:%s" % not_image,
                            "image-file:%s" % loose, "studio-item:images/%s.blend/Material/Studio" % studio])
-        result = bpy.ops.angelo.flow_drop_items(tree=tree.name, items=items, location=(300.0, 120.0))
+        result = bpy.ops.angelo.flow_drop_items(tree=tree.name, item_lines=items, location=(300.0, 120.0))
         placed = [node for node in tree.nodes if node.bl_idname == flow_nodes.ANGELO_FlowImageNode.bl_idname]
         added = set(flow_host.library().assets) - library_before
         states = {node.name: (flow_host.node_state(tree, node.name) or {}).get("state") for node in placed}

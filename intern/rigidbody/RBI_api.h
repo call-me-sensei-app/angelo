@@ -14,6 +14,14 @@
 extern "C" {
 #endif
 
+/* Lifetimes:
+ * A world, a body and a constraint may be deleted in any order, in a world or not: Blender owns
+ * each through different data and frees it when that data is freed. A body that is deleted takes
+ * the constraints made with it out of their world, and such a constraint is not added to a world
+ * again; it is still deleted by its owner. A body or a constraint is in at most one world, and
+ * removing it from a world it is not in does nothing.
+ */
+
 /* API Notes:
  * Currently, this API is optimized for Bullet RigidBodies, and doesn't
  * take into account other Physics Engines. Some tweaking may be necessary
@@ -91,10 +99,10 @@ void RB_dworld_export(rbDynamicsWorld *world, const char *filename);
 
 /* Setup ---------------------------- */
 
-/* Add RigidBody to dynamics world */
+/* Add RigidBody to dynamics world; it leaves the world it was in */
 void RB_dworld_add_body(rbDynamicsWorld *world, rbRigidBody *object, int col_groups);
 
-/* Remove RigidBody from dynamics world */
+/* Remove RigidBody from dynamics world; nothing happens when it is not in this world */
 void RB_dworld_remove_body(rbDynamicsWorld *world, rbRigidBody *object);
 
 /* Collision detection */
@@ -261,10 +269,10 @@ void RB_shape_trimesh_update(rbCollisionShape *shape,
 
 /* Setup ----------------------------- */
 
-/* Add Rigid Body Constraint to simulation world */
+/* Add Rigid Body Constraint to simulation world, unless a body it was made with was deleted */
 void RB_dworld_add_constraint(rbDynamicsWorld *world, rbConstraint *con, int disable_collisions);
 
-/* Remove Rigid Body Constraint from simulation world */
+/* Remove Rigid Body Constraint from simulation world; nothing happens when it is not in it */
 void RB_dworld_remove_constraint(rbDynamicsWorld *world, rbConstraint *con);
 
 rbConstraint *RB_constraint_new_point(const float pivot[3], rbRigidBody *rb1, rbRigidBody *rb2);
@@ -352,7 +360,7 @@ void RB_constraint_set_target_velocity_motor(rbConstraint *con,
                                              float velocity_lin,
                                              float velocity_ang);
 
-/* Set number of constraint solver iterations made per step, this overrided world setting
+/* Set number of constraint solver iterations made per step, this overrides world setting
  * To use default set it to -1 */
 void RB_constraint_set_solver_iterations(rbConstraint *con, int num_solver_iterations);
 

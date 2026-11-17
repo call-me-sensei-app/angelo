@@ -15,21 +15,21 @@ from pathlib import Path
 
 from .providers import CodexProvider, ClaudeProvider
 from .runtime_bindings import retire_connection as retire_codex_runtimes  # Worker children end too.
-from .provider_registry import STANDING_CONSENT, USAGE_SEPARATOR, billing_kind, billing_label, is_team, runtime_kind
+from .provider_registry import STANDING_CONSENT, USAGE_SEPARATOR, billing_kind, billing_label, is_endpoint, is_team, runtime_kind
 from .owned_values import owned
 from .sessions import SessionStore
 from .studio_spec import STUDIO_NAMES
 from .flow_tool_spec import FLOW_NAMES, FLOW_USAGE
 from .studio_agent import StudioPending
-from .tool_specs import TOOL_MAP, FILE_TOOLS, RIG_IMAGE_TOOLS, validate_call
-from .chat_settings import clean_options, claude_effort, codex_turn_options, selected_model, stored_options
+from .tool_specs import READ_ONLY_TOOLS, FILE_TOOLS, RIG_IMAGE_TOOLS, validate_call
+from .chat_settings import clean_options, request_effort, selected_model, stored_options
 from .references import ReferenceStore
 from .files import FileWorkspace
 from .checkpoints import CheckpointStore
 from .checkpoint_policy import CheckpointPolicyStore, DEFAULT_POLICY, capture_scope, requires_capture
 from .routing import RuntimeContext, MODES, TOOLSET_VERSION, context_key, handoff, route_key, shared_context
-from . import request_submissions
-from . import activity_rows, claude_direct, codex_opening, live_progress, model_profiles, pending_delivery, plan_progress, pump_guard, reply_overlay
+from . import grant_guard as _grant_guard, owned_paths, request_submissions   # grant_guard.entry: behind a grant.
+from . import activity_rows, approval_wait, claude_direct, codex_opening, live_progress, model_profiles, pending_delivery, plan_progress, pump_guard, reply_overlay
 from . import auto_reasons, call_ended, call_status, review_again, chat_changes, document_scene, event_queue, goal_loop, merge_framing, message_end, render_extensions, request_rows, script_overlay, worker_news, worker_resume
 from .plan_schema import PlanRejected, deferred_schemas
 from .protocol import RpcError
@@ -49,11 +49,11 @@ from .invocations import check_invocation, reserve_invocation, InvocationGuardEr
 from .tool_deadlines import started as started_call, tool_seconds
 from .approval_review import prepare_review, clear_review
 from .request_fences import DeliveryOwner, RequestFence
-from . import script_store  # Scripts by id: resolve_call builds a patch's code; angelo_script reads one.
+from . import guard_work, script_store  # Scripts by id: resolve_call builds a patch's code; angelo_script reads one.
 from .pending_delivery import ToolCall
-from .tool_finalization import DISPLAY_EVENTS, complete_result, journal_tool, save_if_owed, save_observed_state
+from .tool_finalization import DISPLAY_EVENTS, complete_result, journal_refusal, journal_tool, save_if_owed, save_observed_state
 from .memory_projects import admit_restore_scope, bind_saved_memory, confirm_rebind_memory, rebind_review
-from . import chat_pending, steering, steering_delivery, task_memory, program_completion, program_camera, usage_meter, merge_hold, recovery_reads, stale_binding, unsent_loss, thread_start
+from . import chat_pending, steering, steering_delivery, task_memory, program_completion, program_camera, usage_meter, merge_hold, edit_tool_hold, recovery_reads, stale_binding, unsent_loss, thread_start
 from .controller_external import ExternalRequests, bound_target
 from .trusted_scripts import TrustedScripts
 from .worker_routing import SealedFiles
@@ -91,7 +91,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         self.store = getattr(self, "store_type", SessionStore)(directory, session_id)  # worker_journal_owner's.
         self.state = self.store.load()
         self.workspace = Path(directory) / "workspace"
-        self.workspace.mkdir(exist_ok=True, mode=0o700)
+        owned_paths.require_writable(self.workspace).mkdir(exist_ok=True, mode=0o700)
         self.settings = settings or {}
         self._api_key = ""
         self.provider = None
@@ -497,8 +497,8 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         cached prefix): the recorded one, even where today's policy would choose
         another, or for a session recorded before Angelo chose TTLs, what Claude
         Code chose then. A new session follows ``model_routing.cache_ttl`` for
-        this chat's ``session_kind`` and billing route (1h only for an
-        interactive subscription chat, as Claude Code defaults).
+        this chat's ``session_kind`` and billing route (1h for an interactive
+        chat on a subscription, an API key or a team's gateway key).
         """
         mode = self.state["provider"]
         try:
@@ -575,8 +575,11 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         if not self.state.get("connection_id"):
             return None
         billing = billing_kind(self.state["provider"])  # A team connection pays per token with the org's keys.
+
+        def effort(identity):   # What this chat's request would run that model at: the person's choice or its default.
+            return request_effort(self, dict(options, model=identity), runtime)
         return model_profiles.capability_profile(self.state["connection_id"], runtime, billing, self.models,
-                                                 effort=options["effort"], cache_ttl=self.session_cache_ttl() or "5m")
+                                                 effort=effort, cache_ttl=self.session_cache_ttl() or "5m")
 
     def _auto_route(self, options):
         """Auto for the Default row, behind the measured-capability gate (Claude only for now).
@@ -654,15 +657,9 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
             return
         if metrics is None:
             return
-        if runtime == "claude":
-            effort = claude_effort(options["effort"])
-        else:
-            try:
-                effort = codex_turn_options(self, options)["effort"]
-            except ValueError:
-                effort = options["effort"]  # The provider reports the same problem when it starts.
         metrics.set_route(mode=mode, requested_model=options["model"] or self.settings.get("model") or "",
-                          effort=effort, fast=options["fast"], cache_ttl=self.session_cache_ttl(),
+                          effort=request_effort(self, options, runtime), fast=options["fast"],
+                          cache_ttl=self.session_cache_ttl(),
                           cache_gap=cache_gap(self._model_request_ends.get(self.context_key()),
                                               self.state.get("native_id"), time.monotonic()),
                           auto=self._turn_route is not None, escalation=self._turn_escalations,
@@ -771,10 +768,10 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
 
     def requires_mutation_checkpoint(self, name):
         """Scene/file edits only; private notes, UI and paid monitoring are not edits."""
-        if TOOL_MAP[name]["annotations"]["readOnlyHint"]:
+        if name in READ_ONLY_TOOLS:
             return False
         if name in {"angelo_memory_update", "angelo_discard_preview", "angelo_set_workspace_mode", "angelo_workers_start",
-                    "angelo_web_preview", "angelo_app_feature", "angelo_engine_link"} | FLOW_USAGE:
+                    "angelo_web_preview", "angelo_app_feature", "angelo_engine_link", "angelo_download"} | FLOW_USAGE:
             return False  # A flow run is paid usage; it edits only its own node states.
         return (name not in STUDIO_NAMES and name != "angelo_team_library_save") or name in {"angelo_studio_import_3d", "angelo_studio_export"}
 
@@ -782,7 +779,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         if name in FILE_TOOLS or name in {"angelo_memory_read", "angelo_memory_update", "angelo_read_reference",
                                          "angelo_agent_metrics", "angelo_agent_capabilities", "angelo_blender_api", "angelo_script",
                                          "angelo_expand_recipe", "angelo_discard_preview", "angelo_set_workspace_mode",
-                                         "angelo_app_feature", "angelo_engine_link_status", "angelo_engine_link"} | FLOW_NAMES:
+                                         "angelo_app_feature", "angelo_engine_link_status", "angelo_engine_link", "angelo_download"} | FLOW_NAMES:
             return False
         return (name not in STUDIO_NAMES and not name.startswith(("angelo_team_", "angelo_library_"))) or name in {"angelo_studio_import_3d", "angelo_team_library_import", "angelo_library_import"}
 
@@ -853,17 +850,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
             "note": "Approved staged work; the live document has not been changed."}})
         return True
 
-    def native_job_status(self, call_id):
-        """A detached progress descriptor; never expose backend/stage RNA IDs."""
-        call = self.pending.get(call_id)
-        job = self.native_jobs.get(call_id)
-        if call is None or not call.staging:
-            return {}
-        progress = _recovery_value(getattr(job, "progress", {})) if job else {}
-        return {"call_id": call.id, "state": "COMMITTING" if call.committing else "READY_TO_COMMIT" if job and job.ready_to_commit else "RUNNING" if job else "QUEUED",
-                "stage_id": getattr(job, "id", ""), "progress": progress,
-                "arguments": _recovery_value(getattr(job, "program", call.arguments)),
-                "summary": "Isolated staged work; no live changes until the undo-enabled commit", "scene_changed": False}
+    native_job_status = pending_delivery.native_job_status
 
     def _preview_token(self, card, record):
         value = {"preview_id": card["preview_id"], "stage_id": card["stage_id"],
@@ -914,6 +901,8 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         """Human UI continuation: authorize this exact stage, never commit here."""
         if self.busy or (self._worker and self._worker.is_alive()) or self._closing or document != self.document or self.document_invalid:
             raise ValueError("Finish or Stop the current request before accepting a retained preview")
+        if edit_tool_hold.running():   # Its snapshot saves the whole document: never under the person's tool.
+            raise ValueError(display_text.Text(ui_text.n_("Finish the tool you are using, then accept the preview")))
         descriptor = self.inspect_native_preview(preview_id)
         if not isinstance(preview_token, str) or preview_token != descriptor["preview_token"]:
             raise ValueError("The exact preview changed; reopen the review before accepting")
@@ -1214,7 +1203,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         if changes.get("approval") == "READ_ONLY":
             self._script_consent = None
             for call in list(self.pending.values()):
-                if (not call.executing or call.staging) and not TOOL_MAP[call.name]["annotations"]["readOnlyHint"]:
+                if (not call.executing or call.staging) and call.name not in READ_ONLY_TOOLS:
                     self.finish_tool(call, {"error_code": 'READ_ONLY', "error": "The user switched this chat to read-only; no queued change was applied"})
         self.version += 1
         self.save()
@@ -1224,6 +1213,8 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         self.apply_next_connection()
         if self.busy or (self._worker and self._worker.is_alive()):
             raise RuntimeError("Stop the current turn before starting voice")
+        if is_endpoint(self.state["provider"]):   # Realtime voice is OpenAI's own interface, not a server's.
+            raise RuntimeError("Voice isn't available on your organization's model endpoint. Select a personal Codex connection for voice.")
         if not self.state["provider"].startswith("codex_"):
             raise RuntimeError("Claude Code doesn't expose this Codex realtime voice interface. Select a Codex connection for voice.")
         if is_team(self.state["provider"]):
@@ -1315,6 +1306,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
             submission.before_start(self)
         self.require_model_chat()
         self.apply_next_connection()
+        self.require_endpoint_admitted()   # An organization's server the account no longer admits: nothing starts.
         # The person's Enter holds a message instead (console.execute); this refuses any other caller. Not
         # ``turn_running``: a worker lane calls this with its own preparation marked (worker_routing.deliver).
         if self.busy or (self._worker and self._worker.is_alive()):
@@ -1649,7 +1641,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
     def _pump_events(self):
         # Provider workers never touch bpy; poll their app-owned receipts here.
         pending_delivery.sweep_delegates(self)
-        for identity, job in list(self.media_jobs.items()):
+        for identity, job in list(self.media_jobs.items()) if not edit_tool_hold.running() else ():   # A result lands in the scene.
             call = self.pending.get(identity)
             if call is None:
                 job.cancel()
@@ -1679,8 +1671,10 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         # so no save serializes a row mid-change. Result delivery and checkpoint captures stay outside it.
         for _ in range(256):
             try:
-                kind, data = self.events.get_nowait()
+                kind, data = edit_tool_hold.next_event(self)   # A held checkpoint event first (edit_tool_hold.defers).
             except queue.Empty:
+                break
+            if edit_tool_hold.defers(self, kind, data):   # It would snapshot the document under the person's tool.
                 break
             if (data.get("_epoch", self._epoch) != self._epoch
                     or data.get("_generation", self._request_generation) != self._request_generation):
@@ -1919,7 +1913,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         except (ValueError, TypeError, UnicodeError, OverflowError):
             answer({"error_code": 'VALIDATION', "error": "Invocation arguments must be finite JSON with valid UTF-8; no work was admitted"})
             return
-        protected_call = not TOOL_MAP[name]["annotations"]["readOnlyHint"] or name == "angelo_delegate"
+        protected_call = name not in READ_ONLY_TOOLS or name == "angelo_delegate"
         categories = fallback_categories(arguments["code"]) if name == "angelo_execute_python" else None  # Outside the lock: never delays the UI.
         with self.lock:
             if not admitted_fence.matches(self) or self.cancelled or self.state["id"] != admitted_session:
@@ -2005,9 +1999,9 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
                     call.metrics.count_fallback(categories)
             try:
                 self._journal_tool(call, "queued")
-            except (OSError, ValueError):
+            except Exception as error:   # Whatever a save raises refuses this call; admission itself never raises.
                 self.pending.pop(key, None)
-                answer({"error_code": 'INTERNAL_ERROR', "error": "The invocation journal could not be saved; no native work was admitted"})
+                answer(journal_refusal(error))
                 return
             completion = None
             if (not admitted_fence.matches(self) or self.cancelled or self.document != admitted_document
@@ -2037,14 +2031,14 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
                     or len(self._observation_requests) >= 4):
                 callback({"error_code": 'OWNERSHIP', "error": "This native request no longer owns the active turn"})
                 return
-            self._observation_requests.append((fence, callback))
+            self._observation_requests.append((fence, guard_work.work(callback)))   # Run only as made (guard_work).
 
     def _answer_observation_request(self, executor, document):
         """One queued continuation observation, built on the UI thread."""
         fence, callback = self._observation_requests.pop(0)
         if (not fence.matches(self) or self.cancelled or self.document != document or self.document_invalid
                 or getattr(executor, "window", None) is None):
-            callback({"error_code": 'CANCELLED', "error": "Document changed or turn stopped; no observation was built"})
+            guard_work.run(callback, {"error_code": 'CANCELLED', "error": "Document changed or turn stopped; no observation was built"})
             return
         started = time.monotonic()
         try:
@@ -2056,17 +2050,17 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
             result = {"error_code": 'UNKNOWN', "error": "The continuation observation failed (" + type(error).__name__ + "); observe with a scene tool"}
         finally:
             self._main_thread_block(self._request_metrics, started)
-        callback(result)
+        guard_work.run(callback, result)
 
     _journal_tool = journal_tool  # tool_finalization: the strict start-phase records.
 
     @property
     def has_dispatchable_tools(self):   # Deferred cleanup always; nothing else while its scene is not shown (hold).
-        return bool(self._native_cleanup) or not getattr(self, "_held", False) and (bool(self.native_jobs) or bool(
+        return bool(self._native_cleanup) and not getattr(self, "_tool_held", None) or not (getattr(self, "_held", False) or getattr(self, "_tool_held", None)) and (bool(self.native_jobs) or bool(
             self._observation_requests)
                 or any(call.authorized and call.staging for call in list(self.pending.values()))
                 or not self.tools.empty() or (
-            any(merge_hold.resumable(self, call) or call.approval and not call.executing and not call.recovery_review and
+            any(merge_hold.resumable(self, call) or edit_tool_hold.resumable(self, call) or call.approval and not call.executing and not call.recovery_review and
                 not call.merge_waits and (self._automatic_script(call) or self._auto_bounded(call)) for call in list(self.pending.values()))))
 
     def _auto_bounded(self, call, mode=None):
@@ -2118,10 +2112,13 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         executor.studio_context = self
         self.set_document(document)
         self._held = document_scene.hold(self, document)
+        tool_held = approval_wait.after_holds(self, edit_tool_hold.hold(self, self._held))   # Nothing reads under the person's tool; a card being read keeps its time.
         budget = budget or ToolDispatchBudget()
         if self._held:   # Its scene is not shown: its work waits, never runs on another, and keeps no writer another
             pending_delivery.retire_native_cleanup(self, budget)   # chat waits for (R4-M-1); a stopped stage still
             return document_scene.yield_writer(self)   # retires, whatever scene is shown (break-it R5-M-1).
+        if tool_held:
+            return
         if self._observation_requests and not budget.exhausted:
             budget.admissions += 1
             budget.executions += 1
@@ -2138,7 +2135,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
             if time.monotonic() >= call.expires or call.revoked:
                 budget.admissions += 1
                 self.expire_tool(call)
-            elif merge_hold.resume(self, call, document, apply_mutation, budget):   # Stopped at its run (merge_hold).
+            elif merge_hold.resume(self, call, document, apply_mutation, budget) or edit_tool_hold.resume(self, call, executor, document, apply_mutation, budget):   # Stopped at its run.
                 return
             elif (call.approval and not call.executing and not call.recovery_review and not call.merge_waits and apply_mutation
                   and (self._automatic_script(call) or self._auto_bounded(call))):
@@ -2146,7 +2143,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
                 if not self._tool_available(call, document):
                     continue
                 call.automatic, call.consent_kind = True, self.script_consent_kind(call) or ""
-                if self.approve_tool(call, executor, document):
+                if self._approve_automatically(call, executor, document):
                     self._pump_native_jobs(executor, document, budget, commit_mutation)
                 else:
                     budget.executions += 1
@@ -2196,7 +2193,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
                 except (RuntimeError, ValueError) as error:
                     if not self.expire_tool(call):
                         self.finish_tool(call, {"error_code": refusal_code(error), "error": str(error)})
-            elif TOOL_MAP[call.name]["annotations"]["readOnlyHint"]:
+            elif call.name in READ_ONLY_TOOLS:
                 budget.executions += 1
                 self.execute_tool(call, executor, document)
             else:
@@ -2217,7 +2214,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
                         call.automatic, call.consent_kind = True, self.script_consent_kind(call) or ""
                         # UI supplies an UNDO operator bound to THIS controller,
                         # even when another conversation is currently displayed.
-                        if self.approve_tool(call, executor, document):
+                        if self._approve_automatically(call, executor, document):
                             self._pump_native_jobs(executor, document, budget, commit_mutation)
                         else:
                             budget.executions += 1
@@ -2244,6 +2241,8 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         # The approved script file this call runs (an app's angelo_run_script_file), or None: the executor runs it as
         # that file, as Blender's Text editor or ``blender --python`` would (break-it review FR-M1).
         executor.script_file = getattr(call, "script_file", None)
+        if edit_tool_hold.wait(self, call):
+            return edit_tool_hold.EXECUTION_WAITING   # The person's tool runs: nothing ran, its click mark kept; the pump resumes it.
         clicked = review_again.take_click(call)   # The person's own Approve on its card (review_again), read once.
         if self.pending.get(call.id) is not call or call.executing:
             return
@@ -2253,8 +2252,8 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
             self.approve_tool(call, executor, document)
             return
         if merge_hold.waits(self, call):   # Its chat's own bound edit has not run yet; the pump applies it once it has.
-            return merge_hold.WAITING
-        if not TOOL_MAP[call.name]["annotations"]["readOnlyHint"] and clean_options(self.state.get("options"))["approval"] == "READ_ONLY":
+            return review_again.keep_click(call, clicked, merge_hold.WAITING)   # Its click answers its resume too.
+        if call.name not in READ_ONLY_TOOLS and clean_options(self.state.get("options"))["approval"] == "READ_ONLY":
             self.finish_tool(call, {"error_code": 'READ_ONLY', "error": "This chat is read-only; no change was applied"})
             return
         try:
@@ -2331,7 +2330,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
                 # A flow run reads its approved card choices from the executing call.
                 self.executing_call, shown = call, document_scene.shown_scene(executor)
                 try:
-                    if TOOL_MAP[call.name]["annotations"]["readOnlyHint"]:
+                    if call.name in READ_ONLY_TOOLS:
                         with collect_recovery_evidence() as records:
                             result = self._measure(call.metrics, "execution_ms", lambda: executor.execute(call.name, call.arguments))
                         if isinstance(result, dict) and not result.get("error"):  # A failed one: recovery_barrier.refused.
@@ -2387,7 +2386,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
                   "success": False, "serialization_failed": True}
         # Read-only observations can fail encoding too. They must never become
         # alleged scene edits simply because execute() was entered.
-        mutating = not TOOL_MAP[call.name]["annotations"]["readOnlyHint"]
+        mutating = call.name not in READ_ONLY_TOOLS
         if not mutating or not (call.mutation_started or call.preparation_effects_possible):
             return result
         source = source if isinstance(source, dict) else {}
@@ -2445,7 +2444,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
             if preparation.delivering:
                 return
             preparation.delivering = True
-        result = self._preparation_result(call, result)
+        result = edit_tool_hold.noted(call, self._preparation_result(call, result))
         clear_review(call)
         if call.name == "angelo_delegate":
             job = self.delegate_jobs.pop(call.id, None)
@@ -2494,7 +2493,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
                 # A content-free class (failure_codes), never the error text.
                 call.metrics.count("failure_" + failure_code(result))
             if (call.executing and call.mutation_started and self.is_native_action(call.name)
-                    and not TOOL_MAP[call.name]["annotations"]["readOnlyHint"]):
+                    and call.name not in READ_ONLY_TOOLS):
                 changed, verified = scene_outcome_evidence(result)
                 if changed:
                     call.metrics.mark("first_scene_change_ms")
@@ -2514,7 +2513,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
     def cancel_tools(self, reason, *, persist=True):
         while self._observation_requests:
             _fence, callback = self._observation_requests.pop(0)
-            callback({"error_code": 'CANCELLED', "error": reason})
+            guard_work.run(callback, {"error_code": 'CANCELLED', "error": reason})
         for call in list(self.pending.values()):
             if call.native_preparation is not None and not call.mutation_started:
                 self.finish_tool(call, {"error_code": "CANCELLED", "error": reason, "cancelled": True}, persist=persist)
@@ -2567,3 +2566,6 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
             self.provider.close()
         save_observed_state(self, compact=True)  # One base line again, readable by every build; never stops a close.
         write_turn.close_folder(self.telemetry)  # Its owed receipts and usage; nothing writes into it after this.
+
+
+from . import controller_entries  # noqa: E402,F401  The entries behind its grants (grant_guard.entry).

@@ -8,7 +8,7 @@ import sys
 import threading
 from concurrent.futures import Future
 
-from . import child_process, thread_start
+from . import child_process, owned_paths, thread_start
 
 
 class RpcError(RuntimeError):
@@ -52,6 +52,8 @@ def log(text):
 class JsonRpcProcess:
     def __init__(self, command, *, env=None, cwd=None, on_event=None, on_request=None, spawn=child_process.popen):
         """``spawn``: ``cli_runtime.launch`` for a provider CLI (it also resolves Windows npm shims)."""
+        if spawn is child_process.popen:   # Its own start: never a program from state (C); ``launch`` checks its own.
+            owned_paths.require_runnable(command[0])
         self.process = spawn(
             command, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True, encoding="utf-8", bufsize=1,

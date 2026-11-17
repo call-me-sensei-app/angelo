@@ -6,9 +6,13 @@ import suite_isolation  # noqa: F401  First: this test never sees a real provide
 
 import copy
 import hashlib
+from pathlib import Path
 import struct
+import sys
 import time
 import zlib
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 
 import test_native_marble_cache_probe as probe
 

@@ -97,8 +97,10 @@ def approval_block(controller, pending, area, width, size, line_height, expanded
     script = pending.name == "angelo_execute_python"
     paid = pending.name in PAID_TOOLS
     height = _body_height(rows, detail_rows, always, size, line_height) + _footer(button)
+    from .approval_families import approval_kind
+    chip = approval_kind(pending.name)   # A family that changes no scene names its own chip (a download).
     kind = (iface_("Script") if script else iface_("Background job") if pending.name.startswith("angelo_job_")
-            else iface_("Scene changes"))
+            else iface_(chip) if chip else iface_("Scene changes"))
     card = {"detail_rows": detail_rows, "script": script, "preparing": preparing, "always_rows": always, "mono": mono,
             "asked_again": bool(vars(pending).get("review_generation")),
             "paid": paid, "kind": kind, "always_button": button}

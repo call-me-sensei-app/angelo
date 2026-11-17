@@ -21,7 +21,7 @@ Update this list when either runtime documents a new variable of these kinds.
 import uuid
 
 from .protocol import RpcError
-from .storage import valid_profile_directory
+from .storage import ProfileOutside, private_profile, valid_profile_directory
 
 # Credentials and identities: the connection supplies its own or none.
 CREDENTIALS = frozenset({
@@ -175,9 +175,13 @@ def require_angelo_profile(mode, environment, connection_id):
     sign-in of the person's, so a chat without a connection record (a key typed
     into the legacy per-mode operator) is refused.
     """
-    if mode not in CLAUDE_KEY_MODES:
+    from .provider_registry import is_endpoint, spec_for
+    endpoint = is_endpoint(mode) and spec_for(mode)["runtime"] == "claude"
+    if mode not in CLAUDE_KEY_MODES and not endpoint:
         return
-    stray = sorted(name for name in environment if name.upper() in CREDENTIALS - {"ANTHROPIC_API_KEY"})
+    # A custom endpoint's key may be a bearer token (endpoint_connections.claude_environment).
+    own = {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"} if endpoint else {"ANTHROPIC_API_KEY"}
+    stray = sorted(name for name in environment if name.upper() in CREDENTIALS - own)
     if stray:
         raise RpcError("Claude launch refused: it carries another sign-in's variables (%s)" % ", ".join(stray))
     try:
@@ -188,6 +192,10 @@ def require_angelo_profile(mode, environment, connection_id):
     if not profile:
         raise RpcError("This Claude connection has no Angelo profile of its own. "
                        "Add it in Preferences > AI Providers, then reconnect")
+    try:   # Where C keeps Angelo's own folders, whatever the environment it was given says.
+        private_profile(profile)
+    except ProfileOutside as error:
+        raise RpcError(str(error)) from None
 
 
 def apply_prompt_cache_ttl(environment, ttl):

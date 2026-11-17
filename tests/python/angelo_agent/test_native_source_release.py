@@ -51,6 +51,9 @@ set(RELEASE_GCC_VERSION 14.2)
 """
 ZLIB_SOURCE = b"zlib source bytes"
 LIB_COMMIT = "a76ef917b4849ba2b1b1deb1a643e131a884a63b"
+_VERSION = int(re.search(r"#define BLENDER_VERSION (\d+)", (ROOT / "source/blender/blenkernel/BKE_blender_version.h")
+                         .read_text(encoding="utf-8")).group(1))
+RELEASE_BRANCH = "blender-v%d.%d-release" % (_VERSION // 100, _VERSION % 100)
 
 
 def git(repo, *arguments):
@@ -146,7 +149,7 @@ class ArchiveTests(RepoCase):
         zlib = next(lib for lib in manifest["libraries"] if lib["id"] == "ZLIB")
         self.assertEqual((zlib["version"], zlib["file"], zlib["license"]), ("1.3.1", "zlib-1.3.1.tar.gz", "Zlib"))
         self.assertEqual(zlib["upstream_url"], "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz")
-        self.assertTrue(zlib["mirror_url"].endswith("/blender-v5.2-release/zlib-1.3.1.tar.gz"))
+        self.assertTrue(zlib["mirror_url"].endswith("/%s/zlib-1.3.1.tar.gz" % RELEASE_BRANCH))
         self.assertIsNone(zlib["build_time_only"])
         self.assertTrue(next(lib for lib in manifest["libraries"] if lib["id"] == "NASM")["build_time_only"])
         self.assertEqual(manifest["release_toolchain"], {"gcc_version": "14.2"})
@@ -173,6 +176,31 @@ class ArchiveTests(RepoCase):
         self.assertEqual(code, 0, errors)
         self.assertFalse(json.loads(text)["release"])
         self.assertEqual(json.loads(text)["lfs_missing"], 1)
+
+    def test_nvidia_sdk_files_never_enter_the_archive(self):
+        # NVIDIA's RTX SDKs licence (DLSS) forbids putting the SDK under an open-source licence.
+        for relative, text in (("intern/cycles/nvsdk_ngx.h", "/* headers */\n"),
+                               ("source/vendor.h", "// SPDX-" "License-Identifier: LicenseRef-" "NvidiaProprietary\n")):
+            with self.subTest(file=relative):
+                (self.repo / relative).parent.mkdir(parents=True, exist_ok=True)
+                (self.repo / relative).write_text(text)
+                git(self.repo, "add", relative)
+                git(self.repo, "commit", "-q", "-m", "vendor")
+                code, _text, errors = self.run_tool("archive", "--rev", "HEAD", "--out", str(self.folder / "nv"))
+                self.assertEqual(code, 1)
+                self.assertIn(relative, errors)
+                git(self.repo, "rm", "-q", relative)
+                git(self.repo, "commit", "-q", "-m", "drop")
+
+    def test_the_repository_tracks_no_nvidia_sdk_file(self):
+        import own_checkout   # This tree's own tracked files: inside another repository the test fails by name,
+        own_checkout.needed(self, ROOT)   # and without any repository it is skipped by name.
+        names = own_checkout.git(ROOT, "ls-tree", "-r", "--name-only", "HEAD", capture_output=True, text=True,
+                                 check=True).stdout.splitlines()
+        self.assertEqual([name for name in names if tool.NVIDIA_SDK_NAME.search(name)], [])
+        tagged = own_checkout.git(ROOT, "grep", "-l", "-I", "-P", tool.NVIDIA_SDK_TAG.pattern.decode(), "HEAD",
+                                  capture_output=True, text=True)
+        self.assertEqual(tagged.stdout, "", "NVIDIA's proprietary licence tag in a tracked file")
 
     def test_library_sources_are_checked_against_their_checksums(self):
         sources = self.folder / "deps"
@@ -207,7 +235,7 @@ class ArchiveTests(RepoCase):
         result = tool.fetch_command(arguments, opener=opener)
         self.assertEqual(result["downloaded"], 1)
         self.assertEqual(list(served), ["https://projects.blender.org/blender/lib-source/media/branch/"
-                                        "blender-v5.2-release/zlib-1.3.1.tar.gz"])
+                                        "%s/zlib-1.3.1.tar.gz" % RELEASE_BRANCH])
 
 
 class OfferAndManifestTests(unittest.TestCase):

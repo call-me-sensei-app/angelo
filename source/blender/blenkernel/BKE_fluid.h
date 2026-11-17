@@ -8,6 +8,8 @@
  * \ingroup bke
  */
 
+#include "BLI_angelo_writers.hh"
+
 namespace blender {
 
 struct Depsgraph;
@@ -16,6 +18,7 @@ struct FluidEffectorSettings;
 struct FluidFlowSettings;
 struct FluidModifierData;
 struct Main;
+struct Object;
 struct Scene;
 
 enum eFluidDomain_BorderFlags : int;
@@ -54,6 +57,10 @@ void BKE_fluid_reallocate_copy_fluid(struct FluidDomainSettings *fds,
                                      int n_shift[3]);
 void BKE_fluid_cache_free_all(struct FluidDomainSettings *fds, struct Object *ob);
 void BKE_fluid_cache_free(struct FluidDomainSettings *fds, struct Object *ob, int cache_map);
+/** Angelo: what a fluid cache's folder is built from (`BLI_angelo_writers.hh`): its folder (the tag) and the formats
+ * that name its files. */
+Vector<angelo_writers::Input, 8> BKE_fluid_angelo_cache_inputs(const Object *ob,
+                                                               const FluidDomainSettings *fds);
 void BKE_fluid_cache_new_name_for_current_session(int maxlen, char *r_name);
 
 /**

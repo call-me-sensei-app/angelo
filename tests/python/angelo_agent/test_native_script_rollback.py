@@ -318,7 +318,10 @@ class FinishedScriptTests(unittest.TestCase):
             with self.subTest(start=start, end=end):
                 facts = self.facts(start, end)[1]
                 self.assertIs(facts["undoable"], False)
-                self.assertIn("Blender is in %s, where Undo holds only that mode's own data" % named, facts["undo"])
+                # 5.3's mixed Undo can take back data outside the mode too (live check 9, 2026-11-03): "may", never
+                # a promise either way.
+                self.assertIn("Blender is in %s, where Undo may hold only that mode's own data" % named, facts["undo"])
+                self.assertNotIn("is not an Undo step", facts["undo"])
         self.assertIs(self.facts("OBJECT", point=False)[1]["undoable"], False, "No restore point, no promise")
         self.assertIs(self.facts("OBJECT", point=False)[1]["main_data_undoable"], False)
 

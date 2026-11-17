@@ -19,6 +19,7 @@ from . import bake_maps_spec
 from .action_world_spec import IMAGE_ID_PATTERN
 from .refusal_codes import RefusalError
 from .scene_spec import HANDLE
+from . import read_only
 
 KINDS = ("RENDER_STILL", "RENDER_ANIMATION", "RENDER_REGION", "BAKE_TEXTURE", "BAKE_MAPS", "BAKE_PHYSICS",
          "BAKE_SIMULATION",
@@ -310,7 +311,7 @@ def validate_job(name, args, person=False):
         takers = [other for other in KINDS if other != kind and extra <= FIELDS[other]]
         raise JobRequestError(f"{kind} does not take: " + ", ".join(sorted(extra))
                               + ("; kinds that take them: " + ", ".join(takers) if takers else ""), code="VALIDATION")
-    missing = REQUIRED.get(kind, set()) - set(args)
+    missing = set(REQUIRED.get(kind, ())) - set(args)   # A set of its own: REQUIRED's are sealed frozensets.
     if kind == bake_maps_spec.KIND and "targets" in args:   # The Bake Maps card's several objects in one job.
         missing.discard("target")
     if missing:
@@ -433,3 +434,6 @@ def check_work(request, width, height, samples, frames):
             f"This job is too large: {width}x{height} at {samples:,} samples for {frames:,} frames. "
             "Ask the person whether to lower the resolution, samples or frame range, or to split it", code="LIMIT_EXCEEDED")
     return work
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), 'FIELDS', 'REQUIRED', 'HANDLE', '_FRAME', 'DEFAULT_MINUTES', 'EXPORT_SUFFIXES', 'FORMATS', 'VIDEO_FORMATS')

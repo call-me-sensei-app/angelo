@@ -10,6 +10,7 @@ Undo step) and is approved. The behaviour is in doc/angelo/engine_preflight.rst;
 """
 
 from .engine_rules import FIXES, TARGETS
+from . import read_only
 
 CHECK, FIX = "angelo_engine_check", "angelo_engine_fix"
 FORMAT_CHOICES = ("AUTO", "GLB", "FBX")
@@ -101,3 +102,6 @@ def validate_engine(name, args):
                 chosen.append((code, subject))
         return dict(request, fixes=[{"code": code, "subject": subject} for code, subject in chosen])
     raise ValueError("Unknown engine preflight tool")
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), 'FIXES')

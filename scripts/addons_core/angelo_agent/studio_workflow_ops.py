@@ -12,7 +12,7 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Operator
 
-from . import flow_host, flow_templates, live_windows
+from . import flow_host, flow_templates, live_windows, owned_paths
 from .provider_registry import is_coding
 from .studio_workflow_run import attach
 from .studio_workflows import _s, current
@@ -20,7 +20,7 @@ from .ui_text import iface_, n_, rpt_
 
 
 class ANGELO_OT_studio_workflow_image(Operator):
-    """Choose the character image: a front view of the whole figure"""
+    bl_description = "Choose the character image: a front view of the whole figure"
     bl_idname = "angelo.studio_workflow_image"
     bl_label = "Choose Character Image"
     bl_options = {'INTERNAL'}
@@ -55,8 +55,21 @@ def fitted_check_images(files, directory):
     import uuid
     from .studio_host import write_fitted
     folder = Path(directory) / "checks" / str(uuid.uuid4())
-    folder.mkdir(parents=True, mode=0o700)
+    owned_paths.require_writable(folder).mkdir(parents=True, mode=0o700)
     return [write_fitted(path, folder / f"{name}.png", CHECK_EDGE) for path, name in zip(files, ("character", "sheet"))]
+
+
+def _run_target(area_pointer):
+    """What a check or a fit sends, read without changing anything (``consent_target``): the area's workflow, its
+    flow and the flow's chosen states. None while the area shows none."""
+    from .studio_workflows import _tree, workflow
+    state = _s()._views.get(int(area_pointer or 0))
+    if state is None:
+        return None
+    value = workflow(state)
+    tree = _tree(value)
+    entry = flow_host.cached(tree.name) if tree else None
+    return [value, getattr(tree, "name", None), (entry or {}).get("states")]
 
 
 def _check_images(state):
@@ -77,7 +90,7 @@ def _check_images(state):
 
 
 class ANGELO_OT_studio_workflow_check(Operator):
-    """Compare the parts sheet with your character image on your AI Enhance account; it only reports"""
+    bl_description = "Compare the parts sheet with your character image on your AI Enhance account; it only reports"
     bl_idname = "angelo.studio_workflow_check"
     bl_label = "Compare with My Image"
     bl_options = {'INTERNAL'}
@@ -87,6 +100,10 @@ class ANGELO_OT_studio_workflow_check(Operator):
     def poll(cls, context):
         from . import parts_check
         return parts_check.READY  # Not offered until its accuracy is measured (parts_check.MEASUREMENT).
+
+    def consent_target(self, context):
+        """The run its area shows: its flow, the images it chose and the parts sheet, which the check sends."""
+        return _run_target(self.area_pointer)
 
     def invoke(self, context, event):
         s = _s()
@@ -139,13 +156,15 @@ class ANGELO_OT_studio_workflow_check(Operator):
                 message = str(error).replace(secret, "[REDACTED]") if secret else str(error)
                 result = {"notice": message[:350] or n_("The parts check didn't complete. Nothing changed.")}
             finally:
-                shutil.rmtree(files[0].parent, ignore_errors=True)   # The reduced copies made for this check only.
+                if owned_paths.may_write(files[0].parent):   # A cleanup: only what C says Angelo may remove.
+                    shutil.rmtree(files[0].parent, ignore_errors=True)   # The reduced copies made for this check only.
             if not cancel.is_set():
                 s._enhancement_events.put((pointer, result))
         try:
             threading.Thread(target=run, daemon=True, name="AngeloPartsCheck").start()
         except RuntimeError:   # No thread to check on (``thread_start``): it ends now, as a check that didn't complete.
-            shutil.rmtree(files[0].parent, ignore_errors=True)
+            if owned_paths.may_write(files[0].parent):   # A cleanup: only what C says Angelo may remove.
+                shutil.rmtree(files[0].parent, ignore_errors=True)
             s._enhancement_events.put((pointer, {"notice": n_("The parts check didn't complete. Nothing changed.")}))
         s.redraw()
         return {'FINISHED'}
@@ -208,7 +227,7 @@ def _fit_images(state):
     if not parts or parts[0]["kind"] != "BODY":
         raise ValueError(rpt_("The sheet has no body to fit the parts to"))
     folder = Path(store.directory) / "checks" / str(uuid.uuid4())
-    folder.mkdir(parents=True, mode=0o700)
+    owned_paths.require_writable(folder).mkdir(parents=True, mode=0o700)
     try:
         cutouts = []
         for part in parts:
@@ -226,7 +245,8 @@ def _fit_images(state):
         sheet = parts_ground.contact_sheet(cutouts)
         _png(folder / "parts.png", np.concatenate([sheet, np.full(sheet.shape[:2] + (1,), 255, np.uint8)], axis=2))
     except (ValueError, OSError, RuntimeError) as error:
-        shutil.rmtree(folder, ignore_errors=True)
+        if owned_paths.may_write(folder):   # A cleanup: only where C says Angelo may remove.
+            shutil.rmtree(folder, ignore_errors=True)
         raise ValueError(str(error) if isinstance(error, ValueError)
                          else rpt_("The parts couldn't be prepared for fitting; split the sheet again")) from None
     return ([character_file, folder / "parts.png"], [part["id"] for part in parts], size, shown["split"].get("key"),
@@ -259,7 +279,8 @@ def keep_fit(state, fit):
 
 
 class ANGELO_OT_studio_workflow_fit(Operator):
-    """Find each part on your character image with your AI Enhance account, so Place puts it where your image shows it"""
+    bl_description = ("Find each part on your character image with your AI Enhance account, so Place puts it where "
+                      "your image shows it")
     bl_idname = "angelo.studio_workflow_fit"
     bl_label = "Fit Parts to My Image"
     bl_options = {'INTERNAL'}
@@ -268,6 +289,10 @@ class ANGELO_OT_studio_workflow_fit(Operator):
     @classmethod
     def poll(cls, context):
         return fit_offered()  # Offered only on a connection and model whose fit was measured (parts_ground.MEASURED).
+
+    def consent_target(self, context):
+        """The run its area shows: its flow, the images it chose and the parts turned on, which the fit sends."""
+        return _run_target(self.area_pointer)
 
     def invoke(self, context, event):
         s = _s()
@@ -322,13 +347,15 @@ class ANGELO_OT_studio_workflow_fit(Operator):
                 result = {"notice": message[:350] or n_(
                     "Fitting the parts to your image didn't complete. Place uses the sheet's layout.")}
             finally:
-                shutil.rmtree(files[0].parent, ignore_errors=True)   # The copies made for this request only.
+                if owned_paths.may_write(files[0].parent):   # A cleanup: only what C says Angelo may remove.
+                    shutil.rmtree(files[0].parent, ignore_errors=True)   # The copies made for this request only.
             if timed_out or not cancel.is_set():   # A timeout reports; only a closed view cancels silently.
                 s._enhancement_events.put((pointer, result))
         try:
             threading.Thread(target=run, daemon=True, name="AngeloPartsFit").start()
         except RuntimeError:   # No thread to fit on (``thread_start``): it ends now, as a fit that didn't complete.
-            shutil.rmtree(files[0].parent, ignore_errors=True)
+            if owned_paths.may_write(files[0].parent):   # A cleanup: only what C says Angelo may remove.
+                shutil.rmtree(files[0].parent, ignore_errors=True)
             s._enhancement_events.put((pointer, {"notice": n_(
                 "Fitting the parts to your image didn't complete. Place uses the sheet's layout.")}))
         s.redraw()
@@ -336,3 +363,7 @@ class ANGELO_OT_studio_workflow_fit(Operator):
 
 
 CLASSES = (ANGELO_OT_studio_workflow_image, ANGELO_OT_studio_workflow_check, ANGELO_OT_studio_workflow_fit)
+
+
+from . import grant_guard as _grant_guard  # noqa: E402  (images to the provider, spending: grant_operators.rst)
+_grant_guard.guard(ANGELO_OT_studio_workflow_check, ANGELO_OT_studio_workflow_fit)

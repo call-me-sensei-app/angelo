@@ -12,14 +12,23 @@
   would end only this file).
   Defines the functions and nothing else.
 #>
+. (Join-Path $PSScriptRoot "windows_session_start.ps1")   # Wait-SessionStarted, Get-SessionNotStarted
+if (-not (Get-Command Invoke-NativeCapture -ErrorAction SilentlyContinue)) {   # The bootstrap loads it first.
+    . (Join-Path $PSScriptRoot "windows_native_call.ps1")
+}
 
 # 3b. The full-feature build's GPU toolkits (the 'release' stage only; see the bootstrap's 3b).
 function Invoke-ToolkitStage([hashtable]$Reboot) {
     if ($releaseRun) {
-        # Installers added or replaced in the bucket since the last install are installed again.
-        $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        $kitList = ((& $gcloud storage ls -l "gs://$bucket/toolkits/" 2>$null) | Sort-Object) -join "`n"
-        $ErrorActionPreference = $old
+        # Installers added or replaced in the bucket since the last install are installed again, and so is the set when
+        # the sent tree pins another one (windows_toolkit_pins.json) or changes the installer script, with nothing new
+        # uploaded.
+        $kitList = ((Invoke-NativeCapture $gcloud @("storage", "ls", "-l", "gs://$bucket/toolkits/")).Out | Sort-Object) -join "`n"
+        $pinFile = Join-Path $src "scripts\angelo\windows_toolkit_pins.json"
+        if (Test-Path $pinFile) { $kitList += "`npins " + (Get-FileHash $pinFile -Algorithm SHA256).Hash }
+        # So does a changed installer script (a part added to the CUDA list reaches a machine already marked done).
+        $kitScript = Join-Path $src "scripts\angelo\windows_toolkits.ps1"
+        if (Test-Path $kitScript) { $kitList += "`nscript " + (Get-FileHash $kitScript -Algorithm SHA256).Hash }
         $kitFile = Join-Path $state "toolkits.list"
         $haveKits = if (Test-Path $kitFile) { (Get-Content $kitFile -Raw) } else { "" }
         if ("$haveKits".Trim() -ne $kitList.Trim()) {
@@ -32,20 +41,15 @@ function Invoke-ToolkitStage([hashtable]$Reboot) {
         $kits = Join-Path $root "toolkits"
         $kitDownload = Join-Path $kits "download"
         New-Item -ItemType Directory -Force $kitDownload | Out-Null
-        $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        & $gcloud storage cp --quiet "gs://$bucket/toolkits/*" $kitDownload 2>&1 | Out-Host
-        $ErrorActionPreference = $old
+        (Invoke-NativeCapture $gcloud @("storage", "cp", "--quiet", "gs://$bucket/toolkits/*", $kitDownload)).Text | Where-Object { $_ } | Out-Host
         # windows_toolkits.ps1 checks each installer's Authenticode signature (NVIDIA Corporation, Advanced Micro
         # Devices) and refuses anything else; it never installs a display driver (the GRID driver stays).
         # The overrides travel in the environment: PowerShell drops an empty argument to a program and reads "-install"
         # after -File as a parameter name.
         $env:ANGELO_CUDA_COMPONENTS = Get-Meta "angelo-cuda-components" ""
         $env:ANGELO_HIP_ARGS = Get-Meta "angelo-hip-args" ""
-        $ErrorActionPreference = "Continue"
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $src "scripts\angelo\windows_toolkits.ps1") `
-            -Download $kitDownload -Kits $kits *>&1 | Tee-Object (Join-Path $logs "toolkits.log")
-        $kitExit = $LASTEXITCODE
-        $ErrorActionPreference = "Stop"
+        $kitExit = (Invoke-NativeCapture powershell.exe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+            (Join-Path $src "scripts\angelo\windows_toolkits.ps1"), "-Download", $kitDownload, "-Kits", $kits) -Log (Join-Path $logs "toolkits.log")).Code
         if ($kitExit -eq 1) {
             # Not marked done: the next run tries again. The build then stops in seconds for the missing toolkit.
             Write-Host "toolkits: an installer was refused or failed (toolkits.log)"
@@ -107,14 +111,28 @@ function Invoke-DesktopStage([hashtable]$Reboot) {
             return
         }
         Write-Host "== stage: desktop session checks (waiting for the signed-in task)"
-        # The agent's desktop checks run the GUI native suites; a held session also waits for its remote commands.
-        $minutes = 35 + $(if ($stagesGui -contains "agent") { 150 } else { 0 }) + $(if ($holdMinutes -gt 0) { 4 * $holdMinutes } else { 0 })
-        $deadline = (Get-Date).AddMinutes($minutes)
-        while (-not (Test-Path (Join-Path $guiDir "DONE")) -and (Get-Date) -lt $deadline) {
-            if ($holdMinutes -gt 0) { [void](Invoke-QueuedCommands $gcloud $bucket "cmd" $logs (Join-Path $root "cmd")) }
-            Start-Sleep -Seconds 10
+        $startMinutes = [int](Get-Meta "angelo-session-start-minutes" "2"); if ($startMinutes -le 0) { $startMinutes = 2 }
+        $startedFile = Join-Path $guiDir "STARTED"
+        if (Wait-SessionStarted $startedFile $startMinutes @((Join-Path $guiDir "DONE"))) {
+            Write-Host ("desktop session started: " + $(if (Test-Path $startedFile) { Get-Content $startedFile } else { "its DONE is there" }))
+            Sync-Logs   # A synced boot log read mid-run shows the session running, not only waiting.
+            # The agent's desktop checks run the GUI native suites; a held session also waits for its remote commands.
+            $minutes = 35 + $(if ($stagesGui -contains "agent") { 150 } else { 0 }) + $(if ($holdMinutes -gt 0) { 4 * $holdMinutes } else { 0 })
+            $deadline = (Get-Date).AddMinutes($minutes)
+            while (-not (Test-Path (Join-Path $guiDir "DONE")) -and (Get-Date) -lt $deadline) {
+                if ($holdMinutes -gt 0) { [void](Invoke-QueuedCommands $gcloud $bucket "cmd" $logs (Join-Path $root "cmd")) }
+                Start-Sleep -Seconds 10
+            }
+            Write-Host ("desktop session checks: " + $(if (Test-Path (Join-Path $guiDir "DONE")) { Get-Content (Join-Path $guiDir "DONE") } else { "TIMED OUT" }))
+        } else {
+            # The run fails, saying why, instead of waiting out the session's whole allowance.
+            $why = Get-SessionNotStarted $guiUser "AngeloGuiChecks" $startMinutes
+            Write-Host "desktop session NOT STARTED: $why"
+            New-Item -ItemType Directory -Force $guiDir | Out-Null
+            Set-Content (Join-Path $guiDir "SESSION-NOT-STARTED") $why
+            $exitFile = Join-Path $state "validate.exit"
+            if (-not (Test-Path $exitFile) -or "$(Get-Content $exitFile)".Trim() -eq "0") { Set-Content $exitFile 1 }   # Keeps an earlier stage's failure.
         }
-        Write-Host ("desktop session checks: " + $(if (Test-Path (Join-Path $guiDir "DONE")) { Get-Content (Join-Path $guiDir "DONE") } else { "TIMED OUT" }))
         # Take the test user, the automatic sign-in and the task away again.
         Set-ItemProperty $winlogon AutoAdminLogon "0"
         Remove-ItemProperty $winlogon DefaultPassword -ErrorAction SilentlyContinue
@@ -134,7 +152,8 @@ function Invoke-DesktopStage([hashtable]$Reboot) {
 
 # 4c. Final measurement runs (doc/angelo/final_runs.rst).
 function Invoke-BenchStage([hashtable]$Reboot) {
-    # Mode from metadata angelo-bench-mode: prep (after the release stage: install, freeze, wait for the RDP sign-in), dry (unbilled)
+    # Mode from metadata angelo-bench-mode: prep (after the release stage: install, freeze, wait for the RDP sign-in), dry (unbilled),
+    # prepdry (prep with a kept sign-in, then dry, in one request)
     # or run (billed; only with `gcp_windows_validate.sh bench run --authorize-billed-runs`). Exit code 194: the
     # desktop session it needs starts after a reboot; the stage then waits for that session at the next boot.
     $stagesBench = (Get-Meta "angelo-stages" "identity+teams").Split("+")
@@ -153,6 +172,8 @@ function Invoke-BenchStage([hashtable]$Reboot) {
         $prepared = Join-Path $root ("bench\state\session-" + (Get-Meta "angelo-src-nonce" "0"))
         $prepMinutes = [int](Get-Meta "angelo-bench-prep-minutes" "90")
         if ((Get-Meta "angelo-bench-mode" "") -eq "prep") { $prepMinutes += [int](Get-Meta "angelo-bench-signin-minutes" "60") }
+        # A pre-boot waits for its candidate MSI (windows_final_runs.ps1 Wait-PrebootCandidate) within its own limit.
+        if (-not (Get-Meta "angelo-bench-candidate-msi" "")) { $prepMinutes += [int](Get-Meta "angelo-bench-candidate-wait-minutes" "0") }
         $prepDeadline = (Get-Date).AddMinutes($prepMinutes)
         $pass = Get-Date -Format "yyyyMMdd-HHmmss"
         $stageOut, $stageErr = (Join-Path $logs "bench-stage-$pass.out"), (Join-Path $logs "bench-stage-$pass.err")
@@ -173,7 +194,7 @@ function Invoke-BenchStage([hashtable]$Reboot) {
                 Start-Sleep -Seconds 15
             }
             if ($hung) {
-                & taskkill.exe /T /F /PID $process.Id 2>&1 | Out-Null
+                [void](Invoke-NativeCapture taskkill.exe @("/T", "/F", "/PID", "$($process.Id)"))
                 Get-Content $stageOut, $stageErr -ErrorAction SilentlyContinue | Add-Content $benchLog
                 $last = (Get-Content $stageOut -Tail 8 -ErrorAction SilentlyContinue) -join " | "
                 throw "bench preparation did not finish within $prepMinutes minutes (ended): $last"

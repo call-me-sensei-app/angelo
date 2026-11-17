@@ -84,7 +84,8 @@ def hit_point(action, value=None):
     view = chat_view_state()
     rect = next((r for r, a, v in view.get("popup_hits", []) + view.get("hits", [])
                  if a == action and (value is None or v == value)), None)
-    return None if rect is None else (region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2)
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    return None if rect is None else chat_point(region, rect)
 
 
 def key(kind):
@@ -170,8 +171,10 @@ def tick():
                 return .2
             view = chat_view_state()
             rows = view["popover"]["rows"]
+            # The footer holds other links too (Learn, before Report a bug: dffc7d7179e): only these two are asked.
             checks["menu_feedback_entries_are_its_footer_buttons"] = [
-                r.get("value") for r in rows if r.get("placement") == "footer"] == ["report_bug", "request_feature"]
+                r.get("value") for r in rows if r.get("placement") == "footer"
+                and r.get("value") in {"report_bug", "request_feature"}] == ["report_bug", "request_feature"]
             box = view.get("popup_rect")
             shown = [qa_plus_menu.hit(view, "popup_add_open", value) for value in ("report_bug", "request_feature")]
             checks["menu_feedback_buttons_in_view_without_scrolling"] = (

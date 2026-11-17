@@ -12,6 +12,7 @@ and a failed prewarm shows nothing.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import sys
@@ -82,7 +83,7 @@ class ClaudePrewarmTests(unittest.TestCase):
 
     def send(self, controller, text):
         controller.send(text, {"objects": []})
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while time.monotonic() < deadline:
             controller.pump_events()
             if not controller.busy and not (controller._worker and controller._worker.is_alive()):
@@ -237,17 +238,17 @@ class ClaudePrewarmTests(unittest.TestCase):
         self.observe(self.c, "Make a cube")
         self.warm(self.c)
         first, launch_key = self.launches[0], self.c.prewarmed.key
-        self.assertIn(["--effort", "low"], [first.launched_with[0][i:i + 2] for i in range(len(first.launched_with[0]))])
-        self.c.set_options(effort="high")
+        self.assertIn(["--effort", "high"], [first.launched_with[0][i:i + 2] for i in range(len(first.launched_with[0]))])
+        self.c.set_options(effort="low")
         self.observe(self.c, "Make a cube", now=1.0)
         self.assertEqual(self.c.prewarmed.key, launch_key, "Effort is no input of the launch key")
         self.assertIsNone(first.poll(), "The session started for another effort stays")
         self.send(self.c, "Make a cube")
         self.assertEqual(len(self.launches), 1, "No relaunch for an effort change")
-        self.assertEqual(first.flag_settings, [{"effortLevel": "high"}])
+        self.assertEqual(first.flag_settings, [{"effortLevel": "low"}])
         kinds = [m["type"] if m["type"] != "control_request" else m["request"]["subtype"] for m in first.stdin.messages]
         self.assertLess(kinds.index("apply_flag_settings"), kinds.index("user"), "Set before the message")
-        self.assertEqual(self.c.provider._transport.effort, "high")
+        self.assertEqual(self.c.provider._transport.effort, "low")
 
     def test_the_same_effort_sends_no_change(self):
         self.observe(self.c, "Make a cube")
@@ -257,7 +258,8 @@ class ClaudePrewarmTests(unittest.TestCase):
 
     def test_a_session_that_refuses_or_ignores_the_change_is_relaunched_with_the_effort(self):
         from angelo_agent import claude_transport
-        for answer, effort in (("error", "high"), (None, "medium")):   # A new chat keeps the last chat's options.
+        # A new chat keeps the last chat's options; neither effort is the default the session was launched with.
+        for answer, effort in (("error", "low"), (None, "medium")):
             with self.subTest(answer=answer), patch.object(claude_transport, "EFFORT_SECONDS", .2):
                 self.launches.clear()
                 chat = self.chat()

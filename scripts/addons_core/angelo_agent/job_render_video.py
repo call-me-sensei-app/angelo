@@ -24,6 +24,7 @@ format MP4 at admission. Reasons are English (the model reads them); fixed ones
 are marked with ``n_`` so the job card translates them.
 """
 
+from . import edit_tool_hold
 import atexit
 import json
 import os
@@ -34,6 +35,7 @@ import tempfile
 import time
 from pathlib import Path, PurePosixPath
 
+from . import owned_paths
 from .job_spec import JobRequestError
 from .ui_text import n_
 
@@ -153,6 +155,7 @@ class Encoder:
         self.deadline, self.killed, self.on_end = None, False, []
         self.log = tempfile.TemporaryFile()
         try:
+            owned_paths.runnable_argv(arguments)   # Never a program from state (C).
             self.process = (popen or child_process.popen)(arguments, stdout=self.log, stderr=subprocess.STDOUT,
                                                           stdin=subprocess.DEVNULL, env=dict(os.environ))
         except Exception:
@@ -233,6 +236,7 @@ class Encoder:
         return True, ""
 
 
+@edit_tool_hold.guarded   # Touches Blender data: waits for the person's operation.
 def reap():
     """Timer: look at the stopped children that have not ended (killing one past its time) and run what waited on
     each one that has. Seconds to the next look, or None once none is left."""
@@ -307,8 +311,16 @@ def begin(runner, binary=None, popen=None):
         import bpy
         binary = bpy.app.binary_path
     main = next(entry for entry in runner.plan.outputs if entry["main"])
-    request = child_request(runner.staging.path, main, (runner.start_frame, runner.end_frame, runner.step),
-                            runner.fps[0], runner.fps[1], runner.facts["resolution"], runner.video)
+    folder, name = runner.staging.path, runner.video
+    try:
+        # The encoder is a Blender where no script region begins (C answers yes there): the MP4 it writes is asked
+        # of C here, before its request exists. A refusal starts no child; the job reports no video.
+        owned_paths.require_writable(Path(folder) / name)
+    except PermissionError as error:
+        runner.video_result = (False, str(error))
+        return None
+    request = child_request(folder, main, (runner.start_frame, runner.end_frame, runner.step),
+                            runner.fps[0], runner.fps[1], runner.facts["resolution"], name)
     try:
         runner.encoder = Encoder(command(binary, request), request["dest"], popen, owner=runner.identity)
     except (OSError, ValueError) as error:

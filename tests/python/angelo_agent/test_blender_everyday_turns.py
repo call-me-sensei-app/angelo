@@ -94,7 +94,22 @@ def actions():
 def click(action, value=None):
     area, region = chat()
     rect = next(r for r, a, v in view_state()["hits"] if a == action and (value is None or v == value))
-    x, y = int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    import qa_input
+    from angelo_agent.approval_arming import GRANTS
+    if action in GRANTS:   # It takes only a click aimed at it (approval_arming): the suite's tick waits for it.
+        from angelo_agent import approval_arming
+
+        def found():   # Read again at the click: the card may have moved meanwhile.
+            return next(h for h in view_state()["hits"] if h[1] == action and (value is None or h[2] == value))
+
+        def where():
+            return qa_input.chat_rect(chat()[1], found()[0])
+        return qa_input.aim(window(), where,
+                            ready=lambda: approval_arming.view(view_state()).key_armed(tuple(found()[1:])))
+    x, y = qa_input.chat_point(region, rect)
+    import qa_input
+    if action in qa_input.GRANT_ACTIONS:   # It reaches a grant: only a person's click (move, then press).
+        return qa_input.press(window(), x, y)
     for kind, event_value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
         window().event_simulate(type=kind, value=event_value, x=x, y=y)
 
@@ -394,4 +409,5 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=.5)
+import qa_input  # noqa: E402  (aimed clicks: qa_input.aim)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.5)   # An aimed click lands first.

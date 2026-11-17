@@ -39,7 +39,7 @@ import bpy
 
 from . import (app_version, card_host, card_kit as kit, live_windows, update_card, update_flow, update_install, update_state,
                work_guard)
-from . import update_restart_handoff as handoff
+from . import owned_paths, update_restart_handoff as handoff
 from .ui_text import iface_, n_, plural_
 
 READY_TIMEOUT = 15.0
@@ -406,7 +406,7 @@ def handle_results(preparer, state_directory):
     current = app_version.current()
     keep = set()
     for version, result in preparer.results():
-        work = preparer.work(version)
+        work = owned_paths.require_writable(preparer.work(version))   # Under the vouched updates folder (C).
         if result["status"] == "installed" and version == current:
             update_flow.remove_previous(work, preparer.support()[1])
             _record(state_directory, "", 0)

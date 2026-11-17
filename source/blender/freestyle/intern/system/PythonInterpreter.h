@@ -19,6 +19,7 @@
 #include "BKE_main.hh"
 #include "BKE_text.h"
 
+#include "BPY_extern.hh"
 #include "BPY_extern_run.hh"
 
 #include "bpy_capi_utils.hh"
@@ -77,6 +78,14 @@ class PythonInterpreter : public Interpreter {
 
   int interpretText(struct blender::Text *text, const string &name)
   {
+    /* Angelo: a style module runs unconfined, so only as the person trusted it
+     * (bpy_angelo_autorun_trust.cc): held back like a file's scripts with auto-run off. */
+    if (!blender::BPY_angelo_style_module_trusted(text)) {
+      cerr << "\nStyle module not run: its script came from a file or an agent script, and was not allowed"
+           << endl;
+      cerr << "Name: " << name << endl;
+      return 1;
+    }
     if (!blender::BPY_run_text(_context, text, nullptr, false)) {
       cerr << "\nError executing Python script from PythonInterpreter::interpretText" << endl;
       cerr << "Name: " << name << endl;

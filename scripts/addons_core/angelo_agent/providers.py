@@ -11,15 +11,15 @@ import uuid
 
 from .program_completion import completions_for
 from .protocol import JsonRpcProcess, RpcError, TransportClosed, lost_runtime, transport_ended
-from .cli_runtime import find_executable, with_runtime_path, note_newer, launch, run_cli  # find_executable: re-exported
+from .cli_runtime import chosen, find_executable, with_runtime_path, note_newer, launch, run_cli  # find_executable: re-exported
 from .tool_deadlines import await_host, await_native
-from .tool_specs import CODEX_DEFERRED_NAMESPACE, codex_tools, cube_batch, dynamic_tools, note_reports, TOOL_MAP
+from .tool_specs import READ_ONLY_TOOLS, CODEX_DEFERRED_NAMESPACE, codex_tools, cube_batch, dynamic_tools, note_reports
 from .plan_schema import CLAUDE_CORE_ACTIONS, PlanRejected, rejection_prompt
 from .chat_settings import normalize_models, clean_options, codex_turn_options, selected_model
 from .routing import TOOLSET_VERSION
 from .provider_usage import (CodexThreadUsage, record_interrupted, record_runtime_round as _record_runtime_round,
                              record_accepted_input as _record_accepted_input)
-from .provider_registry import CUSTOM_PROVIDER_MODES, TEAM_MODES, runtime_kind, spec_for
+from .provider_registry import TEAM_MODES, custom_provider, is_endpoint, runtime_kind, spec_for
 from .api_connections import check_connection
 from .runtime_launch import child_environment, codex_command, launch_binding, profile_environment  # noqa: F401 (re-exported)
 from . import agent_runtime, codex_bases, codex_connect, codex_runtime, request_path, runtime_environment, runtime_prewarm, steering_delivery, unsent_loss
@@ -55,11 +55,11 @@ from .codex_text import (CODEX_CONTEXT_GUIDANCE, CODEX_DEFERRED_GUIDANCE, CODEX_
 
 # Codex usage-limit errors (CodexErrorInfo, codex-cli 0.160.0): the chat row
 # names the limit, which the harness classifies as rate-limited (invalid).
-def tool_content(controller, name, result):
+def tool_content(controller, name, result, arguments=None):   # ``arguments``: the call's (recovery_reads.named_for).
     # A chat thread with short identifiers reads results in them (identifiers.py).
     compact = getattr(controller, "compact_identifiers", None) if getattr(controller, "short_identifiers", False) else None
     model_result = present_program_checks(name, result, completion=completions_for(controller, [result])[0])
-    model_result = recovery_reads.named_for(controller, model_results.model_result(name, model_result))  # Without the host's bookkeeping; tools as this model calls them.
+    model_result = recovery_reads.named_for(controller, model_results.model_result(name, model_result), arguments, name)  # Without the host's bookkeeping; tools as this model calls them.
     model_result = worker_news.noted(controller, compact(model_result) if callable(compact) else model_result, result)
     observe = getattr(controller, "observe_result", None)
     if callable(compact) and callable(observe):
@@ -136,7 +136,7 @@ class CodexProvider:
         """
         context = owner.controller
         mode = context.state["provider"]
-        external = mode in CUSTOM_PROVIDER_MODES
+        external = custom_provider(mode)
         if (runtime_kind(mode) != "codex" or self.rpc is not None or not owner.owns_request()
                 or codex_runtime.eligible(context, mode, external, plan_mode(context, not team_runtime.openai_service(mode)))):
             return False
@@ -147,7 +147,7 @@ class CodexProvider:
         mode = context.state["provider"]
         if mode in TEAM_MODES:
             team_runtime.coding_models(mode, context.api_key)  # Signed in, or nothing starts.
-        executable = find_executable("codex", self.settings.get("codex_path", ""))
+        executable = find_executable("codex", chosen("codex"))   # Preferences' pick, never one from settings.
         command, env = self._command(executable, context)
         token = object()
         rpc = JsonRpcProcess(command, env=env, cwd=str(context.workspace), spawn=launch,
@@ -192,11 +192,16 @@ class CodexProvider:
         ``opening`` (``codex_opening``) opens none: it readies the base the context's next new thread would fork.
         """
         mode, models = self.controller.state["provider"], None
-        external = mode in CUSTOM_PROVIDER_MODES
+        external = custom_provider(mode)
         if runtime_kind(mode) != "codex":
             raise RpcError("This connection cannot use the Codex runtime")
         if mode in TEAM_MODES:
             models = team_runtime.coding_models(mode, self.controller.api_key)
+            if catalog_only:
+                return models
+        elif is_endpoint(mode):
+            # The organization's description names the models; its server is asked only by Test connection.
+            models = team_runtime.endpoint_models(mode)
             if catalog_only:
                 return models
         elif external:
@@ -207,7 +212,7 @@ class CodexProvider:
                 raise RpcError(check.message)
             if catalog_only:
                 return models
-        executable = find_executable("codex", self.settings.get("codex_path", ""))
+        executable = find_executable("codex", chosen("codex"))
         self._runtime_kind = agent_runtime.kind(executable)  # Bundled, override or the person's own: receipts.
         command, env = self._command(executable, self.controller)
         self._scope.new_transport()
@@ -275,7 +280,7 @@ class CodexProvider:
 
     def _thread_parameters(self, models, *, voice=False):
         mode = self.controller.state["provider"]
-        external = mode in CUSTOM_PROVIDER_MODES
+        external = custom_provider(mode)
         selected = ((self.controller.turn_options or clean_options(self.controller.state.get("options")))["model"] or self.settings.get("model", "")).strip()
         if not selected:
             default = next((m for m in models if m["default"]), models[0] if models else {})
@@ -514,8 +519,10 @@ class CodexProvider:
                 return refuse_foreign_call(self, request_id, rpc, params)
             with self._scope.lock:   # A call is the model's output: a steer it showed before was read.
                 steering_delivery.codex_event(context, method, params, self._plan)
+            arguments = params.get("arguments")   # The call's own: what its refusal echoes of them is data.
             dispatch_dynamic_call(self, request_id, params, context, rpc, owner, token,
-                                  pack=tool_content, record_result=request_path.record_codex_result)
+                                  pack=lambda context, tool, result: tool_content(context, tool, result, arguments),
+                                  record_result=request_path.record_codex_result)
         elif method in {"item/commandExecution/requestApproval", "item/fileChange/requestApproval"}:
             self.rpc.respond(request_id, {"decision": "decline"})
         else:
@@ -558,6 +565,20 @@ CLAUDE_DISCONNECTED = "Claude runtime disconnected; reconnect before continuing"
 def claude_ended(transport):
     """Whether a Claude session's process has ended: its reader saw its output end, or it exited."""
     return getattr(transport, "reader_ended", False) is True or transport.process.poll() is not None
+
+
+def claude_launch(controller, settings):
+    """``(program, environment)`` for a Claude Code session of ``controller``'s connection, built at each start: the
+    program from Preferences (``cli_runtime.chosen``), never a path held on the provider or in ``settings``; the
+    environment from the process's own and the connection's profile, never a dict kept from an earlier start, which
+    a script could have changed in place (a ``NODE_OPTIONS`` the program would load, another server for its key)."""
+    mode = controller.state["provider"]
+    executable = find_executable("claude", chosen("claude"))
+    env = profile_environment(child_environment(mode, controller.api_key), mode,
+                              settings.get("auth_directory", controller.store.directory),
+                              settings.get("reuse_codex_login", True), settings.get("connection_id"),
+                              settings.get("native_profile"))
+    return executable, with_runtime_path(env, executable)
 
 
 class ClaudeProvider:
@@ -642,16 +663,18 @@ class ClaudeProvider:
     def connect(self):
         if self._prewarm_checked and self.has_warm_runtime():
             return self.controller.state["native_id"]  # The prewarm ran these checks for this session (runtime_prewarm).
-        mode = self.controller.state["provider"]
-        self.executable = find_executable("claude", self.settings.get("claude_path", ""))
-        self.env = with_runtime_path(profile_environment(child_environment(mode, self.controller.api_key), mode,
-                                     self.settings.get("auth_directory", self.controller.store.directory), self.settings.get("reuse_codex_login", True),
-                                     self.settings.get("connection_id"), self.settings.get("native_profile")), self.executable)
-        claude_transport.check_access(mode, self.controller.api_key, self.executable, self.env)
+        executable, env = self.launch_inputs(self.controller)
+        claude_transport.check_access(self.controller.state["provider"], self.controller.api_key, executable, env)
         return self.controller.state["native_id"]
+
+    def launch_inputs(self, controller):
+        """What a start runs with, built for each start (``claude_launch``)."""
+        return claude_launch(controller, self.settings)
 
     def list_models(self):
         from .claude_transport import ClaudeRequest
+        if is_endpoint(self.controller.state["provider"]):   # The organization's description names its models.
+            return team_runtime.endpoint_models(self.controller.state["provider"])
         owner = ClaudeRequest(self.controller)
         self.connect()
         transport = self._start(None, owner=owner)
@@ -698,8 +721,10 @@ class ClaudeProvider:
         from .claude_transport import ClaudeTransport, check_command_budget, discard_stderr, require_supported_runtime
         if not self._current(owner):
             return None
-        context, executable = owner.controller, self.executable
-        env = runtime_environment.session_environment(dict(self.env), context)
+        context = owner.controller
+        # Built again for every start: never a program or environment kept on the provider (claude_launch).
+        executable, env = self.launch_inputs(context)
+        env = runtime_environment.session_environment(dict(env), context)
         runtime_environment.require_angelo_profile(context.state["provider"], env, self.settings.get("connection_id"))
         # Recheck every actual launch, including a binary replaced at the same
         # path. Successful warm rounds do not launch or probe again.
@@ -1060,7 +1085,7 @@ class ClaudeProvider:
             # preview pixels are for the artist's review card. Anything unproven keeps today's paths.
             summary = None if batch or note else certified_completion(
                 plan["operations"], applied["operations"], completions=run.completions,
-                read_only=lambda name: TOOL_MAP[name]['annotations']['readOnlyHint'])
+                read_only=lambda name: name in READ_ONLY_TOOLS)
             settled = None if note or _lookups_only(plan["operations"]) else (
                 {"role": "system", "text": summary, "host_summary": True}
                 if summary is not None and set(evidence.feedback) <= run.program_images else

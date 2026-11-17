@@ -15,6 +15,7 @@ material, and checked element by element (break-it P2-3). The in-Blender proofs 
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import os
 import sys
@@ -356,6 +357,7 @@ class AutoStartTests(unittest.TestCase):
     def test_the_controllers_auto_decision_asks_past_the_cap(self):
         from angelo_agent.controller import Controller
         lead = SimpleNamespace(state={"id": "lead-cap2", "options": {}}, _request_message_index=1)
+        angelo_guard_twin.automatic(angelo_guard_twin.set, "approval_modes", "lead-cap2", "AUTO_BOUNDED")   # A new chat's Auto, held in C.
         start = lambda count: SimpleNamespace(name="angelo_workers_start", arguments={"parts": [{}] * count})  # noqa
         with patch.dict(worker_sessions._requests, clear=True):
             self.assertTrue(Controller._auto_bounded(lead, start(1), "AUTO_BOUNDED"))

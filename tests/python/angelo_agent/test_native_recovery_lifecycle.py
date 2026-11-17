@@ -3,6 +3,7 @@
 """Recovery authority follows real human request boundaries, not provider rounds."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import unittest
 from types import SimpleNamespace
@@ -80,7 +81,7 @@ class LifecycleTests(AgentRuntimeFixture, unittest.TestCase):
         descriptor = self.c.native_previews()[0]
         self.conflict()
         self.c.busy = False
-        self.assertTrue(self.c.accept_native_preview(descriptor["preview_id"], self.executor, self.c.document,
+        self.assertTrue(angelo_guard_twin.harness(self.c.accept_native_preview, descriptor["preview_id"], self.executor, self.c.document,
                                                       descriptor["preview_token"]))
         self.assertIsNone(self.c.recovery_barrier.pending)
         self.assertFalse(self.c.recovery_barrier.records)

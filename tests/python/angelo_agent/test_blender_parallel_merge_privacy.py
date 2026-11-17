@@ -18,8 +18,8 @@ sound packed and still drawing, the person's own texture where it was, the cache
 linked from a .blend in its folder, a bake image never saved, a node's string, a node modifier's input, a custom
 property, a point cache and a Dynamic Paint folder, a case spelling of its folder, and a texture in the chat's default
 workspace, which stays where it is. A fifth part brings what a worker's files carry besides what Blender reads, and
-two more spell a private path as text transports do; one has a long text (BREAKIT-C7A-5,
-``parallel_merge_privacy_media``). No provider or paid call.
+three more spell a private path as text transports do (one after 9 MiB, BREAKIT-C7A-7 H1); one has a long
+text (BREAKIT-C7A-5, ``parallel_merge_privacy_media``). No provider or paid call.
 
 Run only in a disposable instance with the exact Angelo binary:
 ``--background --factory-startup --disable-autoexec --python-exit-code 1``.
@@ -32,7 +32,6 @@ import suite_isolation  # noqa: E402,F401  First: no real provider login (provid
 import importlib.util
 import json
 import os
-import shutil
 import sys
 import tempfile
 import time
@@ -56,32 +55,32 @@ os.environ.update(ANGELO_DISABLE_DEFAULT_CHAT="1", ANGELO_CONNECTIONS_DIR=str(OU
                   ANGELO_STATE_DIR=str(OUT / "state"), ANGELO_ENABLE_PARALLEL_AGENTS="1")
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from angelo_agent import (private_roots, ui, worker_merge_media, worker_merge_verify, worker_paths,  # noqa: E402
-                          worker_sessions)
+from angelo_agent import (private_roots, ui, worker_merge_media, worker_merge_verify,  # noqa: E402
+                          worker_paths, worker_sessions)
+try:   # The streamed check's scanner, whose finds the report lists; a check from before it has none (a fail-first run).
+    from angelo_agent import worker_merge_scan  # noqa: E402
+except ImportError:
+    worker_merge_scan = None
+import parallel_merge_privacy_links as links  # noqa: E402
 import parallel_merge_privacy_media as media  # noqa: E402
+import parallel_merge_privacy_saved as saves_parts  # noqa: E402
+import parallel_merge_privacy_writers as writers  # noqa: E402
 from angelo_agent.blender_tools import BlenderExecutor  # noqa: E402
 from angelo_agent.controller import ToolDispatchBudget, pump_controller_tools  # noqa: E402
 from angelo_agent.headless_main import _register  # noqa: E402
 
 report = {"checks": {}, "details": {}, "paid_requests": 0, "binary_path": bpy.app.binary_path, "platform": sys.platform}
 HITS = report["details"]["verifier_hits"] = []   # What the merge's own check found, so a refusal says what it saw.
-_hit = worker_merge_verify._hit
+if worker_merge_scan is not None:   # Recorded where the check has a scanner to record.
+    _hit = worker_merge_scan.Scanner.hit
 
+    def _recorded_hit(scanner, reader, start, end):
+        found = _hit(scanner, reader, start, end)
+        if found is not None and len(HITS) < 12:
+            HITS.append(str(found)[-200:])
+        return found
 
-def _recorded_hit(private, chunk):
-    found = _hit(private, chunk)
-    if found is not None and len(HITS) < 12:
-        context = str(found)[-200:]
-        for text in worker_merge_verify.views(chunk):   # A folder's bare name: the text around it.
-            at = text.casefold().find(str(found).casefold())
-            if at >= 0 and found in private.names:
-                context = text[max(0, at - 160):at + 60]
-                break
-        HITS.append(context)
-    return found
-
-
-worker_merge_verify._hit = _recorded_hit
+    worker_merge_scan.Scanner.hit = _recorded_hit
 WORKER_SCENE = "WorkerScene-" + MARKER
 
 
@@ -98,7 +97,7 @@ def lead_merge(window, lead, parts, timeout=120):
 
     def apply_mutation(target, call):
         with bpy.context.temp_override(window=window):
-            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=target.state["id"])
     started = time.perf_counter()
     while not answers and time.perf_counter() - started < timeout:
         lead.pump_events()
@@ -128,79 +127,12 @@ def wav(path):
     return path
 
 
-FONT = []   # The worker's font file, once copied.
-
-
-def font_file(folder):
-    fonts = Path(bpy.utils.system_resource("DATAFILES", path="fonts"))
-    source = next((p for p in sorted(fonts.iterdir()) if p.suffix.lower() in (".ttf", ".otf", ".woff2")), None)
-    if source is None:
-        return None
-    FONT.append(shutil.copy(source, folder / ("worker-font" + source.suffix)))
-    return FONT[-1]
-
-
-def write_part(part, registered, family, own):
-    """The part as a worker leaves it: its file saved first (``worker_main.open_part``), built, saved again. Each part
-    is saved uncompressed so its own bytes can be read: a default save compresses, and whether a path survives as
-    raw bytes then is chance."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    part.parent.mkdir(parents=True, exist_ok=True)
-    bpy.ops.wm.save_as_mainfile(filepath=str(part), compress=False)
-    scene = bpy.context.scene
-    scene.name = WORKER_SCENE
-    scene.world = bpy.data.worlds.new("WorkerWorld")
-    scene.world.use_nodes = True
-    environment = scene.world.node_tree.nodes.new("ShaderNodeTexEnvironment")
-    environment.image = bpy.data.images.load(str(png(part.parent / "sky.png", (0.2, 0.4, 0.9, 1))))
-    scene.render.filepath = str(part.parent / "renders") + os.sep
-    mesh = bpy.data.meshes.new("LampMesh")
-    mesh.from_pydata([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)], [], [(0, 1, 2, 3)])
-    base = bpy.data.objects.new("Lamp Base", mesh)
-    scene.collection.objects.link(base)
-    material = bpy.data.materials.new("Lamp Brass")
-    material.use_nodes = True
-    nodes = material.node_tree.nodes
-    for file, pack in ((png(registered / "reference.png", (1, 0, 0, 1)), False),   # A worker's view, say.
-                       (png(family / "kept.png", (0, 1, 0, 1)), True),           # Packed by the worker already.
-                       (png(part.parent / "baked.png", (0, 0, 1, 1)), False),     # By a path relative to the part.
-                       (own, False)):                                             # The person's own texture.
-        node = nodes.new("ShaderNodeTexImage")
-        node.image = bpy.data.images.load(str(file))
-        if pack:
-            node.image.pack()
-        if file.parent == part.parent:
-            node.image.filepath = "//" + file.name
-    mesh.materials.append(material)
-    base.modifiers.new("Waves", "OCEAN").filepath = "//ocean-cache"
-    driver = base.driver_add("rotation_euler", 2).driver
-    variable = driver.variables.new()
-    variable.targets[0].id_type = "SCENE"
-    variable.targets[0].id = scene
-    variable.targets[0].data_path = "frame_current"
-    driver.expression = "var * 0.01"
-    base["home"] = scene
-    shade = bpy.data.objects.new("Lamp Shade", bpy.data.meshes.new("ShadeMesh"))
-    scene.collection.objects.link(shade)
-    shade.parent = base
-    label = bpy.data.objects.new("Lamp Label", bpy.data.curves.new("LabelText", "FONT"))
-    scene.collection.objects.link(label)
-    font = font_file(registered)
-    if font is not None:
-        label.data.font = bpy.data.fonts.load(str(font))
-    speaker = bpy.data.objects.new("Lamp Hum", bpy.data.speakers.new("Hum"))
-    scene.collection.objects.link(speaker)
-    speaker.data.sound = bpy.data.sounds.load(str(wav(part.parent / "hum.wav")))
-    bpy.ops.wm.save_mainfile(compress=False)
-    return font is not None
-
-
 def leaks(path, kept=()):
     """Where the saved file holds a private folder's marker (in any case) or the worker's scene name, besides the
     ``kept`` paths, which are the person's: up to 4 places, each with the bytes around it, so a failure says what it
     found."""
     data, found = Path(path).read_bytes().lower(), []
-    for allowed in kept:
+    for allowed in list(kept) + [SIBLING]:   # The person's folder beside the state's is theirs in every check.
         for spelled in {allowed, allowed.replace("\\", "/")}:
             data = data.replace(spelled.encode("utf-8").lower(), b"")   # Folded as the bytes are (ASCII).
     for word in (MARKER.lower().encode("utf-8"), WORKER_SCENE.lower().encode("utf-8")):
@@ -226,115 +158,7 @@ def textured(name, image):
     return material
 
 
-def write_kit(part, workspace):
-    """A second part with what Blender's own path walk misses or a worker can do besides (break-it BREAKIT-C7A):
-    objects linked from a .blend in its folder (a chain: object, mesh, material, image), one local object using a
-    linked mesh; a bake image never saved whose path is in its folder; a node's string, a node modifier's string
-    input and a custom property naming files there; a cloth point cache and a Dynamic Paint output folder there; an
-    image read through another case's spelling of its folder; and a texture in the chat's default workspace."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    part.parent.mkdir(parents=True, exist_ok=True)
-    assets = bpy.data.collections.new("Linked assets")
-    bpy.context.scene.collection.children.link(assets)
-    for index in range(3):
-        image = bpy.data.images.load(str(png(part.parent / ("lib%d.png" % index), (index / 3, 0.2, 0.2, 1))))
-        assets.objects.link(bpy.data.objects.new("Linked %d" % index, quad("LinkedMesh%d" % index,
-                                                                           [textured("Linked%d" % index, image)])))
-    library = part.parent / "assets.blend"
-    bpy.ops.wm.save_as_mainfile(filepath=str(library))
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.ops.wm.save_as_mainfile(filepath=str(part), compress=False)
-    scene = bpy.context.scene
-    with bpy.data.libraries.load(str(library), link=True) as (source, target):
-        target.objects = list(source.objects)
-    linked = bpy.data.collections.new("Kit Linked")   # The part's own collection, holding what it linked.
-    scene.collection.children.link(linked)
-    for obj in target.objects:
-        linked.objects.link(obj)
-    scene.collection.objects.link(bpy.data.objects.new("Kit Local", target.objects[0].data))
-    bake = bpy.data.images.new("bake.png", 8, 8)
-    bake.filepath_raw = str(part.parent / "bake.png")   # Never saved: still GENERATED.
-    tree = bpy.data.node_groups.new("Importer", "GeometryNodeTree")
-    tree.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    socket = tree.interface.new_socket("Source", in_out="INPUT", socket_type="NodeSocketString")
-    tree.nodes.new("FunctionNodeInputString").string = str(part.parent / "node.obj")
-    tree.nodes.new("NodeGroupOutput")
-    socket.default_value = str(part.parent / "input.obj")
-    spelled = Path(str(png(part.parent / "variant.png", (0, 0, 1, 1))).replace("angelo privacy ", "ANGELO PRIVACY "))
-    brick = bpy.data.images.load(str(png(workspace / "brick.png", (0.6, 0.3, 0.2, 1))))
-    kit = bpy.data.objects.new("Kit", quad("KitMesh", [textured("Bake", bake), textured("Variant", bpy.data.images.load(
-        str(spelled))), textured("Brick", brick)]))
-    scene.collection.objects.link(kit)
-    kit.modifiers.new("Importer", "NODES").node_group = tree   # Its input takes the interface's default.
-    kit["source_file"] = "Built from %s, by hand" % (part.parent / "kit.fbx")
-    cloth = kit.modifiers.new("Cloth", "CLOTH").point_cache
-    cloth.use_disk_cache, cloth.use_external = True, True
-    cloth.filepath = str(part.parent / "cloth-cache")
-    cloth.use_disk_cache = False   # Blender's own path walk visits it only while it caches to disk.
-    paint = kit.modifiers.new("Paint", "DYNAMIC_PAINT")
-    paint.ui_type = "CANVAS"
-    bpy.context.view_layer.objects.active = kit
-    bpy.ops.dpaint.type_toggle(type="CANVAS")
-    surface = paint.canvas_settings.canvas_surfaces[0]
-    surface.surface_format = "IMAGE"
-    surface.image_output_path = str(part.parent / "paint-output")
-    bpy.ops.wm.save_mainfile(compress=False)
-    return brick.filepath
-
-
-def write_notes(part, moved):
-    """A third part whose text names files in its folder, as the second review found it missed or kept
-    (BREAKIT-C7A-2): an ID property's note and two-line note, a path after a person's one, a long text, bytes, a list
-    and a nested list; a Text's line, a driver's expression, asset metadata and a socket's description; a worker
-    folder in the temporary folder and a URL spelling; a WorkSpace an ID property names; and an image in an allocated
-    folder that was moved (its owner file keeps it private)."""
-    from urllib.parse import quote
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    part.parent.mkdir(parents=True, exist_ok=True)
-    bpy.ops.wm.save_as_mainfile(filepath=str(part), compress=False)
-    scene, folder = bpy.context.scene, str(part.parent)
-    notes = bpy.data.objects.new("Notes", quad("NotesMesh"))
-    scene.collection.objects.link(notes)
-    family = Path(tempfile.gettempdir()) / (private_roots.WORKER_PREFIX + MARKER)
-    notes["note"] = "reference image: %s/ref.png, from the worker" % folder
-    notes["two_lines"] = "first line\nsecond: %s/two.png" % folder
-    notes["after_own"] = "/tmp/a.png;%s/b.png" % folder
-    notes["long"] = "x" * 70000 + " %s/long.png" % folder
-    notes["raw"] = ("%s/raw.png" % folder).encode()
-    notes["listed"] = ["kept", "%s/listed.png" % folder]
-    notes["nested"] = {"inner": ["%s/nested.png" % folder]}
-    notes["family"] = "see %s/h.png" % family
-    notes["url"] = "file://" + quote("%s/url.png" % folder)
-    notes["json"] = json.dumps({"src": "%s%sj.png" % (folder, os.sep)})   # Its letters escaped as \\u00e9.
-    notes["json_backslashed"] = json.dumps({"src": ("%s/w.png" % folder).replace("/", "\\")})
-    notes["doubled"] = "cache at %s%s%sd.json" % (folder.replace(os.sep + "parallel", os.sep * 2 + "parallel"),
-                                                   os.sep + "." + os.sep, "")   # Separators doubled, a "." folder.
-    # Through another folder and back, and a URL of a backslashed path (Windows' "%5C", BREAKIT-C7A-6).
-    notes["detour"] = "see %s" % os.path.join(str(OUT), "5.2", "..", "state", "sessions", "dd.json")
-    notes["url_backslashed"] = "file://" + quote(("%s/ub.png" % folder).replace("/", "\\"))
-    unread = bpy.data.images.load(str(_secret(part.parent / "token.png")))   # Not an image: never packed.
-    notes.data.materials.append(textured("Unread", unread))
-    renamed = bpy.data.objects.new("%s/scan source.obj" % folder, quad("RenamedMesh"))   # Named after a path, then
-    scene.collection.objects.link(renamed)                                                # renamed: the old bytes
-    renamed.name = "Renamed"                                                              # stay after its name.
-    text = bpy.data.texts.new("loader.py")
-    text.write("import bpy\nimg = bpy.data.images.load('%s/loaded.png')\n" % folder)
-    notes["script"] = text
-    driver = notes.driver_add("location", 0).driver
-    driver.type, driver.expression = "SCRIPTED", "len('%s/expr.png') * 0" % folder
-    notes.asset_mark()
-    notes.asset_data.description = "Made from %s/asset.png" % folder
-    tree = bpy.data.node_groups.new("Described", "GeometryNodeTree")
-    tree.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry").description = (
-        "Reads %s/socket.vdb" % folder)
-    notes.modifiers.new("Described", "NODES").node_group = tree
-    notes["workspace"] = bpy.data.workspaces[0]   # A worker WorkSpace (with its Screens) the part names.
-    moved.mkdir(exist_ok=True)
-    image = bpy.data.images.load(str(png(moved / "moved.png", (1, 1, 0, 1))))
-    notes.data.materials.append(textured("Moved", image))
-    bpy.ops.wm.save_mainfile(compress=False)
-
-
+SIBLING = str(OUT / "state backup" / "x.png")   # A person's folder named like a private one, a space after it.
 SECRET = "angelo-secret-" + MARKER   # A private file's contents that must never be packed into the person's file.
 
 
@@ -343,30 +167,15 @@ def _secret(path):
     return path
 
 
-def write_stale(part, state):
-    """A fourth part with what no cleaning can reach, which the merge must refuse with nothing added: a multi-view
-    image (each view's own path is saved where no RNA reads it) read from the state folder through the default
-    workspace (``workspace/..``: the workspace is not private, the folder it leads to is, BREAKIT-C7A-3 M1), plus a
-    WorkSpace an ID property names."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    part.parent.mkdir(parents=True, exist_ok=True)
-    bpy.ops.wm.save_as_mainfile(filepath=str(part), compress=False)
-    scene = bpy.context.scene
-    stale = bpy.data.objects.new("Stale", quad("StaleMesh"))
-    scene.collection.objects.link(stale)
-    scene.render.use_multiview = True
-    (state / "stale-eyes").mkdir(exist_ok=True)
-    png(state / "stale-eyes" / "eyes.png", (1, 0, 1, 1))
-    image = bpy.data.images.load(str(state / "workspace") + os.sep + os.path.join("..", "stale-eyes", "eyes.png"))
-    image.use_multiview, image.views_format = True, "STEREO_3D"
-    stale.data.materials.append(textured("Eyes", image))
-    stale["workspace"] = bpy.data.workspaces[0] if bpy.data.workspaces else None
-    bpy.ops.wm.save_mainfile(compress=False)
+writers.bind(png=png, wav=wav, quad=quad, textured=textured, _secret=_secret, OUT=OUT, MARKER=MARKER, SIBLING=SIBLING,
+             WORKER_SCENE=WORKER_SCENE)
 
 
 # A sound is kept only decoded and written again, by Blender's audio library; a build without one (Lite) detaches it.
 AUDIO = importlib.util.find_spec("aud") is not None
-NAMES = {1: "Lamp", 2: "Kit", 3: "Notes", 4: "Stale", 5: "Media", 6: "Plus", 7: "Wide", 8: "Long"}
+NAMES = {1: "Lamp", 2: "Kit", 3: "Notes", 4: "Stale", 5: "Media", 6: "Plus", 7: "Wide", 8: "Long", 9: "Big",
+         10: "Tails", 11: "Bake", 12: "Variable", 13: "Sound", 14: "Grass",
+         15: "Packed Link", 16: "Override Link", 17: "Cycle Link", 18: "Theirs Link", 19: "Mixed Link", 20: "Named Link"}
 
 
 def lead(paths):
@@ -474,6 +283,12 @@ def notes_checks(answer, saved, layouts_before):
           and SECRET.encode() not in Path(saved).read_bytes() and MARKER not in unread.filepath.lower(),
           getattr(unread, "filepath", None))
     check("notes_doubled_separators_keep_file_names", notes["doubled"] == "cache at d.json", notes["doubled"])
+    check("notes_workspace_detours_keep_file_names", notes["workspace_space"] == "saved to ws.json today"
+          and notes["workspace_quote"] == 'open("wq.json")' and notes["workspace_bracket"] == "at wb.json",
+          (notes["workspace_space"], notes["workspace_quote"], notes["workspace_bracket"]))
+    check("notes_many_detours_cut_and_kept", notes["hops"] == "see h.json"
+          and notes["hops_elsewhere"] == "a/" * 30 + "../" * 30 + "state", (notes["hops"], notes["hops_elsewhere"]))
+    check("notes_persons_folder_beside_a_private_one_kept", notes["sibling"] == "see %s" % SIBLING, notes["sibling"])
     check("notes_detour_and_encoded_backslash_keep_file_names", notes["detour"] == "see dd.json"
           and notes["url_backslashed"] == "file://ub.png", (notes["detour"], notes["url_backslashed"]))
     check("notes_escaped_paths_keep_file_names", json.loads(notes["json"]) == {"src": "j.png"}
@@ -488,7 +303,7 @@ def notes_checks(answer, saved, layouts_before):
           getattr(moved, "filepath", None))
 
 
-def refused_checks(label, window, controller, number, saved, named):
+def refused_checks(label, window, controller, number, saved, named, says="can't be cleared"):
     """A part refused with nothing of it added, WorkSpaces and Screens included, the refusal naming ``named``; the
     file still clean."""
     def every():
@@ -496,12 +311,70 @@ def refused_checks(label, window, controller, number, saved, named):
         return sorted((kind, item.name) for kind in kinds for item in getattr(bpy.data, kind))
     before = every()
     answer = lead_merge(window, controller, {number: [{}]})
-    check(label + "_refused", answer.get("error_code") == "UNSUPPORTED" and "can't be cleared" in answer.get("error", "")
-          and answer.get("scene_changed") is False and named in answer.get("error", ""), answer)
+    check(label + "_refused", answer.get("error_code") == "UNSUPPORTED" and says in answer.get("error", "")
+          and answer.get("scene_changed") is False
+          and all(name in answer.get("error", "") for name in ([named] if isinstance(named, str) else named)), answer)
     check(label + "_refusal_leaves_every_datablock", every() == before, sorted(set(every()) ^ set(before)))
     bpy.ops.wm.save_as_mainfile(filepath=str(saved), compress=False)
     workspace = str(OUT / "state" / "workspace" / "brick.png")
     check(label + "_saved_file_holds_nothing_private", not leaks(saved, [workspace]), leaks(saved, [workspace]))
+
+
+def saved_checks(window, controller, saved, bake_target, link_packed):
+    """BREAKIT-C7A-9: what a save writes beyond a copy refused; a packed bake refused; a folder spelled through a
+    variable cut, with a save's own effects armed and not done by the check, and the person's save holding no text the
+    check did not read; a long sound kept."""
+    refused_checks("tails", window, controller, 10, saved, ("Tail Mod", "Tail FX", "Tail Export", "Tail Export Back",
+                                                            "Tail Back Alone"))
+    check("bake_part_packs_its_bake", bake_target == "PACKED", bake_target)
+    refused_checks("bake", window, controller, 11, saved, "Baked", says="can't write again")
+    os.environ[saves_parts.VARIABLE] = str(OUT)
+    with saves_parts.Saves(worker_merge_verify, PERSON / "check copies") as saves:
+        saves.arm(PERSON, PERSON / "textures" / "own.png")
+        before = saves_parts.datablocks()
+        answer = lead_merge(window, controller, {12: [{}]})
+        facts = saves.contained()
+        saves.disarm()
+    saves_parts.variable_checks(check, answer)
+    check("check_does_nothing_a_save_does_but_write", all(facts.values()), facts)
+    bpy.ops.wm.save_as_mainfile(filepath=str(saved), compress=False)
+    added = {pointer: item for pointer, item in saves_parts.datablocks().items() if pointer not in before}
+    missing, compared = saves.compare(saved, added) if saves.copies else ({}, 0)
+    check("check_reads_what_a_save_writes", compared >= 4 and not missing, (compared, missing))
+    others = saves.others(added) if saves.copies else ["no copy"]
+    check("check_copy_holds_only_what_the_merge_keeps", not others, others[:8])
+    saves_parts.long_sound_checks(check, lead_merge(window, controller, {13: [{}]}))
+    saves_parts.link_grass(PERSON)   # The person's own packed linked "Grass", named as the worker's.
+    answer = lead_merge(window, controller, {14: [{}]})
+    person = next((image for image in bpy.data.images if image.name == "Grass" and image.library), None)
+    check("person_linked_packed_namesake_never_the_workers", answer.get("success") is True
+          and person is not None and person.is_linked_packed, (answer, getattr(person, "is_linked_packed", None)))
+    links.checks(check, lambda number: lead_merge(window, controller, {number: [{}]}), link_packed, _saved_and_read)
+
+
+def _saved_and_read():
+    """The file saved as it is now, read back: where it holds anything private, and why it could not be read. The
+    last merge is taken back and done again first (Blender 5.2 crashed on that Redo for packed linked data a merge kept
+    linked, BREAKIT-C7A-13)."""
+    bpy.ops.ed.undo()
+    bpy.ops.ed.redo()
+    path = PERSON / "linked-parts.blend"
+    bpy.ops.wm.save_as_mainfile(filepath=str(path), compress=False, copy=True)
+    found = leaks(path, [str(OUT / "state" / "workspace" / "brick.png")])   # The person's, kept where it was.
+    try:
+        bpy.ops.wm.open_mainfile(filepath=str(path))
+    except RuntimeError as error:
+        found.append("read: %s" % error)
+    return found
+
+
+def step(name, run):
+    """One merge and its checks after the first merge: an error in it fails that step (``<name>_ran``) and the steps
+    after it still run, each merging its own part into the saved lead, so one class's failure never hides another's."""
+    try:
+        run()
+    except Exception:
+        check(name + "_ran", False, traceback.format_exc()[-1500:])
 
 
 def run_checks():
@@ -512,33 +385,43 @@ def run_checks():
     family = Path(tempfile.gettempdir()) / (private_roots.WORKER_PREFIX + MARKER)   # An earlier process's.
     family.mkdir(exist_ok=True)
     (PERSON / "textures").mkdir()
+    Path(SIBLING).parent.mkdir(parents=True, exist_ok=True)
+    Path(SIBLING).write_bytes(b"")
     own = png(PERSON / "textures" / "own.png", (0.5, 0.5, 0.5, 1))
-    has_font = write_part(part, Path(registered), family, own)
+    has_font = writers.write_part(part, Path(registered), family, own)
     report["details"]["font"] = has_font
     check("the_part_file_holds_the_private_paths_unmerged", MARKER.encode() in part.read_bytes())
     kit_part = worker_paths.part_folder(OUT / "state", lead_id, 2, "kit", MARKER[:8]) / "part.blend"
     workspace = OUT / "state" / "workspace"   # The chat's default workspace (``Controller.workspace``).
     workspace.mkdir(parents=True, exist_ok=True)
-    brick = write_kit(kit_part, workspace)
+    brick = writers.write_kit(kit_part, workspace)
     notes_part = worker_paths.part_folder(OUT / "state", lead_id, 3, "notes", MARKER[:8]) / "part.blend"
     moved = Path(private_roots.allocate(private_roots.WORKER_PREFIX, OUT / "scratch"))
     moved = moved.rename(moved.with_name("moved " + MARKER))   # Its owner file goes with it.
-    write_notes(notes_part, moved)
+    writers.write_notes(notes_part, moved)
     stale_part = worker_paths.part_folder(OUT / "state", lead_id, 4, "stale", MARKER[:8]) / "part.blend"
-    write_stale(stale_part, OUT / "state")
+    writers.write_stale(stale_part, OUT / "state")
     folder = lambda number, name: worker_paths.part_folder(OUT / "state", lead_id, number, name, MARKER[:8])
     media_part = folder(5, "media") / "part.blend"
     expected = media.write_media(media_part, media_part.parent, quad, textured, SECRET)
     sessions = OUT / "state" / "sessions" / "chat.json"
-    encoded = {6: folder(6, "plus") / "part.blend", 7: folder(7, "wide") / "part.blend"}
-    media.write_encoded(encoded[6], quad, sessions, "plus")
-    media.write_encoded(encoded[7], quad, sessions, "wide")
+    encoded = {number: folder(number, how) / "part.blend" for number, how in ((6, "plus"), (7, "wide"), (9, "big"))}
+    for number, how in ((6, "plus"), (7, "wide"), (9, "big")):
+        media.write_encoded(encoded[number], quad, sessions, how)
     long_part = folder(8, "long") / "part.blend"
     media.write_long(long_part, quad, long_part.parent)
+    later = {number: folder(number, name) / "part.blend" for number, name in (
+        (10, "tails"), (11, "bake"), (12, "variable"), (13, "sound"), (14, "grass"), *links.PARTS.items())}
+    saves_parts.write_tails(later[10], quad, sessions)
+    bake_target = saves_parts.write_bake(later[11], quad)
+    saves_parts.write_variable(later[12], quad, sessions, OUT)
+    saves_parts.write_long_sound(later[13])
+    saves_parts.write_grass(later[14], quad)
+    link_packed = links.write(later, quad, sessions, BASE / "person library")
 
     # A file never saved: Blender has no folder to make a path relative to.
     window, controller = lead({1: part, 2: kit_part, 3: notes_part, 4: stale_part, 5: media_part, 6: encoded[6],
-                               7: encoded[7], 8: long_part})
+                               7: encoded[7], 8: long_part, 9: encoded[9], **later})
     started = time.perf_counter()
     answer = lead_merge(window, controller, {1: [{}]})
     report["details"]["merge_seconds"] = round(time.perf_counter() - started, 3)
@@ -563,16 +446,26 @@ def run_checks():
         font = bpy.data.objects["Lamp Label"].data.font
         check("saved_lead_private_font_never_packed", not font.packed_file and MARKER not in font.filepath.lower(),
               (font.filepath, bool(font.packed_file)))
-    kit_checks(lead_merge(window, controller, {2: [{}]}), saved, brick)
-    before = layouts()
-    notes_checks(lead_merge(window, controller, {3: [{}]}), saved, before)
-    refused_checks("stale", window, controller, 4, saved, "eyes.png")
+    step("kit", lambda: kit_checks(lead_merge(window, controller, {2: [{}]}), saved, brick))
+
+    def notes():
+        before = layouts()   # Before its merge.
+        notes_checks(lead_merge(window, controller, {3: [{}]}), saved, before)
+    step("notes", notes)
+    step("stale", lambda: refused_checks("stale", window, controller, 4, saved, "eyes.png"))
     persons = lambda path: leaks(path, [str(OUT / "state" / "workspace" / "brick.png")])   # Kept where it was.
-    media.media_checks(check, lead_merge(window, controller, {5: [{}]}), saved, persons, SECRET, expected, MARKER)
-    refused_checks("form_encoded", window, controller, 6, saved, "Encoded plus")
-    refused_checks("utf16", window, controller, 7, saved, "Encoded wide")
-    answer, seconds = media.timed(lambda: lead_merge(window, controller, {8: [{}]}))
-    media.long_checks(check, answer, seconds, saved, persons)
+    step("media", lambda: media.media_checks(check, lead_merge(window, controller, {5: [{}]}), saved, persons, SECRET,
+                                             expected, MARKER))
+    step("form_encoded", lambda: refused_checks("form_encoded", window, controller, 6, saved, "Encoded plus"))
+    step("utf16", lambda: refused_checks("utf16", window, controller, 7, saved, "Encoded wide"))
+    step("big_spellings", lambda: refused_checks("big_spellings", window, controller, 9, saved,
+                                                 ("Big query", "Big wide", "Big log")))
+    step("long", lambda: media.long_checks(check, *media.timed(lambda: lead_merge(window, controller, {8: [{}]})),
+                                           saved, persons))
+    step("saved", lambda: saved_checks(window, controller, saved, bake_target, link_packed))
+    step("flush", lambda: saves_parts.flush_checks(check, worker_merge_verify, PERSON / "flush"))
+    step("archive", lambda: saves_parts.archive_checks(check, worker_merge_verify, PERSON / "archive"))
+    step("thread", lambda: saves_parts.thread_checks(check, PERSON / "thread"))
     bpy.ops.wm.open_mainfile(filepath=str(saved))
     check("reopened_one_scene_no_library", [s.name for s in bpy.data.scenes] == ["Scene"]
           and not list(bpy.data.libraries), ([s.name for s in bpy.data.scenes], list(bpy.data.libraries)))

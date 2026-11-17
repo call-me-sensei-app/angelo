@@ -36,8 +36,19 @@ import os
 
 from .refusal_codes import RefusalError
 from .view_spec import TOOL_NAME as VIEW_TOOL
-from . import worker_refusals as refusals, worker_values as values
+from . import owned_paths, worker_refusals as refusals, worker_values as values
 from .worker_script import SCRIPT
+
+
+def worker_verdict_key():
+    """What ``OFFSCREEN_VERDICTS`` is keyed by: the program every worker runs (``worker_process.default_binary``,
+    read now), never an attribute of a worker (they hold none since p10c-6). "" without bpy (a host test)."""
+    from .worker_process import default_binary   # At the call: worker_process imports this module's neighbours.
+    try:
+        return str(default_binary())
+    except (ImportError, AttributeError):
+        return ""
+
 
 READ_SECONDS = 60.0
 OFFSCREEN_VERDICTS = {}  # Angelo binary -> [usable, why] for offscreen pictures in its background workers.
@@ -228,6 +239,7 @@ class RemoteExecutor:
                     self._dropped = getattr(self, "_dropped", 0) + 1
                     return LEFT_OUT   # Its parent list leaves it out.
                 reference = store.new_observation(str(value.get("name") or "view")[:120])
+                owned_paths.require_writable(reference["path"])
                 with open(reference["path"], "wb") as stream:
                     stream.write(data)
                 value.update(reference, bytes=len(data))
@@ -306,7 +318,7 @@ class RemoteExecutor:
             return self._local_executor().execute(name, arguments)
         self._admit(name, arguments)
         if name in self.reads:
-            key = str(getattr(self.worker, "binary", None) or "")
+            key = worker_verdict_key()
             if name == VIEW_TOOL:
                 self._share_references(arguments)
             try:
@@ -380,7 +392,7 @@ class RemoteExecutor:
         """The worker's picture of its part for the session rail (``worker_host.thumbnail``). Whether this machine
         can draw offscreen in a background Blender is learnt from the first worker that tried, and every later
         worker is told, so no other one runs the probe again (break-it L4-1)."""
-        key = str(getattr(self.worker, "binary", None) or "")
+        key = worker_verdict_key()
         try:
             answer = self.ask("thumbnail", size=size, shading=shading, fresh=fresh, session=self._session(),
                               gpu_verdict=OFFSCREEN_VERDICTS.get(key))

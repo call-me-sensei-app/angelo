@@ -303,7 +303,7 @@ class Case(unittest.TestCase):
         self.assertEqual(found["stale"], [])
         blend, target = self.out / "work.blend", self.out / "asset.glb"
         bpy.ops.wm.save_as_mainfile(filepath=str(blend), copy=True)
-        writer = engine_link_writeback.WriteBack(bpy.app.binary_path)
+        writer = engine_link_writeback.WriteBack()
         started = time.monotonic()
         writer.request("k", str(blend), str(target), "gltf", dict(engine_link_assets.GLTF_DURABLE),
                        baked=found["used"])

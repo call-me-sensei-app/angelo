@@ -27,6 +27,7 @@ a strip outside the rendered frames still counts (conservative). Refusals are
 model-facing English. Main thread only; no ``bpy`` import.
 """
 
+from . import compositor_stack
 from .job_spec import JobRequestError
 
 MAX_TREES = 4096
@@ -83,10 +84,11 @@ def file_outputs(tree, budget=None):
 
 
 def compositor_writes(scene, budget=None):
-    """Whether a render of ``scene`` runs a File Output node of its own compositor."""
+    """Whether a render of ``scene`` runs a File Output node of its own compositor (any effect enabled for render)."""
     if not getattr(scene.render, "use_compositing", False):
         return False
-    return file_outputs(getattr(scene, "compositing_node_group", None), budget)
+    budget = budget or _Budget()
+    return any(file_outputs(tree, budget) for _path, tree in compositor_stack.render_trees(scene))
 
 
 def _key(scene):
@@ -125,23 +127,33 @@ def strip_scenes(scene, budget=None):
 
 
 # Compositor nodes that make Blender render another scene with that scene's own settings, engine included
-# (``do_render_compositor_scenes``): unmuted top-level Render Layers, and Cryptomatte with the Render source.
+# (``do_render_compositor_scenes``): unmuted Render Layers, and Cryptomatte with the Render source, in an unmuted group
+# too (5.3's ``get_scenes_that_needs_render_by_node_group`` follows group nodes).
 SCENE_NODES = {"CompositorNodeRLayers": None, "CompositorNodeCryptomatteV2": "RENDER"}
 
 
 def _compositor_scenes(scene, budget):
-    tree = getattr(scene, "compositing_node_group", None) if getattr(scene.render, "use_compositing", False) else None
-    if tree is None or not budget.tree(tree):
+    if not getattr(scene.render, "use_compositing", False):
         return []
-    found = []
-    for node in getattr(tree, "nodes", ()):
-        budget.node()
-        source = SCENE_NODES.get(getattr(node, "bl_idname", None), False)
-        if source is False or getattr(node, "mute", False) or source and getattr(node, "source", None) != source:
+    found, pending = [], [tree for _path, tree in compositor_stack.render_trees(scene)]
+    while pending:
+        tree = pending.pop(0)
+        if not budget.tree(tree):
             continue
-        other = getattr(node, "scene", None)
-        if other is not None:
-            found.append(other)
+        for node in getattr(tree, "nodes", ()):
+            budget.node()
+            if getattr(node, "mute", False):
+                continue
+            child = getattr(node, "node_tree", None)
+            if child is not None:
+                pending.append(child)
+                continue
+            source = SCENE_NODES.get(getattr(node, "bl_idname", None), False)
+            if source is False or source and getattr(node, "source", None) != source:
+                continue
+            other = getattr(node, "scene", None)
+            if other is not None:
+                found.append(other)
     return found
 
 

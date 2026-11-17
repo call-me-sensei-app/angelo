@@ -12,13 +12,24 @@ replaced by a newer crash.
 
 Non-secret, small, atomic writes. A damaged file reads as ``ask`` with nothing
 handled. Standard library only; no bpy.
+
+Every save loads the file, changes it and writes it whole. On Windows another
+program can hold the file past a tick's retries (``shared_replace.Refused``).
+The state refused is then owed: ``load`` gives it back, so a later change
+builds on it and a report already sent is never offered again, and ``settle``
+writes it again no sooner than ``shared_replace.RETRY_SECONDS`` after each
+refusal (``crash_ui`` runs it from a timer, and once more as the add-on is
+unregistered). A folder that cannot be written is not owed: the choice then
+applies to the caller's own state only, as before.
 """
 
+import copy
 import hashlib
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import shared_replace
 from .studio_state import atomic_json, read_json
 
 STATE_FILE = "crash-reports.json"
@@ -30,6 +41,8 @@ STATUSES = (SENT, SAVED, DECLINED, DISMISSED, SUPERSEDED, FAILED, GAVE_UP)
 FINAL = frozenset(STATUSES) - {FAILED}   # A failed send is asked again on the next launch, up to MAX_ATTEMPTS.
 MAX_ATTEMPTS = 3
 MAX_HANDLED = 50
+_owed = {}       # {state file: [the document refused, when (monotonic) it was last refused]}
+on_owed = None   # Called (any thread) when a save becomes owed: the window starts the timer that runs ``settle``.
 
 
 @dataclass
@@ -69,7 +82,9 @@ def fingerprint(name, mtime_ns, size):
 
 
 def load(directory):
-    document = read_json(Path(directory) / STATE_FILE, {})
+    path = Path(directory) / STATE_FILE
+    kept = _owed.get(str(path))
+    document = copy.deepcopy(kept[0]) if kept else read_json(path, {})
     document = document if isinstance(document, dict) else {}
     consent = document.get("consent")
     handled = document.get("handled")
@@ -86,9 +101,39 @@ def load(directory):
 
 
 def save(directory, state):
-    """Persist; False when the folder can't be written (the choice then applies for this session only)."""
+    """Persist; False when the file can't be written now. Held by another program, the state is owed (module
+    docstring); a folder that can't be written is not (the choice then applies for this session only)."""
+    path = Path(directory) / STATE_FILE
+    document = {"consent": state.consent, "handled": state.handled}
     try:
-        atomic_json(Path(directory) / STATE_FILE, {"consent": state.consent, "handled": state.handled})
-    except OSError:
+        atomic_json(path, document)
+    except shared_replace.Refused:
+        _owed[str(path)] = [copy.deepcopy(document), time.monotonic()]
+        if on_owed is not None:
+            on_owed()
         return False
+    except OSError:
+        _owed.pop(str(path), None)
+        return False
+    _owed.pop(str(path), None)
     return True
+
+
+def owed():
+    """Whether a state is still to be written (``settle``)."""
+    return bool(_owed)
+
+
+def settle(final=False):
+    """Write each owed state again, no sooner than ``RETRY_SECONDS`` after its last refusal (``final``: now)."""
+    for key, (document, refused) in list(_owed.items()):
+        if not final and time.monotonic() - refused < shared_replace.RETRY_SECONDS:
+            continue
+        try:
+            atomic_json(Path(key), document)
+        except shared_replace.Refused:
+            _owed[key][1] = time.monotonic()
+        except OSError:
+            del _owed[key]
+        else:
+            del _owed[key]

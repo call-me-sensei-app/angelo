@@ -78,7 +78,8 @@ class EditExternally(Operator):
             self.report(
                 {'ERROR'},
                 "Image editor could not be launched, ensure that "
-                "the path in User Preferences > File is valid, and Angelo has rights to launch it",
+                "the path in User Preferences > File Paths > Applications > Image Editor is valid, "
+                "and Angelo has rights to launch it",
             )
 
             return {'CANCELLED'}
@@ -122,8 +123,6 @@ class ProjectEdit(Operator):
     def execute(self, context):
         import os
 
-        EXT = "png"  # could be made an option but for now ok
-
         for image in bpy.data.images:
             image.tag = True
 
@@ -144,6 +143,11 @@ class ProjectEdit(Operator):
             self.report({'ERROR'}, "Could not make new image")
             return {'CANCELLED'}
 
+        if image_new.is_float:
+            file_format, ext = "OPEN_EXR", "exr"
+        else:
+            file_format, ext = "PNG", "png"
+
         filepath = os.path.basename(bpy.data.filepath)
         filepath = os.path.splitext(filepath)[0]
         # fixes <memory> rubbish, needs checking
@@ -159,18 +163,18 @@ class ProjectEdit(Operator):
         if obj:
             filepath += "_" + bpy.path.clean_name(obj.name)
 
-        filepath_final = filepath + "." + EXT
+        filepath_final = filepath + "." + ext
         i = 0
 
         while os.path.exists(bpy.path.abspath(filepath_final)):
-            filepath_final = filepath + "{:03d}.{:s}".format(i, EXT)
+            filepath_final = filepath + "{:03d}.{:s}".format(i, ext)
             i += 1
 
         image_new.name = bpy.path.basename(filepath_final)
         ProjectEdit._proj_hack[0] = image_new.name
 
         image_new.filepath_raw = filepath_final  # TODO, filepath raw is crummy
-        image_new.file_format = 'PNG'
+        image_new.file_format = file_format
         image_new.save()
 
         filepath_final = bpy.path.abspath(filepath_final)

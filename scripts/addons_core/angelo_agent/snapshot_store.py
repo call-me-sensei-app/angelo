@@ -42,6 +42,7 @@ from pathlib import Path
 
 from .checkpoint_filesystem import _file_info, _open_file, _private_directory, entry_info
 from .checkpoint_transactions import lock_descriptor
+from . import owned_paths
 
 STORE_NAME = "snapshot-store"
 INDEX_NAME = "index.sqlite"
@@ -166,6 +167,7 @@ class SnapshotStore:
         absent or valid (``_retried``); one that keeps vanishing is refused like any invalid file."""
         _retried(lambda: self._validate_index(create))
         try:
+            owned_paths.require_writable(self.directory)
             connection = sqlite3.connect(str(self.directory / INDEX_NAME), timeout=10,
                                          isolation_level=None, check_same_thread=True)
         except sqlite3.Error as error:

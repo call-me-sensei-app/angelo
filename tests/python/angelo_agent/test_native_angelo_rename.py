@@ -8,6 +8,7 @@ The pre-rename names below are deliberate legacy fixtures.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import platform_env
 
 import contextlib
 import io
@@ -74,14 +75,14 @@ class ProductEnvironmentTests(unittest.TestCase):
                          "Disabled by ANGELO_DISABLE_LOCAL_CLI=1")
         self.assertIsNone(external_host.kill_switch_reason({"ANGELO_DISABLE_LOCAL_CLI": "0", "SENSEI_DISABLE_LOCAL_CLI": "1"}))
         self.assertEqual(external_host.KILL_SWITCH, "ANGELO_DISABLE_LOCAL_CLI")
-        with patch.dict(os.environ, {"SENSEI_LIBRARY_DIR": A("/tmp/legacy-library")}, clear=True):
+        with platform_env.cleared({"SENSEI_LIBRARY_DIR": A("/tmp/legacy-library")}):
             self.assertEqual(library_directory(), Path(A("/tmp/legacy-library")))
-        with patch.dict(os.environ, {"SENSEI_LIBRARY_DIR": "relative"}, clear=True):
+        with platform_env.cleared({"SENSEI_LIBRARY_DIR": "relative"}):
             with self.assertRaisesRegex(ValueError, "SENSEI_LIBRARY_DIR"):
                 library_directory()
-        with patch.dict(os.environ, {"SENSEI_TURN_CONTEXT": "legacy"}, clear=True):
+        with platform_env.cleared({"SENSEI_TURN_CONTEXT": "legacy"}):
             self.assertTrue(change_feed.legacy_turn_context())
-        with patch.dict(os.environ, {"SENSEI_TURN_CONTEXT": "legacy", "ANGELO_TURN_CONTEXT": "feed"}, clear=True):
+        with platform_env.cleared({"SENSEI_TURN_CONTEXT": "legacy", "ANGELO_TURN_CONTEXT": "feed"}):
             self.assertFalse(change_feed.legacy_turn_context())
 
     def test_cli_client_label_falls_back_to_sensei_client(self):
@@ -104,7 +105,7 @@ class ProductEnvironmentTests(unittest.TestCase):
     def test_provider_key_variables_use_the_angelo_prefix_and_inherited_ones_are_dropped(self):
         keys = {spec["env_key"] for spec in SPECS.values() if spec.get("env_key")}
         self.assertEqual(keys, {"ANGELO_XAI_API_KEY", "ANGELO_MINIMAX_API_KEY", "ANGELO_KIMI_API_KEY",
-                                "ANGELO_TEAM_GRANT_KEY"})
+                                "ANGELO_GEMINI_API_KEY", "ANGELO_TEAM_GRANT_KEY"})
         inherited = {name: "leak" for key in keys
                      for name in (key, key.replace("ANGELO_", "SENSEI_"), key.replace("ANGELO_", "TOONLAB_"))}
         with patch.dict(os.environ, inherited):
@@ -208,8 +209,8 @@ class DataFolderTests(unittest.TestCase):
 
     def test_runtime_and_sign_in_check_pass_the_retained_path_to_the_native_cli(self):
         self.write(self.legacy / f"connections/claude-profile/{ACCOUNT}/.claude.json", "signed in")
-        with patch.dict(os.environ, {"XDG_STATE_HOME": str(self.home / ".local/state"),
-                                     "LOCALAPPDATA": str(self.home / "AppData/Local")}, clear=True), \
+        with platform_env.cleared({"XDG_STATE_HOME": str(self.home / ".local/state"),
+                                   "LOCALAPPDATA": str(self.home / "AppData/Local")}), \
                 patch.object(Path, "home", return_value=self.home):
             legacy = storage.data_directory(folder=storage.LEGACY_DATA_FOLDER) / f"connections/claude-profile/{ACCOUNT}"
             if legacy != self.legacy / f"connections/claude-profile/{ACCOUNT}":

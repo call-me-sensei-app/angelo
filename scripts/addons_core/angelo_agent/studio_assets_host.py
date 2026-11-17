@@ -28,8 +28,8 @@ from pathlib import Path
 import bpy
 from bpy.app.handlers import persistent
 
-from . import private_roots
-from . import change_clock, live_windows, pump_guard, studio_assets
+from . import edit_tool_hold, owned_paths, private_roots
+from . import change_clock, live_windows, pump_guard, studio_assets, studio_assets_space
 from .ui_text import iface_, language
 
 TICK = 5.0
@@ -40,8 +40,9 @@ RETRY = 60.0         # A registration record that can't be read now is read agai
 REFRESH_TRIES = 24   # Ticks a refresh waits for a drag to end (two minutes).
 
 _state = {"registered": None, "since": 0.0, "session": uuid.uuid4().hex, "worker": None, "changed": False,
-          "reread": False, "active": False, "names": {}, "binary": "", "busy": False, "waits": 0, "previews": True,
+          "reread": False, "active": False, "names": {}, "busy": False, "waits": 0, "previews": True,
           "catalog_names": None, "asked": -RETRY}   # The catalogue names this Angelo last synced (studio_assets.write_catalogs).
+REFUSED = "Angelo writes only where it made something, where you chose, or in its own folders: this item's file"
 _stop = threading.Event()   # Replaced at each registration: a worker of an earlier one never runs on.
 _process = None
 
@@ -82,7 +83,7 @@ def ensure_registered():
         # saved them): it is on, so the writer writes again, never "On" but idle.
         studio_assets.write_registration(directory, removed=False)
     if decision != "present":
-        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(directory).mkdir(parents=True, exist_ok=True, mode=0o700)
         entry = libraries.new(name=studio_assets.LIBRARY_NAME, directory=str(directory))
         try:
             # Append, not 5.2's default Pack (a link to a packed copy of the asset file): an appended material is
@@ -103,6 +104,7 @@ def observe():
     """
     _library, directory = directories()
     present = studio_assets.find_library(_libraries(), directory) is not None
+    studio_assets_space.settle_off(directory, present)   # A Turn off whose record another program held: written again.
     reread, _state["reread"] = _state["reread"], False
     if _state["registered"] and not present:
         if reread:
@@ -119,7 +121,6 @@ def observe():
 
 def turn_off():
     """Media Studio's Turn off: as removing the entry in Preferences; a running batch stops within a quarter second."""
-    from . import studio_assets_space
     _library, directory = directories()
     _state["registered"] = _state["active"] = False
     studio_assets_space.turn_off(_libraries(), directory)
@@ -128,6 +129,7 @@ def turn_off():
 def turn_on():
     """Media Studio's Turn on: as adding the folder again in Preferences; the writer resumes at the next tick."""
     _library, directory = directories()
+    studio_assets_space.settle_off(directory, True)   # On again: a Turn off still owed is never written after this.
     studio_assets.write_registration(directory, removed=False)
     _state["registered"] = ensure_registered()
     _state["since"] = time.monotonic() - SYNC_DELAY
@@ -182,6 +184,7 @@ def _catalog_names():
 
 
 @pump_guard.keep_alive(TICK)
+@edit_tool_hold.guarded   # Touches Blender data: waits for the person's operation.
 def _tick():
     """Main thread: Preferences, the interface language and the refresh; every file access is the worker's."""
     if _state["registered"] is None:
@@ -197,7 +200,7 @@ def _tick():
         # wait is bounded (REFRESH_TRIES ticks, far longer than a drag); its list is read fresh when it first shows.
         waiting = not refresh_asset_browsers() and _state["waits"] < REFRESH_TRIES
         _state["changed"], _state["waits"] = waiting, _state["waits"] + 1 if waiting else 0
-    _state["names"], _state["binary"], _state["busy"] = _catalog_names(), bpy.app.binary_path, host_busy()
+    _state["names"], _state["busy"] = _catalog_names(), host_busy()
     _state["active"] = bool(_state["registered"]) and time.monotonic() - _state["since"] >= SYNC_DELAY
     if _state["active"] and not _state.get("prefetched"):
         _state["prefetched"] = True
@@ -242,7 +245,7 @@ def _watch(stop):
                 signature = (_signature(library), tuple(sorted(names.items())))
                 if signature != seen or time.monotonic() - scanned >= RESCAN:
                     seen, scanned = signature, time.monotonic()
-                    if sync(library, directory, names, _state["binary"], _state["session"], stop,
+                    if sync(library, directory, names, bpy.app.binary_path, _state["session"], stop,
                             yield_to=lambda: _state["busy"] or not _state["active"]):   # Off: stop at once.
                         _state["changed"] = True
                     if _state["busy"]:
@@ -336,6 +339,13 @@ def convert_batch(binary, batch, stop, yield_to=lambda: False):
     if not _state["previews"]:
         batch = [dict(item, render=False) for item in batch]
     script = Path(__file__).with_name("studio_assets_convert.py")
+    # The converter is a Blender where no script region begins (C answers yes there): each .blend it would write is
+    # asked of C here, before the batch exists. A refused item fails, said, and starts no child; the rest convert.
+    refused = {item["id"]: {"ok": False, "error": REFUSED} for item in batch
+               if item.get("blend") is not None and not owned_paths.may_write(item["blend"])}
+    batch = [item for item in batch if item["id"] not in refused]
+    if not batch:
+        return refused
     with private_roots.TemporaryDirectory("angelo-assets-") as scratch:
         batch_path, results_path = Path(scratch) / "batch.json", Path(scratch) / "results.json"
         batch_path.write_text(json.dumps(batch), encoding="utf-8")
@@ -348,6 +358,7 @@ def convert_batch(binary, batch, stop, yield_to=lambda: False):
             options["creationflags"] = subprocess.BELOW_NORMAL_PRIORITY_CLASS | subprocess.CREATE_NO_WINDOW
         else:
             options["start_new_session"] = True
+        owned_paths.require_runnable(command[0])
         process = _process = subprocess.Popen(command, **options)
         if sys.platform != "win32":
             try:
@@ -385,7 +396,7 @@ def convert_batch(binary, batch, stop, yield_to=lambda: False):
                 results[stopped] = {"ok": False, "error": _stopped_reason(process.returncode, log_path)}
         if ended:
             _print_log(process.returncode, log_path)
-        return results
+        return dict(results, **refused)
 
 
 def _log_tail(log_path, length):
@@ -474,6 +485,7 @@ def register():
 
 def unregister():
     _stop.set()
+    studio_assets_space.settle_all_off()
     remove_landing_handlers()
     process = _process
     if process is not None and process.poll() is None:

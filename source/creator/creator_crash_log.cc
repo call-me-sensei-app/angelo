@@ -29,11 +29,11 @@
 #    endif
 #  endif
 
-#  include "BLI_fileops.h"
+#  include "BLI_fileops.hh"
 #  include "BLI_listbase_iterator.hh"
 #  include "BLI_path_utils.hh"
-#  include "BLI_string.h"
-#  include "BLI_system.h"
+#  include "BLI_string.hh"
+#  include "BLI_system.hh"
 
 #  include "BKE_blender.hh" /* #BKE_blender_globals_crash_path_get. */
 #  include "BKE_blender_version.h"
@@ -91,7 +91,7 @@ void crash_log_write_reports(FILE *fp)
 {
   /* Might be called after WM/Main exit, so needs to be careful about nullptr-checking before
    * de-referencing. */
-  wmWindowManager *wm = G_MAIN ? static_cast<wmWindowManager *>(G_MAIN->wm.first) : nullptr;
+  wmWindowManager *wm = G_MAIN ? static_cast<wmWindowManager *>(G_MAIN->wm.first()) : nullptr;
   if (wm == nullptr || wm->runtime == nullptr || wm->runtime->reports.lock == nullptr) {
     return;
   }

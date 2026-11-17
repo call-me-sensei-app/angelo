@@ -165,6 +165,18 @@ Ready-made models, materials and skies (HDRIs) to search and add to your scene.
 * Chat bar **+** > **Create** > **Angelo Library**.
 * **Browse Library Materials** in the Material properties and **Browse Library HDRIs** in the World properties.
 
+Files from the web
+==================
+
+Give the agent a link to a texture, model, HDRI, image or sound and it brings the file into your project's
+``assets/downloads`` folder (a temporary folder while the file is unsaved). A card first names the website, the size limit and the folder; nothing downloads until
+you approve. The file's type is checked, and it is saved without being opened, run or imported.
+
+* Ask in the chat, with the link.
+* For free ready-made assets, chat bar **+** > **Create** > **Angelo Library**.
+
+Contract: :doc:`downloads`.
+
 Bake every map at once
 ======================
 
@@ -220,6 +232,23 @@ A web-ready .glb for Three.js with its size budget, and a browser preview that u
 **+** > **Share** > **Web export** or **Live browser preview**, and **File > Export**.
 
 Contract: :doc:`web_export`.
+
+Learn: how to do it yourself
+============================
+
+See how to do by hand what Angelo just did, when you want to. Learn is off until you turn it on for a chat, and
+until then nothing of it shows. With it on, under each step Angelo makes is the command a person would use, the keys
+for it in **your** keymap, where it is in the menus, the settings Angelo used and the mode it needs. Angelo reads all
+of it from the app as it is on your computer, so a key you have rebound, another keymap or another language shows as
+yours. Where there is no single command for what Angelo did, the step says so.
+
+* Chat bar **+** > **Learn** (at the bottom of the menu) > **Teach me as you work**: the steps of your latest request
+  open by themselves with their how-to, and opening an earlier step shows its how-to too, in that chat. It is your
+  choice per chat, and it changes nothing about how Angelo works.
+
+A step Angelo made with a script has no card: the script is what it did.
+
+Contract: :doc:`learn_mode`.
 
 Send feedback
 =============

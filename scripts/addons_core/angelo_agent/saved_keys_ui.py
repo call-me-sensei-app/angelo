@@ -26,6 +26,7 @@ import os
 import sys
 
 from . import key_store
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 from .display_text import Text
 from .key_store import MEMORY_ONLY, SERVICE, UNUSABLE
 from .provider_registry import HTTP_MODES, spec_for
@@ -68,7 +69,9 @@ def _short_reason(outcome):
 
 
 def uses_saved_key(record):
-    return record["method"] == "API_KEY" and record["mode"] != "codex_api"
+    """Whether ``record`` keeps its own saved key: an API-key connection, except OpenAI's (the Codex CLI keeps that
+    one) and one that uses another connection's key (``shared_keys``), which has none of its own."""
+    return record["method"] == "API_KEY" and record["mode"] != "codex_api" and not record.get("key_from")
 
 
 def start(ui, *, background, environ=None, platform=None, backend=None):
@@ -142,6 +145,9 @@ def load(record, interactive=False):
     _vault.load(record["id"], interactive=interactive)
 
 
+load = _grant_guard.entry(load)
+
+
 def mark_memory_only(identity):
     """A new connection whose key the person chose not to remember."""
     if _vault is not None:
@@ -179,6 +185,10 @@ def missing_key_status(identity):
 
 def storage_label(record, has_key):
     """Where this connection's key lives, for the AI Providers list; None when not applicable."""
+    from . import shared_keys_ui
+    shared = shared_keys_ui.storage_label(record)
+    if shared is not None:
+        return shared
     if not uses_saved_key(record):
         return None
     if _vault is None:
@@ -230,7 +240,10 @@ def pump(ui):
     if _vault is None:
         return False
     changes = _vault.pump()
+    from . import endpoint_ui
     for identity, kind, outcome, secret in changes:
+        if endpoint_ui.key_loaded(ui, identity, kind, outcome, secret):
+            continue   # An organization endpoint's key slot (endpoint_ui), not a stored connection's.
         record = ui.connections().records.get(identity)
         if record is None:
             if kind == "forget" and (outcome in FAILURES or outcome.startswith("erased")):

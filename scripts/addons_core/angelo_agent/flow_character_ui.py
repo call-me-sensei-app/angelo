@@ -15,7 +15,7 @@ from .ui_text import iface_, plural_, rpt_
 
 
 class ANGELO_OT_flow_place_character(Operator):
-    """Put the generated parts together on the body as separate objects at the 3D cursor (undoable)"""
+    bl_description = "Put the generated parts together on the body as separate objects at the 3D cursor (undoable)"
     bl_idname = "angelo.flow_place_character"
     bl_label = "Place Character"
     bl_options = {'UNDO', 'INTERNAL'}

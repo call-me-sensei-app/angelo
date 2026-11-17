@@ -31,7 +31,7 @@ import os
 import stat
 import time
 
-from . import shared_replace
+from . import owned_paths, shared_replace
 
 from .team_view import OFFLINE, RESTORING, SIGNED_OUT, org_policy
 
@@ -140,6 +140,8 @@ class OrganizationPolicy:
         """Save ``known`` (``force``) or a save still owed (the account closing: its last try). A refusal keeps it
         owed and in ``PENDING``, stamped, so the newer of the two applies at the next launch; never logged (this
         module prints nothing)."""
+        owned_paths.require_writable(self.path)
+        owned_paths.require_writable(self.pending)
         if not force and self.unsaved is None:
             return
         # Later than any stamp on disk too (another Angelo's save, a clock stepped back): the newest save wins.

@@ -37,14 +37,12 @@ doc/angelo/performance.rst ("Fixed opening of a new chat") records the numbers.
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parents[2] / "scripts/addons_core"), str(HERE)]
@@ -53,6 +51,7 @@ from angelo_agent.chat_settings import clean_options  # noqa: E402
 from angelo_agent.cli_runtime import find_executable  # noqa: E402
 from angelo_agent.provider_registry import SPECS, billing_kind  # noqa: E402
 from angelo_agent.providers import child_environment, claude_session  # noqa: E402
+import platform_env  # noqa: E402
 from scenario_fake_models import FakeMessages  # noqa: E402
 
 MARKER = "You are Angelo"
@@ -116,7 +115,7 @@ def launch_environment(route, session_kind, inherited, endpoint, out):
              "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "DISABLE_AUTOUPDATER": "1",
              "DISABLE_TELEMETRY": "1", "DISABLE_ERROR_REPORTING": "1", **inherited,
              "ANGELO_GATEWAY_URL": endpoint}   # Read only by a team route: its gateway is the fake.
-    with mock.patch.dict(os.environ, shell, clear=True):
+    with platform_env.cleared(shell):
         env = child_environment(route, DUMMY_KEY)
     passed = sorted(name for name in inherited if name in env)
     if "ANTHROPIC_BASE_URL" not in env:   # A personal route has no endpoint of its own: the probe's fake.

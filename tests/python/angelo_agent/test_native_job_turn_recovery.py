@@ -24,6 +24,7 @@ scripted Codex app-server of ``test_native_codex_plan`` around a real
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import contextlib
@@ -317,7 +318,7 @@ class CodexTurnTests(PlanTurnFixture):
         del self.context.request_tool  # The real request context: Controller.pending holds the call.
 
         def the_person_reads_the_approval():
-            deadline = time.monotonic() + 5
+            deadline = time.monotonic() + CAP_S
             while not self.c.pending and time.monotonic() < deadline:
                 time.sleep(0.005)
             (call,) = self.c.pending.values()

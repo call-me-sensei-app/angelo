@@ -3,6 +3,7 @@
 """Fab's transport-independent boundaries. Fake transport, real file checks/cache; NOT live authentication."""
 
 import suite_isolation  # noqa: F401  First: never expose real provider logins.
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 
 from contextlib import contextmanager
@@ -345,7 +346,7 @@ class FabTests(unittest.TestCase):
         try:
             with patch.object(self.client, 'authorize', side_effect=authorize), ThreadPoolExecutor(1) as pool:
                 future = pool.submit(self.prepare, cancel=stop)
-                self.assertTrue(authorized.wait(5))
+                self.assertTrue(authorized.wait(CAP_S))
                 stop.set()
                 self.assert_code('CANCELLED', lambda: future.result(timeout=5))
         finally:

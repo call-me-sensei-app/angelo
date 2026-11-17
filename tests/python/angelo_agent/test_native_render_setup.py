@@ -126,7 +126,7 @@ class SkyGraphTests(unittest.TestCase):
 class CyclesSettingsTests(unittest.TestCase):
     def test_admitted_settings_are_named_one_by_one(self):
         self.assertEqual(len(rna_rules.CYCLES_PLAIN), len(set(rna_rules.CYCLES_PLAIN)))
-        self.assertEqual(len(rna_rules.PROVEN_RUNTIME), 88)
+        self.assertEqual(len(rna_rules.PROVEN_RUNTIME), 89)
         self.assertEqual(rna_rules.CYCLES_PASS_UPDATE, ("device", "use_denoising", "use_guiding"))
         self.assertTrue(all(path.startswith("cycles.") and path.count(".") == 1 for path in rna_rules.PROVEN_RUNTIME))
         for wanted in ("cycles.samples", "cycles.use_denoising", "cycles.device", "cycles.volume_bounces",

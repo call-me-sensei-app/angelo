@@ -20,8 +20,8 @@
 #include <algorithm>
 #include <cmath>
 
-#include "BLI_listbase.h"
-#include "BLI_rect.h"
+#include "BLI_listbase.hh"
+#include "BLI_rect.hh"
 
 #include "DNA_image_types.h"
 #include "DNA_node_types.h"
@@ -284,7 +284,7 @@ void render_region_end(Scene *scene, Render *re, RenderRegionJob *job, ReportLis
 static bool region_revert_poll(bContext *C)
 {
   Scene *scene = CTX_data_scene(C);
-  if (scene == nullptr || WM_jobs_test(CTX_wm_manager(C), scene, WM_JOB_TYPE_RENDER)) {
+  if (scene == nullptr || WM_jobs_has_running(CTX_wm_manager(C), scene, WM_JOB_TYPE_RENDER)) {
     return false;
   }
   Render *re = RE_GetSceneRender(scene);

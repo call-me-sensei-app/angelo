@@ -1,4 +1,11 @@
 {
+ "More than 100 labels and tooltips that were never translated now follow your interface language.": [],
+ "On Windows, a finished image, video or 3D generation no longer stays shown as generating when another program has its file open for a moment.": [
+  [
+   "Windows",
+   false
+  ]
+ ],
  "Read earlier messages in long chats and return to the latest messages without losing your place.": [],
  "The agent can push, save and stop an engine live link you turned on, and says what Godot, Unity or Unreal confirmed.": [],
  "With the engine live link on, the agent can read what is linked, ask you to open a model from the engine, send the live update now, save the model so the engine re-imports it, and stop editing. Each step asks you first, and turning the link on stays yours.": [],
@@ -19,6 +26,8 @@
    "*"
   ]
  ],
+ "Every glTF export writes game physics as standard OMI physics, which Godot imports as physics nodes; importing the glTF reads it back.": [],
+ "Godot's -col and -rigid name suffixes remain a choice for older pipelines, and Angelo warns about setups Godot would import differently.": [],
  "The web export and Live Web Preview use the Three.js tone mapping nearest your view transform and look, measured against Angelo's own colour management, and your exposure.": [
   [
    "Live Web Preview",
@@ -276,8 +285,6 @@
    "*"
   ]
  ],
- "Every glTF export writes game physics as standard OMI physics, which Godot imports as physics nodes; importing the glTF reads it back.": [],
- "Godot's -col and -rigid name suffixes remain a choice for older pipelines, and Angelo warns about setups Godot would import differently.": [],
  "Angelo 1.0.9 brings your scene's look to the web: the web export and Live Web Preview carry its tone mapping, exposure and World, and game physics reach Godot through standard glTF.": [
   [
    "Live Web Preview",
@@ -348,12 +355,6 @@
   ]
  ],
  "Cycles no longer crashes on materials that combine displacement bump with emission, or while compiling its kernels.": [],
- "Changing the denoiser's settings between Cycles renders no longer crashes or gives a wrongly denoised picture.": [
-  [
-   "Cycles",
-   false
-  ]
- ],
  "Matrix to Rotation gives the same result on the GPU as on the CPU, and Fillet Curve no longer creates huge positions at reversed corners.": [
   [
    "Rotation",
@@ -398,9 +399,131 @@
  ],
  "Apply a Megascans surface or another Fab texture set to the selected objects as a ready material. With nothing selected, it is added to the file's asset library.": [],
  "Downloaded files are converted in a separate process that never runs their scripts or brings files from outside the download into your scene, so Angelo stays responsive.": [],
+ "Your chats, snapshots and settings from Angelo 1.0 come along at the first launch, with nothing to set up.": [],
+ "Updating from Angelo 1.0 moves your chats, snapshots and workspace into 2.0 and copies your Blender settings and add-ons, with no setup screen. One notice says what came along.": [],
+ "The agent knows Blender 5.3's Python API, including its renamed settings and its layered compositor.": [
+  [
+   "Python",
+   false
+  ]
+ ],
+ "On Windows, choose Vulkan or OpenGL in Preferences › System › Backend.": [
+  [
+   "Windows",
+   false
+  ],
+  [
+   "Vulkan",
+   "*"
+  ],
+  [
+   "OpenGL",
+   "*"
+  ],
+  [
+   "Preferences",
+   "*"
+  ],
+  [
+   "System",
+   "*"
+  ],
+  [
+   "Backend",
+   "*"
+  ]
+ ],
+ "Claude chats on an API key or a team keep their prompt cache for an hour, so coming back after a break costs less.": [],
+ "A file saved in Angelo 2.0 opens in Angelo 1.0 with a newer-version warning and keeps only the first of its compositor effects that is turned on.": [],
+ "After the update, Angelo 1.0 no longer shows your chats: they are in Angelo 2.0. Angelo 1.0.10 and later say so once.": [],
+ "On Windows, renders and other GPU work no longer use more memory each time they run on Vulkan.": [
+  [
+   "Windows",
+   false
+  ],
+  [
+   "Vulkan",
+   false
+  ]
+ ],
+ "On Windows, Angelo starts on OpenGL when the graphics driver lacks a feature Vulkan needs, instead of failing to start.": [
+  [
+   "Windows",
+   false
+  ],
+  [
+   "OpenGL",
+   false
+  ],
+  [
+   "Vulkan",
+   false
+  ]
+ ],
+ "Drawing to several layers or mip levels of one texture on Vulkan, and repeated indirect draws on Mac and Windows, now come out right.": [
+  [
+   "Vulkan",
+   false
+  ],
+  [
+   "Windows",
+   false
+  ]
+ ],
  "A GPT model's request to run a script now waits for your approval instead of being cancelled about 30 seconds after the card appears.": [],
  "The first Cycles render after an update shows that render kernels are being prepared, no longer counts that one-time wait against the render's time limit, and keeps render time estimates accurate.": [],
  "If an add-on crashes Angelo while it starts, the next start opens with your add-ons turned off and names them, instead of crashing again.": [],
+ "Geometry Nodes bakes to disk report a failed write instead of leaving an incomplete bake, and empty or damaged bake files no longer cause crashes.": [
+  [
+   "Geometry Nodes",
+   false
+  ]
+ ],
+ "Changing the denoiser's settings between Cycles renders no longer crashes or gives a wrongly denoised picture.": [
+  [
+   "Cycles",
+   false
+  ]
+ ],
+ "Changing sculpt and paint settings no longer makes the viewport lag, most of all with colour pickers and sliders.": [],
+ "OBJ import makes a vertex group active again, so weight painting works straight after it, and USD import places objects that reset their parent's transform where the file puts them.": [],
+ "A world lit by an EXR image shows the right colours in the Cycles viewport, and a change to the anisotropic filtering preference reaches images at once.": [
+  [
+   "Cycles",
+   false
+  ]
+ ],
+ "Renaming an item with a long name in a tree list, and node groups whose zones are broken, no longer crash.": [],
+ "On a multires mesh with hidden faces, the Pose brush's smoothing and Expand's falloff blur now reach every visible vertex instead of only the first few.": [
+  [
+   "Pose",
+   false
+  ],
+  [
+   "Expand",
+   false
+  ]
+ ],
+ "The compositor's viewer no longer keeps showing an old picture when its Viewer node is inside a repeat zone that did not run, and the Format String node in Geometry Nodes is safe to evaluate when every element has its own format.": [
+  [
+   "Viewer",
+   false
+  ],
+  [
+   "Format String",
+   false
+  ],
+  [
+   "Geometry Nodes",
+   false
+  ]
+ ],
+ "A timing fault in how EEVEE builds the depth data for its screen-space effects is fixed, and on Vulkan a GPU buffer too large to allocate is skipped when read back instead of being copied from nothing.": [
+  [
+   "Vulkan",
+   false
+  ]
+ ],
  "Applying a transform keeps custom normals correct on mirrored or unevenly scaled meshes, and the agent can now apply transforms to imported meshes that have custom normals.": [],
  "Long chats send the agent less text: after most edits, your next message no longer repeats the full summary of the last edit.": [],
  "On Windows, restarting from the crash dialog after Angelo crashed while starting now opens it with your add-ons turned off, instead of crashing again.": [
@@ -408,5 +531,322 @@
    "Windows",
    false
   ]
- ]
+ ],
+ "On a Mac, an idle window uses a little less processor time: Angelo no longer checks every spare graphics buffer about 160 times a second. That check was about 15% of what an idle stock Blender 5.3 does; most of Angelo's own idle work is its chat, which this does not change.": [],
+ "On Windows, opening Angelo again while the crash dialog is still showing also starts it with your add-ons turned off.": [
+  [
+   "Windows",
+   false
+  ]
+ ],
+ "Angelo 2.0 moves to Blender 5.3, whose compositor effects can now be stacked, and brings everything in Angelo 1.0.11. Your chats and settings from Angelo 1.0 come along by themselves.": [],
+ "Built on Blender 5.3.0: compositor effects can now be stacked, each one feeding the next.": [],
+ "On Windows, the viewport now draws with Vulkan, Blender 5.3's default.": [
+  [
+   "Windows",
+   false
+  ],
+  [
+   "Vulkan",
+   false
+  ]
+ ],
+ "New chats now start at high reasoning effort where the model offers it, instead of low. Chats you already have keep their effort, and you can change it any time in the model menu.": [],
+ "New chats now start at high reasoning effort where the model offers it, instead of low.": [],
+ "Undo no longer crashes after a script or add-on adds or removes objects without an undo step of its own.": [
+  [
+   "Undo",
+   false
+  ]
+ ],
+ "Angelo and the apps connected to it no longer read or change your scene in the middle of a tool you're using, such as a move or an edge crease: they wait until you finish, and the chat says so. Before, the tool's edit could be lost.": [],
+ "Fab models whose materials point to textures the download does not include, such as Megascans plants, now use the texture maps that come with them instead of turning black.": [],
+ "Roughness, opacity and other single-value maps stored in one colour channel now work, so Megascans plants keep their own cut-out and roughness.": [],
+ "Learn how to do Angelo's steps yourself: turn on Teach me as you work from the chat bar's + › Learn, and each step Angelo makes in that chat shows the command, its shortcut in your keymap, where it is in the menus and the settings it used, in your language. Off until you turn it on, for each chat.": [
+  [
+   "Teach me as you work",
+   null
+  ],
+  [
+   "Learn",
+   null
+  ]
+ ],
+ "Error messages for undo recovery, sculpt programs and failed asset loads now follow your interface language.": [],
+ "Organizations can run Angelo's agent through their own model server: an admin adds an OpenAI Responses, Gemini or Anthropic Messages endpoint in the console, and each member enters their own key in Angelo. Tested with LiteLLM in all three formats, including tool calls and streaming.": [],
+ "Test connection checks a custom endpoint with the agent's own requests: that it lists the configured models, completes a tool call and its result, and streams, and it warns when a proxy holds the stream back.": [
+  [
+   "Test connection",
+   null
+  ]
+ ],
+ "Custom endpoints work only while the member holds a seat; they stop when the seat is removed, or after 10 minutes without reaching the console.": [],
+ "When a connected app asks again about a call it is still waiting for, Angelo now always gives it that call's own answer, including when saving afterwards failed, instead of a success that never happened.": [],
+ "An image file saved again at the same size within a few seconds of being loaded now reloads with its new contents on every platform.": [],
+ "On Windows, if Angelo closes while starting its graphics with Vulkan, the next launch uses OpenGL instead and says so, so a graphics driver that crashes at start no longer keeps Angelo from opening.": [
+  [
+   "Windows",
+   false
+  ],
+  [
+   "Vulkan",
+   false
+  ],
+  [
+   "OpenGL",
+   false
+  ]
+ ],
+ "On Windows, Angelo no longer closes when an add-on or script hands it a file that is already closed; it reports the file as unreadable instead.": [
+  [
+   "Windows",
+   false
+  ]
+ ],
+ "On Apple GPUs, the first Cycles render after installing or updating takes about half as long as in Blender 5.3.0 (77 s vs 171 s, M4 Pro).": [],
+ "Moving from Angelo 1.0 keeps folders you linked elsewhere leading to the same place, and stops before copying anything if a disk is mounted at a folder it must copy, naming it. Files it still cannot update after several tries are named at startup and under AI Providers in Preferences.": [
+  [
+   "AI Providers",
+   null
+  ],
+  [
+   "Preferences",
+   "*"
+  ]
+ ],
+ "After a start that crashed, Angelo names the add-on that was loading when it stopped, and the add-ons it turned off stay off until you turn them on. An add-on that fails to load is named at each start with its error and a Turn off button.": [
+  [
+   "Turn off",
+   null
+  ]
+ ],
+ "Asset imports read library paths written with either slash, so a file saved on Windows finds its linked libraries on a Mac too. On Windows, a save blocked by a folder in the way says the name is taken instead of reporting a permission error.": [
+  [
+   "Windows",
+   false
+  ]
+ ],
+ "In Cycles, rendering Open Shading Language on OptiX with an NVIDIA driver from the 590 to 609 series now stops at once and says to update the driver to 610 or newer or use a 580 series driver, instead of failing with a link error, often after minutes of compiling.": [
+  [
+   "Cycles",
+   false
+  ],
+  [
+   "Open Shading Language",
+   false
+  ],
+  [
+   "OptiX",
+   false
+  ],
+  [
+   "NVIDIA",
+   false
+  ]
+ ],
+ "Saving objects to the team library now saves only the scene shown in the window, so an object selected in another scene of the file, and the names of its other scenes, no longer go into the saved model.": [],
+ "When a connection is refused because its security certificate isn't trusted (for example behind a company proxy), Angelo now says so, instead of asking you to check your network.": [],
+ "When a script the agent runs builds or resizes a mesh so that faces or edges point to vertices it doesn't have, Angelo now repairs that mesh right after the script and tells the agent which one, instead of keeping a broken mesh that could crash Angelo.": [],
+ "A script that is too long is now refused with its length, the limit (32,768 characters) and how to go on: split the work into steps, or keep large data in a file the script reads. GPT models and connected apps are now also told the limit before writing a script; Claude already had a length target.": [],
+ "Video cards in Media Studio now show a clip's colours as they look when it plays: cards of clips with more than 8 bits per channel, such as 10-bit video, are no longer far too dark.": [
+  [
+   "Media Studio",
+   null
+  ]
+ ],
+ "Cycles on NVIDIA GPUs now needs a 580 series driver or newer, for CUDA as well as OptiX, as in Blender 5.3. Update the driver if GPU rendering doesn't appear.": [
+  [
+   "Cycles",
+   false
+  ],
+  [
+   "NVIDIA",
+   false
+  ],
+  [
+   "CUDA",
+   false
+  ],
+  [
+   "OptiX",
+   false
+  ]
+ ],
+ "When an agent's edit fails partway and Angelo puts the scene back, a removed modifier now comes back with all it held, such as UV Project's projectors and falloff curve points. The agent can no longer remove or apply a modifier holding data that can't be restored (a bind, Multires levels, a bake).": [
+  [
+   "UV Project",
+   null
+  ],
+  [
+   "Multires",
+   null
+  ]
+ ],
+ "On Windows, Cycles renders with OptiX on NVIDIA drivers from the 580 series onward, as Blender 5.3 does; recent 1.0 releases for Windows needed the 590 series.": [
+  [
+   "Windows",
+   false
+  ],
+  [
+   "Cycles",
+   false
+  ],
+  [
+   "OptiX",
+   false
+  ],
+  [
+   "NVIDIA",
+   false
+  ]
+ ],
+ "Approve, Always allow scripts and a preview's Accept now take only a click you aim at them: a card that appears under your pointer, or the click that brings Angelo's window back to the front, no longer approves a step, so a stray click can't start a paid generation.": [
+  [
+   "Approve",
+   null
+  ],
+  [
+   "Always allow scripts",
+   null
+  ],
+  [
+   "Accept",
+   null
+  ]
+ ],
+ "Agent scripts now run confined: they can’t open Angelo’s private settings, keys, approvals or connection records, start other programs, use the network or load native code, and code they leave runs confined later. A blocked step stops with a reason, e.g. “An agent script can’t use the network.”": [],
+ "The agent can download a file from an https link into your project's assets/downloads folder (a temporary folder until the file is saved), after you approve a \"File download\" card naming the site, size limit and folder, in Ask and Auto. The file's type is checked; it's never opened or run.": [
+  [
+   "File download",
+   null
+  ],
+  [
+   "Auto",
+   null
+  ]
+ ],
+ "A script that would replace the file you have open (by opening, reverting or recovering a file, or loading the startup file) now always asks first and says why, even when scripts are allowed to run without asking. Before, it could run unasked and discard unsaved work.": [],
+ "An approval card you're reading no longer expires under you: while its code or details are open, or it's in view with Angelo in front, its waiting time doesn't run, and its “Waits for your answer until” line moves later to match.": [],
+ "A chat no longer stops accepting work after one save of it fails: a value its file couldn't hold is now stored in a form it can, and a second Angelo running at the same time can no longer stop the open chat. When a save does fail, Angelo says why and what to do next.": [],
+ "Exported glTF, FBX, USD and Alembic files no longer include Angelo's own internal settings stored on objects.": [],
+ "The agent can bake a whole texture set again: since 1.0.10 its requests to bake every map at once were refused before they started. Texture sets you bake yourself were not affected.": [],
+ "A crash, or Angelo asking for Undo recovery, after Redo across an agent's change on a Dyntopo sculpt is fixed. Undoing across such a change keeps your sculpt edits again.": [
+  [
+   "Undo",
+   false
+  ],
+  [
+   "Redo",
+   false
+  ],
+  [
+   "Dyntopo",
+   false
+  ]
+ ],
+ "A use of freed memory that could crash Angelo in files with rigid body constraints is fixed: when undoing or redoing, opening another file, or when a script removed a constrained object or its constraint.": [],
+ "Live links to a game engine, and the live browser preview, now update after a script that ends by changing the frame, and after a change Angelo does not report on its own, such as a custom property.": [],
+ "With Angelo linked to Godot, an asset you save while Godot is busy importing now updates once Godot is free, even after you switch the linked asset, instead of staying as it was before the save until Reload Saved Scene. If Godot is still busy after 30 seconds, it says to use Reload Saved Scene.": [
+  [
+   "Reload Saved Scene",
+   false
+  ]
+ ],
+ "Moving a compositor node or a sequencer strip in a scene with no objects no longer crashes.": [],
+ "Project Edit with a canvas image whose file is missing no longer risks a crash.": [
+  [
+   "Project Edit",
+   "Operator"
+  ]
+ ],
+ "Geometry Nodes XPBD edge friction no longer breaks the simulation when a friction value is negative.": [
+  [
+   "Geometry Nodes",
+   false
+  ]
+ ],
+ "The compositor's Render Size scaling no longer breaks the image when a scale is zero.": [
+  [
+   "Render Size",
+   "*"
+  ]
+ ],
+ "A script stored in a file, such as an older rig's interface script, now asks once before it first runs, even when scripts are allowed to run without asking. Once you allow it, that same script runs without asking again.": [],
+ "Opening a file while Angelo is still setting up its tabs no longer moves you to another tab, deletes the Director or Layout tab, or puts your object into Edit Mode.": [
+  [
+   "Director",
+   null
+  ],
+  [
+   "Layout",
+   false
+  ],
+  [
+   "Edit Mode",
+   false
+  ]
+ ],
+ "Left alone, Angelo no longer redraws the chat, Media Studio and Generation Flows every two seconds. An idle window is not redrawn at all.": [
+  [
+   "Media Studio",
+   null
+  ],
+  [
+   "Generation Flows",
+   null
+  ]
+ ],
+ "Angelo now uses less memory: the welcome banner, the picture shown before you connect and the start panel's scene previews are kept only on the graphics card while on screen, and freed when they close.": [],
+ "You can now set when the agent asks before changes, and trust a chat's scripts, from the chat bar's + menu.": [],
+ "A curve, surface or text object that hasn't been evaluated yet (hidden, in an excluded collection, or just appended) now reports its real size in Dimensions and its bounding box, instead of one padded by its radius.": [
+  [
+   "Dimensions",
+   null
+  ]
+ ],
+ "Requests Angelo makes on its own, shown as notices in the chat (such as goal rounds), now have a Restore button like your own messages.": [
+  [
+   "Restore",
+   null
+  ]
+ ],
+ "Switching to a new world no longer stalls the view's first draw: its shaders are now prepared in the background. On Windows (NVIDIA T4), that first draw went from about 1 s to 71 ms with Vulkan and from 1.3 s to 211 ms with OpenGL.": [
+  [
+   "Windows",
+   false
+  ],
+  [
+   "NVIDIA",
+   false
+  ],
+  [
+   "Vulkan",
+   false
+  ],
+  [
+   "OpenGL",
+   false
+  ]
+ ],
+ "Switching to a new world no longer stalls the view: on Windows with an NVIDIA T4, its first draw fell from about 1 s to 71 ms.": [
+  [
+   "Windows",
+   false
+  ],
+  [
+   "NVIDIA",
+   false
+  ]
+ ],
+ "A Python script that passes None where an object is needed now gets an error naming the argument instead of crashing Angelo.": [
+  [
+   "Python",
+   false
+  ],
+  [
+   "None",
+   false
+  ]
+ ],
+ "Enhanced Security: agent scripts are confined. They write only to Angelo's folders and places you chose, can't write elsewhere via links or programs, and can't pick your files unless you click. Full protection, covering what your later render or save writes from a script's settings, comes in 2.1.0.": []
 }

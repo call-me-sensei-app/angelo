@@ -3,6 +3,7 @@
 """Same-dispatch ownership before native begin; no Blender or provider needed."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import unittest
 from types import SimpleNamespace
@@ -494,7 +495,7 @@ class PreparationTests(AgentRuntimeFixture, unittest.TestCase):
         preview_id = answers[0]["preview_id"]
         descriptor = self.c.inspect_native_preview(preview_id)
         self.c.busy = False
-        self.assertTrue(self.c.accept_native_preview(preview_id, self.executor, self.c.document, descriptor["preview_token"]))
+        self.assertTrue(angelo_guard_twin.harness(self.c.accept_native_preview, preview_id, self.executor, self.c.document, descriptor["preview_token"]))
         call = next(iter(self.c.pending.values()))
         job = self.ready()
         self.assertNotIn(preview_id, self.previews.records)

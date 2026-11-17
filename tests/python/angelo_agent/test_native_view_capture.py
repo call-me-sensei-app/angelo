@@ -324,6 +324,65 @@ class ViewCaptureTests(unittest.TestCase):
         hidden = self.run_view(views=[visible["views"][0]["view_id"]])
         self.assertIn("target_hidden", [note["code"] for note in hidden["uncertainty"]])
 
+    def scene_shaders(self, missing=0, queued=0, read=True):
+        """This build reads the scene's own shader state (``_angelo_live.shader_state``, as ``view_warm.state``
+        asks it): how many of the materials the scene draws have no shader yet or one still queued. ``read`` False:
+        it answers nothing (a depsgraph not evaluated); an exception: the read fails. Returns the reads made."""
+        asked = []
+
+        def shader_state(depsgraph, space=None):
+            asked.append((depsgraph, space))
+            if isinstance(read, Exception):
+                raise read
+            return (3, missing, queued, [], [], [], [], [], False) if read else None
+        self.env.native._angelo_live = SimpleNamespace(shader_state=shader_state)
+        return asked
+
+    def codes(self, result):
+        return [note["code"] for note in result["uncertainty"]]
+
+    def test_a_drawn_view_is_judged_by_its_scenes_shaders_not_by_blenders_compile_flag(self):
+        # Blender's flag is also up for another scene's or an optimization compile and, on Vulkan, for every pipeline
+        # a draw of the frame built, the view's own included: none leaves a placeholder in this picture (a T4 round
+        # marked a fully drawn MATERIAL view uncertain and left it out of the cache).
+        self.env.state["compiling"] = True
+        asked = self.scene_shaders()
+        for shading in ("MATERIAL", "LIT"):
+            result = self.run_view(shading=shading)
+            self.assertEqual((result["uncertain"], self.codes(result)), (False, []), shading)
+        self.assertTrue(asked)   # Of the depsgraph and through the viewport the view was drawn with.
+        self.assertTrue(all(depsgraph is self.env.window.view_layer.depsgraph and space is self.env.space
+                            for depsgraph, space in asked))
+        self.assertTrue(self.run_view(shading="MATERIAL")["views"][0]["cache_hit"])   # A certain view is cached.
+
+    def test_a_material_without_its_shader_after_the_draw_marks_the_view_whatever_the_flag_says(self):
+        for shading in ("MATERIAL", "LIT"):
+            for missing, queued in ((1, 0), (0, 2), (1, 1)):
+                for flag in (False, True):
+                    self.env.state["compiling"] = flag
+                    self.scene_shaders(missing, queued)
+                    result = self.run_view(shading=shading)
+                    self.assertTrue(result["uncertain"], (shading, missing, queued, flag))
+                    self.assertEqual(self.codes(result), ["shaders_compiling"], (shading, missing, queued, flag))
+                    self.assertFalse(result["views"][0]["cache_hit"])   # And none of them was cached.
+
+    def test_a_shader_state_that_cannot_be_read_leaves_the_compile_flag_to_decide(self):
+        for read in (False, RuntimeError("no depsgraph"), ReferenceError("freed"), TypeError("not a depsgraph")):
+            for flag in (True, False):
+                view_cache.clear()
+                self.env.state["compiling"] = flag
+                self.scene_shaders(read=read)
+                result = self.run_view(shading="MATERIAL")
+                self.assertEqual(self.codes(result), ["shaders_compiling"] if flag else [], (read, flag))
+
+    def test_looks_eevee_does_not_draw_ask_neither_the_scenes_shaders_nor_the_flag(self):
+        self.env.state["compiling"] = True
+        asked = self.scene_shaders(missing=2, queued=1)
+        for shading in ("SOLID", "WIREFRAME"):
+            result = self.run_view(shading=shading)
+            self.assertEqual((result["uncertain"], self.codes(result)), (False, []), shading)
+        self.assertEqual(asked, [])
+
     def test_failures_restore_display_and_leave_no_reference_files(self):
         before = self.env.space.shading.snapshot()
         FakeOffScreen.fail = True

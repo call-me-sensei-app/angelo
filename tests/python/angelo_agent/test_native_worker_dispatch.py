@@ -13,6 +13,7 @@ slow edit) is ``test_blender_parallel_workers.py``.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import threading
@@ -36,7 +37,7 @@ class Gate:
 
     def request(self):
         self.sent.set()
-        if not self.release.wait(10):
+        if not self.release.wait(CAP_S):
             raise AssertionError("never released")
         return {"answer": True}
 
@@ -113,7 +114,7 @@ class LaneTests(unittest.TestCase):
         self.assertFalse(worker_dispatch.pump(chat, budget()))   # Not answered: nothing runs, nothing waits.
         self.assertEqual(chat.log, ["before"])
         gate.release.set()
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while worker_dispatch.waiting(chat) and time.monotonic() < deadline:
             time.sleep(0.005)
         self.assertTrue(worker_dispatch.pump(chat, budget()))
@@ -138,7 +139,7 @@ class LaneTests(unittest.TestCase):
                     self.assertTrue(worker_dispatch.waiting(chat))
                     self.assertIs(parallel_sessions._answering(chat.state["id"]), effects)
                     gate.release.set()
-                    deadline = time.monotonic() + 5
+                    deadline = time.monotonic() + CAP_S
                     while worker_dispatch.waiting(chat) and time.monotonic() < deadline:
                         time.sleep(0.005)
                     self.assertFalse(parallel_sessions._answering(chat.state["id"]))   # Answered: readable again.

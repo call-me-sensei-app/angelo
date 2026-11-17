@@ -17,8 +17,9 @@
  * - `BKE_main_idmap_` Should be used for functions in that file.
  */
 
-#include "BLI_compiler_attrs.h"
-#include "BLI_sys_types.h"
+#include "BLI_compiler_attrs.hh"
+#include "BLI_function_ref.hh"
+#include "BLI_sys_types.hh"
 
 namespace blender {
 
@@ -64,5 +65,9 @@ ID *BKE_main_idmap_lookup_id(IDNameLib_Map *id_map, const ID *id) ATTR_WARN_UNUS
 
 ID *BKE_main_idmap_lookup_uid(IDNameLib_Map *id_map, uint session_uid) ATTR_WARN_UNUSED_RESULT
     ATTR_NONNULL(1);
+
+/** Every ID of a #MAIN_IDMAP_TYPE_UID map, by session UID, without reading the IDs themselves. */
+void BKE_main_idmap_foreach_uid(IDNameLib_Map *id_map,
+                                FunctionRef<void(uint session_uid, ID *id)> fn) ATTR_NONNULL(1);
 
 }  // namespace blender

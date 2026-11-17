@@ -9,6 +9,10 @@ still computes the exact review in ``invoke``, stays running while the card show
 ``execute`` with the person's choice: the same confirmation property, the same review fingerprint, the same
 document and staleness checks, the same acceptance. Accept with the box unticked is refused by ``execute``,
 as the dialog's confirm was. Escape, Cancel and the close button cancel; nothing is applied.
+
+The confirmation and Accept grant (``grants``): each takes only a click the person aimed at it, and the keyboard
+only once the person focused it (``approval_arming``). Return with nothing focused no longer accepts: no keyboard
+default grants (2.0.0, "A click the person aimed").
 """
 
 from . import card_kit as kit
@@ -26,7 +30,8 @@ WIDTH, LIST_HEIGHT, EXACT_HEIGHT = 620, 220, 200
 
 class ReviewAcceptCard(kit.BaseCard):
     kind, modal, priority = "native_review", True, 80
-    cancel_action, default_action, outside_dismisses = "cancel", "accept", False
+    cancel_action, default_action, outside_dismisses = "cancel", None, False
+    grants = frozenset({"confirm", "accept"})   # Only an aimed click, or the person's focus after the shield.
 
     def __init__(self, descriptor, confirmed, set_confirmed):
         from . import review_text
@@ -103,12 +108,13 @@ def start(operator, context, descriptor):
 
 
 def wait(operator, context, event):
-    """The operator's ``modal``: Return accepts and Escape cancels (as the dialog's keys did), wherever the pointer
-    is; the card's own buttons decide too. The decision runs the operator's unchanged ``execute``."""
+    """The operator's ``modal``: Escape cancels wherever the pointer is; the card's own controls decide too (Return
+    accepts only through its focused Accept, in ``card_host``). The decision runs the operator's unchanged
+    ``execute``."""
     from . import card_host
     card = operator._review_card
-    if card.decision is None and event.value == 'PRESS' and event.type in {'RET', 'NUMPAD_ENTER', 'ESC'}:
-        card.decision = "cancel" if event.type == 'ESC' else "accept"
+    if card.decision is None and event.value == 'PRESS' and event.type == 'ESC':
+        card.decision = "cancel"
     if card.decision is None:
         return {'PASS_THROUGH'}
     context.window_manager.event_timer_remove(operator._review_timer)

@@ -5,6 +5,7 @@ material carries, the page's built-ins agreeing with Blender's, and the page's c
 Angelo only from the page itself."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import http.client
 import json
@@ -111,9 +112,9 @@ class PageChannelTests(unittest.TestCase):
         thread = threading.Thread(target=page, daemon=True)
         thread.start()
         while self.server.streams < 1:
-            threading.Event().wait(0.01)
+            threading.Event().wait(0.01)  # window: a fixed delay, not a wait for work
         self.assertTrue(self.server.capture(5).startswith(b"\x89PNG"))
-        thread.join(5)
+        thread.join(CAP_S)
 
     def test_no_page_no_picture(self):
         self.assertIsNone(self.server.capture(0.2))

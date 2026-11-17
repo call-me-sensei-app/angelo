@@ -9,8 +9,8 @@
 #include "ANIM_action.hh"
 #include "ANIM_action_iterators.hh"
 
-#include "BLI_assert.h"
-#include "BLI_listbase.h"
+#include "BLI_assert.hh"
+#include "BLI_listbase.hh"
 
 #include "BKE_anim_data.hh"
 #include "BKE_armature.hh"
@@ -91,9 +91,8 @@ void foreach_fcurve_in_action_slot(Action &action,
   }
 }
 
-bool foreach_action_slot_use(
-    const ID &animated_id,
-    FunctionRef<bool(const Action &action, slot_handle_t slot_handle)> callback)
+bool foreach_action_slot_use(const ID &animated_id,
+                             FunctionRef<bool(Action &action, slot_handle_t slot_handle)> callback)
 {
 
   const auto forward_to_callback = [&](ID & /* animated_id */,
@@ -103,7 +102,7 @@ bool foreach_action_slot_use(
     if (!action_ptr_ref) {
       return true;
     }
-    return callback(const_cast<const Action &>(action_ptr_ref->wrap()), slot_handle_ref);
+    return callback(action_ptr_ref->wrap(), slot_handle_ref);
   };
 
   return foreach_action_slot_use_with_references(const_cast<ID &>(animated_id),

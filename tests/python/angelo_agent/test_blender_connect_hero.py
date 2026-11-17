@@ -155,7 +155,9 @@ def tick():
                                                              and ("attach", None) in actions() and not any(
                 a in {"send", "model"} for a, _ in actions()))
             checks["showcase_covers_the_3d_view"] = (connect_hero.shown == 1 and connect_hero.last_error is None
-                                                     and connect_hero._state["pixels"] is not None)
+                                                     and connect_hero.SHOWCASE.ready)
+            # Drawn from the GPU: no float copy of the still (23 MB at 1600 x 900) beside its texture.
+            checks["drawn_showcase_keeps_no_float_copy"] = not connect_hero.SHOWCASE.holds_pixels()
             with bpy.context.temp_override(window=window()):
                 bpy.ops.angelo.intro('INVOKE_DEFAULT')
             state["phase"] = "welcome_over"
@@ -191,6 +193,7 @@ def tick():
             capture("hero-4-empty-scene-explored.png")
             checks["explore_fades_it_out_and_leaves_no_handler"] = (
                 connect_hero._handler is None and connect_hero._timer is None and view().get("composer_hidden") is True)
+            checks["a_faded_showcase_lets_its_picture_go"] = not connect_hero.SHOWCASE.ready
             connect_hero._dismissed = False  # Bring it back, as a later launch without a connection would.
             connect_hero.watch()
             state["phase"] = "back"
@@ -211,7 +214,8 @@ def tick():
                 and not any(obj.select_get() for obj in bpy.context.view_layer.objects))
             area, region = chat()
             rect = next(r for r, a, v in view()["hits"] if (a, v) == CLAUDE)
-            move_to(int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2))
+            from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+            move_to(*chat_point(region, rect))
             state["phase"] = "chat_hover"
             return .3
         if phase == "chat_hover":
@@ -224,6 +228,10 @@ def tick():
             state["phase"] = "focused_row"
             return .3
         if phase == "focused_row":
+            # A key grants on the control the person Tabbed to once C's shield has passed since focus arrived
+            # (grant_operators.rst, "The keyboard"): a Return sooner is refused, as a person's would be.
+            if time.monotonic() - state.setdefault("tabbed_at", time.monotonic()) < 1.3:
+                return .1
             checks["tab_reaches_connect_claude_without_a_composer"] = view().get("focus") == CLAUDE
             capture("hero-6-connect-claude-focused.png")
             press_key('RET')

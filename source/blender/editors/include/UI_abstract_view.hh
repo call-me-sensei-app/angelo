@@ -52,6 +52,13 @@ enum class ViewScrollDirection {
   DOWN,
 };
 
+enum class PageScrollDirection {
+  Up,
+  Down,
+  Top,
+  Bottom,
+};
+
 struct Layout;
 
 class AbstractView {
@@ -66,7 +73,7 @@ class AbstractView {
    * This fixed-size buffer is needed because that's what the rename button requires. In future we
    * may be able to bind the button to a `std::string` or similar.
    */
-  std::unique_ptr<std::array<char, MAX_NAME>> rename_buffer_;
+  std::unique_ptr<std::array<char, MAX_ID_NAME>> rename_buffer_;
   /* Search/filter string from the previous redraw, stored to detect changes. */
   std::string prev_filter_string_;
 
@@ -164,6 +171,8 @@ class AbstractView {
   virtual AbstractViewItem *navigate_down(AbstractViewItem *from) = 0;
 
   virtual void scroll_active_into_view(bContext *C, bool scroll_active_to_center = false) = 0;
+
+  virtual void page_scroll(bContext *C, PageScrollDirection direction) = 0;
 
  protected:
   AbstractView() = default;

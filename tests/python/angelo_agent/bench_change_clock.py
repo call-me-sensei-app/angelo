@@ -145,11 +145,9 @@ def timer_holders(seconds=5):
 
 
 def commit():
-    try:
-        done = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=20)
-        return done.stdout.strip() if done.returncode == 0 else ""
-    except (OSError, subprocess.SubprocessError):
-        return ""
+    """This tree's own HEAD, or nothing: never the HEAD of a repository around it (own_checkout)."""
+    import own_checkout
+    return own_checkout.revision(ROOT) or ""
 
 
 def host_facts():

@@ -10,6 +10,7 @@ steps the person had unticked included. The real ``flow_ui`` and ``flow_graph`` 
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import sys
 import types
@@ -39,7 +40,9 @@ def _bpy_modules():
     previews = types.ModuleType("bpy.utils.previews")
     previews.new = lambda: {}
     bpy.utils.previews = previews
-    bpy.data = SimpleNamespace(node_groups=[])
+    collection = type("Collection", (list,), {   # As bpy_prop_collection: iterable, and ``get`` by name.
+        "get": lambda self, name, default=None: next((item for item in self if item.name == name), default)})
+    bpy.data = SimpleNamespace(node_groups=collection())
     return {"bpy": bpy, "bpy.types": bpy.types, "bpy.props": bpy.props, "bpy.app": bpy.app,
             "bpy.app.handlers": handlers, "bpy.utils": bpy.utils, "bpy.utils.previews": previews}
 
@@ -99,7 +102,7 @@ class RunApprovalTests(unittest.TestCase):
         return op
 
     def confirm_cheap_only(self, op):
-        self.assertEqual(op.invoke(self.context, None), {'RUNNING_MODAL'})
+        self.assertEqual(angelo_guard_twin.harness(op.invoke, self.context, None), {'RUNNING_MODAL'})   # The person's click.
         for item in self.lines:
             item.include = item.node == "Cheap"   # The person unticks Expensive.
         return op.execute(self.context)

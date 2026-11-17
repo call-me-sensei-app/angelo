@@ -19,7 +19,7 @@ import bpy
 from bpy.props import FloatVectorProperty, StringProperty
 from bpy.types import Operator
 
-from . import private_roots
+from . import owned_paths, private_roots
 from . import flow_host, flow_nodes
 from .ui_text import rpt_
 
@@ -47,8 +47,9 @@ def image_file(image, directory):
     path = bpy.path.abspath(image.filepath, library=image.library) if image.filepath else ""
     if path and os.path.isfile(path) and not image.packed_file and not image.is_dirty and image.source == 'FILE':
         return path
-    os.makedirs(directory, exist_ok=True)
+    os.makedirs(owned_paths.require_writable(directory), exist_ok=True)
     target = os.path.join(directory, "image" + SUFFIXES.get(image.file_format, ".png"))
+    owned_paths.require_writable(target)
     image.save(filepath=target, save_copy=True)
     return target
 
@@ -114,13 +115,13 @@ def _find_image(session_uid):
 
 
 class ANGELO_OT_flow_drop_items(Operator):
-    """Add dropped images to a Generation Flow as Image steps"""
+    bl_description = "Add dropped images to a Generation Flow as Image steps"
     bl_idname = "angelo.flow_drop_items"
     bl_label = "Drop Images into Flow"
     # No UNDO: NODE_OT_angelo_drop_assets, which calls this, is the drop's one undo step.
     bl_options = {'INTERNAL'}
     tree: StringProperty(options={'SKIP_SAVE'})
-    items: StringProperty(options={'SKIP_SAVE'})
+    item_lines: StringProperty(options={'SKIP_SAVE'})
     location: FloatVectorProperty(size=2, options={'SKIP_SAVE'})
 
     def execute(self, context):
@@ -130,7 +131,7 @@ class ANGELO_OT_flow_drop_items(Operator):
 
         from .media_place import from_identifiers
         library = flow_host.library()
-        entries = parse(self.items)
+        entries = parse(self.item_lines)
         studio = {item.id for kind, value in entries if kind == "studio-item" for item in from_identifiers(value)}
         if studio - set(library.assets):
             library.reload()   # Written by another writer (a worker, the asset writer): local metadata only.

@@ -18,8 +18,10 @@ A test makes one ``Sharing(case)``; it undoes itself at the case's cleanup.
 
 On both, every open is watched: ``while_open(path, action)`` runs ``action`` (a writer) once, the first time any
 reader opens ``path``, while that reader's handle is open. The retries' pauses are recorded (``pauses``) and never
-slept, and ``hold(path, refusals=n)`` lets go of its handle after ``n`` refused replaces, as an indexer or a scan
-does after a moment.
+slept, except on a Windows host while the test holds no handle of its own: that refusal is another program's (a scan
+of a file just written) and is waited out as the add-on does (test_native_ntfs_sharing_pauses).
+``hold(path, refusals=n)`` lets go of its handle after ``n`` refused replaces, as an indexer or a scan does after a
+moment.
 """
 
 import builtins
@@ -233,3 +235,5 @@ class Sharing:
                 entry[1] -= 1
                 if entry[1] <= 0:
                     self.let_go(entry[0])
+            if not self._holds:   # Another program's (a scan of a file just written): wait as the add-on does.
+                time.sleep(seconds)

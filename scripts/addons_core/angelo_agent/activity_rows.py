@@ -48,10 +48,20 @@ def _redacted(value, redact):
     return value
 
 
+def redaction_keys(controller):
+    """The keys nothing ``controller`` holds or draws may contain: its bound key, and a key withdrawn or replaced
+    while a runtime that started with it may still write (a busy turn, a live process: ``bind_key``). That retired
+    copy is never sent anywhere; it is forgotten once the chat is idle with no runtime."""
+    retired = controller.__dict__.get("_retired_key", "")
+    if retired and getattr(controller, "provider", None) is None and not getattr(controller, "busy", False):
+        controller._retired_key = retired = ""   # The runtime that held it has ended.
+    return tuple(key for key in (getattr(controller, "api_key", "") or "", retired) if key)
+
+
 def redacted(controller, value):
-    """``value`` as a row may hold it: a redacted copy when it holds the bound key, else ``value`` itself."""
-    key = controller.api_key
-    return _redacted(value, controller.redact) if key and _holds(value, key) else value
+    """``value`` as a row may hold it: a redacted copy when it holds a key (``redaction_keys``), else ``value``."""
+    held = any(_holds(value, key) for key in redaction_keys(controller))
+    return _redacted(value, controller.redact) if held else value
 
 
 def store(controller, data):
@@ -87,6 +97,8 @@ def bind_key(controller, api_key):
     again changes nothing.
     """
     changed = bool(api_key) and api_key != controller._api_key
+    if controller._api_key and api_key != controller._api_key:   # Withdrawn or replaced: redaction-only until the
+        controller._retired_key = controller._api_key             # runtime that started with it ends.
     controller._api_key = api_key
     if changed:
         with controller.lock:

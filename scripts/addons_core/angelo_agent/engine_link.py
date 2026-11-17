@@ -23,22 +23,24 @@ doc/angelo/engine_link.rst is the contract; doc/angelo/godot_link.rst is Godot's
 
 import os
 import secrets
-import shutil
 import sys
-import threading
 import time
 
 import bpy
 
 from . import (engine_link_assets as assets, engine_link_cadence as cadence, engine_link_facts as facts,
-               engine_link_import, engine_link_saves,
-               engine_link_protocol as protocol, engine_link_reads as reads, gltf_scene_reads, live_windows,
-               private_roots, scene_changes, web_link_live)
+               engine_link_protocol as protocol, engine_link_reads as reads, live_windows,
+               engine_link_import, engine_link_saves, owned_paths, private_roots, scene_changes, web_link_live,
+               edit_tool_hold)
+# Following the scene: which one, and when it changed (re-exported: the link's other modules and tests use these names).
+from . import engine_link_follow as follow, grant_gestures
+from .engine_link_follow import _followed, _on_depsgraph, _on_edit, _window, scene_key  # noqa: F401
 
 POLL_SECONDS = 0.1         # engine_link_cadence.MIN_GAP_SECONDS is this tick.
 REQUEST_SECONDS = 600.0    # A request nobody answered expires.
 
 _MODULE = sys.modules[__name__]   # This module, whose state the live frames read (engine_link_live.publish).
+follow.link = _MODULE             # And the scene-following functions (engine_link_follow).
 hooks = {"request": None, "withdraw": None, "changed": None}   # engine_link_ui's card and redraws.
 _state = {"server": None, "token": None, "record": None, "pending": None, "session": None, "opening": None,
           "dirty_at": None, "exporting": False, "last_ms": 0.0, "exported_at": None, "awaiting": frozenset(),
@@ -112,7 +114,7 @@ def start():
     except BaseException as error:
         if server is not None:
             server.close()
-        shutil.rmtree(folder, ignore_errors=True)
+        owned_paths.remove_tree(folder)   # The folder made above (private_roots records it).
         if isinstance(error, FileExistsError):
             raise LinkBusy(error.args[0] if error.args else 0) from None
         raise
@@ -121,10 +123,8 @@ def start():
     held = _state.get("agent_policy") if agent_acting() else None
     _state.update(server=server, token=token, record=str(record), error=None, folder=folder,
                   agent_policy=held or facts.new_policy(),
-                  writeback=WriteBack(bpy.app.binary_path))
-    for handlers, function in _HANDLERS:
-        if function not in handlers:
-            handlers.append(function)
+                  writeback=WriteBack())
+    _listen()
     if not bpy.app.timers.is_registered(_tick):
         bpy.app.timers.register(_tick, first_interval=POLL_SECONDS, persistent=True)
     _notify("changed")
@@ -142,13 +142,11 @@ def stop():
     _state["server"] = None
     server.close()
     protocol.remove_record(_state["record"])
-    for handlers, function in _HANDLERS:
-        if function in handlers:
-            handlers.remove(function)
+    _unlisten()
     if bpy.app.timers.is_registered(_tick):
         bpy.app.timers.unregister(_tick)
     if _state["folder"]:
-        shutil.rmtree(_state["folder"], ignore_errors=True)
+        owned_paths.remove_tree(_state["folder"])   # Only the folder Angelo made (owned_paths).
     _state.update(token=None, record=None, folder=None, dirty_at=None, opening=None, window=None)
     _notify("changed")
     return True
@@ -185,6 +183,7 @@ def _handle(client, header, info=None, lookup=None, seq=None):   # engine_link_r
             facts.from_editor(_state["facts"], _state["session"]["asset"], client, _state["server"].info_of(client),
                               header)
         return
+    grant_gestures.landed()   # Another app's request (its card, a file it opens): a dialog's OK was not for it.
     request_id = str(header.get("id", ""))[:64]
     server = _state["server"]
     info = info if info is not None else server.info_of(client) if server is not None else {}   # Also one that left.
@@ -344,50 +343,7 @@ def _broadcast(asset, header, payload=b"", live=False):
     return server.broadcast(header, payload, only=lambda info: assets.serves(asset, info, live))
 
 
-# Following the scene ---------------------------------------------------------------------------------------------
-
-def _window():
-    wm = bpy.context.window_manager
-    return live_windows.find(wm, _state["window"], live=False) or live_windows.first(wm, temporary=False)
-
-
-def _followed(window):
-    """(scene, view layer) the link exports: the window's, or the context's in a session without windows."""
-    if window is not None:
-        return window.scene, window.view_layer
-    if bpy.app.background:
-        return bpy.context.scene, bpy.context.view_layer
-    return None, None
-
-
-def scene_key(scene, view_layer):
-    """What the live export reads that an update of the scene alone can change: the shared key
-    (``scene_changes.scene_key``) and what the glTF exporter reads from the scene with the linked engine's live
-    options (``gltf_scene_reads``: its name, the camera aspect, the engine for lights, the extras Godot asks for)."""
-    key = scene_changes.scene_key(scene, view_layer)
-    found = _state["session"]
-    if found is None or scene is None:
-        return key
-    options = assets.adapter(found["asset"].engine).live_options(found["params"])
-    return (key, gltf_scene_reads.settings(scene, view_layer, options))
-
-
-@bpy.app.handlers.persistent
-def _on_depsgraph(scene, depsgraph):
-    if _state["session"] is None or _state["exporting"] or threading.current_thread() is not threading.main_thread():
-        return
-    window = _window()
-    followed, view_layer = _followed(window)
-    if followed is None or scene.session_uid != followed.session_uid:
-        return
-    changed, _state["scene"] = scene_changes.matters(depsgraph, scene, view_layer, _state["scene"], key=scene_key)
-    if changed:
-        if _state["dirty_at"] is None:   # The oldest unsent change: later ones go in the same frame.
-            _state["dirty_at"] = time.monotonic()
-        if _state["session"]["asset"].engine == "web":   # The web's frames hold only what changed.
-            web_link_live.note(depsgraph)
-
-
+@edit_tool_hold.guarded(waiting=lambda: reads.waiting(_state))   # Editors' requests, an earlier export.
 def _tick():
     server = _state["server"]
     if server is None:
@@ -480,9 +436,24 @@ def _unsure(*_args):   # Undo, redo and a file read can give objects new session
     web_link_live.unsure()
 
 
-_HANDLERS = ((bpy.app.handlers.depsgraph_update_post, _on_depsgraph), (bpy.app.handlers.load_post, _load_post),
-             (bpy.app.handlers.save_post, _save_post), (bpy.app.handlers.undo_post, _unsure),
-             (bpy.app.handlers.redo_post, _unsure), (bpy.app.handlers.load_post, _unsure))
+_HANDLERS = ((bpy.app.handlers.load_post, _load_post), (bpy.app.handlers.save_post, _save_post),
+             (bpy.app.handlers.undo_post, _unsure), (bpy.app.handlers.redo_post, _unsure),
+             (bpy.app.handlers.load_post, _unsure))   # And _on_depsgraph, on every list a change arrives on (watch).
+
+
+def _listen():
+    """Every handler the link runs while it is on: files and undo, and every way a scene change arrives."""
+    for handlers, function in _HANDLERS:
+        if function not in handlers:
+            handlers.append(function)
+    follow.listen()
+
+
+def _unlisten():
+    for handlers, function in _HANDLERS:
+        if function in handlers:
+            handlers.remove(function)
+    follow.unlisten()
 
 
 def register():

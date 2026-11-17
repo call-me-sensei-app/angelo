@@ -75,10 +75,9 @@ MAX_CHANGES, MAX_CHANGE_BYTES = 64, 16384
 
 
 def scene_mutation(name, arguments=None):
-    from .tool_specs import TOOL_MAP, FILE_TOOLS, MEMORY_NAMES, FLOW_NAMES, TEAM_NAMES, STUDIO_NAMES
-    tool = TOOL_MAP.get(name)
-    if tool is None or tool["annotations"]["readOnlyHint"] or name in EXEMPT_MUTATIONS | FILE_TOOLS | MEMORY_NAMES:
-        return False
+    from .tool_specs import READ_ONLY_TOOLS, FILE_TOOLS, MEMORY_NAMES, FLOW_NAMES, TEAM_NAMES, STUDIO_NAMES
+    if name in READ_ONLY_TOOLS or name in EXEMPT_MUTATIONS | FILE_TOOLS | MEMORY_NAMES:
+        return False   # An unknown tool falls through: a mutation (fail closed; the review of c76f2f1, SHOULD C).
     if name == "angelo_job_start":  # A render reads the scene and writes a new file; bakes and exports are held.
         return (arguments or {}).get("kind") not in RENDERS
     if name == "angelo_team_library_import":

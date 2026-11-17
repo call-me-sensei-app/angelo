@@ -3,6 +3,7 @@
 """Native Claude adapter protocol/Windows-budget tests; zero real provider runs."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import copy
 import subprocess
@@ -261,10 +262,10 @@ class ClaudeTransportTests(ClaudeAdapterFixture, unittest.TestCase):
                 errors.append(error)
         worker = threading.Thread(target=turn)
         worker.start()
-        self.assertTrue(self.process.user_written.wait(2))
+        self.assertTrue(self.process.user_written.wait(CAP_S))
         old = self.provider._transport
         self.provider.stop()
-        worker.join(2)
+        worker.join(CAP_S)
         self.assertFalse(worker.is_alive())
         self.assertEqual(replies, [None])
         self.assertEqual(errors, [])
@@ -306,10 +307,10 @@ class ClaudeTransportTests(ClaudeAdapterFixture, unittest.TestCase):
         self.host.request_tool = request
         worker = threading.Thread(target=lambda: replies.append(self.provider._native_call("angelo_inspect_scene", {}, owner=owner)))
         worker.start()
-        self.assertTrue(requested.wait(2))
+        self.assertTrue(requested.wait(CAP_S))
         self.host._epoch += 1
         callbacks[0]({"success": True, "object_count": 3})
-        worker.join(2)
+        worker.join(CAP_S)
         self.assertFalse(worker.is_alive())
         self.assertIn("no longer owns", replies[0]["error"])
         self.assertNotIn("object_count", replies[0])

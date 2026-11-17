@@ -50,8 +50,9 @@ class PerModelTextTests(unittest.TestCase):
         from angelo_agent.claude_text import claude_tail
         # Plus "angelo_goal holds a goal across turns" after the native goal tools (toolset 51, goal_mode.rst): +39 B,
         # 14,285. Accepted goal-scope correction 0b81c98224d moves that 39B clause to an 82B capability tail: +43B.
+        # The release the API facts name, Blender 5.3 (blender_release.RELEASE): +0 B, 14,328.
         self.assertEqual(digest(providers.CLAUDE_INSTRUCTIONS + CLAUDE_PLAN_INSTRUCTIONS + claude_tail(None)),
-                         ("5e658d2c4420", 14328))
+                         ("a16f9e12807b", 14328))
 
     def test_both_runtimes_state_the_job_start_arguments_in_one_form(self):
         from angelo_agent.codex_reference import job_arguments
@@ -90,10 +91,13 @@ class PerModelTextTests(unittest.TestCase):
         # This offsets the43B scope clarification without raising the existing byte budget.
         # Native Sculpt orientation now arrives before lookup (+84B); equivalent delegation prose saves83B.
         # The team plan is26,108B; the existing26,111/26,140B limits are unchanged.
-        self.assertEqual(digest(text), ("3bb8664e435b", 26108))
-        self.assertLessEqual(len(text.encode()), 26111)
+        # The release the API facts name, Blender 5.3 (blender_release.RELEASE): +0 B, 26,108.
+        # Downloads among the deferred families (toolset 55, downloads.rst): +11 B, 26,119; the limits rise by 8 B,
+        # to 26,119/26,148 (test_native_codex_launch says why).
+        self.assertEqual(digest(text), ("5b7eba33d436", 26119))
+        self.assertLessEqual(len(text.encode()), 26119)
         # On a runtime that shows tools' pictures without image() (image_proof.codex_guidance): that sentence only,
-        # +29 B. Every other runtime keeps the text above.
+        # +29 B. Every other runtime keeps the text above. The release the API facts name (Blender 5.3): +0 B, 26,137.
         forwarded = providers.codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True,
                                                  forwarded=True)
         goal = "angelo_goal holds a goal across turns when the person asks for that continuation.\n"
@@ -103,8 +107,8 @@ class PerModelTextTests(unittest.TestCase):
         automatic = ("adds one data:image URL per further line, each shown to you automatically;\n"
                      "image(url) is optional (its second argument")
         self.assertEqual(forwarded, text.replace(manual, automatic))
-        self.assertEqual(len(forwarded.encode()), 26137)  # Same native policy, plus only the29B picture fact.
-        self.assertLessEqual(len(forwarded.encode()), 26140)
+        self.assertEqual(len(forwarded.encode()), 26148)  # Same native policy, plus only the29B picture fact.
+        self.assertLessEqual(len(forwarded.encode()), 26148)
 
     def test_deferred_sculpt_policy_arrives_before_any_family_lookup(self):
         from itertools import product
@@ -122,7 +126,7 @@ class PerModelTextTests(unittest.TestCase):
                 self.assertNotIn("mesh_revision", codex_tail(None, deferred=True, team=team))
                 # A non-sculpt lookup receives the same initial policy; no family request is required.
                 if plan:
-                    self.assertLessEqual(len(text.encode()), 26140 if forwarded else 26111)
+                    self.assertLessEqual(len(text.encode()), 26148 if forwarded else 26119)
         restricted = set(COLLABORATOR_TOOLS) - set(SCULPT_NAMES)
         self.assertNotIn(SCULPT_SENTENCE, codex_tail(restricted, deferred=True, team=False))
         for name in SCULPT_NAMES:
@@ -142,7 +146,8 @@ class PerModelTextTests(unittest.TestCase):
         # "angelo_goal holds a goal across turns" after the native goal tools (toolset 51, goal_mode.rst): +39 B, 15,896.
         # 0b81c98224d removes the 39B universal goal clause from the no-goal shared base; scoped tails keep it.
         # The equivalent concise delegation policy saves83B; full Sculpt guidance is unchanged.
-        self.assertEqual(digest(providers.INSTRUCTIONS), ("4ad508ae5946", 15774))
+        # The release the API facts name, Blender 5.3 (blender_release.RELEASE): +0 B, 15,774.
+        self.assertEqual(digest(providers.INSTRUCTIONS), ("a8b4d9982aa9", 15774))
 
     def test_every_runtime_text_states_each_shared_fact_once(self):
         from angelo_agent.agent_guidance import BLENDER_API_FACTS

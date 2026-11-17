@@ -97,12 +97,8 @@ def machine():
 
 def harness_commit():
     """The checkout this harness runs from (its git HEAD; an extracted tree's ANGELO_SOURCE_COMMIT), not the binary."""
-    try:
-        found = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True,
-                               timeout=20, env=dict(os.environ, GIT_LFS_SKIP_SMUDGE="1"))
-        return found.stdout.strip() or os.environ.get("ANGELO_SOURCE_COMMIT", "")
-    except (OSError, subprocess.SubprocessError):
-        return os.environ.get("ANGELO_SOURCE_COMMIT", "")
+    import own_checkout   # This tree's own HEAD, never a repository's around it.
+    return own_checkout.revision(ROOT) or os.environ.get("ANGELO_SOURCE_COMMIT", "")
 
 
 def build_identity(app):

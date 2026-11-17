@@ -95,13 +95,31 @@ def finish(error=None):
     bpy.ops.wm.quit_blender()
 
 
-def wait(phase, condition, limit=20):
+def wait(phase, condition, limit=20, why=None):
+    """``why``: what the step was waiting on, said when it times out."""
     since = state.setdefault("since", {}).setdefault(phase, time.monotonic())
     if condition():
         return True
     if time.monotonic() - since > limit:
-        raise AssertionError("Timed out in " + phase)
+        raise AssertionError("Timed out in " + phase + (": " + why() if why else ""))
     return False
+
+
+def in_manual():
+    """Manual Mode, as asked: the change finished and did not fail, and the window shows a workspace of its own
+    (not Director's, not a temporary screen)."""
+    from angelo_agent import director
+    w = window()
+    return (settled() and director.last_error is None and not director.is_director(w)
+            and w.workspace is not None and w.screen is not None and not w.screen.is_temporary)
+
+
+def mode_state():
+    from angelo_agent import director
+    w = window()
+    return "waiting on %s; Director %s, last error %r, workspace %r" % (
+        ", ".join(qa_boot.waiting_on(w)) or "nothing", director.is_director(w), director.last_error,
+        w.workspace.name if w.workspace else None)
 
 
 def start_area(where):
@@ -184,10 +202,18 @@ def tick():
                 area.spaces.active.node_tree = None   # No flow open: the start page.
                 area.tag_redraw()
             else:   # Manual: the Generation Flows tab, as the top bar's Flows shows it.
-                if director.is_director(window()):
-                    director.request_mode(window(), "MANUAL", persist=False)
+                # One request per step, then wait for that change: a change still in flight refuses another
+                # ("The workspace mode is already changing"), and one can outlast a tick (seconds on a software
+                # renderer).
+                asked = state.setdefault("asked", [])
+                if state["step"] not in asked:
+                    if not wait(phase + str(state["step"]), settled, why=mode_state):
+                        return .3
+                    if director.is_director(window()):   # Already Manual: nothing to ask.
+                        director.request_mode(window(), "MANUAL", persist=False)
+                    asked.append(state["step"])
                     return .5
-                if not wait(phase + str(state["step"]), lambda: settled() and not director.is_director(window())):
+                if not wait(phase + str(state["step"]) + " manual", in_manual, why=mode_state):
                     return .3
                 studio_workspaces.show(window(), "flows")
             state["phase"] = "check"

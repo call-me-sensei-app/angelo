@@ -20,6 +20,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent.chat_settings import clean_options
 from angelo_agent.cli_runtime import RUNTIMES, format_version
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 
 def claude_version(version):
@@ -48,7 +49,7 @@ class QueuePipe:
 
     def __iter__(self):
         while True:
-            value = self.lines.get(timeout=5)
+            value = self.lines.get(timeout=CAP_S)
             if value is None:
                 return
             self.reads += 1
@@ -165,8 +166,10 @@ class ClaudeAdapterFixture:
         from angelo_agent.providers import ClaudeProvider
         self.host = host()
         self.provider = ClaudeProvider(self.host, {})
-        self.provider.executable = "claude.exe"
-        self.provider.env = {"FIXTURE": "only"}
+        # What each start is launched with (built again at every start: runtime_launch.claude_launch).
+        self.inputs = patch("angelo_agent.providers.claude_launch", return_value=("claude.exe", {"FIXTURE": "only"}))
+        self.launch_inputs = self.inputs.start()   # Its return_value: (program, environment) of every start.
+        self.addCleanup(self.inputs.stop)
         self.process = NativeInitializeFixture(on_user=lambda process, _: process.stdout.emit(completed()))
         self.probe = patch("angelo_agent.child_process.run", return_value=SimpleNamespace(
             returncode=0, stdout=SUPPORTED))

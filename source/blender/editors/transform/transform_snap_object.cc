@@ -8,10 +8,10 @@
 
 #include <algorithm>
 
-#include "BLI_listbase.h"
-#include "BLI_math_matrix.h"
+#include "BLI_listbase.hh"
 #include "BLI_math_matrix.hh"
-#include "BLI_math_vector.h"
+#include "BLI_math_matrix_c.hh"
+#include "BLI_math_vector_c.hh"
 
 #include "DNA_screen_types.h"
 
@@ -318,8 +318,8 @@ void SnapData::register_result(SnapObjectContext *sctx,
 
   /* Global space. */
   sctx->ret.loc = math::transform_point(obmat, sctx->ret.loc);
-  const float3x3 normal_transform = math::transpose(math::invert(float3x3(obmat)));
-  sctx->ret.no = math::normalize(math::transform_direction(normal_transform, sctx->ret.no));
+  sctx->ret.no = math::normalize(
+      math::transform_direction_transposed(math::invert(float3x3(obmat)), sctx->ret.no));
 
 #ifndef NDEBUG
   /* Make sure this is only called once. */
@@ -342,8 +342,8 @@ void SnapData::register_result_raycast(SnapObjectContext *sctx,
   const float depth_max = is_in_front ? sctx->ret.ray_depth_max_in_front : sctx->ret.ray_depth_max;
   if (hit->dist <= depth_max) {
     float3 co = math::transform_point(obmat, float3(hit->co));
-    const float3x3 normal_transform = math::transpose(math::invert(float3x3(obmat)));
-    float3 no = math::normalize(math::transform_direction(normal_transform, float3(hit->no)));
+    float3 no = math::normalize(
+        math::transform_direction_transposed(math::invert(float3x3(obmat)), float3(hit->no)));
 
     sctx->ret.loc = co;
     sctx->ret.no = no;
@@ -520,6 +520,7 @@ static eSnapMode iter_snap_objects(SnapObjectContext *sctx, IterSnapObjsCallback
 
     const bool is_object_active = (&base == base_act);
     Object *obj_eval = DEG_get_evaluated(sctx->runtime.depsgraph, base.object);
+
     if (obj_eval->transflag & OB_DUPLI || bke::object_has_geometry_set_instances(*obj_eval)) {
       object_duplilist(sctx->runtime.depsgraph, obj_eval, nullptr, duplilist);
       for (DupliObject &dupli_ob : duplilist) {
@@ -918,24 +919,25 @@ eSnapMode snap_object_center(SnapObjectContext *sctx,
                              const float4x4 &obmat,
                              eSnapMode snap_to_flag)
 {
-  /* May extend later (for now just snaps to empty or camera center). */
 
-  if (ob_eval->transflag & OB_DUPLI) {
-    return SCE_SNAP_TO_NONE;
+  eSnapMode retval = SCE_SNAP_TO_NONE;
+  if ((snap_to_flag & SCE_SNAP_TO_POINT) && ELEM(ob_eval->type, OB_EMPTY, OB_LAMP, OB_CAMERA)) {
+    retval = SCE_SNAP_TO_POINT;
   }
-
-  /* For now only vertex supported. */
-  if ((snap_to_flag & SCE_SNAP_TO_POINT) == 0) {
+  else if (snap_to_flag & SCE_SNAP_TO_ORIGIN) {
+    retval = SCE_SNAP_TO_ORIGIN;
+  }
+  else {
     return SCE_SNAP_TO_NONE;
   }
 
   SnapData nearest2d(sctx, obmat);
 
-  nearest2d.clip_planes_enable(sctx, ob_eval);
+  nearest2d.clip_planes_enable(sctx, ob_eval, true);
 
   if (nearest2d.snap_point(float3(0.0f))) {
     nearest2d.register_result(sctx, ob_eval, static_cast<const ID *>(ob_eval->data));
-    return SCE_SNAP_TO_POINT;
+    return retval;
   }
 
   return SCE_SNAP_TO_NONE;
@@ -951,12 +953,19 @@ static eSnapMode snap_obj_fn(SnapObjectContext *sctx,
                              bool is_object_active,
                              bool use_hide)
 {
-  if (ob_data == nullptr && (ob_eval->type == OB_MESH)) {
-    return snap_object_editmesh(
-        sctx, ob_eval, nullptr, obmat, sctx->runtime.snap_to_flag, use_hide);
-  }
+
+  eSnapMode retval = SCE_SNAP_TO_NONE;
 
   if (ob_data == nullptr) {
+    if (ob_eval->type == OB_MESH) {
+      retval = snap_object_editmesh(
+          sctx, ob_eval, nullptr, obmat, sctx->runtime.snap_to_flag, use_hide);
+
+      if (retval != SCE_SNAP_TO_NONE) {
+        return retval;
+      }
+    }
+
     return snap_object_center(sctx, ob_eval, obmat, sctx->runtime.snap_to_flag);
   }
 
@@ -972,16 +981,15 @@ static eSnapMode snap_obj_fn(SnapObjectContext *sctx,
     {
       /* The final Curves geometry is generated as a Mesh. Skip this Mesh if the target is not
        * #SNAP_GEOM_FINAL. */
-      return SCE_SNAP_TO_NONE;
+      retval = SCE_SNAP_TO_NONE;
     }
-    return snap_object_mesh(sctx, ob_eval, ob_data, obmat, sctx->runtime.snap_to_flag, use_hide);
+    else {
+      retval = snap_object_mesh(
+          sctx, ob_eval, ob_data, obmat, sctx->runtime.snap_to_flag, use_hide);
+    }
   }
 
-  eSnapMode retval = SCE_SNAP_TO_NONE;
   switch (ob_eval->type) {
-    case OB_MESH: {
-      break;
-    }
     case OB_ARMATURE:
       retval = snapArmature(sctx, ob_eval, obmat, is_object_active);
       break;
@@ -994,18 +1002,16 @@ static eSnapMode snap_obj_fn(SnapObjectContext *sctx,
         retval = snapCurve(sctx, ob_eval, obmat);
       }
       break;
-    case OB_FONT: {
-      break;
-    }
-    case OB_EMPTY:
-    case OB_LAMP:
-      retval = snap_object_center(sctx, ob_eval, obmat, sctx->runtime.snap_to_flag);
-      break;
     case OB_CAMERA:
-      retval = snapCamera(sctx, ob_eval, obmat, sctx->runtime.snap_to_flag);
+      retval = snapCamera(sctx, ob_eval, obmat);
       break;
+    /* TODO: Add remaining specific handling of objects (grease pencil, meta-ball, ...). */
     default:
       break;
+  }
+
+  if (retval == SCE_SNAP_TO_NONE) {
+    return snap_object_center(sctx, ob_eval, obmat, sctx->runtime.snap_to_flag);
   }
 
   return retval;
@@ -1093,33 +1099,17 @@ void snap_object_context_destroy(SnapObjectContext *sctx)
   MEM_delete(sctx);
 }
 
-void snap_object_context_set_editmesh_callbacks(SnapObjectContext *sctx,
-                                                bool (*test_vert_fn)(BMVert *, void *user_data),
-                                                bool (*test_edge_fn)(BMEdge *, void *user_data),
-                                                bool (*test_face_fn)(BMFace *, void *user_data),
-                                                void *user_data)
+void snap_object_context_set_editmesh_target(SnapObjectContext *sctx,
+                                             const SnapEditMeshTarget target)
 {
-  bool is_cache_dirty = false;
-  if (sctx->callbacks.edit_mesh.test_vert_fn != test_vert_fn) {
-    sctx->callbacks.edit_mesh.test_vert_fn = test_vert_fn;
-    is_cache_dirty = true;
+  if (sctx->editmesh_target == target) {
+    return;
   }
-  if (sctx->callbacks.edit_mesh.test_edge_fn != test_edge_fn) {
-    sctx->callbacks.edit_mesh.test_edge_fn = test_edge_fn;
-    is_cache_dirty = true;
-  }
-  if (sctx->callbacks.edit_mesh.test_face_fn != test_face_fn) {
-    sctx->callbacks.edit_mesh.test_face_fn = test_face_fn;
-    is_cache_dirty = true;
-  }
-  if (sctx->callbacks.edit_mesh.user_data != user_data) {
-    sctx->callbacks.edit_mesh.user_data = user_data;
-    is_cache_dirty = true;
-  }
+  sctx->editmesh_target = target;
 
-  if (is_cache_dirty) {
-    sctx->editmesh_caches.clear();
-  }
+  /* Rebuild the meshes too, as they are not checked for updates during transform. When snapping
+   * to the base, the selection is restored to its original positions. */
+  sctx->editmesh_caches.clear();
 }
 
 static bool snap_object_context_runtime_init(SnapObjectContext *sctx,
@@ -1454,7 +1444,8 @@ eSnapMode snap_object_project_view3d_ex(SnapObjectContext *sctx,
 
   snap_to_flag = sctx->runtime.snap_to_flag;
 
-  BLI_assert(snap_to_flag & (SCE_SNAP_TO_GEOM | SCE_SNAP_TO_GRID | SCE_SNAP_INDIVIDUAL_NEAREST));
+  BLI_assert(snap_to_flag & (SCE_SNAP_TO_GEOM | SCE_SNAP_TO_GRID | SCE_SNAP_INDIVIDUAL_NEAREST |
+                             SCE_SNAP_TO_ORIGIN));
 
   bool has_hit = false;
 
@@ -1482,7 +1473,9 @@ eSnapMode snap_object_project_view3d_ex(SnapObjectContext *sctx,
     }
   }
 
-  if (snap_to_flag & (SCE_SNAP_TO_POINT | SNAP_TO_EDGE_ELEMENTS | SCE_SNAP_TO_FACE_MIDPOINT)) {
+  if (snap_to_flag &
+      (SCE_SNAP_TO_POINT | SNAP_TO_EDGE_ELEMENTS | SCE_SNAP_TO_FACE_MIDPOINT | SCE_SNAP_TO_ORIGIN))
+  {
     eSnapMode elem_test, elem = SCE_SNAP_TO_NONE;
 
     /* Remove what has already been computed. */

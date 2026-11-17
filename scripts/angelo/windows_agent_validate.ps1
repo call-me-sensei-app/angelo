@@ -30,6 +30,7 @@ param(
 $ErrorActionPreference = "Continue"
 # A tree a send made must be exactly the commit it was sent (windows_source_send.ps1); elsewhere nothing is checked.
 . (Join-Path $SourceDir "scripts\angelo\windows_source_send.ps1"); Assert-SentTree $SourceDir
+. (Join-Path $SourceDir "scripts\angelo\windows_release_toolchain.ps1")   # functions only: Get-AngeloBlenderSeries
 New-Item -ItemType Directory -Force $ResultsDir | Out-Null
 $results = New-Object System.Collections.ArrayList
 function Add-Result([string]$Name, [string]$Status, [string]$Detail = "") {
@@ -106,7 +107,7 @@ if (-not $SkipBuild) {
 $exe = if ($build) { Join-Path $build.FullName "bin\Release\Angelo.exe" } else { "" }
 Test-Check "agent: built Angelo.exe carries this source's add-on" {
     if (-not $exe -or -not (Test-Path $exe)) { throw "no Angelo.exe under $buildRoot\build_windows_Lite*\bin\Release" }
-    $installed = Join-Path $build.FullName "bin\Release\5.2\scripts\addons_core\angelo_agent\windows_nt.py"
+    $installed = Join-Path $build.FullName "bin\Release\$(Get-AngeloBlenderSeries $SourceDir)\scripts\addons_core\angelo_agent\windows_nt.py"
     $source = Join-Path $SourceDir "scripts\addons_core\angelo_agent\windows_nt.py"
     if ((Get-FileHash $installed).Hash -ne (Get-FileHash $source).Hash) { throw "the build's windows_nt.py differs from the source" }
     $exe

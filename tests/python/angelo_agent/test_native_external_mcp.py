@@ -9,6 +9,7 @@ doc/angelo/external_mcp.rst.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import io
 import json
@@ -25,6 +26,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import angelo_guard_twin  # noqa: E402
 from angelo_agent import cli_client, managed_policy
 from angelo_agent import external_cli_protocol as protocol
 from angelo_agent.controller import ToolDispatchBudget
@@ -229,7 +231,7 @@ class AppTests(unittest.TestCase):
 
         def person(controller, call):
             seen.append(call.name)
-            controller.review_script(call)
+            angelo_guard_twin.harness(controller.review_script, call)   # The person's Approve.
             controller.execute_tool(call, self.executor, controller.document)
         self.approve = person
         result = self.call("angelo_execute_python", SCRIPT)
@@ -339,7 +341,7 @@ class AppTests(unittest.TestCase):
 
         def person(controller, call):
             seen.append(call.name)
-            controller.review_script(call)
+            angelo_guard_twin.harness(controller.review_script, call)   # The person's Approve.
             controller.execute_tool(call, self.executor, controller.document)
         self.approve = None
         started = self.call("angelo_task", {"task": "Make a cube", "wait_seconds": 0})
@@ -355,7 +357,7 @@ class AppTests(unittest.TestCase):
         self.assertTrue(busy["isError"], "tool calls wait while the app's task runs")
         # The provider and review preparation run on threads. A fixed number of
         # pump calls can finish before either thread is scheduled under CI load.
-        deadline = time.monotonic() + 5.0
+        deadline = time.monotonic() + CAP_S
         while True:
             self.tick()
             waiting = self.call("angelo_task_status", {"task_id": state["task_id"], "wait_seconds": 0})
@@ -478,7 +480,7 @@ class Harness(unittest.TestCase):
         while thread.is_alive() and time.monotonic() < deadline:
             self.tick()
             time.sleep(0.005)
-        thread.join(1)
+        thread.join(CAP_S)
         self.assertTrue(out, "no answer")
         return out[0]
 
@@ -518,7 +520,7 @@ class RedeliveryTests(Harness):
                                          "presentation": "mcp", "wait": 0.5}}, self.state, self.name, 5,
             key=AppRegistry(self.state).key(self.name)))))
         threads[1].start()
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + CAP_S
         while any(t.is_alive() for t in threads) and time.monotonic() < deadline:
             self.tick()
             time.sleep(0.005)
@@ -606,7 +608,7 @@ class TaskReachTests(Harness):
                                                       ("angelo_studio_list", {}))):
                     done = threading.Event()
                     context.request_tool("t%d" % index, tool, args, lambda r, t=tool: (ran.append((t, r)), done.set()))
-                    done.wait(5)
+                    done.wait(CAP_S)
                 context.emit("message_complete", {"item": "reply", "text": "listed"})
                 return "completed"
 

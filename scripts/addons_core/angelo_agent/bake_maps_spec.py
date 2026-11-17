@@ -14,6 +14,7 @@ Model-facing refusals are English.
 """
 
 from .refusal_codes import RefusalError
+from . import read_only
 
 KIND = "BAKE_MAPS"
 CHANNELS = ("BASE_COLOR", "METALLIC", "ROUGHNESS", "NORMAL", "EMISSION", "ALPHA", "AO", "HEIGHT")
@@ -185,10 +186,11 @@ def validate(args, request, handle_check):
         request["targets"] = [handle_check(item, "Each of targets") for item in targets]
         if len(set(request["targets"])) != len(targets):
             raise _error("targets names each object once")
-    else:
-        request["targets"] = [request.pop("target")]
-    request.pop("target", None)
-    if "sources" in args and len(request["targets"]) != 1:
+        request.pop("target", None)
+    # One target stays ``target``: the canonical request uses the agent's own names, so it validates again unchanged
+    # (the executor and the job host each validate what the one before returned).
+    aimed = request.get("targets") or [request["target"]]
+    if "sources" in args and len(aimed) != 1:
         raise _error("A bake from sources bakes onto exactly one target")
     if "maps" in args:
         maps = args["maps"]
@@ -205,7 +207,6 @@ def validate(args, request, handle_check):
         if type(margin) is not int or not 0 <= margin <= MAX_MARGIN:
             raise _error("margin is a whole number of pixels from 0 to %d" % MAX_MARGIN)
         request["margin"] = margin
-    request.setdefault("margin", DEFAULT_MARGIN)
     image_format = request.setdefault("format", "PNG")
     if image_format not in FORMATS:
         raise _error("BAKE_MAPS writes PNG or OPEN_EXR files")
@@ -238,3 +239,6 @@ CARD_FIELDS = frozenset({"targets", "maps", "margin", "depth"})   # job_spec.val
 FIELDS = frozenset({"target", "sources", "cage", "extrusion", "ray_distance", "output", "resolution", "samples",
                     "format", *SCHEMA})
 DESCRIPTION = "BAKE_MAPS bakes a texture set: every PBR map the materials use, as files in output. "
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), 'BASE_NAMES', 'PACKED_NAMES', 'DEFAULT_RESOLUTION', 'FORMATS')

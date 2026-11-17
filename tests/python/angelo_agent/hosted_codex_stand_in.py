@@ -58,6 +58,50 @@ def tag(chat):
     return "[chat:%s]" % chat
 
 
+_APPENDING = threading.Lock()
+_LOCKED_BYTE = 2 ** 31 - 2   # Past any log's end, so a reader never meets the lock.
+
+
+def append_row(path, row):
+    """``row`` as one whole JSON line at the end of ``path``, whoever else appends to it: this process's other
+    threads (its message reader and its turn) or another stand-in.
+
+    POSIX ``O_APPEND`` makes one write land whole at the end. Windows' C runtime emulates it as a seek then a write,
+    so two handles could write over each other's rows, which read back as a torn line (``Extra data``,
+    test_blender_parallel_merge@hosted on a Windows T4). There every writer holds one byte's lock around its write."""
+    data = (json.dumps(row, default=str) + "\n").encode("utf-8")
+    with _APPENDING:
+        handle = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o644)
+        try:
+            if os.name != "nt":
+                os.write(handle, data)
+                return
+            import msvcrt
+            deadline = time.monotonic() + 60.0
+            while True:   # LK_LOCK would sleep a whole second between tries.
+                os.lseek(handle, _LOCKED_BYTE, os.SEEK_SET)
+                try:
+                    msvcrt.locking(handle, msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    if time.monotonic() > deadline:
+                        raise
+                    time.sleep(0.001)
+            try:
+                os.write(handle, data)   # The runtime seeks to the end first (O_APPEND).
+            finally:
+                os.lseek(handle, _LOCKED_BYTE, os.SEEK_SET)
+                msvcrt.locking(handle, msvcrt.LK_UNLCK, 1)
+        finally:
+            os.close(handle)
+
+
+def read_rows(path):
+    """The rows of a log ``append_row`` writes, its complete lines only: a row still being written is read next time."""
+    data = Path(path).read_bytes()
+    return [json.loads(line) for line in data[:data.rfind(b"\n") + 1].decode("utf-8").split("\n") if line.strip()]
+
+
 class Server:
     def __init__(self, root):
         self.root = Path(root)
@@ -91,8 +135,7 @@ class Server:
     def log(self, kind, **fields):
         folder = self.folder or self.root / "unbound"
         folder.mkdir(parents=True, exist_ok=True)
-        with open(folder / "log.jsonl", "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(dict(fields, kind=kind, pid=os.getpid(), t=time.time()), default=str) + "\n")
+        append_row(folder / "log.jsonl", dict(fields, kind=kind, pid=os.getpid(), t=time.time()))
 
     def note(self, method, **params):
         self.send({"method": method, "params": params})
@@ -207,7 +250,7 @@ class Server:
             elif "hold" in step:
                 self.log("held", name=step["hold"], turn=number)
                 release = (self.folder or self.root) / ("release-" + str(step["hold"]))
-                while not release.exists() and not active["interrupted"].wait(0.02):
+                while not release.exists() and not active["interrupted"].wait(0.02):  # window: the loop's pace
                     pass
             elif "sleep" in step:
                 active["interrupted"].wait(float(step["sleep"]))
@@ -252,8 +295,7 @@ class Server:
                    turns=self.turns)
         try:
             self.root.mkdir(parents=True, exist_ok=True)
-            with open(self.root / "lifetimes.jsonl", "a", encoding="utf-8") as stream:
-                stream.write(json.dumps(row) + "\n")
+            append_row(self.root / "lifetimes.jsonl", row)   # Every stand-in process appends here.
         except OSError:
             pass
 

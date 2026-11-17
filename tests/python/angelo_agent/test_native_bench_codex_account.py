@@ -29,7 +29,7 @@ import provider_accounts  # noqa: E402
 class HandOver(unittest.TestCase):
     def test_the_mac_side_requires_the_variable_and_sends_it_without_printing_it(self):
         text = VALIDATE.read_text(encoding="utf-8")
-        bench = text[text.index("bench prep|dry|run"):]
+        bench = text[text.index("usage: $0 bench prep|dry|"):]   # 1.1 adds prepdry to the bench stages.
         self.assertIn('"${%s:?' % provider_accounts.CODEX_ACCOUNT_ENV, bench)   # A send without it stops.
         sent = bench.index('EXTRA_META+=",%s=' % KEY)
         dry = bench.index('if [[ "${ANGELO_GCP_DRY_RUN:-0}" == "1" ]]')

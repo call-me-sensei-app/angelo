@@ -27,6 +27,8 @@ reaches for a host off the list. No real service is contacted.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
+import platform_env
 
 import gzip
 import hashlib
@@ -120,7 +122,7 @@ class TeamHostsCase(unittest.TestCase):
         environ = {name: value for name, value in os.environ.items()
                    if not name.lower().endswith("_proxy") and name.upper() not in ENDPOINT_VARIABLES}
         environ[product_env.PREFIX + managed_policy.TEST_FILE_VARIABLE] = str(self.policy_file)
-        environment = patch.dict(os.environ, environ, clear=True)
+        environment = platform_env.cleared(environ)
         environment.start()
         self.addCleanup(environment.stop)
         managed_policy.reset()
@@ -209,7 +211,7 @@ class TeamHostsCase(unittest.TestCase):
     def stop(self, account):
         """Close ``account`` and wait for every thread it started, which open files in ``self.work``."""
         account.close()
-        self.assertTrue(account.join(10), "a team account thread outlived its test")
+        self.assertTrue(account.join(CAP_S), "a team account thread outlived its test")
 
     def restored_account(self):
         """The team account as Angelo starts it: a stored sign-in restored, its token refreshed, providers read."""

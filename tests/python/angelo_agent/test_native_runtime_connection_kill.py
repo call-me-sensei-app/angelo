@@ -59,6 +59,9 @@ def _namespace(controllers, records=None):
             "runtime_bindings": runtime_bindings, "connections": lambda: store,
             "_authentication": SimpleNamespace(cancel=lambda scope: None),
             "saved_keys_ui": SimpleNamespace(uses_saved_key=lambda record: False),
+            # No connection shares these keys (shared_keys_ui; pinned by test_native_gemini_connection.py).
+            "shared_keys_ui": SimpleNamespace(in_use=lambda identity: False, share=lambda identity: None,
+                                              strand=lambda identity: False),
             "worker_consent_lead": SimpleNamespace(changed=lambda: None),
             "preferences_ui": SimpleNamespace(redraw=lambda: None), "RuntimeError": RuntimeError, "Text": str,
             "n_": str}
@@ -232,7 +235,7 @@ class NoSiteDependsOnARegisteredChat(unittest.TestCase):
 
     def test_team_sign_out_ends_its_modes_directly(self):
         source = (Path(runtime_bindings.__file__).parent / "team_account_ui.py").read_text(encoding="utf-8")
-        self.assertIn("end_modes(TEAM_MODES)", source[source.index("_account.sign_out()"):])
+        self.assertIn("end_organization()", source[source.index("_account.sign_out()"):])   # Team and endpoint modes.
 
 
 if __name__ == "__main__":

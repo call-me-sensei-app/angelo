@@ -4,7 +4,7 @@
 
 import os
 
-from . import live_windows
+from . import color_spaces, live_windows, owned_paths
 
 
 def capture(window, scene, references, *, resolution=512):
@@ -80,10 +80,11 @@ def capture(window, scene, references, *, resolution=512):
             rgba = np.frombuffer(bytes(pixels),dtype=np.uint8).astype(np.float32)/255
         reference = references.new_observation('Staged program preview · not applied')
         image = bpy.data.images.new('Angelo private program preview',width=resolution,height=resolution,alpha=True)
-        image.colorspace_settings.name = 'Non-Color'
+        color_spaces.mark_stored(image.colorspace_settings)
         image.pixels.foreach_set(rgba)
         image.filepath_raw = reference['path']
         image.file_format = 'PNG'
+        owned_paths.require_writable(reference['path'])
         image.save()
         os.chmod(reference['path'],0o600)
         reference['bytes'] = os.path.getsize(reference['path'])

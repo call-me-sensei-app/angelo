@@ -5,7 +5,7 @@
 import math
 import re
 
-from .chat_settings import EFFORTS
+from .chat_settings import EFFORTS, chat_effort
 from .ui_text import iface_, n_
 
 MODEL_ROW = 29
@@ -22,7 +22,10 @@ def effort_name(value):
 def model_name(model):
     # Some runtime catalogs hyphenate the family in displayName whereas Codex
     # shows a space. Presentation only: never change the real provider ID.
-    return re.sub(r"^(GPT-\d+(?:\.\d+)*)-(Sol|Astra|Luna|Terra)$", r"\1 \2", model["name"])
+    name = re.sub(r"^(GPT-\d+(?:\.\d+)*)-(Sol|Astra|Luna|Terra)$", r"\1 \2", model["name"])
+    if model.get("untested"):   # A custom endpoint's model mapped to no Angelo model (endpoint_connections).
+        return iface_("{model} · untested", model=name)
+    return name
 
 
 def supports_fast(model):
@@ -63,11 +66,8 @@ def effort_choices(model):
 
 
 def effective_effort(model, value):
-    choices = effort_choices(model)
-    if value in choices or not choices:
-        return value
-    default = model.get("default_effort")
-    return default if default in choices else choices[0]
+    """The effort shown for a chat whose effort option is ``value`` ("" is no choice): the one its request sends."""
+    return chat_effort({"effort": value}, model)
 
 
 def provider_group(model):
@@ -211,3 +211,28 @@ def slider_value(rect, x, choices):
     start, end = rect[0] + 14, rect[0] + rect[2] - 14
     ratio = max(0, min(1, (x - start) / max(1, end - start)))
     return choices[min(len(choices) - 1, int(ratio * (len(choices) - 1) + 0.5))]
+
+
+def key_focus(state):
+    """``(action, value)`` of the control a key acts on in the chat now, as C's focus: the open popover's (the effort
+    slider, the model list's or the + menu's cursor row), else the canvas's keyboard focus; ``("", None)``: none."""
+    popup = state.get("popover")
+    if not popup:
+        return state.get("focus") or ("", None)
+    kind, cursor = popup.get("kind"), popup.get("cursor")
+    if kind == "controls":
+        return next(((a, v) for _r, a, v in state.get("popup_hits", ()) if a == "popup_slider"), ("", None))
+    if kind == "models":
+        rows = popup.get("rows") or []
+        row = rows[cursor] if isinstance(cursor, int) and 0 <= cursor < len(rows) else None
+        if row is None or row["kind"] == "empty":
+            return ("", None)
+        return ("popup_group" if row["kind"] == "provider" else "popup_select_model", row["value"])
+    if kind == "add":
+        stops = popup.get("stops") or []
+        if popup.get("keyboard") and isinstance(cursor, int) and 0 <= cursor < len(stops):
+            return (stops[cursor][0], stops[cursor][1])
+        return ("", None)
+    rows = popup.get("rows") or []   # A plain list (the Flows popup): its cursor row.
+    row = rows[cursor] if isinstance(cursor, int) and 0 <= cursor < len(rows) else None
+    return (row.get("action"), row.get("value")) if isinstance(row, dict) and row.get("action") else ("", None)

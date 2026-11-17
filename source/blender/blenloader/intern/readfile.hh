@@ -13,14 +13,14 @@
 #include <optional>
 
 #ifdef WIN32
-#  include "BLI_winstuff.h"
+#  include "BLI_winstuff.hh"
 #endif
 
 #include "BLI_enum_flags.hh"
-#include "BLI_fileops.h"
 #include "BLI_fileops.hh"
-#include "BLI_filereader.h"
+#include "BLI_filereader.hh"
 #include "BLI_map.hh"
+#include "BLI_set.hh"
 
 #include "DNA_sdna_types.h"
 #include "DNA_space_types.h"
@@ -92,6 +92,8 @@ struct FileData {
   std::optional<BLI_stat_t> file_stat;
   /** Angelo: the file read, identified on its descriptor as it was opened (#BLO_angelo_last_read). */
   std::optional<FileIdentity> file_identity;
+  /** Angelo: the file's status change time when opened (with #file_identity, its version). */
+  int64_t file_changed_ns = 0;
   /** Only file-backed asset inputs and their packed descendants retain this route.
    * Memory Undo readers deliberately have no asset source route. */
   std::shared_ptr<const BLOAssetSourcePaths> asset_source_paths;
@@ -103,17 +105,19 @@ struct FileData {
    */
   int undo_direction = 0;
 
-  /** Used for relative paths handling.
+  /**
+   * Used for relative paths handling.
    *
    * Typically the actual filepath of the read blend-file, except when recovering
    * save-on-exit/autosave files. In the latter case, it will be the path of the file that
    * generated the auto-saved one being recovered.
    *
-   * NOTE: Currently expected to be the same path as #BlendFileData.filepath. */
+   * NOTE: Currently expected to be the same path as #BlendFileData.filepath.
+   */
   char relabase[FILE_MAX] = {};
 
   /** General reading variables. */
-  SDNA *filesdna = nullptr;
+  std::unique_ptr<SDNA> filesdna;
   const SDNA *memsdna = nullptr;
   /** Array of #eSDNA_StructCompare. */
   const char *compflags = nullptr;
@@ -154,7 +158,7 @@ struct FileData {
    * \note This is initialized from #LibraryLink_Params.id_tag_extra since passing it as an
    * argument would need an additional argument to be passed around when expanding library data.
    */
-  int id_tag_extra = 0;
+  eID_Tag id_tag_extra = {};
 
   OldNewMap *datamap = nullptr;
   OldNewMap *globmap = nullptr;
@@ -167,6 +171,16 @@ struct FileData {
    * Used during library-linking process (see #lib_link_all).
    */
   OldNewMap *libmap = nullptr;
+
+  /**
+   * Undo: packed IDs left in the old Main that the loaded step read again under the same session
+   * UID (a full read), mapped to that copy, and the kept IDs using them: remapped once the read is
+   * complete, see #read_undo_keep_packed_ids_used_by_kept_ids.
+   */
+  Map<ID *, ID *> undo_reread_packed_ids;
+  Set<ID *> undo_reread_packed_id_users;
+  /** Undo: libraries moved or created by that function, whose names are made unique at its end. */
+  Set<Library *> undo_kept_libraries;
 
   BLOCacheStorage *cache_storage = nullptr;
 
@@ -185,6 +199,13 @@ struct FileData {
   Main *bmain = nullptr;
   /** The existing root (main, local) Main, used for undo. */
   Main *old_bmain = nullptr;
+  /** Angelo, undo only: the memfile this FileData reads (its #MemFileStoredIDs). */
+  MemFile *undo_memfile = nullptr;
+  /**
+   * Angelo, undo only: the old IDs to read again although their stored chunks are identical,
+   * by session UID (`read_undo_ids_to_reread` in readfile.cc). Computed once per read.
+   */
+  std::optional<Set<uint>> undo_reread_session_uids;
   /**
    * The main for the (local) data loaded from this filedata.
    *
@@ -195,7 +216,8 @@ struct FileData {
 
   /**
    * IDMap using UID's as keys of all the old IDs in the old bmain. Used during undo to find a
-   * matching old data when reading a new ID. */
+   * matching old data when reading a new ID.
+   */
   IDNameLib_Map *old_idmap_uid = nullptr;
   /**
    * IDMap using uids as keys of the IDs read (or moved) in the new main(s).
@@ -205,7 +227,8 @@ struct FileData {
    * step, so they could point e.g. to an ID that does not exist in the newly read undo step).
    *
    * Also used to find current valid pointers (or none) of these 'no undo' IDs existing in
-   * read memfile. */
+   * read memfile.
+   */
   IDNameLib_Map *new_idmap_uid = nullptr;
 
   BlendFileReadReport *reports = nullptr;
@@ -241,6 +264,11 @@ void blo_split_main(Main *bmain, bool do_split_packed_ids = true);
 void blo_join_main(Main *bmain);
 
 BlendFileData *blo_read_file_internal(FileData *fd, const char *filepath) ATTR_NONNULL(1, 2);
+/**
+ * Undo: give the given libraries of `bmain` names no other library of it has (the libraries kept
+ * or created for packed IDs, see `read_undo_keep_packed_ids_used_by_kept_ids`). Exposed for tests.
+ */
+void blo_undo_libraries_names_ensure_unique(Main &bmain, const Set<Library *> &kept);
 
 /**
  * On each new library added, it now checks for the current #FileData and expands relativeness
@@ -352,14 +380,15 @@ void blo_do_versions_280(FileData *fd, Library *lib, Main *bmain);
 void blo_do_versions_290(FileData *fd, Library *lib, Main *bmain);
 void blo_do_versions_300(FileData *fd, Library *lib, Main *bmain);
 void blo_do_versions_400(FileData *fd, Library *lib, Main *bmain);
-void blo_do_versions_410(FileData *fd, Library *lib, Main *bmain);
-void blo_do_versions_420(FileData *fd, Library *lib, Main *bmain);
-void blo_do_versions_430(FileData *fd, Library *lib, Main *bmain);
-void blo_do_versions_440(FileData *fd, Library *lib, Main *bmain);
-void blo_do_versions_450(FileData *fd, Library *lib, Main *bmain);
+void blo_do_versions_401(FileData *fd, Library *lib, Main *bmain);
+void blo_do_versions_402(FileData *fd, Library *lib, Main *bmain);
+void blo_do_versions_403(FileData *fd, Library *lib, Main *bmain);
+void blo_do_versions_404(FileData *fd, Library *lib, Main *bmain);
+void blo_do_versions_405(FileData *fd, Library *lib, Main *bmain);
 void blo_do_versions_500(FileData *fd, Library *lib, Main *bmain);
-void blo_do_versions_510(FileData *fd, Library *lib, Main *bmain);
-void blo_do_versions_520(FileData *fd, Library *lib, Main *bmain);
+void blo_do_versions_501(FileData *fd, Library *lib, Main *bmain);
+void blo_do_versions_502(FileData *fd, Library *lib, Main *bmain);
+void blo_do_versions_503(FileData *fd, Library *lib, Main *bmain);
 
 void do_versions_after_linking_250(Main *bmain);
 void do_versions_after_linking_260(Main *bmain);
@@ -368,14 +397,15 @@ void do_versions_after_linking_280(FileData *fd, Main *bmain);
 void do_versions_after_linking_290(FileData *fd, Main *bmain);
 void do_versions_after_linking_300(FileData *fd, Main *bmain);
 void do_versions_after_linking_400(FileData *fd, Main *bmain);
-void do_versions_after_linking_410(FileData *fd, Main *bmain);
-void do_versions_after_linking_420(FileData *fd, Main *bmain);
-void do_versions_after_linking_430(FileData *fd, Main *bmain);
-void do_versions_after_linking_440(FileData *fd, Main *bmain);
-void do_versions_after_linking_450(FileData *fd, Main *bmain);
+void do_versions_after_linking_401(FileData *fd, Main *bmain);
+void do_versions_after_linking_402(FileData *fd, Main *bmain);
+void do_versions_after_linking_403(FileData *fd, Main *bmain);
+void do_versions_after_linking_404(FileData *fd, Main *bmain);
+void do_versions_after_linking_405(FileData *fd, Main *bmain);
 void do_versions_after_linking_500(FileData *fd, Main *bmain);
-void do_versions_after_linking_510(FileData *fd, Main *bmain);
-void do_versions_after_linking_520(FileData *fd, Main *bmain);
+void do_versions_after_linking_501(FileData *fd, Main *bmain);
+void do_versions_after_linking_502(FileData *fd, Main *bmain);
+void do_versions_after_linking_503(FileData *fd, Main *bmain);
 
 void do_versions_after_setup(Main *new_bmain,
                              BlendfileLinkAppendContext *lapp_context,

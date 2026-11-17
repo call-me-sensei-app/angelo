@@ -39,6 +39,7 @@ disposable instance with the exact Angelo binary: ``--background --factory-start
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+from qa_person import as_person  # noqa: E402  The person's own action (C's harness scope).
 
 import json
 import os
@@ -180,7 +181,7 @@ def build(session_id, name):
         primitive("CYLINDER", name + " Body", "body", radius=0.1, depth=0.2, location=[0, 0, 0.1])]))
     call = built.wait_for_approval(key, answers)
     with bpy.context.temp_override(window=window()):
-        bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=session_id)
+        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=session_id)
     result = built.wait(answers)
     worker_chat.close_external_read(built.fence)
     check(name + "_builds_its_part", result.get("status") == "committed", result)
@@ -454,7 +455,7 @@ def s7(home, away):
     key, answers = asked("Staged Cube", "PREVIEW")
     if key in solo.pending and not answers:   # A stage asks first in Ask.
         with bpy.context.temp_override(window=window()):
-            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=solo.pending[key].id, session_id=identity)
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=solo.pending[key].id, session_id=identity)
     steps(lambda: answers, 60)
     previews = solo.native_previews()
     if not check("a_staged_preview", answers and answers[0].get("status") == "preview" and previews, answers):
@@ -469,7 +470,7 @@ def s7(home, away):
     executor.studio_context = solo
     descriptor = previews[-1]
     try:
-        solo.accept_native_preview(descriptor["preview_id"], executor, ui.document_key(), descriptor["preview_token"])
+        as_person(solo.accept_native_preview, descriptor["preview_id"], executor, ui.document_key(), descriptor["preview_token"])
         accepted_away = True
     except ValueError:
         accepted_away = False
@@ -480,7 +481,7 @@ def s7(home, away):
     tick(2)
     bpy.ops.ed.undo_push(message="Before the approval")   # A background Blender starts its Undo history on request.
     with bpy.context.temp_override(window=window()):
-        bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=solo.pending[approval_key].id, session_id=identity)
+        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=solo.pending[approval_key].id, session_id=identity)
     steps(lambda: approval_answers, 60)
     check("approve_applies_in_its_scene", approval_answers and "Approved Cone" in [
         o.name for o in bpy.data.scenes[home].objects] and "Approved Cone" not in [
@@ -490,7 +491,7 @@ def s7(home, away):
     executor.studio_context = solo
     descriptor = next(p for p in solo.native_previews() if p["preview_id"] == descriptor["preview_id"])
     bpy.ops.ed.undo_push(message="Before the accept")
-    solo.accept_native_preview(descriptor["preview_id"], executor, ui.document_key(), descriptor["preview_token"])
+    as_person(solo.accept_native_preview, descriptor["preview_id"], executor, ui.document_key(), descriptor["preview_token"])
     steps(lambda: not solo.busy and "Staged Cube" in bpy.data.objects, 60)
     check("accept_applies_in_its_scene", "Staged Cube" in [o.name for o in bpy.data.scenes[home].objects]
           and "Staged Cube" not in [o.name for o in bpy.data.scenes[away].objects],
@@ -650,7 +651,7 @@ def s11(home, away, ready=False, crate="Crate", stool="Footstool"):
                               and not first.pending[key].executing), 30)
     if key in first.pending and not answers:   # A stage that asks first.
         with bpy.context.temp_override(window=window()):
-            bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=first.pending[key].id, session_id=identity)
+            __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=first.pending[key].id, session_id=identity)
     steps(lambda: answers, 60)
     previews = first.native_previews()
     if not check("a_retained_preview", answers and answers[0].get("status") == "preview" and previews, answers[:1]):
@@ -665,7 +666,7 @@ def s11(home, away, ready=False, crate="Crate", stool="Footstool"):
     executor = BlenderExecutor(window())
     executor.studio_context = first
     bpy.ops.ed.undo_push(message="Before the accept")
-    first.accept_native_preview(previews[-1]["preview_id"], executor, ui.document_key(), previews[-1]["preview_token"])
+    as_person(first.accept_native_preview, previews[-1]["preview_id"], executor, ui.document_key(), previews[-1]["preview_token"])
     accepting = None
     for _ in range(200):   # The tick that starts the accepted job (S11), or its poll that makes it ready (S12).
         tick()
@@ -786,7 +787,7 @@ def run_checks():
 
     def recorded_chat(lead):
         worker_chat = made(lead)
-        worker_chat.send = lambda text, observation=None, recovery_evidence=None, c=worker_chat: sent.setdefault(
+        worker_chat.send = lambda text, observation=None, recovery_evidence=None, host_kind=None, c=worker_chat: sent.setdefault(
             c.state["id"], []).append(text[:200])
         return worker_chat
     worker_sessions._new_chat = recorded_chat

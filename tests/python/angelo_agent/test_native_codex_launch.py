@@ -231,13 +231,15 @@ class ProgramReferenceTests(unittest.TestCase):
         26,037 -> 26,059: and the engine live link (+22 B; toolset 50, engine_link.rst, "The agent").
         26,059 -> 26,111: and angelo_goal (+13 B), named after the native goal tools too (+39 B; toolset 51,
         goal_mode.rst). MODEL-FACING: a coordinator's gate decides it.
+        26,111 -> 26,119 (measured 26,108 -> 26,119): and downloads (+11 B; toolset 55, downloads.rst): scripts have
+        no network, so the deferred angelo_download is how a file from the web reaches the project. MODEL-FACING: a coordinator's gate decides it.
         """
         self.assertLessEqual(len(program_reference().encode()), 15298)
         self.assertLessEqual(len(codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True).encode()),
-                             26111)
+                             26119)
         # A runtime that shows tools' pictures without image() reads that sentence instead (+29 B, image_proof).
         self.assertLessEqual(len(codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True,
-                                                    forwarded=True).encode()), 26140)
+                                                    forwarded=True).encode()), 26148)
 
     def test_a_correction_repeats_no_schema_the_reference_states(self):
         operations = [{"tool": "angelo_scene_program", "arguments": {"mode": "APPLY", "operations": [

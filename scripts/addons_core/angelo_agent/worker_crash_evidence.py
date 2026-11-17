@@ -33,6 +33,8 @@ import shutil
 import signal
 from pathlib import Path
 
+from . import owned_paths
+
 PF_SIGNALED, PF_DUMPCORE = 0x00000400, 0x00000200   # ``include/linux/sched.h``: killed by a signal; dumping core.
 CRASH_EXIT = 11              # Blender's crash handler's own exit code on Windows (``TerminateProcess(.., SIGSEGV)``).
 NTSTATUS_ERROR = 0xC0000000  # Every Windows exception code (access violation, stack overflow, ...) is at least this.
@@ -103,6 +105,7 @@ def keep(private, folder, pid):
     for log in logs:
         target = Path(folder) / ("angelo-worker-%s-%s" % (pid, log.name))
         try:
+            owned_paths.require_writable(target)
             shutil.move(str(log), str(target))   # Its private folder may be on another volume than the report's.
         except OSError as error:   # Said: the private folder (and this log with it) is removed next.
             print("Angelo: a worker's crash log could not be kept:", error)

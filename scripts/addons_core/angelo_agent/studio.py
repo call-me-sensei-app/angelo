@@ -5,8 +5,7 @@
 The library belongs to the app, not to a chat or .blend file. Create/Folders/Grid
 occupy separate columns; collapsing Create never overlays the Blender viewport.
 Only explicit Generate and Enhance confirmations can incur provider usage.
-In a right-to-left language the whole editor mirrors about its region (``canvas_rtl``), as the chat does.
-"""
+In a right-to-left language the whole editor mirrors about its region (``canvas_rtl``), as the chat does."""
 
 import queue
 from pathlib import Path
@@ -14,8 +13,8 @@ from pathlib import Path
 import bpy
 import gpu
 
-from . import card_kit as kit, chat_view as canvas, live_windows, studio_views, ui_tokens as tokens
-from . import studio_workflow_ops, studio_workflow_run as workflow_run, studio_workflows as workflows
+from . import card_kit as kit, chat_view as canvas, live_windows, studio_views, ui_tokens as tokens, edit_tool_hold
+from . import grant_gestures, studio_workflow_ops, studio_workflow_run as workflow_run, studio_workflows as workflows
 from .studio_state import (StudioLibrary, model_options, notice_rows, studio_layout, setup_text, top_row, FOLDER_ROWS,
                            OPTION_LABELS)
 from .studio_generation import StudioJobs
@@ -165,6 +164,8 @@ def draw():
             if width < 300 or height < 150:
                 canvas.shape(0, 0, width, height, tokens.CARD)
                 canvas.text(iface_("Media Studio · widen this editor"), 12, max(10, height - 24), 11, tokens.TEXT)
+                state["hits"], state["popup_hits"] = [], []
+                consent_regions(area, region, state)   # No control drawn: none for C to ticket.
                 return
             if state["collapsed"] is None:
                 state["collapsed"] = width < 740
@@ -201,6 +202,7 @@ def draw():
             popup(state, width, height)
             expanded_prompt(state, width, height)
             focus_ring(state)   # The keyboard's ring, over everything drawn (studio_draw).
+            consent_regions(area, region, state)   # Then every control as C's regions (the popover's if open).
             gpu.state.blend_set('NONE')
             draw_count += 1
         except Exception as error:
@@ -210,6 +212,17 @@ def draw():
             gpu.state.blend_set('NONE')
         finally:
             canvas_rtl.end()
+
+
+def consent_regions(area, region, state):
+    """Tell C where Studio draws its controls now (``studio.<action>``): the person's press on one mints its ticket and
+    the click runs in that scope (``studio_input.activate``); Generate, Enhance and a workflow's run, check and fit."""
+    from . import grant_guard   # Focus: the keyboard's control, else the field being typed in (its Return).
+    hits = ([(rect, "popup", value) for rect, value in state.get("popup_hits", [])] if state.get("popover")
+            else state.get("hits", []))
+    field = ("focus", state["field_focus"]) if state.get("field_focus") else None
+    grant_guard.canvas_regions(bpy.context.window, region, "studio:%d" % area.as_pointer(), hits, 1.0,
+                               state.get("mirror") is not None, prefix="studio.", focus=state.get("focus") or field)
 
 
 # Media Studio's Asset Browser library row (studio_draw.library_rows): action -> operator.
@@ -265,6 +278,11 @@ def open_popup(state, action, anchor):
     state["popover"] = {"action": action, "title": title, "entries": entries, "anchor": (anchor[0], anchor[1] + anchor[3]), "scroll": 0}
 
 
+def select_tab(state, kind):
+    """Show Studio's ``kind`` tab: its own click, and an opener's (studio_toggle), which never reaches a grant."""
+    state.update(kind=kind, create_scroll=0, grid_scroll=0, field_focus=None, selection=None)
+
+
 def click(context, state, action, value, rect):
     from . import studio_video_ui
     if action.startswith("wf_"):
@@ -272,7 +290,7 @@ def click(context, state, action, value, rect):
     elif action.startswith("video_"):
         studio_video_ui.click(context, state, action, value, rect)
     elif action == "tab":
-        state.update(kind=value, create_scroll=0, grid_scroll=0, field_focus=None, selection=None)
+        select_tab(state, value)
     elif action == "collapse":
         state["collapsed"] = not state["collapsed"]
         state["field_focus"] = None
@@ -377,18 +395,23 @@ def cancel_requests():
     _enhancement_connections.clear()
 
 
+@edit_tool_hold.ticked   # Its views, input and redraws keep moving; its jobs' data work waits (break-it review 3 S9).
 def pump():
     if not _enabled:
         return None
-    changed = _jobs.pump() if _jobs else False
-    if _jobs:
+    held = edit_tool_hold.running()
+    if held and (not _enhancement_events.empty() or _jobs and not _jobs.events.empty()):
+        edit_tool_hold.note_waiting()   # A fit's or a generation's result waits to land.
+    changed = _jobs.pump() if _jobs and not held else False
+    if _jobs and not held:
         from . import studio_video, ui
         changed = studio_video.tick(_library, _jobs, ui.generation_binding) or changed
-    while not _enhancement_events.empty():
+    while not held and not _enhancement_events.empty():   # A fit writes a node group and an Undo step: it waits.
         pointer, result = _enhancement_events.get_nowait()
         if _enhancements.pop(pointer, None) is None:
             continue   # Cancelled (a file load or unregister): it answers to nothing shown now.
         _enhancement_connections.pop(pointer, None)
+        grant_gestures.landed()   # A fit writes a node group; a check's result changes its area.
         state = _views.get(int(pointer))
         changed = studio_workflow_ops.keep_fit(state, result.pop("workflow_fit", None)) or bool(state) or changed  # A fit is kept even with no view.
         if state:

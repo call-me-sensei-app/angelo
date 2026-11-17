@@ -18,14 +18,14 @@
 #include "DNA_curve_types.h"
 
 #include "BLI_math_base.hh"
-#include "BLI_math_color.h"
+#include "BLI_math_color_c.hh"
 #include "BLI_math_matrix_types.hh"
 #include "BLI_math_vector.hh"
 #include "BLI_math_vector_types.hh"
-#include "BLI_rect.h"
-#include "BLI_string_utf8.h"
-#include "BLI_task.h"
-#include "BLI_utildefines.h"
+#include "BLI_rect.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_task_c.hh"
+#include "BLI_utildefines.hh"
 
 #include "BKE_colortools.hh"
 #include "BKE_curve.hh"
@@ -900,6 +900,12 @@ static void curvemap_make_table(const CurveMapping *cumap, CurveMap *cuma)
   cuma->ext_in[1] = bezt[0].vec[0][1] - bezt[0].vec[1][1];
   float ext_in_range = sqrtf(cuma->ext_in[0] * cuma->ext_in[0] +
                              cuma->ext_in[1] * cuma->ext_in[1]);
+  /* Zero length handle, extrapolate horizontally. */
+  if (ext_in_range == 0.0f) {
+    cuma->ext_in[0] = -1.0f;
+    cuma->ext_in[1] = 0.0f;
+    ext_in_range = 1.0f;
+  }
   cuma->ext_in[0] /= ext_in_range;
   cuma->ext_in[1] /= ext_in_range;
 
@@ -908,6 +914,11 @@ static void curvemap_make_table(const CurveMapping *cumap, CurveMap *cuma)
   cuma->ext_out[1] = bezt[out_a].vec[1][1] - bezt[out_a].vec[2][1];
   float ext_out_range = sqrtf(cuma->ext_out[0] * cuma->ext_out[0] +
                               cuma->ext_out[1] * cuma->ext_out[1]);
+  if (ext_out_range == 0.0f) {
+    cuma->ext_out[0] = -1.0f;
+    cuma->ext_out[1] = 0.0f;
+    ext_out_range = 1.0f;
+  }
   cuma->ext_out[0] /= ext_out_range;
   cuma->ext_out[1] /= ext_out_range;
 
@@ -915,7 +926,7 @@ static void curvemap_make_table(const CurveMapping *cumap, CurveMap *cuma)
   MEM_delete(bezt);
 
   float range = CM_TABLEDIV * table_range;
-  cuma->range = 1.0f / range;
+  cuma->range = (range != 0.0f) ? 1.0f / range : 0.0f;
 
   /* now make a table with CM_TABLE equal x distances */
   float *firstpoint = allpoints;
@@ -1507,7 +1518,23 @@ int BKE_curvemapping_num_channels(const CurveMapping *cumap)
 
 void BKE_curvemapping_blend_write(BlendWriter *writer, const CurveMapping *cumap)
 {
-  writer->write_struct(cumap);
+  writer->write_struct(cumap, [writer](BlendStructWriter<CurveMapping> &struct_writer) {
+    CurveMapping &shallow_cumap = struct_writer.shallow_data;
+    if (!writer->is_undo()) {
+      shallow_cumap.changed_timestamp = 0;
+    }
+    for (const int i : IndexRange(CM_TOT)) {
+      shallow_cumap.cm[i].range = 0;
+      shallow_cumap.cm[i].mintable = 0;
+      shallow_cumap.cm[i].maxtable = 0;
+      zero_v2(shallow_cumap.cm[i].ext_in);
+      zero_v2(shallow_cumap.cm[i].ext_out);
+      shallow_cumap.cm[i].table = nullptr;
+      shallow_cumap.cm[i].premultable = nullptr;
+      zero_v2(shallow_cumap.cm[i].premul_ext_in);
+      zero_v2(shallow_cumap.cm[i].premul_ext_out);
+    }
+  });
   BKE_curvemapping_curves_blend_write(writer, cumap);
 }
 
@@ -2136,6 +2163,7 @@ void BKE_color_managed_colorspace_settings_init(
     ColorManagedColorspaceSettings *colorspace_settings)
 {
   STRNCPY_UTF8(colorspace_settings->name, "");
+  STRNCPY_UTF8(colorspace_settings->interop_id, "");
 }
 
 void BKE_color_managed_colorspace_settings_copy(
@@ -2143,6 +2171,7 @@ void BKE_color_managed_colorspace_settings_copy(
     const ColorManagedColorspaceSettings *settings)
 {
   STRNCPY_UTF8(colorspace_settings->name, settings->name);
+  STRNCPY_UTF8(colorspace_settings->interop_id, settings->interop_id);
 }
 
 bool BKE_color_managed_colorspace_settings_equals(const ColorManagedColorspaceSettings *settings1,

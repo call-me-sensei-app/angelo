@@ -1,0 +1,12 @@
+{
+  "name": "angelo-live-game",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "cannon-es": "0.20.0",
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "vite": "7.3.7"
+  }
+}

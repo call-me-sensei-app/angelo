@@ -30,6 +30,7 @@ import bpy
 from bpy.props import IntProperty, StringProperty
 from bpy.types import Operator
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import first_run
 from .display_text import error_message
 from .provider_registry import CODING, is_coding
@@ -73,6 +74,9 @@ def start(ui, controller, mode):
                     "reason": "", "fields": {}, "bound": False, "started": time.monotonic()}
     _advance(ui, mode)
     controller.version += 1
+
+
+start = grant_guard.entry(start)
 
 
 def watch_reconnect(ui, controller, connection_id):
@@ -218,6 +222,9 @@ def cancel(ui, mode, *, token=None):
             print("Angelo: an unfinished connection could not be removed:", error)
 
 
+cancel = grant_guard.entry(cancel)   # Never a script's: ACCOUNT_OPERATORS.
+
+
 def watch_key_form(ui, controller):
     """Bind this chat to the coding connection the API-key form is about to create, once it is ready."""
     _key_form.clear()
@@ -347,14 +354,7 @@ def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     from . import providers_page_host  # The AI Providers canvas page's input (doc/angelo/ai_providers.rst).
-    providers_page_host.register()
-    if not bpy.app.background:   # The AI Providers hero's banner, read once at start-up (providers_page_model).
-        bpy.app.timers.register(providers_page_model_preload(), first_interval=0.1)
-
-
-def providers_page_model_preload():
-    from .providers_page_model import preload_banner
-    return preload_banner
+    providers_page_host.register()   # The page reads its hero's art while it is shown (providers_page_model).
 
 
 def unregister():
@@ -363,3 +363,6 @@ def unregister():
     reset()
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
+
+
+grant_guard.guard(ANGELO_OT_quick_connect)   # Only the person's click grants (grant_guard).

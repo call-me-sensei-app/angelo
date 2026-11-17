@@ -18,13 +18,12 @@ import bpy
 from bpy.props import EnumProperty
 from bpy.types import Menu, Operator
 
-from . import live_target, live_windows, timer_jobs
+from . import live_target, live_windows, tab_removal, timer_jobs
 from .studio_tab_fill import fill   # noqa: F401  The build calls it by this name (GUI suites replace it).
 from .studio_tab_order import in_order, place, strip   # noqa: F401  The tab strip's order, by these names.
-
-TABS = {"studio": "Media Studio", "flows": "Generation Flows"}   # i18n: workspace data names (product names), never translated
-TAB_KEY = "angelo_tab"                # On a tab's workspace: which destination it is.
-UNFINISHED = "angelo_tab_unfinished"  # On a tab a build is still making: never the tab until the build finishes it.
+# On a tab's workspace: which destination it is (TAB_KEY); on a tab a build is still making, never the tab until the
+# build finishes it, the workspace the build started from (UNFINISHED). The data names of the tabs (TABS).
+from .tab_removal import TAB_KEY, TABS, UNFINISHED   # noqa: F401
 FLAG = "angelo_studio_tabs"           # On the file's other workspaces: JSON list of the tabs added to it once.
 _came_from = {}                       # Window pointer -> the workspace name to go back to.
 _building = False
@@ -48,8 +47,8 @@ def tab(kind):
 
 def unfinished():
     """Tabs a stopped build left half-made in a saved file (quit.blend, a save mid-build): the next build removes them,
-    and one runs for them alone too (``ensure``)."""
-    return [w.name for w in bpy.data.workspaces if UNFINISHED in w]
+    and one runs for them alone too (``ensure``). Only tabs a build made: never a copy carrying the marker."""
+    return [w.name for w in bpy.data.workspaces if tab_removal.half_made(w)]
 
 
 def added_once():
@@ -176,21 +175,24 @@ def startup_ready(window):
     return director._timer is None and ui._layout_timer is None and not interaction_active(window)
 
 
-def _remove(window, workspace):
-    """Delete a tab a stopped build left half-made (Blender's Delete Workspace on it), so it is built again later;
-    never a tab the person can see as a copy of Layout."""
-    name = workspace.name
-    try:
-        with bpy.context.temp_override(window=window, workspace=workspace):
-            bpy.ops.workspace.delete()
-    except (RuntimeError, TypeError) as error:   # Still marked unfinished: the next build removes it.
-        print("Angelo: a half-made %r tab could not be removed:" % name, error)
+def _remove(window, workspace, home=None):
+    """Delete a half-made tab, never under a window that shows it, nor a workspace a build did not make as a tab
+    (``tab_removal.remove``): it is built again later; never a tab the person can see as a copy of Layout."""
+    return tab_removal.remove(window, workspace, home, _kept_modes)
 
 
 def _removed(held, name):
     """Timer steps removing the half-made tab ``name`` a stopped build left in a saved file: Blender applies a delete
-    on its next pass, and a tab built meanwhile would be named ".001"."""
-    _remove(_alive(held), bpy.data.workspaces[name])
+    on its next pass, and a tab built meanwhile would be named ".001". Delete Workspace acts on the window's own
+    workspace (``tab_removal``): a tab no window shows is shown first, given the window's mode, and the window goes
+    back to where it was as it is deleted."""
+    window, tab, home = _alive(held), bpy.data.workspaces[name], None
+    if not any(w.workspace == tab for w in live_windows.every_window(bpy.context.window_manager)):
+        home = window.workspace.name
+        tab.object_mode = window.workspace.object_mode   # Never a mode change on the way through.
+        window.workspace = tab
+        yield from _switched(held, name)
+    _remove(_alive(held), bpy.data.workspaces[name], home)
     for _ in range(20):
         if name not in bpy.data.workspaces:
             return
@@ -206,15 +208,16 @@ def build(window, kinds):
     once, so the whole build shows for a few frames instead of the second it took with fixed delays (1.0.5 preview:
     the Media Studio tab flashed ~1-2 s after startup). Building with no switch at all needs a native API (1.0.6).
     It holds the window's identity and workspace names, reads the window after every yield, and stops once gone."""
-    return _build(live_target.window_ref(window), kinds)
+    return _build(live_target.window_ref(window), kinds, window.as_pointer())
 
 
-def _build(held, kinds):
+def _build(held, kinds, address=None):
     global _building
     from .director_layout import is_director_workspace
     home_name, started, made, done = None, time.monotonic(), [], False
     try:   # Nothing is claimed outside the cleanup: a window gone before the first step still releases it (SW3-M-1).
         _building = True
+        tab_removal.clear_strays()   # Copies carrying a tab's marker keep their place and lose the marker.
         for name in unfinished():   # Never adopted, never kept.
             yield from _removed(held, name)
         home_name = _alive(held).workspace.name
@@ -235,7 +238,8 @@ def _build(held, kinds):
             created = next((w for w in bpy.data.workspaces if w.as_pointer() not in before), None)
             if created is None:
                 return
-            created.name, created[TAB_KEY], created[UNFINISHED] = TABS[kind], kind, True
+            tab_removal.drop_copied(created)   # Its source's markers are not its own.
+            created.name, created[TAB_KEY], created[UNFINISHED] = TABS[kind], kind, home_name   # Where to go back.
             made.append(name := created.name)
             yield from _switched(held, name)   # The duplicate queued its own switch; never a second one.
             keep = max(live_windows.areas(_alive(held)), key=lambda a: a.width * a.height, default=None)
@@ -267,7 +271,9 @@ def _build(held, kinds):
             made = []
         else:
             try:
-                window = held()   # None once it closed or a load replaced it: never the old window (live_target).
+                # None once it closed. A load that kept the layout (Load UI off) kept the window too, though its
+                # window manager's identity is new (live_target): found again by its address.
+                window = held() or live_windows.find(bpy.context.window_manager, address)
                 # Home first: deleting the tab the window shows switches it to a neighbour, with that one's mode.
                 home = bpy.data.workspaces.get(home_name or "")
                 if window is not None and home is not None and window.workspace != home:
@@ -275,7 +281,7 @@ def _build(held, kinds):
                 rollback = window or live_windows.first(bpy.context.window_manager)
                 for name in made:   # Stopped part-way (an operator refused, an error, the window closed): roll back.
                     if name in bpy.data.workspaces and rollback is not None:
-                        _remove(rollback, bpy.data.workspaces[name])
+                        _remove(rollback, bpy.data.workspaces[name], home_name)
             except ReferenceError:   # Its data went away meanwhile: nothing left to put back.
                 pass
         last_build.update(seconds=round(time.monotonic() - started, 3), kinds=list(kinds), done=done,
@@ -292,6 +298,8 @@ def ensure(window):
     import time
     if bpy.app.background:   # No windows to show a tab in (headless runs, background suites).
         return
+    if not _building:
+        tab_removal.clear_strays()   # A copy carrying a tab's marker is neither that tab nor work for a build.
     kinds = missing()
     if not kinds and not _building and not in_order():
         place()   # A file whose strip was saved out of order (or reordered by hand) gets the spec order back.
@@ -393,7 +401,7 @@ def add_tab(window, kind):
 
 
 class ANGELO_OT_workspace_tab_add(Operator):
-    """Show this workspace, adding it when this file has none"""
+    bl_description = "Show this workspace, adding it when this file has none"
     bl_idname = "angelo.workspace_tab_add"
     bl_label = "Add Angelo Workspace"
     bl_options = {'INTERNAL'}
@@ -408,6 +416,7 @@ class ANGELO_OT_workspace_tab_add(Operator):
 
 class ANGELO_MT_workspace_add(Menu):
     """+ Add Workspace's Angelo section (C: workspace_edit.cc draws it before General when it is registered)."""
+    bl_description = ""   # No tooltip. Blender shows a class docstring as one; this one is a note for developers.
     bl_label = "Angelo"
 
     def draw(self, context):

@@ -14,12 +14,11 @@ import atexit
 import os
 from pathlib import Path
 import re
-import shutil
 import stat
 import threading
 import uuid
 
-from . import private_roots
+from . import owned_paths, private_roots
 
 PREFIX = "angelo-native-preview-"
 _NAME = re.compile(r"[0-9a-f]{32}\.blend\Z")   # The only names ``new_bundle`` gives; nothing else is removed here.
@@ -54,7 +53,7 @@ def new_bundle():
         folder = _current()
         if folder is None:
             folder = private_roots.allocate(PREFIX)
-            os.chmod(folder, 0o700)
+            os.chmod(owned_paths.require_writable(folder), 0o700)
             _folder = (folder, _identity(os.lstat(folder)))
             _used.add(folder)
         while True:   # A name is never reused, so a write never replaces another bundle.
@@ -64,10 +63,12 @@ def new_bundle():
 
 
 def owns(bundle):
-    """Whether ``bundle`` is one this process named in one of its shared folders."""
+    """Whether ``bundle`` is one this process named in one of its shared folders (a folder on C's record of what
+    Angelo made, whatever the set of folders holds now: owned_paths)."""
     path = Path(bundle)
     with _lock:
-        return path.parent in _used and bool(_NAME.match(path.name))
+        listed = path.parent in _used
+    return listed and bool(_NAME.match(path.name)) and owned_paths.owned(path.parent)
 
 
 def remove(bundle):
@@ -75,6 +76,8 @@ def remove(bundle):
     if not owns(bundle):
         return False
     for path in (str(bundle), str(bundle) + "@"):   # Blender writes ``<file>@`` and renames it into place.
+        if not owned_paths.may_write(path):   # A cleanup: only where C says Angelo may remove.
+            continue
         try:
             os.unlink(path)
         except OSError:
@@ -89,7 +92,7 @@ def _remove_folders():
     for folder in folders:
         try:
             if stat.S_ISDIR(os.lstat(folder).st_mode):
-                shutil.rmtree(folder, ignore_errors=True)
+                owned_paths.remove_tree(folder)   # Only a folder Angelo made (C's record), never one named in its place.
         except OSError:
             pass
     private_roots.prune()

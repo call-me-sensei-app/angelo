@@ -15,7 +15,7 @@ import bpy
 from bpy.app.handlers import persistent
 from bpy.types import Operator
 
-from . import card_kit as kit, input_policy, live_windows, render_region, ui_kit
+from . import card_kit as kit, input_policy, live_windows, render_region, ui_kit, edit_tool_hold
 from .ui_text import iface_, n_
 
 IDENTITY = "angelo.render_region_input"
@@ -137,7 +137,7 @@ def activate(key):
         except RuntimeError as error:   # Its own reason, in the status bar.
             print("Angelo: render region:", " ".join(str(error).split()))
         return None
-    bpy.app.timers.register(run, first_interval=0.0)
+    bpy.app.timers.register(edit_tool_hold.guarded(run, waiting=True), first_interval=0.0)   # It starts a render: reads the scene.
 
 
 class ANGELO_OT_render_region_input(Operator):

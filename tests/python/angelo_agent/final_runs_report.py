@@ -16,6 +16,7 @@ from pathlib import Path
 import eval_send_record as send_record  # The trial's record: an end write, never one written at a send.
 
 import bench_totals as totals
+from eval_provider_limits import credits_cover
 
 STATE = "STATE.json"
 
@@ -140,20 +141,46 @@ CODEX_CREDENTIALS = "auth.json"
 CODEX_CREDENTIALS_FILE = 'cli_auth_credentials_store = "file"\n'
 
 
-def check_sign_in(connections_dir, platform=None, accounts=("claude", "chatgpt")):
-    """The two subscription connections of a folder and whether each one's CLI profile is signed in (existence).
+def api_key_connection(folder, mode):
+    """The id of the one connection in ``folder``, of ``mode``: an API-key account runs in place from a folder that
+    holds only it (eval_live_agent's isolated_connection). Metadata only; its key is never read."""
+    from angelo_agent.connections import ConnectionStore
+    records = ConnectionStore(Path(folder)).records if folder and (Path(folder) / "connections.json").is_file() else {}
+    found = [identity for identity, record in records.items() if record.get("mode") == mode]
+    if len(found) != 1 or len(records) != 1:
+        raise SystemExit("%s must hold exactly one connection, a %s one (it holds %d, %d of that mode); add its key "
+                         "in Angelo's AI Providers with ANGELO_CONNECTIONS_DIR set to it" % (folder, mode, len(records),
+                                                                                            len(found)))
+    return found[0]
+
+
+def check_sign_in(connections_dir, platform=None, accounts=("claude", "chatgpt"), api_key_dirs=None):
+    """The connections the machine's steps use and whether each is ready (existence only; nothing is read).
 
     ``accounts`` are the ones the machine's steps use (a VM that runs only ChatGPT steps needs no Claude sign-in);
-    ``ready`` asks those only.
+    ``ready`` asks those only. A subscription is ready when its CLI profile is signed in. An API-key account
+    (``final_runs_plan.API_KEY_ACCOUNTS``) is ready when its folder in ``api_key_dirs`` holds its one connection: whether
+    the key saved there loads is the trial's own check, which sends nothing without it (eval_live_agent_session).
     """
-    found = discover_connections(connections_dir)
-    root = Path(connections_dir)
-    claude = root / "claude-profile" / found["claude"]
-    signed = {"claude": claude.is_dir() and ((platform or sys.platform) == "darwin"
-                                             or (claude / CLAUDE_CREDENTIALS).is_file()),
-              "chatgpt": (root / "codex-profile" / found["chatgpt"] / CODEX_CREDENTIALS).is_file()}
+    import final_runs_plan as plan
+    found, signed = {}, {}
+    if any(account in plan.SUBSCRIPTIONS for account in accounts):
+        found = discover_connections(connections_dir)
+        root = Path(connections_dir)
+        claude = root / "claude-profile" / found["claude"]
+        signed = {"claude": claude.is_dir() and ((platform or sys.platform) == "darwin"
+                                                 or (claude / CLAUDE_CREDENTIALS).is_file()),
+                  "chatgpt": (root / "codex-profile" / found["chatgpt"] / CODEX_CREDENTIALS).is_file()}
+    for account in accounts:
+        if account in plan.API_KEY_ACCOUNTS:
+            try:
+                found[account] = api_key_connection((api_key_dirs or {}).get(account), plan.API_KEY_ACCOUNTS[account])
+            except SystemExit:
+                signed[account] = False
+            else:
+                signed[account] = True
     return {"connections": found, "signed_in": signed, "needed": list(accounts),
-            "ready": all(signed[account] for account in accounts)}
+            "ready": all(signed.get(account) for account in accounts)}
 
 
 def prepare_connections(connections_dir):
@@ -188,12 +215,14 @@ def prepare_connections(connections_dir):
 
 
 def chatgpt_window(config):
-    """``(used percent, resets at)`` of the ChatGPT usage window now, or None when it cannot be read (unbilled)."""
+    """``(used percent, resets at, credits cover)`` of the ChatGPT usage window now, or None when it cannot be read
+    (unbilled). ``credits cover``: the account's credits pay for requests past the window (``credits_cover``)."""
     if not config.get("codex") or not config.get("codex_home"):
         return None
     try:
-        primary = headroom(config)["chatgpt"]["rateLimits"]["primary"]
-        return float(primary["usedPercent"]), float(primary["resetsAt"])
+        limits = headroom(config)["chatgpt"]["rateLimits"]
+        primary = limits["primary"]
+        return float(primary["usedPercent"]), float(primary["resetsAt"]), credits_cover(limits)
     except Exception:   # Best effort: a read failure never stops the campaign; the harness's limit check still does.
         return None
 

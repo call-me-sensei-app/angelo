@@ -80,6 +80,18 @@ def restore_previous_editor(window, area):
             restored.mode = mode
 
 
+def open_chat(ui):
+    """The active chat's controller when this process has it open, else None: never one made for the asking.
+
+    ``unregister`` switches every chat editor of the open file back to the Python console, in a background Angelo
+    too, where no chat was ever opened. Asking for the active chat's controller there loaded that chat, and the
+    close that follows wrote it: the write an open Angelo's chat then refused to save over (the stuck chat's
+    second root).
+    """
+    sessions = ui._sessions
+    return ui._controllers.get(sessions.active) if sessions is not None else None
+
+
 def select_console(window, area, coding=False, generative=False):
     """Keep Python input/output separate from the agent composer in a preview."""
     from . import console, chat_view, ui
@@ -93,7 +105,9 @@ def select_console(window, area, coding=False, generative=False):
             if not native:
                 _buffers.setdefault(previous.as_pointer(), {})[language] = _snapshot(previous)
             if language == console.language_id:
-                ui.remember_draft(ui.get_controller())
+                controller = open_chat(ui)
+                if controller is not None:
+                    ui.remember_draft(controller)
     if native:
         set_editor(window, area, ui_type=GENERATIVE_AI if generative else CODING_AGENT if coding else "CONSOLE")
     else:

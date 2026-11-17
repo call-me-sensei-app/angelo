@@ -75,7 +75,7 @@ class AdmissionRuleTests(unittest.TestCase):
                               data=SimpleNamespace(), types=SimpleNamespace(Operator=SimpleNamespace(
                                   bl_rna_get_subclass_py=lambda name: object() if python else None)))
         with patch.dict(sys.modules, {"bpy": bpy, "mathutils": SimpleNamespace(Vector=tuple), "bmesh": SimpleNamespace()}), \
-                patch.dict(spec.ALLOWED, {"mesh.angelo_qa": (1, {})}):
+                patch.object(spec, "ALLOWED", {**spec.ALLOWED, "mesh.angelo_qa": (1, {})}):   # Read only: rebound.
             kernel = _kernel()
             try:
                 kernel.admission("mesh.angelo_qa")

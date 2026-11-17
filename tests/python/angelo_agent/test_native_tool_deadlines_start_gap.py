@@ -11,6 +11,7 @@ exact step, joined before the main thread goes on. No Blender.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import inspect
@@ -32,7 +33,7 @@ class WindowChatStartGap(RevocationFixture):
         """The provider thread's last act (``finished``), run now on its own thread and joined."""
         thread = threading.Thread(target=self.context.emit, args=("finished", {"status": "completed"}))
         thread.start()
-        thread.join(5)
+        thread.join(CAP_S)
         self.assertFalse(thread.is_alive())
 
     def end_after_last_check(self, call):
@@ -88,20 +89,21 @@ class StartedTests(unittest.TestCase):
     """``started`` against ``revoke_turn_calls`` in both orders, on real threads."""
 
     def setUp(self):
-        self.call = SimpleNamespace(epoch=1, generation=2, revoked="", executing=False, committing=False,
-                                    staging=False, mutation_started=False)
+        self.call = SimpleNamespace(id="c", epoch=1, generation=2, revoked="", executing=False, committing=False,
+                                    staging=False, mutation_started=False)   # A call has an id: revoking records it.
         self.host = SimpleNamespace(lock=threading.RLock(), pending={"c": self.call})
         self.fence = SimpleNamespace(epoch=1, generation=2)
 
     def revoke(self):
         thread = threading.Thread(target=tool_deadlines.revoke_turn_calls, args=(self.host, self.fence))
         thread.start()
-        thread.join(5)
+        thread.join(CAP_S)
 
     def test_a_revocation_first_refuses_the_start_and_marks_nothing(self):
         self.revoke()
         self.assertFalse(tool_deadlines.started(self.host, self.call, executing=True))
         self.assertEqual((self.call.executing, self.call.revoked), (False, TURN_ENDED))
+        self.assertEqual(self.host.unrun_by_fence, {(1, 2): {"c"}}, "the revocation ran to its end on its thread")
 
     def test_a_start_first_is_never_revoked_after(self):
         self.assertTrue(tool_deadlines.started(self.host, self.call, executing=True, mutation_started=True))
@@ -123,10 +125,10 @@ class StartedTests(unittest.TestCase):
             results.append(tool_deadlines.started(self.host, self.call, executing=True))
         thread = threading.Thread(target=start)
         thread.start()
-        waiting.wait(5)
+        waiting.wait(CAP_S)
         self.call.revoked = TURN_ENDED
         self.host.lock.release()
-        thread.join(5)
+        thread.join(CAP_S)
         self.assertEqual((results, self.call.executing), ([False], False))
 
 

@@ -24,7 +24,7 @@ import sys
 import uuid
 from pathlib import Path
 
-from . import shared_replace
+from . import owned_paths, shared_replace
 from .studio_files import DAMAGED, read_own as _read_own, shared_read, write_if_unchanged
 from .studio_state import atomic_json
 from .ui_text import n_
@@ -341,6 +341,7 @@ def remove_orphans(library_dir, manifest, identities):
         try:
             for path in paths:
                 if path.is_file() and not path.is_symlink():
+                    owned_paths.require_writable(path)
                     path.unlink()
                     removed = True
         except OSError:
@@ -361,6 +362,7 @@ def remove_stale_temporaries(library_dir, older_than=3600, now=None):
             try:
                 uuid.UUID(path.name.split(".", 1)[0])
                 if not path.is_symlink() and now - path.stat().st_mtime > older_than:
+                    owned_paths.require_writable(path)
                     path.unlink()
             except (OSError, ValueError):
                 continue
@@ -372,6 +374,7 @@ def sync_lock(directory):
 
     An operating-system lock on an open file, never waited for; it ends with the process, so a crash leaves none.
     """
+    owned_paths.require_writable(directory)
     Path(directory).mkdir(parents=True, exist_ok=True, mode=0o700)
     handle = open(Path(directory) / LOCK, "a+b")
     try:

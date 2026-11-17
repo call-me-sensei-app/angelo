@@ -10,8 +10,8 @@
  * another slot, such as an agent's look.
  */
 
-#include "BLI_listbase.h"
-#include "BLI_threads.h"
+#include "BLI_listbase.hh"
+#include "BLI_threads.hh"
 
 #include "BKE_image.hh"
 #include "BKE_main.hh"

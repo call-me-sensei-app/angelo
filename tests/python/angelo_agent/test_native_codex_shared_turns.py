@@ -9,6 +9,7 @@ test marks it stuck.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import itertools
 import os
@@ -35,7 +36,7 @@ REFUSAL = ("Angelo can't read Codex's sign-in file (auth.json in Codex's folder)
            "or sign in to Codex again, then send the message again.")
 
 
-def wait_for(condition, seconds=5):
+def wait_for(condition, seconds=CAP_S):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         if condition():

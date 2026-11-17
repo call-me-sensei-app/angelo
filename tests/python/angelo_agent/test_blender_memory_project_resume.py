@@ -200,7 +200,7 @@ def tick():
             controller = ui.get_controller()
             if PHASE == 'seed':
                 with bpy.context.temp_override(**parts()):
-                    bpy.ops.angelo.set_approval(mode='READ_ONLY')
+                    __import__("angelo_agent.grant_guard").grant_guard.stand_in().set_approval(mode='READ_ONLY')
                     track_dialog('ANGELO_OT_project_brief')
                     bpy.ops.angelo.project_brief('INVOKE_DEFAULT')
                 state['step'] = 'edit_brief'

@@ -16,12 +16,13 @@
 #include "BKE_main.hh"
 #include "BKE_pointcache.h"
 #include "BKE_object_types.hh"
-#include "BLI_expr_pylike_eval.h"
+#include "BLI_expr_pylike_eval.hh"
 #include "BLI_memory_utils.hh"
-#include "BLI_listbase.h"
-#include "BLI_math_matrix.h"
-#include "BLI_string.h"
-#include "BLI_threads.h"
+#include "BLI_listbase.hh"
+#include "BLI_math_matrix.hh"
+#include "BLI_math_matrix_c.hh"
+#include "BLI_string.hh"
+#include "BLI_threads.hh"
 
 #include "DNA_anim_types.h"
 #include "DNA_scene_types.h"
@@ -356,9 +357,17 @@ TEST_F(ScalarConstReadTest, MovieStripFpsIsWithheldWithoutOpeningTheFile)
   PointerRNA owner(&scene.id, RNA_MovieStrip, &strip);
   PropertyRNA *property = strip_fps(owner);
   ASSERT_NE(property, nullptr);
+  /* Blender 5.3 keeps movie readers in the editing's shared reader cache (4d6a448ec8e) instead of
+   * on the strip; an Editing creates its runtime and that cache up front (da23403c52f). The read
+   * must withhold the value and leave the strip's movie metadata unloaded, with the cache it
+   * would have opened a reader through untouched. */
+  ASSERT_NE(editing.runtime, nullptr);
+  const seq::MovieReaderCache *reader_cache = editing.runtime->movie_reader_cache;
   Scope scope;
   EXPECT_EQ(value(scope, STRIP_FPS, owner, *property).status, Status::LOADS_FILE);
-  EXPECT_TRUE(runtime.movie_readers.is_empty());
+  EXPECT_EQ(editing.runtime->movie_reader_cache, reader_cache);
+  EXPECT_FALSE(runtime.movie_metadata_is_loaded);
+  EXPECT_EQ(runtime.movie_metadata, nullptr);
 }
 
 TEST_F(ScalarConstReadTest, ClipStripFpsNeedsAnOpenClipAndSceneStripFpsIsComputed)

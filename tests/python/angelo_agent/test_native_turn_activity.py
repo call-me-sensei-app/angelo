@@ -9,6 +9,7 @@ them. ``test_native_turn_activity_codex`` holds the Codex turns.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import tempfile
@@ -218,14 +219,14 @@ class ClaudeRoundTests(ClaudeAdapterFixture, unittest.TestCase):
         result = {}
         worker = threading.Thread(target=lambda: result.update(plan=self.turn(None, "Stop me")), daemon=True)
         worker.start()
-        self.assertTrue(started.wait(5))
-        deadline = time.monotonic() + 5
+        self.assertTrue(started.wait(CAP_S))
+        deadline = time.monotonic() + CAP_S
         while self.host.record_provider_turn.call_count == 0 and time.monotonic() < deadline:
             time.sleep(0.005)
         time.sleep(0.05)  # The reader has delivered message_start.
         self.host.cancelled = True
         self.provider.stop()
-        worker.join(5)
+        worker.join(CAP_S)
         self.assertIsNone(result["plan"])
         self.host.record_interrupted_usage.assert_called_once_with(
             {"input_tokens": 94120, "cached_input_tokens": 90000, "cache_write_input_tokens": 4000,
@@ -346,8 +347,10 @@ CLAUDE = normalize_models([{"value": "sonnet", "displayName": "Claude Sonnet", "
 
 class OfflineClaude(ClaudeProvider):
     def connect(self):
-        self.executable, self.env = "claude", {"FIXTURE": "only"}
         return self.controller.state["native_id"]
+
+    def launch_inputs(self, controller):   # Built at each start in the app (providers.claude_launch).
+        return "claude", {"FIXTURE": "only"}
 
 
 class StoppedTurnReceiptTests(unittest.TestCase):
@@ -396,7 +399,7 @@ class StoppedTurnReceiptTests(unittest.TestCase):
                                    execute=lambda name, arguments: committed())
         self.c.send("Create a cube and look at it", {"objects": []})
         apply = lambda call: self.c.execute_tool(call, executor, self.c.document)
-        deadline, stopped = time.monotonic() + 10, False
+        deadline, stopped = time.monotonic() + CAP_S, False
         while time.monotonic() < deadline:
             self.c.pump_events()
             self.c.pump_tools(executor, self.c.document, apply_mutation=apply, budget=ToolDispatchBudget(seconds=60))

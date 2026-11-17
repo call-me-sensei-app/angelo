@@ -10,6 +10,7 @@ import bpy
 from bpy.props import EnumProperty, StringProperty
 from bpy.types import Operator
 
+from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import studio as core   # Rebound state (_jobs) is read through the module.
 from .fal_video import RESUMABLE
 from .provider_registry import PROVIDER_NAMES, SPECS, is_coding, service_mode
@@ -18,6 +19,7 @@ from .ui_text import iface_, n_, rpt_
 from .studio_input import state_for
 from .studio import (  # noqa: E402 (studio imports this module after defining these)
     _enum_cache, attach, library, redraw)
+from . import owned_paths  # noqa: E402
 
 
 _enhancer_items, _enhancer_model_items, _folder_items = [], [], []
@@ -62,6 +64,10 @@ class ANGELO_OT_enhancer_settings(Operator):
     connection: EnumProperty(name="Connection", items=enhancer_accounts, update=enhancer_account_changed)
     model: EnumProperty(name="Model", items=enhancer_models)
     custom_model: StringProperty(name="Gemini text model ID")
+
+    def consent_target(self, context):
+        """Nothing beyond its own fields (the connection and model the person picks in the dialog)."""
+        return None
 
     def invoke(self, context, event):
         config = library().enhancer
@@ -269,6 +275,7 @@ class ANGELO_OT_studio_export(Operator):
             target = Path(self.filepath)
             if not target.is_absolute() or target.exists():
                 raise ValueError(n_("Choose a new absolute output path; existing files are never overwritten"))
+            owned_paths.require_writable(target)
             shutil.copyfile(source, target)
             return {'FINISHED'}
         except (OSError, ValueError) as error:
@@ -280,3 +287,6 @@ def service_of(asset):
     """The personal service an asset's connection mode uses ("" when it has none, or one no longer known)."""
     mode = asset.get("mode") or ""
     return service_mode(mode) if mode in SPECS else ""
+
+
+grant_guard.guard(ANGELO_OT_enhancer_settings)   # Only the person's click grants (grant_guard).

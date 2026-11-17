@@ -5,8 +5,9 @@
 The heavy parts run in ``kernels``: ``surface(positions, tris)`` and ``nearest(surface, points)`` (distances to a
 triangle surface) and ``rasterize(positions, tris, views, resolution)`` (triangle coverage of pixel centres). The
 application passes ``_bpy._angelo_reduce``, which runs them natively on all cores; host tests pass a brute-force
-NumPy reference. ``glossary`` says once per result what each fact measured, in one sentence each, because the agent
-reads these numbers without seeing how they were made (doc/angelo/game_ready_check.rst, "What each fact measures").
+NumPy reference. ``glossary`` says once per result what each kind of fact the result holds measured, in one sentence
+each, because the agent reads these numbers without seeing how they were made (doc/angelo/game_ready_check.rst, "What
+each fact measures").
 """
 
 import math
@@ -435,43 +436,10 @@ def uv_facts(geometry, texture_size, kernels, resolution=UV_RESOLUTION):
 
 
 def glossary(resolution, fov_degrees, texture_size, samples=SAMPLES, silhouette_resolution=SILHOUETTE_RESOLUTION,
-             uv_resolution=UV_RESOLUTION):
+             uv_resolution=UV_RESOLUTION, facts=None):
     """What each fact measured, once per result (the agent reads the numbers without seeing how they were made).
-    Lengths are in the result's ``space``; _m names a length."""
-    return {
-        "hausdorff": ("nearest-surface distance from every vertex plus %d area-weighted points of the LOD to the "
-                      "source, and of the source to the LOD (points: both counts); max_m is the largest sampled, a "
-                      "lower bound of the true Hausdorff distance; mean_m is over the area-weighted points both ways; "
-                      "max_of_bounds divides by the source's bounding-box diagonal" % samples),
-        "silhouette": ("covered pixels shared over covered by either, in 7 orthographic views (the 3 axes and the 4 "
-                       "cube diagonals; a view and its opposite see the same outline) at %d px framing the source's "
-                       "bounding sphere, or both meshes' when the LOD reaches outside it, so nothing is clipped; "
-                       "worst_view is the direction looked along" % silhouette_resolution),
-        "pixel_error": ("the Hausdorff max in pixels at each switch distance on a %d px tall view with a %g degree "
-                        "vertical field of view; distance_at_1px_m is where it shrinks to one pixel"
-                        % (resolution, fov_degrees)),
-        "normals": ("degrees between the shading normal at each sample point of the source and of this LOD and the "
-                    "other mesh's at its nearest point, both interpolated from corner normals"),
-        "uv_shift": ("UV-space distance between the UV at each sample point of the source and of this LOD and the "
-                     "other mesh's at its nearest point; points next to a seam may read the other side's UVs, so "
-                     "trust p95 over max"),
-        "skin_weights": ("half the summed absolute difference of the deforming groups' weights at each sample point "
-                         "of the source and of this LOD and the other mesh's nearest point: 0 the same influences, 1 "
-                         "none shared"),
-        "uv": ("seam: 3D length and count of edges whose sides have different UVs; stretch: larger over smaller "
-               "singular value of each triangle's surface-to-UV map (1 is none), area-weighted; texel_density: "
-               "texels per meter at %d px, texture_size x sqrt(UV area / surface area), area-weighted, spread its "
-               "coefficient of variation; overlap_of_used_area: pixel centres under two or more UV triangles over "
-               "those under any, %d px over the UV bounds; mirrored_tris: clockwise UVs; collapsed_tris: zero UV "
-               "area" % (texture_size, uv_resolution)),
-        "topology": "edges with one triangle (open), with three or more (non-manifold), and zero-area triangles",
-        "collider": ("closed and convex as tested (each face either way round); consistent_winding: every shared edge "
-                     "walked both ways; volume over the source's convex hull (excess_over_hull); hull_distance: the "
-                     "Hausdorff facts from the hull to the collider; mesh_outside: share of the source's points "
-                     "(points) outside the collider by inside_test, and the farthest of them"),
-        "meshopt_error": "meshoptimizer's own quadric error estimate, relative to the mesh extent",
-        "lod0_vertex_buffer": ("triangle corners welded where the Blender vertex, UV, shading normal and material all "
-                               "match: the vertex buffer an engine receives, which every meshopt LOD indexes"),
-        "apart": ("the LOD's bounding box does not overlap the source's: facts compare the objects where they are, so "
-                  "a LOD placed beside its source reads far from it"),
-    }
+    Lengths are in the result's ``space``; _m names a length. With ``facts`` (the result it goes in), only the
+    entries for the facts that result holds (``game_ready_glossary``)."""
+    from . import game_ready_glossary
+    return game_ready_glossary.glossary(resolution, fov_degrees, texture_size, samples, silhouette_resolution,
+                                        uv_resolution, facts)

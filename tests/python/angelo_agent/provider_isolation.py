@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """No test process sees a real provider login unless it opts in (stdlib only; importing it changes nothing).
 
-``suite_isolation`` is the per-file entry that applies it: every Blender suite (``test_blender_*``, ``benchmark_blender_*``, ``stress_blender_*``), every host test
-(``test_native_*``) and the billed harness's in-app drivers import ``suite_isolation`` first (``PREAMBLE_FILES``;
+``suite_isolation`` is the per-file entry that applies it: every Blender suite (``test_blender_*``, ``benchmark_blender_*``, ``stress_blender_*``), every other test
+file (``test_native_*`` and a test run by hand, such as ``test_codex_*``) and the billed harness's in-app drivers import ``suite_isolation`` first (``PREAMBLE_FILES``;
 pinned by ``test_native_suite_isolation``), so the isolation lives in the per-file entry, not only in ``run_native_suites.py``.
 A suite started by hand, ``Angelo --background --python tests/python/angelo_agent/test_blender_x.py`` with the
 person's own HOME, once ran the app's bundled Codex on the maintainer's main ChatGPT sign-in (2026-11-05).
@@ -40,15 +40,16 @@ Opt-ins, each explicit and named:
 A malformed or refused opt-in stops the process (``SystemExit``) rather than running isolated without saying so.
 """
 
+import fnmatch
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import uuid
 from pathlib import Path
 
 import provider_accounts
+from relaunch_exit import exit_status, relaunch, run_child  # noqa: E402,F401  (re-exported)
 
 OPT_IN = "ANGELO_TEST_REAL_PROVIDERS"
 OPT_IN_KIND = "eval-profile"
@@ -77,10 +78,13 @@ CREDENTIALS, CREDENTIAL_SUFFIXES = provider_accounts.CREDENTIALS, provider_accou
 credential = provider_accounts.credential
 
 
-# The files whose first statements must be the entry (``suite_isolation``): every Blender suite and host test, and the
+# The files whose first statements must be the entry (``suite_isolation``): every test file in the folder, whatever its
+# prefix (a hand-run one starts a provider's CLI as readily as a suite), every Blender benchmark and stress suite, and the
 # in-app drivers of the billed harness (eval_live_agent, parallel_live_trial).
-PREAMBLE_PATTERNS = ("test_blender_*.py", "benchmark_blender_*.py", "stress_blender_*.py", "test_native_*.py")
+PREAMBLE_PATTERNS = ("test_*.py", "benchmark_blender_*.py", "stress_blender_*.py")
 PREAMBLE_DRIVERS = ("eval_live_agent_session.py", "parallel_live_session.py")
+# Those Blender runs (``--python``): the rest are plain Python.
+BLENDER_PATTERNS = ("test_blender_*.py", "benchmark_blender_*.py", "stress_blender_*.py")
 
 
 # The entry itself, exactly as each file carries it: a host test's folder is on sys.path however it is started; Blender's
@@ -93,8 +97,10 @@ BLENDER_ENTRY = ("import os, sys  # noqa: E401  The suite's own folder, for its 
 
 
 def entry_for(path):
-    """The entry ``path`` must start with."""
-    return HOST_ENTRY if Path(path).name.startswith("test_native_") else BLENDER_ENTRY
+    """The entry ``path`` must start with: Blender's for a file Blender runs, the host test's for plain Python."""
+    name = Path(path).name
+    blender = name in PREAMBLE_DRIVERS or any(fnmatch.fnmatch(name, pattern) for pattern in BLENDER_PATTERNS)
+    return BLENDER_ENTRY if blender else HOST_ENTRY
 
 
 def preamble_files(directory):
@@ -446,18 +452,6 @@ def new_home(environ):
         Path(qa).mkdir(parents=True, exist_ok=True)
         return Path(os.path.realpath(tempfile.mkdtemp(prefix="test-profile-", dir=qa))) / "home", False
     return Path(os.path.realpath(tempfile.mkdtemp(prefix="angelo-test-profile-"))) / "home", True
-
-
-def relaunch(env, argv=None, binary=None, call=subprocess.call):
-    """Run this Blender's command line again with ``env``; returns its exit status (0-255)."""
-    if binary is None:
-        import bpy
-        binary = bpy.app.binary_path
-    command = [str(binary)] + list(sys.argv[1:] if argv is None else argv[1:])
-    sys.stdout.flush()
-    sys.stderr.flush()
-    code = call(command, env=env)
-    return code if 0 <= code < 256 else 1
 
 
 def ensure(environ=None):

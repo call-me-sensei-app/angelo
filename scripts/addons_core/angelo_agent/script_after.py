@@ -56,7 +56,8 @@ Bounded, read-only, on the script path only: a typed program never pays for it.
 
 import contextlib
 
-from . import script_api_notes, script_booleans, script_document, script_renames, visibility_facts, world_surface
+from . import script_api_notes, script_booleans, script_document, script_mesh_check, script_renames
+from . import visibility_facts, world_surface
 from .object_bounds import InstanceFacts, states_own_box, world_bounds
 from .scene_read_values import label
 from .work_clock import WorkClock
@@ -112,6 +113,7 @@ class Before:
     def __init__(self, window, bpy):
         self.world, self.names = world_before(window), script_renames.before()
         self.touched, self._collecting = None, collecting(bpy, window.scene)
+        self.mesh_check = None   # What the executor's check of every mesh found (script_mesh_check.after).
 
     def __enter__(self):
         self.touched = self._collecting.__enter__()
@@ -122,7 +124,8 @@ class Before:
         return False
 
     def attach(self, window, result, code):
-        """``attach`` with what was read before and while the script ran."""
+        """``attach`` with what was read before and while the script ran, and the meshes repaired after it."""
+        script_mesh_check.attach(result, self.mesh_check)
         return attach(window, result, code=code, world=self.world, names=self.names, touched=self.touched)
 
 

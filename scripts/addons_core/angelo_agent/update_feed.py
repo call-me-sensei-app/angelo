@@ -56,6 +56,8 @@ FORMAT = "angelo-update-feed"
 SIGNING_CONTEXT = b"angelo-update-feed-v1\n"
 MAX_ENVELOPE = 64 * 1024
 MAX_PAYLOAD = 32 * 1024
+SWITCH_NAME = re.compile(r"[a-z0-9_]{1,40}")
+MAX_SWITCHES = 32
 # Where a feed may point the person: angelo.studio and its subdomains, and github.com itself (release assets).
 # A leading dot means "this domain and its subdomains"; otherwise the host must match exactly.
 LINK_HOSTS = (".angelo.studio", "github.com")
@@ -132,6 +134,9 @@ class Feed:
     minimum_supported: str
     crash_reports_url: str
     lines: tuple = ()   # (Release, …): the newest release of each line other than ``latest``'s.
+    # Switches the release manager turned off for every build that reads them, without a release
+    # (``remote_features``); an older build ignores the field.
+    disabled_features: frozenset = frozenset()
 
 
 @dataclass(frozen=True)
@@ -386,11 +391,16 @@ def parse_payload(payload, now, last_sequence=0):
     if not isinstance(services, dict):
         raise FeedError("invalid", "services must be an object")
     crash = services.get("crash_reports")
+    disabled = document.get("disabled_features", [])
+    if (not isinstance(disabled, list) or len(disabled) > MAX_SWITCHES
+            or not all(isinstance(name, str) and SWITCH_NAME.fullmatch(name) for name in disabled)):
+        raise FeedError("invalid", "disabled_features must be a short list of switch names")
     latest = _release(document.get("latest"))
     return Feed(sequence=sequence, issued=document["issued"], expires=expires, channel="stable",
                 latest=latest, lines=_lines(document.get("lines"), latest),
                 minimum_supported=_version(document.get("minimum_supported", "1.0.0"), "minimum_supported"),
-                crash_reports_url=_url(crash, "services.crash_reports", SERVICE_HOSTS) if crash else "")
+                crash_reports_url=_url(crash, "services.crash_reports", SERVICE_HOSTS) if crash else "",
+                disabled_features=frozenset(disabled))
 
 
 def open_feed(raw, keys, now=None, last_sequence=0):

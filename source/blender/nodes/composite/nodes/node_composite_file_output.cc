@@ -4,13 +4,13 @@
 
 #include <cstring>
 
-#include "BLI_assert.h"
+#include "BLI_assert.hh"
 #include "BLI_cpp_type.hh"
 #include "BLI_generic_pointer.hh"
 #include "BLI_index_range.hh"
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 
 #include "BLT_translation.hh"
 
@@ -21,6 +21,7 @@
 
 #include "BLO_read_write.hh"
 
+#include "BKE_angelo_writer_inputs.hh"
 #include "BKE_context.hh"
 #include "BKE_cryptomatte.hh"
 #include "BKE_image.hh"
@@ -35,6 +36,8 @@
 #include "UI_resources.hh"
 
 #include "WM_api.hh"
+
+#include "DEG_depsgraph_query.hh"
 
 #include "IMB_imbuf.hh"
 
@@ -100,9 +103,8 @@ static void node_declare(NodeDeclarationBuilder &b)
       .custom_draw(socket_items::ui::draw_extend_socket_fn<FileOutputItemsAccessor>());
 }
 
-static void node_init(const bContext *C, PointerRNA *node_pointer)
+static void node_init(bNodeTree *node_tree, bNode *node)
 {
-  bNode *node = node_pointer->data_as<bNode>();
   NodeCompositorFileOutput *data = MEM_new<NodeCompositorFileOutput>(__func__);
   node->storage = data;
   data->save_as_render = true;
@@ -110,15 +112,17 @@ static void node_init(const bContext *C, PointerRNA *node_pointer)
   data->file_name = BLI_strdup("{blend_name}");
 
   BKE_image_format_init(&data->format);
-  BKE_image_format_media_type_set(
-      &data->format, node_pointer->owner_id, MEDIA_TYPE_MULTI_LAYER_IMAGE);
+  BKE_image_format_media_type_set(&data->format, &node_tree->id, MEDIA_TYPE_MULTI_LAYER_IMAGE);
   BKE_image_format_update_color_space_for_type(&data->format);
+}
 
+static void node_init_api(const bContext *C, PointerRNA *node_ptr)
+{
+  bNode *node = node_ptr->data_as<bNode>();
+  NodeCompositorFileOutput &data = node_storage(*node);
   Scene *scene = CTX_data_scene(C);
-  if (scene) {
-    const RenderData *render_data = &scene->r;
-    STRNCPY(data->directory, render_data->pic);
-  }
+  const RenderData *render_data = &scene->r;
+  STRNCPY(data.directory, render_data->pic);
 }
 
 static void node_free_storage(bNode *node)
@@ -164,6 +168,7 @@ static Vector<bke::path_templates::Error> compute_image_path(const StringRefNull
                                                              const char *view,
                                                              const int frame_number,
                                                              const ImageFormatData &format,
+                                                             const Main &bmain,
                                                              const Scene &scene,
                                                              const bNode &node,
                                                              const bool is_animation_render,
@@ -175,7 +180,9 @@ static Vector<bke::path_templates::Error> compute_image_path(const StringRefNull
   BLI_path_append(base_path, FILE_MAX, full_file_name.c_str());
 
   bke::path_templates::VariableMap template_variables;
-  BKE_add_template_variables_general(template_variables, &node.owner_tree().id);
+  BKE_blender_project_read_callback(&bmain, [&](const bke::BlenderProject *project) {
+    BKE_add_template_variables_general(template_variables, &node.owner_tree().id, project);
+  });
   BKE_add_template_variables_for_render_path(template_variables, scene);
   BKE_add_template_variables_for_node(template_variables, node);
 
@@ -240,6 +247,7 @@ static void output_path_layout(ui::Layout &layout,
                                const StringRefNull file_name_suffix,
                                const char *view,
                                const ImageFormatData &format,
+                               const Main &bmain,
                                const Scene &scene,
                                const bNode &node)
 {
@@ -251,6 +259,7 @@ static void output_path_layout(ui::Layout &layout,
                                                                             view,
                                                                             scene.r.cfra,
                                                                             format,
+                                                                            bmain,
                                                                             scene,
                                                                             node,
                                                                             false,
@@ -261,7 +270,8 @@ static void output_path_layout(ui::Layout &layout,
   }
   else {
     for (const bke::path_templates::Error &error : path_errors) {
-      layout.label(BKE_path_template_error_to_string(error, image_path).c_str(), ICON_ERROR);
+      layout.label(BKE_path_template_error_to_string(error, image_path).c_str(),
+                   ICON_STATUS_ERROR);
     }
   }
 }
@@ -275,6 +285,7 @@ static void output_paths_layout(ui::Layout &layout,
   const NodeCompositorFileOutput &storage = node_storage(node);
   const StringRefNull directory = storage.directory;
   const std::string file_name = storage.file_name ? storage.file_name : "";
+  const Main &main = *CTX_data_main(context);
   const Scene &scene = *CTX_data_scene(context);
 
   if (bool(scene.r.scemode & R_MULTIVIEW) && format.views_format == R_IMF_VIEWS_INDIVIDUAL) {
@@ -284,11 +295,12 @@ static void output_paths_layout(ui::Layout &layout,
       }
 
       output_path_layout(
-          layout, directory, file_name, file_name_suffix, view.name, format, scene, node);
+          layout, directory, file_name, file_name_suffix, view.name, format, main, scene, node);
     }
   }
   else {
-    output_path_layout(layout, directory, file_name, file_name_suffix, "", format, scene, node);
+    output_path_layout(
+        layout, directory, file_name, file_name_suffix, "", format, main, scene, node);
   }
 }
 
@@ -394,7 +406,7 @@ static void node_extra_info(NodeExtraInfoParams &parameters)
     NodeExtraInfoRow row;
     row.text = RPT_("Node Unsupported");
     row.tooltip = TIP_("The File Output node is only supported for scene compositing");
-    row.icon = ICON_ERROR;
+    row.icon = ICON_STATUS_ERROR;
     parameters.rows.append(std::move(row));
   }
 }
@@ -488,6 +500,7 @@ class FileOutputOperation : public NodeOperation {
       const int2 size = result.domain().data_size;
       FileOutput &file_output = this->context().render_context()->get_file_output(
           image_path, format, size, save_as_render);
+      file_output.set_angelo_inputs(this->angelo_inputs());
 
       this->add_view_for_result(file_output, result, context().get_view_name().data());
 
@@ -519,6 +532,7 @@ class FileOutputOperation : public NodeOperation {
     const int2 size = result.domain().data_size;
     FileOutput &file_output = this->context().render_context()->get_file_output(
         image_path, format, size, true);
+    file_output.set_angelo_inputs(this->angelo_inputs());
 
     /* The EXR stores all views in the same file, so we add the actual render view. Otherwise, we
      * add a default unnamed view. */
@@ -557,6 +571,7 @@ class FileOutputOperation : public NodeOperation {
 
     FileOutput &file_output = this->context().render_context()->get_file_output(
         image_path, format, size, true);
+    file_output.set_angelo_inputs(this->angelo_inputs());
 
     /* If we are saving views in separate files, we needn't store the view in the channel names, so
      * we add an unnamed view. */
@@ -585,7 +600,7 @@ class FileOutputOperation : public NodeOperation {
     if (result.is_single_value()) {
       /* For single values, we fill a buffer that covers the domain of the operation with the value
        * of the result. */
-      data.allocate_texture(this->compute_domain(), true, ResultStorageType::CPU);
+      data.allocate_texture(this->compute_domain(), true, ResultStorageType::CPUImage);
       const GPointer single_value = result.single_value();
       const int64_t pixel_count = int64_t(data.domain().data_size.x) * data.domain().data_size.y;
       single_value.type()->fill_assign_n(
@@ -639,6 +654,8 @@ class FileOutputOperation : public NodeOperation {
       case ResultType::Scene:
       case ResultType::Text:
       case ResultType::Mask:
+      case ResultType::Bundle:
+      case ResultType::Closure:
         /* Not supported. */
         BLI_assert_unreachable();
         break;
@@ -689,6 +706,8 @@ class FileOutputOperation : public NodeOperation {
       case ResultType::Scene:
       case ResultType::Text:
       case ResultType::Mask:
+      case ResultType::Bundle:
+      case ResultType::Closure:
         /* Not supported. */
         BLI_assert_unreachable();
         break;
@@ -744,6 +763,7 @@ class FileOutputOperation : public NodeOperation {
         view,
         this->context().get_frame_number(),
         format,
+        this->context().get_main(),
         this->context().get_scene(),
         this->node(),
         this->is_animation_render(),
@@ -755,6 +775,20 @@ class FileOutputOperation : public NodeOperation {
     }
 
     return path_errors;
+  }
+
+  /* Angelo: what this node's paths are built from (BLI_angelo_writers.hh), named by the original data (the person's
+   * typed values and a script's sets are recorded there; the compositor runs an evaluated copy). */
+  AngeloWriterInputs angelo_inputs()
+  {
+    const bNodeTree &tree = this->node().owner_tree();
+    const bNodeTree *original = DEG_get_original(&tree);
+    const bNode *node = original ? original->node_by_id(this->node().identifier) : nullptr;
+    const Scene &scene = this->context().get_scene();
+    const Scene *original_scene = DEG_get_original(&scene);
+    return BKE_angelo_file_output_inputs(original_scene ? *original_scene : scene,
+                                         original ? *original : tree,
+                                         node ? *node : this->node());
   }
 
   bool is_multi_layer()
@@ -829,7 +863,8 @@ static void node_register()
   ntype.draw_buttons_ex = node_draw_buttons_extended;
   ntype.insert_link = node_insert_link;
   ntype.register_operators = node_register_operators;
-  ntype.initfunc_api = node_init;
+  ntype.initfunc = node_init;
+  ntype.initfunc_api = node_init_api;
   bke::node_type_storage(ntype, "NodeCompositorFileOutput", node_free_storage, node_copy_storage);
   ntype.blend_write_storage_content = node_blend_write;
   ntype.blend_data_read_storage_content = node_blend_read;

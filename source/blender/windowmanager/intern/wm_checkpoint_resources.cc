@@ -17,12 +17,12 @@
 #include "MEM_guardedalloc.h"
 #include "DNA_ID.h"
 #include "DNA_object_types.h"
-#include "BLI_assert.h"
+#include "BLI_assert.hh"
 #include "BLI_checkpoint_budget.hh"
 #include "BLI_function_ref.hh"
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_set.hh"
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 #include "BKE_global.hh"
 #include "BKE_lib_query.hh"
 #include "BKE_main.hh"
@@ -393,8 +393,8 @@ WMCheckpointContent *WM_checkpoint_content_capture(
 static bool checkpoint_memfiles_equal(const MemFile &a, const MemFile &b,
                                      const WMCheckpointContent *retained_ui)
 {
-  const MemFileChunk *x = static_cast<const MemFileChunk *>(a.chunks.first);
-  const MemFileChunk *y = static_cast<const MemFileChunk *>(b.chunks.first);
+  const MemFileChunk *x = static_cast<const MemFileChunk *>(a.chunks.first());
+  const MemFileChunk *y = static_cast<const MemFileChunk *>(b.chunks.first());
   while (true) {
     /* Only the exact UI owners proven retained by no-UI Restore may differ during teardown.
      * Session UID zero (headers/DNA) and every replaced ID remain byte-exact. */

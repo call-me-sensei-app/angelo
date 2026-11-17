@@ -16,6 +16,8 @@ namespace blender {
 
 /* internal exports only */
 
+struct GHash;
+struct Main;
 struct UndoType;
 struct MemFileUndoData;
 namespace ed::sculpt_paint::undo {
@@ -34,5 +36,12 @@ struct MemFileUndoStep {
 
 /** Export for ED_undo_sys. */
 void ED_memfile_undosys_type(UndoType *ut);
+
+/**
+ * Give the depsgraphs a memfile read took from the previous Main back to `bmain`, their evaluated
+ * copies following the IDs they copy: after a complete read the IDs it changed, after a failed
+ * decode (`resync_all`) every ID. Clears the read's temporary ID tags. Null `depsgraphs`: nothing.
+ */
+void memfile_undo_depsgraphs_give_back(Main *bmain, GHash *depsgraphs, bool resync_all);
 
 }  // namespace blender

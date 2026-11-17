@@ -6,6 +6,7 @@
  * \ingroup spconsole
  */
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <utility>
@@ -14,11 +15,11 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_map.hh"
-#include "BLI_string.h"
+#include "BLI_string.hh"
 #include "BLI_string_ref.hh"
-#include "BLI_string_utf8.h"
+#include "BLI_string_utf8.hh"
 
 #include "BKE_angelo_legacy_names.hh"
 #include "BKE_context.hh"
@@ -58,7 +59,7 @@ ConsoleLine *ED_console_coding_agent_input(SpaceConsole *console)
     const Map<int, SpaceConsole *> *buffers = console_alternate_buffers.lookup_ptr(console);
     buffer = buffers ? buffers->lookup_default(1, nullptr) : nullptr;
   }
-  return buffer ? static_cast<ConsoleLine *>(buffer->history.last) : nullptr;
+  return buffer ? buffer->history.last() : nullptr;
 }
 
 /* ******************** default callbacks for console space ***************** */
@@ -71,7 +72,9 @@ static SpaceLink *console_create(const ScrArea * /*area*/, const Scene * /*scene
   sconsole = MEM_new<SpaceConsole>("initconsole");
   sconsole->spacetype = SPACE_CONSOLE;
 
-  sconsole->lheight = 14;
+  sconsole->line_height = 14;
+
+  sconsole->runtime = MEM_new<SpaceConsole_Runtime>(__func__);
 
   /* header */
   region = BKE_area_region_new();
@@ -105,12 +108,12 @@ static void console_free(SpaceLink *sl)
 {
   SpaceConsole *sc = reinterpret_cast<SpaceConsole *>(sl);
 
-  while (sc->scrollback.first) {
-    console_scrollback_free(sc, static_cast<ConsoleLine *>(sc->scrollback.first));
+  while (sc->scrollback.first_) {
+    console_scrollback_free(sc, sc->scrollback.first());
   }
 
-  while (sc->history.first) {
-    console_history_free(sc, static_cast<ConsoleLine *>(sc->history.first));
+  while (sc->history.first_) {
+    console_history_free(sc, sc->history.first());
   }
   if (Map<int, SpaceConsole *> *buffers = console_alternate_buffers.lookup_ptr(sc)) {
     for (SpaceConsole *buffer : buffers->values()) {
@@ -124,6 +127,8 @@ static void console_free(SpaceLink *sl)
       console_alternate_buffers.clear();
     }
   }
+
+  MEM_delete(sc->runtime);
 }
 
 /* spacetype; init callback */
@@ -134,33 +139,33 @@ static void console_init(wmWindowManager * /*wm*/, ScrArea * /*area*/) {}
  * listed in its own AI column by rna_Area_ui_type_itemf(). */
 static int console_space_subtype_get(ScrArea *area)
 {
-  const SpaceConsole *console = static_cast<SpaceConsole *>(area->spacedata.first);
+  const SpaceConsole *console = area->spacedata.first_as<SpaceConsole>();
   return STREQ(console->language, "angelo_genai") ? 2 :
          STREQ(console->language, "angelo") ? 1 : 0;
 }
 
 static StringRefNull console_space_name_get(const ScrArea *area)
 {
-  const SpaceConsole *console = static_cast<const SpaceConsole *>(area->spacedata.first);
+  const SpaceConsole *console = area->spacedata.first_as<SpaceConsole>();
   return STREQ(console->language, "angelo_genai") ? IFACE_("Media Studio") :
          STREQ(console->language, "angelo") ? IFACE_("Coding Agent") : IFACE_("Python Console");
 }
 
 static int console_space_icon_get(const ScrArea *area)
 {
-  const SpaceConsole *console = static_cast<const SpaceConsole *>(area->spacedata.first);
+  const SpaceConsole *console = area->spacedata.first_as<SpaceConsole>();
   return STREQ(console->language, "angelo_genai") ? ICON_ANGELO_MEDIA_STUDIO :
          STREQ(console->language, "angelo") ? ICON_COMMUNITY : ICON_CONSOLE;
 }
 
 static void console_space_subtype_set(ScrArea *area, int value)
 {
-  SpaceConsole *console = static_cast<SpaceConsole *>(area->spacedata.first);
+  SpaceConsole *console = area->spacedata.first_as<SpaceConsole>();
   const char *language = value == 2 ? "angelo_genai" : value == 1 ? "angelo" : "python";
   if (console->language[0] == '\0') {
     STRNCPY_UTF8(console->language, language);
     STRNCPY_UTF8(console->prompt, value == 1 ? "Ask > " : ">>> ");
-    console->lheight = value == 1 ? 18 : 14;
+    console->line_height = value == 1 ? 18 : 14;
     return;
   }
   if (!STREQ(console->language, language)) {
@@ -175,21 +180,21 @@ static void console_space_subtype_set(ScrArea *area, int value)
     });
     SpaceConsole *alternate = buffers.lookup_or_add_cb(value, [value]() {
       SpaceConsole *buffer = MEM_new<SpaceConsole>("console alternate editor buffer");
-      buffer->lheight = value == 1 ? 18 : 14;
+      buffer->line_height = value == 1 ? 18 : 14;
       STRNCPY_UTF8(buffer->prompt, value == 1 ? "Ask > " : ">>> ");
       return buffer;
     });
     std::swap(console->scrollback, saved->scrollback);
     std::swap(console->history, saved->history);
     std::swap(console->prompt, saved->prompt);
-    std::swap(console->lheight, saved->lheight);
+    std::swap(console->line_height, saved->line_height);
     std::swap(console->history_index, saved->history_index);
     std::swap(console->sel_start, saved->sel_start);
     std::swap(console->sel_end, saved->sel_end);
     std::swap(console->scrollback, alternate->scrollback);
     std::swap(console->history, alternate->history);
     std::swap(console->prompt, alternate->prompt);
-    std::swap(console->lheight, alternate->lheight);
+    std::swap(console->line_height, alternate->line_height);
     std::swap(console->history_index, alternate->history_index);
     std::swap(console->sel_start, alternate->sel_start);
     std::swap(console->sel_end, alternate->sel_end);
@@ -212,12 +217,15 @@ static void console_space_subtype_item_extend(bContext * /*C*/,
 static SpaceConsole *console_duplicate_input(SpaceConsole *source, const bool copy_input)
 {
   SpaceConsole *duplicate = MEM_dupalloc(source);
+  /* Runtime data is never shared: #console_duplicate adds the editor's own, and the alternate
+   * buffers (text only) have none. */
+  duplicate->runtime = nullptr;
   duplicate->scrollback.clear_no_delete();
   duplicate->history.clear_no_delete();
   if (copy_input) {
     /* Workspace changes may clone a floating editor. Preserve its unsent AI
      * input, not its transcript or sent history, and never share line storage. */
-    if (ConsoleLine *line = static_cast<ConsoleLine *>(source->history.last)) {
+    if (ConsoleLine *line = source->history.last()) {
       ConsoleLine *input = console_history_add_str(duplicate, line->line, false);
       input->cursor = line->cursor;
       input->type = line->type;
@@ -235,6 +243,8 @@ static SpaceLink *console_duplicate(SpaceLink *sl)
    * aren't duplicated. AI inputs are runtime-only and safe to copy separately. */
   SpaceConsole *duplicate = console_duplicate_input(
       source, STREQ(source->language, "angelo") || STREQ(source->language, "angelo_genai"));
+  /* Add its own runtime data. */
+  duplicate->runtime = MEM_new<SpaceConsole_Runtime>(__func__);
   if (const Map<int, SpaceConsole *> *buffers = console_alternate_buffers.lookup_ptr(source)) {
     Map<int, SpaceConsole *> copied;
     for (const int subtype : {1, 2}) {
@@ -360,6 +370,47 @@ static void console_dropboxes()
 
 /* ************* end drop *********** */
 
+#ifdef WITH_INPUT_IME
+static std::optional<ARegionIMECursorState> console_main_region_cursor_ime(
+    wmWindow * /*win*/, const ScrArea *area, const ARegion *region, ARegionIMECursor *r_cursor)
+{
+  /* The position is pending during View2D navigation (pan, zoom, scroll). */
+  if (region->v2d.flag & V2D_IS_NAVIGATING) {
+    return ARegionIMECursorState::PositionPending;
+  }
+  SpaceConsole *sc = area->spacedata.first_as<SpaceConsole>();
+  /* Font metrics are cached during draw; zero means the region hasn't been drawn yet. */
+  const int line_height = sc->runtime->line_height_px;
+  if (line_height == 0) {
+    return ARegionIMECursorState::PositionPending;
+  }
+  const ConsoleLine *cl = sc->history.last();
+  if (cl == nullptr) {
+    return std::nullopt;
+  }
+  const std::optional<blender::int2> xy_region = console_cursor_region_xy_get(
+      sc, region, cl->cursor);
+  if (!xy_region) {
+    return std::nullopt;
+  }
+  /* Convert to pixel space, X is pinned by #V2D_LOCKOFS_X. */
+  const int2 xy = {xy_region->x, xy_region->y - int(region->v2d.cur.ymin)};
+
+  /* Extend up by the line height.
+   * The caller clamps to the region since the cursor may be scrolled out of view. */
+  r_cursor->rect = {
+      .xmin = xy.x,
+      .xmax = xy.x,
+      .ymin = xy.y,
+      .ymax = xy.y + line_height,
+  };
+  /* The console draws text smaller than the line height, see #textview_font_begin. */
+  r_cursor->font_size = int(0.8f * float(line_height));
+  return ARegionIMECursorState::PositionSet;
+}
+
+#endif
+
 static void console_main_region_draw(const bContext *C, ARegion *region)
 {
   /* draw entirely, view changes should be handled here */
@@ -446,7 +497,7 @@ static void console_main_region_listener(const wmRegionListenerParams *params)
     case NC_SPACE: {
       if (wmn->data == ND_SPACE_CONSOLE) {
         if (wmn->action == NA_EDITED) {
-          if ((wmn->reference && area) && (wmn->reference == area->spacedata.first)) {
+          if ((wmn->reference && area) && (wmn->reference == area->spacedata.first_)) {
             /* we've modified the geometry (font size), re-calculate rect */
             console_textview_update_rect(static_cast<SpaceConsole *>(wmn->reference), region);
             ED_region_tag_redraw(region);
@@ -465,6 +516,8 @@ static void console_main_region_listener(const wmRegionListenerParams *params)
 static void console_blend_read_data(BlendDataReader *reader, SpaceLink *sl)
 {
   SpaceConsole *sconsole = reinterpret_cast<SpaceConsole *>(sl);
+
+  sconsole->runtime = MEM_new<SpaceConsole_Runtime>(__func__);
 
   /* AI editors saved before the product rename use their pre-rename language. */
   if (const char *language = BKE_angelo_legacy_console_language(sconsole->language)) {
@@ -497,6 +550,7 @@ static void console_space_blend_write(BlendWriter *writer, SpaceLink *sl)
     /* Save editor identity/layout, not private prompts or transcript backing
      * buffers. Their owner is the local host, not the shared project file. */
     SpaceConsole saved = *con;
+    saved.runtime = nullptr;
     saved.history.clear_no_delete();
     saved.scrollback.clear_no_delete();
     saved.history_index = saved.sel_start = saved.sel_end = 0;
@@ -509,7 +563,9 @@ static void console_space_blend_write(BlendWriter *writer, SpaceLink *sl)
     writer->write_struct(&cl);
     writer->write_char_array(size_t(cl.len) + 1, cl.line);
   }
-  writer->write_struct_cast<SpaceConsole>(sl);
+  writer->write_struct_cast<SpaceConsole>(sl, [](BlendStructWriter<SpaceConsole> &struct_writer) {
+    struct_writer.shallow_data.runtime = nullptr;
+  });
 }
 
 void ED_spacetype_console()
@@ -546,6 +602,9 @@ void ED_spacetype_console()
   art->cursor = console_cursor;
   art->event_cursor = true;
   art->listener = console_main_region_listener;
+#ifdef WITH_INPUT_IME
+  art->cursor_ime = console_main_region_cursor_ime;
+#endif
 
   BLI_addhead(&st->regiontypes, art);
 

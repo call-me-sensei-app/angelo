@@ -50,6 +50,7 @@ from angelo_agent import game_physics, web_export  # noqa: E402
 from angelo_agent.tool_specs import validate_call  # noqa: E402
 from io_scene_gltf2.angelo_physics import props  # noqa: E402
 from program_qa_helpers import no_stages, commit_operator  # noqa: E402
+from python_property_audit import python_callbacks  # noqa: E402
 
 report = {"checks": {}, "paid_requests": 0, "binary_path": bpy.app.binary_path, "version": bpy.app.version_string}
 window = bpy.context.window_manager.windows[0]
@@ -135,9 +136,7 @@ def definitions():
     annotations = inspect.get_annotations(props.AngeloPhysicsSettings, eval_str=True)
     admitted = {path.split(".", 1)[1] for path in rna_rules.GAME_PHYSICS}
     check("admitted_paths_are_the_definitions", admitted == set(annotations))
-    problems = [name for name, value in annotations.items()
-                if value.keywords.get("get") or value.keywords.get("set") or value.keywords.get("update")
-                or callable(value.keywords.get("items"))]
+    problems = {name: python_callbacks(value) for name, value in annotations.items() if python_callbacks(value)}
     check("definitions_run_no_python", not problems)
     rna = props.AngeloPhysicsSettings.bl_rna.properties
     check("definitions_are_not_keyable", all(not rna[name].is_animatable for name in admitted))

@@ -226,8 +226,8 @@ def main():
     angelo_root.mkdir(mode=0o700, exist_ok=True)
     env = isolated_environment(angelo_root)
     binary = Path(args.angelo_binary).resolve(strict=True)
-    resources = binary.parents[1] / "Resources" / "5.2"
-    python = resources / "python" / "bin" / "python3.13"
+    import app_layout
+    resources, python = app_layout.resources(binary), app_layout.python(binary)
     sys.path.insert(0, str(resources / "scripts" / "addons_core"))
     from angelo_agent.external_clients import AppRegistry, DEFAULT_LEVELS
     AppRegistry(env["ANGELO_STATE_DIR"]).connect("other", name="bench", levels=DEFAULT_LEVELS)
@@ -302,7 +302,8 @@ def _start():
     prefs = bpy.context.preferences.addons.get("angelo_agent")
     if prefs is None:
         return 0.2
-    prefs.preferences.allow_local_cli = True
+    from angelo_agent import grant_guard  # The test acts as the person (grant_guard.setting).
+    grant_guard.harness(setattr, prefs.preferences, "allow_local_cli", True)
     from angelo_agent import external_host
     if not (Path(os.environ["ANGELO_STATE_DIR"]) / "cli" / "endpoint.json").is_file():
         return 0.2

@@ -31,11 +31,13 @@ import time
 import uuid
 from dataclasses import dataclass
 
-from . import change_clock, shared_replace
+from . import change_clock, owned_paths, shared_replace
+from .script_store import MAX_CODE, over_limit
+from . import change_clock, grant_authority, shared_replace
 
 FILE = "external-script-files.json"
-# angelo_execute_python's code limit (tool_specs): a longer file could never run as one script.
-MAX_CHARACTERS = 32768
+# angelo_execute_python's code limit (script_store.MAX_CODE): a longer file could never run as one script.
+MAX_CHARACTERS = MAX_CODE
 _entries = []    # [{"app", "project", "path", "sha256", "allowed_at"}], as saved.
 _path = None     # Where they are saved (ui.register: the state folder); None: in memory only (tests).
 
@@ -76,7 +78,7 @@ def read_script(path):
             raise ScriptFileError("%s is not a regular file" % path)
         # One UTF-8 character is at most four bytes; anything larger can't fit the limit.
         if info.st_size > MAX_CHARACTERS * 4:
-            raise ScriptFileError("%s is larger than one script can be (%d characters)" % (path, MAX_CHARACTERS))
+            raise ScriptFileError(over_limit("%s is" % path))
         chunks, size = [], 0
         while True:
             block = os.read(descriptor, 65536)
@@ -84,7 +86,7 @@ def read_script(path):
                 break
             size += len(block)
             if size > MAX_CHARACTERS * 4:
-                raise ScriptFileError("%s is larger than one script can be (%d characters)" % (path, MAX_CHARACTERS))
+                raise ScriptFileError(over_limit("%s is" % path))
             chunks.append(block)
     finally:
         os.close(descriptor)
@@ -96,7 +98,7 @@ def read_script(path):
     if not text.strip():
         raise ScriptFileError("%s is empty" % path)
     if len(text) > MAX_CHARACTERS:
-        raise ScriptFileError("%s is larger than one script can be (%d characters)" % (path, MAX_CHARACTERS))
+        raise ScriptFileError(over_limit("%s is" % path, len(text)))
     return ScriptFile(real, hashlib.sha256(data).hexdigest(), text)
 
 
@@ -189,6 +191,7 @@ def _current():
         return []
     if identity != _cache[1]:
         _cache = _read(_path)
+        _mirror(_cache[0])   # Read from Angelo's private file: held in C too (grant_authority).
     return [entry for entry in _cache[0] if _full(entry) not in _revoked]
 
 
@@ -201,9 +204,18 @@ def _key(entry):
 
 
 def allowed(app, project, path, sha256):
-    """Whether the person allowed this exact file content for this app and project (the file as it is now)."""
-    return bool(app and project) and any(_key(entry) == (app, project, path) and entry["sha256"] == sha256
-                                         for entry in _current())
+    """Whether the person allowed this exact file content for this app and project (the file as it is now), as the
+    file says and as C holds it (grant_authority): the in-memory copy alone never allows a script."""
+    return (bool(app and project) and any(_key(entry) == (app, project, path) and entry["sha256"] == sha256
+                                          for entry in _current())
+            and grant_authority.holds(grant_authority.SCRIPT_FILES,
+                                      grant_authority.script_file_key(app, project, path, sha256)))
+
+
+def _mirror(entries):
+    grant_authority.mirror(grant_authority.SCRIPT_FILES, [
+        (grant_authority.script_file_key(e["app"], e["project"], e["path"], e["sha256"]), True) for e in entries
+        if isinstance(e, dict) and all(isinstance(e.get(k), str) for k in ("app", "project", "path", "sha256"))])
 
 
 def previous(app, project, path):
@@ -226,6 +238,8 @@ def allow(app, project, script):
         raise ValueError("A script file is allowed only for a connected app and a saved project")
     entry = {"app": app, "project": project, "path": script.path, "sha256": script.sha256,
              "allowed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    key = grant_authority.script_file_key(app, project, script.path, script.sha256)
+    grant_authority.record(grant_authority.SCRIPT_FILES, key, True)   # The person's click (grant scope) in C first.
     _change(lambda current: [e for e in current if _key(e) != _key(entry)] + [entry])
     _revoked.discard(_full(entry))   # The person allowed it again, here.
 
@@ -290,6 +304,7 @@ class _locked:
         self.path, self.fd = path, None
 
     def __enter__(self):
+        owned_paths.require_writable(self.path)
         self.fd = os.open(self.path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
         try:
             import fcntl
@@ -304,6 +319,7 @@ class _locked:
 
 
 def _write(updated):
+    owned_paths.require_writable(_path)   # C first: no temporary is made beside a target it refuses.
     folder = os.path.dirname(_path)
     temporary = os.path.join(folder, ".%s.%s.tmp" % (FILE, uuid.uuid4().hex))
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
@@ -325,3 +341,8 @@ def _write(updated):
             os.fsync(directory)
         finally:
             os.close(directory)
+
+
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
+forget = _grant_guard.entry(forget)   # Never a script's: ACCOUNT_OPERATORS.
+forget_at = _grant_guard.entry(forget_at)

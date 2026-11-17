@@ -352,7 +352,16 @@ class CodecTests(ExrCase):
                     os.environ[name] = value
         passed = json.loads(out.read_text())
         self.assertEqual(sorted(set(passed) & set(secrets)), [], "nothing the application holds reaches the child")
-        self.assertLess(len(passed), 12, passed)
+        # What the worker's interpreter sets itself at start (its own site setup, macOS's own): the same worker run
+        # with only SYSTEMROOT (so Windows starts it). Beyond that, the child has only what the shared builder passes
+        # (essential_environment, more than a dozen names on Windows); never a count that a platform's list breaks.
+        from unittest import mock
+        bare = {name: value for name, value in os.environ.items() if name.upper() == "SYSTEMROOT"}
+        with mock.patch.object(view_exr_codecs, "_environment", return_value=bare), \
+                self.assertRaises(view_exr.ExrError):
+            view_exr.read_channels(self.path, 0, ["ViewLayer.Depth.Z"])
+        own = set(json.loads(out.read_text())) - set(bare)
+        self.assertEqual(sorted(set(passed) - set(view_exr_codecs._environment()) - own), [])
 
     def test_the_applications_peak_is_about_the_size_of_the_answer_not_several_times_it(self):
         """A review measured 4.6 times (pipe contents, a partition, a view, a copy); one buffer holds it once."""

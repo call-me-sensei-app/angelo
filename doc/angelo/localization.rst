@@ -27,6 +27,16 @@ There are four routes, and each has one correct spelling:
   descriptions, enum items) is translated by Blender itself. Blender looks an
   operator button's text up in the *operator's* context ("Operator"), everything else
   in the default context.
+  Class text needs an entry in the template like any other message, and no mark says
+  so. ``i18n/class_text.py`` reads it from the Python sources. The extraction takes every
+  ``bl_description`` from there, because the struct Blender registers for a Python class
+  carries no description and the RNA dump finds none; ``test_native_translation_class_text.py``
+  fails on a label, tooltip or property text that is in neither Angelo's template nor
+  Blender's catalogues. A registered class always states its tooltip. Where it sets no
+  ``bl_description`` Blender registers its docstring in its place (``bpy_rna.cc``,
+  ``bpy_property_substitutions``), so a note for developers became a tooltip and was
+  translated: ``bl_description = ""`` states that there is none, and the same test fails on
+  a registered class that leaves its tooltip to its docstring.
 * **Text built at run time for a widget.** ``iface_("Connected to {name}", name=n)``
   (``tip_``, ``rpt_``, ``plural_``) from ``ui_text``, passed with ``translate=False`` so
   Blender does not look it up a second time. A constant shown later is marked with

@@ -105,7 +105,9 @@ def clean_profile(profile):
             if type(record.get("tasks")) is not int or not 0 <= record.get("pass_rate", -1) <= 1:
                 raise ValueError(f"{identity}/{kind}: measured needs integer tasks and pass_rate 0-1")
             measured[kind] = dict(record)
-        models.append({"id": identity, "tier": entry["tier"], "effort": entry.get("effort") or "low",
+        # The effort the entry's measured results were read at ("" when the profile states none): a record on the
+        # route, never what a request sends (chat_settings.request_effort decides that).
+        models.append({"id": identity, "tier": entry["tier"], "effort": entry.get("effort") or "",
                        # The runtime's default row: today's behavior and the quality baseline.
                        "default": entry.get("default") is True, "images": entry.get("images") is True,
                        "prices": prices, "measured": measured,
@@ -124,12 +126,19 @@ def clean_profile(profile):
 def cache_ttl(runtime, session_kind, billing):
     """Prompt-cache TTL for a NEW native session; keep it for the session's life.
 
-    Interactive chats match Claude Code's own default for its main
-    conversation: 1 hour (2x input) on a subscription, 5 minutes (1.25x) on
+    An interactive chat writes at 1 hour (2x input) on a subscription and on
     every key-billed route (``billing`` ``API_KEY``: a personal API key or a
-    team's gateway key). Runs without human gaps use 5m on every route. A TTL
-    change mid-session partly misses the cached prefix. Other runtimes expose
-    no per-session TTL to Angelo yet (None).
+    team's gateway key). A person pauses: at 5 minutes (1.25x) each turn after
+    a pause of 5 to 60 minutes rewrites the whole prefix instead of reading it,
+    which costs more than the 1-hour write does once such turns pass about 1%
+    of a chat's turns (``ttl_break_even_share``; doc/angelo/model_routing.rst,
+    "Prompt-cache TTL per session", has the measurement behind the choice).
+    Key-billed chats were at Claude Code's own 5-minute default from Angelo
+    1.0.4 to 1.0.11. Runs without a person's pauses (autonomous, benchmark,
+    subagent) use 5m on every route, as does a local runtime. A TTL change
+    mid-session partly misses the cached prefix, so a session that exists
+    keeps the one it recorded. Other runtimes expose no per-session TTL to
+    Angelo yet (None).
     """
     if session_kind not in SESSION_KINDS:
         raise ValueError("Unknown session kind")
@@ -137,7 +146,7 @@ def cache_ttl(runtime, session_kind, billing):
         raise ValueError("billing must be one of " + ", ".join(sorted(BILLING)))
     if runtime != "claude":
         return None
-    return "1h" if session_kind == "interactive" and billing == "SUBSCRIPTION" else "5m"
+    return "1h" if session_kind == "interactive" and billing in ("SUBSCRIPTION", "API_KEY") else "5m"
 
 
 def ttl_break_even_share(write_tokens, prefix_tokens, input_price, read_price):

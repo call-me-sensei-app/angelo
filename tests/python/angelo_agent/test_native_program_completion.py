@@ -7,6 +7,7 @@ or provider inference is claimed. Controller durability and provider dispatch ru
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import copy
 from dataclasses import replace
@@ -574,21 +575,21 @@ class ProgramCompletionTests(unittest.TestCase):
         original = program_completion.checks_digest
         def digest(rows):
             entered.set()
-            if not resume.wait(2):
+            if not resume.wait(CAP_S):
                 raise AssertionError("Digest interleaving did not resume")
             return original(rows)
         with patch.object(program_completion, "checks_digest", side_effect=digest):
             worker = threading.Thread(target=lambda: summaries.append(self.summary(result, completion)))
             worker.start()
             try:
-                self.assertTrue(entered.wait(2))
+                self.assertTrue(entered.wait(CAP_S))
                 self.context.emit("finished", {"status": "failed"})
                 self.assertFalse(self.context.program_completions.records)
                 self.assertIsNone(completion.origin.result)
                 self.assertIsNone(completion.origin.completion)
             finally:
                 resume.set()
-                worker.join(2)
+                worker.join(CAP_S)
         self.assertFalse(worker.is_alive())
         self.assertEqual(summaries, [None])
         self.assertTrue(result["success"])

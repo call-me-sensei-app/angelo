@@ -10,8 +10,8 @@
 #include <utility>
 #include <vector>
 
-#include "BLI_listbase.h"
-#include "BLI_utildefines.h"
+#include "BLI_listbase.hh"
+#include "BLI_utildefines.hh"
 
 #include "BKE_action.hh"
 #include "BKE_armature.hh"
@@ -37,7 +37,7 @@ namespace blender::angelo_read_traversal {
 
 static bool named(const PropertyRNA &property, const char *identifier)
 {
-  return property.identifier && std::strcmp(property.identifier, identifier) == 0;
+  return property.identifier == identifier;
 }
 
 static bool manual(const PropertyRNA &property, RNAReadCallbackRole role, const char *symbol)
@@ -221,7 +221,7 @@ struct Scope::Impl {
   struct WarningState {
     const NodesModifierData *source;
     const Object *object;
-    Vector<nodes::eval_log::NodeWarning> warnings;
+    Vector<nodes::NodeWarning> warnings;
   };
   std::vector<std::unique_ptr<WarningState>> warnings;
 };
@@ -258,7 +258,7 @@ struct ScopeAccess {
     entry->object = object;
     if (modifier->runtime->eval_log) {
       bke::DataBlockComputeContext data_block_context{nullptr, object->id};
-      bke::ModifierComputeContext modifier_context{&data_block_context, *modifier};
+      bke::GeometryNodesModifierComputeContext modifier_context{&data_block_context, *modifier};
       entry->warnings = modifier->runtime->eval_log->copy_node_warnings_for_read(
           modifier_context.hash(), *modifier);
     }
@@ -359,7 +359,7 @@ static Status visit_entries(Scope &scope,
     if (!state) {
       return Status::INVALID_STORAGE;
     }
-    for (nodes::eval_log::NodeWarning &warning : state->warnings) {
+    for (nodes::NodeWarning &warning : state->warnings) {
       if (!visit(RNA_NodesModifierWarning, &warning, owner.owner_id, false)) {
         break;
       }

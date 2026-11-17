@@ -311,6 +311,7 @@ class WindowGoneBeforeTheFirstStepTests(unittest.TestCase):
         for patch in (mock.patch.dict(sys.modules, {"bpy": bpy, "angelo_agent.ui": self.ui}),
                       mock.patch.object(angelo_agent, "ui", self.ui, create=True),
                       mock.patch.object(studio_workspaces, "bpy", bpy), mock.patch.object(studio_tab_build, "bpy", bpy),
+                      mock.patch.object(studio_workspaces.tab_removal, "bpy", bpy),
                       mock.patch.object(studio_workspaces, "_building", False),
                       mock.patch.object(studio_workspaces, "_holding", None),
                       mock.patch.object(studio_workspaces, "place", lambda: True),
@@ -417,9 +418,10 @@ class BuildTests(unittest.TestCase):
         build = function("_build")
         self.assertIn("made.append(name := created.name)", build)
         self.assertIn("made.remove(name)   # Finished: it stays, the tab from now on.", build)
-        self.assertIn("created[UNFINISHED] = TABS[kind], kind, True", build, "half-made until then, in any saved file")
+        self.assertIn("created[UNFINISHED] = TABS[kind], kind, home_name", build,
+                      "half-made until then, in any saved file, with the home a window showing it goes back to")
         finally_block = build.split("    finally:", 1)[1]
-        self.assertIn("_remove(rollback, bpy.data.workspaces[name])", finally_block)
+        self.assertIn("_remove(rollback, bpy.data.workspaces[name], home_name)", finally_block)
         self.assertIn("window.workspace = home", finally_block)
         self.assertLess(finally_block.index("window.workspace = home"), finally_block.index("_remove("),
                         "home first: deleting the shown tab would switch to a neighbour, with its object mode")

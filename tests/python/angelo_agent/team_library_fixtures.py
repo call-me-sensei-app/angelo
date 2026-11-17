@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 from angelo_agent.view_png import encode_png  # noqa: E402
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -133,7 +134,7 @@ def usdz(entries, compress=False):
 USDA = b'#usda 1.0\n(\n    defaultPrim = "Root"\n)\n\ndef Xform "Root"\n{\n}\n'
 
 
-def wait_for(predicate, timeout=5.0):
+def wait_for(predicate, timeout=CAP_S):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         value = predicate()

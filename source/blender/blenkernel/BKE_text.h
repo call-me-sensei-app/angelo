@@ -13,8 +13,8 @@ struct Main;
 struct Text;
 struct TextLine;
 
-#include "BLI_compiler_attrs.h"
-#include "BLI_sys_types.h"
+#include "BLI_compiler_attrs.hh"
+#include "BLI_sys_types.hh"
 
 /**
  * \note caller must handle `compiled` member.
@@ -46,6 +46,9 @@ struct Text *BKE_text_load_ex(struct Main *bmain,
  */
 struct Text *BKE_text_load(struct Main *bmain, const char *filepath, const char *relbase)
     ATTR_NONNULL(1, 2, 3);
+/** Angelo: an edit made while an agent script is confined marks the text as not the person's
+ * (#TXT_ANGELO_UNTRUSTED). Every editing path in text.cc calls it; an editor that changes lines itself calls it too. */
+void BKE_text_angelo_edited(Text *text);
 void BKE_text_clear(struct Text *text) ATTR_NONNULL(1);
 void BKE_text_write(struct Text *text, const char *str, int str_len) ATTR_NONNULL(1, 2);
 /**

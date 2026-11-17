@@ -111,7 +111,10 @@ entry that states the measured size (doc/angelo/agent_integration.rst).
 # of their deltas over 1.0.8's 57,161 (+24 +26 +42 +49).
 # Raised 57,310 -> 57,330 with toolset 51, measured 57,302 -> 57,316 B ON (57,232 -> 57,246 OFF, +14): the deferred
 # name angelo_goal (goal_mode.rst); its schema loads on first use, when a person asks for a goal.
-PLAN_BUDGET_BYTES = 57330
+# Raised 57,330 -> 57,340 with toolset 55 (2.0.0), measured 57,316 -> 57,334 B ON (57,246 -> 57,264 OFF, +18): the
+# deferred name angelo_download (downloads.rst); its schema loads on first use. Agent scripts have no network, so
+# without it the agent cannot bring a file from the web into the project at all.
+PLAN_BUDGET_BYTES = 57340
 # Claude's instructions with the plan.
 # Raised 10,680 -> 10,720: the background-job sentence took the instructions 10,617 -> 10,714 B
 # (+97, measured; long_jobs.rst, "Model-visible bytes").
@@ -192,4 +195,8 @@ CLAUDE_INSTRUCTION_BUDGET_BYTES = 15610
 # every finding (doc/angelo/engine_preflight.rst, "Tool results").
 # Together on 1.0.9's merged tree, measured 108,654 B: the 108,480 above plus the baked_materials +174 above, which
 # reached this budget separately.
-DECLARED_TOOLS_BUDGET_BYTES = 108660
+# Raised 108,660 -> 108,740 with toolset 55 (2.0.0), measured 108,654 -> 108,726 B (+72, cached; 56,297 -> 56,335
+# tokens): angelo_execute_python's sentence stating a script's length limit (script_store.LIMIT_SENTENCE). Without
+# it an agent met the limit only as a refusal after writing the whole script: one wasted script of over 32,768
+# characters and a round (agent_integration.rst, "Toolset 55"). The Claude plan schema is unchanged (57,246 B).
+DECLARED_TOOLS_BUDGET_BYTES = 108740

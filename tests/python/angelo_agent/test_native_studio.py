@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import platform_env
 
 import base64
 import json
@@ -57,9 +58,7 @@ class StudioStateTests(unittest.TestCase):
                     self.assertLess(left[0] + left[2], right[0])
 
     def test_library_is_not_tied_to_scratch_chat_state(self):
-        # Windows finds the home folder only through its profile variables, so a cleared environment keeps them.
-        profile = {key: value for key, value in os.environ.items() if key.upper() in ("USERPROFILE", "LOCALAPPDATA", "APPDATA", "SYSTEMROOT")}
-        with patch.dict(os.environ, dict(profile, ANGELO_STATE_DIR="/tmp/scratch-chat"), clear=True):
+        with platform_env.cleared(ANGELO_STATE_DIR="/tmp/scratch-chat"):
             self.assertNotIn("scratch-chat", str(library_directory()))
         with patch.dict(os.environ, {"ANGELO_LIBRARY_DIR": "relative"}):
             with self.assertRaises(ValueError):
@@ -416,8 +415,10 @@ class StudioRefusalTests(unittest.TestCase):
     def test_the_input_modal_runs_every_click_through_it(self):
         source = (ROOT / "scripts/addons_core/angelo_agent/studio_input.py").read_text()
         body = source.split("class ANGELO_OT_studio_input", 1)[1].split("\ndef ", 1)[0]
-        self.assertIn("refusable(state, lambda: click(bpy.context, state, action, value, rect))", body)
-        self.assertEqual(body.count("click(bpy.context"), 1)
+        # Each click in its press's grant scope (grant_guard.ticketed): Generate and Enhance are the person's.
+        call = 'refusable(state, lambda: grant_guard.ticketed("studio.", ticket[0], ticket[1], click, bpy.context,'
+        self.assertIn(call, body)
+        self.assertEqual(body.count("ticketed(\"studio.\", ticket[0], ticket[1], click"), 1)
 
 class CreatePanelConnectTests(unittest.TestCase):
     """With no account for the chosen model, the Create panel says what's missing once: the line under the

@@ -17,10 +17,10 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_map.hh"
 #include "BLI_set.hh"
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 
 #include "DNA_collection_types.h"
 #include "DNA_key_types.h"

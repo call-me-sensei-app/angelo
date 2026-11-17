@@ -158,7 +158,7 @@ function Freeze-MsiCandidate([string]$Bench, [string]$Msi, [string]$Sha256, [str
         if ($run.ExitCode -notin 0, 3010) { throw "msiexec /i $Msi exited with $($run.ExitCode) ($log)" }
         try {
             # Frozen with the installed app's own Python, as the harness will run it.
-            $python = Join-Path $InstallDir "5.2\python\bin\python.exe"
+            $python = Join-Path $InstallDir "$(Get-AngeloBlenderSeries $SourceDir)\python\bin\python.exe"
             & $python (Join-Path $SourceDir "tests\python\angelo_agent\final_runs.py") freeze --source $InstallDir --into $candidate | Out-Host
             if ($LASTEXITCODE -ne 0) { throw "final_runs.py freeze failed" }
         } finally {
@@ -171,5 +171,64 @@ function Freeze-MsiCandidate([string]$Bench, [string]$Msi, [string]$Sha256, [str
     $receipt = Get-Content (Join-Path $candidate "RECEIPT.json") -Raw | ConvertFrom-Json
     return [ordered]@{ folder = $candidate; msi_sha256 = $actual; executable = $receipt.executable
         executable_sha256 = $receipt.executable_sha256; version = @($receipt.version)[0..1] -join " | "
-        harness_python = (Join-Path $receipt.app "5.2\python\bin\python.exe") }
+        harness_python = (Join-Path $receipt.app "$(Get-AngeloBlenderSeries $SourceDir)\python\bin\python.exe") }
+}
+
+# A gate's pay-per-token key (final_runs_plan.API_KEY_ACCOUNTS, Gemini 4 Carbon's gemini): for each API-key account the
+# selected steps bill (final_runs_plan.py needs: api_key_accounts, kept in facts.json), metadata
+# angelo-bench-<account>-secret names a Secret Manager secret (angelo-bench-..., a name, never a key), and
+# bench_api_key.py saves its key in the bench user's Credential Manager item of the one connection in
+# <bench>\<account>-connections ("load": after removing one an earlier request may have left). "unload", at the session's
+# end, needs no secret, so it runs for every billed account whatever the metadata says. A selection that bills none
+# loads nothing; one that bills an account whose metadata is empty, unreadable or not a bench secret name stops here,
+# never echoing the value. The key never passes through here: no argument, variable, file or output holds it; the
+# helper's own lines, its refusal reasons included, go to the session log. Returns init's arguments.
+function Use-GateKey([string]$Python, [string]$SourceDir, [string]$Bench, [string[]]$Accounts, [string]$Action) {
+    $ErrorActionPreference = "Continue"   # This function's scope only: the helper's stderr is its reason.
+    $helper = Join-Path $SourceDir "tests\python\angelo_agent\bench_api_key.py"
+    $init = @()
+    foreach ($account in @($Accounts | Where-Object { $_ })) {
+        $folder = Join-Path $Bench "$account-connections"
+        $named = @()
+        if ($Action -ne "unload") {
+            $meta = "angelo-bench-$account-secret"
+            $secret = "$(Get-Meta $meta '')".Trim()
+            if (-not $secret) { throw "metadata $meta is required: the selected steps bill the $account account (it is unset, or the metadata server did not answer)" }
+            if ($secret -cnotmatch '^angelo-bench-[A-Za-z0-9_-]{1,242}$') { throw "metadata $meta is not an angelo-bench-... secret name (its value is not shown: it may be a key)" }
+            $named = @("--secret", $secret)
+        }
+        foreach ($step in $(if ($Action -eq "load") { @("unload", "load") } else { @($Action) })) {
+            $lines = @(& $Python $helper $step --account $account --connections-dir $folder @named 2>&1 | ForEach-Object { "$_" })
+            $lines | Out-Host
+            if ($LASTEXITCODE -ne 0) { throw "bench_api_key.py $step ($account): $(@($lines)[-1])" }
+        }
+        $init += @("--$account-connections-dir", $folder)
+    }
+    return $init
+}
+
+# The bench user and its profile, credential vault included (removing the account keeps the profile), so nothing of an
+# earlier request's user outlives it: a request stopped mid-run skips the stage's own cleanup and leaves that user
+# signed in. Its sessions are signed out, then the profile is removed once Windows has unloaded it (logoff returns
+# first; up to WaitSeconds). A profile still loaded then loses its credential vaults directly. Returns "" when nothing
+# stays, else what stays, for the stage's result.
+function Remove-BenchUser([string]$User, [int]$WaitSeconds = 120) {
+    $ErrorActionPreference = "Continue"   # quser and logoff write to stderr when there is no session.
+    foreach ($line in @(quser 2>$null | Select-Object -Skip 1)) {
+        $fields = @("$line".Trim().TrimStart(">") -split "\s+")
+        $id = @($fields | Where-Object { $_ -match "^\d+$" })[0]
+        if ($fields[0] -eq $User -and $id) { logoff $id 2>$null | Out-Null }
+    }
+    Remove-LocalUser -Name $User -ErrorAction SilentlyContinue
+    $mine = { @(Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -like "C:\Users\$User*" }) }
+    $until = (Get-Date).AddSeconds($WaitSeconds)
+    while (@(& $mine | Where-Object { $_.Loaded }).Count -and (Get-Date) -lt $until) { Start-Sleep -Seconds 3 }
+    & $mine | Where-Object { -not $_.Loaded } | Remove-CimInstance -ErrorAction SilentlyContinue
+    $vaults = @(& $mine | ForEach-Object { $userFolder = $_.LocalPath
+        foreach ($part in @("AppData\Local\Microsoft\Credentials", "AppData\Roaming\Microsoft\Credentials")) { Join-Path $userFolder $part } })
+    $vaults | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { Remove-Item -LiteralPath $_ -Recurse -Force -ErrorAction SilentlyContinue }
+    $left = @(& $mine)
+    if (-not $left) { return "" }
+    $kept = @($vaults | Where-Object { Test-Path -LiteralPath $_ })
+    "bench user profile still loaded: $(@($left.LocalPath) -join ', ')" + $(if ($kept) { "; credential vault NOT removed: $($kept -join ', ')" } else { " (its credential vault removed)" })
 }

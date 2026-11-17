@@ -14,6 +14,7 @@ network or key store is used.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import contextlib
 import inspect
@@ -251,7 +252,7 @@ class QuitTests(FlushCase):
         account.close()
         started.assert_within(team_usage_reports.EXIT_SECONDS + 0.5)
         # Quit waits a second at most; on a loaded machine the report it started lands after that (the test below).
-        self.assertTrue(account.join(10))
+        self.assertTrue(account.join(CAP_S))
         self.assertEqual(self.console.reports.totals(), {self.today(*OPUS): (2, 95000)})
         self.assertEqual(self.pending(), ({}, None))
 

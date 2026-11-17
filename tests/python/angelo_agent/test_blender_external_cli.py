@@ -82,7 +82,8 @@ def run_host():
     args = parser.parse_args()
     root = native_suite_paths.fresh_fixture_root(args.out)
     binary = Path(args.binary).resolve(strict=True)
-    python = Path(args.client_python or binary.parents[1] / "Resources/5.2/python/bin/python3.13").resolve(strict=True)
+    import app_layout
+    python = Path(args.client_python or app_layout.python(binary)).resolve(strict=True)
     root.mkdir(mode=0o700)
     env = isolated_environment(root)
     log = root / "angelo.log"
@@ -353,7 +354,8 @@ def heartbeat():
             ui.draw_ai_providers(Layout(seen), bpy.context)
             check("preferences_show_the_toggle", "allow_local_cli" in seen)
             state["baseline"] = scene_signature()
-            prefs.allow_local_cli = True
+            from angelo_agent import grant_guard  # The test acts as the person (grant_guard.setting).
+            grant_guard.harness(setattr, prefs, "allow_local_cli", True)
             state["phase"] = "listening"
         elif phase == "listening" and (STATE / "cli/endpoint.json").exists():
             endpoint = STATE / "cli/endpoint.json"
@@ -394,7 +396,8 @@ def heartbeat():
         elif phase == "sequence_c" and "c" in state["results"]:
             check("status_after_toggle_off_unavailable_exit_8", state["results"]["c"]["off"][0] == 8)
             os.environ[external_host.KILL_SWITCH] = "1"
-            prefs.allow_local_cli = True
+            from angelo_agent import grant_guard  # The test acts as the person (grant_guard.setting).
+            grant_guard.harness(setattr, prefs, "allow_local_cli", True)
             state["phase"] = "kill_switch"
             return 0.5
         elif phase == "kill_switch":
@@ -405,7 +408,8 @@ def heartbeat():
             check("scene_unchanged_after_all_cli_work", scene_signature() == state["baseline_b"])
             check("no_provider_started", all(c.provider is None for c in ui._controllers.values()))
             check("external_chats_refuse_model_turns", all(refuses_model_turn(c) for c in external_controllers()))
-            prefs.allow_local_cli = True  # Quit while listening: exit must withdraw the record and socket.
+            from angelo_agent import grant_guard  # The test acts as the person (grant_guard.setting).
+            grant_guard.harness(setattr, prefs, "allow_local_cli", True)  # Quit while listening: exit must withdraw the record and socket.
             state["phase"] = "quit_listening"
         elif phase == "quit_listening" and (STATE / "cli/endpoint.json").exists():
             report["socket_at_quit"] = json.loads((STATE / "cli/endpoint.json").read_text())["socket"]

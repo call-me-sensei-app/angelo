@@ -13,7 +13,9 @@ at once). A failed try is retried after 1, 2, 4, 8 and then 24 hours. A
 manual check ("Check for Updates…") always runs. The request is one GET of a
 small JSON file; it carries a User-Agent with the product version, OS family
 and CPU (``app_http.user_agent``), the ETag from the last answer, and nothing
-else: no identifier, no account, no scene data.
+else: no identifier, no account, no scene data. Like any web request it shows
+the server the computer's address; angelo.studio counts these requests without
+logging the address (doc/angelo/updates_and_reports.rst, "What the server keeps").
 
 Where: ``https://angelo.studio/updates/v1/stable.json``, or the machine policy's
 ``UpdateFeedURL`` (an organization's https mirror of the same signed file), or
@@ -34,6 +36,7 @@ import threading
 import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from . import app_http, app_version, managed_policy, product_env, update_feed, update_state
 from .app_http import NetworkError
@@ -60,6 +63,7 @@ class Result:
     skipped: bool = False   # UPDATE the person chose to skip: no notice, no status-bar item.
     snoozed: bool = False   # UPDATE the person chose "Later" for: no notice yet, the status-bar item stays.
     declined: object = None  # The newer line (Offer) the person stays off: not in the notice, kept in Preferences.
+    untrusted_origin: str = ""   # The feed's origin when its certificate was not verified: the notice says so.
 
 
 def feed_url(policy, environ=None):
@@ -204,7 +208,9 @@ class Checker:
             response = self.fetch("GET", feed_url(self.policy, self.environ), headers=headers)
         except NetworkError as error:
             kind = OFFLINE if error.kind in {app_http.OFFLINE, app_http.TIMEOUT} else FAILED
-            return Result(kind, detail=error.kind), {}
+            feed = urlsplit(feed_url(self.policy, self.environ))
+            return Result(kind, detail=error.kind, untrusted_origin="%s://%s" % (feed.scheme, feed.netloc)
+                          if getattr(error, "untrusted", False) else ""), {}
         if response.status == 304 and state.envelope:
             raw, etag = state.envelope.encode("utf-8"), state.etag
         elif response.status == 200:

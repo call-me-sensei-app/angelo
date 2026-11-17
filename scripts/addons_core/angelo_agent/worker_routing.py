@@ -39,7 +39,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import shared_replace
+from . import edit_tool_hold, shared_replace
 from .ui_text import n_   # Marks the text for the catalogues; pure Python.
 
 REGISTRY = "worker-chats.json"   # In the state folder: which chats work on a worker's part, kept across restarts.
@@ -95,6 +95,8 @@ def registry(directory):
 def _remember(controller, part):
     """Record the chat as a worker chat before it binds, so no restart can turn it into a chat on Angelo's file."""
     directory = Path(controller.store.directory)
+    from . import owned_paths
+    owned_paths.require_writable(directory / REGISTRY)   # C first: no temporary is made beside a target it refuses.
     chats, identity = registry(directory), controller.state["id"]
     before = chats.get(identity)
     chats[identity] = str(part)
@@ -332,10 +334,10 @@ def ready(worker):
 def launch(part, **options):
     """A worker for ``part``, not started yet: ``WorkerProcess.start`` (stdlib only) may then run on any thread, and
     ``adopt`` binds it on Blender's main thread (``worker_sessions`` starts workers this way, never waiting)."""
-    from .worker_process import WorkerProcess, default_binary, default_script
+    from .worker_process import WorkerProcess
+    from . import owned_paths   # Its part comes from module state (a relaunch's record): only where C lets Angelo write.
+    owned_paths.require_writable(part)
     Path(part).parent.mkdir(parents=True, exist_ok=True)   # A worker saving into a missing folder cannot start.
-    options.setdefault("binary", default_binary())   # Read here, on the main thread (bpy), never on a worker thread.
-    options.setdefault("script", default_script())
     if "crash_reports" not in options:   # Read here, on the main thread: where its crash log is kept for the report.
         try:
             from .crash_ui import temp_base
@@ -379,7 +381,7 @@ def stop_all():
     _stopping.clear()
 
 
-def deliver(controller, window, message, send, on_error):
+def deliver(controller, window, message, send, on_error, stops=None):
     """Prepare a turn for ``message`` and ``send(turn)`` it, then acknowledge the observation (``console.execute``'s
     order). A worker chat does it on its lane (``worker_dispatch``): the worker may still be answering an earlier
     call, and Blender's main thread never waits for it. ``on_error(error)`` runs on the main thread either way. A
@@ -390,7 +392,7 @@ def deliver(controller, window, message, send, on_error):
     if not hosted(controller) and worker_queue.resume(   # A hosted chat's Send relaunches it (worker_mirror_park).
             controller, lambda: deliver(controller, held(), message, send, on_error), on_error):
         return None
-    stops = _stops(controller)
+    stops = _stops(controller) if stops is None else stops   # A deferred retry keeps the count it began with.
 
     def run(window):
         _check_stop(controller, stops)
@@ -410,6 +412,8 @@ def deliver(controller, window, message, send, on_error):
         except Exception as error:   # noqa: BLE001 - reported as the lane's are.
             return on_error(error)
     if bound(controller) is None:
+        if edit_tool_hold.deferred(lambda: deliver(controller, held(), message, send, on_error, stops=stops)):
+            return None   # The person's editing tool runs: the capture waits for its end (edit_tool_hold).
         try:
             live = held()   # On the main thread, live (live_target): never a local window read on a lane.
             if had_window and live is None:

@@ -20,17 +20,21 @@
 #  include <unistd.h>
 #endif
 
+/* First: glog (in the testing header) does not compile once `windows.h` has defined `ERROR`, and
+ * `BLI_filereader.hh` below includes it on Windows (`BLI_winstuff.hh`). */
+#include "testing/testing.h"
+
 #include "MEM_guardedalloc.h"
 
 #include "DNA_scene_types.h"
 #include "DNA_userdef_types.h"
 
-#include "BLI_fileops.h"
-#include "BLI_filereader.h"
-#include "BLI_listbase.h"
+#include "BLI_fileops.hh"
+#include "BLI_filereader.hh"
+#include "BLI_listbase.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_tempfile.h"
+#include "BLI_string.hh"
+#include "BLI_tempfile.hh"
 
 #include "BKE_global.hh"
 #include "BKE_idprop.hh"
@@ -723,6 +727,20 @@ TEST_F(WritefileDescriptorTest, InvalidDescriptorRefusesBeforePreparation)
 {
   const std::string logical = path("logical.blend");
   expect_preflight_refused(-1, params(), 0, logical.c_str(), "Cannot inspect BASE descriptor");
+}
+
+/* A positive number that is no open descriptor: what a caller that closed its file too early
+ * passes. Windows' C runtime ends the process when asked about either kind. */
+TEST_F(WritefileDescriptorTest, ClosedDescriptorRefusesBeforePreparation)
+{
+  const std::string logical = path("logical.blend");
+  const int descriptor = open_owned(path("closed.blend"));
+  ASSERT_GE(descriptor, 0);
+  close_owned(descriptor);
+  expect_preflight_refused(
+      descriptor, params(), 0, logical.c_str(), "Cannot inspect BASE descriptor");
+  expect_preflight_refused(
+      1 << 20, params(), 0, logical.c_str(), "Cannot inspect BASE descriptor");
 }
 
 #ifndef WIN32

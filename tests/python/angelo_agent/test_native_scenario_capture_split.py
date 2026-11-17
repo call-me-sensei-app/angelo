@@ -17,6 +17,7 @@ own log.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import platform_env
 
 import json
 import random
@@ -106,11 +107,10 @@ def bits(values):
 
 class PlanTests(unittest.TestCase):
     def test_capture_parent_keeps_only_a_bounded_qa_process_owner(self):
-        import os
         import scenario_references as references
         for owner in ("a" * 32, "", "a" * 31, "a" * 33, "A" * 32, "g" * 32):
             with self.subTest(owner=owner), tempfile.TemporaryDirectory() as folder, \
-                    mock.patch.dict(os.environ, {"ANGELO_QA_PROCESS_OWNER": owner}, clear=True):
+                    platform_env.cleared({"ANGELO_QA_PROCESS_OWNER": owner}):
                 env = references.isolated_environment(folder)
             self.assertEqual(env.get("ANGELO_QA_PROCESS_OWNER"), owner if owner == "a" * 32 else None)
 

@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import json
 import os
@@ -17,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_cor
 from angelo_agent.api_connections import (ApiConnections, CheckResult, ConnectionCheckError,
                                            check_connection, probe_request, read_probe, _NoRedirect)
 from angelo_agent.provider_registry import (CODING, GENAI, SPECS, HTTP_MODES, EXTERNAL_CODEX_MODES, TEAM,
-                                            is_coding, provider_items, runtime_kind)
+                                            is_coding, provider_items, runtime_kind, runtime_wire)
 from angelo_agent.connections import ConnectionStore
 from angelo_agent.providers import CodexProvider, codex_command, child_environment
 from angelo_agent.catalogs import ModelCatalogs
@@ -29,6 +30,9 @@ KEY = "fixture-key-never-sent-to-a-real-provider"
 
 
 def catalog(mode):
+    """A model list in the provider's own shape (Google lists "models" by resource name; the others "data")."""
+    if SPECS[mode]["provider"] == "GOOGLE":
+        return {"models": [{"name": "models/" + m["id"]} for m in SPECS[mode]["models"]]}
     return {"data": [{"id": m["id"]} for m in SPECS[mode]["models"]]}
 
 
@@ -164,14 +168,14 @@ class ApiProviderTests(unittest.TestCase):
         started, release = threading.Event(), threading.Event()
         def transport(request):
             started.set()
-            release.wait(2)
+            release.wait(CAP_S)
             return catalog("kimi_api")
         checker = ApiConnections(transport)
         checker.start({"id": "connection", "mode": "kimi_api"}, KEY)
-        self.assertTrue(started.wait(1))
+        self.assertTrue(started.wait(CAP_S))
         checker.invalidate("connection")
         release.set()
-        event = checker.events.get(timeout=2)
+        event = checker.events.get(timeout=CAP_S)
         checker.events.put(event)
         self.assertEqual(checker.pump(), [])
         self.assertNotIn("connection", checker.results)
@@ -180,7 +184,7 @@ class ApiProviderTests(unittest.TestCase):
     def test_background_error_does_not_expose_headers_or_keys(self):
         checker = ApiConnections(lambda request: (_ for _ in ()).throw(RuntimeError(str(request.headers))))
         checker.start({"id": "connection", "mode": "kimi_api"}, KEY)
-        event = checker.events.get(timeout=2)
+        event = checker.events.get(timeout=CAP_S)
         checker.events.put(event)
         checker.pump()
         self.assertNotIn(KEY, checker.results["connection"].message)
@@ -190,7 +194,9 @@ class ApiProviderTests(unittest.TestCase):
         inherited = {"OPENAI_API_KEY": "other", "ANTHROPIC_API_KEY": "other", "KIMI_API_KEY": "other",
                      "MINIMAX_API_KEY": "other", "CODEX_HOME": "/unrelated", "OPENAI_BASE_URL": "https://other.invalid"}
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, inherited):
-            for mode in EXTERNAL_CODEX_MODES:
+            # Responses providers; a mode on a wire only Angelo's runtime has (Gemini) refuses this Codex and has
+            # its own invariants (test_native_gemini_connection.py).
+            for mode in sorted(m for m in EXTERNAL_CODEX_MODES if not runtime_wire(m)):
                 command, env = codex_command("/official/codex", mode, directory, True, api_key=KEY)
                 config = dict(v.split("=", 1) for i, v in enumerate(command) if i > 0 and command[i-1] == "-c")
                 spec = SPECS[mode]
@@ -259,7 +265,7 @@ class ModelGroupingTests(unittest.TestCase):
 
     def test_generic_groups_keep_exact_connection_and_model_routes(self):
         rows = model_rows(self.models(), "kimi-k3", "kimi_api")
-        self.assertEqual(len([r for r in rows if r["kind"] == "provider"]), 3)
+        self.assertEqual(len([r for r in rows if r["kind"] == "provider"]), len(EXTERNAL_CODEX_MODES))
         self.assertEqual([r["value"] for r in rows if r["selected"]], [("kimi_api", "kimi-k3")])
 
     def test_duplicate_runtime_default_alias_is_hidden(self):

@@ -114,7 +114,17 @@ Transcript
   ``ui_kit.measure`` for a kit view): glyph advances are whole pixels at the
   rasterised size, so a width measured at the unscaled size drifts from the
   drawn glyphs by up to half a pixel per character. Wrapping, centring, the
-  composer's caret, selection and click-to-caret all measure there. Fonts: San Francisco and Menlo where macOS has them, otherwise
+  composer's caret, selection and click-to-caret all measure there. A fill
+  or stroke thinner than one device pixel is drawn one pixel wide on the pixel
+  grid (``canvas_pixels``, through ``chat_view.shape``/``stroke``): at a
+  fractional scale below 1 the 1-unit caret otherwise covered no pixel centre
+  and was not drawn (``test_native_canvas_pixels``). A GUI
+  suite turns a chat rect (its hits, geometry, composer) into window pixels
+  only through ``qa_input.chat_rect`` / ``chat_point`` (the scale, then the
+  right-to-left mirror) or ``qa_input.window_click(..., scale=...)``; a rect
+  added to ``region.x``/``region.y`` by hand missed whenever the scale is not
+  1, as under Xvfb at 75 dpi (``test_native_chat_click_scale`` follows every
+  value read from ``chat_view._views``). Fonts: San Francisco and Menlo where macOS has them, otherwise
   Blender's bundled UI face (Inter) and DejaVu Sans Mono. The accent is the
   brand teal (``ui_tokens``).
 * ``test_native_markdown_blocks.py`` pins the parser (including every prefix of
@@ -153,6 +163,24 @@ Composer
   picker open, Escape closes the picker (or clears its search first). Keys pressed with the pointer over the chat
   go to the chat, as to any editor under the pointer. Media Studio's fields and the kit's fields
   (``ui_kit_field``) end editing on Escape the same way; ``test_native_field_escape`` drives each one.
+* Input methods (Japanese, Korean, Chinese): the composer holds the window's input method while it has the
+  keyboard, wherever the pointer is (``composer_ime``, ``Window.ime_attach``: Angelo's ``wmIMEOwnerType::Script``
+  session in ``wm_window.cc``). The candidate window opens at the composer's caret and follows it. The text being
+  composed shows inline, in the selection's place when there is one, underlined, with the converted part
+  underlined more thickly and the caret inside it. The input method's own keys (Backspace, the arrows, Return,
+  Escape) edit the composition and never the draft or send. The commit goes in through the composer's own insert:
+  it replaces the selection, redraws at once, and joins the typing run, so one Undo takes it back with the
+  selection. A menu or popup takes the input method while it is open, and the composer takes it back after.
+  Escape, or another of the ways editing ends, releases it. A chat whose field waits (no account and an empty
+  transcript, ``chat_view`` ``waiting``) refuses an input method's text as it refuses typed keys. The composer
+  then holds no session, where Blender 5.3's Console put the commit into the hidden draft.
+  Before 2.0.0 the Console under the chat
+  (``console.insert``, Blender 5.3's ``console_main_region_cursor_ime``) took the commit past the composer, and
+  placed the candidate window at its own hidden line. ``test_native_composer_ime`` (host) and
+  ``test_blender_composer_ime_gui`` (``Window.ime_simulate``, through ``WM_event_IME_apply``, the path GHOST's
+  input method events take) pin it. The composition events are ``Event.type`` only, never a key-map's: no key
+  press makes one, so the key-map editor and ``keymap_items.new`` refuse them (``test_blender_keymap_event_types``). A system input method's candidate window is checked by hand on macOS and
+  Windows.
 * In a narrow chat the toolbar gives its room by priority (``chat_composer.footer_fit``): the model chip names
   the model whole (its effort goes first), the approval policy keeps its label only where it fits beside the
   chip and is otherwise its icon alone; only a chat too narrow for the icon and the chip elides the model. Each
@@ -217,7 +245,7 @@ Composer
   nothing else changed (a running turn it stopped at ``load_pre`` stays stopped). When a lead's workers cannot all
   be stopped, its chat says so. One chat's failure never stops another's
   binding or the rest of the load; a save that fails while binding leaves the chat bound, its state in memory, and
-  the chat says once "Angelo couldn't save this chat…". The decision waits for the load's end only in a process that
+  the chat says once "Angelo couldn't save this chat…", with why and what to do (``save_failure.cause``). The decision waits for the load's end only in a process that
   runs it (``ui.document_load_post`` and the failed-load handler registered: ``document_identity._completes``); one
   that registers ``ui.document_load_pre`` alone (``headless_main._register``) tells every chat at ``load_pre``, as
   before, so no chat is left undecided. ``test_native_document_identity`` and
@@ -352,7 +380,11 @@ Composer
   full ID the catalog lists under an alias (``model_profiles``); an unknown ID
   is shown as it is. It opens a reasoning card: effort title, model breadcrumb,
   Reset, the Fast lightning and a discrete slider with only the efforts the
-  model advertises. The breadcrumb opens Select model: one Default row scoped
+  model advertises. A chat whose person chose no effort shows, and runs at,
+  its model's default: high where the model offers it, else the highest level
+  it offers (``chat_settings.default_effort``; ``performance.rst``, "Reasoning
+  effort policy"). Reset returns the chat to that default, also after a later
+  model change. The breadcrumb opens Select model: one Default row scoped
   to the chat's connection, then searchable, collapsible provider groups with
   account and billing labels. Escape or a click outside closes a popup without
   typing, sending or scrolling the transcript behind it. The slider animates at
@@ -657,6 +689,65 @@ action that fixes it (``chat_start_states``):
   the tool holds, and goes with the chat's first event after the tool ends. The
   chat's input handler starts even beside a running tool, passing its events
   on, so this holds for a tool that was running first.
+* **A modal operator says what it has done with a person's input.** An add-on's
+  modal operator may be a tool the person is using or an observer (a status
+  display, a worker on a timer); its type and options do not say which. The
+  event system does, with two read-only runtime facts on every modal operator
+  (``wm_angelo_consumed_input.cc``), read from ``Window.modal_operators``:
+
+  * ``Operator.has_answered_input``: its ``modal()`` was given a keyboard,
+    mouse, trackpad, tablet, NDOF or XR controller event and returned, whatever
+    the result. Until then nothing is known about the operator: its
+    ``invoke()`` may already have edited, and a tool waiting for its first click
+    reads the same as an operator that only watches.
+  * ``Operator.has_consumed_input``: it kept such an event from every later
+    handler, with a result that has no ``PASS_THROUGH`` or with
+    ``{'RUNNING_MODAL', 'PASS_THROUGH'}``. Blender calls the second "modal
+    unhandled" and still gives the event to no later handler, so the person's
+    input was taken from everything else. Blender's extension installer answers
+    so to every pointer move and every key but Escape (which it keeps) while it
+    downloads, and counts as consuming from the first of them.
+    ``Operator.consumed_input_age`` is the seconds since the operator last kept
+    an event (negative while it never has).
+
+  Both are set inside the handler call that returns the operator's answer,
+  before any other handler, timer or script runs, and neither is ever cleared.
+  This branch only provides the facts. The edit-tool gate, which lands with
+  them in the same merge, uses them with this rule: hold the agent's work for
+  an operator that is not passive and that has consumed input **or has not
+  answered any yet**. A fresh modal holds until its first input event, an
+  observer stops holding at its first pass-through, and a tool holds from the
+  first event it keeps. What this costs and does not cover, stated plainly:
+
+  * A tool that passes pointer moves through and keeps only its click reads
+    as answered and not consumed, exactly like an observer, between its first
+    pointer move and its first kept event. The gate does not hold for it in
+    that time, although its ``invoke()`` may already hold temporary data.
+  * An observer started with no person at the machine (a timer at
+    ``load_post``, a script's ``INVOKE_DEFAULT``) stays unanswered, so the gate
+    holds for it until a person's input reaches it. The status bar names the
+    operator that holds.
+  * *Ever consumed* is a latch. An add-on panel's long-lived operator that took
+    one click keeps holding while the panel is open; the status line names the
+    operator that holds. ``consumed_input_age`` exists so a later rule can ask
+    for recent use instead.
+  * A pointer move Blender sends itself (``WM_event_add_mousemove``: after a
+    layout change, an undo, a finished download) has the type of a person's
+    move and counts as one. An operator that keeps pointer moves is marked by
+    it without the person touching anything. Timers, the window losing focus
+    and Blender's internal events (file selector, drop, action zone, gizmo)
+    set nothing. Which event types are input is decided by exclusion below
+    Blender's internal range (0x5000), so a device type a later Blender adds
+    there counts as input until it is decided otherwise. A type added in the
+    internal range does not count, and the test that walks every named type
+    fails until it is listed.
+  * A worker that edits the document on a timer and passes all input through
+    is never consumed. For a macro the marks are on the macro, which is the
+    window's modal operator for its steps.
+
+  ``test_blender_operator_consumed_input`` runs real operators through the
+  window's handler stack; ``wm_angelo_consumed_input_test.cc`` covers every
+  event type Blender names.
 * **Auto-save runs with the chat open.** Blender's auto-save waits while any
   modal operator runs, and the chat's input handler runs in every window that
   shows the chat, so up to 1.0.5 Angelo never auto-saved while the chat was
@@ -832,7 +923,8 @@ Approvals
   · scripts allowed" and the approval popover's footer "Scripts run without
   asking in Auto." Only the person changes it (``agent_execution.rst``, "Always
   allow scripts"), and a script that refers to preferences or to Angelo's own
-  add-on always asks. ``angelo_execute_python`` is not a sandbox: approved code
+  add-on, or that would replace the open file, always asks.
+  ``angelo_execute_python`` is not a sandbox: approved code
   has Blender's file, network and process privileges, and Stop cannot
   interrupt a running script. A parallel worker's chat inherits the lead's
   Trust scripts for this chat in Auto, and in Ask every worker script asks
@@ -876,8 +968,9 @@ Approvals
   new-output-file rule's denied decision: renders and exports to new files in
   the project's folder run in Auto; overwrites, deletes and writes elsewhere
   still ask), or ``UNDECIDED`` before it has decided, which shows no line; a
-  script that names preferences or Angelo's own add-on always asks
-  (``consent_excluded``). Every code the rule returns in Auto has its line or
+  script that names preferences or Angelo's own add-on always asks, and so
+  does one that names an operator replacing the open file, each with its own
+  line (``consent_exclusion``). Every code the rule returns in Auto has its line or
   a stated reason for none (``NO_LINE``), pinned by the test. Cards that state
   their own reason (a recovery review, a collaborator's usage, a script a
   standing consent would run once allowed, a worker chat's own admission gate)
@@ -896,7 +989,8 @@ Approvals
   app's own tool pump, ``test_blender_approval_wait``.
 * **Every card says until when it waits** (``approval_wait.until_text``): "Waits
   for your answer until 18:42", the local clock time of the call's deadline
-  (``tool_deadlines``: from admission; a held scene moves it later), with
+  (``tool_deadlines``: from admission; a held scene moves it later, and so does
+  a card being reviewed: ``approval_wait.review_hold``), with
   seconds when it falls within the current minute; recomputed at each draw, no
   timer. A step the host ended because it ran out of time before anything of
   it ran reads a neutral **Expired · nothing ran** chip, never a red Failed, and
@@ -914,6 +1008,23 @@ Approvals
   uses changed while it waited (the scene: an edit, a selection or an
   evaluation), so it is asking again. Check it, then approve."); for a second
   after it is drawn its Approve takes no click (``agent_execution.rst``).
+* **A click the person aimed** (``approval_arming``, 2.0.0): every control that
+  grants (a card's Approve or Review & approve, for bounded edits, paid
+  generations and scripts alike; Always allow scripts; Always allow this file;
+  the preview review card's confirmation and Accept) takes a press only once
+  it is armed. It arms when ``SHIELD_SECONDS`` have passed since it was drawn
+  where it is and the pointer then moves into it from outside; a control that
+  appears, reappears or moves (a scroll, a new layout) starts again, so a
+  pointer resting where a card appears never approves it. When Angelo's window
+  loses focus every grant in it disarms, and the first press after (the click
+  that brings the window forward, wherever it lands) never grants and disarms
+  them again. The keyboard grants only a control the person focused with Tab,
+  once its shield has passed; Return with nothing focused grants nothing (the
+  review card's Return no longer accepts). Other controls take their click as
+  before. GUI suites click a grant with ``qa_input.aim``. Pinned by
+  ``test_native_approval_arming``. Reason: a card that appeared under the
+  pointer, or the click that brought the window back, could approve a paid
+  generation that spends credits.
 * Approval cards describe the change in plain language, naming objects rather
   than handles, with the exact code or parameters under Show code or Show
   details. A card never claims more than the step does: a script's body reads
@@ -1373,7 +1484,10 @@ Request snapshots
 
 By default the main thread saves a private copy of the whole document before
 each request; if capture fails, the request does not start. Each user message
-offers Restore snapshot, which needs active requests stopped, takes a safety
+offers Restore snapshot, and so does a request Angelo makes itself that the chat
+draws as a notice (the worker-done event, a held goal's round:
+``request_rows.drawn_as_notice``), since such a turn also edits the scene
+(break-it R2-L-1). Restore needs active requests stopped, takes a safety
 snapshot and opens the snapshot with embedded scripts disabled. The window
 keeps showing the document that was open at the Restore (``stool.blend``, never
 Angelo's private working copy), and nothing is written over that file until the

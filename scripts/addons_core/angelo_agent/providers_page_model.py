@@ -107,7 +107,7 @@ def connect_rows(ui, store):
 
 
 def _attention(ui, policy):
-    from . import data_migration, saved_keys_ui, state_migration
+    from . import saved_keys_ui, version_carry_over
     notices = []
     if policy.managed:
         lines = []
@@ -126,9 +126,8 @@ def _attention(ui, policy):
             (not policy.allow_voice, iface_("Voice"))) if flag]
         from . import team_account_ui
         notices.append({"title": shown(Text(team_account_ui.MANAGED)), "lines": lines, "locks": locks, "glyph": "lock"})
-    for notice in (data_migration.attention_message(), state_migration.attention_message()):
-        if notice:
-            notices.append({"title": iface_("A pre-rename folder needs attention"), "lines": [iface_(notice)]})
+    for title, notice in version_carry_over.attention_notices():
+        notices.append({"title": iface_(title), "lines": [shown(notice)]})   # A Text keeps its fields.
     for problem in saved_keys_ui.notices():
         notices.append({"title": shown(problem), "lines": []})
     from . import claude_managed, connection_access
@@ -256,7 +255,11 @@ def build(ui, prefs):
     records = list(store.records.values())
     coding = [r for r in records if spec_for(r["mode"])["group"] == CODING]
     sections = []
-    first_run = personal and not coding
+    from .providers_page_endpoints import section as endpoint_section   # The organization's own servers first.
+    endpoints = endpoint_section()
+    if endpoints:
+        sections.append(endpoints)
+    first_run = personal and not coding and not endpoints
     if personal:
         suggestions = connect_rows(ui, store)
         if first_run:
@@ -295,24 +298,43 @@ def build(ui, prefs):
                             "erases its saved key, not your provider account.")}
 
 
-ART = {"pixels": None, "size": None, "texture": None, "done": False}   # The hero's own reference to the banner's pixels.
-
-
 def banner_ready():
-    """The raven banner's pixels are held (read once at start-up by ``preload_banner``, never while drawing)."""
-    return ART["pixels"] is not None
-
-
-def preload_banner():
-    """A start-up timer: read the welcome screen's banner once and keep a reference, so the page never adds and
-    removes an image datablock while it is open (that closes a dialog over Preferences), and the welcome
-    screen's ``release`` cannot take the art away from the page."""
+    """The hero keeps the raven banner's place unless the art is missing (an undownloaded asset: the drawn mark).
+    The page shows the welcome screen's picture while its input runs (``providers_page_host``): read then, outside
+    drawing and with no image datablock (``brand_picture``), so nothing closes a dialog over Preferences, and let go
+    when the page is left; the art is drawn as soon as it is read."""
     from . import welcome_screen
-    welcome_screen.prepare_banner()
-    if welcome_screen._banner["pixels"] is not None:
-        ART.update(pixels=welcome_screen._banner["pixels"], size=welcome_screen._banner["size"], texture=None)
-    ART["done"] = True   # Read (or found missing) once: from here on the page never touches bpy.data.images.
-    return None
+    return not welcome_screen.BANNER_PICTURE.failed
+
+
+PAGE = "ai_providers_page"   # The page's name among the surfaces that show the banner (brand_picture.Picture.show).
+
+
+def show_art(window):
+    """The page's input started (outside drawing): read the art unless another surface holds it, and redraw the
+    page once if its first draw went without it. Only here: no dialog is open over the page before its input runs,
+    and a later catch-up redraw would close one (providers_page_host.draw_panel)."""
+    from . import live_windows, welcome_screen
+    picture = welcome_screen.BANNER_PICTURE
+    drawn = picture.ready
+    picture.show(PAGE)
+    if picture.ready and not drawn:
+        for area in live_windows.areas(window):
+            if area.type == 'PREFERENCES':
+                area.tag_redraw()
+
+
+def art_settled():
+    """The page's art is read and held while the page shows it, or is missing (the drawn mark stands in)."""
+    from . import welcome_screen
+    picture = welcome_screen.BANNER_PICTURE
+    return picture.failed or (picture.ready and PAGE in picture.shown_by())
+
+
+def hide_art():
+    """The page was left (its input ended): its texture goes with the last surface that shows the art."""
+    from . import welcome_screen
+    welcome_screen.BANNER_PICTURE.hide(PAGE)
 
 
 def sentence(text):

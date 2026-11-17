@@ -27,17 +27,18 @@
 
 #  ifdef WIN32
 #    include <float.h>
+#    include <wchar.h> /* #_snwprintf_s, #wcschr, #wcstoul (crash_mark_start_record). */
 #    include <windows.h>
 
-#    include "BLI_winstuff.h"
+#    include "BLI_winstuff.hh"
 
 #    include "GPU_platform.hh"
 #  endif
 
-#  include "BLI_fileops.h"
+#  include "BLI_fileops.hh"
 #  include "BLI_path_utils.hh"
-#  include "BLI_string.h"
-#  include "BLI_system.h"
+#  include "BLI_string.hh"
+#  include "BLI_system.hh"
 #  include BLI_SYSTEM_PID_H
 
 #  include "BKE_appdir.hh" /* #BKE_tempdir_session_purge. */
@@ -45,6 +46,8 @@
 #  include "BKE_blender_version.h"
 #  include "BKE_global.hh"
 #  include "BKE_main.hh"
+
+#  include "WM_angelo_gpu_startup.hh"
 
 #  include <csignal>
 
@@ -188,6 +191,10 @@ static void sig_handle_crash_fn(int signum, siginfo_t *info, void *ucontext)
   }
   crash_handler_claim(signum);
   crash_watchdog_arm();
+  /* Angelo: a start that crashes says so in its GPU start-up record
+   * (`wm_angelo_gpu_startup.cc`). After the watchdog is armed: the write may block (a home on a
+   * network that hangs). */
+  WM_angelo_gpu_startup_crashed();
   /* A fault while the log is written must reach the handler at once (`abort()` blocks the other
    * signals on macOS, and a blocked synchronous signal hangs there). */
   sigset_t mask;
@@ -325,10 +332,53 @@ static void sig_cleanup_and_terminate(int signum)
   TerminateProcess(GetCurrentProcess(), signum);
 }
 
+/**
+ * Angelo: mark this process's start record crashed (``angelo_safe_start``, ``RECORD_ENV`` "<pid>|<path>",
+ * ``CRASHED_MARK``). The crash dialog keeps the process, and so the record's lock, alive until it is closed: a launch
+ * made meanwhile (from the icon, or the dialog's Restart while the process ends) must still find a start that never
+ * completed. Only the record of this very process (a child inherits the variable); every failure is silent.
+ */
+static void crash_mark_start_record()
+{
+  constexpr DWORD value_max = 2048;
+  static wchar_t value[value_max];
+  const DWORD length = GetEnvironmentVariableW(L"ANGELO_START_RECORD", value, value_max);
+  if (length == 0 || length >= value_max) {
+    return;
+  }
+  wchar_t *bar = wcschr(value, L'|');
+  if (bar == nullptr || bar == value) {
+    return;
+  }
+  *bar = L'\0';
+  wchar_t *end = nullptr;
+  if (wcstoul(value, &end, 10) != GetCurrentProcessId() || end != bar) {
+    return;
+  }
+  constexpr size_t mark_max = value_max + 16;
+  static wchar_t mark[mark_max];
+  if (_snwprintf_s(mark, mark_max, _TRUNCATE, L"%ls.crashed", bar + 1) < 0) {
+    return;
+  }
+  HANDLE file = CreateFileW(mark,
+                            GENERIC_WRITE,
+                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                            nullptr,
+                            CREATE_ALWAYS,
+                            FILE_ATTRIBUTE_NORMAL,
+                            nullptr);
+  if (file != INVALID_HANDLE_VALUE) {
+    CloseHandle(file);
+  }
+}
+
 extern LONG WINAPI windows_exception_handler(EXCEPTION_POINTERS *ExceptionInfo)
 {
   const DWORD code = ExceptionInfo->ExceptionRecord->ExceptionCode;
   crash_handler_claim(code);
+  /* Angelo: before the log and the dialog, which keep this process alive: a start that crashes
+   * says so in its GPU start-up record and lets go of it (`wm_angelo_gpu_startup.cc`). */
+  WM_angelo_gpu_startup_crashed();
 
   /* If this is a stack overflow then we can't walk the stack: only the minimal record (exception,
    * address, module) is written, from static buffers. */
@@ -346,6 +396,8 @@ extern LONG WINAPI windows_exception_handler(EXCEPTION_POINTERS *ExceptionInfo)
   /* Disable popup in background mode to avoid blocking automation.
    * (e.g., when used by a render farm; see #142314). */
   if ((!G.background) && (!app_state.signal.use_console_crash_handler)) {
+    /* Before the dialog: the process lives on while it is open. */
+    crash_mark_start_record();
     std::string version;
 #    ifndef BUILD_DATE
     const char *build_hash = G_MAIN ? G_MAIN->build_hash : "unknown";

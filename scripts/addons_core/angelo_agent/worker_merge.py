@@ -385,12 +385,11 @@ def _append(part, path, scene, collection_name, layout, private):
 def merge(lead, window, arguments, parts, name_of, layouts=None):
     """Append and place each part in ``lead``'s own scene, which ``window`` shows (``refuse_away``); the result's
     ``changes`` lists what was added. Every part is checked before any is appended, so a refusal changes nothing;
-    whatever fails after the first append (a refused material swap, or any fault) removes every datablock the merge
-    added and puts the scene's record back, so a merge is whole or not at all (break-it E2E-20 R5-L-1: a fault left a
-    part unplaced, or an earlier part unrecorded, and a retry added a second copy). ``layouts``: {number: the worker's
-    newest layout (``live_layout``), with its ``view``}, where known. Where each copy landed is checked without
-    evaluating what the check does not read (``worker_placement``): the scene is evaluated only when a part holds an
-    object whose world only evaluation gives, then twice whatever the number of parts (E2E-6 M-2, E2E-7 M-1)."""
+    whatever fails after the first append (a refused material swap, the privacy check of every part at once, any
+    fault) removes every datablock the merge added and puts the scene's record back, so a merge is whole or not at all
+    (E2E-20 R5-L-1). ``layouts``: {number: the worker's newest layout, with its ``view``}, where known. Where each copy
+    landed is checked without evaluating what the check does not read (``worker_placement``): the scene is evaluated
+    only when a part holds an object whose world only evaluation gives, then twice whatever the number of parts."""
     import time
     import bpy
     from .refusal_codes import RefusalError
@@ -414,6 +413,7 @@ def merge(lead, window, arguments, parts, name_of, layouts=None):
     try:
         appended = [_append(part, parts[part["worker"]][1], scene, name_of(part["worker"]),
                             (layouts or {}).get(part["worker"]), private) for part in arguments["parts"]]
+        worker_merge_privacy.verify([item["brought"] for item in appended], before)   # Once, all read as saved.
         unrecord = parallel_sessions.parts_merged([parts[part["worker"]][1] for part in arguments["parts"]], scene)
         result = _place(window, arguments, appended, before, unrecord)
     except BaseException as error:

@@ -4,6 +4,7 @@
 model pickers offering the same model on fal and BytePlus side by side with their provider and price per second."""
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import base64
 import json
@@ -281,7 +282,7 @@ class GenerateTests(unittest.TestCase):
 
 class JobTests(unittest.TestCase):
     def wait(self, jobs, identity):
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while identity in jobs.active and time.monotonic() < deadline:
             jobs.pump()
             time.sleep(0.01)
@@ -295,7 +296,7 @@ class JobTests(unittest.TestCase):
             ark = Ark(statuses=("queued",))
             jobs = StudioJobs(library, ark)
             jobs.start(asset, binding(), OPTIONS, {"first": None, "last": None, "references": []})
-            deadline = time.monotonic() + 5
+            deadline = time.monotonic() + CAP_S
             while not ark.creates() and time.monotonic() < deadline:
                 time.sleep(0.01)
             jobs.close()

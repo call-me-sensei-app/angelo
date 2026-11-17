@@ -8,6 +8,7 @@ profile with Blender stand-ins; no provider. Contract: doc/angelo/agent_chat.rst
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import angelo_guard_twin  # noqa: E402  C's authority, as the app's (strict: no scope but the one a test opens).
 
 import json
 import shutil
@@ -314,10 +315,10 @@ class PolicyRequiresAskTests(unittest.TestCase):
         operator.report, operator.mode = Mock(), "AUTO_BOUNDED"
         self.controller.set_options(approval="ASK")
         with patch("angelo_agent.managed_policy.current", return_value=MACHINE_ASK):
-            self.assertEqual(operator.execute(None), {'CANCELLED'})
+            self.assertEqual(angelo_guard_twin.harness(operator.execute, None), {'CANCELLED'})
         self.assertIn("organization", operator.report.call_args.args[1])
         self.assertEqual(self.controller.state["options"]["approval"], "ASK")
-        self.assertEqual(operator.execute(None), {'FINISHED'})
+        self.assertEqual(angelo_guard_twin.harness(operator.execute, None), {'FINISHED'})   # The person's click.
         self.assertEqual(self.controller.state["options"]["approval"], "AUTO_BOUNDED")
 
     def test_allow_auto_approval_off_alone_keeps_auto_edits_and_reviews_every_script(self):
@@ -328,7 +329,7 @@ class PolicyRequiresAskTests(unittest.TestCase):
             self.assertTrue(call.automatic, "bounded edits still run in Auto")
             with self.assertRaises(RuntimeError):
                 self.controller.set_trusted_scripts(True)
-            always_allow.set_enabled(True)
+            angelo_guard_twin.harness(always_allow.set_enabled, True)
             self.addCleanup(always_allow.detach)
             self.assertIsNone(always_allow.token())
             script = []
@@ -341,9 +342,9 @@ class PolicyRequiresAskTests(unittest.TestCase):
     def test_require_ask_alone_leaves_script_trust_to_the_person(self):
         with patch("angelo_agent.managed_policy.current", return_value=MACHINE_ASK):
             self.assertEqual(clean_options({})["approval"], "ASK")
-            self.controller.set_trusted_scripts(True)  # Allowed: only edits must ask.
+            angelo_guard_twin.harness(self.controller.set_trusted_scripts, True)  # Allowed: only edits must ask.
             self.assertTrue(self.controller.trusted_scripts)
-            always_allow.set_enabled(True)
+            angelo_guard_twin.harness(always_allow.set_enabled, True)
             self.addCleanup(always_allow.detach)
             self.assertFalse(self.controller.always_allow_scripts, "Always allow scripts covers Auto chats only")
 

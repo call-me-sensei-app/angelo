@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlencode
 
-from . import app_version, crash_report, crash_state, crash_upload
+from . import app_version, crash_report, crash_state, crash_upload, owned_paths
 from .studio_state import atomic_json, read_json
 
 LAST_REPORT_FILE = "last-crash-report.json"
@@ -171,11 +171,15 @@ class CrashFlow:
         return crash_report.default_file_name(self.document)
 
     def save_to(self, path):
-        """Write the report text (exactly what would be sent) to ``path``; raises OSError."""
-        target = Path(path)
-        if target.suffix.lower() != ".json":
-            target = target.with_name(target.name + ".json")
-        target.write_text(self.text + "\n", encoding="utf-8")
+        """Write the report text (exactly what would be sent) to ``path``; raises OSError (``PermissionError`` where C
+        says no). ``path`` is the person's pick in the file browser, which C recorded; the ``.json`` this adds to a
+        name typed without it is the same pick, so it is vouched for this one write only."""
+        picked = Path(path)
+        owned_paths.require_writable(picked)
+        target = picked if picked.suffix.lower() == ".json" else picked.with_name(picked.name + ".json")
+        with owned_paths.vouched_during([target] if target != picked else [], folder=False):
+            owned_paths.require_writable(target)
+            target.write_text(self.text + "\n", encoding="utf-8")
         self.mark_saved()
         return target
 

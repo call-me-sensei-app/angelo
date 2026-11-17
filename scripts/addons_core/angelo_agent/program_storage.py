@@ -18,6 +18,7 @@ from .refusal_codes import refusal_code, refusal_details
 from .legacy_names import PROGRAM_STAGE
 from .program_dependencies import Stage, SuspendedStage, MAX_STAGE_IDS, _bpy, _main_ids, _data_collections, _uid
 from .program_stage_bundle import ProgramStageBundleMixin
+from . import owned_paths
 
 # Compression remains the fallback. The native writer buffers at most 16 MiB
 # and uses a plain file below that threshold; larger files use zstd. A failed
@@ -368,6 +369,8 @@ class ProgramStorageMixin(ProgramStageBundleMixin):
 
 
     def _remove_bundle(self, bundle):
+        if not owned_paths.may_write(bundle):
+            return   # A cleanup: only what C says Angelo may remove, never raised.
         path = Path(bundle)
         # Only locally-created dedicated directories are removed; no caller
         # supplied path ever enters this private cleanup boundary.

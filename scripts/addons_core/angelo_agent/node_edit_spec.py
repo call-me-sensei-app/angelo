@@ -39,6 +39,7 @@ from .action_world_spec import IMAGE_ID
 from .mode_fields import problem, statement
 from .node_generic import SOCKET_PATTERN
 from .refusal_codes import RefusalError
+from . import read_only
 
 MAX_EDITS = 32
 MAX_CHECK_ITEMS = 32
@@ -207,7 +208,7 @@ def _screen_values(values, sockets):
 def _step(given, index):
     """One step exactly as its op's closed variant validates it (fields, required fields and defaults)."""
     from .action_schema_types import _validate
-    variant = _VARIANTS[given["op"]]
+    variant = read_only.thawed(_VARIANTS[given["op"]])   # Plain, as registered: _validate copies defaults in.
     refused = problem(given["op"], _STEPS, [key for key in given if key != "op"])  # Present counts, even a default.
     if refused:
         raise NodeEditError("FIELDS", refused)
@@ -467,3 +468,6 @@ def screen_check(check):
         if not {"node", "type"} & set(socket):
             raise RefusalError("A node_graph unlinked socket names its node by name or type", code="VALIDATION")
     return check
+
+# The validators above read these as registered, read only (read_only.seal; the tools' schemas keep the originals).
+read_only.seal(globals(), '_VARIANTS', '_STEPS')

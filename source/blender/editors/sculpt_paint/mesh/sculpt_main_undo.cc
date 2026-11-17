@@ -11,10 +11,13 @@
 
 #include "MEM_guardedalloc.h"
 
+#include <array>
 #include <cstring>
 #include <limits>
+#include <utility>
 
-#include "BLI_listbase.h"
+#include "BLI_hash_xxh3.hh"
+#include "BLI_listbase.hh"
 #include "BLI_map.hh"
 #include "BLI_set.hh"
 #include "BLI_vector.hh"
@@ -250,7 +253,7 @@ static MainUndoState *main_undo_state_capture_impl(Main &bmain, const char **r_e
   }
   bool has_running_jobs = false;
   for (const wmWindowManager &wm : bmain.wm) {
-    has_running_jobs |= WM_jobs_has_running(&wm);
+    has_running_jobs |= WM_jobs_has_running(&wm, nullptr, WM_JOB_TYPE_ANY);
   }
   if (has_running_jobs) {
     for (const Object &object : bmain.objects) {
@@ -714,9 +717,15 @@ struct MainUndoBMeshRead {
     BMLog *log;
     uint64_t log_epoch;
     BMesh *mesh;
+    /** The Mesh the session owned before the read (`keep_read_again_edits` only). */
+    const ID *data;
+    uint32_t data_uid;
+    std::array<uint8_t, 16> data_fingerprint;
   };
   Vector<Saved> objects;
   Map<SculptSession *, int64_t> sessions;
+  /** See #main_undo_bmesh_read_begin. */
+  bool keep_read_again_edits = false;
 
   ~MainUndoBMeshRead()
   {
@@ -728,25 +737,64 @@ struct MainUndoBMeshRead {
   }
 };
 
-MainUndoBMeshRead *main_undo_bmesh_read_begin(Main &bmain, const char **r_error)
+bool main_undo_bmesh_any(const Main &bmain)
+{
+  for (const Object &object : bmain.objects) {
+    const SculptSession *ss = object.runtime->sculpt_session;
+    if (ss && ss->bm) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The geometry a Dyntopo flush would replace: counts, positions, edges and face topology. Equal
+ * before and after a read means the step did not change that Mesh (only incidental chunks).
+ */
+static std::array<uint8_t, 16> mesh_geometry_fingerprint(const Mesh &mesh)
+{
+  XXH3_128Stream stream;
+  const int counts[4] = {mesh.verts_num, mesh.edges_num, mesh.faces_num, mesh.corners_num};
+  stream.update(counts, sizeof(counts));
+  const Span<float3> positions = mesh.vert_positions();
+  stream.update(positions.data(), positions.size_in_bytes());
+  const Span<int2> edges = mesh.edges();
+  stream.update(edges.data(), edges.size_in_bytes());
+  const Span<int> face_offsets = mesh.face_offsets();
+  stream.update(face_offsets.data(), face_offsets.size_in_bytes());
+  const Span<int> corner_verts = mesh.corner_verts();
+  stream.update(corner_verts.data(), corner_verts.size_in_bytes());
+  return stream.finalize();
+}
+
+MainUndoBMeshRead *main_undo_bmesh_read_begin(Main &bmain,
+                                              const char **r_error,
+                                              const bool keep_read_again_edits)
 {
   if (!runtime_owners_are_unique(bmain, r_error)) {
     return nullptr;
   }
   auto read = std::make_unique<MainUndoBMeshRead>();
+  read->keep_read_again_edits = keep_read_again_edits;
   for (Object &object : bmain.objects) {
     SculptSession *ss = object.runtime->sculpt_session;
     if (!ss || !ss->bm) {
       continue;
     }
     read->sessions.add_new(ss, read->objects.size());
+    const ID *data = keep_read_again_edits && object.type == OB_MESH ? object.data : nullptr;
     read->objects.append({&object,
                           object.id.session_uid,
                           object.runtime,
                           ss,
                           ss->bm_log,
                           ss->bm_log ? BM_log_epoch(ss->bm_log) : 0,
-                          ss->bm});
+                          ss->bm,
+                          data,
+                          data ? data->session_uid : 0,
+                          data ? mesh_geometry_fingerprint(*id_cast<const Mesh *>(data)) :
+                                 std::array<uint8_t, 16>{}});
   }
   /* Finish all allocation and admission before taking ownership. The reader may swap a restored
    * Mesh into its old address before freeing the old Object. Its normal session destructor would
@@ -758,12 +806,40 @@ MainUndoBMeshRead *main_undo_bmesh_read_begin(Main &bmain, const char **r_error)
   return read.release();
 }
 
+#ifdef WITH_GTESTS
+static bool bmesh_read_test_fail_next = false;
+void main_undo_bmesh_read_test_fail_next()
+{
+  bmesh_read_test_fail_next = true;
+}
+#endif
+
 bool main_undo_bmesh_read_end(Main &bmain, MainUndoBMeshRead *read_ptr, const char **r_error)
 {
   std::unique_ptr<MainUndoBMeshRead> read(read_ptr);
   bool valid = true;
+#ifdef WITH_GTESTS
+  /* A native fixture's refusal after the read installed Main: every protected owner is treated as
+   * changed (its BMesh retired), which drives the decode's failed-read path. */
+  const bool injected = std::exchange(bmesh_read_test_fail_next, false);
+#else
+  constexpr bool injected = false;
+#endif
   /* Only dereference owners in the current Main. Saved Object/runtime/session pointers may have
-   * been freed; pointer, UID and log-epoch checks prevent transferring a mesh to a new owner. */
+   * been freed; pointer, UID and log-epoch checks prevent transferring a mesh to a new owner.
+   *
+   * The owner is the Object (its address and session UID) holding the saved session and log.
+   * - Reused (unchanged in the step): it gets its BMesh back, on the same runtime.
+   * - Read again at its old address (#ID_TAG_UNDO_OLD_ID_REREAD_IN_PLACE: changed in the step, or
+   *   read again because it changed in place since): the read swaps in the runtime read with it,
+   *   and Blender's ID cache (#object_foreach_cache, keyed by session UID) may move the session
+   *   onto it. The same owner, never an error, and no live BMesh after the read:
+   *   - Across a tagged Angelo snapshot: the Object holds the step's stored state, which the live
+   *     BMesh (the state before the read) is not. Retire the BMesh without a flush, keep the log:
+   *     the restore adopts its retained history from it (#BM_log_snapshot_restore_prepare), and
+   *     #main_undo_bmesh_read_drop_orphan_logs frees it after a read no restore follows.
+   *   - A read Blender alone owns (`keep_read_again_edits`): flush the BMesh into the restored
+   *     Mesh, then free it and its log, as Blender 5.2 did when it freed the replaced session. */
   for (Object &object : bmain.objects) {
     SculptSession *ss = object.runtime->sculpt_session;
     const int64_t *index = read->sessions.lookup_ptr(ss);
@@ -771,9 +847,13 @@ bool main_undo_bmesh_read_end(Main &bmain, MainUndoBMeshRead *read_ptr, const ch
       continue;
     }
     MainUndoBMeshRead::Saved &saved = read->objects[*index];
-    if (&object != saved.object || object.id.session_uid != saved.object_uid ||
-        object.runtime != saved.runtime || ss->bm || ss->bm_log != saved.log ||
-        (ss->bm_log && BM_log_epoch(ss->bm_log) != saved.log_epoch))
+    /* A full read (no old Main reused) installs every ID at a new address, and the ID cache still
+     * moves the session onto the same ID's new Object: the same owner, read again. */
+    const bool read_again = (object.id.tag & ID_TAG_UNDO_OLD_ID_REREAD_IN_PLACE) ||
+                            &object != saved.object;
+    if (injected || object.id.session_uid != saved.object_uid ||
+        (!read_again && object.runtime != saved.runtime) || ss->bm ||
+        ss->bm_log != saved.log || (ss->bm_log && BM_log_epoch(ss->bm_log) != saved.log_epoch))
     {
       /* A surviving cache must not retain pointers into the mesh about to be retired. The
        * caller quarantines the failed decode; do not overwrite a different live BMesh. */
@@ -785,10 +865,50 @@ bool main_undo_bmesh_read_end(Main &bmain, MainUndoBMeshRead *read_ptr, const ch
       valid = false;
       continue;
     }
+    if (read_again) {
+      BKE_sculptsession_free_pbvh(object);
+      /* A read Blender alone owns (no Angelo snapshot on either side): as on 5.2, where the Object
+       * read again got a fresh runtime and freeing the replaced session flushed its BMesh into the
+       * Mesh that session owned. Flush only into that same Mesh (address and UID), and only when the
+       * step did not change its geometry: a full read's new Mesh, a changed data pointer or a step
+       * that edited the Mesh keep the step's data, as 5.2 kept them. */
+      const ID *data = object.data;
+      const bool flush_into_owned_mesh =
+          read->keep_read_again_edits && saved.data != nullptr && data == saved.data &&
+          data->session_uid == saved.data_uid &&
+          mesh_geometry_fingerprint(*id_cast<const Mesh *>(data)) == saved.data_fingerprint;
+      if (flush_into_owned_mesh) {
+        ss->bm = saved.mesh;
+        saved.mesh = nullptr;
+        BKE_sculptsession_bm_to_me(&object);
+        discard_bmesh_no_flush(*ss);
+        DEG_id_tag_update(&object.id, ID_RECALC_GEOMETRY);
+        if (object.data) {
+          DEG_id_tag_update(object.data, ID_RECALC_GEOMETRY);
+        }
+      }
+      /* Otherwise the destructor frees the saved BMesh without a flush: the Object holds the
+       * step's stored Mesh, which the live BMesh is not. */
+      continue;
+    }
     ss->bm = saved.mesh;
     saved.mesh = nullptr;
   }
   return valid;
+}
+
+void main_undo_bmesh_read_drop_orphan_logs(Main &bmain)
+{
+  for (Object &object : bmain.objects) {
+    SculptSession *ss = object.runtime->sculpt_session;
+    /* A log records changes to its BMesh and maps ids to its elements: without the BMesh it is
+     * history nothing can apply, pointing at freed elements, and Dyntopo's enable would replace
+     * it without a free. Stock leaves neither after a global Undo (#36234); neither does Angelo. */
+    if (ss && ss->bm_log && !ss->bm) {
+      BM_log_free(ss->bm_log);
+      ss->bm_log = nullptr;
+    }
+  }
 }
 
 bool main_undo_state_restore(bContext *C, const MainUndoState &state, const char **r_error)
@@ -970,7 +1090,7 @@ bool main_undo_state_restore(bContext *C, const MainUndoState &state, const char
 bool main_undo_state_suppress_old_grid_writeback(Main &bmain, const char **r_error)
 {
   for (const wmWindowManager &wm : bmain.wm) {
-    if (WM_jobs_has_running(&wm)) {
+    if (WM_jobs_has_running(&wm, nullptr, WM_JOB_TYPE_ANY)) {
       *r_error = "Wait for background jobs to finish before restoring Sculpt Undo state";
       return false;
     }

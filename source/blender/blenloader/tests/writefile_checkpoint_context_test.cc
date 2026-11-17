@@ -17,6 +17,10 @@
 #  include <unistd.h>
 #endif
 
+/* First: glog (in the testing header) does not compile once `windows.h` has defined `ERROR`, and
+ * `BLI_filereader.hh` below includes it on Windows (`BLI_winstuff.hh`). */
+#include "testing/testing.h"
+
 #include "DNA_fileglobal_types.h"
 #include "DNA_key_types.h"
 #include "DNA_material_types.h"
@@ -28,11 +32,11 @@
 #include "DNA_windowmanager_types.h"
 #include "DNA_workspace_types.h"
 
-#include "BLI_fileops.h"
-#include "BLI_filereader.h"
+#include "BLI_fileops.hh"
+#include "BLI_filereader.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_tempfile.h"
+#include "BLI_string.hh"
+#include "BLI_tempfile.hh"
 
 #include "BKE_blender.hh"
 #include "BKE_global.hh"
@@ -319,7 +323,7 @@ class WritefileCheckpointContextTest : public BlendfileLoadingBaseTest {
       probe.mesh_token = *me;
       probe.key_token = *ke;
       probe.scene_token = *sc;
-      const ViewLayer &layer = *static_cast<const ViewLayer *>(f.scene_->view_layers.first);
+      const ViewLayer &layer = *static_cast<const ViewLayer *>(f.scene_->view_layers.first());
       if (probe.wm_descriptor >= 0) {
         /* GLOB was flushed before this hook. Its pointer remapping created the real token. */
         probe.early_global_layer_token =
@@ -346,7 +350,7 @@ class WritefileCheckpointContextTest : public BlendfileLoadingBaseTest {
       EXPECT_EQ(tokens.id_token(f.object_->id), std::optional<uint64_t>(probe.object_token));
       EXPECT_EQ(tokens.id_token(f.mesh_->id), std::optional<uint64_t>(probe.mesh_token));
       EXPECT_EQ(tokens.id_token(f.key_->id), std::optional<uint64_t>(probe.key_token));
-      const ViewLayer &layer = *static_cast<const ViewLayer *>(f.scene_->view_layers.first);
+      const ViewLayer &layer = *static_cast<const ViewLayer *>(f.scene_->view_layers.first());
       const auto token = tokens.view_layer_token(*f.scene_, layer);
       EXPECT_TRUE(token.has_value());
       if (!token) {
@@ -482,7 +486,7 @@ TEST_F(WritefileCheckpointContextTest, WindowGlobalTokenExistsButViewLayerExport
   wmWindow *window = wm_window_new(main_, manager, nullptr, false);
   BKE_workspace_active_set(window->workspace_hook, workspace);
   window->scene = scene_;
-  const ViewLayer &layer = *static_cast<const ViewLayer *>(scene_->view_layers.first);
+  const ViewLayer &layer = *static_cast<const ViewLayer *>(scene_->view_layers.first());
   STRNCPY(window->view_layer_name, layer.name);
   const int descriptor = open_base("wm-global.blend");
   ASSERT_GE(descriptor, 0);

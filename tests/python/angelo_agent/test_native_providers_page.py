@@ -134,5 +134,46 @@ class Readiness(unittest.TestCase):
         self.assertLessEqual(len((SOURCES / "ui.py").read_text().splitlines()), 2274)
 
 
+
+class StaleMenuHits(unittest.TestCase):
+    """A Remove hit acted on after its ⋯ menu has closed (a quick second click, a press on hits drawn a frame ago)
+    does nothing: it never reads the closed menu (gcp-kit: TypeError 'NoneType' object is not subscriptable at
+    providers_page_host._act, Linux and Mac GUI)."""
+
+    def act(self, action, menu=None):
+        import ast
+        import contextlib
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        path = SOURCES / "providers_page_host.py"
+        node = next(n for n in ast.parse(path.read_text(encoding="utf-8")).body
+                    if isinstance(n, ast.FunctionDef) and n.name == "_act")
+        removed = []
+        ops = SimpleNamespace(connection_remove=lambda *args, **kwargs: removed.append(kwargs))
+        scope = {"__package__": "angelo_agent", "__name__": "angelo_agent.providers_page_host", "_menu": menu,
+                 "_open_menu": lambda record_id: scope.update(_menu=None), "_model_cache": [1.0, "model"],
+                 "preferences_ui": SimpleNamespace(redraw=lambda: None),
+                 "MENU_OPERATORS": {}, "SIMPLE_OPERATORS": {},
+                 "providers_page_external": SimpleNamespace(ACTIONS=()), "providers_page_rail": SimpleNamespace(ACTIONS=()),
+                 "bpy": SimpleNamespace(ops=SimpleNamespace(angelo=ops),
+                                        context=SimpleNamespace(temp_override=lambda **k: contextlib.nullcontext()))}
+        exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), scope)
+        stubs = {"angelo_agent.ui": SimpleNamespace(preferences=lambda: None),
+                 "angelo_agent.providers_sheet": SimpleNamespace(ConnectionSheet=object)}
+        package = sys.modules["angelo_agent"]   # ``from . import ui`` reads the package attribute first.
+        with patch.dict(sys.modules, stubs), patch.object(package, "ui", stubs["angelo_agent.ui"], create=True), \
+                patch.object(package, "providers_sheet", stubs["angelo_agent.providers_sheet"], create=True):
+            scope["_act"](action, None, None, None, None)
+        return scope["_menu"], removed
+
+    def test_remove_with_no_menu_open_does_nothing(self):
+        for action in ("menu_remove", "menu_remove_confirm"):
+            with self.subTest(action=action):
+                self.assertEqual(self.act(action), (None, []))
+
+    def test_remove_in_the_open_menu_still_removes(self):
+        menu, removed = self.act("menu_remove_confirm", {"id": "c1", "confirm": True})
+        self.assertEqual((menu, removed), (None, [{"connection_id": "c1"}]))
+
 if __name__ == "__main__":
     unittest.main()

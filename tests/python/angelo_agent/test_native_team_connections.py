@@ -11,11 +11,11 @@ connections.json. No real console, gateway or provider is contacted.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import base64
 import json
-import os
 import sys
 import tempfile
 import threading
@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from claude_protocol_fixtures import ClaudeAdapterFixture, NativeInitializeFixture, completed  # noqa: E402
-from platform_env import essential_environ  # noqa: E402
+import platform_env  # noqa: E402
 from angelo_agent import gateway_capabilities, provider_registry, team_connections, team_endpoints  # noqa: E402
 from angelo_agent.connections import ConnectionStore  # noqa: E402
 from angelo_agent.generative import GenerationBinding, bind_team_generation  # noqa: E402
@@ -208,7 +208,7 @@ class ChildEnvironmentTests(unittest.TestCase):
                  "ANGELO_TEAM_GRANT_KEY": "inherited", "SENSEI_TEAM_GRANT_KEY": "inherited", "PATH": "/usr/bin"}
 
     def test_personal_connections_still_strip_inherited_endpoints(self):
-        with patch.dict(os.environ, self.INHERITED, clear=True):
+        with platform_env.cleared(self.INHERITED):
             for mode in ("claude_api", "claude_subscription", "codex_subscription", "grok_api"):
                 env = child_environment(mode, "personal-key")
                 self.assertNotIn("ANTHROPIC_BASE_URL", env)
@@ -216,15 +216,15 @@ class ChildEnvironmentTests(unittest.TestCase):
             self.assertEqual(child_environment("claude_api", "personal-key")["ANTHROPIC_API_KEY"], "personal-key")
 
     def test_a_team_claude_connection_gets_its_own_gateway_route_and_grant_key(self):
-        with patch.dict(os.environ, self.INHERITED, clear=True):
+        with platform_env.cleared(self.INHERITED):
             env = child_environment("claude_team", GRANT_KEY)
         self.assertEqual(env["ANTHROPIC_BASE_URL"], GATEWAY + "/v1/anthropic")
         self.assertEqual(env["ANTHROPIC_API_KEY"], GRANT_KEY)
         self.assertNotIn("ANGELO_TEAM_GRANT_KEY", env)
-        with patch.dict(os.environ, dict(self.INHERITED, ANGELO_GATEWAY_URL="http://localhost:8380"), clear=True):
+        with platform_env.cleared(dict(self.INHERITED, ANGELO_GATEWAY_URL="http://localhost:8380")):
             self.assertEqual(child_environment("claude_team", GRANT_KEY)["ANTHROPIC_BASE_URL"],
                              "http://localhost:8380/v1/anthropic")
-        with patch.dict(os.environ, {"ANGELO_GATEWAY_URL": "http://evil.test"}, clear=True):
+        with platform_env.cleared({"ANGELO_GATEWAY_URL": "http://evil.test"}):
             with self.assertRaisesRegex(RpcError, "ANGELO_GATEWAY_URL"):
                 child_environment("claude_team", GRANT_KEY)
 
@@ -255,8 +255,7 @@ class ChildEnvironmentTests(unittest.TestCase):
         from angelo_agent.runtime_environment import require_angelo_profile
         api = "1b6f3c55-8d0e-4a8e-9b51-7f1f0a3c2d11"
         team = team_connections.connection_id(CONSOLE, "org-1", "user-1", "claude_team")
-        profile = essential_environ()
-        with tempfile.TemporaryDirectory() as state, patch.dict(os.environ, dict(profile, PATH="/usr/bin"), clear=True):
+        with tempfile.TemporaryDirectory() as state, platform_env.cleared(PATH="/usr/bin"):
             for mode, identity in (("claude_api", api), ("claude_team", team)):
                 with self.subTest(mode=mode):
                     env = profile_environment(child_environment(mode, GRANT_KEY), mode, state, False, identity)
@@ -283,7 +282,7 @@ class ChildEnvironmentTests(unittest.TestCase):
         inherited = {"CLAUDE_SECURESTORAGE_CONFIG_DIR": "", "CLAUDE_CODE_HOST_CREDS_FILE": "/tmp/creds",
                      "CLAUDE_CODE_HOST_AUTH_ENV_VAR": "HOST_TOKEN", "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST": "1",
                      "CLAUDE_CODE_HOST_GATEWAY_LINEAGE": "1", "CLAUDE_CODE_SIMPLE": "1", "PATH": "/usr/bin"}
-        with patch.dict(os.environ, inherited, clear=True):
+        with platform_env.cleared(inherited):
             for mode in ("claude_api", "claude_team", "claude_subscription"):
                 with self.subTest(mode=mode):
                     self.assertEqual(set(child_environment(mode, GRANT_KEY)) & set(inherited), {"PATH"})
@@ -304,9 +303,8 @@ class ChildEnvironmentTests(unittest.TestCase):
         self.assertNotIn(NO_WEB_SEARCH, "".join(own["request"]["systemPrompt"]))
 
     def test_codex_team_modes_use_a_gateway_model_provider_with_the_key_only_in_the_environment(self):
-        profile = essential_environ()
         decoding = patch.object(gateway_capabilities, "request_encodings", return_value=frozenset({"gzip", "zstd"}))
-        with tempfile.TemporaryDirectory() as state, patch.dict(os.environ, dict(profile, PATH="/usr/bin"), clear=True), \
+        with tempfile.TemporaryDirectory() as state, platform_env.cleared(PATH="/usr/bin"), \
                 decoding:
             for mode in sorted(m for m in TEAM_MODES if SPECS[m]["runtime"] == "codex"):
                 identity = team_connections.connection_id(CONSOLE, "org-1", "user-1", mode)
@@ -329,10 +327,9 @@ class ChildEnvironmentTests(unittest.TestCase):
     def test_every_codex_launch_opens_without_a_date_and_team_routes_keep_zstd(self):
         # The date-free opening and the team route's zstd live in runtime_launch.codex_command, the one launch
         # path, so every Codex launch gets both.
-        profile = essential_environ()
         decoding = patch.object(gateway_capabilities, "request_encodings", return_value=frozenset({"zstd"}))
         team = sorted(m for m in TEAM_MODES if SPECS[m]["runtime"] == "codex")
-        with tempfile.TemporaryDirectory() as state, patch.dict(os.environ, dict(profile, PATH="/usr/bin"), clear=True), \
+        with tempfile.TemporaryDirectory() as state, platform_env.cleared(PATH="/usr/bin"), \
                 decoding:
             for mode in ["codex_subscription", "codex_api"] + team:
                 identity = team_connections.connection_id(CONSOLE, "org-1", "user-1", mode) if mode in team else None
@@ -371,7 +368,8 @@ class ClaudeKeyLaunchTests(ClaudeAdapterFixture, unittest.TestCase):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as state:
                 self.host.state["provider"] = mode
                 self.provider.settings = {"connection_id": identity}  # As ui.connection_settings(record=...) sets it.
-                self.provider.env = profile_environment({"ANTHROPIC_API_KEY": GRANT_KEY}, mode, state, False, identity)
+                self.launch_inputs.return_value = ("claude.exe", profile_environment(
+                    {"ANTHROPIC_API_KEY": GRANT_KEY}, mode, state, False, identity))
                 self.popen_mock.reset_mock()
                 self.popen_mock.return_value = NativeInitializeFixture(
                     on_user=lambda process, _: process.stdout.emit(completed()))
@@ -524,7 +522,6 @@ class FakeGateway:
 class GatewayCapabilityTests(unittest.TestCase):
     """Team Codex requests are compressed only when the gateway itself says it decodes them (gateway_capabilities)."""
 
-    PROFILE = essential_environ()
     HEALTH = json.dumps({"ok": True, "release": "r1", "requestEncodings": ["gzip", "zstd"]}).encode()
 
     def setUp(self):
@@ -539,7 +536,7 @@ class GatewayCapabilityTests(unittest.TestCase):
         return gateway
 
     def pairs(self, mode, gateway_url, api_key=GRANT_KEY):
-        with patch.dict(os.environ, dict(self.PROFILE, PATH="/usr/bin", ANGELO_GATEWAY_URL=gateway_url), clear=True):
+        with platform_env.cleared(PATH="/usr/bin", ANGELO_GATEWAY_URL=gateway_url):
             command, _env = codex_command("codex", mode, self.state.name, reuse_login=False,
                                           connection_id=team_connections.connection_id(CONSOLE, "o", "u", mode),
                                           api_key=api_key)
@@ -594,14 +591,15 @@ class GatewayCapabilityTests(unittest.TestCase):
         for worker in workers:
             worker.start()
         for worker in workers:
-            worker.join(5)
+            worker.join(CAP_S)
         self.assertEqual(results, [True] * 6)
         self.assertEqual(len(gateway.seen), 1)
 
     def test_personal_modes_never_ask_and_never_compress(self):
         gateway = self.gateway([(200, {}, self.HEALTH)])
+        # A mode on a wire only Angelo's runtime has refuses this stand-in Codex (test_native_gemini_connection.py).
         for mode in sorted(m for m in SPECS if SPECS[m]["runtime"] == "codex" and m not in TEAM_MODES
-                           and SPECS[m].get("base_url")):
+                           and SPECS[m].get("base_url") and not provider_registry.runtime_wire(m)):
             with self.subTest(mode=mode):
                 self.assertFalse(any(".capabilities." in key for key in self.pairs(mode, gateway.url, "personal-key")))
         self.assertEqual(gateway.seen, [])
@@ -616,13 +614,13 @@ class GatewayTransportTests(unittest.TestCase):
     def test_loopback_http_is_admitted_only_when_configured(self):
         gateway = self.gateway([(200, {}, b'{"ok": 1}')])
         url = gateway.url + "/v1/openai/v1/images/generations"
-        with patch.dict(os.environ, {}, clear=True), self.assertRaisesRegex(GenerationError, "public HTTPS"):
+        with platform_env.cleared(), self.assertRaisesRegex(GenerationError, "public HTTPS"):
             request_bytes(url, body=b"{}", service=True)
-        with patch.dict(os.environ, {"ANGELO_GATEWAY_URL": gateway.url}, clear=True):
+        with platform_env.cleared({"ANGELO_GATEWAY_URL": gateway.url}):
             self.assertEqual(request_bytes(url, body=b"{}", headers={"Authorization": "Bearer t"}, service=True), b'{"ok": 1}')
             with self.assertRaisesRegex(GenerationError, "public HTTPS"):
                 request_bytes(url, timeout=5)  # Downloads never go to a loopback host.
-        with patch.dict(os.environ, {}, clear=True), self.assertRaisesRegex(GenerationError, "not an admitted"):
+        with platform_env.cleared(), self.assertRaisesRegex(GenerationError, "not an admitted"):
             request_bytes("https://unlisted.example.test/v1/x", body=b"{}", service=True)
 
     def test_gateway_refusals_and_provider_refusals_are_told_apart(self):
@@ -631,7 +629,7 @@ class GatewayTransportTests(unittest.TestCase):
         provider = json.dumps({"error": {"message": "Incorrect API key", "type": "invalid_request_error"}}).encode()
         gateway = self.gateway([(409, {}, refusal), (401, {}, provider)])
         url = gateway.url + "/v1/openai/v1/images/generations"
-        with patch.dict(os.environ, {"ANGELO_GATEWAY_URL": gateway.url}, clear=True):
+        with platform_env.cleared({"ANGELO_GATEWAY_URL": gateway.url}):
             with self.assertRaises(GatewayRejection) as caught:
                 request_bytes(url, body=b"{}", service=True)
             self.assertEqual(caught.exception.code, "NO_PROVIDER_KEY")
@@ -646,7 +644,7 @@ class GatewayTransportTests(unittest.TestCase):
         gateway = self.gateway([unauthenticated, image, unauthenticated, unauthenticated])
         tokens = Tokens()
         binding = team_binding("openai_images_team", tokens, gateway.url)
-        with patch.dict(os.environ, {"ANGELO_GATEWAY_URL": gateway.url}, clear=True), \
+        with platform_env.cleared({"ANGELO_GATEWAY_URL": gateway.url}), \
                 tempfile.TemporaryDirectory() as folder:
             result = generate(binding, "gpt-image-2.5-flare", "A cat", {}, [], Path(folder), lambda _: None,
                               threading.Event())

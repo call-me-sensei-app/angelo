@@ -72,7 +72,7 @@ def request(name, args):
 
 def approve(call):
     with bpy.context.temp_override(window=window(), area=chat()):
-        result = bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id)
+        result = __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id)
     assert result == {'FINISHED'}, result
 
 

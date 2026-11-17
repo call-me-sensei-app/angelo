@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later */
 #pragma once
 
+#include <optional>
+
 /** \file
  * \ingroup bke
  */
@@ -13,6 +15,7 @@
 #include "BLI_bit_vector.hh"
 #include "BLI_function_ref.hh"
 #include "BLI_map.hh"
+#include "BLI_set.hh"
 
 #include "BLO_readfile.hh"
 
@@ -20,11 +23,16 @@ struct BlendHandle;
 
 namespace blender {
 
+struct AnimData;
+struct Collection;
 struct ID;
 struct Library;
 struct LibraryLink_Params;
+struct Main;
 struct MainLibraryWeakReferenceMap;
 struct ReportList;
+struct Scene;
+struct ViewLayer;
 
 /* TODO: Rename file to `BKE_blendfile_import.hh`. */
 /* TODO: Replace `BlendfileLinkAppend` prefix by `bke::blendfile::import` namespace. */
@@ -140,6 +148,12 @@ struct BlendfileLinkAppendContext {
   LibraryLink_Params *params = nullptr;
 
   /**
+   * Target collection to link/append into. This is only used for instantiating collections, and is
+   * not mandatory for linking/appending objects or other data-blocks.
+   */
+  Collection *target_collection = nullptr;
+
+  /**
    * What is the current stage of the link/append process. Used mainly by the RNA wrappers for the
    * pre/post handlers currently.
    */
@@ -174,6 +188,9 @@ struct BlendfileLinkAppendContext {
 
   /** Allows to easily find an existing items from an ID pointer. */
   Map<ID *, BlendfileLinkAppendContextItem *> new_id_to_item;
+  /** Angelo: the data-blocks present when a confined agent script started this link (and append): what is new
+   * at its end is disarmed of Python that runs later (blendfile_link_append_angelo.cc). */
+  std::optional<Set<uint32_t>> angelo_before;
 
   /** Runtime info used by append code to manage re-use of already appended matching IDs. */
   MainLibraryWeakReferenceMap *library_weak_reference_mapping = nullptr;
@@ -360,6 +377,24 @@ void BKE_blendfile_link_append_instantiate_loose(BlendfileLinkAppendContext *lap
                                                  ReportList *reports);
 
 /**
+ * Instantiate loose data from IDs already present in \a bmain into \a target_collection.
+ *
+ * This is the bmain-based counterpart of #BKE_blendfile_link_append_instantiate_loose.
+ * It operates on IDs that have already been merged into \a bmain, and only processes
+ * IDs that do **not** have the #ID_TAG_PRE_EXISTING flag set (i.e. newly added data).
+ *
+ * The function handles collections, objects, object-data, and rigid body post-processing
+ * in the same order and with the same logic as the lapp_context-based version.
+ *
+ * \note Uses #ID_TAG_DOIT as a scratch tag internally; it is cleared before returning.
+ */
+void BKE_blendfile_link_append_instantiate_loose_from_bmain(Main *bmain,
+                                                            Scene *scene,
+                                                            ViewLayer *view_layer,
+                                                            Collection *target_collection,
+                                                            ReportList *reports);
+
+/**
  * Finalize the link/append process.
  *
  * NOTE: Currently only used to call the matching handler..
@@ -439,5 +474,17 @@ void BKE_blendfile_library_relocate(BlendfileLinkAppendContext *lapp_context,
  * anymore, and should immediately be freed.
  */
 void BKE_blendfile_id_relocate(BlendfileLinkAppendContext &lapp_context, ReportList *reports);
+
+/**
+ * Angelo (blendfile_link_append_angelo.cc): when a confined agent script links, note the data-blocks present; at the
+ * end of a pure link, or of the append that follows its link, disarm every new one of Python that runs later.
+ */
+void BKE_blendfile_link_append_angelo_begin(BlendfileLinkAppendContext *lapp_context);
+/** Every #AnimData a data-block holds: its own, then each embedded ID's it owns (node trees in materials, worlds,
+ * lights, scenes, textures, line styles), found by the ID walk (Angelo: Python in drivers wherever they are). */
+void BKE_angelo_foreach_animdata(Main *bmain,
+                                 ID *id,
+                                 FunctionRef<void(ID *self, AnimData *animation)> fn);
+void BKE_blendfile_link_append_angelo_end(BlendfileLinkAppendContext *lapp_context, bool appending);
 
 }  // namespace blender

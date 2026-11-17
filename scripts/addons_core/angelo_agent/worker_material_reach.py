@@ -33,6 +33,8 @@ alike. ``rendered`` lists what Blender renders, so a copy the viewport does not 
 
 import re
 
+from . import compositor_stack
+
 SHOWN = frozenset({"MESH"})                       # Geometry whose material list is its data's slots.
 INERT = frozenset({"EMPTY", "LIGHT", "CAMERA"})   # Objects that show no material.
 # Modifiers that keep the material list (they may move faces between slots, never change what a slot holds) and use
@@ -232,7 +234,7 @@ def incoming(blocks, added):
                     continue
                 # Its own compositor, used by no other datablock, is ``render_unsafe``'s (break-it P2R12 H-1: a tree
                 # shared with another scene read this one's render there).
-                if user == getattr(block, "compositing_node_group", None) and not any(
+                if user in compositor_stack.groups(block) and not any(
                         other != block and not isinstance(other, shows) for other in every.get(user, ())):
                     continue
                 if isinstance(user, bpy.types.Scene) and not isinstance(block, bpy.types.Scene):
@@ -292,10 +294,9 @@ def render_unsafe(scene):
                 return "%s in view layer %r" % (words, layer.name)
         if len(getattr(layer, "aovs", ())):
             return "shader AOVs in view layer %r" % layer.name
-    tree = getattr(scene, "compositing_node_group", None) or getattr(scene, "node_tree", None)
-    on = getattr(scene.render, "use_compositing", True) and (getattr(scene, "use_nodes", True) or
-                                                            getattr(scene, "compositing_node_group", None))
-    stack, seen = [tree] if tree is not None and on else [], set()
+    trees = [tree for _path, tree in compositor_stack.render_trees(scene)]
+    on = getattr(scene.render, "use_compositing", True) and (getattr(scene, "use_nodes", True) or bool(trees))
+    stack, seen = list(trees) if on else [], set()
     while stack:
         found = stack.pop()
         if found.as_pointer() in seen:

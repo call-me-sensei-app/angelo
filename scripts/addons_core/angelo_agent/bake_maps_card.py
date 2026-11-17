@@ -312,6 +312,7 @@ class ANGELO_OT_bake_maps_note(Operator):
     image, save it externally or pack it", which is about the job's scratch image, removed at once; the latest report
     is the one the top bar shows, so this one replaces it. Modal for one timer tick: Angelo shows a report only from
     an operator it runs itself (one that Python calls has its reports printed, never shown)."""
+    bl_description = ""   # No tooltip. Blender shows a class docstring as one; this one is a note for developers.
     bl_idname = "angelo.bake_maps_note"
     bl_label = "Bake Maps Progress"
     bl_options = {'INTERNAL'} | modal_options(bl_idname)   # Auto-save never waits for it (input_policy).

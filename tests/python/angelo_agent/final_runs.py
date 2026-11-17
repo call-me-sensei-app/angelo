@@ -22,6 +22,7 @@ Usage::
     python3 final_runs.py init --output CAMPAIGN --candidate CANDIDATE --connections-dir DIR \\
         --claude-connection UUID --chatgpt-connection UUID (or --discover-connections) \\
         --codex-home DIR --stock-blender PATH --mcp-server-dir DIR --mcp-addon-dir DIR [--pilot-dir DIR]
+        [--only GLOB ...]   # a campaign of these steps only: without an MCP side it needs no stock Blender or MCP
     python3 final_runs.py plan --output CAMPAIGN            # order, commands and estimates; sends nothing
     python3 final_runs.py dry-run --output CAMPAIGN         # every step's unbilled modes (--depth plan|preflight|...)
     python3 final_runs.py headroom --output CAMPAIGN        # ChatGPT usage windows (no model request)
@@ -41,7 +42,6 @@ harnesses use (Blender's bundled 3.13 on macOS). Never touches a credential.
 """
 
 import argparse
-import fnmatch
 import json
 import os
 import shutil
@@ -61,13 +61,14 @@ import final_runs_load as quiet  # noqa: E402
 import provider_isolation as isolation  # noqa: E402  (the pilot's Codex profile: the evaluation account only)
 import final_runs_plan as campaign  # noqa: E402
 from final_runs_freeze import RECEIPT, digest, executable, freeze, inventory, verify_candidate  # noqa: E402,F401
-from final_runs_report import (chatgpt_window, check_sign_in, discover_connections, headroom,  # noqa: E402,F401
-                                prepare_connections, report)
+from final_runs_report import (api_key_connection, chatgpt_window, check_sign_in, discover_connections,  # noqa: E402,F401
+                                headroom, prepare_connections, report)
 
 CONFIG, STATE, JOURNAL = "CONFIG.json", "STATE.json", "JOURNAL.jsonl"
 EXIT_RATE_LIMITED = 3
 COOLDOWN_S = 3600        # A blocked subscription is tried again after this long.
-WINDOW_STOP_PERCENT = 95  # ChatGPT steps wait for the usage window's reset above this, so no trial is cut short.
+WINDOW_STOP_PERCENT = 95  # ChatGPT steps wait for the usage window's reset above this, so no trial is cut short,
+#                           unless the account's credits pay past the window (``credits_cover``): then they run on.
 MAX_PAUSE_S = 6 * 3600   # A machine busy longer than this stops the run (resume later).
 BUSY_RETRY_S = 120       # run --ignore-load: the pause before a start a harness refused is tried again.
 
@@ -115,18 +116,17 @@ def command(step, config, folder, *, billed=True, preflight=False):
         return ["nice", "-n", "10", pilot.get("python") or harness_python(config), "-B",
                 str(Path(pilot["dir"]) / "run_pilot.py"), *mode, "--config", pilot["configs"][step["model_key"]],
                 "--output", str(folder)]
-    common = ["--connection-id", connection(step, config), "--model", step["model"],
-              "--source-connections-dir", config["connections_dir"]]
-    common += ["--codex-home", config["codex_home"]] if codex else []
+    common = campaign.connection_args(step, config, connection(step, config)) + ["--model", step["model"]]
     common += ["--authorize-billed-runs"] if billed else ["--preflight-only"] if preflight else ["--plan-only"]
     if step["tool"] == "eval":
         return [harness_python(config), str(HERE / "eval_live_agent.py"), *common, "--blender", exe,
-                "--effort", "low", "--trials", "1", "--task-timeout", "300", "--observation", "turn-context",
+                "--trials", "1", "--task-timeout", "300", "--observation", "turn-context",
                 "--context-rebase-tokens", "0", "--input-isolation", "on", "--after-failure", "reset",
                 "--task-set", step["task_set"], *step["args"], "--output", str(folder)]
     line = [harness_python(config), str(HERE / "bench_mcp_vs_angelo.py"), *common, "--runtime", step["runtime"],
             "--angelo-binary", exe, "--task-set", step["task_set"], "--trials", str(step["trials"]),
             "--sides", "both" if "mcp" in step["sides"] else "angelo", *campaign.COMMON,
+            *(campaign.H2H_EFFORT if "mcp" in step["sides"] else []),
             "--window-state", campaign.window_state(step), *step["args"],
             "--output", str(folder)]
     if "mcp" in step["sides"]:
@@ -189,19 +189,42 @@ def run_unit(step, config, campaign_dir, folder, line, step_folder=None):
     before = completed(step, step_folder)
     folder.parent.mkdir(parents=True, exist_ok=True)
     log = Path(str(folder) + ".log")
-    started = time.monotonic()
+    started, since = time.monotonic(), time.time()
     own = []
     with quiet.Sampler(Path(str(folder) + "-load.jsonl"), threshold, own=own) as sampler, log.open("a") as stream:
         process = subprocess.Popen(line, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT,
                                    env=dict(os.environ, GIT_LFS_SKIP_SMUDGE="1", PYTHONDONTWRITEBYTECODE="1"))
         own.append(process.pid)
         code = process.wait()
+    kept = eval_rollouts(step, config, folder, since)
     new = sorted(completed(step, step_folder) - before)
     load = sampler.summary()
     journal(campaign_dir, "trial", step=step["id"], trials=new, exit_code=code, waited_s=waited,
             elapsed_s=round(time.monotonic() - started, 1), load=load, at_start=at_start,
-            load_guard="ignored" if config.get("ignore_load") else "enforced")
+            load_guard="ignored" if config.get("ignore_load") else "enforced", **kept)
     return code, new, load
+
+
+def eval_rollouts(step, config, folder, since):
+    """The Codex rollouts a live-eval step's trial wrote, kept in its folder; the trial's journal fields for them.
+
+    The bench copies each Angelo trial's rollouts beside the trial (``angelo-trial-NN-rollouts``,
+    ``bench_mcp_vs_angelo.copy_codex_rollouts``): a Codex chat's per-request record. A step that runs
+    ``eval_live_agent.py`` directly (the gate7 and survey smokes) has one trial and no bench around it, so its copy
+    is ``angelo-trial-01-rollouts`` in the step's own folder, which moves with the folder when the trial is set
+    aside. Steps run one at a time, so every rollout written since ``since`` (epoch seconds, the trial's start) is
+    this trial's. ``{}`` for any other step; ``{"rollouts": names}``, or ``{"rollouts_error": ...}`` when the copy
+    failed: the profile is only read, and the trial's result never depends on the copy.
+    """
+    if (step["tool"] != "eval" or step["runtime"] != "codex" or not config.get("codex_home")
+            or step["account"] in campaign.API_KEY_ACCOUNTS):   # The ChatGPT profile holds none of its requests.
+        return {}
+    import bench_mcp_vs_angelo as bench
+    try:
+        return {"rollouts": bench.copy_codex_rollouts(config["codex_home"], since,
+                                                      Path(folder) / "angelo-trial-01-rollouts")}
+    except OSError as error:
+        return {"rollouts_error": "%s: %s" % (type(error).__name__, error)}
 
 
 def set_aside(step, folder, campaign_dir, units, into):
@@ -319,8 +342,9 @@ def run(config, campaign_dir, steps, *, continue_after_gate=False, sleep=time.sl
         step = runnable[0]
         window = chatgpt_window(config) if step["account"] == "chatgpt" else None
         if window is not None:   # Calibrates the estimates and keeps the window from ending inside a trial.
-            journal(campaign_dir, "chatgpt_window", used_percent=window[0], resets_at=window[1])
-            if window[0] >= WINDOW_STOP_PERCENT:
+            journal(campaign_dir, "chatgpt_window", used_percent=window[0], resets_at=window[1],
+                    credits_cover=window[2])
+            if window[0] >= WINDOW_STOP_PERCENT and not window[2]:
                 state["blocked"]["chatgpt"] = window[1]
                 write_json(state_path, state)
                 continue
@@ -348,6 +372,9 @@ def run(config, campaign_dir, steps, *, continue_after_gate=False, sleep=time.sl
         journal(campaign_dir, "cache_sev", breaches=cache["breaches"])
         print("\n".join(cache_floor.describe(cache)), file=sys.stderr)
         return 1
+    if cache and cache["warning"]:   # Several first-call misses: worth reading, never a failure.
+        journal(campaign_dir, "cache_warning", first_misses=cache["first_misses"])
+        print("\n".join(cache_floor.describe(cache)), file=sys.stderr)
     journal(campaign_dir, "finished")
     return 0
 
@@ -370,8 +397,9 @@ def gates_clear(campaign_dir, steps, state):
 def cache_check(campaign_dir, steps, state):
     """The cache-floor check (``cache_floor``) over the finished gate steps, or None when none has finished.
 
-    A gate step whose prompt-cache read fell below its recorded floor is a cache SEV: the gate fails although every
-    task passed, because a prefix or cache-key break multiplies input cost by up to 20.
+    A session whose prompt-cache read, over all its calls, fell below its cell's recorded floor is a cache SEV: the
+    gate fails although every task passed, because a prefix or cache-key break multiplies input cost by up to 20.
+    Two or more first-call misses in the run are a warning (``cache["warning"]``), never a failure.
     """
     folders = [Path(campaign_dir) / step["id"] for step in steps
                if step["phase"] == "gate" and state["steps"].get(step["id"], {}).get("status") == "done"]
@@ -384,9 +412,7 @@ def load_config(campaign_dir):
     return json.loads((Path(campaign_dir) / CONFIG).read_text())
 
 
-def select(steps, only=(), phase="all"):
-    return [s for s in steps if (phase == "all" or s["phase"] == phase)
-            and (not only or any(fnmatch.fnmatch(s["id"], pattern) for pattern in only))]
+select = campaign.select   # --only and --phase, as final_runs_plan.py needs reads them
 
 
 def show_plan(config, steps):
@@ -476,7 +502,7 @@ def parse(argv):
     for name in ("connections-dir", "codex-home", "stock-blender", "mcp-server-dir", "mcp-addon-dir", "pilot-dir",
                  "codex", "claude", "python"):
         parser.add_argument("--" + name, default="")
-    parser.add_argument("--account", action="append", choices=("claude", "chatgpt"), default=[],
+    parser.add_argument("--account", action="append", choices=tuple(campaign.TEST_CONNECTIONS), default=[],
                         help="check-sign-in: only these accounts must be signed in (the machine's steps use only them)")
     parser.add_argument("--load-threshold", type=float, default=quiet.DEFAULT_THRESHOLD)
     parser.add_argument("--pilot-python", default="", help="init: the pilot's interpreter (it ran on Python 3.14)")
@@ -484,6 +510,10 @@ def parse(argv):
     parser.add_argument("--contended-reruns", type=int, default=1, help="init: runs again of a contended trial")
     parser.add_argument("--claude-connection", default=campaign.TEST_CONNECTIONS["claude"], help="init")
     parser.add_argument("--chatgpt-connection", default=campaign.TEST_CONNECTIONS["chatgpt"], help="init")
+    parser.add_argument("--gemini-connection", default=campaign.TEST_CONNECTIONS["gemini"],
+                        help="init: the Gemini API connection (default with --discover-connections: the one there)")
+    parser.add_argument("--gemini-connections-dir", default="",
+                        help="init: the folder holding only the Gemini API connection, its key saved there in the app")
     parser.add_argument("--discover-connections", action="store_true",
                         help="init: use the one Claude and the one ChatGPT subscription in --connections-dir "
                              "(a new machine's sign-in, e.g. the Windows VM's); --codex-home follows the ChatGPT one")
@@ -525,23 +555,39 @@ def pilot_mismatches(config, receipt):
 def init(args):
     campaign_dir = Path(args.output).resolve()
     receipt = json.loads((Path(args.candidate).resolve() / RECEIPT).read_text())
-    connections = ({"claude": args.claude_connection, "chatgpt": args.chatgpt_connection}
-                   if not args.discover_connections else discover_connections(args.connections_dir))
-    unnamed = [account for account in ("claude", "chatgpt") if not connections.get(account)]
+    # Only the accounts the selected steps bill: a VM that runs Carbon's gate alone needs no subscription.
+    needed = campaign.accounts(select(campaign.campaign(args.platform), args.only))
+    subscriptions = [account for account in needed if account in campaign.SUBSCRIPTIONS]
+    connections = {}
+    if subscriptions:
+        connections = ({"claude": args.claude_connection, "chatgpt": args.chatgpt_connection}
+                       if not args.discover_connections else discover_connections(args.connections_dir))
+    api_key_dirs = {account: getattr(args, account + "_connections_dir") for account in campaign.API_KEY_ACCOUNTS
+                    if account in needed}
+    empty = ["--%s-connections-dir" % account for account, folder in api_key_dirs.items() if not folder]
+    if empty:   # Never the working directory, which "" would resolve to.
+        raise SystemExit("init: the selected steps bill an API-key account: pass " + " and ".join(empty))
+    api_key_dirs = {account: str(Path(folder).resolve()) for account, folder in api_key_dirs.items()}
+    for account, folder in api_key_dirs.items():
+        connections[account] = (getattr(args, account + "_connection") if not args.discover_connections
+                                else api_key_connection(folder, campaign.API_KEY_ACCOUNTS[account]))
+    unnamed = [account for account in needed if not connections.get(account)]
     if unnamed:
-        raise SystemExit("init: no connection id for %s: pass --claude-connection and --chatgpt-connection (or set "
-                         "ANGELO_FINAL_RUNS_CLAUDE_CONNECTION and ANGELO_FINAL_RUNS_CHATGPT_CONNECTION), or "
-                         "--discover-connections" % " and ".join(unnamed))
-    codex_home = args.codex_home or str(Path(args.connections_dir) / "codex-profile" / connections["chatgpt"])
-    checkout = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True)
+        raise SystemExit("init: no connection id for %s: pass --<account>-connection for each (or set "
+                         "ANGELO_FINAL_RUNS_<ACCOUNT>_CONNECTION), or --discover-connections" % " and ".join(unnamed))
+    codex_home = (args.codex_home or str(Path(args.connections_dir) / "codex-profile" / connections["chatgpt"])
+                  if "chatgpt" in needed else args.codex_home)
+    import own_checkout   # Git about this tree only, never a repository around it.
+    checkout = own_checkout.revision(ROOT)
     config = {"platform": args.platform, "output": str(campaign_dir), "candidate": str(Path(args.candidate).resolve()),
               "candidate_executable": receipt["executable"], "connections_dir": args.connections_dir,
-              "connections": connections, "codex_home": codex_home, "stock_blender": args.stock_blender,
+              "connections": connections, "codex_home": codex_home, "api_key_dirs": api_key_dirs,
+              "stock_blender": args.stock_blender,
               "mcp_server_dir": args.mcp_server_dir, "mcp_addon_dir": args.mcp_addon_dir, "codex": args.codex,
               "claude": args.claude, "python": args.python or sys.executable, "load_threshold": args.load_threshold,
               "contended_reruns": args.contended_reruns, "rehearsal": args.rehearsal,
               # The Windows VM's tree is an extracted archive: its commit comes from the stage.
-              "checkout": checkout.stdout.strip() if checkout.returncode == 0 else os.environ.get("ANGELO_SOURCE_COMMIT", "")}
+              "checkout": checkout or os.environ.get("ANGELO_SOURCE_COMMIT", "")}
     if args.pilot_dir:
         pilot = Path(args.pilot_dir).resolve()
         config["pilot"] = {"dir": str(pilot), "configs": {m: str(pilot / "configs" / ("%s.json" % m))
@@ -550,8 +596,15 @@ def init(args):
         mismatched = pilot_mismatches(config, receipt)
         if mismatched:
             raise SystemExit("init: the pilot's configs do not run this candidate: " + "; ".join(mismatched))
-    missing = [key for key in ("connections_dir", "codex_home", "stock_blender", "mcp_server_dir", "mcp_addon_dir")
-               if not config[key] or not Path(config[key]).exists()]
+    # --only scopes the campaign: one whose steps all run Angelo's side alone (the gates and smokes) needs no stock
+    # Blender and no MCP add-on or server, so a machine that never runs the MCP side need not install them. Every
+    # later selection must stay within what the campaign was set up for (main refuses an MCP step otherwise).
+    config["scope"] = list(args.only)
+    config["mcp_side"] = campaign.mcp_side(select(campaign.campaign(args.platform), args.only))
+    required = (("connections_dir",) if subscriptions else ()) + (("codex_home",) if "chatgpt" in needed else ()) + (
+        ("stock_blender", "mcp_server_dir", "mcp_addon_dir") if config["mcp_side"] else ())
+    missing = [key for key in required if not config[key] or not Path(config[key]).exists()]
+    missing += ["%s_connections_dir" % account for account, folder in api_key_dirs.items() if not Path(folder).is_dir()]
     if missing:
         raise SystemExit("init: missing or not found: " + ", ".join(missing))
     campaign_dir.mkdir(parents=True, exist_ok=True)
@@ -582,7 +635,8 @@ def main(argv=None):
         return 0
     if args.action == "check-sign-in":   # Existence of the sign-in files only; nothing is read or sent.
         try:
-            result = check_sign_in(args.connections_dir, accounts=args.account or ("claude", "chatgpt"))
+            result = check_sign_in(args.connections_dir, accounts=args.account or campaign.SUBSCRIPTIONS,
+                                   api_key_dirs={"gemini": args.gemini_connections_dir})
         except SystemExit as problem:
             print(problem, file=sys.stderr)
             return 2
@@ -591,6 +645,12 @@ def main(argv=None):
     campaign_dir = Path(args.output).resolve()
     config = load_config(campaign_dir)
     steps = select(campaign.campaign(config["platform"]), args.only, args.phase)
+    if not config.get("mcp_side", True) and campaign.mcp_side(steps):   # A campaign from before scopes had both sides.
+        print("%s: this campaign was set up for Angelo's side alone (init --only %s), without stock Blender or the MCP "
+              "side; %s run the MCP side: select within the scope, or init another campaign" % (
+                  campaign_dir, " ".join(config.get("scope") or ["(all)"]),
+                  ", ".join(s["id"] for s in steps if "mcp" in s["sides"])), file=sys.stderr)
+        return 2
     steps = [s for s in steps if s["tool"] != "pilot" or config.get("pilot")]
     if args.max_trials:
         steps = [dict(s, trials=min(s["trials"], args.max_trials)) for s in steps]
@@ -623,8 +683,9 @@ def main(argv=None):
         print("REFUSED: run sends billed messages on the test subscriptions; pass --authorize-billed-runs",
               file=sys.stderr)
         return 2
-    if subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain", "--untracked-files=no"], capture_output=True,
-                      text=True).stdout.strip():
+    import own_checkout   # A tree inside another repository is refused by name, never judged by that one.
+    changed = own_checkout.git(ROOT, "status", "--porcelain", "--untracked-files=no", capture_output=True, text=True)
+    if changed is not None and changed.stdout.strip():
         print("REFUSED: the checkout has uncommitted changes; the harness Python must be the campaign's commit",
               file=sys.stderr)
         return 2

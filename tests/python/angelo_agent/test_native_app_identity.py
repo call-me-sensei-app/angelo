@@ -33,6 +33,7 @@ sys.path.remove(str(HERE.parents[2] / "scripts/modules"))
 
 ROOT = identity_fixtures.ROOT
 IDENTITY = identity_fixtures.IDENTITY
+VERSION = IDENTITY["version"]["label"]   # The running version: tests never pin a literal one.
 
 # Values stock Blender uses. An Angelo install must never share them.
 BLENDER_WIN_UPGRADE_NAMESPACE = uuid.UUID("507F933F-5898-404A-9A05-18282FD491A6")
@@ -91,8 +92,12 @@ class IdentityDataTests(unittest.TestCase):
 
     def test_the_current_values_are_the_decided_ones(self):
         """Decided values are as decided; pending ones keep their placeholder until the one line changes."""
-        self.assertEqual(IDENTITY["version"]["label"], "1.0.11")
-        self.assertEqual(angelo_identity.APP_VERSION_DISPLAY, "1.0.11")
+        # The version is the one line in the identity, never a literal here (1.1.0 shipped as 2.0.0, 2026-11-13): a
+        # release label, the same in app_version's fallback, and a .0 release shows as its MAJOR.MINOR.
+        major, minor, patch = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", VERSION).groups()
+        fallback = re.search(r'^FALLBACK_VERSION = "([^"]+)"$', read("scripts/addons_core/angelo_agent/app_version.py"), re.M)
+        self.assertEqual(fallback and fallback.group(1), VERSION)
+        self.assertEqual(angelo_identity.APP_VERSION_DISPLAY, VERSION if patch != "0" else f"{major}.{minor}")
         self.assertEqual(IDENTITY["vendor"]["name"], "Hyperbond Studio PTE. LTD.")
         self.assertEqual(IDENTITY["bundle"]["macos_id"], "studio.hyperbond.angelo")  # Final.
         self.assertEqual(IDENTITY["bundle"]["linux_desktop_id"], IDENTITY["bundle"]["macos_id"])
@@ -459,7 +464,7 @@ message("PARTS=${{ANGELO_APP_VERSION_MAJOR}}.${{ANGELO_APP_VERSION_MINOR}}.${{AN
                 if key in info and key in expected:
                     self.assertEqual(info[key].replace("2026-01-01", "${DATE}"),
                                      expected[key].replace("${MACOSX_BUNDLE_LONG_VERSION_STRING}",
-                                                          "1.0.11 (based on Blender 5.2.2) ${DATE}"), key)
+                                                          f"{VERSION} (based on Blender 5.2.2) ${{DATE}}"), key)
         app = plistlib.loads((self.out / "app.plist").read_bytes())
         self.assertEqual(app["CFBundleIdentifier"], bundle["macos_id"])
         self.assertTrue(app["CFBundleGetInfoString"].endswith(", " + IDENTITY["vendor"]["name"]))
@@ -498,11 +503,11 @@ message("PARTS=${{ANGELO_APP_VERSION_MAJOR}}.${{ANGELO_APP_VERSION_MINOR}}.${{AN
         self.assertIn("<name>Angelo</name>", meta)
         self.assertNotIn("blender.org", meta)
         readme = self.rendered("readme.html")
-        self.assertIn("Angelo 1.0.11", readme)
+        self.assertIn(f"Angelo {VERSION}", readme)
         self.assertIn("based on\n      Blender 5.2.2", readme)
         self.assertIn("https://www.blender.org/about/license/", readme)
         copyright_text = self.rendered("copyright.txt")
-        for needed in ("Angelo 1.0.11 is based on Blender 5.2.2", "Hyperbond Studio PTE. LTD.", "Copyright (C) 2023  Blender Foundation",
+        for needed in (f"Angelo {VERSION} is based on Blender 5.2.2", "Hyperbond Studio PTE. LTD.", "Copyright (C) 2023  Blender Foundation",
                        "GNU General Public License", "Stichting Blender Foundation"):
             self.assertIn(needed, copyright_text)
 

@@ -27,6 +27,9 @@ from pathlib import Path
 
 import bpy
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import native_crash  # noqa: E402
+
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 VARIANT = ARGS[ARGS.index("--variant") + 1] if "--variant" in ARGS else "full"
 FIXTURE = Path(ARGS[ARGS.index("--fixture") + 1])
@@ -60,11 +63,36 @@ def unregister():
     bpy.utils.unregister_class(SWITCHER_OT_hello)
 '''
 
-BROKEN = '''bl_info = {"name": "Broken Tool", "author": "Fixture", "version": (1, 0, 0), "blender": (4, 2, 0),
+# Registers a property group, a runtime pointer property that uses it, an operator and a menu entry, then raises: the
+# common shape of an add-on a newer Blender breaks part-way through register(). What it set up stays, as in stock
+# Blender (undoing the group would free it under Scene.broken_tool: angelo_addon_failures).
+BROKEN = '''import bpy
+
+bl_info = {"name": "Broken Tool", "author": "Fixture", "version": (1, 0, 0), "blender": (4, 2, 0),
            "category": "Object"}
 
 
+class BrokenToolProps(bpy.types.PropertyGroup):
+    strength: bpy.props.FloatProperty(default=0.5)
+
+
+class BROKEN_TOOL_OT_poke(bpy.types.Operator):
+    bl_idname = "broken_tool.poke"
+    bl_label = "Broken Tool Poke"
+
+    def execute(self, context):
+        return {'FINISHED'}
+
+
+def menu(self, context):
+    self.layout.operator(BROKEN_TOOL_OT_poke.bl_idname)
+
+
 def register():
+    bpy.utils.register_class(BrokenToolProps)
+    bpy.types.Scene.broken_tool = bpy.props.PointerProperty(type=BrokenToolProps)
+    bpy.utils.register_class(BROKEN_TOOL_OT_poke)
+    bpy.types.VIEW3D_MT_object.append(menu)
     raise RuntimeError("Broken Tool fails to register (fixture)")
 
 
@@ -129,19 +157,20 @@ def unregister():
     pass
 '''
 
-CRASHING = '''bl_info = {"name": "Crash On Load", "blender": (4, 2, 0), "category": "Development"}
-
+# A native crash wherever ANGELO_QA_CRASH_ON_LOAD is set, on every platform: native_crash.SOURCE, embedded (the app
+# imports this add-on from disk, where the test folder is not on the path).
+CRASHING = ('''bl_info = {"name": "Crash On Load", "blender": (4, 2, 0), "category": "Development"}
+''' + native_crash.SOURCE + '''
 
 def register():
     import os
     if os.environ.get("ANGELO_QA_CRASH_ON_LOAD") == "1":
-        import ctypes
-        ctypes.string_at(0)   # A native crash: no Python error handler sees it.
+        crash()
 
 
 def unregister():
     pass
-'''
+''')
 
 PRESET = '''import bpy
 op = bpy.context.active_operator

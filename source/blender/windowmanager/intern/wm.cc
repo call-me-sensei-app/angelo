@@ -21,10 +21,10 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_ghash.h"
-#include "BLI_listbase.h"
-#include "BLI_string_utf8.h"
-#include "BLI_utildefines.h"
+#include "BLI_ghash.hh"
+#include "BLI_listbase.hh"
+#include "BLI_string_utf8.hh"
+#include "BLI_utildefines.hh"
 
 #include "BLT_translation.hh"
 
@@ -41,6 +41,7 @@
 
 #include "PRF_profile.hh"
 
+#include "WM_angelo_gpu_startup.hh"
 #include "WM_api.hh"
 #include "WM_keymap.hh"
 #include "WM_message.hh"
@@ -120,7 +121,15 @@ static void window_manager_blend_write(BlendWriter *writer, ID *id, const void *
 
   wm->runtime = nullptr;
 
-  writer->write_id_struct(id_address, wm);
+  writer->write_id_struct(id_address, wm, [](BlendStructWriter<wmWindowManager> &struct_writer) {
+    wmWindowManager &shallow_wm = struct_writer.shallow_data;
+    shallow_wm.init_flag = {};
+    shallow_wm.op_undo_depth = 0;
+    shallow_wm.outliner_sync_select_dirty = {};
+    shallow_wm.extensions_updates = {};
+    shallow_wm.extensions_blocked = 0;
+    shallow_wm.autosave_scheduled = 0;
+  });
   BKE_id_blend_write(writer, &wm->id);
   write_wm_xr_data(writer, &wm->xr);
 
@@ -128,7 +137,19 @@ static void window_manager_blend_write(BlendWriter *writer, ID *id, const void *
     /* Update deprecated screen member (for so loading in 2.7x uses the correct screen). */
     win.screen = BKE_workspace_active_screen_get(win.workspace_hook);
 
-    writer->write_struct(&win);
+    writer->write_struct(&win, [](BlendStructWriter<wmWindow> &struct_writer) {
+      wmWindow &shallow_win = struct_writer.shallow_data;
+      shallow_win.active = 0;
+      shallow_win.grabcursor = 0;
+      shallow_win.addmousemove = 0;
+      shallow_win.event_queue_check_click = 0;
+      shallow_win.event_queue_check_drag = 0;
+      shallow_win.event_queue_check_drag_handled = 0;
+      shallow_win.event_queue_consecutive_gesture_type = 0;
+      shallow_win.event_queue_consecutive_gesture_xy[0] = 0;
+      shallow_win.event_queue_consecutive_gesture_xy[1] = 0;
+      shallow_win.event_queue_consecutive_gesture_data = nullptr;
+    });
     writer->write_struct(win.workspace_hook);
     writer->write_struct(win.stereo3d_format);
 
@@ -240,6 +261,7 @@ IDTypeInfo IDType_ID_WM = {
     .foreach_cache = nullptr,
     .foreach_path = nullptr,
     .foreach_working_space_color = nullptr,
+    .foreach_asset_weak_reference = nullptr,
     .owner_pointer_get = nullptr,
 
     .blend_write = window_manager_blend_write,
@@ -280,9 +302,9 @@ void WM_operator_free(wmOperator *op)
     MEM_delete(op->reports);
   }
 
-  if (op->macro.first) {
+  if (op->macro.first()) {
     wmOperator *opm, *opmnext;
-    for (opm = static_cast<wmOperator *>(op->macro.first); opm; opm = opmnext) {
+    for (opm = op->macro.first(); opm; opm = opmnext) {
       opmnext = opm->next;
       WM_operator_free(opm);
     }
@@ -316,7 +338,7 @@ void WM_operator_type_set(wmOperator *op, wmOperatorType *ot)
 
     WM_operator_properties_default(&ptr, false);
 
-    if (ptr.data) {
+    if (ptr) {
       IDP_SyncGroupTypes(op->properties, static_cast<const IDProperty *>(ptr.data), true);
     }
 
@@ -386,7 +408,7 @@ void WM_operator_handlers_clear(wmWindowManager *wm, const Set<wmOperatorType *>
     for (ScrArea &area : screen->areabase) {
       switch (area.spacetype) {
         case SPACE_FILE: {
-          SpaceFile *sfile = static_cast<SpaceFile *>(area.spacedata.first);
+          SpaceFile *sfile = area.spacedata.first_as<SpaceFile>();
           if (sfile->op && types.contains(sfile->op->type)) {
             /* Freed as part of the handler. */
             sfile->op = nullptr;
@@ -479,7 +501,7 @@ void WM_check(bContext *C)
 
   /* WM context. */
   if (wm == nullptr) {
-    wm = static_cast<wmWindowManager *>(bmain->wm.first);
+    wm = bmain->wm.first();
     CTX_wm_manager_set(C, wm);
   }
 
@@ -499,6 +521,9 @@ void WM_check(bContext *C)
       WM_file_autosave_init(wm);
     }
 
+    /* Initialize GPU backend for GHOST before opening windows. */
+    WM_init_gpu_backend();
+
     /* Case: no open windows at all, for old file reads. */
     wm_window_ghostwindows_ensure(wm);
   }
@@ -517,7 +542,7 @@ void wm_clear_default_size(bContext *C)
 
   /* WM context. */
   if (wm == nullptr) {
-    wm = static_cast<wmWindowManager *>(CTX_data_main(C)->wm.first);
+    wm = CTX_data_main(C)->wm.first();
     CTX_wm_manager_set(C, wm);
   }
 
@@ -606,6 +631,10 @@ void wm_close_and_free(bContext *C, wmWindowManager *wm)
 void WM_main(bContext *C)
 {
   PRF_scope(ProfileCategory::Core);
+  /* Angelo: every start-up script has run; until the first presented frame a death counts as
+   * a failed Vulkan start again (`wm_angelo_gpu_startup.cc`). */
+  WM_angelo_gpu_startup_main_loop_begin();
+
   /* Single refresh before handling events.
    * This ensures we don't run operators before the depsgraph has been evaluated. */
   wm_event_do_refresh_wm_and_depsgraph(C);

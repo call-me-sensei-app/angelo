@@ -45,14 +45,14 @@ from .protocol import RpcError
 from .schema_compaction import compact_nullable_scalars, compact_schema
 from .strict_schema import StrictDecodeError, decode, inline_references, strict_schema
 from .strict_shapes import annotate
-from .tool_specs import TOOL_MAP, TOOLS, PART_NAMES, cube_batch, note_reports
+from .tool_specs import READ_ONLY_TOOLS, TOOL_MAP, TOOLS, PART_NAMES, cube_batch, note_reports
 from .ui_text import n_, notice
 
 # Reviewed Python and file effects stay in-turn: their result is what the model needs next.
 IN_TURN_ONLY = frozenset({"angelo_execute_python", "angelo_write_file", "angelo_delete_file"})
 # Edits a plan may end a turn with, and the standalone verification that proves one.
 PLAN_TOOLS = frozenset(tool["name"] for tool in TOOLS
-                       if not tool["annotations"]["readOnlyHint"] and tool["name"] not in IN_TURN_ONLY
+                       if tool["name"] not in READ_ONLY_TOOLS and tool["name"] not in IN_TURN_ONLY
                        ) | {"angelo_scene_verify"} | (PART_NAMES & frozenset(TOOL_MAP))   # A worker's report (P1-6 M1).
 MAX_OPERATIONS = 64
 # Fragments shared through $defs from this size; smaller than the Claude plan's
@@ -100,7 +100,7 @@ def plan_mode(context, external):
     if external or getattr(context, "voice", None) is not None or getattr(context, "base_instructions", None) is not None:
         return False
     tools = plan_tools(getattr(context, "allowed_tools", None))
-    return any(not TOOL_MAP[name]["annotations"]["readOnlyHint"] for name in tools)
+    return any(name not in READ_ONLY_TOOLS for name in tools)
 
 
 @functools.lru_cache(maxsize=8)
@@ -322,7 +322,7 @@ def emit_summary(context, reply, calls, *, emit_uncertified=False, completions=N
     from .program_completion import completions_for
     completions = completions if completions is not None else completions_for(context, [result for _, result in calls])
     summary = certified_completion([call for call, _ in calls], [result for _, result in calls], completions=completions,
-                                   read_only=lambda name: TOOL_MAP[name]["annotations"]["readOnlyHint"])
+                                   read_only=lambda name: name in READ_ONLY_TOOLS)
     if summary is not None:
         context.emit("message", {"role": "system", "text": summary, "host_summary": True})
     elif emit_uncertified:
@@ -340,7 +340,7 @@ def _unbound(operation):
 
 def _repeats(operation, calls):
     """An edit the model already ran from exec this request (a second run would apply it twice)."""
-    return (not TOOL_MAP[operation["tool"]]["annotations"]["readOnlyHint"]
+    return (operation["tool"] not in READ_ONLY_TOOLS
             and any(not result.get("error") and isinstance(call.get("arguments"), dict)
                     and _unbound(call) == _unbound(operation) for call, result in calls))
 

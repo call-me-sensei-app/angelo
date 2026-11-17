@@ -29,7 +29,7 @@
 
 #include <Python.h>
 
-#include "BLI_threads.h"
+#include "BLI_threads.hh"
 
 #include "BKE_global.hh"
 #include "BKE_main.hh"
@@ -263,7 +263,7 @@ PyObject *work_running_work(PyObject * /*self*/, PyObject * /*args*/)
   if (found == nullptr) {
     return nullptr;
   }
-  const wmWindowManager *wm = G_MAIN ? static_cast<const wmWindowManager *>(G_MAIN->wm.first) :
+  const wmWindowManager *wm = G_MAIN ? static_cast<const wmWindowManager *>(G_MAIN->wm.first()) :
                                        nullptr;
   for (int value = WM_JOB_TYPE_ANY + 1; wm != nullptr && value <= LAST_JOB_TYPE; value++) {
     const eWM_JobType type = eWM_JobType(value);
@@ -294,7 +294,7 @@ PyObject *work_running_scene_jobs(PyObject * /*self*/, PyObject * /*args*/)
   if (found == nullptr) {
     return nullptr;
   }
-  const wmWindowManager *wm = G_MAIN ? static_cast<const wmWindowManager *>(G_MAIN->wm.first) :
+  const wmWindowManager *wm = G_MAIN ? static_cast<const wmWindowManager *>(G_MAIN->wm.first()) :
                                        nullptr;
   for (int value = WM_JOB_TYPE_ANY + 1; wm != nullptr && value <= LAST_JOB_TYPE; value++) {
     const eWM_JobType type = eWM_JobType(value);

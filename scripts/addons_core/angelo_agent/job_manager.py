@@ -20,6 +20,7 @@ agent turn, a staged program or a commit. A request while a job runs is refused
 unless it asks to queue; at most ``MAX_QUEUED`` wait.
 """
 
+import threading
 import time
 
 from .job_spec import MAX_QUEUED, JobRequestError
@@ -58,6 +59,13 @@ def install(manager):
 
 class JobStartError(RefusalError, RuntimeError):
     """A startup failure; only explicitly classified preconditions prove no change."""
+
+
+def _angelo_started():
+    """``input_policy.angelo_started`` on this Blender's window manager (none outside Blender)."""
+    from .edit_tool_hold import _window_manager
+    from .input_policy import angelo_started
+    return angelo_started(_window_manager())
 
 
 class JobManager:
@@ -111,9 +119,10 @@ class JobManager:
         record["detail"].update(getattr(runner, "describe", dict)())
         self.runners[record["id"]] = runner
         self.store.add(record)
-        if busy is None:
+        from . import edit_tool_hold
+        if busy is None and not edit_tool_hold.running():
             self._start(record)
-        else:
+        else:   # Busy, or the person's operation runs (a click during their F12 render): poll starts it after.
             self.queue.append(record["id"])
             self.on_change(record)
         return record
@@ -143,7 +152,16 @@ class JobManager:
     # Main-thread lifecycle -----------------------------------------------
 
     def poll(self):
-        """Advance the running job (progress, budget, end) and start the next queued one."""
+        """Advance the running job (progress, budget, end) and start the next queued one. Nothing while the person's
+        operation is in progress (``edit_tool_hold``): a start, a step, a finish or a publication reads or changes
+        the scene under it; the job's own thread and budget go on."""
+        from . import edit_tool_hold
+        if edit_tool_hold.running():
+            self._pause_budget()
+            if self.has_work():
+                edit_tool_hold.note_waiting()
+            return self.has_work()
+        self._held_since = None
         record = self.active()
         if record is not None:
             self._poll_running(record)
@@ -154,6 +172,18 @@ class JobManager:
                 if queued is not None and queued["status"] == "queued":
                     self._start(queued)
         return self.has_work()
+
+    def _pause_budget(self):
+        """While held: a job that waits for its next step (``runner.pause_budget`` says so, and moves its own
+        deadline) does not spend its budget, as a call's lifetime does not (break-it review 3, S5). A job running on
+        its own thread meanwhile does: its time is real."""
+        now, last = time.monotonic(), getattr(self, "_held_since", None)   # One clock: deadline_at is monotonic.
+        self._held_since = now
+        record = self.active()
+        runner = self.runners.get(record["id"]) if record is not None else None
+        pause = getattr(runner, "pause_budget", None)
+        if last is not None and callable(pause) and pause(now - last) and record.get("started"):
+            record["started"] += now - last
 
     def document_closed(self):
         """A file load or snapshot restore ends Blender's jobs: every active job is interrupted."""
@@ -185,9 +215,12 @@ class JobManager:
             record["detail"]["scene_uid"] = runner.scene_uid  # one scene only (render_device.fitted).
         try:
             # The budget also stops it from its own thread (a held-up main thread too); best effort.
+            from . import edit_tool_hold
+            edit_tool_hold.refuse_under("A job's start", JobStartError)   # Last line: poll waits first.
             job_deadline.arm(record, getattr(runner, "scene", None))
             job_deadline.reset_kernels()   # Its render's kernel compile only, never an earlier render's.
-            runner.start()
+            with _angelo_started():   # A job's render or bake modal is Angelo's own, never the person's (edit_tool_hold).
+                runner.start()
         except Exception as error:
             if isinstance(error, (JobStartError, JobRequestError)):
                 failure = error_result(error, scene_changed=False)
@@ -224,7 +257,8 @@ class JobManager:
         runner = self.runners.get(record["id"])
         now = self.clock()
         try:
-            state = runner.poll() if runner else None
+            with _angelo_started():   # A step it invokes (the next bake) is Angelo's own too.
+                state = runner.poll() if runner else None
         except Exception as error:
             state, record["detail"]["poll_error"] = None, str(error)[:200]
         _device_used(record, runner)
@@ -301,6 +335,8 @@ class JobManager:
         self.on_change(record)
 
     def _end(self, record, status, reason, receipt, retained=None):
+        if threading.current_thread() is not threading.main_thread():   # Before anything ends: the guard's note
+            raise RuntimeError("a job ends on the main thread")       # and the callbacks below touch Blender.
         if record.get("started") is not None:   # It ran (or started): its deadline goes with it.
             from . import job_deadline
             job_deadline.disarm(record, getattr(self.runners.get(record["id"]), "scene", None))
@@ -312,6 +348,10 @@ class JobManager:
             record["progress"] = 1.0
         self.runners.pop(record["id"], None)
         self.store.save()
+        # What it rendered, baked or simulated came into the file: a dialog's held OK was not for that (the review of
+        # 69d589a, SHOULD 5). Here, where every job's end lands, never in one queue's callback.
+        from . import grant_gestures
+        grant_gestures.landed()
         self.on_change(record)
         self.on_finish(record)
 

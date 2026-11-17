@@ -25,9 +25,15 @@ A stored token is adopted only with the refresh token it was issued with
 rotation or another sign-in is never used), never past ``LIFETIME_CAP`` and never
 when it is the token the server just refused. Its account fields go through the
 same ``parse_tokens`` validation as a console answer. The value is JSON:
-``{"v": 1, "exp": <epoch>, "fp": "<hex>", "access": "<token>", "answer": {...}}``,
+``{"v": 1, "exp": <epoch>, "iat": <epoch>, "fp": "<hex>", "access": "<token>", "answer": {...}}``,
 at most ``MAX_BYTES`` (Windows Credential Manager holds 2,560); a larger one is
 not shared. Without a usable store nothing is shared.
+
+``iat`` is when the console issued the answer (its receipt here), so an adopted
+token says how old it is (``age``, seconds): the seat it reports was confirmed
+then, not when this process adopted it (``TeamAccount._accept``; the offline
+grace of custom endpoints counts from it). A value stored before ``iat`` was
+kept is dated as early as its expiry allows: never later than the truth.
 
 Standard library only; no bpy. Called on the account's worker or a caller's thread.
 """
@@ -59,14 +65,17 @@ def _answer(tokens):
 
 
 def encode(tokens, now):
-    """The stored value for ``tokens`` (``parse_tokens`` output), or None when it is too large to share."""
-    value = json.dumps({"v": _FORMAT, "exp": int(now + tokens["expires_in"]), "fp": fingerprint(tokens["refresh"]),
-                        "access": tokens["access"], "answer": _answer(tokens)}, separators=(",", ":"))
+    """The stored value for ``tokens`` (``parse_tokens`` output; ``age``: seconds since the console issued it, 0 when
+    absent), or None when it is too large to share."""
+    value = json.dumps({"v": _FORMAT, "exp": int(now + tokens["expires_in"]), "iat": int(now - tokens.get("age", 0)),
+                        "fp": fingerprint(tokens["refresh"]), "access": tokens["access"], "answer": _answer(tokens)},
+                       separators=(",", ":"))
     return value if len(value.encode("utf-8")) <= MAX_BYTES else None
 
 
 def decode(value, refresh, now):
-    """``parse_tokens`` output for a stored value issued with ``refresh`` and not yet expired, or None."""
+    """``parse_tokens`` output for a stored value issued with ``refresh`` and not yet expired, plus its ``age``
+    (seconds since the console issued it), or None."""
     try:
         stored = json.loads(value) if isinstance(value, str) and len(value) <= MAX_BYTES else None
     except ValueError:
@@ -78,8 +87,14 @@ def decode(value, refresh, now):
     remaining = int(min(stored["exp"] - now, LIFETIME_CAP))
     if remaining < 1:
         return None
-    return parse_tokens(dict(stored["answer"], access_token=stored.get("access"), refresh_token=refresh,
-                             expires_in=remaining))
+    tokens = parse_tokens(dict(stored["answer"], access_token=stored.get("access"), refresh_token=refresh,
+                               expires_in=remaining))
+    if tokens is not None:
+        issued = stored.get("iat")
+        if not isinstance(issued, int) or isinstance(issued, bool) or issued > stored["exp"]:
+            issued = stored["exp"] - LIFETIME_CAP   # Kept before ``iat`` was: the earliest issue its expiry allows.
+        tokens["age"] = max(0, int(now - issued))
+    return tokens
 
 
 class SharedAccess:

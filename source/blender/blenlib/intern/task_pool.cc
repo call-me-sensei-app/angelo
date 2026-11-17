@@ -17,10 +17,11 @@
 
 #include "DNA_listBase.h"
 
-#include "BLI_assert.h"
-#include "BLI_mempool.h"
-#include "BLI_task.h"
-#include "BLI_threads.h"
+#include "BLI_angelo_writers.hh"
+#include "BLI_assert.hh"
+#include "BLI_mempool.hh"
+#include "BLI_task_c.hh"
+#include "BLI_threads.hh"
 #include "BLI_vector.hh"
 
 #ifdef WITH_TBB
@@ -45,13 +46,21 @@ class Task {
   void *taskdata;
   bool free_taskdata;
   TaskFreeFunction freedata;
+  /** Angelo: the writer job of the thread that pushed this task (BLI_angelo_writers.hh): a task runs for the job
+   * that made it, on whatever thread runs it (the depsgraph's evaluation during a bake, a render's write pool). */
+  const angelo_writers::Job *angelo_job;
 
   Task(TaskPool *pool,
        TaskRunFunction run,
        void *taskdata,
        bool free_taskdata,
        TaskFreeFunction freedata)
-      : pool(pool), run(run), taskdata(taskdata), free_taskdata(free_taskdata), freedata(freedata)
+      : pool(pool),
+        run(run),
+        taskdata(taskdata),
+        free_taskdata(free_taskdata),
+        freedata(freedata),
+        angelo_job(angelo_writers::current_job())
   {
   }
 
@@ -76,7 +85,8 @@ class Task {
         run(other.run),
         taskdata(other.taskdata),
         free_taskdata(other.free_taskdata),
-        freedata(other.freedata)
+        freedata(other.freedata),
+        angelo_job(other.angelo_job)
   {
     other.pool = nullptr;
     other.run = nullptr;
@@ -96,7 +106,8 @@ class Task {
         run(other.run),
         taskdata(other.taskdata),
         free_taskdata(other.free_taskdata),
-        freedata(other.freedata)
+        freedata(other.freedata),
+        angelo_job(other.angelo_job)
   {
     ((Task &)other).pool = nullptr;
     ((Task &)other).run = nullptr;
@@ -117,6 +128,9 @@ class Task {
 /* Execute task. */
 void Task::operator()() const
 {
+  /* Angelo: always the pusher's job, none included: a job-less task must not run under whatever job the thread
+   * that steals it holds (a work-stealing worker inside another task's scope). */
+  const angelo_writers::JobScope job(angelo_job);
   run(pool, taskdata);
 }
 
@@ -174,7 +188,6 @@ struct TaskPool {
   /* Background task pool. */
   ListBaseT<ThreadSlot> background_threads;
   ThreadQueue *background_queue;
-  volatile bool background_is_canceling = false;
 
   eTaskPriority priority;
 
@@ -288,39 +301,6 @@ struct TaskPool {
     }
   }
 
-  /**
-   * Cancel all tasks, keep worker threads running.
-   */
-  void cancel()
-  {
-    switch (this->type) {
-      case TASK_POOL_TBB:
-      case TASK_POOL_TBB_SUSPENDED:
-      case TASK_POOL_NO_THREADS:
-        this->tbb_task_pool_cancel();
-        break;
-      case TASK_POOL_BACKGROUND:
-      case TASK_POOL_BACKGROUND_SERIAL:
-        this->background_task_pool_cancel();
-        break;
-    }
-  }
-
-  bool current_canceled()
-  {
-    switch (this->type) {
-      case TASK_POOL_TBB:
-      case TASK_POOL_TBB_SUSPENDED:
-      case TASK_POOL_NO_THREADS:
-        return this->tbb_task_pool_canceled();
-      case TASK_POOL_BACKGROUND:
-      case TASK_POOL_BACKGROUND_SERIAL:
-        return this->background_task_pool_canceled();
-    }
-    BLI_assert_msg(0, "TaskPool::current_canceled: Control flow should not come here!");
-    return false;
-  }
-
  private:
   /* TBB Task Pool.
    *
@@ -331,16 +311,12 @@ struct TaskPool {
    * initialize data structures and create tasks in a single pass. */
   void tbb_task_pool_run(Task &&task);
   void tbb_task_pool_work_and_wait();
-  void tbb_task_pool_cancel();
-  bool tbb_task_pool_canceled();
 
   /* Background Task Pool.
    *
    * Fallback for running background tasks when building without TBB. */
   void background_task_pool_run(Task &&task);
   void background_task_pool_work_and_wait();
-  void background_task_pool_cancel();
-  bool background_task_pool_canceled();
   static void *background_task_run(void *userdata);
 };
 
@@ -400,28 +376,6 @@ void TaskPool::tbb_task_pool_work_and_wait()
 #endif
 }
 
-void TaskPool::tbb_task_pool_cancel()
-{
-  BLI_assert(ELEM(this->type, TASK_POOL_TBB, TASK_POOL_TBB_SUSPENDED, TASK_POOL_NO_THREADS));
-#ifdef WITH_TBB
-  if (this->use_threads) {
-    this->tbb_group->cancel();
-    this->tbb_group->wait();
-  }
-#endif
-}
-
-bool TaskPool::tbb_task_pool_canceled()
-{
-  BLI_assert(ELEM(this->type, TASK_POOL_TBB, TASK_POOL_TBB_SUSPENDED, TASK_POOL_NO_THREADS));
-#ifdef WITH_TBB
-  if (this->use_threads) {
-    return tbb::is_current_task_group_canceling();
-  }
-#endif
-  return false;
-}
-
 void TaskPool::background_task_pool_run(Task &&task)
 {
   BLI_assert(ELEM(this->type, TASK_POOL_BACKGROUND, TASK_POOL_BACKGROUND_SERIAL));
@@ -447,30 +401,6 @@ void TaskPool::background_task_pool_work_and_wait()
   BLI_thread_queue_nowait(this->background_queue);
   BLI_thread_queue_wait_finish(this->background_queue);
   BLI_threadpool_clear(&this->background_threads);
-}
-
-void TaskPool::background_task_pool_cancel()
-{
-  BLI_assert(ELEM(this->type, TASK_POOL_BACKGROUND, TASK_POOL_BACKGROUND_SERIAL));
-
-  this->background_is_canceling = true;
-
-  /* Remove tasks not yet started by background thread. */
-  BLI_thread_queue_nowait(this->background_queue);
-  while (Task *task = static_cast<Task *>(BLI_thread_queue_pop(this->background_queue))) {
-    MEM_delete(task);
-  }
-
-  /* Let background thread finish or cancel task it is working on. */
-  BLI_threadpool_remove(&this->background_threads, this);
-  this->background_is_canceling = false;
-}
-
-bool TaskPool::background_task_pool_canceled()
-{
-  BLI_assert(ELEM(this->type, TASK_POOL_BACKGROUND, TASK_POOL_BACKGROUND_SERIAL));
-
-  return this->background_is_canceling;
 }
 
 void *TaskPool::background_task_run(void *userdata)
@@ -539,16 +469,6 @@ void BLI_task_pool_push(TaskPool *pool,
 void BLI_task_pool_work_and_wait(TaskPool *pool)
 {
   pool->work_and_wait();
-}
-
-void BLI_task_pool_cancel(TaskPool *pool)
-{
-  pool->cancel();
-}
-
-bool BLI_task_pool_current_canceled(TaskPool *pool)
-{
-  return pool->current_canceled();
 }
 
 void *BLI_task_pool_user_data(TaskPool *pool)

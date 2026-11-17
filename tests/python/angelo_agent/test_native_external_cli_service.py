@@ -258,12 +258,13 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(cli_client.default_state_directory({"ANGELO_STATE_DIR": "/s"}, "linux", home), Path("/s"))
         self.assertEqual(cli_client.default_state_directory({"BLENDER_USER_CONFIG": "/c"}, "linux", home),
                          Path("/c/angelo-agent"))
+        series = cli_client.BLENDER_SERIES   # This build's per-version folder (test_native_api_drift pins it).
         self.assertEqual(cli_client.default_state_directory({}, "darwin", home),
-                         home / "Library/Application Support/Angelo/5.2/config/angelo-agent")
+                         home / "Library/Application Support/Angelo" / series / "config/angelo-agent")
         self.assertEqual(cli_client.default_state_directory({}, "win32", home),
-                         home / "AppData/Roaming/Angelo/5.2/config/angelo-agent")
+                         home / "AppData/Roaming/Angelo" / series / "config/angelo-agent")
         self.assertEqual(cli_client.default_state_directory({}, "linux", home),
-                         home / ".config/angelo/5.2/config/angelo-agent")
+                         home / ".config/angelo" / series / "config/angelo-agent")
 
 
 class FileToolBoundaryTests(unittest.TestCase):

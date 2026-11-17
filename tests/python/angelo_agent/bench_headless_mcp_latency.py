@@ -222,8 +222,9 @@ def main():
     root.mkdir(parents=True, exist_ok=True)
     env = isolated_environment(root / "env")
     binary = Path(args.angelo_binary).resolve(strict=True)
-    resources = binary.parents[1] / "Resources" / "5.2"
-    python, launcher = resources / "python" / "bin" / "python3.13", resources / "scripts" / "angelo" / "angelo_mcp.py"
+    import app_layout
+    resources = app_layout.resources(binary)
+    python, launcher = app_layout.python(binary), resources / "scripts" / "angelo" / "angelo_mcp.py"
     sys.path.insert(0, str(resources / "scripts" / "addons_core"))
     from angelo_agent.external_clients import DEFAULT_LEVELS, AppRegistry
     AppRegistry(env["ANGELO_STATE_DIR"]).connect("other", name="bench", levels=DEFAULT_LEVELS)

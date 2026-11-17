@@ -24,7 +24,7 @@ import os
 import sys
 import uuid
 
-from . import shared_replace
+from . import owned_paths, shared_replace
 
 DAMAGED = "damaged"   # A file Angelo writes that holds no record it could have written (empty, broken JSON).
 
@@ -67,6 +67,7 @@ def shared_read(path):
 def write_if_unchanged(path, text, identity):
     """Write ``text`` only over the file ``shared_read`` read (``identity``; None: only while it is still missing).
     True when written; False when the file changed meanwhile (the next sync reads it again)."""
+    owned_paths.require_writable(path)   # C first: no temporary is made beside a target it refuses.
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
     try:
@@ -87,6 +88,7 @@ def write_if_unchanged(path, text, identity):
 def _create(temporary, path):
     """Put ``temporary`` at ``path`` only if nothing is there: a rename on Windows and a hard link elsewhere both
     refuse an existing name; a file system without links gets an exclusive create written in place."""
+    owned_paths.require_writable(path)
     try:
         if sys.platform == "win32":
             os.rename(temporary, path)

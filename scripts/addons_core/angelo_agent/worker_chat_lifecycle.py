@@ -202,8 +202,8 @@ def _open_fields(controller, worker, resume):
 def _gpu_verdict(worker):
     """Angelo's offscreen verdict for ``worker``'s binary (``remote_executor.OFFSCREEN_VERDICTS``, as the lane route
     passes it), so a hosted chat's first view never starts a probe child; None when Angelo has none: it probes."""
-    from .remote_executor import OFFSCREEN_VERDICTS
-    verdict = OFFSCREEN_VERDICTS.get(str(getattr(worker, "binary", None) or ""))
+    from .remote_executor import OFFSCREEN_VERDICTS, worker_verdict_key
+    verdict = OFFSCREEN_VERDICTS.get(worker_verdict_key())
     return list(verdict) if verdict is not None else None
 
 
@@ -433,8 +433,9 @@ def _lease(path, wait):
     try:
         answer = _send(None, "part.lease", worker, wait, part=str(path), seconds=LEASE_SECONDS)
     except ChatOpFailed:
-        if _process_ended(worker):
-            return None   # Its process ended meanwhile: nothing writes the file any more.
+        from .worker_merge_gate import stopped_within
+        if stopped_within(worker, wait):
+            return None   # Its process ended meanwhile, or as it was stopped: nothing writes the file any more.
         raise
     seconds = answer.get("seconds")   # The worker caps what was asked; anything else reads as the most asked.
     granted = type(seconds) in (int, float) and 0 < seconds <= LEASE_SECONDS

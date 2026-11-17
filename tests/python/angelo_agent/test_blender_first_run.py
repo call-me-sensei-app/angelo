@@ -100,7 +100,11 @@ def click(action, value=None):
     """Press and release on the drawn button, exactly where a person would click."""
     area, region = chat()
     rect = next(r for r, a, v in hits() if a == action and (value is None or v == value))
-    x, y = int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    from qa_input import chat_point   # The chat's points as window pixels (its scale, right to left mirrored).
+    x, y = chat_point(region, rect)
+    import qa_input
+    if action in qa_input.GRANT_ACTIONS:   # It reaches a grant: only a person's click (move, then press).
+        return qa_input.press(window(), x, y)
     window().event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=y)
     window().event_simulate(type='LEFTMOUSE', value='PRESS', x=x, y=y)
     window().event_simulate(type='LEFTMOUSE', value='RELEASE', x=x, y=y)
@@ -113,6 +117,9 @@ def click_welcome(action, value=None):
     region = next(r for r in area.regions if r.type == 'WINDOW')
     rect = next(r for r, a, v in intro._open["plan"]["hits"] if a == action and (value is None or v == value))
     x, y = int(region.x + rect[0] + rect[2] / 2), int(region.y + rect[1] + rect[3] / 2)
+    import qa_input
+    if action in qa_input.GRANT_ACTIONS:   # It reaches a grant: only a person's click (move, then press).
+        return qa_input.press(window(), x, y)
     for kind, event_value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
         window().event_simulate(type=kind, value=event_value, x=x, y=y)
 
@@ -120,6 +127,15 @@ def click_welcome(action, value=None):
 def card_actions():
     from angelo_agent import card_host
     return [(a, v) for _, a, v in card_host._active.plan.hits] if card_host._active and card_host._active.plan else []
+
+
+HELD = {}   # The card's plan before a scale change (kept here, not in the report): judged on the next one.
+
+
+def shown(action, value=None):
+    """Whether the visible card has drawn its control ``action`` (with ``value``): a click waits for it, never for a
+    fixed time (the expanded options card was not always drawn 0.4 s after Options; about 1 run in 3)."""
+    return any(a == action and (value is None or v == value) for a, v in card_actions())
 
 
 def click_card(action, value=None):
@@ -132,6 +148,9 @@ def click_card(action, value=None):
     x = rect[0] + rect[2] / 2
     x = canvas_rtl.pointer_x(x, region.width)  # Mirrored back in a right-to-left language.
     x, y = int(region.x + x), int(region.y + rect[1] + rect[3] / 2)
+    import qa_input
+    if action in qa_input.GRANT_ACTIONS:   # It reaches a grant: only a person's click (move, then press).
+        return qa_input.press(window(), x, y)
     for kind, event_value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
         window().event_simulate(type=kind, value=event_value, x=x, y=y)
 
@@ -272,6 +291,8 @@ def tick():
             state["phase"] = "language_menu"
             return .4
         if phase == "language_menu":
+            if not wait(phase, lambda: shown("language")):   # The open list drawn.
+                return .1
             capture("first-run-0-setup-language-menu.png")
             # The open list is opaque and above the card: none of the controls it covers shows through it.
             try:
@@ -287,12 +308,17 @@ def tick():
             state["phase"] = "arabic"
             return .5
         if phase == "arabic":
+            if not wait(phase, lambda: bpy.context.preferences.view.language.startswith("ar") and shown("look", "light")):
+                return .1
             checks["language_choice_takes_effect"] = bpy.context.preferences.view.language.startswith("ar")
             capture("first-run-0-setup-ar.png")
             click_card("look", "light")
             state["phase"] = "light"
             return .5
         if phase == "light":
+            if not wait(phase, lambda: bpy.types.USERPREF_MT_interface_theme_presets.bl_label == "Angelo Light"
+                        and shown("look", "dark")):
+                return .1
             theme = bpy.context.preferences.themes[0]
             checks["look_choice_takes_effect"] = (bpy.types.USERPREF_MT_interface_theme_presets.bl_label == "Angelo Light"
                                                   and theme.user_interface.wcol_regular.inner[0] > 0.5)
@@ -301,15 +327,23 @@ def tick():
             state["phase"] = "options"
             return .5
         if phase == "options":
+            if not wait(phase, lambda: bpy.context.preferences.themes[0].user_interface.wcol_regular.inner[0] < 0.5
+                        and shown("options")):
+                return .1
             checks["dark_look_restores"] = bpy.context.preferences.themes[0].user_interface.wcol_regular.inner[0] < 0.5
             click_card("options")
             state["phase"] = "select_right"
             return .4
         if phase == "select_right":
+            if not wait(phase, lambda: shown("select", "RIGHT")):   # The expanded options drawn.
+                return .1
             click_card("select", "RIGHT")
             state["phase"] = "english"
             return .4
         if phase == "english":
+            if not wait(phase, lambda: getattr(bpy.context.window_manager.keyconfigs.active.preferences,
+                                               "select_mouse", "RIGHT") == "RIGHT"):
+                return .1
             kc_prefs = bpy.context.window_manager.keyconfigs.active.preferences
             checks["mouse_select_choice_takes_effect"] = getattr(kc_prefs, "select_mouse", "RIGHT") == "RIGHT"
             capture("first-run-0-setup-options-ar.png")
@@ -318,27 +352,39 @@ def tick():
             state["phase"] = "english_pick"
             return .4
         if phase == "english_pick":
+            if not wait(phase, lambda: shown("language", "en_US")):   # The open list drawn again.
+                return .1
             click_card("language", "en_US")
             state["phase"] = "narrow"
             return .5
         if phase == "narrow":
+            if not wait(phase, lambda: bpy.context.preferences.view.language == "en_US"):
+                return .1
             checks["english_restored"] = bpy.context.preferences.view.language == "en_US"
             capture("first-run-0-setup-options.png")
             # Narrow: the same 3D view at twice the interface scale leaves the card half the room.
+            HELD["plan"] = card_host._active.plan   # Judged on the card laid out at the new scale.
             bpy.context.preferences.view.ui_scale = 2.0
             state["phase"] = "narrow_capture"
-            return .6
+            return .3
         if phase == "narrow_capture":
+            if not wait(phase, lambda: card_host._active.plan is not None
+                        and card_host._active.plan is not HELD["plan"]):
+                return .1
             capture("first-run-0-setup-narrow.png")
             plan = card_host._active.plan
             area = next(a for a in window().screen.areas if a.as_pointer() == card_host._active.area)
             region = next(r for r in area.regions if r.type == 'WINDOW')
             checks["narrow_card_fits_its_view"] = (plan.card[0] >= 0 and plan.card[0] + plan.card[2] <= region.width
                                                    and plan.card[1] >= 0 and plan.card[1] + plan.card[3] <= region.height)
+            HELD["plan"] = card_host._active.plan
             bpy.context.preferences.view.ui_scale = 1.0
             state["phase"] = "continue_click"
-            return .6
+            return .3
         if phase == "continue_click":
+            if not wait(phase, lambda: card_host._active.plan is not None and shown("continue")
+                        and card_host._active.plan is not HELD["plan"]):
+                return .1
             click_card("continue")
             state["phase"] = "setup_saved"
             return .4
@@ -361,7 +407,7 @@ def tick():
             capture("first-run-1-welcome.png")
             actions_shown = [(a, v) for _, a, v in intro._open["plan"]["hits"]]
             checks["welcome_opens_by_itself_on_first_launch"] = intro.opened == 1 and not intro.seen()
-            checks["welcome_has_banner_art"] = welcome_screen._banner["pixels"] is not None
+            checks["welcome_has_banner_art"] = welcome_screen.banner_ready()
             checks["welcome_offers_start_switch_close_and_demos"] = (("start", None) in actions_shown and ("standard", None) in actions_shown
                                                                     and ("close", None) in actions_shown
                                                                     and [v for a, v in actions_shown if a == "demo"] == [0, 1, 2, 3])
@@ -479,6 +525,9 @@ def tick():
             state["phase"] = "api_form"
             return .6
         if phase == "api_form":
+            if not (preferences_open() or quick_connect._key_form) \
+                    and time.monotonic() - state.setdefault("api_form_since", time.monotonic()) < 10:
+                return .2   # What the click opens, once it lands: the state, not a time.
             capture("first-run-6-api-key-form.png")
             checks["api_key_form_not_preferences"] = not preferences_open() and bool(quick_connect._key_form)
             window().event_simulate(type='ESC', value='PRESS', x=10, y=10)
@@ -519,4 +568,5 @@ def tick():
     return .2
 
 
-bpy.app.timers.register(tick, first_interval=.05)
+import qa_input  # noqa: E402  (a click on its way holds the tick: qa_input.after_clicks)
+bpy.app.timers.register(qa_input.after_clicks(tick), first_interval=.05)

@@ -36,6 +36,11 @@ def _team():
     return team_account_ui
 
 
+def _endpoints():
+    from . import endpoint_ui
+    return endpoint_ui
+
+
 def personal_allowed():
     """Whether the managed policy lets stored (personal) connections be used now."""
     policy = managed_policy.current()   # The team is asked only when the policy requires its sign-in.
@@ -89,13 +94,15 @@ def collaborators_allowed():
 
 
 def connection_records():
-    """Stored connections the policy allows, plus the signed-in team's virtual ones."""
-    return {**(_ui().connections().records if personal_allowed() else {}), **_team().records()}
+    """Stored connections the policy allows, plus the signed-in organization's virtual ones (team connections and
+    its custom endpoints, ``endpoint_ui``), which the policy never refuses as personal."""
+    return {**(_ui().connections().records if personal_allowed() else {}), **_team().records(),
+            **_endpoints().records()}
 
 
 def find_connection(identity):
     record = _ui().connections().records.get(identity) if personal_allowed() else None
-    return record or _team().find(identity)
+    return record or _team().find(identity) or _endpoints().find(identity)
 
 
 def generation_health():

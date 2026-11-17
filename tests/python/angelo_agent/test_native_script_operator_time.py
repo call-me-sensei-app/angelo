@@ -7,8 +7,11 @@ Pinned here: every operator the script creates while it runs is counted and time
 puts back its own; an operator that calls ``bpy.ops`` itself counts once; its documentation and printed form stay its
 own; a callable kept past the script counts nothing; the result names the costliest operators, and Blender's fact
 about the per-call update only once calls that added objects took ``NOTE_SECONDS`` or more; a script with no operator
-call, or a stand-in ``bpy`` with no ``ops``, gets nothing; both of the executor's endings carry the field. The real
-operators are timed in ``test_blender_script_operator_time``.
+call, or a stand-in ``bpy`` with no ``ops``, gets nothing; both of the executor's endings carry the field. An outermost
+call that returned without FINISHED is named right after ``success`` (grouped, at most ``NOT_FINISHED_ROWS`` rows and
+the total, one fact), never one that raised or ran inside another operator, and a script whose calls all finished
+carries nothing more (Devin audit Agent-B1/Agent-F1). The real operators are timed in
+``test_blender_script_operator_time``.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
@@ -46,7 +49,7 @@ class Operator:
             kwargs["nested"]()
         if kwargs.get("fail"):
             raise RuntimeError("Operator failed")
-        return {"FINISHED"}
+        return kwargs.get("returns", {"FINISHED"})
 
     def poll(self):
         return True
@@ -181,9 +184,92 @@ class WiringTests(unittest.TestCase):
         calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
                  and ast.unparse(node.func) == "observe.clock.outcome"]
         self.assertEqual(len(calls), 2, "the completed and the failed result")
+        placed = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                  and ast.unparse(node.func) == "observe.clock.beside_success"]
+        self.assertEqual(len(placed), 2, "not_finished beside success in the completed and the failed result")
         after = (ADDON / "script_after.py").read_text(encoding="utf-8")
         self.assertIn("script_operator_time.Clock(bpy)", after)
         self.assertIn("stack.enter_context(self.clock)", after)
+
+
+class NotFinishedTests(unittest.TestCase):
+    """Devin audit Agent-B1/Agent-F1: a cancelled call read as a silent success (``success: true``, timings only)."""
+
+    def run_script(self, script):
+        bpy, ops, _log, now = stand_in()
+        with mock.patch.object(timing.time, "perf_counter", lambda: now[0]):
+            with timing.Clock(bpy) as clock:
+                script(ops)
+        return clock
+
+    def test_a_call_that_did_not_finish_is_named_beside_success(self):
+        def script(ops):
+            ops._op_create_function("mesh", "primitive_cube_add")()
+            ops._op_create_function("object", "delete")(returns={"CANCELLED"})
+            apply = ops._op_create_function("object", "modifier_apply")
+            apply(modifier="DoesNotExist", returns={"CANCELLED"})
+            apply(modifier="Missing", returns={"CANCELLED"})
+        clock = self.run_script(script)
+        result = clock.beside_success({"output": "", "success": True, "changes": {}})
+        self.assertEqual(list(result), ["output", "success", "not_finished", "changes"])
+        self.assertIs(result["success"], True)   # The script ran to its end; its other edits stand.
+        self.assertEqual(result["not_finished"], {
+            "calls": 3, "operators": [["object.delete", "CANCELLED", 1], ["object.modifier_apply", "CANCELLED", 2]],
+            "fact": timing.NOT_FINISHED})
+        self.assertEqual(clock.outcome()["bpy_ops"]["calls"], 4)   # The timings are unchanged.
+
+    def test_a_script_whose_calls_all_finished_carries_nothing_more(self):
+        clock = self.run_script(lambda ops: [ops._op_create_function("mesh", "primitive_cube_add")() for _ in range(3)])
+        result = {"success": True}
+        self.assertEqual(clock.not_finished(), {})
+        self.assertIs(clock.beside_success(result), result)
+
+    def test_every_state_other_than_finished_counts(self):
+        def script(ops):
+            ops._op_create_function("view3d", "select")(returns={"PASS_THROUGH"})
+            ops._op_create_function("transform", "translate")(returns={"RUNNING_MODAL"})
+            ops._op_create_function("object", "join")(returns={"PASS_THROUGH", "CANCELLED"})
+            ops._op_create_function("object", "join")(returns={"FINISHED", "PASS_THROUGH"})   # Finished.
+        rows = self.run_script(script).not_finished()["not_finished"]["operators"]
+        self.assertEqual(rows, [["view3d.select", "PASS_THROUGH", 1], ["transform.translate", "RUNNING_MODAL", 1],
+                                ["object.join", "CANCELLED|PASS_THROUGH", 1]])
+
+    def test_at_most_five_rows_and_the_total_counts_every_call(self):
+        def script(ops):
+            for name in "abcdefg":
+                ops._op_create_function("object", name)(returns={"CANCELLED"})
+        entry = self.run_script(script).not_finished()["not_finished"]
+        self.assertEqual((entry["calls"], [row[0] for row in entry["operators"]]),
+                         (7, ["object.a", "object.b", "object.c", "object.d", "object.e"]))
+
+    def test_a_call_that_raised_is_the_scripts_error_never_a_row(self):
+        def script(ops):
+            with contextlib.suppress(RuntimeError):
+                ops._op_create_function("object", "join")(fail=True)
+        self.assertEqual(self.run_script(script).not_finished(), {})
+
+    def test_a_call_inside_an_operator_belongs_to_that_operator(self):
+        def script(ops):
+            inner = ops._op_create_function("object", "delete")
+            ops._op_create_function("image", "import_as_mesh_planes")(
+                nested=lambda: inner(returns={"CANCELLED"}), adds=0)
+        self.assertEqual(self.run_script(script).not_finished(), {})
+
+    def test_a_call_kept_past_the_script_states_nothing(self):
+        bpy, ops, _log, _now = stand_in()
+        with timing.Clock(bpy) as clock:
+            kept = ops._op_create_function("object", "delete")
+        kept(returns={"CANCELLED"})
+        self.assertEqual(clock.not_finished(), {})
+
+    def test_a_result_without_success_carries_it_at_its_end(self):
+        clock = self.run_script(lambda ops: ops._op_create_function("object", "delete")(returns={"CANCELLED"}))
+        self.assertEqual(list(clock.beside_success({"error": "x"})), ["error", "not_finished"])
+
+    def test_the_fact_states_and_never_instructs(self):
+        text = timing.NOT_FINISHED
+        self.assertTrue(text.isascii() and len(text) <= 120)
+        self.assertFalse({"should", "must", "try", "please", "instead"} & set(text.lower().replace(";", " ").split()))
 
 
 class CountingTests(unittest.TestCase):

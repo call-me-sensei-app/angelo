@@ -10,10 +10,10 @@
 
 #include "BKE_curves.hh"
 
-#include "BLI_listbase.h"
+#include "BLI_listbase.hh"
 #include "BLI_map.hh"
 #include "BLI_math_vector_types.hh"
-#include "BLI_utildefines.h"
+#include "BLI_utildefines.hh"
 
 #include "BKE_context.hh"
 #include "BKE_grease_pencil.hh"
@@ -617,6 +617,17 @@ static void GREASE_PENCIL_OT_frame_clean_duplicate(wmOperatorType *ot)
   prop = RNA_def_boolean(
       ot->srna, "selected", false, "Selected", "Only delete selected keyframes");
   RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+}
+
+KeyframeClipboard &keyframe_clipboard()
+{
+  static KeyframeClipboard clipboard;
+  return clipboard;
+}
+
+void keyframe_clipboard_free()
+{
+  keyframe_clipboard().clear();
 }
 
 bool grease_pencil_copy_keyframes(bAnimContext *ac, KeyframeClipboard &clipboard)

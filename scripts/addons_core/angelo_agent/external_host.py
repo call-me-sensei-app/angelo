@@ -131,6 +131,7 @@ class ExternalHost(ExternalApps, WindowRecords):
         self._apps, self._app_keys, self._apps_stamp = {}, {}, None
         self._work, self._tasks, self._waiters, self._calls, self._closing = {}, {}, [], {}, []
         self._unobserved = set()   # Conversations an app moved to that it has not read yet (external_apps.MOVED).
+        self._evicted = {}         # Answered call IDs forgotten past CALLS_KEPT (external_apps.EVICTED_KEPT).
 
     # Lifecycle ---------------------------------------------------------------
 

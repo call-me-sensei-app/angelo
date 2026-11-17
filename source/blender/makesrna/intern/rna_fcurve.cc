@@ -191,9 +191,10 @@ static const EnumPropertyItem rna_enum_driver_target_context_property_items[] = 
 
 #  include "DNA_scene_types.h"
 
-#  include "BLI_listbase.h"
-#  include "BLI_string.h"
-#  include "BLI_string_utf8.h"
+#  include "BLI_fileops.hh"
+#  include "BLI_listbase.hh"
+#  include "BLI_string.hh"
+#  include "BLI_string_utf8.hh"
 
 #  include "ANIM_action.hh"
 #  include "ANIM_fcurve.hh"
@@ -315,6 +316,12 @@ static void rna_ChannelDriver_update_expr(Main *bmain, Scene *scene, PointerRNA 
 {
   ChannelDriver *driver = static_cast<ChannelDriver *>(ptr->data);
 
+  /* The person editing an expression an agent script brought in lets its Python run again (Angelo). */
+  const BLI_FileGate *gate = BLI_fileops_gate_get();
+  if (!(gate && gate->confined && gate->confined())) {
+    driver->flag &= ~DRIVER_FLAG_ANGELO_UNTRUSTED;
+  }
+
   /* tag driver as needing to be recompiled */
   BKE_driver_invalidate_expression(driver, true, false);
 
@@ -327,7 +334,7 @@ static void rna_DriverTarget_update_data(Main *bmain, Scene *scene, PointerRNA *
   DriverTarget *dtar = static_cast<DriverTarget *>(ptr->data);
   FCurve *fcu = rna_FCurve_find_driver_by_target(ptr->owner_id, dtar);
   BLI_assert(fcu); /* This hints at an internal error, data may be corrupt. */
-  if (UNLIKELY(fcu == nullptr)) {
+  if (fcu == nullptr) [[unlikely]] {
     return;
   }
   /* Find function ensures it's never nullptr. */
@@ -341,7 +348,7 @@ static void rna_DriverVariable_update_name(Main *bmain, Scene *scene, PointerRNA
   DriverVar *dvar = static_cast<DriverVar *>(ptr->data);
   FCurve *fcu = rna_FCurve_find_driver_by_variable(ptr->owner_id, dvar);
   BLI_assert(fcu); /* This hints at an internal error, data may be corrupt. */
-  if (UNLIKELY(fcu == nullptr)) {
+  if (fcu == nullptr) [[unlikely]] {
     return;
   }
   /* Find function ensures it's never nullptr. */
@@ -356,7 +363,7 @@ static void rna_DriverVariable_update_data(Main *bmain, Scene *scene, PointerRNA
   DriverVar *dvar = static_cast<DriverVar *>(ptr->data);
   FCurve *fcu = rna_FCurve_find_driver_by_variable(ptr->owner_id, dvar);
   BLI_assert(fcu); /* This hints at an internal error, data may be corrupt. */
-  if (UNLIKELY(fcu == nullptr)) {
+  if (fcu == nullptr) [[unlikely]] {
     return;
   }
   /* Find function ensures it's never nullptr. */
@@ -370,12 +377,17 @@ static void rna_DriverVariable_update_data(Main *bmain, Scene *scene, PointerRNA
 void rna_DriverTarget_id_set(PointerRNA *ptr, PointerRNA value, struct ReportList * /*reports*/)
 {
   DriverTarget *data = ptr->data_as<DriverTarget>();
+
+  /* Note that value.owner_id may be nullptr, for example when called from #button_string_set() in
+   * interface.cc. This path is hit when a linked datablock is selected from a drop-down selector,
+   * for example in the Driver editor's variable definition UI. This means that `value` should not
+   * be passed as-is to other code. */
   ID *id = value.data_as<ID>();
+
   if (!id) {
     data->id = nullptr;
     return;
   }
-  BLI_assert(id == value.owner_id);
   if (ptr->owner_id && !BKE_id_can_use_id(*ptr->owner_id, *id)) {
     return;
   }
@@ -607,6 +619,26 @@ static std::optional<std::string> rna_FCurve_path(const PointerRNA *ptr)
 
   animrig::Action &action = reinterpret_cast<bAction *>(ptr->owner_id)->wrap();
 
+  if (std::optional<AncestorPointerRNA> channelbag_ancestor_ptr =
+          RNA_struct_search_closest_ancestor_by_type(ptr, RNA_ActionChannelbag))
+  {
+    /* Pass the FCurve ancestors to the Channelbag pointer as well, to give the
+     * rna_Channelbag_path() direct access to the containing ActionLayer. */
+    const PointerRNA channelbag_ptr = {
+        &action.id, channelbag_ancestor_ptr->type, channelbag_ancestor_ptr->data, ptr->ancestors};
+    BLI_assert_msg(channelbag_ptr.has_data(), "PointerRNA ancestors should not be nullptr");
+
+    const animrig::Channelbag *channelbag = channelbag_ptr.data_as<animrig::Channelbag>();
+    std::optional<std::string> channelbag_path = rna_Channelbag_path(&channelbag_ptr);
+    BLI_assert_msg(channelbag_path, "ActionChannelbag instances should have an RNA path");
+
+    /* Find the F-Curve index. */
+    const int64_t index = channelbag->fcurves().first_index(fcurve);
+    if (index >= 0) {
+      return fmt::format("{}.fcurves[{}]", *channelbag_path, index);
+    }
+  }
+
   for (animrig::Layer *layer : action.layers()) {
     for (animrig::Strip *strip : layer->strips()) {
       if (strip->type() != animrig::Strip::Type::Keyframe) {
@@ -617,8 +649,12 @@ static std::optional<std::string> rna_FCurve_path(const PointerRNA *ptr)
       for (animrig::Channelbag *channelbag : strip_data.channelbags()) {
         const int fcurve_index = channelbag->fcurves().first_index_try(fcurve);
         if (fcurve_index != -1) {
-          PointerRNA channelbag_ptr = RNA_pointer_create_discrete(
-              &action.id, RNA_ActionChannelbag, channelbag);
+          const PointerRNA layer_ptr = RNA_pointer_create_id_subdata(
+              action.id, RNA_ActionLayer, layer);
+          const PointerRNA strip_ptr = RNA_pointer_create_with_parent(
+              layer_ptr, RNA_ActionStrip, strip);
+          const PointerRNA channelbag_ptr = RNA_pointer_create_with_parent(
+              layer_ptr, RNA_ActionChannelbag, channelbag);
           const std::optional<std::string> channelbag_path = rna_Channelbag_path(&channelbag_ptr);
           return fmt::format("{}.fcurves[{}]", *channelbag_path, fcurve_index);
         }
@@ -633,38 +669,25 @@ static void rna_FCurve_RnaPath_get(PointerRNA *ptr, char *value)
 {
   FCurve *fcu = static_cast<FCurve *>(ptr->data);
 
-  if (fcu->rna_path) {
-    strcpy(value, fcu->rna_path);
-  }
-  else {
-    value[0] = '\0';
-  }
+  strcpy(value, fcu->rna_path().c_str());
 }
 
 static int rna_FCurve_RnaPath_length(PointerRNA *ptr)
 {
   FCurve *fcu = static_cast<FCurve *>(ptr->data);
-
-  if (fcu->rna_path) {
-    return strlen(fcu->rna_path);
-  }
-  return 0;
+  return fcu->rna_path().size();
 }
 
 static void rna_FCurve_RnaPath_set(PointerRNA *ptr, const char *value)
 {
   FCurve *fcu = static_cast<FCurve *>(ptr->data);
 
-  if (fcu->rna_path) {
-    MEM_delete(fcu->rna_path);
-  }
-
   if (value[0]) {
-    fcu->rna_path = BLI_strdup(value);
+    fcu->rna_path_set(value);
     fcu->flag &= ~FCURVE_DISABLED;
   }
   else {
-    fcu->rna_path = nullptr;
+    fcu->rna_path_set("");
   }
 }
 
@@ -682,7 +705,7 @@ static void rna_FCurve_group_set(PointerRNA *ptr, PointerRNA value, ReportList *
            vid);
     return;
   }
-  if (value.data && (pid != vid)) {
+  if (value && (pid != vid)) {
     /* ids differ, can't do this, should raise an error */
     printf("ERROR: IDs differ - ptr=%p vs value=%p\n", pid, vid);
     return;
@@ -724,7 +747,7 @@ static void rna_FCurve_group_set(PointerRNA *ptr, PointerRNA value, ReportList *
     printf(
         "ERROR: F-Curve (datapath: '%s') doesn't belong to the same channel bag as "
         "channel group '%s'\n",
-        fcu->rna_path,
+        fcu->rna_path().c_str(),
         group->name);
     return;
   }
@@ -777,8 +800,8 @@ static void rna_FCurve_update_data_relations(Main *bmain, Scene * /*scene*/, Poi
   DEG_relations_tag_update(bmain);
 }
 
-/* RNA update callback for F-Curves to indicate that there are copy-on-evaluation tagging/flushing
- * needed (e.g. for properties that affect how animation gets evaluated).
+/* RNA update callback for F-Curves to indicate that there are copy-on-evaluation
+ * tagging/flushing needed (e.g. for properties that affect how animation gets evaluated).
  */
 static void rna_FCurve_update_eval(Main *bmain, Scene * /*scene*/, PointerRNA *ptr)
 {
@@ -1487,6 +1510,7 @@ static void rna_def_fmodifier_envelope_control_points(BlenderRNA *brna, Property
   RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
   parm = RNA_def_pointer(
       func, "point", "FModifierEnvelopeControlPoint", "", "Newly created control-point");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
   RNA_def_function_return(func, parm);
 
   func = RNA_def_function(srna, "remove", "rna_FModifierEnvelope_points_remove");
@@ -2220,6 +2244,7 @@ static void rna_def_channeldriver_variables(BlenderRNA *brna, PropertyRNA *cprop
   RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_MAIN);
   /* return type */
   parm = RNA_def_pointer(func, "var", "DriverVariable", "", "Newly created Driver Variable");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, ParameterFlag(0));
   RNA_def_function_return(func, parm);
 
   /* remove variable */

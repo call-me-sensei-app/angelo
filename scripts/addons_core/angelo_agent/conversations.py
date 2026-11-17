@@ -30,7 +30,7 @@ import shutil
 import time
 from pathlib import Path
 
-from . import shared_replace
+from . import owned_paths, shared_replace
 from .conversation_title import set_name
 from .display_text import Text
 from .ui_text import n_
@@ -120,6 +120,7 @@ def _exists(path):
 
 
 def _write_entry(path, value):
+    owned_paths.require_writable(path)
     temporary = path.with_name(path.name + ".tmp")
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
@@ -142,7 +143,7 @@ def delete(directory, record, *, shown=False, now=None):
             raise FileExistsError(Text(RECOVERY_KEPT))
         forget(directory, identity)   # Metadata only: no retained transcript or attachment may be discarded.
     for sub in (folder, folder / "sessions", folder / "references"):
-        sub.mkdir(parents=True, exist_ok=True, mode=0o700)
+        owned_paths.require_writable(sub).mkdir(parents=True, exist_ok=True, mode=0o700)
     entry = {"version": 1, "record": {key: record.get(key) for key in ("id", "title", "provider", "updated")},
              "deleted": time.time() if now is None else now, "shown": bool(shown), "recovery": True}
     _write_entry(folder / ENTRY, entry)
@@ -273,7 +274,8 @@ def forget(directory, session_id):
     folder = _folder(directory) / session_id
     if _retained(folder):
         return False
-    shutil.rmtree(folder, ignore_errors=True)
+    if owned_paths.may_write(folder):   # A cleanup: only what C says Angelo may remove.
+        shutil.rmtree(folder, ignore_errors=True)
     return not _exists(folder)
 
 
@@ -327,6 +329,7 @@ def purge(directory, now=None, keep_days=KEEP_DAYS):
             continue
         if item is None and _exists(_transcript(directory, name)):
             continue   # Half a restore: ``settle`` finishes it.
-        shutil.rmtree(_folder(directory) / name, ignore_errors=True)
+        if owned_paths.may_write(_folder(directory) / name):   # A cleanup: only what C says Angelo may remove.
+            shutil.rmtree(_folder(directory) / name, ignore_errors=True)
         removed += 1
     return removed

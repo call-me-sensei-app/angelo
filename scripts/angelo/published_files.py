@@ -24,10 +24,22 @@ import release_downloads as layout  # noqa: E402
 
 # A checksum file holds one short line per file; anything larger is not one this tool wrote.
 MAX_CHECKSUM_FILE = 1_000_000
+# A read-back whose stream drops (the body ends early or the connection breaks) resumes from the bytes it has, with
+# Range and If-Range on the strong ETag of the HEAD answer, at most this many times (1.0.9: the edge reset a 536 MB
+# MSI at 218 MB mid-verification, and the publish read as failed though the file was right).
+MAX_RESUMES = 5
 
 
 class PublishError(Exception):
     pass
+
+
+class Dropped(PublishError):
+    """A GET whose body stopped short of what the answer announced: ``received`` bytes arrived."""
+
+    def __init__(self, message, received):
+        super().__init__(message)
+        self.received = received
 
 
 class Item:
@@ -64,23 +76,39 @@ def served(target, version, name):
     return "%s/%s" % (target.public_base, layout.object_key(version, name))
 
 
-def public_request(target, method, key, sink=None):
-    """``(status, headers)`` of an unauthenticated request to the custom domain; a GET's body goes to ``sink``."""
+def public_request(target, method, key, sink=None, headers=None, begin=None):
+    """``(status, headers)`` of an unauthenticated request to the custom domain; a GET's 200 or 206 body goes to
+    ``sink``, after ``begin(status, headers)`` has seen the answer. A body that stops short of its Content-Length, or
+    breaks once it has started, raises ``Dropped``."""
     link = r2_client.connection(target.public_base, timeout=600, context=target.context)
     prefix = urlsplit(target.public_base).path.rstrip("/")   # Empty for the custom domain.
+    received, expected = 0, None
     try:
         link.request(method, r2_client.canonical_path("%s/%s" % (prefix, key)),
-                     headers={"User-Agent": r2_client.USER_AGENT, "Accept-Encoding": "identity"})
+                     headers=dict({"User-Agent": r2_client.USER_AGENT, "Accept-Encoding": "identity"},
+                                  **(headers or {})))
         response = link.getresponse()
+        answer = {name.lower(): value for name, value in response.getheaders()}
+        if begin is not None:
+            begin(response.status, answer)
+        length = answer.get("content-length") or ""
+        expected = int(length) if method == "GET" and length.isdigit() else None
         while True:
             block = response.read(r2_client.BLOCK)
             if not block:
                 break
-            if sink is not None and response.status == 200:
+            received += len(block)
+            if sink is not None and response.status in (200, 206):
                 sink(block)
-        return response.status, {name.lower(): value for name, value in response.getheaders()}
+        if expected is not None and received < expected:
+            raise Dropped("%s %s/%s: the body ended at %d of %d bytes" % (method, target.public_base, key, received,
+                                                                          expected), received)
+        return response.status, answer
     except (OSError, http.client.HTTPException) as error:
         reason = r2_client.describe(error)
+        if received:
+            raise Dropped("%s %s/%s: the stream broke at %d bytes (%s)" % (method, target.public_base, key, received,
+                                                                           reason), received) from None
         raise PublishError("%s %s/%s: no answer (%s)" % (method, target.public_base, key, reason)) from None
     finally:
         link.close()
@@ -121,21 +149,64 @@ def verify_public(target, item, ours=False):
                                      item.headers["Content-Disposition"])):
         if not _same(actual, expected):
             problems.append("%s %r, expected %r" % (field, actual, expected))
-    digest, received = hashlib.sha256(), []
-
-    def take(block):
-        digest.update(block)
-        received.append(len(block))
-
-    status, _ = public_request(target, "GET", item.key, sink=take)
+    etag = headers.get("etag") or ""
+    validator = etag if etag and not etag.startswith("W/") else None   # If-Range takes a strong validator only.
+    status, received, digest, resumes = read_back(target, item.key, validator)
     if status != 200:
         problems.append("GET answered %s" % status)
-    elif sum(received) != size or digest.hexdigest() != item.sha256:
-        problems.append("the download (%d bytes, SHA-256 %s) is not the file published" % (sum(received),
-                                                                                           digest.hexdigest()))
+    elif received != size or digest != item.sha256:
+        problems.append("the download (%d bytes, SHA-256 %s) is not the file published" % (received, digest))
     if problems:
         raise PublishError("%s: %s" % (where, "; ".join(problems)))
-    return {"url": where, "size": size, "sha256": item.sha256}
+    record = {"url": where, "size": size, "sha256": item.sha256}
+    if resumes:
+        record["resumes"] = resumes
+    return record
+
+
+def read_back(target, key, validator):
+    """``(status, bytes, SHA-256, resumes)`` of the whole file at ``key``, its stream resumed when it drops. A
+    resume asks for the rest with ``Range`` and ``If-Range: validator``. A 206 must start where the read stopped.
+    A 200 means the file changed (or no validator could be sent), so the read starts over. Each resume and restart
+    is printed and returned, so a flaky edge stays visible; past ``MAX_RESUMES`` the last drop is raised."""
+    state = {"digest": hashlib.sha256(), "received": 0, "start": 0}
+    resumes = []
+
+    def begin(status, answer):
+        start = state["start"]
+        if status == 206:
+            first = (answer.get("content-range") or "").replace("bytes ", "").split("-")[0]
+            if not first.isdigit() or int(first) != start:
+                raise PublishError("%s: resumed at %d, the answer's Content-Range is %r" % (
+                    key, start, answer.get("content-range")))
+        elif status == 200 and start:
+            note = "restart: the server sent the whole file again (the file changed?) after %d bytes" % start
+            resumes.append({"at": start, "action": "restart", "why": note})
+            print("read-back %s: %s" % (key, note), file=sys.stderr)
+            state["digest"], state["received"] = hashlib.sha256(), 0
+
+    def take(block):
+        state["digest"].update(block)
+        state["received"] += len(block)
+
+    for attempt in range(MAX_RESUMES + 1):
+        start = state["received"]
+        state["start"] = start
+        extra = {"Range": "bytes=%d-" % start, "If-Range": validator} if start and validator else None
+        try:
+            status, _ = public_request(target, "GET", key, sink=take, headers=extra, begin=begin)
+            if status == 206 and start:   # The rest of the file after a resume: the whole file, as a 200 serves it.
+                status = 200
+            return status, state["received"], state["digest"].hexdigest(), resumes
+        except Dropped as error:
+            if attempt == MAX_RESUMES:
+                raise PublishError("%s (after %d resumes)" % (error, MAX_RESUMES)) from None
+            action = "resume" if validator else "restart"
+            resumes.append({"at": state["received"], "action": action, "why": str(error)})
+            print("read-back %s: %s; %s %s" % (key, error, action, "from byte %d" % state["received"]
+                                                 if validator else "from zero (no strong ETag)"), file=sys.stderr)
+            if not validator:
+                state["digest"], state["received"] = hashlib.sha256(), 0
 
 
 # -- the coverage rule -----------------------------------------------------------------------------------------

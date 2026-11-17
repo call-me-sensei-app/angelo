@@ -37,6 +37,7 @@ import stat
 import zlib
 
 from . import session_journal as journal
+from . import session_kept, session_lease
 from .session_journal import JournalTaken
 from .session_writer import JournalWriter
 
@@ -82,9 +83,12 @@ def _same_file(one, other):
 class GuardedWriter(JournalWriter):
     """A ``JournalWriter`` that never writes over another writer's content (module docstring)."""
 
+    leased = True   # A lead chat's writer: its process holds the chat's lease (``session_lease``), or it is a view.
+
     def __init__(self, path):
         self.expected = UNCLAIMED
         self.crc = None        # CRC-32 of the expected file's bytes; None when not known.
+        self.taken_back = 0    # Times this writer took its file back from another writer (``take_back``).
         super().__init__(path)
 
     def loading(self):
@@ -94,7 +98,45 @@ class GuardedWriter(JournalWriter):
         journal.capture.path, journal.capture.info = self.path, None
 
     def _refuse(self):
-        """Raise when this writer may not write at all (``worker_journal_owner.OwnedWriter``)."""
+        """Raise when this writer may not write at all: another live process has the chat open (``session_lease``);
+        a worker's writer that was released instead (``worker_journal_owner.OwnedWriter``)."""
+        if self.leased and not session_lease.held(self):
+            error = session_lease.JournalLeased("Another Angelo has this chat open; this one writes nothing to it")
+            error.holder = session_lease.holder(self)   # Its number, for the refusal's words (save_failure).
+            raise error
+
+    def take_back(self):
+        """The chat's file holds another writer's content and the chat is this writer's: keep that file beside
+        the chat (``session_kept.preserve``) and expect it as it is, so the next save, a whole rewrite, replaces it.
+
+        Only for the chat's store in the process that holds its lease (``session_lease``): a writer that honours
+        the lease never writes here, so the other content is an earlier build's (it took no lease), a tool's or a
+        restore's, and a superseded store of this process is never the one to take it. Only over a regular file
+        or none: a link or anything else in the chat's place stays refused. Returns False when it is not this
+        writer's to take or the file could not be kept; nothing is changed then. A file that changes again
+        before the rewrite fails that rewrite's own check (the CRC-32 taken here), never loses what it holds.
+        """
+        if not self.leased or not session_lease.owns(self) or not session_lease.held(self):
+            return False
+        current = identity_of(self.path)
+        if current is None:
+            crc = None
+        elif is_unknown(current) or current[6] != stat.S_IFREG:
+            return False
+        else:
+            crc = self._crc_now()
+            if crc is None:
+                return False
+            try:
+                session_kept.preserve(self.path)   # A hard link where there are any: the bytes stay, the CRC holds.
+            except OSError:
+                return False
+        self.reset()
+        self.expected, self.crc = current, crc
+        self.taken_back += 1
+        print("Angelo: another program wrote a chat's file; its version was kept beside the chat and the open "
+              "chat is saved over it (%d time(s) for this chat)" % self.taken_back)
+        return True
 
     def adopt(self, partial):
         """End of ``SessionStore.load``: expect the file as it was read (``session_journal.capture``).
@@ -105,6 +147,9 @@ class GuardedWriter(JournalWriter):
         """
         info = journal.capture.info if getattr(journal.capture, "path", None) == self.path else None
         journal.capture.path = journal.capture.info = None
+        if self.leased:   # The chat is open here: its lease when it is free, and this process's store of it.
+            session_lease.held(self)
+            session_lease.own(self)
         current = identity_of(self.path)
         seen = info.identity if info is not None else None
         if _same_file(current, seen) and (partial or current == seen or self._holds(info.crc)):

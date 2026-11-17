@@ -84,7 +84,7 @@ class ClicksBeforeEffectsTests(unittest.TestCase):
         import qa_input
         registered = []
         bpy = SimpleNamespace(app=SimpleNamespace(timers=SimpleNamespace(
-            register=lambda callback, first_interval: registered.append(callback))),
+            register=lambda callback, first_interval, **_options: registered.append(callback))),
             context=SimpleNamespace(window_manager=SimpleNamespace(windows=[])))
         window = SimpleNamespace(as_pointer=lambda: 1, event_simulate=lambda **event: None)
         calls = []

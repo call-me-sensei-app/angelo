@@ -234,7 +234,7 @@ class BreakitTests(Fixture):
         self.live.shader_state = lambda depsgraph, *view: self.shaders
         pending = view_warm.wait(self.window, self.area, lambda: drawn.append(1) or self.view())
 
-        def broken(window, area=None):
+        def broken(window, area=None, lit=None):
             raise KeyError("prepared state")
         with patch.object(view_warm, "state", broken):
             result = pending.poll()
@@ -612,6 +612,224 @@ class FirstDrawTests(Fixture):
         self.assertIn("Override Sky", view_warm.notes(self.window, "MATERIAL")[0]["detail"])
         self.shaders = (4, 0, 0, [], [], [], ["Scene Sky"], [], False)
         self.assertEqual(view_warm.notes(self.window, "MATERIAL"), [], "MATERIAL draws a studio light instead")
+
+
+class CompileAheadTests(FirstDrawTests):
+    """Inventory C5: in a build whose compile-ahead draws queue the pipeline states they meet and the world's shaders
+    to the background (``_angelo_live.pipeline_stats``), the view is drawn only once none of the builds queued up to
+    the last draw made for its scene is pending, and a LIT look counts its world as a material: missing, it is
+    queued by a draw of no object; compiled, it gets a first draw before the view. A MATERIAL look never counts the
+    scene's world, which it does not draw. Builds are numbered as they are queued (``queued``); ``unbuilt`` holds
+    those not built yet."""
+
+    def setUp(self):
+        super().setUp()
+        self.asked, self.queued, self.unbuilt, self.each = [], [0], set(), [0]   # each: builds a draw queues.
+        self.live.pipeline_stats = lambda: {"pending": len(self.unbuilt), "queued": self.queued[0]}
+        self.live.pipelines_pending = lambda after, through: len([n for n in self.unbuilt if after < n <= through])
+        marks = patch.dict(getattr(sys.modules[view_warm.first_draws.__module__], "_marks", {}), clear=True)
+        marks.start()   # What each scene's draws queued up to, where the build under test keeps it.
+        self.addCleanup(marks.stop)
+        plain = self.live.draw
+
+        def draw(*args, **kwargs):
+            plain(*args, **kwargs)
+            self.others(self.each[0])
+        self.live.draw = draw
+
+        def shader_state(depsgraph, *view, **kwargs):
+            self.asked.append(kwargs.get("world", False))
+            return self.shaders
+        self.live.shader_state = shader_state
+        self.window.view_layer.objects = []
+
+    def view(self, lit=True):
+        return view_warm.wait(self.window, self.area, lambda: {"views": [1], "timing": {}}, None, lit)
+
+    def others(self, count):
+        """``count`` builds queued now, by whoever draws: their numbers."""
+        numbers = [self.queued[0] + n + 1 for n in range(count)]
+        self.queued[0] += count
+        self.unbuilt.update(numbers)
+        return numbers
+
+    def test_the_view_waits_for_the_pipeline_states_its_first_draws_queued(self):
+        self.each[0] = 3
+        pending = self.waiting([self.thing("New", ["Fresh"])], ["Fresh"])
+        for _ in range(20):
+            self.assertIsNone(pending.poll(), "drawn now, it would build them on the main loop")
+        self.assertEqual(self.drawn(), [["New"]], "its first draw, once")
+        self.unbuilt.clear()
+        self.assertEqual(self.finish(pending)["views"], [1])
+
+    def test_the_view_never_waits_for_what_is_queued_after_its_scenes_last_draw(self):
+        """Break-it C5 on 5.3 (3): the pending count is every window's and every optimized variant's. A view waited
+        for all of it, up to ``WAIT_SECONDS``, once it had drawn anything: others kept queuing, so it never ended."""
+        self.each[0] = 3
+        pending = self.waiting([self.thing("New", ["Fresh"])], ["Fresh"])
+        self.assertIsNone(pending.poll(), "its first draw, which queues three builds")
+        self.assertEqual(self.drawn(), [["New"]])
+        own = set(self.unbuilt)
+        self.assertEqual(len(own), 3)
+        self.each[0] = 0
+        for _ in range(20):
+            self.assertIsNone(pending.poll(), "its own are not built yet")
+            self.others(1)   # An optimized variant's, another scene's merge's: queued while it waits.
+        self.unbuilt -= own
+        self.assertEqual(self.finish(pending)["views"], [1], "drawn once those up to its draw are built")
+        self.assertEqual(len(self.unbuilt), 20, "the later ones are still building")
+
+    def test_a_state_its_draw_met_already_queued_by_someone_else_is_waited_for(self):
+        """Break-it C5 on 5.3 (re-read): a draw that meets a state someone else queued queues nothing itself. A
+        view that counted only what its own draws queued then drew at once and built that state in its draw. Every
+        build numbered up to its draw is waited for: the one it met is among them."""
+        before = self.others(2)   # Queued by another view of these materials, still building.
+        pending = self.waiting([self.thing("New", ["Fresh"])], ["Fresh"])   # Its first draw queues none (each 0).
+        for _ in range(20):
+            self.assertIsNone(pending.poll(), "the states its first draw met are not built yet")
+        self.assertEqual(self.drawn(), [["New"]])
+        self.assertEqual(self.unbuilt, set(before))
+        self.unbuilt.clear()
+        self.assertEqual(self.finish(pending)["views"], [1])
+
+    def merge(self, builds):
+        """A merge's queue of a material named "Part" and, once compiled, its first draw, which queues ``builds``
+        builds: all it owes drawn, nothing left for a view to take over but the builds."""
+        view_warm._used[0] = True
+        self.window.view_layer.objects = [self.thing("Part", ["Part"])]
+        self.shaders = (4, 1, 0, ["Part"], ["Part"])
+        view_warm.soon(self.window)
+        run, = self.timers
+        self.assertIsNone(run())
+        spread = self.timers[-1]
+        self.shaders, self.each[0] = (4, 0, 0, []), builds
+        self.assertIsNone(spread(), "its first draw done: nothing more owed")
+        self.each[0] = 0
+        self.assertEqual((self.drawn()[-1], view_warm._soon, len(self.unbuilt)), (["Part"], {}, builds))
+
+    def test_a_view_after_a_merges_first_draws_waits_for_the_builds_they_queued(self):
+        """Break-it C5 on 5.3 (re-read): the merge's spreading drew, and queued, without anyone noting it. A view of
+        that scene asked while those builds ran made no draw of its own, waited for nothing and built them in its
+        draw on the main loop."""
+        self.merge(3)
+        pending = self.view()
+        self.assertIsNotNone(pending, "drawn now, it would build the merge's states on the main loop")
+        for _ in range(20):
+            self.assertIsNone(pending.poll())
+        self.unbuilt.clear()
+        self.assertEqual(self.finish(pending)["views"], [1])
+        self.assertEqual(self.drawn(), [["Part"], ["Part"]], "the merge's queue and first draw: none drawn again")
+
+    def test_a_view_that_takes_a_merge_over_waits_for_what_the_merge_already_queued(self):
+        view_warm._used[0] = True
+        self.window.view_layer.objects = [self.thing("Part", ["Part"]), self.thing("Other", ["Second"])]
+        self.shaders = (4, 2, 0, ["Part", "Second"], ["Part", "Second"])
+        self.step[0], self.each[0] = 1.0, 2   # A tick's budget holds one draw: the merge queues one object, two builds.
+        view_warm.soon(self.window)
+        self.assertIsNone(self.timers[0]())
+        merged = set(self.unbuilt)
+        self.assertEqual(len(merged), 2)
+        self.each[0] = 0
+        self.shaders = (4, 0, 0, [])   # Compiled; the merge's first draws not yet run.
+        pending = self.view()
+        self.assertIsNone(self.timers[-1](), "the view took the merge over")
+        for _ in range(20):
+            self.assertIsNone(pending.poll(), "what the merge's draw queued is not built yet")
+        self.unbuilt.clear()
+        self.assertEqual(self.finish(pending)["views"], [1])
+
+    def test_a_scenes_mark_is_kept_only_while_a_build_up_to_it_is_pending(self):
+        """Re-read NIT: a mark a scene, kept for the session, grew with every scene ever drawn for. One nothing is
+        pending up to can make no view wait again, so the next draw drops it: a freed scene's and a replaced file's
+        with it."""
+        marks = sys.modules[view_warm.first_draws.__module__]._marks
+        for number in range(40):   # Forty scenes, each drawn for; each one's builds end before the next is drawn.
+            scene, area = window()
+            scene.scene, scene.view_layer.objects = "Scene %d" % number, []
+            self.each[0] = 2
+            view_warm._draw(scene, area, area.regions[0], [])
+            self.assertEqual(list(marks), ["Scene %d" % number], "the earlier ones are gone")
+            self.unbuilt.clear()
+        self.each[0] = 0
+        view_warm._draw(self.window, self.area, self.area.regions[0], [])
+        self.assertEqual(marks, {}, "nothing pending: no mark at all")
+
+    def test_another_scenes_draws_are_not_this_views_to_wait_for(self):
+        self.merge(3)
+        other, area = window()
+        other.scene, other.view_layer.objects = "Another Scene", []
+        self.shaders = (4, 0, 0, [])
+        self.assertIsNone(view_warm.wait(other, area, lambda: {"views": [1], "timing": {}}, None, True),
+                          "drawn at once: the builds pending are another scene's")
+
+    def test_the_draws_that_queue_its_compiles_count_among_its_own(self):
+        """A queueing draw meets the compiled materials of the object it draws too, and queues their states."""
+        self.window.view_layer.objects = [self.thing("New", ["Fresh"])]
+        self.shaders = (4, 1, 0, ["Fresh"], ["Fresh"])
+        self.each[0] = 2
+        pending = self.view()
+        self.each[0] = 0
+        self.shaders = (4, 0, 0, [])
+        for _ in range(20):
+            self.assertIsNone(pending.poll(), "the states its queueing draw queued are not built yet")
+        self.unbuilt.clear()
+        self.assertEqual(self.finish(pending)["views"], [1])
+
+    def test_a_ready_view_never_waits_for_builds_it_did_not_queue(self):
+        """Break-it C5 F1: the count is every window's; a view of a ready scene is drawn at once whatever other
+        windows or another scene's merge still build, and with nothing new it draws no instancer first."""
+        self.window.view_layer.objects = [self.thing("Rig", [], True)]
+        self.shaders = (4, 0, 0, [])
+        self.others(2)
+        self.assertIsNone(self.view(), "drawn at once")
+        self.assertEqual(view_warm._first_draw_objects(self.window, set()), [], "nothing new: no instancer drawn")
+        self.assertEqual(self.draws, [])
+
+    def test_a_lit_look_waits_for_its_world_and_draws_it_first(self):
+        self.shaders = (0, 1, 0, [77], [77], [], [], ["Sky"], False, 77, [77])
+        pending = self.view()
+        self.assertEqual(self.draws, [[]], "the missing world, queued by a draw of no object")
+        self.assertTrue(self.asked and all(self.asked), "a LIT look's state counts its world")
+        self.draws.clear()
+        self.shaders = (0, 0, 1, [77], [], [], [], ["Sky"], False, 77, [77])
+        self.assertIsNone(pending.poll(), "compiling: waited for")
+        self.shaders = (0, 0, 0, [], [], [], [], [], False, 77, [77])
+        self.assertEqual(self.finish(pending)["views"], [1])
+        self.assertEqual(self.draws, [None], "compiled: its first draw, of the whole scene (break-it C5 F5), then the "
+                                             "view")
+
+    def test_the_scene_worlds_volume_counts_beside_an_override(self):
+        """Break-it C5 F3/F4: EEVEE compiles the scene world's volume shader whatever world it draws, so a LIT look
+        waits for it too, and gives it its first draw."""
+        self.shaders = (0, 0, 1, [88], [], [], [], ["Scene Sky"], True, 77, [77, 88])
+        pending = self.view()
+        self.assertIsNone(pending.poll(), "the scene world's volume compiling: waited for")
+        self.shaders = (0, 0, 0, [], [], [], [], [], True, 77, [77, 88])
+        self.assertEqual(self.finish(pending)["views"], [1])
+        self.assertIn(None, self.draws, "its first draw before the view")
+
+    def test_a_world_and_a_material_are_waited_for_together(self):
+        self.step[0] = 0.0001   # Both queue draws within one tick's budget.
+        self.window.view_layer.objects = [self.thing("New", ["Fresh"])]
+        self.shaders = (1, 2, 0, ["Fresh", 77], ["Fresh", 77], [], [], ["Fresh", "Sky"], False, 77, [77])
+        pending = self.view()
+        self.assertEqual(sorted(map(len, self.draws)), [0, 1], "the object, and the world alone")
+        self.draws.clear()
+        self.shaders = (1, 0, 0, [], [], [], [], [], False, 77, [77])
+        self.assertEqual(self.finish(pending)["views"], [1])
+        self.assertEqual(self.drawn(), [["New"]])
+        self.assertIn(None, self.draws, "the world's first draw too, of the whole scene")
+
+    def test_a_material_look_never_counts_the_world(self):
+        self.shaders = (4, 0, 0, [])
+        self.assertIsNone(self.view(lit=False))
+        self.assertTrue(self.asked and not any(self.asked))
+
+    def test_an_older_build_is_never_asked_for_the_world(self):
+        del self.live.pipeline_stats, self.live.pipelines_pending
+        self.shaders = (4, 0, 0, [])
+        self.assertIsNone(self.view())
+        self.assertTrue(self.asked and not any(self.asked), "a build without the reader takes no world argument")
 
 
 class SoonTests(Fixture):

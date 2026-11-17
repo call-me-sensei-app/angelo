@@ -24,7 +24,7 @@ import stat
 import time
 from pathlib import Path
 
-from . import session_journal
+from . import owned_paths, session_journal
 
 # Names one UTC second can give the copies of one chat (two instances keeping it at once take the next).
 KEPT_NAMES = 100
@@ -75,6 +75,7 @@ def preserve(path):
         try:
             if links:
                 try:
+                    owned_paths.require_writable(target)
                     os.link(path, target)  # Checked above: a regular file, not a link. Never replaces a name.
                 except FileExistsError:
                     raise
@@ -102,6 +103,7 @@ def _copy_new(path, target):
     temporary file, synced) replaces only that placeholder. On failure neither the temporary file nor the
     name is left.
     """
+    owned_paths.require_writable(target)
     os.close(os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | session_journal.BINARY, 0o600))
     try:
         session_journal.rewrite(target, session_journal.read_bytes(path))
@@ -246,6 +248,7 @@ def write_index(path, payload, refused_at=None):
     """Write the chat list ``payload`` whole at ``path`` (``shared_replace``): None when written. When refused (on
     Windows its file held open past the retries) the list is marked owed and the time of the refusal returned, said
     once (``refused_at``: the last refusal's, None when the last save landed)."""
+    owned_paths.require_writable(path)
     from . import shared_replace
     temporary = path.with_suffix(".tmp")
     try:
@@ -284,6 +287,7 @@ def owed(path):
 
 def settled(path, kept):
     """A chat list saved whole: the copies it holds now (``kept``) and its owed marker go. Returns no copies."""
+    owned_paths.require_writable(path)
     from . import kept_state
     kept_state.remove_copies(kept)
     try:

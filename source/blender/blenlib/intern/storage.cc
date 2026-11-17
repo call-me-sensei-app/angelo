@@ -35,13 +35,17 @@
 #include <fcntl.h>
 
 #ifdef WIN32
-#  include "BLI_string_utf8.h"
-#  include "BLI_winstuff.h"
+#  include "BLI_string_utf8.hh"
+#  include "BLI_winstuff.hh"
 #  include "utfconv.hh"
 #  include <ShObjIdl.h>
 #  include <direct.h>
 #  include <io.h>
 #  include <stdbool.h>
+#  ifdef _DEBUG
+#    include <crtdbg.h>
+#    include <mutex>
+#  endif
 #else
 #  include <pwd.h>
 #  include <sys/ioctl.h>
@@ -51,13 +55,13 @@
 /* lib includes */
 #include "MEM_guardedalloc.h"
 
-#include "BLI_fileops.h"
+#include "BLI_file_time.hh"
 #include "BLI_fileops.hh"
-#include "BLI_linklist.h"
+#include "BLI_linklist.hh"
 #include "BLI_path_utils.hh"
-#include "BLI_string.h"
-#include "BLI_threads.h"
-#include "BLI_utildefines.h"
+#include "BLI_string.hh"
+#include "BLI_threads.hh"
+#include "BLI_utildefines.hh"
 
 namespace blender {
 
@@ -224,6 +228,46 @@ size_t BLI_file_descriptor_size(int file)
     return -1;
   }
   return st.st_size;
+}
+
+bool BLI_file_descriptor_is_open(const int file)
+{
+  if (file < 0) {
+    return false;
+  }
+  const int errno_before = errno;
+#ifdef WIN32
+#  if defined(_MSC_VER)
+  /* The lookup is itself checked by the C runtime, whose default handler ends the process for a
+   * descriptor that is out of range or closed. For this thread and this call only the handler
+   * does nothing (as CPython's `_Py_BEGIN_SUPPRESS_IPH`), so the lookup returns
+   * `INVALID_HANDLE_VALUE`. A debug runtime asserts before it calls the handler, and its report
+   * mode is the whole process's: one lookup at a time there, or one thread's restore would turn
+   * the assertion back on under another's lookup (and the last restore could leave it off). */
+#    ifdef _DEBUG
+  static std::mutex report_mode_mutex;
+  const std::lock_guard<std::mutex> report_mode_lock(report_mode_mutex);
+  const int report_mode = _CrtSetReportMode(_CRT_ASSERT, 0);
+#    endif
+  const _invalid_parameter_handler handler_before = _set_thread_local_invalid_parameter_handler(
+      [](const wchar_t *, const wchar_t *, const wchar_t *, unsigned int, uintptr_t) {});
+  const intptr_t handle = _get_osfhandle(file);
+  _set_thread_local_invalid_parameter_handler(handler_before);
+#    ifdef _DEBUG
+  _CrtSetReportMode(_CRT_ASSERT, report_mode);
+#    endif
+  /* -2: a standard stream of a process without a console, which no file is behind. */
+  const bool is_open = handle != intptr_t(-1) && handle != intptr_t(-2);
+#  else
+  /* A C runtime without a per-thread handler: no lookup is safe, so no descriptor is accepted
+   * and everything that takes one refuses. Blender supports no such toolchain on Windows. */
+  const bool is_open = false;
+#  endif
+#else
+  const bool is_open = fcntl(file, F_GETFD) != -1;
+#endif
+  errno = errno_before;
+  return is_open;
 }
 
 size_t BLI_file_size(const char *path)
@@ -604,7 +648,7 @@ LinkNode *BLI_file_read_as_lines(const char *filepath)
   size = size_t(BLI_ftell(fp));
   BLI_fseek(fp, 0, SEEK_SET);
 
-  if (UNLIKELY(size == size_t(-1))) {
+  if (size == size_t(-1)) [[unlikely]] {
     fclose(fp);
     return nullptr;
   }
@@ -707,11 +751,11 @@ static bool file_identity_of(const FileIdentityHeld file, FileIdentity *r_identi
     memcpy(parts, id.FileId.Identifier, sizeof(parts));
     has_id = (parts[0] | parts[1]) != 0;
   }
-  /* 1970-01-01 in 100 ns steps. */
-  constexpr int64_t epoch_as_filetime = 116444736000000000LL;
+  /* As CPython's `st_mtime_ns` for every time 64-bit nanoseconds hold; the nearest such value
+   * for a stamp before 1677 or after 2262, where the plain product is undefined. */
   auto nanoseconds = [](const FILETIME &time) {
-    const int64_t value = (int64_t(time.dwHighDateTime) << 32) | int64_t(time.dwLowDateTime);
-    return (value - epoch_as_filetime) * 100;
+    return blender::file_time::nanoseconds_from_filetime((uint64_t(time.dwHighDateTime) << 32) |
+                                                         uint64_t(time.dwLowDateTime));
   };
   r_identity->device = has_info ? uint64_t(id.VolumeSerialNumber) :
                                   uint64_t(info.dwVolumeSerialNumber);
@@ -737,12 +781,13 @@ static bool file_identity_of(const FileIdentityHeld file, FileIdentity *r_identi
   r_identity->index_low = uint64_t(st.st_ino);
   r_identity->size = int64_t(st.st_size);
 #  ifdef __APPLE__
-  r_identity->modified_ns = int64_t(st.st_mtimespec.tv_sec) * 1000000000 +
-                            st.st_mtimespec.tv_nsec;
-  r_identity->created_ns = int64_t(st.st_birthtimespec.tv_sec) * 1000000000 +
-                           st.st_birthtimespec.tv_nsec;
+  r_identity->modified_ns = blender::file_time::nanoseconds_saturated(
+      int64_t(st.st_mtimespec.tv_sec), int64_t(st.st_mtimespec.tv_nsec));
+  r_identity->created_ns = blender::file_time::nanoseconds_saturated(
+      int64_t(st.st_birthtimespec.tv_sec), int64_t(st.st_birthtimespec.tv_nsec));
 #  else
-  r_identity->modified_ns = int64_t(st.st_mtim.tv_sec) * 1000000000 + st.st_mtim.tv_nsec;
+  r_identity->modified_ns = blender::file_time::nanoseconds_saturated(int64_t(st.st_mtim.tv_sec),
+                                                                      int64_t(st.st_mtim.tv_nsec));
 #  endif
   return true;
 #endif
@@ -776,7 +821,7 @@ bool BLI_file_identity_held_unlinked(const void *held)
 bool BLI_file_identity_descriptor(const int file, FileIdentity *r_identity)
 {
   *r_identity = {};
-  if (file < 0) {
+  if (!BLI_file_descriptor_is_open(file)) {
     return false;
   }
 #ifdef WIN32

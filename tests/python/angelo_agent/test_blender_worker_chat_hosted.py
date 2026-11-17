@@ -303,7 +303,7 @@ def consent_revocation():
     ui._sessions.activate(chat.session)
     try:
         with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-            done = bpy.ops.angelo.set_approval(mode="ASK")
+            done = __import__("angelo_agent.grant_guard").grant_guard.stand_in().set_approval(mode="ASK")
     finally:
         ui._sessions.activate(shown)
     check("consent_toggle_returned", done == {'FINISHED'}, done)
@@ -338,7 +338,7 @@ def unacknowledged_revocation():
         started = time.monotonic()
         try:
             with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-                bpy.ops.angelo.set_approval(mode="ASK")
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().set_approval(mode="ASK")
         except RuntimeError as error:   # The control's own refusal: recorded; the deadline must still hold.
             report["revocation_toggle_error"] = str(error)[-300:]
         finally:

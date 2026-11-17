@@ -1,15 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Closed, Blender-free deterministic scene-check schemas.
+"""Closed, Blender-free deterministic scene-check schemas. Targets are aliases in an already bound execution/observation
+context, never expressions, selectors, paths or executable code. Verification is fail closed: unsupported
+observations are inconclusive, not successful assertions."""
 
-Targets are aliases in an already bound execution/observation context, never
-expressions, selectors, paths or executable code. Verification is fail closed:
-unsupported observations are inconclusive, not successful assertions.
-"""
-
-import copy
-import math
-import re
+import copy, math, re  # noqa: E401
 
 from .action_camera_light_spec import CAMERA_SETTINGS, LIGHT_SETTINGS
 from .action_properties import references as _property_references, PROPERTY_SET_SCHEMA as _PROPERTY_SET
@@ -19,7 +14,7 @@ from .check_defaults import complete as _complete
 
 
 def _property_values():
-    return _PROPERTY_SET["properties"]["values"]
+    return read_only.thawed(_PROPERTY_SET["properties"]["values"])
 
 MAX_CHECKS = 32
 MAX_OBJECTS = 2048
@@ -32,7 +27,6 @@ MAX_UV_LAYERS = 16
 MAX_BONES = 4096
 MAX_ANIMATION_CURVES = 96
 MAX_KEYFRAMES = 8192
-
 LABEL = {"type": "string", "minLength": 1, "maxLength": 64}
 TARGET = {"type": "string", "minLength": 1, "maxLength": 128}
 OBJECT_TYPES = ("MESH", "CURVE", "SURFACE", "META", "FONT", "ARMATURE", "LATTICE", "EMPTY", "CAMERA", "LIGHT", "LIGHT_PROBE", "SPEAKER", "VOLUME", "POINTCLOUD", "CURVES", "GREASEPENCIL")
@@ -242,6 +236,7 @@ CHECK_VARIANTS.append(_check("bone", {
     "tolerance": TOLERANCE}, ["target", "bone"]))
 # One node tree's nodes (by name or type), absent nodes, links and unlinked inputs (node_edit_spec).
 from .node_edit_spec import NODE_GRAPH_CHECK  # noqa: E402
+from . import read_only
 CHECK_VARIANTS.append(NODE_GRAPH_CHECK)
 # Points and curves of Grease Pencil drawings (current frame), hair curves, curves and lattices; characters and
 # lines of text; positions: a curve's only spline's points, local, in order.
@@ -259,6 +254,7 @@ CHECK_VARIANTS.append(_check("copies", {"target": TARGET, "count": _integer(1, 1
                                         "stride": _integer(1, 8)}, ["target", "count", "linked"]))
 CHECK_SCHEMA = {"oneOf": CHECK_VARIANTS}
 CHECKS_SCHEMA = {"type": "array", "items": CHECK_SCHEMA, "minItems": 1, "maxItems": MAX_CHECKS}
+VALIDATED_CHECKS = read_only.frozen(CHECKS_SCHEMA)   # What validate_checks reads (the schemas stay plain: tools).
 CHECK_KINDS = frozenset(v["properties"]["kind"]["const"] for v in CHECK_VARIANTS)
 
 
@@ -335,11 +331,12 @@ def validate_checks(checks):
     """Strictly validate 1-32 assertions without consulting or changing Blender."""
     from .action_properties import canonical, screen_values
     from .open_values import long_handle, wrapped
-    checks = [wrapped(check, CHECK_SCHEMA, long_handle) for check in checks] if isinstance(checks, list) else checks
+    checks_schema = read_only.thawed(VALIDATED_CHECKS)   # As registered: a plain copy for this call.
+    checks = [wrapped(check, checks_schema["items"], long_handle) for check in checks] if isinstance(checks, list) else checks
     for check in checks if isinstance(checks, list) else ():  # A long handle in a map of values is an object.
         if isinstance(check, dict) and check.get("kind") == "property":
             screen_values(check.get("values"))  # Typed reason for a path outside the allow-list.
-    result = validate_value(checks, CHECKS_SCHEMA, "checks")
+    result = validate_value(checks, checks_schema, "checks")
     for index, check in enumerate(result):
         if check["kind"] == "keyframes":
             pass  # Any channel data path (anim_spec.CHANNEL_PATTERN): keys are read from the slot, never evaluated.
@@ -498,3 +495,5 @@ def validation_capabilities():
             "limits": {"objects": MAX_OBJECTS, "vertices_per_mesh": MAX_VERTICES,
                        "mesh_elements": MAX_MESH_ELEMENTS, "total_elements": MAX_TOTAL_ELEMENTS},
             "unsupported_is": "inconclusive", "automatic_correction": False}
+
+read_only.seal(globals(), '_PROPERTY_SET')   # What the validators above read: as registered, read only.

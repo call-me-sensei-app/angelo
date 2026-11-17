@@ -8,6 +8,7 @@ are test_native_update_flow and test_native_update_install). The real thing: the
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import os
 import io
@@ -24,7 +25,13 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[2] / "scripts/addons_core"))
 import update_fixtures as ufx  # noqa: E402
 from notices_fakes import Notices  # noqa: E402
-from angelo_agent import managed_policy, update_check, update_feed, update_flow, update_state, work_guard  # noqa: E402
+from angelo_agent import app_version, managed_policy, update_check, update_feed, update_flow, update_state, work_guard  # noqa: E402
+
+# The offered update: always newer than the running Angelo, whatever version this tree is labelled (a literal "1.1.0"
+# became the running version on 1.1's label commit, and an update of the version that runs is no update).
+_RUNNING = app_version.parse(app_version.current())
+NEXT = "%d.%d.0" % (_RUNNING[0], _RUNNING[1] + 1)
+LATER = "%d.%d.0" % (_RUNNING[0], _RUNNING[1] + 2)   # A release newer than NEXT.
 
 NOTICE_VARIABLES = ("ANGELO_DISABLE_INTRO", "ANGELO_DISABLE_DEFAULT_CHAT", "ANGELO_ENABLE_APP_NOTICES")
 
@@ -106,7 +113,7 @@ class ReadyCase(unittest.TestCase):
         self.ready.preparer = lambda: self.preparer
         self.seed, self.keys = ufx.new_key()
 
-    def offer(self, version="1.1.0", url=None, **changes):
+    def offer(self, version=NEXT, url=None, **changes):
         from datetime import datetime, timezone
         document = ufx.payload(version=version, **changes)
         document["latest"]["downloads"]["macos-arm64"]["url"] = url or (
@@ -118,7 +125,7 @@ class ReadyCase(unittest.TestCase):
     def finish_worker(self):
         job = self.ready._job
         if job is not None:
-            job["thread"].join(5)
+            job["thread"].join(CAP_S)
         self.ready.tick()
 
     def queued(self, kind=None):
@@ -137,7 +144,7 @@ class PreparationTests(ReadyCase):
         self.n.update_ui.apply(update_check.Result(update_check.UPDATE, offer), manual=False)
         self.assertEqual(self.queued(), [], "nothing is shown while it downloads")
         self.finish_worker()
-        self.assertEqual(self.preparer.prepared, ["1.1.0"])
+        self.assertEqual(self.preparer.prepared, [NEXT])
         self.assertEqual(self.ready.phase(offer), "ready")
         card = self.queued("update")[0]
         self.assertIs(card.live, self.ready)
@@ -200,11 +207,11 @@ class PreparationTests(ReadyCase):
         self.assertEqual(self.queued(), [])
         self.assertEqual(self.ready.automatic(offer), "", "still to be installed automatically")
         for attempt in range(2):
-            code, transient, when, attempts = self.ready._failed["1.1.0"]
-            self.ready._failed["1.1.0"] = (code, transient, when - 10 ** 6, attempts)   # The backoff has passed.
+            code, transient, when, attempts = self.ready._failed[NEXT]
+            self.ready._failed[NEXT] = (code, transient, when - 10 ** 6, attempts)   # The backoff has passed.
             self.ready.tick()
             self.finish_worker()
-        self.assertEqual(self.preparer.prepared, ["1.1.0"] * 3)
+        self.assertEqual(self.preparer.prepared, [NEXT] * 3)
         self.assertEqual([c.kind for c in self.queued()], ["update"], "told after the third passing failure")
 
     def test_a_download_is_throttled_while_an_agent_turn_runs(self):
@@ -227,35 +234,35 @@ class PreparationTests(ReadyCase):
         self.assertIsNone(self.ready._job)
         self.assertTrue(self.ready.consider(offer, manual=True), "Check for Updates… still gets it")
         self.finish_worker()
-        self.assertEqual(self.preparer.prepared, ["1.1.0"])
+        self.assertEqual(self.preparer.prepared, [NEXT])
 
     def test_a_newer_release_supersedes_an_older_ones_retries(self):
         self.preparer.outcome = update_flow.PrepareError("download:offline", transient=True)
-        self.ready.consider(self.offer("1.1.0"))
+        self.ready.consider(self.offer(NEXT))
         self.finish_worker()
-        self.assertIn("1.1.0", self.ready._failed)
+        self.assertIn(NEXT, self.ready._failed)
         self.preparer.outcome = None
-        self.ready.consider(self.offer("1.2.0"))
+        self.ready.consider(self.offer(LATER))
         self.finish_worker()
-        self.assertEqual((list(self.ready._failed), list(self.ready._offers)), ([], ["1.2.0"]))
-        self.assertEqual(self.preparer.cleaned[-1], ("older than", "1.2.0"), "never a newer version's folder")
+        self.assertEqual((list(self.ready._failed), list(self.ready._offers)), ([], [LATER]))
+        self.assertEqual(self.preparer.cleaned[-1], ("older than", LATER), "never a newer version's folder")
 
     def test_a_newer_release_stops_an_older_ones_download_even_when_it_cannot_install_itself(self):
         import threading
         release_old = threading.Event()
 
         def slow(release, download, cancel=None, **kwargs):
-            release_old.wait(5)
+            release_old.wait(CAP_S)
             raise update_flow.PrepareError("download:cancelled", transient=True)
         self.preparer.prepare = slow
-        self.ready.consider(self.offer("1.1.0"))
+        self.ready.consider(self.offer(NEXT))
         job = self.ready._job
         github = "https://github.com/someone/angelo/releases/download/v1.2.0/Angelo-1.2.0-macos-arm64.dmg"
-        self.assertFalse(self.ready.consider(self.offer("1.2.0", url=github)))
+        self.assertFalse(self.ready.consider(self.offer(LATER, url=github)))
         self.assertTrue(job["cancel"].is_set())
         self.assertIsNone(self.ready._job)
         release_old.set()
-        job["thread"].join(5)
+        job["thread"].join(CAP_S)
         self.ready.tick()
         self.assertEqual(list(self.ready._ready), [])
 
@@ -267,11 +274,11 @@ class PreparationTests(ReadyCase):
         self.preparer.prepare = prepare
         self.ready.consider(self.offer())
         self.finish_worker()
-        self.assertTrue(self.ready._failed["1.1.0"][1], "transient: retried, not a permanent download")
+        self.assertTrue(self.ready._failed[NEXT][1], "transient: retried, not a permanent download")
 
     def test_two_failed_installations_turn_the_version_into_a_download(self):
         state = update_state.load(self.folder)
-        state.install_failed_version, state.install_failures = "1.1.0", 2
+        state.install_failed_version, state.install_failures = NEXT, 2
         update_state.save(self.folder, state)
         self.assertFalse(self.ready.consider(self.offer()))
         self.assertEqual(self.ready.automatic(self.offer()), "failed")
@@ -285,7 +292,7 @@ class RestartCase(ReadyCase):
         self.offer_ = self.offer()
         self.ready.consider(self.offer_)
         self.finish_worker()
-        self.prepared = self.ready._ready["1.1.0"]
+        self.prepared = self.ready._ready[NEXT]
         self.host = SimpleNamespace(closed=[], close=lambda how="done": self.host.closed.append(how), redraw=lambda: None)
         self.started, self.killed = [], []
         process = SimpleNamespace(stdin=io.BytesIO(), returncode=None)
@@ -362,7 +369,7 @@ class RestartTests(RestartCase):
         self.press()
         request = self.started[0]
         self.assertEqual((request.family, request.version, request.open_file, request.pid),
-                         ("macos", "1.1.0", "/work/castle.blend", os.getpid()))
+                         ("macos", NEXT, "/work/castle.blend", os.getpid()))
         self.assertEqual(request.new, self.prepared.payload)
         self.assertEqual(self.ready.phase(self.offer_), "restarting")
         self.run_timers()
@@ -524,7 +531,7 @@ class RestartTests(RestartCase):
         self.preparer.valid = False
         self.press()
         self.assertEqual(self.started, [])
-        self.assertEqual(self.preparer.prepared, ["1.1.0", "1.1.0"])
+        self.assertEqual(self.preparer.prepared, [NEXT, NEXT])
 
     def test_another_running_copy_stops_the_restart(self):
         with mock.patch.object(self.restart, "_other_instances", lambda ready: [4242]):
@@ -560,10 +567,10 @@ class NextLaunchTests(ReadyCase):
 class ResultOrderTests(ReadyCase):
     def test_the_last_installers_result_counts_before_the_version_is_considered(self):
         state = update_state.load(self.folder)
-        state.install_failed_version, state.install_failures = "1.1.0", 1
+        state.install_failed_version, state.install_failures = NEXT, 1
         update_state.save(self.folder, state)
-        self.preparer.result_list = [("1.1.0", {"status": "failed", "step": "msiexec", "code": "1603"})]
-        (self.preparer.root / "1.1.0").mkdir(parents=True)
+        self.preparer.result_list = [(NEXT, {"status": "failed", "step": "msiexec", "code": "1603"})]
+        (self.preparer.root / NEXT).mkdir(parents=True)
         self.ready.register()   # A fresh launch: nothing handled yet.
         self.assertFalse(self.ready.consider(self.offer()), "the second failure turns it into a download")
         self.assertEqual(self.preparer.prepared, [])

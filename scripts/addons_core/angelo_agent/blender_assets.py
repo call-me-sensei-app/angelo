@@ -11,7 +11,7 @@ import hashlib
 import inspect
 from pathlib import Path
 
-from . import blender_asset_index as index
+from . import blender_asset_index as index, owned_paths
 from .refusal_codes import RefusalError
 
 _bundled = None
@@ -104,8 +104,19 @@ def bundled_rows(file):
 
 
 def dependency_path(file, name):
-    path = Path(file['path']).parent / name[2:] if name.startswith('//') else Path(name)
-    return path.resolve()
+    """The file a library reference names, read as Blender reads it (BLI_path_abs).
+
+    What follows ``//`` is joined under the parent's folder, with either separator on every platform, so a file
+    saved on Windows names the same dependency on macOS and Linux. Separators or a drive after ``//`` never start
+    again at a root: only ``..`` climbs. Any other reference is the platform's own path, unchanged.
+    """
+    if not name.startswith('//'):
+        return Path(name).resolve()
+    folder = Path(file['path']).parent
+    below = name[2:].replace('\\', '/').lstrip('/')
+    # Joined as text: Path's own join would let an absolute or drive-led remainder replace the folder. Only a
+    # root or a drive's own folder already ends with its separator.
+    return Path(f"{folder}{'/' if folder.name or not folder.anchor else ''}{below}").resolve()
 
 
 def bind_dependencies(rows, files=None):
@@ -148,7 +159,7 @@ class Listing:
     def __init__(self, root, url):
         from _bpy_internal.assets.remote_library import listing_downloader, sync_mutex
         self.owner, self.done, self.error = None, False, False
-        root.mkdir(parents=True, exist_ok=True)
+        owned_paths.require_writable(root).mkdir(parents=True, exist_ok=True)
         if listing_downloader.is_more_recent_than(root, 86400):
             self.done = True
             return

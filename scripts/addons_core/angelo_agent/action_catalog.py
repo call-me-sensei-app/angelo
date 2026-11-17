@@ -20,14 +20,14 @@ from .action_schemas import (
     MODIFIER_SETTINGS, MODIFIER_OPERANDS, SHADER_NODE_TYPES, GEOMETRY_NODE_TYPES, LINK,
     FACE_SELECTOR, EDGE_SELECTOR, CONSTRAINT_SETTINGS, TARGETLESS_CONSTRAINTS, PARAMETER_SCHEMAS,
     INDEXED_KINDS, TOPOLOGY_KINDS, CREATE_KINDS, ACTION_SCHEMAS,
-    OPERATION_SCHEMAS, CAPABILITIES, ORIGIN_FIELDS, _extra_inputs, _mutations,
+    OPERATION_SCHEMAS, VALIDATED_OPERATIONS, CAPABILITIES, ORIGIN_FIELDS, _extra_inputs, _mutations,
 )
 from .action_camera_light_spec import CAMERA_LIGHT_KINDS, canonical_camera_light, data_fields
 from . import action_properties, particle_rules, action_bones_spec as _bones, action_operator_spec as operator_spec
 from . import node_edit_spec, batch_spec, material_rules
 from .action_world_spec import canonical as _canonical_world
 from .node_graph_rules import validate_graph
-from . import anim_spec, anim_structure_spec, open_values, scene_binding, mode_fields, kind_notes
+from . import anim_spec, anim_structure_spec, open_values, read_only, scene_binding, mode_fields, kind_notes
 
 # (canonical result, raw operation) -> None; bone settings paths and rest/pose rules, ParticleSettings by RNA path,
 # operator_run's allow-list, exact property values and selection rules.
@@ -44,16 +44,16 @@ _ANIMATION_SPECS = {**{kind: anim_spec for kind in anim_spec.KEY_KINDS},
 
 def validate_operation(operation):
     """Return an independent canonical operation, rejecting unknown keys/kinds."""
-    if type(operation) is not dict or type(operation.get('kind')) is not str or operation['kind'] not in ACTION_SCHEMAS:
-        raise ValueError('Choose a documented native action kind')
-    operation = open_values.wrapped(operation, OPERATION_SCHEMAS[operation['kind']], open_values.long_handle)
+    if type(operation) is not dict or type(operation.get('kind')) is not str or operation['kind'] not in VALIDATED_OPERATIONS:
+        raise ValueError('Choose a documented native action kind')   # Read from the registered, read-only copy:
+    schema = read_only.thawed(VALIDATED_OPERATIONS[operation['kind']]); operation = open_values.wrapped(operation, schema, open_values.long_handle)
     if operation['kind'] in {'property_set', 'property_keyframe'} and type(operation.get('parameters')) is dict:
         # A typed reason (file path, driver, custom property...) before the generic schema error.
         action_properties.screen_values(operation['parameters'].get('values'))
     scene_binding.check_target(operation)  # The scene's (filled in where observed: implicit_targets) or an object's.
     if 'target' not in operation and operation['kind'] in scene_binding.TARGETLESS_KINDS:
         operation = dict(operation, target=None)  # Nothing to choose, so nothing to write.
-    result = _validate(operation, OPERATION_SCHEMAS[operation['kind']], 'operation')
+    result = _validate(operation, schema, 'operation')
     kind, params = result['kind'], result['parameters']
     if kind in _SPEC_RULES:  # Cross-field rules owned by the kind's spec module.
         _SPEC_RULES[kind](result, operation)

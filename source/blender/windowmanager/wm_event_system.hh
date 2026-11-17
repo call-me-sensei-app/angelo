@@ -118,6 +118,10 @@ struct wmEventHandler_Op {
 
   /** Workaround: special case for file-select. */
   bool is_fileselect;
+  /** File-select was invoked from an operator popup, which must remain open. */
+  bool is_fileselect_keep_popup;
+  /** Angelo: added while an agent script ran: a popup its modal opens later is the script's. */
+  bool angelo_from_agent;
 
   /** Store context for this handler for derived/modal handlers. */
   struct {

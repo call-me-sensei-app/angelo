@@ -38,11 +38,13 @@ MAX_REDIRECTS = 5
 
 
 class NetworkError(Exception):
-    """``kind`` is one of OFFLINE, TLS, TIMEOUT, BAD_URL, TOO_LARGE, PROTOCOL."""
+    """``kind`` is one of OFFLINE, TLS, TIMEOUT, BAD_URL, TOO_LARGE, PROTOCOL. ``untrusted``: a TLS failure that was
+    the server's certificate (no root Angelo trusts vouches for it), which a caller says as that
+    (``team_errors.UNTRUSTED``): on a network that inspects TLS the network is fine, and retrying never helps."""
 
-    def __init__(self, kind, message=""):
+    def __init__(self, kind, message="", untrusted=False):
         super().__init__(message or kind)
-        self.kind = kind
+        self.kind, self.untrusted = kind, untrusted
 
 
 @dataclass(frozen=True)
@@ -108,7 +110,8 @@ def _failure(error):
     """The ``NetworkError`` for a transport failure (never for an HTTP status)."""
     reason = error.reason if isinstance(error, urllib.error.URLError) else error
     if isinstance(reason, ssl.SSLError):
-        return NetworkError(TLS, "The secure connection could not be verified")
+        return NetworkError(TLS, "The secure connection could not be verified",
+                            untrusted=isinstance(reason, ssl.SSLCertVerificationError))
     if isinstance(reason, (socket.timeout, TimeoutError)):
         return NetworkError(TIMEOUT, "No answer in time")
     if isinstance(error, urllib.error.URLError):

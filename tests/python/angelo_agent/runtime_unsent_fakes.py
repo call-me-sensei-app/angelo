@@ -10,9 +10,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 from angelo_agent import protocol  # noqa: E402
 from angelo_agent.protocol import JsonRpcProcess, RpcError  # noqa: E402
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 
-def wait_for(predicate, timeout=10.0):
+def wait_for(predicate, timeout=CAP_S):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():

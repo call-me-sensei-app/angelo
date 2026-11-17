@@ -85,6 +85,7 @@ def ago(seconds):
 
 class ANGELO_PT_updates_and_reports(CenterAlignMixIn, Panel):
     """Laid out like Blender's own System panels (labels on the left, controls on the right)."""
+    bl_description = ""   # No tooltip. Blender shows a class docstring as one; this one is a note for developers.
 
     bl_label = "Updates and Reports"
     bl_space_type = 'PREFERENCES'

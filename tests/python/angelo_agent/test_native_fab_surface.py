@@ -121,6 +121,46 @@ def padded(pixels, fraction=0.35, value=(0.0, 0.0, 0.0)):
     return pixels
 
 
+def one_channel(value=0.6, side=16, channel=0):
+    """A scalar map written into one channel of an RGB file, the other two black (Megascans' raw plants)."""
+    pixels = np.zeros((side, side, 3))
+    pixels[:, :, channel] = value + 0.2 * np.sin(np.arange(side) / 3.0)[None, :]
+    return pixels
+
+
+class OneChannelTests(unittest.TestCase):
+    """A scalar map in one channel of an RGB file ("English Ivy": Roughness, Opacity, Gloss, Bump and Displacement
+    hold their data in red, green and blue black, 2026-11-12) is that scalar, read from its channel."""
+
+    def test_the_channel_holding_the_data_is_named(self):
+        self.assertEqual(surface.features(one_channel())['channel'], 'Red')
+        self.assertEqual(surface.features(one_channel(channel=1))['channel'], 'Green')
+        self.assertIsNone(surface.features(grey())['channel'])
+        self.assertIsNone(surface.features(colour())['channel'])
+
+    def test_a_named_scalar_in_one_channel_is_read_from_it(self):
+        result = surface.classify([row('Ivy_4K_BaseColor.jpg', colour()), row('Ivy_4K_Roughness.jpg', one_channel()),
+                                   row('Ivy_4K_Opacity.jpg', one_channel(0.4))])
+        self.assertEqual(result['packed'], {'Ivy_4K_Roughness.jpg': ('roughness', None, None),
+                                            'Ivy_4K_Opacity.jpg': ('opacity', None, None)})
+        self.assertNotIn('roughness', result['roles'])
+        self.assertIn('scalar_in_one_channel', result['notes'])
+
+    def test_it_competes_for_its_role_as_any_map_does(self):
+        """Two maps for opacity, the model's in one channel and a billboard's grey: the same rule as for any two
+        (the larger, then the shorter name) picks the model's."""
+        result = surface.classify([row('Ivy_4K_BaseColor.jpg', colour()), row('Ivy_4K_Opacity.jpg', one_channel()),
+                                   row('Ivy_4K_Billboard_Opacity.jpg', grey(0.3))])
+        self.assertEqual(result['packed'], {'Ivy_4K_Opacity.jpg': ('opacity', None, None)})
+        self.assertNotIn('opacity', result['roles'])
+        self.assertIn('Ivy_4K_Billboard_Opacity.jpg', result['unused'])
+
+    def test_a_colour_map_named_like_a_scalar_is_still_refused(self):
+        result = surface.classify([row('Metal_Plate_2K.jpg', colour()), row('Plate_BaseColor.jpg', colour())])
+        self.assertIn('named_scalar_is_colour', result['notes'])
+        self.assertEqual(result['packed'], {})
+
+
 class ClassifyTests(unittest.TestCase):
     def test_a_named_baked_normal_map_with_padding_is_the_normal(self):
         """A model's normal map (the Megascans rug FBX, 2026-11-11) is a normal map only inside its UV islands."""

@@ -15,6 +15,7 @@ Each test is a break-it finding's proof turned around (review-concurrency F1, F2
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import threading
 import time
@@ -121,7 +122,7 @@ class CloseTests(Fixture):
         self.assertEqual((finished[0]["data"]["_epoch"], finished[0]["data"]["_generation"]),
                          (chat._epoch, chat._request_generation))
         if chat._worker is not None:
-            chat._worker.join(3)
+            chat._worker.join(CAP_S)
         self.chats.outbox.flush()
         self.assertEqual(len([event for event in self.endpoint.events("finished")
                               if event["session"] == self.session]), 1)   # Its own late end is not sent again.

@@ -51,6 +51,8 @@ def directory():
     """``<cache>/updates``, or None when Blender reports no absolute cache or temporary folder (no updates then)."""
     for folder in (getattr(bpy.app, "cachedir", ""), bpy.app.tempdir):
         if folder and os.path.isabs(folder):
+            from . import owned_paths
+            owned_paths.register_writable(Path(folder) / "updates")   # Blender's own: at startup, before any region.
             return Path(folder) / "updates"
     return None
 

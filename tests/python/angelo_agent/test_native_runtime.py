@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+import platform_env
 
 import json
 import math
@@ -135,7 +136,7 @@ class NativeRuntimeTests(unittest.TestCase):
 
     def test_qa_process_owner_reaches_both_provider_children(self):
         owner = "a" * 32
-        with patch.dict(os.environ, {"ANGELO_QA_PROCESS_OWNER": owner}, clear=True):
+        with platform_env.cleared({"ANGELO_QA_PROCESS_OWNER": owner}):
             for mode in ("codex_subscription", "claude_subscription"):
                 with self.subTest(mode=mode):
                     self.assertEqual(child_environment(mode)["ANGELO_QA_PROCESS_OWNER"], owner)
@@ -162,6 +163,8 @@ class NativeRuntimeTests(unittest.TestCase):
                                                      "angelo_game_ready_check",
                                                      # The deferred engine link tools (engine_link_tool_spec).
                                                      "angelo_engine_link_status", "angelo_engine_link",
+                                                     # The deferred, approved download (download_spec; downloads.rst).
+                                                     "angelo_download",
                                                  "angelo_goal"} | FLOW_NAMES | TEAM_NAMES | JOB_NAMES
                             | RIG_NAMES | LIBRARY_NAMES)
 

@@ -23,7 +23,7 @@ import time
 
 import bpy
 
-from . import private_roots
+from . import edit_tool_hold, owned_paths, private_roots
 from . import live_windows, scene_changes, web_compat, web_environment, web_export, web_facts, web_world_key
 from .web_shader_spec import ANGELO_DECLARATIONS
 from .ui_text import iface_, is_rtl, n_
@@ -60,7 +60,7 @@ PAGE_TEXT = {   # Key -> English; translated when the preview starts (``_strings
     "compare_failed": n_("Angelo couldn't draw its viewport: {reason}"),
 }
 
-_state = {"server": None, "folder": None, "window": None, "dirty_at": None, "exporting": False,
+_state = {"server": None, "folder": None, "window": None, "dirty_at": None, "queued_at": None, "exporting": False,
           "last_ms": 0.0, "request": None, "scene": None, "strings": {}, "exports": 0, "materials": [],
           "page": None, "shader_signature": (), "pictures": 0, "picture_pending": False, "shown": {}}
 
@@ -113,15 +113,34 @@ def _on_depsgraph(scene, depsgraph):
     changed, _state["scene"] = scene_changes.matters(depsgraph, scene, window.view_layer, _state["scene"],
                                                      key=scene_key)
     if changed:
-        _state["dirty_at"] = time.monotonic()
+        _dirty(time.monotonic())
 
 
+def _on_edit(scene):
+    """An edit the executor reports (``scene_changes.edited``), which no depsgraph update may show."""
+    window = _window()
+    if _state["server"] is None or _state["exporting"] or window is None \
+            or scene.session_uid != window.scene.session_uid:
+        return
+    _dirty(time.monotonic())
+
+
+def _dirty(at):
+    """An unsent change at ``at``: ``dirty_at`` keeps the newest (the quiet wait before an export), ``queued_at`` the
+    oldest, as the engine link keeps it, so an update queued before the person's operation still counts as waiting
+    once their drag changes the scene too (break-it review 8)."""
+    _state["dirty_at"] = at
+    if _state["queued_at"] is None:
+        _state["queued_at"] = at
+
+
+@edit_tool_hold.guarded(waiting=lambda: edit_tool_hold.before_hold(_state["queued_at"]))   # Queued before it.
 def _tick():
     if _state["server"] is None:
         return None
     if _state["picture_pending"] and web_environment.ready_since(_state["pictures"]):
         _state["picture_pending"] = False
-        _state["dirty_at"] = _state["dirty_at"] or 0.0   # The World's picture landed: export it now.
+        _dirty(_state["dirty_at"] or 0.0)   # The World's picture landed: export it now.
     _compare()
     dirty_at = _state["dirty_at"]
     quiet = scene_changes.quiet_seconds(_state["last_ms"], QUIET_SECONDS, SHARE, MAX_QUIET_SECONDS)
@@ -164,7 +183,7 @@ def _rendered(report):
 def refresh(window):
     """Export the window's scene now and publish it to the page; returns the report (English findings)."""
     server = _state["server"]
-    _state["dirty_at"] = None
+    _state["dirty_at"] = _state["queued_at"] = None
     path = os.path.join(_state["folder"], "scene.glb")
     _state["exporting"] = True
     started = time.perf_counter()
@@ -235,12 +254,13 @@ def start(window, request, open_browser=True):
             _state["server"] = PreviewServer(extra_files=_fonts(), marks={"<!--WORDMARK-->": WORDMARK})
         except BaseException:   # Not serving (its port or thread could not open): no folder left behind either.
             import shutil
-            shutil.rmtree(_state["folder"], ignore_errors=True)
+            if owned_paths.may_write(_state["folder"]):   # A cleanup: only what C says Angelo may remove.
+                shutil.rmtree(_state["folder"], ignore_errors=True)
             _state["folder"] = None
             raise
         _state["strings"] = _strings()
-        if _on_depsgraph not in bpy.app.handlers.depsgraph_update_post:
-            bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph)
+        scene_changes.watch(_on_depsgraph)
+        scene_changes.on_edit(_on_edit)
         if not bpy.app.timers.is_registered(_tick):
             bpy.app.timers.register(_tick, first_interval=POLL_SECONDS, persistent=True)
         opened = False
@@ -257,8 +277,8 @@ def start(window, request, open_browser=True):
 def stop():
     """Stop the preview: server, handler, timer and its export folder. True when one was running."""
     server, _state["server"] = _state["server"], None
-    if _on_depsgraph in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph)
+    scene_changes.unwatch(_on_depsgraph)
+    scene_changes.off_edit(_on_edit)
     if bpy.app.timers.is_registered(_tick):
         bpy.app.timers.unregister(_tick)
     if server is None:
@@ -267,10 +287,10 @@ def stop():
     web_environment.stop()
     folder, _state["folder"] = _state["folder"], None
     if folder:
-        import shutil
-        shutil.rmtree(folder, ignore_errors=True)
-    _state.update(window=None, dirty_at=None, request=None, scene=None, materials=[], page=None, shader_signature=(),
-                  picture_pending=False, shown={})
+        from . import owned_paths
+        owned_paths.remove_tree(folder)   # Only the folder Angelo made (owned_paths).
+    _state.update(window=None, dirty_at=None, queued_at=None, request=None, scene=None, materials=[], page=None,
+                  shader_signature=(), picture_pending=False, shown={})
     return True
 
 

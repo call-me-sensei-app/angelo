@@ -27,9 +27,9 @@
 #include <string>
 #include <vector>
 
-#include "BLI_rect.h"
-#include "BLI_threads.h"
-#include "BLI_time.h"
+#include "BLI_rect.hh"
+#include "BLI_threads.hh"
+#include "BLI_time.hh"
 
 #include "BKE_context.hh"
 #include "BKE_global.hh"
@@ -88,7 +88,7 @@ void WM_angelo_input_hold_allow(const Span<std::string> idnames)
  * shown (another workspace), whatever the lease says (break-it P1-4 M1). Only the pointers are compared. */
 static bool shown_now(const wmWindow *win, const ScrArea *area)
 {
-  wmWindowManager *wm = G_MAIN != nullptr ? static_cast<wmWindowManager *>(G_MAIN->wm.first) : nullptr;
+  wmWindowManager *wm = G_MAIN != nullptr ? static_cast<wmWindowManager *>(G_MAIN->wm.first()) : nullptr;
   if (wm == nullptr) {
     return false;
   }

@@ -23,6 +23,7 @@ from pathlib import Path
 
 from . import blender_folders, change_clock, user_copies
 from .ui_text import n_
+from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
 CATEGORY = "Render"
 MAX_BYTES = 1 << 20          # A bl_info is at the top of an add-on's __init__; nothing bigger is read.
@@ -196,6 +197,8 @@ def set_up(module, name, source=""):
     import addon_utils
     import bpy
     from . import render_extensions
+    if not any(row["module"] == module and row["source"] == source for row in found()):   # Found now, never state.
+        raise SetupError(NO_LINK, name=name, error="not one of the render add-ons Angelo finds")
     before, target, how = set(render_extensions.addon_engines()), None, None
     if source:
         target = Path(bpy.utils.user_resource('SCRIPTS', path="addons", create=True)) / Path(source).name
@@ -223,3 +226,6 @@ def set_up(module, name, source=""):
     if getattr(prefs, "use_preferences_save", False):
         bpy.ops.wm.save_userpref()   # Kept on after a crash too, as Preferences' own Save does.
     return added
+
+
+set_up = _grant_guard.entry(set_up)

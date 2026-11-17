@@ -45,6 +45,11 @@ DOCUMENT_CHANGED = ("The open Blender file changed in Angelo; this call did not 
                     "from before do not work in the new file.")
 
 
+def call_key(call_id):
+    """An app call's key in its request (``ExternalWork.submit``, ``count_out``), from the call's ID."""
+    return ("call", call_id)
+
+
 class ExternalWork:
     """One open request of an app's calls; the provider stand-in ``DirectRequest`` calls into (module docstring)."""
 
@@ -65,6 +70,10 @@ class ExternalWork:
         # out just before it goes: here, or by a host that holds answers for a save or reload (``answers_held``:
         # ``HeadlessHost.finish_answers``, which also sends them before the next request is handled).
         self._unanswered, self._unanswered_lock, self._answers_held = 0, threading.Lock(), answers_held
+        # With answers held, a call's turn ends only when its answer goes out (``count_out``), after the save or
+        # reload the host does for it: the next call of the request never runs before that reload (which would undo
+        # it). call key -> its ticket, from its worker's end until then.
+        self._turns = {}
         self._script_file = threading.local()   # The ScriptFile an angelo_run_script_file call is running, per worker.
 
     # What DirectRequest calls on its provider ----------------------------------------------------------
@@ -127,13 +136,14 @@ class ExternalWork:
         numbered = queue.SimpleQueue()   # Its place in the order (``arrived``), given once its thread has started.
 
         def work():
-            value = None
+            value = ticket = None
             try:
                 ticket = numbered.get()
+                self.direct.order.wait(ticket)   # Every path ends this turn (finally), a call refused early included.
                 if name == SCRIPT_FILE_TOOL:
-                    value = self._script_file_call(arguments, ticket)
+                    value = self._script_file_call(arguments)
                 else:
-                    value = self.direct.call(name, arguments, ticket)
+                    value = self.direct.call(name, arguments)
             except Exception as error:  # noqa: BLE001 - every call is answered; the error is the result.
                 value = _error(self.direct.why(error))
             finally:
@@ -143,6 +153,12 @@ class ExternalWork:
                     value = self._explained(value if value is not None else _error(self.direct.why("it did not end")))
                 except Exception as error:  # noqa: BLE001
                     value = _error(self.direct.why(error))
+                if ticket is not None:
+                    if self._answers_held:   # Ended by ``count_out`` once the host has sent the answer.
+                        with self._unanswered_lock:
+                            self._turns[key] = ticket
+                    else:
+                        self.direct.order.end(ticket)
                 self.direct.answered(key, value)
         try:
             threading.Thread(target=work, daemon=True, name="AngeloExternalCall").start()
@@ -151,12 +167,19 @@ class ExternalWork:
             return
         numbered.put(self.direct.arrived())
 
-    def count_out(self):
-        """One admitted call's answer is going out now (``answers_held``: the host calls this)."""
+    def count_out(self, call_id=None):
+        """One admitted call's answer is going out now (``answers_held``: the host calls this with the app's call ID,
+        after the save or reload it did for the call); that call's turn ends, so the next call may run."""
         with self._unanswered_lock:
-            self._unanswered -= 1
+            if self._answers_held and call_id is None:   # Its turn ends with it: never counted out anonymously.
+                raise TypeError("A host that holds answers counts each out by its call ID")
+            # Never below zero: a duplicate delivery after its record was evicted counts out again (break-it, note 6).
+            self._unanswered = max(0, self._unanswered - 1)
+            ticket = self._turns.pop(call_key(call_id), None) if call_id is not None else None
+        if ticket is not None:
+            self.direct.order.end(ticket)
 
-    def _script_file_call(self, arguments, ticket):
+    def _script_file_call(self, arguments):
         """``angelo_run_script_file``: read the file once (``script_files.read_script``) and run exactly that text as
         an ``angelo_execute_python`` call through the same host code; the call carries what was read, so the
         person's approval of the file is checked against it at admission and again at dispatch."""
@@ -174,7 +197,7 @@ class ExternalWork:
         label = (description or script.name).strip()[:SCRIPT_DESCRIPTION_LIMIT]
         self._script_file.current = script
         try:
-            return self.direct.call("angelo_execute_python", {"description": label, "code": script.text}, ticket)
+            return self.direct.call("angelo_execute_python", {"description": label, "code": script.text})
         finally:
             self._script_file.current = None
 

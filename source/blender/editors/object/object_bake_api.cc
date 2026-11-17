@@ -6,6 +6,7 @@
  * \ingroup edobj
  */
 
+#include <atomic>
 #include <cmath>
 #include <sys/stat.h>
 
@@ -21,11 +22,13 @@
 #include "RNA_define.hh"
 #include "RNA_enum_types.hh"
 
-#include "BLI_listbase.h"
-#include "BLI_math_geom.h"
+#include "BLI_angelo_writers.hh"
+#include "BLI_listbase.hh"
+#include "BLI_math_geom_c.hh"
 #include "BLI_path_utils.hh"
+#include "BLI_string.hh"
 #include "BLI_string_ref.hh"
-#include "BLI_string_utf8.h"
+#include "BLI_string_utf8.hh"
 
 #include "BLT_translation.hh"
 
@@ -38,6 +41,7 @@
 #include "BKE_global.hh"
 #include "BKE_image.hh"
 #include "BKE_image_format.hh"
+#include "BKE_image_gpu.hh"
 #include "BKE_layer.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_main.hh"
@@ -45,6 +49,7 @@
 #include "BKE_mesh.hh"
 #include "BKE_modifier.hh"
 #include "BKE_node.hh"
+#include "BKE_node_runtime.hh"
 #include "BKE_object.hh"
 #include "BKE_report.hh"
 #include "BKE_scene.hh"
@@ -60,12 +65,14 @@
 #include "IMB_colormanagement.hh"
 #include "IMB_imbuf.hh"
 #include "IMB_imbuf_types.hh"
+#include "IMB_partial_update.hh"
 
 #include "WM_api.hh"
 #include "WM_types.hh"
 
 #include "ED_mesh.hh"
 #include "ED_object.hh"
+#include "ED_render.hh"
 #include "ED_screen.hh"
 #include "ED_uvedit.hh"
 
@@ -120,9 +127,11 @@ struct BakeAPIRender {
   float *progress;
   bool *do_update;
 
+  /* To check for job cancellation. */
+  bool *stop;
+
   /* Operator state. */
   ReportList *reports;
-  int result;
   ScrArea *area;
 };
 
@@ -144,7 +153,7 @@ static void bake_progress_update(void *bjv, float progress)
 static wmOperatorStatus bake_modal(bContext *C, wmOperator * /*op*/, const wmEvent *event)
 {
   /* no running blender, remove handler and pass through */
-  if (0 == WM_jobs_test(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_OBJECT_BAKE)) {
+  if (!WM_jobs_has_running(CTX_wm_manager(C), CTX_data_scene(C), WM_JOB_TYPE_OBJECT_BAKE)) {
     return OPERATOR_FINISHED | OPERATOR_PASS_THROUGH;
   }
 
@@ -161,29 +170,59 @@ static wmOperatorStatus bake_modal(bContext *C, wmOperator * /*op*/, const wmEve
   return OPERATOR_PASS_THROUGH;
 }
 
+/* This could be bake_break but we would be required to use const_cast. */
+static bool bake_has_been_canceled(const BakeAPIRender *bkr)
+{
+  /* bkr can be null when called via bake_exec. */
+  if (G.is_break || (bkr != nullptr && (bkr->stop && *(bkr->stop)))) {
+    return true;
+  }
+  /* Angelo: the job's time budget, checked on the job's own thread (BKE_angelo_job_deadline.hh).
+   * A passed deadline stops the bake like a cancel: the render breaks, nothing is saved and no
+   * further object is baked. Only a bake job (#bake_startjob sets `stop`) owns a deadline; the
+   * exec bake owns none. */
+  return bkr != nullptr && bkr->stop != nullptr && bkr->scene != nullptr &&
+         blender::bke::angelo::job_deadline_passed(WM_JOB_TYPE_OBJECT_BAKE,
+                                                   bkr->scene->id.session_uid);
+}
+
+/**
+ * Angelo: the running bake job's stop flag and scene, for #bake_break. The scene's Render keeps its
+ * break handle after the job's data is freed (and a render waiting on the bake shares it, so it is
+ * never reset), so the handle is the scene's `session_uid` as a value and the flag is reached here:
+ * set when the job starts, cleared by its free, before the flag's owner goes.
+ * #WM_JOB_EXCL_RENDER runs one bake at a time.
+ */
+static std::atomic<const bool *> bake_job_stop{nullptr};
+static std::atomic<uint32_t> bake_job_scene{0};
+
 /**
  * for exec() when there is no render job
  * NOTE: this won't check for the escape key being pressed, but doing so isn't thread-safe.
+ *
+ * Angelo: `scene_uid` is 0 for that exec bake, which has neither a job's stop flag nor a deadline.
  */
 static bool bake_break(void *scene_uid)
 {
   if (G.is_break) {
     return true;
   }
-  /* Angelo: the job's time budget, checked on this thread (BKE_angelo_job_deadline.hh). The handle
-   * is the baked scene's `session_uid` as a value, never a pointer: the scene's Render keeps it after
-   * the job's data is freed, and nothing is read through it (0, the exec bake's, owns no deadline). */
   const uint32_t uid = POINTER_AS_UINT(scene_uid);
-  if (uid != 0 && blender::bke::angelo::job_deadline_passed(WM_JOB_TYPE_OBJECT_BAKE, uid)) {
+  if (uid == 0) {
+    return false;
+  }
+  const bool *stop = bake_job_stop.load(std::memory_order_acquire);
+  if (stop != nullptr && bake_job_scene.load(std::memory_order_relaxed) == uid && *stop) {
     return true;
   }
-  return false;
+  /* The job's time budget, checked on this thread (BKE_angelo_job_deadline.hh). */
+  return blender::bke::angelo::job_deadline_passed(WM_JOB_TYPE_OBJECT_BAKE, uid);
 }
 
 static void bake_update_image(ScrArea *area, Image *image)
 {
   if (area && area->spacetype == SPACE_IMAGE) { /* in case the user changed while baking */
-    SpaceImage *sima = static_cast<SpaceImage *>(area->spacedata.first);
+    SpaceImage *sima = area->spacedata.first_as<SpaceImage>();
     if (sima) {
       sima->image = image;
     }
@@ -318,12 +357,8 @@ static bool write_internal_bake_pixels(Image *image,
     RE_bake_margin(ibuf, mask_buffer, margin, margin_type, mesh_eval, uv_layer, uv_offset);
   }
 
-  ibuf->userflags |= IB_DISPLAY_BUFFER_INVALID;
-  BKE_image_mark_dirty(image, ibuf);
-
-  if (ibuf->float_data()) {
-    ibuf->userflags |= IB_RECT_INVALID;
-  }
+  IMB_partial_update_mark_full(ibuf);
+  IMB_mark_dirty(ibuf);
 
   BKE_image_release_ibuf(image, ibuf, nullptr);
 
@@ -341,8 +376,6 @@ static void bake_targets_refresh(BakeTargets *targets)
     Image *ima = targets->images[i].image;
 
     if (ima) {
-      BKE_image_partial_update_mark_full_update(ima);
-      BKE_image_free_gputextures(ima);
       DEG_id_tag_update(&ima->id, 0);
     }
   }
@@ -416,7 +449,12 @@ static bool write_external_bake_pixels(const char *filepath,
     }
   }
 
-  if ((ok = BKE_imbuf_write(ibuf, filepath, im_format))) {
+  /* Angelo: the file as named now (a split bake appends material names: BLI_angelo_writers.hh). */
+  if (const char *refusal = angelo_writers::refusal(filepath)) {
+    printf("%s: '%s'\n", refusal, filepath);
+    ok = false;
+  }
+  else if ((ok = BKE_imbuf_write(ibuf, filepath, im_format))) {
 #ifndef WIN32
     chmod(filepath, S_IRUSR | S_IWUSR);
 #endif
@@ -498,7 +536,7 @@ static bool bake_object_check(const Main &bmain,
       ED_object_get_active_image(ob, mat_nr, &image, nullptr, &node, &ntree);
 
       /* Don't bake to unselected images. */
-      if (node && !(node->flag & NODE_SELECT)) {
+      if (node && !node->is_selected()) {
         image = nullptr;
       }
 
@@ -746,7 +784,7 @@ static bool bake_targets_init_image_textures(const BakeAPIRender *bkr,
     ED_object_get_active_image(ob, i + 1, &image, nullptr, &node, nullptr);
 
     /* Don't bake to unselected images. */
-    if (node && !(node->flag & NODE_SELECT)) {
+    if (node && !node->is_selected()) {
       image = nullptr;
     }
 
@@ -950,6 +988,28 @@ static bool bake_targets_output_external(const BakeAPIRender *bkr,
       BLI_path_suffix(filepath, FILE_MAX, tmp, "_");
     }
 
+    /* Angelo: what this file's path is built from (BLI_angelo_writers.hh): the bake's file (the tag), its naming
+     * options, and the names of the object and material it is named after. */
+    const ID *material = nullptr;
+    if (bkr->is_split_materials) {
+      if (i < ob_eval->totcol && ob_eval->mat && ob_eval->mat[i]) {
+        material = &ob_eval->mat[i]->id;
+      }
+      else if (i < mesh_eval->totcol && mesh_eval->mat && mesh_eval->mat[i]) {
+        material = &mesh_eval->mat[i]->id;
+      }
+    }
+    /* The object's name only with automatic naming, the material's only with split materials (the re-read of cf5befe2877, M6: a name is an input only where the path uses it). */
+    Vector<angelo_writers::Input, 5> inputs = {{&bkr->scene->id, &bkr->scene->r.bake, "BakeSettings", "filepath"},
+                                               {&bkr->scene->id, nullptr, "BakeSettings", "use_split_materials"},
+                                               {&bkr->scene->id, nullptr, "BakeSettings", "use_automatic_name"}};
+    if (bkr->is_automatic_name) {
+      inputs.append({&ob->id, nullptr, "ID", "name"});
+    }
+    if (material != nullptr) {
+      inputs.append({material, nullptr, "ID", "name"});
+    }
+    const angelo_writers::InputScope scope(inputs);
     /* save it externally */
     const bool ok = write_external_bake_pixels(filepath,
                                                pixel_array + bk_image->offset,
@@ -1069,6 +1129,7 @@ static void bake_targets_populate_pixels_color_attributes(BakeTargets *targets,
     pixel->dv_dy = 0.0f;
     pixel->uv[0] = 0.0f;
     pixel->uv[1] = 0.0f;
+    pixel->is_margin = false;
   }
 
   /* Populate through adjacent triangles, first triangle wins. */
@@ -1178,8 +1239,8 @@ static bool bake_targets_output_vertex_colors(BakeTargets *targets, Object *ob)
   Mesh *mesh = id_cast<Mesh *>(ob->data);
   const StringRef attr_name = mesh->active_color_attribute;
   const bke::AttrDomain domain = [&]() {
-    if (BMEditMesh *em = mesh->runtime->edit_mesh.get()) {
-      return BM_data_layer_lookup(*em->bm, attr_name).domain;
+    if (BMesh *bm = BKE_editmesh_bmesh_get_for_write(mesh)) {
+      return BM_data_layer_lookup(*bm, attr_name).domain;
     }
     bke::AttributeAccessor attributes = mesh->attributes();
     return attributes.lookup_meta_data(attr_name)->domain;
@@ -1212,12 +1273,12 @@ static bool bake_targets_output_vertex_colors(BakeTargets *targets, Object *ob)
       }
     }
 
-    if (BMEditMesh *em = mesh->runtime->edit_mesh.get()) {
-      const BMDataLayerLookup attr = BM_data_layer_lookup(*em->bm, attr_name);
+    if (BMesh *bm = BKE_editmesh_bmesh_get_for_write(mesh)) {
+      const BMDataLayerLookup attr = BM_data_layer_lookup(*bm, attr_name);
       BMVert *v;
       BMIter viter;
       int i = 0;
-      BM_ITER_MESH (v, &viter, em->bm, BM_VERTS_OF_MESH) {
+      BM_ITER_MESH (v, &viter, bm, BM_VERTS_OF_MESH) {
         void *data = BM_ELEM_CD_GET_VOID_P(v, attr.offset);
         if (attr.type == bke::AttrType::ColorFloat) {
           memcpy(data, &mcol[i], sizeof(MPropCol));
@@ -1247,12 +1308,12 @@ static bool bake_targets_output_vertex_colors(BakeTargets *targets, Object *ob)
     MEM_SAFE_DELETE(num_loops_for_vertex);
   }
   else if (domain == bke::AttrDomain::Corner) {
-    if (BMEditMesh *em = mesh->runtime->edit_mesh.get()) {
-      const BMDataLayerLookup attr = BM_data_layer_lookup(*em->bm, attr_name);
+    if (BMesh *bm = BKE_editmesh_bmesh_get_for_write(mesh)) {
+      const BMDataLayerLookup attr = BM_data_layer_lookup(*bm, attr_name);
       BMFace *f;
       BMIter fiter;
       int i = 0;
-      BM_ITER_MESH (f, &fiter, em->bm, BM_FACES_OF_MESH) {
+      BM_ITER_MESH (f, &fiter, bm, BM_FACES_OF_MESH) {
         BMLoop *l;
         BMIter liter;
         BM_ITER_ELEM (l, &liter, f, BM_LOOPS_OF_FACE) {
@@ -1348,7 +1409,8 @@ static void bake_targets_populate_pixels(const BakeAPIRender *bkr,
     bake_targets_populate_pixels_color_attributes(targets, ob, mesh_eval, pixel_array);
   }
   else {
-    RE_bake_pixels_populate(mesh_eval, pixel_array, targets->pixels_num, targets, bkr->uv_layer);
+    RE_bake_pixels_populate(
+        mesh_eval, pixel_array, targets->pixels_num, targets, bkr->uv_layer, bkr->margin);
   }
 }
 
@@ -1385,11 +1447,14 @@ static void bake_targets_free(BakeTargets *targets)
 
 /* Main Bake Logic */
 
-static wmOperatorStatus bake(const BakeAPIRender *bkr,
-                             Object *ob_low,
-                             const Span<PointerRNA> selected_objects,
-                             ReportList *reports)
+static bool bake(const BakeAPIRender *bkr,
+                 Object *ob_low,
+                 const Span<PointerRNA> selected_objects,
+                 ReportList *reports)
 {
+  /* Angelo: a bake run synchronously is its own writer job (begun inside a script region when a script ran it); a
+   * job's thread has the job's (BLI_angelo_writers.hh). */
+  const angelo_writers::OwnJob angelo_writer;
   Render *re = bkr->render;
   Main *bmain = bkr->main;
   Scene *scene = bkr->scene;
@@ -1404,7 +1469,6 @@ static wmOperatorStatus bake(const BakeAPIRender *bkr,
 
   DEG_graph_build_from_view_layer(depsgraph);
 
-  wmOperatorStatus op_result = OPERATOR_CANCELLED;
   bool ok = false;
 
   Object *ob_cage = nullptr;
@@ -1547,7 +1611,7 @@ static wmOperatorStatus bake(const BakeAPIRender *bkr,
     else if (bkr->is_cage) {
       bool is_changed = false;
 
-      ModifierData *md = static_cast<ModifierData *>(ob_low_eval->modifiers.first);
+      ModifierData *md = ob_low_eval->modifiers.first();
       while (md) {
         ModifierData *md_next = md->next;
 
@@ -1633,7 +1697,7 @@ static wmOperatorStatus bake(const BakeAPIRender *bkr,
        * Use an error here instead of a warning so users don't accidentally perform
        * a bake which seems to succeed with invalid results.
        * If visibility could be forced/overridden - it would help avoid the problem. */
-      if (UNLIKELY(mesh_eval == nullptr)) {
+      if (mesh_eval == nullptr) [[unlikely]] {
         BKE_reportf(
             reports,
             RPT_ERROR,
@@ -1772,6 +1836,7 @@ static wmOperatorStatus bake(const BakeAPIRender *bkr,
                           "No UV map found in the evaluated object \"%s\"",
                           ob_low->id.name + 2);
               BKE_id_free(nullptr, &me_nores->id);
+              ok = false;
               goto cleanup;
             }
             bake_targets_populate_pixels(bkr, &targets, ob_low, me_nores, pixel_array_low);
@@ -1799,18 +1864,14 @@ static wmOperatorStatus bake(const BakeAPIRender *bkr,
 
   if (!ok) {
     BKE_reportf(reports, RPT_ERROR, "Problem baking object \"%s\"", ob_low->id.name + 2);
-    op_result = OPERATOR_CANCELLED;
+  }
+  else if (bake_has_been_canceled(bkr)) {
+    ok = false;
   }
   else {
     /* save the results */
-    if (bake_targets_output(
-            bkr, &targets, ob_low, ob_low_eval, me_low_eval, pixel_array_low, reports))
-    {
-      op_result = OPERATOR_FINISHED;
-    }
-    else {
-      op_result = OPERATOR_CANCELLED;
-    }
+    ok = bake_targets_output(
+        bkr, &targets, ob_low, ob_low_eval, me_low_eval, pixel_array_low, reports);
   }
 
   bake_targets_refresh(&targets);
@@ -1850,7 +1911,7 @@ cleanup:
 
   DEG_graph_free(depsgraph);
 
-  return op_result;
+  return ok;
 }
 
 /* Bake Operator */
@@ -1864,6 +1925,7 @@ static void bake_init_api_data(wmOperator *op, bContext *C, BakeAPIRender *bkr)
   bkr->view_layer = CTX_data_view_layer(C);
   bkr->scene = CTX_data_scene(C);
   bkr->area = screen ? BKE_screen_find_big_area(screen, SPACE_IMAGE, 10) : nullptr;
+  bkr->stop = nullptr;
 
   bkr->pass_type = eScenePassType(RNA_enum_get(op->ptr, "type"));
   bkr->pass_filter = RNA_enum_get(op->ptr, "pass_filter");
@@ -1904,8 +1966,6 @@ static void bake_init_api_data(wmOperator *op, bContext *C, BakeAPIRender *bkr)
   CTX_data_selected_objects(C, &bkr->selected_objects);
 
   bkr->reports = op->reports;
-
-  bkr->result = OPERATOR_CANCELLED;
 
   bkr->render = RE_NewSceneRender(bkr->scene);
 
@@ -1958,6 +2018,8 @@ static wmOperatorStatus bake_exec(bContext *C, wmOperator *op)
     return result;
   }
 
+  ED_render_view3d_auto_pause(CTX_data_main(C), true);
+
   if (bkr.is_clear) {
     const bool is_tangent = ((bkr.pass_type == SCE_PASS_NORMAL) &&
                              (bkr.normal_space == R_BAKE_SPACE_TANGENT));
@@ -1967,19 +2029,27 @@ static wmOperatorStatus bake_exec(bContext *C, wmOperator *op)
   RE_SetReports(re, bkr.reports);
 
   if (bkr.is_selected_to_active) {
-    result = bake(&bkr, bkr.ob, bkr.selected_objects, bkr.reports);
+    if (bake(&bkr, bkr.ob, bkr.selected_objects, bkr.reports)) {
+      result = OPERATOR_FINISHED;
+    }
   }
   else {
     bkr.is_clear = bkr.is_clear && bkr.selected_objects.size() == 1;
     for (const PointerRNA &ptr : bkr.selected_objects) {
       Object *ob_iter = static_cast<Object *>(ptr.data);
-      result = bake(&bkr, ob_iter, {}, bkr.reports);
+      if (bake(&bkr, ob_iter, {}, bkr.reports)) {
+        result = OPERATOR_FINISHED;
+      }
+      if (bake_has_been_canceled(&bkr)) {
+        break;
+      }
     }
   }
 
   RE_SetReports(re, nullptr);
 
   G.is_rendering = false;
+  ED_render_view3d_auto_pause(CTX_data_main(C), false);
   return result;
 }
 
@@ -1990,11 +2060,13 @@ static void bake_startjob(void *bkv, wmJobWorkerStatus *worker_status)
   /* setup new render */
   bkr->do_update = &worker_status->do_update;
   bkr->progress = &worker_status->progress;
+  bkr->stop = &worker_status->stop;
+  bake_job_scene.store(bkr->scene->id.session_uid, std::memory_order_relaxed);
+  bake_job_stop.store(bkr->stop, std::memory_order_release);
 
   RE_SetReports(bkr->render, bkr->reports);
 
   if (!bake_pass_filter_check(bkr->pass_type, bkr->pass_filter, bkr->reports)) {
-    bkr->result = OPERATOR_CANCELLED;
     return;
   }
 
@@ -2007,7 +2079,6 @@ static void bake_startjob(void *bkv, wmJobWorkerStatus *worker_status)
                           bkr->is_selected_to_active,
                           bkr->target))
   {
-    bkr->result = OPERATOR_CANCELLED;
     return;
   }
 
@@ -2018,16 +2089,16 @@ static void bake_startjob(void *bkv, wmJobWorkerStatus *worker_status)
   }
 
   if (bkr->is_selected_to_active) {
-    bkr->result = bake(bkr, bkr->ob, bkr->selected_objects, bkr->reports);
+    bake(bkr, bkr->ob, bkr->selected_objects, bkr->reports);
   }
   else {
     bkr->is_clear = bkr->is_clear && bkr->selected_objects.size() == 1;
     for (const PointerRNA &ptr : bkr->selected_objects) {
       Object *ob_iter = static_cast<Object *>(ptr.data);
-      bkr->result = bake(bkr, ob_iter, {}, bkr->reports);
+      bake(bkr, ob_iter, {}, bkr->reports);
 
-      if (bkr->result == OPERATOR_CANCELLED) {
-        return;
+      if (bake_has_been_canceled(bkr)) {
+        break;
       }
     }
   }
@@ -2054,9 +2125,15 @@ static void bake_freejob(void *bkv)
   if (bkr->scene != nullptr) {
     blender::bke::angelo::job_deadline_job_ended(WM_JOB_TYPE_OBJECT_BAKE, bkr->scene->id.session_uid);
   }
+  /* A job stopped before it started set no flag; its free must not clear a running bake's. */
+  if (bkr->stop != nullptr) {
+    bake_job_stop.store(nullptr, std::memory_order_release);
+  }
   MEM_delete(bkr);
 
   G.is_rendering = false;
+
+  ED_render_view3d_auto_pause(G_MAIN, false);
 }
 
 static void bake_set_props(wmOperator *op, Scene *scene)
@@ -2175,7 +2252,7 @@ static wmOperatorStatus bake_invoke(bContext *C, wmOperator *op, const wmEvent *
   bake_set_props(op, scene);
 
   /* only one render job at a time */
-  if (WM_jobs_test(CTX_wm_manager(C), scene, WM_JOB_TYPE_OBJECT_BAKE)) {
+  if (WM_jobs_has_running(CTX_wm_manager(C), scene, WM_JOB_TYPE_OBJECT_BAKE)) {
     return OPERATOR_CANCELLED;
   }
 
@@ -2208,6 +2285,8 @@ static wmOperatorStatus bake_invoke(bContext *C, wmOperator *op, const wmEvent *
 
   G.is_break = false;
   G.is_rendering = true;
+
+  ED_render_view3d_auto_pause(CTX_data_main(C), true);
 
   WM_jobs_start(CTX_wm_manager(C), wm_job);
 

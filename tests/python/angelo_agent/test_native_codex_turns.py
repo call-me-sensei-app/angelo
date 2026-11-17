@@ -8,6 +8,7 @@ and the real ``CodexProvider`` with an in-memory RPC: no subprocess or inference
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import tempfile
@@ -169,7 +170,7 @@ class StopDuringGuardTests(unittest.TestCase):
         context.cancelled = True
         stopped_at = machine_clock.start(self)
         turns.wake()  # What Stop does (CodexTurnScope.interrupt_ids).
-        worker.join(5)
+        worker.join(CAP_S)
         turns.join()
         self.assertFalse(worker.is_alive())
         self.assertEqual(len(outcome), 1)
@@ -239,12 +240,12 @@ class ProviderTurnGuardTests(unittest.TestCase):
 
         worker = threading.Thread(target=run)
         worker.start()
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + CAP_S
         while interrupt("turn-old") not in rpc.requests and time.monotonic() < deadline:
             time.sleep(.01)
         stopped_at = machine_clock.start(self)
         self.c.stop()  # The real Stop: cancelled, then stop_request on a daemon thread.
-        worker.join(5)
+        worker.join(CAP_S)
         self.assertFalse(worker.is_alive())
         stopped_at.assert_within(1.0)
         self.assertIsInstance(outcome[0], TurnStartAbandoned)

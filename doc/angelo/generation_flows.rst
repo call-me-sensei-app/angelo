@@ -106,6 +106,8 @@ Module                        Responsibility
 ``flow_steps.py``             Where a step's settings and per-use state live; recipe lookups.
 ``flow_host.py``              Main-thread runtime: evaluation cache, previews, runs and the
                               Studio adapter; ``flow_capture.py`` runs Scene Capture steps.
+``flow_redraw.py``            Which areas the runtime redraws, and what a refresh compares:
+                              a redraw only when what they show changed.
 ``flow_templates.py``         Bundled templates (``angelo.flow-template/1``) and role
                               resolution. No Blender dependency.
 ``flow_parts.py``             Parts-sheet split geometry (numpy). ``flow_split_host.py`` runs

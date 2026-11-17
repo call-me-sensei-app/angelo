@@ -17,8 +17,8 @@
 #include "BLI_array.hh"
 #include "BLI_math_vector.hh"
 #include "BLI_math_vector_types.hh"
-#include "BLI_string.h"
-#include "BLI_system.h"
+#include "BLI_string.hh"
+#include "BLI_system.hh"
 #include "BLI_task.hh"
 
 #include "BLT_translation.hh"

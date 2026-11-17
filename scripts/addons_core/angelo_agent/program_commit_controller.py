@@ -11,7 +11,7 @@ import copy
 import time
 from dataclasses import dataclass
 
-from . import exact_fence
+from . import exact_fence, grant_authority
 from .chat_settings import clean_options
 from .refusal_codes import RefusalError, error_result
 from .stale_binding import same as same_binding
@@ -112,6 +112,7 @@ class ProgramCommitController:
                 or call.generation != preparation.generation or self._epoch != preparation.epoch
                 or self._request_generation != preparation.generation
                 or not call.authorized or not call.approved or call.approved != preparation.approved
+                or not grant_authority.call_approved(self.state["id"], call)   # Held in C (the guard review).
                 or call.expires != preparation.expires or call.precondition != preparation.precondition):
             raise RefusalError("The original staged invocation or approval changed during native preparation", code="OWNERSHIP")
         if not self._tool_available(call, document):
@@ -410,7 +411,8 @@ class ProgramCommitController:
             self._check_native_preparation(call, preparation, document)
         if not self._tool_available(call, document):
             return {"error_code": 'OWNERSHIP', "error": "This staged invocation no longer owns the document", "scene_changed": False}
-        if (not call.authorized or job is None or not job.ready_to_commit or job.closed or call.committing
+        if (not call.authorized or not grant_authority.call_approved(self.state["id"], call)   # In C, not a flag.
+                or job is None or not job.ready_to_commit or job.closed or call.committing
                 or getattr(job, "invocation_id", None) != call.id):
             return {"error_code": 'OWNERSHIP', "error": "The exact authorized stage is not ready to commit", "scene_changed": False}
         if clean_options(self.state.get("options"))["approval"] == "READ_ONLY":

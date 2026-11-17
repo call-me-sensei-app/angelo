@@ -10,6 +10,7 @@ warm-up leaves a receipt with what is known.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import threading
@@ -221,7 +222,7 @@ class RetireRaceTests(OpeningCase):
                 runtime.retired = True  # As retire() sets it.
             return answer
         self.answers[method] = retire
-        codex_opening.prepare(self.controller()).join(5)
+        codex_opening.prepare(self.controller()).join(CAP_S)
         self.assertTrue(wait_for(lambda: "runtime" in seen))
         return self.processes[-1], seen["runtime"]
 
@@ -280,7 +281,7 @@ class ResumeClockTests(OpeningCase):
 
         def slow_probe(params):
             if "ephemeral" not in params:
-                probe.wait(2)
+                probe.wait(CAP_S)
             return fork_answer(params)
         self.answers["thread/fork"] = slow_probe
         self.resumed.clear()

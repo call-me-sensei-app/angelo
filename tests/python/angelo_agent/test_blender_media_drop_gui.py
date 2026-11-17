@@ -198,13 +198,20 @@ def fixtures():
     return made
 
 
+STUDIO_WIDE = 740   # studio_state.studio_layout: narrower than this the dock is compact.
+
+
 def layout(window):
     """3D view | Media Studio over an Image Editor, the Outliner, the chat in Properties' place."""
     from angelo_agent import editor_types
     screen = window.screen
     view = max((a for a in screen.areas if a.type == 'VIEW_3D'), key=lambda a: a.width)
+    # Media Studio shows its grid beside Create only from STUDIO_WIDE pixels up (studio_layout: below that it is one
+    # or the other), and this suite drags from the grid onto Create. Give it that room when the window has it; the
+    # 3D view keeps at least 30% for its own drops. A window too narrow for both fails a check of its own in run().
+    factor = max(0.30, min(0.45, 1.0 - (STUDIO_WIDE + 40) / max(view.width, 1)))
     with bpy.context.temp_override(window=window, area=view, region=region_of(view)):
-        bpy.ops.screen.area_split(direction='VERTICAL', factor=0.45)
+        bpy.ops.screen.area_split(direction='VERTICAL', factor=factor)
     view = min((a for a in screen.areas if a.type == 'VIEW_3D'), key=lambda a: a.x)
     right = max((a for a in screen.areas if a.type == 'VIEW_3D'), key=lambda a: a.x)
     with bpy.context.temp_override(window=window, area=right, region=region_of(right)):
@@ -237,6 +244,48 @@ def point_in_view(view, location):
     return region.x + xy.x, region.y + xy.y
 
 
+def clearance(view, location):
+    """How far on screen, in pixels, ``location`` is from every object's box (0 inside one). Blender takes the
+    nearest object within a few pixels of the pointer, so a drop meant for one object has to stand clear of the
+    others at whatever size the window opened: of a mesh (the drop would be its material) and of anything else too
+    (a reference image from an earlier step takes the drop itself, and no new object appears)."""
+    region, rv3d = region_of(view), view.spaces.active.region_3d
+    point = view3d_utils.location_3d_to_region_2d(region, rv3d, Vector(location))
+    nearest = float("inf")
+    for obj in bpy.data.objects:
+        corners = [view3d_utils.location_3d_to_region_2d(region, rv3d, obj.matrix_world @ Vector(corner))
+                   for corner in obj.bound_box]
+        if point is None or any(corner is None for corner in corners):
+            return 0.0
+        dx = max(min(c.x for c in corners) - point.x, 0.0, point.x - max(c.x for c in corners))
+        dy = max(min(c.y for c in corners) - point.y, 0.0, point.y - max(c.y for c in corners))
+        nearest = min(nearest, (dx * dx + dy * dy) ** 0.5)
+    return nearest
+
+
+def clear_spot(view, margin):
+    """The point at an Empty's height, inside the view and under none of its other regions, that stands clearest of
+    every object on screen, and how clear it is in pixels (``None, 0`` when no point of the grid tried qualifies)."""
+    region, rv3d = region_of(view), view.spaces.active.region_3d
+    # The view's other regions (toolbar, sidebar, header, asset shelf) lie over its window region: a release on one
+    # of them is not a drop on the view at all. In a narrow view they cover much of it.
+    over = [r for r in view.regions if r.type != 'WINDOW' and r.width > 1 and r.height > 1]
+    best, clear = None, 0.0
+    for x in (3.0, 1.5, 0.0, -1.5, -3.0):
+        for y in (-3.0, -1.5, 0.0, 1.5, 3.0):
+            xy = view3d_utils.location_3d_to_region_2d(region, rv3d, Vector((x, y, 0.5)))
+            if xy is None or not (margin < xy.x < region.width - margin and margin < xy.y < region.height - margin):
+                continue
+            wx, wy = region.x + xy.x, region.y + xy.y
+            if any(r.x - margin <= wx <= r.x + r.width + margin and r.y - margin <= wy <= r.y + r.height + margin
+                   for r in over):
+                continue
+            found = clearance(view, (x, y, 0.5))
+            if best is None or found > clear:
+                best, clear = (x, y, 0.5), found
+    return best, clear
+
+
 def trace():
     """Record in the receipt every drop that reaches ``angelo.media_drop`` and every grid press and release (what a
     failed check needs to say where a drag stopped)."""
@@ -246,7 +295,7 @@ def trace():
 
     def traced_run(self, context, event):
         result = run_drop(self, context, event)
-        log.append(["drop", self.target, self.items.count("\n"), self.object, sorted(result)])
+        log.append(["drop", self.target, self.item_lines.count("\n"), self.object, sorted(result)])
         return result
     media_drop._Drop.run = traced_run
     press, released = studio_drag.press, studio_drag.released
@@ -291,6 +340,11 @@ def run():
     bpy.ops.object.select_all(action='DESELECT')
     view, studio_area, image_area, outliner, chat = layout(window)
     yield from frames(20)
+    # Asked of the layout itself, not of a pixel count: whether the grid and Create are side by side here.
+    wide = (yield from wait(lambda: "compact" in (studio.view(studio_area).get("geometry") or {}), 10)) and not \
+        studio.view(studio_area)["geometry"]["compact"]
+    check("media_studio_has_room_for_its_grid_beside_create", wide,
+          [window.width, window.height, region_of(studio_area).width, region_of(studio_area).height])
     rv3d = view.spaces.active.region_3d
     rv3d.view_location, rv3d.view_distance = (0.0, 0.0, 0.0), 14.0
     yield from frames(10)
@@ -334,17 +388,23 @@ def run():
     check("image_on_empty_space_is_a_reference", len(added) == 1 and added[0].empty_display_type == 'IMAGE'
           and added[0].data and added[0].data.packed_file is not None, [o.name for o in added])
 
-    # On an Empty (no material to take), as on empty space: a reference image.
-    bpy.ops.object.empty_add(location=(-1.0, 2.5, 0.5))
+    # On an Empty (no material to take), as on empty space: a reference image. The Empty stands clear of every other
+    # object on screen: beside one (it was on the cube's edge until 1.1.0) the pick under the pointer is the mesh or the
+    # Empty by the window's size and the graphics backend, and on the mesh the drop is Blender's own material drop.
+    margin = 40 * bpy.context.preferences.system.pixel_size
+    spot, clear = clear_spot(view, margin)
+    check("the_empty_stands_clear_of_every_object", spot is not None and clear >= margin, [spot, round(clear), margin])
+    spot = spot or (2.5, -2.5, 0.5)
+    bpy.ops.object.empty_add(location=spot)
     marker = bpy.context.object
     bpy.ops.object.select_all(action='DESELECT')
     yield from frames(4)
     before = set(bpy.data.objects)
-    yield from drag(window, tile(studio_area, ids["poster"]), point_in_view(view, (-1.0, 2.5, 0.5)))
+    yield from drag(window, tile(studio_area, ids["poster"]), point_in_view(view, spot))
     yield from wait(lambda: set(bpy.data.objects) - before, 10)
     added = [o for o in bpy.data.objects if o not in before]
     check("image_on_an_empty_is_a_reference", len(added) == 1 and added[0].empty_display_type == 'IMAGE'
-          and not marker.material_slots, [o.name for o in added])
+          and not marker.material_slots, [[o.name for o in added], list(spot), round(clear)])
 
     state["phase"] = "image_editor"
     image_region = region_of(image_area)
@@ -422,24 +482,40 @@ def run():
     check("image_attached_to_the_chat", len(controller.attachments) == attached + 1, len(controller.attachments))
     references = len(studio.view(studio_area)["references"])
     studio.view(studio_area)["collapsed"] = False
-    yield from frames(4)
+    studio_area.tag_redraw()
+    # The grid is laid out again under the references: wait for the tile itself, at whatever size the window is.
+    yield from frames(4)   # The layout of the frame before still names the tile: let the new one be drawn.
+    found = wide and (yield from wait(lambda: tile(studio_area, ids["poster"]), 10))
+    check("the_poster_is_in_the_grid_under_the_references", bool(found),
+          [region_of(studio_area).width, region_of(studio_area).height])
     studio_region = region_of(studio_area)
-    yield from drag(window, tile(studio_area, ids["poster"]),
-                    (studio_region.x + 120, studio_region.y + studio_region.height - 200))
+    if found:   # Without the tile there is nothing to drag: the check above says so, and the two below fail.
+        yield from drag(window, tile(studio_area, ids["poster"]),
+                        (studio_region.x + 120, studio_region.y + studio_region.height - 200))
     check("image_on_media_studio_is_a_reference", len(studio.view(studio_area)["references"]) == references + 1)
 
     # A drag released back on the grid it came from (a click that moved a little) adds nothing.
     references = len(studio.view(studio_area)["references"])
     grid = studio.view(studio_area)["geometry"]["assets"]
-    yield from drag(window, tile(studio_area, ids["poster"]),
-                    (studio_region.x + grid[0] + grid[2] - 40, studio_region.y + grid[1] + 60))
-    check("a_drop_back_on_the_grid_adds_nothing", len(studio.view(studio_area)["references"]) == references)
+    again = wide and (yield from wait(lambda: tile(studio_area, ids["poster"]), 10))
+    if again:
+        yield from drag(window, tile(studio_area, ids["poster"]),
+                        (studio_region.x + grid[0] + grid[2] - 40, studio_region.y + grid[1] + 60))
+    check("a_drop_back_on_the_grid_adds_nothing",
+          bool(again) and len(studio.view(studio_area)["references"]) == references)
 
     state["phase"] = "click_still_opens"
     window.event_simulate(type='MOUSEMOVE', value='NOTHING', x=10, y=10)
     yield from frames(4)
     opened_before = sum(1 for t in state["trace"] if t[0] == "popup")
-    yield from click(window, tile(studio_area, ids["poster"]))
+    if not (yield from wait(lambda: tile(studio_area, ids["poster"]), 10)):
+        # No grid beside Create at this width: the grid is the whole dock once Create is folded away.
+        studio.view(studio_area)["collapsed"] = True
+        studio_area.tag_redraw()
+        yield from frames(4)
+        yield from wait(lambda: tile(studio_area, ids["poster"]), 10)
+    if tile(studio_area, ids["poster"]):
+        yield from click(window, tile(studio_area, ids["poster"]))
     yield from frames(8)
     popups = [t for t in state["trace"] if t[0] == "popup"][opened_before:]
     capture("click-opens.png")

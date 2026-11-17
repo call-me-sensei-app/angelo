@@ -209,7 +209,7 @@ def main():
         check('chat_approval_no_early_edit', not responses and len(controller.pending) == 1 and
               executor.execute('angelo_inspect_sculpt', {'object':multi.name,'probes':[]})['mesh_revision'] == before_approval)
         call = next(iter(controller.pending.values()))
-        approved = bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=controller.state['id'])
+        approved = __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=controller.state['id'])
         check('chat_approval_runs_native_sculpt', 'FINISHED' in approved and responses[0]['success'] and responses[0]['changed_points'] > 0)
         controller.busy = False
         bpy.ops.ed.undo()
@@ -242,7 +242,7 @@ def main():
         controller.request_tool('native-sculpt-snapshot', 'angelo_sculpt_batch', args, responses.append)
         controller.pump_tools(executor,ui.document_key())
         call = next(iter(controller.pending.values()))
-        bpy.ops.angelo.approve('EXEC_DEFAULT', True, call_id=call.id, session_id=controller.state['id'])
+        __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve('EXEC_DEFAULT', True, call_id=call.id, session_id=controller.state['id'])
         controller.busy = False
         check('snapshot_fixture_has_changed_geometry', responses[0]['success'] and
               not np.array_equal(before_checkpoint_restore,snapshot(window,multi)['positions']))

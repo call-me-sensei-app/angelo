@@ -29,6 +29,7 @@ Inspect review-light-rig.json: a zero exit status alone is not proof.
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import suite_isolation  # noqa: E402,F401  First: no real provider login (provider_isolation.py).
+from qa_person import as_person  # noqa: E402  The person's own action (C's harness scope).
 
 import copy
 import json
@@ -174,7 +175,7 @@ def approval_path(camera):
         details = approvals.approval_details(call.name, shown)
         report["observations"]["approval_details_excerpt"] = details[:1200]
         check("nothing_staged_before_approval", no_stages() and not any(o.name.startswith("QA ") for o in bpy.data.objects))
-        controller.approve_tool(call, executor, DOCUMENT)
+        as_person(controller.approve_tool, call, executor, DOCUMENT)
         result = drive(controller, executor, responses)
         report["observations"]["approval_path_result_status"] = result.get("status")
         check("committed_with_every_check_passing", result.get("status") == "committed"
@@ -214,7 +215,7 @@ def camera_moved_after_resolution(camera):
         approved = call.program_arguments["operations"][0]["parameters"]["location"]
         camera.location = (-camera.location.x, -camera.location.y, camera.location.z)  # Round to the other side.
         window().view_layer.update()
-        controller.approve_tool(call, executor, DOCUMENT)
+        as_person(controller.approve_tool, call, executor, DOCUMENT)
         result = drive(controller, executor, responses)
         made = list(bpy.data.objects["QM Rim"].matrix_world.translation) if "QM Rim" in bpy.data.objects else None
         report["observations"]["camera_moved_after_resolution"] = {
@@ -252,7 +253,7 @@ def parent_moved_in_the_same_program(camera):
         refused = call is None and bool(responses) and "camera" in str(responses[0].get("error", ""))
         outcome = {"refused": refused, "answer": responses[0] if responses else None}
         if call is not None and call.approval:
-            controller.approve_tool(call, executor, DOCUMENT)
+            as_person(controller.approve_tool, call, executor, DOCUMENT)
             result = drive(controller, executor, responses)
             camera_after = camera.matrix_world.translation.copy()
             rim = bpy.data.objects.get("QP Rim")

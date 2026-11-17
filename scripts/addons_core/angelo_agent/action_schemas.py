@@ -6,6 +6,7 @@ Keep schema/default metadata here; action_catalog owns cross-field validation
 and action_kernels dispatches the corresponding staged-only implementations."""
 
 import math
+from . import read_only
 from .action_schema_types import (
     MAX_OPERATIONS, MAX_VERTICES, MAX_EDGES, MAX_FACES, MAX_EVALUATED_VERTICES,
     MAX_SUBDIVISION_LEVELS, MAX_SUBDIVISION_RENDER_LEVELS,
@@ -408,6 +409,7 @@ OPERATION_SCHEMAS = {
                'parameters': schema}, ['kind', 'target', 'parameters'])
     for kind, schema in PARAMETER_SCHEMAS.items()
 }
+VALIDATED_OPERATIONS = read_only.frozen(OPERATION_SCHEMAS)   # What validation reads: as registered, read only.
 
 _mutations = {
     'create_primitive': ('object', 'mesh'), 'armature_create': ('object', 'armature'),

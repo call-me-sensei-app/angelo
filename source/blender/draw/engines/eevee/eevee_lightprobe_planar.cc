@@ -2,8 +2,14 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
 
+/** \file
+ * \ingroup eevee
+ */
+
 #include "eevee_lightprobe_planar.hh"
 #include "eevee_instance.hh"
+
+#include "draw_common.hh"
 
 namespace blender::eevee {
 
@@ -121,6 +127,9 @@ void PlanarProbeModule::set_view(const draw::View &main_view, int2 main_view_ext
     world_clip_buf_.plane = probe.reflection_clip_plane_get();
     world_clip_buf_.push_update();
 
+    /* Hand off gsplat compute workload for the planar view before draws. */
+    DRW_gsplat_ensure_radiance(*inst_.manager, res.view);
+
     RenderBuffers &rbufs = inst_.render_buffers;
     const bool with_raycast = inst_.pipelines.has_raycast;
 
@@ -129,6 +138,11 @@ void PlanarProbeModule::set_view(const draw::View &main_view, int2 main_view_ext
         with_raycast ? GPU_ATTACHMENT_TEXTURE(rbufs.prepass_normal_tx) : GPU_ATTACHMENT_NONE,
         with_raycast ? GPU_ATTACHMENT_TEXTURE(rbufs.object_id_tx) : GPU_ATTACHMENT_NONE,
         GPU_ATTACHMENT_NONE /* motion vectors */);
+    res.prepass_hide_from_raycast_fb.ensure(
+        GPU_ATTACHMENT_TEXTURE_LAYER(depth_tx_, resource_index),
+        GPU_ATTACHMENT_NONE,
+        GPU_ATTACHMENT_NONE,
+        GPU_ATTACHMENT_NONE);
 
     if (with_raycast) {
       rbufs.object_id_tx.clear(uint4(0));
@@ -153,6 +167,7 @@ void PlanarProbeModule::set_view(const draw::View &main_view, int2 main_view_ext
     inst_.pipelines.planar.render(res.view,
                                   depth_tx_.layer_view(resource_index),
                                   res.prepass_fb,
+                                  res.prepass_hide_from_raycast_fb,
                                   res.gbuffer_fb,
                                   res.combined_fb,
                                   extent);

@@ -21,6 +21,8 @@
 
 namespace blender {
 
+struct ID;
+
 template<typename Key>
 bool BLO_memfile_budget_reserve(Set<Key> &set, MemFileWriteBudget *budget, const int64_t count)
 {
@@ -116,6 +118,8 @@ struct WriteDataStableAddressIDs {
 struct WriteData {
   const SDNA *sdna;
   std::ostream *debug_dst = nullptr;
+  /** Angelo: only these IDs are written (#BlendFileWriteParams::only_ids), or all when null. */
+  const blender::Set<const ID *> *only_ids = nullptr;
 
   struct {
     /** Use for file and memory writing (size stored in max_size). */

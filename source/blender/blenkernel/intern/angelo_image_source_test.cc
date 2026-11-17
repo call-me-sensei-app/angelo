@@ -21,19 +21,20 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_string.h"
+#include "BLI_rect.hh"
+#include "BLI_string.hh"
 
 #include "BKE_angelo_image_source.hh"
 #include "BKE_global.hh"
 #include "BKE_gtest_base.hh"
 #include "BKE_image.hh"
-#include "BKE_image_partial_update.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_main.hh"
 #include "BKE_packedFile.hh"
 
 #include "IMB_imbuf.hh"
 #include "IMB_imbuf_types.hh"
+#include "IMB_partial_update.hh"
 
 #include "DNA_image_types.h"
 
@@ -101,9 +102,23 @@ class AngeloImageSourceTest : public BlenderGTestBase {
   {
     return image->runtime->angelo_source_revision.load();
   }
-  static uint64_t pixels(const Image *image)
+  static uint64_t pixels(Image *image)
   {
-    return image->runtime->angelo_pixel_revision.load();
+    return BKE_image_angelo_pixel_revision(image);
+  }
+
+  /** A pixel write as painting, Python and bakes mark it (Blender 5.3 marks the buffer). */
+  static void write_pixels(Image *image, const rcti *region = nullptr)
+  {
+    ImBuf *ibuf = BKE_image_acquire_ibuf(image, nullptr, nullptr);
+    ASSERT_NE(ibuf, nullptr);
+    if (region != nullptr) {
+      IMB_partial_update_mark_region(ibuf, *region);
+    }
+    else {
+      IMB_partial_update_mark_full(ibuf);
+    }
+    BKE_image_release_ibuf(image, ibuf, nullptr);
   }
 };
 
@@ -184,7 +199,7 @@ TEST_F(AngeloImageSourceTest, inferred_color_space_is_stable_across_unchanged_re
     ASSERT_NE(image, nullptr);
     if (packed) {
       BKE_image_packfiles(nullptr, image, bmain->filepath);
-      ASSERT_NE(image->packedfiles.first, nullptr);
+      ASSERT_NE(image->packedfiles.first(), nullptr);
     }
     /* UDIM paths cannot be probed before a real tile read. Unresolved color space is also
      * legitimate for packed bytes: the first decode supplies the effective default. */
@@ -251,6 +266,85 @@ TEST_F(AngeloImageSourceTest, same_size_rewrite_with_the_old_modified_time_still
   fs::last_write_time(path("a.bmp"), modified); /* The change time still moves. */
   ASSERT_EQ(fs::file_size(path("a.bmp")), bytes);
   ASSERT_EQ(fs::last_write_time(path("a.bmp")), modified);
+  BKE_image_free_buffers(image);
+  EXPECT_EQ(read_pixels(image), 11);
+  EXPECT_NE(source(image), start);
+}
+
+/** Sets the racy window for one test and puts the previous one back. */
+class RacyWindow {
+  int64_t previous_;
+
+ public:
+  explicit RacyWindow(const int64_t window_ns)
+      : previous_(angelo_image_source_set_racy_window_ns(window_ns))
+  {
+  }
+  ~RacyWindow()
+  {
+    angelo_image_source_set_racy_window_ns(previous_);
+  }
+};
+
+constexpr int64_t hour_ns = int64_t(3600) * 1000000000;
+
+TEST_F(AngeloImageSourceTest, racy_loads_digest_the_bytes_and_settle_without_changing_it)
+{
+  write_png(path("a.png"), 4, 4, 10);
+  Image *image = BKE_image_load(bmain, path("a.png").c_str());
+  int64_t digests = angelo_image_source_content_digests();
+  {
+    RacyWindow racy(hour_ns); /* The file changed "just now": its stamps cannot tell a rewrite. */
+    EXPECT_EQ(read_pixels(image), 10);
+    EXPECT_EQ(angelo_image_source_content_digests(), digests + 1);
+    const uint64_t start = source(image);
+    BKE_image_free_buffers(image);
+    EXPECT_EQ(read_pixels(image), 10);
+    EXPECT_EQ(angelo_image_source_content_digests(), digests + 2);
+    EXPECT_EQ(source(image), start);
+  }
+  const uint64_t start = source(image);
+  RacyWindow settled(0); /* Long past: the stamps decide. */
+  digests = angelo_image_source_content_digests();
+  BKE_image_free_buffers(image);
+  EXPECT_EQ(read_pixels(image), 10); /* Right after a racy load: still digested. */
+  EXPECT_EQ(angelo_image_source_content_digests(), digests + 1);
+  EXPECT_EQ(source(image), start);
+  BKE_image_free_buffers(image);
+  EXPECT_EQ(read_pixels(image), 10); /* Then the stamps alone, and still unchanged. */
+  EXPECT_EQ(angelo_image_source_content_digests(), digests + 1);
+  EXPECT_EQ(source(image), start);
+}
+
+TEST_F(AngeloImageSourceTest, a_file_last_changed_long_before_its_load_is_never_digested)
+{
+  RacyWindow settled(0);
+  write_png(path("a.png"), 4, 4, 10);
+  Image *image = BKE_image_load(bmain, path("a.png").c_str());
+  const int64_t digests = angelo_image_source_content_digests();
+  for (int i = 0; i < 3; i++) {
+    BKE_image_free_buffers(image);
+    EXPECT_EQ(read_pixels(image), 10);
+  }
+  EXPECT_EQ(angelo_image_source_content_digests(), digests);
+}
+
+TEST_F(AngeloImageSourceTest, a_same_size_rewrite_loaded_after_the_window_still_changes_it)
+{
+  /* The rewrite shares the first write's tick (or its write time is put back), and the next load
+   * comes after the window: the racy first load's digest still finds it. */
+  write_png(path("a.bmp"), 4, 4, 10, IMB_FTYPE_BMP);
+  Image *image = BKE_image_load(bmain, path("a.bmp").c_str());
+  uint64_t start;
+  {
+    RacyWindow racy(hour_ns);
+    EXPECT_EQ(read_pixels(image), 10);
+    start = source(image);
+  }
+  const auto modified = fs::last_write_time(path("a.bmp"));
+  write_png(path("a.bmp"), 4, 4, 11, IMB_FTYPE_BMP);
+  fs::last_write_time(path("a.bmp"), modified);
+  RacyWindow settled(0);
   BKE_image_free_buffers(image);
   EXPECT_EQ(read_pixels(image), 11);
   EXPECT_NE(source(image), start);
@@ -421,18 +515,102 @@ TEST_F(AngeloImageSourceTest, pixel_edits_and_gpu_rebuilds_leave_it_unchanged)
   const uint64_t start = source(image);
   const uint64_t pixels_start = pixels(image);
 
-  BKE_image_partial_update_mark_full_update(image);
+  write_pixels(image);
   EXPECT_NE(pixels(image), pixels_start);
   EXPECT_EQ(source(image), start);
 
+  /* Another pass, layer or frame: Blender 5.3 marks no buffer for these. */
   ImageUser pass_user{};
   BKE_imageuser_default(&pass_user);
   pass_user.pass = 1;
   pass_user.layer = 1;
   pass_user.framenr = 7;
-  BKE_image_partial_update_mark_gpu_stale(image);
-  BKE_image_ensure_gpu_texture(image, &pass_user);
+  const uint64_t written = pixels(image);
+  BKE_image_user_frame_calc(image, &pass_user, 7);
+  ImBuf *ibuf = BKE_image_acquire_ibuf(image, &pass_user, nullptr);
+  BKE_image_release_ibuf(image, ibuf, nullptr);
   EXPECT_EQ(source(image), start);
+  EXPECT_EQ(pixels(image), written);
+}
+
+/* Freeing an image frees the record of its loads with its runtime data (image_free_data). Counted
+ * by record, not by allocator blocks: the image cache's limiter keeps a block of its own per
+ * load (MEM_CacheLimiter's queue), whatever happens to the record. */
+TEST_F(AngeloImageSourceTest, freeing_an_image_frees_its_load_record)
+{
+  write_png(path("a.png"), 4, 4, 10);
+  const int64_t before = angelo_image_source_records_in_use();
+  for (int cycle = 0; cycle < 3; cycle++) {
+    Image *image = BKE_image_load(bmain, path("a.png").c_str());
+    EXPECT_EQ(read_pixels(image), 10);
+    EXPECT_NE(image->runtime->angelo_source_loads, nullptr);
+    EXPECT_EQ(angelo_image_source_records_in_use(), before + 1);
+    BKE_id_free(bmain, &image->id);
+    EXPECT_EQ(angelo_image_source_records_in_use(), before) << "cycle " << cycle;
+  }
+}
+
+/* Angelo: `Image.angelo_pixel_revision` on Blender 5.3, where pixel writes are marked on the
+ * image buffer (IMB_partial_update.hh) rather than on the image: each write changes it, nothing
+ * else does, and it never returns to a value it had (a reader compares it with the last one it
+ * saw). Ported from 1.0.10's image_partial_update_test.cc pixel-revision tests. */
+TEST_F(AngeloImageSourceTest, pixel_revision_changes_on_each_write_and_only_then)
+{
+  write_png(path("a.png"), 8, 8, 10);
+  Image *image = BKE_image_load(bmain, path("a.png").c_str());
+  EXPECT_EQ(read_pixels(image), 10);
+  const uint64_t start = pixels(image);
+  EXPECT_EQ(pixels(image), start); /* Reading is not a write. */
+
+  write_pixels(image);
+  const uint64_t full = pixels(image);
+  EXPECT_GT(full, start);
+  rcti region;
+  BLI_rcti_init(&region, 1, 3, 2, 4);
+  write_pixels(image, &region);
+  const uint64_t partial = pixels(image);
+  EXPECT_GT(partial, full);
+
+  /* Acquiring, releasing and frame changes write nothing. */
+  EXPECT_EQ(read_pixels(image), 10);
+  ImageUser user{};
+  BKE_imageuser_default(&user);
+  BKE_image_user_frame_calc(image, &user, 12);
+  EXPECT_EQ(pixels(image), partial);
+}
+
+TEST_F(AngeloImageSourceTest, pixel_revision_never_moves_back_when_written_buffers_are_freed)
+{
+  write_png(path("a.png"), 8, 8, 10);
+  Image *image = BKE_image_load(bmain, path("a.png").c_str());
+  EXPECT_EQ(read_pixels(image), 10);
+  write_pixels(image);
+  const uint64_t written = pixels(image);
+
+  /* The written buffer is gone (memory pressure); a fresh load holds no write of its own. */
+  BKE_image_free_buffers(image);
+  EXPECT_EQ(pixels(image), written);
+  EXPECT_EQ(read_pixels(image), 10);
+  EXPECT_EQ(pixels(image), written);
+
+  /* A later write is newer than anything reported before. */
+  write_pixels(image);
+  EXPECT_GT(pixels(image), written);
+}
+
+TEST_F(AngeloImageSourceTest, pixel_revision_of_one_image_ignores_writes_to_another)
+{
+  write_png(path("a.png"), 8, 8, 10);
+  write_png(path("b.png"), 8, 8, 20);
+  Image *a = BKE_image_load(bmain, path("a.png").c_str());
+  Image *b = BKE_image_load(bmain, path("b.png").c_str());
+  EXPECT_EQ(read_pixels(a), 10);
+  EXPECT_EQ(read_pixels(b), 20);
+  const uint64_t a_start = pixels(a);
+  const uint64_t b_start = pixels(b);
+  write_pixels(b);
+  EXPECT_EQ(pixels(a), a_start);
+  EXPECT_GT(pixels(b), b_start);
 }
 
 TEST_F(AngeloImageSourceTest, other_images_are_unaffected_and_values_never_repeat)

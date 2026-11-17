@@ -11,6 +11,7 @@ real Turn off and the size Media Studio shows are ``test_blender_studio_assets``
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import ast
 import os
@@ -93,10 +94,10 @@ class FreeTests(unittest.TestCase):
                 with studio_assets.sync_lock(directory) as got:
                     self.assertTrue(got)
                     held.set()
-                    release.wait(5)
+                    release.wait(CAP_S)
             thread = threading.Thread(target=writer)
             thread.start()
-            held.wait(5)
+            held.wait(CAP_S)
             try:
                 self.assertIsNone(space.free(directory, active=False))
             finally:
@@ -170,13 +171,13 @@ class FreeTests(unittest.TestCase):
                     release.wait()
             thread = threading.Thread(target=writer, daemon=True)
             thread.start()
-            held.wait(5)
+            held.wait(CAP_S)
             # No limit on this wait (the bounded one is checked below): only the writer's end lets the free go on.
             worker = space.free_later(directory, False, results.append, wait=float("inf"))
             self.assertTrue(worker.is_alive(), "returned at once, the worker waits")
             release.set()
             thread.join()
-            worker.join(5)
+            worker.join(CAP_S)
             self.assertEqual(results[0][1], len(ours))
             with self.assertRaises(ValueError):
                 space.free_later(directory, True, results.append)
@@ -184,8 +185,8 @@ class FreeTests(unittest.TestCase):
             release.clear()
             thread = threading.Thread(target=writer, daemon=True)
             thread.start()
-            held.wait(5)
-            space.free_later(directory, False, results.append, wait=0.3).join(5)
+            held.wait(CAP_S)
+            space.free_later(directory, False, results.append, wait=0.3).join(CAP_S)
             release.set()
             thread.join()
             self.assertIsNone(results[1], "still busy after the wait: None, reported as busy")
@@ -198,7 +199,7 @@ class FreeTests(unittest.TestCase):
             measure = space.measure
 
             def slow(path):
-                go.wait(5)
+                go.wait(CAP_S)
                 return measure(path)
             space.forget_size()
             with mock.patch.object(space, "measure", slow):
@@ -206,7 +207,7 @@ class FreeTests(unittest.TestCase):
                 worker = space._size["worker"]
                 space.free(directory, active=False)
                 go.set()
-                worker.join(5)
+                worker.join(CAP_S)
             self.assertIsNone(space._size["bytes"], "the older total was dropped")
 
     def test_turned_on_again_before_it_holds_the_folder_frees_nothing(self):

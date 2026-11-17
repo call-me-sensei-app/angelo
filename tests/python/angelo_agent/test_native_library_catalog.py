@@ -339,6 +339,7 @@ class StatusPlacementTests(unittest.TestCase):
 
         class Library:
             catalog, status = None, "ready"   # A status word: the panel once unpacked it in place of the download's.
+            error = ""                        # As the library holds it when nothing failed (library_host).
 
             def get(self, _id):
                 return None

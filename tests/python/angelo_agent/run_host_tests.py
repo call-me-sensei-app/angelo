@@ -7,6 +7,8 @@ Usage, from the repository root:
     python3 tests/python/angelo_agent/run_host_tests.py [--max-skips N] [--timeout SECONDS] [--shard K/N] [TEST_FILE ...]
 
 With test files named (``test_native_*.py``, by name or path), only those run.
+A named file whose import raises anything is one failed test, as discovery
+reports it, and the files after it still run (``failed_module``).
 ``--shard K/N`` runs every Nth file of the sorted suite starting with the Kth,
 so N processes together run each file exactly once (CI's parallel jobs).
 While another run holds the machine's benchmark lock, the whole suite is
@@ -33,17 +35,26 @@ import faulthandler
 import os
 from pathlib import Path
 import sys
+import time
+import traceback
 import types
 import unittest
 
+import host_file_modules
 from host_test_policy import is_environment_skip, pending_reason
+import host_waits
 
 HERE = Path(__file__).resolve().parent
 sys.path.append(str(HERE.parents[2] / "scripts/angelo"))   # Appended: shadows no test's import.
 import load_guard  # noqa: E402
 
 
+# Every file's tests run while the product imports the module objects that file holds (host_file_modules): a test
+# never patches one copy of a product module while the code runs another.
+LOADER = host_file_modules.Loader()
 # Blender's own modules: outside Blender, any entry under these names is a test's stand-in.
+SLOW_S = 1.0    # A test that takes this long or more is listed with its time as it ends,
+SLOWEST = 30    # and the slowest this many again at the end of the run.
 BLENDER_MODULES = frozenset({"bpy", "_bpy", "bpy_types", "bpy_extras", "bmesh", "mathutils", "gpu", "gpu_extras", "blf",
                              "bl_math", "bl_ui", "bl_operators", "addon_utils", "aud", "idprop", "imbuf", "freestyle"})
 
@@ -51,22 +62,32 @@ BLENDER_MODULES = frozenset({"bpy", "_bpy", "bpy_types", "bpy_extras", "bmesh", 
 def _stand_in(name, value):
     """True for a sys.modules entry no import made under a name code imports: a namespace, a mock or None, or a module
     built by hand for one of Blender's modules or a package's submodule. Every module an import loads carries its
-    spec; a C extension's own top-level helper module (Cython's cython_runtime) has none and is no stand-in."""
+    spec; a C extension's own top-level helper module (Cython's cython_runtime) has none and is no stand-in, and
+    neither is what a real module registers of its own under its own name, module or not."""
+    if _part_of_a_real_module(value):
+        return False
     if not isinstance(value, types.ModuleType):
         return True
-    if getattr(value, "__spec__", None) is not None or _part_of_a_real_module(value):
+    if getattr(value, "__spec__", None) is not None:
         return False
     return name.partition(".")[0] in BLENDER_MODULES or "." in name
 
 
 def _part_of_a_real_module(value):
-    """A C extension's own submodule (pyexpat.errors, also registered as xml.parsers.expat.errors): no spec, but the
-    attribute of the real, imported module its own name says it is. macOS loads pyexpat inside the first test that
-    reads XML, so without this every such test failed locally as leaving a stand-in; Linux CI has it loaded earlier."""
-    parent, _, attribute = getattr(value, "__name__", "").rpartition(".")
+    """What a real, imported module registered of its own: no spec, but the attribute of the module its own name says
+    it is. A C extension's own submodule (pyexpat.errors, also registered as xml.parsers.expat.errors): macOS loads
+    pyexpat inside the first test that reads XML, so without this every such test failed locally as leaving a
+    stand-in; Linux CI has it loaded earlier. And a namespace that is no module at all: up to Python 3.12 typing
+    registers two classes as typing.io and typing.re, so the first test of a process to import typing (numpy does)
+    failed the same way. Such a value must also say it was defined in that module (``__module__``): an object a test
+    made and hung on a real module is the test's."""
+    own = getattr(value, "__name__", "")
+    parent, _, attribute = own.rpartition(".") if isinstance(own, str) else ("", "", "")
     owner = sys.modules.get(parent) if parent else None
-    return (owner is not None and getattr(owner, "__spec__", None) is not None
-            and parent.partition(".")[0] not in BLENDER_MODULES and getattr(owner, attribute, None) is value)
+    if (owner is None or getattr(owner, "__spec__", None) is None or parent.partition(".")[0] in BLENDER_MODULES
+            or getattr(owner, attribute, None) is not value):
+        return False
+    return isinstance(value, types.ModuleType) or getattr(value, "__module__", None) == parent
 
 
 def _added(before):
@@ -84,6 +105,11 @@ class IsolatedResult(unittest.TextTestResult):
     the earlier test put in late. A class or module fixture may hold a stand-in for its whole class."""
 
     def startTest(self, test):
+        self._started = time.monotonic()
+        between = self._started - self._stopped if self._stopped else 0.0
+        if between >= SLOW_S:   # A class's or module's set-up or tear-down (unittest times no test for them).
+            print(f"\nSLOW {between:.1f} s between {self._last_id} and {test.id()} (set-ups, tear-downs)", flush=True)
+        self._fixture_ran_out = host_waits.take()   # Ran out in those set-ups and tear-downs.
         late = _added(self._after) if type(test) is self._last_class else []
         if late:
             self._restore(self._after, late)
@@ -97,10 +123,25 @@ class IsolatedResult(unittest.TextTestResult):
         if left:
             self._restore(self._before, left)
             self._fail(test, f"stand-in module(s) {', '.join(left)} outlived this test in sys.modules")
+        for ran_out, where in ((self._fixture_ran_out, " in the set-ups and tear-downs before this test"),
+                               (host_waits.take(), "")):
+            if ran_out:   # host_waits.watch(): a wait given the hang cap ran it out.
+                self._failed(test, "a wait given host_waits.CAP_S ran out%s at %s: a hang, or a wait that expects "
+                                   "nothing (a window) given the cap; a window keeps its short time, marked "
+                                   "'# window: <why>'" % (where, ", ".join(ran_out)))
+        spent = time.monotonic() - self._started
+        if spent >= SLOW_S:   # Printed as it ends: a log cut by a job's time limit still has every time so far.
+            self.slow.append((spent, test.id()))
+            print(f"\nSLOW {spent:.1f} s {test.id()}", flush=True)
         self._after, self._last_class, self._last_id = dict(sys.modules), type(test), test.id()
+        self._stopped = time.monotonic()
         super().stopTest(test)
 
-    _after, _last_class, _last_id = {}, None, None
+    _after, _last_class, _last_id, _started, _stopped, _fixture_ran_out = {}, None, None, 0.0, 0.0, ()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.slow = []   # (seconds, test id) of every test that took SLOW_S or more.
 
     @staticmethod
     def _restore(before, names):
@@ -111,9 +152,12 @@ class IsolatedResult(unittest.TextTestResult):
                 del sys.modules[name]
 
     def _fail(self, test, what):
+        self._failed(test, f"{what}; put right so later tests see what they would alone. Stop every "
+                           "sys.modules patch in reverse order, with addCleanup.")
+
+    def _failed(self, test, message):
         try:
-            raise AssertionError(f"{what}; put right so later tests see what they would alone. Stop every "
-                                 "sys.modules patch in reverse order, with addCleanup.")
+            raise AssertionError(message)
         except AssertionError:
             self.addFailure(test, sys.exc_info())
 
@@ -135,6 +179,20 @@ def skipped_module(name, reason):
     def test(self):
         raise unittest.SkipTest(reason)
     return type(name, (unittest.TestCase,), {"test_module": test})("test_module")
+
+
+def failed_module(name, error):
+    """One failed test standing for module ``name``, whose import raised ``error``.
+
+    For a file named on the command line unittest's loader turns only an ImportError into a failed test. Any other
+    exception at import (an attribute a module no longer has, an undefined name, a syntax error) left the loader
+    and ended the run before a single test ran, where discovery reports one error and goes on. CI's shards and its
+    files-alone runs name their files, so one such file hid every other file of its shard."""
+    report = "Failed to import test module: %s\n%s" % (name, "".join(traceback.format_exception(error)))
+
+    def test(self):
+        raise ImportError(report)
+    return type(name, (unittest.TestCase,), {name: test})(name)
 
 
 def main(argv=None):
@@ -181,16 +239,25 @@ def main(argv=None):
         suite = unittest.TestSuite()
         for name in names:
             try:
-                suite.addTest(unittest.defaultTestLoader.loadTestsFromNames([name]))
+                suite.addTest(LOADER.loadTestsFromNames([name]))
             except unittest.SkipTest as skip:   # A module that skips itself (a platform it can't import on): one
                 suite.addTest(skipped_module(name, str(skip)))   # skipped test, as discovery reports it.
+            except Exception as error:  # noqa: BLE001 - whatever its import raised, the file is one failed test.
+                suite.addTest(failed_module(name, error))
     else:
-        suite = unittest.defaultTestLoader.discover(str(HERE), pattern="test_native_*.py", top_level_dir=str(HERE))
+        suite = LOADER.discover(str(HERE), pattern="test_native_*.py", top_level_dir=str(HERE))
     # Every module puts the add-on's folder first on sys.path when imported, so one process ends discovery with
     # hundreds of copies; each import that misses (bpy outside Blender) then checks them all. The first copy is
     # the one that resolves, so keeping only first copies changes no import.
     sys.path[:] = list(dict.fromkeys(sys.path))
+    host_waits.watch()
     result = unittest.TextTestRunner(verbosity=1, resultclass=IsolatedResult).run(suite)
+    for spent, test in sorted(result.slow, reverse=True)[:SLOWEST]:   # Per-test timing in every log.
+        print(f"SLOWEST {spent:.1f} s {test}")
+    last = host_waits.take()   # In the last class's or module's tear-down: no test after it to fail.
+    if last:
+        print("A wait given host_waits.CAP_S ran out in the last tear-downs at %s: a hang, or a window given the cap."
+              % ", ".join(last), file=sys.stderr)
     for test, reason in result.skipped:
         print(f"SKIPPED {test.id()}: {reason}")
     unexpected = [(test, reason) for test, reason in result.skipped if not is_environment_skip(reason)]
@@ -201,7 +268,7 @@ def main(argv=None):
         print(f"EXPECTED FAILURE {test.id()}: {pending_reason(test) or 'no windows_fix_pending reason'}")
     if result.expectedFailures:
         print(f"Expected failures: {len(result.expectedFailures)} (product fixes pending).")
-    if not result.wasSuccessful():
+    if not result.wasSuccessful() or last:
         return 1
     if args.max_skips is not None and len(unexpected) > args.max_skips:
         print(f"{len(unexpected)} unclassified tests were skipped; the limit is {args.max_skips}.", file=sys.stderr)

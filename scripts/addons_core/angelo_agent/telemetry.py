@@ -24,7 +24,7 @@ from .chat_settings import EFFORTS
 from .fallback_categories import CATEGORIES as FALLBACK_CATEGORIES
 from .failure_codes import CODES as FAILURE_CODES
 from .outcome_evidence import scene_outcome_evidence  # noqa: F401  (its importers' name)
-from .provider_registry import CODING_MODES
+from .provider_registry import is_coding_mode
 from .provider_usage import MAX_COST_USD, MAX_SERVED_MODELS, MAX_TOKENS, TOKENS as USAGE_TOKENS
 from .request_path import PathFacts, clean_path, running_usage
 from .runtime_environment import PROMPT_CACHE_TTLS
@@ -91,7 +91,7 @@ def clean_route(value):
     if not isinstance(value, dict):
         return None
     route = {}
-    if value.get("mode") in CODING_MODES:
+    if is_coding_mode(value.get("mode")):
         route["mode"] = value["mode"]
     requested = value.get("requested_model")
     if requested == "" or model_id(requested):

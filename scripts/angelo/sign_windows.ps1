@@ -160,6 +160,7 @@ param(
     [switch]$DryRun
 )
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "windows_native_call.ps1")   # Invoke-NativeCapture: a program's error output under Stop.
 # Secret Manager and the time-stamping services need TLS 1.2; Windows PowerShell 5.1 may default to older protocols.
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 # PowerShell does not check a default against its ValidateSet, and these defaults come from the environment: a
@@ -703,9 +704,7 @@ function Invoke-SignTool([string]$Tool, [string[]]$Arguments) {
         $env:AZURE_TENANT_ID = $AzureTenantId; $env:AZURE_CLIENT_ID = $AzureClientId; $env:AZURE_FEDERATED_TOKEN_FILE = $FederatedTokenFile
         $env:AZURE_TOKEN_CREDENTIALS = "WorkloadIdentityCredential"   # an allow-list where Azure.Identity reads it
     }
-    $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    try { $output = & $Tool @Arguments 2>&1 | Out-String; $code = $LASTEXITCODE } finally {
-        $ErrorActionPreference = $old
+    try { $ran = Invoke-NativeCapture $Tool $Arguments; $output = $ran.Text; $code = $ran.Code } finally {
         if ($federated) {
             foreach ($name in "AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_FEDERATED_TOKEN_FILE", "AZURE_TOKEN_CREDENTIALS") {
                 Remove-Item -LiteralPath ("Env:" + $name) -ErrorAction SilentlyContinue

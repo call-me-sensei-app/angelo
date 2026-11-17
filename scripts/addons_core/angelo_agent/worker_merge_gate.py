@@ -16,7 +16,8 @@ hosted chat is held (``chat.hold``: no admission, answered once no call executes
 A refusal, a worker that ended mid-hold, or no answer in time (``HOLD_SECONDS`` for the holds, then ``LEASE_WAIT`` for
 the leases, each shared by all) fails the gate and releases it at once; the merge then runs only to its refusal
 (WRITER_BUSY, nothing merged) and its chat says why, with a support code (``FAILED``). A worker whose process ended
-before its lease leaves its file to read: nothing writes it any more. A lease is read under only while at least
+before its lease, or ends within the leases' time once its connection closed (one Angelo is stopping:
+``stopped_within``), leaves its file to read: nothing writes it any more. A lease is read under only while at least
 ``FRESH`` of its granted time is left: an older one is released and asked again before the merge runs, or refuses the
 merge at its run. A release reaches each worker only after its own hold or lease was answered or given up on, so it
 always follows the request it ends. One gate per merge call: the same call applied again joins it; another merge
@@ -30,6 +31,7 @@ without asking first asks and waits there, bounded (``waited``, ``worker_chat_li
 the base. Standard library only, no bpy; answers land on their own threads, everything else runs on the main thread.
 """
 
+import subprocess
 import threading
 import time
 from contextlib import contextmanager
@@ -103,11 +105,12 @@ class Gate:
         failed = isinstance(answer, lifecycle.ChatOpFailed)
         lease = None if failed else (worker, answer.get("lease"), time.monotonic(),
                                      _seconds(answer.get("seconds")), path)
+        # Ended, or ending within the leases' time (being stopped): nothing writes the file any more.
+        gone = failed and stopped_within(worker, self.deadline - time.monotonic())
         with self._lock:
             late = self.released
             if not late and lease is not None:
                 self.leases.append(lease)
-            gone = failed and lifecycle._process_ended(worker)   # Ended meanwhile: nothing writes the file any more.
             if not late and (not failed or gone):
                 self._waiting -= 1
             ready = not late and (not failed or gone) and self._waiting == 0
@@ -152,6 +155,25 @@ class Gate:
             leases, self.leases = list(self.leases), []
         self.done.set()
         _release(held, leases)
+
+
+def stopped_within(worker, seconds):
+    """Whether ``worker``'s process has ended, or ends within ``seconds`` once it can never answer again (its
+    connection ended or closed: Angelo is stopping it, and its stop ends the process, bounded). A merge after one
+    that stopped its workers asked a worker whose connection had closed and whose process had not yet exited, and was
+    refused (WRITER_BUSY, "Could not reach the worker" or "The worker has ended"); a process that ended writes nothing
+    any more, so its file is read without a lease. A worker still connected is never waited for."""
+    process = getattr(worker, "process", None)
+    if process is None or process.poll() is not None:
+        return True
+    alive = getattr(worker, "alive", None)   # ``worker_process.Worker.alive``: connected and running.
+    if (alive is None or alive()) and not getattr(getattr(worker, "client", None), "closed", False):
+        return False
+    try:
+        process.wait(max(0.0, seconds))
+    except subprocess.TimeoutExpired:
+        return False
+    return True
 
 
 def _seconds(value):

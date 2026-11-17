@@ -25,7 +25,7 @@ import contextlib
 import threading
 import time
 
-from . import team_http, team_signin
+from . import net_integrity, team_http, team_signin
 from .display_text import Text
 from .team_errors import (BAD_RECORD, BUSY, DROPPED, HELD_ELSEWHERE, LOCKED, LOST, NO_RECORD, READ_LATER, SIGN_IN,
                           SIGNED_OUT_NOTE, NotSent, SignInRequired, TeamError, Unanswered, oauth_error, unreachable)
@@ -72,7 +72,8 @@ class RefreshTasks:
 
     def _token_call(self, form):
         body, headers = form_body(dict(form, client_id=team_signin.CLIENT_ID))
-        status, _answer, data = self._transport("POST", self.console_url + "/api/oauth/token", headers, body)
+        url = net_integrity.checked(self.console_url) + "/api/oauth/token"   # Only a console Angelo named.
+        status, _answer, data = self._transport("POST", url, headers, body)
         if 200 <= status < 300:
             tokens = parse_tokens(json_object(data))
             if tokens is None:
@@ -190,7 +191,7 @@ class RefreshTasks:
         except (NotSent, TeamError) as error:
             self._keep(token, epoch)  # Never reached the console, or refused unprocessed: still valid.
             self._unmark(token, epoch)
-            raise error if isinstance(error, TeamError) else unreachable(self.console_url) from None
+            raise error if isinstance(error, TeamError) else unreachable(self.console_url, error) from None
         except Unanswered:
             self._end(epoch, Text(DROPPED))
             raise SignInRequired(Text(DROPPED)) from None

@@ -17,6 +17,7 @@ Pinned here:
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
+from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import sys
 import threading
@@ -36,7 +37,7 @@ from angelo_agent.chat_settings import normalize_models  # noqa: E402
 MODELS = normalize_models([{"model": "gpt-a", "isDefault": True}, {"model": "gpt-b"}])
 
 
-def until(predicate, seconds=5.0):
+def until(predicate, seconds=CAP_S):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         if predicate():

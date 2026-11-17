@@ -26,14 +26,18 @@ def tree(name):
     return ast.parse((ADDON / name).read_text(encoding="utf-8"))
 
 
+def _angelo_ops(node):
+    """``bpy.ops.angelo``, bare or through a guard's wrapper of it (``grant_guard.clicked(bpy.ops.angelo)``)."""
+    if isinstance(node, ast.Call) and len(node.args) == 1:
+        node = node.args[0]
+    return (isinstance(node, ast.Attribute) and node.attr == "angelo" and isinstance(node.value, ast.Attribute)
+            and node.value.attr == "ops")
+
+
 def operator_calls(node):
-    """``angelo.<name>`` for every ``bpy.ops.angelo.<name>`` attribute below ``node``."""
-    found = set()
-    for child in ast.walk(node):
-        if (isinstance(child, ast.Attribute) and isinstance(child.value, ast.Attribute) and child.value.attr == "angelo"
-                and isinstance(child.value.value, ast.Attribute) and child.value.value.attr == "ops"):
-            found.add("angelo." + child.attr)
-    return found
+    """``angelo.<name>`` for every ``bpy.ops.angelo.<name>`` attribute below ``node``, wrapped by a guard or not."""
+    return {"angelo." + child.attr for child in ast.walk(node)
+            if isinstance(child, ast.Attribute) and _angelo_ops(child.value)}
 
 
 def method(module, cls, name):
