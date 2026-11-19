@@ -48,6 +48,9 @@ inline constexpr double SHIELD_SECONDS = 1.0;
 /** Any other grant control mints only for a press after a real pointer move inside it at least
  * this long after it was drawn there (the coordinator's ruling on the review of d3024be). */
 inline constexpr double ARM_SECONDS = 0.3;
+/** The press that brings a window forward arrives with its activation: at most this long after it,
+ * with nothing between but the activation's own synthetic move (the re-review of acd0d465ee9). */
+inline constexpr double ACTIVATION_PRESS_SECONDS = 0.5;
 /** How long a ticket waits for the release that runs its control (a press may be held a while). */
 inline constexpr double TICKET_SECONDS = 5.0;
 /** Bounds on what Python may register or store (a misbehaving caller cannot exhaust memory). */
@@ -103,7 +106,6 @@ inline constexpr const char *APPROVED_SCRIPTS = "approved_scripts"; /* call id -
 inline constexpr const char *TRUSTED_CHATS = "trusted_scripts";     /* chat id -> true. */
 inline constexpr const char *ALWAYS_ALLOW = "always_allow";         /* "on" -> true. */
 inline constexpr const char *CHAT_CLIENTS = "chat_clients";         /* chat id -> external client. */
-inline constexpr const char *SCRIPT_FILES = "script_files";         /* "client/digest" -> true. */
 inline constexpr const char *APPROVED_CALLS = "approved_calls"; /* call id -> invocation digest. */
 inline constexpr const char *APPROVAL_MODES = "approval_modes"; /* chat id -> "AUTO_BOUNDED". */
 
@@ -124,6 +126,17 @@ class Authority {
   void note_move(WindowKey window, int x, int y, double now);
   /** `window` lost focus: every region in it starts again, and its next press mints nothing. */
   void note_deactivate(WindowKey window, double now);
+  /**
+   * `window` came forward (the window manager's activation, before its synthetic pointer move). Its
+   * regions start their shield again. Only a press that arrives with it (`ACTIVATION_PRESS_SECONDS`,
+   * nothing between but that move) is the click that brought the window forward; an activation by
+   * the keyboard, the Dock or another app leaves none, so the person's next press is an ordinary one.
+   */
+  void note_activate(WindowKey window, double now);
+  /** Whether the last press in `window` was the one that brought it forward (it aims, never grants). */
+  bool press_activating(WindowKey window) const;
+  /** Whether `window` lost focus and has taken no event since that ends its window-forward click. */
+  bool returning(WindowKey window) const;
   /** A real pointer press: mints a ticket when it lands on an armed region. True when minted. */
   bool note_press(WindowKey window, int x, int y, double now);
   /** The person's button came up: a gesture's hold ends at the next pointer move. */
@@ -284,10 +297,15 @@ class Authority {
     bool entered = false;
     bool warped = false; /* Code put the pointer in it (`note_warp`): no press until it leaves. */
     bool moved_in = false; /* A real move inside it, ARM_SECONDS after it was drawn there. */
+    double press_aim = -1.0; /* When a press (not a move) aimed at it; a grant waits SHIELD_SECONDS after. */
   };
   struct Window {
     uint64_t epoch = 0;
     bool returning = false;
+    double activated = -1.0e9;     /* When it came forward (`note_activate`). */
+    bool active = true;            /* Not in the background (`note_deactivate` .. `note_activate`). */
+    bool activation_move = false;  /* The activation's synthetic move is still to come. */
+    bool press_activating = false; /* The last press was the one that brought it forward. */
     bool pointer_known = false;
     int px = 0, py = 0;
     double tabbed = -1.0e9, pressed = -1.0e9; /* The person's last Tab and last press, and where. */

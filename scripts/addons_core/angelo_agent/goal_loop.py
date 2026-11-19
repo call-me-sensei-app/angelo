@@ -125,10 +125,12 @@ def _mark(controller):
     _marks[controller.state["id"]] = P.spent(controller)
 
 
-def _since_mark(controller):
-    """``(tokens, usd)`` used since the goal's spend was last counted (0 for a plan's dollars: usage_view.billing)."""
-    tokens, usd = P.spent(controller)
-    mark = _marks.get(controller.state["id"], (tokens, usd))
+def _since_mark(controller, live=False):
+    """``(tokens, usd)`` used since the goal's spend was last counted (0 for a plan's dollars: usage_view.billing);
+    ``live``: with the running request's usage the ledger doesn't hold yet (``goal_probes.usage_now``)."""
+    settled = P.spent(controller)
+    tokens, usd = P.usage_now(controller, settled) if live else settled
+    mark = _marks.get(controller.state["id"], settled)
     used_usd = max(0.0, usd - mark[1]) if P.paid(controller) else 0.0
     return max(0, tokens - mark[0]), used_usd
 
@@ -158,8 +160,10 @@ def request_started(controller, text, host_kind=None, person=None, *, use_compos
     person = (host_kind is None) if person is None else bool(person)
     _documents[chat_id] = getattr(controller, "document", None)
     goal = goal_of(controller)
-    if person and not getattr(controller, "external_client", ""):
-        pending = _pending.pop(chat_id, None) if use_composer_choices else None
+    from .request_rows import apps_send   # An External conversation's app is its requester (not the chat bar's).
+    app = host_kind is None and apps_send(controller)
+    if (person and not getattr(controller, "external_client", "")) or app:
+        pending = _pending.pop(chat_id, None) if use_composer_choices and not app else None
         if pending is not None:
             refusal = _other_holder(controller, _documents[chat_id])
             if refusal:   # Another chat took this document's goal meanwhile: this message goes alone.
@@ -187,7 +191,7 @@ def request_started(controller, text, host_kind=None, person=None, *, use_compos
     _origins.pop(chat_id, None)
     if G.running(goal) and chat_id not in _marks:
         _mark(controller)
-    _rounds[chat_id] = {"kind": _kind(person, host_kind), "started": time.monotonic(), "carried": carried,
+    _rounds[chat_id] = {"kind": _kind(person or app, host_kind), "started": time.monotonic(), "carried": carried,
                         "goal": goal["id"] if G.running(goal) else None}
 
 
@@ -307,12 +311,10 @@ def _over_round_budget(controller, goal):
     working = spent["working_ms"] + (time.monotonic() - started["started"]) * 1000
     if working >= budget["minutes"] * 60_000:
         return "minutes"
-    tokens, usd = _since_mark(controller)
-    live_tokens, live_usd = P.live_usage(controller)
-    usd += live_usd if P.paid(controller) else 0.0
+    tokens, usd = _since_mark(controller, live=True)   # The one meter the hidden session's caps read too.
     if budget.get("usd") is not None and spent["usd"] + usd >= budget["usd"]:
         return "usd"
-    if budget.get("tokens") is not None and spent["tokens"] + tokens + live_tokens >= budget["tokens"]:
+    if budget.get("tokens") is not None and spent["tokens"] + tokens >= budget["tokens"]:
         return "tokens"
     return None
 

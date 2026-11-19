@@ -68,7 +68,7 @@ _PROGRAM_TOOLS = frozenset({"angelo_scene_program", "angelo_apply_recipe", "ange
 # whose refusals come before it sends, saves, asks or ends anything (engine_link_tool_host.execute).
 _UNCHANGED_WHEN_REFUSED = (_PROGRAM_TOOLS - {"angelo_accept_preview"} | {
     "angelo_apply_batch", "angelo_job_start", "angelo_job_cancel", "angelo_engine_link"})
-_STALE_WHEN_REFUSED = frozenset({"angelo_execute_python", "angelo_run_script_file"})   # Only a stale refusal: below.
+_STALE_WHEN_REFUSED = frozenset({"angelo_execute_python"})   # Only a stale refusal: below.
 _MAX_CHECK_LINES = 32
 _MAX_SUMMARY_CHARS = 4000
 

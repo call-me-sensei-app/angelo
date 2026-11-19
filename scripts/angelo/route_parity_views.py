@@ -18,7 +18,7 @@ CORPUS = ROOT / "tests/python/angelo_agent/route_parity_corpus"
 PROBE = "zz_route_probe"
 MAX_DEPTH = 4            # Dict levels analysed below a result's root; deeper data is checked through its ancestor.
 IDENTIFIER = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
-RESULT_ROUTES = ("codex", "claude.direct", "mcp.window", "mcp.headless", "claude.plan.verify", "plan.handoff",
+RESULT_ROUTES = ("codex", "claude.direct", "claude.plan.verify", "plan.handoff",
                  "plan.handoff.certified", "codex.plan.correction")
 
 
@@ -71,27 +71,6 @@ def _packed(tool, result):
 
 def _direct(tool, result):
     return _dump(_packed(tool, result)["content"]), "model_result"
-
-
-def _explained(tool, result):
-    from angelo_agent.external_work import ExternalWork
-    stub = SimpleNamespace(controller=SimpleNamespace(document_invalid=False, cancelled=False),
-                           owner=SimpleNamespace(owns_request=lambda: True))
-    return ExternalWork._explained(stub, _packed(tool, result))
-
-
-def _mcp_window(tool, result):
-    return _dump(_explained(tool, result)["content"]), "model_result"
-
-
-def _mcp_headless(tool, result):
-    """The headless child answers through the same ``ExternalWork``; it adds a note (saved, reloaded) before the
-    result, never in place of it (``headless_host._with_note``)."""
-    try:
-        from angelo_agent import headless_host
-    except ImportError:   # A tree without the headless host: the route does not exist there.
-        return None
-    return _dump(headless_host._with_note(_explained(tool, result), "note")["content"]), "model_result"
 
 
 def _plan_verify(tool, result):
@@ -147,7 +126,7 @@ def _correction(tool, result):
     return _dump(_Context().compact_identifiers([receipt])), form
 
 
-VIEWS = {"codex": _codex, "claude.direct": _direct, "mcp.window": _mcp_window, "mcp.headless": _mcp_headless,
+VIEWS = {"codex": _codex, "claude.direct": _direct,
          "claude.plan.verify": _plan_verify, "plan.handoff": _handoff, "plan.handoff.certified": _handoff_certified,
          "codex.plan.correction": _correction}
 

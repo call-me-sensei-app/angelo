@@ -52,6 +52,14 @@ std::string windows_plain(const std::string &path);
 std::string final_path(const std::string &utf8);
 
 /**
+ * Windows: the file the path names as a program start opens it, every link and junction followed, the last component
+ * included (an installer's or a person's link to the real program), named as `final_path` names it. Empty when it
+ * can't be answered (it doesn't exist, can't be opened, or no drive letter or share names its volume). Elsewhere:
+ * `utf8` unchanged (POSIX callers use `realpath`).
+ */
+std::string followed_path(const std::string &utf8);
+
+/**
  * Windows: whether any existing component of the path, the volume's root excepted, is a name surrogate reparse point
  * (a junction, a volume mount point, a symbolic link, a WSL link): something that names another place. Cloud-file
  * placeholders (OneDrive) and other reparse points that keep their own data are not. True too when a component that

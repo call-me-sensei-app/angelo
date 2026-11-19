@@ -16,6 +16,7 @@ import json
 import sys
 import tempfile
 import unittest
+from host_test_policy import environment_skip
 import uuid
 from pathlib import Path
 from unittest.mock import patch
@@ -37,7 +38,7 @@ from angelo_agent.task_memory import new_memory, scope_token  # noqa: E402
 PNG = b"\x89PNG\r\n\x1a\n" + bytes(64)
 
 
-@unittest.skipUnless(anchored_files_supported(), "descriptor-relative storage required")
+@unittest.skipUnless(anchored_files_supported(), environment_skip("descriptor-relative storage required"))
 class StateFolderMigrationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="angelo-state-migration-")

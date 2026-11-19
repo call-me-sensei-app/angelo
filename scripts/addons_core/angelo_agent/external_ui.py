@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""The person's controls for external AI apps and for Blender MCP (Preferences > AI Providers).
+"""The person's controls for external AI apps (Preferences > AI Providers).
 
 Every effect here runs only from a button whose label says what it does:
 "Connect Claude Code" records the app (``external_clients``), adds Angelo to
@@ -19,7 +19,7 @@ from bpy.types import Operator
 
 from . import grant_guard  # noqa: E402  (only the person grants: grant_guard.grant)
 from . import external_setup, live_windows
-from .external_apps import waiting
+from .external_agent import waiting
 from .external_clients import APP_NAMES, AppRegistry, DEFAULT_CLIENT
 
 OFFERED = ("claude_code", "codex")   # The apps Angelo sets up in 1.0.2 (external_mcp.rst).
@@ -30,6 +30,10 @@ from .ui_text import iface_, n_, rpt_
 results = {}
 ADDED_SESSION = n_("Added Angelo to {app}. Start a new {app} session to use it.")
 ADDED_RESTART = n_("Added Angelo to {app}. Restart {app} to load it.")
+# Connect replaced an entry that started another Angelo build's or copy's server (external_setup.elsewhere).
+UPDATED_SESSION = n_("Updated Angelo in {app}: it started the MCP server in {previous}. Start a new {app} session "
+                     "to use it.")
+UPDATED_RESTART = n_("Updated Angelo in {app}: it started the MCP server in {previous}. Restart {app} to load it.")
 REMOVED = n_("Removed Angelo from {app}.")
 DISCONNECTED_ONLY = n_("Disconnected in Angelo. Remove Angelo from {app}'s MCP settings yourself if it's there.")
 NOT_SAVED = n_("Angelo could not save this connection. Check that Angelo's folder can be written, then try again.")
@@ -67,6 +71,17 @@ def line(key):
     return iface_(template, **dict(fields, app=iface_(fields["app"])))
 
 
+def connect_done(app):
+    """Connect's result line: it added Angelo, or replaced an entry that started another Angelo's server."""
+    session = app in {"claude_code", "codex"}
+
+    def done(previous):
+        if previous:
+            return (UPDATED_SESSION if session else UPDATED_RESTART), {"previous": previous}
+        return ADDED_SESSION if session else ADDED_RESTART
+    return done
+
+
 def _in_background(app, work, done, key=None):
     """Run ``work()`` off the main thread; ``done`` (a template, or a function of what ``work`` returned that gives
     one) or the error lands in ``results[key or app]``; then redraw."""
@@ -78,7 +93,10 @@ def _in_background(app, work, done, key=None):
     def run():
         try:
             result = work()
-            results[key] = (True, done(result) if callable(done) else done, {"app": APP_NAMES[app]})
+            template, fields = done(result) if callable(done) else done, {}
+            if isinstance(template, tuple):   # (template, its other fields)
+                template, fields = template
+            results[key] = (True, template, dict(fields, app=APP_NAMES[app]))
         except Exception as error:  # noqa: BLE001 - shown on the card, with the snippet to paste.
             results[key] = (False, NOT_CHANGED, {"app": APP_NAMES[app], "reason": str(error)[:200]})
         finally:
@@ -138,8 +156,12 @@ class ANGELO_OT_external_app_connect(Operator):
             return {'CANCELLED'}
         _access_on(context)
         python, app = _python(), self.app
-        _in_background(app, lambda: external_setup.connect(app, python, state, name=name),
-                       ADDED_SESSION if app in {"claude_code", "codex"} else ADDED_RESTART)
+
+        def work():
+            previous = external_setup.elsewhere(app, python, state, name)   # Read before the entry is replaced.
+            external_setup.connect(app, python, state, name=name)
+            return previous
+        _in_background(app, work, connect_done(app))
         _redraw()
         return {'FINISHED'}
 
@@ -157,7 +179,7 @@ class ANGELO_OT_external_app_disconnect(Operator):
             return {'CANCELLED'}
         registry = AppRegistry(_state())
         name = _client(self.app, self.client)
-        registry.disconnect(name)   # Forgets its script files too.
+        registry.disconnect(name)
         app = self.app
         # Says what happened: the app's settings changed, or only Angelo's side did (break-it review N2).
         _in_background(app, lambda: external_setup.disconnect(app), lambda removed: REMOVED if removed
@@ -167,40 +189,12 @@ class ANGELO_OT_external_app_disconnect(Operator):
 
 
 def _client(app, client):
-    """The connection Disconnect and Forget act on: a generic MCP app's own client, or the app's (never a new one)."""
+    """The connection Disconnect acts on: a generic MCP app's own client, or the app's (never a new one)."""
     from .external_copy import GENERIC
     if app == "other":
         numbered = client.startswith(GENERIC + "-") and client[len(GENERIC) + 1:].isdigit()
         return client if numbered else GENERIC   # Only a client name Copy setup makes: never a path.
     return DEFAULT_CLIENT[app]
-
-
-def _forget_script_files(client):
-    from . import script_files
-    try:
-        return script_files.forget(app=client)
-    except OSError as error:   # They still end for this session (script_files.forget).
-        print("Angelo: the removed script file approvals could not be saved:", error)
-        return None   # Not saved: another Angelo process (a headless session) still reads them (FR-L1).
-
-
-class ANGELO_OT_external_app_forget_scripts(Operator):
-    bl_idname = "angelo.external_app_forget_scripts"
-    bl_label = "Forget Allowed Script Files"
-    bl_description = "Ask again before this app runs any script file you allowed while it's unchanged"
-    bl_options = {'INTERNAL'}
-    app: StringProperty(options={'SKIP_SAVE'})
-    client: StringProperty(options={'SKIP_SAVE'})   # A generic MCP app's own client (external_copy).
-
-    def execute(self, context):
-        if self.app not in COPYABLE:
-            return {'CANCELLED'}
-        if _forget_script_files(_client(self.app, self.client)) is None:
-            self.report({'ERROR'}, rpt_("Angelo could not save this change, so a session running without Angelo's "
-                                        "window may still allow these script files. Try again."))
-            return {'CANCELLED'}
-        _redraw()
-        return {'FINISHED'}
 
 
 class ANGELO_OT_external_app_copy_setup(Operator):
@@ -319,7 +313,7 @@ def unregister_status():
 
 
 CLASSES = (ANGELO_OT_waiting_chat_open, ANGELO_OT_external_app_open, ANGELO_OT_external_app_connect, ANGELO_OT_external_app_disconnect,
-           ANGELO_OT_external_app_copy_setup, ANGELO_OT_external_app_forget_scripts)
+           ANGELO_OT_external_app_copy_setup)
 
 
 grant_guard.guard(ANGELO_OT_external_app_connect, ANGELO_OT_external_app_copy_setup)

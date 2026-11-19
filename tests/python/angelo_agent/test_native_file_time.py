@@ -6,7 +6,7 @@ A Windows file time counts 100 ns steps since 1601; today's value times 100 does
 that for every file (signed overflow, undefined; an external review with UBSan, 2026-11-15). Seconds times 1e9 has
 the same fault for a file stamped before 1677 or after 2262. ``BLI_file_time.hh`` holds the conversions that give
 the nearest representable value instead (``BLI_file_time_test.cc`` asks them every edge, as constant expressions and
-at run time). This file keeps the two callers on them, and finds a new caller that multiplies a time itself: every
+at run time). This file keeps the callers on them, and finds a new caller that multiplies a time itself: every
 native source Angelo adds or changes that reads a file's time. No Blender needed.
 """
 
@@ -19,6 +19,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 STORAGE = ROOT / "source/blender/blenlib/intern/storage.cc"
 IMAGE_SOURCE = ROOT / "source/blender/blenkernel/intern/angelo_image_source.cc"
+# A vouched program's facts: nanoseconds on every host (its header says so), compared for equality.
+VOUCHES = ROOT / "source/blender/python/intern/bpy_angelo_guard_confine_vouches.cc"
 HELPER = ROOT / "source/blender/blenlib/BLI_file_time.hh"
 # What a source that reads a file's time mentions, and a time scaled by hand.
 READS_A_TIME = re.compile(r"FILETIME|LastWriteTime|ChangeTime|st_[mcb]tim|st_birthtim|timespec_get|tv_nsec")
@@ -40,8 +42,8 @@ def scaled_by_hand(text):
 
 
 class FileTimeSources(unittest.TestCase):
-    def test_the_two_callers_convert_through_the_helper(self):
-        for path in (STORAGE, IMAGE_SOURCE):
+    def test_the_callers_convert_through_the_helper(self):
+        for path in (STORAGE, IMAGE_SOURCE, VOUCHES):
             text = path.read_text(encoding="utf-8")
             with self.subTest(path.name):
                 self.assertIn('#include "BLI_file_time.hh"', text)

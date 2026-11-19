@@ -326,6 +326,8 @@ class Harnesses(Folder):
                A + "bench_parallel_grade.py": "isolation.check_billed(",
                A + "bench_mcp_vs_angelo.py": "isolation.check_billed(",
                A + "check_external_mcp_clients.py": "isolation.check_billed(",
+               A + "check_external_agent_live.py": "isolation.check_billed(",
+               A + "check_mcp_hidden_window.py": "isolation.check_billed(",
                A + "check_mcp_discovery.py": 'isolation.checked("codex-profile"',
                A + "codex_cache_fork_check.py": "isolation.check_billed(",
                A + "codex_runtime_check.py": "dedicated_profile(args.codex_home",   # codex_cache_fork_check's check.

@@ -12,8 +12,9 @@ The runner launches the actual GUI binary with factory startup, event
 simulation and private HOME, TMPDIR, user config, agent state, accounts and
 CLI runtime directories. Inside, the fixture enables Preferences > Allow local
 CLI access and real client processes (bundled Python, ``-I``) exercise status,
-tools, reads, refusals, a stale document after a file load, ``session new``,
-the kill switch and toggle-off. The scene must stay unchanged. No provider,
+``session new``, refused tool calls and catalogue requests (2.0.1: no client
+runs a tool), a document change after a file load, the kill switch and
+toggle-off. The scene must stay unchanged. No provider,
 inference, network or paid service is used; logs are checked for native
 assertions, tracebacks and leaks.
 """
@@ -28,7 +29,6 @@ import json
 import os
 from pathlib import Path
 import shutil
-import statistics
 import subprocess
 import sys
 import threading
@@ -186,6 +186,20 @@ def cli(*argv, label="fixture", state_dir=STATE):
     return done.returncode, envelope
 
 
+RAW = ("import json, sys; sys.path.insert(0, sys.argv[1]); from angelo_agent import cli_client; "
+       "print(json.dumps(cli_client.run(json.loads(sys.argv[2]), sys.argv[3], 'fixture', 60)))")
+
+
+def raw(request):
+    """One wire request an older client may still send (``call``, ``tools``), from a real client process."""
+    command = [ARGS.client_python, "-I", "-c", RAW, str(ROOT / "scripts/addons_core"), json.dumps(request), str(STATE)]
+    done = subprocess.run(command, capture_output=True, text=True, timeout=120, env=CLIENT_ENV)
+    try:
+        return json.loads(done.stdout)
+    except ValueError:
+        return {"unparsed": done.stdout[-2000:], "stderr": done.stderr[-2000:]}
+
+
 def in_worker(name, steps):
     def run():
         try:
@@ -233,17 +247,14 @@ class Layout:
 
 
 def sequence_a():
-    out = {"status": cli("status"), "tools": cli("tools"),
-           "schema": cli("tools", "--tool", "angelo_scene_search", "--schema"),
-           "search": cli("call", "angelo_scene_search", '{"query": "Cube", "limit": 10}', "--id", "search-1")}
-    out["reads"] = [cli("call", "angelo_inspect_scene") for _ in range(10)]
-    out["searches"] = [cli("call", "angelo_scene_search", '{"limit": 50}') for _ in range(5)]
-    out["mutation"] = cli("call", "angelo_create_cube", '{"name": "CLI", "size": 1, "location": [0, 0, 0]}', "--id", "m-1")
-    out["python"] = cli("call", "angelo_execute_python", '{"description": "x", "code": "pass"}', "--id", "m-2")
-    out["file"] = cli("call", "angelo_read_file", '{"path": "cli/endpoint.json", "start": 0, "length": 100}')
-    out["unknown"] = cli("call", "angelo_unknown_tool")
-    out["observe"] = cli("observe")
-    out["text"] = cli("--format", "text", "call", "angelo_inspect_scene")
+    out = {"status": cli("status"),
+           "search": raw({"command": "call", "args": {"tool": "angelo_scene_search", "arguments": {"limit": 10},
+                                                      "id": "search-1"}}),
+           "python": raw({"command": "call", "args": {"tool": "angelo_execute_python",
+                                                      "arguments": {"description": "x", "code": "pass"}}}),
+           "tools": raw({"command": "tools", "args": {}}),
+           "old_call": cli("call", "angelo_inspect_scene"), "rotate": cli("session", "new"),
+           "after": cli("status"), "text": cli("--format", "text", "status")}
     record = json.loads((STATE / "cli/endpoint.json").read_text())
     forged = OUT / "forged-state"
     (forged / "cli").mkdir(parents=True, mode=0o700)
@@ -256,13 +267,8 @@ def sequence_a():
     return out
 
 
-def sequence_b(old_document, old_conversation):
-    out = {"stale": cli("call", "angelo_inspect_scene"), "status": cli("status"),
-           "expect": cli("call", "angelo_inspect_scene", "--expect-document", old_document)}
-    out["rotate"] = cli("session", "new")
-    out["fresh"] = cli("call", "angelo_scene_search", '{"limit": 10}')
-    out["old_guard"] = cli("call", "angelo_inspect_scene", "--conversation", old_conversation)
-    return out
+def sequence_b():
+    return {"status": cli("status"), "rotate": cli("session", "new"), "after": cli("status")}
 
 
 def phase_after_sequence_a(results):
@@ -270,21 +276,15 @@ def phase_after_sequence_a(results):
     check("status_ok_before_any_conversation", exit_status == 0 and status["result"]["conversation"] is None)
     check("envelope_has_every_documented_field", set(status) >= {"cli_protocol", "ok", "code", "exit", "retry",
           "toolset_version", "document", "conversation", "call", "result", "message"})
-    _, tools = results["tools"]
-    allowed = {tool["name"] for tool in tools["result"]["allowed"]}
-    check("tools_lists_13_read_only_tools", len(allowed) == 13 and all(t["read_only"] for t in tools["result"]["allowed"]))
-    check("tools_excludes_reviewed_python_with_reason", any(t["name"] == "angelo_execute_python" and t["reason"]
-                                                           for t in tools["result"]["excluded"]))
-    check("tools_schema_has_input_schema_and_digest", "inputSchema" in results["schema"][1]["result"]["allowed"][0])
-    exit_search, search = results["search"]
-    check("scene_search_reads_the_live_scene", exit_search == 0 and "Cube" in json.dumps(search["result"]))
-    check("read_results_carry_no_private_state_path", str(STATE) not in json.dumps(search))
-    check("ten_sequential_reads_ok", all(code == 0 and value["code"] == "ok" for code, value in results["reads"]))
-    for key in ("mutation", "python", "file"):
-        code, value = results[key]
-        check(f"{key}_refused_with_exit_4", code == 4 and value["code"] == "refused")
-    check("unknown_tool_invalid_exit_2", results["unknown"][0] == 2)
-    check("observe_not_yet_available_exit_9", results["observe"][0] == 9)
+    check("status_lists_only_status_and_session_new", status["result"]["commands"] == ["status", "session new"])
+    for key in ("search", "python", "tools"):
+        value = results[key]
+        check(f"{key}_refused_exit_4", value.get("code") == "refused" and value.get("exit") == 4
+              and "through Angelo's own agent" in value.get("message", ""))
+    check("the_client_has_no_call_command", results["old_call"][0] == 2)
+    exit_rotate, rotated = results["rotate"]
+    check("session_new_creates_the_conversation", exit_rotate == 0 and rotated["conversation"])
+    check("status_shows_the_conversation", results["after"][1]["result"]["conversation"]["id"] == rotated["conversation"])
     check("text_format_reports_ok", results["text"][0] == 0 and results["text"][1]["text"].startswith("ok (exit 0"))
     check("forged_token_unavailable_exit_8", results["forged"][0] == 8)
     # The team sign-in callback (team_signin.py) is Angelo's only network
@@ -297,40 +297,20 @@ def phase_after_sequence_a(results):
     controller = externals[0]
     title = ui._sessions.records[controller.state["id"]]["title"]
     check("switcher_title_is_external_label", title == "External: fixture")
-    activities = [m for m in controller.state["messages"] if m["role"] == "activity"]
-    check("reads_recorded_in_external_transcript", any(m["tool"] == "angelo_scene_search" and m["status"] == "completed"
-                                                      for m in activities))
-    check("refused_calls_never_reached_the_controller", not any(m["tool"] in {"angelo_create_cube",
-          "angelo_execute_python", "angelo_read_file"} for m in activities)
-          and not any(key.endswith(("/m-1", "/m-2")) for key in controller.state["results"]))
-    check("reads_reserved_no_mutation_ids", controller.state["invocations"]["entries"] == {})
-    check("external_request_closed_after_reads", not controller.busy and not controller.pending)
-    check("scene_unchanged_by_reads", scene_signature() == state["baseline"])
-    check("scene_searches_ok", all(code == 0 for code, _ in results["searches"]))
-    report["latency"] = {"objects": len(bpy.data.objects)}
-    for tool in ("angelo_inspect_scene", "angelo_scene_search"):
-        entries = [entry for entry in report["calls"] if entry["argv"][:2] == ["call", tool] and entry.get("timings")]
-        timings = [entry["timings"] for entry in entries]
-        report["latency"][tool] = {"samples": len(timings),
-            "host_ms_p50": statistics.median(t["host_ms"] for t in timings), "host_ms_max": max(t["host_ms"] for t in timings),
-            "queue_ms_p50": statistics.median(t["queue_ms"] for t in timings),
-            "service_total_ms_p50": statistics.median(t["total_ms"] for t in timings),
-            "client_process_ms_p50": statistics.median(entry["client_ms"] for entry in entries),
-            "client_process_ms_max": max(entry["client_ms"] for entry in entries)}
-    state["old_document"] = search["document"]
+    check("no_tool_ran_for_the_client", not [m for m in controller.state["messages"] if m["role"] == "activity"]
+          and not controller.state["results"])
+    check("no_request_left_open", not controller.busy and not controller.pending)
+    check("scene_unchanged", scene_signature() == state["baseline"])
     state["old_conversation"] = controller.state["id"]
 
 
 def phase_after_sequence_b(results):
-    check("call_after_load_is_stale_exit_5", results["stale"][0] == 5 and results["stale"][1]["retry"] == "after_observe")
     check("status_reports_invalid_document", results["status"][1]["result"]["conversation"]["document_valid"] is False)
-    check("expect_document_mismatch_is_stale", results["expect"][0] == 5)
     rotated = results["rotate"][1]
-    check("session_new_rotates_explicitly", results["rotate"][0] == 0 and rotated["result"]["previous"] == state["old_conversation"])
-    check("fresh_conversation_reads_new_document", results["fresh"][0] == 0
-          and results["fresh"][1]["conversation"] == rotated["conversation"]
-          and results["fresh"][1]["document"] != state["old_document"])
-    check("old_conversation_guard_is_stale", results["old_guard"][0] == 5)
+    check("session_new_rotates_explicitly", results["rotate"][0] == 0
+          and rotated["result"]["previous"] == state["old_conversation"])
+    check("the_fresh_conversation_is_bound_to_the_new_document",
+          results["after"][1]["result"]["conversation"]["document_valid"] is True)
     check("old_transcript_stays_readable", state["old_conversation"] in ui._sessions.records
           and rotated["conversation"] in ui._sessions.records)
 
@@ -377,7 +357,7 @@ def heartbeat():
             return 0.3
         elif phase == "loaded":
             state["baseline_b"] = scene_signature()
-            in_worker("b", lambda: sequence_b(state["old_document"], state["old_conversation"]))
+            in_worker("b", sequence_b)
             state["phase"] = "sequence_b"
         elif phase == "sequence_b" and "b" in state["results"]:
             results = state["results"]["b"]

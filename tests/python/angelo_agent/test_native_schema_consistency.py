@@ -34,6 +34,7 @@ import math
 import re
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
@@ -312,7 +313,7 @@ def strings(schema):
             for member in (schema.get("oneOf") or schema.get("anyOf") or [schema]) if member != {"type": "null"}]
 
 
-@unittest.skipIf(Draft202012Validator is None, "jsonschema is not installed")
+@unittest.skipIf(Draft202012Validator is None, required_skip("jsonschema is not installed"))
 class ObjectReferenceTests(unittest.TestCase):
     def test_every_generated_schema_refers_to_objects_one_way(self):
         problems, documents_seen, pointers_seen = [], 0, 0

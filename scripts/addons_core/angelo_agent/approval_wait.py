@@ -7,8 +7,8 @@ The card is the one source of truth. A step waits for the person exactly while a
 never says so: a status outlives the card it named. In 1.0.9 (Mac 2 dogfood, a GPT build turn in Auto) an
 unanswered web-export card expired after 180 s and the live row read "Waiting for your approval" for the next four
 minutes of build steps with no card anywhere, and again after every card the person approved. Display only:
-nothing here decides or changes what is approved; only ``status_for_apps`` reaches a model (a connected app's task
-reply, in 1.0.9's own words).
+nothing here decides or changes what is approved. A connected app reads that a card waits from ``awaiting``
+(``external_agent``), as information only.
 
 * ``label``: the words a surface that is not the card shows while it waits (the session rail's tile), naming the
   card's own title ("Waiting for your approval: Add from the Angelo Library").
@@ -40,7 +40,7 @@ WAITING = n_("Waiting for your approval: {action}")
 UNTIL = n_("Waits for your answer until {time}")
 CARD_ROLES = frozenset({"approval", "flow_approval", "approval_plain"})   # chat_blocks.cards, chat_guard.APPROVALS.
 BUTTONS = 64   # From a card's bottom edge: its action row (chat_card_draw.BUTTON_Y + BUTTON_H, with a margin).
-SCRIPTS = frozenset({"angelo_execute_python", "angelo_run_script_file"})
+SCRIPTS = frozenset({"angelo_execute_python"})
 SHIELD_SECONDS = 1.0   # After a pill's click: Blender's longest double-click time (Preferences > Input, 1000 ms).
 PAD = 12   # Around the pill's spot: past Blender's largest default drag threshold (Preferences > Input, mouse 3 px).
 _shield_pending = {}  # Chat -> exact waiting card; blocked until its first guarded draw.
@@ -97,17 +97,6 @@ def _title(call):
                                                   "status": "approval"}))
     except Exception:   # noqa: BLE001
         return iface_("Approve this step")
-
-
-def status_for_apps(controller):
-    """The raw ``status`` a connected app's task reply carries (``external_apps``): 1.0.9's own words while a card
-    waits ("Approval required", "Approve collaborator usage" for a collaborator's), derived from the card so they
-    never outlive it, else the controller's status. Model-facing: English, never translated."""
-    call = awaiting(controller)
-    if call is None:
-        return controller.status
-    collaborator = call.name == "angelo_delegate"
-    return "Approve collaborator usage" if collaborator else "Approval required"   # i18n: model-facing, for apps
 
 
 def label(controller):

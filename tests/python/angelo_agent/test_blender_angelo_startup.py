@@ -1,6 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Remembered Manual startup and editor-only Studio launch. No provider usage."""
+"""Remembered Manual startup and editor-only Studio launch, with no process started on the main thread. No provider
+usage.
+
+Every program the app starts from this script's first line (before Angelo registers) until the start-up is over is
+recorded with its callers. None may start on the main thread: the GUI lock's ``/bin/ps`` at every register
+(``headless_window_lock``) failed the offline GUI fixtures on the 2.0.1 final 12484412217, and a main-thread process
+stalls the window for as long as it runs."""
 
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -10,11 +16,32 @@ import json
 import os
 import plistlib
 import runpy
+import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 from pathlib import Path
+
+launched = []   # Every program started: on which thread, what, and from where.
+
+
+def recorded(original, how):
+    def start(*args, **kwargs):
+        command = args[1] if how == "Popen" and len(args) > 1 else (args[0] if args else kwargs.get("args"))
+        program = (command or [""])[0] if isinstance(command, (list, tuple)) else command
+        launched.append({"how": how, "main_thread": threading.current_thread() is threading.main_thread(),
+                         "program": Path(str(program)).name,
+                         "callers": ["%s:%d %s" % (Path(frame.filename).name, frame.lineno, frame.name)
+                                     for frame in traceback.extract_stack(limit=9)[:-1]]})
+        return original(*args, **kwargs)
+    return start
+
+
+subprocess.Popen.__init__ = recorded(subprocess.Popen.__init__, "Popen")
+for _name in ("system", "posix_spawn", "posix_spawnp"):
+    setattr(os, _name, recorded(getattr(os, _name), _name))
 
 import bpy
 
@@ -61,6 +88,9 @@ def tick():
             state["checks"]["angelo_bundle_and_executable"] = binary.name == "Angelo" and binary.parents[2].name == "Angelo.app"
             state["checks"]["angelo_macos_identity"] = info["CFBundleName"] == info["CFBundleDisplayName"] == info["CFBundleExecutable"] == "Angelo" and info["CFBundleIdentifier"] == json.loads((ROOT / "scripts/modules/angelo_identity.json").read_text())["bundle"]["macos_id"]
             state["checks"]["angelo_app_menu_label"] = bpy.types.TOPBAR_MT_blender.bl_label == "Angelo"
+            state["started_processes"] = list(launched)
+            state["checks"]["startup_starts_no_process_on_the_main_thread"] = not any(
+                entry["main_thread"] for entry in launched)
             # Taken now, after the start-up: it builds Manual's two tabs by design, and the check is that launching
             # Studio adds no top-level workspace of its own (a baseline from before the start-up counted the tabs).
             state["workspaces_before_studio"] = sorted(w.name for w in bpy.data.workspaces)

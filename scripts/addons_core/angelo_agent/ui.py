@@ -173,7 +173,9 @@ def refresh_connected_models(force=False):
                         _memory_keys.get(record["id"], ""), force)
 
 
-def choose_model_connection(controller, connection_id, model=""):
+def choose_model_connection(controller, connection_id, model="", remember=True):
+    """Bind the chat to one of the person's connections and a model. ``remember``: the person's own choice also becomes
+    their preferred connection; a connected app's (``external_agent``) changes only its own conversation."""
     record = find_connection(connection_id)
     if not record or not is_coding(record) or not connection_ready(record):
         raise RuntimeError(Text(n_("This connection is not available. Open AI Providers to reconnect.")))
@@ -182,7 +184,8 @@ def choose_model_connection(controller, connection_id, model=""):
         models = controller.models
     controller.choose_connection(record["mode"], connection_settings(record["mode"], record=record),
         _memory_keys.get(record["id"], ""), connection_id, models, model)
-    remember_preferred_mode(record["mode"])
+    if remember:
+        remember_preferred_mode(record["mode"])
     refresh_connected_models()
 
 
@@ -381,7 +384,7 @@ def connection_available(controller=None):   # The shown chat, or an explicit ba
     return mode_key_usable(mode, _memory_keys)   # A mode's own key, while the policy allows personal ones.
 
 
-def prepare_controller(controller=None):   # An app's External conversation for a task (external_apps): no brief.
+def prepare_controller(controller=None):   # An app's External conversation (external_agent): no brief.
     prefs = preferences()
     controller = controller or get_controller()
     controller.set_document(document_key())   # A request to a chat whose scene is not shown: document_scene.refuse.
@@ -541,9 +544,9 @@ class ANGELO_Preferences(fab_preferences.FabPreferences, job_desktop_prefs.JobDe
     # Always allow scripts: a view of the choice always_allow.py saves; only the person changes it (the setter's guard).
     always_allow_scripts: BoolProperty(
         name="Always allow scripts", get=always_allow_get, set=always_allow_set,
-        description="In chats set to Auto, run the agent's Python scripts without asking. Scripts have full access to "
-                    "files, the network and other apps on this computer. Ask before changes still asks; Read only still "
-                    "refuses")
+        description="In chats set to Auto, connected apps' chats included, run Angelo's agent's Python scripts without "
+                    "asking (never code an app sends itself). Scripts have full access to files, the network and other "
+                    "apps on this computer. Ask before changes still asks; Read only still refuses")
     # Voice is hidden by default until it can be tested properly; this opt-in shows the microphone again (voice_ui.py).
     experimental_voice: BoolProperty(name="Experimental voice", default=False,
                                      description="Show the microphone in the chat. Needs macOS, a ChatGPT (Codex) connection "
@@ -2014,9 +2017,8 @@ def register():
         entry = bpy.context.preferences.addons.new()
         entry.module = __package__
         _transient_preferences = True
-    from . import always_allow, script_files
+    from . import always_allow
     always_allow.attach(state_directory())   # The person's saved choice (off when never set).
-    script_files.attach(state_directory())   # Connected apps' script files the person always allows.
     preferences_ui.register()
     from . import agent_workspace_ui
     agent_workspace_ui.register()
@@ -2083,9 +2085,8 @@ def register():
 
 def unregister():
     global _controller, _layout_timer, _sessions, _transient_preferences, _connections, _catalogs
-    from . import always_allow, external_host, references, script_files
+    from . import always_allow, external_host, references
     always_allow.detach()  # A disabled add-on keeps no consent; registering again reads the saved choice.
-    script_files.detach()
     references.refresh_readers(reset=True)
     external_host.shutdown()
     from . import worker_routing

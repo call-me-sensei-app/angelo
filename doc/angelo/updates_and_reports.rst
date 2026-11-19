@@ -680,7 +680,30 @@ Restart to Update
    reads True until Blender handles the save's notifier, after the call. An untitled file opens the File
    Browser; the restart continues after ``save_post`` and stops on
    ``save_post_fail`` or when the browser closes without saving. Cancel brings
-   the update card back;
+   the update card back. Every way into the hand-over (a saved file, Don't
+   Save, Save, Save As) goes through ``update_restart_handoff.launch_when_settled``:
+   the hand-over's document stamp is recorded only once the document reads the
+   same across Blender's event-loop passes and, after a save, reads as saved,
+   file and images (``bpy.data.is_dirty`` changes at the save's notifier, after
+   the call). A file still modified after ``SETTLE_S`` (5 seconds) changed again
+   since the save, and the restart stops with the save notice. Reason: a stamp
+   taken right after the save no longer matched at the installer's readiness,
+   so every Save and Restart said "The update could not start" and Angelo never
+   quit (the Windows end-to-end update 1.0.11 to 2.0.0, 2026-11-18). The
+   person's decision is kept from the moment they made it: its stamp, the asset
+   catalogs' edit generation (after a save, catalogs unsaved again: the save
+   itself writes them), and every edit event since (an undo or redo step,
+   a depsgraph update, a load, a save: the installer's own change handlers). A
+   clean file and Don't Save hand over only the exact state decided on; after a
+   save, only the save marking the file and images saved may settle, and once
+   read as saved they may not read modified again. Any other change stops the
+   hand-over at once: after a save with the save notice; otherwise the person is
+   asked again (the save card when anything is unsaved, else the update card).
+   An edit Undone at once still counts. Reason: an undoable edit made while a
+   clean file or Don't Save settled read the same twice, became the stamp the
+   installer kept, and was treated as accepted and lost at the swap (the
+   maintainer's audit of 2.0.1, P1; ``test_native_update_restart_settle_edits``,
+   ``test_blender_update_restart_settle``);
 4. the installer script is copied out of the app into the update's folder and
    started detached (``update_install.start``); Angelo waits up to 15 seconds
    for ``helper.ready``, the script's first act, and then quits

@@ -214,18 +214,14 @@ class BudgetTests(unittest.TestCase):
 
 class FamilyTests(unittest.TestCase):
     def test_deferred_and_offered_by_what_each_does(self):
-        from angelo_agent.external_clients import EDIT_TOOLS, READ_TOOLS
         from angelo_agent.plan_kinds import DEFERRED_TOOLS
         from angelo_agent.tool_specs import TOOL_MAP
         self.assertEqual(WEB_NAMES, {CHECK, EXPORT, PREVIEW})
         self.assertLessEqual(WEB_NAMES, set(TOOL_MAP))
         self.assertLessEqual(WEB_NAMES, DEFERRED_TOOLS)   # A turn that never exports sends only the names.
         self.assertTrue(TOOL_MAP[CHECK]["annotations"]["readOnlyHint"])   # No card for a check.
-        self.assertIn(CHECK, READ_TOOLS)
         for name in (EXPORT, PREVIEW):
             self.assertFalse(TOOL_MAP[name]["annotations"]["readOnlyHint"])   # Approved: a file, a server.
-            self.assertIn(name, EDIT_TOOLS)
-            self.assertNotIn(name, READ_TOOLS)
 
     def test_every_tool_has_its_card_and_titles(self):
         for path, needle in (("approvals.py", 'name.startswith("angelo_web_")'),

@@ -123,13 +123,11 @@ class Review5(unittest.TestCase):
         self.assertIsNone(input_policy.editing_tool(manager([observer])))
         self.assertEqual(input_policy.editing_tool(manager([editor])), "Screencast Keys")
 
-    def test_an_app_keeps_waiting_on_a_task_held_for_the_person(self):   # F6
-        import ast
-        from angelo_agent import external_mcp
-        self.assertIn("waiting_for_person_in_angelo", external_mcp.WAITING_TASK_STATES)
-        reply = (ROOT / "scripts/addons_core/angelo_agent/external_apps.py").read_text()   # N3: the state it sends.
-        self.assertIn('state = "waiting_for_person_in_angelo"', reply)
-        self.assertTrue(ast.parse(reply))
+    def test_an_app_reads_that_the_person_s_tool_holds_its_turn(self):   # F6
+        source = (ROOT / "scripts/addons_core/angelo_agent/external_agent.py").read_text()   # N3: the state it sends.
+        self.assertIn('turn = "waiting_for_person"', source)
+        from angelo_agent import external_mcp_agent
+        self.assertIn("waiting_for_person", external_mcp_agent.SETTLED)
 
 
 class Review6(unittest.TestCase):

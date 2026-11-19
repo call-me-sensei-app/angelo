@@ -162,6 +162,37 @@ def wait(condition, limit=40):
     return False
 
 
+def outcome(call_id):
+    """What became of a card's call, and its Approve's arming, for the report (the evidence of a failed check)."""
+    from angelo_agent import approval_arming, ui
+    controller = ui.get_controller()
+    call = controller.pending.get(call_id)
+    arming = approval_arming.view(view_state())
+    control = arming.controls.get(("approve", call_id))
+    return {"pending": call is not None, "approved": bool(call and call.approved),
+            "generation": getattr(call, "review_generation", 0) if call else None,
+            "reviewed": call_id in controller.reviewed_calls,
+            "control": [round(control[0], 3), list(control[1]), control[2], control[3]] if control else None,
+            "pointer": list(arming.pointer) if isinstance(arming.pointer, tuple) else str(arming.pointer),
+            "rows": [m.get("status") or m.get("role") for m in controller.state["messages"][-3:]]}
+
+
+def stream_rows(state, evaluate=False):
+    """A row streams into the chat (pushing its card, as an app's activity or the agent's progress does), and with
+    ``evaluate`` the scene is evaluated again with nothing changed, as an app's reads settle it."""
+    from angelo_agent import ui
+    controller = ui.get_controller()
+    now = time.monotonic()
+    if now - state.get("row_at", 0) < 0.1:
+        return
+    state["row_at"], state["rows"] = now, state.get("rows", 0) + 1
+    controller.state["messages"].append({"role": "assistant", "text": "Working on it, step %d." % state["rows"]})
+    controller.version += 1
+    if evaluate:
+        bpy.context.view_layer.update()
+    chat()[0].tag_redraw()
+
+
 def approval_call(identity, name, arguments):
     from angelo_agent import ui
     from angelo_agent.controller import ToolCall
@@ -263,7 +294,9 @@ def tick():
             state["phase"] = "voice_on"
             return .3
         if phase == "voice_on":
-            if not wait(lambda: any(a == "voice" for a, _ in actions())):
+            # Voice is macOS-only (its check below says so); elsewhere the control never appears, so waiting for it
+            # timed out every Linux run before the later phases (the single-click ones) were reached.
+            if sys.platform == "darwin" and not wait(lambda: any(a == "voice" for a, _ in actions())):
                 return .2
             capture("cards-3-codex-microphone.png")
             checks["microphone_on_codex_with_audio_tools"] = sys.platform != "darwin" or any(a == "voice" for a, _ in actions())
@@ -296,6 +329,8 @@ def tick():
             checks["one_approve_button"] = sum(a == "approve" for a, _ in actions()) == 1
             # A new chat is in Auto, so the script card also offers Always allow scripts, which starts off.
             checks["script_card_offers_always_allow_in_auto"] = ("script_always_allow", state["script"]) in actions()
+            # 2.0.1: Run once, Allow for this session and Always allow, all on the card.
+            checks["script_card_offers_allow_for_this_session"] = ("script_session_allow", state["script"]) in actions()
             checks["always_allow_scripts_starts_off"] = ui.preferences().always_allow_scripts is False
             # Not the Preferences editor (as a script, an add-on or a keymap would): the real setter changes nothing.
             ui.preferences().always_allow_scripts = True
@@ -313,6 +348,40 @@ def tick():
             checks["the_chat_says_the_change_was_ignored"] = any(
                 "only you can change it" in (m.get("text") or "") for m in controller.state["messages"])
             click("decline", state["script"])
+            state["phase"] = "session_card"
+            return .4
+        if phase == "session_card":   # 2.0.1: Allow for this session, the chat's line, and its Turn off.
+            if not wait(lambda: state["script"] not in controller.pending):
+                return .2
+            controller.set_options(approval="AUTO_BOUNDED")
+            state["session"] = approval_call("fixture-session", "angelo_execute_python",
+                                             {"description": "Read a value", "code": "result = 1"}).id
+            state["phase"] = "session_press"
+            return .4
+        if phase == "session_press":
+            if not wait(lambda: ("script_session_allow", state["session"]) in actions()):
+                return .2
+            click("script_session_allow", state["session"])   # Aimed: it arms first (approval_arming).
+            state["phase"] = "session_line"
+            return .4
+        if phase == "session_line":
+            if not wait(lambda: controller.trusted_scripts and view_state().get("standing_line")):
+                return .2
+            capture("cards-6b-session-allowed-line.png")
+            checks["allow_for_this_session_trusts_this_chat"] = controller.trusted_scripts
+            checks["the_chat_says_scripts_run_without_asking"] = "without asking" in view_state()["standing_line"]
+            checks["the_line_offers_turn_off"] = ("script_standing_off", "session") in actions()
+            click("script_standing_off", "session")
+            state["phase"] = "session_off"
+            return .4
+        if phase == "session_off":
+            if not wait(lambda: not controller.trusted_scripts):
+                return .2
+            capture("cards-6c-session-turned-off.png")
+            checks["turn_off_ends_the_session_consent"] = not controller.trusted_scripts
+            checks["the_line_is_gone"] = ("script_standing_off", "session") not in actions()
+            if state["session"] in controller.pending:
+                controller.decline_tool(state["session"])
             state["phase"] = "program"
             return .4
         if phase == "program":
@@ -375,7 +444,7 @@ def tick():
                 state["phase"], state["details_waits"] = "program_arabic", 0
                 return .6
             click("decline", state["program"])
-            state["phase"] = "snapshot_settings"
+            state["phase"] = "stream_program"
             return .4
         if phase == "program_arabic":
             state["details_waits"] += 1
@@ -407,6 +476,84 @@ def tick():
             if not wait(lambda: ("decline", state["program"]) in actions()):
                 return .2
             click("decline", state["program"])
+            state["phase"] = "stream_program"
+            return .4
+        # 2.0.1 (the maintainer: "I have to double click approve", then 5, then 6-8 clicks while an app drove the
+        # chat): ONE aimed click approves while rows stream in and push the card, and a reviewed script runs on one
+        # click while the scene keeps re-evaluating (no "Asked again").
+        if phase == "stream_program":
+            if not wait(lambda: state["program"] not in controller.pending):
+                return .2
+            bpy.context.preferences.view.language = "en_US"
+            controller.set_options(approval="ASK")
+            controller.busy = True   # Inside a turn, as the agent's own calls are: an approved call runs.
+            controller.request_checkpoint = "9cf4e420-dcdb-4f45-bc8a-d9d439ce9aac"
+            for index in range(40):   # A working session: the transcript fills the chat, as it does after a while.
+                controller.state["messages"].append({"role": "assistant", "text": "Earlier step %d." % index})
+            controller.version += 1
+            program = {"mode": "APPLY", "read_set": [], "write_set": [], "expected_checks": [],
+                       "operations": [{"kind": "create_primitive", "target": None,
+                                       "parameters": {"primitive": "CUBE", "alias": "s", "name": "Stream", "size": 1}}]}
+            # The controller's own pending-call path, as a turn's call takes it (request_tool, then the pump shows
+            # its card): a detached ToolCall has no invocation digest, so its Approve can never authorize it.
+            state["results"] = {}
+            controller.request_tool("fixture-stream", "angelo_scene_program", program,
+                                    lambda result: state["results"].__setitem__("stream", result))
+            state.update(stream=controller.state["id"] + "/fixture-stream", rows=0, clicks=0)
+            state["phase"] = "stream_click"
+            return .2
+        if phase in ("stream_click", "stream_wait"):
+            stream_rows(state)
+            if phase == "stream_click":
+                if not wait(lambda: ("approve", state["stream"]) in actions()):
+                    return .1
+                state["stream_before"] = outcome(state["stream"])
+                click("approve", state["stream"])   # One aimed click; rows keep streaming meanwhile.
+                state["clicks"] += 1
+                state["phase"], state["stream_since"] = "stream_wait", time.monotonic()
+                return .1
+            call = controller.pending.get(state["stream"])
+            if "stream" not in state["results"] and time.monotonic() - state["stream_since"] < 8:
+                return .1
+            capture("cards-7c-one-click-while-streaming.png")
+            state["stream_outcome"] = outcome(state["stream"])
+            result = state["results"].get("stream") or {}
+            checks["one_click_approves_while_rows_stream_in"] = (state["clicks"] == 1 and state["rows"] >= 3
+                and (call is None or call.approved) and "error" not in result
+                and (result.get("live_revisions") or {}).get("status") == "COMMITTED")
+            state["phase"] = "stream_script"
+            return .2
+        if phase == "stream_script":
+            controller.set_options(approval="ASK")
+            controller.request_tool("fixture-stream-script", "angelo_execute_python",
+                                    {"description": "Read a value", "code": "result = 1"},
+                                    lambda result: state["results"].__setitem__("script", result))
+            state["sscript"] = controller.state["id"] + "/fixture-stream-script"
+            state["phase"] = "stream_script_review"
+            return .3
+        if phase == "stream_script_review":
+            if not wait(lambda: ("approve", state["sscript"]) in actions()):
+                return .2
+            click("approve", state["sscript"])   # Review & run once: its first press opens the code (by design).
+            state["phase"] = "stream_script_click"
+            return .4
+        if phase in ("stream_script_click", "stream_script_wait"):
+            stream_rows(state, evaluate=True)
+            if phase == "stream_script_click":
+                if not wait(lambda: state["sscript"] in controller.reviewed_calls):
+                    return .1
+                click("approve", state["sscript"])   # Run once: one press, the scene re-evaluating meanwhile.
+                state["phase"], state["stream_since"] = "stream_script_wait", time.monotonic()
+                return .1
+            call = controller.pending.get(state["sscript"])
+            if call is not None and time.monotonic() - state["stream_since"] < 8:
+                return .1
+            capture("cards-7d-one-click-runs-the-reviewed-script.png")
+            state["stream_script_outcome"] = outcome(state["sscript"])
+            controller.busy = False
+            checks["one_click_runs_a_reviewed_script_while_the_scene_updates"] = (call is None
+                and bool((state["results"].get("script") or {}).get("success")) and not any(
+                "asking again" in (m.get("text") or "") for m in controller.state["messages"][-40:]))
             state["phase"] = "snapshot_settings"
             return .4
         if phase == "snapshot_settings":

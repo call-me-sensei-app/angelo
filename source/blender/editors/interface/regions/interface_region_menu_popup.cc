@@ -972,6 +972,22 @@ Vector<PopupButtonPlace> popup_button_places(const bScreen *screen)
   return places;
 }
 
+Vector<PopupButtonPlace> global_area_button_places(const ScrAreaMap &areas)
+{
+  Vector<PopupButtonPlace> places;
+  for (const ScrArea &area : areas.areabase) {
+    if (area.global != nullptr && (area.global->flag & GLOBAL_AREA_IS_HIDDEN)) {
+      continue;
+    }
+    for (const ARegion &region : area.regionbase) {
+      if (region.runtime->visible) {
+        append_button_places(region, places);
+      }
+    }
+  }
+  return places;
+}
+
 Vector<PopupButtonPlace> area_button_places(const bScreen *screen)
 {
   Vector<PopupButtonPlace> places;

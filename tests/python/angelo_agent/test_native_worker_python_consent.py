@@ -23,6 +23,7 @@ import ast
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -499,7 +500,7 @@ class WorkerWordsTests(unittest.TestCase):
         from angelo_agent import parallel_access, remote_executor
         from angelo_agent.tool_specs import TOOL_MAP
         if "angelo_execute_python" not in remote_executor.worker_tools()[1]:
-            self.skipTest("the worker's script route (lane P1) is not on this branch yet")
+            self.skipTest(required_skip("the worker's script route (lane P1) is not on this branch yet"))
         with patch.object(parallel_access, "enabled", lambda: True):
             self.assertIn("angelo_execute_python", parallel_access.restrict(None, TOOL_MAP, worker=True))
 

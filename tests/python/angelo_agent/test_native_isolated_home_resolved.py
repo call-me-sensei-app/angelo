@@ -15,6 +15,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from host_test_policy import environment_skip
 from pathlib import Path
 from unittest import mock
 
@@ -31,7 +32,7 @@ class IsolatedHomeResolved(unittest.TestCase):
         try:
             os.symlink(self.real, self.link, target_is_directory=True)
         except (OSError, NotImplementedError) as error:   # Windows without the symlink privilege.
-            self.skipTest("this machine cannot make a directory symlink: %s" % error)
+            self.skipTest(environment_skip("this machine cannot make a directory symlink: %s" % error))
         self.addCleanup(os.unlink, self.link)
 
     def assert_real(self, home):

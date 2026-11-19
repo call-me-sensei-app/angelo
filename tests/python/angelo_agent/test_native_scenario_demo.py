@@ -19,6 +19,7 @@ import os
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from unittest import mock
 
@@ -120,7 +121,7 @@ class EncodeTests(unittest.TestCase):
         self.assertEqual(result, {"error": "no frames were recorded", "errors": ["x"]})
 
 
-@unittest.skipIf(scorecard is None, "NumPy is installed in CI and bundled with Blender")
+@unittest.skipIf(scorecard is None, required_skip("NumPy is installed in CI and bundled with Blender"))
 class ReportTests(unittest.TestCase):
     def test_recording_is_encoded_flagged_and_linked(self):
         with tempfile.TemporaryDirectory() as root, \

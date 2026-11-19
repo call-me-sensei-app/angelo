@@ -17,6 +17,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from host_test_policy import environment_skip
 import uuid
 from pathlib import Path
 
@@ -35,7 +36,7 @@ def digest(data):
     return hashlib.blake2b(data, digest_size=32).hexdigest()
 
 
-@unittest.skipUnless(anchored_files_supported(), "descriptor-relative storage required")
+@unittest.skipUnless(anchored_files_supported(), environment_skip("descriptor-relative storage required"))
 class CheckpointSealTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="angelo-seal-")

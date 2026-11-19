@@ -40,10 +40,12 @@ class ConfinementVouchesTest : public testing::Test {
     }
     root_ = native(base + "angelo-vouches-" + std::to_string(std::rand()));
     BLI_dir_create_recursive((root_ + "/folder/inner").c_str());
+    BLI_dir_create_recursive((root_ + "/versions").c_str());
     forget_scope(Scope::Session);
     forget_scope(Scope::Call);
     forget_scope(Scope::Pick);
     forget_scope(Scope::Typed);
+    forget_scope(Scope::Run);
   }
 
   void TearDown() override
@@ -82,6 +84,105 @@ TEST_F(ConfinementVouchesTest, a_named_file_is_its_name_and_its_identity_is_kept
   BLI_delete(file.c_str(), false, false);
   make("folder/thesis.txt", "rewritten");
   EXPECT_TRUE(matches(file, facts_of(file)));
+}
+
+/* The break-it review of 29b385a6645 (MUST-1): a program vouched to run (a CLI found through a link) never becomes
+ * a file a script's Blender writer may write, and runs only while it is the very file, unchanged, it was when
+ * vouched: a script that rewrote it in place (an image unpacked onto it keeps its inode and exec bit) never gets its
+ * bytes run unconfined. */
+TEST_F(ConfinementVouchesTest, a_run_only_vouch_never_widens_writing)
+{
+  const std::string program = make("versions/2.1.300", "#!/bin/sh\necho one\n");
+  ASSERT_TRUE(add_program(program, facts_of(program), false));
+  EXPECT_TRUE(program_named(program, facts_of(program)));
+  EXPECT_FALSE(matches(program, facts_of(program))) << "never a write vouch";
+  EXPECT_FALSE(identity_named(facts_of(program))) << "nor the identity a hard link would write";
+  EXPECT_FALSE(file_named_in(native(root_ + "/versions"), false));
+}
+
+TEST_F(ConfinementVouchesTest, a_program_rewritten_in_place_or_replaced_never_runs)
+{
+  const std::string program = make("versions/2.1.300", "#!/bin/sh\necho one\n");
+  ASSERT_TRUE(add_program(program, facts_of(program), false));
+  std::ofstream(program, std::ios::trunc) << "#!/bin/sh\necho payload, longer\n"; /* Same inode: O_TRUNC. */
+  EXPECT_FALSE(program_named(program, facts_of(program))) << "rewritten in place";
+  ASSERT_TRUE(add_program(program, facts_of(program), false)); /* Found again before any script: the person's. */
+  EXPECT_TRUE(program_named(program, facts_of(program)));
+  BLI_delete(program.c_str(), false, false);
+  make("versions/2.1.300", "#!/bin/sh\necho another file\n");
+  EXPECT_FALSE(program_named(program, facts_of(program))) << "another file under the same name";
+}
+
+TEST_F(ConfinementVouchesTest, a_program_found_again_after_a_script_keeps_what_was_captured)
+{
+  const std::string program = make("versions/2.1.300", "#!/bin/sh\necho one\n");
+  ASSERT_TRUE(add_program(program, facts_of(program), false));
+  std::ofstream(program, std::ios::trunc) << "#!/bin/sh\necho changed after a script ran\n";
+  EXPECT_FALSE(add_program(program, facts_of(program), true)) << "a change is never blessed once scripts ran";
+  EXPECT_FALSE(program_named(program, facts_of(program)));
+  const std::string fresh = make("versions/2.1.301", "#!/bin/sh\necho an update's new version\n");
+  EXPECT_TRUE(add_program(fresh, facts_of(fresh), true)) << "a program first found after a script is captured then";
+  EXPECT_TRUE(program_named(fresh, facts_of(fresh)));
+}
+
+TEST_F(ConfinementVouchesTest, a_session_vouch_runs_a_program_only_while_it_is_unchanged)
+{
+  const std::string program = make("tool", "#!/bin/sh\necho one\n");
+  ASSERT_TRUE(add(program, facts_of(program), false, false, Scope::Session, ""));
+  EXPECT_TRUE(program_named(program, facts_of(program)));
+  std::ofstream(program, std::ios::trunc) << "#!/bin/sh\necho rewritten in place\n";
+  EXPECT_TRUE(matches(program, facts_of(program))) << "its write vouch is as it was";
+  EXPECT_FALSE(program_named(program, facts_of(program))) << "but it no longer runs";
+}
+
+/* The re-review of 4be92cfb84f (S-1): a recorded program's captured facts outlive every way to drop them. Narrowing
+ * (`unvouch_path`, which anyone may call) and the oldest-first trim never drop a program, so a script that rewrote it
+ * can't have it forgotten and then recorded afresh when Angelo finds it again at the next start. */
+TEST_F(ConfinementVouchesTest, a_program_unvouched_then_found_again_after_a_script_stays_refused)
+{
+  const std::string program = make("versions/2.1.300", "#!/bin/sh\necho one\n");
+  ASSERT_TRUE(add_program(program, facts_of(program), false));
+  std::ofstream(program, std::ios::trunc) << "#!/bin/sh\necho changed by a script\n";
+  forget(program, false, false); /* A script's unvouch_path: narrowing, never a program's record. */
+  forget(program, false, true);
+  EXPECT_FALSE(add_program(program, facts_of(program), true)) << "found again: still what was captured";
+  EXPECT_FALSE(program_named(program, facts_of(program)));
+  EXPECT_TRUE(program_changed(program, facts_of(program))) << "what the refusal says";
+}
+
+TEST_F(ConfinementVouchesTest, the_oldest_first_trim_never_drops_a_program)
+{
+  const std::string program = make("versions/2.1.300", "#!/bin/sh\necho one\n");
+  ASSERT_TRUE(add_program(program, facts_of(program), false));
+  for (int i = 0; i < 4200; i++) { /* Past KEPT: the oldest entries go, never the program. */
+    ASSERT_TRUE(add(native(root_ + "/folder/file" + std::to_string(i)), Facts(), false, false, Scope::Call, ""));
+  }
+  EXPECT_LE(count(), size_t(4096));
+  EXPECT_TRUE(program_named(program, facts_of(program))) << "still recorded";
+  std::ofstream(program, std::ios::trunc) << "#!/bin/sh\necho changed by a script\n";
+  EXPECT_FALSE(add_program(program, facts_of(program), true)) << "its captured facts kept";
+}
+
+TEST_F(ConfinementVouchesTest, programs_past_their_bound_are_refused_never_evicted)
+{
+  Facts facts;
+  facts.exists = true;
+  size_t recorded = 0;
+  for (int i = 0; i < 300; i++) {
+    recorded += add_program(native(root_ + "/versions/p" + std::to_string(i)), facts, false) ? 1 : 0;
+  }
+  EXPECT_EQ(recorded, size_t(256)) << "a program past the bound is not recorded: it does not run";
+  EXPECT_TRUE(add_program(native(root_ + "/versions/p0"), facts, false)) << "one already recorded still is";
+}
+
+TEST_F(ConfinementVouchesTest, a_program_changed_on_disk_is_told_apart_from_one_never_recorded)
+{
+  const std::string program = make("versions/2.1.300", "#!/bin/sh\necho one\n");
+  EXPECT_FALSE(program_changed(program, facts_of(program))) << "never recorded";
+  ASSERT_TRUE(add_program(program, facts_of(program), false));
+  EXPECT_FALSE(program_changed(program, facts_of(program))) << "unchanged";
+  std::ofstream(program, std::ios::trunc) << "#!/bin/sh\necho an update in place, longer\n";
+  EXPECT_TRUE(program_changed(program, facts_of(program)));
 }
 
 #ifndef _WIN32

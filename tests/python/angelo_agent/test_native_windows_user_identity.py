@@ -11,9 +11,9 @@ Two calls read as harmless questions and are not on Windows (the external audit 
 * ``os.getuid()`` and ``os.geteuid()`` do not exist there: ``info.st_uid != os.getuid()`` raises ``AttributeError``,
   which no ``except OSError`` takes.
 
-The headless sweep (``headless_working_copy.sweep``) did both: its thread would die on the first folder, and with
-only the user ID repaired its next line would have ended a live child. Its two questions now have one answer each
-on every platform: ``engine_link_protocol.process_alive`` and ``file_owner.owned_by_this_user`` (the POSIX owner
+2.0.0's headless sweep did both (removed in 2.0.1 with the headless MCP child): its thread would have died on the
+first folder, and with only the user ID repaired its next line would have ended a live child. The two questions have
+one answer each on every platform: ``engine_link_protocol.process_alive`` and ``file_owner.owned_by_this_user`` (the POSIX owner
 ID, or on Windows the folder's owner SID against this process's own). The CLI's endpoint and key checks
 (``external_cli_protocol``), which the ``angelo`` command and an app's launcher run on any platform, ask the same.
 
@@ -38,7 +38,7 @@ from host_test_policy import environment_skip
 ROOT = Path(__file__).resolve().parents[3]
 ADDON = ROOT / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(ADDON.parent))
-from angelo_agent import engine_link_protocol, external_cli, headless_working_copy  # noqa: E402
+from angelo_agent import engine_link_protocol, external_cli  # noqa: E402
 
 SOURCES = (sorted(ADDON.glob("*.py")) + sorted((ROOT / "scripts/modules").glob("angelo*.py"))
            + sorted((ROOT / "scripts/startup").glob("angelo*.py")))
@@ -48,11 +48,6 @@ WINDOWS = ('"win32"', "'win32'", '"nt"', "'nt'", 'hasattr(os, "geteuid")', 'hasa
 POSIX_ONLY = {
     # The listener refuses to start on Windows before it makes or reads anything (LocalCliServer.start).
     "external_cli.py": [("external_cli.py", 'if sys.platform == "win32" or not hasattr(socket, "AF_UNIX"):')],
-    # A headless child is started only by HeadlessSession, which refuses other platforms before it starts one.
-    "headless_main.py": [("headless_session.py", 'SUPPORTED_PLATFORMS = ("darwin", "linux")'),
-                         ("headless_session.py", "if self.platform not in SUPPORTED_PLATFORMS:")],
-    "headless_host.py": [("headless_session.py", "if self.platform not in SUPPORTED_PLATFORMS:")],
-    "headless_preferences.py": [("headless_session.py", "if self.platform not in SUPPORTED_PLATFORMS:")],
     # The Fab browser's macOS owners: its dispatch gives Windows its own modules (fab_browser_*_windows).
     "fab_browser_download_file.py": [
         ("fab_browser_platform.py", "    if _platform_name() == 'darwin':\n"
@@ -213,73 +208,6 @@ class Probes(unittest.TestCase):
             self.assertTrue(external_cli.process_alive(4242))
             self.assertFalse(external_cli.process_alive(4243))
         self.assertEqual(asked.call_count, 2)
-
-
-class Sweep(unittest.TestCase):
-    PREFIX = "qa-headless-"
-
-    def setUp(self):
-        folder = tempfile.TemporaryDirectory()
-        self.addCleanup(folder.cleanup)
-        self.root = Path(folder.name)
-
-    def left(self, name, pid):
-        folder = self.root / (self.PREFIX + name)
-        folder.mkdir()
-        (folder / "child.pid").write_text(str(pid), encoding="ascii")
-        (folder / "work.blend").write_bytes(b"BLENDER")
-        return folder
-
-    def test_a_live_child_s_folder_stays_and_the_child_runs_on_and_a_dead_one_s_goes(self):
-        """Real processes, on every platform (on Windows before the fix: an ``AttributeError`` on the first folder)."""
-        child = _sleeper()
-        self.addCleanup(child.wait, 60)
-        self.addCleanup(child.kill)
-        live, dead = self.left("live", child.pid), self.left("dead", _ended())
-        other = self.root / "someone-else"
-        other.mkdir()
-        headless_working_copy.sweep(self.root, self.PREFIX)
-        self.assertTrue(live.is_dir())
-        self.assertIsNone(child.poll(), "the sweep ended a live child")
-        self.assertFalse(dead.exists())
-        self.assertTrue(other.is_dir(), "a folder without the prefix is not Angelo's to remove")
-
-    def test_where_there_is_no_posix_user_id_the_sweep_asks_neither_it_nor_a_signal(self):
-        """Windows, as far as another platform can stand in for it: both POSIX calls fail if the sweep makes them."""
-        from angelo_agent import file_owner
-        live, dead = self.left("live", 4242), self.left("dead", 4243)
-        missing = AttributeError("module 'os' has no attribute 'getuid'")
-        with patch.object(os, "getuid", side_effect=missing, create=True), \
-                patch.object(os, "geteuid", side_effect=missing, create=True), \
-                patch.object(os, "kill", side_effect=AssertionError("a signal was sent")), \
-                patch.object(file_owner, "owned_by_this_user", return_value=True) as owned, \
-                patch.object(engine_link_protocol, "process_alive", side_effect=lambda pid: pid == 4242) as alive:
-            headless_working_copy.sweep(self.root, self.PREFIX)
-        self.assertTrue(live.is_dir())
-        self.assertFalse(dead.exists())
-        self.assertEqual((owned.call_count, alive.call_count), (2, 2))
-
-    def test_another_user_s_folder_is_never_removed(self):
-        """The ownership check is asked on every platform, never skipped where the POSIX ID is missing."""
-        from angelo_agent import file_owner
-        theirs = self.left("theirs", _ended())
-        with patch.object(file_owner, "owned_by_this_user", return_value=False) as owned:
-            headless_working_copy.sweep(self.root, self.PREFIX)
-        self.assertTrue(theirs.is_dir())
-        self.assertEqual(owned.call_count, 1)
-
-    def test_a_link_with_the_prefix_is_left_alone(self):
-        target = self.root / "elsewhere"
-        target.mkdir()
-        (target / "child.pid").write_text(str(_ended()), encoding="ascii")
-        link = self.root / (self.PREFIX + "link")
-        try:
-            os.symlink(target, link, target_is_directory=True)
-        except (OSError, NotImplementedError):
-            self.skipTest(environment_skip("this account cannot make a symbolic link"))
-        headless_working_copy.sweep(self.root, self.PREFIX)
-        self.assertTrue(target.is_dir())
-        self.assertTrue((target / "child.pid").is_file())
 
 
 if __name__ == "__main__":

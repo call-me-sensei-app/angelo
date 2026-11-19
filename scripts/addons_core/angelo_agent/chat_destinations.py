@@ -238,6 +238,7 @@ def _app_states(now=None):
     the next install poll; coarse/racy witnesses are read afresh without waiting on the UI thread."""
     try:
         import os
+        import sys
         import time
         from . import change_clock, external_setup, external_ui, ui
         from .external_clients import AppRegistry, DEFAULT_CLIENT
@@ -263,7 +264,10 @@ def _app_states(now=None):
                 installed[app] = external_setup.installed(app)
             # Connected in Angelo but installed without Angelo's entry (copied before it was installed): its Connect
             # writes the entry (Copy setup break-it review S3), never "connected" for an app that can't reach Angelo.
-            if DEFAULT_CLIENT[app] in records and not (installed[app] and not external_setup.has_entry(app)):
+            # An entry that starts another Angelo build's server reaches that build, so it is not connected here.
+            reaches = installed[app] and external_setup.has_entry(app) and not external_setup.elsewhere(
+                app, sys.executable, ui.state_directory(), DEFAULT_CLIENT[app])   # As external_ui._python().
+            if DEFAULT_CLIENT[app] in records and (reaches or not installed[app]):
                 states[app] = "connected"
             else:
                 states[app] = "found" if installed[app] else "missing"

@@ -10,6 +10,39 @@ msgstr ""
 "X-Angelo-Translation: machine-produced; pending native review\n"
 "Language-Team: Turkish (Türkçe)\n"
 
+msgid "'{app}' asks you to set this conversation to Approve for me. Only you can: use the approval control below."
+msgstr "'{app}' bu sohbeti \"Benim yerime onayla\" olarak ayarlamanızı istiyor. Bunu yalnızca siz yapabilirsiniz: aşağıdaki onay denetimini kullanın."
+
+msgid "'{app}' asks you to set this conversation to Ask before changes. Only you can: use the approval control below."
+msgstr "'{app}' bu sohbeti \"Değişiklikten önce sor\" olarak ayarlamanızı istiyor. Bunu yalnızca siz yapabilirsiniz: aşağıdaki onay denetimini kullanın."
+
+msgid "'{app}' chose {model} ({connection} · Angelo team) for this conversation."
+msgstr "'{app}' bu sohbet için {model} ({connection} · Angelo ekibi) modelini seçti."
+
+msgid "'{app}' chose {model} ({connection} · API billing) for this conversation."
+msgstr "'{app}' bu sohbet için {model} ({connection} · API faturalandırması) modelini seçti."
+
+msgid "'{app}' chose {model} ({connection} · Subscription) for this conversation."
+msgstr "'{app}' bu sohbet için {model} ({connection} · Abonelik) modelini seçti."
+
+msgid "'{app}' chose {model} for this conversation."
+msgstr "'{app}' bu sohbet için {model} modelini seçti."
+
+msgid "'{app}' set reasoning effort to the model's default."
+msgstr "'{app}' akıl yürütme düzeyini modelin varsayılanına ayarladı."
+
+msgid "'{app}' set reasoning effort to {effort}."
+msgstr "'{app}' akıl yürütme düzeyini {effort} yaptı."
+
+msgid "'{app}' set this conversation to Ask before changes."
+msgstr "'{app}' bu sohbeti \"Değişiklikten önce sor\" olarak ayarladı."
+
+msgid "'{app}' set this conversation to Read only."
+msgstr "'{app}' bu sohbeti \"Salt okunur\" olarak ayarladı."
+
+msgid "'{label}' started a new conversation, {identity}. This transcript stays readable."
+msgstr "'{label}' yeni bir sohbet başlattı, {identity}. Bu döküm okunabilir kalır."
+
 #. src: bpy.types.DepsgraphUpdate.angelo_recalc:'OTHER'
 msgid "A recalc bit with no item of its own"
 msgstr "Kendi öğesi olmayan bir yeniden hesaplama biti"
@@ -21,6 +54,24 @@ msgstr "Yapay Zeka Sağlayıcıları…"
 #. src: angelo_agent/ai_render_card.py
 msgid "AI Render"
 msgstr "Yapay Zeka Sunumu"
+
+msgid "Allow for this session"
+msgstr "Bu oturum için izin ver"
+
+msgid "Allow for this session runs this chat's scripts without asking until Angelo restarts. Always allow runs Angelo's agent's scripts in every Auto chat, connected apps' chats included, until you turn it off in Preferences. Scripts have full access to files, the network and other apps on this computer."
+msgstr "Bu oturum için izin ver, Angelo yeniden başlayana kadar bu sohbetin betiklerini sormadan çalıştırır. Her zaman izin ver, siz Tercihler'de kapatana kadar Angelo'nun ajanının betiklerini bağlı uygulamaların sohbetleri dahil her Auto sohbetinde çalıştırır. Betikler bu bilgisayardaki dosyalara, ağa ve diğer uygulamalara tam erişime sahiptir."
+
+msgid "Allow for this session works like Trust scripts for this chat: this chat's scripts run without asking until Angelo restarts or you start a new chat."
+msgstr "Bu oturum için izin ver, Bu sohbetin betiklerine güven gibi çalışır: bu sohbetin betikleri Angelo yeniden başlayana veya yeni bir sohbet başlatana kadar sormadan çalışır."
+
+msgid "Always allow"
+msgstr "Her zaman izin ver"
+
+msgid "Always allow still covers only chats set to Approve for me, and your organization's policy still applies. Scripts that touch your preferences or Angelo itself, or that would replace the open file, always ask."
+msgstr "Her zaman izin ver yine yalnızca Benim yerime onayla modundaki sohbetleri kapsar ve kuruluşunuzun politikası yine geçerlidir. Tercihlerinize veya Angelo'nun kendisine dokunan ya da açık dosyanın yerini alacak betikler her zaman sorar."
+
+msgid "Angelo 2.0.1 lets you choose how scripts from Claude Code, Codex and other connected apps are approved, and fixes Save and Restart for updates."
+msgstr "Angelo 2.0.1 ile Claude Code, Codex ve diğer bağlı uygulamalardan gelen betiklerin nasıl onaylanacağını seçersiniz; Kaydet ve yeniden başlat da güncellemelerde yeniden çalışır."
 
 #. src: angelo_agent/learn_ui.py
 msgid "Angelo could not save this choice: {reason}"
@@ -285,6 +336,9 @@ msgstr "Ajanın sahnenizi değiştirmeden önce ne zaman soracağını ve bu soh
 msgid "Done by Angelo's own tool"
 msgstr "Angelo'nun kendi aracıyla yapıldı"
 
+msgid "Each script asks: run it once, or allow it for this session or always."
+msgstr "Her betik sorar: bir kez çalıştırın ya da bu oturum için veya her zaman izin verin."
+
 #. src: bpy.types.DepsgraphUpdate.angelo_recalc:'EDITORS'
 msgid "Editors"
 msgstr "Düzenleyiciler"
@@ -298,6 +352,9 @@ msgstr "Media Studio İstemini İyileştir"
 msgctxt "Operator"
 msgid "Enter API Key"
 msgstr "API Anahtarı Gir"
+
+msgid "Every script asks for your review before it runs."
+msgstr "Her betik çalışmadan önce incelemenizi bekler."
 
 #. src: angelo_agent/learn_card_draw.py
 msgid "Find it with search: {key}"
@@ -359,6 +416,9 @@ msgctxt "Angelo"
 msgid "On"
 msgstr "Açık"
 
+msgid "One click on Approve approves, also while the agent or a connected app keeps working."
+msgstr "Onayla'ya bir tıklama onaylar; ajan ya da bağlı bir uygulama çalışmaya devam ederken de."
+
 #. src: angelo_agent/learn_ui.py
 msgid "Open a chat first: this is set for one chat"
 msgstr "Önce bir sohbet açın: bu ayar her sohbet için ayrıdır"
@@ -371,9 +431,39 @@ msgstr "Angelo'nun sohbette yaptığı herhangi bir adımı açarak kendiniz nas
 msgid "Public notes are available in this chat, but could not be saved. {error} No scene edits or tool approvals were granted."
 msgstr "Açık notlar bu sohbette kullanılabilir, ancak kaydedilemedi. {error} Hiçbir sahne düzenlemesine veya araç onayına izin verilmedi."
 
+msgid "Read only: scripts and other changes don't run."
+msgstr "Salt okunur: betikler ve diğer değişiklikler çalışmaz."
+
+msgid "Review & run once"
+msgstr "İncele ve bir kez çalıştır"
+
+msgid "Run once"
+msgstr "Bir kez çalıştır"
+
+msgid "Save and Restart now completes an update instead of stopping with \"The update could not start\"."
+msgstr "Kaydet ve yeniden başlat artık \"Güncelleme başlatılamadı\" ile durmak yerine güncellemeyi tamamlar."
+
+msgid "Script approval cards offer Run once, Allow for this session and Always allow, also for Claude Code, Codex and other connected apps."
+msgstr "Betik onay kartları Bir kez çalıştır, Bu oturum için izin ver ve Her zaman izin ver seçeneklerini Claude Code ve Codex için de sunar."
+
+msgid "Scripts in this chat run without asking for this session"
+msgstr "Bu sohbetteki betikler bu oturumda sormadan çalışır"
+
+msgid "Scripts run without asking in Auto chats"
+msgstr "Betikler Auto sohbetlerinde sormadan çalışır"
+
+msgid "Scripts run without asking in Auto chats."
+msgstr "Betikler Auto sohbetlerinde sormadan çalışır."
+
+msgid "Scripts still run without asking: turning it off was refused. Try again in a moment."
+msgstr "Betikler hâlâ sormadan çalışıyor: kapatma reddedildi. Biraz sonra tekrar deneyin."
+
 #. src: angelo_agent/save_failure.py
 msgid "Something in this chat can't be written to its file ({kind}). This is a fault in Angelo, not in your request: start a new chat and report it."
 msgstr "Bu sohbetteki bir şey dosyasına yazılamıyor ({kind}). Bu, isteğinizdeki değil, Angelo'daki bir hatadır: yeni bir sohbet başlatın ve hatayı bildirin."
+
+msgid "The Approvals menu opens above its button instead of off to the side, and says how this chat's scripts are approved."
+msgstr "Onaylar menüsü yanda değil düğmesinin üstünde açılır ve bu sohbetin betiklerinin nasıl onaylandığını söyler."
 
 #. src: angelo_agent/save_failure.py
 msgid "The disk reported an error while Angelo wrote its own files. Check the disk or the network folder, then try again."
@@ -394,6 +484,9 @@ msgstr "Angelo'nun kendi dosyalarının bulunduğu klasör salt okunur bir diskt
 #. src: angelo_agent/checkpoint_restore_ui.py
 msgid "The recovery scene was not opened because its safety link could not be saved. {why} The protected safety snapshot is still available through Undo restore."
 msgstr "Güvenlik bağlantısı kaydedilemediği için kurtarma sahnesi açılmadı. {why} Korunan güvenlik anlık görüntüsüne “Geri yüklemeyi geri al” ile hâlâ erişilebilir."
+
+msgid "This chat's scripts run without asking for this session."
+msgstr "Bu sohbetin betikleri bu oturumda sormadan çalışır."
 
 #. src: angelo_agent/learn_ui.py
 msgid "Turn on Teach me as you work to see, under each step Angelo makes in this chat, how to do it yourself: the command, its keys in your keymap, where it is and the settings it used."
@@ -556,6 +649,9 @@ msgstr ""
 "Menüler, düğmeler ve F3 araması için ``open_media_studio``. AUTO (genel girdiler): Studio bu oturumda ilk kez göründüğünde\n"
 "kişinin bulunduğu yerin sekmesi (``studio_kind``), sonra gösterdiği sekme; 3D, IMAGE veya WORKFLOW\n"
 "(bağlamsal girdiler) her zaman o sekmeyi seçer."
+
+msgid "While scripts run without asking, the chat says so and offers Turn off."
+msgstr "Betikler sormadan çalışırken sohbet bunu söyler ve Kapat seçeneğini sunar."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "You can now set when the agent asks before changes, and trust a chat's scripts, from the chat bar's + menu."
@@ -1001,6 +1097,9 @@ msgstr "Bu önizleme kabul edilsin mi?"
 #. src: angelo_agent/saved_keys_ui.py
 msgid "access denied"
 msgstr "erişim reddedildi"
+
+msgid "Access for '{label}' ended, so its work here stopped. Messages it left waiting are not sent."
+msgstr "'{label}' için erişim sona erdi, bu yüzden buradaki işi durdu. Bekleyen mesajları gönderilmez."
 
 #. src: angelo_agent/team_token_store.py
 msgid "access was denied"
@@ -1558,6 +1657,9 @@ msgstr "Yapay Zeka"
 #. src: angelo_agent/providers_page_external.py
 msgid "AI apps and coding agents running as you can use Angelo's tools, or hand Angelo's agent a task. Their edits and scripts wait for your approval in their own chat; you can stop them and undo as in any chat. Turning this off closes the connection."
 msgstr "Sizin adınıza çalışan yapay zeka uygulamaları ve kodlama ajanları Angelo'nun araçlarını kullanabilir veya Angelo'nun ajanına bir görev verebilir. Düzenlemeleri ve betikleri kendi sohbetlerinde onayınızı bekler; bunları durdurabilir ve her sohbette olduğu gibi geri alabilirsiniz. Bunu kapatmak bağlantıyı kapatır."
+
+msgid "AI apps and coding agents running as you can work with Angelo's agent: they send it messages, follow its progress and see what it sees, in their own chat. Approvals stay yours; you can stop them and undo as in any chat. Turning this off closes the connection."
+msgstr "Sizin adınıza çalışan yapay zeka uygulamaları ve kodlama ajanları Angelo'nun ajanıyla çalışabilir: kendi sohbetlerinde ona mesaj gönderir, ilerlemesini izler ve onun gördüğünü görürler. Onaylar sizde kalır; bunları durdurabilir ve her sohbette olduğu gibi geri alabilirsiniz. Bunu kapatmak bağlantıyı kapatır."
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/studio.py
@@ -2579,6 +2681,9 @@ msgstr "Yüklenirken başarısız olan eklentiler: {count}. Kendi bildirimleri n
 msgid "With Angelo linked to Godot, an asset you save while Godot is busy importing now updates once Godot is free, even after you switch the linked asset, instead of staying as it was before the save until Reload Saved Scene. If Godot is still busy after 30 seconds, it says to use Reload Saved Scene."
 msgstr "Angelo Godot'ya bağlıyken, Godot içe aktarma yaparken kaydettiğiniz bir varlık artık bağlı varlığı değiştirdikten sonra bile Godot boşalır boşalmaz güncellenir; Reload Saved Scene'e kadar kaydetmeden önceki hâlinde kalmaz. Godot 30 saniye sonra hâlâ meşgulse Reload Saved Scene'i kullanmanızı söyler."
 
+msgid "Your organization requires your review for every script."
+msgstr "Kuruluşunuz her betik için incelemenizi gerektiriyor."
+
 #. src: angelo_agent/settings_import_card.py
 msgid "{count} more"
 msgstr "{count} tane daha"
@@ -2698,6 +2803,9 @@ msgstr "Angelo eksik bir görüntü yazdı (disk dolu olabilir); hiçbir çıkt�
 msgid "Angelo {current} is no longer supported. Please update."
 msgstr "Angelo {current} artık desteklenmiyor. Lütfen güncelleyin."
 
+msgid "Angelo {version} (PID {pid}) has access for external apps for your user. Quit it, or turn off access there; this Angelo takes over once it is free."
+msgstr "Angelo {version} (PID {pid}), kullanıcınız için dış uygulama erişimini tutuyor. Onu kapatın veya orada erişimi kapatın; erişim boşalır boşalmaz bu Angelo devralır."
+
 #. src: angelo_agent/update_ui.py
 msgid "Angelo {version} available"
 msgstr "Angelo {version} mevcut"
@@ -2802,6 +2910,9 @@ msgstr "Hareketli tarama çizgileri, titreme ve yarı saydam bir parlama"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Animation render jobs saved as OpenEXR publish their frames again."
 msgstr "OpenEXR olarak kaydedilen animasyon render işleri karelerini yeniden çıktıya kaydediyor."
+
+msgid "Another Angelo (PID {pid}) has access for external apps for your user. Quit it, or turn off access there; this Angelo takes over once it is free."
+msgstr "Başka bir Angelo (PID {pid}), kullanıcınız için dış uygulama erişimini tutuyor. Onu kapatın veya orada erişimi kapatın; erişim boşalır boşalmaz bu Angelo devralır."
 
 #. src: angelo_agent/engine_link_ui.py
 msgid "Another Angelo already has the engine live link"
@@ -8938,8 +9049,8 @@ msgid "Improved prompt · original kept for Undo"
 msgstr "İyileştirilmiş istem · özgün istem Geri Al için saklandı"
 
 #. src: bpy.types.ANGELO_Preferences.always_allow_scripts
-msgid "In chats set to Auto, run the agent's Python scripts without asking. Scripts have full access to files, the network and other apps on this computer. Ask before changes still asks; Read only still refuses"
-msgstr "Otomatik olarak ayarlanan sohbetlerde ajanın Python betiklerini sormadan çalıştır. Betikler bu bilgisayardaki dosyalara, ağa ve diğer uygulamalara tam erişime sahiptir. “Değişikliklerden önce sor” sormaya devam eder; “Salt okunur” reddetmeye devam eder"
+msgid "In chats set to Auto, connected apps' chats included, run Angelo's agent's Python scripts without asking (never code an app sends itself). Scripts have full access to files, the network and other apps on this computer. Ask before changes still asks; Read only still refuses"
+msgstr "Auto moddaki sohbetlerde, bağlı uygulamaların sohbetleri dahil, Angelo'nun ajanının Python betiklerini sormadan çalıştır (bir uygulamanın kendisinin gönderdiği kodu asla). Betikler bu bilgisayardaki dosyalara, ağa ve diğer uygulamalara tam erişime sahiptir. Değişikliklerden önce sor yine sorar; Salt okunur yine reddeder"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "In Cycles, rendering Open Shading Language on OptiX with an NVIDIA driver from the 590 to 609 series now stops at once and says to update the driver to 610 or newer or use a 580 series driver, instead of failing with a link error, often after minutes of compiling."
@@ -9975,6 +10086,12 @@ msgstr "Modelleriniz yükleniyor…"
 msgid "Local bounded telemetry excludes prompt text, source code and credentials."
 msgstr "Yerel ve sınırlı telemetri; istem metnini, kaynak kodu ve kimlik bilgilerini içermez."
 
+msgid "Local CLI client '{label}'. It reads Angelo's status only and runs no tool: no scene, file, memory, billing or provider changes."
+msgstr "Yerel CLI istemcisi '{label}'. Yalnızca Angelo'nun durumunu okur ve hiçbir araç çalıştırmaz: sahne, dosya, bellek, faturalandırma veya sağlayıcı değişikliği yapmaz."
+
+msgid "Local CLI client '{label}'. It reads Angelo's status only and runs no tool: no scene, file, memory, billing or provider changes. Rotated from conversation {previous} by `angelo session new`."
+msgstr "Yerel CLI istemcisi '{label}'. Yalnızca Angelo'nun durumunu okur ve hiçbir araç çalıştırmaz: sahne, dosya, bellek, faturalandırma veya sağlayıcı değişikliği yapmaz. `angelo session new` ile {previous} sohbetinden devralındı."
+
 #. src: angelo_agent/external_host.py
 msgid "Local CLI client '{label}'. Phase 1 is read-only: observations only; no scene, file, memory, billing or provider changes. Approvals and Stop only."
 msgstr "Yerel CLI istemcisi '{label}'. 1. aşama salt okunurdur: yalnızca gözlem; sahne, dosya, bellek, faturalandırma veya sağlayıcı değişikliği yok. Yalnızca onaylar ve Durdur."
@@ -10451,6 +10568,9 @@ msgstr "En uzun saklama süresi (gün) · 0 sınırsız"
 #. src: bpy.types.ANGELO_OT_checkpoint_settings.max_count
 msgid "Maximum snapshots · 0 is unlimited"
 msgstr "En fazla anlık görüntü · 0 sınırsız"
+
+msgid "MCP app '{label}' works with Angelo's agent here. Approve or decline what the agent asks, press Stop to end its work and Undo or restore as in any chat. The app can never approve."
+msgstr "MCP uygulaması '{label}' burada Angelo'nun ajanıyla çalışır. Ajanın istediklerini onaylayın veya reddedin, işini bitirmek için Durdur'a basın; her sohbette olduğu gibi geri alın veya geri yükleyin. Uygulama asla onaylayamaz."
 
 #. src: angelo_agent/external_host.py
 msgid "MCP app '{label}'. Its edits, scripts and tasks run here: approve or decline them, press Stop to end its work and Undo or restore as in any chat. The app can never approve."
@@ -12075,40 +12195,56 @@ msgid "Load Factory Preferences"
 msgstr "Fabrika Tercihlerini Yükle"
 
 #. src: source/blender/animrig/intern/versioning.cc
-msgid "\"%s\" is using Action \"%s\", which does not have a slot with identifier \"%s\" or \"%s\". Manually assign the right action slot to \"%s\".\n"
-msgstr "\"%s\", \"%s\" eylemini kullanıyor; bu eylemde \"%s\" veya \"%s\" tanımlayıcılı bir slot yok. Doğru eylem slotunu \"%s\" için elle atayın.\n"
+msgid ""
+"\"%s\" is using Action \"%s\", which does not have a slot with identifier \"%s\" or \"%s\". Manually assign the right action slot to \"%s\".\n"
+msgstr ""
+"\"%s\", \"%s\" eylemini kullanıyor; bu eylemde \"%s\" veya \"%s\" tanımlayıcılı bir slot yok. Doğru eylem slotunu \"%s\" için elle atayın.\n"
 
 #. src: source/blender/blenkernel/intern/curves_geometry.cc
 msgid "Invalid curve type identifiers"
 msgstr "Geçersiz eğri türü tanımlayıcıları"
 
 #. src: source/blender/blenloader/intern/versioning_290.cc
-msgid "Mesh %s has invalid faces, likely caused by the manifold extrude tool in version 2.90.0. Opening and saving the file in a version prior to 5.1 should resolve the issue\n"
-msgstr "%s örgüsünde geçersiz yüzler var; bunlara büyük olasılıkla 2.90.0 sürümündeki manifold ekstrüzyon aracı yol açtı. Dosyayı 5.1 öncesi bir sürümde açıp kaydetmek sorunu çözmelidir\n"
+msgid ""
+"Mesh %s has invalid faces, likely caused by the manifold extrude tool in version 2.90.0. Opening and saving the file in a version prior to 5.1 should resolve the issue\n"
+msgstr ""
+"%s örgüsünde geçersiz yüzler var; bunlara büyük olasılıkla 2.90.0 sürümündeki manifold ekstrüzyon aracı yol açtı. Dosyayı 5.1 öncesi bir sürümde açıp kaydetmek sorunu çözmelidir\n"
 
 #. src: source/blender/blenloader/intern/versioning_400.cc
-msgid "Proxy lost from object %s lib %s\n"
-msgstr "%s nesnesinin proxy'si kayboldu, kitaplık %s\n"
+msgid ""
+"Proxy lost from object %s lib %s\n"
+msgstr ""
+"%s nesnesinin proxy'si kayboldu, kitaplık %s\n"
 
 #. src: source/blender/blenloader/intern/versioning_400.cc
-msgid "Proxy lost from object %s lib <NONE>\n"
-msgstr "%s nesnesinin proxy'si kayboldu, kitaplık <NONE>\n"
+msgid ""
+"Proxy lost from object %s lib <NONE>\n"
+msgstr ""
+"%s nesnesinin proxy'si kayboldu, kitaplık <NONE>\n"
 
 #. src: source/blender/blenloader/intern/versioning_402.cc
-msgid "%s contains a volume shader that might need to be converted to object (see world volume panel)\n"
-msgstr "%s, nesneye dönüştürülmesi gerekebilecek bir hacim gölgelendiricisi içeriyor (dünya hacmi paneline bakın)\n"
+msgid ""
+"%s contains a volume shader that might need to be converted to object (see world volume panel)\n"
+msgstr ""
+"%s, nesneye dönüştürülmesi gerekebilecek bir hacim gölgelendiricisi içeriyor (dünya hacmi paneline bakın)\n"
 
 #. src: source/blender/blenloader/intern/versioning_402.cc
-msgid "Material %s could not be converted because of different Blend Mode and Shadow Mode (need manual adjustment)\n"
-msgstr "%s malzemesi, farklı Karışım Modu ve Gölge Modu nedeniyle dönüştürülemedi (elle ayar gerekir)\n"
+msgid ""
+"Material %s could not be converted because of different Blend Mode and Shadow Mode (need manual adjustment)\n"
+msgstr ""
+"%s malzemesi, farklı Karışım Modu ve Gölge Modu nedeniyle dönüştürülemedi (elle ayar gerekir)\n"
 
 #. src: source/blender/blenloader/intern/versioning_402.cc
-msgid "Material %s could not be converted because of non-trivial alpha blending (need manual adjustment)\n"
-msgstr "%s malzemesi, basit olmayan alfa karışımı nedeniyle dönüştürülemedi (elle ayar gerekir)\n"
+msgid ""
+"Material %s could not be converted because of non-trivial alpha blending (need manual adjustment)\n"
+msgstr ""
+"%s malzemesi, basit olmayan alfa karışımı nedeniyle dönüştürülemedi (elle ayar gerekir)\n"
 
 #. src: source/blender/draw/intern/draw_curves.cc
-msgid "Error: Curves object contains too many points. Reduce curve resolution or curve count to fix this issue.\n"
-msgstr "Hata: Eğriler nesnesi çok fazla nokta içeriyor. Sorunu gidermek için eğri çözünürlüğünü veya eğri sayısını azaltın.\n"
+msgid ""
+"Error: Curves object contains too many points. Reduce curve resolution or curve count to fix this issue.\n"
+msgstr ""
+"Hata: Eğriler nesnesi çok fazla nokta içeriyor. Sorunu gidermek için eğri çözünürlüğünü veya eğri sayısını azaltın.\n"
 
 #. src: source/blender/editors/animation/anim_asset_ops.cc
 msgid "Failed to load pose asset"
@@ -12131,13 +12267,17 @@ msgid "Failed to load saved brush asset"
 msgstr "Kaydedilen fırça varlığı yüklenemedi"
 
 #. src: source/blender/makesrna/intern/rna_action.cc
-msgid "Attempted to set slot identifier to \"%s\", but the type prefix does not match the slot's 'target_id_type' \"%s\". Setting to \"%s\" instead.\n"
-msgstr "Slot tanımlayıcısı \"%s\" olarak ayarlanmak istendi, ancak tür öneki slotun 'target_id_type' değeri \"%s\" ile eşleşmiyor. Bunun yerine \"%s\" ayarlanıyor.\n"
+msgid ""
+"Attempted to set slot identifier to \"%s\", but the type prefix does not match the slot's 'target_id_type' \"%s\". Setting to \"%s\" instead.\n"
+msgstr ""
+"Slot tanımlayıcısı \"%s\" olarak ayarlanmak istendi, ancak tür öneki slotun 'target_id_type' değeri \"%s\" ile eşleşmiyor. Bunun yerine \"%s\" ayarlanıyor.\n"
 
 #. src: source/blender/windowmanager/intern/wm_platform_support.cc
 msgctxt "WindowManager"
-msgid "Graphics card:\n"
-msgstr "Ekran kartı:\n"
+msgid ""
+"Graphics card:\n"
+msgstr ""
+"Ekran kartı:\n"
 
 #. src: source/blender/windowmanager/intern/wm_files.cc
 msgid "Quit Angelo?"
@@ -12610,6 +12750,10 @@ msgstr "Açık: bu profil için şuraya kaydedilir: {location}."
 #. src: angelo_agent/providers_page_model.py
 msgid "On: scripts in Auto chats run without asking."
 msgstr "Açık: Otomatik sohbetlerde betikler sormadan çalışır."
+
+#. src: angelo_agent/providers_page_model.py
+msgid "On for Angelo's own chats. Connected apps' chats still ask until you press Always allow on one of their script cards."
+msgstr "Angelo'nun kendi sohbetleri için açık. Bağlı uygulamaların sohbetleri, betik kartlarından birinde Her zaman izin ver'e basana kadar sormaya devam eder."
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/web_export_ui.py
@@ -17403,6 +17547,9 @@ msgstr "{engine} başlatılıyor"
 msgid "Starting…"
 msgstr "Başlatılıyor…"
 
+msgid "Starts another Angelo"
+msgstr "Başka bir Angelo başlatıyor"
+
 #. src: angelo_agent/session_rail.py
 msgctxt "plural:one"
 msgid "Starts once {count} running worker is done"
@@ -20038,6 +20185,9 @@ msgstr "Bu betik Angelo'nun tercihlerini kullanıyor. Oradaki bir değişiklik h
 msgid "This script would replace the file you have open, so it always asks, even when scripts are allowed."
 msgstr "Bu betik açık dosyanın yerine başkasını açacağından, betiklere izin verildiğinde bile her zaman sorar."
 
+msgid "This session's live page stopped after an error, so its link no longer opens. The app's next message starts a new one."
+msgstr "Bu oturumun canlı sayfası bir hatadan sonra durdu, bu yüzden bağlantısı artık açılmıyor. Uygulamanın sonraki mesajı yenisini başlatır."
+
 #. src: angelo_agent/team_connections.py
 msgid "This sign-in doesn't allow model use; sign out and sign in again."
 msgstr "Bu oturum model kullanımına izin vermiyor; oturumu kapatıp yeniden açın."
@@ -20714,6 +20864,12 @@ msgstr "Angelo UI'de raporların görüntüsünü güncelleyin (dahili kullanım
 #. src: angelo_agent/chat_titles.py
 msgid "Update the engine link"
 msgstr "Motor bağlantısını güncelle"
+
+msgid "Updated Angelo in {app}: it started the MCP server in {previous}. Restart {app} to load it."
+msgstr "{app} uygulamasındaki Angelo güncellendi: girdi MCP sunucusunu {previous} içinden başlatıyordu. Yüklemek için {app} uygulamasını yeniden başlatın."
+
+msgid "Updated Angelo in {app}: it started the MCP server in {previous}. Start a new {app} session to use it."
+msgstr "{app} uygulamasındaki Angelo güncellendi: girdi MCP sunucusunu {previous} içinden başlatıyordu. Kullanmak için yeni bir {app} oturumu başlatın."
 
 #. src: angelo_agent/chat_titles.py
 msgid "Updated the engine link"
@@ -21551,6 +21707,12 @@ msgstr "Bir metin dosyası her şeyi içerebilir, bu yüzden metin dosyası yazm
 msgid "This script refers to preferences or to Angelo's own add-on, so it always asks, even when scripts are allowed."
 msgstr "Bu betik tercihlere veya Angelo'nun kendi eklentisine başvurduğundan, betiklere izin verildiğinde bile her zaman sorar."
 
+msgid "Waiting for Angelo {version}"
+msgstr "Angelo {version} bekleniyor"
+
+msgid "Waiting for another Angelo"
+msgstr "Başka bir Angelo bekleniyor"
+
 #. src: angelo_agent/key_store.py
 msgid "Waiting for your keyring · answer the unlock prompt"
 msgstr "Anahtarlığınız bekleniyor · kilit açma isteğini yanıtlayın"
@@ -21625,6 +21787,110 @@ msgstr "Web dışa aktarımları sahnenizin ton eşlemesini, maruziyetini ve Dü
 #. src: angelo_agent/web_preview.py
 msgid "Web Preview"
 msgstr "Web Önizleme"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Stop sharing"
+msgstr "Paylaşımı durdur"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Open live page"
+msgstr "Canlı sayfayı aç"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Share again"
+msgstr "Yeniden paylaş"
+
+#. src: angelo_agent/session_page.py
+msgid "Live session"
+msgstr "Canlı oturum"
+
+#. src: angelo_agent/session_page.py
+msgid "Working with {app}"
+msgstr "{app} ile çalışılıyor"
+
+#. src: angelo_agent/session_page.py
+msgid "Read-only view of this session. Approvals, Stop and every change stay in Angelo."
+msgstr "Bu oturumun salt okunur görünümü. Onaylar, Durdur ve her değişiklik Angelo'da kalır."
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting for your approval in Angelo"
+msgstr "Angelo'da onayınız bekleniyor"
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting while you use a tool in Angelo"
+msgstr "Angelo'da bir araç kullanırken bekleniyor"
+
+#. src: angelo_agent/session_page.py
+msgid "This live page has ended: the session ended or sharing was stopped in Angelo."
+msgstr "Bu canlı sayfa sona erdi: oturum bitti veya paylaşım Angelo'da durduruldu."
+
+#. src: angelo_agent/session_page.py
+msgid "Angelo isn't answering. The page reconnects when it does."
+msgstr "Angelo yanıt vermiyor. Yanıt verdiğinde sayfa yeniden bağlanır."
+
+#. src: angelo_agent/session_page.py
+msgid "Result"
+msgstr "Sonuç"
+
+#. src: angelo_agent/session_page.py
+msgid "Latest views"
+msgstr "Son görünümler"
+
+#. src: angelo_agent/session_page.py
+msgid "Views the agent takes appear here."
+msgstr "Ajanın aldığı görünümler burada görünür."
+
+#. src: angelo_agent/session_page.py
+msgid "Loading the scene…"
+msgstr "Sahne yükleniyor…"
+
+#. src: angelo_agent/session_page.py
+msgid "The scene appears here once Angelo exports it."
+msgstr "Angelo dışa aktardığında sahne burada görünür."
+
+#. src: angelo_agent/session_page.py
+msgid "This browser can't draw the 3D scene. Everything else here still updates."
+msgstr "Bu tarayıcı 3B sahneyi çizemiyor. Buradaki diğer her şey güncellenmeye devam ediyor."
+
+#. src: angelo_agent/session_page.py
+msgid "Round {round}"
+msgstr "Tur {round}"
+
+#. src: angelo_agent/session_page.py
+msgid "Score {score}%"
+msgstr "Puan %{score}"
+
+#. src: angelo_agent/session_page.py
+msgid "Best {score}%"
+msgstr "En iyi %{score}"
+
+#. src: angelo_agent/session_page.py
+msgid "Passes at {score}%"
+msgstr "%{score} ile geçer"
+
+#. src: angelo_agent/session_page.py
+msgid "Session {time}"
+msgstr "Oturum {time}"
+
+#. src: angelo_agent/session_page.py
+msgid "This step {time}"
+msgstr "Bu adım {time}"
+
+#. src: angelo_agent/session_page.py
+msgid "Usage"
+msgstr "Kullanım"
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting for approval"
+msgstr "Onay bekleniyor"
+
+#. src: angelo_agent/session_page.py
+msgid "{app} can show this session on a live page in your browser. Only this computer can open it, and it shows the scene, the progress and the result, never files or other chats."
+msgstr "{app} bu oturumu tarayıcınızda canlı bir sayfada gösterebilir. Sayfayı yalnızca bu bilgisayar açabilir; sahneyi, ilerlemeyi ve sonucu gösterir, asla dosyaları veya diğer sohbetleri göstermez."
+
+#. src: angelo_agent/session_page.py
+msgid "You stopped sharing this session's live page. The link no longer opens."
+msgstr "Bu oturumun canlı sayfasını paylaşmayı durdurdunuz. Bağlantı artık açılmaz."
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/web_export_ui.py
@@ -26244,6 +26510,9 @@ msgstr "Bu varlık ücretli. Fab’de satın alın, sonra buraya ekleyin."
 msgid "Type what you need, then press Enter."
 msgstr "İhtiyacınızı yazın, sonra Enter’a basın."
 
+msgid "Works through Angelo's agent: sends it messages, follows its progress and sees what it sees."
+msgstr "Angelo'nun ajanı aracılığıyla çalışır: ona mesaj gönderir, ilerlemesini izler ve onun gördüğünü görür."
+
 #. src: angelo_agent/fab_overlay.py
 msgid "{size} download"
 msgstr "{size} indirme"
@@ -26264,6 +26533,9 @@ msgstr "Satın almak için Fab’de açar. Sizin olduğunda Angelo sahnenize ekl
 #. src: angelo_agent/fab_overlay.py
 msgid "Price on Fab: {price}"
 msgstr "Fab’deki fiyat: {price}"
+
+msgid "{app}'s Angelo entry starts the MCP server in {where}. Connect {app} points it at this Angelo."
+msgstr "{app} uygulamasındaki Angelo girdisi MCP sunucusunu {where} içinden başlatıyor. \"{app} uygulamasını bağla\" onu bu Angelo'ya yönlendirir."
 
 #. src: angelo_agent/job_chat.py
 #. src: angelo_agent/studio_media_tiles.py
@@ -26858,6 +27130,7 @@ msgstr "Koltuğunuzu doğrulamak için Angelo ekibinize ulaşılamadı. Angelo e
 
 #~ msgid "Your admin hasn't set the shared key for this model server yet."
 #~ msgstr "Yöneticiniz bu model sunucusu için ortak anahtarı henüz ayarlamadı."
+
 #~ msgid "Finish the tool you are using in Blender, then start voice"
 #~ msgstr "Blender'da kullandığınız aracı bitirin, ardından sesi başlatın"
 
@@ -27981,3 +28254,21 @@ msgstr "{kind}, en fazla {size}. Kaydedilmemiş bu dosya için geçici bir klas�
 #. src: angelo_agent/download_approvals.py
 msgid "{kind}, up to {size}. Saved in assets/downloads in this project's folder."
 msgstr "{kind}, en fazla {size}. Bu projenin klasöründeki assets/downloads içine kaydedilir."
+
+msgid "Angelo is busy working for {app} without its window and hasn't come up yet. End that work now (it stops and saves first), or quit this launch and leave it running?"
+msgstr "Angelo penceresi olmadan {app} için çalışıyor ve henüz görünmedi. Bu işi şimdi bitirmek mi (önce durur ve kaydeder), yoksa bu açılıştan çıkıp onu çalışır bırakmak mı?"
+
+msgid "Angelo is working for {app} without its window, and this launch can't reach it. Quit it from Activity Monitor, or wait for it to finish, then open Angelo again."
+msgstr "Angelo penceresi olmadan {app} için çalışıyor ve bu açılış ona ulaşamıyor. Etkinlik Monitörü'nden çıkın ya da bitmesini bekleyin, ardından Angelo'yu yeniden açın."
+
+msgid "End it"
+msgstr "Bitir"
+
+msgid "Quit"
+msgstr "Çık"
+
+msgid "an app"
+msgstr "bir uygulama"
+
+msgid "Declined {tool}, answered through {app}."
+msgstr "{tool} reddedildi, {app} üzerinden yanıtlandı."

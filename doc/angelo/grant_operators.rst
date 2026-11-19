@@ -99,7 +99,7 @@ The entries:
 * accounts, sign-ins and consents, refused inside agent code whatever they do:
   ``TeamAccount.sign_out`` and ``cancel_sign_in``, ``NativeAuthentication.cancel``,
   ``quick_connect.cancel``, ``ConnectionStore.remove``, ``AppRegistry.disconnect``,
-  ``external_setup.disconnect``, ``script_files.forget`` and ``forget_at``.
+  and ``external_setup.disconnect``.
 
 ``test_native_grant_operators`` maps every audited operator to its entries
 (``ENTRY_FOR``). It requires each mapped entry to be guarded and runs every
@@ -213,12 +213,24 @@ but not change: its module exposes only built-in functions and refuses every
 
 **Click tickets.** Angelo's canvases and card hosts tell the authority where each
 control that grants is drawn (``consent_regions``: window, rectangle, the
-operator's idname and a digest of its arguments). The window manager reports
+operator's idname and a digest of its arguments). Only controls are regions: a hit
+that takes no press (a reveal's shield, a disabled control, an info row) is never
+one, since a press on a control under it would land in two regions, which C refuses
+as ambiguous (``test_native_consent_regions``). The window manager reports
 the operating system's pointer moves, presses and focus changes straight to C
 (``BPY_angelo_guard_note_input``); no Python call can. A press on an approval's
 own control (Approve, Always allow scripts, Allow this file, Accept) mints a ticket
-only when it is armed, by the same rule as "A click the person aimed": drawn there
-for the shield, moved into since, focus unchanged. A press on any other granting
+only when it is armed, by the same rule as "A click the person aimed": shown for the
+shield (the same control re-laid out while it stays drawn keeps it; one arriving under a
+pointer that was not on it starts again), and aimed at by a move into it at any time
+since it was drawn (leaving drops it) or by a real move inside it once its shield has
+passed, or by the click that brings the window forward, which never grants itself and
+arms a press only ``SHIELD_SECONDS`` later. That click is only the press that arrives
+with the window's activation (``note_activate``, from ``wm_window``'s activation, within
+``ACTIVATION_PRESS_SECONDS`` and before any other event but the activation's own
+synthetic move); a window brought forward without a press has none. No other press aims:
+presses alone, however far apart, never grant a control that appeared under a resting
+pointer. A press on any other granting
 control (a picker's model, effort, Fast or approval mode, Media Studio's Generate,
 the Flows bar's Run) mints only after a real pointer move inside it at least
 ``ARM_SECONDS`` (0.3 s) after it was drawn there (the coordinator's ruling on the
@@ -230,9 +242,10 @@ own window's buffer swap, ``note_presented``; a control placed by an event, a sc
 a re-flow, takes its own window's next frame, never another window's), never from when
 it was made or drawn, so a slow first draw takes none of the person's time. Another
 control swapped into a button's slot counts from the frame that shows it, and a
-control drawn off screen counts from its first draw in a window. A window losing focus
-starts every control in it again, as a consent region does (``note_deactivate``'s
-epoch). A press that comes sooner, or with no
+control drawn off screen counts from its first draw in a window. A window losing focus,
+or coming forward again, starts every control in it again and drops every aim, as a
+consent region does (``note_deactivate``'s and ``note_activate``'s epoch);
+``window_state`` gives every surface's arming that one record. A press that comes sooner, or with no
 move onto the control since, is answered quietly (the coordinator's ruling on the
 0.3 s arm, 2026-11-16): C records it with the control (``unarmed``), and the guarded
 operator it reaches, a surface's click or Blender's own button, refuses with no

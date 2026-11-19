@@ -4,13 +4,12 @@
 
 Background Blender builds no Undo history when it loads a file, and a native commit refuses without an active step
 ("Enable Global Undo with at least one Undo step before applying a native commit"), so every staged program and
-recipe APPLY refused in the headless MCP child (found while building parallel-agent workers, which share its
-start-up). The binary now keeps history in background once asked (``_angelo_undo.keep_background_document``): every
+recipe APPLY refused in a background child (found while building parallel-agent workers, whose start-up 2.0.0's
+headless MCP child shared). The binary now keeps history in background once asked (``_angelo_undo.keep_background_document``): every
 load starts the loaded document's own history, first step "Original", as a window's load does. These checks pin the
 Python side, source-level where bpy is needed: the shared start-up asks before any load, an older binary is never
 assumed to keep history, and no background start-up pushes its own step (``ed.undo_push`` marks the just-opened file
-modified, which ``angelo_blend_file`` would then report). The real child runs in
-test_blender_headless_native_commits.py.
+modified, which ``angelo_blend_file`` would then report).
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
@@ -26,9 +25,9 @@ ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(ADDON.parent))
 from angelo_agent import program_undo  # noqa: E402
 
-# The modules that start or run a background document: the headless MCP child and parallel-agent workers.
+# The modules that start or run a background document: parallel-agent workers and their shared start-up.
 BACKGROUND_PREFIXES = ("headless_", "worker_")
-LOADS = {"open_mainfile", "open_copy", "read_homefile", "read_factory_settings", "revert_mainfile"}
+LOADS = {"open_mainfile", "open_part", "read_homefile", "read_factory_settings", "revert_mainfile"}
 
 
 def tree(name):
@@ -97,22 +96,12 @@ class SharedStartUpTests(unittest.TestCase):
         self.assertEqual((assigned.get("use_global_undo"), assigned.get("undo_steps")), ("True", "UNDO_STEPS"))
         from angelo_agent import headless_main
         self.assertGreaterEqual(headless_main.UNDO_STEPS, 1)
-        serve = function(main, "_serve")
+        serve = function(tree("worker_main.py"), "_serve")
         calls = sorted(called(serve))
         first_prepare = min(line for line, name in calls if name == "_prepare_preferences")
         loads = [line for line, name in calls if name in LOADS]
         self.assertTrue(loads, "the start-up loads its document")
         self.assertLess(first_prepare, min(loads), "history is kept before the first load, so every load starts one")
-
-    def test_the_headless_save_marks_the_document_saved_after_placing_it(self):
-        """Blender's save there is a copy (never the open file), which leaves the document reading as unsaved."""
-        save = next(node for node in ast.walk(tree("headless_host.py")) if isinstance(node, ast.FunctionDef)
-                    and node.name == "save")
-        calls = sorted(called(save))
-        placed = [line for line, name in calls if name == "place"]
-        marked = [line for line, name in calls if name == "background_document_saved"]
-        self.assertTrue(placed and marked, calls)
-        self.assertGreater(min(marked), max(placed), "marked saved only once the output is in place")
 
     def test_no_background_module_pushes_its_own_first_step(self):
         """The binary starts each loaded document's history; an extra push would add a step and mark it modified."""

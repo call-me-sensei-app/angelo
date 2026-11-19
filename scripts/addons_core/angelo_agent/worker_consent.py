@@ -328,9 +328,6 @@ class LeasedConsent:
     def offers_always_allow(self, call):
         return False   # The person's choices are made in Angelo's window.
 
-    def offers_script_file_allow(self, call):
-        return False
-
 
 class _NotAScript:
     name = ""

@@ -17,6 +17,7 @@ import copy
 import json
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
@@ -127,7 +128,7 @@ def mutated_plans(plan, most=30):
         yield copied
 
 
-@unittest.skipIf(Draft202012Validator is None, "jsonschema is not installed")
+@unittest.skipIf(Draft202012Validator is None, required_skip("jsonschema is not installed"))
 class EquivalenceTests(unittest.TestCase):
     def test_both_forms_accept_exactly_the_same_plans(self):
         before, after = Draft202012Validator(one_of_plan()), Draft202012Validator(native_plan_schema())

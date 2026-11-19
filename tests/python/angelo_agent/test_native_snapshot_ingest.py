@@ -17,6 +17,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from host_test_policy import environment_skip
 import uuid
 from pathlib import Path
 from unittest.mock import patch
@@ -36,7 +37,7 @@ from angelo_agent.snapshot_store import SnapshotStore  # noqa: E402
 from angelo_agent.snapshot_worker import SnapshotWorker  # noqa: E402
 
 
-@unittest.skipUnless(anchored_files_supported(), "descriptor-relative storage required")
+@unittest.skipUnless(anchored_files_supported(), environment_skip("descriptor-relative storage required"))
 class SnapshotIngestTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="angelo-ingest-")

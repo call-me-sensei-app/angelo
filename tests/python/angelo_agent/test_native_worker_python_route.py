@@ -63,10 +63,10 @@ class LeadSideTests(unittest.TestCase):
         return executor
 
     def test_a_worker_chat_offers_and_routes_python_and_headless_never_gets_it(self):
-        from angelo_agent.external_clients import HEADLESS_TOOLS
+        from angelo_agent.windowless_tools import TOOLS as WINDOWLESS
         reads, edits = remote_executor.worker_tools()
         self.assertIn(SCRIPT, edits)
-        self.assertNotIn(SCRIPT, HEADLESS_TOOLS)   # A person approves a worker's script in Angelo; an app never.
+        self.assertNotIn(SCRIPT, WINDOWLESS)   # A person approves a worker's script in Angelo; an app never.
         self.assertIn("angelo_script", remote_executor.local_tools())
         with patch.object(parallel_access, "enabled", return_value=True):
             offered = parallel_access.restrict(None, {SCRIPT, "angelo_script", "angelo_sculpt_batch"}, worker=True)

@@ -347,14 +347,13 @@ reached = [i for i, original in enumerate(HELD) if not refused(original)]
     def test_a_script_changes_no_account_sign_in_or_consent(self):
         """The G2 ruling (agent code changes no grant or consent state in either direction), applied by Devin's Phase B
         review to the operators that only narrow: signing the person out of their team, removing a connection,
-        cancelling a sign-in or forgetting an app's allowed scripts is the person's (or Angelo's own) to do, never a
-        script's. The operator call and the function behind it are both refused."""
-        from angelo_agent import external_clients, external_setup, grant_guard, quick_connect, script_files  # noqa: F401
+        or cancelling a sign-in is the person's (or Angelo's own) to do, never a script's. The operator call and the function behind it are both refused."""
+        from angelo_agent import external_clients, external_setup, grant_guard, quick_connect  # noqa: F401
         # A script can't import Angelo's package by name; what it reaches through sys.modules must refuse by itself.
         source = """
 import bpy, sys
-external_clients, external_setup, quick_connect, script_files = (sys.modules["angelo_agent." + name] for name in (
-    "external_clients", "external_setup", "quick_connect", "script_files"))
+external_clients, external_setup, quick_connect = (sys.modules["angelo_agent." + name] for name in (
+    "external_clients", "external_setup", "quick_connect"))
 refused = {}
 for idname in sorted(IDS):
     try:
@@ -364,8 +363,7 @@ for idname in sorted(IDS):
         refused[idname] = None
     except Exception as error:
         refused[idname] = type(error).__name__ + ": " + str(error)[:120]
-for label, call in (("script_files.forget", lambda: script_files.forget(app="qa-none")),
-                    ("external_setup.disconnect", lambda: external_setup.disconnect("qa-none")),
+for label, call in (("external_setup.disconnect", lambda: external_setup.disconnect("qa-none")),
                     ("quick_connect.cancel", lambda: quick_connect.cancel(None, "qa-none")),
                     ("AppRegistry.disconnect", lambda: external_clients.AppRegistry.disconnect(None, "qa-none"))):
     try:
@@ -378,12 +376,12 @@ for label, call in (("script_files.forget", lambda: script_files.forget(app="qa-
 """
         ids = sorted(getattr(grant_guard, "ACCOUNT_OPERATORS", ())) or [
             "angelo.team_sign_out", "angelo.team_cancel_sign_in", "angelo.cancel_signin", "angelo.quick_connect_cancel",
-            "angelo.connection_remove", "angelo.external_app_disconnect", "angelo.external_app_forget_scripts"]
+            "angelo.connection_remove", "angelo.external_app_disconnect"]
         G.automatic(G.set, APPROVED, "chat-acct/1", digest(source))
         namespace = {"IDS": ids}
         G.run_confined(source, "<agent script>", namespace, "chat-acct/1")
         self.assertEqual({name: why for name, why in namespace["refused"].items() if why is not None}, {})
-        self.assertEqual(len(namespace["refused"]), len(ids) + 4)
+        self.assertEqual(len(namespace["refused"]), len(ids) + 3)
 
     def test_a_standing_consent_alone_admits_nothing(self):
         """Angelo reads it and approves each script it covers; one it must not cover still asks."""

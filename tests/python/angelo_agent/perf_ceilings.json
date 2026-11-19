@@ -66,396 +66,450 @@
       },
       "operations": {
         "chat_waiting/first_wait_geometry": {
-          "ceiling": 277220183
+          "ceiling": 277179825,
+          "tolerance": 0.05
         },
         "chat_waiting/hero_frame": {
-          "ceiling": 1803728
+          "ceiling": 1712575,
+          "tolerance": 0.05
         },
         "chat_waiting/icon_frame": {
-          "ceiling": 187012
+          "ceiling": 187230,
+          "tolerance": 0.05
         },
         "chat_waiting/reveal_frame": {
-          "ceiling": 7698346
+          "ceiling": 7667786,
+          "tolerance": 0.05
         },
         "chat_waiting/timer_tick": {
-          "ceiling": 83527
+          "ceiling": 83601,
+          "tolerance": 0.05
         },
         "conversation_journal/admission_save_at_50": {
-          "ceiling": 1706626,
-          "tolerance": 0.1
+          "ceiling": 1681764,
+          "tolerance": 0.06646
         },
         "conversation_journal/admission_save_at_500": {
-          "ceiling": 1678163,
-          "tolerance": 0.1
+          "ceiling": 1682728,
+          "tolerance": 0.05
         },
         "conversation_journal/edit_saves_at_50": {
-          "ceiling": 36407745,
-          "tolerance": 0.1
+          "ceiling": 36689513,
+          "tolerance": 0.05
         },
         "conversation_journal/edit_saves_at_500": {
-          "ceiling": 36937988,
-          "tolerance": 0.1
+          "ceiling": 37131743,
+          "tolerance": 0.05
         },
         "deep_collections/object_scoped_delta": {
-          "ceiling": 70335837
+          "ceiling": 71057443,
+          "tolerance": 0.05
         },
         "deep_collections/rich_object_query": {
-          "ceiling": 407976800
+          "ceiling": 394454133,
+          "tolerance": 0.05
         },
         "deep_collections/search_100_objects": {
-          "ceiling": 2067947010
+          "ceiling": 2100700265,
+          "tolerance": 0.05
         },
         "deep_collections/search_page_coverage_10": {
-          "ceiling": 229624888
+          "ceiling": 227011974,
+          "tolerance": 0.05
         },
         "deep_collections/search_page_coverage_100": {
-          "ceiling": 796745440
+          "ceiling": 824761386,
+          "tolerance": 0.05
         },
         "deep_collections/staged_1_operation_1_check_work_clock": {
-          "ceiling": 1412049182,
-          "tolerance": 0.1
+          "ceiling": 1467832591,
+          "tolerance": 0.05
         },
         "deep_collections/target_revision": {
-          "ceiling": 61215623
+          "ceiling": 61466370,
+          "tolerance": 0.05
         },
         "deep_collections/transform_object_query": {
-          "ceiling": 62809360
+          "ceiling": 63546285,
+          "tolerance": 0.05
         },
         "default/eight_separate_staged_programs_work_clock": {
-          "ceiling": 6521764623,
-          "tolerance": 0.1
+          "ceiling": 7795080671,
+          "tolerance": 0.05
         },
         "default/legacy_typed_location": {
-          "ceiling": 28820398,
-          "tolerance": 0.25
+          "ceiling": 27075202,
+          "tolerance": 0.18407
         },
         "default/object_scoped_delta": {
-          "ceiling": 59574733
+          "ceiling": 59875008,
+          "tolerance": 0.05
         },
         "default/one_object_delta": {
-          "ceiling": 379637414
+          "ceiling": 378979336,
+          "tolerance": 0.05
         },
         "default/rich_object_query_warm_exact_revalidation": {
-          "ceiling": 71073461
+          "ceiling": 71004576,
+          "tolerance": 0.05
         },
         "default/search_100_objects": {
-          "ceiling": 371757029
+          "ceiling": 372865822,
+          "tolerance": 0.05
         },
         "default/search_page_coverage_100": {
-          "ceiling": 328315058
+          "ceiling": 334156713,
+          "tolerance": 0.05
         },
         "default/staged_1_operation_1_check_work_clock": {
-          "ceiling": 816094400,
-          "tolerance": 0.11
+          "ceiling": 976422769,
+          "tolerance": 0.05
         },
         "default/staged_8_operations_1_check_work_clock": {
-          "ceiling": 884904446,
-          "tolerance": 0.11
+          "ceiling": 1064186245,
+          "tolerance": 0.05
         },
         "default/target_only_signature": {
-          "ceiling": 9628494,
-          "tolerance": 0.15
+          "ceiling": 9729987,
+          "tolerance": 0.05
         },
         "default/transform_object_query": {
-          "ceiling": 59457781
+          "ceiling": 59835514,
+          "tolerance": 0.05
         },
         "default/whole_request_snapshot": {
-          "ceiling": 20651744,
-          "tolerance": 0.15
+          "ceiling": 23088154,
+          "tolerance": 0.05
         },
         "default/whole_scene_signature": {
-          "ceiling": 14490160
+          "ceiling": 15807060,
+          "tolerance": 0.05
         },
         "dense_geometry/object_scoped_delta": {
-          "ceiling": 62361619
+          "ceiling": 59604664,
+          "tolerance": 0.05
         },
         "dense_geometry/rich_object_query": {
-          "ceiling": 62263143
+          "ceiling": 62560304,
+          "tolerance": 0.05
         },
         "dense_geometry/search_100_objects": {
-          "ceiling": 3330983138
+          "ceiling": 3344602657,
+          "tolerance": 0.05
         },
         "dense_geometry/search_page_coverage_10": {
-          "ceiling": 1605698805
+          "ceiling": 1612792626,
+          "tolerance": 0.05
         },
         "dense_geometry/search_page_coverage_100": {
-          "ceiling": 3323429426
+          "ceiling": 3336240116,
+          "tolerance": 0.05
         },
         "dense_geometry/staged_1_operation_1_check_work_clock": {
-          "ceiling": 802205759,
-          "tolerance": 0.1
+          "ceiling": 965834221,
+          "tolerance": 0.05084
         },
         "dense_geometry/target_revision": {
-          "ceiling": 57718678
+          "ceiling": 58020984,
+          "tolerance": 0.05
         },
         "dense_geometry/transform_object_query": {
-          "ceiling": 59460753
+          "ceiling": 59840703,
+          "tolerance": 0.05
         },
         "long_session/edit_cycle_first_10": {
-          "ceiling": 1131349528,
-          "tolerance": 0.1
+          "ceiling": 1853216822,
+          "tolerance": 0.05
         },
         "long_session/edit_cycle_last_10": {
-          "ceiling": 1144786382,
-          "tolerance": 0.1
+          "ceiling": 1867581684,
+          "tolerance": 0.05
         },
         "long_session/move_material_slots_01": {
-          "ceiling": 257288317,
-          "tolerance": 0.1
+          "ceiling": 380800626,
+          "tolerance": 0.05
         },
         "long_session/move_material_slots_08": {
-          "ceiling": 983521940,
-          "tolerance": 0.1
+          "ceiling": 1142273484,
+          "tolerance": 0.05
         },
         "long_session/move_material_slots_32": {
-          "ceiling": 3643957097,
-          "tolerance": 0.1
+          "ceiling": 3938359104,
+          "tolerance": 0.05
         },
         "many_objects/object_scoped_delta": {
-          "ceiling": 67206420
+          "ceiling": 67728073,
+          "tolerance": 0.05
         },
         "many_objects/rich_object_query": {
-          "ceiling": 405826463
+          "ceiling": 391891614,
+          "tolerance": 0.05
         },
         "many_objects/search_100_objects": {
-          "ceiling": 2027407424
+          "ceiling": 2057857010,
+          "tolerance": 0.05
         },
         "many_objects/search_page_coverage_10": {
-          "ceiling": 225205302
+          "ceiling": 222127739,
+          "tolerance": 0.05
         },
         "many_objects/search_page_coverage_100": {
-          "ceiling": 791012189
+          "ceiling": 816959484,
+          "tolerance": 0.05
         },
         "many_objects/staged_1_operation_1_check_work_clock": {
-          "ceiling": 1325316114,
-          "tolerance": 0.1
+          "ceiling": 1367894904,
+          "tolerance": 0.05
         },
         "many_objects/target_revision": {
-          "ceiling": 59001704
+          "ceiling": 59373964,
+          "tolerance": 0.05
         },
         "many_objects/transform_object_query": {
-          "ceiling": 60583359
+          "ceiling": 60993619,
+          "tolerance": 0.05
         },
         "native_reads/blend_listing": {
-          "ceiling": 883242181,
-          "tolerance": 0.1
+          "ceiling": 877488691,
+          "tolerance": 0.05
         },
         "native_reads/bvh_from_mesh": {
-          "ceiling": 965378251,
-          "tolerance": 0.26
+          "ceiling": 841853176,
+          "tolerance": 0.05
         },
         "native_reads/image_metadata": {
-          "ceiling": 6203541
+          "ceiling": 6338575,
+          "tolerance": 0.05
         },
         "native_reads/positions": {
-          "ceiling": 28636184
+          "ceiling": 14310108,
+          "tolerance": 0.05
         },
         "native_reads/sculpt_mesh": {
-          "ceiling": 66073
+          "ceiling": 73235,
+          "tolerance": 0.05
         },
         "native_reads/sculpt_query": {
-          "ceiling": 383324802
+          "ceiling": 393238663,
+          "tolerance": 0.05
         },
         "native_reads/sculpt_vertex": {
-          "ceiling": 18445918
+          "ceiling": 18968709,
+          "tolerance": 0.05
         },
         "native_reads/topology": {
-          "ceiling": 40457883,
-          "tolerance": 0.06
+          "ceiling": 13384275,
+          "tolerance": 0.06571
         },
         "native_reads/vertex_group_weights": {
-          "ceiling": 45740630
+          "ceiling": 36381840,
+          "tolerance": 0.05
         },
         "native_reads/vertex_groups_one": {
-          "ceiling": 12955279
+          "ceiling": 13031446,
+          "tolerance": 0.05
         },
         "snapshot/dense_200mb_repeat_capture_bytes": {
-          "ceiling": 192746497,
+          "ceiling": 192750361,
           "unit": "bytes",
           "tolerance": 0.0
         },
         "snapshot/dense_200mb_repeat_capture_three_write_sum": {
-          "ceiling": 376138569,
-          "tolerance": 0.00345
+          "ceiling": 380997682,
+          "tolerance": 0.01087
         },
         "snapshot/dense_500mb_repeat_capture_bytes": {
-          "ceiling": 497209090,
+          "ceiling": 497213106,
           "unit": "bytes",
           "tolerance": 0.0
         },
         "snapshot/dense_500mb_repeat_capture_three_write_sum": {
-          "ceiling": 900990841,
-          "tolerance": 0.00692
+          "ceiling": 902443089,
+          "tolerance": 0.00773
         },
         "snapshot/dense_50mb_repeat_capture_bytes": {
-          "ceiling": 48527374,
+          "ceiling": 48531166,
           "unit": "bytes",
           "tolerance": 0.0
         },
         "snapshot/dense_50mb_repeat_capture_three_write_sum": {
-          "ceiling": 129612898,
-          "tolerance": 0.01642
+          "ceiling": 132546455,
+          "tolerance": 0.0086
         },
         "snapshot/history_1000_repeat_capture_bytes": {
-          "ceiling": 459076,
+          "ceiling": 462852,
           "unit": "bytes",
           "tolerance": 0.0
         },
         "snapshot/history_1000_repeat_capture_three_write_sum": {
-          "ceiling": 48004447,
-          "tolerance": 0.01114
+          "ceiling": 51705466,
+          "tolerance": 0.0158
         },
         "snapshot/history_10_repeat_capture_bytes": {
-          "ceiling": 459076,
+          "ceiling": 462852,
           "unit": "bytes",
           "tolerance": 0.0
         },
         "snapshot/history_10_repeat_capture_three_write_sum": {
-          "ceiling": 48164390,
-          "tolerance": 0.00763
+          "ceiling": 51845777,
+          "tolerance": 0.01076
         },
         "snapshot/many_ids_10000_repeat_capture_bytes": {
-          "ceiling": 49678974,
+          "ceiling": 49763830,
           "unit": "bytes",
           "tolerance": 0.0
         },
         "snapshot/many_ids_10000_repeat_capture_three_write_sum": {
-          "ceiling": 495436871,
-          "tolerance": 0.01093
+          "ceiling": 505271538,
+          "tolerance": 0.00743
         },
         "snapshot_worker/probe_unchanged_0100": {
-          "ceiling": 13745183
+          "ceiling": 13912715,
+          "tolerance": 0.05
         },
         "snapshot_worker/probe_unchanged_1000": {
-          "ceiling": 127659752
+          "ceiling": 127931900,
+          "tolerance": 0.05
         },
         "stage_bundle/deep_collections/hydrate_compressed": {
-          "ceiling": 164769456,
-          "tolerance": 0.1
+          "ceiling": 161773528,
+          "tolerance": 0.06156
         },
         "stage_bundle/deep_collections/hydrate_uncompressed": {
-          "ceiling": 131876014,
-          "tolerance": 0.1
+          "ceiling": 131357609,
+          "tolerance": 0.10592
         },
         "stage_bundle/deep_collections/suspend_compressed": {
-          "ceiling": 100991680,
-          "tolerance": 0.1
+          "ceiling": 111128746,
+          "tolerance": 0.05178
         },
         "stage_bundle/deep_collections/suspend_uncompressed": {
-          "ceiling": 59854240,
-          "tolerance": 0.1
+          "ceiling": 57257006,
+          "tolerance": 0.05
         },
         "stage_bundle/default/hydrate_compressed": {
-          "ceiling": 85005178,
-          "tolerance": 0.1
+          "ceiling": 88091557,
+          "tolerance": 0.08904
         },
         "stage_bundle/default/hydrate_uncompressed": {
-          "ceiling": 53169834,
-          "tolerance": 0.1
+          "ceiling": 55515191,
+          "tolerance": 0.05
         },
         "stage_bundle/default/suspend_compressed": {
-          "ceiling": 69524129,
-          "tolerance": 0.1
+          "ceiling": 74187384,
+          "tolerance": 0.05732
         },
         "stage_bundle/default/suspend_uncompressed": {
-          "ceiling": 19727623,
-          "tolerance": 0.1
+          "ceiling": 19560460,
+          "tolerance": 0.05
         },
         "stage_bundle/dense_geometry/hydrate_compressed": {
-          "ceiling": 83860662,
-          "tolerance": 0.1
+          "ceiling": 86986138,
+          "tolerance": 0.0602
         },
         "stage_bundle/dense_geometry/hydrate_uncompressed": {
-          "ceiling": 51369585,
-          "tolerance": 0.1
+          "ceiling": 54121775,
+          "tolerance": 0.05
         },
         "stage_bundle/dense_geometry/suspend_compressed": {
-          "ceiling": 68182216,
-          "tolerance": 0.1
+          "ceiling": 72958672,
+          "tolerance": 0.05
         },
         "stage_bundle/dense_geometry/suspend_uncompressed": {
-          "ceiling": 18717069,
-          "tolerance": 0.1
+          "ceiling": 18534586,
+          "tolerance": 0.05
         },
         "stage_bundle/large_target/hydrate_compressed": {
-          "ceiling": 262831702,
-          "tolerance": 0.1
+          "ceiling": 267429734,
+          "tolerance": 0.05
         },
         "stage_bundle/large_target/hydrate_uncompressed": {
-          "ceiling": 162344989,
-          "tolerance": 0.1
+          "ceiling": 164966342,
+          "tolerance": 0.05
         },
         "stage_bundle/large_target/suspend_compressed": {
-          "ceiling": 367239090,
-          "tolerance": 0.1
+          "ceiling": 355859524,
+          "tolerance": 0.05
         },
         "stage_bundle/large_target/suspend_uncompressed": {
-          "ceiling": 59211807,
-          "tolerance": 0.1
+          "ceiling": 61297616,
+          "tolerance": 0.05
         },
         "stage_bundle/many_objects/hydrate_compressed": {
-          "ceiling": 151270124,
-          "tolerance": 0.1
+          "ceiling": 147402925,
+          "tolerance": 0.07274
         },
         "stage_bundle/many_objects/hydrate_uncompressed": {
-          "ceiling": 119257995,
-          "tolerance": 0.1
+          "ceiling": 115389875,
+          "tolerance": 0.07497
         },
         "stage_bundle/many_objects/suspend_compressed": {
-          "ceiling": 96164725,
-          "tolerance": 0.1
+          "ceiling": 105824673,
+          "tolerance": 0.05
         },
         "stage_bundle/many_objects/suspend_uncompressed": {
-          "ceiling": 53988117,
-          "tolerance": 0.1
+          "ceiling": 51915525,
+          "tolerance": 0.05
         },
         "view_check/large/handlers": {
-          "ceiling": 854950632
+          "ceiling": 827885135,
+          "tolerance": 0.05
         },
         "view_check/large/no_handlers": {
-          "ceiling": 24067016
+          "ceiling": 24527730,
+          "tolerance": 0.05
         },
         "view_check/medium/handlers": {
-          "ceiling": 39971309
+          "ceiling": 40587035,
+          "tolerance": 0.05
         },
         "view_check/medium/no_handlers": {
-          "ceiling": 3735247
+          "ceiling": 3753568,
+          "tolerance": 0.05
         },
         "view_check/small/handlers": {
-          "ceiling": 19088084
+          "ceiling": 20186831,
+          "tolerance": 0.05
         },
         "view_check/small/no_handlers": {
-          "ceiling": 3188703
+          "ceiling": 3269833,
+          "tolerance": 0.05
         },
         "view_policy/large/display": {
-          "ceiling": 51825,
-          "tolerance": 0.2
+          "ceiling": 54190,
+          "tolerance": 0.05
         },
         "view_policy/large/material": {
-          "ceiling": 2278640
+          "ceiling": 2191422,
+          "tolerance": 0.05
         },
         "view_policy/large/saved_picture": {
-          "ceiling": 1717853
+          "ceiling": 1770863,
+          "tolerance": 0.05
         },
         "view_policy/medium/display": {
-          "ceiling": 51901
+          "ceiling": 54334,
+          "tolerance": 0.05
         },
         "view_policy/medium/material": {
-          "ceiling": 156742
+          "ceiling": 160628,
+          "tolerance": 0.05
         },
         "view_policy/medium/saved_picture": {
-          "ceiling": 1719058
+          "ceiling": 1776818,
+          "tolerance": 0.05
         },
         "view_policy/small/display": {
-          "ceiling": 126764,
-          "tolerance": 0.18
+          "ceiling": 54710,
+          "tolerance": 0.05
         },
         "view_policy/small/material": {
-          "ceiling": 108339,
-          "tolerance": 0.119
+          "ceiling": 112989,
+          "tolerance": 0.05
         },
         "view_policy/small/saved_picture": {
-          "ceiling": 1726579
+          "ceiling": 1792593,
+          "tolerance": 0.05
         }
       },
       "retired": {
@@ -525,137 +579,114 @@
         }
       },
       "last_measured": {
-        "date": "2026-11-04",
-        "commit": "a36aaf4a235b6ee17e18ad7199a8829d6b6bec20",
-        "binary_sha256": "69c6569ea1db46e7ff9ed0cf54a16f8fd1561bb9d1fdb5d07bc15d27689e4459",
-        "binary_uuid": "723a0297-0cc6-38d0-9d32-8803c94da9c8",
-        "sources_sha256": "e0d047746f46863ec10ccf21baaed2fe953acea8f6483ce1581aebff1badc9c7",
+        "date": "2026-11-18",
+        "commit": "e3d0c27531af0c75290da4bcf139c5a1c38a11a8",
+        "binary_sha256": "648e29411eaab02a4a26d8c435d31a0de3e0efd861b7bc6b9778eaf986c059c2",
+        "binary_uuid": "b1b1c540-8b2b-39c3-9b89-f8ccdde91c00",
+        "sources_sha256": "a5c2b8d78c286c71d0f504f8bb90e0e1c1a462100717dcebbcb9384f6e95a581",
         "operations": 110,
         "highest_ratio": {
-          "operation": "long_session/move_material_slots_01",
-          "ratio": 1.05083
+          "operation": "snapshot/many_ids_10000_repeat_capture_three_write_sum",
+          "ratio": 1.00426
         },
         "spreads": {
-          "chat_waiting/first_wait_geometry": 0.0007,
-          "chat_waiting/hero_frame": 0.01309,
-          "chat_waiting/icon_frame": 0.05675,
-          "chat_waiting/reveal_frame": 0.01085,
-          "chat_waiting/timer_tick": 0.1037,
-          "deep_collections/object_scoped_delta": 0.0013,
-          "deep_collections/rich_object_query": 0.0018,
-          "deep_collections/search_100_objects": 0.00143,
-          "deep_collections/search_page_coverage_10": 0.00177,
-          "deep_collections/search_page_coverage_100": 0.00124,
-          "deep_collections/staged_1_operation_1_check_work_clock": 0.00993,
-          "deep_collections/target_revision": 0.00167,
-          "deep_collections/transform_object_query": 0.00196,
-          "default/eight_separate_staged_programs_work_clock": 0.00643,
-          "default/legacy_typed_location": 0.21778,
-          "default/object_scoped_delta": 0.00074,
-          "default/one_object_delta": 0.00026,
-          "default/rich_object_query_warm_exact_revalidation": 0.00206,
-          "default/search_100_objects": 0.01216,
-          "default/search_page_coverage_100": 0.00099,
-          "default/staged_1_operation_1_check_work_clock": 0.00879,
-          "default/staged_8_operations_1_check_work_clock": 0.01179,
-          "default/target_only_signature": 0.00305,
-          "default/transform_object_query": 0.0008,
-          "default/whole_request_snapshot": 0.00763,
-          "default/whole_scene_signature": 0.00191,
-          "dense_geometry/object_scoped_delta": 0.00085,
-          "dense_geometry/rich_object_query": 0.00087,
-          "dense_geometry/search_100_objects": 0.00015,
-          "dense_geometry/search_page_coverage_10": 0.00011,
-          "dense_geometry/search_page_coverage_100": 0.00025,
-          "dense_geometry/staged_1_operation_1_check_work_clock": 0.02965,
-          "dense_geometry/target_revision": 0.00303,
-          "dense_geometry/transform_object_query": 0.00082,
-          "many_objects/object_scoped_delta": 0.0015,
-          "many_objects/rich_object_query": 0.00136,
-          "many_objects/search_100_objects": 0.02085,
-          "many_objects/search_page_coverage_10": 0.00187,
-          "many_objects/search_page_coverage_100": 0.00131,
-          "many_objects/staged_1_operation_1_check_work_clock": 0.00652,
-          "many_objects/target_revision": 0.00076,
-          "many_objects/transform_object_query": 0.00418,
-          "snapshot/dense_200mb_repeat_capture_three_write_sum": 0.00792,
-          "snapshot/dense_500mb_repeat_capture_three_write_sum": 0.01033,
-          "snapshot/dense_50mb_repeat_capture_three_write_sum": 0.03996,
-          "snapshot/history_1000_repeat_capture_three_write_sum": 0.00863,
-          "snapshot/history_10_repeat_capture_three_write_sum": 0.02154,
-          "snapshot/many_ids_10000_repeat_capture_three_write_sum": 0.01084,
-          "stage_bundle/deep_collections/hydrate_compressed": 0.01709,
-          "stage_bundle/deep_collections/hydrate_uncompressed": 0.01161,
-          "stage_bundle/deep_collections/suspend_compressed": 0.00205,
-          "stage_bundle/deep_collections/suspend_uncompressed": 0.00485,
-          "stage_bundle/default/hydrate_compressed": 0.01337,
-          "stage_bundle/default/hydrate_uncompressed": 0.14831,
-          "stage_bundle/default/suspend_compressed": 0.00427,
-          "stage_bundle/default/suspend_uncompressed": 0.01029,
-          "stage_bundle/dense_geometry/hydrate_compressed": 0.08043,
-          "stage_bundle/dense_geometry/hydrate_uncompressed": 0.05761,
-          "stage_bundle/dense_geometry/suspend_compressed": 0.00344,
-          "stage_bundle/dense_geometry/suspend_uncompressed": 0.00726,
-          "stage_bundle/large_target/hydrate_compressed": 0.03119,
-          "stage_bundle/large_target/hydrate_uncompressed": 0.04687,
-          "stage_bundle/large_target/suspend_compressed": 0.01667,
-          "stage_bundle/large_target/suspend_uncompressed": 0.0923,
-          "stage_bundle/many_objects/hydrate_compressed": 0.03114,
-          "stage_bundle/many_objects/hydrate_uncompressed": 0.06178,
-          "stage_bundle/many_objects/suspend_compressed": 0.00748,
-          "stage_bundle/many_objects/suspend_uncompressed": 0.00568,
-          "view_check/large/handlers": 0.00033,
-          "view_check/large/no_handlers": 0.00337,
-          "view_check/medium/handlers": 0.00131,
-          "view_check/medium/no_handlers": 0.00049,
-          "view_check/small/handlers": 0.00151,
-          "view_check/small/no_handlers": 0.0205,
-          "view_policy/large/display": 0.00369,
-          "view_policy/large/material": 0.00559,
-          "view_policy/large/saved_picture": 0.00988,
-          "view_policy/medium/display": 0.01123,
-          "view_policy/medium/material": 0.03531,
-          "view_policy/medium/saved_picture": 0.00641,
-          "view_policy/small/display": 0.19729,
-          "view_policy/small/material": 0.06014,
-          "view_policy/small/saved_picture": 0.00568
+          "chat_waiting/first_wait_geometry": 0.00055,
+          "chat_waiting/hero_frame": 0.01222,
+          "chat_waiting/icon_frame": 0.00518,
+          "chat_waiting/reveal_frame": 0.00667,
+          "chat_waiting/timer_tick": 0.10145,
+          "deep_collections/object_scoped_delta": 0.00135,
+          "deep_collections/rich_object_query": 0.00139,
+          "deep_collections/search_100_objects": 0.00128,
+          "deep_collections/search_page_coverage_10": 0.00222,
+          "deep_collections/search_page_coverage_100": 0.00147,
+          "deep_collections/staged_1_operation_1_check_work_clock": 0.00627,
+          "deep_collections/target_revision": 0.00011,
+          "deep_collections/transform_object_query": 0.00048,
+          "default/eight_separate_staged_programs_work_clock": 0.00465,
+          "default/legacy_typed_location": 0.0498,
+          "default/object_scoped_delta": 0.00165,
+          "default/one_object_delta": 0.00091,
+          "default/rich_object_query_warm_exact_revalidation": 0.00217,
+          "default/search_100_objects": 0.00203,
+          "default/search_page_coverage_100": 0.00058,
+          "default/staged_1_operation_1_check_work_clock": 0.0392,
+          "default/staged_8_operations_1_check_work_clock": 0.01083,
+          "default/target_only_signature": 0.0038,
+          "default/transform_object_query": 0.01552,
+          "default/whole_request_snapshot": 0.00855,
+          "default/whole_scene_signature": 0.00195,
+          "dense_geometry/object_scoped_delta": 0.00092,
+          "dense_geometry/rich_object_query": 0.00042,
+          "dense_geometry/search_100_objects": 0.00032,
+          "dense_geometry/search_page_coverage_10": 0.00014,
+          "dense_geometry/search_page_coverage_100": 0.00012,
+          "dense_geometry/staged_1_operation_1_check_work_clock": 0.00767,
+          "dense_geometry/target_revision": 0.00084,
+          "dense_geometry/transform_object_query": 0.00162,
+          "many_objects/object_scoped_delta": 0.00139,
+          "many_objects/rich_object_query": 0.00134,
+          "many_objects/search_100_objects": 0.00159,
+          "many_objects/search_page_coverage_10": 0.00247,
+          "many_objects/search_page_coverage_100": 0.00145,
+          "many_objects/staged_1_operation_1_check_work_clock": 0.00447,
+          "many_objects/target_revision": 0.00068,
+          "many_objects/transform_object_query": 0.00059,
+          "snapshot/dense_200mb_repeat_capture_three_write_sum": 0.01532,
+          "snapshot/dense_500mb_repeat_capture_three_write_sum": 0.00232,
+          "snapshot/dense_50mb_repeat_capture_three_write_sum": 0.01105,
+          "snapshot/history_1000_repeat_capture_three_write_sum": 0.0157,
+          "snapshot/history_10_repeat_capture_three_write_sum": 0.0256,
+          "snapshot/many_ids_10000_repeat_capture_three_write_sum": 0.01062,
+          "stage_bundle/deep_collections/hydrate_compressed": 0.01035,
+          "stage_bundle/deep_collections/hydrate_uncompressed": 0.02553,
+          "stage_bundle/deep_collections/suspend_compressed": 0.00696,
+          "stage_bundle/deep_collections/suspend_uncompressed": 0.00266,
+          "stage_bundle/default/hydrate_compressed": 0.03561,
+          "stage_bundle/default/hydrate_uncompressed": 0.08195,
+          "stage_bundle/default/suspend_compressed": 0.03595,
+          "stage_bundle/default/suspend_uncompressed": 0.00879,
+          "stage_bundle/dense_geometry/hydrate_compressed": 0.03245,
+          "stage_bundle/dense_geometry/hydrate_uncompressed": 0.02747,
+          "stage_bundle/dense_geometry/suspend_compressed": 0.03011,
+          "stage_bundle/dense_geometry/suspend_uncompressed": 0.00882,
+          "stage_bundle/large_target/hydrate_compressed": 0.01974,
+          "stage_bundle/large_target/hydrate_uncompressed": 0.02732,
+          "stage_bundle/large_target/suspend_compressed": 0.03683,
+          "stage_bundle/large_target/suspend_uncompressed": 0.09419,
+          "stage_bundle/many_objects/hydrate_compressed": 0.01725,
+          "stage_bundle/many_objects/hydrate_uncompressed": 0.02486,
+          "stage_bundle/many_objects/suspend_compressed": 0.02872,
+          "stage_bundle/many_objects/suspend_uncompressed": 0.0084,
+          "view_check/large/handlers": 0.00138,
+          "view_check/large/no_handlers": 0.00045,
+          "view_check/medium/handlers": 0.00094,
+          "view_check/medium/no_handlers": 0.00436,
+          "view_check/small/handlers": 0.0018,
+          "view_check/small/no_handlers": 0.02188,
+          "view_policy/large/display": 0.00257,
+          "view_policy/large/material": 0.00247,
+          "view_policy/large/saved_picture": 0.01055,
+          "view_policy/medium/display": 0.01077,
+          "view_policy/medium/material": 0.00614,
+          "view_policy/medium/saved_picture": 0.00443,
+          "view_policy/small/display": 0.29135,
+          "view_policy/small/material": 0.03685,
+          "view_policy/small/saved_picture": 0.00701
         },
-        "abab_decided": [
-          "chat_waiting/icon_frame",
-          "chat_waiting/timer_tick",
-          "default/legacy_typed_location",
-          "many_objects/search_100_objects",
-          "snapshot/dense_200mb_repeat_capture_three_write_sum",
-          "snapshot/dense_500mb_repeat_capture_three_write_sum",
-          "snapshot/dense_50mb_repeat_capture_three_write_sum",
-          "snapshot/history_1000_repeat_capture_three_write_sum",
-          "snapshot/history_10_repeat_capture_three_write_sum",
-          "snapshot/many_ids_10000_repeat_capture_three_write_sum",
-          "stage_bundle/default/hydrate_uncompressed",
-          "stage_bundle/dense_geometry/hydrate_compressed",
-          "stage_bundle/large_target/suspend_uncompressed",
-          "stage_bundle/many_objects/hydrate_uncompressed",
-          "view_check/small/no_handlers",
-          "view_policy/medium/material",
-          "view_policy/small/display",
-          "view_policy/small/material"
-        ],
+        "abab_decided": [],
         "loads": {
-          "benchmark_blender_agent_execution.py": 4.59,
-          "benchmark_blender_snapshot_cost.py": 5.66,
-          "benchmark_blender_stage_compression.py": 5.41,
-          "benchmark_blender_view_scene_check.py": 5.14,
-          "benchmark_blender_long_session.py": 5.05,
-          "benchmark_blender_session_journal.py": 5.48,
-          "benchmark_blender_native_reads.py": 5.44,
-          "benchmark_blender_chat_waiting.py": 6.0,
-          "abab A0": 4.16,
-          "abab B1": 4.15,
-          "abab A2": 4.15,
-          "abab B3": 4.3
+          "benchmark_blender_agent_execution.py": 2.9,
+          "benchmark_blender_snapshot_cost.py": 2.92,
+          "benchmark_blender_stage_compression.py": 2.71,
+          "benchmark_blender_view_scene_check.py": 2.67,
+          "benchmark_blender_long_session.py": 2.67,
+          "benchmark_blender_session_journal.py": 3.95,
+          "benchmark_blender_native_reads.py": 3.95,
+          "benchmark_blender_chat_waiting.py": 3.96
         },
         "max_load": 6.0,
-        "conditions": "desktop app open; reuses the 1.0.9 stamp conditions under the maintainer ruling of 2026-11-04 (\"Yes, same conditions\", relayed by the coordinator): --max-load 6.0, desktop app open; the code line ABAB against #170 app ee08de0b4cf (measured sources of main 456966fc24c), the batch170 control; frozen heads: main 5d0a27581b6, #174 e68d3f29c51, #182 d62fc69a19c (with #181 433346c480b), #178 c78896a9435 (integration a36aaf4a235); re-run once under the maintainer ruling of 2026-11-04 ('Re-run once, record both'): the refused run 15:33-15:43 found snapshot/dense_500mb_repeat_capture_three_write_sum ABAB +3.15% (tolerance 0.69%) while its control read 1.38-1.45e9 against 8.99e8 under normal conditions and its A/A spread was 4.6%; the bisect 15:59-16:03 put each PR at <=0.36% and A/A at +-0.42%; Mac 2 Xcode 27.2 (27B52) for the #170 app; the candidate is a clone of that app with main + #174 + #182 + #178 overlaid: no native code changed since 456966fc24c (git diff 456966fc24c..integration -- source intern build_files is empty, checked below) and only files the installed bundle already ships, or new files inside addons_core/angelo_agent, are copied, never repo-only ones (coordinator 2026-11-04: overlay plan, batched stamp); overlay 55 files listed in the stamp batch's overlay-files.txt; environment line: line (a), the stamped 1.0.9 build 49b5eba3 re-measured 2026-11-04 17:17 at load 4.7-5.9: snapshot/dense_200mb_repeat_capture_three_write_sum 1.02884 of its ceiling (tolerance 0.00345, spread 0.00735); snapshot/dense_500mb_repeat_capture_three_write_sum 1.04504 of its ceiling (tolerance 0.00692, spread 0.01242); snapshot/dense_50mb_repeat_capture_three_write_sum 1.02428 of its ceiling (tolerance 0.01642, spread 0.0378); snapshot/history_1000_repeat_capture_three_write_sum 1.03512 of its ceiling (tolerance 0.01114, spread 0.00589); snapshot/history_10_repeat_capture_three_write_sum 1.03211 of its ceiling (tolerance 0.00763, spread 0.02756); coordinator 2026-11-04 ruling for stamp137 (environment operations over their ceilings are decided by their ABAB against the control); line code; overlap during this slot (recorded at the coordinator's request, 2026-11-04): no ABAB run overlapped other work (A0, B1, A2, B3: 17:19:17-17:21:46); single runs overlapped: the env line's agent_execution (17:13:43-17:16:28) with windows-11's kit lock tests (17:14:03-08, 17:14:46-57; nice 10, one core) and git (17:13:28-32, 17:14:18-21, 17:15:12-24) and this lane's own git push (about 17:14) and gcloud sync and polling (17:15:29-17:16:30); the code line's agent_execution (17:17:35-17:17:53) in its last 2 s with a 0.1 s python import (17:17:51-53); the code line's stage_compression, view_scene_check and long_session (17:18:02-17:18:25) with windows-11's git pushes (17:18:02-23)"
+        "conditions": "desktop app open"
       },
       "updated_from": "perf-ratchet.json",
       "v1_freeze": {
@@ -954,6 +985,1365 @@
                 494299529
               ],
               "tolerance": 0.01093
+            }
+          }
+        },
+        {
+          "date": "2026-11-18",
+          "source": "rebase-1, rebase-2, rebase-3, rebase-4, rebase-5, rebase-6, rebase-7, rebase-8",
+          "runs": 8,
+          "operations": {
+            "chat_waiting/first_wait_geometry": {
+              "runs": [
+                277126964,
+                277049357,
+                277065627,
+                277084259,
+                276882268,
+                277132980,
+                277179825,
+                277177343
+              ],
+              "tolerance": 0.05
+            },
+            "chat_waiting/hero_frame": {
+              "runs": [
+                1708235,
+                1708655,
+                1709288,
+                1711294,
+                1707857,
+                1710069,
+                1709812,
+                1712575
+              ],
+              "tolerance": 0.05
+            },
+            "chat_waiting/icon_frame": {
+              "runs": [
+                186970,
+                186944,
+                186384,
+                187015,
+                187229,
+                186907,
+                186904,
+                187230
+              ],
+              "tolerance": 0.05
+            },
+            "chat_waiting/reveal_frame": {
+              "runs": [
+                7655506,
+                7655555,
+                7649493,
+                7661754,
+                7652178,
+                7662213,
+                7657801,
+                7667786
+              ],
+              "tolerance": 0.05
+            },
+            "chat_waiting/timer_tick": {
+              "runs": [
+                83601,
+                83512,
+                83319,
+                83308,
+                83288,
+                83298,
+                83354,
+                83285
+              ],
+              "tolerance": 0.05
+            },
+            "conversation_journal/admission_save_at_50": {
+              "runs": [
+                1671503,
+                1663296,
+                1681764,
+                1627680,
+                1666742,
+                1674454,
+                1667298,
+                1665578
+              ],
+              "tolerance": 0.06646
+            },
+            "conversation_journal/admission_save_at_500": {
+              "runs": [
+                1675053,
+                1682728,
+                1672218,
+                1670874,
+                1677324,
+                1673016,
+                1677136,
+                1675360
+              ],
+              "tolerance": 0.05
+            },
+            "conversation_journal/edit_saves_at_50": {
+              "runs": [
+                36531282,
+                36689513,
+                36448260,
+                36268169,
+                36566800,
+                36518917,
+                36417146,
+                36406942
+              ],
+              "tolerance": 0.05
+            },
+            "conversation_journal/edit_saves_at_500": {
+              "runs": [
+                36935266,
+                37131743,
+                36999224,
+                36930250,
+                37049858,
+                37019784,
+                36928536,
+                36959386
+              ],
+              "tolerance": 0.05
+            },
+            "deep_collections/object_scoped_delta": {
+              "runs": [
+                71009347,
+                70982331,
+                71027982,
+                70979617,
+                71057443,
+                70998466,
+                70986695,
+                71040651
+              ],
+              "tolerance": 0.05
+            },
+            "deep_collections/rich_object_query": {
+              "runs": [
+                392565243,
+                392786037,
+                393184873,
+                393111690,
+                393513236,
+                393285784,
+                393035576,
+                394454133
+              ],
+              "tolerance": 0.05
+            },
+            "deep_collections/search_100_objects": {
+              "runs": [
+                2098555889,
+                2100700265,
+                2099897224,
+                2096946298,
+                2098275012,
+                2096275067,
+                2099308980,
+                2100305694
+              ],
+              "tolerance": 0.05
+            },
+            "deep_collections/search_page_coverage_10": {
+              "runs": [
+                226762365,
+                226783354,
+                227003775,
+                226972067,
+                227011974,
+                226771250,
+                226803790,
+                226916270
+              ],
+              "tolerance": 0.05
+            },
+            "deep_collections/search_page_coverage_100": {
+              "runs": [
+                824635944,
+                824478138,
+                824761386,
+                823836493,
+                824233114,
+                823269462,
+                824043246,
+                824412860
+              ],
+              "tolerance": 0.05
+            },
+            "deep_collections/staged_1_operation_1_check_work_clock": {
+              "runs": [
+                1459278172,
+                1462689079,
+                1443278581,
+                1467832591,
+                1455355984,
+                1459998225,
+                1439311268,
+                1443334234
+              ],
+              "tolerance": 0.05
+            },
+            "deep_collections/target_revision": {
+              "runs": [
+                61419657,
+                61466370,
+                61415444,
+                61451645,
+                61453716,
+                61412489,
+                61412036,
+                61409008
+              ],
+              "tolerance": 0.05
+            },
+            "deep_collections/transform_object_query": {
+              "runs": [
+                63480016,
+                63484563,
+                63467448,
+                63462768,
+                63546285,
+                63453171,
+                63461874,
+                63481688
+              ],
+              "tolerance": 0.05
+            },
+            "default/eight_separate_staged_programs_work_clock": {
+              "runs": [
+                7756296736,
+                7762969245,
+                7768543363,
+                7795080671,
+                7757901491,
+                7710343220,
+                7728430301,
+                7713203053
+              ],
+              "tolerance": 0.05
+            },
+            "default/legacy_typed_location": {
+              "runs": [
+                26528676,
+                27075202,
+                26262905,
+                26943943,
+                26297255,
+                24793396,
+                25154297,
+                26282446
+              ],
+              "tolerance": 0.18407
+            },
+            "default/object_scoped_delta": {
+              "runs": [
+                59833544,
+                59829146,
+                59867841,
+                59875008,
+                59816332,
+                59835337,
+                59815887,
+                59822962
+              ],
+              "tolerance": 0.05
+            },
+            "default/one_object_delta": {
+              "runs": [
+                378953427,
+                378853849,
+                378877793,
+                378300675,
+                378632651,
+                378189334,
+                378698752,
+                378979336
+              ],
+              "tolerance": 0.05
+            },
+            "default/rich_object_query_warm_exact_revalidation": {
+              "runs": [
+                71004576,
+                70980917,
+                70961849,
+                70945943,
+                70951951,
+                70984188,
+                70943403,
+                70991156
+              ],
+              "tolerance": 0.05
+            },
+            "default/search_100_objects": {
+              "runs": [
+                372449064,
+                372703699,
+                372865822,
+                372303650,
+                372478122,
+                372323088,
+                372585204,
+                372730668
+              ],
+              "tolerance": 0.05
+            },
+            "default/search_page_coverage_100": {
+              "runs": [
+                333859311,
+                334078969,
+                334156713,
+                333709550,
+                333631391,
+                333793611,
+                333894822,
+                333908905
+              ],
+              "tolerance": 0.05
+            },
+            "default/staged_1_operation_1_check_work_clock": {
+              "runs": [
+                976422769,
+                961719737,
+                967497519,
+                973630591,
+                968966034,
+                964248705,
+                961649845,
+                975123153
+              ],
+              "tolerance": 0.05
+            },
+            "default/staged_8_operations_1_check_work_clock": {
+              "runs": [
+                1059858085,
+                1054346289,
+                1054169675,
+                1064186245,
+                1058176302,
+                1051388553,
+                1053481131,
+                1061280615
+              ],
+              "tolerance": 0.05
+            },
+            "default/target_only_signature": {
+              "runs": [
+                9709437,
+                9712570,
+                9711413,
+                9711218,
+                9714056,
+                9711639,
+                9714503,
+                9729987
+              ],
+              "tolerance": 0.05
+            },
+            "default/transform_object_query": {
+              "runs": [
+                59835514,
+                59810628,
+                59802971,
+                59803034,
+                59789319,
+                59803838,
+                59802386,
+                59813233
+              ],
+              "tolerance": 0.05
+            },
+            "default/whole_request_snapshot": {
+              "runs": [
+                22988689,
+                22899363,
+                23004369,
+                23088154,
+                22946102,
+                22927292,
+                22899605,
+                22987818
+              ],
+              "tolerance": 0.05
+            },
+            "default/whole_scene_signature": {
+              "runs": [
+                15807060,
+                15792715,
+                15801019,
+                15789432,
+                15789046,
+                15795470,
+                15782700,
+                15788770
+              ],
+              "tolerance": 0.05
+            },
+            "dense_geometry/object_scoped_delta": {
+              "runs": [
+                59540326,
+                59594410,
+                59528751,
+                59540190,
+                59604664,
+                59540429,
+                59537019,
+                59538148
+              ],
+              "tolerance": 0.05
+            },
+            "dense_geometry/rich_object_query": {
+              "runs": [
+                62478180,
+                62560304,
+                62490703,
+                62504215,
+                62503537,
+                62490071,
+                62473609,
+                62513359
+              ],
+              "tolerance": 0.05
+            },
+            "dense_geometry/search_100_objects": {
+              "runs": [
+                3342550852,
+                3344602657,
+                3343138872,
+                3344294640,
+                3342696470,
+                3343000478,
+                3342639571,
+                3342784062
+              ],
+              "tolerance": 0.05
+            },
+            "dense_geometry/search_page_coverage_10": {
+              "runs": [
+                1611454629,
+                1612792626,
+                1611601694,
+                1611875022,
+                1611986135,
+                1611431907,
+                1611416024,
+                1611548515
+              ],
+              "tolerance": 0.05
+            },
+            "dense_geometry/search_page_coverage_100": {
+              "runs": [
+                3334820319,
+                3336240116,
+                3335078709,
+                3336212287,
+                3335440576,
+                3335163777,
+                3334993859,
+                3334947537
+              ],
+              "tolerance": 0.05
+            },
+            "dense_geometry/staged_1_operation_1_check_work_clock": {
+              "runs": [
+                960408525,
+                956642536,
+                952661184,
+                963555704,
+                965834221,
+                951067049,
+                955241224,
+                941891514
+              ],
+              "tolerance": 0.05084
+            },
+            "dense_geometry/target_revision": {
+              "runs": [
+                57961792,
+                58020984,
+                57970021,
+                57966002,
+                57958829,
+                57946964,
+                57951571,
+                57961138
+              ],
+              "tolerance": 0.05
+            },
+            "dense_geometry/transform_object_query": {
+              "runs": [
+                59779538,
+                59840703,
+                59779150,
+                59805174,
+                59823525,
+                59781633,
+                59783083,
+                59792366
+              ],
+              "tolerance": 0.05
+            },
+            "long_session/edit_cycle_first_10": {
+              "runs": [
+                1849293560,
+                1851097452,
+                1851870664,
+                1850334194,
+                1851298575,
+                1853216822,
+                1849996655,
+                1849080442
+              ],
+              "tolerance": 0.05
+            },
+            "long_session/edit_cycle_last_10": {
+              "runs": [
+                1864033622,
+                1866442142,
+                1866228539,
+                1865793838,
+                1862846193,
+                1867581684,
+                1865034321,
+                1863681900
+              ],
+              "tolerance": 0.05
+            },
+            "long_session/move_material_slots_01": {
+              "runs": [
+                380333762,
+                380468165,
+                380132022,
+                380421190,
+                380225350,
+                380800626,
+                380194212,
+                380044256
+              ],
+              "tolerance": 0.05
+            },
+            "long_session/move_material_slots_08": {
+              "runs": [
+                1139896767,
+                1140977738,
+                1140874070,
+                1141263675,
+                1140316396,
+                1142273484,
+                1139993389,
+                1139944279
+              ],
+              "tolerance": 0.05
+            },
+            "long_session/move_material_slots_32": {
+              "runs": [
+                3926399516,
+                3931884371,
+                3931441774,
+                3933028327,
+                3932289474,
+                3938359104,
+                3927857786,
+                3928307203
+              ],
+              "tolerance": 0.05
+            },
+            "many_objects/object_scoped_delta": {
+              "runs": [
+                67648222,
+                67728073,
+                67686167,
+                67617589,
+                67647942,
+                67642652,
+                67695586,
+                67708439
+              ],
+              "tolerance": 0.05
+            },
+            "many_objects/rich_object_query": {
+              "runs": [
+                390242178,
+                390619394,
+                391050583,
+                390182483,
+                390489702,
+                390268978,
+                390277475,
+                391891614
+              ],
+              "tolerance": 0.05
+            },
+            "many_objects/search_100_objects": {
+              "runs": [
+                2057512082,
+                2057663673,
+                2057857010,
+                2053913408,
+                2054705677,
+                2054480774,
+                2055704837,
+                2057147691
+              ],
+              "tolerance": 0.05
+            },
+            "many_objects/search_page_coverage_10": {
+              "runs": [
+                221686629,
+                221794039,
+                222127739,
+                222083632,
+                221776951,
+                221513058,
+                221709655,
+                221821307
+              ],
+              "tolerance": 0.05
+            },
+            "many_objects/search_page_coverage_100": {
+              "runs": [
+                816858021,
+                816753021,
+                816959484,
+                816158433,
+                816262158,
+                815428870,
+                816060597,
+                816604744
+              ],
+              "tolerance": 0.05
+            },
+            "many_objects/staged_1_operation_1_check_work_clock": {
+              "runs": [
+                1367850675,
+                1365755621,
+                1363724479,
+                1367894904,
+                1366302070,
+                1345036263,
+                1352570803,
+                1348626717
+              ],
+              "tolerance": 0.05
+            },
+            "many_objects/target_revision": {
+              "runs": [
+                59359894,
+                59360683,
+                59373964,
+                59340828,
+                59344235,
+                59348492,
+                59352239,
+                59360884
+              ],
+              "tolerance": 0.05
+            },
+            "many_objects/transform_object_query": {
+              "runs": [
+                60934411,
+                60959830,
+                60962187,
+                60993619,
+                60937005,
+                60917763,
+                60943463,
+                60927068
+              ],
+              "tolerance": 0.05
+            },
+            "native_reads/blend_listing": {
+              "runs": [
+                877180321,
+                877140857,
+                877121857,
+                877136311,
+                877163502,
+                877488691,
+                877178832,
+                877085371
+              ],
+              "tolerance": 0.05
+            },
+            "native_reads/bvh_from_mesh": {
+              "runs": [
+                836849165,
+                841853176,
+                825405996,
+                835470705,
+                833942429,
+                834706221,
+                841620452,
+                831642425
+              ],
+              "tolerance": 0.05
+            },
+            "native_reads/image_metadata": {
+              "runs": [
+                6273165,
+                6314400,
+                6267758,
+                6333945,
+                6301469,
+                6280047,
+                6302426,
+                6338575
+              ],
+              "tolerance": 0.05
+            },
+            "native_reads/positions": {
+              "runs": [
+                14242036,
+                14310108,
+                14261382,
+                14222956,
+                14269123,
+                14259573,
+                14253318,
+                14224427
+              ],
+              "tolerance": 0.05
+            },
+            "native_reads/sculpt_mesh": {
+              "runs": [
+                72776,
+                72328,
+                73074,
+                73235,
+                72410,
+                72294,
+                72523,
+                72285
+              ],
+              "tolerance": 0.05
+            },
+            "native_reads/sculpt_query": {
+              "runs": [
+                392989837,
+                393002407,
+                392916050,
+                392952791,
+                392972760,
+                393238663,
+                393175771,
+                392880728
+              ],
+              "tolerance": 0.05
+            },
+            "native_reads/sculpt_vertex": {
+              "runs": [
+                18923582,
+                18961801,
+                18917725,
+                18939922,
+                18968709,
+                18968512,
+                18939033,
+                18938312
+              ],
+              "tolerance": 0.05
+            },
+            "native_reads/topology": {
+              "runs": [
+                12974735,
+                13384275,
+                12964527,
+                12963903,
+                12971066,
+                12983133,
+                12958553,
+                12975643
+              ],
+              "tolerance": 0.06571
+            },
+            "native_reads/vertex_group_weights": {
+              "runs": [
+                36359273,
+                36369818,
+                36370410,
+                36351179,
+                36357568,
+                36358897,
+                36355559,
+                36381840
+              ],
+              "tolerance": 0.05
+            },
+            "native_reads/vertex_groups_one": {
+              "runs": [
+                12996671,
+                13025464,
+                13006856,
+                12998605,
+                13031446,
+                13025311,
+                13007184,
+                12998821
+              ],
+              "tolerance": 0.05
+            },
+            "snapshot/dense_200mb_repeat_capture_three_write_sum": {
+              "runs": [
+                379157284,
+                379226051,
+                378939142,
+                379166486,
+                380012772,
+                380997682,
+                380520417,
+                380273088
+              ],
+              "tolerance": 0.01087
+            },
+            "snapshot/dense_500mb_repeat_capture_three_write_sum": {
+              "runs": [
+                898969727,
+                899343441,
+                900575249,
+                900735851,
+                901259670,
+                902443089,
+                900273426,
+                900527694
+              ],
+              "tolerance": 0.00773
+            },
+            "snapshot/dense_50mb_repeat_capture_three_write_sum": {
+              "runs": [
+                131979536,
+                132140132,
+                132166728,
+                132372400,
+                132546455,
+                132533325,
+                132323076,
+                132352174
+              ],
+              "tolerance": 0.0086
+            },
+            "snapshot/history_1000_repeat_capture_three_write_sum": {
+              "runs": [
+                51300221,
+                51374539,
+                51377085,
+                51675599,
+                51638965,
+                51705466,
+                51692049,
+                51623464
+              ],
+              "tolerance": 0.0158
+            },
+            "snapshot/history_10_repeat_capture_three_write_sum": {
+              "runs": [
+                51568369,
+                51699043,
+                51727941,
+                51733721,
+                51645409,
+                51823607,
+                51845777,
+                51707020
+              ],
+              "tolerance": 0.01076
+            },
+            "snapshot/many_ids_10000_repeat_capture_three_write_sum": {
+              "runs": [
+                503966711,
+                504739564,
+                503430709,
+                503402407,
+                504316057,
+                504359104,
+                505271538,
+                504279128
+              ],
+              "tolerance": 0.00743
+            },
+            "snapshot_worker/probe_unchanged_0100": {
+              "runs": [
+                13882290,
+                13899536,
+                13873830,
+                13874045,
+                13910166,
+                13912715,
+                13889538,
+                13902210
+              ],
+              "tolerance": 0.05
+            },
+            "snapshot_worker/probe_unchanged_1000": {
+              "runs": [
+                127638556,
+                127733230,
+                127740020,
+                127488284,
+                127742536,
+                127511576,
+                127931900,
+                127554333
+              ],
+              "tolerance": 0.05
+            },
+            "stage_bundle/deep_collections/hydrate_compressed": {
+              "runs": [
+                156999490,
+                158962856,
+                157597598,
+                157817274,
+                156943184,
+                158456980,
+                161773528,
+                157111855
+              ],
+              "tolerance": 0.06156
+            },
+            "stage_bundle/deep_collections/hydrate_uncompressed": {
+              "runs": [
+                124751078,
+                127839334,
+                125200464,
+                126697401,
+                125595382,
+                127785506,
+                131357609,
+                125675536
+              ],
+              "tolerance": 0.10592
+            },
+            "stage_bundle/deep_collections/suspend_compressed": {
+              "runs": [
+                111013759,
+                108561784,
+                110098153,
+                108525271,
+                108324270,
+                109001189,
+                111128746,
+                108611264
+              ],
+              "tolerance": 0.05178
+            },
+            "stage_bundle/deep_collections/suspend_uncompressed": {
+              "runs": [
+                57090198,
+                57257006,
+                56973906,
+                56955321,
+                57114957,
+                57223408,
+                57234079,
+                57216578
+              ],
+              "tolerance": 0.05
+            },
+            "stage_bundle/default/hydrate_compressed": {
+              "runs": [
+                86964561,
+                85834003,
+                86776599,
+                84337162,
+                86808920,
+                86652162,
+                86728482,
+                88091557
+              ],
+              "tolerance": 0.08904
+            },
+            "stage_bundle/default/hydrate_uncompressed": {
+              "runs": [
+                54899297,
+                55182860,
+                54609879,
+                55324456,
+                54964054,
+                54775717,
+                54982012,
+                55515191
+              ],
+              "tolerance": 0.05
+            },
+            "stage_bundle/default/suspend_compressed": {
+              "runs": [
+                73621425,
+                73392612,
+                73535945,
+                73137636,
+                72120624,
+                74187384,
+                73457906,
+                73345976
+              ],
+              "tolerance": 0.05732
+            },
+            "stage_bundle/default/suspend_uncompressed": {
+              "runs": [
+                19254396,
+                19438722,
+                19559172,
+                19500605,
+                19499493,
+                19463130,
+                19560460,
+                19505672
+              ],
+              "tolerance": 0.05
+            },
+            "stage_bundle/dense_geometry/hydrate_compressed": {
+              "runs": [
+                85495669,
+                84444711,
+                84628678,
+                86199982,
+                86986138,
+                85278954,
+                85423927,
+                85479590
+              ],
+              "tolerance": 0.0602
+            },
+            "stage_bundle/dense_geometry/hydrate_uncompressed": {
+              "runs": [
+                53007840,
+                53457650,
+                53659605,
+                53904635,
+                54121775,
+                53496338,
+                53101916,
+                53897514
+              ],
+              "tolerance": 0.05
+            },
+            "stage_bundle/dense_geometry/suspend_compressed": {
+              "runs": [
+                71615268,
+                71277647,
+                71747362,
+                72435880,
+                72195843,
+                72627034,
+                72086290,
+                72958672
+              ],
+              "tolerance": 0.05
+            },
+            "stage_bundle/dense_geometry/suspend_uncompressed": {
+              "runs": [
+                18292156,
+                18287041,
+                18380368,
+                18361974,
+                18498268,
+                18534586,
+                18492052,
+                18386248
+              ],
+              "tolerance": 0.05
+            },
+            "stage_bundle/large_target/hydrate_compressed": {
+              "runs": [
+                267429734,
+                265320384,
+                264125091,
+                265325029,
+                263885386,
+                264654562,
+                264466696,
+                265436772
+              ],
+              "tolerance": 0.05
+            },
+            "stage_bundle/large_target/hydrate_uncompressed": {
+              "runs": [
+                163509416,
+                163570260,
+                164375938,
+                162795012,
+                164145896,
+                163789307,
+                164966342,
+                164484692
+              ],
+              "tolerance": 0.05
+            },
+            "stage_bundle/large_target/suspend_compressed": {
+              "runs": [
+                355859524,
+                354531910,
+                354449072,
+                353029446,
+                354279384,
+                353468436,
+                354857302,
+                354562386
+              ],
+              "tolerance": 0.05
+            },
+            "stage_bundle/large_target/suspend_uncompressed": {
+              "runs": [
+                61024330,
+                60506718,
+                61297616,
+                60829222,
+                60272866,
+                60805110,
+                60901510,
+                60743339
+              ],
+              "tolerance": 0.05
+            },
+            "stage_bundle/many_objects/hydrate_compressed": {
+              "runs": [
+                142230616,
+                145071471,
+                147321195,
+                143483656,
+                142982859,
+                142964198,
+                147402925,
+                143041715
+              ],
+              "tolerance": 0.07274
+            },
+            "stage_bundle/many_objects/hydrate_uncompressed": {
+              "runs": [
+                114052275,
+                111226816,
+                114418166,
+                112189913,
+                111221130,
+                114648207,
+                115389875,
+                111383565
+              ],
+              "tolerance": 0.07497
+            },
+            "stage_bundle/many_objects/suspend_compressed": {
+              "runs": [
+                105824673,
+                104261217,
+                105712651,
+                103613397,
+                104112232,
+                105396627,
+                105744893,
+                103401827
+              ],
+              "tolerance": 0.05
+            },
+            "stage_bundle/many_objects/suspend_uncompressed": {
+              "runs": [
+                51705213,
+                51571886,
+                51640003,
+                51627147,
+                51655674,
+                51915525,
+                51812327,
+                51748089
+              ],
+              "tolerance": 0.05
+            },
+            "view_check/large/handlers": {
+              "runs": [
+                827151190,
+                827423623,
+                827361097,
+                827885135,
+                827767796,
+                827258618,
+                827775096,
+                827529947
+              ],
+              "tolerance": 0.05
+            },
+            "view_check/large/no_handlers": {
+              "runs": [
+                24487978,
+                24498715,
+                24486248,
+                24486534,
+                24525690,
+                24527730,
+                24514991,
+                24520043
+              ],
+              "tolerance": 0.05
+            },
+            "view_check/medium/handlers": {
+              "runs": [
+                40557565,
+                40409138,
+                40382180,
+                40389394,
+                40401816,
+                40587035,
+                40412788,
+                40381446
+              ],
+              "tolerance": 0.05
+            },
+            "view_check/medium/no_handlers": {
+              "runs": [
+                3743667,
+                3747632,
+                3746654,
+                3748376,
+                3748616,
+                3753568,
+                3746604,
+                3749284
+              ],
+              "tolerance": 0.05
+            },
+            "view_check/small/handlers": {
+              "runs": [
+                20155614,
+                20180543,
+                20154523,
+                20186831,
+                20171916,
+                20184178,
+                20175500,
+                20162864
+              ],
+              "tolerance": 0.05
+            },
+            "view_check/small/no_handlers": {
+              "runs": [
+                3262520,
+                3262762,
+                3266916,
+                3266084,
+                3266731,
+                3269833,
+                3266104,
+                3264771
+              ],
+              "tolerance": 0.05
+            },
+            "view_policy/large/display": {
+              "runs": [
+                54140,
+                54174,
+                54140,
+                54190,
+                54190,
+                54141,
+                54128,
+                54165
+              ],
+              "tolerance": 0.05
+            },
+            "view_policy/large/material": {
+              "runs": [
+                2184034,
+                2184138,
+                2184202,
+                2184170,
+                2184154,
+                2184525,
+                2184900,
+                2191422
+              ],
+              "tolerance": 0.05
+            },
+            "view_policy/large/saved_picture": {
+              "runs": [
+                1770863,
+                1753938,
+                1770590,
+                1770828,
+                1749730,
+                1753416,
+                1754622,
+                1770032
+              ],
+              "tolerance": 0.05
+            },
+            "view_policy/medium/display": {
+              "runs": [
+                54293,
+                54159,
+                54203,
+                54334,
+                54263,
+                54243,
+                54202,
+                54284
+              ],
+              "tolerance": 0.05
+            },
+            "view_policy/medium/material": {
+              "runs": [
+                160546,
+                160415,
+                160608,
+                160591,
+                160628,
+                160518,
+                160598,
+                160504
+              ],
+              "tolerance": 0.05
+            },
+            "view_policy/medium/saved_picture": {
+              "runs": [
+                1772163,
+                1755073,
+                1772636,
+                1756016,
+                1752396,
+                1754723,
+                1776818,
+                1752983
+              ],
+              "tolerance": 0.05
+            },
+            "view_policy/small/display": {
+              "runs": [
+                54326,
+                54355,
+                54710,
+                54417,
+                54417,
+                54347,
+                54384,
+                54362
+              ],
+              "tolerance": 0.05
+            },
+            "view_policy/small/material": {
+              "runs": [
+                112638,
+                112005,
+                112170,
+                112866,
+                112952,
+                112042,
+                112989,
+                112873
+              ],
+              "tolerance": 0.05
+            },
+            "view_policy/small/saved_picture": {
+              "runs": [
+                1770742,
+                1757501,
+                1773801,
+                1773058,
+                1755230,
+                1759841,
+                1776897,
+                1792593
+              ],
+              "tolerance": 0.05
             }
           }
         }

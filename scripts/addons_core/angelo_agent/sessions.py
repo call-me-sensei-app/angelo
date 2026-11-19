@@ -14,7 +14,7 @@ from .provider_registry import is_coding_mode
 from .routing import CONTEXT_SEPARATOR, RENAMED_TOOLSET, TOOLSET_VERSION, valid_slot
 from .task_memory import new_memory, clean_memory
 from .invocations import new_invocations, clean_invocations, migrate_invocations
-from . import context_ledger, document_identity, identifiers, kept_state, session_journal, session_kept, session_saveable, session_validation
+from . import context_ledger, document_identity, external_access, identifiers, kept_state, session_journal, session_kept, session_saveable, session_validation
 from .journal_checks import enabled, first_difference
 from .session_guard import GuardedWriter
 from .runtime_environment import PROMPT_CACHE_TTLS
@@ -32,7 +32,7 @@ UNKEPT_NOTICE = n_("This build could not read all of this chat's saved history a
 # Top-level fields of the saved document this build understands; a later build's other fields mean "keep the file".
 KNOWN_FIELDS = frozenset({"version", "id", "provider", "native_id", "connection_id", "model", "messages", "results",
                           "updated", "options", "approval_version", "toolset_version", "runtime_sessions",
-                          "context_slot", "next_route", "task_memory", "invocations", "document_file"})
+                          "context_slot", "next_route", "task_memory", "invocations", "document_file", "external_app"})
 # Chats whose journal a worker Blender writes (worker_journal_owner, design A'): session id -> (hosted now, hand-offs so
 # far). This process never writes one while hosted, nor from a store loaded before its latest hand-off.
 HOSTED = {}
@@ -123,8 +123,7 @@ class SessionStore:
     """One chat's private transcript and mutation-ID ledger: ``sessions/<id>.json``.
 
     A save appends what changed (``session_writer``); the file format and its durability are in ``session_journal``.
-    ``load`` reads both the whole-file format of earlier builds and the journal.
-    """
+    ``load`` reads both the whole-file format of earlier builds and the journal."""
 
     def __init__(self, directory, session_id=None):
         self.directory = Path(directory)
@@ -223,6 +222,7 @@ class SessionStore:
             # The current native context; its native ID is state["native_id"].
             state["context_slot"] = raw.get("context_slot") if valid_slot(raw.get("context_slot")) else None
             state["next_route"], state["document_file"] = clean_next_route(raw.get("next_route")), document_identity.clean_record(raw.get("document_file"))
+            state["external_app"] = external_access.clean_stamp(raw.get("external_app"))   # An app connection (external_access).
             # Old transcripts simply start with an empty brief. A restart never
             # turns saved object IDs/provenance into live scene/policy authority.
             state["task_memory"] = self._rehydrated(raw.get("task_memory"))
@@ -259,8 +259,7 @@ class SessionStore:
     def _fields(self, state):
         """Everything saved but the rows, results and ledger, cleaned as every save cleans it, in file order.
 
-        Explicit whitelist: never serialize runtime objects, environment, auth events or keys.
-        """
+        Explicit whitelist: never serialize runtime objects, environment, auth events or keys."""
         fields = [(key, state[key]) for key in ("version", "id", "provider", "native_id", "connection_id", "model",
                                                 "updated")]
         fields.append(("options", approval_modes.as_held(state)))  # Never a policy-forced Ask; Auto only as C holds it.
@@ -271,6 +270,7 @@ class SessionStore:
                    ("context_slot", state.get("context_slot") if valid_slot(state.get("context_slot")) else None),
                    ("next_route", clean_next_route(state.get("next_route"))),
                    ("task_memory", self._cleaned_memory(state.get("task_memory")))]
+        fields += [("external_app", stamp)] if (stamp := external_access.clean_stamp(state.get("external_app"))) else []
         return fields + ([("document_file", record)] if (record := document_identity.clean_record(state.get("document_file"))) else [])
 
     def _cleaned_memory(self, memory):

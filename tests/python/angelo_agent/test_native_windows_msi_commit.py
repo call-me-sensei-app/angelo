@@ -127,7 +127,8 @@ class MsiCommitTests(unittest.TestCase):
 
 @unittest.skipIf(os.name == "nt", environment_skip(
     "gcp_windows_validate.sh is a bash launcher run from the macOS workstation, not on Windows"))
-@unittest.skipUnless(shutil.which("bash") and shutil.which("python3"), "the launcher is bash, run from the workstation")
+@unittest.skipUnless(shutil.which("bash") and shutil.which("python3"),
+                     environment_skip("the launcher is bash, run from the workstation"))
 class ReleaseFailureWaitTests(unittest.TestCase):
     FAKE = r"""#!/usr/bin/env bash
 step="$(cat "$FAKE/step")"

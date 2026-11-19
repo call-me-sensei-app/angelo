@@ -43,7 +43,7 @@ print("ok")
 """
 
 # Every function that builds a child's environment from an allow-list; each starts from essential_environment.
-BUILDERS = {"headless_session.py": "child_environment", "worker_process.py": "worker_environment",
+BUILDERS = {"worker_process.py": "worker_environment",
             "endpoint_catalog.py": "_quiet_environment", "fab_convert.py": "environment",
             "pdf_text.py": "worker_environment", "view_exr_codecs.py": "_environment",
             "fab_browser_process.py": "browser_environment", "update_install.py": "helper_environment"}
@@ -80,12 +80,11 @@ def builders(folder):
 
 def environments():
     """(name, the environment) of every builder that can run on this platform."""
-    from angelo_agent import endpoint_catalog, fab_browser_process, fab_convert, headless_session, pdf_text
+    from angelo_agent import endpoint_catalog, fab_browser_process, fab_convert, pdf_text
     from angelo_agent import view_exr_codecs, worker_process
     work = Path(tempfile.mkdtemp(prefix="angelo-essentials-"))
     windows = sys.platform == "win32"
-    return [("headless_session.child_environment", lambda: headless_session.child_environment(os.environ, work)),
-            ("worker_process.worker_environment", lambda: worker_process.worker_environment(os.environ, work)),
+    return [("worker_process.worker_environment", lambda: worker_process.worker_environment(os.environ, work)),
             ("endpoint_catalog._quiet_environment", lambda: endpoint_catalog._quiet_environment(work / "codex")),
             ("fab_convert.environment", lambda: fab_convert.environment(work / "fab")),
             ("pdf_text.worker_environment", lambda: pdf_text.worker_environment()),

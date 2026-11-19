@@ -24,6 +24,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[2] / "scripts/addons_core"))
 import update_fixtures as ufx  # noqa: E402
+import notices_fakes  # noqa: E402
 from notices_fakes import Notices  # noqa: E402
 from angelo_agent import app_version, managed_policy, update_check, update_feed, update_flow, update_state, work_guard  # noqa: E402
 
@@ -322,9 +323,6 @@ class RestartCase(ReadyCase):
         blocking = mock.patch.object(self.restart.os, "set_blocking")
         blocking.start()
         self.addCleanup(blocking.stop)
-        for name in ("depsgraph_update_post", "load_pre", "save_pre", "undo_pre", "redo_pre"):
-            if not hasattr(self.n.bpy.app.handlers, name):
-                setattr(self.n.bpy.app.handlers, name, [])
         start = mock.patch.object(self.restart.update_install, "start",
                                   lambda request: self.started.append(request) or process)
         requirement = mock.patch.object(self.restart, "_requirement", lambda ready: 'identifier "test"')
@@ -340,11 +338,18 @@ class RestartCase(ReadyCase):
 
     def press(self):
         self.restart.begin(self.offer_, self.prepared, self.host)
+        self.settle()
+
+    def settle(self):
+        """Blender's event-loop passes until the hand-over has its settled document (or gave up): each a notifier
+        pass, then the settle timer, as Blender runs them."""
+        notices_fakes.settle(self.bpy)
 
     def run_timers(self):
         # First tick may request a kill; only a subsequent checked poll proves
         # leader exit and restores Ready. No mocked kill return is exit evidence.
         for _ in range(2):
+            self.bpy.data.notifier_pass()   # Blender handles notifiers before the next timers run.
             for function in list(self.bpy.app.timers.registered):
                 if function.__module__ != "angelo_agent.update_ui":
                     self.bpy.app.timers.registered.pop(function)
@@ -409,6 +414,7 @@ class RestartTests(RestartCase):
         prompt = self.shown("update_save")
         self.assertEqual(prompt.name, "castle.blend")
         prompt.act("dont_save", None, self.host)
+        self.settle()
         self.assertEqual(len(self.started), 1)
 
     def test_save_and_restart_saves_the_file_first(self):
@@ -418,7 +424,61 @@ class RestartTests(RestartCase):
         self.bpy.ops.wm.save_mainfile = lambda *a, **k: saves.append(1) or {'FINISHED'}
         self.press()
         self.shown("update_save").act("save", None, self.host)
-        self.assertEqual((len(saves), len(self.started)), (1, 1))
+        self.assertEqual((len(saves), len(self.started)), (1, 0), "the stamp waits until Blender marks the save")
+        self.settle()
+        self.assertEqual(len(self.started), 1)
+
+    def helper_ready(self):
+        Path(self.prepared.work).mkdir(parents=True, exist_ok=True)
+        (Path(self.prepared.work) / "helper.ready").write_bytes((self.started[-1].invocation + "\n").encode("ascii"))
+
+    def test_save_and_restart_quits_once_blender_has_marked_the_save(self):
+        # 2026-11-18, the Windows end-to-end update 1.0.11 -> 2.0.0: the hand-over took the document's stamp right after
+        # the save call, while the file still read as modified; once Blender marked it saved the stamp no longer
+        # matched, so every Save and Restart stood the installer down ("The update could not start").
+        self.bpy.data.is_dirty, self.bpy.data.filepath = True, "/work/castle.blend"
+        self.press()
+        self.shown("update_save").act("save", None, self.host)
+        self.settle()
+        self.helper_ready()
+        self.run_timers()
+        self.assertEqual(len(self.quit_requests()), 1, "the saved file is the decision the hand-over keeps")
+        self.assertEqual(self.killed, [])
+        self.assertNotIn("The update could not start", [c.title for c in self.queued("notice")])
+        self.assertEqual(self.ready.phase(self.offer_), "restarting")
+
+    def keeps_its_stamp(self, dirty, choice):
+        """The class: whatever path reaches the hand-over, the stamp it keeps is the document as Blender settles it, so
+        the installer's readiness finds nothing changed and Angelo quits once."""
+        self.bpy.data.is_dirty, self.bpy.data.filepath = dirty, "/work/castle.blend"
+        self.press()
+        if choice:
+            self.shown("update_save").act(choice, None, self.host)
+            self.settle()
+        self.assertEqual(len(self.started), 1)
+        self.helper_ready()
+        self.run_timers()
+        self.assertEqual((len(self.quit_requests()), self.killed), (1, []))
+
+    def test_a_clean_file_keeps_its_stamp_to_the_helpers_readiness(self):
+        self.keeps_its_stamp(False, None)
+
+    def test_dont_save_keeps_its_stamp_to_the_helpers_readiness(self):
+        self.keeps_its_stamp(True, "dont_save")
+
+    def test_save_keeps_its_stamp_to_the_helpers_readiness(self):
+        self.keeps_its_stamp(True, "save")
+
+    def test_a_change_after_the_save_stops_the_restart_before_the_installer_starts(self):
+        self.bpy.data.is_dirty, self.bpy.data.filepath = True, "/work/castle.blend"
+        self.press()
+        self.shown("update_save").act("save", None, self.host)
+        self.bpy.data.notifier_pass()   # Saved; then an edit, before the hand-over: that work is not saved.
+        self.bpy.data.is_dirty = True
+        with mock.patch.object(self.restart.handoff.time, "monotonic", return_value=time.monotonic() + 60):
+            self.settle()
+        self.assertEqual(self.started, [], "never restarted over unsaved work")
+        self.assertIn("Angelo did not restart", [c.title for c in self.queued("notice")])
 
     def image(self, name, dirty=True):
         image = SimpleNamespace(name=name, is_dirty=dirty)
@@ -443,6 +503,7 @@ class RestartTests(RestartCase):
         self.press()
         self.shown("update_save").act("save", None, self.host)
         self.assertEqual(order, ["images", "file"])
+        self.settle()
         self.assertEqual(len(self.started), 1)
 
     def test_only_unsaved_images_still_save_the_file(self):
@@ -508,6 +569,7 @@ class RestartTests(RestartCase):
             handler("/work/new.blend", None)   # Blender passes the saved file's path.
         self.bpy.data.is_dirty = False   # The save's notifier, handled before the next timer.
         self.run_timers()
+        self.settle()   # The saved document read the same across passes: the hand-over starts.
         self.assertEqual(self.started[0].open_file, "/work/new.blend")
         self.assertEqual(saves, [], "saved once, by the File Browser")
         self.assertEqual(self.bpy.app.handlers.save_post, [])

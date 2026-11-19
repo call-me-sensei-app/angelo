@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""The live web preview's local server: loopback only, one random path, GET only. No Blender dependency.
+"""Angelo's one local web server: loopback only, each page behind its own random path. No Blender dependency.
+
+It serves sites (2.0.1): the live web preview (``PreviewServer``, ``/<token>/``) and each app session's live page
+(``session_page_site``, ``/s/<token>/``), on one listener that starts with the first site and stops with the last.
+Every site shares the guards below (the Host check, ``no-store``, ``nosniff``, no referrer, a strict policy).
 
 It serves the branded page and the Three.js build bundled with the add-on (``web_preview/``, nothing from a CDN),
 the latest export (``scene.glb``), its report (``report.json``), Angelo's viewport from the page's camera for the
@@ -70,14 +74,92 @@ class _Server(socketserver.ThreadingTCPServer):
     daemon_threads = True
     request_queue_size = BACKLOG
 
-    def __init__(self, preview):
-        self.preview = preview
+    def __init__(self):
         super().__init__(("127.0.0.1", 0), _Handler)
 
     def handle_error(self, request, client_address):
         """One request's error ends that request only; an aborted connection says nothing, anything else is kept."""
         if not aborted(sys.exc_info()[1]):
             super().handle_error(request, client_address)
+
+
+_host_lock = threading.Lock()
+_host = {"server": None, "thread": None, "sites": {}}
+NO_SITE_POLICY = "default-src 'none'; frame-ancestors 'none'"
+
+
+def open_site(prefix, site):
+    """Serve ``site`` under ``/<prefix>/`` on the one server (started for the first site); returns the server."""
+    with _host_lock:
+        if _host["server"] is None:
+            server = _Server()
+            thread = threading.Thread(target=server.serve_forever, name="Angelo web pages", daemon=True)
+            thread_start.start(thread, server.server_close)   # Never a bound port that nobody serves.
+            _host.update(server=server, thread=thread)
+        _host["sites"][prefix] = site
+        return _host["server"]
+
+
+def close_site(prefix):
+    """Stop serving ``/<prefix>/``; the server stops with its last site. Idempotent."""
+    with _host_lock:
+        _host["sites"].pop(prefix, None)
+        if _host["sites"] or _host["server"] is None:
+            return
+        server, thread = _host["server"], _host["thread"]
+        _host.update(server=None, thread=None)
+    # Off the caller's thread: the loop notices a shutdown at its next poll (up to half a second), and the caller may
+    # be an app's send or new chat on the main thread. Every path under the prefix answers 404 already.
+    threading.Thread(target=_stop, args=(server, thread), name="Angelo web pages stop", daemon=True).start()
+
+
+def _stop(server, thread):
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=5)
+
+
+def _route(path):
+    """(site, name within it) for a request path: ``/<token>/name`` is the preview's, ``/s/<token>/name`` a session
+    page's; (None, None) for anything else."""
+    path = path.split("?", 1)[0]
+    parts = path.split("/", 3)
+    if len(parts) >= 3 and parts[1] == "s" and len(parts) == 4:
+        prefix, name = "s/" + parts[2], parts[3]
+    elif len(parts) >= 3 and parts[1] != "s":
+        prefix, name = parts[1], "/".join(parts[2:])
+    else:
+        return None, None
+    with _host_lock:
+        site = _host["sites"].get(prefix)
+    return (site, name) if site is not None and not site.closed else (None, None)
+
+
+def static_file(root, name, extra=None):
+    """(bytes, content type) of ``name`` under ``root`` (or ``extra``'s published name), or (None, None): never a
+    path outside ``root``, a hidden part or an empty one."""
+    extra = extra or {}
+    if name in extra:
+        path = Path(extra[name])
+    else:
+        if "\\" in name or any(part in {"", ".", ".."} or part.startswith(".") for part in name.split("/")):
+            return None, None
+        path = root.joinpath(*name.split("/"))
+        try:
+            if not path.resolve().is_relative_to(root.resolve()):
+                return None, None
+        except OSError:
+            return None, None
+    if not path.is_file():
+        return None, None
+    suffix = path.suffix.lower()
+    kind = TYPES.get(suffix) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    if kind.startswith("text/") or kind in {"application/json", "image/svg+xml"}:
+        kind += "; charset=utf-8"
+    try:
+        return path.read_bytes(), kind
+    except OSError:
+        return None, None
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -97,9 +179,11 @@ class _Handler(BaseHTTPRequestHandler):
         if not head:
             self.wfile.write(body)
 
+    site = None   # The site this request reached (its policy), once routed.
+
     def _common(self):
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Security-Policy", self.server.preview.policy)
+        self.send_header("Content-Security-Policy", self.site.policy if self.site is not None else NO_SITE_POLICY)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
@@ -110,102 +194,32 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         self._get(head=False)
 
-    def do_POST(self):  # noqa: N802 - the page's capture and shader report, from this page only.
-        preview = self.server.preview
-        port = self.server.server_address[1]
-        origins = {"http://127.0.0.1:%d" % port, "http://localhost:%d" % port}
-        if self.headers.get("Host") not in {item[7:] for item in origins} or self.headers.get("Origin") not in origins:
+    def do_POST(self):  # noqa: N802 - only a site that takes posts (the preview's capture, report and camera).
+        if not self.own_host():   # Before any route: another name never learns which paths exist.
             return self._send(403, b"Forbidden")
-        name = self.path.split("?", 1)[0][len("/" + preview.token + "/"):] if self.path.startswith(
-            "/" + preview.token + "/") else None
-        limit = {"capture": MAX_CAPTURE, "feedback": MAX_FEEDBACK, "compare": MAX_COMPARE}.get(name)
-        try:
-            length = int(self.headers.get("Content-Length", ""))
-        except ValueError:
-            length = -1
-        if limit is None:
-            return self._send(404, b"Not found")
-        if not 0 < length <= limit:
-            return self._send(413, b"Too large")
-        body = self.rfile.read(length)
-        if name == "capture":
-            if not body.startswith(PNG):
-                return self._send(400, b"Not a PNG")
-            preview.receive_capture(body)
-        else:
-            try:
-                report = json.loads(body.decode("utf-8"))
-            except (UnicodeError, ValueError):
-                return self._send(400, b"Not JSON")
-            if not isinstance(report, dict):
-                return self._send(400, b"Not an object")
-            if name == "compare":
-                preview.receive_compare(report)
-            else:
-                preview.receive_feedback(report)
-        return self._send(204)
+        site, name = _route(self.path)
+        if site is None or getattr(site, "receive", None) is None:
+            return self._send(405 if site is not None else 404, b"Not allowed" if site is not None else b"Not found")
+        self.site = site
+        return site.receive(self, name)
+
+    def own_host(self):
+        """Whether the request names this loopback server as its Host (DNS rebinding: another name is refused)."""
+        port = self.server.server_address[1]
+        return self.headers.get("Host") in {"127.0.0.1:%d" % port, "localhost:%d" % port}
 
     def _get(self, head):
-        preview = self.server.preview
-        port = self.server.server_address[1]
-        if self.headers.get("Host") not in {"127.0.0.1:%d" % port, "localhost:%d" % port}:
+        if not self.own_host():
             return self._send(403, b"Forbidden", head=head)
-        path = self.path.split("?", 1)[0]
-        prefix = "/" + preview.token + "/"
-        if not path.startswith(prefix):
+        site, name = _route(self.path)
+        if site is None:
             return self._send(404, b"Not found", head=head)
-        name = path[len(prefix):] or "index.html"
-        if name == "events":
-            return self._events() if not head else self._send(200, kind="text/event-stream", head=True)
-        if name == "report.json":
-            return self._send(200, preview.report_bytes(), "application/json; charset=utf-8", head)
-        if name == "scene.glb":
-            body = preview.scene_bytes()
-            return self._send(200 if body else 404, body or b"", "model/gltf-binary", head)
-        if name == "viewport.png":
-            body = preview.viewport_bytes()
-            return self._send(200 if body else 404, body or b"", "image/png", head)
-        if name == "viewport.json":
-            return self._send(200, preview.viewport_report(), "application/json; charset=utf-8", head)
-        body, kind = preview.static(name)
-        if body is None:
-            return self._send(404, b"Not found", head=head)
-        return self._send(200, body, kind, head)
-
-    def _events(self):
-        preview = self.server.preview
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self._common()
-        self.end_headers()
-        seen, asked, drawn = None, preview.captures_asked, preview.viewports
-        preview.streams += 1
-        try:
-            while not preview.closed:
-                version, wanted, viewport = preview.wait_for_change(seen, asked, EVENT_WAIT, drawn)
-                if preview.closed:
-                    self.wfile.write(b"event: closed\ndata: {}\n\n")
-                    break
-                if version != seen:
-                    seen = version
-                    self.wfile.write(b"event: version\ndata: %d\n\n" % version)
-                elif wanted != asked:
-                    asked = wanted
-                    self.wfile.write(b"event: capture\ndata: %d\n\n" % wanted)
-                elif viewport != drawn:
-                    drawn = viewport
-                    self.wfile.write(b"event: viewport\ndata: %d\n\n" % viewport)
-                else:
-                    self.wfile.write(b": keep-alive\n\n")
-                self.wfile.flush()
-        except (BrokenPipeError, ConnectionResetError, OSError):
-            pass
-        finally:
-            preview.streams -= 1
+        self.site = site
+        return site.serve(self, name, head)
 
 
 class PreviewServer:
-    """One running preview server; ``url`` is what the browser opens. Thread-safe."""
+    """The live preview, one site on the server (``/<token>/``); ``url`` is what the browser opens. Thread-safe."""
 
     def __init__(self, extra_files=None, marks=None):
         self.token = secrets.token_urlsafe(16)
@@ -228,9 +242,7 @@ class PreviewServer:
         self._viewport = b""
         self._viewport_report = b"{}"
         self._compare = None            # The page's latest Compare request, until the main thread takes it.
-        self._server = _Server(self)
-        self._thread = threading.Thread(target=self._server.serve_forever, name="Angelo web preview", daemon=True)
-        thread_start.start(self._thread, self._server.server_close)   # Never a bound port that nobody serves.
+        self._server = open_site(self.token, self)   # The one server, shared with session pages (2.0.1).
 
     @property
     def port(self):
@@ -319,36 +331,115 @@ class PreviewServer:
         """(bytes, content type) of a page file, or (None, None): only files inside ``web_preview``."""
         if name == "index.html":
             return self._page, "text/html; charset=utf-8"
-        if name in self._extra:
-            path = Path(self._extra[name])
-        else:
-            if "\\" in name or any(part in {"", ".", ".."} or part.startswith(".") for part in name.split("/")):
-                return None, None
-            path = PAGE_ROOT.joinpath(*name.split("/"))
-            try:
-                if not path.resolve().is_relative_to(PAGE_ROOT.resolve()):
-                    return None, None
-            except OSError:
-                return None, None
-        if not path.is_file():
-            return None, None
-        suffix = path.suffix.lower()
-        kind = TYPES.get(suffix) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        if kind.startswith("text/") or kind in {"application/json", "image/svg+xml"}:
-            kind += "; charset=utf-8"
-        try:
-            return path.read_bytes(), kind
-        except OSError:
-            return None, None
+        return static_file(PAGE_ROOT, name, self._extra)
 
-    def close(self):
-        """Stop serving now; open event streams end. Idempotent."""
+    def serve(self, handler, name, head):
+        """A GET or HEAD under this preview's path (the server checked its Host)."""
+        name = name or "index.html"
+        if name == "events":
+            return self._events(handler) if not head else handler._send(200, kind="text/event-stream", head=True)
+        if name == "report.json":
+            return handler._send(200, self.report_bytes(), "application/json; charset=utf-8", head)
+        if name == "scene.glb":
+            body = self.scene_bytes()
+            return handler._send(200 if body else 404, body or b"", "model/gltf-binary", head)
+        if name == "viewport.png":
+            body = self.viewport_bytes()
+            return handler._send(200 if body else 404, body or b"", "image/png", head)
+        if name == "viewport.json":
+            return handler._send(200, self.viewport_report(), "application/json; charset=utf-8", head)
+        body, kind = self.static(name)
+        if body is None:
+            return handler._send(404, b"Not found", head=head)
+        return handler._send(200, body, kind, head)
+
+    def receive(self, handler, name):
+        """The page's capture, shader report and Compare camera: from this page only (its own Host and Origin)."""
+        port = handler.server.server_address[1]
+        origins = {"http://127.0.0.1:%d" % port, "http://localhost:%d" % port}
+        if not handler.own_host() or handler.headers.get("Origin") not in origins:
+            return handler._send(403, b"Forbidden")
+        limit = {"capture": MAX_CAPTURE, "feedback": MAX_FEEDBACK, "compare": MAX_COMPARE}.get(name)
+        try:
+            length = int(handler.headers.get("Content-Length", ""))
+        except ValueError:
+            length = -1
+        if limit is None:
+            return handler._send(404, b"Not found")
+        if not 0 < length <= limit:
+            return handler._send(413, b"Too large")
+        body = handler.rfile.read(length)
+        if name == "capture":
+            if not body.startswith(PNG):
+                return handler._send(400, b"Not a PNG")
+            self.receive_capture(body)
+        else:
+            try:
+                report = json.loads(body.decode("utf-8"))
+            except (UnicodeError, ValueError):
+                return handler._send(400, b"Not JSON")
+            if not isinstance(report, dict):
+                return handler._send(400, b"Not an object")
+            if name == "compare":
+                self.receive_compare(report)
+            else:
+                self.receive_feedback(report)
+        return handler._send(204)
+
+    def _events(self, handler):
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler._common()
+        handler.end_headers()
+        seen, asked, drawn = None, self.captures_asked, self.viewports
+        self.streams += 1
+        try:
+            while not self.closed:
+                version, wanted, viewport = self.wait_for_change(seen, asked, EVENT_WAIT, drawn)
+                if self.closed:
+                    handler.wfile.write(b"event: closed\ndata: {}\n\n")
+                    break
+                if version != seen:
+                    seen = version
+                    handler.wfile.write(b"event: version\ndata: %d\n\n" % version)
+                elif wanted != asked:
+                    asked = wanted
+                    handler.wfile.write(b"event: capture\ndata: %d\n\n" % wanted)
+                elif viewport != drawn:
+                    drawn = viewport
+                    handler.wfile.write(b"event: viewport\ndata: %d\n\n" % viewport)
+                else:
+                    handler.wfile.write(b": keep-alive\n\n")
+                handler.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            self.streams -= 1
+
+    def withdraw(self):
+        """The person's tab ends (their Stop) while apps' pages keep the exporter: this path answers 404 and its event
+        streams end; the export stays for the pages (``scene_bytes``)."""
         if self.closed:
             return
         self.closed = True
         with self._changed:
             self._changed.notify_all()
-        self._server.shutdown()
-        self._server.server_close()
-        self._thread.join(timeout=5)
+        close_site(self.token)
+
+    def reopen(self):
+        """Served again for the person's next start, under a new token: their old tab stays ended."""
+        if not self.closed:
+            return
+        self.token = secrets.token_urlsafe(16)
+        self.closed = False
+        self._server = open_site(self.token, self)
+
+    def close(self):
+        """Stop serving now; open event streams end; the server stops with its last site. Idempotent."""
+        if self.closed:
+            return
+        self.closed = True
+        with self._changed:
+            self._changed.notify_all()
+        close_site(self.token)
 

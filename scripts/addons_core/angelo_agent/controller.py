@@ -34,7 +34,7 @@ from . import auto_reasons, call_ended, call_status, review_again, chat_changes,
 from .plan_schema import PlanRejected, deferred_schemas
 from .protocol import RpcError
 from .providers import CLAUDE_PLAN_REJECTIONS
-from . import context_ledger, context_rebase, display_text, identifiers, ledger_events, model_routing, runtime_prewarm, script_errors, team_usage_reports, turn_end, ui_text, write_turn
+from . import approval_note, context_ledger, context_rebase, display_text, identifiers, ledger_events, model_routing, runtime_prewarm, script_errors, team_usage_reports, turn_end, ui_text, write_turn
 from .runtime_environment import PROMPT_CACHE_TTLS
 from .telemetry import RequestMetrics, TelemetryStore, cache_gap, scene_outcome_evidence
 from .fallback_categories import fallback_categories
@@ -1204,7 +1204,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
             self._script_consent = None
             for call in list(self.pending.values()):
                 if (not call.executing or call.staging) and call.name not in READ_ONLY_TOOLS:
-                    self.finish_tool(call, {"error_code": 'READ_ONLY', "error": "The user switched this chat to read-only; no queued change was applied"})
+                    self.finish_tool(call, {"error_code": 'READ_ONLY', "error": "This chat was switched to Read only; no queued change was applied"})
         self.version += 1
         self.save()
 
@@ -1304,7 +1304,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         """Pending sends carry their own references; host_kind retains host/person classification."""
         if submission is not None:
             submission.before_start(self)
-        self.require_model_chat()
+        self.require_model_turn(host_request)
         self.apply_next_connection()
         self.require_endpoint_admitted()   # An organization's server the account no longer admits: nothing starts.
         # The person's Enter holds a message instead (console.execute); this refuses any other caller. Not
@@ -1438,7 +1438,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         """Append this message's context blocks, as a delta where the context has them.
 
         Order: observation, workspace, task memory, shared-history handoff, background
-        jobs, collaborators. See context_ledger for what a delta omits.
+        jobs, approval mode (approval_note), collaborators. See context_ledger for what a delta omits.
         """
         key = getattr(context, "context_key", None) or route_key(context.connection_id, context.state["provider"])
         saved = self.state["runtime_sessions"].get(key, {})
@@ -1473,6 +1473,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
         text += handoff_text
         text += worker_news.prompt_news(context)   # Untold finishes, named after the history; told once written.
         text += blocks.jobs(self.state["id"])
+        text += approval_note.block(blocks, clean_options(self.state.get("options"))["approval"])   # Where it changed.
         text += blocks.collaborators(self._turn_collaborators)
         self._pending_ledger = {"route": key, "blocks": blocks, "native_id": None if blocks.full else native_id}
         return text
@@ -1866,7 +1867,7 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
     request_tool = pending_delivery.request_tool
 
     def _admit_tool_request(self, call_id, name, arguments, callback, *, answer, enqueue, request_fence,
-                            delivery_owner, parent_call, result_observer, script_file=None, model_step=None):
+                            delivery_owner, parent_call, result_observer, model_step=None):
         """Keep admitted callbacks raw; ``answer`` collects only refusals and completed-result replays."""
         with self.lock:
             admitted_fence = request_fence if request_fence is not None else RequestFence.capture(self)
@@ -1990,7 +1991,6 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
                             submitted_arguments_digests=(submitted_digest,), metrics=metrics,
                             delivery_owner=delivery_owner, parent_call=parent_call, result_observer=result_observer,
                             script_consent=self.admission_script_consent(), model_step=model_step,
-                            script_file=script_file if name == "angelo_execute_python" else None,
                             queued_at=time.monotonic(), expires=time.monotonic() + tool_seconds(name))
             self.pending[key] = call
             if call.metrics:
@@ -2238,9 +2238,6 @@ class Controller(TranscriptRows, ConnectionChoice, TrustedScripts, ProgramCommit
 
     def _execute_tool(self, call, executor, document):
         executor.studio_context = self
-        # The approved script file this call runs (an app's angelo_run_script_file), or None: the executor runs it as
-        # that file, as Blender's Text editor or ``blender --python`` would (break-it review FR-M1).
-        executor.script_file = getattr(call, "script_file", None)
         if edit_tool_hold.wait(self, call):
             return edit_tool_hold.EXECUTION_WAITING   # The person's tool runs: nothing ran, its click mark kept; the pump resumes it.
         clicked = review_again.take_click(call)   # The person's own Approve on its card (review_again), read once.

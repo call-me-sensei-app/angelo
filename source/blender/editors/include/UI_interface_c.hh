@@ -52,6 +52,7 @@ struct PointerRNA;
 struct PropertyRNA;
 struct ReportList;
 struct ResultBLF;
+struct ScrAreaMap;
 struct bContext;
 struct bContextStore;
 struct bNode;
@@ -1088,6 +1089,9 @@ Vector<PopupButtonPlace> popup_button_places(const bScreen *screen);
 /** Every button drawn in the regions of `screen`'s editors (panels, headers, sidebars), in drawing
  * order. */
 Vector<PopupButtonPlace> area_button_places(const bScreen *screen);
+/** As `area_button_places`, for a window's global areas (the top bar and the status bar, which are
+ * no screen's): a hidden one is never a target. */
+Vector<PopupButtonPlace> global_area_button_places(const ScrAreaMap &areas);
 
 bool popup_region_from_operator(const bScreen *screen, const ARegion *region);
 

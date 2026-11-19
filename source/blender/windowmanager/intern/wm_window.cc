@@ -1939,6 +1939,10 @@ static bool ghost_event_proc(const GHOST_IEvent *ghost_event, GHOST_TUserDataPtr
        * currently it seems to be common practice to generate new event for, but probably
        * we'll need utility function for this?
        */
+#ifdef WITH_PYTHON
+      /* Angelo: before its synthetic move, so the guard knows that move is not the person's. */
+      BPY_angelo_guard_note_activate(win);
+#endif
       wmEvent event;
       wm_event_init_from_window(win, &event);
       event.type = MOUSEMOVE;

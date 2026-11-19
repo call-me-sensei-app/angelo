@@ -42,10 +42,17 @@ MODIFIERS = frozenset({'LEFT_SHIFT', 'RIGHT_SHIFT', 'LEFT_CTRL', 'RIGHT_CTRL', '
                        'HYPER'})
 
 
+def controls(hits):
+    """The hits that are controls: a disabled control, an info row and a reveal's shield take no press. Only these are
+    focusable and only these are C's consent regions (``grant_guard.canvas_regions``): a non-control hit over a control
+    made a press on it land in two regions, which C refuses as ambiguous."""
+    return [hit for hit in hits if hit[1] not in (DISABLED, INFO, INERT)]
+
+
 def focus_order(hits, drawn=False):
     """The focusable ``(action, value)`` keys, each once: reading order (top to bottom, then left to right; region
     pixels, y up), or the order registered (``drawn``). Disabled and info hits are skipped."""
-    kept = [hit for hit in hits if hit[1] not in (DISABLED, INFO, INERT)]
+    kept = controls(hits)
     if not drawn:
         kept = [hit for row in _rows(kept) for hit in sorted(row, key=lambda hit: hit[0][0])]
     order = []

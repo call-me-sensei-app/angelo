@@ -12,6 +12,7 @@ import importlib.util
 import itertools
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -83,7 +84,7 @@ def cube(lo=(-1, -1, -1), hi=(1, 1, 1), faces=CUBE_FACES, **kwargs):
     return FakeMesh(vertices, faces, **kwargs)
 
 
-@unittest.skipUnless(HAS_NUMPY, "NumPy is not installed")
+@unittest.skipUnless(HAS_NUMPY, required_skip("NumPy is not installed"))
 class MeasureTests(unittest.TestCase):
     def test_a_closed_outward_cube_has_its_volume_faces_and_world_bounds(self):
         reading = booleans.measure(cube(), matrix((2.0, 1.0, 1.0), (10.0, 0.0, 0.0)))
@@ -257,7 +258,7 @@ def stand_in(objects, results, active=None, override=None, selected=()):
     return SimpleNamespace(context=context, ops=ops), ops
 
 
-@unittest.skipUnless(HAS_NUMPY, "NumPy is not installed")
+@unittest.skipUnless(HAS_NUMPY, required_skip("NumPy is not installed"))
 class AppliedTests(unittest.TestCase):
     def setUp(self):
         self.cutter = Obj("Hole", cube())
@@ -368,7 +369,7 @@ class AppliedTests(unittest.TestCase):
         self.assertEqual(applied.rows.more, 1)
 
 
-@unittest.skipUnless(HAS_NUMPY, "NumPy is not installed")
+@unittest.skipUnless(HAS_NUMPY, required_skip("NumPy is not installed"))
 class LiveTests(unittest.TestCase):
     def window(self, *objects):
         scene = SimpleNamespace(objects=SceneObjects(objects))

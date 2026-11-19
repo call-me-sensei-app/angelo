@@ -11,6 +11,7 @@ import suite_isolation  # noqa: F401  First: this test never sees a real provide
 
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
@@ -40,7 +41,7 @@ class ScriptDescriptionTests(unittest.TestCase):
         return {"operations": [{"tool": "angelo_execute_python", "arguments": {
             "description": "d" * length, "code": "result = 1"}}], "verify": True}
 
-    @unittest.skipIf(Draft202012Validator is None, "jsonschema is not installed")
+    @unittest.skipIf(Draft202012Validator is None, required_skip("jsonschema is not installed"))
     def test_the_runtime_schema_admits_every_recorded_length(self):
         validator = Draft202012Validator(native_plan_schema())
         for length in self.RECORDED:
@@ -93,7 +94,7 @@ class SchemaNearMissTests(unittest.TestCase):
             limits = [node for node in schema_nodes(native_plan_schema(allowed)) if "maxLength" in node]
             self.assertEqual(limits, [])
 
-    @unittest.skipIf(Draft202012Validator is None, "jsonschema is not installed")
+    @unittest.skipIf(Draft202012Validator is None, required_skip("jsonschema is not installed"))
     def test_an_overlong_text_passes_the_runtime_and_the_host_answers_in_one_line(self):
         validator = Draft202012Validator(native_plan_schema())
         for field, length, names in (("description", 5000, ("1-500 printable characters", "this one has 5000")),

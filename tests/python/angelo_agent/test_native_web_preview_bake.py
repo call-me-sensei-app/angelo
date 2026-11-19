@@ -106,6 +106,7 @@ class ReloadDuringBakeTests(unittest.TestCase):
         preview, export = self.preview, self.export
         for patch in (
                 mock.patch.dict(preview._state, state),
+                mock.patch.object(preview, "_holders", {preview.PERSON}),   # The person's preview runs.
                 mock.patch.object(export, "_inspect", lambda *args: (
                     dict(REQUEST, baked_materials=False), [], {"world": dict(self.world), "look": LOOK}, [],
                     {"used": [], "stale": [], "packing": []})),

@@ -47,7 +47,6 @@ class ToolCall:
     approved: bool = False
     approval_started: object = None
     script_consent: object = None  # Host-only admission token; never serialized.
-    script_file: object = None  # script_files.ScriptFile an app's angelo_run_script_file named; host-only.
     consent_kind: str = ""  # The standing consent that approved an automatic script (its result's ``consent``).
     reviewed_script: str = ""  # Exact reviewed invocation digest.
     revoked: str = ""  # Why the turn that admitted this call ended before it ran (tool_deadlines).
@@ -77,8 +76,7 @@ class ToolCall:
 
 
 def request_tool(self, call_id, name, arguments, callback, *, enqueue=True, request_fence=None,
-                 delivery_owner=None, parent_call=None, result_observer=None, completion_sink=None, script_file=None,
-                 model_step=None):
+                 delivery_owner=None, parent_call=None, result_observer=None, completion_sink=None, model_step=None):
     """Admit synchronously; deliver immediate answers after our admission locks have exited.
 
     ``model_step``: the step that wrote the call (``ToolCall.model_step``), None for the step it is checked in."""
@@ -89,8 +87,7 @@ def request_tool(self, call_id, name, arguments, callback, *, enqueue=True, requ
     try:
         return self._admit_tool_request(call_id, name, arguments, callback, answer=answers.append,
             enqueue=enqueue, request_fence=request_fence, delivery_owner=delivery_owner,
-            parent_call=parent_call, result_observer=result_observer, script_file=script_file,
-            model_step=model_step)
+            parent_call=parent_call, result_observer=result_observer, model_step=model_step)
     finally:
         for result in answers:
             self._observe_tool_result(result_observer, result)
@@ -181,8 +178,7 @@ def observe_tool_result(observer, result):
             pass
 
 
-def request_context_tool(self, call_id, name, arguments, callback, *, delivery_owner=None, script_file=None,
-                         model_step=None):
+def request_context_tool(self, call_id, name, arguments, callback, *, delivery_owner=None, model_step=None):
     """Route one request's owned tool call without moving billing or request state; ``model_step``: the step that
     wrote it (``record_call_step``), None for the step it is checked in."""
     from . import routing
@@ -210,9 +206,7 @@ def request_context_tool(self, call_id, name, arguments, callback, *, delivery_o
             return  # Answered: the request's script corrections are used.
     scope = routing.route_key(self.connection_id, self.state["provider"]) + "/" + str(self.state.get("native_id") or "connecting")
     self.program_completions.request(scope + "/" + str(call_id), name, arguments, callback,
-                                     delivery_owner=owner, result_observer=observer,
-                                     script_file=script_file if name == "angelo_execute_python" else None,
-                                     model_step=model_step)
+                                     delivery_owner=owner, result_observer=observer, model_step=model_step)
 
 
 def result_observer(context, name, arguments, *, delivery_owner=None):

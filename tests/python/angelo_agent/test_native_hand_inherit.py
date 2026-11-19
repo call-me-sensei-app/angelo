@@ -9,6 +9,7 @@ import suite_isolation  # noqa: F401  First: this test never sees a real provide
 import math
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -40,7 +41,7 @@ def rotation(axis, degrees):
     return M.axis_angle(M.unit(np.asarray(axis, dtype=np.float64)), math.radians(degrees))
 
 
-@unittest.skipIf(np is None, "NumPy is not installed")
+@unittest.skipIf(np is None, required_skip("NumPy is not installed"))
 class Composition(unittest.TestCase):
     def test_full_inheritance_is_the_plain_parent_chain(self):
         skel, hand = hand_of()
@@ -140,7 +141,7 @@ def _armature(skel, constraints=None, drivers=(), pose_position="POSE"):
                            animation_data=SimpleNamespace(drivers=list(drivers)))
 
 
-@unittest.skipIf(np is None, "NumPy is not installed")
+@unittest.skipIf(np is None, required_skip("NumPy is not installed"))
 class Refusals(unittest.TestCase):
     def setUp(self):
         from angelo_agent import rig_read
@@ -198,7 +199,7 @@ def _with_unrelated(skin, count):
                   np.concatenate([skin.edges, np.array(edges, dtype=np.int64).reshape(-1, 2)]))
 
 
-@unittest.skipIf(np is None, "NumPy is not installed")
+@unittest.skipIf(np is None, required_skip("NumPy is not installed"))
 class CompactSkin(unittest.TestCase):
     def test_unrelated_vertices_change_nothing_the_tools_measure(self):
         skel, hand = hand_of()
@@ -250,7 +251,7 @@ class CompactSkin(unittest.TestCase):
         np.testing.assert_array_equal(S._flood(count, edges, seeds, allowed), sorted(seen))
 
 
-@unittest.skipIf(np is None, "NumPy is not installed")
+@unittest.skipIf(np is None, required_skip("NumPy is not installed"))
 class WholeSolveBudget(unittest.TestCase):
     def setUp(self):
         from angelo_agent import hand_pose as P

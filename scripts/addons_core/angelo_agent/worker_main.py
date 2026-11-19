@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Start-up of a worker Blender inside ``Angelo --background`` (``worker_process`` starts it).
 
-``angelo_headless.py -- --worker`` comes here. The start-up is the headless MCP child's (``headless_main``): the
-same read-only preferences, the same few registrations (the approval and commit operators, the program handlers,
-document and scene tracking; no chat, sign-in, provider, catalog or timer) and the same window-free execution: the
+``angelo_headless.py -- --worker`` comes here. The start-up is ``headless_main``'s (until 2.0.1 the headless MCP
+child's too): read-only preferences, a few registrations (the approval and commit operators, the program handlers,
+document and scene tracking; no chat, sign-in, provider, catalog or timer) and window-free execution: the
 document is loaded into the background window record with ``load_ui=False, use_scripts=False`` and every tool runs
 against that window's scene and view layer. Then it connects (``worker_channel``), says ``ready`` and serves
 (``worker_host``) until Angelo closes the connection, and removes its private folder. With

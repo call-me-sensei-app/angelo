@@ -25,6 +25,7 @@ import sys
 import tempfile
 import time
 import unittest
+from host_test_policy import environment_skip
 import uuid
 from ctypes import wintypes
 from pathlib import Path
@@ -105,7 +106,8 @@ def ensure_short_name(path, wanted):
     current = short_name(path)
     if current and current.upper() != path.name.upper():
         return current
-    raise unittest.SkipTest("no 8.3 alias on this volume (fsutil: %s)" % (run.stdout + run.stderr).strip())
+    raise unittest.SkipTest(
+        environment_skip("no 8.3 alias on this volume (fsutil: %s)" % (run.stdout + run.stderr).strip()))
 
 
 def set_unhandled_reparse_point(path):
@@ -206,7 +208,8 @@ class ReparsePointTests(NtfsCase):
         path.write_bytes(data)
         run = subprocess.run(["compact.exe", "/c", "/exe:xpress4k", str(path)], capture_output=True, text=True)
         if "[OK]" not in run.stdout:
-            self.skipTest("compact /exe did not compress the file: " + (run.stdout + run.stderr).strip()[-300:])
+            self.skipTest(
+                environment_skip("compact /exe did not compress the file: " + (run.stdout + run.stderr).strip()[-300:]))
         tag = reparse_tag(path)
         print("WOF-compressed file seen with reparse tag:", hex(tag), flush=True)   # A fact for the documentation.
         with cf._private_directory(self.root) as folder:
@@ -512,7 +515,7 @@ class Fat32Tests(unittest.TestCase):
         used = {item[0].upper() for item in os.listdrives()} if hasattr(os, "listdrives") else set()
         letters = [letter for letter in "TUVWXYZ" if letter not in used]
         if not letters:
-            raise unittest.SkipTest("no free drive letter for the FAT32 virtual disk")
+            raise unittest.SkipTest(environment_skip("no free drive letter for the FAT32 virtual disk"))
         cls.letter = letters[0]
         script = ('create vdisk file="{0}" maximum=128 type=expandable\nselect vdisk file="{0}"\nattach vdisk\n'
                   'create partition primary\nformat fs=fat32 quick label=ANGELOFAT\nassign letter={1}\n').format(cls.vhd, cls.letter)
@@ -521,7 +524,8 @@ class Fat32Tests(unittest.TestCase):
         cls.attached = Path(cls.letter + ":\\").is_dir()
         if not cls.attached:
             cls._detach()
-            raise unittest.SkipTest("diskpart could not attach a FAT32 virtual disk: " + result[-400:])
+            raise unittest.SkipTest(
+                environment_skip("diskpart could not attach a FAT32 virtual disk: " + result[-400:]))
 
     @classmethod
     def _diskpart(cls, script):

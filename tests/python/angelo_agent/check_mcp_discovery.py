@@ -7,8 +7,10 @@ Opt-in only: it runs real models on the account the given Codex profile is signe
 this counts how often a request that names no tool leads the model to call the server at all. Both arms get the same
 client, flags, prompts and logging; only the server differs:
 
-* ``angelo``: Angelo's window (factory scene, behind, access on) with the app ``codex`` connected at read, edit and
-  python (no tasks); a stand-in person approves each script card after two seconds.
+* ``angelo``: Angelo's window (factory scene, behind, access on) with the app ``codex`` connected; it works through
+  Angelo's agent (doc/angelo/external_mcp.rst), which has no connection here, so a send answers ``needs_connection``:
+  what is counted is whether the model reached the server at all. A stand-in person approves each card after two
+  seconds.
 * ``blender_mcp``: stock Blender with Blender Lab's MCP add-on and server (``bench_mcp_trial.launch_blender``).
 
 Each server's stdio passes through a logger, so every ``tools/call`` is counted on the server side. The apps restart
@@ -212,8 +214,8 @@ def main():
     angelo_root = root / "angelo-app"
     env = isolated_environment(angelo_root)
     sys.path.insert(0, str(resources / "scripts/addons_core"))
-    from angelo_agent.external_clients import EDIT, PYTHON, READ, AppRegistry
-    AppRegistry(env["ANGELO_STATE_DIR"]).connect("codex", levels=(READ, EDIT, PYTHON))
+    from angelo_agent.external_clients import AppRegistry
+    AppRegistry(env["ANGELO_STATE_DIR"]).connect("codex")
     angelo_server = ("angelo", str(resources / "python/bin/python3.13"),
                      ["-I", str(resources / "scripts/angelo/angelo_mcp.py"), "--client", "codex", "--state-dir",
                       env["ANGELO_STATE_DIR"]], {})

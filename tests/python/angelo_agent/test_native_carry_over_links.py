@@ -34,7 +34,7 @@ from angelo_agent import carry_over_moves as moves_module  # noqa: E402
 Base = base.VersionCarryOverTests
 
 
-@unittest.skipUnless(base.anchored_files_supported(), "descriptor-relative storage required")
+@unittest.skipUnless(base.anchored_files_supported(), environment_skip("descriptor-relative storage required"))
 class LinkTests(unittest.TestCase):
     setUp, carry, seed = Base.setUp, Base.carry, Base.seed
 

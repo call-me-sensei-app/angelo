@@ -90,6 +90,8 @@ BARE = {
 READERS = {
     ("endpoint_catalog.py", "write"): "a custom endpoint's Codex model catalog (a running Codex may hold it open)",
     ("always_allow.py", "attach"): "always-allow-scripts.json",
+    ("session_page.py", "_read_stopped"): "external-live-pages.json (Stop sharing replaces it)",
+    ("session_page.py", "_build"): "a picture of the conversation's own (its reference store)",
     ("cache_affinity_secret.py", "_read"): "cache-affinity-secret",
     ("chat_pending.py", "load"): "a chat's pending messages",
     ("codex_bases.py", "_read"): "codex_bases.json",
@@ -101,9 +103,8 @@ READERS = {
     ("engine_preflight.py", "link_report"): "a linked asset's preflight report",
     ("engine_suggest.py", "__init__"): "engine-suggestions.json",
     ("external_setup.py", "_read_text"): "an app's MCP settings (the setup replaces them)",
-    ("external_setup.py", "has_entry"): "Codex's config.toml (the setup replaces it)",
+    ("external_setup.py", "_entry"): "Codex's config.toml (the setup replaces it)",
     ("fal_video.py", "load_video"): "a reference video (a result _write replaces may be one)",
-    ("headless_files.py", "check_source"): "a .blend (an earlier output place() may replace)",
     ("goal_store.py", "_saved"): "goals.json",
     ("learn_option.py", "load"): "learn.json",
     ("external_cli_protocol.py", "read_key"): "an app's key file",
@@ -115,7 +116,6 @@ READERS = {
     ("private_roots.py", "retained_profiles"): "the retained native-profile lists",
     ("runtime_launch.py", "codex_command"): "Codex's config.toml (the MCP setup replaces it)",
     ("runtime_threads.py", "_read"): "worker-threads.json",
-    ("script_files.py", "_read"): "external-script-files.json",
     ("session_kept.py", "preserve"): "a chat's kept copies (redact_kept rewrites them)",
     ("session_kept.py", "redact_kept"): "a chat's kept copies (rewritten here)",
     ("settings_import.py", "backup_matches"): "the settings import's manifest",
@@ -126,7 +126,7 @@ READERS = {
     ("studio_generation.py", "load_references"): "a reference image (a Studio result may be one)",
     ("studio_state.py", "import_image"): "an imported image (a Studio result may be one)",
     ("studio_state.py", "read_json"): "a job's state",
-    ("team_org_policy.py", "read_regular"): "team-org-policy.json and the launcher's mcp/ records",
+    ("team_org_policy.py", "read_regular"): "team-org-policy.json and the mcp/ app registry",
     ("team_refresh_marks.py", "_load"): "team-refresh.json",
     ("team_usage_buffer.py", "_read"): "team-usage.json",
     ("telemetry.py", "_load"): "performance.json",
@@ -140,6 +140,7 @@ _OWN_NEW = "Creates or appends to its own file (write flags in a variable): noth
 _SHARED_ITSELF = "The shared reader itself (session_journal.open_shared shares delete on Windows)."
 # (file, function) -> why its plain open never refuses a replace. Pinned both ways: a stale entry fails too.
 PLAIN = {
+    ("hidden_copy.py", "place"): _OWN_NEW,
     ("carry_over_moves.py", "_compare"):
         "Compares the bytes of two version folders' files during the carry-over, which never runs while another "
         "Angelo is open (carry_over_processes): nothing replaces them while it reads.",
@@ -165,9 +166,6 @@ PLAIN = {
     ("engine_preflight.py", "after_writeback"):
         "In the preflight child: a copy of the asset made for that child alone; nothing replaces it.",
     ("external_requests.py", "record"): _OWN_NEW,
-    ("headless_files.py", "place"): _OWN_NEW,
-    ("script_files.py", "read_script"): "The person's own script file, which Angelo never writes.",
-    ("script_files.py", "_write"): _FOLDER_SYNC,
     ("session_journal.py", "open_shared"): _SHARED_ITSELF,
     ("session_kept.py", "_sync_folder"): _FOLDER_SYNC,
     ("state_file_writes.py", "write_receipts"): _OWN_NEW,

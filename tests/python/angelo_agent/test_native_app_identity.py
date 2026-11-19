@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -296,7 +297,7 @@ class UiAndSourceTests(unittest.TestCase):
         self.assertFalse((ROOT / ".github/FUNDING.yml").exists(), "no sponsor button pointing at Blender's fund")
 
 
-@unittest.skipUnless(shutil.which("cmake"), "CMake is required to render the templates")
+@unittest.skipUnless(shutil.which("cmake"), required_skip("CMake is required to render the templates"))
 class RenderedTemplateTests(unittest.TestCase):
     """The templates are filled in by the real CMake loader, in script mode."""
 

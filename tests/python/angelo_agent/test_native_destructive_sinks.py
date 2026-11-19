@@ -27,8 +27,8 @@ ALLOWED = {
                                         "uuid name; the save itself goes through owned_replace",
     ("usage_meter", "UsageLedger._write"): "unlinks only this call's own temporary, created O_CREAT|O_EXCL under a "
                                            "fresh uuid name; the save itself goes through owned_replace",
-    ("headless_working_copy", "_unlink"): "the copy claim() made a moment ago when placing it failed, or the .blend1 "
-                                          "backup beside a copy discard() found on C's record",
+    ("hidden_copy", "_unlink"): "the copy claim() made a moment ago when placing it failed, or the .blend1 backup "
+                                "beside a copy discard() found on C's record",
     ("session_kept", "_copy_new"): "its target is a fresh name it created O_CREAT|O_EXCL itself (never an existing "
                                    "file), rewritten or removed only on failure",
     ("private_roots", "_write_list"): "replaces only a file of Angelo's own fixed list name (RETAINED_PROFILES or "

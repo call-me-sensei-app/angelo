@@ -13,6 +13,7 @@ import copy
 import json
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -324,7 +325,7 @@ except ImportError:
     Draft202012Validator = None
 
 
-@unittest.skipIf(Draft202012Validator is None, "jsonschema is not installed")
+@unittest.skipIf(Draft202012Validator is None, required_skip("jsonschema is not installed"))
 class TaggedUnionTests(unittest.TestCase):
     def test_cross_kind_and_cross_tool_swaps_agree_pin(self):
         """Sound (pin): structurally different plans, each corpus operation under every other kind and each call

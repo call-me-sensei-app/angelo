@@ -104,7 +104,7 @@ def clean(value):
     if type(native) is not str or not 1 <= len(native) <= 256:
         return None
     output = {"version": LEDGER_VERSION, "native_id": native}
-    for key in ("observation", "observation_notes", "workspace", "collaborators"):
+    for key in ("observation", "observation_notes", "workspace", "collaborators", "approval"):
         if _hex(value.get(key)):
             output[key] = value[key]
     fields = value.get("observation_fields")

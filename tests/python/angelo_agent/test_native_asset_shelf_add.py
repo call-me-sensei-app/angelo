@@ -16,6 +16,7 @@ import suite_isolation  # noqa: F401  First: this test never sees a real provide
 import sys
 import types
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -535,7 +536,7 @@ class WiringTests(unittest.TestCase):
         import ast
         module = ADDON / "studio_to_flow.py"
         if not module.exists():
-            self.skipTest("Part A's studio_to_flow is not on this branch")
+            self.skipTest(required_skip("Part A's studio_to_flow is not on this branch"))
         tree = ast.parse(module.read_text(encoding="utf-8"))
         pill = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "draw_pill")
         self.assertEqual([a.arg for a in pill.args.args], ["state", "width", "height", "canvas"])

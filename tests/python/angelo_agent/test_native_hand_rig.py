@@ -8,6 +8,7 @@ import suite_isolation  # noqa: F401  First: this test never sees a real provide
 import math
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
@@ -27,7 +28,7 @@ def hand_of(**kwargs):
     return skel, hands
 
 
-@unittest.skipIf(np is None, "NumPy is not installed")
+@unittest.skipIf(np is None, required_skip("NumPy is not installed"))
 class Detection(unittest.TestCase):
     def test_a_hand_is_found_with_its_thumb_and_fingers_in_order(self):
         for kwargs in ({}, {"fingers": 3}, {"metacarpals": True}, {"end_bones": True}, {"side": "Right"},
@@ -69,7 +70,7 @@ class Detection(unittest.TestCase):
             H.find_hands(skel, hand="Nope")
 
 
-@unittest.skipIf(np is None, "NumPy is not installed")
+@unittest.skipIf(np is None, required_skip("NumPy is not installed"))
 class PalmNormal(unittest.TestCase):
     def test_hanging_hands_face_the_midline_and_a_t_pose_follows_the_curl(self):
         _, (left,) = hand_of(side="Left")
@@ -102,7 +103,7 @@ class PalmNormal(unittest.TestCase):
         self.assertGreater(flat.palm_normal @ arched.palm_normal, 0.9999)
 
 
-@unittest.skipIf(np is None, "NumPy is not installed")
+@unittest.skipIf(np is None, required_skip("NumPy is not installed"))
 class FramesAndAngles(unittest.TestCase):
     def test_flex_curls_toward_the_palm_and_spread_toward_the_thumb(self):
         skel, (hand,) = hand_of()
@@ -134,7 +135,7 @@ class FramesAndAngles(unittest.TestCase):
             np.testing.assert_allclose(fa[j].r, fb[j].r, atol=1e-12)
 
 
-@unittest.skipIf(np is None, "NumPy is not installed")
+@unittest.skipIf(np is None, required_skip("NumPy is not installed"))
 class Kinematics(unittest.TestCase):
     def test_a_joint_rotation_written_as_a_pose_basis_reads_back(self):
         skel, (hand,) = hand_of(roll_seed=5)
@@ -167,7 +168,7 @@ class Kinematics(unittest.TestCase):
         self.assertTrue(moved.any())
 
 
-@unittest.skipIf(np is None, "NumPy is not installed")
+@unittest.skipIf(np is None, required_skip("NumPy is not installed"))
 class SkinAndChecklist(unittest.TestCase):
     def test_finger_radius_and_parts(self):
         skel, (hand,) = hand_of()

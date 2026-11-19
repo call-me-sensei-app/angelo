@@ -20,7 +20,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from host_test_policy import environment_skip
+from host_test_policy import environment_skip, required_skip
 
 SCRIPTS = Path(__file__).resolve().parents[3] / "scripts/angelo"
 LAUNCHER = (SCRIPTS / "gcp_windows_validate.sh").read_text(encoding="utf-8")
@@ -40,7 +40,7 @@ def git(folder, *args, **kwargs):
 @unittest.skipIf(os.name == "nt", environment_skip(
     "pack_commit is the launcher's bash (gcp_windows_source.sh), run from the macOS workstation; the machine's "
     "source_tree.py commit runs on Windows in test_native_windows_source_tree.py"))
-@unittest.skipUnless(shutil.which("git") and shutil.which("bash"), "needs git and bash")
+@unittest.skipUnless(shutil.which("git") and shutil.which("bash"), required_skip("needs git and bash"))
 class CommitHandOffTests(unittest.TestCase):
     def test_a_one_commit_pack_gives_buildinfo_the_true_hash_branch_and_date(self):
         with tempfile.TemporaryDirectory() as temporary:

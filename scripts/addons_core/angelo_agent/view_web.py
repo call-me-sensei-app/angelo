@@ -25,7 +25,7 @@ def source(window, checked, references, controller):
     from .view_finished import Source
     if engine_link_capture.editor() is not None:   # The developer's page shows the linked asset: it comes first.
         return _linked(references, Source, engine_link_capture)
-    server = web_preview._state["server"]
+    server = web_preview.person_server()   # The person's own preview: never one only apps' pages hold.
     if server is None:
         raise RuntimeError("The live web preview isn't running: start it with angelo_web_preview START")
     if server.streams < 1:

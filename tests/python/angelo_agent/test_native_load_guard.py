@@ -23,7 +23,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT / "scripts/angelo"))
 import load_guard as guard  # noqa: E402
-from host_test_policy import environment_skip  # noqa: E402
+from host_test_policy import environment_skip, required_skip  # noqa: E402
 
 HOLDER = "timed-trial-999999999"   # NAME-PID; no process has PID 999999999.
 
@@ -176,7 +176,7 @@ class EntryPointTests(LockCase):
     def test_build_scripts_are_refused_first(self):
         bash = shutil.which("bash")
         if not bash or not shutil.which("python3"):
-            self.skipTest("needs bash and python3 on PATH")
+            self.skipTest(required_skip("needs bash and python3 on PATH"))
         self.hold()
         for script in ("build_native.sh", "build_release_macos.sh", "build_agent_runtime_macos.sh"):
             with self.subTest(script=script):

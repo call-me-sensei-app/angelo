@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 import unittest
+from host_test_policy import environment_skip
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -24,7 +25,7 @@ from angelo_agent.studio_agent import StudioAgent
 from angelo_agent.studio_state import StudioLibrary
 
 
-@unittest.skipUnless(anchored_files_supported(), "descriptor-relative I/O required")
+@unittest.skipUnless(anchored_files_supported(), environment_skip("descriptor-relative I/O required"))
 class RecoveryAcknowledgementTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="angelo-recovery-acks-", dir="/private/tmp" if Path("/private/tmp").is_dir() else None)

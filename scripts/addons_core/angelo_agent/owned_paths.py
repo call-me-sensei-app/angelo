@@ -29,10 +29,12 @@ _PROCESS_OURS = getattr(_GUARD, "process_ours", None)
 _MAKE_DIR = getattr(_GUARD, "make_owned_dir", None)
 _MAY_WRITE = getattr(_GUARD, "may_write", None)
 _VOUCH = getattr(_GUARD, "vouch_path", None)
+_VOUCH_PROGRAM = getattr(_GUARD, "vouch_program", None)
 _UNVOUCH = getattr(_GUARD, "unvouch_path", None)
 _STORE = getattr(_GUARD, "writable_store", None)
 _SCRIPT_MADE = getattr(_GUARD, "script_made", None)
 _MAY_RUN = getattr(_GUARD, "may_run", None)
+_PROGRAM_CHANGED = getattr(_GUARD, "program_changed", None)
 _ADOPT = getattr(_GUARD, "adopt_dir", None)
 _MAKE_DIR_BESIDE = getattr(_GUARD, "make_dir_beside", None)
 _SCRIPT_SET = getattr(_GUARD, "script_set", None)
@@ -161,12 +163,35 @@ def may_run(path):
         return False
 
 
+def program_changed(path):
+    """Whether the program ``path`` resolves to was recorded to run and has changed on disk since (an update installed
+    in place, or a rewrite): C keeps refusing it in this process, so only a restart of Angelo starts it."""
+    try:
+        return _PROGRAM_CHANGED is not None and bool(_PROGRAM_CHANGED(os.fspath(path)))
+    except (TypeError, ValueError):
+        return False
+
+
 def require_runnable(path):
     """``path`` when ``may_run`` says so; otherwise ``PermissionError`` (nothing is started), coded READ_ONLY as
-    ``require_writable``'s."""
+    ``require_writable``'s, saying why: an agent script wrote or named it (the person checks it, then forgets the
+    folder's agent changes in Preferences: C's record outlives a restart and a reinstall), a recorded program
+    changed on disk since (an update in place: restart Angelo), or one Angelo starts by none of its rules (the
+    re-review of 4be92cfb84f, S-2)."""
     if not may_run(path):
-        error = PermissionError(
-            "Angelo starts only installed programs, programs on PATH or ones you chose: %s" % _shown(path))
+        if script_made(path) or script_made(os.path.realpath(path)):
+            # C's change record (kept across sessions): a path a script wrote, moved, linked or only named (a path
+            # property), held as the script's until the person forgets it; a reinstall in place keeps the path.
+            message = ("Angelo starts only installed programs, programs on PATH or ones you chose: an agent script "
+                       "wrote or named %s, so Angelo won't start it. Check the file (reinstall it if in doubt), then "
+                       "choose its folder in Preferences > Forget Agent Changes in a Folder…")
+        elif program_changed(path):
+            message = ("Angelo starts only installed programs, programs on PATH or ones you chose: %s changed on disk "
+                       "after Angelo recorded it (an update, for example). Restart Angelo to use it.")
+        else:
+            message = ("Angelo starts only installed programs, programs on PATH or ones you chose: %s. Choose the "
+                       "program in the connection's settings, or reinstall it with its official installer.")
+        error = PermissionError(message % _shown(path))
         error.refusal_code = "READ_ONLY"
         raise error
     return path
@@ -187,6 +212,27 @@ def vouch(path, folder=False, persist=True):
         return bool(_VOUCH(os.fspath(path), bool(folder), bool(persist))) if _VOUCH is not None else True
     except (TypeError, ValueError, PermissionError):   # Refused while a script runs: nothing is vouched for.
         return False
+
+
+def vouch_program(path):
+    """A program Angelo found by fixed rules, or the person chose, as it enters Angelo (``cli_runtime``): the real
+    file its name resolves to (through an installer's ``~/.local/bin/claude`` link to ``versions/X``, a Homebrew or
+    npm link), recorded in C to START only, never to write (``GUARD.vouch_program``). C's ``may_run`` is the guard:
+    by this record it starts the program only while it is that very file, unchanged since it was recorded (identity,
+    size and its times), never one a script made, and, once a script has run, a recorded program that changed stays
+    refused for the rest of the process, found again or unvouched (``require_runnable`` says to restart). Its other
+    rules (an installed folder, a folder on PATH) need no record. A link retargeted later resolves to a file this does not cover. Never through a link or file a
+    script made (C's change record). Before 2.0.1, the found name was vouched to write, which C refuses for a link,
+    so every new runtime start through a link failed after any script, and a non-link program became a file scripts
+    could write (the break-it review of 29b385a6645, MUST-1). True when the program may run."""
+    real = os.path.realpath(path)
+    if not script_made(path) and not script_made(real):
+        try:
+            if _VOUCH_PROGRAM is not None:
+                _VOUCH_PROGRAM(os.fspath(real))
+        except (TypeError, ValueError, PermissionError):   # Refused while a script runs: nothing is recorded.
+            pass
+    return may_run(path)
 
 
 def adopt(path):

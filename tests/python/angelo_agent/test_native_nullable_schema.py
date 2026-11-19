@@ -8,6 +8,7 @@ import copy
 import json
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -32,7 +33,7 @@ def property_orders(schema):
                   for row in property_orders(value)]
 
 
-@unittest.skipIf(jsonschema is None, "jsonschema is not installed")
+@unittest.skipIf(jsonschema is None, required_skip("jsonschema is not installed"))
 class NullableSchemaTests(unittest.TestCase):
     def test_scalar_values_and_constraints_have_identical_acceptance(self):
         samples = [None, False, True, -2, 0, 1, 1.5, 2, 3, "", "A", "B", "C", [], {}, [1]]

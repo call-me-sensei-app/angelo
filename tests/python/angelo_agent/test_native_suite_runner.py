@@ -173,8 +173,6 @@ class ManifestTests(unittest.TestCase):
     def test_host_driver_output_matches_its_report_path(self):
         drivers = [suite for suite in manifest.SUITES if suite.host_launcher]
         self.assertEqual({s.name for s in drivers}, {"test_blender_crash_handler", "test_blender_memory_project_resume", "test_blender_external_cli", "test_blender_external_mcp",
-                                                 "test_blender_headless_mcp", "test_blender_headless_script_files", "test_blender_headless_script_document", "test_blender_headless_preferences",
-                                                 "test_blender_headless_native_commits",
                                                      "test_blender_keychain_live", "test_blender_legacy_migration",
                                                      "test_blender_credential_manager_live",
                                                      "test_blender_app_identity", "test_blender_perf_ratchet",
@@ -202,8 +200,7 @@ class ManifestTests(unittest.TestCase):
                     self.assertEqual(suite.platforms, ("darwin",))
         self.assertEqual({s.name for s in manifest.SUITES if s.platforms == ("darwin",)},
                          {"test_blender_angelo_startup", "test_blender_external_cli", "test_blender_external_mcp",
-                      "test_blender_headless_mcp", "test_blender_headless_script_files", "test_blender_headless_script_document", "test_blender_headless_preferences",
-                      "test_blender_headless_native_commits", "test_blender_keychain_live",
+                       "test_blender_keychain_live",
                           "test_blender_perf_ratchet", "test_blender_undo_unlinked_pointers",
                           "test_blender_godot_link_e2e", "test_blender_godot_link_busy", "test_blender_godot_link_gui",
                           "test_blender_engine_suggest_gui",
@@ -219,6 +216,7 @@ class ManifestTests(unittest.TestCase):
              "test_blender_script_stream", "test_blender_select_through_director_gui", "test_blender_settings_import",
              "test_blender_steering", "test_blender_steering_codex",
              "test_blender_uv_checker_director_gui", "test_blender_engine_skeleton_gui",
+             "test_blender_update_restart_settle",
              "test_blender_team_chat", "test_blender_translation",
              "test_blender_turn_recovery"})
 

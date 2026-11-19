@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT / "scripts/modules"))
 
 import angelo_change_clock as change_clock  # noqa: E402
 from angelo_agent import checkpoint_capture as capture, checkpoint_filesystem as filesystem  # noqa: E402
-from angelo_agent import export_snapshot, headless_files, script_files, session_journal  # noqa: E402
+from angelo_agent import export_snapshot, session_journal  # noqa: E402
 from angelo_agent.files import FileWorkspace  # noqa: E402
 from angelo_agent import memory_host, studio_agent  # noqa: E402,F401 - imported here, not inside a test
 import file_times  # noqa: E402
@@ -146,7 +146,7 @@ class SourceOrder(unittest.TestCase):
         # A witness that compares no change time waits for none: a copy keeping an old mtime never waits a tick.
         for module, function, argument in (
                 ("files.py", "precondition", "info"), ("files.py", "_read", "opened"),
-                ("headless_files.py", "settled_identity", "info"), ("export_snapshot.py", "settled_identity", "info"),
+                ("export_snapshot.py", "settled_identity", "info"),
                 ("memory_host.py", "_fingerprint", "stat"), ("studio_agent.py", "_export", "opened"),
                 ("snapshot_git.py", "_hash_file", "before")):
             with self.subTest(module=module, function=function):
@@ -182,7 +182,6 @@ class SourceOrder(unittest.TestCase):
     def test_stat_keyed_caches_never_keep_an_unsettled_key(self):
         for module, function, helper, argument, reads in (
                 ("scripts/modules/angelo_render_device/device.py", "_read", "settled", "found", ("open",)),
-                ("script_files.py", "_read", "cache_key", "info", ("handle.read",)),
                 ("private_roots.py", "_retained_now", "cache_key", "info", ("retained_profiles",)),
                 ("private_roots.py", "_registry_signature", "cache_key", "info", ()),
                 ("external_host.py", "reload_apps", "cache_key", "info", ("registry.load",)),
@@ -490,7 +489,7 @@ class JournalAndIdentitySettleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="angelo-change-sites-") as temp:
             path = Path(temp) / "scene.blend"
             path.write_bytes(b"BLENDER-v500")
-            for identity in (headless_files.identity, export_snapshot.identity):
+            for identity in (export_snapshot.identity,):
                 with self.subTest(identity=identity.__module__):
                     with settling() as calls:
                         value = identity(path)
@@ -545,16 +544,6 @@ class JournalAndIdentitySettleTests(unittest.TestCase):
             self.assertFalse(runner.busy(), "a settle that raises never strands the runner")
             self.assertEqual(json.loads(Path(spec["report"]).read_text())["status"], "failed")
 
-    def test_a_child_reads_a_launcher_identity_it_cannot_parse_as_changed(self):
-        from angelo_agent import headless_main
-        self.assertIsNone(headless_main._identity(""), "none sent: the child takes its own")
-        self.assertEqual(headless_main._identity("[1, 2, 3, 4]"), (1, 2, 3, 4))
-        for text in ('["unsettled", "0123"]', "[]", "not json", "[true, 2]"):
-            with self.subTest(text=text):
-                parsed = headless_main._identity(text)
-                self.assertIsNotNone(parsed, "never 'no baseline'")
-                self.assertNotEqual(parsed, (1, 2, 3, 4))
-
     def test_memory_evidence_and_studio_fingerprints_settle(self):
         with tempfile.TemporaryDirectory(prefix="angelo-change-sites-") as temp:
             path = Path(temp) / "image.png"
@@ -590,16 +579,6 @@ class CacheGateTests(unittest.TestCase):
                     device._read()
                     self.assertEqual(device._read()["listed"], {"at": 1})
                     self.assertEqual(sum(1 for call in opened.call_args_list if call.args[0] == device._path), reads)
-
-    def test_script_approvals_are_read_again_while_their_stamp_is_current(self):
-        with tempfile.TemporaryDirectory(prefix="angelo-change-sites-") as temp:
-            path = Path(temp) / script_files.FILE
-            path.write_text(json.dumps({"version": 1, "files": []}))
-            for current in (True, False):
-                with self.subTest(current=current), self.tick(current):
-                    _entries, first = script_files._read(str(path))
-                    _entries, second = script_files._read(str(path))
-                    self.assertEqual(first == second, not current)
 
     def test_git_matches_are_cached_only_under_a_settled_stat(self):
         from angelo_agent import snapshot_git

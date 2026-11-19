@@ -36,6 +36,25 @@ from pathlib import Path
 from . import agent_runtime, child_process, cli_windows, owned_paths
 from .protocol import RpcError
 
+
+def _process_path():
+    """PATH as the process environment holds it (the C environment C's may_run reads), never os.environ's Python
+    copy, which a script can rewrite in place (os.environ._data) without the environment: a runtime is never searched
+    for on a PATH a script rewrote (the break-it review of 29b385a6645, SHOULD-2). C puts the real environment back
+    after every script region; os.environ's own changes (putenv) reach it."""
+    try:
+        import ctypes
+        if os.name == "nt":
+            buffer = ctypes.create_unicode_buffer(32767)
+            length = ctypes.windll.kernel32.GetEnvironmentVariableW("PATH", buffer, len(buffer))
+            return buffer.value if 0 < length < len(buffer) else ""
+        libc = ctypes.CDLL(None)
+        libc.getenv.restype = ctypes.c_char_p
+        value = libc.getenv(b"PATH")
+        return os.fsdecode(value) if value is not None else ""
+    except (OSError, AttributeError, ValueError):
+        return os.environ.get("PATH", "")
+
 RUNTIMES = {
     # Moved at every release (doc/angelo/ai_providers.rst, "Claude Code's range"): the floor is the newest release
     # that passed runtime_launch_check.py and that Claude Code's stable channel (the default Homebrew cask) delivers;
@@ -191,7 +210,8 @@ def find_executable(name, configured=""):
     is vouched for this process: a CLI in ``~/.local/bin`` or Homebrew outside a Finder-started app's PATH may start
     (C's ``may_run`` still refuses one a script wrote; nothing is kept past the process)."""
     found = _find_executable(name, configured)
-    owned_paths.vouch(found)
+    if found:
+        owned_paths.vouch_program(found)   # Its real file too, through a link (an installer's versions/X).
     return found
 
 
@@ -205,7 +225,7 @@ def _find_executable(name, configured=""):
     configured = (configured or "").strip()
     expanded = os.path.expanduser(configured)
     fixed = CODEX_BUNDLE if name == "codex" else ""
-    for candidate in (expanded, shutil.which(name), fixed):
+    for candidate in (expanded, shutil.which(name, path=_process_path()), fixed):
         if _is_executable(candidate):
             return candidate
     directories = known_directories()
@@ -247,7 +267,8 @@ def _find_windows(name, configured, environ, registry=None):
     """Configured file, PATH, the ChatGPT app's codex, well-known folders, then the PATH saved in the registry."""
     configured = (configured or "").strip()
     found = None
-    for candidate in (os.path.expandvars(os.path.expanduser(configured)) if configured else "", shutil.which(name),
+    for candidate in (os.path.expandvars(os.path.expanduser(configured)) if configured else "",
+                      shutil.which(name, path=_process_path()),
                       *(cli_windows.chatgpt_codex(environ) if name == "codex" else ())):
         if candidate and Path(candidate).is_file():
             found = candidate

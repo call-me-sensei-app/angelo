@@ -194,11 +194,8 @@ def assembled_texts():
     for flags in itertools.product((False, True), repeat=5):
         options = dict(zip(("short_identifiers", "deferred", "plan", "team", "forwarded"), flags))
         yield "codex %s" % options, providers.codex_instructions(**options)
-    # An external app's model on Angelo's MCP server writes scripts too (its python level): it reads the same facts.
-    from angelo_agent.external_clients import LEVELS
-    from angelo_agent.external_mcp_tools import instructions
-    for count in range(1, len(LEVELS) + 1):
-        yield "mcp %s" % ",".join(LEVELS[:count]), instructions(frozenset(LEVELS[:count]))
+    # An external app's model works through Angelo's agent and writes no script (2.0.1): its MCP instructions carry
+    # none of these facts, so they are not a runtime text here.
 
 
 if __name__ == "__main__":

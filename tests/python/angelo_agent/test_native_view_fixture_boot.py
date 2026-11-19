@@ -169,7 +169,12 @@ class DriverTests(unittest.TestCase):
                 self.assertNotIn(call.func.value.id, aliases, path.name + " bypasses the startup gate")
                 if call.func.value.id == "fixture_boot":
                     callers.append(path.name)
-        self.assertEqual(len(callers), 8)
+        # Named, not counted: a new GUI suite that drives the shared fixture appears here by name, through the gate.
+        self.assertEqual(sorted(callers), [
+            "test_blender_compile_ahead_window.py", "test_blender_external_window_gui.py",
+            "test_blender_job_output_views.py", "test_blender_mirror_object.py", "test_blender_rendered_view.py",
+            "test_blender_rendered_view_pixels.py", "test_blender_rendered_view_safety.py",
+            "test_blender_view_sources.py", "test_blender_view_wait.py"])
 
 
 if __name__ == "__main__":

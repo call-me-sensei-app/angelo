@@ -36,8 +36,8 @@ TOOL_NAME = "angelo_script"
 SCRIPT_TOOL = "angelo_execute_python"
 SCRIPT_ID = r"^s[0-9a-f]{8}$"
 MAX_EDITS = 32
-# A script's limit, in characters. Written here only: the schema and validation (tool_specs), the script-file reader
-# (script_files) and the tools' descriptions read it, so what an agent is told and what is enforced cannot differ.
+# A script's limit, in characters. Written here only: the schema and validation (tool_specs) and the tools'
+# descriptions read it, so what an agent is told and what is enforced cannot differ.
 MAX_CODE = 32768
 # Told where the agent decides (the script tools' descriptions), and again by a refusal for length.
 LIMIT_SENTENCE = " A script holds at most %s characters; split longer work into steps." % format(MAX_CODE, ",")

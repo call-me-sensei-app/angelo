@@ -18,6 +18,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from host_test_policy import environment_skip
 import zipfile
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -111,7 +112,7 @@ class PinnedWheelsTests(unittest.TestCase):
         import os
         folder = os.environ.get("ANGELO_PYTHON_WHEELS_DIR")
         if not folder:
-            self.skipTest("set ANGELO_PYTHON_WHEELS_DIR (trust_store.py fetch-wheels)")
+            self.skipTest(environment_skip("set ANGELO_PYTHON_WHEELS_DIR (trust_store.py fetch-wheels)"))
         pin = json.loads((ROOT / "build_files/cmake/angelo_python_packages.json").read_text())
         for package in pin["packages"]:
             dist_info, members = packages.wheel_members(packages.wheel_path(folder, package), package)

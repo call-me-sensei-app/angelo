@@ -67,7 +67,6 @@ def assemble(tree=ROOT):
     """``[(route, variant, text, tools)]`` for every route the tree can launch."""
     sys.path[:0] = [str(Path(tree) / "scripts/addons_core")]
     from angelo_agent import external_mcp_tools, providers, studio_enhance, tool_specs
-    from angelo_agent.external_clients import LEVELS
     out = []
 
     def claude_context(**fields):
@@ -93,12 +92,10 @@ def assemble(tree=ROOT):
         if not deferred and not plan:   # a third-party provider without web search appends its notice
             out.append((route, "no web", text + providers.NO_WEB_SEARCH, tools))
     out.append(("voice", "voice", providers.INSTRUCTIONS, tool_specs.dynamic_tools()))
-    # Every level set an app can be granted: a read-only app reads less (no task fact, fewer tools).
-    for size in range(1, len(LEVELS) + 1):
-        for levels in itertools.combinations(LEVELS, size):
-            answer = external_mcp_tools.app_tools(frozenset(levels))
-            for client in ("mcp-claude-code", "mcp-codex"):
-                out.append((client, ",".join(levels), answer["instructions"], answer["tools"]))
+    # A connected app's one answer: it works through Angelo's agent (doc/angelo/external_mcp.rst).
+    answer = external_mcp_tools.app_tools()
+    for client in ("mcp-claude-code", "mcp-codex"):
+        out.append((client, "agent", answer["instructions"], answer["tools"]))
     # Studio's editor, and Generation Flows' parts check where the tree has it (same context, its own text).
     parts = None
     if importlib.util.find_spec("angelo_agent.parts_check") is not None:

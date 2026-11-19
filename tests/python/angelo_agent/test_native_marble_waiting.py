@@ -56,7 +56,7 @@ class MarkTests(unittest.TestCase):
     def test_paths_and_paints_are_the_branding_svgs(self):
         source = SVG.read_text(encoding="utf-8")
         if source.startswith("version https://git-lfs"):
-            self.skipTest("The mark is a Git LFS pointer in this checkout")
+            self.skipTest(environment_skip("The mark is a Git LFS pointer in this checkout"))
         drawn = re.findall(r'<path fill="([^"]+)" d="([^"]+)"', source)
         self.assertEqual([(" ".join(d.split()), fill) for fill, d in drawn],
                          [(" ".join(data.split()), paint if paint.startswith("#") else "url(#%s)" % paint)

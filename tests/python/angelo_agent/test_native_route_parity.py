@@ -55,7 +55,7 @@ class CorpusParity(unittest.TestCase):
 
     def test_the_corpus_covers_every_route_and_the_receipt_forms(self):
         routes = {(finding[3], finding[7]) for finding in self.findings}
-        for route in ("codex", "claude.direct", "mcp.window", "claude.plan.verify", "plan.handoff",
+        for route in ("codex", "claude.direct", "claude.plan.verify", "plan.handoff",
                       "plan.handoff.certified", "codex.plan.correction"):
             self.assertIn(route, {name for name, _form in routes})
         for form in ("terse", "excerpt", "compact", "model_result"):
@@ -179,15 +179,6 @@ class ResultFacts(unittest.TestCase):
 
 
 class Routes(unittest.TestCase):
-    def test_the_mcp_routes_present_results_through_the_direct_route(self):
-        # Both MCP routes reuse DirectRequest (the window's ExternalWork, and the headless child's): one view.
-        source = (ROOT / "scripts/addons_core/angelo_agent/external_work.py").read_text()
-        self.assertIn("from .claude_direct import DirectRequest", source)
-        self.assertIn("self.direct.call(name, arguments)", source)   # Its turn in the order is held by ExternalWork.
-        headless = ROOT / "scripts/addons_core/angelo_agent/headless_host.py"
-        if headless.is_file():
-            self.assertIn("ExternalWork", headless.read_text())
-
     def test_every_route_has_a_view(self):
         self.assertEqual(set(route_parity.RESULT_ROUTES), set(route_parity.VIEWS))
 

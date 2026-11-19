@@ -87,12 +87,10 @@ class ContractTests(unittest.TestCase):
         from angelo_agent import auto_reasons
         self.assertEqual(auto_reasons.bounded_reason(chat, call, "AUTO_BOUNDED"), auto_reasons.OUTSIDE)
 
-    def test_outside_apps_reach_it_only_with_the_windows_card(self):
-        from angelo_agent.external_clients import EDIT_TOOLS, WINDOW_ONLY_EDITS, tools_for
-        self.assertIn(NAME, EDIT_TOOLS)
-        self.assertIn(NAME, WINDOW_ONLY_EDITS)
-        self.assertNotIn(NAME, tools_for(("read", "edit"), headless=True))
-        self.assertNotIn(NAME, tools_for(("read",)))
+    def test_a_blender_without_the_window_never_runs_it(self):
+        from angelo_agent import windowless_tools
+        self.assertIn(NAME, windowless_tools.WINDOW_ONLY)   # Its card is the window's.
+        self.assertNotIn(NAME, windowless_tools.TOOLS)
 
     def test_the_guide_sends_agents_here_instead_of_a_script_that_fetches(self):
         from angelo_agent import feature_guide

@@ -34,14 +34,14 @@ for folder in (HERE, SCRIPTS):
 import source_extract  # noqa: E402
 import source_tree  # noqa: E402
 from test_native_windows_source_send import ENV, LauncherFixture, git, git_lfs_works  # noqa: E402
-from host_test_policy import environment_skip  # noqa: E402
+from host_test_policy import environment_skip, required_skip  # noqa: E402
 
 
 def text(name):
     return (SCRIPTS / name).read_text(encoding="utf-8")
 
 
-@unittest.skipUnless(shutil.which("cmake"), "needs CMake")
+@unittest.skipUnless(shutil.which("cmake"), required_skip("needs CMake"))
 class LiteBuildInfoTests(unittest.TestCase):
     def cache(self, build):
         return dict(line.split("=", 1) for line in (build / "CMakeCache.txt").read_text().splitlines()
@@ -104,7 +104,7 @@ class BenchCommitTests(unittest.TestCase):
         self.assertLess(stage.index("Read-SentCommit"), stage.index("Prepare-Bench"))
 
 
-@unittest.skipUnless(shutil.which("git"), "needs git")
+@unittest.skipUnless(shutil.which("git"), required_skip("needs git"))
 class SendableTests(unittest.TestCase):
     def repo(self, folder, entries):
         """A repository whose one commit holds ``entries`` (path, mode, bytes), made with plumbing: no file system
@@ -143,7 +143,8 @@ class SendableTests(unittest.TestCase):
 
 @unittest.skipIf(os.name == "nt", environment_skip("the launcher (gcp_windows_*.sh) is bash, run from the macOS "
                                                    "workstation"))
-@unittest.skipUnless(git_lfs_works(), "the launcher is bash with git and Git LFS, run from the workstation")
+@unittest.skipUnless(git_lfs_works(),
+                     environment_skip("the launcher is bash with git and Git LFS, run from the workstation"))
 class LauncherRefusalTests(LauncherFixture, unittest.TestCase):
     def test_the_launcher_refuses_to_send_one(self):
         self.assertEqual(self.redo().returncode, 0)

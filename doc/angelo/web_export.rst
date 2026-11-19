@@ -401,6 +401,15 @@ preview starts, so a new preview opens with the column shown. Until the saved
 choice is applied the column stays invisible, so a hidden one never flashes on
 load. The controls' labels come translated with the page's text.
 
+**Who holds the exporter** (2.0.1): the person's preview (Start and Stop, the agent's preview tool) and apps' live
+session pages (external_mcp.rst "Live session page") each hold it (``web_preview.start``/``stop`` for the person,
+``hold``/``release`` for pages); it runs while anyone holds it. The File menu, Stop, ``url`` and opening the browser
+follow only the person's preview (``web_preview.person_server``, which every other module reads, the agent's WEB
+view too): a page's hold never shows the preview as running, a person's start opens their browser even while pages
+hold, and a person's Stop leaves the pages' hold but ends their own tab (its path answers 404); their next start
+serves a new one under a new token. A pages' hold exports nothing at once: it
+marks the scene changed, and the timer exports under the gates and budget below.
+
 **Every change re-exports.** A ``depsgraph_update_post`` handler notes changes
 to the followed scene, whoever made them (the person, the agent, an MCP app).
 An update counts when it touches data other than the scene, or an object's
@@ -429,7 +438,10 @@ Nothing runs while the preview is off: the handler and timer exist only while
 it runs. The page learns of a new export from a server-sent event stream and
 reloads it; a failed export keeps the last good one on screen and says so.
 
-**The server** (``web_preview_server``) listens on 127.0.0.1 on a free port,
+**The server** (``web_preview_server``) is Angelo's one local web server (2.0.1): the preview is one site on it
+(``/<token>/``) and each app session's live page another (``/s/<token>/``, external_mcp.rst "Live session page");
+it starts with its first site and stops with its last, so while a session page is open a new preview keeps the
+same port (and the page's stored column choice). It listens on 127.0.0.1 on a free port,
 serves only GET and HEAD under a random 16-byte path, refuses a Host header
 other than its own loopback address (so another site cannot read the scene
 through DNS rebinding) and anything outside its page folder. Every response

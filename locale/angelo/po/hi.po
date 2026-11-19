@@ -10,6 +10,39 @@ msgstr ""
 "X-Angelo-Translation: machine-produced; pending native review\n"
 "Language-Team: Hindi (हिन्दी)\n"
 
+msgid "'{app}' asks you to set this conversation to Approve for me. Only you can: use the approval control below."
+msgstr "'{app}' आपसे इस बातचीत को \"मेरी ओर से मंज़ूरी दें\" पर सेट करने के लिए कहता है। यह सिर्फ़ आप कर सकते हैं: नीचे दिए गए मंज़ूरी नियंत्रण का इस्तेमाल करें।"
+
+msgid "'{app}' asks you to set this conversation to Ask before changes. Only you can: use the approval control below."
+msgstr "'{app}' आपसे इस बातचीत को \"बदलाव से पहले पूछें\" पर सेट करने के लिए कहता है। यह सिर्फ़ आप कर सकते हैं: नीचे दिए गए मंज़ूरी नियंत्रण का इस्तेमाल करें।"
+
+msgid "'{app}' chose {model} ({connection} · Angelo team) for this conversation."
+msgstr "'{app}' ने इस बातचीत के लिए {model} ({connection} · Angelo टीम) चुना।"
+
+msgid "'{app}' chose {model} ({connection} · API billing) for this conversation."
+msgstr "'{app}' ने इस बातचीत के लिए {model} ({connection} · API बिलिंग) चुना।"
+
+msgid "'{app}' chose {model} ({connection} · Subscription) for this conversation."
+msgstr "'{app}' ने इस बातचीत के लिए {model} ({connection} · सदस्यता) चुना।"
+
+msgid "'{app}' chose {model} for this conversation."
+msgstr "'{app}' ने इस बातचीत के लिए {model} चुना।"
+
+msgid "'{app}' set reasoning effort to the model's default."
+msgstr "'{app}' ने सोचने का स्तर मॉडल के डिफ़ॉल्ट पर सेट किया।"
+
+msgid "'{app}' set reasoning effort to {effort}."
+msgstr "'{app}' ने सोचने का स्तर {effort} पर सेट किया।"
+
+msgid "'{app}' set this conversation to Ask before changes."
+msgstr "'{app}' ने इस बातचीत को \"बदलाव से पहले पूछें\" पर सेट किया।"
+
+msgid "'{app}' set this conversation to Read only."
+msgstr "'{app}' ने इस बातचीत को \"केवल पढ़ने के लिए\" पर सेट किया।"
+
+msgid "'{label}' started a new conversation, {identity}. This transcript stays readable."
+msgstr "'{label}' ने एक नई बातचीत शुरू की, {identity}। यह ट्रांसक्रिप्ट पढ़ी जा सकती है।"
+
 #. src: bpy.types.DepsgraphUpdate.angelo_recalc:'OTHER'
 msgid "A recalc bit with no item of its own"
 msgstr "ऐसा रीकैल्क बिट जिसका अपना कोई आइटम नहीं है"
@@ -21,6 +54,24 @@ msgstr "AI प्रदाता…"
 #. src: angelo_agent/ai_render_card.py
 msgid "AI Render"
 msgstr "AI प्रतिपादन"
+
+msgid "Allow for this session"
+msgstr "इस सत्र के लिए अनुमति दें"
+
+msgid "Allow for this session runs this chat's scripts without asking until Angelo restarts. Always allow runs Angelo's agent's scripts in every Auto chat, connected apps' chats included, until you turn it off in Preferences. Scripts have full access to files, the network and other apps on this computer."
+msgstr "इस सत्र के लिए अनुमति दें, Angelo के पुनः आरंभ होने तक इस चैट की स्क्रिप्ट बिना पूछे चलाता है। हमेशा अनुमति दें, कनेक्ट किए गए ऐप की चैट सहित हर Auto चैट में Angelo के एजेंट की स्क्रिप्ट तब तक चलाता है जब तक आप इसे प्राथमिकताएँ में बंद नहीं करते। स्क्रिप्ट को इस कंप्यूटर की फ़ाइलों, नेटवर्क और दूसरे ऐप तक पूरी पहुँच होती है।"
+
+msgid "Allow for this session works like Trust scripts for this chat: this chat's scripts run without asking until Angelo restarts or you start a new chat."
+msgstr "इस सत्र के लिए अनुमति दें, इस चैट की स्क्रिप्ट पर भरोसा करें की तरह काम करता है: Angelo के पुनः आरंभ होने या नई चैट शुरू करने तक इस चैट की स्क्रिप्ट बिना पूछे चलती हैं।"
+
+msgid "Always allow"
+msgstr "हमेशा अनुमति दें"
+
+msgid "Always allow still covers only chats set to Approve for me, and your organization's policy still applies. Scripts that touch your preferences or Angelo itself, or that would replace the open file, always ask."
+msgstr "हमेशा अनुमति दें अब भी केवल मेरी ओर से मंज़ूरी दें वाली चैट पर लागू होता है, और आपके संगठन की नीति अब भी लागू होती है। जो स्क्रिप्ट आपकी प्राथमिकताओं या खुद Angelo को छूती हैं, या खुली फ़ाइल को बदल देंगी, वे हमेशा पूछती हैं।"
+
+msgid "Angelo 2.0.1 lets you choose how scripts from Claude Code, Codex and other connected apps are approved, and fixes Save and Restart for updates."
+msgstr "Angelo 2.0.1 में आप चुन सकते हैं कि Claude Code, Codex और दूसरे कनेक्ट किए गए ऐप की स्क्रिप्ट कैसे मंज़ूर हों, और अपडेट के लिए सहेजकर पुनः आरंभ करें ठीक हो गया है।"
 
 #. src: angelo_agent/learn_ui.py
 msgid "Angelo could not save this choice: {reason}"
@@ -285,6 +336,9 @@ msgstr "चुनें कि एजेंट आपके सीन में 
 msgid "Done by Angelo's own tool"
 msgstr "Angelo के अपने टूल से किया गया"
 
+msgid "Each script asks: run it once, or allow it for this session or always."
+msgstr "हर स्क्रिप्ट पूछती है: उसे एक बार चलाएँ, या इस सत्र के लिए या हमेशा अनुमति दें।"
+
 #. src: bpy.types.DepsgraphUpdate.angelo_recalc:'EDITORS'
 msgid "Editors"
 msgstr "संपादक"
@@ -298,6 +352,9 @@ msgstr "Media Studio प्रॉम्प्ट संवर्धित कर
 msgctxt "Operator"
 msgid "Enter API Key"
 msgstr "API कुंजी दर्ज करें"
+
+msgid "Every script asks for your review before it runs."
+msgstr "हर स्क्रिप्ट चलने से पहले आपकी समीक्षा का इंतज़ार करती है।"
 
 #. src: angelo_agent/learn_card_draw.py
 msgid "Find it with search: {key}"
@@ -359,6 +416,9 @@ msgctxt "Angelo"
 msgid "On"
 msgstr "चालू"
 
+msgid "One click on Approve approves, also while the agent or a connected app keeps working."
+msgstr "मंज़ूरी दें पर एक क्लिक से मंज़ूरी हो जाती है, तब भी जब एजेंट या कनेक्ट किया गया ऐप काम कर रहा हो।"
+
 #. src: angelo_agent/learn_ui.py
 msgid "Open a chat first: this is set for one chat"
 msgstr "पहले एक चैट खोलें: यह हर चैट के लिए अलग से सेट होता है"
@@ -371,9 +431,39 @@ msgstr "चैट में Angelo का किया कोई भी चर�
 msgid "Public notes are available in this chat, but could not be saved. {error} No scene edits or tool approvals were granted."
 msgstr "सार्वजनिक नोट्स इस चैट में उपलब्ध हैं, लेकिन सहेजे नहीं जा सके। {error} कोई दृश्य संपादन या टूल मंज़ूरी नहीं दी गई।"
 
+msgid "Read only: scripts and other changes don't run."
+msgstr "केवल पढ़ने के लिए: स्क्रिप्ट और दूसरे बदलाव नहीं चलते।"
+
+msgid "Review & run once"
+msgstr "समीक्षा करें और एक बार चलाएँ"
+
+msgid "Run once"
+msgstr "एक बार चलाएँ"
+
+msgid "Save and Restart now completes an update instead of stopping with \"The update could not start\"."
+msgstr "सहेजकर पुनः आरंभ करें अब \"अपडेट शुरू नहीं हो सका\" पर रुकने के बजाय अपडेट पूरा करता है।"
+
+msgid "Script approval cards offer Run once, Allow for this session and Always allow, also for Claude Code, Codex and other connected apps."
+msgstr "स्क्रिप्ट मंज़ूरी कार्ड अब एक बार चलाएँ, इस सत्र के लिए अनुमति दें और हमेशा अनुमति दें देते हैं, Claude Code और Codex के लिए भी।"
+
+msgid "Scripts in this chat run without asking for this session"
+msgstr "इस चैट की स्क्रिप्ट इस सत्र में बिना पूछे चलती हैं"
+
+msgid "Scripts run without asking in Auto chats"
+msgstr "Auto चैट में स्क्रिप्ट बिना पूछे चलती हैं"
+
+msgid "Scripts run without asking in Auto chats."
+msgstr "Auto चैट में स्क्रिप्ट बिना पूछे चलती हैं।"
+
+msgid "Scripts still run without asking: turning it off was refused. Try again in a moment."
+msgstr "स्क्रिप्ट अब भी बिना पूछे चल रही हैं: बंद करना अस्वीकार हुआ। थोड़ी देर में दोबारा आज़माएँ।"
+
 #. src: angelo_agent/save_failure.py
 msgid "Something in this chat can't be written to its file ({kind}). This is a fault in Angelo, not in your request: start a new chat and report it."
 msgstr "इस चैट की कोई चीज़ इसकी फ़ाइल में लिखी नहीं जा सकती ({kind})। यह Angelo की ख़राबी है, आपके अनुरोध की नहीं: नई चैट शुरू करें और इसकी रिपोर्ट करें।"
+
+msgid "The Approvals menu opens above its button instead of off to the side, and says how this chat's scripts are approved."
+msgstr "मंज़ूरी मेनू अब बगल में नहीं, अपने बटन के ऊपर खुलता है, और बताता है कि इस चैट की स्क्रिप्ट कैसे मंज़ूर होती हैं।"
 
 #. src: angelo_agent/save_failure.py
 msgid "The disk reported an error while Angelo wrote its own files. Check the disk or the network folder, then try again."
@@ -394,6 +484,9 @@ msgstr "Angelo की अपनी फ़ाइलों वाला फ़ो�
 #. src: angelo_agent/checkpoint_restore_ui.py
 msgid "The recovery scene was not opened because its safety link could not be saved. {why} The protected safety snapshot is still available through Undo restore."
 msgstr "पुनर्प्राप्ति दृश्य नहीं खोला गया क्योंकि उसका सुरक्षा लिंक सहेजा नहीं जा सका। {why} संरक्षित सुरक्षा स्नैपशॉट अभी भी “पुनर्स्थापना पूर्ववत् करें” के माध्यम से उपलब्ध है।"
+
+msgid "This chat's scripts run without asking for this session."
+msgstr "इस चैट की स्क्रिप्ट इस सत्र में बिना पूछे चलती हैं।"
 
 #. src: angelo_agent/learn_ui.py
 msgid "Turn on Teach me as you work to see, under each step Angelo makes in this chat, how to do it yourself: the command, its keys in your keymap, where it is and the settings it used."
@@ -556,6 +649,9 @@ msgstr ""
 "मेनू, बटन और F3 खोज के लिए ``open_media_studio``। AUTO (सामान्य प्रविष्टियाँ): इस सत्र में Studio के पहली बार दिखने पर, व्यक्ति जहाँ है\n"
 "उसका टैब (``studio_kind``), उसके बाद वह टैब जो वह दिखा रहा है; 3D, IMAGE या WORKFLOW\n"
 "(संदर्भ वाली प्रविष्टियाँ) हमेशा वही टैब चुनती हैं।"
+
+msgid "While scripts run without asking, the chat says so and offers Turn off."
+msgstr "जब स्क्रिप्ट बिना पूछे चलती हैं, तो चैट यह बताती है और बंद करें देती है।"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "You can now set when the agent asks before changes, and trust a chat's scripts, from the chat bar's + menu."
@@ -1001,6 +1097,9 @@ msgstr "यह पूर्वावलोकन स्वीकार करे
 #. src: angelo_agent/saved_keys_ui.py
 msgid "access denied"
 msgstr "पहुँच अस्वीकृत"
+
+msgid "Access for '{label}' ended, so its work here stopped. Messages it left waiting are not sent."
+msgstr "'{label}' की पहुँच ख़त्म हो गई, इसलिए यहाँ उसका काम रुक गया। उसके प्रतीक्षा में छोड़े गए संदेश नहीं भेजे जाते।"
 
 #. src: angelo_agent/team_token_store.py
 msgid "access was denied"
@@ -1558,6 +1657,9 @@ msgstr "AI"
 #. src: angelo_agent/providers_page_external.py
 msgid "AI apps and coding agents running as you can use Angelo's tools, or hand Angelo's agent a task. Their edits and scripts wait for your approval in their own chat; you can stop them and undo as in any chat. Turning this off closes the connection."
 msgstr "आपके रूप में चलने वाले AI ऐप और कोडिंग एजेंट Angelo के टूल उपयोग कर सकते हैं या Angelo के एजेंट को कोई कार्य सौंप सकते हैं। उनके संपादन और स्क्रिप्ट उनकी अपनी चैट में आपकी मंज़ूरी की प्रतीक्षा करते हैं; आप किसी भी चैट की तरह उन्हें रोक सकते हैं और पूर्ववत् कर सकते हैं। इसे बंद करने से कनेक्शन बंद हो जाता है।"
+
+msgid "AI apps and coding agents running as you can work with Angelo's agent: they send it messages, follow its progress and see what it sees, in their own chat. Approvals stay yours; you can stop them and undo as in any chat. Turning this off closes the connection."
+msgstr "आपके रूप में चलने वाले AI ऐप और कोडिंग एजेंट Angelo के एजेंट के साथ काम कर सकते हैं: वे अपनी चैट में उसे संदेश भेजते हैं, उसकी प्रगति देखते हैं और वही देखते हैं जो वह देखता है। मंज़ूरी आपकी ही रहती है; आप किसी भी चैट की तरह उन्हें रोक सकते हैं और पूर्ववत् कर सकते हैं। इसे बंद करने से कनेक्शन बंद हो जाता है।"
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/studio.py
@@ -2579,6 +2681,9 @@ msgstr "लोड होते समय विफल हुए ऐड-ऑन: {
 msgid "With Angelo linked to Godot, an asset you save while Godot is busy importing now updates once Godot is free, even after you switch the linked asset, instead of staying as it was before the save until Reload Saved Scene. If Godot is still busy after 30 seconds, it says to use Reload Saved Scene."
 msgstr "जब Angelo, Godot से लिंक हो, तो Godot के इम्पोर्ट में व्यस्त रहते हुए आप जो एसेट सेव करते हैं, वह अब Godot के ख़ाली होते ही अपडेट होता है, लिंक किया एसेट बदलने के बाद भी, बजाय इसके कि Reload Saved Scene तक वह सेव से पहले जैसा ही रहे। अगर 30 सेकंड बाद भी Godot व्यस्त हो, तो वह Reload Saved Scene इस्तेमाल करने को कहता है।"
 
+msgid "Your organization requires your review for every script."
+msgstr "आपके संगठन को हर स्क्रिप्ट के लिए आपकी समीक्षा चाहिए।"
+
 #. src: angelo_agent/settings_import_card.py
 msgid "{count} more"
 msgstr "{count} और"
@@ -2698,6 +2803,9 @@ msgstr "Angelo ने एक अधूरी छवि लिखी (डिस�
 msgid "Angelo {current} is no longer supported. Please update."
 msgstr "Angelo {current} अब समर्थित नहीं है। कृपया अपडेट करें।"
 
+msgid "Angelo {version} (PID {pid}) has access for external apps for your user. Quit it, or turn off access there; this Angelo takes over once it is free."
+msgstr "Angelo {version} (PID {pid}) के पास आपके यूज़र के लिए बाहरी ऐप्स की पहुँच है। उसे बंद करें, या वहाँ पहुँच बंद करें; खाली होते ही यह Angelo उसे ले लेगा।"
+
 #. src: angelo_agent/update_ui.py
 msgid "Angelo {version} available"
 msgstr "Angelo {version} उपलब्ध"
@@ -2802,6 +2910,9 @@ msgstr "चलती स्कैन रेखाएँ, झिलमिला�
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Animation render jobs saved as OpenEXR publish their frames again."
 msgstr "OpenEXR के रूप में सहेजे गए एनिमेशन रेंडर कार्य फिर से अपने गठन प्रकाशित करते हैं।"
+
+msgid "Another Angelo (PID {pid}) has access for external apps for your user. Quit it, or turn off access there; this Angelo takes over once it is free."
+msgstr "दूसरे Angelo (PID {pid}) के पास आपके यूज़र के लिए बाहरी ऐप्स की पहुँच है। उसे बंद करें, या वहाँ पहुँच बंद करें; खाली होते ही यह Angelo उसे ले लेगा।"
 
 #. src: angelo_agent/engine_link_ui.py
 msgid "Another Angelo already has the engine live link"
@@ -8938,8 +9049,8 @@ msgid "Improved prompt · original kept for Undo"
 msgstr "बेहतर प्रॉम्प्ट · पूर्ववत् के लिए मूल रखा गया"
 
 #. src: bpy.types.ANGELO_Preferences.always_allow_scripts
-msgid "In chats set to Auto, run the agent's Python scripts without asking. Scripts have full access to files, the network and other apps on this computer. Ask before changes still asks; Read only still refuses"
-msgstr "स्वचालित पर सेट चैट में, एजेंट के Python स्क्रिप्ट बिना पूछे चलाएँ। स्क्रिप्ट के पास इस कंप्यूटर की फ़ाइलों, नेटवर्क और अन्य ऐप्स तक पूरी पहुँच होती है। “परिवर्तन से पहले पूछें” अब भी पूछता है; “केवल पढ़ने के लिए” अब भी अस्वीकार करता है"
+msgid "In chats set to Auto, connected apps' chats included, run Angelo's agent's Python scripts without asking (never code an app sends itself). Scripts have full access to files, the network and other apps on this computer. Ask before changes still asks; Read only still refuses"
+msgstr "Auto पर सेट चैट में, कनेक्ट किए गए ऐप की चैट सहित, Angelo के एजेंट की Python स्क्रिप्ट बिना पूछे चलाएँ (कभी भी वह कोड नहीं जो कोई ऐप खुद भेजता है)। स्क्रिप्ट को इस कंप्यूटर की फ़ाइलों, नेटवर्क और दूसरे ऐप तक पूरी पहुँच होती है। परिवर्तन से पहले पूछें अब भी पूछता है; केवल पढ़ने के लिए अब भी मना करता है"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "In Cycles, rendering Open Shading Language on OptiX with an NVIDIA driver from the 590 to 609 series now stops at once and says to update the driver to 610 or newer or use a 580 series driver, instead of failing with a link error, often after minutes of compiling."
@@ -9975,6 +10086,12 @@ msgstr "आपके मॉडल लोड हो रहे हैं…"
 msgid "Local bounded telemetry excludes prompt text, source code and credentials."
 msgstr "स्थानीय सीमित टेलीमेट्री में प्रॉम्प्ट टेक्स्ट, स्रोत कोड और क्रेडेंशियल शामिल नहीं होते।"
 
+msgid "Local CLI client '{label}'. It reads Angelo's status only and runs no tool: no scene, file, memory, billing or provider changes."
+msgstr "लोकल CLI क्लाइंट '{label}'। यह सिर्फ़ Angelo की स्थिति पढ़ता है और कोई टूल नहीं चलाता: दृश्य, फ़ाइल, मेमोरी, बिलिंग या प्रदाता में कोई बदलाव नहीं।"
+
+msgid "Local CLI client '{label}'. It reads Angelo's status only and runs no tool: no scene, file, memory, billing or provider changes. Rotated from conversation {previous} by `angelo session new`."
+msgstr "लोकल CLI क्लाइंट '{label}'। यह सिर्फ़ Angelo की स्थिति पढ़ता है और कोई टूल नहीं चलाता: दृश्य, फ़ाइल, मेमोरी, बिलिंग या प्रदाता में कोई बदलाव नहीं। `angelo session new` द्वारा वार्तालाप {previous} से बदला गया।"
+
 #. src: angelo_agent/external_host.py
 msgid "Local CLI client '{label}'. Phase 1 is read-only: observations only; no scene, file, memory, billing or provider changes. Approvals and Stop only."
 msgstr "स्थानीय CLI क्लाइंट '{label}'। चरण 1 केवल पढ़ने के लिए है: केवल अवलोकन; दृश्य, संचिका, स्मृति, बिलिंग या प्रदाता में कोई परिवर्तन नहीं। केवल मंज़ूरियाँ और “रोकें”।"
@@ -10451,6 +10568,9 @@ msgstr "दिनों में अधिकतम आयु · 0 यानी
 #. src: bpy.types.ANGELO_OT_checkpoint_settings.max_count
 msgid "Maximum snapshots · 0 is unlimited"
 msgstr "अधिकतम स्नैपशॉट · 0 यानी असीमित"
+
+msgid "MCP app '{label}' works with Angelo's agent here. Approve or decline what the agent asks, press Stop to end its work and Undo or restore as in any chat. The app can never approve."
+msgstr "MCP ऐप '{label}' यहाँ Angelo के एजेंट के साथ काम करता है। एजेंट जो माँगे उसे मंज़ूर या अस्वीकार करें, उसका काम खत्म करने के लिए रोकें दबाएँ, और किसी भी चैट की तरह पूर्ववत् करें या पुनर्स्थापित करें। ऐप कभी मंज़ूरी नहीं दे सकता।"
 
 #. src: angelo_agent/external_host.py
 msgid "MCP app '{label}'. Its edits, scripts and tasks run here: approve or decline them, press Stop to end its work and Undo or restore as in any chat. The app can never approve."
@@ -12075,40 +12195,56 @@ msgid "Load Factory Preferences"
 msgstr "फ़ैक्टरी प्राथमिकताएँ लोड करें"
 
 #. src: source/blender/animrig/intern/versioning.cc
-msgid "\"%s\" is using Action \"%s\", which does not have a slot with identifier \"%s\" or \"%s\". Manually assign the right action slot to \"%s\".\n"
-msgstr "\"%s\" एक्शन \"%s\" का उपयोग कर रहा है, जिसमें \"%s\" या \"%s\" पहचानकर्ता वाला स्लॉट नहीं है। \"%s\" को सही एक्शन स्लॉट स्वयं असाइन करें।\n"
+msgid ""
+"\"%s\" is using Action \"%s\", which does not have a slot with identifier \"%s\" or \"%s\". Manually assign the right action slot to \"%s\".\n"
+msgstr ""
+"\"%s\" एक्शन \"%s\" का उपयोग कर रहा है, जिसमें \"%s\" या \"%s\" पहचानकर्ता वाला स्लॉट नहीं है। \"%s\" को सही एक्शन स्लॉट स्वयं असाइन करें।\n"
 
 #. src: source/blender/blenkernel/intern/curves_geometry.cc
 msgid "Invalid curve type identifiers"
 msgstr "अमान्य वक्र प्रकार पहचानकर्ता"
 
 #. src: source/blender/blenloader/intern/versioning_290.cc
-msgid "Mesh %s has invalid faces, likely caused by the manifold extrude tool in version 2.90.0. Opening and saving the file in a version prior to 5.1 should resolve the issue\n"
-msgstr "मेश %s में अमान्य फलक हैं, संभवतः संस्करण 2.90.0 के मैनिफ़ोल्ड एक्सट्रूड टूल के कारण। संचिका को 5.1 से पहले के संस्करण में खोलकर सहेजने से समस्या हल हो जानी चाहिए\n"
+msgid ""
+"Mesh %s has invalid faces, likely caused by the manifold extrude tool in version 2.90.0. Opening and saving the file in a version prior to 5.1 should resolve the issue\n"
+msgstr ""
+"मेश %s में अमान्य फलक हैं, संभवतः संस्करण 2.90.0 के मैनिफ़ोल्ड एक्सट्रूड टूल के कारण। संचिका को 5.1 से पहले के संस्करण में खोलकर सहेजने से समस्या हल हो जानी चाहिए\n"
 
 #. src: source/blender/blenloader/intern/versioning_400.cc
-msgid "Proxy lost from object %s lib %s\n"
-msgstr "ऑब्जेक्ट %s, लाइब्रेरी %s से प्रॉक्सी खो गया\n"
+msgid ""
+"Proxy lost from object %s lib %s\n"
+msgstr ""
+"ऑब्जेक्ट %s, लाइब्रेरी %s से प्रॉक्सी खो गया\n"
 
 #. src: source/blender/blenloader/intern/versioning_400.cc
-msgid "Proxy lost from object %s lib <NONE>\n"
-msgstr "ऑब्जेक्ट %s, लाइब्रेरी <NONE> से प्रॉक्सी खो गया\n"
+msgid ""
+"Proxy lost from object %s lib <NONE>\n"
+msgstr ""
+"ऑब्जेक्ट %s, लाइब्रेरी <NONE> से प्रॉक्सी खो गया\n"
 
 #. src: source/blender/blenloader/intern/versioning_402.cc
-msgid "%s contains a volume shader that might need to be converted to object (see world volume panel)\n"
-msgstr "%s में एक वॉल्यूम शेडर है जिसे शायद ऑब्जेक्ट में बदलना पड़े (वर्ल्ड वॉल्यूम पैनल देखें)\n"
+msgid ""
+"%s contains a volume shader that might need to be converted to object (see world volume panel)\n"
+msgstr ""
+"%s में एक वॉल्यूम शेडर है जिसे शायद ऑब्जेक्ट में बदलना पड़े (वर्ल्ड वॉल्यूम पैनल देखें)\n"
 
 #. src: source/blender/blenloader/intern/versioning_402.cc
-msgid "Material %s could not be converted because of different Blend Mode and Shadow Mode (need manual adjustment)\n"
-msgstr "अलग ब्लेंड मोड और शैडो मोड के कारण मटीरियल %s बदला नहीं जा सका (हाथ से समायोजन चाहिए)\n"
+msgid ""
+"Material %s could not be converted because of different Blend Mode and Shadow Mode (need manual adjustment)\n"
+msgstr ""
+"अलग ब्लेंड मोड और शैडो मोड के कारण मटीरियल %s बदला नहीं जा सका (हाथ से समायोजन चाहिए)\n"
 
 #. src: source/blender/blenloader/intern/versioning_402.cc
-msgid "Material %s could not be converted because of non-trivial alpha blending (need manual adjustment)\n"
-msgstr "जटिल अल्फ़ा ब्लेंडिंग के कारण मटीरियल %s बदला नहीं जा सका (हाथ से समायोजन चाहिए)\n"
+msgid ""
+"Material %s could not be converted because of non-trivial alpha blending (need manual adjustment)\n"
+msgstr ""
+"जटिल अल्फ़ा ब्लेंडिंग के कारण मटीरियल %s बदला नहीं जा सका (हाथ से समायोजन चाहिए)\n"
 
 #. src: source/blender/draw/intern/draw_curves.cc
-msgid "Error: Curves object contains too many points. Reduce curve resolution or curve count to fix this issue.\n"
-msgstr "त्रुटि: वक्र ऑब्जेक्ट में बहुत अधिक बिंदु हैं। इसे ठीक करने के लिए वक्र रिज़ॉल्यूशन या वक्रों की संख्या घटाएँ।\n"
+msgid ""
+"Error: Curves object contains too many points. Reduce curve resolution or curve count to fix this issue.\n"
+msgstr ""
+"त्रुटि: वक्र ऑब्जेक्ट में बहुत अधिक बिंदु हैं। इसे ठीक करने के लिए वक्र रिज़ॉल्यूशन या वक्रों की संख्या घटाएँ।\n"
 
 #. src: source/blender/editors/animation/anim_asset_ops.cc
 msgid "Failed to load pose asset"
@@ -12131,13 +12267,17 @@ msgid "Failed to load saved brush asset"
 msgstr "सहेजा गया ब्रश एसेट लोड नहीं हो सका"
 
 #. src: source/blender/makesrna/intern/rna_action.cc
-msgid "Attempted to set slot identifier to \"%s\", but the type prefix does not match the slot's 'target_id_type' \"%s\". Setting to \"%s\" instead.\n"
-msgstr "स्लॉट पहचानकर्ता को \"%s\" पर सेट करने की कोशिश हुई, पर प्रकार उपसर्ग स्लॉट के 'target_id_type' \"%s\" से मेल नहीं खाता। इसकी जगह \"%s\" सेट किया जा रहा है।\n"
+msgid ""
+"Attempted to set slot identifier to \"%s\", but the type prefix does not match the slot's 'target_id_type' \"%s\". Setting to \"%s\" instead.\n"
+msgstr ""
+"स्लॉट पहचानकर्ता को \"%s\" पर सेट करने की कोशिश हुई, पर प्रकार उपसर्ग स्लॉट के 'target_id_type' \"%s\" से मेल नहीं खाता। इसकी जगह \"%s\" सेट किया जा रहा है।\n"
 
 #. src: source/blender/windowmanager/intern/wm_platform_support.cc
 msgctxt "WindowManager"
-msgid "Graphics card:\n"
-msgstr "ग्राफ़िक्स कार्ड:\n"
+msgid ""
+"Graphics card:\n"
+msgstr ""
+"ग्राफ़िक्स कार्ड:\n"
 
 #. src: source/blender/windowmanager/intern/wm_files.cc
 msgid "Quit Angelo?"
@@ -12610,6 +12750,10 @@ msgstr "चालू: इस प्रोफ़ाइल के लिए {locat
 #. src: angelo_agent/providers_page_model.py
 msgid "On: scripts in Auto chats run without asking."
 msgstr "चालू: स्वचालित चैट में स्क्रिप्ट बिना पूछे चलती हैं।"
+
+#. src: angelo_agent/providers_page_model.py
+msgid "On for Angelo's own chats. Connected apps' chats still ask until you press Always allow on one of their script cards."
+msgstr "Angelo की अपनी चैट के लिए चालू। कनेक्ट किए गए ऐप की चैट तब तक पूछती रहेंगी जब तक आप उनके किसी स्क्रिप्ट कार्ड पर हमेशा अनुमति दें नहीं दबाते।"
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/web_export_ui.py
@@ -17403,6 +17547,9 @@ msgstr "{engine} शुरू हो रहा है"
 msgid "Starting…"
 msgstr "शुरू हो रहा है…"
 
+msgid "Starts another Angelo"
+msgstr "दूसरा Angelo शुरू करता है"
+
 #. src: angelo_agent/session_rail.py
 msgctxt "plural:one"
 msgid "Starts once {count} running worker is done"
@@ -20038,6 +20185,9 @@ msgstr "यह स्क्रिप्ट Angelo की प्राथमि�
 msgid "This script would replace the file you have open, so it always asks, even when scripts are allowed."
 msgstr "यह स्क्रिप्ट आपकी खुली फ़ाइल की जगह दूसरी फ़ाइल खोल देगी, इसलिए यह हमेशा पूछती है, तब भी जब स्क्रिप्ट की अनुमति हो।"
 
+msgid "This session's live page stopped after an error, so its link no longer opens. The app's next message starts a new one."
+msgstr "इस सेशन का लाइव पेज एक गड़बड़ी के बाद रुक गया, इसलिए उसका लिंक अब नहीं खुलता। ऐप का अगला संदेश नया पेज शुरू करेगा।"
+
 #. src: angelo_agent/team_connections.py
 msgid "This sign-in doesn't allow model use; sign out and sign in again."
 msgstr "यह साइन-इन मॉडल उपयोग की अनुमति नहीं देता; साइन आउट करें और फिर से साइन इन करें।"
@@ -20714,6 +20864,12 @@ msgstr "Angelo UI में रिपोर्ट का प्रदर्श�
 #. src: angelo_agent/chat_titles.py
 msgid "Update the engine link"
 msgstr "इंजन लिंक अपडेट करें"
+
+msgid "Updated Angelo in {app}: it started the MCP server in {previous}. Restart {app} to load it."
+msgstr "{app} में Angelo अपडेट किया गया: यह {previous} में MCP सर्वर शुरू करता था। इसे लोड करने के लिए {app} फिर से शुरू करें।"
+
+msgid "Updated Angelo in {app}: it started the MCP server in {previous}. Start a new {app} session to use it."
+msgstr "{app} में Angelo अपडेट किया गया: यह {previous} में MCP सर्वर शुरू करता था। इसे इस्तेमाल करने के लिए नया {app} सेशन शुरू करें।"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Updated the engine link"
@@ -21551,6 +21707,12 @@ msgstr "टेक्स्ट फ़ाइल में कुछ भी हो 
 msgid "This script refers to preferences or to Angelo's own add-on, so it always asks, even when scripts are allowed."
 msgstr "यह स्क्रिप्ट प्राथमिकताओं या Angelo के अपने ऐड-ऑन का उल्लेख करती है, इसलिए यह हमेशा पूछती है, तब भी जब स्क्रिप्ट की अनुमति हो।"
 
+msgid "Waiting for Angelo {version}"
+msgstr "Angelo {version} की प्रतीक्षा"
+
+msgid "Waiting for another Angelo"
+msgstr "दूसरे Angelo की प्रतीक्षा"
+
 #. src: angelo_agent/key_store.py
 msgid "Waiting for your keyring · answer the unlock prompt"
 msgstr "आपकी कीरिंग की प्रतीक्षा · अनलॉक संकेत का उत्तर दें"
@@ -21625,6 +21787,110 @@ msgstr "वेब निर्यात आपके दृश्य की ट�
 #. src: angelo_agent/web_preview.py
 msgid "Web Preview"
 msgstr "वेब पूर्वावलोकन"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Stop sharing"
+msgstr "साझा करना रोकें"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Open live page"
+msgstr "लाइव पेज खोलें"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Share again"
+msgstr "फिर से साझा करें"
+
+#. src: angelo_agent/session_page.py
+msgid "Live session"
+msgstr "लाइव सत्र"
+
+#. src: angelo_agent/session_page.py
+msgid "Working with {app}"
+msgstr "{app} के साथ काम"
+
+#. src: angelo_agent/session_page.py
+msgid "Read-only view of this session. Approvals, Stop and every change stay in Angelo."
+msgstr "इस सत्र का केवल-पढ़ने योग्य दृश्य। स्वीकृतियाँ, रोकना और हर बदलाव Angelo में ही रहते हैं।"
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting for your approval in Angelo"
+msgstr "Angelo में आपकी स्वीकृति की प्रतीक्षा"
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting while you use a tool in Angelo"
+msgstr "Angelo में आपके टूल इस्तेमाल करने तक प्रतीक्षा"
+
+#. src: angelo_agent/session_page.py
+msgid "This live page has ended: the session ended or sharing was stopped in Angelo."
+msgstr "यह लाइव पेज समाप्त हो गया: सत्र खत्म हो गया या Angelo में साझा करना रोक दिया गया।"
+
+#. src: angelo_agent/session_page.py
+msgid "Angelo isn't answering. The page reconnects when it does."
+msgstr "Angelo जवाब नहीं दे रहा। जवाब मिलते ही पेज फिर से जुड़ जाएगा।"
+
+#. src: angelo_agent/session_page.py
+msgid "Result"
+msgstr "परिणाम"
+
+#. src: angelo_agent/session_page.py
+msgid "Latest views"
+msgstr "नवीनतम दृश्य"
+
+#. src: angelo_agent/session_page.py
+msgid "Views the agent takes appear here."
+msgstr "एजेंट जो दृश्य लेता है, वे यहाँ दिखते हैं।"
+
+#. src: angelo_agent/session_page.py
+msgid "Loading the scene…"
+msgstr "दृश्य लोड हो रहा है…"
+
+#. src: angelo_agent/session_page.py
+msgid "The scene appears here once Angelo exports it."
+msgstr "Angelo के निर्यात करते ही दृश्य यहाँ दिखेगा।"
+
+#. src: angelo_agent/session_page.py
+msgid "This browser can't draw the 3D scene. Everything else here still updates."
+msgstr "यह ब्राउज़र 3D दृश्य नहीं दिखा सकता। यहाँ बाकी सब अपडेट होता रहता है।"
+
+#. src: angelo_agent/session_page.py
+msgid "Round {round}"
+msgstr "राउंड {round}"
+
+#. src: angelo_agent/session_page.py
+msgid "Score {score}%"
+msgstr "स्कोर {score}%"
+
+#. src: angelo_agent/session_page.py
+msgid "Best {score}%"
+msgstr "सर्वश्रेष्ठ {score}%"
+
+#. src: angelo_agent/session_page.py
+msgid "Passes at {score}%"
+msgstr "{score}% पर सफल"
+
+#. src: angelo_agent/session_page.py
+msgid "Session {time}"
+msgstr "सत्र {time}"
+
+#. src: angelo_agent/session_page.py
+msgid "This step {time}"
+msgstr "यह चरण {time}"
+
+#. src: angelo_agent/session_page.py
+msgid "Usage"
+msgstr "उपयोग"
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting for approval"
+msgstr "स्वीकृति की प्रतीक्षा"
+
+#. src: angelo_agent/session_page.py
+msgid "{app} can show this session on a live page in your browser. Only this computer can open it, and it shows the scene, the progress and the result, never files or other chats."
+msgstr "{app} इस सत्र को आपके ब्राउज़र में एक लाइव पेज पर दिखा सकता है। उसे केवल यही कंप्यूटर खोल सकता है, और वह दृश्य, प्रगति और परिणाम दिखाता है, कभी फ़ाइलें या दूसरी चैट नहीं।"
+
+#. src: angelo_agent/session_page.py
+msgid "You stopped sharing this session's live page. The link no longer opens."
+msgstr "आपने इस सत्र का लाइव पेज साझा करना रोक दिया। लिंक अब नहीं खुलता।"
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/web_export_ui.py
@@ -26244,6 +26510,9 @@ msgstr "यह एसेट सशुल्क है। इसे Fab पर �
 msgid "Type what you need, then press Enter."
 msgstr "जो चाहिए वह लिखें, फिर Enter दबाएँ।"
 
+msgid "Works through Angelo's agent: sends it messages, follows its progress and sees what it sees."
+msgstr "Angelo के एजेंट के ज़रिए काम करता है: उसे संदेश भेजता है, उसकी प्रगति देखता है और वही देखता है जो एजेंट देखता है।"
+
 #. src: angelo_agent/fab_overlay.py
 msgid "{size} download"
 msgstr "{size} डाउनलोड"
@@ -26264,6 +26533,9 @@ msgstr "खरीदने के लिए इसे Fab पर खोलता
 #. src: angelo_agent/fab_overlay.py
 msgid "Price on Fab: {price}"
 msgstr "Fab पर कीमत: {price}"
+
+msgid "{app}'s Angelo entry starts the MCP server in {where}. Connect {app} points it at this Angelo."
+msgstr "{app} की Angelo एंट्री {where} में MCP सर्वर शुरू करती है। \"{app} कनेक्ट करें\" उसे इस Angelo की ओर कर देता है।"
 
 #. src: angelo_agent/job_chat.py
 #. src: angelo_agent/studio_media_tiles.py
@@ -26858,6 +27130,7 @@ msgstr "आपकी सीट की पुष्टि के लिए आप
 
 #~ msgid "Your admin hasn't set the shared key for this model server yet."
 #~ msgstr "आपके व्यवस्थापक ने अभी तक इस मॉडल सर्वर के लिए साझा कुंजी सेट नहीं की है।"
+
 #~ msgid "Finish the tool you are using in Blender, then start voice"
 #~ msgstr "Blender में जिस टूल का उपयोग कर रहे हैं उसे पूरा करें, फिर आवाज़ शुरू करें"
 
@@ -27981,3 +28254,21 @@ msgstr "{kind}, अधिकतम {size}। इस बिना सहेजी
 #. src: angelo_agent/download_approvals.py
 msgid "{kind}, up to {size}. Saved in assets/downloads in this project's folder."
 msgstr "{kind}, अधिकतम {size}। इस प्रोजेक्ट के फ़ोल्डर में assets/downloads में सहेजी जाती है।"
+
+msgid "Angelo is busy working for {app} without its window and hasn't come up yet. End that work now (it stops and saves first), or quit this launch and leave it running?"
+msgstr "Angelo अपनी विंडो के बिना {app} के लिए काम कर रहा है और अभी तक सामने नहीं आया है। क्या वह काम अभी खत्म करें (पहले वह रुककर सहेजता है), या इस लॉन्च को बंद करके उसे चलने दें?"
+
+msgid "Angelo is working for {app} without its window, and this launch can't reach it. Quit it from Activity Monitor, or wait for it to finish, then open Angelo again."
+msgstr "Angelo अपनी विंडो के बिना {app} के लिए काम कर रहा है, और यह लॉन्च उस तक नहीं पहुँच पा रहा। उसे Activity Monitor से बंद करें, या उसके पूरा होने तक प्रतीक्षा करें, फिर Angelo दोबारा खोलें।"
+
+msgid "End it"
+msgstr "खत्म करें"
+
+msgid "Quit"
+msgstr "बंद करें"
+
+msgid "an app"
+msgstr "किसी ऐप"
+
+msgid "Declined {tool}, answered through {app}."
+msgstr "{tool} अस्वीकार किया गया, {app} के ज़रिए जवाब दिया गया।"

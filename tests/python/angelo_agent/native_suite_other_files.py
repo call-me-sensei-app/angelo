@@ -12,10 +12,11 @@ EXCLUDED = {
     "kill_recovery_driver.py": "Kills, quits or fills the disk under a running render and relaunches (VFX audit A1); run by hand.",
     "blender_kill_recovery.py": "The in-app half of kill_recovery_driver.py; that driver launches it.",
     "bench_external_mcp_latency.py": "Per-call latency of Angelo's MCP server against stock Blender + MCP; run alone.",
+    "check_external_agent_live.py": "LIVE, billed: a scripted MCP client drives every agent endpoint against Angelo's "
+                                    "agent on a test connection store; run by hand in a Mac 1 slot.",
     "capture_split_proof.py": "Heavy, stock Blender: serial vs split ray-cast capture of a saved scene, byte for byte; "
                               "run by hand on an idle machine.",
     "check_mcp_discovery.py": "LIVE, billed: how often Codex finds Angelo's or Blender MCP's tools from a plain request.",
-    "bench_headless_mcp_latency.py": "Headless MCP latency against Blender MCP's CLI tools on the same files; run alone.",
     "bench_commit_orphans.py": "Per-commit cost and memory of freeing replaced data on the production commit path "
                                "(about 30,000 IDs), against a build without it; run alone on a quiet machine.",
     "bench_parallel_workers.py": "Worker Blender start time, tool-call round trip and memory per worker; run alone.",
@@ -62,6 +63,7 @@ EXCLUDED = {
     "parallel_dry_run.py": "Unbilled GUI dry run of both parallel-benchmark arms behind a scripted model; Mac 1 or a VM.",
     "parallel_dry_run_session.py": "In-app driver started only by parallel_dry_run.py; refuses to run otherwise.",
     "check_external_mcp_clients.py": "LIVE, billed: Claude Code and Codex calling Angelo over MCP; run by hand.",
+    "check_mcp_hidden_window.py": "LIVE, billed: a hidden-window Angelo through its MCP launcher on macOS; run by hand.",
     'team_cache_key_probe.py': 'Unbilled wire-level probe of the team cache key (fake console and gateway); run by hand.',
     "prompt_route_probe.py": "Unbilled: records what routes no trial covers send (fake endpoints) for prompt_audit.py.",
     "probe_downgrade_checkpoint_formats.py": "Manual: whether a RELEASED app (its own add-on) still lists and Restores "
@@ -157,6 +159,8 @@ EXCLUDED = {
     "gltfpack_stand_in.py": "gltfpack's stand-in that test_blender_web_export_gltfpack.py puts on PATH; never alone.",
     "browser_web_preview_drag.py": ("Every drag on the live web preview page in Chromium, Firefox and WebKit "
                                     "(Playwright, no Blender; doc/angelo/web_export.rst, Validation); explicit only."),
+    "browser_session_page.py": ("An app session's live page opens and follows the session in Chromium (Playwright, "
+                                "no Blender; doc/angelo/external_mcp.rst, Live session page); explicit only."),
     "native_coverage_metrics.py": "Read-only coverage measurement for native_coverage.rst; not a pass/fail suite.",
     "test_codex_external_local.py": "Host-Python test that drives the installed Codex CLI; explicit only.",
     "codex_prompt_probe.py": "Unbilled probe of the installed Codex CLI's request bytes (fake local endpoint); explicit only.",
@@ -269,6 +273,7 @@ HELPERS = frozenset({
     # run_host_tests' loader: a file's tests run while the product imports the module objects that file holds.
     "host_file_modules.py",
     "blender_stand_in.py",   # Host tests: operator modules imported against a stand-in for Blender's modules.
+    "unbound_locals.py",   # test_native_unbound_locals: a function's read of a name it binds only later, by ast.
     # Builds learn_menu_paths from bl_ui for test_native_learn_menu_paths and test_native_learn_routes; its --write
     # regenerates the table with host Python (no Blender).
     "learn_menu_paths_source.py",

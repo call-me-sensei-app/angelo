@@ -266,7 +266,9 @@ class ApproveDrawingPathTests(Base):
 
     DRAWERS = {"chat_card_draw", "chat_guard", "flow_chat"}   # Register an "approve" hit in the chat's transcript.
     OTHERS = {"chat_view", "worker_chat_host", "providers_page_model", "chat_key_arming",
-              "approval_arming", "grant_guard"}   # Dispatch, op names, a word match, the grants' arming, C's shield.
+              "approval_arming", "grant_guard",
+              "external_mcp_hidden_tools"}   # Dispatch, op names, a word match, the grants' arming, C's shield, and
+    # the MCP enum value an app may send, answered needs_person (it draws nothing and approves nothing).
 
     def test_every_module_with_an_approve_action_is_a_known_drawer_or_none(self):
         found = set()
@@ -297,8 +299,12 @@ class ApproveDrawingPathTests(Base):
         flows.library = lambda: types.SimpleNamespace(assets={})
         import angelo_agent
         from angelo_agent import chat_card_draw, flow_chat
+        # The copies patched below are the ones the drawers import, by the package's name and by sys.modules' alike
+        # (chat_guard's own ``from .chat_card_draw import`` reads sys.modules): an earlier file may have left the
+        # two apart (host_file_modules).
         modules = mock.patch.dict(sys.modules, {"angelo_agent.chat_view": view, "angelo_agent.flow_host": flows,
-                                                "gpu": mock.MagicMock()})
+                                                "angelo_agent.chat_card_draw": chat_card_draw,
+                                                "angelo_agent.flow_chat": flow_chat, "gpu": mock.MagicMock()})
         package = mock.patch.multiple(angelo_agent, create=True, chat_view=view, flow_host=flows)
         return modules, package, \
             mock.patch.object(chat_card_draw, "_measure", lambda value, size, font=None: 40), \

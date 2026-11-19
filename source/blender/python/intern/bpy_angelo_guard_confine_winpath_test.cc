@@ -214,7 +214,8 @@ class WinPathTest : public testing::Test {
 
   void TearDown() override
   {
-    /* Junctions first (removing one removes the link, never its target's files). */
+    /* Links first (removing one removes the link, never its target's files). */
+    DeleteFileW((base_ + L"\\file-link.txt").c_str());
     RemoveDirectoryW((base_ + L"\\link").c_str());
     DeleteFileW((base_ + L"\\target\\file.txt").c_str());
     RemoveDirectoryW((base_ + L"\\target").c_str());
@@ -272,6 +273,37 @@ TEST_F(WinPathTest, JunctionOnTheWayIsResolvedAndCounted)
   EXPECT_FALSE(last_component_links(at(L"link\\file.txt"), -1));
 }
 
+TEST_F(WinPathTest, FollowedPathFollowsTheLastLinkToo)
+{
+  /* What a program start opens (may_run's `resolved_program`): the real file, as `vouch_program` records it. */
+  const std::wstring target = base_ + L"\\target";
+  ASSERT_TRUE(CreateDirectoryW(target.c_str(), nullptr));
+  HANDLE file = CreateFileW(
+      (target + L"\\file.txt").c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+  ASSERT_NE(file, INVALID_HANDLE_VALUE);
+  CloseHandle(file);
+  ASSERT_TRUE(make_junction(base_ + L"\\link", target));
+
+  EXPECT_EQ(lower(final_path(at(L"link"))), lower(at(L"link"))); /* Not followed: the link itself. */
+  EXPECT_EQ(lower(followed_path(at(L"link"))), lower(at(L"target")));
+  EXPECT_EQ(lower(followed_path(lower(at(L"link\\file.txt")))), lower(at(L"target\\file.txt")));
+  EXPECT_EQ(followed_path(at(L"target\\file.txt")), final_path(at(L"target\\file.txt")));
+  EXPECT_EQ(followed_path(at(L"target\\missing.exe")), "");
+  EXPECT_EQ(followed_path(""), "");
+  EXPECT_EQ(followed_path("NUL"), "");
+
+  /* A file symbolic link (an installer's or a person's link to the program). */
+  const std::wstring link = base_ + L"\\file-link.txt";
+  if (!CreateSymbolicLinkW(
+          link.c_str(), (target + L"\\file.txt").c_str(), SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE))
+  {
+    GTEST_SKIP() << "[environment] this host can't make a file symbolic link (Developer Mode off, no privilege)";
+  }
+  EXPECT_TRUE(last_component_links(at(L"file-link.txt"), -1));
+  EXPECT_EQ(lower(final_path(at(L"file-link.txt"))), lower(at(L"file-link.txt")));
+  EXPECT_EQ(lower(followed_path(at(L"file-link.txt"))), lower(at(L"target\\file.txt")));
+}
+
 TEST_F(WinPathTest, DevicesAndInvalidNamesAnswerNothing)
 {
   EXPECT_EQ(final_path(""), "");
@@ -299,6 +331,7 @@ TEST_F(WinPathTest, MissingVolumeAnswersNothing)
 TEST(WinPathTest, ElsewhereNamesAreUnchangedAndOnlyALastLinkCounts)
 {
   EXPECT_EQ(final_path("/tmp/../tmp/Some File"), "/tmp/../tmp/Some File");
+  EXPECT_EQ(followed_path("/tmp/../tmp/Some File"), "/tmp/../tmp/Some File"); /* POSIX: realpath. */
   EXPECT_FALSE(reparse_in_any_component("/tmp/anything"));
 
   char folder[] = "/tmp/angelo_winpath_XXXXXX";

@@ -8,7 +8,7 @@ model-facing text sent up front (the base instructions with the chat's own text 
 every declared tool's description) and the names of the tools it declares, deferred ones included. Every piece is
 built by the code a request uses: ``claude_transport.claude_session`` (a Claude typed plan, and the direct-tools
 route), ``CodexProvider._thread_parameters`` with ``tool_specs.codex_tools`` (OpenAI and third-party Codex threads) or
-``dynamic_tools`` (voice), and ``external_mcp_tools.app_tools`` (a connected app's levels), over the allowed sets
+``dynamic_tools`` (voice), and ``external_mcp_tools.app_tools`` (a connected app's agent tools), over the allowed sets
 ``routing.RuntimeContext.begin`` and ``delegation`` give a lead, a signed-in team member, an app's task, a
 collaborator and a worker's own chat (in the lead's Angelo, and in a worker Blender that hosts its chats).
 """
@@ -124,14 +124,12 @@ def kinds():
                 instructions, descriptions, declared = _kind(chat, runtime, allowed, own)
             result["%s/%s" % (role, runtime)] = {"instructions": instructions, "text": instructions + "\n" + descriptions,
                                                  "tail": tail(runtime, allowed), "declared": sorted(declared)}
-    if not parallel_access.in_worker():
-        read, edit = external_clients.READ, external_clients.EDIT
-        for levels in (external_clients.LEVELS, (read,), (read, edit)):
-            catalog = external_mcp_tools.app_tools(levels)
-            result["mcp_app/" + "+".join(levels)] = {
-                "instructions": catalog["instructions"],
-                "text": catalog["instructions"] + "\n" + "\n".join(_descriptions(catalog["tools"])),
-                "declared": sorted(tool["name"] for tool in catalog["tools"])}
+    if not parallel_access.in_worker():   # A connected app: Angelo's agent tools only (2.0.1, no levels).
+        catalog = external_mcp_tools.app_tools()
+        result["mcp_app"] = {
+            "instructions": catalog["instructions"],
+            "text": catalog["instructions"] + "\n" + "\n".join(_descriptions(catalog["tools"])),
+            "declared": sorted(tool["name"] for tool in catalog["tools"])}
     return result
 
 

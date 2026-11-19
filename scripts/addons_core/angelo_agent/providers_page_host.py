@@ -297,7 +297,7 @@ def _act(action, value, window, area, region):
         elif action in SIMPLE_OPERATORS:   # Team sign-in and AI Enhance: the operators the stock page called.
             name, how, prop = SIMPLE_OPERATORS[action]
             getattr(ops, name)(how, **({prop: value} if prop else {}))
-        elif action in providers_page_external.ACTIONS:   # External AI apps and Blender MCP (external_ui).
+        elif action in providers_page_external.ACTIONS:   # External AI apps (external_ui).
             providers_page_external.act(ops, action, value)
         elif action in providers_page_rail.ACTIONS:   # Where the Sessions panel stands, and every 3D view redrawn.
             providers_page_rail.act(action, value)

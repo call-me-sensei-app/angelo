@@ -21,6 +21,7 @@ import tempfile
 import time
 from types import SimpleNamespace
 import unittest
+from host_test_policy import environment_skip
 import uuid
 from unittest.mock import patch
 import machine_clock
@@ -78,7 +79,7 @@ finally:
 '''
 
 
-@unittest.skipUnless(anchored_files_supported(), "descriptor-relative storage required")
+@unittest.skipUnless(anchored_files_supported(), environment_skip("descriptor-relative storage required"))
 class CaptureConsumerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="angelo-capture-consumers-")

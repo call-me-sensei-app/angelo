@@ -130,8 +130,8 @@ The Angelo Library overlay continues to show its public catalog; the guide makes
 
 Connected MCP coding apps receive search with their read level and import with edit permission. Import remains a
 window-only, individually approved action in Ask and Auto, with the existing controller, checkpoint and Undo.
-An external task can use the same library family. Headless apps can search but cannot import without a person;
-unkeyed legacy CLI clients retain their phase-1 allowlist. Toolset 53 adds a separate
+A connected app reaches the same library family only through Angelo's agent (``external_mcp.rst``); a CLI client
+without an app key runs no tool. Toolset 53 adds a separate
 ``source="fab"`` branch to the same tools; it neither changes this Blender source nor
 uses a public listing as account permission. See :doc:`fab` for its remaining live and
 native acceptance gates.

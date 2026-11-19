@@ -9,11 +9,11 @@ reads it, and requires the person's file to be left. Each failed before the fix.
 The sinks are those test_native_destructive_sinks finds reachable from an exit or cleanup entry point:
 
 * folders Angelo made and removes (``owned_paths.remove_tree``): the asset preview and payload copies, a render
-  child's copy, a headless session's and a worker's private folders, a worker's scratch, a library host job's folder,
+  child's copy, a worker's private folders, a worker's scratch, a library host job's folder,
   the web preview's export folder;
 * files Angelo keeps and saves over or removes (``owned_replace``): the goals and usage records, a chat's pending
   messages (a chat id that walks out of its folder);
-* the headless working copy the launcher made (``discard``), the checkpoint store's entries (a name that leaves its
+* the checkpoint store's entries (a name that leaves its
   folder) and a chat lease's descriptor.
 
 Not planted here, on the same route: the library search's preview folder (a closure's cell; ``remove_tree``), the
@@ -54,8 +54,8 @@ def _clean(*paths):
 
 def _folder_cleanups():
     """(label, setter(folder) -> cleanup callable): an object of Angelo's whose state names ``folder``."""
-    from angelo_agent import (blender_asset_payload, blender_asset_previews, headless_session, job_render_child,
-                              team_library_host, worker_process)
+    from angelo_agent import (blender_asset_payload, blender_asset_previews, job_render_child, team_library_host,
+                              worker_process)
 
     def previews(folder):
         item = blender_asset_previews.Previews.__new__(blender_asset_previews.Previews)
@@ -73,11 +73,6 @@ def _folder_cleanups():
         child.folder, child.running = folder, (lambda: False)
         return child.close
 
-    def headless(folder):
-        session = headless_session.HeadlessSession.__new__(headless_session.HeadlessSession)
-        session._private = folder
-        return session._remove_private
-
     def worker_private(folder):
         worker = worker_process.WorkerProcess.__new__(worker_process.WorkerProcess)
         worker.private = Path(folder)
@@ -94,7 +89,7 @@ def _folder_cleanups():
         return job._remove_folder
 
     return [("asset_previews", previews), ("asset_payload", payload), ("render_child", render_child),
-            ("headless_private", headless), ("worker_private", worker_private), ("worker_scratch", worker_scratch),
+            ("worker_private", worker_private), ("worker_scratch", worker_scratch),
             ("library_job", library_job)]
 
 
@@ -179,20 +174,6 @@ def pending_messages_chat_id(run, check):
     check("pending_messages_remove_only_their_own_file", kept, outcome)
 
 
-def working_copy(run, check):
-    """The headless launcher's discard removes only the copy it made, whatever path and identity its state holds."""
-    from angelo_agent import headless_files, headless_working_copy
-    person = _person_folder()
-    notes = _person_file(person, "scene.blend", "the person's scene")
-    try:
-        headless_working_copy.discard(Path(notes), Path(person) / "other.blend", list(headless_files.identity(notes)))
-    except Exception:   # noqa: BLE001 - a refusal is fine.
-        pass
-    kept = os.path.isfile(notes)
-    _clean(person)
-    check("working_copy_discard_removes_only_its_copy", kept, notes)
-
-
 def checkpoint_entry_names(run, check):
     """An anchored store entry's name can't leave the store's folder."""
     from angelo_agent import checkpoint_filesystem
@@ -269,6 +250,5 @@ def run_all(run, check):
     web_preview_folder(run, check)
     kept_files(run, check)
     pending_messages_chat_id(run, check)
-    working_copy(run, check)
     checkpoint_entry_names(run, check)
     lease_descriptor(run, check)

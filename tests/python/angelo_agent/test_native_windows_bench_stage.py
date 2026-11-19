@@ -42,7 +42,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-from host_test_policy import environment_skip  # noqa: E402
+from host_test_policy import environment_skip, required_skip  # noqa: E402
 from ps_stderr_lint import stderr_hazards  # noqa: E402
 
 SCRIPTS = HERE.parents[2] / "scripts/angelo"
@@ -123,7 +123,7 @@ class KeptSignInTests(unittest.TestCase):
 
 
 @WORKSTATION_ONLY
-@unittest.skipUnless(shutil.which("bash"), "needs bash")
+@unittest.skipUnless(shutil.which("bash"), required_skip("needs bash"))
 class WaitOffTests(unittest.TestCase):
     """``gcp_windows_validate.sh wait-off`` against a stand-in gcloud: each observation is one (VM status, result
     objects) step, read by a describe and a listing; ``DONE`` holds the bootstrap's text."""
@@ -302,7 +302,7 @@ esac
         return ran, calls
 
     @WORKSTATION_ONLY
-    @unittest.skipUnless(shutil.which("bash") and shutil.which("python3"), "needs bash and python3")
+    @unittest.skipUnless(shutil.which("bash") and shutil.which("python3"), required_skip("needs bash and python3"))
     def test_a_bucket_that_could_be_public_gets_nothing(self):
         public = {"bindings": self.POLICY["bindings"] + [{"role": "roles/storage.objectViewer", "members": ["allUsers"]}]}
         for bucket, policy, reason in ((self.PRIVATE, public, "allUsers or allAuthenticatedUsers"),
@@ -317,7 +317,7 @@ esac
                 self.assertNotIn("storage cp", calls, "nothing is uploaded")
 
     @WORKSTATION_ONLY
-    @unittest.skipUnless(shutil.which("bash") and shutil.which("python3"), "needs bash and python3")
+    @unittest.skipUnless(shutil.which("bash") and shutil.which("python3"), required_skip("needs bash and python3"))
     def test_a_picture_other_than_the_pinned_one_is_never_uploaded(self):
         ran, calls = self.upload(self.PRIVATE, self.POLICY, {"maintainer-reference-2026-10-11.png": b"not it"})
         self.assertNotEqual(ran.returncode, 0)
@@ -449,7 +449,8 @@ class PrebootTests(unittest.TestCase):
 
 
 @WORKSTATION_ONLY
-@unittest.skipUnless(shutil.which("bash"), "The launcher is a bash script run from the workstation, not the VM")
+@unittest.skipUnless(shutil.which("bash"),
+                     environment_skip("The launcher is a bash script run from the workstation, not the VM"))
 class LauncherUsageTests(unittest.TestCase):
     def test_usage_prints_the_whole_header(self):
         ran = subprocess.run(["bash", str(SCRIPTS / "gcp_windows_validate.sh"), "no-such-command"], capture_output=True,
@@ -462,7 +463,8 @@ class LauncherUsageTests(unittest.TestCase):
 
 
 @WORKSTATION_ONLY
-@unittest.skipUnless(shutil.which("bash"), "The launcher is a bash script run from the workstation, not the VM")
+@unittest.skipUnless(shutil.which("bash"),
+                     environment_skip("The launcher is a bash script run from the workstation, not the VM"))
 class PrebootLauncherTests(unittest.TestCase):
     """``wait-preboot`` and ``bench deliver`` against a stand-in gcloud: each step is one (VM status, result objects)
     observation, advanced by a listing; every other call is recorded."""

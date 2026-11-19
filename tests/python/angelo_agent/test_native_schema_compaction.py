@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from host_test_policy import required_skip
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'scripts/addons_core'))
 from angelo_agent.schema_compaction import MIN_SHARED_BYTES, compact_schema
@@ -273,7 +274,8 @@ class SchemaCompactionTests(unittest.TestCase):
         compact_plan = self.assert_lossless(plan)
         self.assertLess(encoded_size(compact_plan), encoded_size(plan))
 
-    @unittest.skipIf(Draft202012Validator is None, 'jsonschema is not installed; exact projection tests still run')
+    @unittest.skipIf(Draft202012Validator is None,
+                     required_skip('jsonschema is not installed; exact projection tests still run'))
     def test_jsonschema_valid_and_invalid_vectors_are_unchanged(self):
         original = paired_schema()
         compact = compact_schema(original)
@@ -296,7 +298,7 @@ class SchemaCompactionTests(unittest.TestCase):
                 self.assertEqual(Draft202012Validator(original).is_valid(value), expected)
                 self.assertEqual(Draft202012Validator(compact).is_valid(value), expected)
 
-    @unittest.skipIf(Draft202012Validator is None, 'jsonschema is not installed')
+    @unittest.skipIf(Draft202012Validator is None, required_skip('jsonschema is not installed'))
     def test_jsonschema_recursive_no_op_validity(self):
         recursive = {'$defs': {'node': {'anyOf': [{'type': 'null'}, {'type': 'object', 'properties': {
             'value': {'type': 'integer'}, 'next': {'$ref': '#/$defs/node'}},
@@ -307,7 +309,7 @@ class SchemaCompactionTests(unittest.TestCase):
             self.assertEqual(Draft202012Validator(recursive).is_valid(value), expected)
             self.assertEqual(Draft202012Validator(compact).is_valid(value), expected)
 
-    @unittest.skipIf(Draft202012Validator is None, 'jsonschema is not installed')
+    @unittest.skipIf(Draft202012Validator is None, required_skip('jsonschema is not installed'))
     def test_jsonschema_program_valid_and_invalid_vectors(self):
         original = PROGRAM_TOOLS[0]['inputSchema']
         compact = compact_schema(original)

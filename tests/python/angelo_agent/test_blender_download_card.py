@@ -138,7 +138,7 @@ def actions():
 
 def click(action, value=None):
     """The person's click on a drawn chat control; an approval's own (Approve) aimed, as a person aims it: it takes
-    only a press after its shield (``approval_arming``)."""
+    only a press after its shield and a move into it (``approval_arming``)."""
     area, region = chat()
     rect = next(r for r, a, v in hits() if a == action and (value is None or v == value))
     import qa_input

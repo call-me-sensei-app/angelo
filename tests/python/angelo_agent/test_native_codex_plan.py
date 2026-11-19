@@ -18,6 +18,7 @@ import tempfile
 import threading
 import time
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
@@ -66,7 +67,7 @@ def host_problems(plan):
     return problems
 
 
-@unittest.skipIf(jsonschema is None, "jsonschema is not installed")
+@unittest.skipIf(jsonschema is None, required_skip("jsonschema is not installed"))
 class StrictSchemaContractTests(unittest.TestCase):
     def test_the_output_schema_fits_openais_strict_subset_and_limits(self):
         for allowed in (None, frozenset({"angelo_scene_program", "angelo_scene_search"}), frozenset(PLAN_TOOLS)):
@@ -211,7 +212,7 @@ class StrictSchemaContractTests(unittest.TestCase):
         self.assertIn("1001 enum values exceed 1000", text)
 
 
-@unittest.skipIf(jsonschema is None, "jsonschema is not installed")
+@unittest.skipIf(jsonschema is None, required_skip("jsonschema is not installed"))
 class RoundTripTests(unittest.TestCase):
     """Standards vectors: a JSON Schema 2020-12 validator, not our own code, judges both schemas."""
 
@@ -313,7 +314,7 @@ def _parse_json_text(written, decoded):
     return written
 
 
-@unittest.skipIf(jsonschema is None, "jsonschema is not installed")
+@unittest.skipIf(jsonschema is None, required_skip("jsonschema is not installed"))
 def _resolved(schema, node):
     while isinstance(node, dict) and "$ref" in node:
         node = schema["$defs"][node["$ref"].split("/")[-1]]
@@ -332,7 +333,7 @@ def _admitting(members, keys):
     return [member for member in members if list(member["properties"])[:len(keys)] == list(keys)]
 
 
-@unittest.skipIf(jsonschema is None, "jsonschema is not installed")
+@unittest.skipIf(jsonschema is None, required_skip("jsonschema is not installed"))
 class PropertyOrderTests(unittest.TestCase):
     """OpenAI writes a strict output's properties in schema order: a member must be named before it is filled.
 
@@ -461,7 +462,7 @@ class CompactionOrderTests(unittest.TestCase):
         self.assertEqual(json.dumps(kept, sort_keys=True), json.dumps(sorted_, sort_keys=True))
 
 
-@unittest.skipIf(jsonschema is None, "jsonschema is not installed")
+@unittest.skipIf(jsonschema is None, required_skip("jsonschema is not installed"))
 class HostRejectionTests(unittest.TestCase):
     """Whatever the ordinary plan schema rejects, the strict schema or the host rejects: nothing widens.
 

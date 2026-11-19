@@ -161,6 +161,121 @@ def poll_installer(restart):
         return None
 
 
+SETTLE_S = 5.0        # How long the document may take to read as settled before the restart gives up.
+SETTLE_PASS_S = 0.1   # Between two reads: many of Blender's event-loop passes, so a notifier is handled between them.
+CHANGE_KINDS = ("depsgraph_update_post", "load_pre", "save_pre", "undo_pre", "redo_pre")   # restart._change_handlers
+
+
+def _catalogs_generation(restart):
+    """The asset catalogs' edit generation (C), or None on a build that cannot tell (``launch`` then refuses)."""
+    try:
+        return restart._catalog_generation(restart._quit_native())
+    except Exception:
+        return None
+
+
+def _follows(decision, seen, now, saved):
+    """Whether ``now`` is still the document the person decided on: the same file and images and, after a save,
+    only the save marking them saved (never modified again once read saved: ``seen``); otherwise exactly as decided."""
+    if now[0] != decision[0] or [pointer for pointer, _ in now[2]] != [pointer for pointer, _ in decision[2]]:
+        return False
+    if not saved:
+        return now == decision
+    return (not now[1] or seen[1]) and all(not dirty or was for (_p, dirty), (_q, was) in zip(now[2], seen[2]))
+
+
+def launch_when_settled(restart, offer, ready, saved):
+    """The one way into ``launch``: the hand-over's document stamp is recorded only once the document reads the same
+    across Blender's event-loop passes and, after a save (``saved``), reads as saved, file and images.
+
+    ``bpy.data.is_dirty`` reads True until Blender handles the save's notifier, after the save call; a stamp taken
+    before then no longer matches at the installer's readiness, which stands the update down (the Windows end-to-end
+    update 1.0.11 -> 2.0.0, 2026-11-18). Past ``SETTLE_S`` the restart stops: after a save with the save notice (the
+    file changed again, so that work is not saved), otherwise with the not-started notice.
+
+    The person's decision is kept from the moment they made it (the maintainer's audit of 2.0.1, P1: an undoable edit
+    landing while a clean file or Don't Save settled became the stamp the installer kept, so it was treated as
+    accepted): its stamp, the catalogs' generation and every edit event (``_change_handlers``: an undo step, a
+    depsgraph update, a load, a save) since. Only the expected save's marking may settle (its catalog write included:
+    after a save, catalogs count as edited only when they read unsaved again); any other change stops the hand-over
+    at once (``changed_while_settling``)."""
+    began, previous = time.monotonic(), []
+    decision, generation, edits = restart._document_stamp(), _catalogs_generation(restart), []
+    seen = [decision]
+
+    def noting(kind):
+        def edited(*_args):
+            edits.append(kind)
+        return edited
+    noted = [(handlers, noting(kind)) for kind, handlers in zip(CHANGE_KINDS, restart._change_handlers())]
+
+    def end():
+        for handlers, edited in noted:
+            if edited in handlers:
+                handlers.remove(edited)
+
+    for handlers, edited in noted:
+        handlers.append(edited)
+
+    def settled():
+        stamp = restart._document_stamp()
+        now_generation = _catalogs_generation(restart)
+        # The save writes the catalogs (each catalog write or load advances the generation, C's CatalogEditScope):
+        # after a save only catalogs unsaved again are an edit; otherwise any advance is.
+        catalogs_edited = now_generation != generation and (not saved or restart._catalogs_unsaved())
+        if edits or catalogs_edited or not _follows(decision, seen[0], stamp, saved):
+            end()
+            print("Angelo update: the document changed after the restart was decided (events %s, catalogs %s -> %s, "
+                  "stamp %s -> %s); not handed over" % (sorted(set(edits)), generation, now_generation, decision,
+                                                         stamp))   # i18n: a log line
+            changed_while_settling(restart, offer, ready, saved)
+            return None
+        seen[0] = stamp
+        marked = not saved or (not stamp[1] and not any(dirty for _pointer, dirty in stamp[2]))
+        if marked and previous and previous[0] == stamp:
+            end()
+            restart.launch(offer, ready)
+            return None
+        if time.monotonic() - began > SETTLE_S:
+            end()
+            if saved:
+                restart._notice(restart.SAVE_FAILED_TITLE, restart.SAVE_FAILED_BODY)
+            else:
+                restart._not_started(restart._ready_module().target(offer))
+            return None
+        previous[:] = [stamp] if marked else []
+        return SETTLE_PASS_S
+    restart.bpy.app.timers.register(settled, first_interval=SETTLE_PASS_S)
+
+
+def changed_while_settling(restart, offer, ready, saved):
+    """The document changed after the person's decision: never handed over. After a save, the save notice (that work
+    is not saved); otherwise the person is asked again: the save card for what is unsaved, else the update card."""
+    if saved:
+        restart._notice(restart.SAVE_FAILED_TITLE, restart.SAVE_FAILED_BODY)
+        return
+    if not ask_to_save(restart, offer, ready):
+        from . import update_ui
+        update_ui.show_notice(offer)   # The update stays ready; its card comes back.
+
+
+def ask_to_save(restart, offer, ready, host=None):
+    """The save card when the file, an image or an asset catalog has unsaved changes (``begin``'s question); False
+    when there is nothing to ask about. ``host``: the update card's, which the save card replaces."""
+    data = restart.bpy.data
+    images, catalogs = restart._dirty_images(), restart._catalogs_unsaved()
+    if not (data.is_dirty or images or catalogs):
+        return False
+    if host is not None:
+        host.close("save")
+    elif restart.card_host.is_active("update"):
+        restart.card_host.close("save")
+    restart.card_host.request(restart.SaveCard(
+        Path(data.filepath).name, len(images), lambda choice: restart._after_prompt(choice, offer, ready),
+        catalogs=catalogs, file_changed=data.is_dirty or bool(images)))
+    return True
+
+
 def launch(restart, offer, ready):
     """Start one revocable helper; only committed native exit grants installation."""
     if restart._installer is not None:

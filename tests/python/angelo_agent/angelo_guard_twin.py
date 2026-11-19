@@ -24,7 +24,7 @@ TICKET_SECONDS = 5.0
 DIALOG_SECONDS = 180.0
 BROWSE_SECONDS = 300.0   # C's: a file browser's pick.
 _STANDARD = {"approved_scripts": None, "trusted_scripts": False, "always_allow": False, "chat_clients": None,
-             "script_files": False, "approved_calls": None, "approval_modes": "ASK"}
+             "approved_calls": None, "approval_modes": "ASK"}
 _lock = threading.RLock()
 _here = threading.local()
 _ledger = {}
@@ -42,12 +42,57 @@ def strict(on=True):
 PERSON, AUTOMATIC, HARNESS = "person", "automatic", "harness"
 
 
+ACTIVATION_PRESS_SECONDS = 0.5   # C's: the press that brings a window forward arrives with its activation.
+_windows = {}   # C's per-window focus record (``window_state``), fed as the window manager feeds C (``note_input``).
+
+
+def _window(window):
+    return _windows.setdefault(window, {"epoch": 0, "returning": False, "activated": -1.0e9,
+                                        "activation_move": False, "press_activating": False, "at": None,
+                                        "active": True})
+
+
+def note_input(window, event_type, value, x=0, y=0, now=0.0):
+    """As ``BPY_angelo_guard_note_input``: what C's focus record keeps of one event (a test feeds it in Blender's
+    order, before the modal handlers). Moves without motion, the activation's own move and keys follow C."""
+    state = _window(window)
+    if event_type == "WINDOW_DEACTIVATE":
+        state["epoch"] += 1
+        state["returning"], state["active"] = True, False
+    elif event_type == "MOUSEMOVE":
+        if state["activation_move"] or state["at"] is None:
+            state["activation_move"], state["at"] = False, (x, y)
+        elif (x, y) != state["at"]:
+            state["returning"] = state["returning"] and not state["active"]
+            state["at"] = (x, y)
+    elif event_type == "LEFTMOUSE" and value == "PRESS":
+        activating = state["returning"] and (not state["active"] or
+                                             now - state["activated"] <= ACTIVATION_PRESS_SECONDS)
+        state["returning"], state["press_activating"] = False, activating
+        state["epoch"] += 1 if activating else 0
+    elif value == "PRESS" and "MOUSE" not in event_type:   # A key (C notes keyboard presses only).
+        state["returning"] = state["returning"] and not state["active"]
+
+
+def note_activate(window, now=0.0):
+    """As ``BPY_angelo_guard_note_activate``: the window came forward, before its synthetic move."""
+    state = _window(window)
+    state["epoch"] += 1
+    state["activated"], state["activation_move"], state["active"] = now, True, True
+
+
+def window_state(window):
+    state = _window(window)
+    return (state["epoch"], state["returning"], state["press_activating"])
+
+
 def reset():
     with _lock:
         _ledger.clear()
         _tickets.clear()
         _unarmed.clear()
         _regions.clear()   # Not _automatic: Angelo lists its operators once, as it loads (as in C).
+        _windows.clear()
         for name, narrow in _STANDARD.items():
             _ledger[name] = (narrow, {})
 

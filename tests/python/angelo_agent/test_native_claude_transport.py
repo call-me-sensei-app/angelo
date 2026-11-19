@@ -10,6 +10,7 @@ import subprocess
 import threading
 from types import SimpleNamespace
 import unittest
+from host_test_policy import required_skip
 from unittest.mock import Mock, patch
 
 from claude_protocol_fixtures import ClaudeAdapterFixture, NativeInitializeFixture, REQUIRES, SUPPORTED, TOO_OLD, completed, host
@@ -86,7 +87,7 @@ class ClaudeTransportTests(ClaudeAdapterFixture, unittest.TestCase):
         self.assertEqual(root["properties"]["operations"]["maxItems"], 64)
         self.assertFalse(root["additionalProperties"])
 
-    @unittest.skipIf(Draft202012Validator is None, "Optional standards validator not installed")
+    @unittest.skipIf(Draft202012Validator is None, required_skip("Optional standards validator not installed"))
     def test_transport_schema_validates_plans_and_rejects_expansion_bypasses(self):
         self.start(None)
         schema = self.process.initialized_schema

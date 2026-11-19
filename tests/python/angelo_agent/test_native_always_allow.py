@@ -235,7 +235,8 @@ class AlwaysAllowTests(unittest.TestCase):
             always_allow.attach(state)
             with patch.dict(sys.modules, {"angelo_agent.ui": SimpleNamespace(_controllers={})}):
                 self.assertTrue(self.card_handler()(None, self.controller, call.id))
-            self.assertEqual(json.loads((Path(state) / always_allow.FILE).read_text()), {"version": 1, "enabled": True})
+            self.assertEqual(json.loads((Path(state) / always_allow.FILE).read_text()), {"version": 1, "enabled": True, "external": True},
+                             "a consent given in 2.0.1 or later covers connected apps' chats and says so")
         self.pump()
         self.assertEqual(results[0]["consent"], "always_allow")
 

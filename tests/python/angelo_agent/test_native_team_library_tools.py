@@ -31,7 +31,6 @@ from fake_team_console import FakeConsole
 from angelo_agent import codex_plan, plan_schema, team_library_access, team_library_results as results, tool_specs
 from angelo_agent.approvals import approval_message
 from angelo_agent.controller import Controller, ToolDispatchBudget
-from angelo_agent.external_requests import PHASE1_READ_TOOLS
 from angelo_agent.routing import RuntimeContext
 from angelo_agent.team_library_client import TeamLibraryClient
 from angelo_agent.team_library_host import TeamLibraryService, TeamPending
@@ -62,7 +61,6 @@ class ContractTests(unittest.TestCase):
         self.assertLessEqual(TEAM_NAMES, plan_schema.DEFERRED_TOOLS)
         self.assertFalse(TEAM_NAMES & BOUNDED_MUTATIONS, "import and save always need a click")
         self.assertFalse(TEAM_NAMES & COLLABORATOR_TOOLS)
-        self.assertFalse(TEAM_NAMES & PHASE1_READ_TOOLS)
         self.assertEqual({t["name"] for t in TEAM_TOOLS if not t["annotations"]["readOnlyHint"]}, TEAM_EFFECTS)
 
     def test_validation_is_exact(self):

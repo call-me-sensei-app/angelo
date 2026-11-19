@@ -24,6 +24,9 @@ bool BPY_angelo_guard_authority_admits(const char *call_id, const uint8_t digest
  * simulates): pointer moves, presses and a window losing focus, in window pixels. What a click ticket needs. No
  * GIL needed. */
 void BPY_angelo_guard_note_input(const void *window, int x, int y, int event_type, int event_value);
+/** `window` came forward (the operating system's activation, before the window manager adds its synthetic pointer
+ * move): only a press that arrives with it is the click that brought the window forward. No GIL needed. */
+void BPY_angelo_guard_note_activate(const void *window);
 /** An agent script began running (its outermost confined region): every Tab, press and focus before it stops
  * counting as the person's (the draw state focus is reported from may have changed). No GIL needed. */
 void BPY_angelo_guard_agent_ran();

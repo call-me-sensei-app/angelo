@@ -10,6 +10,39 @@ msgstr ""
 "X-Angelo-Translation: machine-produced; pending native review\n"
 "Language-Team: Indonesian (Bahasa Indonesia)\n"
 
+msgid "'{app}' asks you to set this conversation to Approve for me. Only you can: use the approval control below."
+msgstr "'{app}' meminta Anda mengatur percakapan ini ke \"Setujui untuk saya\". Hanya Anda yang bisa: gunakan kontrol persetujuan di bawah."
+
+msgid "'{app}' asks you to set this conversation to Ask before changes. Only you can: use the approval control below."
+msgstr "'{app}' meminta Anda mengatur percakapan ini ke \"Tanya sebelum perubahan\". Hanya Anda yang bisa: gunakan kontrol persetujuan di bawah."
+
+msgid "'{app}' chose {model} ({connection} · Angelo team) for this conversation."
+msgstr "'{app}' memilih {model} ({connection} · Tim Angelo) untuk percakapan ini."
+
+msgid "'{app}' chose {model} ({connection} · API billing) for this conversation."
+msgstr "'{app}' memilih {model} ({connection} · Tagihan API) untuk percakapan ini."
+
+msgid "'{app}' chose {model} ({connection} · Subscription) for this conversation."
+msgstr "'{app}' memilih {model} ({connection} · Langganan) untuk percakapan ini."
+
+msgid "'{app}' chose {model} for this conversation."
+msgstr "'{app}' memilih {model} untuk percakapan ini."
+
+msgid "'{app}' set reasoning effort to the model's default."
+msgstr "'{app}' mengatur tingkat penalaran ke bawaan model."
+
+msgid "'{app}' set reasoning effort to {effort}."
+msgstr "'{app}' mengatur tingkat penalaran ke {effort}."
+
+msgid "'{app}' set this conversation to Ask before changes."
+msgstr "'{app}' mengatur percakapan ini ke \"Tanya sebelum perubahan\"."
+
+msgid "'{app}' set this conversation to Read only."
+msgstr "'{app}' mengatur percakapan ini ke \"Hanya baca\"."
+
+msgid "'{label}' started a new conversation, {identity}. This transcript stays readable."
+msgstr "'{label}' memulai percakapan baru, {identity}. Transkrip ini tetap dapat dibaca."
+
 #. src: bpy.types.DepsgraphUpdate.angelo_recalc:'OTHER'
 msgid "A recalc bit with no item of its own"
 msgstr "Bit recalc tanpa item sendiri"
@@ -21,6 +54,24 @@ msgstr "Penyedia AI…"
 #. src: angelo_agent/ai_render_card.py
 msgid "AI Render"
 msgstr "Render AI"
+
+msgid "Allow for this session"
+msgstr "Izinkan untuk sesi ini"
+
+msgid "Allow for this session runs this chat's scripts without asking until Angelo restarts. Always allow runs Angelo's agent's scripts in every Auto chat, connected apps' chats included, until you turn it off in Preferences. Scripts have full access to files, the network and other apps on this computer."
+msgstr "Izinkan untuk sesi ini menjalankan skrip chat ini tanpa bertanya sampai Angelo dimulai ulang. Selalu izinkan menjalankan skrip agen Angelo di setiap chat Auto, termasuk chat aplikasi yang terhubung, sampai Anda menonaktifkannya di Preferensi. Skrip memiliki akses penuh ke file, jaringan, dan aplikasi lain di komputer ini."
+
+msgid "Allow for this session works like Trust scripts for this chat: this chat's scripts run without asking until Angelo restarts or you start a new chat."
+msgstr "Izinkan untuk sesi ini bekerja seperti Percayai skrip di chat ini: skrip chat ini berjalan tanpa bertanya sampai Angelo dimulai ulang atau Anda memulai chat baru."
+
+msgid "Always allow"
+msgstr "Selalu izinkan"
+
+msgid "Always allow still covers only chats set to Approve for me, and your organization's policy still applies. Scripts that touch your preferences or Angelo itself, or that would replace the open file, always ask."
+msgstr "Selalu izinkan tetap hanya berlaku untuk chat dalam mode Setujui untuk saya, dan kebijakan organisasi Anda tetap berlaku. Skrip yang menyentuh preferensi Anda atau Angelo sendiri, atau yang akan mengganti file yang terbuka, selalu bertanya."
+
+msgid "Angelo 2.0.1 lets you choose how scripts from Claude Code, Codex and other connected apps are approved, and fixes Save and Restart for updates."
+msgstr "Angelo 2.0.1 memungkinkan Anda memilih cara skrip dari Claude Code, Codex, dan aplikasi terhubung lainnya disetujui, serta memperbaiki Simpan dan mulai ulang untuk pembaruan."
 
 #. src: angelo_agent/learn_ui.py
 msgid "Angelo could not save this choice: {reason}"
@@ -285,6 +336,9 @@ msgstr "Pilih kapan agen bertanya sebelum mengubah adegan Anda, dan apakah skrip
 msgid "Done by Angelo's own tool"
 msgstr "Dilakukan dengan alat Angelo sendiri"
 
+msgid "Each script asks: run it once, or allow it for this session or always."
+msgstr "Setiap skrip bertanya: jalankan sekali, atau izinkan untuk sesi ini atau selalu."
+
 #. src: bpy.types.DepsgraphUpdate.angelo_recalc:'EDITORS'
 msgid "Editors"
 msgstr "Editor"
@@ -298,6 +352,9 @@ msgstr "Sempurnakan Prompt Media Studio"
 msgctxt "Operator"
 msgid "Enter API Key"
 msgstr "Masukkan Kunci API"
+
+msgid "Every script asks for your review before it runs."
+msgstr "Setiap skrip menunggu tinjauan Anda sebelum berjalan."
 
 #. src: angelo_agent/learn_card_draw.py
 msgid "Find it with search: {key}"
@@ -359,6 +416,9 @@ msgctxt "Angelo"
 msgid "On"
 msgstr "Nyala"
 
+msgid "One click on Approve approves, also while the agent or a connected app keeps working."
+msgstr "Satu klik pada Setujui langsung menyetujui, juga saat agen atau aplikasi yang terhubung masih bekerja."
+
 #. src: angelo_agent/learn_ui.py
 msgid "Open a chat first: this is set for one chat"
 msgstr "Buka obrolan dulu: ini diatur per obrolan"
@@ -371,9 +431,39 @@ msgstr "Buka langkah mana pun yang dibuat Angelo di obrolan untuk melihat cara m
 msgid "Public notes are available in this chat, but could not be saved. {error} No scene edits or tool approvals were granted."
 msgstr "Catatan publik tersedia di obrolan ini, tetapi tidak dapat disimpan. {error} Tidak ada pengeditan adegan atau persetujuan alat yang diberikan."
 
+msgid "Read only: scripts and other changes don't run."
+msgstr "Hanya baca: skrip dan perubahan lain tidak berjalan."
+
+msgid "Review & run once"
+msgstr "Tinjau dan jalankan sekali"
+
+msgid "Run once"
+msgstr "Jalankan sekali"
+
+msgid "Save and Restart now completes an update instead of stopping with \"The update could not start\"."
+msgstr "Simpan dan mulai ulang kini menyelesaikan pembaruan alih-alih berhenti dengan \"Pembaruan tidak dapat dimulai\"."
+
+msgid "Script approval cards offer Run once, Allow for this session and Always allow, also for Claude Code, Codex and other connected apps."
+msgstr "Kartu persetujuan skrip menawarkan Jalankan sekali, Izinkan untuk sesi ini, dan Selalu izinkan, juga untuk Claude Code dan Codex."
+
+msgid "Scripts in this chat run without asking for this session"
+msgstr "Skrip di chat ini berjalan tanpa bertanya untuk sesi ini"
+
+msgid "Scripts run without asking in Auto chats"
+msgstr "Skrip berjalan tanpa bertanya di chat Auto"
+
+msgid "Scripts run without asking in Auto chats."
+msgstr "Skrip berjalan tanpa bertanya di chat Auto."
+
+msgid "Scripts still run without asking: turning it off was refused. Try again in a moment."
+msgstr "Skrip masih berjalan tanpa bertanya: penonaktifan ditolak. Coba lagi sebentar lagi."
+
 #. src: angelo_agent/save_failure.py
 msgid "Something in this chat can't be written to its file ({kind}). This is a fault in Angelo, not in your request: start a new chat and report it."
 msgstr "Ada sesuatu di obrolan ini yang tidak dapat ditulis ke filenya ({kind}). Ini kesalahan pada Angelo, bukan pada permintaan Anda: mulai obrolan baru dan laporkan kesalahan ini."
+
+msgid "The Approvals menu opens above its button instead of off to the side, and says how this chat's scripts are approved."
+msgstr "Menu Persetujuan terbuka di atas tombolnya, bukan di samping, dan menyebutkan cara skrip chat ini disetujui."
 
 #. src: angelo_agent/save_failure.py
 msgid "The disk reported an error while Angelo wrote its own files. Check the disk or the network folder, then try again."
@@ -394,6 +484,9 @@ msgstr "Folder yang menyimpan file milik Angelo berada di disk hanya-baca. Jadik
 #. src: angelo_agent/checkpoint_restore_ui.py
 msgid "The recovery scene was not opened because its safety link could not be saved. {why} The protected safety snapshot is still available through Undo restore."
 msgstr "Adegan pemulihan tidak dibuka karena tautan pengamannya tidak dapat disimpan. {why} Snapshot pengaman yang dilindungi masih tersedia melalui Urungkan pemulihan."
+
+msgid "This chat's scripts run without asking for this session."
+msgstr "Skrip chat ini berjalan tanpa bertanya untuk sesi ini."
 
 #. src: angelo_agent/learn_ui.py
 msgid "Turn on Teach me as you work to see, under each step Angelo makes in this chat, how to do it yourself: the command, its keys in your keymap, where it is and the settings it used."
@@ -556,6 +649,9 @@ msgstr ""
 "``open_media_studio`` untuk menu, tombol, dan pencarian F3. AUTO (entri umum): tab untuk tempat orang itu\n"
 "berada (``studio_kind``) saat Studio pertama kali tampil di sesi ini, lalu tab yang ditampilkannya; 3D, IMAGE, atau WORKFLOW\n"
 "(entri kontekstual) selalu memilih tab itu."
+
+msgid "While scripts run without asking, the chat says so and offers Turn off."
+msgstr "Saat skrip berjalan tanpa bertanya, chat menyampaikannya dan menawarkan Nonaktifkan."
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "You can now set when the agent asks before changes, and trust a chat's scripts, from the chat bar's + menu."
@@ -1001,6 +1097,9 @@ msgstr "Terima pratinjau ini?"
 #. src: angelo_agent/saved_keys_ui.py
 msgid "access denied"
 msgstr "akses ditolak"
+
+msgid "Access for '{label}' ended, so its work here stopped. Messages it left waiting are not sent."
+msgstr "Akses '{label}' berakhir, jadi pekerjaannya di sini berhenti. Pesan yang ditinggalkannya dalam antrean tidak dikirim."
 
 #. src: angelo_agent/team_token_store.py
 msgid "access was denied"
@@ -1558,6 +1657,9 @@ msgstr "AI"
 #. src: angelo_agent/providers_page_external.py
 msgid "AI apps and coding agents running as you can use Angelo's tools, or hand Angelo's agent a task. Their edits and scripts wait for your approval in their own chat; you can stop them and undo as in any chat. Turning this off closes the connection."
 msgstr "Aplikasi AI dan agen pengodean yang berjalan sebagai Anda dapat menggunakan alat Angelo, atau memberi tugas kepada agen Angelo. Edit dan skrip mereka menunggu persetujuan Anda di obrolan mereka sendiri; Anda dapat menghentikannya dan mengurungkan seperti di obrolan mana pun. Menonaktifkan ini menutup koneksi."
+
+msgid "AI apps and coding agents running as you can work with Angelo's agent: they send it messages, follow its progress and see what it sees, in their own chat. Approvals stay yours; you can stop them and undo as in any chat. Turning this off closes the connection."
+msgstr "Aplikasi AI dan agen pengodean yang berjalan sebagai Anda dapat bekerja dengan agen Angelo: mereka mengirim pesan kepadanya, mengikuti kemajuannya, dan melihat apa yang ia lihat, di obrolan mereka sendiri. Persetujuan tetap di tangan Anda; Anda dapat menghentikannya dan mengurungkan seperti di obrolan mana pun. Menonaktifkan ini menutup koneksi."
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/studio.py
@@ -2579,6 +2681,9 @@ msgstr "Tambahan yang gagal saat dimuat: {count}. Pemberitahuannya sendiri menye
 msgid "With Angelo linked to Godot, an asset you save while Godot is busy importing now updates once Godot is free, even after you switch the linked asset, instead of staying as it was before the save until Reload Saved Scene. If Godot is still busy after 30 seconds, it says to use Reload Saved Scene."
 msgstr "Saat Angelo tertaut ke Godot, aset yang Anda simpan ketika Godot sedang sibuk mengimpor kini diperbarui begitu Godot senggang, bahkan setelah Anda mengganti aset yang tertaut, alih-alih tetap seperti sebelum disimpan sampai Reload Saved Scene. Jika Godot masih sibuk setelah 30 detik, Godot meminta Anda memakai Reload Saved Scene."
 
+msgid "Your organization requires your review for every script."
+msgstr "Organisasi Anda mewajibkan tinjauan Anda untuk setiap skrip."
+
 #. src: angelo_agent/settings_import_card.py
 msgid "{count} more"
 msgstr "{count} lainnya"
@@ -2698,6 +2803,9 @@ msgstr "Angelo menulis gambar yang tidak lengkap (disk mungkin penuh); tidak ada
 msgid "Angelo {current} is no longer supported. Please update."
 msgstr "Angelo {current} tidak lagi didukung. Harap perbarui."
 
+msgid "Angelo {version} (PID {pid}) has access for external apps for your user. Quit it, or turn off access there; this Angelo takes over once it is free."
+msgstr "Angelo {version} (PID {pid}) memegang akses untuk aplikasi eksternal bagi pengguna Anda. Tutup, atau matikan akses di sana; Angelo ini mengambil alih begitu akses itu bebas."
+
 #. src: angelo_agent/update_ui.py
 msgid "Angelo {version} available"
 msgstr "Angelo {version} tersedia"
@@ -2802,6 +2910,9 @@ msgstr "Garis pindai beranimasi, kedipan, dan cahaya tembus pandang"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Animation render jobs saved as OpenEXR publish their frames again."
 msgstr "Tugas render animasi yang disimpan sebagai OpenEXR kembali menyimpan bingkainya ke keluaran."
+
+msgid "Another Angelo (PID {pid}) has access for external apps for your user. Quit it, or turn off access there; this Angelo takes over once it is free."
+msgstr "Angelo lain (PID {pid}) memegang akses untuk aplikasi eksternal bagi pengguna Anda. Tutup, atau matikan akses di sana; Angelo ini mengambil alih begitu akses itu bebas."
 
 #. src: angelo_agent/engine_link_ui.py
 msgid "Another Angelo already has the engine live link"
@@ -8938,8 +9049,8 @@ msgid "Improved prompt · original kept for Undo"
 msgstr "Prompt diperbaiki · aslinya disimpan untuk Urungkan"
 
 #. src: bpy.types.ANGELO_Preferences.always_allow_scripts
-msgid "In chats set to Auto, run the agent's Python scripts without asking. Scripts have full access to files, the network and other apps on this computer. Ask before changes still asks; Read only still refuses"
-msgstr "Di obrolan yang diatur ke Otomatis, jalankan skrip Python agen tanpa bertanya. Skrip memiliki akses penuh ke berkas, jaringan, dan aplikasi lain di komputer ini. “Tanya sebelum mengubah” tetap bertanya; “Hanya baca” tetap menolak"
+msgid "In chats set to Auto, connected apps' chats included, run Angelo's agent's Python scripts without asking (never code an app sends itself). Scripts have full access to files, the network and other apps on this computer. Ask before changes still asks; Read only still refuses"
+msgstr "Di chat dalam mode Auto, termasuk chat aplikasi yang terhubung, jalankan skrip Python agen Angelo tanpa bertanya (tidak pernah kode yang dikirim aplikasi itu sendiri). Skrip memiliki akses penuh ke file, jaringan, dan aplikasi lain di komputer ini. Tanya sebelum mengubah tetap bertanya; Hanya baca tetap menolak"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "In Cycles, rendering Open Shading Language on OptiX with an NVIDIA driver from the 590 to 609 series now stops at once and says to update the driver to 610 or newer or use a 580 series driver, instead of failing with a link error, often after minutes of compiling."
@@ -9975,6 +10086,12 @@ msgstr "Memuat model Anda…"
 msgid "Local bounded telemetry excludes prompt text, source code and credentials."
 msgstr "Telemetri lokal terbatas tidak mencakup teks prompt, kode sumber, dan kredensial."
 
+msgid "Local CLI client '{label}'. It reads Angelo's status only and runs no tool: no scene, file, memory, billing or provider changes."
+msgstr "Klien CLI lokal '{label}'. Hanya membaca status Angelo dan tidak menjalankan alat apa pun: tanpa perubahan pada adegan, file, memori, penagihan, atau penyedia."
+
+msgid "Local CLI client '{label}'. It reads Angelo's status only and runs no tool: no scene, file, memory, billing or provider changes. Rotated from conversation {previous} by `angelo session new`."
+msgstr "Klien CLI lokal '{label}'. Hanya membaca status Angelo dan tidak menjalankan alat apa pun: tanpa perubahan pada adegan, file, memori, penagihan, atau penyedia. Dipindahkan dari percakapan {previous} oleh `angelo session new`."
+
 #. src: angelo_agent/external_host.py
 msgid "Local CLI client '{label}'. Phase 1 is read-only: observations only; no scene, file, memory, billing or provider changes. Approvals and Stop only."
 msgstr "Klien CLI lokal '{label}'. Fase 1 hanya baca: hanya pengamatan; tanpa perubahan adegan, berkas, memori, penagihan, atau penyedia. Hanya persetujuan dan Hentikan."
@@ -10451,6 +10568,9 @@ msgstr "Usia maksimum dalam hari · 0 berarti tanpa batas"
 #. src: bpy.types.ANGELO_OT_checkpoint_settings.max_count
 msgid "Maximum snapshots · 0 is unlimited"
 msgstr "Jumlah snapshot maksimum · 0 berarti tanpa batas"
+
+msgid "MCP app '{label}' works with Angelo's agent here. Approve or decline what the agent asks, press Stop to end its work and Undo or restore as in any chat. The app can never approve."
+msgstr "Aplikasi MCP '{label}' bekerja dengan agen Angelo di sini. Setujui atau tolak yang diminta agen, tekan Hentikan untuk mengakhiri pekerjaannya, dan urungkan atau pulihkan seperti di obrolan mana pun. Aplikasi tidak pernah bisa menyetujui."
 
 #. src: angelo_agent/external_host.py
 msgid "MCP app '{label}'. Its edits, scripts and tasks run here: approve or decline them, press Stop to end its work and Undo or restore as in any chat. The app can never approve."
@@ -12075,40 +12195,56 @@ msgid "Load Factory Preferences"
 msgstr "Muat Preferensi Bawaan"
 
 #. src: source/blender/animrig/intern/versioning.cc
-msgid "\"%s\" is using Action \"%s\", which does not have a slot with identifier \"%s\" or \"%s\". Manually assign the right action slot to \"%s\".\n"
-msgstr "\"%s\" memakai aksi \"%s\", yang tidak memiliki slot dengan pengenal \"%s\" atau \"%s\". Tetapkan slot aksi yang benar ke \"%s\" secara manual.\n"
+msgid ""
+"\"%s\" is using Action \"%s\", which does not have a slot with identifier \"%s\" or \"%s\". Manually assign the right action slot to \"%s\".\n"
+msgstr ""
+"\"%s\" memakai aksi \"%s\", yang tidak memiliki slot dengan pengenal \"%s\" atau \"%s\". Tetapkan slot aksi yang benar ke \"%s\" secara manual.\n"
 
 #. src: source/blender/blenkernel/intern/curves_geometry.cc
 msgid "Invalid curve type identifiers"
 msgstr "Pengenal jenis kurva tidak valid"
 
 #. src: source/blender/blenloader/intern/versioning_290.cc
-msgid "Mesh %s has invalid faces, likely caused by the manifold extrude tool in version 2.90.0. Opening and saving the file in a version prior to 5.1 should resolve the issue\n"
-msgstr "Mesh %s memiliki bidang tidak valid, kemungkinan akibat alat ekstrusi manifold di versi 2.90.0. Membuka dan menyimpan berkas di versi sebelum 5.1 seharusnya mengatasinya\n"
+msgid ""
+"Mesh %s has invalid faces, likely caused by the manifold extrude tool in version 2.90.0. Opening and saving the file in a version prior to 5.1 should resolve the issue\n"
+msgstr ""
+"Mesh %s memiliki bidang tidak valid, kemungkinan akibat alat ekstrusi manifold di versi 2.90.0. Membuka dan menyimpan berkas di versi sebelum 5.1 seharusnya mengatasinya\n"
 
 #. src: source/blender/blenloader/intern/versioning_400.cc
-msgid "Proxy lost from object %s lib %s\n"
-msgstr "Proxy hilang dari objek %s, pustaka %s\n"
+msgid ""
+"Proxy lost from object %s lib %s\n"
+msgstr ""
+"Proxy hilang dari objek %s, pustaka %s\n"
 
 #. src: source/blender/blenloader/intern/versioning_400.cc
-msgid "Proxy lost from object %s lib <NONE>\n"
-msgstr "Proxy hilang dari objek %s, pustaka <NONE>\n"
+msgid ""
+"Proxy lost from object %s lib <NONE>\n"
+msgstr ""
+"Proxy hilang dari objek %s, pustaka <NONE>\n"
 
 #. src: source/blender/blenloader/intern/versioning_402.cc
-msgid "%s contains a volume shader that might need to be converted to object (see world volume panel)\n"
-msgstr "%s berisi shader volume yang mungkin perlu dikonversi ke objek (lihat panel volume dunia)\n"
+msgid ""
+"%s contains a volume shader that might need to be converted to object (see world volume panel)\n"
+msgstr ""
+"%s berisi shader volume yang mungkin perlu dikonversi ke objek (lihat panel volume dunia)\n"
 
 #. src: source/blender/blenloader/intern/versioning_402.cc
-msgid "Material %s could not be converted because of different Blend Mode and Shadow Mode (need manual adjustment)\n"
-msgstr "Material %s tidak dapat dikonversi karena Mode Campur dan Mode Bayangan berbeda (perlu penyesuaian manual)\n"
+msgid ""
+"Material %s could not be converted because of different Blend Mode and Shadow Mode (need manual adjustment)\n"
+msgstr ""
+"Material %s tidak dapat dikonversi karena Mode Campur dan Mode Bayangan berbeda (perlu penyesuaian manual)\n"
 
 #. src: source/blender/blenloader/intern/versioning_402.cc
-msgid "Material %s could not be converted because of non-trivial alpha blending (need manual adjustment)\n"
-msgstr "Material %s tidak dapat dikonversi karena pencampuran alfa yang tidak sederhana (perlu penyesuaian manual)\n"
+msgid ""
+"Material %s could not be converted because of non-trivial alpha blending (need manual adjustment)\n"
+msgstr ""
+"Material %s tidak dapat dikonversi karena pencampuran alfa yang tidak sederhana (perlu penyesuaian manual)\n"
 
 #. src: source/blender/draw/intern/draw_curves.cc
-msgid "Error: Curves object contains too many points. Reduce curve resolution or curve count to fix this issue.\n"
-msgstr "Galat: objek Kurva berisi terlalu banyak titik. Kurangi resolusi kurva atau jumlah kurva untuk mengatasinya.\n"
+msgid ""
+"Error: Curves object contains too many points. Reduce curve resolution or curve count to fix this issue.\n"
+msgstr ""
+"Galat: objek Kurva berisi terlalu banyak titik. Kurangi resolusi kurva atau jumlah kurva untuk mengatasinya.\n"
 
 #. src: source/blender/editors/animation/anim_asset_ops.cc
 msgid "Failed to load pose asset"
@@ -12131,13 +12267,17 @@ msgid "Failed to load saved brush asset"
 msgstr "Gagal memuat aset kuas yang disimpan"
 
 #. src: source/blender/makesrna/intern/rna_action.cc
-msgid "Attempted to set slot identifier to \"%s\", but the type prefix does not match the slot's 'target_id_type' \"%s\". Setting to \"%s\" instead.\n"
-msgstr "Mencoba mengatur pengenal slot ke \"%s\", tetapi awalan jenisnya tidak cocok dengan 'target_id_type' \"%s\" milik slot. Diatur ke \"%s\" sebagai gantinya.\n"
+msgid ""
+"Attempted to set slot identifier to \"%s\", but the type prefix does not match the slot's 'target_id_type' \"%s\". Setting to \"%s\" instead.\n"
+msgstr ""
+"Mencoba mengatur pengenal slot ke \"%s\", tetapi awalan jenisnya tidak cocok dengan 'target_id_type' \"%s\" milik slot. Diatur ke \"%s\" sebagai gantinya.\n"
 
 #. src: source/blender/windowmanager/intern/wm_platform_support.cc
 msgctxt "WindowManager"
-msgid "Graphics card:\n"
-msgstr "Kartu grafis:\n"
+msgid ""
+"Graphics card:\n"
+msgstr ""
+"Kartu grafis:\n"
 
 #. src: source/blender/windowmanager/intern/wm_files.cc
 msgid "Quit Angelo?"
@@ -12610,6 +12750,10 @@ msgstr "Aktif: disimpan di {location} untuk profil ini."
 #. src: angelo_agent/providers_page_model.py
 msgid "On: scripts in Auto chats run without asking."
 msgstr "Aktif: skrip di obrolan Otomatis berjalan tanpa bertanya."
+
+#. src: angelo_agent/providers_page_model.py
+msgid "On for Angelo's own chats. Connected apps' chats still ask until you press Always allow on one of their script cards."
+msgstr "Aktif untuk chat Angelo sendiri. Chat aplikasi yang terhubung tetap bertanya sampai Anda menekan Selalu izinkan di salah satu kartu skripnya."
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/web_export_ui.py
@@ -17403,6 +17547,9 @@ msgstr "Memulai {engine}"
 msgid "Starting…"
 msgstr "Memulai…"
 
+msgid "Starts another Angelo"
+msgstr "Memulai Angelo lain"
+
 #. src: angelo_agent/session_rail.py
 msgctxt "plural:one"
 msgid "Starts once {count} running worker is done"
@@ -20038,6 +20185,9 @@ msgstr "Skrip ini menggunakan preferensi Angelo. Perubahan di sana berlaku untuk
 msgid "This script would replace the file you have open, so it always asks, even when scripts are allowed."
 msgstr "Skrip ini akan menggantikan berkas yang terbuka, jadi skrip ini selalu bertanya, bahkan saat skrip diizinkan."
 
+msgid "This session's live page stopped after an error, so its link no longer opens. The app's next message starts a new one."
+msgstr "Halaman langsung sesi ini berhenti setelah terjadi kesalahan, jadi tautannya tidak lagi terbuka. Pesan berikutnya dari aplikasi memulai halaman baru."
+
 #. src: angelo_agent/team_connections.py
 msgid "This sign-in doesn't allow model use; sign out and sign in again."
 msgstr "Sesi masuk ini tidak mengizinkan penggunaan model; keluar lalu masuk lagi."
@@ -20714,6 +20864,12 @@ msgstr "Perbarui tampilan laporan di UI Angelo (penggunaan internal)"
 #. src: angelo_agent/chat_titles.py
 msgid "Update the engine link"
 msgstr "Perbarui tautan engine"
+
+msgid "Updated Angelo in {app}: it started the MCP server in {previous}. Restart {app} to load it."
+msgstr "Angelo diperbarui di {app}: entri itu memulai server MCP di {previous}. Mulai ulang {app} untuk memuatnya."
+
+msgid "Updated Angelo in {app}: it started the MCP server in {previous}. Start a new {app} session to use it."
+msgstr "Angelo diperbarui di {app}: entri itu memulai server MCP di {previous}. Mulai sesi {app} baru untuk menggunakannya."
 
 #. src: angelo_agent/chat_titles.py
 msgid "Updated the engine link"
@@ -21486,9 +21642,15 @@ msgstr "Menunggu tempat kosong"
 msgid "Waiting for a render"
 msgstr "Menunggu render"
 
+msgid "Waiting for Angelo {version}"
+msgstr "Menunggu Angelo {version}"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Waiting for animation playback to stop"
 msgstr "Menunggu pemutaran animasi berhenti"
+
+msgid "Waiting for another Angelo"
+msgstr "Menunggu Angelo lain"
 
 #. src: angelo_agent/flow_setup.py
 msgid "Waiting for inputs"
@@ -21625,6 +21787,110 @@ msgstr "Ekspor web membawa pemetaan nada, eksposur, dan Dunia adegan Anda: selis
 #. src: angelo_agent/web_preview.py
 msgid "Web Preview"
 msgstr "Pratinjau Web"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Stop sharing"
+msgstr "Berhenti berbagi"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Open live page"
+msgstr "Buka halaman langsung"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Share again"
+msgstr "Bagikan lagi"
+
+#. src: angelo_agent/session_page.py
+msgid "Live session"
+msgstr "Sesi langsung"
+
+#. src: angelo_agent/session_page.py
+msgid "Working with {app}"
+msgstr "Bekerja dengan {app}"
+
+#. src: angelo_agent/session_page.py
+msgid "Read-only view of this session. Approvals, Stop and every change stay in Angelo."
+msgstr "Tampilan hanya baca dari sesi ini. Persetujuan, Hentikan, dan setiap perubahan tetap di Angelo."
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting for your approval in Angelo"
+msgstr "Menunggu persetujuan Anda di Angelo"
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting while you use a tool in Angelo"
+msgstr "Menunggu selama Anda memakai alat di Angelo"
+
+#. src: angelo_agent/session_page.py
+msgid "This live page has ended: the session ended or sharing was stopped in Angelo."
+msgstr "Halaman langsung ini sudah berakhir: sesi berakhir atau berbagi dihentikan di Angelo."
+
+#. src: angelo_agent/session_page.py
+msgid "Angelo isn't answering. The page reconnects when it does."
+msgstr "Angelo tidak merespons. Halaman akan tersambung lagi saat Angelo merespons."
+
+#. src: angelo_agent/session_page.py
+msgid "Result"
+msgstr "Hasil"
+
+#. src: angelo_agent/session_page.py
+msgid "Latest views"
+msgstr "Tampilan terbaru"
+
+#. src: angelo_agent/session_page.py
+msgid "Views the agent takes appear here."
+msgstr "Tampilan yang diambil agen muncul di sini."
+
+#. src: angelo_agent/session_page.py
+msgid "Loading the scene…"
+msgstr "Memuat adegan…"
+
+#. src: angelo_agent/session_page.py
+msgid "The scene appears here once Angelo exports it."
+msgstr "Adegan muncul di sini setelah Angelo mengekspornya."
+
+#. src: angelo_agent/session_page.py
+msgid "This browser can't draw the 3D scene. Everything else here still updates."
+msgstr "Browser ini tidak dapat menggambar adegan 3D. Semua yang lain di sini tetap diperbarui."
+
+#. src: angelo_agent/session_page.py
+msgid "Round {round}"
+msgstr "Putaran {round}"
+
+#. src: angelo_agent/session_page.py
+msgid "Score {score}%"
+msgstr "Skor {score}%"
+
+#. src: angelo_agent/session_page.py
+msgid "Best {score}%"
+msgstr "Terbaik {score}%"
+
+#. src: angelo_agent/session_page.py
+msgid "Passes at {score}%"
+msgstr "Lulus pada {score}%"
+
+#. src: angelo_agent/session_page.py
+msgid "Session {time}"
+msgstr "Sesi {time}"
+
+#. src: angelo_agent/session_page.py
+msgid "This step {time}"
+msgstr "Langkah ini {time}"
+
+#. src: angelo_agent/session_page.py
+msgid "Usage"
+msgstr "Penggunaan"
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting for approval"
+msgstr "Menunggu persetujuan"
+
+#. src: angelo_agent/session_page.py
+msgid "{app} can show this session on a live page in your browser. Only this computer can open it, and it shows the scene, the progress and the result, never files or other chats."
+msgstr "{app} dapat menampilkan sesi ini di halaman langsung di browser Anda. Hanya komputer ini yang dapat membukanya, dan halaman itu menampilkan adegan, kemajuan, dan hasil, tidak pernah file atau obrolan lain."
+
+#. src: angelo_agent/session_page.py
+msgid "You stopped sharing this session's live page. The link no longer opens."
+msgstr "Anda berhenti membagikan halaman langsung sesi ini. Tautannya tidak bisa dibuka lagi."
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/web_export_ui.py
@@ -26265,6 +26531,12 @@ msgstr "Membukanya di Fab untuk dibeli. Angelo menambahkannya ke adegan Anda set
 msgid "Price on Fab: {price}"
 msgstr "Harga di Fab: {price}"
 
+msgid "Works through Angelo's agent: sends it messages, follows its progress and sees what it sees."
+msgstr "Bekerja melalui agen Angelo: mengirim pesan kepadanya, mengikuti kemajuannya, dan melihat apa yang ia lihat."
+
+msgid "{app}'s Angelo entry starts the MCP server in {where}. Connect {app} points it at this Angelo."
+msgstr "Entri Angelo di {app} memulai server MCP di {where}. \"Hubungkan {app}\" mengarahkannya ke Angelo ini."
+
 #. src: angelo_agent/job_chat.py
 #. src: angelo_agent/studio_media_tiles.py
 #. src: angelo_agent/studio_video_ui.py
@@ -26858,6 +27130,7 @@ msgstr "Tidak dapat menjangkau tim Angelo Anda untuk mengonfirmasi kursi Anda. S
 
 #~ msgid "Your admin hasn't set the shared key for this model server yet."
 #~ msgstr "Admin Anda belum menetapkan kunci bersama untuk server model ini."
+
 #~ msgid "Finish the tool you are using in Blender, then start voice"
 #~ msgstr "Selesaikan alat yang sedang Anda gunakan di Blender, lalu mulai suara"
 
@@ -27977,3 +28250,21 @@ msgstr "{kind}, hingga {size}. Disimpan di folder sementara untuk file yang belu
 #. src: angelo_agent/download_approvals.py
 msgid "{kind}, up to {size}. Saved in assets/downloads in this project's folder."
 msgstr "{kind}, hingga {size}. Disimpan di assets/downloads dalam folder proyek ini."
+
+msgid "Angelo is busy working for {app} without its window and hasn't come up yet. End that work now (it stops and saves first), or quit this launch and leave it running?"
+msgstr "Angelo sedang bekerja untuk {app} tanpa jendelanya dan belum muncul. Akhiri pekerjaan itu sekarang (berhenti dan menyimpan dulu), atau keluar dari pembukaan ini dan biarkan tetap berjalan?"
+
+msgid "Angelo is working for {app} without its window, and this launch can't reach it. Quit it from Activity Monitor, or wait for it to finish, then open Angelo again."
+msgstr "Angelo sedang bekerja untuk {app} tanpa jendelanya, dan pembukaan ini tidak dapat menjangkaunya. Keluarkan dari Monitor Aktivitas, atau tunggu hingga selesai, lalu buka Angelo lagi."
+
+msgid "End it"
+msgstr "Akhiri"
+
+msgid "Quit"
+msgstr "Keluar"
+
+msgid "an app"
+msgstr "sebuah aplikasi"
+
+msgid "Declined {tool}, answered through {app}."
+msgstr "{tool} ditolak, dijawab melalui {app}."

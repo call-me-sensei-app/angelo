@@ -19,6 +19,7 @@ import errno
 import json
 import os
 import unittest
+from host_test_policy import environment_skip
 from pathlib import Path
 from unittest.mock import patch
 
@@ -42,7 +43,7 @@ def sharing_violation():
     return PermissionError(errno.EACCES, "The process cannot access the file because another process is using it")
 
 
-@unittest.skipUnless(base.anchored_files_supported(), "descriptor-relative storage required")
+@unittest.skipUnless(base.anchored_files_supported(), environment_skip("descriptor-relative storage required"))
 class UnfinishedRecordsTests(unittest.TestCase):
     setUp, carry, seed = Base.setUp, Base.carry, Base.seed
 

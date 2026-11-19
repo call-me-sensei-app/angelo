@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 import angelo_agent  # noqa: E402,F401
-from angelo_agent import (activity_text, checkpoint_images, external_apps, session_rail, session_validation,  # noqa: E402
+from angelo_agent import (activity_text, checkpoint_images, external_transcript, session_rail, session_validation,  # noqa: E402
                           sessions, ui_text)
 from angelo_agent.controller import Controller  # noqa: E402
 from angelo_agent.routing import handoff  # noqa: E402
@@ -52,7 +52,7 @@ class ModelNoticeTests(unittest.TestCase):
         text, _ = handoff([{"role": "user", "text": "hi"}, row])
         self.assertIn(json.dumps(MODEL), text)
         self.assertNotIn("didn't fully finish", text)
-        self.assertEqual(external_apps._row(row)["text"], MODEL[:external_apps.TASK_TEXT])
+        self.assertEqual(external_transcript.app_row(1, row)["text"], MODEL[:external_transcript.TEXT_LIMIT])
         turn = [{"role": "user", "text": "brief"}, row]
         end, problem = session_rail.turn_end(turn, outcome=("failed", False, False, 2))
         self.assertEqual((end, problem), ("failed", session_rail.TURN_FAILED % MODEL[:session_rail.PROBLEM_LIMIT]))

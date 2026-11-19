@@ -21,7 +21,7 @@ forwarded to the worker (``worker_process`` over ``worker_channel``), which runs
   contract, 2026-10-25).
 * **Scripts** (``angelo_execute_python``) are approved here as any chat's are, and the approved call runs in the
   worker with its invocation digest, which the worker checks; one that would replace the open file is refused before
-  its card (``worker_script``). Never headless: ``external_clients.HEADLESS_TOOLS`` stays without it.
+  its card (``worker_script``). Never windowless: ``windowless_tools.TOOLS`` stays without it.
 * **Not in a worker:** sculpting, jobs, Studio, flows, team tools, file summaries, previews and their acceptance are
   refused before anything runs (``UNSUPPORTED``); task memory, the chat's metrics and its scripts' code
   (``angelo_script``) are this chat's own state and run here.
@@ -107,7 +107,6 @@ class RemoteExecutor:
         self.window = RemoteWindow(self)
         self.observation_store = None
         self.studio_context = None
-        self.script_file = None
         self.document_key = ("angelo-worker", worker_id, None)
         self._sent_identifiers = None
         self.unresponsive = False   # A call timed out while the worker still ran (never "ended": break-it M2).
@@ -433,7 +432,7 @@ class EndedWorker:
 
     def __init__(self, session_id, part):
         self.window = RemoteWindow(self)
-        self.observation_store = self.studio_context = self.script_file = None
+        self.observation_store = self.studio_context = None
         self.document_key = ("angelo-worker", session_id, "ended")
         self.part = part
 

@@ -21,6 +21,7 @@ import sys
 import tempfile
 import time
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from unittest import mock
 
@@ -331,7 +332,7 @@ class RotationFailureTests(AccountCase):
         self.assertEqual(self.do("p3", "refresh")["status"], "signed_out")
 
 
-@unittest.skipIf(RefreshRecord is None, "1.0.9 code has no sign-in record")
+@unittest.skipIf(RefreshRecord is None, required_skip("1.0.9 code has no sign-in record"))
 class RecordTests(unittest.TestCase):
     def setUp(self):
         import tempfile
@@ -410,7 +411,7 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(len(calls), 3)
 
 
-@unittest.skipIf(RefreshRecord is None, "1.0.9 code has no sign-in record")
+@unittest.skipIf(RefreshRecord is None, required_skip("1.0.9 code has no sign-in record"))
 class SingleProcessTests(AccountCase):
     def test_a_record_that_cant_be_read_presents_nothing_and_says_so(self):
         account = self.account()

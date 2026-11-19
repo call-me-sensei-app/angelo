@@ -18,6 +18,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from unittest.mock import patch
 
@@ -147,7 +148,7 @@ class GitSignalTests(unittest.TestCase):
         self.project.write_bytes(self.content + b"edited")
         self.assertEqual(self.signal(cache=cache), {})
 
-    @unittest.skipUnless(shutil.which("git"), "git executable not installed")
+    @unittest.skipUnless(shutil.which("git"), required_skip("git executable not installed"))
     def test_real_git_repository_round_trip(self):
         git = shutil.which("git")
         environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}

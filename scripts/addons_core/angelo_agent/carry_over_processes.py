@@ -1,15 +1,15 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Is another Angelo open? (``version_carry_over``): while one is, a first launch uses the earlier folder in place
-instead of moving it. The process list comes from ``ps`` (this user's processes) or, on Windows, a Toolhelp
-snapshot; a list that cannot be read counts as another Angelo, so the move never runs under a live session.
+instead of moving it. The process list is this user's processes, read from the kernel (``process_identity``: it
+runs at register, and a launch never starts a process to read one) or, on Windows, a Toolhelp snapshot; a list that
+cannot be read counts as another Angelo, so the move never runs under a live session.
 
 Standard library only (``bpy`` only for this executable's path).
 """
 
 import os
 import re
-import subprocess
 import sys
 
 
@@ -19,17 +19,9 @@ def process_table(platform=None):
     platform = sys.platform if platform is None else platform
     if platform == "win32":
         rows = windows_table()
-    else:
-        # This user's processes: another account's Angelo can't touch this account's folders.
-        listing = subprocess.run(["/bin/ps", "-U", str(os.getuid()), "-o", "pid=,ppid=,comm="], capture_output=True,
-                                 text=True, timeout=20)
-        if listing.returncode != 0:
-            raise OSError("ps failed: %s" % listing.stderr.strip()[:200])
-        rows = []
-        for line in listing.stdout.splitlines():
-            parts = line.split(None, 2)
-            if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
-                rows.append((int(parts[0]), int(parts[1]), re.split(r"[\\/]", parts[2].strip())[-1]))
+    else:   # This user's processes: another account's Angelo can't touch this account's folders.
+        from . import process_identity
+        rows = process_identity.user_processes(platform)
     if not rows:
         raise OSError("The process list read as empty")
     return rows
@@ -86,5 +78,5 @@ def others_running():
     try:
         import bpy
         return others_of(process_table(), bpy.app.binary_path, os.getpid())
-    except (ImportError, AttributeError, OSError, subprocess.SubprocessError):
+    except (ImportError, AttributeError, OSError):
         return True

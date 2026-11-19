@@ -14,6 +14,7 @@ import suite_isolation  # noqa: F401  First: this test never sees a real provide
 import math
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest import mock
@@ -193,7 +194,7 @@ class KitTests(unittest.TestCase):
         self.assertTrue(cottage.RIDGE <= max(v[2] for v in roof) <= cottage.RIDGE + 0.1)
         self.assertGreater(plan["slope"], 1.0)                                             # Steeper than 45 degrees.
 
-    @unittest.skipIf(numpy is None, "NumPy is not installed")
+    @unittest.skipIf(numpy is None, required_skip("NumPy is not installed"))
     def test_the_stand_ins_count_as_the_checks_count(self):
         plan = oneshot_kit.tree_plan(tree.HEIGHT, tree.SEED)
         leaves = mesh(*oneshot_kit.leaf_cards(plan["tips"], tree.LEAVES, plan["scale"], tree.SEED))
@@ -209,7 +210,7 @@ class KitTests(unittest.TestCase):
         self.assertEqual((passed, details["groups"], details["sized"], details["pieces"]), (True, 5, 5, 35))
 
 
-@unittest.skipIf(numpy is None, "NumPy is not installed")
+@unittest.skipIf(numpy is None, required_skip("NumPy is not installed"))
 class PiecesTests(unittest.TestCase):
     def test_pieces_are_what_edges_join(self):
         self.assertEqual(form.island_count(mesh(*boxes((0, 0, 0), (1, 0, 0), (2, 0, 0)))), 3)
@@ -312,7 +313,7 @@ class RingTests(unittest.TestCase):
                    height + rise * t) for t in (0.0, 0.25, 0.5, 0.75, 1.0)]
         return mesh(points, [(index, index + 1) for index in range(4)])
 
-    @unittest.skipIf(numpy is None, "NumPy is not installed")
+    @unittest.skipIf(numpy is None, required_skip("NumPy is not installed"))
     def test_limbs_crossing_at_overlapping_angles_are_counted_as_the_pieces_they_are(self):
         # A recorded tree: five limbs from the fork, two crossing the cylinder at nearly one bearing.
         bearings = [0, 72, 180, 186, 290]
@@ -337,7 +338,7 @@ class RingTests(unittest.TestCase):
             self.assertEqual((details["pieces_from_core"], details["most"]), (1, 4))
 
 
-@unittest.skipIf(numpy is None, "NumPy is not installed")
+@unittest.skipIf(numpy is None, required_skip("NumPy is not installed"))
 class GroupsTests(unittest.TestCase):
     RULE = {"target": {"prefix": "Cottage Window"}, "gap": 0.25, "size": [0.4, 2.6], "count": [4, 60]}
 

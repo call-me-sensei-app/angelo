@@ -38,7 +38,7 @@ sys.path.insert(0, str(HERE.parents[2] / "scripts/addons_core"))
 from blender_stand_in import StandIn  # noqa: E402
 
 MODULES = ("ui", "external_ui", "external_clients", "external_mcp", "external_setup", "providers_page_external",
-           "managed_policy", "script_files")
+           "managed_policy")
 
 
 def client_of(entry):
@@ -103,8 +103,7 @@ class CopyCase(unittest.TestCase):
     def rows(self, installed=False, has_entry=False):
         page, setup = self.m["providers_page_external"], self.m["external_setup"]
         with patch.object(setup, "installed", lambda app, *a, **k: installed or app == "other"), \
-                patch.object(setup, "has_entry", lambda app, *a, **k: has_entry), \
-                patch.object(self.m["script_files"], "entries", lambda client: []):
+                patch.object(setup, "has_entry", lambda app, *a, **k: has_entry):
             return page._app_rows(self.state, False)
 
     def served(self, client):
@@ -149,24 +148,21 @@ class ClientTests(CopyCase):
         self.run_operator("ANGELO_OT_external_app_disconnect", app="other", client=second)
         self.assertEqual((self.served(first), self.served(second)), (True, False))
 
-    def test_copying_again_keeps_the_key_and_levels(self):
+    def test_copying_again_keeps_the_key(self):
         self.copy("cursor")
-        self.registry().set_levels("cursor", ("read",))
         key = self.registry().key("cursor")
         self.copy("cursor")
-        self.assertEqual((self.registry().key("cursor"), self.registry().load()["cursor"]["levels"]), (key, ("read",)))
+        self.assertEqual(self.registry().key("cursor"), key)
 
     def test_a_record_whose_key_went_missing_is_not_connected_and_copy_setup_repairs_it(self):
         """S1: the card read Connected and the launcher answered not connected."""
         self.copy("cursor")
-        self.registry().set_levels("cursor", ("read", "edit"))
         (self.state / "mcp" / "keys" / "cursor").unlink()
         self.assertNotIn("cursor", self.registry().snapshot())
         rows = self.rows()
         self.assertNotIn("chip", next(row for row in rows if row["name"] == "Cursor"))
         self.copy("cursor")
         self.assertTrue(self.served("cursor"))
-        self.assertEqual(self.registry().load()["cursor"]["levels"], ("read", "edit"), "the levels it had")
 
     def test_a_generic_app_whose_key_went_missing_keeps_its_row_and_is_repaired_or_removed(self):
         """r2 S5: its row disappeared, the stale record stayed, and its pasted snippet answered not connected."""

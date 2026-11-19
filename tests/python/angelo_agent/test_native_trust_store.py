@@ -34,6 +34,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from host_test_policy import environment_skip, required_skip
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
@@ -158,7 +159,7 @@ class DistrustListTests(unittest.TestCase):
 
     def test_spki_digest_matches_openssl(self):
         if not shutil.which("openssl"):
-            self.skipTest("OpenSSL is required to cross-check the DER reader")
+            self.skipTest(required_skip("OpenSSL is required to cross-check the DER reader"))
         import hashlib
         for path in sorted(FIXTURES.glob("*.pem")):
             reference = subprocess.run([shutil.which("openssl"), "x509", "-in", str(path), "-noout", "-pubkey"],
@@ -315,7 +316,7 @@ class _OpenSSLTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if not shutil.which("openssl"):
-            raise unittest.SkipTest("OpenSSL is required for the throwaway keys")
+            raise unittest.SkipTest(required_skip("OpenSSL is required for the throwaway keys"))
         cls.directory = Path(tempfile.mkdtemp(prefix="angelo-trust-tls-"))
         cls.addClassCleanup(shutil.rmtree, cls.directory)
 
@@ -377,7 +378,8 @@ class ForgedChainTests(_OpenSSLTests):
     def test_the_shipped_stores_anchor_no_forged_chain_and_hold_no_distrusted_key(self):
         bundles = shipped_bundles(self.directory)
         if not bundles:
-            self.skipTest("set ANGELO_PYTHON_WHEELS_DIR (trust_store.py fetch-wheels) or ANGELO_TRUST_INSTALL")
+            self.skipTest(
+                environment_skip("set ANGELO_PYTHON_WHEELS_DIR (trust_store.py fetch-wheels) or ANGELO_TRUST_INSTALL"))
         for bundle in bundles:
             self.assertEqual(trust_store.key_problems(bundle.parent), [], bundle)
             for path_name in ("emsign", "aaa"):

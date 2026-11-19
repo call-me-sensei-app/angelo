@@ -419,7 +419,8 @@ def start_check(endpoint_id):
 
 def _tool_shapes(endpoint):
     """Each Responses model's tool shape, from the agent runtime's bundled catalog (off the main thread); none known
-    (no runtime, no catalog) means function tools, as the chat itself would then send."""
+    (no runtime, no catalog) means function tools, as the chat itself would then send. A runtime C refuses to start
+    raises: the check fails with the refusal, never a guess at shapes."""
     import shutil
     from . import agent_runtime, endpoint_catalog, endpoint_check_tools, private_roots
     try:

@@ -1,0 +1,243 @@
+# SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""The working copy a hidden-window session opens (doc/angelo/mcp_headless_window.rst): which .blend an app may name,
+the copy beside it that is the session's output, and its removal while it is still unedited.
+
+The source file is only ever read. The copy is named ``<stem>.angelo-<YYYYMMDD-HHMMSS>.blend`` next to it (so
+relative image and library paths stay valid) and claimed with ``O_CREAT|O_EXCL`` so an existing file is never
+replaced; ``-2``, ``-3``... follow on a collision. Carried from 2.0.0's headless child (its file and copy helpers),
+which 2.0.1 removed with its direct tools. Pure standard library and no ``bpy``.
+"""
+
+import os
+import secrets
+import stat
+import time
+from pathlib import Path
+
+from . import change_clock, owned_paths, shared_replace
+
+SUFFIX = ".blend"
+OUTPUT_TAG = ".angelo-"
+MAX_COLLISIONS = 999
+# A .blend starts with "BLENDER"; Blender 3.0+ may compress it with Zstandard, older releases with gzip.
+MAGIC = (b"BLENDER", b"\x28\xb5\x2f\xfd", b"\x1f\x8b")
+MAX_PATH_CHARS = 4096
+WINDOWS = os.name == "nt"   # Platform policy marker; delete-sharing reads permit rename.
+
+
+class FileProblem(ValueError):
+    """A path a headless session cannot use; ``code`` is the MCP-facing code (``invalid``, ``output_unwritable``)."""
+
+    def __init__(self, message, code="invalid"):
+        super().__init__(message)
+        self.code = code
+
+
+def check_source(value):
+    """The real path of a readable .blend the app named absolutely, or ``FileProblem``."""
+    if type(value) is not str or not value or len(value) > MAX_PATH_CHARS or "\x00" in value:
+        raise FileProblem("Give the .blend file's absolute path")
+    path = Path(os.path.expanduser(value))
+    if not path.is_absolute():
+        raise FileProblem("Give the .blend file's absolute path (this one is relative)")
+    if path.suffix.lower() != SUFFIX:
+        raise FileProblem("Only .blend files can be opened")
+    try:
+        real = path.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise FileProblem("No such file: " + str(path)) from None
+    if not real.is_file():
+        raise FileProblem("Not a file: " + str(path))
+    try:
+        with shared_replace.open_file(real) as handle:   # An earlier output place() may replace.
+            head = handle.read(8)
+    except OSError as error:
+        raise FileProblem("The file cannot be read (%s)" % error.strerror) from None
+    if not head.startswith(MAGIC):
+        raise FileProblem("This is not a .blend file Blender can read")
+    return real
+
+
+def identity(path):
+    """What a change on disk changes: device, inode, size and modification time; None when it is gone.
+
+    Taken once the file system clock is past the file's stamp (``change_clock``), so a later same-size write changes
+    it even in the tick of the file's last write (Windows); a stamp ahead of the clock gives an identity no other
+    equals, which reads as a change (fail closed)."""
+    try:
+        info = os.stat(path)
+    except OSError:
+        return None
+    return settled_identity(info)
+
+
+def settled_identity(info):
+    """``identity`` of a stat taken already (``place``: of the bytes it wrote)."""
+    try:
+        change_clock.settle(info, change=False)
+    except change_clock.Unsettled:
+        return change_clock.unique()
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+
+
+def folder_writable(source):
+    folder = Path(source).parent
+    return os.access(folder, os.W_OK | os.X_OK)
+
+
+def output_candidates(source, now=None):
+    """The names an output may take, in order."""
+    source = Path(source)
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(time.time() if now is None else now))
+    base = source.stem + OUTPUT_TAG + stamp
+    yield source.with_name(base + SUFFIX)
+    for number in range(2, MAX_COLLISIONS + 1):
+        yield source.with_name("%s-%d%s" % (base, number, SUFFIX))
+
+
+def claim_output(source, now=None):
+    """Create a new, empty output file next to ``source`` and return its path; never opens an existing one.
+
+    Blender then saves over this placeholder (its own temporary file and rename), so between the claim and the save
+    only a file this session created can be replaced.
+    """
+    if not folder_writable(source):
+        raise FileProblem("Angelo cannot write a new file in this folder, so edits cannot be saved",
+                          code="output_unwritable")
+    for candidate in output_candidates(source, now):
+        if os.path.lexists(candidate):
+            continue
+        try:   # Made exclusively by C beside the file the person named, and recorded as Angelo's.
+            owned_paths.create_beside(source, candidate.name)
+        except FileExistsError:
+            continue
+        except OSError as error:
+            if os.path.lexists(candidate):
+                continue   # Taken meanwhile: the next name.
+            raise FileProblem("Angelo cannot create a new file here (%s)" % error.strerror,
+                              code="output_unwritable") from None
+        # Named for the session's saves as it is designated their target (the launcher's claim, the child's reload
+        # and save, never inside a script): a plain save of the open copy (an approved script's save_mainfile, an
+        # add-on) renames a new file onto it, which C's record of what Angelo made no longer names, and the session's
+        # next save must still reach it (the review of the Python-only fallback, MUST-1).
+        owned_paths.vouch(candidate)
+        return candidate
+    raise FileProblem("Too many saved copies of this file already exist here", code="output_unwritable")
+
+
+def place(staged, target):
+    """Put the finished file ``staged`` (in a folder only this user can reach) at ``target`` in the shared folder.
+
+    Nothing in the shared folder is ever opened by a name that could already exist: the bytes go into a new
+    hidden file this call creates with ``O_CREAT|O_EXCL|O_NOFOLLOW`` and writes through its descriptor, and that
+    file is then renamed onto ``target``. A rename replaces a directory entry and never writes through a link, so
+    whatever someone puts at either name, no other file is written.
+
+    Returns the ``identity`` of the bytes it wrote, never a stat of ``target`` after the rename, which could be of a
+    version another program wrote there since and would let a later save replace it unnoticed. A read handle held
+    across the rename identifies the same file afterwards, including on Windows (it shares delete) and volumes that
+    number a file by its directory entry. If permission denies that read, only an unchanged file number verifies
+    the fallback: a matching size and time never prove a different entry is the file written.
+    """
+    target = owned_paths.require_writable(Path(target))   # C first: no temporary is made beside a target it refuses.
+    # A new file beside the target, made exclusively by C and recorded as Angelo's (the person's document folder is
+    # not otherwise writable), then opened without following a link.
+    temporary = Path(owned_paths.create_beside(target, ".%s.%s.tmp" % (target.name, secrets.token_hex(6))))
+    descriptor = os.open(temporary, os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0))
+    mine = os.fstat(descriptor)   # The file this call created: only it is ever removed again.
+    held = None
+    try:
+        with os.fdopen(descriptor, "wb") as handle, open(staged, "rb") as source:
+            while True:
+                chunk = source.read(1 << 20)
+                if not chunk:
+                    break
+                handle.write(chunk)
+            handle.flush()
+            os.fsync(handle.fileno())
+            mine = os.fstat(handle.fileno())   # The file written, on its own handle: the name is checked against it.
+        try:   # Sharing delete on Windows lets the verified descriptor survive the rename there too.
+            held = shared_replace.open_shared(temporary, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
+                                              | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0))
+        except PermissionError:   # A umask can deny the owner read access; never guess a renumbered identity.
+            held = None
+        named = os.stat(temporary, follow_symlinks=False)
+        after = os.fstat(held) if held is not None else named
+        if any((info.st_dev, info.st_ino) != (mine.st_dev, mine.st_ino) or not stat.S_ISREG(info.st_mode)
+               for info in (after, named)):
+            raise FileProblem("The file being saved was replaced before it was put in place", "output_unwritable")
+        shared_replace.replace(temporary, target)   # A claimed placeholder is replaced, never followed.
+        placed = os.fstat(held) if held is not None else _renamed(target, after)
+        written = settled_identity(placed) if placed is not None else change_clock.unique()
+    except BaseException:
+        try:
+            now = os.stat(temporary, follow_symlinks=False)
+            if (now.st_dev, now.st_ino) == (mine.st_dev, mine.st_ino):   # Never another program's file at the name.
+                os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+    finally:
+        if held is not None:
+            os.close(held)
+    return written
+
+
+def _renamed(target, before):
+    """Without a held descriptor, only the same regular-file number remains verifiable after a rename."""
+    try:
+        now = os.stat(target, follow_symlinks=False)
+    except OSError:
+        return None
+    if stat.S_ISREG(now.st_mode) and (now.st_dev, now.st_ino) == (before.st_dev, before.st_ino):
+        return before
+    return None
+
+
+def claim(source):
+    """``(a new working copy of source next to it, the identity of the bytes written there)`` (``place``), or
+    ``(None, None)`` where its folder is read-only. The launcher makes the one a child starts on, so a start that fails
+    in any way (no ready, a crash, a kill) removes it again."""
+    source = Path(source)
+    if not folder_writable(source):
+        return None, None
+    target = claim_output(source)
+    try:
+        written = place(source, target)
+    except BaseException:
+        _unlink(target)
+        raise
+    owned_paths.own(target)   # The launcher's copy: the only one ``discard`` removes.
+    return target, written
+
+
+def discard(path, source, expected):
+    """Remove an unedited working copy ``path`` while it is still the file the session had (``expected``), with the
+    ``.blend1`` backup a person's add-on's save may have left beside it. Never the source, never through a link."""
+    if path is None or expected is None or Path(path) == Path(source):
+        return False
+    if identity(path) != tuple(expected):
+        return False
+    if not owned_paths.owned(path):   # Only the copy the launcher made, still that file (owned_paths): never one a
+        return False                  # child saved over, nor whatever an agent script put in the session's state.
+    owned_paths.disown(path)
+    try:
+        if os.path.islink(path):
+            return False
+        os.unlink(path)
+    except OSError:
+        return False
+    backup = str(path) + "1"
+    if os.path.isfile(backup) and not os.path.islink(backup):
+        _unlink(backup)
+    return True
+
+
+def _unlink(path):
+    owned_paths.require_writable(path)
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+

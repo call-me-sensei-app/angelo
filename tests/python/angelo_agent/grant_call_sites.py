@@ -35,7 +35,6 @@ GUARDS = frozenset({"guard", "grant"})   # grant_guard.guard(Cls, ...) and @gran
 
 # "module:function" -> why Angelo's own decision, not a press, may open a grant scope there.
 AUTOMATIC = {
-    "headless_host:HeadlessHost.run.apply_mutation": "a headless run applies the mutation its approved call made",
     "script_admission:prepare": "admits the exact script text the chat's approval route approved",
     "trusted_scripts:TrustedScripts._approve_automatically": "a script a trusted-scripts rule covers, as the person "
                                                              "set it",

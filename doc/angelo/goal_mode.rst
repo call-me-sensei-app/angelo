@@ -133,9 +133,10 @@ would miss most of them and fit a few. In Auto bounded the goal is active at onc
 once there), with a notice row and its chip. In Ask it is *proposed*: the chip says so and the person's Start makes it
 active. Read only holds none.
 
-``SET`` creating a goal is refused in a request Angelo made (a goal round, the worker-done event), in a voice turn,
-in a worker's chat (``worker_routing.worker_snapshots``, as ``angelo_workers_start`` checks) and in a connected app's
-conversation, whose tool list leaves ``angelo_goal`` out (``external_clients.NEVER_FOR_APPS``).
+``SET`` creating a goal is refused in a request Angelo made (a goal round, the worker-done event), in a voice turn and
+in a worker's chat (``worker_routing.worker_snapshots``, as ``angelo_workers_start`` checks). In a connected app's
+External conversation (2.0.1) the app's message is the request's own (``request_rows.requesters_send``): a goal held
+from its words follows this rule, and Start, Resume and the card stay the person's (external_mcp.rst, "Goals").
 
 The tool, ``angelo_goal`` (validated by ``tool_specs.validate_call``; its declaration measured against Codex code
 mode's ~2,000-character budget, `gpt_launch.rst <gpt_launch.rst>`_):
@@ -257,7 +258,7 @@ snapshots), which the round's time includes.
 
 Approval modes: Auto bounded continues. Ask continues a goal the person started or confirmed (the chip's Start is the
 consent; Ask's edits still ask; an approval nobody answers expires and the working time bounds the round). Read only
-holds no goal. A connected app's conversation and a worker's chat hold none.
+holds no goal. A worker's chat holds none; a connected app's conversation holds one only from the app's words.
 
 **Counting spend.** A goal counts from a mark of the usage ledger, moved each time its spend is counted, never from a
 per-request snapshot: what the goal's workers use between two rounds counts in the next one. Every round counts,

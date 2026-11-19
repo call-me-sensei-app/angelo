@@ -14,6 +14,7 @@ import os
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from unittest import mock
 
@@ -67,7 +68,7 @@ def write_angelo_trial(output):
     (folder / "eval-live-agent.json").write_text(json.dumps({"trials": [trial]}))
 
 
-@unittest.skipIf(scorecard is None, "NumPy is installed in CI and bundled with Blender")
+@unittest.skipIf(scorecard is None, required_skip("NumPy is installed in CI and bundled with Blender"))
 class ScorecardTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

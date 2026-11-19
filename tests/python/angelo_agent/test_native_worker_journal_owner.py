@@ -191,8 +191,16 @@ class InterleavedWriterTests(Base):
     def test_a_replaced_or_removed_file_is_detected(self):
         worker, state = self._hosted()
         data = self.path.read_bytes()
-        self.path.unlink()
-        self.path.write_bytes(data)   # Same bytes, another file.
+        # Same bytes, another file, as another writer replaces one: written beside it, then moved over it, so the
+        # new file is made while the old one still holds its index. (Unlinking first let Linux hand the freed index
+        # straight back; the same device, index, size and bytes are then the same file with new times, which the
+        # guard rightly writes over, so the test failed only when the allocator reused it: a flake under load.)
+        before = os.stat(self.path)
+        replacement = self.path.with_name(self.path.name + ".replacement")
+        replacement.write_bytes(data)
+        os.replace(replacement, self.path)
+        after = os.stat(self.path)
+        self.assertNotEqual((after.st_dev, after.st_ino), (before.st_dev, before.st_ino), "another file")
         self._assert_unchanged_by(worker, state, data)
         self.path.unlink()
         with self.assertRaises(owner.JournalTaken):

@@ -1,186 +1,145 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""What a connected MCP app is offered: its tools, the task tools and the server's instructions.
+"""What a connected MCP app is offered: the agent tools and the server's instructions.
 
-Angelo's tools carry the argument schemas Angelo's own direct-tools Claude
-session reads (``claude_direct_schema.tool_list``: short identifiers, core
-schemas exact, deferred tools named with a pointer to
-``angelo_agent_capabilities``, an object at every root), so a call is validated
-and run exactly as that route's are (``external_work``). An outside app has no
-Angelo instructions of its own, so each tool also carries its description
-(``tool_specs``), and the server's ``instructions`` state the host's contract
-as facts: who approves, what a result proves, how identifiers work. Nothing here
-tells a model when to batch, iterate or delegate; it decides.
-
-Three task tools (``angelo_task``, ``angelo_task_status``, ``angelo_task_stop``)
-exist only for apps the person allowed to run tasks; the launcher serves them
-through the ``task`` command, never through a tool call.
+Angelo's MCP is an interface to Angelo's own agent, never to its tools: the app starts and supervises the agent like a
+sub-session in its External conversation (``angelo_send``, ``angelo_status``, ``angelo_stop``, ``angelo_settings``, ``angelo_new_chat``)
+and observes what that agent sees (``angelo_read``, ``angelo_image``, ``angelo_scene``, ``angelo_viewport``);
+doc/angelo/external_mcp.rst. The launcher serves them (``external_mcp_agent``), never Angelo's tool path, so
+``TOOLSET_VERSION`` is unchanged. The instructions state the contract as facts: who does the work, who approves, how
+progress is read. They are short because Codex repeats them in every tool's description. Nothing here tells the app's
+model how to plan its work; it decides.
 """
 
-import functools
 import json
 
-from .agent_guidance import BLENDER_API_FACTS
 from .blender_release import RELEASE
-from .claude_direct_schema import tool_list
-from .external_clients import PYTHON, SCRIPT_FILE_TOOL, TASKS, tools_for
-from .routing import TOOLSET_VERSION
-from .tool_guidance import split, told
-from .script_store import LIMIT_SENTENCE
-from .tool_specs import SCRIPT_DESCRIPTION_LIMIT, TOOL_MAP
+from .external_mcp_visibility import VISIBILITY_TOOLS
 
-MAX_TASK_WAIT = 50   # external_service.MAX_TASK_WAIT: one status call never outlasts an MCP client's tool timeout.
+MAX_AGENT_WAIT = 50   # external_service.MAX_AGENT_WAIT: one read never outlasts an MCP client's tool timeout.
 
-HEADER = """Angelo (Hyperbond Studio) is a 3D app built on Blender %s. This is Angelo's own MCP server, not Blender MCP:
-every call runs in the open Angelo window (or, after angelo_open_file, a headless Angelo on that file) through the host
-checks Angelo's own agent uses.
-The person approves in Angelo, never you. Under Approve for me, bounded typed edits run at once, and so does a script
-file the person chose to always allow while it is unchanged; other Python scripts, background jobs and other effects
-wait for the person's decision in Angelo, and the call waits with them. A call the
-person declined or stopped says so: then make no further calls and tell the user.
-Each committed edit is one Undo step in Angelo, and Angelo snapshots the file before the first edit of a run of calls.
-Results carry the host's verified read-back of what changed; a failed or inconclusive check never proves completion.""" % RELEASE
-TASKS_FACT = """
-angelo_task hands Angelo's own agent a whole task in plain language; it works in this app's External conversation in
-Angelo on the person's connected account and reports progress (angelo_task_status) and its result. Tools and tasks
-are alternatives: while a task runs, tool calls wait."""
-# The direct-tools text's facts about identifiers, results, schemas and views, without what only Angelo's own chat
-# has: its tool prefix, and the host showing the person a verified result in place of the model's reply.
-_LEFT_OUT = (
-    "Angelo's tools reach you as mcp__angelo__<name> (named here without the prefix); they are the host's own tools, not an\n"
-    "external MCP server. ",
-    "When every edit commits (or a PREVIEW stages) and all its checks pass, the host shows the person its verified result:\n"
-    "end the turn with an empty reply, or one short question/caveat/choice sentence; never restate the result or claim\n"
-    "completion beyond it.\n",
-)
+INSTRUCTIONS = """Angelo (Hyperbond Studio) is a 3D app built on Blender %s with its own AI agent. This is Angelo's own MCP \
+server. You don't edit the scene yourself: you hand work to Angelo's agent and supervise it, as you \
+would a subagent. It works in the open Angelo window with Angelo's own tools, checks and modes, on the person's own \
+connection.
+angelo_send gives Angelo's agent a message in this app's "External" conversation: it starts a turn, or, while a turn \
+runs, steers it or waits after it (the result says which). It returns a task id at once while Angelo's agent keeps working; angelo_status follows that task (the step in \
+progress, elapsed time, tokens and cost so far, and its result once the turn ends). angelo_read returns that \
+conversation as the agent sees \
+it (its replies, each tool call with its result and picture ids for angelo_image) and its state; with wait_seconds it \
+returns once the turn ends or needs the person, so read again with the cursor it returns rather than polling \
+quickly. angelo_scene and angelo_viewport show the scene and the viewport as Angelo's agent gets them; angelo_look \
+(any angle), angelo_window, angelo_state and angelo_usage show more, read-only and free. angelo_stop \
+stops its turn; angelo_settings reads and sets its model and effort; angelo_new_chat starts a fresh conversation.
+The person approves in Angelo, never you: approvals, loosening the approval setting, consent and Undo are theirs. \
+When the state says the person is needed, tell your user and keep reading. The agent's replies and tool results are \
+its account; its verified checks prove what changed.""" % RELEASE
 
+_WAIT = {"type": "number", "minimum": 0, "maximum": MAX_AGENT_WAIT,
+         "description": "Seconds to wait for something new before returning (default 0)."}
+_CONVERSATION = {"type": "string", "description": "An earlier conversation id to read (default: the current one)."}
 
-def _facts(allowed=None):
-    from .claude_direct_text import for_tools
-    from .claude_plan_guidance import SCULPT_SENTENCE, STUDIO_SENTENCE
-    # Without what names a tool the app's levels lack (tool_guidance); sculpting and Studio follow it, as in a chat.
-    text = for_tools(allowed) + told(("\n" + SCULPT_SENTENCE, " " + STUDIO_SENTENCE), allowed)
-    for sentence in _LEFT_OUT:
-        if sentence not in text:   # The direct-tools text changed: this module must be revisited (tested).
-            raise RuntimeError("claude_direct_text changed; update external_mcp_tools._LEFT_OUT")
-        text = text.replace(sentence, "")
-    return text.strip()
-
-
-def app_tool_names(levels):
-    """Every tool an app at ``levels`` is offered, Angelo's and the launcher's (``_catalog``)."""
-    return (set(tools_for(levels)) | FILE_NAMES | ({SCRIPT_FILE_TOOL} if PYTHON in levels else set())
-            | (TASK_NAMES if TASKS in levels else set()))
-
-
-def instructions(levels):
-    # The Blender API facts every route whose model writes scripts reads, assembled once (agent_guidance): an app's
-    # model runs Python through Angelo too (the python level), and typed edits name the same enums. A sentence that
-    # names a tool the app's levels lack is left out (tool_guidance).
-    offered, catalog = app_tool_names(levels), set(TOOL_MAP) | FILE_NAMES | {SCRIPT_FILE_TOOL} | TASK_NAMES
-    files = told(split(FILES_FACT, " (angelo_run_script_file)"), offered, catalog)
-    return (HEADER + (TASKS_FACT if TASKS in levels else "") + files + "\n" + BLENDER_API_FACTS + "\n"
-            + _facts(set(offered) & set(TOOL_MAP)))
-
-
-TASK_TOOLS = [
-    {"name": "angelo_task", "title": "Run a task with Angelo's agent",
-     "description": ("Hand Angelo's own agent a whole task in plain language (for example \"model a stone bridge over "
-                     "the river and light it at dusk\"). It runs in this app's External conversation in Angelo, on the "
-                     "person's connected account, with Angelo's approvals, snapshots and Undo. Returns its state; "
-                     "running tasks continue after this call returns."),
+AGENT_TOOLS = [
+    {"name": "angelo_send", "title": "Message Angelo's agent",
+     "description": ("Send Angelo's agent a message in this app's External conversation in Angelo, in plain language "
+                     "(for example \"model a stone bridge over the river and light it at dusk\"). Idle: a turn "
+                     "starts. While a turn runs: the agent reads it at its next step (steered) or it is sent when "
+                     "the turn ends (queued). Returns at once with delivered, a task id for angelo_status, the state "
+                     "and a cursor for angelo_read; with wait_seconds, also what happened meanwhile."),
      "inputSchema": {"type": "object", "properties": {
-         "task": {"type": "string", "description": "The task, as the person would type it in Angelo."},
-         "wait_seconds": {"type": "number", "minimum": 0, "maximum": MAX_TASK_WAIT,
-                          "description": "Seconds to wait for it to finish before returning (default 45)."}},
-         "required": ["task"], "additionalProperties": False},
+         "message": {"type": "string", "minLength": 1, "maxLength": 32000,
+                     "description": "Your message, as the person would type it in Angelo."},
+         "wait_seconds": _WAIT,
+         "goal": {"type": "string", "minLength": 1, "maxLength": 2000, "description": (
+             "What done means, for work that should go on until it is met (Angelo's goal mode: rounds until it "
+             "passes or its budget ends; in Ask the person starts it).")},
+         "model": {"type": "string", "description": "A model id from angelo_settings: this turn and later ones use it."},
+         "connection": {"type": "string", "description": "That model's connection_id, when two connections offer it."},
+         "effort": {"type": "string", "description": "One of the efforts the model offers; empty for its default."},
+         "attachments": {"type": "array", "maxItems": 4, "description": (
+             "Pictures or files for the agent, as the person attaches them: an image as {data: base64, mime: "
+             "image/png | image/jpeg | image/webp}, or a file of the open project's folder as {path}."),
+             "items": {"type": "object", "properties": {
+                 "data": {"type": "string"}, "mime": {"type": "string", "enum": ["image/png", "image/jpeg",
+                                                                                 "image/webp"]},
+                 "path": {"type": "string"}}, "additionalProperties": False}}},
+         "required": ["message"], "additionalProperties": False},
      "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True}},
-    {"name": "angelo_task_status", "title": "Angelo task status",
-     "description": ("A task's state (running, waiting_for_approval_in_angelo, waiting_for_person_in_angelo: it starts "
-                     "once the person finishes the tool they are using, done, failed, stopped), its latest "
-                     "progress rows and, when it ends, the agent's reply. Waits up to wait_seconds for it to end."),
+    {"name": "angelo_read", "title": "Read Angelo's agent",
+     "description": ("The External conversation as Angelo's agent sees it, since cursor: rows (app messages, the "
+                     "agent's replies, each tool call with status, result text and picture ids, Angelo's notices) "
+                     "and state (turn: idle, running, waiting_for_approval, waiting_for_person or stopping; a "
+                     "pending approval; what the person is needed for; queued messages; the connection kind). With "
+                     "wait_seconds it returns as soon as anything changes. Pass the returned cursor next time."),
      "inputSchema": {"type": "object", "properties": {
-         "task_id": {"type": "string"},
-         "wait_seconds": {"type": "number", "minimum": 0, "maximum": MAX_TASK_WAIT}},
-         "required": ["task_id"], "additionalProperties": False},
+         "cursor": {"type": "string", "description": "The cursor the last angelo_send or angelo_read returned."},
+         "wait_seconds": _WAIT,
+         "detail": {"type": "string", "enum": ["brief", "full"],
+                    "description": "full adds each tool call's arguments and longer results (default brief)."},
+         "conversation": _CONVERSATION},
+         "additionalProperties": False},
      "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}},
-    {"name": "angelo_task_stop", "title": "Stop an Angelo task",
-     "description": "Stop a running task, as the person's Stop does. Committed edits stay (Undo is the person's).",
-     "inputSchema": {"type": "object", "properties": {"task_id": {"type": "string"}},
-                     "required": ["task_id"], "additionalProperties": False},
+    {"name": "angelo_status", "title": "Status of a task for Angelo's agent",
+     "description": ("How a task angelo_send started is going: the turn's state (and what the person is needed for), "
+                     "the step in progress, elapsed seconds, the task's usage so far (input, cache and output tokens, "
+                     "requests, cost in USD; live while a request runs) and the conversation's, its goal, the rows "
+                     "since cursor and, once the turn has ended, its result: the agent's final reply, the picture ids "
+                     "its tools got and the tools it ran. With wait_seconds it returns as soon as anything changes."),
+     "inputSchema": {"type": "object", "properties": {
+         "task": {"type": "string", "description": "The task id angelo_send returned (default: this app's latest)."},
+         "cursor": {"type": "string", "description": "The cursor the last call returned, for the rows since then."},
+         "wait_seconds": _WAIT, "conversation": _CONVERSATION},
+         "additionalProperties": False},
+     "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}},
+    {"name": "angelo_image", "title": "A picture Angelo's agent got",
+     "description": "One picture from the conversation's rows (a view, a render) by its id, as the agent got it.",
+     "inputSchema": {"type": "object", "properties": {
+         "id": {"type": "string", "description": "A picture id from a row's images."},
+         "conversation": _CONVERSATION},
+         "required": ["id"], "additionalProperties": False},
+     "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}},
+    {"name": "angelo_scene", "title": "The scene as Angelo's agent sees it",
+     "description": ("The scene observation Angelo's agent gets with its next message: active, selected and recently "
+                     "changed objects with sizes, modifiers and revisions; mode, frame and scene settings."),
+     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+     "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}},
+    {"name": "angelo_viewport", "title": "The viewport as Angelo's agent sees it",
+     "description": "A picture of the scene from the person's current viewport direction, as Angelo's agent gets it.",
+     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+     "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}},
+    {"name": "angelo_stop", "title": "Stop Angelo's agent",
+     "description": ("Stop the running turn in this app's conversation, as the person's Stop does. Committed edits "
+                     "stay (Undo is the person's); waiting messages are not sent."),
+     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
      "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False}},
 ]
-TASK_NAMES = frozenset(tool["name"] for tool in TASK_TOOLS)
-
-# Working on a .blend without Angelo's window (doc/angelo/external_mcp.rst, "Headless"): launcher tools, not Angelo's.
-FILES_FACT = """
-Without Angelo's window: angelo_open_file opens a .blend (absolute path) in a headless Angelo of this session; then
-every call works on that file. Only reads, views, bounded typed edits and script files the person always allows while
-unchanged (angelo_run_script_file) run there (a call that needs a person answers needs_gui, with how to approve), and
-each change is saved to a new file next to the source, named in the result; the source is never written.
-angelo_close_file returns to Angelo's window."""
-FILE_TOOLS = [
-    {"name": "angelo_open_file", "title": "Open a .blend without Angelo's window",
-     "description": ("Work on a .blend file without Angelo's window: reads, views and bounded typed edits; each edit is "
-                     "saved to a new file next to it (named in the result) and the file itself is never written. If "
-                     "Angelo has this file open, calls go to its window instead (its live document). Returns the "
-                     "file's summary."),
+AGENT_TOOLS += [
+    {"name": "angelo_settings", "title": "Angelo agent settings",
+     "description": ("Read this conversation's settings (model, effort and the efforts it offers, the person's "
+                     "connected models, approval setting, whether the chat trusts its scripts) and change them: model and effort among the "
+                     "person's connected models (the change shows in Angelo), approval only to ASK or READ_ONLY. "
+                     "AUTO_BOUNDED and any consent are the person's own choice: the call says so and asks them in "
+                     "Angelo. With no arguments it only reads."),
      "inputSchema": {"type": "object", "properties": {
-         "file": {"type": "string", "description": "Absolute path to the .blend file."}},
-         "required": ["file"], "additionalProperties": False},
-     "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}},
-    {"name": "angelo_file_status", "title": "Headless file status",
-     "description": ("The .blend this session works on without Angelo's window, the new file its edits are saved to, "
-                     "and whether either changed on disk."),
+         "model": {"type": "string", "description": "A model id from the models this call returns."},
+         "connection": {"type": "string", "description": "That model's connection_id, when two connections offer it."},
+         "effort": {"type": "string", "description": "One of the efforts the model offers; empty for its default."},
+         "approval": {"type": "string", "enum": ["ASK", "READ_ONLY", "AUTO_BOUNDED"]}},
+         "additionalProperties": False},
+     "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False}},
+    {"name": "angelo_new_chat", "title": "New conversation with Angelo's agent",
+     "description": ("Start a fresh External conversation for this app (the agent starts with no history). The earlier "
+                     "one stays readable with angelo_read's conversation."),
      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
-     "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}},
-    {"name": "angelo_close_file", "title": "Close the headless file",
-     "description": "Stop working on the file without Angelo's window; later calls go to Angelo's window.",
-     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
-     "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}},
+     "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False}},
 ]
-FILE_NAMES = frozenset(tool["name"] for tool in FILE_TOOLS)
-
-# A script file on disk, run as angelo_execute_python runs code (external_work, script_files): Angelo reads the file
-# itself, so the person can always allow that exact file while it stays unchanged (doc/angelo/external_mcp.rst).
-SCRIPT_FILE_TOOLS = [
-    {"name": SCRIPT_FILE_TOOL, "title": "Run a Python script file in Angelo",
-     "description": ("Run a Blender Python script file from this computer in the open Angelo scene, exactly as "
-                     "angelo_execute_python runs code: same main-thread execution, result and read-back. Angelo reads "
-                     "the file itself, once, and runs exactly the text it read (UTF-8)." + LIMIT_SENTENCE + " The "
-                     "person reviews that text in Angelo and may choose to always allow this file while it stays "
-                     "unchanged, for this app and the open saved .blend; any change to the file asks again. Set "
-                     "result in the script, as with angelo_execute_python."),
-     "inputSchema": {"type": "object", "properties": {
-         "file": {"type": "string", "minLength": 1, "maxLength": 4096,
-                  "description": "The script file's absolute path."},
-         "description": {"type": "string", "minLength": 1, "maxLength": SCRIPT_DESCRIPTION_LIMIT,
-                         "description": "What this run does, as the person reads it in Angelo (default: the file's name)."}},
-         "required": ["file"], "additionalProperties": False},
-     "annotations": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True}},
-]
+from .external_mcp_hidden_tools import HIDDEN_TOOLS  # noqa: E402  Angelo without its window.
+AGENT_TOOLS += HIDDEN_TOOLS
+AGENT_TOOLS += VISIBILITY_TOOLS   # Views, the window, its state and usage (external_mcp_visibility).
+AGENT_NAMES = frozenset(tool["name"] for tool in AGENT_TOOLS)
+_CATALOG = json.dumps({"tools": AGENT_TOOLS, "instructions": INSTRUCTIONS}, ensure_ascii=False, separators=(",", ":"))
 
 
-@functools.lru_cache(maxsize=16)
-def _catalog(levels):
-    allowed = tools_for(levels)
-    tools = []
-    for tool in tool_list(allowed):
-        spec = TOOL_MAP[tool["name"]]
-        described = dict(tool)
-        if "description" not in described:
-            described["description"] = spec["description"]
-        described["annotations"] = dict(spec["annotations"])
-        tools.append(described)
-    if PYTHON in levels:
-        tools.extend(SCRIPT_FILE_TOOLS)
-    if TASKS in levels:
-        tools.extend(TASK_TOOLS)
-    tools.extend(FILE_TOOLS)
-    return json.dumps({"tools": tools, "instructions": instructions(levels), "toolset_version": TOOLSET_VERSION},
-                      ensure_ascii=False, separators=(",", ":"))
-
-
-def app_tools(levels):
-    """The ``tools`` answer for an app: its MCP tool list, the server instructions and the toolset version."""
-    return json.loads(_catalog(frozenset(levels)))
+def app_tools():
+    """The ``tools`` answer for a connected app: its MCP tool list and the server instructions."""
+    return json.loads(_CATALOG)

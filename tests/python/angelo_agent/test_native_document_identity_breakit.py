@@ -861,12 +861,12 @@ class ModelContextTests(Launch):
         self.assertNotIn("offer", seen.lower())
         self.assertNotIn("continued", seen.lower())
 
-    def test_an_app_reading_task_progress_never_gets_the_question(self):
-        from angelo_agent import external_apps
+    def test_an_app_reading_the_conversation_never_gets_the_question(self):
+        from angelo_agent import external_transcript
         chat = self.offered()
         chat.pump_events()
         offer = next(m for m in chat.state["messages"] if document_offer.person_only(m))
-        self.assertIsNone(external_apps._row(offer))
+        self.assertIsNone(external_transcript.app_row(0, offer))
 
 
 class UnstoppedWorkersTests(Launch):
@@ -953,13 +953,13 @@ class LoadEndTests(Launch):
 
 class HeadlessHostTests(Launch):
     """The 1.0.7 candidate 933cdffbcce: in the headless MCP child an approved script that loaded a file came back as
-    "The open Blender file changed in Angelo" instead of ``DOCUMENT_REPLACED``. The child has no window chat (its chats
-    come from ``headless_host.make_controller``), and up to 1.0.6 such a process told no chat of a load: the host
+    "The open Blender file changed in Angelo" instead of ``DOCUMENT_REPLACED``. A background process has no window chat
+    (its chats are made by its host), and up to 1.0.6 such a process told no chat of a load: the host
     loads its own file again and owns that decision. ``follow`` keeps that rule."""
 
     def test_a_process_without_a_window_chat_tells_no_chat_of_a_load(self):
         self.blender.save("scene.blend")
-        chat = self.session_chat()   # As headless_host.make_controller: a chat that holds work, no window chat.
+        chat = self.session_chat()   # As a background host makes one: a chat that holds work, no window chat.
         self.blender.ui._controller = None
         self.blender.ui.bpy.app.handlers.load_post.clear()   # headless_main._register: load_pre alone.
         with mock.patch.object(identity, "unattended", return_value=True):   # A background Blender.

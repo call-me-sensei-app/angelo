@@ -194,30 +194,43 @@ def always_allow_from_card(context, controller, call_id):
     call = controller.pending.get(call_id)
     if call is None or not controller.offers_always_allow(call) or agent_script_running():
         return False
-    if not always_allow.enabled():   # A repeated click keeps the current consent (never re-mints it).
-        try:
+    try:
+        if not always_allow.enabled():   # A repeated click keeps the current consent (never re-mints it).
             always_allow.set_enabled(True)   # Saved at once (always_allow), before it takes effect.
-        except OSError as error:
-            print("Angelo: Always allow scripts could not be saved:", error)
-            return False
+        elif getattr(controller, "external_client", "") and not always_allow.covers_external():
+            always_allow.cover_external()   # A 2.0.0 consent: this press widens it to connected apps' chats.
+    except OSError as error:
+        print("Angelo: Always allow scripts could not be saved:", error)
+        return False
     return controller.always_allow_script(call)
 
 
-def script_file_allow_from_card(context, controller, call_id):
-    """The script card's "Always allow this file while it's unchanged" in an External conversation: save the
-    approval for this app, project, path and content (``script_files``), and let it cover this run too.
-
-    Offered only once the person opened the file's exact text (``offers_script_file_allow``); never while an agent
-    script is running, so a script can't approve itself. False when nothing was allowed.
-    """
+def session_allow_from_card(context, controller, call_id):
+    """The script card's Allow for this session: Trust scripts for this chat (in memory, this chat and document),
+    covering this script. Never while an agent script runs. False when nothing was allowed."""
     call = controller.pending.get(call_id)
-    if call is None or not controller.offers_script_file_allow(call) or agent_script_running():
+    if call is None or not controller.offers_session_allow(call) or agent_script_running():
         return False
     try:
-        return controller.allow_script_file(call)
-    except OSError as error:
-        print("Angelo: the script file approval could not be saved:", error)
+        return controller.session_allow_script(call)
+    except RuntimeError as error:
+        print("Angelo: scripts could not be allowed for this session:", error)
         return False
+
+
+def turn_off_standing(controller, kind):
+    """The chat's line's Turn off: end the consent it names ("session": Trust scripts for this chat; else the person's
+    Always allow scripts). Narrowing: anything but an agent script may (C refuses one, G2)."""
+    from . import always_allow
+    if kind == "session":
+        controller.set_trusted_scripts(False)
+    else:
+        try:
+            always_allow.set_enabled(False)
+        except OSError as error:   # Off holds for this session; its save is tried again (always_allow.sync).
+            print("Angelo: Always allow scripts is off for this session; saving it was refused:", error)
+    controller.version += 1
+    return True
 
 
 grant_guard.guard(ANGELO_OT_trusted_scripts, ANGELO_OT_set_approval)   # Only the person's click grants (grant_guard).

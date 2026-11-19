@@ -22,6 +22,12 @@ only while that same token is still current at dispatch: turning the choice
 off, or a policy arriving, reaches the next script, already queued ones
 included, and an old token never comes back.
 
+Scope (2.0.1): a consent saved by 2.0.1 or later also covers connected apps' chats (External conversations), whose
+scripts Angelo's agent writes; it says so (``"external": true``, held in C as ``ALWAYS_ALLOW`` key ``external``). A
+consent saved by 2.0.0, given when it never applied there, does not silently start to: an External chat's first
+script shows its card, whose Always allow says it covers connected apps' chats, and that press widens the saved
+consent (``cover_external``). Chats of the person's own are covered as before either way.
+
 Standard library only; no bpy. ``attach``, ``set_enabled`` and ``sync`` run on
 the main thread; ``token`` may run on a provider thread at admission.
 """
@@ -35,6 +41,7 @@ from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a gra
 
 FILE = "always-allow-scripts.json"
 _enabled = False   # The person's choice, as saved.
+_external = False  # Whether it covers connected apps' chats too (a consent saved by 2.0.1 or later; module docstring).
 _token = None      # The consent scripts admitted now carry; None while off or blocked by policy.
 _path = None       # Where the choice is saved (ui.register: the state folder); None: in memory only (tests).
 _owed = None       # When saving "off" was refused (monotonic): ``sync`` saves it again, so it never comes back on.
@@ -53,8 +60,9 @@ def attach(directory):
     revoked = os.path.lexists(_path + REVOKED)   # An "off" whose save was refused: off, and saved again (sync).
     _owed = time.monotonic() - shared_replace.RETRY_SECONDS if revoked else None
     on = not revoked and isinstance(saved, dict) and saved.get("version") == 1 and saved.get("enabled") is True
-    grant_authority.mirror(grant_authority.ALWAYS_ALLOW, [("on", on)])   # The saved choice, held in C.
-    _remember(on)
+    external = on and saved.get("external") is True
+    grant_authority.mirror(grant_authority.ALWAYS_ALLOW, [("on", on), ("external", external)])   # Held in C.
+    _remember(on, external)
 
 
 def detach():
@@ -83,25 +91,53 @@ def set_enabled(enabled):
         return False
     if enabled:   # Held in C first: refused outside the person's own click (grant_authority).
         grant_authority.record(grant_authority.ALWAYS_ALLOW, "on", True)
+        grant_authority.record(grant_authority.ALWAYS_ALLOW, "external", True)   # Given now: it says so (2.0.1).
     else:   # In C first too: C refuses an agent script's withdrawal (G2) before anything is saved or changed here.
         grant_authority.forget(grant_authority.ALWAYS_ALLOW, "on")
+        grant_authority.forget(grant_authority.ALWAYS_ALLOW, "external")
     try:
         if _path is not None:
-            _write(enabled)
+            _write(enabled, enabled)
     except OSError:
         if not enabled:
             _owed = time.monotonic()
             _mark_revoked()
-        _remember(False if not enabled else _enabled)   # On refused to save: not on, here or in C.
+        _remember(False if not enabled else _enabled, _external if enabled else False)   # On refused to save: unchanged.
         if enabled:
             grant_authority.forget(grant_authority.ALWAYS_ALLOW, "on")
+            grant_authority.forget(grant_authority.ALWAYS_ALLOW, "external")
         else:
             _tell_workers()   # Off holds for this session: the worker chats stop too.
         raise
     _owed = None
-    _remember(enabled)
+    _remember(enabled, enabled)
     _tell_workers()
     return True
+
+
+def cover_external():
+    """The person's press of Always allow on a script card in a connected app's chat while their saved consent predates
+    2.0.1 (on, not covering connected apps' chats): it covers them from now on, saved first (``OSError``: unchanged).
+    ``PermissionError`` outside the person's own press, as turning it on."""
+    global _external
+    if not _enabled or _external:
+        return False
+    grant_authority.record(grant_authority.ALWAYS_ALLOW, "external", True)
+    try:
+        if _path is not None:
+            _write(True, True)
+    except OSError:
+        grant_authority.forget(grant_authority.ALWAYS_ALLOW, "external")
+        raise
+    _external = True
+    _tell_workers()
+    return True
+
+
+def covers_external():
+    """Whether the person's Always allow covers connected apps' chats: on, saved by 2.0.1 or later (or widened there
+    by their press), and held so in C. The policy still applies through ``token``."""
+    return _enabled and _external and grant_authority.holds(grant_authority.ALWAYS_ALLOW, "external")
 
 
 def _tell_workers():
@@ -112,15 +148,16 @@ def _tell_workers():
 
 
 set_enabled = _grant_guard.entry(set_enabled, widens="enabled")
+cover_external = _grant_guard.entry(cover_external)
 
 
-def _write(enabled):
+def _write(enabled, external=False):
     temporary = _path + ".tmp"
     try:
         owned_paths.require_writable(_path)
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump({"version": 1, "enabled": enabled}, handle)
+            json.dump({"version": 1, "enabled": enabled, "external": bool(enabled and external)}, handle)
             handle.flush()
             os.fsync(handle.fileno())
         shared_replace.replace(temporary, _path)   # Refused while held (shared_replace): raised, the old file stays.
@@ -149,11 +186,13 @@ def _mark_revoked():
         print("Angelo: Always allow scripts is off for this session only (its save was refused):", error)
 
 
-def _remember(enabled):
-    global _enabled, _token
+def _remember(enabled, external=None):
+    global _enabled, _token, _external
     _enabled = bool(enabled)
+    _external = _enabled and bool(_external if external is None else external)
     if not _enabled:
         grant_authority.forget(grant_authority.ALWAYS_ALLOW, "on")   # Narrowing: Angelo's own (C refuses a script, G2).
+        grant_authority.forget(grant_authority.ALWAYS_ALLOW, "external")
     _token = object() if _enabled and managed_policy.current().allow_auto_approval else None
 
 
@@ -165,7 +204,7 @@ def sync():
         _remember(_enabled)
     if _owed is not None and _path is not None and time.monotonic() - _owed >= shared_replace.RETRY_SECONDS:
         try:
-            _write(_enabled)
+            _write(_enabled, _external)
             _owed = None
         except OSError:   # Said when it was refused first (set_enabled); tried again later.
             _owed = time.monotonic()

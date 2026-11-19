@@ -24,7 +24,7 @@ ADDON = ROOT / "scripts/addons_core/angelo_agent"
 # the whole document or starts a turn that does.
 CAPTURES = ("turn_context.prepare", "prepare_turn", "perform_for_request", "goal_measure.measure",
             "_initial_request_checkpoint", "ensure_request_checkpoint", "capture_checkpoint", "checkpoint_factory",
-            "_start_turn", "start_voice", "send_external_task")
+            "_start_turn", "start_voice")
 GATES = ("edit_tool_hold.running", "edit_tool_hold.hold", "edit_tool_hold.wait", "edit_tool_hold.defers",
          "edit_tool_hold.deferred")
 
@@ -34,7 +34,8 @@ GATES = ("edit_tool_hold.running", "edit_tool_hold.hold", "edit_tool_hold.wait",
 REVIEWED = {
     ("checkpoint_restore_ui.py", "execute_restore"): "gate",
     ("console.py", "submit"): ("via", {("console.py", "send_message"), ("chat_pending.py", "dispatch_due"),
-                                       ("chat_pending.py", "send_or_queue")}),
+                                       ("chat_pending.py", "send_or_queue"), ("external_agent.py", "AgentUi.deliver")}),
+    ("external_agent.py", "AgentUi.deliver"): "gate",
     ("console.py", "send_message"): "gate",
     ("chat_pending.py", "dispatch_due"): "gate",
     ("chat_pending.py", "send_or_queue"): "gate",
@@ -54,14 +55,9 @@ REVIEWED = {
     ("controller.py", "Controller._after_turn"): ("why", "an Auto escalation restarts with user_row=False: no snapshot "
                                                          "(test_an_escalation_takes_no_snapshot)"),
     ("controller.py", "Controller.send"): ("why", "a turn starts from a delivery (worker_routing.deliver, gated), an "
-                                                  "external task (ExternalApps._task_start, gated) or voice text"),
+                                                  "app's message (AgentUi.deliver, gated) or voice text"),
     ("controller.py", "Controller.start_voice"): ("via", {("voice_ui.py", "ANGELO_OT_voice.execute")}),
-    ("controller_external.py", "ExternalRequests.send_external_task"): ("via", {
-        ("external_apps.py", "ExternalApps._task_start"), ("external_apps.py", "ExternalApps._start_held")}),
-    ("external_apps.py", "ExternalApps._start_held"): ("via", {("external_apps.py", "ExternalApps.pump_apps")}),
-    ("external_apps.py", "ExternalApps.pump_apps"): "gate",
     ("voice_ui.py", "ANGELO_OT_voice.execute"): "gate",
-    ("external_apps.py", "ExternalApps._task_start"): "gate",
     ("external_host.py", "UiEnvironment.make_controller"): ("why", "assigns the snapshot factory; every use is above"),
     ("ui.py", "get_controller"): ("why", "assigns the snapshot factory; every use is above"),
     ("goal_loop.py", "_measure"): ("via", {("goal_loop.py", "_advance"), ("goal_controls.py", "execute")}),
@@ -347,17 +343,14 @@ class EveryPath(unittest.TestCase):
         job_tick = INDEX["job_ui.py"]["_tick"]
         self.assertIn("edit_tool_hold.ticked", [ast.unparse(item) for item in job_tick.decorator_list])
 
-    def test_a_held_task_is_admitted_again_and_never_interleaved(self):   # Break-it review 4, S-B.
-        apps = INDEX["external_apps.py"]
-        self.assertIn("held_text", ast.unparse(apps["ExternalApps.handle_app_call"]))   # Its app's calls answer busy.
-        self.assertIn("held_text", ast.unparse(apps["ExternalApps.close_apps"]))   # Access off: it never starts.
-        self.assertIn("document_invalid", ast.unparse(apps["ExternalApps._start_held"]))
-        self.assertIn("waiting_for_person_in_angelo", ast.unparse(apps["ExternalApps._task_reply"]))
-        pump = apps["ExternalApps.pump_apps"]
-        starts = [node for node in ast.walk(pump) if isinstance(node, ast.Call)
-                  and ast.unparse(node.func) == "self._start_held"]
-        self.assertTrue(starts and all(_dominated(pump, node) for node in starts))
-        self.assertIn("busy", ast.unparse(pump))   # Its conversation busy: it keeps waiting.
+    def test_an_app_s_message_waits_in_the_tray_while_the_person_s_tool_runs(self):   # Break-it review 4, S-B.
+        deliver = INDEX["external_agent.py"]["AgentUi.deliver"]
+        text = ast.unparse(deliver)
+        self.assertIn("edit_tool_hold.running()", text)
+        self.assertIn("chat_pending.hold(controller", text)   # Held, never interleaved with the person's tool.
+        submits = [node for node in ast.walk(deliver) if isinstance(node, ast.Call)
+                   and ast.unparse(node.func) == "console.submit"]
+        self.assertTrue(submits and all(_dominated(deliver, node) for node in submits))
 
     def test_the_gates_decision_path_imports_no_bpy_at_load(self):   # gcp-kit at 74bcaf7: a run alone found it.
         gate = {"edit_tool_hold.py", "edit_tool_status.py", "input_policy.py", "live_progress.py", "review_again.py",

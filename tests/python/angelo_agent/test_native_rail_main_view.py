@@ -17,6 +17,7 @@ import suite_isolation  # noqa: F401  First: this test never sees a real provide
 import math
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
@@ -222,7 +223,7 @@ class LeadViewTests(unittest.TestCase):
                          "not shown before: needs FILL")
         self.assertEqual(rail_pictures.lead_view(scene, near, near.regions[0], BOX, shows=cells(10))[2], "view")
 
-    @unittest.skipUnless(NUMPY, "numpy draws the shapes")
+    @unittest.skipUnless(NUMPY, required_skip("numpy draws the shapes"))
     def test_keep_is_translation_stable_on_held_out_shapes(self):
         """REVIEW-TILE-STAGES-2 L-c: KEEP held Suzanne, yet 7.3% of rectangles and thin bars adopted at 10-13 cells
         fell below 7 on a 2 px pan (a 68 x 16 px bar, 12 to 5; half-cell-shifted grids still let 5.7% of bars fall).
@@ -375,7 +376,7 @@ class FillTests(unittest.TestCase):
         try:
             import numpy
         except ImportError:
-            self.skipTest("numpy")
+            self.skipTest(required_skip("numpy"))
         for size in ((256, 160), (100, 50)):
             for shape in (SPECKS, "line", "diagonal", QUARTER, NINE, ()):
                 rows = mask(size, shape, (3, 2))

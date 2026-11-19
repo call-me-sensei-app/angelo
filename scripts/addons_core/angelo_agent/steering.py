@@ -54,6 +54,8 @@ class Pending:
     send_options: dict = field(default_factory=dict)   # Angelo's own follow-up: how its request is sent.
     run_chosen_tools: bool = True   # Exact retry: no unrelated composer choices (tools, or its draft goal).
     separate: bool = False   # An exact retry owns one whole request, never a steer or a joined pending message.
+    row: object = None   # The transcript row of the request that carried it (chat_pending.dispatch_due), once sent.
+    usage_start: object = None   # An app's conversation's usage when that request went (external_status.settle).
     id: int = field(default_factory=lambda: next(_ids))
 
     @property

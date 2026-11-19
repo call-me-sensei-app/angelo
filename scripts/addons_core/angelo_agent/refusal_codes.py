@@ -7,7 +7,6 @@ CODES = frozenset({
     "EXPIRED", "OWNERSHIP", "CANCELLED", "READ_ONLY", "DECLINED", "VALIDATION", "CHECK_FAILED",
     "UNSUPPORTED", "LIMIT_EXCEEDED", "INTERNAL_ERROR", "CLEANUP_FAILED", "WRITER_BUSY", "UNKNOWN",
     "RECOVERY_REQUIRED",
-    "NEEDS_GUI",   # A headless host refused a call that reached an approval card: nothing of it ran (headless_host).
 })
 STALE_CODES = frozenset({"STALE_SETTING", "STALE_REVISION", "STALE_DEPENDENCY", "STALE_CONTEXT"})
 CORRECTABLE_CODES = frozenset({"VALIDATION", "CHECK_FAILED", "UNSUPPORTED", "LIMIT_EXCEEDED"})

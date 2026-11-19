@@ -21,7 +21,6 @@ sys.path[:0] = [str(HERE.parents[2] / "scripts/addons_core"), str(HERE)]
 from angelo_agent import codex_plan, plan_schema, providers  # noqa: E402
 from angelo_agent.claude_outcomes import native_result_problem  # noqa: E402
 from angelo_agent.controller import Controller, ToolDispatchBudget  # noqa: E402
-from angelo_agent.external_requests import PHASE1_READ_TOOLS  # noqa: E402
 from angelo_agent.job_host import SCENE_FREE  # noqa: E402
 from angelo_agent.tool_specs import (COLLABORATOR_TOOLS, CODEX_DEFERRED_NAMESPACE, TOOL_MAP, codex_tools,  # noqa: E402
                                      dynamic_tools, native_plan_schema)
@@ -94,9 +93,8 @@ class PlacementTests(unittest.TestCase):
         for tools in (codex_tools(defer=False), dynamic_tools()):
             self.assertLessEqual({READ, FILE}, {tool["name"] for tool in tools})
 
-    def test_neither_tool_enters_a_codex_plan_or_the_external_cli(self):
+    def test_neither_tool_enters_a_codex_plan(self):
         self.assertFalse({READ, FILE} & codex_plan.PLAN_TOOLS, "A plan ends a turn with edits; reads happen in-turn")
-        self.assertFalse({READ, FILE} & PHASE1_READ_TOOLS, "The external CLI's allowlist is unchanged")
         self.assertFalse({READ, FILE} & SCENE_FREE, "Both read scene data, so a job that locks Blender refuses them")
         self.assertLessEqual({READ, FILE}, COLLABORATOR_TOOLS, "A read-only collaborator may use them")
 

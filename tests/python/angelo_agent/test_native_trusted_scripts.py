@@ -203,6 +203,20 @@ class TrustedScriptTests(unittest.TestCase):
         self.assertEqual(len(self.executed), 1)
         self.assertEqual(results[0]["consent"], "exact_code_review")
 
+    def test_the_cards_allow_for_this_session_is_the_menus_trust(self):
+        """2.0.1: a script card's Allow for this session is Trust scripts for this chat, with the menu's rule: Ask and
+        Auto, never Read only. Offered only while it does not cover the chat already."""
+        call, results = self.enqueue("first")
+        self.pump()
+        self.assertTrue(self.controller.offers_session_allow(call))
+        self.assertTrue(self.controller.session_allow_script(call))
+        self.assertTrue(self.controller.trusted_scripts)
+        later, _ = self.enqueue("second")
+        self.assertFalse(self.controller.offers_session_allow(later), "it covers the chat already")
+        for mode, covers in (("ASK", True), ("AUTO_BOUNDED", True), ("READ_ONLY", False)):
+            self.controller.set_options(approval=mode)
+            self.assertEqual(self.controller.trusted_scripts, covers, mode)
+
     def test_read_only_decline_stale_turn_document_never_run(self):
         for action in (lambda c, call: c.set_options(approval="READ_ONLY"),
                        lambda c, call: c.decline_tool(call.id),

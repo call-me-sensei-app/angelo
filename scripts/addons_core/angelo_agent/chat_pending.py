@@ -151,6 +151,9 @@ def dispatch_due(controller):
     from .display_text import error_notice
     if controller.turn_running() or not len(controller.inbox) or edit_tool_hold.running():   # Then the tool's end.
         return False
+    from .external_access import revoked
+    if revoked(controller):   # The app lost its access: nothing it left waiting, no goal round, starts a turn.
+        return False
     due = controller.inbox.next_due()
     if not due:
         return False
@@ -164,13 +167,26 @@ def dispatch_due(controller):
         refusals.append(error)
         controller.inbox.not_sent(due, error_notice(error))
         controller.version += 1
+    from .controller_external import external_send
+    import contextlib
+    # In an External conversation only its app's messages wait here (the person cannot type there): sent as the app's.
+    # Angelo's own follow-up (a held goal's round) goes as Angelo's (``require_model_chat`` admits the round itself).
+    app = getattr(controller, "external_client", "") and not due[0].host
+    sending = external_send(controller) if app else contextlib.nullcontext()
+    row = len(controller.state["messages"])   # Its request's row: each app task it carries is bound to it there.
+    if getattr(controller, "external_client", ""):
+        from .external_status import usage
+        started = usage(controller)   # Where the tasks it carries start spending (external_status.settle).
     try:
-        console.submit(controller, text, references=references, pending=due, unsent=refused,
-                       **({"run_chosen_tools": False} if not due[0].run_chosen_tools else {}), **options)
+        with sending:
+            console.submit(controller, text, references=references, pending=due, unsent=refused,
+                           **({"run_chosen_tools": False} if not due[0].run_chosen_tools else {}), **options)
     except Exception as error:   # noqa: BLE001
         refused(error)
     if refusals:
         return False
+    for item in due:
+        item.row, item.usage_start = row, started if getattr(controller, "external_client", "") else None
     controller.inbox.sent(due)   # A worker lane's later refusal brings them back (``Inbox.not_sent``).
     controller.version += 1
     return True
@@ -302,10 +318,11 @@ def load(controller):
 # The tray -----------------------------------------------------------------------------------------------------------
 
 def _rows(view, item, width, size):
-    text = iface_(item.label) if item.host else item.text if item.text.strip() else iface_(PICTURE)
-    rows = view.wrap(text, max(40, width - 2 * PAD), size, view._font)
+    from .external_transcript import unframed   # A connected app's words as it sent them, never the agent's frame.
+    text = iface_(item.label) if item.host else unframed(item.text) if item.text.strip() else iface_(PICTURE)
+    rows = tuple(view.wrap(text, max(40, width - 2 * PAD), size, view._font))
     if len(rows) > MAX_ROWS:   # A long message shows its start; Edit brings all of it back.
-        rows = rows[:MAX_ROWS - 1] + [(view.elide(rows[MAX_ROWS - 1][0].rstrip() + " …", width - 2 * PAD, size), 0)]
+        rows = rows[:MAX_ROWS - 1] + ((view.elide(rows[MAX_ROWS - 1][0].rstrip() + " …", width - 2 * PAD, size), 0),)
     return rows
 
 

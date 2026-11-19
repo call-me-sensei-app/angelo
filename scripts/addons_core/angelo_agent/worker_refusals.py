@@ -32,10 +32,10 @@ NOT_IN_WORKER = ("{name} does not run in a worker Blender, which runs its part's
 
 
 def worker_tools():
-    """(reads, edits) a worker runs: what runs headless (``external_clients.HEADLESS_TOOLS``) less what needs more
-    than the worker's document, and the chat's scripts, which a person approves (``worker_script``)."""
+    """(reads, edits) a worker runs: what runs without Angelo's window (``windowless_tools.TOOLS``) less what needs
+    more than the worker's document, and the chat's scripts, which a person approves (``worker_script``)."""
     from .action_recipes import RECIPE_NAMES
-    from .external_clients import HEADLESS_TOOLS
+    from .windowless_tools import TOOLS as WINDOWLESS
     from .scene_spec import SCENE_NAMES
     from .validation_spec import VALIDATION_NAMES
     from .view_spec import TOOL_NAME as VIEW
@@ -44,7 +44,7 @@ def worker_tools():
                 "angelo_agent_capabilities", VIEW})
     edits = frozenset({"angelo_create_cube", "angelo_set_transform", "angelo_apply_batch", "angelo_scene_program",
                        "angelo_apply_recipe"})
-    return frozenset(reads & HEADLESS_TOOLS), frozenset(edits & HEADLESS_TOOLS) | {SCRIPT}
+    return frozenset(reads & WINDOWLESS), frozenset(edits & WINDOWLESS) | {SCRIPT}
 
 
 def local_tools():

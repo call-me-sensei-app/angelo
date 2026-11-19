@@ -35,6 +35,8 @@
 #  include <sys/stat.h>
 #endif
 
+#include "BLI_file_time.hh"
+
 #include "bpy_angelo_guard_confine_vouches.hh"
 
 namespace blender::angelo_guard::vouches {
@@ -47,7 +49,8 @@ constexpr char SEP = '\\';
 constexpr char SEP = '/';
 #endif
 
-constexpr size_t KEPT = 4096; /* Entries kept in one session (the oldest go first). */
+constexpr size_t KEPT = 4096;         /* Entries kept in one session (the oldest go first, never a program). */
+constexpr size_t PROGRAMS_KEPT = 256; /* Programs recorded to run (Scope::Run): past it, a new one is refused. */
 
 struct Entry {
   std::string key;
@@ -70,6 +73,16 @@ std::string parent_of(const std::string &key)
   return key.substr(0, cut);
 }
 
+/** The oldest entries past KEPT go, never a program's (Scope::Run): its captured facts are what refuses a program
+ * changed since, and one dropped would be recorded afresh when Angelo finds it again (the re-review of 4be92cfb84f,
+ * S-1). Programs are bounded on their own (PROGRAMS_KEPT). */
+void trim()
+{
+  for (auto it = entries.begin(); entries.size() > KEPT && it != entries.end();) {
+    it = it->scope == Scope::Run ? it + 1 : entries.erase(it);
+  }
+}
+
 bool inside(const std::string &key, const std::string &folder)
 {
   return key.size() > folder.size() && key.compare(0, folder.size(), folder) == 0 &&
@@ -79,6 +92,12 @@ bool inside(const std::string &key, const std::string &folder)
 bool same_file(const Facts &a, const Facts &b)
 {
   return a.exists && b.exists && a.device == b.device && a.number[0] == b.number[0] && a.number[1] == b.number[1];
+}
+
+/** The very file, unchanged: an in-place rewrite (O_TRUNC keeps the inode) changes its change time. */
+bool same_content(const Facts &a, const Facts &b)
+{
+  return same_file(a, b) && !a.directory && a.size == b.size && a.modified == b.modified && a.changed == b.changed;
 }
 
 /** One part of a typed output pattern against one part of a path a writer expanded it to: `#` runs are frame digits,
@@ -193,6 +212,13 @@ Facts facts_of(const std::string &path)
     facts.links = info.nNumberOfLinks;
     facts.device = info.dwVolumeSerialNumber;
     facts.number[0] = (uint64_t(info.nFileIndexHigh) << 32) | info.nFileIndexLow;
+    facts.size = (uint64_t(info.nFileSizeHigh) << 32) | info.nFileSizeLow;
+    const uint64_t written = (uint64_t(info.ftLastWriteTime.dwHighDateTime) << 32) | info.ftLastWriteTime.dwLowDateTime;
+    facts.modified = blender::file_time::nanoseconds_from_filetime(written);
+    FILE_BASIC_INFO basic;
+    if (GetFileInformationByHandleEx(handle, FileBasicInfo, &basic, sizeof(basic))) {
+      facts.changed = blender::file_time::nanoseconds_from_filetime(uint64_t(basic.ChangeTime.QuadPart));
+    }
   }
   CloseHandle(handle);
 #else
@@ -204,6 +230,14 @@ Facts facts_of(const std::string &path)
     facts.links = uint64_t(info.st_nlink);
     facts.device = uint64_t(info.st_dev);
     facts.number[0] = uint64_t(info.st_ino);
+    facts.size = uint64_t(info.st_size);
+#  ifdef __APPLE__
+    facts.modified = blender::file_time::nanoseconds_saturated(info.st_mtimespec.tv_sec, info.st_mtimespec.tv_nsec);
+    facts.changed = blender::file_time::nanoseconds_saturated(info.st_ctimespec.tv_sec, info.st_ctimespec.tv_nsec);
+#  else
+    facts.modified = blender::file_time::nanoseconds_saturated(info.st_mtim.tv_sec, info.st_mtim.tv_nsec);
+    facts.changed = blender::file_time::nanoseconds_saturated(info.st_ctim.tv_sec, info.st_ctim.tv_nsec);
+#  endif
   }
 #endif
   return facts;
@@ -228,9 +262,7 @@ bool add(const std::string &key, const Facts &facts, bool folder, bool recursive
     }
   }
   entries.push_back(Entry{key, folder, recursive, scope, tag, facts});
-  if (entries.size() > KEPT) {
-    entries.erase(entries.begin(), entries.begin() + (entries.size() - KEPT));
-  }
+  trim();
   return true;
 }
 
@@ -238,7 +270,9 @@ bool matches(const std::string &key, const Facts &now, const bool picks)
 {
   std::lock_guard<std::mutex> guard(lock);
   for (const Entry &entry : entries) {
-    if (entry.scope != Scope::Typed && (picks || entry.scope != Scope::Pick) && entry_matches(entry, key, now)) {
+    if (entry.scope != Scope::Typed && entry.scope != Scope::Run && (picks || entry.scope != Scope::Pick) &&
+        entry_matches(entry, key, now))
+    {
       return true;
     }
   }
@@ -275,7 +309,7 @@ bool identity_named(const Facts &now)
 {
   std::lock_guard<std::mutex> guard(lock);
   for (const Entry &entry : entries) {
-    if (!entry.folder && same_file(entry.facts, now)) {
+    if (!entry.folder && entry.scope != Scope::Run && same_file(entry.facts, now)) {
       return true;
     }
   }
@@ -286,8 +320,46 @@ bool program_named(const std::string &key, const Facts &now)
 {
   std::lock_guard<std::mutex> guard(lock);
   for (const Entry &entry : entries) {
-    if (!entry.folder && entry_matches(entry, key, now)) {
+    if (!entry.folder && entry_matches(entry, key, now) && same_content(entry.facts, now)) {
       return true;
+    }
+  }
+  return false;
+}
+
+bool add_program(const std::string &key, const Facts &facts, const bool keep_captured)
+{
+  if (key.empty() || facts.link || !facts.exists || facts.directory) {
+    return false;
+  }
+  std::lock_guard<std::mutex> guard(lock);
+  for (Entry &entry : entries) {
+    if (entry.key == key && entry.scope == Scope::Run) {
+      if (keep_captured && !same_content(entry.facts, facts)) {
+        return false; /* Changed since it was captured, after a script ran: never blessed by finding it again. */
+      }
+      entry.facts = facts;
+      return true;
+    }
+  }
+  size_t programs = 0;
+  for (const Entry &entry : entries) {
+    programs += entry.scope == Scope::Run ? 1 : 0;
+  }
+  if (programs >= PROGRAMS_KEPT) {
+    return false; /* Never evicted to make room: a program past the bound is not recorded, so it does not run. */
+  }
+  entries.push_back(Entry{key, false, false, Scope::Run, "", facts});
+  trim();
+  return true;
+}
+
+bool program_changed(const std::string &key, const Facts &now)
+{
+  std::lock_guard<std::mutex> guard(lock);
+  for (const Entry &entry : entries) {
+    if (entry.scope == Scope::Run && entry.key == key) {
+      return !same_content(entry.facts, now);
     }
   }
   return false;
@@ -297,7 +369,10 @@ void forget(const std::string &key, bool folder, bool calls_only)
 {
   std::lock_guard<std::mutex> guard(lock);
   for (auto it = entries.begin(); it != entries.end();) {
-    const bool match = it->key == key && it->folder == folder && (!calls_only || it->scope == Scope::Call);
+    /* Never a program's record (Scope::Run): narrowing is anyone's, and a program forgotten would be recorded afresh,
+     * changed, when Angelo finds it again (the re-review of 4be92cfb84f, S-1). A program never widens writing. */
+    const bool match = it->key == key && it->folder == folder && it->scope != Scope::Run &&
+                       (!calls_only || it->scope == Scope::Call);
     it = match ? entries.erase(it) : it + 1;
   }
 }

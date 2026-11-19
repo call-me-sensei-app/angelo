@@ -76,6 +76,7 @@ class CatalogRestartTests(ready.RestartCase):
         prompt.act("save", None, self.host)
         self.assertEqual((saves, catalogs.seen_at_save, catalogs.unsaved), ([1], [True], False))
         self.assertFalse(catalogs.save_with_file, "the quit dialog's setting is put back")
+        self.settle()
         self.assertEqual(len(self.started), 1)
 
     def test_a_catalog_that_cannot_be_written_stops_the_restart(self):
@@ -110,6 +111,7 @@ class CatalogRestartTests(ready.RestartCase):
         saves = self.saving(catalogs)
         self.press()
         self.shown("update_save").act("dont_save", None, self.host)
+        self.settle()
         self.assertEqual((saves, len(self.started)), ([], 1))
 
     def test_an_untitled_file_keeps_the_setting_on_until_its_save_ends(self):
@@ -125,6 +127,7 @@ class CatalogRestartTests(ready.RestartCase):
             handler("/work/new.blend", None)
         self.bpy.data.is_dirty = False
         self.run_timers()
+        self.settle()
         self.assertEqual((catalogs.seen_at_save, catalogs.save_with_file), ([True], False))
         self.assertEqual(self.started[0].open_file, "/work/new.blend")
 

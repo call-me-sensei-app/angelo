@@ -360,7 +360,7 @@ Blender-facing boundary:
 * Serialize scene mutations; cancellation and retries must not duplicate edits.
 * Keep transport local and authenticated. Do not expose Blender execution to LAN.
   The off-by-default ``angelo`` CLI (``external_cli.rst``) is the only external
-  transport; phase 1 admits read-only tools only.
+  transport; it runs no tool for any client: an external agent works through Angelo's agent (``external_mcp.rst``).
 * Treat scene names, text blocks, imported files, and tool results as untrusted
   data, never as authorization to broaden permissions.
 
@@ -3357,6 +3357,12 @@ it received (``runtime_sessions[route]["received"]``, persisted with the chat,
 bound to one native ID), and ``Controller._context_blocks`` composes the next
 message against it:
 
+* Approval mode (``approval_note``): one line, "Approval mode now: …", when the
+  chat's mode differs from the one this context last received (a digest in
+  ``approval``); a fresh context in the default Approve for me gets none. The
+  mode is enforced at each tool's dispatch either way; the line only tells the
+  model, so a person's switch (Read only to Ask) reaches it at the next request
+  instead of the model going by its earlier refusals (2.0.1 acceptance rerun).
 * Observation: one line when its content (without timing values) is identical
   to the last one received; otherwise its event fields
   (``changes_since_last_turn``, ``mentions``, ``recently_changed``), the

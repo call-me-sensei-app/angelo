@@ -266,7 +266,58 @@ std::wstring parent_of(const Extended &path, const std::wstring &of)
   return of.substr(0, separator);
 }
 
+/** The DOS name of the file `handle` has open (drive letter or `\\server\share`, no `\\?\` prefix), then closes
+ * it. Empty when no drive letter or share names its volume. */
+std::wstring named_by(HANDLE handle)
+{
+  std::wstring named(MAX_PATH, L'\0');
+  DWORD length = 0;
+  while (true) {
+    length = GetFinalPathNameByHandleW(
+        handle, named.data(), DWORD(named.size()), FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+    if (length == 0 || length < named.size()) {
+      break;
+    }
+    named.assign(size_t(length) + 1, L'\0'); /* Too small: `length` counts the terminating NUL then. */
+  }
+  CloseHandle(handle);
+  if (length == 0) {
+    return {};
+  }
+  named.resize(length);
+  if (starts_with(named, L"\\\\?\\UNC\\")) {
+    named = L"\\\\" + named.substr(8);
+  }
+  else if (starts_with(named, L"\\\\?\\")) {
+    named = named.substr(4);
+  }
+  return named;
+}
+
 }  // namespace
+
+std::string followed_path(const std::string &utf8)
+{
+  const Extended path = extended(utf8);
+  if (path.path.empty()) {
+    return {};
+  }
+  /* Opened as a program start opens it: every link followed, the last one included. */
+  HANDLE handle = CreateFileW(path.path.c_str(),
+                              0,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              nullptr,
+                              OPEN_EXISTING,
+                              FILE_FLAG_BACKUP_SEMANTICS,
+                              nullptr);
+  if (handle == INVALID_HANDLE_VALUE) {
+    return {};
+  }
+  const std::wstring named = named_by(handle);
+  bool ok = false;
+  std::string result = named.empty() ? std::string() : to_utf8(named, &ok);
+  return ok ? result : std::string();
+}
 
 std::string final_path(const std::string &utf8)
 {
@@ -289,26 +340,9 @@ std::string final_path(const std::string &utf8)
     rest.push_front(prefix.substr(parent.size() + (parent.size() > path.root ? 1 : 0)));
     prefix = parent;
   }
-  std::wstring named(MAX_PATH, L'\0');
-  DWORD length = 0;
-  while (true) {
-    length = GetFinalPathNameByHandleW(
-        handle, named.data(), DWORD(named.size()), FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
-    if (length == 0 || length < named.size()) {
-      break;
-    }
-    named.assign(size_t(length) + 1, L'\0'); /* Too small: `length` counts the terminating NUL then. */
-  }
-  CloseHandle(handle);
-  if (length == 0) {
+  std::wstring named = named_by(handle);
+  if (named.empty()) {
     return {}; /* No drive letter or share names the volume. */
-  }
-  named.resize(length);
-  if (starts_with(named, L"\\\\?\\UNC\\")) {
-    named = L"\\\\" + named.substr(8);
-  }
-  else if (starts_with(named, L"\\\\?\\")) {
-    named = named.substr(4);
   }
   for (const std::wstring &component : rest) {
     if (named.empty() || named.back() != L'\\') {
@@ -365,6 +399,11 @@ bool last_component_links(const std::string &utf8, int /*dir_fd*/)
 }
 
 #else
+
+std::string followed_path(const std::string &utf8)
+{
+  return utf8;
+}
 
 std::string final_path(const std::string &utf8)
 {

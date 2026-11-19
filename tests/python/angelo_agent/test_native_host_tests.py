@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 import host_test_policy
-from host_test_policy import environment_skip
+from host_test_policy import environment_skip, required_skip
 import run_host_tests as runner
 
 
@@ -49,7 +49,7 @@ class HostSkipPolicyTests(unittest.TestCase):
                 self.skipTest(environment_skip("missing fixture"))
 
             def test_unexpected(self):
-                self.skipTest("missing fixture")
+                self.skipTest(required_skip("missing fixture"))
 
         status, stdout, stderr = self.run_fixture(unittest.defaultTestLoader.loadTestsFromTestCase(Fixture))
         self.assertEqual(status, 1)
@@ -59,7 +59,7 @@ class HostSkipPolicyTests(unittest.TestCase):
     def test_the_explicit_limit_still_applies_to_unclassified_skips(self):
         class Fixture(unittest.TestCase):
             def test_dependency(self):
-                self.skipTest("NumPy is not installed")
+                self.skipTest(required_skip("NumPy is not installed"))
 
         for maximum, expected in ((0, 1), (1, 0)):
             with self.subTest(maximum=maximum):

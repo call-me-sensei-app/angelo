@@ -253,8 +253,9 @@ def _write(window, scene, view_layer, path, settings, baked, extras=None):
             raise WebExportError(n_("Blender's glTF exporter didn't write the file; see the Info log"))
         if textures == "KTX2":
             binary = gltfpack_path()   # The person's glTF preference (C refuses a script's change to it) or PATH.
-            with owned_paths.vouched_during([binary] if binary else [], folder=False):
-                packed = _run_gltfpack(binary, target, path, settings)
+            if binary:   # Recorded to start only, never a file any writer may write (the re-review of 4be92cfb84f).
+                owned_paths.vouch_program(binary)
+            packed = bool(binary) and _run_gltfpack(binary, target, path, settings)
             if packed:
                 os.remove(target)
                 if extras:   # gltfpack keeps no extras and rewrites every buffer: set them again.

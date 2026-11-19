@@ -22,7 +22,7 @@ from angelo_agent.checkpoints import CheckpointStore
 from angelo_agent.files import FileWorkspace
 
 
-@unittest.skipUnless(anchored_files_supported(), "descriptor-relative workspace I/O required")
+@unittest.skipUnless(anchored_files_supported(), environment_skip("descriptor-relative workspace I/O required"))
 class FileAnchoringTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="angelo-file-anchoring-", dir="/private/tmp" if Path("/private/tmp").is_dir() else None)

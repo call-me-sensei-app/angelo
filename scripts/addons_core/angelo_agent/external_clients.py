@@ -1,20 +1,23 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""External AI apps connected over MCP: who they are, their keys and what each may do.
+"""External AI apps connected over MCP: who they are and their keys.
 
 Pure standard library and no ``bpy``: the listener's connection threads read a
 published snapshot of this registry, and the main thread changes it only on a
 person's click (Preferences > AI Providers > External AI apps).
 
 ``<state>/mcp/clients.json`` (owner-only, atomic replace) records each app
-by its client name (a CLI label: ``claude-code``, ``codex``...), the app kind,
-the levels the person allowed and when it was connected. Each app's 32-byte
-key lives in its own owner-only file, ``<state>/mcp/keys/<name>``; the app's
-own MCP configuration carries only ``--client <name>``, so a key never lands in
-a configuration file that an editor may sync or a dotfile repository may hold.
-The stdio launcher reads the key (same user) and proves it in the handshake
-(``external_cli_protocol.app_proof``). Disconnecting deletes the key; the
-app's configuration entry then gets "this app was disconnected in Angelo".
+by its client name (a CLI label: ``claude-code``, ``codex``...), the app kind
+and when it was connected. Each app's 32-byte key lives in its own owner-only
+file, ``<state>/mcp/keys/<name>``; the app's own MCP configuration carries only
+``--client <name>``, so a key never lands in a configuration file that an editor
+may sync or a dotfile repository may hold. The stdio launcher reads the key
+(same user) and proves it in the handshake (``external_cli_protocol.app_proof``).
+Disconnecting deletes the key; the app's configuration entry then gets "this app
+was disconnected in Angelo".
+
+A connected app talks to Angelo's agent and never calls a tool (``external_agent``). 2.0.0's per-app levels are gone;
+a record that still carries them reads the same.
 
 The threat model is the CLI's: same user, local machine. A same-user process
 can read the key, so it buys revocation, attribution and no accidental use;
@@ -28,18 +31,13 @@ import time
 import uuid
 from pathlib import Path
 
-from . import launcher_records, owned_paths, shared_replace
+from . import owned_paths, shared_replace
 from .external_cli_protocol import read_key, valid_label
-from .team_org_policy import STRICTEST, read_regular
-from .team_view import org_policy
-from .tool_specs import BOUNDED_MUTATIONS, READ_ONLY_TOOLS, TOOL_MAP, WITHHELD_TOOLS
+from .team_org_policy import read_regular
+from .tool_specs import TOOL_MAP
 from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
-# What the person can allow per app. Reading is always on: an app that may do nothing cannot be useful.
-READ, EDIT, PYTHON, TASKS = "read", "edit", "python", "tasks"
-LEVELS = (READ, EDIT, PYTHON, TASKS)
-DEFAULT_LEVELS = (READ, EDIT, PYTHON, TASKS)
-
+APPROVAL_FLOORS = ("AUTO_BOUNDED", "ASK", "READ_ONLY")   # chat_settings' approval modes.
 # The apps Angelo knows how to set up (external_setup). Any other MCP client connects as "other".
 APPS = ("claude_code", "codex", "claude_desktop", "cursor", "vscode", "other")
 APP_NAMES = {"claude_code": "Claude Code", "codex": "Codex", "claude_desktop": "Claude Desktop",
@@ -47,88 +45,18 @@ APP_NAMES = {"claude_code": "Claude Code", "codex": "Codex", "claude_desktop": "
 DEFAULT_CLIENT = {"claude_code": "claude-code", "codex": "codex", "claude_desktop": "claude-desktop",
                   "cursor": "cursor", "vscode": "vscode", "other": "mcp-app"}
 
-READ_TOOLS = frozenset({
-    "angelo_inspect_scene", "angelo_inspect_sculpt", "angelo_scene_search", "angelo_scene_object",
-    "angelo_scene_relationships", "angelo_scene_delta", "angelo_scene_verify", "angelo_scene_settings",
-    "angelo_read_data", "angelo_blend_file", "angelo_inspect_preview", "angelo_expand_recipe",
-    "angelo_blender_api", "angelo_agent_capabilities", "angelo_agent_metrics", "angelo_memory_read",
-    "angelo_script", "angelo_view", "angelo_sculpt_view", "angelo_sculpt_review", "angelo_sculpt_target",
-    "angelo_job_cancel", "angelo_web_check", "angelo_engine_check", "angelo_skeleton_check",
-    "angelo_game_ready_check",
-    # An engine link the person turned on: what it holds and what the editors acknowledged (never turns it on).
-    "angelo_engine_link_status",
-    "angelo_library_search",
-})
-# Typed, bounded scene edits (each one Undo step), background jobs (renders, bakes, exports; always a card), the
-# web export (a .glb in the workspace, never over a file; the loopback preview), the engine preflight's typed fixes
-# (always a card, one Undo step), acting on an engine link the person turned on (push, save, close; turning it on
-# stays angelo_app_feature's, never an app's) and a download into assets/downloads (always the window's card).
-# Generation Flows are Media Studio work (paid generation), not scene edits; a merge of parallel workers' parts is
-# the lead chat's own (worker_merge), never a connected app's.
-EDIT_TOOLS = frozenset(BOUNDED_MUTATIONS - {"angelo_flow_build", "angelo_flow_choose", "angelo_workers_start",
-                                            "angelo_workers_merge"}) | {"angelo_job_start", "angelo_web_export",
-                                                                        "angelo_web_preview", "angelo_engine_fix",
-                                                                        "angelo_engine_link", "angelo_library_import",
-                                                                        "angelo_download"}
-PYTHON_TOOLS = frozenset({"angelo_execute_python"})
-# A connected app's script file (external_work, script_files): offered with the python level, never an Angelo tool.
-SCRIPT_FILE_TOOL = "angelo_run_script_file"
-LEVEL_TOOLS = {READ: READ_TOOLS, EDIT: EDIT_TOOLS, PYTHON: PYTHON_TOOLS, TASKS: frozenset()}
-
-# A tool annotation change must not silently widen what reading allows.
-if any(name not in READ_ONLY_TOOLS for name in READ_TOOLS - WITHHELD_TOOLS):
-    raise RuntimeError("The external read level may contain only read-only tools")
-if not (READ_TOOLS | EDIT_TOOLS | PYTHON_TOOLS) <= set(TOOL_MAP) | WITHHELD_TOOLS:
-    raise RuntimeError("An external level names a tool Angelo does not have")
-
-
-# Families an app never reaches, also in the tasks it starts (Angelo's agent in its External conversation):
-# workspace files, task-memory updates, Media Studio, the team library, Generation Flows,
-# delegation and the person's workspace mode.
+# Families Angelo's agent never reaches in an app's External conversation (``RuntimeContext.begin`` narrows its
+# allowed tools): workspace files, task-memory updates, Media Studio, the team library, Generation Flows, parallel
+# workers, delegation and the person's workspace mode.
 NEVER_FOR_APPS = frozenset(name for name in TOOL_MAP if name.startswith(("angelo_studio_", "angelo_team_",
                                                                          "angelo_flow_", "angelo_workers_"))
                            or name in {"angelo_write_file", "angelo_delete_file", "angelo_read_file", "angelo_list_files",
                                        "angelo_memory_update", "angelo_delegate", "angelo_set_workspace_mode",
                                        "angelo_read_reference",
                                        # Turning on the engine link lets an engine connect: the person's call only.
-                                       "angelo_app_feature",
-                                       # A goal makes Angelo send requests itself: only the person's own chat holds one.
-                                       "angelo_goal"})
-
-
-# Headless (no Angelo window, doc/angelo/external_mcp.rst "Headless"): nothing may wait for a person there, so only
-# reads and the Auto lane's bounded typed edits run. Background jobs and the web export write files, the web preview
-# serves the scene and opens a browser, the engine fixes wait for their card, the engine link writes into an engine's
-# project; Python and accepting a preview need a person's review (an app's preview acceptance always opens the human
-# review in the window).
-WINDOW_ONLY_EDITS = frozenset({"angelo_job_start", "angelo_web_export", "angelo_web_preview", "angelo_engine_fix",
-                               "angelo_engine_link", "angelo_library_import", "angelo_download"})
-HEADLESS_TOOLS = frozenset((READ_TOOLS | EDIT_TOOLS) - WINDOW_ONLY_EDITS - {"angelo_job_cancel", "angelo_accept_preview"})
-if not EDIT_TOOLS - WINDOW_ONLY_EDITS <= BOUNDED_MUTATIONS:
-    raise RuntimeError("Headless edits may contain only the Auto lane's bounded typed edits")
-
-
-def tools_for(levels, headless=False):
-    """The Angelo tools an app with these levels may call (task tools are not Angelo tools)."""
-    allowed = set()
-    for level in levels:
-        allowed |= LEVEL_TOOLS.get(level, frozenset())
-    allowed &= TOOL_MAP.keys()   # Never a tool this launch doesn't have (tool_specs.WITHHELD_TOOLS).
-    return frozenset(allowed & HEADLESS_TOOLS if headless else allowed)
-
-
-def clean_levels(levels):
-    """Known levels in canonical order; reading is always included."""
-    chosen = set(levels or ()) | {READ}
-    return tuple(level for level in LEVELS if level in chosen)
-
-
-ACCESS_FILE = "access.json"   # <state>/mcp/access.json: the window's "Allow apps on this computer" switch
-# <state>/mcp/organization.json: the signed-in organization's app policy as the window applies it, or "none".
-ORGANIZATION_FILE = "organization.json"
-# Beside a record while a window writes it, and left when the write failed (``launcher_records``): the launcher fails
-# closed while one is there.
-OWED = launcher_records.OWED
+                                       "angelo_app_feature"})
+# angelo_goal is offered (2.0.1, maintainer: "same benefit, no handicaps"): a goal held from the app's words follows the
+# person's-words rule (goal_mode.rst); its Start under Ask, Resume and the budget stay the person's presses.
 
 
 def _write_new(temporary, encoding, write, target):
@@ -150,78 +78,6 @@ def _write_new(temporary, encoding, write, target):
         raise
 
 
-def _read_record(state_directory, name):
-    """A record the window wrote, or None when it is missing or can't be read: only a regular file of at most
-    ``team_org_policy.MAX_FILE`` bytes, never through a link at its name or by waiting on a FIFO (break-it M2)."""
-    root = Path(state_directory) / "mcp"
-    if launcher_records.markers(root, name) and not launcher_records.settled(root, name):
-        return None   # A write did not land: what the file says may be older and looser (fails closed).
-    try:
-        saved = json.loads(read_regular(root / name))
-    except (OSError, ValueError):
-        return None
-    return saved if isinstance(saved, dict) and saved.get("version") == 1 else None
-
-
-def write_access(state_directory, allowed, claimed=(), intent=0.0):
-    """Record the person's "Allow apps on this computer to reach Angelo" switch where the launcher reads it
-    (owner-only, atomic), changed at ``intent`` (``time.time``; 0: as the window started). Angelo's window writes it
-    whenever the switch differs from what is recorded, weighed by ``launcher_records.weigh`` at a takeover of
-    ``claimed`` markers."""
-    root = Path(state_directory) / "mcp"
-    record = dict({"version": 1, "allow_local_cli": bool(allowed)}, **({"intent": intent} if intent else {}))
-    strictest = {"version": 1, "allow_local_cli": False, "intent": intent}
-    record = launcher_records.weigh(root, ACCESS_FILE, record, claimed, launcher_records.stricter_access, strictest)
-    launcher_records.write(root, ACCESS_FILE, record, [path for path, _other in claimed])
-
-
-write_access = _grant_guard.entry(write_access, widens="allowed")
-
-
-def read_access(state_directory):
-    """The recorded switch: True or False; None when it was never recorded or can't be read (callers fail closed)."""
-    value = (_read_record(state_directory, ACCESS_FILE) or {}).get("allow_local_cli")
-    return value if isinstance(value, bool) else None
-
-
-def write_organization(state_directory, policy, claimed=(), intent=0.0):
-    """Record the organization's app policy Angelo's window applies now (``team_view.org_policy``), or None for no
-    organization (signed out, or no team sign-in in this build), where the launcher reads it (owner-only, atomic).
-    The window writes it whenever it differs from what is recorded (``ExternalHost.record_organization``)."""
-    root = Path(state_directory) / "mcp"
-    record = dict({"version": 1, "organization": policy}, **({"intent": intent} if intent else {}))
-    strictest = {"version": 1, "organization": STRICTEST, "intent": intent}
-    stricter = lambda first, second: launcher_records.stricter_policy(first, second, org_policy, STRICTEST)
-    record = launcher_records.weigh(root, ORGANIZATION_FILE, record, claimed, stricter, strictest)   # As access.
-    launcher_records.write(root, ORGANIZATION_FILE, record, [path for path, _other in claimed])
-
-
-def read_organization(state_directory):
-    """The organization's app policy for a process without the window, as the window last recorded it.
-
-    None only when the window recorded no organization. A record that is missing (never written, a write that
-    failed, another state folder, deleted), unreadable, malformed, oversized, a link or not a regular file counts
-    as the strictest policy, like an access switch never recorded counts as off (break-it review S1)."""
-    saved = _read_record(state_directory, ORGANIZATION_FILE)
-    if saved is not None and "organization" in saved:
-        if saved["organization"] is None:
-            return None
-        policy = org_policy(saved["organization"])
-        if policy is not None:
-            return policy
-    return org_policy(STRICTEST)
-
-
-def organization_recorded(state_directory):
-    """Whether the window has recorded this computer's organization policy (none or a policy) in a form
-    ``read_organization`` uses; False is what it reads as the strictest policy for want of a record."""
-    if launcher_records.markers(Path(state_directory) / "mcp", ORGANIZATION_FILE):
-        return True   # The window is writing it again: the strictest policy for now, never "open Angelo once".
-    saved = _read_record(state_directory, ORGANIZATION_FILE)
-    return saved is not None and "organization" in saved and (
-        saved["organization"] is None or org_policy(saved["organization"]) is not None)
-
-
 class AppRegistry:
     """``<state>/mcp/clients.json`` plus one key file per app (module docstring)."""
 
@@ -241,9 +97,12 @@ class AppRegistry:
         for name, record in (apps or {}).items() if isinstance(apps, dict) else ():
             if not valid_label(name) or not isinstance(record, dict) or record.get("app") not in APPS:
                 continue
-            levels = record.get("levels")
-            output[name] = {"app": record["app"], "levels": clean_levels(levels if isinstance(levels, list) else ()),
-                            "connected_at": record.get("connected_at") if isinstance(record.get("connected_at"), (int, float)) else None}
+            stamp = record.get("connected_at")
+            output[name] = {"app": record["app"], "connected_at": stamp if isinstance(stamp, (int, float)) else None}
+            if record.get("approval") in APPROVAL_FLOORS:   # The person's mode a new conversation never loosens.
+                output[name]["approval"] = record["approval"]
+            if record.get("goal_ended") is True:   # The person ended a goal of the app's: the next is only proposed.
+                output[name]["goal_ended"] = True
         return output
 
     def _save(self, apps):
@@ -251,11 +110,9 @@ class AppRegistry:
         os.chmod(self.root, 0o700)
         temporary = self.path.with_name("clients." + uuid.uuid4().hex + ".tmp")
         _write_new(temporary, "utf-8", lambda handle: json.dump(
-            {"version": 1, "apps": {name: {"app": record["app"], "levels": list(record["levels"]),
-                                           "connected_at": record.get("connected_at")}
-                                    for name, record in apps.items()}}, handle), self.path)
+            {"version": 1, "apps": {name: _saved(record) for name, record in apps.items()}}, handle), self.path)
 
-    def connect(self, app, name=None, levels=DEFAULT_LEVELS):
+    def connect(self, app, name=None):
         """Record an app and write a fresh key; returns its client name. A reconnect replaces the key."""
         if app not in APPS:
             raise ValueError("Unknown app")
@@ -268,21 +125,32 @@ class AppRegistry:
         temporary = key.with_name("." + name + "." + uuid.uuid4().hex + ".tmp")
         _write_new(temporary, "ascii", lambda handle: handle.write(secrets.token_hex(32)), key)
         apps = self.load()
-        new = name not in apps
-        apps[name] = {"app": app, "levels": clean_levels(levels), "connected_at": round(time.time())}
+        apps[name] = {"app": app, "connected_at": round(time.time())}
         self._save(apps)
-        if new:   # A new connection starts with none, also after a Disconnect whose removal failed (FR-L1).
-            self._forget_script_files(name)
         return name
 
-    def set_levels(self, name, levels):
+    def record_end(self, name, mode, goal_ended=False):
+        """What the app's conversation that ends (a move, a new chat, the person's delete) leaves for its next one:
+        ``mode``, its approval, as the floor the next starts from (``ExternalHost.create_conversation``), and
+        ``goal_ended`` when the person stopped its goal or its budget ran out, so the app's next goal is only
+        proposed (``goal_controls``) until the person starts one. Neither is a grant: both only narrow."""
         apps = self.load()
         if name not in apps:
-            raise KeyError(name)
-        apps[name]["levels"] = clean_levels(levels)
-        self._save(apps)
-        if PYTHON not in apps[name]["levels"]:   # Script files it may no longer run are forgotten, not kept.
-            self._forget_script_files(name)
+            return
+        record = dict(apps[name])
+        if mode in APPROVAL_FLOORS:
+            record["approval"] = mode
+        if goal_ended:
+            record["goal_ended"] = True
+        if record != apps[name]:
+            apps[name] = record
+            self._save(apps)
+
+    def goal_started(self, name):
+        """The person's Start on a goal in the app's conversation: its next goals follow the chat's own rule again."""
+        apps = self.load()
+        if apps.get(name, {}).pop("goal_ended", None):
+            self._save(apps)
 
     def disconnect(self, name):
         """Forget the app and delete its key; True when it was connected."""
@@ -295,31 +163,30 @@ class AppRegistry:
             pass
         if known:
             self._save(apps)
-        self._forget_script_files(name)   # A reconnected app starts with no allowed script files.
         return known
-
-    def _forget_script_files(self, name):
-        """The app's script file approvals (``script_files``) end with its python level or its connection. The
-        check also reads the app's levels at every run, so a write that fails here still never runs one."""
-        from . import script_files
-        try:
-            script_files.forget_at(self.root.parent, name)
-        except OSError as error:
-            print("Angelo: the app's script file approvals could not be removed from disk:", error)
 
     def key(self, name):
         """The app's 32-byte key, or None (missing, unsafe or malformed: never a weaker check)."""
         return read_key(self.keys / name) if valid_label(name) else None
 
     def snapshot(self):
-        """name -> (levels, key) for the listener; immutable, read off the main thread."""
+        """name -> key for the listener; immutable, read off the main thread."""
         output = {}
-        for name, record in self.load().items():
+        for name in self.load():
             key = self.key(name)
             if key is not None:
-                output[name] = (frozenset(record["levels"]), key)
+                output[name] = key
         return output
 
 
-_grant_guard.entry_methods(AppRegistry, "connect", "set_levels")
+def _saved(record):
+    saved = {"app": record["app"], "connected_at": record.get("connected_at")}
+    if record.get("approval") in APPROVAL_FLOORS:
+        saved["approval"] = record["approval"]
+    if record.get("goal_ended") is True:
+        saved["goal_ended"] = True
+    return saved
+
+
+_grant_guard.entry_methods(AppRegistry, "connect")
 _grant_guard.entry_methods(AppRegistry, "disconnect")   # Never a script's: ACCOUNT_OPERATORS.

@@ -30,7 +30,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from host_test_policy import environment_skip
+from host_test_policy import environment_skip, required_skip
 from platform_env import stand_in_program
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -471,7 +471,7 @@ class ValidationMachineTests(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", environment_skip(
         "gcp_windows_validate.sh is a bash launcher run from the macOS workstation, not on Windows"))
-    @unittest.skipUnless(shutil.which("bash") and shutil.which("shasum"), "needs bash and shasum")
+    @unittest.skipUnless(shutil.which("bash") and shutil.which("shasum"), required_skip("needs bash and shasum"))
     def test_the_upload_command_checks_the_folder_and_sends_only_the_pinned_files(self):
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from test_native_bundle_contents import windows_file
@@ -553,7 +553,7 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn("[string]$AgentRuntimeDir = $env:ANGELO_AGENT_RUNTIME_DIR", text)
 
 
-@unittest.skipUnless(shutil.which("cmake") and shutil.which("cpack"), "CMake and CPack are required")
+@unittest.skipUnless(shutil.which("cmake") and shutil.which("cpack"), required_skip("CMake and CPack are required"))
 class CpackHookTests(unittest.TestCase):
     """windows_sign_staging.cmake through a real cpack run (TGZ instead of WiX: the hook is generator-neutral)."""
 

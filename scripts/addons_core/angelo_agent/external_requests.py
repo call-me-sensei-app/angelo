@@ -1,14 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""CLI commands on the service thread: allowlist, bounds, envelopes and projection.
+"""CLI commands on the service thread: bounds, envelopes and projection.
 
 Nothing here touches ``bpy``. Work that needs Blender or controller state is a
 ``Work`` item on a bounded queue that ``external_host`` drains from ``ui.pump``
 on the main thread; the connection thread waits for it with a timeout.
 
-Phase 1 is read-only. Every tool outside ``PHASE1_READ_TOOLS`` is refused here,
-before anything reaches a controller, so no CLI path can admit a mutation,
-file access, memory update, Studio usage, delegation or reviewed Python.
+No client runs a tool here: since 2.0.1 an external agent works through Angelo's agent
+(``external_agent``), and ``call`` is refused for every client (``external_service``).
 """
 
 import errno
@@ -24,107 +23,13 @@ from collections import deque
 from pathlib import Path
 
 from . import kept_state, owned_paths, shared_replace
-from .routing import TOOLSET_VERSION
-from .studio_spec import STUDIO_NAMES
-from .tool_specs import BOUNDED_MUTATIONS, FILE_TOOLS, READ_ONLY_TOOLS, TOOL_MAP, dynamic_tools
 
-PHASE1_READ_TOOLS = frozenset({
-    "angelo_inspect_scene", "angelo_inspect_sculpt", "angelo_scene_search", "angelo_scene_object",
-    "angelo_scene_relationships", "angelo_scene_delta", "angelo_scene_verify", "angelo_inspect_preview",
-    "angelo_expand_recipe", "angelo_blender_api", "angelo_agent_capabilities", "angelo_agent_metrics",
-    "angelo_memory_read",
-})
-# A tool annotation change must not silently widen what an external client can do.
-if any(name not in READ_ONLY_TOOLS for name in PHASE1_READ_TOOLS):
-    raise RuntimeError("The phase-1 external CLI allowlist may contain only read-only tools")
-
-IMAGE_TOOLS = frozenset({"angelo_sculpt_view", "angelo_sculpt_review", "angelo_sculpt_target", "angelo_view"})
-DEFERRED_COMMANDS = {
-    "watch": "`angelo watch` is not available yet; poll with `angelo status --call ID`.",
-    "stop": "`angelo stop` arrives with external mutation requests (phase 2); phase-1 reads finish on their own.",
-    "observe": "`angelo observe` is not available yet; use `angelo call angelo_scene_search` or `angelo_scene_delta`.",
-    "view": "`angelo view` is not available yet (visual observation is a later phase).",
-}
 WORK_QUEUE_SIZE = 16
 MAIN_THREAD_TIMEOUT = 10.0
 RATE_PER_SECOND = 20
 AUDIT_BYTES = 256 * 1024
 PATH_KEYS = frozenset({"path", "filepath", "file_path", "directory", "root"})
 _ABSOLUTE = re.compile(r"(?:/|~|[A-Za-z]:[\\/]|\\\\)")
-
-
-def exclusion_reason(name):
-    """Why a tool is outside the phase-1 allowlist; shown by ``angelo tools``."""
-    if name == "angelo_execute_python":
-        return "Privileged, non-transactional Blender Python; never available without per-call exact-code review."
-    if name in STUDIO_NAMES:
-        return "Media Studio spends generation accounts or changes the library and needs individual usage approval."
-    if name == "angelo_delegate":
-        return "Consults another connected account (billing); an external client has no lead turn."
-    if name in {"angelo_write_file", "angelo_delete_file"} or name == "angelo_memory_update":
-        return "Individually approved file or project-note effect; deferred."
-    if name in FILE_TOOLS:
-        return "An unapproved read of the Blender project directory could escape the caller's own sandbox."
-    if name == "angelo_read_reference":
-        return "Nothing is attached to an External conversation."
-    if name == "angelo_set_workspace_mode":
-        return "Changes the artist's layout."
-    if name in IMAGE_TOOLS:
-        return "Image-bearing observation; planned for `angelo view` in a later phase."
-    if name not in READ_ONLY_TOOLS:
-        return "Scene mutation; external mutation requests under Ask approval are phase 2."
-    return "Not in the phase-1 read-only allowlist."
-
-
-_catalog_cache = {}
-
-
-def _allowed_schemas():
-    if TOOLSET_VERSION not in _catalog_cache:
-        _catalog_cache.clear()
-        _catalog_cache[TOOLSET_VERSION] = {tool["name"]: tool for tool in dynamic_tools(PHASE1_READ_TOOLS)}
-    return _catalog_cache[TOOLSET_VERSION]
-
-
-def tools_catalog(name=None, include_schema=False):
-    """Discovery only: it grants nothing and host validation stays authoritative."""
-    schemas = _allowed_schemas()
-    allowed, excluded = [], []
-    for tool_name in sorted(TOOL_MAP):
-        if name is not None and tool_name != name:
-            continue
-        spec = TOOL_MAP[tool_name]
-        if tool_name in PHASE1_READ_TOOLS:
-            schema = schemas[tool_name]["inputSchema"]
-            entry = {"name": tool_name, "description": spec["description"], "read_only": True,
-                     "bounded": tool_name in BOUNDED_MUTATIONS, "approval": "none",
-                     "schema_sha256": hashlib.sha256(json.dumps(schema, sort_keys=True, ensure_ascii=False,
-                                                                separators=(",", ":")).encode("utf-8")).hexdigest()}
-            if include_schema:
-                entry["inputSchema"] = schema
-            allowed.append(entry)
-        else:
-            excluded.append({"name": tool_name, "read_only": tool_name in READ_ONLY_TOOLS,
-                             "reason": exclusion_reason(tool_name)})
-    return {"toolset_version": TOOLSET_VERSION, "phase": 1, "allowed": allowed, "excluded": excluded,
-            "note": "Discovery grants nothing; Angelo validates and bounds every call."}
-
-
-def result_code(result, *, document_changed=False, cancelled=False):
-    """Map an actual host result to a CLI code from host state, never from message text."""
-    if not isinstance(result, dict):
-        return "uncertain"
-    changes = result.get("changes")
-    if (result.get("partial_changes_possible") or result.get("serialization_failed")
-            or result.get("journal_durable") is False or isinstance(changes, dict) and changes.get("uncertain")):
-        return "uncertain"
-    if result.get("expired") or result.get("cancelled"):
-        return "not_applied"
-    if result.get("error") or result.get("success") is False:
-        if document_changed:
-            return "stale"
-        return "not_applied" if cancelled else "tool_failed"
-    return "ok"
 
 
 def default_roots():
@@ -247,6 +152,19 @@ class WorkQueue:
         while (work := self.take()) is not None:
             if work.claim():
                 work.complete(response)
+
+    def fail_label(self, label, response):
+        """Answer every queued command of ``label`` with ``response`` (main thread, the only consumer); the others
+        stay queued in their order."""
+        kept = []
+        while (work := self.take()) is not None:
+            if work.client.label == label:
+                if work.claim():
+                    work.complete(response)
+            else:
+                kept.append(work)
+        for work in kept:
+            self.submit(work)
 
     def __len__(self):
         return self._queue.qsize()

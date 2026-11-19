@@ -11,11 +11,9 @@ sign-in restores or Angelo is offline: going offline never lifts it. Signing
 out forgets it (also a copy left by another console). A console that sends no
 policy leaves the machine policy alone.
 
-That file is the window's own offline copy. Processes that run without the
-window (the MCP launcher and its headless child) read what the window applies
-from ``<state>/mcp/organization.json`` instead (``external_clients.read_organization``):
-an explicit record where "no organization" is written too, so a missing file
-there counts as the strictest policy, never as none.
+That file is the window's own offline copy. Since 2.0.1 no process without the
+window applies it: connected apps work only through Angelo's agent in the
+window (doc/angelo/external_mcp.rst).
 
 A save Windows refused (another program holds the file) stays owed: tried again
 ``shared_replace.RETRY_SECONDS`` later, once more when the account closes, and
@@ -65,9 +63,7 @@ def read_regular(path):
 
 def read_saved(directory):
     """The policy in the window's offline copy (any console): None when there is no file; an unreadable or malformed
-    file counts as the strictest policy. Not what a process without the window applies: a file that failed to write
-    or sits in another connections folder would read as none there (break-it review S1), so the MCP launcher reads
-    ``external_clients.read_organization``."""
+    file counts as the strictest policy."""
     path = os.path.join(os.fspath(directory), FILE)
     try:
         saved = json.loads(read_regular(path))

@@ -299,7 +299,7 @@ class BreakitTests(Fixture):
         call = capture[capture.index("view_warm.view("):]
         self.assertIn('checked["shading"] == "LIT")', call[:call.index("\n")])
         warm = (ADDON / "view_warm.py").read_text(encoding="utf-8")
-        helper = warm[warm.index("def view("):warm.index("def _reloaded(")]
+        helper = warm[warm.index("def view("):warm.index("def release(")]   # _reloaded: view_warm_facts.
         self.assertIn('lambda: again("SOLID")', helper, "the Solid fallback")
         self.assertIn("live_target.require(held,", helper, "the window held by identity (C2's Windows crash)")
 

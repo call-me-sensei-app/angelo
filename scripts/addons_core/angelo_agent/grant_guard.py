@@ -27,11 +27,11 @@ change only in a C grant scope or from the Preferences editor (``setting``). The
 import threading
 import time
 
-from . import grant_hints   # A press made before its control armed: a hint, never an error.
+from . import canvas_focus, grant_hints   # Which hits are controls; a press before its control armed: a hint.
 from .ui_text import n_, rpt_
 
 UI_TICKET = "ui"   # The digest of a ticket C mints for a real press on Blender's own button for an operator.
-SCRIPT_TOOLS = frozenset({"angelo_execute_python", "angelo_run_script_file"})
+SCRIPT_TOOLS = frozenset({"angelo_execute_python"})
 REGISTRY = {}          # bl_idname -> whether Angelo's own decisions use it too (``auto``), of every guarded one.
 # Operators that only narrow, yet change the person's accounts, sign-ins or consents: never agent code's, in either
 # direction (the G2 ruling; Devin's Phase B review, 2026-11-15). C refuses them while a script runs, as it does the
@@ -39,7 +39,7 @@ REGISTRY = {}          # bl_idname -> whether Angelo's own decisions use it too 
 # The person and Angelo's own code use them without a scope: they grant nothing.
 ACCOUNT_OPERATORS = frozenset({
     "angelo.team_sign_out", "angelo.team_cancel_sign_in", "angelo.cancel_signin", "angelo.quick_connect_cancel",
-    "angelo.connection_remove", "angelo.external_app_disconnect", "angelo.external_app_forget_scripts"})
+    "angelo.connection_remove", "angelo.external_app_disconnect"})
 _lock = threading.Lock()
 
 NOT_YOURS = n_("Only your own click in Angelo can do this, not an agent script or a keymap entry.")
@@ -421,7 +421,7 @@ def setting(name):
 # ticket opens, and without one (the keyboard, a press that minted nothing) it runs outside any, so whatever it reaches
 # that grants refuses (``refusal``). No list of granting actions to keep: the guarded operators and entries are the
 # inventory. An approval's own controls (``SHIELDED``) are armed only after the shield and a move into them.
-SHIELDED = frozenset({"approve", "review", "script_always_allow", "script_file_allow", "confirm", "accept"})
+SHIELDED = frozenset({"approve", "review", "script_session_allow", "script_always_allow", "confirm", "accept"})
 MAX_REGIONS = 256
 
 
@@ -443,7 +443,7 @@ def canvas_regions(window, region, surface, hits, scale, rtl, prefix="canvas.", 
     if not grant_authority.available() or script_running():
         return
     regions = []
-    for (x, y, width, height), action, value in hits[:MAX_REGIONS]:
+    for (x, y, width, height), action, value in canvas_focus.controls(hits)[:MAX_REGIONS]:   # A shield is none.
         left = region.width - (x + width) * scale if rtl else x * scale
         regions.append((int(region.x + left), int(region.y + y * scale), int(width * scale), int(height * scale),
                         prefix + action, value_digest(value), action in shielded))

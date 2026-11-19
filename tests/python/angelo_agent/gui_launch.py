@@ -35,7 +35,10 @@ INPUT_ISOLATION = "--enable-event-simulate"
 _UPDATE_E2E = ("the update end-to-end starts the installed old release as a person does and its driver presses "
                "Restart to Update with real window events; the updater relaunches the new release itself, with no "
                "flag, so both windows are a person's (a dedicated test machine, never a person's session)")
-FOCUSED_LAUNCHES = {"tests/python/angelo_agent/update_e2e_macos.py:run": _UPDATE_E2E,
+_HIDDEN_PROOF = ("the hidden-window proof's preferences step and its stand-ins for the person (their own launch, a "
+                 "Finder launch) must come to the front: that is what it measures (a granted Mac 1 slot)")
+FOCUSED_LAUNCHES = {"tests/python/angelo_agent/check_mcp_hidden_window.py:main": _HIDDEN_PROOF,
+                    "tests/python/angelo_agent/update_e2e_macos.py:run": _UPDATE_E2E,
                     "tests/python/angelo_agent/update_e2e_windows.py:run": _UPDATE_E2E}
 
 

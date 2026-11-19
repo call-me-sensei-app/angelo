@@ -140,7 +140,8 @@ class FromWordsTests(Base):
         with self.assertRaises(ValueError):
             self.set_from_words()
         self.chat.state["options"]["approval"] = "AUTO_BOUNDED"
-        self.chat.external_client = "Claude Desktop"
+        self.chat.external_client = "Claude Desktop"   # A connected app's conversation: Angelo's own request there.
+        self.chat.send("x", host_request=[], host_kind="angelo_event")
         with self.assertRaises(ValueError):
             self.set_from_words()
         self.assertIsNone(self.goal())

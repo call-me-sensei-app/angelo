@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_native_checkpoint_restore_ui as restore_case  # noqa: E402
 from angelo_agent import checkpoint_restore_ui as flow, restored_document  # noqa: E402
 from angelo_agent.checkpoint_review_ui import _SCOPES  # noqa: E402
+from notices_fakes import settle  # noqa: E402  (Blender's notifier pass, then the hand-over's settle timer)
 
 ROOT = Path(__file__).resolve().parents[3]
 WM_FILES = ROOT / "source/blender/windowmanager/intern/wm_files.cc"
@@ -139,6 +140,7 @@ class UpdateRestartTests(unittest.TestCase):
                 patch.object(self.restart, "launch", side_effect=lambda *args: launched.append(args)), \
                 patch.object(self.restart, "_save_images", return_value=[]):
             self.restart._after_prompt("save", "offer", "ready")
+            settle(self.notices.bpy)   # Blender marks the save at its next notifier pass; the hand-over waits for it.
         saves = [(name, args) for name, args, _kwargs in self.notices.record.operators if name.startswith("wm.save")]
         return saves, launched
 
@@ -181,6 +183,7 @@ class UpdateRestartTests(unittest.TestCase):
                 self.assertEqual(self.restart._watch_save(), 0.3)
                 pending[0] = False
                 self.assertIsNone(self.restart._watch_save())
+                settle(self.notices.bpy)
         self.assertEqual(len(launched), 1)
 
     def test_without_a_question_the_file_is_saved_and_the_restart_goes_on(self):

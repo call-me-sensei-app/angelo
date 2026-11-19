@@ -13,6 +13,7 @@ import os
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -143,7 +144,7 @@ class RequestTests(unittest.TestCase):
         self.assertGreater(3840 * 2160 * 4096 * 700, MAX_WORK)
         self.assertIn("Ask the person", str(caught.exception))
 
-    @unittest.skipIf(jsonschema is None, "jsonschema is not installed")
+    @unittest.skipIf(jsonschema is None, required_skip("jsonschema is not installed"))
     def test_declarations_are_valid_and_fit_the_strict_subset(self):
         for tool in JOB_TOOLS:
             with self.subTest(tool=tool["name"]):

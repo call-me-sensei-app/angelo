@@ -21,7 +21,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[3]
 ADDON = ROOT / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(ROOT / "scripts/addons_core"))
-from angelo_agent import headless_session, journal_checks, worker_process  # noqa: E402
+from angelo_agent import journal_checks, worker_process  # noqa: E402
 
 PRODUCT = {"PATH": "/usr/bin:/bin", "HOME": "/tmp/angelo-home"}
 SUITE = dict(PRODUCT, ANGELO_JOURNAL_TOUCHES="1", ANGELO_JOURNAL_VERIFY="1")
@@ -37,9 +37,7 @@ def enabled_in_blender(environ, name):
 def children(environ):
     """Every child Blender's environment Angelo builds from ``environ``."""
     return {"worker": worker_process.worker_environment(environ, tempfile.mkdtemp(), platform="darwin"),
-            "worker (Windows)": worker_process.worker_environment(environ, tempfile.mkdtemp(), platform="win32"),
-            "headless": headless_session.child_environment(environ, Path(tempfile.mkdtemp())),
-            "headless (your preferences)": headless_session.child_environment(environ, Path(tempfile.mkdtemp()), True)}
+            "worker (Windows)": worker_process.worker_environment(environ, tempfile.mkdtemp(), platform="win32")}
 
 
 class ChildBlendersKeepTheChecks(unittest.TestCase):
@@ -87,7 +85,7 @@ class ChildBlendersKeepTheChecks(unittest.TestCase):
                 builders.append(path.name + ":" + node.name)
                 self.assertIn("carried", calls, "%s:%s builds a child's environment without journal_checks.carried"
                               % (path.relative_to(ROOT), node.name))
-        self.assertGreaterEqual(len(builders), 2, builders)   # The worker's and the headless child's, at least.
+        self.assertGreaterEqual(len(builders), 1, builders)   # The worker's, at least (2.0.1 removed the headless child).
 
 
 if __name__ == "__main__":

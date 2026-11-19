@@ -117,23 +117,61 @@ def installed(app, home=None, environ=None, platform=None, which=shutil.which):
     return path.parent.is_dir() or bool(bundle and bundle.exists()) or (app == "codex" and bool(which("codex")))
 
 
-def has_entry(app, home=None, environ=None, platform=None):
-    """Whether the app's settings already name an ``angelo`` server (read-only)."""
+def _entry(app, home=None, environ=None, platform=None):
+    """The app's ``angelo`` server entry as its settings hold it (read-only: never writes), or None."""
     if app == "claude_code":
-        path = Path((environ or os.environ).get("CLAUDE_CONFIG_DIR") or _home(home)) / ".claude.json"
+        environ = os.environ if environ is None else environ   # An explicit (empty) environment is the one meant.
+        path = Path(environ.get("CLAUDE_CONFIG_DIR") or _home(home)) / ".claude.json"
         data = _read_json(path, missing={})
-        return isinstance(data, dict) and SERVER in (data.get("mcpServers") or {})
+        servers = data.get("mcpServers") if isinstance(data, dict) else None
+        return servers.get(SERVER) if isinstance(servers, dict) and SERVER in servers else None
     path = settings_file(app, home, environ, platform)
     if path is None:
-        return False
+        return None
     if app == "codex":
         try:
-            return SERVER in (tomllib.loads(shared_replace.read_text(path)).get("mcp_servers") or {})
+            servers = tomllib.loads(shared_replace.read_text(path)).get("mcp_servers") or {}
         except (OSError, UnicodeError, tomllib.TOMLDecodeError):
-            return False
+            return None
+        return servers.get(SERVER) if isinstance(servers, dict) and SERVER in servers else None
     data = _read_json(path, missing={})
     key = "servers" if app == "vscode" else "mcpServers"
-    return isinstance(data, dict) and isinstance(data.get(key), dict) and SERVER in data[key]
+    servers = data.get(key) if isinstance(data, dict) else None
+    return servers.get(SERVER) if isinstance(servers, dict) and SERVER in servers else None
+
+
+def has_entry(app, home=None, environ=None, platform=None):
+    """Whether the app's settings already name an ``angelo`` server (read-only), whichever Angelo it starts."""
+    return _entry(app, home, environ, platform) is not None
+
+
+def _same_file(left, right):
+    if str(left) == str(right):
+        return True
+    try:
+        return os.path.samefile(left, right)
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def elsewhere(app, python, state_directory, name=None, home=None, environ=None, platform=None):
+    """Where the app's ``angelo`` entry starts its server when that is not this Angelo's (another build or copy,
+    another profile, or a server that is no Angelo launcher at all), as the person can recognize it: the ``.app``
+    bundle, else the launcher, else the command; "" when there is no entry or it is exactly the one Connect writes.
+    Read-only. Every build shares one profile, so an entry left by another build starts that build's launcher
+    (2.0.1 internal test)."""
+    entry = _entry(app, home, environ, platform)
+    if entry is None:
+        return ""
+    entry = entry if isinstance(entry, dict) else {}
+    command, args = server_command(app, python, state_directory, name)
+    theirs = [str(arg) for arg in entry["args"]] if isinstance(entry.get("args"), list) else []
+    if (_same_file(str(entry.get("command", "")), command) and len(theirs) == len(args)
+            and _same_file(theirs[1], args[1]) and theirs[2:] == args[2:]):
+        return ""
+    launcher = next((arg for arg in theirs if arg.endswith(".py")), "") or str(entry.get("command", "") or SERVER)
+    bundle = next((parent for parent in Path(launcher).parents if parent.suffix == ".app"), None)
+    return str(bundle) if bundle is not None else launcher
 
 
 # Writing --------------------------------------------------------------------------------------------

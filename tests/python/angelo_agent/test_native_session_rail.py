@@ -15,6 +15,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from host_test_policy import environment_skip
+
 ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(ADDON.parent))
 from angelo_agent import live_layout, live_schedule, live_view_nav as nav, parallel_access  # noqa: E402
@@ -713,17 +715,19 @@ class WorkerToolTests(unittest.TestCase):
     def test_start_needs_approval_and_status_does_not(self):
         self.assertFalse(self.SPECS[self.START]["annotations"]["readOnlyHint"])
         self.assertTrue(self.SPECS[self.STATUS]["annotations"]["readOnlyHint"])
-        from angelo_agent.tool_specs import BOUNDED_MUTATIONS
-        from angelo_agent.external_clients import EDIT_TOOLS
+        from angelo_agent.tool_specs import BOUNDED_MUTATIONS, TOOL_MAP
+        from angelo_agent.external_clients import NEVER_FOR_APPS
         # Auto starts workers as it applies typed edits (no click inside a run, coordinator 2026-10-24); an Ask chat
-        # shows the card; a connected app never gets the family.
+        # shows the card; Angelo's agent never gets the family in a connected app's conversation.
         self.assertIn(self.START, BOUNDED_MUTATIONS)
-        self.assertNotIn(self.START, EDIT_TOOLS)
+        if self.START in TOOL_MAP:   # Listed only in a build launched with parallel agents.
+            self.assertIn(self.START, NEVER_FOR_APPS)
+        self.assertTrue(self.START.startswith("angelo_workers_"), "the prefix NEVER_FOR_APPS keeps out")
 
     def test_a_build_launched_without_it_lists_none_of_it(self):
         """The host suite runs without ANGELO_ENABLE_PARALLEL_AGENTS: the tool list is the one without phase 1."""
         if parallel_access.enabled():
-            self.skipTest("this run enabled parallel agents")
+            self.skipTest(environment_skip("this run enabled parallel agents"))
         self.assertFalse(set(TOOL_MAP) & worker_spec.WORKER_NAMES)
         self.assertEqual(parallel_access.hidden_tools(), worker_spec.FAMILY_NAMES)
         source = (ADDON / "tool_specs.py").read_text(encoding="utf-8")

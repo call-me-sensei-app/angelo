@@ -346,6 +346,9 @@ std::string typed_tag(const ID *owner, const void *data, const char *identifier)
 /** Record a path the person (or a program they connected) gave Angelo to write, for this process only: a file, or
  * (`persist` false: one call's) a folder of Blender's own. */
 bool vouch(const std::string &path, bool folder, bool persist);
+/** Record a program Angelo found or the person chose, to start only (`may_run`), never to write: its real file, not a
+ * link. Once a script region has run, a program already recorded keeps the facts it had then (`add_program`). */
+bool vouch_program(const std::string &path);
 /** A script region began (owned.cc's region start): from now on `may_write` judges. */
 void writable_region_began();
 

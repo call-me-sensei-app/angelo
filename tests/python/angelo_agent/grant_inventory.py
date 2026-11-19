@@ -61,7 +61,7 @@ NOT_A_GRANT = {
     ), _NARROWS),
     **dict.fromkeys((
         "angelo.team_sign_out", "angelo.team_cancel_sign_in", "angelo.cancel_signin", "angelo.quick_connect_cancel",
-        "angelo.connection_remove", "angelo.external_app_disconnect", "angelo.external_app_forget_scripts",
+        "angelo.connection_remove", "angelo.external_app_disconnect",
     ), _ACCOUNT),
     **dict.fromkeys((
         "angelo.performance_summary", "angelo.studio_library_report", "angelo.bake_maps_note",
@@ -177,8 +177,7 @@ _G_SPEND = ("the connection and model a spend runs with: AI Enhance's (configure
 _G_RESTRICT = ("a restricting record: an entry holds something back (a chat bound to a worker's part file stays off "
                "Angelo's document); removing one widens what runs")
 GRANT_STATE = {
-    **dict.fromkeys(("external_clients.ACCESS_FILE", "external_clients.ORGANIZATION_FILE", "script_files.FILE",
-                     "external_cli_protocol.ENDPOINT_FILE", "engine_link_protocol.RECORD_FILE", "path:clients.json",
+    **dict.fromkeys(("external_cli_protocol.ENDPOINT_FILE", "engine_link_protocol.RECORD_FILE", "path:clients.json",
                      "path:keys", "path:mcp", "path:cli"), _G_WHO),
     **dict.fromkeys(("always_allow.FILE", "always_allow.REVOKED", "path:session.json", "path:sessions",
                      "session_lease.FOLDER", "path:.lease"), _G_APPROVAL),
@@ -192,7 +191,7 @@ GRANT_STATE = {
     **dict.fromkeys(("team_org_policy.FILE", "managed_policy.LINUX_FILE", "path:managed-settings.json",
                      "path:managed-settings.d", "path:/Library/Managed Preferences"), _G_POLICY),
     **dict.fromkeys(("update_feed.KEYS_FILE", "update_flow.READY_FILE", "update_install.READY_FILE",
-                     "headless_preferences.USERPREF", "engine_link_ui.SETTINGS_FILE", "path:update_keys.json",
+                     "engine_link_ui.SETTINGS_FILE", "path:update_keys.json",
                      "path:staged", "path:staging", "path:mount", "path:previous.app", "path:agent_runtime.json",
                      "path:config.toml", "path:userpref.blend", "path:config", "path:scripts", "path:addons",
                      "path:__init__.py", "path:project.godot", "path:angelo_link", "path:AngeloLink",
@@ -207,7 +206,6 @@ GRANT_STATE = {
         "worker_routing.REGISTRY",
     ), _G_RESTRICT),
     **dict.fromkeys((
-        "launcher_records.OWED",
         "unreal_plugin/AngeloLink/Content/Python/angelo_link/link_client.RECORD_FILE",
         "path:Local",
         "path:.sock",
@@ -219,7 +217,6 @@ GRANT_STATE = {
         "settings_import_apply.BACKUP_FOLDER",
         "path:.angelo-import-",
         "engine_link_assets.PLUGIN_STAGING",
-        "headless_preferences.CONFIG",
         "unity_link_assets.ROOT",
         "path:.angelo-backup",
         "path:.import",
@@ -234,8 +231,6 @@ GRANT_STATE = {
         "private_families.HEADLESS_PREFIX",
         "private_families.LEGACY_WORKER_PREFIX",
         "private_families.WORKER_PREFIX",
-        "headless_main.PRIVATE_PREFIX",
-        "headless_session.PRIVATE_PREFIX",
         "worker_process.PRIVATE_PREFIX",
         "private_roots.OWNER",
         "fab_browser_windows_store_setup.PRIVATE_LEAF",
@@ -270,6 +265,9 @@ _N_RECORD = ("records Angelo keeps about its own processes: crash reports, updat
              "telemetry, audit logs, carry-over notes and markers, locks, process IDs and logs, an import's Undo "
              "record, a custom endpoint's model metadata, a child Blender's scratch home")
 NOT_GRANT_STATE = {
+    "session_page.STOPPED_FILE": ("the conversations whose live session page the person stopped sharing: it can only "
+                                  "withhold a read-only page on this computer, never grant a script, a file or a "
+                                  "consent; a script that edits it only shows or hides that page"),
     "path:writable-paths": "where 2.0.0 betas kept C's record of where Angelo's code may write: C removes the file "
                            "when Python names it at startup and never writes it (the record lives in the process "
                            "only); it gives a script nothing",
@@ -302,8 +300,11 @@ NOT_GRANT_STATE = {
         "state_migration.NOTE_NAME", "state_migration.MARKER", "state_paths.CARRY_OVER_RECORD",
         "session_kept.OWED", "fab_browser_diagnostics.NAME",
         "fab_browser_profile.PROFILE_LOCK", "fab_browser_profile_session_windows.PROFILE_LOCK",
-        "headless_session.CHILD_OUTPUT", "endpoint_catalog.FILE_NAME",
-        "path:audit.jsonl", "path:headless-audit.jsonl", "path:bake.log", "path:child.log", "path:child.pid",
+        "endpoint_catalog.FILE_NAME",
+        # Every GUI Angelo's flock on its state folder, with its pid, start time and hidden session id: the person's
+        # launch signals that pid only while it is still that very process (headless_window_lock); grants nothing.
+        "headless_window_lock.LOCK",
+        "path:audit.jsonl", "path:bake.log", "path:child.log",
         "path:convert-failed.log", "path:failed.log", "path:worker.log", "path:writer.log", "path:performance.json",
         "path:usage.json", "path:updates.json", "path:updates", "path:previous.txt", "path:previous",
         "path:connections.lock", "path:pycache", "path:tmp", "path:home", "path:datafiles", "path:extensions",
@@ -327,7 +328,6 @@ NOT_GRANT_STATE = {
     **dict.fromkeys((
         "carry_over_links.RELINKING",
         "carry_over_moves.CARRYING",
-        "headless_working_copy.LEGACY_SWEPT",
         "moved_state_notice.SHOWN_MARKER",
         "version_carry_over.NOTE_SEEN",
         "version_carry_over.KEPT_PREFIX",
@@ -362,7 +362,6 @@ NOT_GRANT_STATE = {
         "path:check.blend",   # The merge check's own copy, in its angelo-merge-check- folder.
         "path:sound-%s.flac",   # A worker's sound written again by the merge, staged in a folder of its own, then packed.
         "path:angelo-preflight-",
-        "path:angelo-save-",
         "path:angelo-team-",
         "path:angelo-worker-%s-%s",
         "path:image-",
@@ -371,10 +370,8 @@ NOT_GRANT_STATE = {
         "path:%d%s",
         "path:%d-%s-%s",
         "path:%s (%d)",
-        "path:%s%.*d%s%s",
         "path:%s-%d%s",
-        "path:%s.%d-%s%s",
-        "path:%s.%d-%sc%s%s",
+        "path:%s%.*d%s%s",
         "path:%s.%d.tmp",
         "path:%s.%s-%d.unreadable",
         "path:%s.%s.tmp",
@@ -403,17 +400,19 @@ NOT_STATE = {
         "change_feed.TURN_CONTEXT_NAME", "crash_report.SCHEMA", "data_read_values.LOADS_FILE",
         "derived_checks.DEFAULT_MATERIAL_NAME", "derived_checks.DEFAULT_PRIMITIVE_NAME",
         "derived_checks.DEFAULT_SHADER_NAME", "external_cli.RUNTIME_NAME", "external_host.KILL_SWITCH_NAME",
-        "external_mcp.NO_FILE", "external_mcp.SERVER_NAME", "fab_catalog.THUMB_HOST", "fab_settings.NAME",
-        "fal_queue.QUEUE_HOST", "flow_nodes.VIDEO_IDNAME", "goal_spec.TOOL_NAME", "headless_host.FOREIGN_FILE",
+        "external_mcp.SERVER_NAME", "fab_catalog.THUMB_HOST", "fab_settings.NAME",
+        "fal_queue.QUEUE_HOST", "flow_nodes.VIDEO_IDNAME", "goal_spec.TOOL_NAME",
         "input_policy.RENDER_OPERATOR", "job_render_outputs.LAYERS_NAME", "managed_policy.DOMAIN",
         "render_extensions.ENGINE_PATH", "script_source.SCRIPT_FILE", "script_store.TOOL_NAME",
         "secret_service_linux.SCHEMA", "secret_service_linux.SECRETS_BUS_NAME", "studio_assets.LIBRARY_NAME",
         "tension_map_logic.MODIFIER_NAME", "view_passes.UNSET_SPACE", "view_spec.TOOL_NAME",
         "web_link_assets.DISPLAY", "worker_chat_arrival.CONSENT", "worker_chat_arrival.STOP",
         "path:..", "download_spec.NAME",
+        # A lens length in millimetres (a number): an orbit's distance divides by it, which the scan reads as a join.
+        "external_look_args.LENS_MM",
     ), _X_NOT_FILE),
     **dict.fromkeys((
-        "fal_video.VIDEO_FILE", "headless_files.SUFFIX", "job_render_outputs.JPEG2000_CODESTREAM",
+        "fal_video.VIDEO_FILE", "hidden_copy.SUFFIX", "job_render_outputs.JPEG2000_CODESTREAM",
         "job_render_video.EXTENSION", "library_files.PLAIN_GLB", "engine_preflight.REPORT_SUFFIX",
         "studio_video.THUMBNAIL", "engine_link_assets.WORKING_FOLDER", "path:export.glb", "path:live.glb",
         "path:scene.glb", "path:render.blend", "path:out.blend", "path:converted.blend", "path:converted.json",
@@ -421,6 +420,9 @@ NOT_STATE = {
         "path:linear.hdr", "path:shown.bmp", "path:character.png", "path:parts.png", "path:checks", "path:packed",
         "path:part.crash.txt.partial", "path:package.json",
         "download_folders.FOLDER", "download_fetch.TEMPORARY", "path:%s (%d)%s%s",   # angelo_download's file.
+        # A connected app's attached picture, decoded into a private temporary folder for the conversation's own
+        # reference store to copy (external_agent.AgentUi.attach), then removed.
+        "path:attachment-%d%s",
     ), _X_OUTPUT),
     **dict.fromkeys((
         "cli_client._IDENTITY_FILE", "view_looks.MATCAP", "path:angelo_change_clock.py", "path:angelo_headless.py",
@@ -430,7 +432,7 @@ NOT_STATE = {
         "path:pypdf-6.21.2-py3-none-any.pyz", "path:vendor", "path:Inter.woff2", "path:welcome-banner.png",
         "path:index.html", "path:release_notes.json", "path:api_drift.json", "path:human_base_meshes",
         "path:human_base_meshes.json", "path:base_mesh_thumbs", "path:unity_package", "path:unreal_plugin",
-        "path:godot_addon", "path:update_helpers", "path:web_preview", "path:modules", "path:angelo_identity.json",
+        "path:godot_addon", "path:update_helpers", "path:web_preview", "path:session_page", "path:modules", "path:angelo_identity.json",
         "path:config.ocio", "path:release/branding/angelo/exports",
     ), _X_SHIPPED),
     **dict.fromkeys((
@@ -501,6 +503,7 @@ NOT_STATE = {
         "preview_branding._exports",
         "script_api_table.TABLE_PATH",
         "web_preview_server.PAGE_ROOT",
+        "session_page_site.PAGE_ROOT",
         "update_install.HELPER_FOLDER",
         "path:fonts/DejaVuSansMono.woff2",
     ), _X_SHIPPED),
@@ -515,6 +518,10 @@ NOT_STATE = {
         "update_stage_mac.TASKPOLICY",
         "path:/proc/%d/status",
         "path:/proc/meminfo",
+        # process_identity: Linux's own process facts (a start time, a parent, an owner), read only.
+        "path:/proc/%d/stat", "path:/proc/stat", "process_identity.PROC_STATUS",
+        # external_build.bundle_version: another Angelo build's own bundle Info.plist, read to name that build.
+        "path:Contents", "path:Info.plist",
         "path:/Script/Engine",
         "path:colormanagement",
         "path:fonts",
@@ -656,9 +663,6 @@ REACHES_GRANT_CODE = {
     "angelo.external_app_disconnect": ("external_setup.disconnect is an entry only so that agent code can't call it "
                                        "(ACCOUNT_OPERATORS, refused to scripts); at the person's click it takes "
                                        "Angelo out of the outside app's settings: narrows, no grant"),
-    "angelo.external_app_forget_scripts": ("script_files.forget is an entry only so that agent code can't call it "
-                                           "(ACCOUNT_OPERATORS, refused to scripts); at the person's click it forgets "
-                                           "approvals of the outside app's scripts: narrows, no grant"),
 }
 
 

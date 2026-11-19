@@ -27,7 +27,7 @@ import json, sys
 sys.path.insert(0, sys.argv[1])
 from pathlib import Path
 from angelo_agent.files import FileWorkspace
-loaded = sorted(name for name in ("angelo_agent.worker_process", "angelo_agent.headless_session") if name in sys.modules)
+loaded = sorted(name for name in ("angelo_agent.worker_process",) if name in sys.modules)
 files = FileWorkspace(Path(sys.argv[2]), excluded=[])
 outcome = {"loaded": loaded, "listed": [e["name"] for e in files.execute("angelo_list_files", {"path": "."})["entries"]]}
 for relative in ("angelo-worker-crashed/worker.log", "angelo-headless-crashed/state/sessions/chat.json"):
@@ -70,9 +70,8 @@ class ColdStartTests(Fixture):
                 self.assertIn("Application profiles", outcome[relative])
 
     def test_the_launchers_take_their_prefixes_from_the_one_table(self):
-        from angelo_agent import headless_session, private_roots, worker_process
+        from angelo_agent import private_roots, worker_process
         self.assertEqual(worker_process.PRIVATE_PREFIX, private_roots.WORKER_PREFIX)
-        self.assertEqual(headless_session.PRIVATE_PREFIX, private_roots.HEADLESS_PREFIX)
         self.assertLessEqual({private_roots.WORKER_PREFIX, private_roots.HEADLESS_PREFIX},
                              {prefix for prefix, _ in private_roots.FAMILIES})
 

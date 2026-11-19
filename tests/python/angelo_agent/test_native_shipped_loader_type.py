@@ -25,7 +25,7 @@ import tempfile
 import textwrap
 import unittest
 
-from host_test_policy import environment_skip
+from host_test_policy import environment_skip, required_skip
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -216,7 +216,7 @@ class ShippedLoaderTypeTests(unittest.TestCase):
         self.assertEqual((report["typed_module"], report["typed_package"]), ("python's", "python's"))
         self.assertEqual(report["compiled"], [])
 
-    @unittest.skipUnless(installed_pip(), "pip is not importable in the test interpreter")
+    @unittest.skipUnless(installed_pip(), required_skip("pip is not importable in the test interpreter"))
     def test_distlib_finds_its_resource_finder_for_a_shipped_pip(self):
         """The 1.0.5 build4 failure: pip's distlib looks its finder up by type(loader)."""
         pip = self.version / "site-packages/pip"
@@ -290,7 +290,8 @@ SETUP_PY = ('from setuptools import setup\n'
             'setup(name="angelo-setup-pkg", version="0.1", packages=["angelo_setup_pkg"])\n')
 
 
-@unittest.skipUnless(os.environ.get("ANGELO_TEST_APP_PYTHON"), environment_skip("set ANGELO_TEST_APP_PYTHON to an app's bundled Python"))
+@unittest.skipUnless(os.environ.get("ANGELO_TEST_APP_PYTHON"),
+                     environment_skip("set ANGELO_TEST_APP_PYTHON to an app's bundled Python"))
 class RealAppTests(unittest.TestCase):
     """A real ``pip install`` of local source distributions by an app's bundled Python, offline, and a spawned
     worker; the app's version folder must be unchanged afterwards."""

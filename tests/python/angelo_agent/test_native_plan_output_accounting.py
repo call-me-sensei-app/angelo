@@ -13,6 +13,7 @@ import json
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
@@ -107,7 +108,7 @@ class ClaudeReencodingTests(unittest.TestCase):
         self.assertEqual(batch_spec.copies(validate_operation(dict(best[4], target=None))["parameters"]), 3)
         self.assertLess(len(accounting.compact(after)), len(accounting.compact(FOOTBRIDGE)) - 400)
 
-    @unittest.skipIf(jsonschema is None, "jsonschema is not installed")
+    @unittest.skipIf(jsonschema is None, required_skip("jsonschema is not installed"))
     def test_claude_codes_schema_check_accepts_the_reencoded_plan(self):
         valid = jsonschema.Draft202012Validator(native_plan_schema()).is_valid
         self.assertTrue(valid(FOOTBRIDGE))

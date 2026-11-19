@@ -47,6 +47,13 @@ class ChatHitTestingTests(unittest.TestCase):
         self.assertFalse(release_active(pressed, [(pressed[0], pressed[1], ('chat', 'other-stage'))], 40, 160))
         self.assertFalse(release_active(pressed, [((20, 170, 80, 8), pressed[1], pressed[2])], 40, 160))
         self.assertFalse(release_active(pressed, [pressed], 40, 178))
+        # 2.0.1: a granting control re-laid out between press and release (rows streaming in) takes the release where
+        # it is now, when the pointer stayed on it (approval_arming.Arming.stayed); dragged off, it cancels.
+        moved = [((20, 154, 80, 28), pressed[1], pressed[2])]
+        self.assertTrue(release_active(pressed, moved, 40, 180, stayed=True))
+        self.assertFalse(release_active(pressed, moved, 40, 150, stayed=True))
+        self.assertFalse(release_active(pressed, moved, 40, 160, stayed=False), "dragged off, then laid out under it")
+        self.assertFalse(release_active(pressed, moved, 40, 180), "any other control: both rectangles, as before")
 
     def test_native_source_clips_transcript_popup_and_hover_before_input(self):
         root = Path(__file__).resolve().parents[3] / 'scripts/addons_core/angelo_agent'

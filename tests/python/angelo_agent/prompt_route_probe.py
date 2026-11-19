@@ -283,12 +283,12 @@ def claude_launch(out, folder, claude, command, initialize=None, prompt=None, al
 
 
 def mcp_state(folder):
-    """A private Angelo state folder in which both apps are connected at the default levels (no Angelo runs)."""
-    from angelo_agent.external_clients import AppRegistry, DEFAULT_LEVELS
+    """A private Angelo state folder in which both apps are connected (no Angelo runs)."""
+    from angelo_agent.external_clients import AppRegistry
     state = folder / "angelo-state"
     state.mkdir(parents=True, exist_ok=True)
     for app in ("claude_code", "codex"):
-        AppRegistry(str(state)).connect(app, levels=DEFAULT_LEVELS)
+        AppRegistry(str(state)).connect(app)
     return state
 
 

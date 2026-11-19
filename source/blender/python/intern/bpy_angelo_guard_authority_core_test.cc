@@ -207,19 +207,210 @@ TEST_F(AuthorityTest, APressWithinTheShieldMintsNothing)
 {
   a.set_regions(W, "chat", {approve()}, 0.0);
   a.note_move(W, 140, 90, 0.2);
-  a.note_move(W, 140, 110, 0.3); /* Into it, but within its shield: no move that counts. */
-  EXPECT_FALSE(a.note_press(W, 140, 110, 1.5));
-  EXPECT_FALSE(a.take("angelo.approve", "d1", 1.5));
+  a.note_move(W, 140, 110, 0.3); /* Into it during its shield: it aims, the press still waits. */
+  EXPECT_FALSE(a.note_press(W, 140, 110, 0.8));
+  EXPECT_FALSE(a.take("angelo.approve", "d1", 0.8));
 }
 
-TEST_F(AuthorityTest, APointerRestingWhereTheRegionAppearedNeverCounts)
+/* 2.0.1 (the maintainer had to click Approve 2, then 5, then 6-8 times while an app drove the chat):
+ * a person who moves onto Approve as soon as it shows and clicks once after its shield approves. */
+TEST_F(AuthorityTest, AMoveOntoItDuringItsShieldThenOnePressAfterItMints)
+{
+  a.set_regions(W, "chat", {approve()}, 0.0);
+  a.note_move(W, 140, 90, 0.2);
+  a.note_move(W, 140, 110, 0.3);
+  EXPECT_TRUE(a.note_press(W, 140, 110, 1.5));
+  EXPECT_TRUE(a.take("angelo.approve", "d1", 1.5));
+}
+
+/* The card re-laid out on every streamed row, under the pointer that aimed at it: one press mints. */
+TEST_F(AuthorityTest, AShieldedControlReLaidOutUnderItsAimedPointerKeepsItsShieldAndAim)
+{
+  arm();
+  for (int step = 1; step <= 20; step++) { /* A row streams in every 50 ms; the card shifts 2 px. */
+    const double at = 1.1 + 0.05 * step;
+    a.set_regions(W, "chat", {approve(100, 100 + (step % 2) * 2)}, at);
+  }
+  EXPECT_TRUE(a.note_press(W, 140, 110, 2.2));
+  EXPECT_TRUE(a.take("angelo.approve", "d1", 2.2));
+}
+
+TEST_F(AuthorityTest, AShieldedControlReLaidOutAwayFromThePointerNeedsAnAimAgain)
+{
+  arm();
+  a.set_regions(W, "chat", {approve(100, 300)}, 1.15); /* Moved away: the pointer is not on it. */
+  a.note_move(W, 140, 290, 1.2);
+  a.note_move(W, 140, 310, 1.25); /* Into it: its shield stood all along, so this press mints. */
+  EXPECT_TRUE(a.note_press(W, 140, 310, 1.3));
+}
+
+/* Two regions of one control (duplicates): the one drawn where it was keeps its shield and aim. */
+TEST_F(AuthorityTest, DuplicateRegionsPreferTheOneDrawnWhereItWas)
+{
+  arm();
+  a.set_regions(W, "chat", {approve(100, 300), approve()}, 1.15); /* A second copy elsewhere, listed first. */
+  EXPECT_TRUE(a.note_press(W, 140, 110, 1.2)) << "the one where it was keeps its aim";
+}
+
+TEST_F(AuthorityTest, TheClickThatBringsTheWindowForwardAimsSoTheNextPressMints)
+{
+  arm();
+  a.note_deactivate(W, 1.15);
+  a.note_activate(W, 2.99);        /* The window manager's activation, then its synthetic move. */
+  a.note_move(W, 140, 110, 2.99);
+  EXPECT_FALSE(a.note_press(W, 140, 110, 3.0)) << "the click that brings the window forward";
+  EXPECT_TRUE(a.press_activating(W));
+  EXPECT_FALSE(a.note_press(W, 140, 110, 3.5)) << "its shield starts again at that click";
+  EXPECT_FALSE(a.press_activating(W));
+  EXPECT_TRUE(a.note_press(W, 140, 110, 4.1)) << "the next deliberate press, without a move";
+}
+
+/* The re-review of acd0d465ee9, SHOULD-1: Cmd-Tab, a Dock click or `open -a` brings the window
+ * forward with no press. The person's first press later is an ordinary press: a resting pointer
+ * never aims with it, however many presses follow (S1). */
+TEST_F(AuthorityTest, AnActivationWithoutAPressLeavesNoWindowForwardClick)
+{
+  arm();
+  a.note_deactivate(W, 1.15);
+  a.note_activate(W, 5.0);
+  a.note_move(W, 140, 110, 5.0); /* Its synthetic move. */
+  EXPECT_FALSE(a.note_press(W, 140, 110, 7.0)) << "a press long after the activation";
+  EXPECT_FALSE(a.press_activating(W));
+  EXPECT_FALSE(a.note_press(W, 140, 110, 8.5)) << "never aimed by that press";
+  a.note_move(W, 140, 90, 8.6);
+  a.note_move(W, 140, 110, 8.7);
+  EXPECT_TRUE(a.note_press(W, 140, 110, 8.8)) << "the person's move onto it, then a press";
+}
+
+TEST_F(AuthorityTest, AnyEventBeforeThePressMeansTheActivationHadNoPress)
+{
+  arm();
+  a.note_deactivate(W, 1.15);
+  a.note_activate(W, 5.0);
+  a.note_move(W, 140, 110, 5.0);
+  a.note_key(W, 65, 5.01); /* A key the person typed before clicking. */
+  EXPECT_FALSE(a.note_press(W, 140, 110, 5.02));
+  EXPECT_FALSE(a.press_activating(W)) << "a key came between: not the window-forward click";
+  a.note_deactivate(W, 6.0);
+  a.note_activate(W, 9.0);
+  a.note_move(W, 140, 110, 9.0);
+  a.note_move(W, 141, 110, 9.01); /* A real move came between. */
+  a.note_press(W, 141, 110, 9.02);
+  EXPECT_FALSE(a.press_activating(W)) << "a move came between";
+}
+
+/* Windows delivers pointer moves to a background window: they never take the window-forward click
+ * away, so the click that brings it forward still never grants, aimed or not. */
+TEST_F(AuthorityTest, MovesOverTheBackgroundWindowKeepTheWindowForwardClick)
+{
+  arm();
+  a.note_deactivate(W, 1.15);
+  a.note_move(W, 140, 90, 5.0); /* Over the background window, then onto the button. */
+  a.note_move(W, 140, 110, 5.1);
+  a.note_activate(W, 9.0);
+  a.note_move(W, 140, 110, 9.0);
+  EXPECT_FALSE(a.note_press(W, 140, 110, 9.01)) << "the click that brings it forward never grants";
+  EXPECT_TRUE(a.press_activating(W));
+}
+
+TEST_F(AuthorityTest, ALatePressIsNotTheWindowForwardClick)
+{
+  arm();
+  a.note_deactivate(W, 1.15);
+  a.note_activate(W, 5.0);
+  a.note_move(W, 140, 110, 5.0);
+  a.note_press(W, 140, 110, 5.0 + ACTIVATION_PRESS_SECONDS + 0.1);
+  EXPECT_FALSE(a.press_activating(W));
+}
+
+/* The activation's synthetic move lands where the pointer is now; if it moved while the window was
+ * in the background, that is never the person's move into a control here. */
+TEST_F(AuthorityTest, TheActivationsOwnMoveNeverAims)
+{
+  a.note_move(W, 10, 10, 0.0);
+  a.set_regions(W, "chat", {approve()}, 0.0);
+  a.note_deactivate(W, 0.5);
+  a.note_activate(W, 3.0);
+  a.note_move(W, 140, 110, 3.0); /* Onto the button, by the activation, not the person. */
+  EXPECT_FALSE(a.note_press(W, 140, 110, 5.0));
+  EXPECT_FALSE(a.note_press(W, 140, 110, 6.5));
+}
+
+/* SHOULD-3: a hand's jitter inside a shielded control, once its shield has passed, aims at it; a
+ * pointer that never moved still never does (S1), and jitter during the shield does not. */
+TEST_F(AuthorityTest, AMoveInsideAShieldedControlAfterItsShieldAimsAtIt)
+{
+  a.note_move(W, 140, 110, 0.0);
+  a.set_regions(W, "chat", {approve()}, 0.0); /* Appears under the resting pointer. */
+  a.note_move(W, 141, 110, 0.5);              /* Jitter within its shield. */
+  EXPECT_FALSE(a.note_press(W, 141, 110, 1.5)) << "jitter during the shield does not aim";
+  a.note_release(W, 1.55);
+  EXPECT_FALSE(a.note_press(W, 141, 110, 2.6)) << "and a resting pointer still never grants";
+  a.note_release(W, 2.65);
+  a.note_move(W, 142, 111, 2.7); /* A real move inside it, after the shield. */
+  EXPECT_TRUE(a.note_press(W, 142, 111, 2.8));
+}
+
+TEST_F(AuthorityTest, PressesFromAPointerRestingWhereTheRegionAppearedNeverMintUntilAMoveIntoIt)
 {
   a.note_move(W, 140, 110, 0.0);
   a.set_regions(W, "chat", {approve()}, 0.0);
   a.note_move(W, 140, 110, 2.0); /* A refresh at the same place is no move. */
-  EXPECT_FALSE(a.note_press(W, 140, 110, 2.1));
-  a.note_move(W, 141, 111, 2.2); /* Moving inside it is not a move into it. */
-  EXPECT_FALSE(a.note_press(W, 141, 111, 2.3));
+  EXPECT_FALSE(a.note_press(W, 140, 110, 2.3)) << "no press from a pointer resting where it appeared";
+  EXPECT_FALSE(a.note_press(W, 140, 110, 2.4)) << "a double-click's second press never grants";
+  /* A press never aims (the break-it review of ca6f5ff137d, S1): presses a second or more apart never mint. */
+  EXPECT_FALSE(a.note_press(W, 140, 110, 3.4));
+  EXPECT_FALSE(a.note_press(W, 140, 110, 4.6));
+  a.note_move(W, 140, 160, 4.8); /* The person moves off it and back onto it. */
+  a.note_move(W, 140, 110, 4.9);
+  EXPECT_TRUE(a.note_press(W, 140, 110, 5.0)) << "one press after the move into it";
+}
+
+/* The review's S1: the person approves card A; card B appears in the same place under the resting pointer; two
+ * presses a second or more apart, no move, never grant B. */
+TEST_F(AuthorityTest, ASecondCardInTheFirstOnesPlaceTakesNoPressesWithoutAMove)
+{
+  arm();
+  EXPECT_TRUE(a.note_press(W, 140, 110, 1.2)) << "card A";
+  a.note_release(W, 1.25);
+  const RegionSpec b = approve(100, 100, "card-b");
+  a.set_regions(W, "chat", {b}, 1.3); /* Card B, same place: a new control under the resting pointer. */
+  EXPECT_FALSE(a.note_press(W, 140, 110, 2.5));
+  a.note_release(W, 2.55);
+  EXPECT_FALSE(a.note_press(W, 140, 110, 3.7));
+  a.note_release(W, 3.75);
+  EXPECT_FALSE(a.take("angelo.approve", "card-b", 3.8));
+  a.note_move(W, 140, 160, 3.9);
+  a.note_move(W, 140, 110, 4.0);
+  EXPECT_TRUE(a.note_press(W, 140, 110, 4.1)) << "card B after the person's move onto it";
+}
+
+/* The break-it review's M1, scenario 1: the person's pointer crossed Approve once and rests elsewhere;
+ * streamed rows shift Approve under it. That is a control arriving under the pointer: no press grants. */
+TEST_F(AuthorityTest, AnAimedControlShiftedUnderAPointerThatLeftItGrantsNothing)
+{
+  arm();                                      /* Aimed at 1.1. */
+  a.note_move(W, 140, 160, 1.3);              /* The pointer leaves it and rests below. */
+  a.set_regions(W, "chat", {approve(100, 150)}, 1.5); /* Rows push the card under the pointer. */
+  EXPECT_FALSE(a.note_press(W, 140, 160, 1.6)) << "arrived under the pointer: a new control";
+  EXPECT_FALSE(a.note_press(W, 140, 160, 1.69)) << "nor a double-click";
+  EXPECT_FALSE(a.take("angelo.approve", "d1", 1.7));
+}
+
+/* Scenario 2: a never-aimed control jumps under the resting pointer; a double-click never grants. */
+TEST_F(AuthorityTest, ANeverAimedControlJumpingUnderThePointerTakesNoPressUntilAMoveIntoIt)
+{
+  a.set_regions(W, "chat", {approve(100, 300)}, 0.0);
+  a.note_move(W, 10, 10, 0.1);
+  a.note_move(W, 140, 110, 0.2);              /* Rests here; the control is elsewhere. */
+  a.set_regions(W, "chat", {approve(100, 100)}, 2.0); /* Jumps under it. */
+  EXPECT_FALSE(a.note_press(W, 140, 110, 2.1)) << "within its new shield";
+  EXPECT_FALSE(a.note_press(W, 140, 110, 3.2)) << "after its shield, no move into it";
+  EXPECT_FALSE(a.note_press(W, 140, 110, 3.29)) << "a double-click's second press";
+  EXPECT_FALSE(a.note_press(W, 140, 110, 4.3)) << "a press never aims (review S1)";
+  a.note_move(W, 140, 160, 4.4);
+  a.note_move(W, 140, 110, 4.5);
+  EXPECT_TRUE(a.note_press(W, 140, 110, 4.6)) << "one press after the move into it";
 }
 
 TEST_F(AuthorityTest, TheFirstMoveAWindowReportsIsNeverAMoveIntoARegion)
@@ -229,7 +420,7 @@ TEST_F(AuthorityTest, TheFirstMoveAWindowReportsIsNeverAMoveIntoARegion)
   EXPECT_FALSE(a.note_press(W, 140, 110, 2.1));
 }
 
-TEST_F(AuthorityTest, ARegionDrawnElsewhereStartsAgain)
+TEST_F(AuthorityTest, ARegionDrawnElsewhereKeepsItsShieldButNotItsAim)
 {
   arm();
   a.set_regions(W, "chat", {approve(300, 300)}, 1.15);
@@ -251,6 +442,8 @@ TEST_F(AuthorityTest, LosingFocusDisarmsAndTheReturningPressMintsNothing)
 {
   arm();
   a.note_deactivate(W, 1.15);
+  a.note_activate(W, 1.19);
+  a.note_move(W, 140, 110, 1.19);
   EXPECT_FALSE(a.note_press(W, 140, 110, 1.2)) << "the click that brings the window forward";
   a.note_move(W, 140, 90, 2.5);
   a.note_move(W, 140, 110, 2.6);
@@ -273,6 +466,8 @@ TEST_F(AuthorityTest, AnUnshieldedRegionTakesAPressAfterAMoveButNeverTheReturnin
   EXPECT_TRUE(a.note_press(W, 140, 110, 0.5)) << "a menu's choice needs no 1 s shield";
   EXPECT_TRUE(a.take("canvas.select_model", "d1", 0.6));
   a.note_deactivate(W, 0.7);
+  a.note_activate(W, 0.79);
+  a.note_move(W, 140, 110, 0.79);
   EXPECT_FALSE(a.note_press(W, 140, 110, 0.8)) << "the click that brings the window forward";
   EXPECT_FALSE(a.note_press(W, 140, 110, 0.9)) << "back in focus, it starts again";
   a.note_move(W, 141, 110, 0.8 + ARM_SECONDS + 0.05);
@@ -480,7 +675,6 @@ TEST_F(AdmitTest, AStandingConsentAloneAdmitsNothing)
   a.set(TRUSTED_CHATS, "chat1", Value(true), true);
   a.set(ALWAYS_ALLOW, "on", Value(true), true);
   a.set(CHAT_CLIENTS, "chat1", Value(std::string("cursor")), true);
-  a.set(SCRIPT_FILES, "cursor/aa", Value(true), true);
   EXPECT_FALSE(a.admits("chat1/call1", "aa"));
 }
 

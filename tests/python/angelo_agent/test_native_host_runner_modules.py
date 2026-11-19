@@ -18,6 +18,11 @@ stand-in. So nothing is removed here: a small package and small test files made 
 that a file's tests and their tear-downs run with ``sys.modules`` holding what the file holds, that a file's own
 modules come before a helper's, that only product modules are bound, that everything is put back, and that the
 runner loads named files and discovery through the one loader.
+
+What a file's tests part at run time no file's globals can hold (VM CI of 89edda38180, Windows shard 3 of 4:
+``test_native_worker_mirror_cards_rows`` patched a ``chat_card_draw`` an earlier file had parted). ``KeptWhole``
+shows that a file's tests leave no module parted that wasn't before them, that the runner names the file, and that
+a module parted on import, which files rely on, stays as it is.
 """
 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
@@ -56,6 +61,20 @@ FILE = ("import sys\nimport unittest\nfrom unittest import mock\n"
         "        self.assertIs(policy, Fixture.held)\n"
         "        with mock.patch.object(policy, 'interactions', return_value='patched'):\n"
         "            self.assertEqual(hold.scan(), 'patched')\n")
+# A file whose test first imports the module under a stand-in, at run time, where no file's globals can hold it; and
+# a later file that takes it from the package inside its test (VM CI of 89edda38180, Windows shard 3 of 4:
+# test_native_worker_mirror_cards_rows and chat_card_draw).
+PARTS = ("import sys\nimport types\nimport unittest\nfrom unittest import mock\n\n\n"
+         "class Parts(unittest.TestCase):\n"
+         "    def test_it_imports_the_module_under_a_stand_in(self):\n"
+         "        with mock.patch.dict(sys.modules, {'bpy': types.ModuleType('bpy')}):\n"
+         "            from %(package)s import policy  # noqa: F401  First imported here: the block's end drops it.\n")
+PATCHES = ("import unittest\nfrom unittest import mock\n\n\n"
+           "class Patches(unittest.TestCase):\n"
+           "    def test_the_product_runs_the_copy_this_test_patches(self):\n"
+           "        from %(package)s import hold, policy\n"
+           "        with mock.patch.object(policy, 'interactions', return_value='patched'):\n"
+           "            self.assertEqual(hold.scan(), 'patched')\n")
 
 
 class FileModulesFixture(unittest.TestCase):
@@ -82,6 +101,11 @@ class FileModulesFixture(unittest.TestCase):
         name = "host_runner_file_%s_%s" % (label, self.package[-32:])
         (self.tests / (name + ".py")).write_text(FILE % {"package": self.package, "helper": self.helper},
                                                  encoding="utf-8")
+        return importlib.import_module(name)
+
+    def make(self, text, label):
+        name = "host_runner_%s_%s" % (label, self.package[-32:])
+        (self.tests / (name + ".py")).write_text(text % {"package": self.package}, encoding="utf-8")
         return importlib.import_module(name)
 
     def run_suite(self, suite):
@@ -211,6 +235,61 @@ class Bound(FileModulesFixture):
         with host_file_modules.bound({self.package + ".policy": newer}):
             del sys.modules[self.package + ".policy"]   # A test's own doing: not undone by the block.
         self.assertNotIn(self.package + ".policy", sys.modules)
+
+
+class KeptWhole(FileModulesFixture):
+    def files(self):
+        return self.make(PARTS, "parts"), self.make(PATCHES, "patches")
+
+    def kept_whole(self, lines):
+        return host_file_modules.kept_whole("the block", (str(self.product),), lines.append)
+
+    def test_a_plain_loader_lets_one_files_test_part_a_module_for_the_next_file(self):
+        parts, patches = self.files()
+        loader = unittest.TestLoader()
+        result = self.run_suite(unittest.TestSuite([loader.loadTestsFromModule(parts),
+                                                    loader.loadTestsFromModule(patches)]))
+        self.assertEqual((result.testsRun, len(result.failures), len(result.errors)), (2, 1, 0))
+        self.assertIn("'read' != 'patched'", result.failures[0][1])
+
+    def test_this_loader_puts_back_what_a_files_tests_parted_and_names_the_file(self):
+        parts, patches = self.files()
+        package, lines = sys.modules[self.package], []
+        with mock.patch.object(host_file_modules, "_report", lines.append):
+            first = self.run_suite(self.loader.loadTestsFromModule(parts))
+            self.assertNotIn("policy", vars(package))   # Absent before the file's tests: absent again.
+            self.assertNotIn(self.package + ".policy", sys.modules)
+            second = self.run_suite(self.loader.loadTestsFromModule(patches))
+        self.assertEqual((first.testsRun, first.failures, first.errors), (1, [], []))
+        self.assertEqual((second.testsRun, second.failures, second.errors), (1, [], []))
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].startswith("MODULE PARTED %s.policy by %s:" % (self.package, parts.__name__)),
+                        lines[0])
+
+    def test_an_entry_removed_or_replaced_is_put_back(self):
+        package, name = sys.modules[self.package], self.package + ".policy"
+        policy, lines = importlib.import_module(name), []
+        with self.kept_whole(lines):
+            del sys.modules[name]
+        self.assertIs(sys.modules[name], policy)
+        with self.kept_whole(lines):
+            sys.modules[name] = types.ModuleType(name)   # Another object under the name.
+        self.assertIs(sys.modules[name], policy)
+        self.assertIs(package.policy, policy)
+        self.assertEqual(len(lines), 2)
+
+    def test_a_module_parted_before_the_block_and_a_fresh_whole_import_are_left_as_they_are(self):
+        helper, name, lines = importlib.import_module(self.helper), self.package + ".policy", []
+        self.assertEqual(host_file_modules.parted((str(self.product),)), {name})   # Parted on import, as 33 files.
+        with self.kept_whole(lines):
+            pass
+        self.assertIs(sys.modules[self.package].policy, helper.policy)
+        self.assertNotIn(name, sys.modules)
+        with self.kept_whole(lines):
+            fresh = importlib.import_module(name)   # Whole again: the package's attribute is the new copy too.
+        self.assertIs(sys.modules[name], fresh)
+        self.assertIs(sys.modules[self.package].policy, fresh)
+        self.assertEqual((lines, host_file_modules.parted((str(self.product),))), ([], set()))
 
 
 class TheRunner(unittest.TestCase):

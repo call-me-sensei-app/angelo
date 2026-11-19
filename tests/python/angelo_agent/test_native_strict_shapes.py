@@ -14,6 +14,7 @@ import copy
 import json
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
@@ -134,7 +135,7 @@ class ShapeTableTests(unittest.TestCase):
         self.assertNotIn(SHAPE, json.dumps(output_schema()), "The mark never reaches the model")
 
 
-@unittest.skipIf(jsonschema is None, "jsonschema is not installed")
+@unittest.skipIf(jsonschema is None, required_skip("jsonschema is not installed"))
 class ShortFormTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

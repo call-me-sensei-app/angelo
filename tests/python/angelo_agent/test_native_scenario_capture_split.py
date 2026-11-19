@@ -26,6 +26,7 @@ import sys
 import tempfile
 import time
 import unittest
+from host_test_policy import required_skip
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace as NS
@@ -165,7 +166,7 @@ class SplitEqualsSerialTests(unittest.TestCase):
         worker_module.capture_band(self.bpy, self.scene, "hero", CAMERAS["hero"], self.resolution, 3, 5)
         self.assertIs(capture.rays, before)
 
-    @unittest.skipIf(numpy is None, "NumPy")
+    @unittest.skipIf(numpy is None, required_skip("NumPy"))
     def test_saved_archive_is_byte_identical(self):
         data, _ = split_like_the_workers(self.bpy, self.scene, CAMERAS, self.resolution, 4, random.Random(1))
 

@@ -42,6 +42,8 @@ def require_supported_runtime(executable, env):
     try:
         probe = run_cli([executable, "--version"], env=env,
                         capture_output=True, text=True, timeout=10)
+    except PermissionError as error:   # Refused before it started: said as it is, never as "too old".
+        raise RpcError(str(error)) from error
     except (OSError, subprocess.TimeoutExpired) as error:
         raise RpcError(too_old_message("claude")) from error
     match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+) \(Claude Code\)", probe.stdout.strip())

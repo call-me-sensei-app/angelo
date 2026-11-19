@@ -6,8 +6,7 @@
 
 ``prompt_audit`` checks the instruction texts each route receives. Facts also arrive as data: fields the host adds to
 tool results and to the turn observation. Each route reads a result through its own presentation code: a Codex
-thread's tool call (``providers.tool_content``), Claude's direct-tools call and an MCP app's (``DirectRequest._packed``,
-which ``ExternalWork`` and the headless host reuse), a Claude plan's verify round (``plan_results`` with the
+thread's tool call (``providers.tool_content``), Claude's direct-tools call (``DirectRequest._packed``), a Claude plan's verify round (``plan_results`` with the
 continuation observation), the next message's handoff of a plan's results (``routing.handoff``: a certified program's
 terse receipt, an unchecked receipt, or the result's excerpt; Claude and Codex plan threads alike) and a Codex plan
 correction's receipts (``continuation_receipt``). Four fields reached one route and not another before this check:

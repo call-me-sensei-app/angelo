@@ -25,6 +25,7 @@ LOCALE_DIR = ROOT / "locale/angelo"
 POT = LOCALE_DIR / "angelo.pot"
 
 UI_MODULES = frozenset("""
+headless_window_lock headless_window_relay
 learn_card_draw learn_cards learn_resolver learn_routes learn_ui
 fab_preferences fab_settings fab_ui fab_overlay worker_mirror_events
 camera_preview_setting agent_changes_forget
@@ -43,11 +44,11 @@ stop_notice
 ui_kit ui_kit_builder ui_kit_controls ui_kit_field ui_kit_rows ui_kit_select ui_kit_status ui_formats activity_details draft_overflow chat_goal
 chat_add_menu chat_add_nav chat_add_draw chosen_tools
 library_actions library_overlay library_overlay_draw library_ui library_approvals
-web_export_ui web_preview web_shader web_shader_ui engine_link_ui shot_capture shot_capture_ui engine_suggest_ui
+web_export_ui web_preview session_page web_shader web_shader_ui engine_link_ui shot_capture shot_capture_ui engine_suggest_ui
 app_feature_approvals engine_link_tool_approvals engine_fix_approvals download_approvals
 chat_usage usage_view
 providers_menu providers_page_draw providers_page_host providers_page_model providers_page_team providers_sheet providers_page_rail
-providers_page_external external_ui
+providers_page_external external_ui external_access
 endpoint_check endpoint_connections endpoint_keys endpoint_routes endpoint_sheet endpoint_ui providers_page_endpoints
 session_rail session_rail_draw rail_minimized live_view_draw worker_approval worker_dispatch document_scene document_identity document_offer
 worker_consent_lead worker_mirror_cards worker_mirror_opens
@@ -80,6 +81,12 @@ library_spec library_agent blender_assets_agent blender_asset_previews
 
 # Modules with UI-looking code that never shows translatable chrome, and why.
 NON_UI_MODULES = {
+    "external_cli": "the apps' local listener: its refusals are English envelopes for the app's model and the CLI, "
+                    "and its log lines; it draws nothing in Angelo",
+    "session_page_ended": "a live page's end after an error: its one notice (FAILED) is an n_ constant the "
+                          "conversation shows translated; its reasons are English for the app's model and the log",
+    "external_window": "an MCP app's window picture: a grey image and its layout as data, sent to the app; its "
+                       "editors' reasons are English for the app's model, and it draws nothing in Angelo",
     "narrowing_ui": "angelo.narrow, an INTERNAL operator that only narrows (grant_operators.rst, \"Scopes\"): its "
                     "label is class text in the template; it shows nothing else",
     "script_confinement": "the agent-script confinement: its refusals are n_ constants the executor and Angelo's "

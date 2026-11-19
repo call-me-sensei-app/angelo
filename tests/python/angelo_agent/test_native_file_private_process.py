@@ -55,16 +55,17 @@ class ProcessFolderTests(Fixture):
     def test_a_workers_or_headless_folder_in_the_temporary_folder_is_private(self):
         """Review probe 1: the project is saved in the temporary folder that also holds the children's folders,
         including one a crashed child left (made by no creator in this process)."""
-        from angelo_agent import headless_session, worker_process  # noqa: F401 - their families register on import.
+        # 2.0.0's headless children left folders of their own family (private_roots.HEADLESS_PREFIX): still private.
+        from angelo_agent import private_roots, worker_process  # noqa: F401 - their families register on import.
         self.synthetic(self.base / "public")
-        for prefix in (worker_process.PRIVATE_PREFIX, headless_session.PRIVATE_PREFIX):
+        for prefix in (worker_process.PRIVATE_PREFIX, private_roots.HEADLESS_PREFIX):
             leftover = self.base / (prefix + "crashed")
             self.synthetic(leftover, "worker.log")
             self.synthetic(leftover / "state" / "sessions", "chat.json")
         with patch.object(tempfile, "tempdir", str(self.base)):
             files = FileWorkspace(self.base, excluded=[])
             self.assertEqual(names(files), ["public"])
-            for prefix in (worker_process.PRIVATE_PREFIX, headless_session.PRIVATE_PREFIX):
+            for prefix in (worker_process.PRIVATE_PREFIX, private_roots.HEADLESS_PREFIX):
                 with self.subTest(prefix=prefix):
                     self.refused(read, files, prefix + "crashed/worker.log")
                     self.refused(read, files, prefix + "crashed/state/sessions/chat.json")
@@ -94,7 +95,7 @@ class ProcessFolderTests(Fixture):
         self.assertEqual(names(files), [])
 
     def test_the_creators_register_their_folders_where_they_make_them(self):
-        for module in ("worker_process.py", "headless_session.py"):
+        for module in ("worker_process.py",):
             with self.subTest(module=module):
                 source = (ROOT / "scripts/addons_core/angelo_agent" / module).read_text()
                 self.assertIn("PRIVATE_PREFIX = private_roots.", source)   # The one table (round 5 M-1).

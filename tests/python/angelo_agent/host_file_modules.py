@@ -20,7 +20,21 @@ true of ``sys.modules`` for as long as its own tests run, and put back after:
   from, then the same of each test helper module it took names from. The file's own come first.
 * ``bound(modules)``: inside the block ``sys.modules`` and each parent package's attribute hold them.
 * ``Loader``: every file's tests are one ``FileModules`` suite, which runs them, and their class and module
-  tear-downs, inside ``bound(held(file))``. Named files and discovery both load through it.
+  tear-downs, inside ``kept_whole(file)`` and, within it, ``bound(held(file))``. Named files and discovery both load
+  through it.
+
+``held`` reads a file's globals when the file is loaded, so it can't bind a module nothing has imported yet. A test
+that first imports a product module inside such a block, at run time, parts it the same way for every later file:
+VM CI of 89edda38180, Windows shard 3 of 4: ``test_native_worker_mirror_cards_rows`` took ``chat_card_draw`` from
+the package inside a test and patched it, while ``chat_guard``'s own ``from .chat_card_draw import`` found nothing in
+``sys.modules`` and imported an unpatched copy ("No module named 'blf'", "'approve' not found in []"); it passed at
+12484412217, whose shards held other files. So no file's tests leave a module parted that wasn't parted before them:
+
+* ``parted()``: the product modules a product package holds as an attribute while ``sys.modules`` holds another
+  object or nothing under the name.
+* ``kept_whole(label)``: every module the block parted is put back as it was before (the package's attribute and the
+  ``sys.modules`` entry, each present or absent), and the block's label is printed with their names. A module
+  parted before the block (by a file's import, which later files rely on, above) is left as it is.
 
 Only modules loaded from the product's folders are bound: never a stand-in, the standard library or a test module.
 Standard library only.
@@ -118,16 +132,68 @@ def bound(modules):
                     mapping[key] = before
 
 
-class FileModules(unittest.TestSuite):
-    """One test file's tests, run while the product imports the modules that file holds."""
+def _packages(product):
+    """``{name: package}`` of the product's packages ``sys.modules`` holds."""
+    return {name: package for name, package in list(sys.modules.items())
+            if isinstance(package, types.ModuleType) and hasattr(package, "__path__") and _inside(package, product)}
 
-    def __init__(self, tests=(), modules=None):
+
+def parted(product=PRODUCT):
+    """Names of the product modules a product package holds as an attribute while ``sys.modules`` holds another object
+    or nothing under that name: there ``from package import x`` and the product's own ``from .x import`` part."""
+    found = set()
+    for name, package in _packages(product).items():
+        for attribute, value in list(vars(package).items()):
+            full = name + "." + attribute
+            if (isinstance(value, types.ModuleType) and value.__name__ == full and sys.modules.get(full) is not value
+                    and _inside(value, product)):
+                found.add(full)
+    return found
+
+
+def _report(line):
+    print("\n" + line, flush=True)
+
+
+@contextlib.contextmanager
+def kept_whole(label, product=PRODUCT, report=None):
+    """Afterwards no product module is parted (``parted``) that wasn't before the block: each the block parted gets
+    back the package attribute and the ``sys.modules`` entry it had before (or neither), and ``report`` names them."""
+    before, entries = parted(product), dict(sys.modules)
+    attributes = {name: dict(vars(package)) for name, package in _packages(product).items()}
+    try:
+        yield
+    finally:
+        put_back = sorted(parted(product) - before)
+        for name in put_back:
+            parent, _, attribute = name.rpartition(".")
+            package = sys.modules.get(parent)
+            had = attributes.get(parent, {}).get(attribute, _MISSING)
+            if isinstance(package, types.ModuleType):
+                if had is _MISSING:
+                    vars(package).pop(attribute, None)
+                else:
+                    vars(package)[attribute] = had
+            if entries.get(name, _MISSING) is _MISSING:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = entries[name]
+        if put_back:
+            (report or _report)("MODULE PARTED %s by %s: put back as before its tests (an import inside a "
+                                "sys.modules patch, or a sys.modules entry removed)" % (", ".join(put_back), label))
+
+
+class FileModules(unittest.TestSuite):
+    """One test file's tests, run while the product imports the modules that file holds, and leaving no module
+    parted that wasn't before them."""
+
+    def __init__(self, tests=(), modules=None, label="a test file", product=PRODUCT):
         super().__init__(tests)
-        self.modules = dict(modules or {})
+        self.modules, self.label, self.product = dict(modules or {}), label, product
 
     def run(self, result, debug=False):
         nested = getattr(result, "_testRunEntered", False) is not False
-        with bound(self.modules):
+        with kept_whole(self.label, self.product), bound(self.modules):
             super().run(result, debug)
             if nested:
                 # The file's last class and its module are torn down here, inside the block, as unittest does at
@@ -145,4 +211,4 @@ class Loader(unittest.TestLoader):
 
     def loadTestsFromModule(self, module, *, pattern=None):
         loaded = super().loadTestsFromModule(module, pattern=pattern)
-        return FileModules([loaded], held(module, self.product, self.tests))
+        return FileModules([loaded], held(module, self.product, self.tests), module.__name__, self.product)

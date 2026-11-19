@@ -32,6 +32,16 @@ def live_usage(controller):
     tokens = sum(sum(bucket.get(key, 0) for key in usage_meter.TOKEN_KEYS) for bucket in running.values())
     return tokens, sum(bucket.get("usd", 0.0) for bucket in running.values())
 
+def usage_now(controller, settled=None):
+    """``(tokens, usd)`` used so far: the ledger (``settled``, its ``spent`` when the caller read it) plus what the
+    running request reported that the ledger doesn't hold yet. The one meter every spend limit reads (a goal round's
+    budget, a hidden session's caps), so they never disagree. The ledger is read first: a request is marked finished
+    before its receipt is counted (``Controller._finish_metrics``), so one ending between the reads is at most missed
+    by this read, never counted twice."""
+    tokens, usd = spent(controller) if settled is None else settled
+    live_tokens, live_usd = live_usage(controller)
+    return tokens + live_tokens, usd + live_usd
+
 def paid(controller):
     from . import usage_view
     return usage_view.billing(controller.state["provider"]) == usage_view.PAID

@@ -20,6 +20,7 @@ import os
 import sys
 import tempfile
 import unittest
+from host_test_policy import environment_skip
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -343,7 +344,7 @@ class FileStampTests(unittest.TestCase):
         try:
             link.symlink_to(self.folder, target_is_directory=True)
         except (OSError, NotImplementedError):
-            self.skipTest("this account can't make a symbolic link here")
+            self.skipTest(environment_skip("this account can't make a symbolic link here"))
         self.addCleanup(link.unlink)
         before = users.file_stamp(self.image("wood.png", "FILE"))
         self.assertEqual(users.file_stamp(self.image("linked/wood.png", "FILE")), before)

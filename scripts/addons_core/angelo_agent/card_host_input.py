@@ -44,16 +44,23 @@ def act(state, action, value, host):
         print("Angelo: a card's click was not taken as a grant:", error)
 
 
-def moved(state, point):
-    """The pointer over the card's view at ``point``, or None when it left the view."""
+def moved(state, point, real=True):
+    """The pointer over the card's view at ``point``, or None when it left the view; ``real`` False: a move without
+    motion (Blender's refresh, a window's activation), never a move into anything (approval_arming)."""
     sync(state)
-    state.arming.moved(point)
+    state.arming.moved(point, real=real)
 
 
 def lands(state, target):
     """Whether a press on ``target`` (``(action, value)``) counts."""
     sync(state)
-    return target[0] not in grants(state.card) or state.arming.armed(target)
+    if target[0] not in grants(state.card):
+        return True
+    activating = approval_arming.window_state(state.arming.owner)[2]
+    if not activating and state.arming.armed(target):
+        return True
+    state.arming.pressed(target, activating=activating)   # Lands on nothing, and aims at it (approval_arming).
+    return False
 
 
 def key_lands(state, target):

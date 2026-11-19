@@ -138,6 +138,9 @@ def model_rows(models, explicit_model, connection_id=None, query="", collapsed=(
     return output
 
 
+POPOVER_ANCHORS = {"approval": "approval_anchor"}   # A popover kind -> the chat state key of the control opening it.
+
+
 def popup_layout(kind, width, height, anchor, model_count=0, scroll=0, busy=False, notice=False, claude=False, rows=None,
                  search=False, floor=None):
     """Bottom-up, region-local rectangles; no picker can cover another editor. ``floor``: the lowest the popover's
@@ -152,11 +155,16 @@ def popup_layout(kind, width, height, anchor, model_count=0, scroll=0, busy=Fals
         desired = min(382, 36 + (38 if search else 0) + content_height + footer_height + extra)
     else:
         content_height, footer_height = 0, 0
-        desired = {"controls": 100, "fast_confirm": 204 if claude else 182, "approval": 194}.get(kind, 100) + extra
+        desired = {"controls": 100, "fast_confirm": 204 if claude else 182, "approval": 210}.get(kind, 100) + extra
     base = max(margin, anchor[1] + anchor[3] + 8, floor or 0)
     room = height - margin - base
     popup_height = min(desired, max(1, room if room >= min(desired, 120) else height - margin * 2))
-    x = max(margin, min(anchor[0] + anchor[2] - popup_width, width - margin - popup_width))
+    # Above the control that opened it (``anchor``), from its nearer edge: a control in the left half opens it
+    # rightward from its left edge, one in the right half leftward from its right edge (the model chip), then clamped
+    # inside the region. In a right-to-left language the canvas mirrors the whole layout (canvas_rtl), so the rule
+    # holds there unchanged.
+    start = anchor[0] if anchor[0] + anchor[2] / 2 < width / 2 else anchor[0] + anchor[2] - popup_width
+    x = max(margin, min(start, width - margin - popup_width))
     y = max(margin, min(base, height - margin - popup_height))
     output = {"rect": (x, y, popup_width, popup_height), "busy_height": extra}
     if kind == "models":

@@ -381,8 +381,6 @@ class ANGELO_OT_card_host(Operator):
         if state is None or state.token is not self.token:
             _end_nudge()
             return {'FINISHED', 'PASS_THROUGH'}   # Closed: whatever this event is, it belongs to what is below.
-        if context.window:   # A focus change disarms its grants; the first press after it never grants.
-            approval_arming.window_input(context.window.as_pointer(), event.type, event.value)
         if input_policy.overlay_passes(event, context.window_manager):
             return {'PASS_THROUGH'}   # Timers are not input: they belong to whoever set them; the quit key quits.
         if context.window.as_pointer() != state.window:

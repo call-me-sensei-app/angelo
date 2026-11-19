@@ -44,6 +44,15 @@ SECOND = 10_000_000
 TIMES = {"st_mtime_ns", "st_ctime_ns", "st_mtime", "st_ctime", "st_birthtime", "st_birthtime_ns", "st_change_time"}
 # Each Angelo function that reads a stat time without the helper, and why it needs none (the audit of 2026-11-04).
 NEEDS_NONE = {
+    "addons_core/angelo_agent/external_access.py:_record":
+        "keys a cache of the app registry by its file's inode, size and time; clients.json is written whole by an "
+        "atomic replace (a new file), never rewritten in place within a clock tick",
+    "addons_core/angelo_agent/external_access.py:_key":
+        "compares an app's key file identity (device, inode and time) for equality, so a reconnect revokes its "
+        "conversation; a new key is written to a new file by an atomic replace, never rewritten in place",
+    "addons_core/angelo_agent/trusted_scripts.py:TrustedScripts._app_identity":
+        "compares an app's key file identity (inode and time) for equality, so a session trust ends with a reconnect; "
+        "a new key is written to a new file by an atomic replace, never rewritten in place within a clock tick",
     "addons_core/angelo_agent/endpoint_catalog.py:_signature":
         "keys a cache of a runtime executable's bundled model catalog by path, size and time; a runtime is replaced "
         "whole by an install or update (new size and time), never rewritten in place within a clock tick",
@@ -91,20 +100,14 @@ NEEDS_NONE = {
     "addons_core/angelo_agent/files.py:file_signature": "the shape of a signature whose stat settled first",
     "addons_core/angelo_agent/files.py:FileWorkspace._execute":
         "a failed delete's diagnosis, after the before-image copy settled the file (copy_stable_file)",
-    "addons_core/angelo_agent/headless_working_copy.py:sweep": "an age (a day) for leftovers",
     "addons_core/angelo_agent/job_render_child.py:sweep":
         "an age (an hour) for render copies crashed apps left; a child reads its copy once, at its start",
     "addons_core/angelo_agent/job_store.py:copy_output":
         "its copy is copy_stable_file's, which settles the opened file before the first read",
-    "addons_core/angelo_agent/launcher_records.py:claim_stale":
-        "a marker age only permits takeover; its bytes are reread and unknown records keep the strictest policy",
-    "addons_core/angelo_agent/launcher_records.py:settled":
-        "a marker age only bounds waiting; only marker absence permits the launcher read",
     "addons_core/angelo_agent/library_fetch.py:trim": "orders cached downloads by age",
     "addons_core/angelo_agent/memory_projects.py:_stamp": "the shape of the receipt's stamp, settled at admission",
     "addons_core/angelo_agent/pycache_retention.py:prune": "an age for unused bytecode folders",
     "addons_core/angelo_agent/references.py:ReferenceStore.content": "attachments are immutable: a new one, a new file",
-    "addons_core/angelo_agent/script_files.py:_current": "a fresh stat compared with the key _read gated",
     "addons_core/angelo_agent/session_journal.py:discard_stale": "an age for leftover temporary files",
     "addons_core/angelo_agent/session_journal.py:_identity":
         "read settles its witness; a save's own write witness cannot order another writer (documented)",
@@ -818,9 +821,9 @@ SETTLED_IN = {
     "addons_core/angelo_agent/export_baked_images.py:_file": ("status", {}),
     "addons_core/angelo_agent/export_baked_reads.py:_file": ("status", {}),
     "addons_core/angelo_agent/export_snapshot.py:settled_identity": ("info", {}),
+    "addons_core/angelo_agent/hidden_copy.py:settled_identity": ("info", {}),
     "addons_core/angelo_agent/external_host.py:ExternalHost.reload_apps": ("info", {}),
     "addons_core/angelo_agent/files.py:FileWorkspace.precondition": ("info", {}),
-    "addons_core/angelo_agent/headless_files.py:settled_identity": ("info", {}),
     "addons_core/angelo_agent/team_library_save.py:_image":
         ("opened", {"finished": "the same handle's stat after the copy, compared with opened, the settled witness"}),
     "addons_core/angelo_agent/engine_link_writeback.py:_expected": ("saved", {}),
@@ -829,7 +832,6 @@ SETTLED_IN = {
     "addons_core/angelo_agent/memory_host.py:_fingerprint": ("stat", {}),
     "addons_core/angelo_agent/private_roots.py:_registry_signature": ("info", {}),
     "addons_core/angelo_agent/private_roots.py:_retained_now": ("info", {}),
-    "addons_core/angelo_agent/script_files.py:_read": ("info", {}),
     "addons_core/angelo_agent/snapshot_git.py:_hash_file":
         ("before", {"after": "compared with before, the settled witness, after the read"}),
     "addons_core/angelo_agent/snapshot_git.py:project_commit_time": ("info", {}),

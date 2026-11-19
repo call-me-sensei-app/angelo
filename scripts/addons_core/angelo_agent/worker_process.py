@@ -27,10 +27,13 @@ import time
 from pathlib import Path
 
 from . import external_cli_protocol as protocol, journal_checks, worker_channel
-from .headless_session import KEEP_ENVIRONMENT
 from . import essential_environment, private_roots, thread_start
 from . import owned_paths  # noqa: E402  (what Angelo made: its cleanups remove only that)
 from .worker_launch import default_binary, default_script, start_process, worker_command  # noqa: F401
+
+# A worker's environment: what Blender and the OS need, nothing that redirects scripts, state or add-ons. What a child
+# Blender keeps besides the OS's own variables (essential_environment): the display, the macOS home.
+KEEP_ENVIRONMENT = ("XDG_RUNTIME_DIR", "DISPLAY", "WAYLAND_DISPLAY", "CFFIXED_USER_HOME")
 
 PRIVATE_PREFIX = private_roots.WORKER_PREFIX
 READY_TIMEOUT = 120.0

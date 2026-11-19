@@ -458,12 +458,11 @@ class EntryTests(GuardCase):
                 Flips.reads += 1
                 return Flips.reads > 1
         written = []
-        write_access = self.modules["external_clients"].write_access
-        with self.guard.agent_script(), patch.object(self.modules["external_clients"].launcher_records, "write",
-                                                     lambda *args: written.append(args)):
+        always_allow = self.modules["always_allow"]
+        with self.guard.agent_script(), patch.object(always_allow, "_write", lambda *args: written.append(args)):
             for value in (Flips(), 1.0 + 0j, ["on"]):
                 with self.subTest(value=type(value).__name__), self.assertRaises(PermissionError):
-                    write_access("state", value)
+                    always_allow.set_enabled(value)
         self.assertEqual(written, [])
 
     def test_a_chats_options_narrow_only_to_ask_read_only_or_fast_off(self):
@@ -504,7 +503,7 @@ class EntryTests(GuardCase):
         angelo_guard_twin.reset()
         self.addCleanup(angelo_guard_twin.reset)
         with patch.object(always_allow, "_path", "always-allow-scripts.json"), \
-                patch.object(always_allow, "_write", lambda on: writes.append(on)), \
+                patch.object(always_allow, "_write", lambda on, external=False: writes.append(on)), \
                 patch.object(always_allow, "_enabled", False), patch.object(always_allow, "_token", None):
             angelo_guard_twin.harness(always_allow.set_enabled, True)   # The person turned it on.
             self.assertEqual((writes, angelo_guard_twin.get("always_allow", "on")), ([True], True))

@@ -36,6 +36,7 @@ import sys
 import threading
 import time
 import unittest
+from host_test_policy import environment_skip
 import zlib
 from pathlib import Path
 
@@ -147,10 +148,10 @@ class DragChecks:
     @classmethod
     def setUpClass(cls):
         if sync_playwright is None:
-            raise unittest.SkipTest("Playwright is not installed: python -m pip install playwright")
+            raise unittest.SkipTest(environment_skip("Playwright is not installed: python -m pip install playwright"))
         wanted = [name for name in sys.argv[1:] if name in BROWSERS] or list(BROWSERS)
         if cls.BROWSER not in wanted:
-            raise unittest.SkipTest("not asked for")
+            raise unittest.SkipTest(environment_skip("not asked for"))
         cls.angelo = StandInAngelo()
         cls.playwright = sync_playwright().start()
         try:
@@ -161,7 +162,8 @@ class DragChecks:
         except Exception as error:
             cls.playwright.stop()
             cls.angelo.close()
-            raise unittest.SkipTest("%s is not installed: %s" % (cls.BROWSER, str(error).splitlines()[0]))
+            raise unittest.SkipTest(
+                environment_skip("%s is not installed: %s" % (cls.BROWSER, str(error).splitlines()[0])))
 
     @classmethod
     def tearDownClass(cls):

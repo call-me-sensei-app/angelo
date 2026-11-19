@@ -201,8 +201,8 @@ class ToolTests(unittest.TestCase):
     # The contract ---------------------------------------------------------------------------------------------
 
     def test_status_is_read_only_and_the_edit_tool_is_approved_deferred_and_never_voice(self):
-        from angelo_agent.external_clients import (EDIT_TOOLS, NEVER_FOR_APPS, READ_TOOLS, WINDOW_ONLY_EDITS,
-                                                   tools_for)
+        from angelo_agent import windowless_tools
+        from angelo_agent.external_clients import NEVER_FOR_APPS
         from angelo_agent.plan_kinds import DEFERRED_TOOLS
         from angelo_agent.tool_specs import BOUNDED_MUTATIONS, TOOL_MAP, dynamic_tools
         self.assertEqual(ENGINE_LINK_NAMES, {STATUS, EDIT})
@@ -211,13 +211,10 @@ class ToolTests(unittest.TestCase):
         self.assertFalse(TOOL_MAP[EDIT]["annotations"]["readOnlyHint"])
         self.assertNotIn(EDIT, BOUNDED_MUTATIONS)   # Auto never runs it without the card.
         self.assertFalse(ENGINE_LINK_NAMES & {tool["name"] for tool in dynamic_tools()})
-        self.assertIn(STATUS, READ_TOOLS)
-        self.assertIn(EDIT, EDIT_TOOLS)
-        self.assertIn(EDIT, WINDOW_ONLY_EDITS)
-        self.assertNotIn(EDIT, tools_for(("read", "edit"), headless=True))
-        self.assertIn(STATUS, tools_for(("read",), headless=True))
+        self.assertIn(STATUS, windowless_tools.READS)
+        self.assertIn(EDIT, windowless_tools.WINDOW_ONLY)
+        self.assertNotIn(EDIT, windowless_tools.TOOLS)
         self.assertIn("angelo_app_feature", NEVER_FOR_APPS)   # Turning the link on stays the person's.
-        self.assertNotIn("angelo_app_feature", tools_for(("read", "edit", "python", "tasks")))
 
     def test_a_withheld_arm_declares_nothing_of_the_tools(self):
         """The measured script-route arm (ANGELO_WITHHOLD_TOOLS, read at launch): no declaration, guidance, lookup,
@@ -225,11 +222,11 @@ class ToolTests(unittest.TestCase):
         import subprocess
         probe = (
             "import json\n"
-            "from angelo_agent import tool_specs, feature_guide, external_clients, codex_text, providers\n"
+            "from angelo_agent import tool_specs, feature_guide, external_mcp_tools, codex_text, providers\n"
             "texts = [json.dumps(tool_specs.native_plan_schema()), json.dumps(tool_specs.codex_tools()),\n"
             "         json.dumps(tool_specs.dynamic_tools()), json.dumps(feature_guide.lookup(['engine_link'])[0]),\n"
             "         providers.codex_instructions(short_identifiers=True, deferred=True, plan=True, team=True),\n"
-            "         providers.CLAUDE_INSTRUCTIONS, ' '.join(external_clients.tools_for(('read', 'edit', 'python')))]\n"
+            "         providers.CLAUDE_INSTRUCTIONS, json.dumps(external_mcp_tools.app_tools())]\n"
             "print(json.dumps([name for name in tool_specs.TOOL_MAP if 'engine_link' in name] +\n"
             "                 [index for index, text in enumerate(texts) if 'angelo_engine_link' in text\n"
             "                  or 'the engine live link,' in text]))\n")   # Codex's family sentence names it so.

@@ -1,44 +1,35 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Per-call latency of Angelo's MCP server against stock Blender with Blender Lab's MCP add-on (no model).
+"""Latency of Angelo's MCP server as an external agent uses it: reading and observing Angelo's agent (no model).
 
-Both sides are driven the same way: a plain MCP client speaks stdio JSON-RPC to
-each side's own server as an AI app would start it, and times each
-``tools/call`` from the request line written to the response line read. The
-same operations run on both, in rounds whose order alternates, after untimed
-warm-up calls:
+A plain MCP client speaks stdio JSON-RPC to Angelo's launcher as an AI app would start it and times each
+``tools/call`` from the request line written to the response line read, after untimed warm-up calls:
 
-============== ================================ ===================================================
-Operation      Angelo                           Blender + MCP
-============== ================================ ===================================================
-scene          angelo_inspect_scene             get_objects_summary
-object         angelo_scene_object (the cube)   get_object_detail_summary (Cube)
-move           angelo_set_transform             execute_blender_code (set location)
-add_cube       angelo_create_cube               execute_blender_code (primitive_cube_add + rename)
-view           angelo_view (SOLID, 512)         get_screenshot_of_area_as_image (VIEW_3D)
-============== ================================ ===================================================
+============== ==========================================================================================
+Operation      What is timed
+============== ==========================================================================================
+read           ``angelo_read`` with no wait on an idle conversation (one socket round trip and main tick)
+scene          ``angelo_scene``: the observation the agent's next turn carries
+viewport       ``angelo_viewport``: the agent's ``angelo_view`` of the person's viewport, as an image
+row            a row's emission in the app's External conversation to its receipt by a long-polling
+               ``angelo_read`` (``wait_seconds``), while the conversation is busy
+============== ==========================================================================================
 
-Each side keeps its own defaults, as a person gets them: Angelo in a new
-External conversation (Approve for me, so the typed edits run unasked; the
-person's snapshot is taken before the first edit of a request and is reported
-apart as ``first_edit``), Blender MCP with its add-on's own polling. ``idle``
-times a scene read after ``--idle`` seconds without calls (Blender MCP's
-add-on slows its polling once idle). The views differ in kind (Angelo draws an
-offscreen view of the scene; the add-on captures the area) and are reported as
-"a picture of the 3D view". Python scripts are not timed: Angelo has a person
-review each one from an app, which a timing cannot stand in for.
+``row`` needs a running turn and no model runs here, so the Angelo side holds the conversation busy with the CLI's
+own host request (``open_external_read``: no provider, no scene change) and appends one system row when the client
+asks for it, writing the wall-clock time it did so; the client subtracts it from the time the answer arrived (one
+machine, one clock). The first message the client sends creates the conversation and is answered
+``needs_connection`` (no connection here), which is part of the run.
 
-Run on a quiet machine, both apps behind other windows::
+Run on a quiet machine, Angelo behind other windows::
 
-    python3 bench_external_mcp_latency.py --angelo-binary <Angelo.app/Contents/MacOS/Angelo> \\
-        --stock-blender <Blender> --mcp-addon-dir <frozen mcp_addon> --mcp-server-dir <frozen mcp_server> \\
-        --out <folder> [--rounds 20] [--idle 10]
+    python3 bench_external_mcp_latency.py --angelo-binary <Angelo.app/Contents/MacOS/Angelo> --out <folder> \\
+        [--rounds 20]
 """
 
 import argparse
 import json
 import os
-import re
 import shutil
 import statistics
 import subprocess
@@ -47,8 +38,8 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROUNDS, WARMUP, IDLE = 20, 3, 10.0
-CUBE_LOCATION = (0.0, 0.0, 0.0)
+ROUNDS, WARMUP = 20, 3
+OPERATIONS = ("read", "scene", "viewport", "row")
 
 
 class StdioClient:
@@ -99,69 +90,6 @@ class StdioClient:
         self.stderr.close()
 
 
-def _text(result):
-    return " ".join(block.get("text", "") for block in result.get("content", []) if block.get("type") == "text")
-
-
-class AngeloSide:
-    name = "angelo"
-
-    def __init__(self, client):
-        self.client, self.handle, self.count = client, None, 0
-
-    def prepare(self):
-        _ms, result, failed = self.client.call("angelo_scene_search", {"query": "Cube", "coverage": "PAGE", "limit": 5})
-        match = re.search(r'"(o[1-9][0-9]*)"', _text(result))
-        if failed or not match:
-            raise RuntimeError("Angelo did not return the cube's handle: %s" % _text(result)[:400])
-        self.handle = match.group(1)
-
-    def operation(self, name, round_index):
-        self.count += 1
-        if name in {"scene", "idle"}:
-            return "angelo_inspect_scene", {}
-        if name == "object":
-            return "angelo_scene_object", {"object": self.handle}
-        if name == "move":
-            return "angelo_set_transform", {"object": self.handle, "location": [round_index * 0.01, 0, 0]}
-        if name == "add_cube":
-            return "angelo_create_cube", {"name": "Bench%03d" % self.count, "size": 0.2,
-                                          "location": [2.0, round_index * 0.3, 0.0]}
-        if name == "view":
-            return "angelo_view", {"views": ["ISO"]}
-        raise KeyError(name)
-
-
-class McpSide:
-    name = "blender_mcp"
-
-    def __init__(self, client):
-        self.client, self.count = client, 0
-
-    def prepare(self):
-        pass
-
-    def operation(self, name, round_index):
-        self.count += 1
-        if name in {"scene", "idle"}:
-            return "get_objects_summary", {}
-        if name == "object":
-            return "get_object_detail_summary", {"name": "Cube"}
-        if name == "move":
-            return "execute_blender_code", {"code": "import bpy\nbpy.data.objects['Cube'].location = (%r, 0, 0)\n"
-                                                    "result = list(bpy.data.objects['Cube'].location)" % (round_index * 0.01)}
-        if name == "add_cube":
-            return "execute_blender_code", {"code": "import bpy\nbpy.ops.mesh.primitive_cube_add(size=0.2, location=(2.0, %r, 0.0))\n"
-                                                    "bpy.context.active_object.name = 'Bench%03d'\nresult = bpy.context.active_object.name"
-                                                    % (round_index * 0.3, self.count)}
-        if name == "view":
-            return "get_screenshot_of_area_as_image", {"area_ui_type": "VIEW_3D"}
-        raise KeyError(name)
-
-
-OPERATIONS = ("scene", "object", "move", "add_cube", "view")
-
-
 def summarize(samples):
     if not samples:
         return {}
@@ -171,54 +99,60 @@ def summarize(samples):
             "min_ms": round(ordered[0], 1), "max_ms": round(ordered[-1], 1)}
 
 
-def run_rounds(sides, rounds, warmup, idle):
-    timings = {side.name: {name: [] for name in OPERATIONS + ("idle", "first_edit")} for side in sides}
-    errors = {side.name: [] for side in sides}
-    for side in sides:
-        side.prepare()
-    for index in range(warmup):   # Untimed: both sides warm (caches, first snapshot, first offscreen draw).
-        for side in sides:
-            for name in OPERATIONS:
-                tool, arguments = side.operation(name, index)
-                elapsed, result, failed = side.client.call(tool, arguments)
-                if name in {"move", "add_cube"} and index == 0:
-                    timings[side.name]["first_edit"].append(elapsed)
-                if failed:
-                    errors[side.name].append({"warmup": index, "op": name, "text": _text(result)[:300]})
-    for index in range(rounds):
-        order = sides if index % 2 == 0 else list(reversed(sides))
+def timed_row(client, folder, index):
+    """One row's emission to its receipt through a parked read: ms, or None when it did not arrive."""
+    cursor = client.call("angelo_read", {})[1].get("structuredContent", {}).get("cursor")
+    request = folder / ("emit-%d" % index)
+    stamp = folder / ("emitted-%d" % index)
+    stamp.unlink(missing_ok=True)
+    client.process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 10 ** 6 + index, "method": "tools/call",
+                                           "params": {"name": "angelo_read", "arguments": {
+                                               "cursor": cursor, "wait_seconds": 10}}}) + "\n")
+    client.process.stdin.flush()
+    time.sleep(1.0)   # Parked, past MIN_WAKE: what is timed is the stream path, not the coalescing floor.
+    request.write_text("1")
+    while True:
+        line = client.process.stdout.readline()
+        if not line:
+            raise RuntimeError("The MCP server ended during a row measurement")
+        if json.loads(line).get("id") == 10 ** 6 + index:
+            received = time.time()
+            break
+    deadline = time.monotonic() + 10
+    while not stamp.is_file() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    return (received - float(stamp.read_text())) * 1000 if stamp.is_file() else None
+
+
+def run(client, folder, rounds, warmup):
+    timings, errors = {name: [] for name in OPERATIONS}, []
+    sent = client.call("angelo_send", {"message": "Hello from the latency bench"})[1]
+    errors_seen = {"first_send": (sent.get("structuredContent") or {}).get("code")}
+    (folder / "busy").write_text("1")   # The Angelo side holds the conversation busy for the row timings.
+    time.sleep(0.5)
+    calls = {"read": ("angelo_read", {}), "scene": ("angelo_scene", {}), "viewport": ("angelo_viewport", {})}
+    for index in range(warmup + rounds):
         for name in OPERATIONS:
-            for side in order:
-                tool, arguments = side.operation(name, warmup + index)
-                elapsed, result, failed = side.client.call(tool, arguments)
-                if failed:
-                    errors[side.name].append({"round": index, "op": name, "text": _text(result)[:300]})
-                else:
-                    timings[side.name][name].append(elapsed)
-    for _ in range(3):
-        time.sleep(idle)
-        for side in sides:
-            tool, arguments = side.operation("idle", 0)
-            elapsed, result, failed = side.client.call(tool, arguments)
-            if not failed:
-                timings[side.name]["idle"].append(elapsed)
-    return {side: {name: summarize(values) for name, values in ops.items()} for side, ops in timings.items()}, errors
+            if name == "row":
+                elapsed = timed_row(client, folder, index)
+                failed = elapsed is None
+            else:
+                elapsed, result, failed = client.call(*calls[name])
+            if failed:
+                errors.append({"round": index, "op": name})
+            elif index >= warmup:
+                timings[name].append(elapsed)
+    return {name: summarize(values) for name, values in timings.items()}, errors, errors_seen
 
 
 def main():
     sys.path.insert(0, str(HERE))
-    import bench_mcp_trial
     from external_app_env import isolated_environment
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--angelo-binary", required=True)
-    parser.add_argument("--stock-blender", required=True)
-    parser.add_argument("--mcp-addon-dir", required=True)
-    parser.add_argument("--mcp-server-dir", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--rounds", type=int, default=ROUNDS)
     parser.add_argument("--warmup", type=int, default=WARMUP)
-    parser.add_argument("--idle", type=float, default=IDLE)
-    parser.add_argument("--port", type=int, default=9890)
     args = parser.parse_args()
     root = Path(args.out).resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -229,21 +163,18 @@ def main():
     import app_layout
     resources, python = app_layout.resources(binary), app_layout.python(binary)
     sys.path.insert(0, str(resources / "scripts" / "addons_core"))
-    from angelo_agent.external_clients import AppRegistry, DEFAULT_LEVELS
-    AppRegistry(env["ANGELO_STATE_DIR"]).connect("other", name="bench", levels=DEFAULT_LEVELS)
+    from angelo_agent.external_clients import AppRegistry
+    AppRegistry(env["ANGELO_STATE_DIR"]).connect("other", name="bench")
     ready, stop = angelo_root / "ready", angelo_root / "stop"
-    for path in (ready, stop):
+    for path in (ready, stop, angelo_root / "busy"):
         path.unlink(missing_ok=True)
     import gui_launch
     angelo = subprocess.Popen(
         [str(binary), "--factory-startup", "--disable-autoexec", *gui_launch.window_flags("behind"),
          "--window-geometry", "80", "80", "1280", "800", "--python", str(Path(__file__).resolve()),
-         "--", "--native-phase", "gui", "--ready", str(ready), "--stop", str(stop)],
+         "--", "--native-phase", "gui", "--root", str(angelo_root)],
         env=env, stdout=(angelo_root / "angelo.log").open("w"), stderr=subprocess.STDOUT)
-    blender = server = angelo_client = None
-    folder = root / "blender-mcp"
-    folder.mkdir(exist_ok=True)
-    (folder / "tmp").mkdir(exist_ok=True)
+    client = None
     try:
         deadline = time.monotonic() + 120
         while not ready.is_file():
@@ -251,29 +182,19 @@ def main():
                 raise RuntimeError("Angelo did not start its listener; see angelo/angelo.log")
             time.sleep(0.2)
         launcher = resources / "scripts" / "angelo" / "angelo_mcp.py"
-        angelo_client = StdioClient([str(python), "-I", str(launcher), "--client", "bench", "--state-dir",
-                                     env["ANGELO_STATE_DIR"]], env, angelo_root, angelo_root / "launcher.stderr")
-        config = {"stock_blender": args.stock_blender, "mcp_addon_dir": args.mcp_addon_dir,
-                  "mcp_server_dir": args.mcp_server_dir, "window_state": "behind"}
-        blender, blender_info = bench_mcp_trial.launch_blender(config, folder, args.port)
-        entry = bench_mcp_trial.mcp_config(config, args.port)["mcpServers"][bench_mcp_trial.SERVER_NAME]
-        server = StdioClient([entry["command"], *entry["args"]], {**bench_mcp_trial.clean_environment(), **entry["env"]},
-                             folder, folder / "server.stderr")
+        client = StdioClient([str(python), "-I", str(launcher), "--client", "bench", "--state-dir",
+                              env["ANGELO_STATE_DIR"]], env, angelo_root, angelo_root / "launcher.stderr")
         report = {"started": time.strftime("%Y-%m-%d %H:%M:%S"), "rounds": args.rounds, "warmup": args.warmup,
-                  "idle_s": args.idle, "angelo_binary": str(binary), "stock_blender": args.stock_blender,
-                  "blender": blender_info, "angelo_server": angelo_client.start(), "mcp_server": server.start()}
-        results, errors = run_rounds([AngeloSide(angelo_client), McpSide(server)], args.rounds, args.warmup, args.idle)
-        report.update(results=results, errors=errors)
+                  "angelo_binary": str(binary), "angelo_server": client.start()}
+        results, errors, seen = run(client, angelo_root, args.rounds, args.warmup)
+        report.update(results=results, errors=errors, **seen)
         (root / "latency.json").write_text(json.dumps(report, indent=2))
         print(json.dumps(report, indent=2))
-        return 0 if not any(errors.values()) else 1
+        return 0 if not errors else 1
     finally:
         stop.write_text("1")
-        for client in (angelo_client, server):
-            if client is not None:
-                client.close()
-        if blender is not None:
-            bench_mcp_trial.stop_process(blender)
+        if client is not None:
+            client.close()
         try:
             angelo.wait(30)
         except subprocess.TimeoutExpired:
@@ -295,7 +216,8 @@ addon_utils.enable("angelo_agent", default_set=False, persistent=False)   # As t
 bpy.context.preferences.use_preferences_save = False
 
 _args = sys.argv[sys.argv.index("--") + 1:]
-READY, STOP = Path(_args[_args.index("--ready") + 1]), Path(_args[_args.index("--stop") + 1])
+ROOT = Path(_args[_args.index("--root") + 1])
+_held = {"fence": None, "count": 0}
 
 
 def _start():
@@ -307,16 +229,29 @@ def _start():
     from angelo_agent import external_host
     if not (Path(os.environ["ANGELO_STATE_DIR"]) / "cli" / "endpoint.json").is_file():
         return 0.2
-    READY.write_text(external_host.status_text())
+    (ROOT / "ready").write_text(external_host.status_text())
     return None
 
 
-def _stop():
-    if STOP.is_file():
+def _serve():
+    """Hold the bench app's conversation busy once asked, and append a row whenever the client asks for one."""
+    from angelo_agent import external_host
+    host = external_host._host
+    controller = host.conversation("bench", create=False) if host is not None else None
+    if controller is not None and (ROOT / "busy").is_file() and _held["fence"] is None:
+        _held["fence"] = controller.open_external_read()
+    for request in sorted(ROOT.glob("emit-*")) if controller is not None else ():
+        index = request.name.split("-", 1)[1]
+        request.unlink()
+        controller.emit("message", {"role": "system", "text": "bench row %s" % index})
+        (ROOT / ("emitted-" + index)).write_text(repr(time.time()))
+    if (ROOT / "stop").is_file():
+        if _held["fence"] is not None:
+            controller.close_external_read(_held["fence"])
         bpy.ops.wm.quit_blender()
         return None
-    return 0.5
+    return 0.005
 
 
 bpy.app.timers.register(_start, first_interval=1.0)
-bpy.app.timers.register(_stop, first_interval=2.0, persistent=True)
+bpy.app.timers.register(_serve, first_interval=2.0, persistent=True)

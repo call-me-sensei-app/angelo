@@ -12,6 +12,7 @@ import suite_isolation  # noqa: F401  First: this test never sees a real provide
 import hashlib
 import sys
 import unittest
+from host_test_policy import environment_skip
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -47,7 +48,7 @@ class BaseMeshThumbTests(unittest.TestCase):
         for asset in self.assets:
             data = (folder / (Path(asset["file"]).stem + ".png")).read_bytes()
             if data.startswith(b"version https://git-lfs"):
-                self.skipTest("LFS pointers in this checkout (git-archive snapshot)")
+                self.skipTest(environment_skip("LFS pointers in this checkout (git-archive snapshot)"))
             width, height, rows = self.thumbs.decode_png(data)
             self.assertEqual((width, height), (96, 96), asset["name"])
             self.assertEqual(rows[0][3], 0, "a transparent corner: %s" % asset["name"])

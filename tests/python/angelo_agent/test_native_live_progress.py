@@ -260,9 +260,7 @@ class Note(unittest.TestCase):
         self.assertIn("self.turn_started = (self._request_generation, time.monotonic())", begin)
         external = (ADDON / "controller_external.py").read_text(encoding="utf-8")
         read = external[external.index("def open_external_read"):external.index("def close_external_read")]
-        work = external[external.index("def open_external_work"):external.index("def send_external_task")]
         self.assertIn("self._request_generation += 1", read)
-        self.assertIn("self.open_external_read()", work)
 
     def test_live_puts_it_together(self):
         shown = live_progress.live(facts(thinking=True), 137.4)

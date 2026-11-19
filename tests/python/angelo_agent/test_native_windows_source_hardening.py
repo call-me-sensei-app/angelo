@@ -50,7 +50,8 @@ def case_insensitive(folder):
 
 @unittest.skipIf(os.name == "nt", environment_skip(
     "gcp_windows_validate.sh is a bash launcher run from the macOS workstation, not on Windows"))
-@unittest.skipUnless(git_lfs_works(), "the launcher is bash with git and Git LFS, run from the workstation")
+@unittest.skipUnless(git_lfs_works(),
+                     environment_skip("the launcher is bash with git and Git LFS, run from the workstation"))
 class SendHardeningTests(LauncherFixture, unittest.TestCase):
     def launcher(self, command, *extra):
         env = dict(ENV, PATH="%s%s%s" % (self.fake / "bin", os.pathsep, os.environ["PATH"]), FAKE=str(self.fake),

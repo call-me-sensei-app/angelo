@@ -13,6 +13,7 @@ import os
 import sys
 import tempfile
 import unittest
+from host_test_policy import environment_skip
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -44,7 +45,7 @@ def document(seed, shared=b"", size=MIB):
     return blend_v1(blocks)
 
 
-@unittest.skipUnless(anchored_files_supported(), "descriptor-relative storage required")
+@unittest.skipUnless(anchored_files_supported(), environment_skip("descriptor-relative storage required"))
 class AutomaticRetentionTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="angelo-retention-")

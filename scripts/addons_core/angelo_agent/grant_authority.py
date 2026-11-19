@@ -9,7 +9,7 @@ is the add-on's one door to it:
 * ``GUARD`` is the C module, read once at import (before any script). Without it (a build that lacks it) every grant
   is refused: nothing falls back to Python. Host tests stand a Python twin in its place (``angelo_guard_twin`` in the
   test suite), never the app, where the C module always wins.
-* The ledger's standard namespaces (``APPROVED_SCRIPTS`` ... ``SCRIPT_FILES``) and helpers to read and write them.
+* The ledger's standard namespaces (``APPROVED_SCRIPTS`` ... ``APPROVAL_MODES``) and helpers to read and write them.
   A write that widens takes effect only inside a grant scope (a ticket from the person's aimed click, or Angelo's own
   automatic decision) and never while an agent script runs; anything else raises ``PermissionError``.
 * A script runs (``run_confined``) only when ``APPROVED_SCRIPTS`` holds its exact text for its call, once:
@@ -24,7 +24,6 @@ APPROVED_SCRIPTS = "approved_scripts"   # "<chat id>/<call id>" -> SHA-256 of th
 TRUSTED_CHATS = "trusted_scripts"       # chat id -> True.
 ALWAYS_ALLOW = "always_allow"           # "on" -> True.
 CHAT_CLIENTS = "chat_clients"           # chat id -> the external client it belongs to.
-SCRIPT_FILES = "script_files"           # "<client>/<sha256>" -> True.
 APPROVED_CALLS = "approved_calls"       # "<chat id>/<call id>" -> the invocation digest the approval was for.
 APPROVAL_MODES = "approval_modes"       # chat id -> "AUTO_BOUNDED" while the chat is in Auto (Ask narrows).
 NO_AUTHORITY = "This build has no grant authority: nothing can be granted."
@@ -101,13 +100,6 @@ def approve_script(chat_id, call_id, source):
 
 def withdraw_script(chat_id, call_id):
     return forget(APPROVED_SCRIPTS, call_key(chat_id, call_id))
-
-
-def script_file_key(app, project, path, sha256):
-    """The ledger's key for an app's allowed script file: the app, then a digest of where it is and its content."""
-    import json
-    where = json.dumps([project, path, sha256], ensure_ascii=False, separators=(",", ":"))
-    return "%s/%s" % (app, hashlib.sha256(where.encode("utf-8")).hexdigest())
 
 
 def mirror(namespace, pairs):

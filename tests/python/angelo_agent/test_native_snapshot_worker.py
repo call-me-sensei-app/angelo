@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+from host_test_policy import environment_skip
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -40,7 +41,7 @@ def wait_for(predicate, timeout=20):
     return False
 
 
-@unittest.skipUnless(anchored_files_supported(), "descriptor-relative storage required")
+@unittest.skipUnless(anchored_files_supported(), environment_skip("descriptor-relative storage required"))
 class SnapshotWorkerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="angelo-worker-")
@@ -122,7 +123,7 @@ class SnapshotWorkerTests(unittest.TestCase):
             self.assertTrue((self.store.folder(record["id"]) / "scene.blend").is_file())
 
 
-@unittest.skipUnless(anchored_files_supported(), "descriptor-relative storage required")
+@unittest.skipUnless(anchored_files_supported(), environment_skip("descriptor-relative storage required"))
 class SnapshotServiceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="angelo-service-")

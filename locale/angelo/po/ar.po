@@ -12,6 +12,39 @@ msgstr ""
 "\n"
 "X-Angelo-Form: visual order, shaped; generated from src/ar.po\n"
 
+msgid "'{app}' asks you to set this conversation to Approve for me. Only you can: use the approval control below."
+msgstr ".ﻩﺎﻧﺩﺃ ﺔﻘﻓﺍﻮﻤﻟﺍ ﻲﻓ ﻢﻜﺤﺘﻟﺍ ﺮﺼﻨﻋ ﻡﺪﺨﺘﺳﺍ :ﻚﻟﺫ ﻊﻴﻄﺘﺴﺗ ﻙﺪﺣﻭ ﺖﻧﺃ .«ﻲﻨﻋ ﺔﺑﺎﻴﻧ ﻖﻓﺍﻭ» ﻰﻠﻋ ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻫ ﻂﺒﺿ ﻚﻨﻣ '{app}' ﺐﻠﻄﻳ"
+
+msgid "'{app}' asks you to set this conversation to Ask before changes. Only you can: use the approval control below."
+msgstr ".ﻩﺎﻧﺩﺃ ﺔﻘﻓﺍﻮﻤﻟﺍ ﻲﻓ ﻢﻜﺤﺘﻟﺍ ﺮﺼﻨﻋ ﻡﺪﺨﺘﺳﺍ :ﻚﻟﺫ ﻊﻴﻄﺘﺴﺗ ﻙﺪﺣﻭ ﺖﻧﺃ .«ﺕﺍﺮﻴﻴﻐﺘﻟﺍ ﻞﺒﻗ ﻝﺄﺳﺍ» ﻰﻠﻋ ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻫ ﻂﺒﺿ ﻚﻨﻣ '{app}' ﺐﻠﻄﻳ"
+
+msgid "'{app}' chose {model} ({connection} · Angelo team) for this conversation."
+msgstr ".ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻬﻟ (Angelo ﻖﻳﺮﻓ · {model} ({connection} ﺝﺫﻮﻤﻨﻟﺍ '{app}' ﺭﺎﺘﺧﺍ"
+
+msgid "'{app}' chose {model} ({connection} · API billing) for this conversation."
+msgstr ".ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻬﻟ (API ﺓﺮﺗﻮﻓ · {model} ({connection} ﺝﺫﻮﻤﻨﻟﺍ '{app}' ﺭﺎﺘﺧﺍ"
+
+msgid "'{app}' chose {model} ({connection} · Subscription) for this conversation."
+msgstr ".ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻬﻟ (ﻙﺍﺮﺘﺷﻻﺍ · {model} ({connection} ﺝﺫﻮﻤﻨﻟﺍ '{app}' ﺭﺎﺘﺧﺍ"
+
+msgid "'{app}' chose {model} for this conversation."
+msgstr ".ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻬﻟ {model} ﺝﺫﻮﻤﻨﻟﺍ '{app}' ﺭﺎﺘﺧﺍ"
+
+msgid "'{app}' set reasoning effort to the model's default."
+msgstr ".ﺝﺫﻮﻤﻨﻠﻟ ﻲﺿﺍﺮﺘﻓﻻﺍ ﺩﺍﺪﻋﻹﺍ ﻰﻠﻋ ﺮﻴﻜﻔﺘﻟﺍ ﻯﻮﺘﺴﻣ '{app}' ﻂﺒﺿ"
+
+msgid "'{app}' set reasoning effort to {effort}."
+msgstr ".{effort} ﻰﻠﻋ ﺮﻴﻜﻔﺘﻟﺍ ﻯﻮﺘﺴﻣ '{app}' ﻂﺒﺿ"
+
+msgid "'{app}' set this conversation to Ask before changes."
+msgstr ".«ﺕﺍﺮﻴﻴﻐﺘﻟﺍ ﻞﺒﻗ ﻝﺄﺳﺍ» ﻰﻠﻋ ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻫ '{app}' ﻂﺒﺿ"
+
+msgid "'{app}' set this conversation to Read only."
+msgstr ".«ﻂﻘﻓ ﺓءﺍﺮﻘﻠﻟ» ﻰﻠﻋ ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻫ '{app}' ﻂﺒﺿ"
+
+msgid "'{label}' started a new conversation, {identity}. This transcript stays readable."
+msgstr ".ﺓءﺍﺮﻘﻠﻟ ﻼًﺑﺎﻗ ﻞﺠﺴﻟﺍ ﺍﺬﻫ ﻰﻘﺒﻳ .{identity} ،ﺓﺪﻳﺪﺟ ﺔﺛﺩﺎﺤﻣ '{label}' ﺃﺪﺑ"
+
 #. src: bpy.types.DepsgraphUpdate.angelo_recalc:'OTHER'
 msgid "A recalc bit with no item of its own"
 msgstr "ﻪﺑ ﺹﺎﺧ ﺮﺼﻨﻋ ﻪﻟ ﺲﻴﻟ ﺏﺎﺴﺣ ﺓﺩﺎﻋﺇ ﺖﺑ"
@@ -23,6 +56,24 @@ msgstr "…ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﻭﺩﻭﺰﻣ"
 #. src: angelo_agent/ai_render_card.py
 msgid "AI Render"
 msgstr "ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺎﺑ ﺮﻴﻴﺼﺗ"
+
+msgid "Allow for this session"
+msgstr "ﺔﺴﻠﺠﻟﺍ ﻩﺬﻬﻟ ﺡﺎﻤﺴﻟﺍ"
+
+msgid "Allow for this session runs this chat's scripts without asking until Angelo restarts. Always allow runs Angelo's agent's scripts in every Auto chat, connected apps' chats included, until you turn it off in Preferences. Scripts have full access to files, the network and other apps on this computer."
+msgstr ".ﺮﺗﻮﻴﺒﻤﻜﻟﺍ ﺍﺬﻫ ﻰﻠﻋ ﻯﺮﺧﻷﺍ ﺕﺎﻘﻴﺒﻄﺘﻟﺍﻭ ﺔﻜﺒﺸﻟﺍﻭ ﺕﺎﻔﻠﻤﻟﺍ ﻰﻟﺇ ﻞﻣﺎﻛ ﻝﻮﺻﻭ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻠﻟ .ﺕﻼﻴﻀﻔﺘﻟﺍ ﻲﻓ ﻪﻔﻗﻮﺗ ﻰﺘﺣ ،ﺔﻠﺼﺘﻤﻟﺍ ﺕﺎﻘﻴﺒﻄﺘﻟﺍ ﺕﺎﺛﺩﺎﺤﻣ ﺎﻬﻨﻣﻭ ،Auto ﺔﺛﺩﺎﺤﻣ ﻞﻛ ﻲﻓ Angelo ﻞﻴﻛﻮﻟ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺎﻤًﺋﺍﺩ ﺡﺎﻤﺴﻟﺍ ﻞﻐّﺸﻳﻭ .Angelo ﻞﻴﻐﺸﺗ ﺓﺩﺎﻋﺇ ﻰﺘﺣ ﻝﺍﺆﺳ ﻥﻭﺩ ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻫ ﻲﻓ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺔﺴﻠﺠﻟﺍ ﻩﺬﻬﻟ ﺡﺎﻤﺴﻟﺍ ﻞﻐّﺸﻳ"
+
+msgid "Allow for this session works like Trust scripts for this chat: this chat's scripts run without asking until Angelo restarts or you start a new chat."
+msgstr ".ﺓﺪﻳﺪﺟ ﺔﺛﺩﺎﺤﻣ ءﺪﺑ ﻭﺃ Angelo ﻞﻴﻐﺸﺗ ﺓﺩﺎﻋﺇ ﻰﺘﺣ ﻝﺍﺆﺳ ﻥﻭﺩ ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻫ ﻲﻓ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻞﻤﻌﺗ :ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻫ ﻲﻓ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺎﺑ ﺔﻘﺜﻟﺍ ﻞﺜﻣ ﺔﺴﻠﺠﻟﺍ ﻩﺬﻬﻟ ﺡﺎﻤﺴﻟﺍ ﻞﻤﻌﻳ"
+
+msgid "Always allow"
+msgstr "ﺎﻤًﺋﺍﺩ ﺡﺎﻤﺴﻟﺍ"
+
+msgid "Always allow still covers only chats set to Approve for me, and your organization's policy still applies. Scripts that touch your preferences or Angelo itself, or that would replace the open file, always ask."
+msgstr ".ﺎﻤًﺋﺍﺩ ﻝﺄﺴﺗ ،ﺡﻮﺘﻔﻤﻟﺍ ﻒﻠﻤﻟﺍ ﻝﺪﺒﺘﺴﺗ ﺪﻗ ﻲﺘﻟﺍ ﻭﺃ ،ﻪﺴﻔﻧ Angelo ﻭﺃ ﻚﺗﻼﻴﻀﻔﺗ ﺲﻤﺗ ﻲﺘﻟﺍ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ .ﺔﻳﺭﺎﺳ ﻚﺘﺴﺳﺆﻣ ﺔﺳﺎﻴﺳ ﻝﺍﺰﺗ ﻻﻭ ،ﻲﻨﻋ ﺔﺑﺎﻴﻧ ﻖﻓﺍﻭ ﻰﻠﻋ ﺔﻃﻮﺒﻀﻤﻟﺍ ﺕﺎﺛﺩﺎﺤﻤﻟﺍ ﻂﻘﻓ ﻞﻤﺸﻳ ﺎﻤًﺋﺍﺩ ﺡﺎﻤﺴﻟﺍ ﻝﺍﺰﻳ ﻻ"
+
+msgid "Angelo 2.0.1 lets you choose how scripts from Claude Code, Codex and other connected apps are approved, and fixes Save and Restart for updates."
+msgstr ".ﺕﺎﺜﻳﺪﺤﺘﻟﺍ ﻲﻓ ﻞﻴﻐﺸﺘﻟﺍ ﺪﻋﺃﻭ ﻆﻔﺣﺍ ﺢﻠﺼﻳﻭ ،ﻯﺮﺧﻷﺍ ﺔﻠﺼﺘﻤﻟﺍ ﺕﺎﻘﻴﺒﻄﺘﻟﺍﻭ Codexﻭ Claude Code ﻦﻣ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻰﻠﻋ ﺔﻘﻓﺍﻮﻤﻟﺍ ﺔﻘﻳﺮﻃ ﺭﺎﻴﺘﺧﺍ Angelo 2.0.1 ﻚﻟ ﺢﻴﺘﻳ"
 
 #. src: angelo_agent/learn_ui.py
 msgid "Angelo could not save this choice: {reason}"
@@ -287,6 +338,9 @@ msgstr "ﺔﺷﺩﺭﺪﻟﺍ ﻩﺬﻫ ﻲﻓ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮ�
 msgid "Done by Angelo's own tool"
 msgstr "ﺔﺻﺎﺨﻟﺍ Angelo ﺓﺍﺩﺄﺑ ﺬﻔّﻧُ"
 
+msgid "Each script asks: run it once, or allow it for this session or always."
+msgstr ".ﺎﻤًﺋﺍﺩ ﻭﺃ ﺔﺴﻠﺠﻟﺍ ﻩﺬﻬﻟ ﻪﺑ ﺢﻤﺳﺍ ﻭﺃ ،ﺓﺪﺣﺍﻭ ﺓﺮﻣ ﻪﻠﻐّﺷ :ﻲﺼﻧ ﺞﻣﺎﻧﺮﺑ ﻞﻛ ﻝﺄﺴﻳ"
+
 #. src: bpy.types.DepsgraphUpdate.angelo_recalc:'EDITORS'
 msgid "Editors"
 msgstr "ﺕﺍﺭﺮﺤﻤﻟﺍ"
@@ -300,6 +354,9 @@ msgstr "Media Studio ﻪﺟﻮﻣ ﻦﻴﺴﺤﺗ"
 msgctxt "Operator"
 msgid "Enter API Key"
 msgstr "API ﺡﺎﺘﻔﻣ ﻝﺎﺧﺩﺇ"
+
+msgid "Every script asks for your review before it runs."
+msgstr ".ﻪﻠﻴﻐﺸﺗ ﻞﺒﻗ ﻚﺘﻌﺟﺍﺮﻣ ﻲﺼﻧ ﺞﻣﺎﻧﺮﺑ ﻞﻛ ﺮﻈﺘﻨﻳ"
 
 #. src: angelo_agent/learn_card_draw.py
 msgid "Find it with search: {key}"
@@ -361,6 +418,9 @@ msgctxt "Angelo"
 msgid "On"
 msgstr "ﻞﻌّﻔﻣ"
 
+msgid "One click on Approve approves, also while the agent or a connected app keeps working."
+msgstr ".ﻞﻤﻌﻟﺍ ﻲﻓ ﻞﺼﺘﻣ ﻖﻴﺒﻄﺗ ﻭﺃ ﻞﻴﻛﻮﻟﺍ ﺭﺍﺮﻤﺘﺳﺍ ءﺎﻨﺛﺃ ﻰﺘﺣ ،ﺔﻘﻓﺍﻮﻤﻠﻟ ﻲﻔﻜﺗ ﻖﻓﺍﻭ ﻰﻠﻋ ﺓﺪﺣﺍﻭ ﺓﺮﻘﻧ"
+
 #. src: angelo_agent/learn_ui.py
 msgid "Open a chat first: this is set for one chat"
 msgstr "ﺓﺪﺣ ﻰﻠﻋ ﺔﺷﺩﺭﺩ ﻞﻜﻟ ﺍﺬﻫ ﻂﺒﻀﻳُ :ﻻًﻭﺃ ﺔﺷﺩﺭﺩ ﺢﺘﻓﺍ"
@@ -373,9 +433,39 @@ msgstr ".ﺎﻬﻣﺪﺨﺘﺳﺍ ﻲﺘﻟﺍ ﺕﺍﺩﺍﺪﻋﻹﺍﻭ ،ﻪ
 msgid "Public notes are available in this chat, but could not be saved. {error} No scene edits or tool approvals were granted."
 msgstr ".ﺕﺍﻭﺩﻷﺍ ﻰﻠﻋ ﺕﺎﻘﻓﺍﻮﻣ ﻭﺃ ﺪﻬﺸﻤﻟﺍ ﻰﻠﻋ ﺕﻼﻳﺪﻌﺗ ﻱﺃ ﺢﻨﻤﺗُ ﻢﻟ {error} .ﺎﻬﻈﻔﺣ ﺭﺬﻌﺗ ﻦﻜﻟ ،ﺔﺷﺩﺭﺪﻟﺍ ﻩﺬﻫ ﻲﻓ ﺔﺣﺎﺘﻣ ﺔﻣﺎﻌﻟﺍ ﺕﺎﻈﺣﻼﻤﻟﺍ"
 
+msgid "Read only: scripts and other changes don't run."
+msgstr ".ﻯﺮﺧﻷﺍ ﺕﺍﺮﻴﻴﻐﺘﻟﺍ ﻻﻭ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻞﻤﻌﺗ ﻻ :ﻂﻘﻓ ﺓءﺍﺮﻘﻠﻟ"
+
+msgid "Review & run once"
+msgstr "ﺓﺪﺣﺍﻭ ﺓﺮﻣ ﻞﻐّﺷﻭ ﻊﺟِﺍﺭ"
+
+msgid "Run once"
+msgstr "ﺓﺪﺣﺍﻭ ﺓﺮﻣ ﻞﻴﻐﺸﺗ"
+
+msgid "Save and Restart now completes an update instead of stopping with \"The update could not start\"."
+msgstr ".\"ﺚﻳﺪﺤﺘﻟﺍ ءﺪﺑ ﺭﺬّﻌﺗ\" ﺪﻨﻋ ﻒﻗﻮﺘﻟﺍ ﻦﻣ ﻻًﺪﺑ ﺚﻳﺪﺤﺘﻟﺍ ﻥﻵﺍ ﻞﻴﻐﺸﺘﻟﺍ ﺪﻋﺃﻭ ﻆﻔﺣﺍ ﻞﻤﻜﻳُ"
+
+msgid "Script approval cards offer Run once, Allow for this session and Always allow, also for Claude Code, Codex and other connected apps."
+msgstr ".ﺎﻀًﻳﺃ Codexﻭ Claude Code ﺞﻣﺍﺮﺒﻟ ،ﺎﻤًﺋﺍﺩ ﺡﺎﻤﺴﻟﺍﻭ ﺔﺴﻠﺠﻟﺍ ﻩﺬﻬﻟ ﺡﺎﻤﺴﻟﺍﻭ ﺓﺪﺣﺍﻭ ﺓﺮﻣ ﻞﻴﻐﺸﺗ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻰﻠﻋ ﺔﻘﻓﺍﻮﻤﻟﺍ ﺕﺎﻗﺎﻄﺑ ﺽﺮﻌﺗ"
+
+msgid "Scripts in this chat run without asking for this session"
+msgstr "ﺔﺴﻠﺠﻟﺍ ﻩﺬﻫ ﻲﻓ ﻝﺍﺆﺳ ﻥﻭﺩ ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻫ ﻲﻓ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻞﻤﻌﺗ"
+
+msgid "Scripts run without asking in Auto chats"
+msgstr "Auto ﺕﺎﺛﺩﺎﺤﻣ ﻲﻓ ﻝﺍﺆﺳ ﻥﻭﺩ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻞﻤﻌﺗ"
+
+msgid "Scripts run without asking in Auto chats."
+msgstr ".Auto ﺕﺎﺛﺩﺎﺤﻣ ﻲﻓ ﻝﺍﺆﺳ ﻥﻭﺩ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻞﻤﻌﺗ"
+
+msgid "Scripts still run without asking: turning it off was refused. Try again in a moment."
+msgstr ".ﻞﻴﻠﻗ ﺪﻌﺑ ﻯﺮﺧﺃ ﺓﺮﻣ ﻝﻭﺎﺣ .ﻑﺎﻘﻳﻹﺍ ﺾﻓﺭُ :ﻝﺍﺆﺳ ﻥﻭﺩ ﻞﻤﻌﺗ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻝﺍﺰﺗ ﻻ"
+
 #. src: angelo_agent/save_failure.py
 msgid "Something in this chat can't be written to its file ({kind}). This is a fault in Angelo, not in your request: start a new chat and report it."
 msgstr ".ﻪﻨﻋ ﻎﻠﺑﺃﻭ ﺓﺪﻳﺪﺟ ﺔﺷﺩﺭﺩ ﺃﺪﺑﺍ :ﻚﺒﻠﻃ ﻲﻓ ﺲﻴﻟﻭ Angelo ﻲﻓ ﻞﻠﺧ ﺍﺬﻫ .({kind}) ﺎﻬﻔﻠﻣ ﻲﻓ ﻪﺘﺑﺎﺘﻛ ﻦﻜﻤﻳ ﻻ ﺔﺷﺩﺭﺪﻟﺍ ﻩﺬﻫ ﻲﻓ ءﻲﺷ ﺪﺟﻮﻳ"
+
+msgid "The Approvals menu opens above its button instead of off to the side, and says how this chat's scripts are approved."
+msgstr ".ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻫ ﻲﻓ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻰﻠﻋ ﺔﻘﻓﺍﻮﻤﻟﺍ ﻢﺘﺗ ﻒﻴﻛ ﺢﺿﻮﺗﻭ ،ﺐﻧﺎﺠﻟﺍ ﻦﻣ ﻻًﺪﺑ ﺎﻫﺭّﺯ ﻕﻮﻓ ﺕﺎﻘﻓﺍﻮﻤﻟﺍ ﺔﻤﺋﺎﻗ ﺢﺘﻔﺗُ"
 
 #. src: angelo_agent/save_failure.py
 msgid "The disk reported an error while Angelo wrote its own files. Check the disk or the network folder, then try again."
@@ -396,6 +486,9 @@ msgstr ".ﻯﺮﺧﺃ ﺓﺮﻣ ﻝﻭﺎﺣ ﻢﺛ ﺔﺑﺎﺘﻜﻠﻟ ﻼً�
 #. src: angelo_agent/checkpoint_restore_ui.py
 msgid "The recovery scene was not opened because its safety link could not be saved. {why} The protected safety snapshot is still available through Undo restore."
 msgstr ".«ﺓﺩﺎﻌﺘﺳﻻﺍ ﻦﻋ ﻊﺟﺍﺮﺗ» ﺮﺒﻋ ﺔﺣﺎﺘﻣ ﺔﻴﻤﺤﻤﻟﺍ ﻥﺎﻣﻷﺍ ﺔﻄﻘﻟ ﻝﺍﺰﺗ ﻻ {why} .ﻪﺑ ﺹﺎﺨﻟﺍ ﻥﺎﻣﻷﺍ ﻂﺑﺍﺭ ﻆﻔﺣ ﺭﺬﻌﺗ ﻪﻧﻷ ﺓﺩﺎﻌﺘﺳﻻﺍ ﺪﻬﺸﻣ ﺢﺘﻔﻳُ ﻢﻟ"
+
+msgid "This chat's scripts run without asking for this session."
+msgstr ".ﺔﺴﻠﺠﻟﺍ ﻩﺬﻫ ﻲﻓ ﻝﺍﺆﺳ ﻥﻭﺩ ﺔﺛﺩﺎﺤﻤﻟﺍ ﻩﺬﻫ ﻲﻓ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻞﻤﻌﺗ"
 
 #. src: angelo_agent/learn_ui.py
 msgid "Turn on Teach me as you work to see, under each step Angelo makes in this chat, how to do it yourself: the command, its keys in your keymap, where it is and the settings it used."
@@ -558,6 +651,9 @@ msgstr ""
 "ﺺﺨﺸﻟﺍ ﻥﺎﻜﻤﺑ ﺔﺻﺎﺨﻟﺍ ﺐﻳﻮﺒﺘﻟﺍ ﺔﻣﻼﻋ :(ﺔﻣﺎﻌﻟﺍ ﺮﺻﺎﻨﻌﻟﺍ) F3. AUTO ﺚﺤﺑﻭ ﺭﺍﺭﺯﻷﺍﻭ ﻢﺋﺍﻮﻘﻠﻟ ``open_media_studio``\n"
 "WORKFLOW ﻭﺃ IMAGE ﻭﺃ 3D ﺎﻣﺃ ؛ﺎﻬﺿﺮﻌﻳ ﻲﺘﻟﺍ ﺐﻳﻮﺒﺘﻟﺍ ﺔﻣﻼﻋ ﻢﺛ ،ﺔﺴﻠﺠﻟﺍ ﻩﺬﻫ ﻲﻓ Studio ﺎﻬﻴﻓ ﺮﻬﻈﻳ ﺓﺮﻣ ﻝﻭﺃ ﻲﻓ (``studio_kind``)\n"
 ".ﺎﻤًﺋﺍﺩ ﻚﻠﺗ ﺐﻳﻮﺒﺘﻟﺍ ﺔﻣﻼﻋ ﺩﺪﺤﺘﻓ (ﺔﻴﻗﺎﻴﺴﻟﺍ ﺮﺻﺎﻨﻌﻟﺍ)"
+
+msgid "While scripts run without asking, the chat says so and offers Turn off."
+msgstr ".ﻑﺎﻘﻳﺇ ﺽﺮﻌﺗﻭ ﻚﻟﺫ ﺔﺛﺩﺎﺤﻤﻟﺍ ﺮﻛﺬﺗ ،ﻝﺍﺆﺳ ﻥﻭﺩ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻞﻤﻌﺗ ﺎﻣﺪﻨﻋ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "You can now set when the agent asks before changes, and trust a chat's scripts, from the chat bar's + menu."
@@ -1003,6 +1099,9 @@ msgstr "؟ﺔﻨﻳﺎﻌﻤﻟﺍ ﻩﺬﻫ ﻝﻮﺒﻗ"
 #. src: angelo_agent/saved_keys_ui.py
 msgid "access denied"
 msgstr "ﻝﻮﺻﻮﻟﺍ ﺾﻓﺭ ﻢﺗ"
+
+msgid "Access for '{label}' ended, so its work here stopped. Messages it left waiting are not sent."
+msgstr ".ﺭﺎﻈﺘﻧﻻﺍ ﻲﻓ ﺎﻬﻛﺮﺗ ﻲﺘﻟﺍ ﻞﺋﺎﺳﺮﻟﺍ ﻞﺳَﺮﺗُ ﻦﻟ .ﺎﻨﻫ ﻪﻠﻤﻋ ﻒﻗﻮﺗ ﺍﺬﻟ ،'{label}' ﻝﻮﺻﻭ ﻰﻬﺘﻧﺍ"
 
 #. src: angelo_agent/team_token_store.py
 msgid "access was denied"
@@ -1560,6 +1659,9 @@ msgstr "ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ"
 #. src: angelo_agent/providers_page_external.py
 msgid "AI apps and coding agents running as you can use Angelo's tools, or hand Angelo's agent a task. Their edits and scripts wait for your approval in their own chat; you can stop them and undo as in any chat. Turning this off closes the connection."
 msgstr ".ﻝﺎﺼﺗﻻﺍ ﻖﻠﻐﻳ ﺭﺎﻴﺨﻟﺍ ﺍﺬﻫ ﻑﺎﻘﻳﺇ .ﺔﺷﺩﺭﺩ ﻱﺃ ﻲﻓ ﺎﻤﻛ ﻊﺟﺍﺮﺘﻟﺍﻭ ﺎﻬﻓﺎﻘﻳﺇ ﻚﻨﻜﻤﻳﻭ ؛ﺔﺻﺎﺨﻟﺍ ﺎﻬﺘﺷﺩﺭﺩ ﻲﻓ ﻚﺘﻘﻓﺍﻮﻣ ﺎﻬﺗﺎﺘﺒﻳﺮﻜﺳﻭ ﺎﻬﺗﻼﻳﺪﻌﺗ ﺮﻈﺘﻨﺗ .Angelo ﻞﻴﻛﻮﻟ ﺔﻤﻬﻣ ﻢﻴﻠﺴﺗ ﻭﺃ Angelo ﺕﺍﻭﺩﺃ ﻡﺍﺪﺨﺘﺳﺍ ﻚﻤﺳﺎﺑ ﻞﻤﻌﺗ ﻲﺘﻟﺍ ﺔﺠﻣﺮﺒﻟﺍ ءﻼﻛﻭﻭ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﺕﺎﻘﻴﺒﻄﺘﻟ ﻦﻜﻤﻳ"
+
+msgid "AI apps and coding agents running as you can work with Angelo's agent: they send it messages, follow its progress and see what it sees, in their own chat. Approvals stay yours; you can stop them and undo as in any chat. Turning this off closes the connection."
+msgstr ".ﻝﺎﺼﺗﻻﺍ ﻖﻠﻐﻳ ﺭﺎﻴﺨﻟﺍ ﺍﺬﻫ ﻑﺎﻘﻳﺇ .ﺔﺷﺩﺭﺩ ﻱﺃ ﻲﻓ ﺎﻤﻛ ﻊﺟﺍﺮﺘﻟﺍﻭ ﺎﻬﻓﺎﻘﻳﺇ ﻚﻨﻜﻤﻳﻭ ؛ﻚﻟ ﺕﺎﻘﻓﺍﻮﻤﻟﺍ ﻰﻘﺒﺗ .ﺔﺻﺎﺨﻟﺍ ﺎﻬﺘﺷﺩﺭﺩ ﻲﻓ ،ﻩﺍﺮﻳ ﺎﻣ ﻯﺮﺗﻭ ﻪﻣﺪﻘﺗ ﻊﺑﺎﺘﺗﻭ ﻞﺋﺎﺳﺮﻟﺍ ﻪﻴﻟﺇ ﻞﺳﺮﺗ ﻲﻬﻓ :Angelo ﻞﻴﻛﻭ ﻊﻣ ﻞﻤﻌﻟﺍ ﻚﻤﺳﺎﺑ ﻞﻤﻌﺗ ﻲﺘﻟﺍ ﺔﺠﻣﺮﺒﻟﺍ ءﻼﻛﻭﻭ ﻲﻋﺎﻨﻄﺻﻻﺍ ءﺎﻛﺬﻟﺍ ﺕﺎﻘﻴﺒﻄﺘﻟ ﻦﻜﻤﻳ"
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/studio.py
@@ -2581,6 +2683,9 @@ msgstr ".ﺎﻬﻨﻣ ﻞﻛ ﻑﺎﻘﻳﺇ ﻪﻨﻜﻤﻳﻭ ﺐﺒﺴﻟﺍ 
 msgid "With Angelo linked to Godot, an asset you save while Godot is busy importing now updates once Godot is free, even after you switch the linked asset, instead of staying as it was before the save until Reload Saved Scene. If Godot is still busy after 30 seconds, it says to use Reload Saved Scene."
 msgstr ".Reload Saved Scene ﻡﺍﺪﺨﺘﺳﺍ ﺐﻠﻄﻳ ﻪﻧﺈﻓ ،ﺔﻴﻧﺎﺛ 30 ﺪﻌﺑ ﻼًﻐﺸﻨﻣ Godot ﻞﻇ ﺍﺫﺇﻭ .Reload Saved Scene ﻰﺘﺣ ﻆﻔﺤﻟﺍ ﻞﺒﻗ ﻥﺎﻛ ﺎﻤﻛ ﻪﺋﺎﻘﺑ ﻦﻣ ﻻًﺪﺑ ،ﻂﺒﺗﺮﻤﻟﺍ ﻞﺻﻷﺍ ﻞﻳﺪﺒﺗ ﺪﻌﺑ ﻰﺘﺣ ،Godot ﻍﺮّﻔﺘﻳ ﻥﺃ ﺩﺮﺠﻤﺑ ﺩﺍﺮﻴﺘﺳﻻﺎﺑ Godot ﻝﺎﻐﺸﻧﺍ ءﺎﻨﺛﺃ ﻪﻈﻔﺤﺗ ﻱﺬﻟﺍ ﻞﺻﻷﺍ ﻥﻵﺍ ﺙﺪّﺤﺘﻳ ،Godot ـﺑ Angelo ﻂﺑﺭ ﺪﻨﻋ"
 
+msgid "Your organization requires your review for every script."
+msgstr ".ﻲﺼﻧ ﺞﻣﺎﻧﺮﺑ ﻞﻜﻟ ﻚﺘﻌﺟﺍﺮﻣ ﻚﺘﺴﺳﺆﻣ ﻁﺮﺘﺸﺗ"
+
 #. src: angelo_agent/settings_import_card.py
 msgid "{count} more"
 msgstr "ﻯﺮﺧﺃ {count}"
@@ -2700,6 +2805,9 @@ msgstr "ءﻲﺷ ﻱﺃ ﺮﺸﻨﻳُ ﻢﻟ ؛(ﺎﺌًﻠﺘﻤﻣ ﺹﺮﻘ�
 msgid "Angelo {current} is no longer supported. Please update."
 msgstr ".ﺚﻳﺪﺤﺘﻟﺍ ﻰﺟﺮﻳُ .ﺎﻣًﻮﻋﺪﻣ Angelo {current} ﺪﻌﻳ ﻢﻟ"
 
+msgid "Angelo {version} (PID {pid}) has access for external apps for your user. Quit it, or turn off access there; this Angelo takes over once it is free."
+msgstr ".ﻩﺭﺮّﺤﺗ ﺭﻮﻓ ﻩﺬﻫ Angelo ﺔﺨﺴﻧ ﻩﻻﻮﺘﺘﺳ ؛ﻙﺎﻨﻫ ﻝﻮﺻﻮﻟﺍ ﻒﻗﻭﺃ ﻭﺃ ﻪﻘﻠﻏﺃ .ﻚﻣﺪﺨﺘﺴﻤﻟ ﺔﻴﺟﺭﺎﺨﻟﺍ ﺕﺎﻘﻴﺒﻄﺘﻟﺍ ﻝﻮﺻﻭ ﺔﻴﺣﻼﺻ (Angelo {version} (PID {pid} ﻚﻠﻤﻳ"
+
 #. src: angelo_agent/update_ui.py
 msgid "Angelo {version} available"
 msgstr "Angelo {version} ﺮﻓﻮﺘﻳ"
@@ -2804,6 +2912,9 @@ msgstr "ﻑﺎﻔﺷ ﺞﻫﻮﺗﻭ ﺾﻴﻣﻭﻭ ﺔﻛﺮﺤﺘﻣ ﺢﺴ�
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Animation render jobs saved as OpenEXR publish their frames again."
 msgstr ".ﺪﻳﺪﺟ ﻦﻣ ﺎﻫﺮﻃﺃ ﺮﺸﻨﺗ OpenEXR ﻖﻴﺴﻨﺘﺑ ﺔﻇﻮﻔﺤﻤﻟﺍ ﺔﻛﺮﺤﺘﻤﻟﺍ ﻡﻮﺳﺮﻟﺍ ﺮﻴﻴﺼﺗ ﻡﺎﻬﻣ ﺕﺩﺎﻋ"
+
+msgid "Another Angelo (PID {pid}) has access for external apps for your user. Quit it, or turn off access there; this Angelo takes over once it is free."
+msgstr ".ﻩﺭﺮّﺤﺗ ﺭﻮﻓ ﻩﺬﻫ Angelo ﺔﺨﺴﻧ ﻩﻻﻮﺘﺘﺳ ؛ﻙﺎﻨﻫ ﻝﻮﺻﻮﻟﺍ ﻒﻗﻭﺃ ﻭﺃ ﺎﻬﻘﻠﻏﺃ .ﻚﻣﺪﺨﺘﺴﻤﻟ ﺔﻴﺟﺭﺎﺨﻟﺍ ﺕﺎﻘﻴﺒﻄﺘﻟﺍ ﻝﻮﺻﻭ ﺔﻴﺣﻼﺻ (PID {pid}) ﻯﺮﺧﺃ Angelo ﺔﺨﺴﻧ ﻚﻠﻤﺗ"
 
 #. src: angelo_agent/engine_link_ui.py
 msgid "Another Angelo already has the engine live link"
@@ -8940,8 +9051,8 @@ msgid "Improved prompt · original kept for Undo"
 msgstr "«ﻊﺟﺍﺮﺗ»ـﻟ ﻅﻮﻔﺤﻣ ﻲﻠﺻﻷﺍ · ﻦﺴّﺤﻣ ﻪﺟﻮﻣ"
 
 #. src: bpy.types.ANGELO_Preferences.always_allow_scripts
-msgid "In chats set to Auto, run the agent's Python scripts without asking. Scripts have full access to files, the network and other apps on this computer. Ask before changes still asks; Read only still refuses"
-msgstr "ﺾﻓﺮﻳ «ﻂﻘﻓ ﺓءﺍﺮﻘﻠﻟ» ﻞﻈﻳﻭ ،ﻝﺄﺴﻳ «ﺕﺍﺮﻴﻴﻐﺘﻟﺍ ﻞﺒﻗ ﻝﺄﺳﺍ» ﻞﻈﻳ .ﺮﺗﻮﻴﺒﻤﻜﻟﺍ ﺍﺬﻫ ﻰﻠﻋ ﻯﺮﺧﻷﺍ ﺕﺎﻘﻴﺒﻄﺘﻟﺍﻭ ﺔﻜﺒﺸﻟﺍﻭ ﺕﺎﻔﻠﻤﻟﺍ ﻰﻟﺇ ﻞﻣﺎﻛ ﻝﻮﺻﻮﺑ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻊﺘﻤﺘﺗ .ﻝﺍﺆﺳ ﻥﻭﺩ ﻞﻴﻛﻮﻟﺎﺑ ﺔﺻﺎﺨﻟﺍ ﺔﻴﺼﻨﻟﺍ Python ﺞﻣﺍﺮﺑ ﻞﻐّﺷ ،ﻲﺋﺎﻘﻠﺘﻟﺍ ﻊﺿﻮﻟﺍ ﻰﻠﻋ ﺔﻃﻮﺒﻀﻤﻟﺍ ﺕﺎﺷﺩﺭﺪﻟﺍ ﻲﻓ"
+msgid "In chats set to Auto, connected apps' chats included, run Angelo's agent's Python scripts without asking (never code an app sends itself). Scripts have full access to files, the network and other apps on this computer. Ask before changes still asks; Read only still refuses"
+msgstr "ﺾﻓﺮﻳ ﻂﻘﻓ ﺓءﺍﺮﻘﻠﻟ ﻞﻈﻳﻭ ؛ﻝﺄﺴﻳ ﺕﺍﺮﻴﻴﻐﺘﻟﺍ ﻞﺒﻗ ﻝﺄﺳﺍ ﻞﻈﻳ .ﺮﺗﻮﻴﺒﻤﻜﻟﺍ ﺍﺬﻫ ﻰﻠﻋ ﻯﺮﺧﻷﺍ ﺕﺎﻘﻴﺒﻄﺘﻟﺍﻭ ﺔﻜﺒﺸﻟﺍﻭ ﺕﺎﻔﻠﻤﻟﺍ ﻰﻟﺇ ﻞﻣﺎﻛ ﻝﻮﺻﻭ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻠﻟ .(ﻪﺴﻔﻨﺑ ﻖﻴﺒﻄﺗ ﺎﻬﻠﺳﺮﻳ ﻲﺘﻟﺍ ﺓﺮﻔﻴﺸﻟﺍ ﺍﺪًﺑﺃ ﺲﻴﻟﻭ) ﻝﺍﺆﺳ ﻥﻭﺩ Angelo ﻞﻴﻛﻮﻟ Python ﺔﻐﻠﺑ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻞﻐّﺷ ،ﺔﻠﺼﺘﻤﻟﺍ ﺕﺎﻘﻴﺒﻄﺘﻟﺍ ﺕﺎﺛﺩﺎﺤﻣ ﺎﻬﻨﻣﻭ ،Auto ﻰﻠﻋ ﺔﻃﻮﺒﻀﻤﻟﺍ ﺕﺎﺛﺩﺎﺤﻤﻟﺍ ﻲﻓ"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "In Cycles, rendering Open Shading Language on OptiX with an NVIDIA driver from the 590 to 609 series now stops at once and says to update the driver to 610 or newer or use a 580 series driver, instead of failing with a link error, often after minutes of compiling."
@@ -9977,6 +10088,12 @@ msgstr "…ﻚﺟﺫﺎﻤﻧ ﻞﻴﻤﺤﺗ ﺭٍﺎﺟ"
 msgid "Local bounded telemetry excludes prompt text, source code and credentials."
 msgstr ".ﺩﺎﻤﺘﻋﻻﺍ ﺕﺎﻧﺎﻴﺑﻭ ﺔﻳﺭﺪﺼﻤﻟﺍ ﺓﺮﻔﻴﺸﻟﺍﻭ ﺕﺎﻬﺟﻮﻤﻟﺍ ﺹﻮﺼﻧ ﺓﺩﻭﺪﺤﻤﻟﺍ ﺔﻴﻠﺤﻤﻟﺍ ﺱﺎﻴﻘﻟﺍ ﺕﺎﻧﺎﻴﺑ ﻲﻨﺜﺘﺴﺗ"
 
+msgid "Local CLI client '{label}'. It reads Angelo's status only and runs no tool: no scene, file, memory, billing or provider changes."
+msgstr ".ﻦﻳﺩﻭّﺰﻤﻟﺍ ﻭﺃ ﺓﺮﺗﻮﻔﻟﺍ ﻭﺃ ﺓﺮﻛﺍﺬﻟﺍ ﻭﺃ ﺕﺎﻔﻠﻤﻟﺍ ﻭﺃ ﺪﻬﺸﻤﻟﺍ ﻰﻠﻋ ﺕﺍﺮﻴﻴﻐﺗ ﻻ :ﺓﺍﺩﺃ ﻱﺃ ﻞﻐّﺸﻳ ﻻﻭ ﻂﻘﻓ Angelo ﺔﻟﺎﺣ ﺃﺮﻘﻳ .'{label}' ﻲﻠﺤﻤﻟﺍ CLI ﻞﻴﻤﻋ"
+
+msgid "Local CLI client '{label}'. It reads Angelo's status only and runs no tool: no scene, file, memory, billing or provider changes. Rotated from conversation {previous} by `angelo session new`."
+msgstr ".`angelo session new` ﺔﻄﺳﺍﻮﺑ {previous} ﺔﺛﺩﺎﺤﻤﻟﺍ ﻦﻣ ﻞﻳﺪﺒﺘﻟﺍ ﻢﺗ .ﻦﻳﺩﻭّﺰﻤﻟﺍ ﻭﺃ ﺓﺮﺗﻮﻔﻟﺍ ﻭﺃ ﺓﺮﻛﺍﺬﻟﺍ ﻭﺃ ﺕﺎﻔﻠﻤﻟﺍ ﻭﺃ ﺪﻬﺸﻤﻟﺍ ﻰﻠﻋ ﺕﺍﺮﻴﻴﻐﺗ ﻻ :ﺓﺍﺩﺃ ﻱﺃ ﻞﻐّﺸﻳ ﻻﻭ ﻂﻘﻓ Angelo ﺔﻟﺎﺣ ﺃﺮﻘﻳ .'{label}' ﻲﻠﺤﻤﻟﺍ CLI ﻞﻴﻤﻋ"
+
 #. src: angelo_agent/external_host.py
 msgid "Local CLI client '{label}'. Phase 1 is read-only: observations only; no scene, file, memory, billing or provider changes. Approvals and Stop only."
 msgstr ".ﻂﻘﻓ «ﻑﺎﻘﻳﺇ»ﻭ ﺕﺎﻘﻓﺍﻮﻤﻟﺍ .ﻦﻳﺩﻭﺰﻤﻟﺍ ﻭﺃ ﺓﺮﺗﻮﻔﻟﺍ ﻭﺃ ﺓﺮﻛﺍﺬﻟﺍ ﻭﺃ ﺕﺎﻔﻠﻤﻟﺍ ﻭﺃ ﺪﻬﺸﻤﻟﺍ ﻰﻠﻋ ﺕﺍﺮﻴﻴﻐﺗ ﻱﺃ ﻥﻭﺩ ؛ﻂﻘﻓ ﺕﺎﻈﺣﻼﻣ :ﻂﻘﻓ ﺓءﺍﺮﻘﻠﻟ 1 ﺔﻠﺣﺮﻤﻟﺍ .«{label}» ﻲﻠﺤﻣ CLI ﻞﻴﻤﻋ"
@@ -10453,6 +10570,9 @@ msgstr "ﺪﺣ ﻼﺑ ﻲﻨﻌﻳ 0 · ﻡﺎﻳﻷﺎﺑ ﺮﻤﻋ ﻰﺼﻗ�
 #. src: bpy.types.ANGELO_OT_checkpoint_settings.max_count
 msgid "Maximum snapshots · 0 is unlimited"
 msgstr "ﺪﺣ ﻼﺑ ﻲﻨﻌﻳ 0 · ﺕﺎﻄﻘﻠﻟﺍ ﻦﻣ ﺩﺪﻋ ﻰﺼﻗﺃ"
+
+msgid "MCP app '{label}' works with Angelo's agent here. Approve or decline what the agent asks, press Stop to end its work and Undo or restore as in any chat. The app can never approve."
+msgstr ".ﺍﺪًﺑﺃ ﺔﻘﻓﺍﻮﻤﻟﺍ ﻖﻴﺒﻄﺘﻠﻟ ﻦﻜﻤﻳ ﻻ .ﺔﺷﺩﺭﺩ ﻱﺃ ﻲﻓ ﺎﻤﻛ ﺪﻌِﺘﺳﺍ ﻭﺃ ﻊﺟﺍﺮﺗﻭ ،ﻪﻠﻤﻋ ءﺎﻬﻧﻹ ﻑﺎﻘﻳﺇ ﻂﻐﺿﺍﻭ ،ﻪﻀﻓﺭﺍ ﻭﺃ ﻞﻴﻛﻮﻟﺍ ﻪﺒﻠﻄﻳ ﺎﻣ ﻰﻠﻋ ﻖﻓﺍﻭ .Angelo ﻞﻴﻛﻭ ﻊﻣ ﺎﻨﻫ 'MCP '{label} ﻖﻴﺒﻄﺗ ﻞﻤﻌﻳ"
 
 #. src: angelo_agent/external_host.py
 msgid "MCP app '{label}'. Its edits, scripts and tasks run here: approve or decline them, press Stop to end its work and Undo or restore as in any chat. The app can never approve."
@@ -12632,6 +12752,10 @@ msgstr ".ﻲﺼﺨﺸﻟﺍ ﻒﻠﻤﻟﺍ ﺍﺬﻬﻟ {location} ﻲﻓ ﻅ�
 #. src: angelo_agent/providers_page_model.py
 msgid "On: scripts in Auto chats run without asking."
 msgstr ".ﻝﺍﺆﺳ ﻥﻭﺩ ﺔﻴﺋﺎﻘﻠﺘﻟﺍ ﺕﺎﺷﺩﺭﺪﻟﺍ ﻲﻓ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻞﻤﻌﺗ :ﻞﻌّﻔﻣ"
+
+#. src: angelo_agent/providers_page_model.py
+msgid "On for Angelo's own chats. Connected apps' chats still ask until you press Always allow on one of their script cards."
+msgstr ".ﺎﻬﻴﻓ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﺕﺎﻗﺎﻄﺑ ﻯﺪﺣﺇ ﻲﻓ ﺎﻤًﺋﺍﺩ ﺡﺎﻤﺴﻟﺍ ﻰﻠﻋ ﻂﻐﻀﺗ ﻰﺘﺣ ﻝﺄﺴﺗ ﺔﻠﺼﺘﻤﻟﺍ ﺕﺎﻘﻴﺒﻄﺘﻟﺍ ﺕﺎﺛﺩﺎﺤﻣ ﻞﻈﺗ .ﺎﻬﺴﻔﻧ Angelo ﺕﺎﺛﺩﺎﺤﻤﻟ ﻞﻌّﻔﻣ"
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/web_export_ui.py
@@ -17425,6 +17549,9 @@ msgstr "{engine} ﻞﻴﻐﺸﺗ ﺭٍﺎﺟ"
 msgid "Starting…"
 msgstr "…ءﺪﺒﻟﺍ ﺭٍﺎﺟ"
 
+msgid "Starts another Angelo"
+msgstr "ﻯﺮﺧﺃ Angelo ﺔﺨﺴﻧ ﻞﻐّﺸﻳ"
+
 #. src: angelo_agent/session_rail.py
 msgctxt "plural:one"
 msgid "Starts once {count} running worker is done"
@@ -20060,6 +20187,9 @@ msgstr ".ﺔﻄﻘﻟ ﻻﻭ «ﻊﺟﺍﺮﺗ» ﻩﺪﻴﻌﺘﺴﻳ ﻻﻭ ،
 msgid "This script would replace the file you have open, so it always asks, even when scripts are allowed."
 msgstr ".ﺎﻬﺑ ﺎﺣًﻮﻤﺴﻣ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻥﻮﻜﺗ ﺎﻣﺪﻨﻋ ﻰﺘﺣ ،ﺎﻤًﺋﺍﺩ ﺔﻘﻓﺍﻮﻤﻟﺍ ﺐﻠﻄﻳ ﺍﺬﻟ ،ﻚﻳﺪﻟ ﺡﻮﺘﻔﻤﻟﺍ ﻒﻠﻤﻟﺍ ﻲﺼﻨﻟﺍ ﺞﻣﺎﻧﺮﺒﻟﺍ ﺍﺬﻫ ﻝﺪﺒﺘﺴﻴﺳ"
 
+msgid "This session's live page stopped after an error, so its link no longer opens. The app's next message starts a new one."
+msgstr ".ﺓﺪﻳﺪﺟ ﺔﺤﻔﺻ ﺔﻴﻟﺎﺘﻟﺍ ﻖﻴﺒﻄﺘﻟﺍ ﺔﻟﺎﺳﺭ ﺃﺪﺒﺘﺳ .ﺢﺘﻔﻳ ﺎﻬﻄﺑﺍﺭ ﺪﻌﻳ ﻢﻟ ﺍﺬﻟ ،ﺄﻄﺧ ﺪﻌﺑ ﺔﺴﻠﺠﻟﺍ ﻩﺬﻬﻟ ﺓﺮﺷﺎﺒﻤﻟﺍ ﺔﺤﻔﺼﻟﺍ ﺖﻔﻗﻮﺗ"
+
 #. src: angelo_agent/team_connections.py
 msgid "This sign-in doesn't allow model use; sign out and sign in again."
 msgstr ".ﻯﺮﺧﺃ ﺓﺮﻣ ﻝﻮﺧﺪﻟﺍ ﻞﺠّﺳ ﻢﺛ ﺝﻭﺮﺨﻟﺍ ﻞﺠّﺳ ؛ﺝﺫﺎﻤﻨﻟﺍ ﻡﺍﺪﺨﺘﺳﺎﺑ ﺍﺬﻫ ﻝﻮﺧﺪﻟﺍ ﻞﻴﺠﺴﺗ ﺢﻤﺴﻳ ﻻ"
@@ -20736,6 +20866,12 @@ msgstr "(ﻲﻠﺧﺍﺩ ﻡﺍﺪﺨﺘﺳﺍ) Angelo ﺔﻬﺟﺍﻭ ﻲﻓ �
 #. src: angelo_agent/chat_titles.py
 msgid "Update the engine link"
 msgstr "ﻙﺮﺤﻤﻟﺍ ﻊﻣ ﻂﺑﺮﻟﺍ ﺚﻳﺪﺤﺗ"
+
+msgid "Updated Angelo in {app}: it started the MCP server in {previous}. Restart {app} to load it."
+msgstr ".ﻪﻠﻴﻤﺤﺘﻟ {app} ﻞﻴﻐﺸﺗ ﺪﻋﺃ .{previous} ﻲﻓ ﺩﻮﺟﻮﻤﻟﺍ MCP ﻡﺩﺎﺧ ﻞﻐّﺸﻳ ﻞﺧﺪﻤﻟﺍ ﻥﺎﻛ :{app} ﻲﻓ Angelo ﺙﺪّﺣُ"
+
+msgid "Updated Angelo in {app}: it started the MCP server in {previous}. Start a new {app} session to use it."
+msgstr ".ﻪﻣﺍﺪﺨﺘﺳﻻ ﺓﺪﻳﺪﺟ {app} ﺔﺴﻠﺟ ﺃﺪﺑﺍ .{previous} ﻲﻓ ﺩﻮﺟﻮﻤﻟﺍ MCP ﻡﺩﺎﺧ ﻞﻐّﺸﻳ ﻞﺧﺪﻤﻟﺍ ﻥﺎﻛ :{app} ﻲﻓ Angelo ﺙﺪّﺣُ"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Updated the engine link"
@@ -21573,6 +21709,12 @@ msgstr ".ﺎﻤًﺋﺍﺩ ﺔﻘﻓﺍﻮﻤﻟﺍ ﻪﺘﺑﺎﺘﻛ ﺐﻠﻄ
 msgid "This script refers to preferences or to Angelo's own add-on, so it always asks, even when scripts are allowed."
 msgstr ".ﺎﻬﺑ ﺎﺣًﻮﻤﺴﻣ ﺔﻴﺼﻨﻟﺍ ﺞﻣﺍﺮﺒﻟﺍ ﻥﻮﻜﺗ ﺎﻣﺪﻨﻋ ﻰﺘﺣ ،ﺎﻤًﺋﺍﺩ ﺔﻘﻓﺍﻮﻤﻟﺍ ﺐﻠﻄﻳ ﺍﺬﻟ ،ﺎﻬﺴﻔﻧ Angelo ـﺑ ﺔﺻﺎﺨﻟﺍ ﺔﻓﺎﺿﻹﺍ ﻰﻟﺇ ﻭﺃ ﺕﻼﻴﻀﻔﺘﻟﺍ ﻰﻟﺇ ﻲﺼﻨﻟﺍ ﺞﻣﺎﻧﺮﺒﻟﺍ ﺍﺬﻫ ﺮﻴﺸﻳ"
 
+msgid "Waiting for Angelo {version}"
+msgstr "Angelo {version} ﺭﺎﻈﺘﻧﺎﺑ"
+
+msgid "Waiting for another Angelo"
+msgstr "ﻯﺮﺧﺃ Angelo ﺔﺨﺴﻧ ﺭﺎﻈﺘﻧﺎﺑ"
+
 #. src: angelo_agent/key_store.py
 msgid "Waiting for your keyring · answer the unlock prompt"
 msgstr "ﻞﻔﻘﻟﺍ ﺢﺘﻓ ﺔﺒﻟﺎﻄﻣ ﻰﻠﻋ ﺐﺟﺃ · ﺢﻴﺗﺎﻔﻤﻟﺍ ﺔﻘﻠﺣ ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
@@ -21647,6 +21789,110 @@ msgstr ".11–25% ﻥﺎﻛ ﻥﺃ ﺪﻌﺑ ،ﺭﺎﺒﺘﺧﺍ ﺪﻫﺎﺸ�
 #. src: angelo_agent/web_preview.py
 msgid "Web Preview"
 msgstr "ﺐﻳﻮﻟﺍ ﺔﻨﻳﺎﻌﻣ"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Stop sharing"
+msgstr "ﺔﻛﺭﺎﺸﻤﻟﺍ ﻑﺎﻘﻳﺇ"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Open live page"
+msgstr "ﺓﺮﺷﺎﺒﻤﻟﺍ ﺔﺤﻔﺼﻟﺍ ﺢﺘﻓﺍ"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Share again"
+msgstr "ﺍﺩًﺪﺠﻣ ﺔﻛﺭﺎﺸﻣ"
+
+#. src: angelo_agent/session_page.py
+msgid "Live session"
+msgstr "ﺓﺮﺷﺎﺒﻣ ﺔﺴﻠﺟ"
+
+#. src: angelo_agent/session_page.py
+msgid "Working with {app}"
+msgstr "{app} ﻊﻣ ﻞﻤﻌﻟﺍ"
+
+#. src: angelo_agent/session_page.py
+msgid "Read-only view of this session. Approvals, Stop and every change stay in Angelo."
+msgstr ".Angelo ﻲﻓ ﺮﻴﻴﻐﺗ ﻞﻛﻭ ﻑﺎﻘﻳﻹﺍﻭ ﺕﺎﻘﻓﺍﻮﻤﻟﺍ ﻰﻘﺒﺗ .ﺔﺴﻠﺠﻟﺍ ﻩﺬﻬﻟ ﻂﻘﻓ ﺓءﺍﺮﻘﻠﻟ ﺽﺮﻋ"
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting for your approval in Angelo"
+msgstr "Angelo ﻲﻓ ﻚﺘﻘﻓﺍﻮﻣ ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting while you use a tool in Angelo"
+msgstr "Angelo ﻲﻓ ﺓﺍﺩﺃ ﻡﺪﺨﺘﺴﺗ ﺎﻤﻨﻴﺑ ﺭﺎﻈﺘﻧﻻﺍ ﻲﻓ"
+
+#. src: angelo_agent/session_page.py
+msgid "This live page has ended: the session ended or sharing was stopped in Angelo."
+msgstr ".Angelo ﻲﻓ ﺔﻛﺭﺎﺸﻤﻟﺍ ﺖﻔﻗﻭﺃُ ﻭﺃ ﺔﺴﻠﺠﻟﺍ ﺖﻬﺘﻧﺍ :ﺓﺮﺷﺎﺒﻤﻟﺍ ﺔﺤﻔﺼﻟﺍ ﻩﺬﻫ ﺖﻬﺘﻧﺍ"
+
+#. src: angelo_agent/session_page.py
+msgid "Angelo isn't answering. The page reconnects when it does."
+msgstr ".ﺐﻴﺠﺘﺴﻳ ﺎﻣﺪﻨﻋ ﻝﺎﺼﺗﻻﺍ ﺔﺤﻔﺼﻟﺍ ﺪﻴﻌﺘﺳ .Angelo ﺐﻴﺠﺘﺴﻳ ﻻ"
+
+#. src: angelo_agent/session_page.py
+msgid "Result"
+msgstr "ﺔﺠﻴﺘﻨﻟﺍ"
+
+#. src: angelo_agent/session_page.py
+msgid "Latest views"
+msgstr "ﺕﺎﻄﻘﻠﻟﺍ ﺙﺪﺣﺃ"
+
+#. src: angelo_agent/session_page.py
+msgid "Views the agent takes appear here."
+msgstr ".ﻞﻴﻛﻮﻟﺍ ﺎﻬﻄﻘﺘﻠﻳ ﻲﺘﻟﺍ ﺕﺎﻄﻘﻠﻟﺍ ﺎﻨﻫ ﺮﻬﻈﺗ"
+
+#. src: angelo_agent/session_page.py
+msgid "Loading the scene…"
+msgstr "…ﺪﻬﺸﻤﻟﺍ ﻞﻴﻤﺤﺗ ﺭٍﺎﺟ"
+
+#. src: angelo_agent/session_page.py
+msgid "The scene appears here once Angelo exports it."
+msgstr ".Angelo ﻩﺭﺪّﺼﻳ ﻥﺃ ﺪﻌﺑ ﺎﻨﻫ ﺪﻬﺸﻤﻟﺍ ﺮﻬﻈﻳ"
+
+#. src: angelo_agent/session_page.py
+msgid "This browser can't draw the 3D scene. Everything else here still updates."
+msgstr ".ﺚﻳﺪﺤﺘﻟﺍ ﻲﻓ ﺮﻤﺘﺴﻳ ﺎﻨﻫ ﻩﺍﺪﻋ ﺎﻣ ﻞﻛ .ﺩﺎﻌﺑﻷﺍ ﻲﺛﻼﺛ ﺪﻬﺸﻤﻟﺍ ﻢﺳﺭ ﺢﻔﺼﺘﻤﻟﺍ ﺍﺬﻫ ﻊﻴﻄﺘﺴﻳ ﻻ"
+
+#. src: angelo_agent/session_page.py
+msgid "Round {round}"
+msgstr "{round} ﺔﻟﻮﺠﻟﺍ"
+
+#. src: angelo_agent/session_page.py
+msgid "Score {score}%"
+msgstr "%{score} ﺔﺟﺭﺪﻟﺍ"
+
+#. src: angelo_agent/session_page.py
+msgid "Best {score}%"
+msgstr "%{score} ﻞﻀﻓﻷﺍ"
+
+#. src: angelo_agent/session_page.py
+msgid "Passes at {score}%"
+msgstr "%{score} ﺪﻨﻋ ﺎﺤًﺟﺎﻧ ﺪّﻌﻳُ"
+
+#. src: angelo_agent/session_page.py
+msgid "Session {time}"
+msgstr "{time} ﺔﺴﻠﺠﻟﺍ"
+
+#. src: angelo_agent/session_page.py
+msgid "This step {time}"
+msgstr "{time} ﺓﻮﻄﺨﻟﺍ ﻩﺬﻫ"
+
+#. src: angelo_agent/session_page.py
+msgid "Usage"
+msgstr "ﻡﺍﺪﺨﺘﺳﻻﺍ"
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting for approval"
+msgstr "ﺔﻘﻓﺍﻮﻤﻟﺍ ﺭﺎﻈﺘﻧﺍ ﻲﻓ"
+
+#. src: angelo_agent/session_page.py
+msgid "{app} can show this session on a live page in your browser. Only this computer can open it, and it shows the scene, the progress and the result, never files or other chats."
+msgstr ".ﻯﺮﺧﺃ ﺕﺎﺷﺩﺭﺩ ﻭﺃ ﺕﺎﻔﻠﻣ ﺍﺪًﺑﺃ ﺽﺮﻌﺗ ﻻﻭ ،ﺔﺠﻴﺘﻨﻟﺍﻭ ﻡﺪﻘﺘﻟﺍﻭ ﺪﻬﺸﻤﻟﺍ ﺽﺮﻌﺗﻭ ،ﺏﻮﺳﺎﺤﻟﺍ ﺍﺬﻫ ﻻﺇ ﺎﻬﺤﺘﻔﻳ ﻻ .ﻚﺤﻔﺼﺘﻣ ﻲﻓ ﺓﺮﺷﺎﺒﻣ ﺔﺤﻔﺻ ﻲﻓ ﺔﺴﻠﺠﻟﺍ ﻩﺬﻫ ﺽﺮﻋ {app} ـﻟ ﻦﻜﻤﻳ"
+
+#. src: angelo_agent/session_page.py
+msgid "You stopped sharing this session's live page. The link no longer opens."
+msgstr ".ﺢﺘﻔﻳ ﻂﺑﺍﺮﻟﺍ ﺪﻌﻳ ﻢﻟ .ﺔﺴﻠﺠﻟﺍ ﻩﺬﻬﻟ ﺓﺮﺷﺎﺒﻤﻟﺍ ﺔﺤﻔﺼﻟﺍ ﺔﻛﺭﺎﺸﻣ ﺖﻔﻗﻭﺃ"
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/web_export_ui.py
@@ -26269,6 +26515,12 @@ msgstr ".ﻚﻜﻠﻣ ﺢﺒﺼﻳ ﻥﺃ ﺭﻮﻓ ﻙﺪﻬﺸﻣ ﻰﻟﺇ An
 msgid "Price on Fab: {price}"
 msgstr "Fab: {price} ﻰﻠﻋ ﺮﻌﺴﻟﺍ"
 
+msgid "Works through Angelo's agent: sends it messages, follows its progress and sees what it sees."
+msgstr ".ﻩﺍﺮﻳ ﺎﻣ ﻯﺮﻳﻭ ﻪﻣﺪﻘﺗ ﻊﺑﺎﺘﻳﻭ ﻞﺋﺎﺳﺮﻟﺍ ﻪﻴﻟﺇ ﻞﺳﺮﻳ :Angelo ﻞﻴﻛﻭ ﺮﺒﻋ ﻞﻤﻌﻳ"
+
+msgid "{app}'s Angelo entry starts the MCP server in {where}. Connect {app} points it at this Angelo."
+msgstr ".ﻩﺬﻫ Angelo ﺔﺨﺴﻧ ﻰﻟﺇ ﻪﻬﺟّﻮﻳ «{app} ﻂﺑﺭﺍ» .{where} ﻲﻓ ﺩﻮﺟﻮﻤﻟﺍ MCP ﻡﺩﺎﺧ ﻞﻐّﺸﻳ {app} ﻲﻓ Angelo ﻞﺧﺪﻣ"
+
 #. src: angelo_agent/job_chat.py
 #. src: angelo_agent/studio_media_tiles.py
 #. src: angelo_agent/studio_video_ui.py
@@ -26902,3 +27154,21 @@ msgstr ".ﻪﺒﻧﺎﺠﺑ assets/downloads ﻰﻟﺇ ﺕﻼﻳﺰﻨﺘﻟﺍ 
 #. src: angelo_agent/download_approvals.py
 msgid "{kind}, up to {size}. Saved in assets/downloads in this project's folder."
 msgstr ".ﻉﻭﺮﺸﻤﻟﺍ ﺍﺬﻫ ﺪﻠﺠﻣ ﻞﺧﺍﺩ assets/downloads ﻲﻓ ﻆﻔﺤﻳُ .{size} ﻰﺘﺣ ،{kind}"
+
+msgid "Angelo is busy working for {app} without its window and hasn't come up yet. End that work now (it stops and saves first), or quit this launch and leave it running?"
+msgstr "؟ﻞﻤﻌﻳ ﻪﻛﺮﺗﻭ ﻞﻴﻐﺸﺘﻟﺍ ﺍﺬﻫ ﻕﻼﻏﺇ ﻡﺃ ،(ﻻًﻭﺃ ﻆﻔﺤﻳﻭ ﻒﻗﻮﺘﻳ) ﻥﻵﺍ ﻞﻤﻌﻟﺍ ﺍﺬﻫ ءﺎﻬﻧﺇ ﺪﻳﺮﺗ ﻞﻫ .ﺪﻌﺑ ﺮﻬﻈﻳ ﻢﻟﻭ ﻪﺗﺬﻓﺎﻧ ﻥﻭﺩ {app} ﺢﻟﺎﺼﻟ Angelo ﻞﻤﻌﻳ"
+
+msgid "Angelo is working for {app} without its window, and this launch can't reach it. Quit it from Activity Monitor, or wait for it to finish, then open Angelo again."
+msgstr ".ﺍﺩًﺪﺠﻣ Angelo ﺢﺘﻓﺍ ﻢﺛ ،ﻲﻬﺘﻨﻳ ﻰﺘﺣ ﺮﻈﺘﻧﺍ ﻭﺃ ،ﻁﺎﺸﻨﻟﺍ ﺐﻗﺍﺮﻣ ﻦﻣ ﻪﻘﻠﻏﺃ .ﻪﻴﻟﺇ ﻝﻮﺻﻮﻟﺍ ﻞﻴﻐﺸﺘﻟﺍ ﺍﺬﻫ ﻊﻴﻄﺘﺴﻳ ﻻﻭ ،ﻪﺗﺬﻓﺎﻧ ﻥﻭﺩ {app} ﺢﻟﺎﺼﻟ Angelo ﻞﻤﻌﻳ"
+
+msgid "End it"
+msgstr "ﻩﺅﺎﻬﻧﺇ"
+
+msgid "Quit"
+msgstr "ﺝﻭﺮﺧ"
+
+msgid "an app"
+msgstr "ﻖﻴﺒﻄﺗ"
+
+msgid "Declined {tool}, answered through {app}."
+msgstr ".{app} ﺮﺒﻋ ﺩﺮﻟﺍﻭ ،{tool} ﺾﻓﺭ ﻢﺗ"

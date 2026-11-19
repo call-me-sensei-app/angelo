@@ -299,6 +299,22 @@ static PyObject *guard_peek(PyObject * /*self*/, PyObject *args)
   return PyBool_FromLong(!confined() && authority().peek(idname, digest, now()));
 }
 
+static PyObject *guard_window_state(PyObject * /*self*/, PyObject *arg)
+{
+  const unsigned long long key = PyLong_AsUnsignedLongLong(arg);
+  if (PyErr_Occurred()) {
+    return nullptr;
+  }
+  if (confined()) {
+    Py_RETURN_NONE; /* An agent script reads nothing of the person's presses. */
+  }
+  const angelo_guard::WindowKey window = uintptr_t(key);
+  return Py_BuildValue("(KOO)",
+                       static_cast<unsigned long long>(authority().epoch(window)),
+                       authority().returning(window) ? Py_True : Py_False,
+                       authority().press_activating(window) ? Py_True : Py_False);
+}
+
 static PyObject *guard_unarmed(PyObject * /*self*/, PyObject *args)
 {
   std::string idname, digest;
@@ -690,6 +706,10 @@ static PyMethodDef methods[] = {
     {"hold_dialog", guard_hold_dialog, METH_VARARGS,
      "hold_dialog(idname, to, browse=False): in the person's scope, the dialog an operator opens "
      "keeps it (ticket to); a file browser (browse) longer; an agent run ends it."},
+    {"window_state", guard_window_state, METH_O,
+     "window_state(window): (focus epoch, returning, whether the last press brought it forward) as C "
+     "holds them for that window's key, or None while an agent script runs. The one record every "
+     "surface's arming reads, so two handlers of one press agree."},
     {"unarmed", guard_unarmed, METH_VARARGS,
      "unarmed(idname, digest): the person's press on that control, not yet armed (too soon "
      "after it was shown, or no move onto it since), as (window, x, y, width, height) in window "
@@ -765,6 +785,14 @@ void BPY_angelo_guard_note_input(const void *window, int x, int y, int event_typ
   else if (ISKEYBOARD(event_type) && event_value == KM_PRESS) {
     authority().note_key(key, event_type, now()); /* Tab, or an activation key on a focused control. */
   }
+}
+
+void BPY_angelo_guard_note_activate(const void *window)
+{
+  if (BPY_angelo_guard_thread_confined()) {
+    return;
+  }
+  authority().note_activate(uintptr_t(window), now());
 }
 
 void BPY_angelo_guard_agent_ran()

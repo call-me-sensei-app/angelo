@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -129,7 +130,7 @@ SHARED = {}
 
 def setUpModule():
     if shutil.which("git") is None:
-        raise unittest.SkipTest("git is not installed")
+        raise unittest.SkipTest(required_skip("git is not installed"))
     SHARED["folder"] = tempfile.TemporaryDirectory()
     SHARED["repo"], SHARED["fork"], SHARED["series_tip"] = build(SHARED["folder"].name)
 

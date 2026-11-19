@@ -391,7 +391,7 @@ class CompletionScope:
         self.context.host.emit(kind, data)
 
     def request(self, call_id, name, arguments, callback, *, delivery_owner=None, result_observer=None,
-                script_file=None, model_step=None):
+                model_step=None):
         captured = []
 
         def receive(result):
@@ -405,11 +405,8 @@ class CompletionScope:
         if closed:
             callback({"error": "This native runtime no longer owns the active request"})
             return
-        # script_file: an app's angelo_run_script_file read (trusted_scripts); model_step: the step that wrote the
-        # call (model_steps.record_call_step). Each passed only when there is one.
-        extra = {"script_file": script_file} if script_file is not None else {}
-        if model_step is not None:
-            extra["model_step"] = model_step
+        # model_step: the step that wrote the call (model_steps.record_call_step), passed only when there is one.
+        extra = {"model_step": model_step} if model_step is not None else {}
         self.context.host.request_tool(call_id, name, arguments, receive,
             request_fence=self.context.request_fence, completion_sink=captured.append,
             delivery_owner=delivery_owner, result_observer=result_observer, **extra)

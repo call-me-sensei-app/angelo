@@ -2,14 +2,13 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Host-originated requests in an External conversation, mixed into ``Controller``.
 
-A CLI client's reads (``open_external_read``, doc/angelo/external_cli.rst), a
-connected MCP app's tool calls (``open_external_work``) and its tasks
-(``send_external_task``), doc/angelo/external_mcp.rst. None starts a provider
-except a task, which is an ordinary turn.
+A CLI client's reads (``open_external_read``, doc/angelo/external_cli.rst) start no provider. A connected MCP app's
+messages to Angelo's agent (``external_send``, doc/angelo/external_mcp.rst) are ordinary turns.
 """
 
+import contextlib
+
 from . import display_text, ui_text
-from .checkpoint_policy import CheckpointPolicyStore
 from .request_fences import RequestFence
 
 
@@ -28,6 +27,20 @@ def bound_target(controller, executor, document):
             return executor, document
     remote.studio_context = controller
     return remote, remote.document_key
+
+
+@contextlib.contextmanager
+def external_send(controller):
+    """A connected app's message being sent in its External conversation (``external_agent``; a queued one when the
+    turn ends, ``chat_pending.dispatch_due``): the one way a model turn starts there
+    (``require_model_chat``). Its request row says whose it is and takes none of the person's files
+    (``request_rows``)."""
+    previous = getattr(controller, "_external_task", False)
+    controller._external_task = True
+    try:
+        yield
+    finally:
+        controller._external_task = previous
 
 
 class ExternalRequests:
@@ -62,40 +75,24 @@ class ExternalRequests:
         self.version += 1
         return True
 
-    def open_external_work(self, text, client):
-        """Open a host-originated request for a connected MCP app's tool calls (external_work).
-
-        Like ``open_external_read`` it starts no provider, but its calls may edit: a user row says who is working,
-        so the snapshot taken before the first approved edit (``ensure_request_checkpoint``; the pump calls it)
-        binds to it, as a chat request's does (``text``: the row, request data like a typed message, as the phase-1
-        "External: <label>" row is). An app's request never captures before a read-only call, whatever the snapshot
-        policy, so an app that only looks costs nothing.
-        Approval, Undo, journaling and receipts are ``request_tool``'s. Returns the request's fence;
-        ``close_external_read`` ends it.
-        """
-        fence = self.open_external_read()
-        self.request_checkpoint = None
-        # The person's retention settings; only the capture moment is the app's.
-        self._turn_checkpoint_policy = dict(CheckpointPolicyStore(self.store.directory).load(),
-                                            capture_mode="BEFORE_FIRST_EDIT")
-        self.status = "External work"
-        self.emit("message", {"role": "user", "text": text, "request_kind": "external_request", "client": client,
-                              "checkpoint_scope": "before_first_approved_edit"})
-        return fence
-
-    def send_external_task(self, text):
-        """A connected app's task (``external_tasks``): one model turn in its External conversation, as a message.
-
-        The person still approves, stops and undoes it there; the conversation's own connection and model run it.
-        """
-        self._external_task = True
-        try:
-            self.send(text)
-        finally:
-            self._external_task = False
+    def require_model_turn(self, host_request):
+        """``Controller.send``'s check: ``require_model_chat``, except for the next round of a goal this External
+        conversation holds from its app's words (``goal_controls.admits_round``), Angelo's own request there."""
+        if host_request is not None and self.external_client:
+            from .external_access import revoked
+            from .goal_controls import admits_round
+            if revoked(self):   # The app's access ended (external_access): no round of its goal starts.
+                raise RuntimeError("This app's access to Angelo ended; its goal does not continue")
+            if admits_round(self, host_request):
+                return
+        self.require_model_chat()
 
     def require_model_chat(self):
-        """Raise for an External conversation: only its app's task (``send_external_task``) starts a model turn."""
+        """Raise for an External conversation: only its app's message (``external_send``) starts a model turn there
+        (and a goal round it holds, ``external_goal_round``)."""
         if self.external_client and not getattr(self, "_external_task", False):
             raise RuntimeError(display_text.Text(ui_text.n_("External client chat: approvals and Stop only. "
                                                             "Switch to another chat to talk to a model.")))
+        from .external_access import revoked
+        if self.external_client and revoked(self):   # Its app's access ended: no message of it starts a turn.
+            raise RuntimeError("This app's access to Angelo ended; its message was not sent")

@@ -22,6 +22,7 @@ import tempfile
 import threading
 import time
 import unittest
+from host_test_policy import environment_skip
 from pathlib import Path
 from unittest.mock import patch
 
@@ -57,7 +58,7 @@ def restored(store, ref, data=None):
     return output.getvalue()
 
 
-@unittest.skipUnless(anchored_files_supported(), "descriptor-relative storage required")
+@unittest.skipUnless(anchored_files_supported(), environment_skip("descriptor-relative storage required"))
 class SnapshotStoreTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="angelo-store-")
@@ -292,7 +293,7 @@ class SnapshotStoreTests(unittest.TestCase):
             self.store.manifest(REF_A)
 
 
-@unittest.skipUnless(anchored_files_supported(), "descriptor-relative storage required")
+@unittest.skipUnless(anchored_files_supported(), environment_skip("descriptor-relative storage required"))
 class IndexSideFileTests(unittest.TestCase):
     """SQLite deletes the index's -wal and -shm when the last connection closes; a reader validating the index
     files then can see one with no link left (2026-10-19: a stored restore point read as unavailable, and an

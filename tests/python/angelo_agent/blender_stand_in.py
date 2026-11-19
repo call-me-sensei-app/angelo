@@ -105,6 +105,13 @@ class StandIn:
         self._attrs = dict(vars(angelo_agent))
         for key in self._saved:
             sys.modules.pop(key, None)
+        # And every submodule the package holds as an attribute, whether or not sys.modules still has it: ``from .
+        # import x`` takes the attribute before importing, so a leftover made a module here read another copy than
+        # the one handed back (2.0.1: two external_setup objects), or one in no sys.modules at all, as an earlier
+        # test's import under ``mock.patch.dict(sys.modules)`` leaves (CI of f9f749b4af7: ui.console, alone green).
+        for key, value in list(vars(angelo_agent).items()):
+            if isinstance(value, types.ModuleType) and value.__name__.startswith("angelo_agent."):
+                vars(angelo_agent).pop(key)
         self._finder = _Finder()
         sys.meta_path.insert(0, self._finder)
         try:

@@ -1,4 +1,80 @@
 {
+ "One click on Approve approves, also while the agent or a connected app keeps working.": [
+  [
+   "Approve",
+   null
+  ]
+ ],
+ "Allow for this session works like Trust scripts for this chat: this chat's scripts run without asking until Angelo restarts or you start a new chat.": [
+  [
+   "Allow for this session",
+   null
+  ],
+  [
+   "Trust scripts for this chat",
+   false
+  ]
+ ],
+ "While scripts run without asking, the chat says so and offers Turn off.": [
+  [
+   "Turn off",
+   null
+  ]
+ ],
+ "Always allow still covers only chats set to Approve for me, and your organization's policy still applies. Scripts that touch your preferences or Angelo itself, or that would replace the open file, always ask.": [
+  [
+   "Always allow",
+   null
+  ],
+  [
+   "Approve for me",
+   null
+  ]
+ ],
+ "Angelo 2.0.1 lets you choose how scripts from Claude Code, Codex and other connected apps are approved, and fixes Save and Restart for updates.": [
+  [
+   "Save and Restart",
+   null
+  ],
+  [
+   "Code",
+   false
+  ]
+ ],
+ "Script approval cards offer Run once, Allow for this session and Always allow, also for Claude Code, Codex and other connected apps.": [
+  [
+   "Run once",
+   null
+  ],
+  [
+   "Allow for this session",
+   null
+  ],
+  [
+   "Always allow",
+   null
+  ],
+  [
+   "Code",
+   false
+  ]
+ ],
+ "Save and Restart now completes an update instead of stopping with \"The update could not start\".": [
+  [
+   "Save and Restart",
+   null
+  ],
+  [
+   "The update could not start",
+   null
+  ]
+ ],
+ "The Approvals menu opens above its button instead of off to the side, and says how this chat's scripts are approved.": [
+  [
+   "Approvals",
+   false
+  ]
+ ],
  "More than 100 labels and tooltips that were never translated now follow your interface language.": [],
  "On Windows, a finished image, video or 3D generation no longer stays shown as generating when another program has its file open for a moment.": [
   [

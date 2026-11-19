@@ -23,13 +23,12 @@ import suite_isolation  # noqa: F401  First: this test never sees a real provide
 
 import ast
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
 ADDON = Path(__file__).resolve().parents[3] / "scripts/addons_core/angelo_agent"
 sys.path.insert(0, str(ADDON.parent))
-from angelo_agent import external_mcp_tools, script_files, script_store, tool_specs  # noqa: E402
+from angelo_agent import script_store, tool_specs  # noqa: E402
 
 LIMIT = script_store.MAX_CODE
 SHOWN = format(LIMIT, ",")
@@ -54,11 +53,10 @@ class OneConstant(unittest.TestCase):
     def test_every_reader_of_the_limit_reads_the_one_constant(self):
         schema = tool_specs.TOOL_MAP["angelo_execute_python"]["inputSchema"]["properties"]["code"]
         self.assertEqual(schema["maxLength"], LIMIT)
-        self.assertIs(script_files.MAX_CHARACTERS, script_store.MAX_CODE)
 
     def test_no_other_module_writes_the_number_out(self):
         written = []
-        for name in ("tool_specs.py", "script_files.py", "external_mcp_tools.py", "external_work.py"):
+        for name in ("tool_specs.py",):
             tree = ast.parse((ADDON / name).read_text(encoding="utf-8"))
             for node in ast.walk(tree):
                 if isinstance(node, ast.Constant) and (
@@ -73,12 +71,6 @@ class WhereTheAgentDecides(unittest.TestCase):
         description = tool_specs.TOOL_MAP["angelo_execute_python"]["description"]
         self.assertIn(SHOWN + " characters", description)
         self.assertIn("split", description.lower())
-
-    def test_an_apps_script_file_tool_states_the_same_limit(self):
-        tool = next(item for item in external_mcp_tools.SCRIPT_FILE_TOOLS)
-        self.assertIn(SHOWN + " characters", tool["description"])
-        self.assertIn("split", tool["description"].lower())
-
 
 class ARefusalForLength(unittest.TestCase):
     def test_a_script_at_the_limit_is_accepted_and_one_character_more_says_how_to_go_on(self):
@@ -101,23 +93,6 @@ class ARefusalForLength(unittest.TestCase):
                                          "replace": "result = {'ok': True, 'n': 12345}"}])
         says_how(self, str(refused.exception), LIMIT - 10 + len(", 'n': 12345"))
         self.assertIn("edits[0]", str(refused.exception))
-
-    def test_a_script_file_longer_than_one_script_says_how_to_go_on(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / "long.py"
-            # Its line ends as written here on every platform: Windows' text mode would add a character to each.
-            path.write_text(script(LIMIT + 5), encoding="utf-8", newline="\n")
-            with self.assertRaises(script_files.ScriptFileError) as refused:
-                script_files.read_script(str(path))
-            says_how(self, str(refused.exception), LIMIT + 5)
-            huge = Path(folder) / "huge.py"
-            huge.write_bytes(b"#" * (LIMIT * 4 + 1))   # Refused by its size in bytes, before it is decoded.
-            with self.assertRaises(script_files.ScriptFileError) as refused:
-                script_files.read_script(str(huge))
-            message = str(refused.exception)
-            self.assertIn(SHOWN, message)
-            for words in WAYS_ON:
-                self.assertIn(words, message.lower(), message)
 
 
 if __name__ == "__main__":

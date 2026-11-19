@@ -40,6 +40,8 @@ LANDS_NONE = {
 
 # Timers that are not persistent, by why they land nothing.
 TIMERS_NONE = {
+    "a hidden-window session's life (its saves, its end, its window brought up for the person)": {
+        ('headless_window_app.py', 'tick'), ('headless_window_app.py', 'lambda: _bring_up(show, tries - 1) and N')},
     'AI Providers redraw': {('providers_page_endpoints.py', '_follow')},
     'AI Providers sheet and animation': {('providers_page_host.py', '_animate'), ('providers_page_host.py', '_watch_sheet'), ('providers_page_host.py', 'live_windows.deferred(lambda: bpy.contex'), ('providers_page_host.py', 'run')},
     'Preferences redraw': {('external_ui.py', '_redraw')},
@@ -90,6 +92,7 @@ TIMERS_NONE = {
     'the welcome slideshow': {('intro.py', '_tick'), ('intro.py', 'open_when_ready')},
     'tile previews': {('studio_tile_previews.py', '_tick')},
     'top bar redraw': {('top_bar_anchor.py', 'redraw')},
+    "waits for the document to settle before the hand-over": {('update_restart_handoff.py', 'settled')},
     'warms view shaders': {('view_warm.py', 'run'), ('view_warm.py', 'spread')},
     "watches the person's Save As": {('update_restart.py', '_watch_save')},
     'window UI, deferred': {('asset_browser_entry.py', 'live_windows.deferred(lambda: bpy.contex'), ('asset_shelf_add.py', 'live_windows.deferred(lambda: bpy.contex'), ('chat_drop.py', 'live_windows.deferred(lambda: bpy.contex'), ('chat_hint.py', 'live_windows.deferred(lambda: bpy.contex'), ('flow_open.py', 'live_windows.deferred(lambda: bpy.contex'), ('flow_window.py', 'live_windows.deferred(lambda: bpy.contex'), ('layout_after.py', 'live_windows.deferred(lambda: bpy.contex'), ('library_overlay.py', 'live_windows.deferred(lambda: bpy.contex'), ('splash_setup.py', 'live_windows.deferred(lambda: bpy.contex'), ('studio.py', 'live_windows.deferred(lambda: bpy.contex'), ('studio_toggle.py', 'live_windows.deferred(lambda: bpy.contex')},
@@ -100,15 +103,17 @@ DRAINS_LAND = {("library_host.py", "pump"): (("library_host.py", "pump"),),
                ("studio.py", "pump"): (("studio.py", "pump"),),
                ("studio_commits.py", "pump"): (("studio_generation.py", "pump"),),
                ("controller.py", "_pump_tools"): (("blender_tools.py", "execute"),),
-               ("external_requests.py", "take"): (("blender_tools.py", "execute"),),   # An app's call: an agent tool.
                ("studio_agent.py", "execute"): (("blender_tools.py", "execute"),)}
 DRAINS_NONE = {
+    ("external_requests.py", "take"): "status, session new and an app's messages to Angelo's agent: its turns land "
+                                      "through the chat's own tool pump (controller._pump_tools), never here",
+    ("headless_window_app.py", "step"): "the hidden session's launcher messages (close, show, a decline) and signals",
     ("api_connections.py", "pump"): "a connection's check result (Preferences)",
     ("authentication.py", "pump"): "a sign-in's result", ("catalogs.py", "pump"): "model catalogues",
     ("controller_recovery.py", "rebind_after_restore"): "drops stale tool results after a restore",
     ("edit_tool_hold.py", "next_event"): "the person's own held input, replayed",
     ("engine_link_writeback.py", "finished"): "an engine-side save's completion (files in its project)",
-    ("guard_work.py", "shutdown"): "drains at shutdown", ("headless_answers.py", "finish"): "a headless run's answers",
+    ("guard_work.py", "shutdown"): "drains at shutdown",
     ("memory_project_ui.py", "clear"): "task memory panel", ("memory_project_ui.py", "pump"): "task memory panel",
     ("saved_keys.py", "pump"): "saved keys' status", ("snapshot_service.py", "pump"): "checkpoint notices",
     ("web_readback.py", "_tick"): "a web export's read-back for its chat",

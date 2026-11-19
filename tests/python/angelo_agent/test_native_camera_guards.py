@@ -15,6 +15,7 @@ import copy
 import math
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from types import SimpleNamespace as NS
 
@@ -262,7 +263,7 @@ class FrameUpdateSettingsTests(unittest.TestCase):
         from angelo_agent.program_frames import FRAME_UPDATE_PATHS
         source = Path(__file__).resolve().parents[3] / "source/blender/makesrna/intern/rna_scene.cc"
         if not source.exists():
-            self.skipTest("Blender's RNA source is not in this checkout")
+            self.skipTest(required_skip("Blender's RNA source is not in this checkout"))
         found, struct, name = set(), None, None
         for line in source.read_text(encoding="utf-8").splitlines():
             defined = re.search(r'srna = RNA_def_struct\(brna, "(\w+)"', line)

@@ -311,7 +311,7 @@ def press_approve(call):
     from angelo_agent import approval_arming
     from angelo_agent.approval_wait import SHIELD_SECONDS
     x, under = hit('approve', call, below=True)
-    if window.as_pointer() in approval_arming._returning:
+    if approval_arming.window_state(window.as_pointer())[1]:   # C's record: it lost focus, no press since.
         for kind, value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
             native_event(kind, value, x, under)
     native_event('MOUSEMOVE', 'NOTHING', x, under)

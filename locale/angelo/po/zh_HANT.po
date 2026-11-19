@@ -10,6 +10,39 @@ msgstr ""
 "X-Angelo-Translation: machine-produced; pending native review\n"
 "Language-Team: Chinese (Traditional) (繁體中文)\n"
 
+msgid "'{app}' asks you to set this conversation to Approve for me. Only you can: use the approval control below."
+msgstr "'{app}' 請你將此對話設為「替我核准」。只有你能這樣做：請使用下方的核准設定。"
+
+msgid "'{app}' asks you to set this conversation to Ask before changes. Only you can: use the approval control below."
+msgstr "'{app}' 請你將此對話設為「變更前詢問」。只有你能這樣做：請使用下方的核准設定。"
+
+msgid "'{app}' chose {model} ({connection} · Angelo team) for this conversation."
+msgstr "'{app}' 為此對話選擇了 {model} ({connection} · Angelo 團隊)。"
+
+msgid "'{app}' chose {model} ({connection} · API billing) for this conversation."
+msgstr "'{app}' 為此對話選擇了 {model} ({connection} · API 計費)。"
+
+msgid "'{app}' chose {model} ({connection} · Subscription) for this conversation."
+msgstr "'{app}' 為此對話選擇了 {model} ({connection} · 訂閱)。"
+
+msgid "'{app}' chose {model} for this conversation."
+msgstr "'{app}' 為此對話選擇了 {model}。"
+
+msgid "'{app}' set reasoning effort to the model's default."
+msgstr "'{app}' 將推理強度設為模型預設值。"
+
+msgid "'{app}' set reasoning effort to {effort}."
+msgstr "'{app}' 將推理強度設為 {effort}。"
+
+msgid "'{app}' set this conversation to Ask before changes."
+msgstr "'{app}' 將此對話設為「變更前詢問」。"
+
+msgid "'{app}' set this conversation to Read only."
+msgstr "'{app}' 將此對話設為「唯讀」。"
+
+msgid "'{label}' started a new conversation, {identity}. This transcript stays readable."
+msgstr "'{label}' 開始了新對話 {identity}。這段記錄仍可閱讀。"
+
 #. src: bpy.types.DepsgraphUpdate.angelo_recalc:'OTHER'
 msgid "A recalc bit with no item of its own"
 msgstr "沒有專屬項目的重新計算位元"
@@ -21,6 +54,24 @@ msgstr "AI 供應商…"
 #. src: angelo_agent/ai_render_card.py
 msgid "AI Render"
 msgstr "AI 算繪"
+
+msgid "Allow for this session"
+msgstr "本次工作階段允許"
+
+msgid "Allow for this session runs this chat's scripts without asking until Angelo restarts. Always allow runs Angelo's agent's scripts in every Auto chat, connected apps' chats included, until you turn it off in Preferences. Scripts have full access to files, the network and other apps on this computer."
+msgstr "「本次工作階段允許」會在 Angelo 重新啟動前，不經詢問執行此聊天的指令稿。「一律允許」會在所有自動核准的聊天（包括已連線應用程式的聊天）中執行 Angelo 代理的指令稿，直到你在偏好設定中關閉。指令稿可完整存取這台電腦上的檔案、網路和其他應用程式。"
+
+msgid "Allow for this session works like Trust scripts for this chat: this chat's scripts run without asking until Angelo restarts or you start a new chat."
+msgstr "「本次工作階段允許」與「信任此聊天的指令稿」相同：在 Angelo 重新啟動或你開始新聊天之前，此聊天的指令稿會不經詢問執行。"
+
+msgid "Always allow"
+msgstr "一律允許"
+
+msgid "Always allow still covers only chats set to Approve for me, and your organization's policy still applies. Scripts that touch your preferences or Angelo itself, or that would replace the open file, always ask."
+msgstr "「一律允許」仍然只適用於處於「替我核准」的聊天，你組織的政策仍然適用。涉及你的偏好設定或 Angelo 本身、或會取代已開啟檔案的指令稿一律會詢問。"
+
+msgid "Angelo 2.0.1 lets you choose how scripts from Claude Code, Codex and other connected apps are approved, and fixes Save and Restart for updates."
+msgstr "Angelo 2.0.1 讓你選擇如何核准來自 Claude Code、Codex 和其他已連線應用程式的指令稿，並修正更新時的「儲存並重新啟動」。"
 
 #. src: angelo_agent/learn_ui.py
 msgid "Angelo could not save this choice: {reason}"
@@ -285,6 +336,9 @@ msgstr "選擇代理何時在變更您的場景前詢問，以及是否信任此
 msgid "Done by Angelo's own tool"
 msgstr "由 Angelo 自己的工具完成"
 
+msgid "Each script asks: run it once, or allow it for this session or always."
+msgstr "每個指令稿都會詢問：執行一次，或本次工作階段允許，或一律允許。"
+
 #. src: bpy.types.DepsgraphUpdate.angelo_recalc:'EDITORS'
 msgid "Editors"
 msgstr "編輯器"
@@ -298,6 +352,9 @@ msgstr "增強 Media Studio 提示詞"
 msgctxt "Operator"
 msgid "Enter API Key"
 msgstr "輸入 API 金鑰"
+
+msgid "Every script asks for your review before it runs."
+msgstr "每個指令稿執行前都會等待你的審查。"
 
 #. src: angelo_agent/learn_card_draw.py
 msgid "Find it with search: {key}"
@@ -359,6 +416,9 @@ msgctxt "Angelo"
 msgid "On"
 msgstr "開啟"
 
+msgid "One click on Approve approves, also while the agent or a connected app keeps working."
+msgstr "點一下「核准」即可核准，即使代理或已連線的應用程式仍在工作。"
+
 #. src: angelo_agent/learn_ui.py
 msgid "Open a chat first: this is set for one chat"
 msgstr "請先開啟一個對話：此項依對話分別設定"
@@ -371,9 +431,39 @@ msgstr "在對話中開啟 Angelo 完成的任一步驟，即可查看如何自�
 msgid "Public notes are available in this chat, but could not be saved. {error} No scene edits or tool approvals were granted."
 msgstr "公開筆記可在此對話中使用，但無法儲存。{error}未授予任何場景編輯或工具核准。"
 
+msgid "Read only: scripts and other changes don't run."
+msgstr "唯讀：指令稿和其他變更不會執行。"
+
+msgid "Review & run once"
+msgstr "審查並執行一次"
+
+msgid "Run once"
+msgstr "執行一次"
+
+msgid "Save and Restart now completes an update instead of stopping with \"The update could not start\"."
+msgstr "「儲存並重新啟動」現在會完成更新，而不會停在「無法開始更新」。"
+
+msgid "Script approval cards offer Run once, Allow for this session and Always allow, also for Claude Code, Codex and other connected apps."
+msgstr "指令稿核准卡片提供「執行一次」「本次工作階段允許」和「一律允許」，也適用於 Claude Code 和 Codex 等已連線應用程式。"
+
+msgid "Scripts in this chat run without asking for this session"
+msgstr "此聊天的指令稿在本次工作階段中不經詢問執行"
+
+msgid "Scripts run without asking in Auto chats"
+msgstr "指令稿在自動核准的聊天中不經詢問執行"
+
+msgid "Scripts run without asking in Auto chats."
+msgstr "指令稿在自動核准的聊天中不經詢問執行。"
+
+msgid "Scripts still run without asking: turning it off was refused. Try again in a moment."
+msgstr "指令稿仍會不經詢問執行：關閉遭到拒絕。請稍後再試。"
+
 #. src: angelo_agent/save_failure.py
 msgid "Something in this chat can't be written to its file ({kind}). This is a fault in Angelo, not in your request: start a new chat and report it."
 msgstr "此對話中有內容無法寫入其檔案（{kind}）。這是 Angelo 的故障，不是您的要求的問題：請開始新對話並回報此問題。"
+
+msgid "The Approvals menu opens above its button instead of off to the side, and says how this chat's scripts are approved."
+msgstr "「核准」選單現在在其按鈕上方開啟而不是偏向一側，並說明此聊天的指令稿如何核准。"
 
 #. src: angelo_agent/save_failure.py
 msgid "The disk reported an error while Angelo wrote its own files. Check the disk or the network folder, then try again."
@@ -394,6 +484,9 @@ msgstr "存放 Angelo 自身檔案的資料夾位於唯讀磁碟上。請使其�
 #. src: angelo_agent/checkpoint_restore_ui.py
 msgid "The recovery scene was not opened because its safety link could not be saved. {why} The protected safety snapshot is still available through Undo restore."
 msgstr "由於無法儲存安全連結，未開啟恢復場景。{why}仍可透過「撤銷還原」使用受保護的安全快照。"
+
+msgid "This chat's scripts run without asking for this session."
+msgstr "此聊天的指令稿在本次工作階段中不經詢問執行。"
 
 #. src: angelo_agent/learn_ui.py
 msgid "Turn on Teach me as you work to see, under each step Angelo makes in this chat, how to do it yourself: the command, its keys in your keymap, where it is and the settings it used."
@@ -556,6 +649,9 @@ msgstr ""
 "用於選單、按鈕和 F3 搜尋的 ``open_media_studio``。AUTO（一般項目）：本次工作階段中 Studio 首次顯示時，選擇使用者所在位置\n"
 "對應的分頁（``studio_kind``），之後選擇 Studio 目前顯示的分頁；3D、IMAGE 或 WORKFLOW\n"
 "（情境項目）一律選擇對應分頁。"
+
+msgid "While scripts run without asking, the chat says so and offers Turn off."
+msgstr "指令稿不經詢問執行時，聊天會說明並提供「關閉」。"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "You can now set when the agent asks before changes, and trust a chat's scripts, from the chat bar's + menu."
@@ -1001,6 +1097,9 @@ msgstr "要接受此預覽嗎？"
 #. src: angelo_agent/saved_keys_ui.py
 msgid "access denied"
 msgstr "存取遭拒"
+
+msgid "Access for '{label}' ended, so its work here stopped. Messages it left waiting are not sent."
+msgstr "「{label}」的存取權已結束，因此它在這裡的工作已停止。它留下的待傳訊息不會傳送。"
 
 #. src: angelo_agent/team_token_store.py
 msgid "access was denied"
@@ -1558,6 +1657,9 @@ msgstr "AI"
 #. src: angelo_agent/providers_page_external.py
 msgid "AI apps and coding agents running as you can use Angelo's tools, or hand Angelo's agent a task. Their edits and scripts wait for your approval in their own chat; you can stop them and undo as in any chat. Turning this off closes the connection."
 msgstr "以您的身分執行的 AI 應用程式與程式設計代理可以使用 Angelo 的工具，或將任務交給 Angelo 的代理。它們的編輯與命令稿會在各自的對話中等待您核准；您可以像在任何對話中一樣停止並復原。關閉此選項會中斷連線。"
+
+msgid "AI apps and coding agents running as you can work with Angelo's agent: they send it messages, follow its progress and see what it sees, in their own chat. Approvals stay yours; you can stop them and undo as in any chat. Turning this off closes the connection."
+msgstr "以您的身分執行的 AI 應用程式與程式設計代理可以與 Angelo 的代理協作：它們在各自的對話中向它傳送訊息、追蹤其進度，並看到它所看到的內容。核准仍由您決定；您可以像在任何對話中一樣停止並復原。關閉此選項會中斷連線。"
 
 #. src: angelo_agent/providers_page_model.py
 #. src: angelo_agent/studio.py
@@ -2579,6 +2681,9 @@ msgstr "載入時發生錯誤的附加元件：{count} 個。它們各自的通�
 msgid "With Angelo linked to Godot, an asset you save while Godot is busy importing now updates once Godot is free, even after you switch the linked asset, instead of staying as it was before the save until Reload Saved Scene. If Godot is still busy after 30 seconds, it says to use Reload Saved Scene."
 msgstr "Angelo 與 Godot 連結時，在 Godot 忙於匯入期間儲存的資源，現在會在 Godot 空閒後立即更新，即使你切換了所連結的資源也是如此，而不會在 Reload Saved Scene 之前一直保持儲存前的樣子。如果 30 秒後 Godot 仍在忙碌，它會提示你使用 Reload Saved Scene。"
 
+msgid "Your organization requires your review for every script."
+msgstr "你的組織要求你審查每個指令稿。"
+
 #. src: angelo_agent/settings_import_card.py
 msgid "{count} more"
 msgstr "另外 {count} 個"
@@ -2698,6 +2803,9 @@ msgstr "Angelo 寫入了不完整的影像（磁碟可能已滿）；未輸出�
 msgid "Angelo {current} is no longer supported. Please update."
 msgstr "Angelo {current} 已不再受支援。請更新。"
 
+msgid "Angelo {version} (PID {pid}) has access for external apps for your user. Quit it, or turn off access there; this Angelo takes over once it is free."
+msgstr "Angelo {version}（PID {pid}）佔用了你這個使用者的外部 App 存取權。請結束它，或在那裡關閉存取；一旦空出，這個 Angelo 就會接手。"
+
 #. src: angelo_agent/update_ui.py
 msgid "Angelo {version} available"
 msgstr "Angelo {version} 已推出"
@@ -2802,6 +2910,9 @@ msgstr "動態掃描線、閃爍和透明的光暈"
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "Animation render jobs saved as OpenEXR publish their frames again."
 msgstr "以 OpenEXR 格式儲存的動畫算繪工作又能正常輸出影格了。"
+
+msgid "Another Angelo (PID {pid}) has access for external apps for your user. Quit it, or turn off access there; this Angelo takes over once it is free."
+msgstr "另一個 Angelo（PID {pid}）佔用了你這個使用者的外部 App 存取權。請結束它，或在那裡關閉存取；一旦空出，這個 Angelo 就會接手。"
 
 #. src: angelo_agent/engine_link_ui.py
 msgid "Another Angelo already has the engine live link"
@@ -8938,8 +9049,8 @@ msgid "Improved prompt · original kept for Undo"
 msgstr "已改善提示詞 · 保留原始內容以供復原"
 
 #. src: bpy.types.ANGELO_Preferences.always_allow_scripts
-msgid "In chats set to Auto, run the agent's Python scripts without asking. Scripts have full access to files, the network and other apps on this computer. Ask before changes still asks; Read only still refuses"
-msgstr "在設為自動的對話中，無須詢問即執行代理的 Python 指令稿。指令稿可完整存取這部電腦上的檔案、網路和其他 App。「變更前先詢問」仍會詢問；「唯讀」仍會拒絕"
+msgid "In chats set to Auto, connected apps' chats included, run Angelo's agent's Python scripts without asking (never code an app sends itself). Scripts have full access to files, the network and other apps on this computer. Ask before changes still asks; Read only still refuses"
+msgstr "在設為自動的聊天（包括已連線應用程式的聊天）中，不經詢問執行 Angelo 代理的 Python 指令稿（絕不包括應用程式自己傳送的程式碼）。指令稿可完整存取這台電腦上的檔案、網路和其他應用程式。「變更前先詢問」仍會詢問；「唯讀」仍會拒絕"
 
 #. src: scripts/addons_core/angelo_agent/assets/release_notes.json
 msgid "In Cycles, rendering Open Shading Language on OptiX with an NVIDIA driver from the 590 to 609 series now stops at once and says to update the driver to 610 or newer or use a 580 series driver, instead of failing with a link error, often after minutes of compiling."
@@ -9975,6 +10086,12 @@ msgstr "正在載入模型…"
 msgid "Local bounded telemetry excludes prompt text, source code and credentials."
 msgstr "本機有限範圍的遙測資料不包含提示詞文字、原始碼與憑證。"
 
+msgid "Local CLI client '{label}'. It reads Angelo's status only and runs no tool: no scene, file, memory, billing or provider changes."
+msgstr "本機 CLI 用戶端「{label}」。它只讀取 Angelo 的狀態，不執行任何工具：不會變更場景、檔案、記憶、計費或供應商。"
+
+msgid "Local CLI client '{label}'. It reads Angelo's status only and runs no tool: no scene, file, memory, billing or provider changes. Rotated from conversation {previous} by `angelo session new`."
+msgstr "本機 CLI 用戶端「{label}」。它只讀取 Angelo 的狀態，不執行任何工具：不會變更場景、檔案、記憶、計費或供應商。已由 `angelo session new` 從對話 {previous} 輪替而來。"
+
 #. src: angelo_agent/external_host.py
 msgid "Local CLI client '{label}'. Phase 1 is read-only: observations only; no scene, file, memory, billing or provider changes. Approvals and Stop only."
 msgstr "本機 CLI 用戶端「{label}」。第 1 階段為唯讀：僅限觀察；不會變更場景、檔案、記憶、計費或供應商。僅限核准與「停止」。"
@@ -10451,6 +10568,9 @@ msgstr "最長保留天數 · 0 表示無限制"
 #. src: bpy.types.ANGELO_OT_checkpoint_settings.max_count
 msgid "Maximum snapshots · 0 is unlimited"
 msgstr "快照數量上限 · 0 表示無限制"
+
+msgid "MCP app '{label}' works with Angelo's agent here. Approve or decline what the agent asks, press Stop to end its work and Undo or restore as in any chat. The app can never approve."
+msgstr "MCP 應用程式「{label}」在這裡與 Angelo 的代理協作。核准或拒絕代理的請求，按「停止」結束其工作，並像在任何對話中一樣復原或還原。應用程式永遠無法核准。"
 
 #. src: angelo_agent/external_host.py
 msgid "MCP app '{label}'. Its edits, scripts and tasks run here: approve or decline them, press Stop to end its work and Undo or restore as in any chat. The app can never approve."
@@ -12075,40 +12195,56 @@ msgid "Load Factory Preferences"
 msgstr "載入出廠偏好設定"
 
 #. src: source/blender/animrig/intern/versioning.cc
-msgid "\"%s\" is using Action \"%s\", which does not have a slot with identifier \"%s\" or \"%s\". Manually assign the right action slot to \"%s\".\n"
-msgstr "\"%s\" 正在使用動作 \"%s\"，但該動作沒有識別碼為 \"%s\" 或 \"%s\" 的槽。請手動為 \"%s\" 指定正確的動作槽。\n"
+msgid ""
+"\"%s\" is using Action \"%s\", which does not have a slot with identifier \"%s\" or \"%s\". Manually assign the right action slot to \"%s\".\n"
+msgstr ""
+"\"%s\" 正在使用動作 \"%s\"，但該動作沒有識別碼為 \"%s\" 或 \"%s\" 的槽。請手動為 \"%s\" 指定正確的動作槽。\n"
 
 #. src: source/blender/blenkernel/intern/curves_geometry.cc
 msgid "Invalid curve type identifiers"
 msgstr "曲線類型識別碼無效"
 
 #. src: source/blender/blenloader/intern/versioning_290.cc
-msgid "Mesh %s has invalid faces, likely caused by the manifold extrude tool in version 2.90.0. Opening and saving the file in a version prior to 5.1 should resolve the issue\n"
-msgstr "網格 %s 含有無效的面，可能由 2.90.0 版的流形擠出工具造成。在 5.1 之前的版本中開啟並儲存該檔案應可解決此問題\n"
+msgid ""
+"Mesh %s has invalid faces, likely caused by the manifold extrude tool in version 2.90.0. Opening and saving the file in a version prior to 5.1 should resolve the issue\n"
+msgstr ""
+"網格 %s 含有無效的面，可能由 2.90.0 版的流形擠出工具造成。在 5.1 之前的版本中開啟並儲存該檔案應可解決此問題\n"
 
 #. src: source/blender/blenloader/intern/versioning_400.cc
-msgid "Proxy lost from object %s lib %s\n"
-msgstr "物體 %s（程式庫 %s）的代理已遺失\n"
+msgid ""
+"Proxy lost from object %s lib %s\n"
+msgstr ""
+"物體 %s（程式庫 %s）的代理已遺失\n"
 
 #. src: source/blender/blenloader/intern/versioning_400.cc
-msgid "Proxy lost from object %s lib <NONE>\n"
-msgstr "物體 %s（程式庫 <NONE>）的代理已遺失\n"
+msgid ""
+"Proxy lost from object %s lib <NONE>\n"
+msgstr ""
+"物體 %s（程式庫 <NONE>）的代理已遺失\n"
 
 #. src: source/blender/blenloader/intern/versioning_402.cc
-msgid "%s contains a volume shader that might need to be converted to object (see world volume panel)\n"
-msgstr "%s 含有可能需要轉換為物體的體積著色器（請見世界體積面板）\n"
+msgid ""
+"%s contains a volume shader that might need to be converted to object (see world volume panel)\n"
+msgstr ""
+"%s 含有可能需要轉換為物體的體積著色器（請見世界體積面板）\n"
 
 #. src: source/blender/blenloader/intern/versioning_402.cc
-msgid "Material %s could not be converted because of different Blend Mode and Shadow Mode (need manual adjustment)\n"
-msgstr "由於混合模式與陰影模式不同，材質 %s 無法轉換（需要手動調整）\n"
+msgid ""
+"Material %s could not be converted because of different Blend Mode and Shadow Mode (need manual adjustment)\n"
+msgstr ""
+"由於混合模式與陰影模式不同，材質 %s 無法轉換（需要手動調整）\n"
 
 #. src: source/blender/blenloader/intern/versioning_402.cc
-msgid "Material %s could not be converted because of non-trivial alpha blending (need manual adjustment)\n"
-msgstr "由於非平凡的 Alpha 混合，材質 %s 無法轉換（需要手動調整）\n"
+msgid ""
+"Material %s could not be converted because of non-trivial alpha blending (need manual adjustment)\n"
+msgstr ""
+"由於非平凡的 Alpha 混合，材質 %s 無法轉換（需要手動調整）\n"
 
 #. src: source/blender/draw/intern/draw_curves.cc
-msgid "Error: Curves object contains too many points. Reduce curve resolution or curve count to fix this issue.\n"
-msgstr "錯誤：曲線物體包含的點過多。請降低曲線解析度或減少曲線數量來解決此問題。\n"
+msgid ""
+"Error: Curves object contains too many points. Reduce curve resolution or curve count to fix this issue.\n"
+msgstr ""
+"錯誤：曲線物體包含的點過多。請降低曲線解析度或減少曲線數量來解決此問題。\n"
 
 #. src: source/blender/editors/animation/anim_asset_ops.cc
 msgid "Failed to load pose asset"
@@ -12131,13 +12267,17 @@ msgid "Failed to load saved brush asset"
 msgstr "載入已儲存的筆刷資產失敗"
 
 #. src: source/blender/makesrna/intern/rna_action.cc
-msgid "Attempted to set slot identifier to \"%s\", but the type prefix does not match the slot's 'target_id_type' \"%s\". Setting to \"%s\" instead.\n"
-msgstr "嘗試將槽識別碼設為 \"%s\"，但類型前綴與該槽的 'target_id_type' \"%s\" 不相符。改為設為 \"%s\"。\n"
+msgid ""
+"Attempted to set slot identifier to \"%s\", but the type prefix does not match the slot's 'target_id_type' \"%s\". Setting to \"%s\" instead.\n"
+msgstr ""
+"嘗試將槽識別碼設為 \"%s\"，但類型前綴與該槽的 'target_id_type' \"%s\" 不相符。改為設為 \"%s\"。\n"
 
 #. src: source/blender/windowmanager/intern/wm_platform_support.cc
 msgctxt "WindowManager"
-msgid "Graphics card:\n"
-msgstr "顯示卡：\n"
+msgid ""
+"Graphics card:\n"
+msgstr ""
+"顯示卡：\n"
 
 #. src: source/blender/windowmanager/intern/wm_files.cc
 msgid "Quit Angelo?"
@@ -12610,6 +12750,10 @@ msgstr "開啟：為此設定檔儲存在 {location}。"
 #. src: angelo_agent/providers_page_model.py
 msgid "On: scripts in Auto chats run without asking."
 msgstr "開啟：自動模式對話中的指令稿會直接執行，無須詢問。"
+
+#. src: angelo_agent/providers_page_model.py
+msgid "On for Angelo's own chats. Connected apps' chats still ask until you press Always allow on one of their script cards."
+msgstr "已對 Angelo 自己的聊天開啟。已連線應用程式的聊天仍會詢問，直到你在其中某張指令稿卡片上按「一律允許」。"
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/web_export_ui.py
@@ -17403,6 +17547,9 @@ msgstr "正在啟動 {engine}"
 msgid "Starting…"
 msgstr "正在啟動…"
 
+msgid "Starts another Angelo"
+msgstr "啟動另一個 Angelo"
+
 #. src: angelo_agent/session_rail.py
 msgctxt "plural:one"
 msgid "Starts once {count} running worker is done"
@@ -20038,6 +20185,9 @@ msgstr "此命令稿會使用 Angelo 的偏好設定。那裡的變更會套用�
 msgid "This script would replace the file you have open, so it always asks, even when scripts are allowed."
 msgstr "此指令稿會取代開啟的檔案，因此一律會詢問，即使已允許指令稿也是如此。"
 
+msgid "This session's live page stopped after an error, so its link no longer opens. The app's next message starts a new one."
+msgstr "此工作階段的即時頁面因發生錯誤已停止，其連結無法再開啟。App 的下一則訊息會開啟新的頁面。"
+
 #. src: angelo_agent/team_connections.py
 msgid "This sign-in doesn't allow model use; sign out and sign in again."
 msgstr "此登入不允許使用模型；請登出後重新登入。"
@@ -20714,6 +20864,12 @@ msgstr "更新 Angelo UI 中 (內部使用) 報告的顯示"
 #. src: angelo_agent/chat_titles.py
 msgid "Update the engine link"
 msgstr "更新引擎連結"
+
+msgid "Updated Angelo in {app}: it started the MCP server in {previous}. Restart {app} to load it."
+msgstr "已更新 {app} 中的 Angelo：它先前啟動的是 {previous} 中的 MCP 伺服器。重新啟動 {app} 即可載入。"
+
+msgid "Updated Angelo in {app}: it started the MCP server in {previous}. Start a new {app} session to use it."
+msgstr "已更新 {app} 中的 Angelo：它先前啟動的是 {previous} 中的 MCP 伺服器。開始新的 {app} 工作階段即可使用。"
 
 #. src: angelo_agent/chat_titles.py
 msgid "Updated the engine link"
@@ -21486,9 +21642,15 @@ msgstr "正在等待空閒名額"
 msgid "Waiting for a render"
 msgstr "正在等待算繪"
 
+msgid "Waiting for Angelo {version}"
+msgstr "正在等待 Angelo {version}"
+
 #. src: angelo_agent/chat_titles.py
 msgid "Waiting for animation playback to stop"
 msgstr "正在等待動畫播放停止"
+
+msgid "Waiting for another Angelo"
+msgstr "正在等待另一個 Angelo"
 
 #. src: angelo_agent/flow_setup.py
 msgid "Waiting for inputs"
@@ -21625,6 +21787,110 @@ msgstr "網頁匯出會保留場景的色調映射、曝光和世界：在五個
 #. src: angelo_agent/web_preview.py
 msgid "Web Preview"
 msgstr "網頁預覽"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Stop sharing"
+msgstr "停止分享"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Open live page"
+msgstr "開啟即時頁面"
+
+#. src: angelo_agent/chat_notices.py
+msgid "Share again"
+msgstr "再次分享"
+
+#. src: angelo_agent/session_page.py
+msgid "Live session"
+msgstr "即時工作階段"
+
+#. src: angelo_agent/session_page.py
+msgid "Working with {app}"
+msgstr "正在與 {app} 協作"
+
+#. src: angelo_agent/session_page.py
+msgid "Read-only view of this session. Approvals, Stop and every change stay in Angelo."
+msgstr "此工作階段的唯讀檢視。核准、停止和所有變更仍在 Angelo 中進行。"
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting for your approval in Angelo"
+msgstr "正在等待你在 Angelo 中核准"
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting while you use a tool in Angelo"
+msgstr "你在 Angelo 中使用工具時等待"
+
+#. src: angelo_agent/session_page.py
+msgid "This live page has ended: the session ended or sharing was stopped in Angelo."
+msgstr "此即時頁面已結束：工作階段已結束，或已在 Angelo 中停止分享。"
+
+#. src: angelo_agent/session_page.py
+msgid "Angelo isn't answering. The page reconnects when it does."
+msgstr "Angelo 沒有回應。它恢復回應後頁面會重新連線。"
+
+#. src: angelo_agent/session_page.py
+msgid "Result"
+msgstr "結果"
+
+#. src: angelo_agent/session_page.py
+msgid "Latest views"
+msgstr "最新檢視"
+
+#. src: angelo_agent/session_page.py
+msgid "Views the agent takes appear here."
+msgstr "代理拍攝的檢視會顯示在這裡。"
+
+#. src: angelo_agent/session_page.py
+msgid "Loading the scene…"
+msgstr "正在載入場景…"
+
+#. src: angelo_agent/session_page.py
+msgid "The scene appears here once Angelo exports it."
+msgstr "Angelo 匯出場景後，場景會顯示在這裡。"
+
+#. src: angelo_agent/session_page.py
+msgid "This browser can't draw the 3D scene. Everything else here still updates."
+msgstr "此瀏覽器無法繪製 3D 場景。這裡的其他內容仍會持續更新。"
+
+#. src: angelo_agent/session_page.py
+msgid "Round {round}"
+msgstr "第 {round} 輪"
+
+#. src: angelo_agent/session_page.py
+msgid "Score {score}%"
+msgstr "得分 {score}%"
+
+#. src: angelo_agent/session_page.py
+msgid "Best {score}%"
+msgstr "最佳 {score}%"
+
+#. src: angelo_agent/session_page.py
+msgid "Passes at {score}%"
+msgstr "達到 {score}% 即通過"
+
+#. src: angelo_agent/session_page.py
+msgid "Session {time}"
+msgstr "工作階段 {time}"
+
+#. src: angelo_agent/session_page.py
+msgid "This step {time}"
+msgstr "本步驟 {time}"
+
+#. src: angelo_agent/session_page.py
+msgid "Usage"
+msgstr "用量"
+
+#. src: angelo_agent/session_page.py
+msgid "Waiting for approval"
+msgstr "等待核准"
+
+#. src: angelo_agent/session_page.py
+msgid "{app} can show this session on a live page in your browser. Only this computer can open it, and it shows the scene, the progress and the result, never files or other chats."
+msgstr "{app} 可以在你瀏覽器的即時頁面上顯示此工作階段。只有這台電腦能開啟它，頁面只顯示場景、進度和結果，絕不顯示檔案或其他聊天。"
+
+#. src: angelo_agent/session_page.py
+msgid "You stopped sharing this session's live page. The link no longer opens."
+msgstr "你已停止分享此工作階段的即時頁面。該連結無法再開啟。"
 
 #. :src: scripts/addons_core/angelo_agent/web_export_ui.py
 #. src: angelo_agent/web_export_ui.py
@@ -26265,6 +26531,12 @@ msgstr "在 Fab 上開啟以購買。歸你所有後，Angelo 會將其新增到
 msgid "Price on Fab: {price}"
 msgstr "Fab 價格：{price}"
 
+msgid "Works through Angelo's agent: sends it messages, follows its progress and sees what it sees."
+msgstr "透過 Angelo 的代理工作：向它傳送訊息、追蹤其進度，並看到它所看到的內容。"
+
+msgid "{app}'s Angelo entry starts the MCP server in {where}. Connect {app} points it at this Angelo."
+msgstr "{app} 的 Angelo 項目會啟動 {where} 中的 MCP 伺服器。「連線 {app}」會讓它指向這個 Angelo。"
+
 #. src: angelo_agent/job_chat.py
 #. src: angelo_agent/studio_media_tiles.py
 #. src: angelo_agent/studio_video_ui.py
@@ -26858,6 +27130,7 @@ msgstr "無法連線到您的 Angelo 團隊以確認您的席位。Angelo 連線
 
 #~ msgid "Your admin hasn't set the shared key for this model server yet."
 #~ msgstr "您的管理員尚未為此模型伺服器設定共用金鑰。"
+
 #~ msgid "Finish the tool you are using in Blender, then start voice"
 #~ msgstr "請先完成你在 Blender 中正在使用的工具，再開始語音"
 
@@ -27977,3 +28250,21 @@ msgstr "{kind}，最大 {size}。儲存在此未儲存檔案的暫存資料夾�
 #. src: angelo_agent/download_approvals.py
 msgid "{kind}, up to {size}. Saved in assets/downloads in this project's folder."
 msgstr "{kind}，最大 {size}。儲存在此專案資料夾的 assets/downloads 中。"
+
+msgid "Angelo is busy working for {app} without its window and hasn't come up yet. End that work now (it stops and saves first), or quit this launch and leave it running?"
+msgstr "Angelo 正在不開啟視窗的情況下為 {app} 工作，尚未顯示。現在結束該工作（會先停止並儲存），還是離開這次啟動並讓它繼續執行？"
+
+msgid "Angelo is working for {app} without its window, and this launch can't reach it. Quit it from Activity Monitor, or wait for it to finish, then open Angelo again."
+msgstr "Angelo 正在不開啟視窗的情況下為 {app} 工作，這次啟動無法連線到它。請在「活動監視器」中結束它，或等它完成後再重新開啟 Angelo。"
+
+msgid "End it"
+msgstr "結束它"
+
+msgid "Quit"
+msgstr "離開"
+
+msgid "an app"
+msgstr "某個 App"
+
+msgid "Declined {tool}, answered through {app}."
+msgstr "已拒絕 {tool}，透過 {app} 回覆。"

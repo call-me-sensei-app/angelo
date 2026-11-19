@@ -303,7 +303,7 @@ class DirectRequest:
 
     def call(self, name, arguments, ticket=None):
         """One tool call's MCP result (``{"content": [...], "isError": bool}``), in the order calls arrived (``ticket``,
-        from ``arrived``); without one the caller holds its turn (``order``: ``ExternalWork``)."""
+        from ``arrived``); without one the caller holds its turn (``order``)."""
         self.order.wait(ticket)
         try:
             with self._running:   # One at a time, whoever calls (a call without a ticket included).

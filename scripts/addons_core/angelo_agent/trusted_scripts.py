@@ -10,22 +10,19 @@ only while that same consent still covers it at dispatch. A worker chat (a part
 of parallel edit) inherits its lead's Trust scripts for this chat, in Auto only:
 in Ask every worker script asks (``worker_trust``).
 
-Neither covers an External conversation (a connected MCP app's or a CLI
-client's, ``Controller.external_client``): a script an outside app sends, or
-one Angelo's agent writes for a task the app phrased, gets the person's
-exact-code review (doc/angelo/external_mcp.rst). The one standing consent an
-External conversation has is narrower (maintainer decision, 2026-10-23): a
-script file the app names (``angelo_run_script_file``) that the person chose
-to "Always allow while it's unchanged" (``script_files``), keyed by the app,
-the saved project, the file's real path and its content hash, in Approve for
-me, with ``AllowAutoApproval``. Any change to the file, the project, the app
-or those settings asks again.
+A script's card offers both beside Run once (its exact text, once): Allow for this session is Trust scripts for this
+chat, with the same rule as the Approval Policy menu's (``offers_session_allow``), and Always allow is the person's
+Always allow scripts (Auto only). 2.0.1: both cover an External conversation (a connected app's,
+``Controller.external_client``) as any chat, since every script there is Angelo's own agent's: an app never sends
+code or calls a tool (doc/angelo/external_mcp.rst). Before, every script there asked. The trust is the
+conversation's, in memory: a new conversation, a changed document, a restart or the app's disconnect or new key
+ends it (``_app_identity``). A CLI client's conversation has none of these: it only reads.
 """
 
 import hashlib
 import json
 import os
-from . import always_allow, grant_authority, script_files
+from . import always_allow, grant_authority
 from .chat_settings import clean_options
 from . import grant_guard as _grant_guard  # noqa: E402  (the entry behind a grant: grant_guard.entry)
 
@@ -46,6 +43,17 @@ def consent_exclusion(call):
     if not isinstance(code, str) or uses_preferences(code) or "angelo_agent" in code:
         return auto_reasons.SCRIPT_EXCLUDED
     return auto_reasons.SCRIPT_FILE_LOAD if file_load(call.arguments) is not None else None
+
+
+_registries = {}   # clients.json path -> (its stat, its records): ``_app_identity``'s cache.
+APP_CALL = "external-call/"   # The id an app's own direct tool call carried (2.0.0); since 2.0.1 none exists.
+
+
+def app_supplied(call):
+    """Whether ``call`` carries an app's own code (an app's direct tool call, by its id). Since 2.0.1 no such call is
+    made (doc/angelo/external_mcp.rst, "What changed"): kept as a guard that never matches, so a direct path added
+    later could never inherit a consent given for Angelo's agent (break-it review M2, 2.0.1)."""
+    return APP_CALL in str(getattr(call, "id", ""))
 
 
 def consent_excluded(call):
@@ -70,18 +78,56 @@ class TrustedScripts:
         return bool(self.chat_consents())
 
     def _chat_trust_allowed(self):
-        """Whether any chat trust may cover this chat's scripts now: never an External conversation, a missing or
+        """Whether any chat trust may cover this chat's scripts now: never a missing or
         changed document, a closing chat, Read only, a worker chat in Ask (``worker_trust.covers_mode``) or
         ``AllowAutoApproval`` off."""
         from . import managed_policy, worker_trust
-        return (not getattr(self, "external_client", "") and self.document is not None and not self.document_invalid
+        return (self.document is not None and not self.document_invalid
                 and not self._closing
                 and worker_trust.covers_mode(self, clean_options(self.state.get("options"))["approval"])
-                and managed_policy.current().allow_auto_approval)
+                and managed_policy.current().allow_auto_approval
+                and (not getattr(self, "external_client", "")
+                     or self._app_identity() == getattr(self, "_script_consent_app", None) is not None))
+
+    def _app_identity(self):
+        """An External conversation's app as its connection is now: client, when it was connected and its key file;
+        None when it is not connected. Its session trust holds only while this stays the same: a disconnect or a
+        reconnect (a new key) ends it (break-it review S3, 2.0.1)."""
+        from .external_clients import AppRegistry
+        client = getattr(self, "external_client", "")
+        if not client:
+            return None
+        registry = AppRegistry(self.workspace.parent)
+        try:   # A stat of each file per check; the registry is read again only when it changed (every draw asks).
+            listed, key = os.stat(registry.path), os.stat(registry.keys / client)
+        except OSError:
+            return None
+        stamp = (listed.st_ino, listed.st_size, listed.st_mtime_ns)
+        cached = _registries.get(str(registry.path))
+        if cached is None or cached[0] != stamp:
+            cached = _registries[str(registry.path)] = (stamp, registry.load())
+        record = cached[1].get(client)
+        if record is None:
+            return None
+        return client, record.get("connected_at"), key.st_ino, key.st_mtime_ns
+
+    def _revoke_if_app_changed(self):
+        """An External conversation's session trust ends for good once its app is disconnected or connected again
+        (a new key): revoked here and in C, never only suspended (break-it review round 2)."""
+        if (self._script_consent is None or not getattr(self, "external_client", "")
+                or self._app_identity() == getattr(self, "_script_consent_app", None)):
+            return
+        self._script_consent, self._script_consent_app = None, None
+        try:
+            grant_authority.forget(grant_authority.TRUSTED_CHATS, self.state["id"])
+        except PermissionError:   # An agent script's turn: C keeps it until Angelo's own next check; Python never covers.
+            pass
+        self.version += 1
 
     def chat_consents(self):
         """The chat trusts that cover this chat's scripts now: its own, then the lead's a worker chat inherits."""
         from . import worker_trust
+        self._revoke_if_app_changed()
         if self._script_consent is None and not worker_trust.follows(self):
             return ()   # Neither (most chats): no policy read on every draw that asks.
         if not self._chat_trust_allowed():
@@ -106,14 +152,16 @@ class TrustedScripts:
         change reaches the worker chats it started (``worker_trust.changed``).
         """
         from . import managed_policy, worker_trust
+        external = bool(getattr(self, "external_client", ""))
         if enabled and (self.document is None or self.document_invalid or self._closing
-                        or getattr(self, "external_client", "")
+                        or (external and self._app_identity() is None)
                         or not worker_trust.covers_mode(self, clean_options(self.state.get("options"))["approval"])
                         or not managed_policy.current().allow_auto_approval):
             raise RuntimeError("Trusted scripts are unavailable for this document or approval policy")
         # Held in C first (grant_authority): a widening refused outside the person's own click changes nothing here.
         grant_authority.record(grant_authority.TRUSTED_CHATS, self.state["id"], bool(enabled))
         self._script_consent = (self.state["id"], self.document, object()) if enabled else None
+        self._script_consent_app = self._app_identity() if enabled and external else None
         worker_trust.changed(self, enabled)
         self.version += 1
         from . import worker_consent_lead
@@ -124,96 +172,21 @@ class TrustedScripts:
         """Whether the person's Always allow scripts covers this chat now: on, allowed by policy, in Auto.
 
         Ask still asks and Read only still refuses; a changed document or a closing chat never runs a script unasked.
+        In a connected app's chat only a consent saved by 2.0.1 or later, or widened there by the person's press,
+        covers it (``always_allow.covers_external``): a 2.0.0 consent never silently starts to.
         """
         return (always_allow.token() is not None and self.document is not None and not self.document_invalid
-                and not self._closing and not getattr(self, "external_client", "")
-                and clean_options(self.state.get("options"))["approval"] == "AUTO_BOUNDED")
-
-    def script_project(self):
-        """The project a script file approval is keyed by: the open .blend's real path, "" while unsaved."""
-        try:
-            import bpy
-        except ImportError:
-            return ""
-        path = bpy.data.filepath
-        return os.path.realpath(path) if path else ""
-
-    def _script_file_applies(self, call):
-        """Whether a script file approval may apply to ``call`` at all (any approval, not this file's)."""
-        from . import managed_policy
-        script = getattr(call, "script_file", None)
-        code = call.arguments.get("code") if isinstance(call.arguments, dict) else None
-        return (call.name == "angelo_execute_python" and script is not None and bool(getattr(self, "external_client", ""))
-                and isinstance(code, str) and code == script.text and script_files.text_digest(code) == script.sha256
-                and not consent_excluded(call) and self.document is not None and not self.document_invalid
                 and not self._closing and clean_options(self.state.get("options"))["approval"] == "AUTO_BOUNDED"
-                and managed_policy.current().allow_auto_approval and bool(self.script_project())
-                and self._app_runs_python())
+                and (not getattr(self, "external_client", "") or always_allow.covers_external()))
 
-    def _app_runs_python(self):
-        """Whether the connected app still has the python level (``external_clients``, read as it is now). A headless
-        child has the levels the launcher read for this call (``external_levels``; a change restarts the child)."""
-        from .external_clients import PYTHON, AppRegistry
-        levels = getattr(self, "external_levels", None)
-        if levels is not None:
-            return PYTHON in levels
-        record = AppRegistry(self.workspace.parent).load().get(self.external_client)
-        return record is not None and PYTHON in record.get("levels", ())
-
-    def script_file_refusal(self, call):
-        """Why the person's approval does not cover this script file now, as a key: ``excluded`` (it names
-        preferences or Angelo's add-on), ``file_load`` (it would replace the open file), ``mode`` (Ask or Read only), ``policy`` (``AllowAutoApproval`` off),
-        ``levels`` (no python level), ``project`` (no saved project, or not the session's own file), ``changed``
-        (allowed before with other content) or ``not_approved``. Headless says which (headless_host)."""
-        from . import auto_reasons, managed_policy
-        exclusion = consent_exclusion(call)
-        if exclusion is not None:
-            return "file_load" if exclusion == auto_reasons.SCRIPT_FILE_LOAD else "excluded"
-        if clean_options(self.state.get("options"))["approval"] != "AUTO_BOUNDED":
-            return "mode"
-        if not managed_policy.current().allow_auto_approval:
-            return "policy"
-        if not self._app_runs_python():
-            return "levels"
-        if not self.script_project():
-            return "project"
-        return "changed" if self.script_file_changed(call) is not None else "not_approved"
-
-    def script_file_allowed(self, call):
-        """Whether the person's saved approval covers this exact script file now (checked again at dispatch)."""
-        if not self._script_file_applies(call):
-            return False
-        script = call.script_file
-        return script_files.allowed(self.external_client, self.script_project(), script.path, script.sha256)
-
-    def offers_script_file_allow(self, call):
-        """Whether this script's card offers "Always allow this file while it's unchanged": an app's script file in
-        an External conversation in Approve for me, policy allowing, the project saved, outside a recovery review,
-        once the person has opened its exact text (``review_script``)."""
-        return (call.approval and not call.executing and not call.recovery_review
-                and call.id in self.reviewed_calls and call.reviewed_script == call.invocation_digest
-                and self._script_file_applies(call) and not self.script_file_allowed(call))
-
-    def script_file_changed(self, call):
-        """The earlier approval of this app's file at this path and project when its content changed since, or None."""
-        script = getattr(call, "script_file", None)
-        if script is None or not getattr(self, "external_client", ""):
-            return None
-        earlier = script_files.previous(self.external_client, self.script_project(), script.path)
-        return earlier if earlier is not None and earlier["sha256"] != script.sha256 else None
-
-    def allow_script_file(self, call):
-        """The card's "Always allow this file while it's unchanged", once the person chose it: saved first
-        (``script_files.allow``); the pump then runs this script through the same identity and consent checks as
-        any later run of the file (``script_authorized``).
-
-        False when it does not apply; ``OSError`` when it can't be saved (nothing changes then).
-        """
-        if self.pending.get(call.id) is not call or not self.offers_script_file_allow(call) or self.expire_tool(call):
-            return False
-        script_files.allow(self.external_client, self.script_project(), call.script_file)
-        self.version += 1
-        return True
+    def standing_script_consent(self):
+        """``(kind, app)`` of the standing consent that runs this chat's scripts unasked now, or None: what the chat
+        says (its line, the Approvals popover). ``kind``: "session" (Trust scripts for this chat) or "always";
+        ``app``: an External conversation's client, else ""."""
+        app = getattr(self, "external_client", "")
+        if self.chat_consents():
+            return "session", app
+        return ("always", app) if self.always_allow_scripts else None
 
     def admission_script_consent(self):
         """The standing consent a call admitted now carries (host-only, never serialized), or None."""
@@ -223,19 +196,16 @@ class TrustedScripts:
         return always_allow.token() if self.always_allow_scripts else None
 
     def script_consent_kind(self, call):
-        """Which standing consent still covers this admitted script: "chat_session", "always_allow",
-        "script_file" (an External conversation's allowed script file, ``script_file_allowed``) or None.
+        """Which standing consent still covers this admitted script: "chat_session", "always_allow" or None.
 
         None for a script that touches preferences or Angelo's own add-on, or
         that would replace the open file (``consent_excluded``): it always
         asks, so a standing consent can't widen itself or cost the person
         their unsaved work (the card says which).
         """
-        if getattr(call, "script_file", None) is not None and self.script_file_allowed(call):
-            return "script_file"
         consent = call.script_consent
-        if call.name != "angelo_execute_python" or consent is None or consent_excluded(call):
-            return None
+        if call.name != "angelo_execute_python" or consent is None or consent_excluded(call) or app_supplied(call):
+            return None   # An app's own code never runs under a standing consent (module docstring).
         if any(consent is token for token in self.chat_consents()):   # Its own, or the lead's a worker inherits.
             return "chat_session"
         if consent is always_allow.token() and self.always_allow_scripts:
@@ -249,10 +219,37 @@ class TrustedScripts:
         """
         from . import managed_policy
         return (call.name == "angelo_execute_python" and call.approval and not call.executing
-                and not call.recovery_review and not consent_excluded(call) and not getattr(self, "external_client", "")
+                and not call.recovery_review and not consent_excluded(call) and not app_supplied(call)
                 and self.document is not None and not self.document_invalid
                 and not self._closing and clean_options(self.state.get("options"))["approval"] == "AUTO_BOUNDED"
                 and managed_policy.current().allow_auto_approval)
+
+    def offers_session_allow(self, call):
+        """Whether this script's card offers Allow for this session: Trust scripts for this chat, offered where the
+        Approval Policy menu's would take (``_chat_trust_allowed``'s rule: any mode but Read only, a worker chat in
+        Auto only), outside a recovery review, while it does not cover this chat already, never for a script a
+        standing consent would not run (``consent_excluded``)."""
+        from . import managed_policy, worker_trust
+        return (call.name == "angelo_execute_python" and call.approval and not call.executing
+                and not call.recovery_review and not consent_excluded(call) and not self.trusted_scripts
+                and not app_supplied(call)
+                and self.document is not None and not self.document_invalid and not self._closing
+                and worker_trust.covers_mode(self, clean_options(self.state.get("options"))["approval"])
+                and managed_policy.current().allow_auto_approval)
+
+    def session_allow_script(self, call):
+        """The card's Allow for this session, from the person's press: Trust scripts for this chat (held in C from
+        that press, ``set_trusted_scripts``), covering this script too through the usual checks. False when it does
+        not apply."""
+        if self.pending.get(call.id) is not call or not self.offers_session_allow(call) or self.expire_tool(call):
+            return False
+        self.set_trusted_scripts(True)
+        consents = self.chat_consents()
+        if not consents:
+            return False
+        call.script_consent = consents[0]
+        self.version += 1
+        return True
 
     def always_allow_script(self, call):
         """The card's Always allow scripts, once the caller has saved the choice: it covers this script too.
@@ -307,6 +304,8 @@ class TrustedScripts:
             result.update(execution_mode="trusted_unconfined", confined=False,
                           consent=(call.consent_kind or "chat_session") if call.automatic else "exact_code_review",
                           external_effects_undoable=False, stop_interruptible=False)
+            if getattr(self, "external_client", ""):   # The receipt names the app whose chat ran it.
+                result["consent_app"] = self.external_client
         from . import script_errors, worker_routing
         return script_errors.in_worker(result) if worker_routing.worker_snapshots(self) else result
 

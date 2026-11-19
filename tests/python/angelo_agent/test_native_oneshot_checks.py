@@ -12,6 +12,7 @@ import suite_isolation  # noqa: F401  First: this test never sees a real provide
 
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest import mock
@@ -481,7 +482,7 @@ class PixelTests(unittest.TestCase):
         self.assertIsNone(checks.difference([0.1], [0.1, 0.2]))
         self.assertAlmostEqual(checks.difference([0.0, 1.0], [0.5, 0.5]), 0.5)
 
-    @unittest.skipIf(numpy is None, "NumPy is not installed")
+    @unittest.skipIf(numpy is None, required_skip("NumPy is not installed"))
     def test_statistics_of_pixel_arrays(self):
         black = numpy.zeros((90, 160, 3))
         facts = images.statistics(black)
@@ -497,7 +498,7 @@ class PixelTests(unittest.TestCase):
         self.assertEqual(self.passed(images.statistics(black), {"default scene": facts["thumbnail"]}), [False, False, True])
         self.assertEqual(images.statistics(numpy.full((4, 4, 3), 0.5))["thumbnail"], [0.5] * 16)   # Smaller than the grid.
 
-    @unittest.skipIf(numpy is None, "NumPy is not installed")
+    @unittest.skipIf(numpy is None, required_skip("NumPy is not installed"))
     def test_crops_resizing_and_the_display_curve(self):
         picture = numpy.arange(6 * 8 * 3, dtype=float).reshape(6, 8, 3) / 143.0
         part = images.cropped(picture, (2, 1, 6, 4))

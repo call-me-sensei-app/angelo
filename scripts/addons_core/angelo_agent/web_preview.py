@@ -60,17 +60,36 @@ PAGE_TEXT = {   # Key -> English; translated when the preview starts (``_strings
     "compare_failed": n_("Angelo couldn't draw its viewport: {reason}"),
 }
 
+# Who holds the exporter (2.0.1): "person" (the live preview the person or their agent started: the File menu, Stop
+# and the browser follow only it) and "pages" (apps' live session pages, ``session_page``). It runs while anyone holds
+# it; a holder's release never ends another's.
+PERSON, PAGES = "person", "pages"
+_holders = set()
+
 _state = {"server": None, "folder": None, "window": None, "dirty_at": None, "queued_at": None, "exporting": False,
           "last_ms": 0.0, "request": None, "scene": None, "strings": {}, "exports": 0, "materials": [],
           "page": None, "shader_signature": (), "pictures": 0, "picture_pending": False, "shown": {}}
 
 
+def person_server():
+    """The person's own preview server while their preview is on, else None: what the File menu, Stop, the agent's
+    preview tool and its WEB view read. Apps' pages holding the exporter never make it the person's."""
+    server = _state["server"]
+    return server if PERSON in _holders and server is not None and not getattr(server, "closed", False) else None
+
+
 def running():
+    """Whether the person's live preview is on (what the File menu, Stop and the agent's preview tool follow)."""
+    return person_server() is not None
+
+
+def exporting():
+    """Whether the exporter runs for anyone (the person's preview or apps' live session pages)."""
     return _state["server"] is not None
 
 
 def url():
-    server = _state["server"]
+    server = person_server()
     return server.url if server is not None else None
 
 
@@ -244,8 +263,8 @@ def open_page(address):
     bpy.ops.wm.url_open(url=address)
 
 
-def start(window, request, open_browser=True):
-    """Start (or refresh) the preview of ``window``'s scene; returns {"url", "report"}."""
+def _open(window, request):
+    """The exporter's server, handlers and timer, started once for whoever holds it first."""
     from .web_preview_server import PreviewServer
     if _state["server"] is None:
         _state["folder"] = private_roots.mkdtemp("angelo-web-preview-")
@@ -263,9 +282,19 @@ def start(window, request, open_browser=True):
         scene_changes.on_edit(_on_edit)
         if not bpy.app.timers.is_registered(_tick):
             bpy.app.timers.register(_tick, first_interval=POLL_SECONDS, persistent=True)
-        opened = False
-    else:
-        opened = True
+    if _state["window"] is None or PERSON not in _holders:   # The person's start follows its own window.
+        _state["window"] = window.as_pointer()
+        _state["request"] = dict(request)
+
+
+def start(window, request, open_browser=True):
+    """Start (or refresh) the person's preview of ``window``'s scene; returns {"url", "report"}. Their browser opens
+    when their preview starts, whether or not apps' pages already keep the exporter running."""
+    opened = person_server() is not None
+    _open(window, request)
+    if _state["server"].closed:   # The person stopped it while pages held the exporter: a new tab, a new token.
+        _state["server"].reopen()
+    _holders.add(PERSON)
     _state["window"] = window.as_pointer()
     _state["request"] = dict(request)
     report = refresh(window)
@@ -274,8 +303,39 @@ def start(window, request, open_browser=True):
     return {"url": _state["server"].url, "report": report}
 
 
+def hold(holder, window, request):
+    """``holder`` (``PAGES``) keeps the exporter running, never the person's preview: no export now, only the scene
+    marked changed, so the timer exports it under its own gates and budget (never in the caller's tick)."""
+    if holder == PERSON:
+        raise ValueError("The person's preview starts with start()")
+    first = _state["server"] is None
+    _open(window, request)
+    _holders.add(holder)
+    if first:
+        _dirty(time.monotonic() - MAX_QUIET_SECONDS)   # Exported at the timer's next turn its gates allow.
+
+
+def release(holder):
+    """``holder`` lets go; the exporter stops once nobody holds it. True when it held."""
+    held = holder in _holders
+    _holders.discard(holder)
+    if not _holders:
+        _shutdown()
+    return held
+
+
 def stop():
-    """Stop the preview: server, handler, timer and its export folder. True when one was running."""
+    """The person's Stop: their preview ends, their tab with it (its path answers 404); the exporter goes on while
+    apps' pages hold it. True when theirs ran."""
+    held = release(PERSON)
+    if held and _state["server"] is not None:   # Pages still hold: only the person's own site goes.
+        _state["server"].withdraw()
+    return held
+
+
+def _shutdown():
+    """Server, handler, timer and the export folder: nobody holds the exporter."""
+    _holders.clear()
     server, _state["server"] = _state["server"], None
     scene_changes.unwatch(_on_depsgraph)
     scene_changes.off_edit(_on_edit)
@@ -303,7 +363,7 @@ def _fonts():
 
 @bpy.app.handlers.persistent
 def _exit_pre(*_args):
-    stop()
+    _shutdown()
 
 
 def _atexit():
@@ -321,7 +381,7 @@ def register():
 
 def unregister():
     import atexit
-    stop()
+    _shutdown()
     web_environment.stop()   # An explicit export's pictures too: no bake outlives the add-on.
     web_world_key.stop()     # Its depsgraph handler, if a World it can't read was keyed.
     if _exit_pre in bpy.app.handlers.exit_pre:

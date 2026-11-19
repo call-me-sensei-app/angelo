@@ -68,7 +68,9 @@ def _body_height(rows, details, notes, size, line_height):
 
 
 def _footer(always):
-    return 16 + BUTTON_Y + BUTTON_H + (ALWAYS_GAP if always else 0)
+    """The card's button area: Run once / Approve and Decline, and ``always`` rows of standing-consent buttons above
+    them (a count, or a truth value for one row)."""
+    return 16 + BUTTON_Y + BUTTON_H + ALWAYS_GAP * int(always or 0)
 
 
 def approval_block(controller, pending, area, width, size, line_height, expanded, state):
@@ -93,17 +95,17 @@ def approval_block(controller, pending, area, width, size, line_height, expanded
               + approval_wait.reason_rows(controller, pending, view.wrap, note_width, size - 1, view._font)
               + approval_wait.until_rows(pending, view.wrap, note_width, size - 1, view._font)
               + tuple(chat_cards.always_allow_rows(controller, pending, view.wrap, note_width, size - 1, view._font)))
-    button = chat_cards.always_allow_button(controller, pending)
+    buttons = chat_cards.standing_rows(chat_cards.always_allow_button(controller, pending), max(92, width - 64))
     script = pending.name == "angelo_execute_python"
     paid = pending.name in PAID_TOOLS
-    height = _body_height(rows, detail_rows, always, size, line_height) + _footer(button)
+    height = _body_height(rows, detail_rows, always, size, line_height) + _footer(len(buttons))
     from .approval_families import approval_kind
     chip = approval_kind(pending.name)   # A family that changes no scene names its own chip (a download).
     kind = (iface_("Script") if script else iface_("Background job") if pending.name.startswith("angelo_job_")
             else iface_(chip) if chip else iface_("Scene changes"))
     card = {"detail_rows": detail_rows, "script": script, "preparing": preparing, "always_rows": always, "mono": mono,
             "asked_again": bool(vars(pending).get("review_generation")),
-            "paid": paid, "kind": kind, "always_button": button}
+            "paid": paid, "kind": kind, "always_button": buttons}
     return ("approval", card, rows, height, pending.id, 0)
 
 
@@ -292,12 +294,17 @@ def _draw_approval(message, rows, key, top, bottom, ctx):
         y = _code(message["detail_rows"], y - 12, width, size, line_height, band, message["mono"])
     if message["always_rows"]:
         y = _rows(message["always_rows"], 32, y - 10 - line_height + 6, size - 1, line_height, band, tk.MUTED)
-    if message.get("always_button"):
-        chat_cards.draw_always_allow(key, state, 32, bottom + BUTTON_Y + ALWAYS_GAP, message["always_button"])
-    # One primary Approve that never looks disabled; an unreviewed script's first click reveals its code.
+    standing = message.get("always_button") or ()
+    for index, row in enumerate(standing):   # Top row first, each ALWAYS_GAP above the next.
+        for button, offset in row:
+            chat_cards.draw_always_allow(key, state, 32 + offset, bottom + BUTTON_Y + ALWAYS_GAP * (len(standing) - index),
+                                         button)
+    # One primary Approve that never looks disabled; an unreviewed script's first click reveals its code. A script's
+    # is Run once: its exact text, this time (the standing choices are above it).
     review_first = message["script"] and key not in controller.reviewed_calls
-    x = _button(state, 32, bottom + BUTTON_Y, iface_("Review & approve") if review_first else iface_("Approve"),
-                "approve", key, "primary")
+    primary = ((iface_("Review & run once") if review_first else iface_("Run once")) if message["script"]
+               else iface_("Approve"))
+    x = _button(state, 32, bottom + BUTTON_Y, primary, "approve", key, "primary")
     x = _button(state, x, bottom + BUTTON_Y, iface_("Decline"), "decline", key, "secondary")
     shown = ("approval", key) in ctx["expanded"]
     if message["script"]:
@@ -361,10 +368,26 @@ def _draw_job(message, rows, key, top, bottom, ctx):
     _button(state, 32, bottom + BUTTON_Y, iface_("Stop"), "stop_native_job", controller.state["id"], "secondary")
 
 
-def draw_pills(state, width, y, transcript_top, changed, changed_files, added, removed):
-    """The chat's pills: the changes pill over the composer at ``y`` when anything changed, and the pointer to an
-    approval card scrolled out of view under ``transcript_top`` (``approval_wait.draw_pointer``)."""
-    from . import approval_wait
+PILL_TOP, PILL_STEP, PILL_H = 8, 43, 35   # The pills over the composer (draw_pills): first top, spacing, height.
+
+
+def pills_room(changes, consent):
+    """The room the transcript leaves over the composer for the pills ``draw_pills`` stacks there, each when shown:
+    the standing consent's line and the changes pill (break-it review of ca6f5ff137d, S4: the line lay over the
+    transcript's last rows and took their presses)."""
+    shown = int(bool(changes)) + int(bool(consent))
+    return PILL_TOP + PILL_STEP * (shown - 1) + PILL_H + 23 if shown else 28
+
+
+def draw_pills(state, width, y, transcript_top, changed, changed_files, added, removed, consent=None):
+    """The chat's pills: the standing script consent's line over the composer at ``y`` while one runs this chat's
+    scripts unasked (``consent``: ``chat_cards.standing_line``), the changes pill above it (or at ``y``) when
+    anything changed, and the pointer to an approval card scrolled out of view under ``transcript_top``
+    (``approval_wait.draw_pointer``)."""
+    from . import approval_wait, chat_cards
+    if consent:
+        chat_cards.draw_standing_line(state, width, y, *consent)
+        y += PILL_STEP
     if changed or changed_files:
         draw_changes_pill(state, width, y, changed, changed_files, added, removed)
     approval_wait.draw_pointer(state, width, transcript_top)

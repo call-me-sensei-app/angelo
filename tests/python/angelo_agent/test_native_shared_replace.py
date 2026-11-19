@@ -157,7 +157,7 @@ class ReplaceTests(Case):
         self.sharing.let_go(fd)
         self.assertEqual((self.target.read_bytes(), self.sharing.pauses), (b"old", ALL_PAUSES))
 
-    @unittest.skipUnless(hasattr(os, "symlink"), "no symbolic links on this host")
+    @unittest.skipUnless(hasattr(os, "symlink"), environment_skip("no symbolic links on this host"))
     def test_a_link_moved_into_place_is_the_link_never_the_file_it_names(self):
         """Meaningful on a Windows host (``win32_replace`` opens the link itself); elsewhere ``os.replace``'s own."""
         named = self.folder / "named.txt"
@@ -166,7 +166,7 @@ class ReplaceTests(Case):
         try:
             os.symlink(named, link)
         except OSError as error:   # Windows without the privilege to make links.
-            self.skipTest("links cannot be made here: %s" % error)
+            self.skipTest(environment_skip("links cannot be made here: %s" % error))
         shared_replace.replace(link, self.target)
         self.assertTrue(self.target.is_symlink())
         self.assertEqual((named.read_text(), self.target.read_text()), ("kept", "kept"))
@@ -197,7 +197,8 @@ class SuccessPathCostTests(unittest.TestCase):
     (``owned_paths.require_writable``, two calls) over ``os.replace``. Outside the app the check reads the value as a
     path (``os.fspath``, one C call, as it does in the app before C answers) and asks nothing else."""
 
-    @unittest.skipIf(os.name == "nt", environment_skip("Windows renames through win32_replace: its cost is its own module's"))
+    @unittest.skipIf(os.name == "nt",
+                     environment_skip("Windows renames through win32_replace: its cost is its own module's"))
     def test_posix_adds_one_call_and_no_system_call(self):
         with tempfile.TemporaryDirectory() as folder:
             target, sources = os.path.join(folder, "t"), [os.path.join(folder, "s%d" % index) for index in range(4)]

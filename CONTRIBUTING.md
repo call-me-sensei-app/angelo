@@ -220,8 +220,13 @@ optional external fixture or runtime, mark their skip reason with
 `host_test_policy.environment_skip`. The runner reports every such skip separately
 from unclassified skips. Missing host dependencies such as NumPy or jsonschema
 must stay unclassified: CI installs them, and `--max-skips 0` fails if they are
-missing. This is an explicit applicability policy, not an allowance for a fixed
-number of missing tests.
+missing. Mark those reasons `host_test_policy.required_skip`, which leaves them
+unclassified. Every skip reason says which it is, and a skip conditioned on the
+platform is always environmental:
+[test_native_host_skip_reasons.py](tests/python/angelo_agent/test_native_host_skip_reasons.py)
+reads the suite's source for one that doesn't, so a skip that fires only on
+another platform's shard fails on every platform. This is an explicit
+applicability policy, not an allowance for a fixed number of missing tests.
 
 [native_suite_manifest.py](tests/python/angelo_agent/native_suite_manifest.py)
 classifies every `test_blender_*.py` suite as BACKGROUND, GUI or LIVE; the host

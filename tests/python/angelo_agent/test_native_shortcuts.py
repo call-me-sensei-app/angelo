@@ -20,6 +20,7 @@ import importlib.util
 import sys
 import types
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -212,7 +213,7 @@ class NamedAsBoundTests(unittest.TestCase):
             try:
                 import angelo_agent.welcome_screen as module
             except ImportError as error:   # Other drawing modules this one imports need Blender.
-                self.skipTest(f"welcome_screen needs Blender here: {error}")
+                self.skipTest(required_skip(f"welcome_screen needs Blender here: {error}"))
         return module
 
     def test_welcome_key_caps(self):

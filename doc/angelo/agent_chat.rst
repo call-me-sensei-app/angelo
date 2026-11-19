@@ -981,10 +981,8 @@ Approvals
   (``call_status``), handing the row to another pending call's own status, if
   any, else to Thinking. None of this decides what asks, which is unchanged,
   and none of the card, rail or pill text reaches a model; a connected app's
-  call and task ``state`` read the card's predicate, and its task reply keeps
-  its ``status`` words ("Approval required", "Approve collaborator usage"),
-  now derived from the card (``approval_wait.status_for_apps``), so they
-  never outlive it, and the status no longer names work that ended. Pinned by
+  conversation ``state`` (``external_agent``) reads the card's predicate, so it
+  never outlives the card, and the status no longer names work that ended. Pinned by
   ``test_native_approval_wait`` and, in the window with real clicks and the
   app's own tool pump, ``test_blender_approval_wait``.
 * **Every card says until when it waits** (``approval_wait.until_text``): "Waits
@@ -1012,13 +1010,36 @@ Approvals
   grants (a card's Approve or Review & approve, for bounded edits, paid
   generations and scripts alike; Always allow scripts; Always allow this file;
   the preview review card's confirmation and Accept) takes a press only once
-  it is armed. It arms when ``SHIELD_SECONDS`` have passed since it was drawn
-  where it is and the pointer then moves into it from outside; a control that
-  appears, reappears or moves (a scroll, a new layout) starts again, so a
-  pointer resting where a card appears never approves it. When Angelo's window
-  loses focus every grant in it disarms, and the first press after (the click
-  that brings the window forward, wherever it lands) never grants and disarms
-  them again. The keyboard grants only a control the person focused with Tab,
+  it is armed: ``SHIELD_SECONDS`` have passed since it was first drawn, and the
+  person aimed at it, by moving the pointer into it from outside (at any time
+  since it was drawn; leaving it drops the aim), or by any real move inside it
+  once its shield has passed, a hand's jitter included (a press refused there
+  shows "Move onto the button, then click", and the next real move recovers it;
+  a pointer that never moved never aims). The click that brings the
+  window forward aims too and never grants itself, which lets a press grant only
+  ``SHIELD_SECONDS`` (the longest double-click) later; no other press aims, so
+  presses alone, however far apart, never grant a card that appeared under a
+  resting pointer (one approved card replaced by another in its place). A control that
+  appears or reappears starts again, and so does one that arrives under a
+  pointer that was not on it, so a pointer resting where a card appears never
+  approves it with one press. The same control laid out again while it stays
+  drawn (rows streaming in around its card) keeps its shield, and its aim only
+  while the pointer was on it before and is on it after. A granting press
+  releases where its control is drawn now if the pointer stayed on it; dragged
+  off, it cancels. When Angelo's window loses focus, and when it comes forward
+  again, every shield in it starts again and every aim goes. Only the press that
+  arrives with the window's activation (the click that brings it forward,
+  wherever it lands) is that click: it never grants and it aims, so the next
+  press there does once the shield has passed. Brought forward without a press
+  (Cmd-Tab, the Dock, another app opening it), the window has no such click: the
+  person's next press is an ordinary one, so a resting pointer never grants. C
+  keeps this record from the window manager's own notes and every surface reads
+  it, so two handlers of one press agree (the re-review of acd0d465ee9). 2.0.1 (the maintainer: "I have to double
+  click approve", then 5 and 6-8 clicks while an app drove the chat): every
+  streamed row re-laid the card out, restarting its shield and dropping its aim,
+  and a move made during the shield never counted, so presses kept landing on
+  nothing. The C authority (grant_operators.rst, "Click tickets") applies the
+  same rule to an approval's own controls. The keyboard grants only a control the person focused with Tab,
   once its shield has passed; Return with nothing focused grants nothing (the
   review card's Return no longer accepts). Other controls take their click as
   before. GUI suites click a grant with ``qa_input.aim``. Pinned by

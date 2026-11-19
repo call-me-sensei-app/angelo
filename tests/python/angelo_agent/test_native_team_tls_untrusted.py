@@ -35,6 +35,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from host_test_policy import required_skip
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
@@ -75,7 +76,7 @@ class UntrustedConsoleCertificate(unittest.TestCase):
     def setUpClass(cls):
         openssl = shutil.which("openssl")
         if not openssl:
-            raise unittest.SkipTest("OpenSSL is required for the loopback TLS fixture")
+            raise unittest.SkipTest(required_skip("OpenSSL is required for the loopback TLS fixture"))
         cls.directory = tempfile.TemporaryDirectory(prefix="angelo-team-tls-")
         cls.addClassCleanup(cls.directory.cleanup)
         root = Path(cls.directory.name)

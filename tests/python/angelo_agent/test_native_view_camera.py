@@ -21,6 +21,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 import uuid
 import zlib
 from pathlib import Path
@@ -367,7 +368,7 @@ class CameraItemSchemaTests(unittest.TestCase):
                      "reference_id", "left", "up to 6"):
             self.assertIn(fact, VIEWS_NOTE)
 
-    @unittest.skipUnless(importlib.util.find_spec("jsonschema"), "jsonschema is not installed")
+    @unittest.skipUnless(importlib.util.find_spec("jsonschema"), required_skip("jsonschema is not installed"))
     def test_the_plan_schema_accepts_pairs_and_free_cameras(self):
         import jsonschema
         plan = {"operations": [{"tool": "angelo_view", "arguments": {
@@ -527,7 +528,7 @@ class ReferenceFactsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"views\[0\]\.reference is a 900x100 image"):
             reference(self.store, wide, "views[0].reference")
 
-    @unittest.skipUnless(numpy is not None, "NumPy is not installed")
+    @unittest.skipUnless(numpy is not None, required_skip("NumPy is not installed"))
     def test_each_orientation_turns_the_stored_rows_as_photo_viewers_do(self):
         from angelo_agent.view_compare import _ORIENT
         rows = numpy.arange(2 * 3).reshape(2, 3, 1)
@@ -538,7 +539,7 @@ class ReferenceFactsTests(unittest.TestCase):
             with self.subTest(orientation=orientation):
                 self.assertEqual(_ORIENT[orientation](rows).tolist(), want.tolist())
 
-    @unittest.skipUnless(numpy is not None, "NumPy is not installed")
+    @unittest.skipUnless(numpy is not None, required_skip("NumPy is not installed"))
     def test_an_image_several_pairs_share_is_decoded_once_per_size(self):
         from unittest.mock import patch
         from angelo_agent import view_compare
@@ -573,7 +574,7 @@ class PairPictureTests(unittest.TestCase):
             other.write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(40))
             self.assertIsNone(webp_size(other))
 
-    @unittest.skipUnless(numpy is not None, "NumPy is not installed")
+    @unittest.skipUnless(numpy is not None, required_skip("NumPy is not installed"))
     def test_the_reference_is_left_and_the_view_is_right_as_drawn(self):
         from angelo_agent.view_compare import GAP, encoder, pair_record, picture_size
         width, height = 5, 3

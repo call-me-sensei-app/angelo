@@ -100,7 +100,7 @@ def aim(window, rect, delay=None, ready=None):
                 return 0.1
             _on_the_way[0] -= 1
             raise
-        if pointer in approval_arming._returning:   # Bring the window forward first, beside the control.
+        if approval_arming.window_state(pointer)[1]:   # Lost focus: bring the window forward first, beside it.
             for kind, value in (('MOUSEMOVE', 'NOTHING'), ('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE')):
                 target.event_simulate(type=kind, value=value, x=ox, y=oy)
             return SHIELD_SECONDS + DELAY
@@ -228,7 +228,7 @@ def _travel(start, end, scale):
 # Chat canvas actions whose dispatch reaches a guarded operator: since the grant authority moved into C
 # (doc/angelo/grant_operators.rst, "Authority in C"), only a press the window manager receives mints the ticket, so a
 # suite clicks them through the window (``window_click``), never by calling the canvas's handler itself.
-GRANT_ACTIONS = frozenset({"approve", "review", "script_always_allow", "script_file_allow", "popup_select_model",
+GRANT_ACTIONS = frozenset({"approve", "review", "script_session_allow", "script_always_allow", "popup_select_model",
                            "popup_custom_model", "popup_effort", "popup_reset", "popup_fast", "popup_enable_fast",
                            "popup_approval", "accept_native_preview",
                            # Read from the add-on's dispatch (test_native_qa_input; 02bfa33's Mac round): the
@@ -236,7 +236,7 @@ GRANT_ACTIONS = frozenset({"approve", "review", "script_always_allow", "script_f
                            # flows' Generate, Enhance, Run, Check and Fit.
                            "welcome_connect", "welcome_reconnect", "popup_add_open", "voice", "generate", "enhance",
                            "run", "wf_check", "wf_fit"})
-AIMED = frozenset({"approve", "review", "script_always_allow", "script_file_allow"})   # SHIELDED chat controls
+AIMED = frozenset({"approve", "review", "script_session_allow", "script_always_allow"})   # SHIELDED chat controls
 
 
 def window_click(window, region, rect, action, ready=None, scale=1.0):

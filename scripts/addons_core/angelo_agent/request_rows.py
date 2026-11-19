@@ -70,8 +70,10 @@ def sender(controller, host_request, kind, references=None):
         from .goal_controls import admits_round
         if external or not admits_round(controller, host_request):
             raise ValueError("Only the owned continuation of an active held goal may send a goal round")
-    files = (() if host_request is not None or external else
-             references if references is not None else controller.attachments)
+    # A connected app's message carries only what the app attached itself (``references``), never the person's staged
+    # files (R2-L-5).
+    files = (() if host_request is not None else references if references is not None else
+             () if external else controller.attachments)
     return files, kind, host_request is None and not external and kind is None
 
 
@@ -80,6 +82,19 @@ def persons_send(sender):
     records it): never Angelo's request, a connected app's task or a worker's brief."""
     found = getattr(sender, "_persons_send", None)
     return getattr(sender, "_host_request", None) is None if found is None else bool(found)
+
+
+def apps_send(sender):
+    """Whether ``sender``'s newest send was its connected app's own message in its External conversation, where the
+    app is the requester (doc/angelo/external_mcp.rst, "Working through Angelo's agent"): never Angelo's request."""
+    return (bool(getattr(sender, "external_client", "")) and getattr(sender, "_host_request", None) is None
+            and getattr(sender, "_request_kind", None) is None)
+
+
+def requesters_send(sender):
+    """Whether ``sender``'s newest send was its requester's: the person's own, or in an External conversation its
+    app's. What a request asks for (a goal held from its words) is the requester's to start."""
+    return persons_send(sender) or apps_send(sender)
 
 
 def drawn_as_notice(row):

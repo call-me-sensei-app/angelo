@@ -123,9 +123,12 @@ void Authority::sync(Window &window, const double now)
   for (auto &surface : window.surfaces) {
     for (Region &region : surface.second) {
       if (region.epoch != window.epoch) {
+        /* Its shield starts again; a shielded control's aim holds while the pointer is still on it
+         * (2.0.1). Any other needs its move again, as in 2.0.0. */
+        const bool on_it = window.pointer_known && inside(region.spec, window.px, window.py);
         region.epoch = window.epoch;
         region.since = now;
-        region.entered = false;
+        region.entered = region.entered && on_it && region.spec.shield;
         region.moved_in = false;
       }
     }
@@ -168,16 +171,46 @@ bool Authority::set_regions(const WindowKey window_key,
     /* Drawn under that pointer: as warped into. */
     region.warped = warped_here && inside(spec, window.px, window.py);
     if (existing != window.surfaces.end()) {
+      /* The same control drawn where it was, when one is: duplicates of a control prefer it. */
+      const Region *same = nullptr;
       for (const Region &before : existing->second) {
         const RegionSpec &old = before.spec;
-        if (old.idname == spec.idname && old.digest == spec.digest && old.x == spec.x &&
-            old.y == spec.y && old.width == spec.width && old.height == spec.height &&
-            old.shield == spec.shield)
+        if (old.idname == spec.idname && old.digest == spec.digest && old.shield == spec.shield &&
+            old.x == spec.x && old.y == spec.y && old.width == spec.width && old.height == spec.height)
         {
-          region = before; /* Drawn where it was: its shield and its move into it stand. */
-          region.spec = spec;
+          same = &before;
           break;
         }
+      }
+      if (same != nullptr) {
+        region = *same; /* Drawn where it was: its shield and its aim stand. */
+        region.spec = spec;
+        next.push_back(std::move(region));
+        continue;
+      }
+      for (const Region &before : existing->second) {
+        const RegionSpec &old = before.spec;
+        if (old.idname != spec.idname || old.digest != spec.digest || old.shield != spec.shield) {
+          continue;
+        }
+        if (!spec.shield) {
+          continue; /* Any other control re-laid out starts again, as in 2.0.0 (its ARM). */
+        }
+        /* Laid out again elsewhere (rows streaming in around its card, a scroll that keeps it in
+         * view): it keeps its shield, and its aim only while the pointer was on it before and is on it
+         * now (2.0.1: a card that moved on every streamed row dropped every aim). One that arrives
+         * under a pointer that was not on it is a new control (the break-it review's M1). */
+        const bool before_on = window.pointer_known && inside(old, window.px, window.py);
+        const bool after_on = window.pointer_known && inside(spec, window.px, window.py);
+        if (after_on && !before_on) {
+          break; /* `region` as made above: shown now, unaimed. */
+        }
+        region = before;
+        region.spec = spec;
+        region.entered = before.entered && before_on && after_on;
+        region.moved_in = before.moved_in && before_on && after_on;
+        region.warped = (before.warped || warped_here) && after_on;
+        break;
       }
     }
     next.push_back(std::move(region));
@@ -194,14 +227,20 @@ void Authority::note_move(const WindowKey window_key, const int x, const int y, 
   if (!window.button_down) { /* A drag's hold ends once its button is up, release seen or not. */
     std::erase_if(tickets_, [](const Ticket &ticket) { return ticket.gesture; });
   }
-  if (!window.pointer_known) { /* Where it came from is unknown: never a move into anything. */
+  if (!window.pointer_known || window.activation_move) {
+    /* Where it came from is unknown, or the activation's own move to where the pointer is now (it
+     * may have moved while the window was in the background): never a move into anything. */
     window.pointer_known = true;
+    window.activation_move = false;
     window.px = x;
     window.py = y;
     return;
   }
   if (x == window.px && y == window.py) {
     return; /* A refresh, not a move. */
+  }
+  if (window.active) {
+    window.returning = false; /* An event after the activation, before any press: it had no press. */
   }
   window.warped = false; /* The person moved it. */
   window.real_move_at = now;
@@ -217,6 +256,9 @@ void Authority::note_move(const WindowKey window_key, const int x, const int y, 
     for (Region &region : surface.second) {
       if (!inside(region.spec, x, y)) {
         region.warped = false; /* Left it: the person's next move in counts again. */
+        if (region.spec.shield) {
+          region.entered = false; /* Leaving a shielded control drops its aim (2.0.1, review M1). */
+        }
         continue;
       }
       if (region.warped) {
@@ -226,13 +268,48 @@ void Authority::note_move(const WindowKey window_key, const int x, const int y, 
       if (now - shown >= ARM_SECONDS) {
         region.moved_in = true; /* A real move inside it once it has been there ARM_SECONDS. */
       }
-      if (now - shown >= SHIELD_SECONDS && !inside(region.spec, window.px, window.py)) {
+      /* A move into it from outside aims at it whenever it happens (2.0.1: before, only after the
+       * shield, so a person who moved onto Approve at once and then clicked was refused); a shielded
+       * control's press still waits for SHIELD_SECONDS from when it was first shown (`note_press`). */
+      if (!inside(region.spec, window.px, window.py)) {
         region.entered = true;
+        region.press_aim = -1.0; /* A move in is the person's aim itself. */
+      }
+      else if (region.spec.shield && now - shown >= SHIELD_SECONDS) {
+        /* A real move inside it once its shield has passed, a hand's jitter included, is the
+         * person's aim too (the re-review of acd0d465ee9, SHOULD-3): a click refused there recovers
+         * without leaving the control. A pointer that never moved still never aims (S1). */
+        region.entered = true;
+        region.press_aim = -1.0;
       }
     }
   }
   window.px = x;
   window.py = y;
+}
+
+void Authority::note_activate(const WindowKey window_key, const double now)
+{
+  std::lock_guard lock(mutex_);
+  Window &window = windows_[window_key];
+  window.epoch++; /* Its controls start their shield again from when the person sees them. */
+  window.activated = now;
+  window.activation_move = true;
+  window.active = true;
+}
+
+bool Authority::press_activating(const WindowKey window_key) const
+{
+  std::lock_guard lock(mutex_);
+  const auto found = windows_.find(window_key);
+  return found != windows_.end() && found->second.press_activating;
+}
+
+bool Authority::returning(const WindowKey window_key) const
+{
+  std::lock_guard lock(mutex_);
+  const auto found = windows_.find(window_key);
+  return found != windows_.end() && found->second.returning;
 }
 
 void Authority::note_deactivate(const WindowKey window_key, const double /*now*/)
@@ -241,6 +318,14 @@ void Authority::note_deactivate(const WindowKey window_key, const double /*now*/
   Window &window = windows_[window_key];
   window.epoch++;
   window.returning = true;
+  window.active = false; /* Moves and keys in the background (Windows delivers moves) keep `returning`. */
+  for (auto &surface : window.surfaces) { /* The person left: every aim goes (2.0.0's rule). */
+    for (Region &region : surface.second) {
+      region.entered = false;
+      region.moved_in = false;
+      region.press_aim = -1.0;
+    }
+  }
   window.button_down = false;
   window.focus_idname.clear(); /* Focus comes back only by the person's hand. */
   window.focus_digest.clear();
@@ -316,6 +401,9 @@ void Authority::note_key(const WindowKey window_key, const int event_type, const
 {
   std::lock_guard lock(mutex_);
   Window &window = windows_[window_key];
+  if (window.active) {
+    window.returning = false; /* A key after the activation, before any press: it had no press. */
+  }
   if (event_type == keys_.tab && keys_.tab != 0) {
     window.tabbed = now;
     return;
@@ -472,16 +560,21 @@ bool Authority::note_press(const WindowKey window_key, const int x, const int y,
   window.button_down = true;
   window.press_x = x;
   window.press_y = y;
-  if (window.returning) { /* The click that brings the window forward, wherever it lands. */
-    window.returning = false;
+  /* The click that brings the window forward, wherever it lands, never grants; it aims at the control
+   * under it, so the person's next press there does once its shield has passed. */
+  /* Only the press that arrives with the activation brought the window forward (the re-review of
+   * acd0d465ee9, SHOULD-1): after Cmd-Tab, a Dock click or `open -a`, the next press is ordinary. */
+  const bool activating = window.returning &&
+                          (!window.active || now - window.activated <= ACTIVATION_PRESS_SECONDS);
+  window.returning = false;
+  window.press_activating = activating;
+  if (activating) {
     window.epoch++;
-    sync(window, now);
-    return false;
   }
   sync(window, now);
-  const Region *hit = nullptr;
-  for (const auto &surface : window.surfaces) {
-    for (const Region &region : surface.second) {
+  Region *hit = nullptr;
+  for (auto &surface : window.surfaces) {
+    for (Region &region : surface.second) {
       if (inside(region.spec, x, y)) {
         if (hit != nullptr) {
           return false; /* Two regions under one press: which one was meant is unknown. */
@@ -493,9 +586,28 @@ bool Authority::note_press(const WindowKey window_key, const int x, const int y,
   if (hit == nullptr) {
     return false;
   }
-  if (hit->warped || !hit->moved_in ||
-      (hit->spec.shield && (!hit->entered || now - region_shown(window, *hit) < SHIELD_SECONDS)))
-  {
+  const double shown = region_shown(window, *hit);
+  /* A shielded control (an approval's) grants once it has been shown SHIELD_SECONDS and the person
+   * aimed at it: moved into it, or brought the window forward with a press on it (below). Any other
+   * needs a real move inside it after ARM_SECONDS, as in 2.0.0. */
+  /* That press's aim lets a press grant only SHIELD_SECONDS (the longest double-click) after it: a
+   * double-click never grants (the break-it review's M1). */
+  const bool armed = hit->spec.shield ?
+                         (hit->entered && now - shown >= SHIELD_SECONDS &&
+                          (hit->press_aim < 0.0 || now - hit->press_aim >= SHIELD_SECONDS)) :
+                         hit->moved_in;
+  if (activating || hit->warped || !armed) {
+    /* A shielded control's press that did not grant aims at it only when it was the click that
+     * brought the window forward: the person's next press there grants. Any other press never aims,
+     * so presses alone never grant a control that appeared under a resting pointer (the break-it
+     * review of ca6f5ff137d, S1); the person moves onto it. Never a pointer code put there. */
+    if (hit->spec.shield && !hit->warped && activating) {
+      hit->entered = true;
+      hit->press_aim = now;
+    }
+    if (activating) {
+      return false;
+    }
     /* Not armed: a pointer code put there, a press too soon after it was shown, or no move onto it
      * since. The guard answers it quietly with a hint on the control (`take_unarmed`). */
     unarmed_ = {window_key, hit->spec.x, hit->spec.y, hit->spec.width, hit->spec.height,
@@ -682,7 +794,6 @@ void Authority::define_standard()
   define(TRUSTED_CHATS, Value(false));
   define(ALWAYS_ALLOW, Value(false));
   define(CHAT_CLIENTS, Value());
-  define(SCRIPT_FILES, Value(false));
   define(APPROVED_CALLS, Value());
   define(APPROVAL_MODES, Value(std::string("ASK"))); /* Ask narrows; Auto is set only in a scope. */
 }

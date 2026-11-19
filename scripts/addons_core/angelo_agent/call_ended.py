@@ -5,7 +5,7 @@
 A step's result says what the model reads; it cannot say whether the step ever started: ``EXPIRED`` is both the
 answer to a card nobody answered and a download that failed while it ran. The host knows at the moment it ends a call,
 so it records one closed value on the call's ``activity`` event (``ended``, kept on the transcript row by
-``activity_rows.FIELDS``), never in the result: no model reads it (``routing.handoff`` and ``external_apps._row`` read
+``activity_rows.FIELDS``), never in the result: no model reads it (``routing.handoff`` and ``external_transcript.app_row`` read
 other fields). Rows saved before it existed have none and keep their status, since a started step's expiry cannot be
 told from an unstarted one after the fact.
 

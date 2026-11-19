@@ -311,6 +311,7 @@ def draw(state, ui, controller, *, geometry, composer_bottom, composer_height, l
     # model chip (1.0.5 review: a ~470 px outline around a ~100 px label).
     approval_hit = APPROVAL_TEXT_X - 59 + (view.measure(approval_text, 13) + 10 if approval_text else 0)
     state["hits"].append(((59, cy - 14, approval_hit, 28), "approval", None))
+    state["approval_anchor"] = (59, cy - 14, approval_hit, 28)   # Its Approvals popover opens above it (chat_view).
     if not approval_text:   # Its icon alone in a narrow chat: the tooltip names the mode.
         canvas_controls.label(state, "approval", None, label_approval)
     state["picker_anchor"] = (model_x - 4, cy - 14, model_width + 10, 28)

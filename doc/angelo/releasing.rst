@@ -1563,8 +1563,8 @@ Bundle contents
 
 ``source/creator/CMakeLists.txt`` installs ``scripts/`` without
 ``scripts/angelo`` and then exactly ``ANGELO_RUNTIME_SCRIPTS``: the external CLI
-launcher (``angelo_cli.py``), the MCP launcher (``angelo_mcp.py``) and the
-headless child it starts (``angelo_headless.py``), ``migrate_user_folder.py``
+launcher (``angelo_cli.py``), the MCP launcher (``angelo_mcp.py``), the worker
+Blender start-up (``angelo_headless.py``), ``migrate_user_folder.py``
 and ``recover_connections.py``, the commands a person or an app runs with the
 bundled Python. Build, release, signing, cloud and Windows validation scripts never
 ship. ``test_native_bundle_contents.py`` pins the list, installs a copy of

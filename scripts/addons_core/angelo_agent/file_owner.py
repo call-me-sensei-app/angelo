@@ -8,8 +8,8 @@ POSIX answers with the owner ID (``st_uid`` against ``os.geteuid()``). Windows h
 (``GetNamedSecurityInfoW``) against this process's own: its token's user, and its token's default owner, which is
 what Windows records as the owner of what the process creates (the Administrators group for an elevated
 administrator). The check is asked where POSIX asks it, never skipped: before the external audit of 2026-11-14 (F1)
-the headless sweep (``headless_working_copy.sweep``) would have died on Windows at this question, and a version
-that skipped it there would remove folders without knowing whose they are.
+2.0.0's headless sweep would have died on Windows at this question, and a version that skipped it there would
+remove folders without knowing whose they are.
 
 What cannot be read is not this user's: a missing path, a denied query and a failed call all answer False.
 A link is asked about as Windows resolves it; callers that must not follow one refuse links first, as the sweep does.

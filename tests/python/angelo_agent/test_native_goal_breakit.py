@@ -256,9 +256,28 @@ class LowTests(Base):
         self.assertEqual(self.chat.stops, [])
         self.assertEqual(self.goal()["status"], G.STOPPED)
 
-    def test_connected_apps_never_get_the_goal_tool(self):
+    def test_an_apps_next_goal_after_the_persons_stop_is_only_proposed(self):
+        """Break-it review 2, S-e: once the person stopped an app's goal (or its budget ended), the app's words never
+        start a fresh budget on their own: its next goal waits for the person's Start, Auto or not."""
+        self.chat.external_client = "codex"
+        self.hold()
+        goal_controls.stop(self.chat)
+        self.assertEqual(self.goal()["status"], G.STOPPED)
+        self.chat.send("Keep going until it matches again")
+        goal_controls.execute(self.chat, "window", {"action": "SET", "objective": "again"})
+        self.assertEqual(self.goal()["status"], G.PROPOSED)
+
+    def test_the_persons_own_next_goal_after_a_stop_is_theirs_as_before(self):
+        self.hold()
+        goal_controls.stop(self.chat)
+        self.chat.send("Keep going until it matches again")
+        goal_controls.execute(self.chat, "window", {"action": "SET", "objective": "again"})
+        self.assertEqual(self.goal()["status"], G.ACTIVE)
+
+    def test_connected_apps_get_the_goal_tool_under_the_words_rule(self):
+        # 2.0.1 (maintainer: "same benefit, no handicaps"): a goal from the app's words (external_mcp.rst, "Goals").
         from angelo_agent import external_clients
-        self.assertIn("angelo_goal", external_clients.NEVER_FOR_APPS)
+        self.assertNotIn("angelo_goal", external_clients.NEVER_FOR_APPS)
 
     def test_an_active_goal_nothing_continues_is_paused(self):
         goal = self.hold()

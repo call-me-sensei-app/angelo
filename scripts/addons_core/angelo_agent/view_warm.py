@@ -41,6 +41,7 @@ from .view_first_draw import (CHUNK_MAX, GROUP_MAX, OVERRIDE_TYPES, SIZE, SLOW, 
                               WORLD, _alive, _batch, _draw, _drawing, _first_draw_objects, _format, _pointer, _redo,
                               _region, _uid, _world, first_draws, pipelines_pending)
 from .view_shader_notes import FAILED_NOTE, _labelled, failed, note, notes  # noqa: F401  (callers read them here)
+from .view_warm_facts import _address, _generation, _reader, _reason, _reloaded
 
 WAIT_SECONDS = 60.0
 GRACE_SECONDS = 1.0      # How long a look not ready is waited for before its first answer is Solid (wait).
@@ -71,6 +72,7 @@ _lit = [True]     # Whether its last one was LIT (``soon`` warms that look).
 _turn = [0]       # Which instancer the next queue draw takes when no plain object draws a missing material.
 _solid = {}   # (window, LIT) -> when answered Solid (until drawn or warmed): asked again within WAIT_SECONDS, it waits.
 _soon = {}        # A window's pointer -> the materials a merge queued, until their first draws are done.
+_armed = {}       # ``_key`` (window pointer, scene and view-layer names) -> when ``go_on(once=True)`` armed it.
 
 
 def compiling():
@@ -420,47 +422,33 @@ def wait(window, area, run, controller=None, lit=True, solid=None):
                             "pace": progress["pace"], "run": None, "deadline": 0.0,
                             "generation": progress.get("generation")}
 
-    def _warm():
-        """What the view owes goes on preparing once the window is idle, before its Solid draw (which may fail)."""
+    def go_on(once=False):
+        """What is kept goes on preparing while the window is idle (``_spread``) until nothing is owed, so the scene's
+        next view draws at once: before a Solid draw (``_warm``), and after a caller's ``cancel`` (an app's look
+        answering busy: re-review MUST A). ``once``: the scene's preparation runs to the deadline its first arming set
+        within ``WAIT_SECONDS``; later looks resume it (a view takes it over) but never extend it, so an app's looks
+        cost the scene at most one ``WAIT_SECONDS`` of background work a minute (third review SHOULD 2)."""
+        if owner not in _soon:
+            return
+        now = deadline = time.monotonic()
+        if once:
+            if now - _armed.get(owner, now - WAIT_SECONDS) >= WAIT_SECONDS:
+                if len(_armed) > 16:
+                    _armed.clear()
+                _armed[owner] = now
+            deadline = _armed[owner]
+        _soon[owner].update(deadline=deadline + WAIT_SECONDS, queued_at=now)
+        _spread(owner, held_window)
+
+    def _warm():   # Before its Solid draw (which may fail).
         keep()
-        if owner in _soon:
-            _soon[owner].update(deadline=time.monotonic() + WAIT_SECONDS, queued_at=time.monotonic())
-            _spread(owner, held_window)
+        go_on()
 
     pending = StudioPending(poll, keep)
     pending.status_text, pending.activity_note, pending.stopped_result = STATUS, NOTE, dict(STOPPED)
+    pending.go_on = go_on
     pending.timeout = WAIT_SECONDS + 30.0
     return pending
-
-
-def _reason(progress):
-    """Why a view is not ready: its shaders are compiling, its first draws are owed, or its state cannot be read."""
-    current = progress.get("state")
-    if current is None:
-        return "unreadable shader state"
-    return "compiling" if current[1] or current[2] else "first draws owed"
-
-
-def _generation(window):
-    """The depsgraph's evaluation count (``_angelo_live.update_count``), or None where it cannot be read."""
-    try:
-        import _bpy
-        return _bpy._angelo_live.update_count(window.view_layer.depsgraph)
-    except (ImportError, AttributeError, TypeError, ValueError, RuntimeError, ReferenceError):
-        return None
-
-
-def _reader():
-    """Whether this build reads the shader state (``_angelo_live.shader_state``)."""
-    try:
-        import _bpy
-        return hasattr(getattr(_bpy, "_angelo_live", None), "shader_state")
-    except ImportError:
-        return False
-
-
-def _address(value):
-    return getattr(value, "as_pointer", lambda: id(value))()
 
 
 def view(window, args, references, controller, lit):
@@ -486,15 +474,8 @@ def view(window, args, references, controller, lit):
     return wait(window, None, again, controller, lit, lambda: again("SOLID"))
 
 
-def _reloaded(window, names):
-    """Whether the window shows the same-named scene and view layer as ``names`` (an undo or a reload re-made them)."""
-    try:
-        return None not in names and (window.scene.name_full, window.view_layer.name) == names
-    except (AttributeError, ReferenceError):
-        return False
-
-
 def release():
     _used[0] = False
     _solid.clear()
     _soon.clear()
+    _armed.clear()

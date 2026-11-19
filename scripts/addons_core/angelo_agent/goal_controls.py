@@ -31,14 +31,18 @@ def _summary(goal, measurement=None, note=""):
         result["note"] = note
     return result
 
+def summary(goal):
+    """A held goal as a connected app reads it (``external_agent``): status, objective, check, budget and spend."""
+    return _summary(goal)
+
 def _refuse_new_goal(controller):
     """Why ``SET`` may not create a goal in this request, or None (doc "Setting a goal")."""
-    from .request_rows import persons_send
-    if not persons_send(controller):
+    from .request_rows import requesters_send
+    if not requesters_send(controller):   # The person's, or in an External conversation its app's (external_mcp.rst).
         return "This request is Angelo's own, not the person's: a goal starts only from the person's request"
     if getattr(controller, "voice", None) is not None:
         return "A voice turn holds no goal; the person can choose one in the chat bar"
-    if getattr(controller, "external_client", "") or P.worker_chat(controller):
+    if P.worker_chat(controller):
         return "This chat holds no goals"
     if P.approval(controller) == "READ_ONLY":
         return "This chat is read only: nothing could change toward a goal"
@@ -61,6 +65,20 @@ def _apply_measure(controller, goal, measure, window):
     goal["measure_changed_in_round"] = True
     return None
 
+def _after_person_end(controller, previous):
+    """Whether a goal from a connected app's words is only proposed: its conversation's last goal, or one of an earlier
+    conversation of the app (``AppRegistry.record_end``: a new chat or a move never resets it), ended by the person's
+    Stop or its budget, so the app never starts a fresh budget the person did not choose (break-it reviews S-e)."""
+    label = getattr(controller, "external_client", "")
+    if not label:
+        return False
+    if previous is not None and previous.get("status") in {G.STOPPED, G.BUDGET}:
+        return True
+    from .external_clients import AppRegistry
+    workspace = getattr(controller, "workspace", None)
+    return bool(workspace is not None and AppRegistry(workspace.parent).load().get(label, {}).get("goal_ended"))
+
+
 def execute(controller, window, arguments):
     """``angelo_goal``. Refusals are ValueError (the tool's error result); a locked measurement is a result."""
     args = validate_goal(TOOL_NAME, arguments)
@@ -74,7 +92,7 @@ def execute(controller, window, arguments):
             if refusal:
                 raise ValueError(refusal)
             goal = G.new(args["objective"], G.WORDS, paid=P.paid(controller),
-                         proposed=P.approval(controller) == "ASK",
+                         proposed=P.approval(controller) == "ASK" or _after_person_end(controller, goal),
                          connection=[controller.state.get("connection_id"), controller.state["provider"]])
             L._documents[controller.state["id"]] = L._documents.get(controller.state["id"],
                                                                  getattr(controller, "document", None))
@@ -172,9 +190,20 @@ def start(controller):
     goal = L.goal_of(controller)
     _check_document(controller)
     G.start(goal)
+    _person_started(controller)
     L._save(controller, goal)
     L._mark(controller)
     L._continue.add(controller.state["id"])   # Sent once the chat is idle (``_ready``); a turn's end makes it due.
+
+def _person_started(controller):
+    """The person started a goal in a connected app's conversation: its next goals follow the chat's rule again."""
+    label, workspace = getattr(controller, "external_client", ""), getattr(controller, "workspace", None)
+    if label and workspace is not None:
+        from .external_clients import AppRegistry
+        try:
+            AppRegistry(workspace.parent).goal_started(label)
+        except OSError as error:
+            print("Angelo: an app's goal state could not be saved:", error)
 
 def resume(controller):
     goal = L.goal_of(controller)
@@ -252,6 +281,6 @@ def observed_id(chat_id):
 
 def admits_round(controller, host_request):
     """Only the held goal's own scheduled continuation may use the main goal request kind."""
-    return (host_request is not None and not getattr(controller, "external_client", "")
+    return (host_request is not None
             and not P.worker_chat(controller) and L._sending.get(controller.state["id"]) is controller
             and G.running(L.goal_of(controller)))

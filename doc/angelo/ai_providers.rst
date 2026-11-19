@@ -276,6 +276,40 @@ was. When nothing is found the error says how to install the CLI (``npm install
 ``which claude`` / ``which codex`` in Terminal and choose that file as the
 connection's *Executable*, and which directories were searched.
 
+The runtime found, or chosen, is recorded for this process as it is found
+(``owned_paths.vouch_program``): the real file its name resolves to (Claude's
+installer makes ``~/.local/bin/claude`` a link to ``versions/X``; Homebrew and
+npm links too), which is what C checks before it starts a program once an agent
+script has run (``may_run``), recorded to start only: never a file a writer may
+write. By this record it starts only while it is that very file, unchanged
+since it was recorded (identity, size and its times); a program inside an
+installed folder, or in a folder on PATH, starts by those rules instead, which
+need no record and check no facts. Once a script has run, a recorded program
+that changed stays refused for the rest of the process: found again, or after
+anything narrowed the vouches (``unvouch_path``, which never drops a program's
+record), and the oldest-first trim never drops one either. An update to a
+versioned install (the installer retargets ``~/.local/bin/claude`` to
+``versions/Y``) is a new file, recorded when first found, so it starts. An
+update installed in place under the same name is refused until Angelo restarts,
+since a changed file is exactly what a script's rewrite would look like, but
+only when the program's own folder is not on Angelo's PATH (npm's ``cli.js``
+behind ``/usr/local/bin/claude``): a program in a folder on PATH starts by that
+rule, which checks no facts (a replaced ``claude.exe`` in ``~\.local\bin``,
+normally on PATH, starts). A link or file a script
+made is never recorded through, and a link retargeted later resolves to a file
+the record does not cover. PATH is read from the process environment, never
+from a copy a script rewrote in place. A refused start says why, never that the
+CLI is too old: one an agent script wrote or only named (C's change record,
+checked first; it is kept across sessions and keyed by path, so neither a
+restart nor a reinstall in place clears it) says so, and to check the file and
+then choose its folder in Preferences > Forget Agent Changes in a Folder…; a
+recorded program that changed on disk since (an
+update, for example) says to restart Angelo to use it; any other says to choose
+the program in the connection's settings or reinstall it. A sign-in check and the custom
+endpoint check report the same refusal, and a refused runtime leaves the
+endpoint's model catalog as it was (``test_native_program_vouch``,
+``test_blender_runtime_symlink``).
+
 **Windows** (``cli_windows.py``, ``child_process.py``). Discovery tries the
 configured file, PATH, the ChatGPT app's bundled ``codex``
 (``%LOCALAPPDATA%\Programs\ChatGPT`` and ``Program Files\ChatGPT``, under

@@ -53,6 +53,21 @@ def register():
     if deprecated:
         print("Angelo: deprecated environment variables in use; rename them to ANGELO_*:", ", ".join(deprecated))
     from . import console, layout_hold, studio, timer_jobs, ui
+    if not bpy.app.background:   # Before the chats or the CLI listener open: one Angelo holds the state folder.
+        from . import headless_window, headless_window_app   # doc/angelo/mcp_headless_window.rst
+        if headless_window_app.active() and headless_window.supported():
+            headless_window_app.register()   # This process is an app's hidden-window session (macOS only).
+        elif headless_window.supported():   # The person's launch, where hidden sessions exist: every GUI Angelo
+            from . import headless_window_lock   # holds the state folder's lock; a hidden session there comes up as
+            # this launch's window instead. Elsewhere no hidden session ever holds the folder, so there is no lock.
+            try:
+                outcome = headless_window_lock.hand_over(ui.state_directory(), bpy.app.binary_path)
+            except Exception as error:   # noqa: BLE001  A bad lock file or record never stops the add-on loading.
+                outcome = None
+                print("Angelo: could not take the state folder's lock:", error)
+            if outcome in ("revealed", "kept"):   # One Angelo per state folder: the hidden session's window is the
+                print("Angelo: the Angelo already running is this launch's window (%s)." % outcome)   # person's now.
+                os._exit(0)
     timer_jobs.register()   # A load or a quit closes every running timer job before Blender's data goes (timer_jobs).
     layout_hold.register()   # A lock whose timer a load discarded is released.
     sys.modules["_console_angelo"] = console

@@ -223,10 +223,12 @@ class GuiLaunchFocus(unittest.TestCase):
         self.assertEqual(gui_launch.window_flags("front", input_isolation=False), [])
         with self.assertRaises(ValueError):
             gui_launch.window_flags("hidden")
-        # Only the update end-to-end: its driver presses Restart to Update with real window
-        # events and the updater relaunches the new release with no flag. Each entry states its reason.
+        # Only the update end-to-end (its driver presses Restart to Update with real window events and the updater
+        # relaunches the new release with no flag) and the hidden-window proof (it measures what comes to the front).
+        # Each entry states its reason.
         self.assertEqual(set(gui_launch.FOCUSED_LAUNCHES), {"tests/python/angelo_agent/update_e2e_macos.py:run",
-                                                            "tests/python/angelo_agent/update_e2e_windows.py:run"})
+                                                            "tests/python/angelo_agent/update_e2e_windows.py:run",
+                                                            "tests/python/angelo_agent/check_mcp_hidden_window.py:main"})
         self.assertTrue(all(len(reason) > 40 for reason in gui_launch.FOCUSED_LAUNCHES.values()))
 
     def test_a_comparison_never_hides_differing_window_states(self):

@@ -1377,11 +1377,7 @@ format and its recovery are in ``session_journal``.
   the next launch lists every chat on disk and keeps the choice off; an
   organization policy still owed is kept in ``team-org-policy.json.pending``,
   stamped, and the newer of it and the file applies at the next launch, so the
-  policy never comes back looser offline; a launcher record being written, or
-  still owed, has its writer's marker beside it (``launcher_records``): the
-  launcher fails closed while one is there, and a window takes over a marker its
-  writer stopped refreshing (it quit), writing the newest change but never
-  looser than its own value. The connections go back to what the window last
+  policy never comes back looser offline. The connections go back to what the window last
   read and keep a removed connection's key, chats and sign-in; an engine plugin
   install (staged in the project's ``.angelo`` folder, which no engine imports,
   or hidden beside the plugin when that is on another volume) puts the older
@@ -6654,8 +6650,12 @@ every skip; ``--shard K/N`` runs the Kth of N slices of the sorted files. The
 skip fails the build: the whole suite in one process on Linux, and in four
 parallel shards on Windows. Platform skips (a POSIX-only feature, a tool only
 the macOS workstation has) carry ``host_test_policy.environment_skip`` and are
-listed and counted apart; every other skip fails. Host CI does not replace the
-native or GUI suites.
+listed and counted apart; every other skip fails. Those others (a dependency CI
+installs, code the branch must contain) carry ``required_skip``, which leaves
+the reason unclassified. ``test_native_host_skip_reasons.py`` reads every host
+file's source and fails on an unmarked reason, or a platform-conditioned one
+that isn't environmental, so a skip that fires only on one platform's shard
+fails on all of them. Host CI does not replace the native or GUI suites.
 
 **Shared benchmark machines.** A machine that runs timed benchmark trials holds
 ``/tmp/angelo-billed.lock`` for each run: a directory whose ``owner`` file holds
@@ -7117,6 +7117,37 @@ which need ``.exe`` or npm-shaped stand-ins; the external CLI (no Windows
 transport yet); the instruction ratchet (macOS counters); and the full release
 configuration (Cycles and the other release features are off in Lite).
 
+Script approvals
+================
+
+A script's approval card offers three choices (2.0.1; the maintainer, 2026-11-18: "Shouldn't it be per session? User
+can decide for themselves each time."), in every chat, a connected app's External conversation included (every script
+there is Angelo's own agent's in 2.0.1):
+
+* **Run once** (the primary button; "Review & run once" until the person opened the code): this exact text, once.
+* **Allow for this session**: Trust scripts for this chat (below), with exactly the Approval Policy menu's rule:
+  any mode but Read only (a worker chat Auto only), until Angelo restarts, the chat's document changes or a new chat
+  starts; in memory only, held in C (``TRUSTED_CHATS``) from the person's press (``session_allow_script``). It is the
+  conversation's, so an External conversation's ends the same way. Offered while it does not cover the chat already.
+* **Always allow**: the person's Always allow scripts (below), persistent, covering Auto chats only, as before. A
+  consent saved by 2.0.1 or later records that it covers connected apps' chats too (``"external": true``, held in
+  C as ``always_allow`` key ``external``); one saved by 2.0.0 keeps covering the person's own chats but never
+  silently starts covering an External conversation: its first script there shows the card, whose Always allow
+  names connected apps' chats, and that press widens the saved consent (``always_allow.cover_external``).
+
+Neither ever covers code an app sends itself (``trusted_scripts.app_supplied``: a connected app's own tool call): it
+always gets the person's exact-code review, so a consent given for Angelo's agent never reaches an app's code (the
+break-it review's M2; the 2.0.1 MCP change removes apps' direct tools as well), and its card offers neither. An
+External conversation's session trust also ends when its app is disconnected or connected again (a new key)
+(``_app_identity``, S3): revoked, in Python and in C, never only suspended. Only the person's own press turns one on, through the C grant authority
+(``grant_authority``): an agent script, an add-on or an app can never set or request one. Consent tokens are checked at admission and again at dispatch, so
+turning one off reaches queued scripts. A script that names preferences, Angelo's add-on or a file-replacing operator
+always asks (``consent_exclusion``), and ``AllowAutoApproval`` off wins. While one runs the chat's scripts unasked, a
+line over the composer says so ("Scripts in this chat run without asking for this session · Turn off";
+``chat_cards.standing_line``), and its Turn off ends it. The Approvals popover's footer states the chat's rule
+(``chat_cards.script_rule``). Receipts record the consent (``chat_session``, ``always_allow``, ``script_file`` or
+``exact_code_review``) and, in an External conversation, ``consent_app``: the app's client.
+
 Trusted scripts for an open chat
 ================================
 
@@ -7135,7 +7166,7 @@ scene Undo guarantee, and Stop cannot interrupt atomic Python.
 Consent exists only in the Controller's memory, defaults off, and is not saved
 in options, preferences, project data or transcripts. Auto bounded edits never
 grants script trust. Restart, New Chat, document invalidation and Read Only
-clear it; the same menu revokes it. Already queued scripts require manual review.
+clear it; the same menu and the chat's Turn off revoke it, and a script card's Allow for this session turns it on. Already queued scripts require manual review.
 Managed ``AllowAutoApproval`` / organization ``allowAutoApproval`` can disable
 script trust; effective policy is checked at dispatch. Script calls carry no
 consent argument. Exact-code manual approval runs once through the same executor
@@ -7249,9 +7280,8 @@ Always allow scripts
 The person's persistent, explicit opt-in, MCP's "Always allow" for scripts.
 Scripts run with access to files, the network and the scene on this computer,
 under the runtime confinement (``script_confinement.rst``): never Angelo's private
-state, grants, other programs or native code. It never covers an External conversation (a connected app's), whose
-one standing consent is narrower: one script file the person allowed while it
-is unchanged (``external_mcp.rst``, "Script files"; consent ``script_file``).
+state, grants, other programs or native code. Since 2.0.1 it covers an External conversation (a connected app's) as
+any Auto chat (`Script approvals`_).
 
 * **Stored** in Angelo's state folder (``always-allow-scripts.json``, off by
   default; a missing or unreadable file is off): per user and install, never in

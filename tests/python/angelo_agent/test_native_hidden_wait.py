@@ -152,7 +152,7 @@ class HiddenWait(unittest.TestCase):
 
 class HiddenSurfaces(unittest.TestCase):
     def test_external_subset_includes_the_hidden_active_chat(self):
-        from angelo_agent.external_apps import waiting
+        from angelo_agent.external_agent import waiting
         a, b = chat("a"), chat("b")
         a.external_client = "external"
         self.assertEqual(waiting([a, b], "a", chat_shown=False), [("external", "a")])

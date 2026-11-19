@@ -31,9 +31,8 @@ from angelo_agent import (library_agent, library_catalog, library_fetch, library
                           plan_schema, private_roots)
 from angelo_agent.approvals import approval_message  # noqa: E402
 from angelo_agent.controller import Controller  # noqa: E402
-from angelo_agent.external_clients import (EDIT, READ, EDIT_TOOLS, HEADLESS_TOOLS, NEVER_FOR_APPS,  # noqa: E402
-                                          READ_TOOLS, WINDOW_ONLY_EDITS, tools_for)
-from angelo_agent.external_requests import PHASE1_READ_TOOLS  # noqa: E402
+from angelo_agent.external_clients import NEVER_FOR_APPS  # noqa: E402
+from angelo_agent import windowless_tools  # noqa: E402
 from angelo_agent.library_spec import (IMPORT, LIBRARY_EFFECTS, LIBRARY_GUIDANCE, LIBRARY_NAMES,  # noqa: E402
                                        LIBRARY_TOOLS, SEARCH, compact)
 from angelo_agent.team_library_files import ImportFailed, NotImported  # noqa: E402
@@ -189,16 +188,10 @@ class PlacementTests(unittest.TestCase):
         self.assertLessEqual(LIBRARY_NAMES, plan_schema.DEFERRED_TOOLS)
         self.assertFalse(LIBRARY_NAMES & BOUNDED_MUTATIONS, "an import always shows its card, Auto included")
         self.assertFalse(LIBRARY_NAMES & COLLABORATOR_TOOLS)
-        self.assertFalse(LIBRARY_NAMES & PHASE1_READ_TOOLS)
         self.assertFalse(LIBRARY_NAMES & NEVER_FOR_APPS)
-        self.assertIn(SEARCH, READ_TOOLS)
-        self.assertNotIn(IMPORT, READ_TOOLS)
-        self.assertIn(IMPORT, EDIT_TOOLS)
-        self.assertEqual(LIBRARY_NAMES & tools_for((READ,)), {SEARCH})
-        self.assertEqual(LIBRARY_NAMES & tools_for((READ, EDIT)), LIBRARY_NAMES)
-        self.assertIn(IMPORT, WINDOW_ONLY_EDITS)
-        self.assertNotIn(IMPORT, HEADLESS_TOOLS)
-        self.assertEqual(LIBRARY_NAMES & tools_for((READ, EDIT), headless=True), {SEARCH})
+        self.assertIn(SEARCH, windowless_tools.READS)
+        self.assertIn(IMPORT, windowless_tools.WINDOW_ONLY)   # Its card is the window's.
+        self.assertEqual(LIBRARY_NAMES & windowless_tools.TOOLS, {SEARCH})
         self.assertFalse({t["name"] for t in dynamic_tools()} & LIBRARY_NAMES, "voice threads never declare it")
         self.assertFalse({t["name"] for t in dynamic_tools(frozenset(TOOL_MAP))} & LIBRARY_NAMES)
 

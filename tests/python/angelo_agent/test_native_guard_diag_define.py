@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 NAME = "ANGELO_GUARD_DIAG_NO_INSTALL"
@@ -96,7 +97,7 @@ class FailsClosedTests(unittest.TestCase):
         refusal = (INTERN / "bpy_angelo_guard_confine_run.cc").read_text(encoding="utf-8")
         self.assertRegex(refusal, r"static const char DIAG_REFUSAL\[\] =[^;]*%s" % re.escape(MARKER))
 
-    @unittest.skipUnless(shutil.which("cmake"), "cmake is not installed")
+    @unittest.skipUnless(shutil.which("cmake"), required_skip("cmake is not installed"))
     def test_a_release_configure_refuses_it(self):
         block = _diag_block()
         self.assertIn("FATAL_ERROR", block)

@@ -559,10 +559,27 @@ static PyObject *jobs_close_dialog_texts(PyObject * /*self*/, PyObject * /*args*
   return result;
 }
 
+/** The editors' regions' buttons and the window's global areas' (the status bar's notices, the top
+ * bar's): a status-bar button is none of the screen's areas, so a GUI proof never found one. */
+static Vector<ui::PopupButtonPlace> window_area_button_places(const wmWindow &win,
+                                                              const bScreen *screen)
+{
+  Vector<ui::PopupButtonPlace> places = ui::area_button_places(screen);
+  places.extend(ui::global_area_button_places(win.global_areas));
+  return places;
+}
+
+static Vector<ui::PopupButtonPlace> window_popup_button_places(const wmWindow & /*win*/,
+                                                               const bScreen *screen)
+{
+  return ui::popup_button_places(screen);
+}
+
 /** `popup_buttons` and `region_buttons`: every button of the open popups, or of the editors'
- * regions. */
+ * regions and the window's global areas. */
 static PyObject *button_places(const char *function,
-                               Vector<ui::PopupButtonPlace> (*places)(const bScreen *))
+                               Vector<ui::PopupButtonPlace> (*places)(const wmWindow &,
+                                                                      const bScreen *))
 {
   if (!require_main_thread() || !require_event_simulate(function)) {
     return nullptr;
@@ -578,7 +595,7 @@ static PyObject *button_places(const char *function,
     if (screen == nullptr) {
       continue;
     }
-    for (const ui::PopupButtonPlace &place : places(screen)) {
+    for (const ui::PopupButtonPlace &place : places(win, screen)) {
       PyObject *item = Py_BuildValue("(Ns#s#s#ffff)",
                                      PyLong_FromVoidPtr(&win),
                                      place.block.data(),
@@ -606,7 +623,7 @@ static PyObject *button_places(const char *function,
 
 static PyObject *jobs_popup_buttons(PyObject * /*self*/, PyObject * /*args*/)
 {
-  return button_places("popup_buttons", ui::popup_button_places);
+  return button_places("popup_buttons", window_popup_button_places);
 }
 
 /** `menu_as_agent(name)`: the menu opened as an agent script would open it (this thread confined
@@ -691,7 +708,7 @@ static PyObject *jobs_refresh_popups(PyObject * /*self*/, PyObject * /*args*/)
 
 static PyObject *jobs_region_buttons(PyObject * /*self*/, PyObject * /*args*/)
 {
-  return button_places("region_buttons", ui::area_button_places);
+  return button_places("region_buttons", window_area_button_places);
 }
 
 static PyObject *jobs_quit_request_simulate(PyObject * /*self*/, PyObject * /*args*/)

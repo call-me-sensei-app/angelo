@@ -14,7 +14,8 @@ this module copies that model's entry from the runtime's own bundled catalog
 into the connection's isolated Codex profile and passes it as
 ``model_catalog_json``. Unmapped models stay on the generic fallback; so does
 every model when the runtime can't list its catalog (an older or the person's
-own Codex): the chat still runs, with Codex's defaults.
+own Codex): the chat still runs, with Codex's defaults. A runtime C refuses to start is no catalog either: the
+refusal propagates (``PermissionError``), the catalog already written stays, and the endpoint check reports it.
 
 The catalog holds model metadata only, never a key or address. The runtime's
 catalog is read once per executable (path, size and modification time).
@@ -46,7 +47,8 @@ def _signature(executable):
 
 def bundled(executable, home, run=None):
     """``{slug: entry}`` of ``executable``'s bundled catalog; empty when it can't list one. ``home``: the isolated
-    Codex profile it runs in, so no configuration of the person's is read."""
+    Codex profile it runs in, so no configuration of the person's is read. ``PermissionError`` when C refuses to start
+    it (``owned_paths.require_runnable``, its message saying why): never cached, never read as "no catalog"."""
     signature = _signature(executable)
     if signature is None:
         return {}
@@ -59,6 +61,8 @@ def bundled(executable, home, run=None):
         completed = run([program, "debug", "models", "--bundled"], capture_output=True, timeout=LIST_SECONDS,
                         stdin=subprocess.DEVNULL, env=_quiet_environment(home))
         value = json.loads(completed.stdout) if completed.returncode == 0 else None
+    except PermissionError:   # C refused to start it: the caller reports why (the re-review of 4be92cfb84f, N-2).
+        raise
     except (OSError, ValueError, subprocess.SubprocessError):
         value = None
     models = value.get("models") if isinstance(value, dict) else None
@@ -85,7 +89,9 @@ def entries(spec, catalog):
 
 
 def write(executable, spec, home, run=None):
-    """The catalog file for ``spec`` in Codex profile ``home``, or None when no model has an entry."""
+    """The catalog file for ``spec`` in Codex profile ``home``, or None when no model has an entry. A runtime C refuses
+    to start raises ``PermissionError`` before anything is removed: the launch it is for is refused with that
+    message."""
     owned_paths.require_writable(home)
     models = entries(spec, bundled(executable, home, run))
     path = Path(home) / FILE_NAME

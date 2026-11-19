@@ -186,6 +186,15 @@ SUITES = (
           Report("report-untranslated.json"), timeout=120,
           notes="Saves and reopens one small .blend in its QA folder; a Python render engine raises translated and English errors."),
 
+    Suite("test_blender_external_visibility.py", BACKGROUND,
+          "MCP visibility readers on real bpy: every window-state section, Edit Mode counts, scene cameras and orbits "
+          "as free cameras that angelo_view accepts", marker="EXTERNAL VISIBILITY ON BPY: OK", timeout=120),
+
+    Suite("test_blender_external_state.py", BACKGROUND,
+          "angelo_state's tool section on real RNA in every context mode of the workspace-tool enum (an object of "
+          "each kind in each mode): Blender's own context mode, nothing unavailable, each paint mode's brush with "
+          "the size its own paint settings apply", marker="EXTERNAL STATE ON BPY: OK", timeout=180),
+
     Suite("test_blender_script_kit.py", BACKGROUND,
           "The reviewed-script kit: exact solids, cuts that refuse what they cannot prove, rows, self-checks",
           Report("results.json")),
@@ -592,6 +601,11 @@ SUITES = (
           "grant or write private or startup files are refused; timers, draw handlers, handlers, driver functions "
           "and load-time texts a script leaves are confined; Angelo keeps its access; cost measured",
           Report("script-confinement.json"), timeout=300),
+    Suite("test_blender_runtime_symlink.py", BACKGROUND,
+          "A CLI runtime reached through a symbolic link (an installer's ~/.local/bin/claude -> versions/X), on PATH or "
+          "as the Preferences pick, still starts after an agent script ran; a link retargeted later is refused; a "
+          "refused start says so, never \"too old\"",
+          Report("runtime-symlink.json"), timeout=120, notes="Stand-in CLIs; no provider, account or network."),
     Suite("test_blender_update_confined.py", BACKGROUND,
           "The self-update's files against a confined script: an offer whose version a script changed in place to "
           "name Angelo's state removes nothing when withdrawn, a script writes nothing in the updates folder, and "
@@ -641,6 +655,12 @@ SUITES = (
           timeout=180, serial=True,
           notes="The independent review of 9c8b4e57077 (its MUST): the composer's approval popover's Approve for me "
                 "row, opened by the person's press. No provider, account or network."),
+    Suite("test_blender_status_bar_buttons.py", GUI,
+          "A GUI proof finds a button the status bar draws (a window's global area, no screen's): the waiting app's "
+          "notice is listed with its place in the bottom bar",
+          Report("status-bar-buttons.json", require_complete_phase=True), event_simulate=True, timeout=120,
+          notes="The 2.0.1 candidate proofs: every status-bar notice proof had fallen back to opening the chat. No "
+                "provider, account or network."),
     Suite("test_blender_fast_press.py", GUI,
           "A press before a grant control armed does nothing, quietly: the control shows a hint, no error shows, and "
           "a small move inside it then a press grants; on the chat canvas and on Blender's own menu item",
@@ -724,6 +744,14 @@ SUITES = (
     Suite("test_blender_restore_keeps_file_gui.py", GUI,
           "After a Restore: the title bar, the Save question, the close dialog, the update card and the quit prompt",
           Report("restore-keeps-file-gui.json", require_complete_phase=True), event_simulate=True, serial=True),
+    Suite("test_blender_update_restart_settle.py", GUI,
+          "Restart to Update's hand-over with Blender's real save timing, Director: Save hands over once with the "
+          "file read as saved and its stamp still matching later; Don't Save hands over once with a matching stamp; "
+          "an edit right after the save never hands over and says Angelo did not restart",
+          Report("update-restart-settle.json", require_complete_phase=True), default_chat=True, timeout=300,
+          platforms=("darwin", "linux"), platform_reason=POSIX_STAND_IN_CLIS,
+          notes="launch is a recorder: no installer runs and Angelo does not quit. Stand-in claude/codex CLIs "
+                "(fake_provider_cli.py) answer start-up sign-in checks; no account or inference."),
     Suite("test_blender_compiled_core.py", BACKGROUND, "Compiled RNA, editor buffers and save/load",
           Report("compiled-core.json")),
     Suite("test_blender_compiled_gui.py", GUI, "Compiled editor picker, bootstrap, docking and drops",
@@ -1630,46 +1658,6 @@ SUITES = (
           platform_reason="Angelo's MCP launcher uses the CLI's Unix socket, which Windows refuses to open (no named "
                           "pipe yet, external_mcp.rst), and the fixture runs the macOS app bundle's Python.",
           notes="Host-Python driver; launches one GUI process with --enable-event-simulate itself. No provider."),
-    Suite("test_blender_headless_script_files.py", GUI, "Headless Python in a real Angelo --background child: an "
-          "approved script file runs and is saved, a changed one is refused with how to approve, approved again it "
-          "runs; team and machine policies (AllowLocalCLIAccess, RequireAskForEdits, AllowAutoApproval) hold",
-          Report("fixture/headless-script-files.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
-          timeout=420, platforms=("darwin",),
-          platform_reason="Headless sessions are macOS first (external_mcp.rst, \"Headless\"), and the fixture runs "
-                          "the macOS app bundle's Python.",
-          notes="Real launcher and child, private HOME, state and connections; no provider, account or network."),
-    Suite("test_blender_headless_script_document.py", GUI, "Headless MCP child: an always-allowed script file "
-          "that names a file load (read_homefile, another .blend) is refused before it runs; one that hides it (a "
-          "computed name) is refused as DOCUMENT_REPLACED with nothing saved and the session's file loaded again; "
-          "the same child then runs and saves the next file",
-          Report("fixture/headless-script-document.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
-          timeout=420, platforms=("darwin",),
-          platform_reason="Headless sessions are macOS first (external_mcp.rst, \"Headless\"), and the fixture runs "
-                          "the macOS app bundle's Python.",
-          notes="Real launcher and child, private HOME, state and connections; no provider, account or network."),
-    Suite("test_blender_headless_preferences.py", GUI, "Headless children load the person's preferences read-only: "
-          "add-ons, script folders and render device as in the window; userpref.blend and the source byte-identical "
-          "with add-ons that save on load, save and depsgraph updates; corrupt preferences fall back to factory "
-          "settings and say so; a failing add-on is named; team and machine policies hold",
-          Report("fixture/headless-preferences.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
-          timeout=420, platforms=("darwin",),
-          platform_reason="Headless sessions are macOS first (external_mcp.rst, \"Headless\"), and the fixture runs "
-                          "the macOS app bundle's Python.",
-          notes="Real launcher and children in the background, private HOME, state and connections; no provider."),
-    Suite("test_blender_headless_mcp.py", GUI, "Headless MCP: the launcher's background child on a real .blend",
-          Report("fixture/headless-mcp.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture", "--gui"),
-          timeout=420, platforms=("darwin",),
-          platform_reason="Headless sessions are macOS first (external_mcp.rst, \"Headless\"), and the fixture runs "
-                          "the macOS app bundle's Python.",
-          notes="Host-Python driver: background children and, for --gui, one window behind others. No provider."),
-    Suite("test_blender_headless_native_commits.py", GUI, "Native commits in a real headless child: an APPLY "
-          "program and an APPLY recipe each publish one Undo step and are saved, on the first load, after a reload "
-          "and after a restart on the output (--resume); the opened file has no unsaved changes",
-          Report("fixture/headless-native-commits.json"), host_args=("--binary", "{binary}", "--out", "{qa}/fixture"),
-          timeout=420, platforms=("darwin",),
-          platform_reason="Headless sessions are macOS first (external_mcp.rst, \"Headless\"), and the fixture runs "
-                          "the macOS app bundle's Python.",
-          notes="Real launcher and children in the background, private HOME, state and connections; no provider."),
     Suite("test_blender_autosave_passive_flags.py", BACKGROUND,
           "The build has the MODAL_PASSIVE operator option, every registered Angelo canvas input and passive overlay "
           "carries it and no holding tool does, and auto-save writes <pid>_autosave.blend in the temp folder",
@@ -2312,6 +2300,11 @@ SUITES = (
           Report("view-sources.json", require_complete_phase=True), timeout=600,
           notes="Tiny in-memory images and meshes and one small EEVEE render; stand-in conversation, no provider "
                 "or account."),
+    Suite("test_blender_external_window_gui.py", GUI, "An app's MATERIAL and LIT looks on cold shaders, a look "
+          "failing mid-capture and the window picture change no data-block, the unsaved flag, Undo, shading, "
+          "selection or mode; the window picture draws only its 3D viewports",
+          Report("external-window.json", require_complete_phase=True), timeout=300,
+          notes="A fresh material per run, so EEVEE compiles its shaders during the looks. No provider or account."),
     Suite("test_blender_rendered_view_safety.py", GUI, "A RENDERED look leaves the scene, settings, preferences, "
           "Render Result and files as they were, stays inside its time budget, and stops on Cancel",
           Report("rendered-view-safety.json", require_complete_phase=True), timeout=600,

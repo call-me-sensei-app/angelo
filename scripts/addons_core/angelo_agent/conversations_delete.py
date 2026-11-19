@@ -79,6 +79,8 @@ def delete(ui, session_id, *, switch, dismiss_tile=None):
     if dismiss_tile is not None and parallel_sessions.is_worker(session_id):
         dismiss_tile(session_id)
     controller = ui._controllers.pop(session_id, None)
+    from .external_settings import record_deleted   # An app's next conversation starts no looser than this one.
+    record_deleted(ui.state_directory(), session_id, controller)
     if controller is not None:
         controller.close()   # Its last save; nothing writes its file after this.
         collection.update(controller.state)

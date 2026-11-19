@@ -9,6 +9,24 @@ The format is checked by `scripts/angelo/changelog.py` and described in
 [the updates and reports contract](doc/angelo/updates_and_reports.rst). Add the new release at the
 top; run `python3 scripts/angelo/changelog.py export` after editing.
 
+## 2.0.1 — 2026-11-18
+Based on Blender 5.3.0.
+
+Angelo 2.0.1 lets you choose how scripts from Claude Code, Codex and other connected apps are approved, and fixes Save and Restart for updates.
+
+### Highlights
+- Script approval cards offer Run once, Allow for this session and Always allow, also for Claude Code, Codex and other connected apps.
+- One click on Approve approves, also while the agent or a connected app keeps working.
+- Save and Restart now completes an update instead of stopping with "The update could not start".
+
+### Improved
+- Allow for this session works like Trust scripts for this chat: this chat's scripts run without asking until Angelo restarts or you start a new chat.
+- While scripts run without asking, the chat says so and offers Turn off.
+- Always allow still covers only chats set to Approve for me, and your organization's policy still applies. Scripts that touch your preferences or Angelo itself, or that would replace the open file, always ask.
+
+### Fixed
+- The Approvals menu opens above its button instead of off to the side, and says how this chat's scripts are approved.
+
 ## 2.0.0 — 2026-11-13
 Based on Blender 5.3.0.
 

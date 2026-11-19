@@ -25,8 +25,6 @@ class CommittedQuitTests(unittest.TestCase):
         self.m = self.n.update_restart
         self.m._installer = None
         self.addCleanup(setattr, self.m, '_installer', None)
-        for name in ('depsgraph_update_post', 'load_pre', 'save_pre', 'undo_pre', 'redo_pre'):
-            setattr(self.n.bpy.app.handlers, name, [])
         self.owner = object()
         self.events = []
         self.exited = False
@@ -42,10 +40,13 @@ class CommittedQuitTests(unittest.TestCase):
         self.record = dict(process=self.process, owner=self.owner, native=self.native, invocation=NONCE,
                            live=self.live, ready=SimpleNamespace(work='unused'), offer=object(), changed=False,
                            original_closed=False, stopping=False, drain_started=None, kill_attempted=False,
-                           started=self.m.time.monotonic(), stamp=('stamp',), catalog_generation=17)
+                           started=self.m.time.monotonic(), stamp=None, catalog_generation=17)
+        # The real stamp over the stand-in's data, never a constant: a constant hid the 2026-11-18 defect (a stamp
+        # taken before Blender marked a save no longer matched at the helper's readiness).
+        self.n.bpy.data.filepath, self.n.bpy.data.is_dirty = "/work/castle.blend", False
+        self.record['stamp'] = self.m._document_stamp()
         self.m._installer = self.record
-        self.patches = [mock.patch.object(self.m, '_document_stamp', return_value=('stamp',), create=True),
-                        mock.patch.object(self.m, '_other_instances', return_value=[]),
+        self.patches = [mock.patch.object(self.m, '_other_instances', return_value=[]),
                         mock.patch.object(self.m.work_guard, 'reasons', return_value=[]),
                         mock.patch.object(self.m.update_install, 'ready', return_value=True),
                         mock.patch.object(self.m, '_not_started')]
@@ -108,6 +109,17 @@ class CommittedQuitTests(unittest.TestCase):
     def test_native_schema_bool_is_not_version_one(self):
         self.record['original_closed'] = True
         self.native._update_quit_status = lambda owner: dict(schema=True, phase='PENDING', channel_closed=False)
+        self.assertIs(self.m._confirm_installer_quit(NONCE), False)
+
+    def test_the_document_as_it_reads_at_readiness_decides(self):
+        """The stamp is the document's real state: one taken while a save's notifier was still to come (the file read
+        as modified) no longer matches once Blender marks the save, which is why the hand-over takes it settled
+        (update_restart_handoff.launch_when_settled)."""
+        self.record['original_closed'] = True
+        self.assertIs(self.m._confirm_installer_quit(NONCE), True)
+        self.n.bpy.data.is_dirty = True
+        self.record['stamp'] = self.m._document_stamp()   # Taken right after a save call: still reads modified.
+        self.n.bpy.data.is_dirty = False                  # Blender's notifier marks the save.
         self.assertIs(self.m._confirm_installer_quit(NONCE), False)
 
     def test_document_change_revokes_the_prior_discard_decision(self):
@@ -233,6 +245,32 @@ class CommittedQuitTests(unittest.TestCase):
         self.m._stand_down(self.record)
         self.assertNotIn(('live', None), self.events)
         self.assertIs(self.m._installer, self.record)
+
+
+class OneWayIntoTheHandOver(unittest.TestCase):
+    """Every path that records the hand-over's document stamp reads the settled document: ``launch`` is reached only
+    through ``update_restart_handoff.launch_when_settled`` (the 2026-11-18 defect was one path that did not)."""
+
+    ADDON = Path(__file__).resolve().parents[3] / 'scripts/addons_core/angelo_agent'
+
+    def calls(self, filename, name):
+        import ast
+        tree = ast.parse((self.ADDON / filename).read_text(encoding='utf-8'))
+        found = []
+        for function in ast.walk(tree):
+            if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for node in ast.walk(function):
+                    if isinstance(node, ast.Call) and ast.unparse(node.func) == name:
+                        found.append(function.name)
+        return found
+
+    def test_the_restart_module_never_calls_launch_itself(self):
+        self.assertEqual(self.calls('update_restart.py', 'launch'), [])
+        self.assertEqual(self.calls('update_restart.py', 'handoff.launch'), ['launch'])   # The module's delegate.
+
+    def test_the_hand_over_launches_only_once_settled(self):
+        self.assertEqual(sorted(set(self.calls('update_restart_handoff.py', 'restart.launch'))),
+                         ['launch_when_settled', 'settled'])
 
 
 class InstallerChannelTests(unittest.TestCase):

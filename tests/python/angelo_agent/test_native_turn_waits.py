@@ -23,7 +23,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/addons_core"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from angelo_agent import (claude_direct, codex_plan, external_mcp, providers, runtime_launch, session_rail,  # noqa: E402
+from angelo_agent import (claude_direct, codex_plan, providers, runtime_launch, session_rail,  # noqa: E402
                           steering, tool_deadlines, turn_end, worker_mirror_events)
 from angelo_agent.controller import ToolDispatchBudget  # noqa: E402
 from angelo_agent.protocol import RpcError  # noqa: E402
@@ -169,31 +169,6 @@ class ClaudeDirectRouteTests(unittest.TestCase):
         environment = claude_direct.SESSION_ENVIRONMENT
         self.assertGreater(int(environment["MCP_TOOL_TIMEOUT"]) / 1000, max(provider_seconds(name) for name in TOOL_MAP))
         self.assertEqual(environment["CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS"], "0")
-
-
-class ExternalAppTests(unittest.TestCase):
-    def waited(self, name):
-        """How long the launcher waits on Angelo's "pending" before it tells the app it is still waiting."""
-        clock = Clock()
-        directory = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        server = external_mcp.Server("fixture", directory.name)
-
-        def request(request, wait):
-            clock.now += wait
-            return {"code": "pending"}
-        with patch.object(server, "request", side_effect=request), \
-                patch.object(server, "_cancelled_request", return_value=False), \
-                patch.object(server, "_progress", return_value=None), \
-                patch.object(external_mcp, "time", SimpleNamespace(monotonic=clock.monotonic)):
-            result = server.call("identity", {"name": name, "arguments": {}})
-        self.assertIn("Still waiting in Angelo", json.dumps(result))
-        return clock.now
-
-    def test_an_app_waits_at_least_as_long_as_angelo_holds_each_call(self):
-        for name in ("angelo_execute_python", "angelo_studio_generate", "angelo_flow_run", "angelo_inspect_scene"):
-            with self.subTest(name=name):
-                self.assertGreaterEqual(self.waited(name), max(external_mcp.CALL_DEADLINE, provider_seconds(name)))
 
 
 class TurnEndTests(RevocationFixture):

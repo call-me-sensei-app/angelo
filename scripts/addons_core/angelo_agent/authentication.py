@@ -127,6 +127,8 @@ class NativeAuthentication:
                     logged_in = login and process.returncode == 0
             except subprocess.TimeoutExpired:
                 status = "Native sign-in/status check timed out"
+            except PermissionError as error:   # C refused to start it: its message says why (owned_paths).
+                status = str(error)
             except Exception:
                 status = "Native runtime unavailable; check its executable path"
             finally:

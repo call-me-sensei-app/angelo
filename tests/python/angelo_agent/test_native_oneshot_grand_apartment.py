@@ -14,6 +14,7 @@ import math
 import re
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -131,7 +132,7 @@ class SentTextLimitTests(unittest.TestCase):
     def test_the_product_limit_is_still_32000_characters(self):
         controller = HERE.parents[2] / "scripts" / "addons_core" / "angelo_agent" / "controller.py"
         if not controller.is_file():
-            self.skipTest("the add-on is not in this tree")
+            self.skipTest(required_skip("the add-on is not in this tree"))
         self.assertIn("len(text) > %d" % self.PRODUCT_LIMIT, controller.read_text(encoding="utf-8"))
 
     def test_every_long_brief_as_sent_fits_with_margin_in_both_arms(self):

@@ -16,7 +16,7 @@ Standard library only; no bpy, no I/O.
 WORKER_PREFIX = "angw-"
 LEGACY_WORKER_PREFIX = "angelo-worker-"
 FAB_BROWSER_PREFIX = "angelo-fab-browser-"  # Own browser credential profiles, including crashed leftovers.
-HEADLESS_PREFIX = "angelo-headless-"   # headless_session: a headless session's state, accounts and preferences.
+HEADLESS_PREFIX = "angelo-headless-"   # 2.0.0's headless MCP children (removed in 2.0.1): folders crashed ones left.
 
 # Every other temporary or scratch folder Angelo makes (round 7 M-4: a converter's batch holds private prompts), by
 # its creator.
@@ -38,6 +38,7 @@ SCRATCH_PREFIXES = (
     "angelo-merge-check-",
     "angelo-render-",
     "angelo-endpoint-check-",   # endpoint_ui: Test connection lists the runtime's catalog in an isolated profile.
+    "angelo-app-attach-",   # external_attach: a connected app's image attachments, decoded before their import.
 )
 
 # (prefix, parent or None for the temporary folder) of every family.

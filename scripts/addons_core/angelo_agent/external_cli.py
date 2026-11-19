@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import external_cli_protocol as protocol
-from . import owned_paths, product_env
+from . import external_build, owned_paths, product_env, swallowed_errors
 
 # Private runtime directory and socket names. Renamed with the product; the CLI
 # finds the socket through the endpoint record, never by guessing this name.
@@ -44,7 +44,12 @@ MAX_HELLO_BYTES = 16 * 1024
 
 
 class TransportUnavailable(RuntimeError):
-    """A human-readable reason local CLI access cannot listen."""
+    """A human-readable reason local CLI access cannot listen; ``holder`` is ``(version, pid)`` of another Angelo
+    build that has it (``external_build``), for the panel to name."""
+
+    def __init__(self, message, holder=None):
+        super().__init__(message)
+        self.holder = holder
 
 
 @dataclass(frozen=True)
@@ -58,11 +63,16 @@ class Peer:
 class ClientInfo:
     label: str
     peer: Peer
-    # A connected MCP app's allowed levels (external_clients), proven by its own key; None for a phase-1 CLI
-    # client, which stays read-only.
-    levels: object = None
-    # A headless session's own child (external_mcp.rst "Headless"): reads and bounded edits only, nothing that waits.
-    headless: bool = False
+    # A connected MCP app (external_clients), proven by its own key: it talks to Angelo's agent and never calls a
+    # tool. False for a client without a key, which reads status only.
+    app: bool = False
+    # Which key the app proved (``key_id``): its commands run only while that is still its key (ExternalHost.drain).
+    key: str = ""
+
+
+def key_id(key):
+    """A short identity of an app's key, never the key: equal for the same key, different after a reconnect."""
+    return hashlib.sha256(b"angelo-app-key-id/1" + bytes(key)).hexdigest()[:32] if key else ""
 
 
 def peer_credentials(sock):
@@ -158,10 +168,13 @@ class LocalCliServer:
     """Owns the socket, endpoint record and connection threads; never ``bpy``."""
 
     def __init__(self, state_directory, handler, *, runtime_directory=None, peer_lookup=peer_credentials,
-                 max_connections=MAX_CONNECTIONS, frame_timeout=protocol.FRAME_TIMEOUT, describe=None, apps=None):
+                 max_connections=MAX_CONNECTIONS, frame_timeout=protocol.FRAME_TIMEOUT, describe=None, apps=None,
+                 reserved=None):
         self.state_directory = Path(state_directory)
-        # name -> (levels, key) of the connected MCP apps (external_clients.AppRegistry.snapshot), read per hello.
+        # name -> key of the connected MCP apps (external_clients.AppRegistry.snapshot), read per hello.
         self.apps = apps or (lambda: {})
+        # Every connected app's name, its key readable or not: never a keyless client's label.
+        self.reserved = reserved or (lambda: frozenset())
         self.handler = handler
         self.runtime_directory = Path(runtime_directory) if runtime_directory else None
         self.peer_lookup = peer_lookup
@@ -217,7 +230,7 @@ class LocalCliServer:
             listener.settimeout(0.2)
             write_endpoint(endpoint, {"cli_protocol": protocol.CLI_PROTOCOL, "socket": str(socket_path),
                                       "pid": os.getpid(), "instance": instance, "token": token.hex(),
-                                      "created": time.time()})
+                                      "created": time.time(), **external_build.identity()})
             owned_paths.own(endpoint)
         except OSError as error:
             listener.close()
@@ -249,8 +262,9 @@ class LocalCliServer:
             raise TransportUnavailable(f"Refusing an unsafe endpoint record: {error}. Remove it manually.") from error
         if existing is not None:
             pid = existing["pid"]
-            if pid != os.getpid() and process_alive(pid):
-                raise TransportUnavailable(f"Another Angelo process (PID {pid}) provides local CLI access for this profile")
+            if pid != os.getpid() and process_alive(pid):   # Never taken from it: the person quits it or turns it off.
+                version = external_build.holder_version(existing)
+                raise TransportUnavailable(external_build.holder_note(version, pid), holder=(version, pid))
             endpoint.unlink()  # A dead process's (or this process's leftover) record.
         try:
             info = os.lstat(socket_path)
@@ -379,18 +393,20 @@ class LocalCliServer:
             if refusal is not None:
                 protocol.send_frame(connection, {"type": "error", "envelope": refusal}, 64 * 1024, self.frame_timeout)
                 return
-            welcome = {"type": "welcome", "cli_protocol": protocol.CLI_PROTOCOL,
+            welcome = {"type": "welcome", "cli_protocol": protocol.CLI_PROTOCOL, **external_build.identity(),
                        "server_proof": protocol.server_proof(token, server_nonce, hello["client_nonce"])}
             welcome.update({key: value for key, value in self.describe().items() if key not in welcome})
             protocol.send_frame(connection, welcome, 64 * 1024, self.frame_timeout)
             request = protocol.recv_frame(connection, protocol.MAX_REQUEST_BYTES, self.frame_timeout)
-            client = ClientInfo(hello["client"], peer, app[0] if app else None)   # The record the proof was checked against.
+            client = ClientInfo(hello["client"], peer, app is not None, key_id(app))   # The key the proof was checked
+            # against: a command it queued runs only while that is still the app's key.
             if request.get("type") != "request":
                 response = protocol.envelope("invalid", "Expected one request frame after the handshake")
             else:
                 try:
                     response = self.handler(request, client)
                 except Exception as error:  # A service defect must still answer, never hang or print.
+                    swallowed_errors.report("the CLI service failed a request", error, quiet=True)   # Tests fail on it.
                     response = protocol.envelope("unavailable", f"Internal CLI service error ({type(error).__name__})")
             self._respond(connection, response)
         except (protocol.FrameError, OSError):
@@ -418,15 +434,22 @@ class LocalCliServer:
         # name Angelo no longer knows is an app the person disconnected.
         app = self.apps().get(hello["client"])
         supplied = hello.get("app_proof")
+        if app is None and hello["client"] in self.reserved():   # Connected, its key unreadable: never keyless.
+            return protocol.envelope("unavailable", "This app's key is missing; connect it again in "
+                                     "Preferences > AI Providers > External AI apps"), None
         if app is None and supplied is not None:
             return protocol.envelope("unavailable", "This app was disconnected in Angelo. Connect it again in "
                                      "Preferences > AI Providers > External AI apps"), None
         if app is not None:
-            expected = protocol.app_proof(app[1], server_nonce, hello["client_nonce"])
+            expected = protocol.app_proof(app, server_nonce, hello["client_nonce"])
             if not protocol.proof_matches(expected, supplied):
                 self._count("failed_authentication")
                 return protocol.envelope("unavailable", "This app's key does not match; connect it again in "
                                          "Preferences > AI Providers > External AI apps"), None
+            theirs = hello.get("agent_protocol")   # An app's launcher of another build: say so, before any command.
+            if theirs != external_build.AGENT_PROTOCOL:
+                return protocol.envelope("incompatible", external_build.launcher_mismatch(
+                    theirs if type(theirs) is int else None)), None
         return None, app
 
     def _respond(self, connection, response):

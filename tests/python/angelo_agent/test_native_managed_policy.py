@@ -21,6 +21,7 @@ import sys
 import tempfile
 import time
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
@@ -352,7 +353,7 @@ def openssl():
         candidate = Path(git).resolve().parents[1] / "usr" / "bin" / "openssl.exe"
         found = str(candidate) if candidate.is_file() else None
     if not found:
-        raise unittest.SkipTest("openssl is not installed")
+        raise unittest.SkipTest(required_skip("openssl is not installed"))
     return found
 
 

@@ -13,6 +13,7 @@ import sys
 import tempfile
 import types
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from unittest import mock
 
@@ -58,7 +59,7 @@ def crop(identity, **lineage):
     return {"id": identity, "status": "ready", "files": ["image.png"], "lineage": dict(base, **lineage)}
 
 
-@unittest.skipIf(numpy is None, "needs numpy")
+@unittest.skipIf(numpy is None, required_skip("needs numpy"))
 class CropReuseTests(unittest.TestCase):
     def test_the_same_split_reuses_its_crop_and_nothing_else_does(self):
         library = types.SimpleNamespace(assets={"a": crop("a"), "b": crop("b", split_key="k2"), "c": crop("c", view="back"),

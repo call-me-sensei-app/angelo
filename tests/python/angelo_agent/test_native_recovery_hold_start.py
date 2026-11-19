@@ -6,8 +6,8 @@ Recorded (C3 early town-centre diagnostic, Sol on Codex): the lead's script was 
 after a merge changed the scene; the refusal did not say nothing had run, so the recovery barrier held every later
 scene edit of the request, merges included, until the next request. Pinned here for the class, through the real
 Controller and approval operators: any bound call whose binding changed between its approval request and its run,
-whoever changed it (another chat, the person, a merge), and the other refusals that ran nothing (a headless
-host's NEEDS_GUI, Global Undo off, a delivery that ended first). Unclassified failures keep holding wherever they
+whoever changed it (another chat, the person, a merge), and the other refusals that ran nothing (Global Undo off,
+a delivery that ended first). Unclassified failures keep holding wherever they
 arise, before the start included, and a hold already open is never relaxed. No Blender.
 """
 
@@ -146,13 +146,6 @@ class OtherNothingRanRefusalTests(MergeHoldFixture):
         call.callbacks.append(replies.append)
         c.finish_tool(call, result)
         return c.recovery_barrier.pending
-
-    def test_a_headless_needs_gui_refusal_is_classified_and_holds_nothing(self):
-        # headless_host.refuse_waiting's own result: a card no person can answer there; nothing of it ran.
-        c = self.chat("ASK")
-        self.assertEqual(refusal_code({"error_code": "NEEDS_GUI"}), "NEEDS_GUI")
-        self.assertIsNone(self.held_after(c, {"error_code": "NEEDS_GUI", "error": "Needs Angelo's window",
-                                              "scene_changed": False}))
 
     def test_a_delivery_that_ended_before_the_start_holds_nothing(self):
         c = self.chat("ASK")

@@ -388,12 +388,59 @@ static bool name(const std::string &spelled, bool folder, bool recursive, vouche
   return vouches::add(key, vouches::facts_of(path), folder, recursive, scope, tag);
 }
 
+bool vouch_program(const std::string &spelled)
+{
+  const std::string path = win_plain(spelled);
+  if (path.empty() || names_a_parent(path) || names_a_stream(path)) {
+    return false;
+  }
+  const std::string key = key_of(path, false);
+  if (key.empty() || last_part_is_link(path) || reparse_in_any_component(path)) {
+    return false;
+  }
+  return vouches::add_program(key, vouches::facts_of(path), any_region.load(std::memory_order_relaxed));
+}
+
 bool vouch(const std::string &path, bool folder, bool persist)
 {
   if (folder && persist) {
     return false; /* A folder is never named for the session (the review of piece 10, ruling 1). */
   }
   return name(path, folder, true, persist ? vouches::Scope::Session : vouches::Scope::Call, "");
+}
+
+/** The file a program's path names: normalized, its links resolved, the last one included (realpath; Windows:
+ * `followed_path`), as `vouch_program` recorded it. Windows judged the link itself before 2.0.1, so a program
+ * started through a link was refused after any script unless the link's folder was on PATH (failing closed: the
+ * change record, `Folders::agent_made`, follows links on every system). */
+static std::string resolved_program(const std::string &path)
+{
+  std::string resolved = normalized(path);
+#ifdef _WIN32
+  const std::string followed = followed_path(resolved);
+  if (!followed.empty()) {
+    resolved = normalized(followed);
+  }
+#else
+  char real[PATH_MAX];
+  if (realpath(resolved.c_str(), real) != nullptr) {
+    resolved = real;
+  }
+#endif
+  return resolved;
+}
+
+/** Whether the program `path` resolves to was recorded to run and has changed on disk since (an update in place, or
+ * a rewrite): what a refused start says, and why only a restart of Angelo starts it (the re-review of 4be92cfb84f,
+ * S-2). */
+static bool program_changed(const std::string &spelled)
+{
+  const std::string path = win_plain(spelled);
+  if (path.empty() || names_a_stream(path)) {
+    return false;
+  }
+  const std::string resolved = resolved_program(path);
+  return vouches::program_changed(key_of(resolved, false), vouches::facts_of(resolved));
 }
 
 /** Whether Angelo's own code may start the program `path` names, a path from Python state: never one a script wrote,
@@ -409,25 +456,14 @@ bool may_run(const std::string &spelled)
   if (path.empty() || names_a_stream(path)) {
     return false; /* A stream hides another file's data behind a program's name (the re-read of piece 10, NIT). */
   }
-  std::string resolved = normalized(path);
-#ifndef _WIN32
-  char real[PATH_MAX];
-  if (realpath(resolved.c_str(), real) != nullptr) {
-    resolved = real;
-  }
-#endif
+  const std::string resolved = resolved_program(path);
   if (folders().agent_made(path) || folders().agent_made(resolved)) {
     return false;
   }
   if (folders().trusted(resolved)) {
     return true;
   }
-  std::string self = normalized(BKE_appdir_program_path()); /* This app's own binary (its children). */
-#ifndef _WIN32
-  if (realpath(self.c_str(), real) != nullptr) {
-    self = real;
-  }
-#endif
+  const std::string self = resolved_program(BKE_appdir_program_path()); /* This app's own binary (its children). */
   if (BLI_path_cmp(self.c_str(), resolved.c_str()) == 0) {
     return true;
   }
@@ -473,6 +509,15 @@ static PyObject *guard_may_run(PyObject * /*self*/, PyObject *arg)
   return PyBool_FromLong(may_run(path));
 }
 
+static PyObject *guard_program_changed(PyObject * /*self*/, PyObject *arg)
+{
+  std::string path;
+  if (!text_argument(arg, path)) {
+    Py_RETURN_FALSE;
+  }
+  return PyBool_FromLong(program_changed(path));
+}
+
 static PyObject *guard_may_write(PyObject * /*self*/, PyObject *arg)
 {
   std::string path;
@@ -513,6 +558,19 @@ static PyObject *guard_vouch_path(PyObject * /*self*/, PyObject *args)
     Py_RETURN_FALSE;
   }
   return PyBool_FromLong(vouch(path, folder != 0, persist != 0));
+}
+
+static PyObject *guard_vouch_program(PyObject * /*self*/, PyObject *arg)
+{
+  if (!angelo_calling()) {
+    refuse(GUARD, "vouch_program"); /* What Angelo may start is never a script's to widen. */
+    return nullptr;
+  }
+  std::string path;
+  if (!text_argument(arg, path)) {
+    Py_RETURN_FALSE;
+  }
+  return PyBool_FromLong(vouch_program(path));
 }
 
 static PyObject *guard_unvouch_path(PyObject * /*self*/, PyObject *args)
@@ -680,6 +738,13 @@ PyMethodDef writable_methods[] = {
      "vouch_path(path, folder=False, persist=True) -> bool: the person, or a program they connected, gave Angelo "
      "this file to write, for this process (refused while a script runs); persist=False: for one call, and only "
      "then a folder."},
+    {"vouch_program", guard_vouch_program, METH_O,
+     "vouch_program(path) -> bool: a program Angelo found or the person chose, its real file (never a link), to "
+     "start only: never a path any writer may write (refused while a script runs). It runs only while it is that "
+     "file unchanged; found again after a script ran, a changed one stays refused."},
+    {"program_changed", guard_program_changed, METH_O,
+     "program_changed(path) -> bool: whether the program path resolves to was recorded to run and has changed on "
+     "disk since (it stays refused in this process: restart Angelo to start it)."},
     {"may_run", guard_may_run, METH_O,
      "may_run(path) -> bool: whether Angelo's own code may start the program (installed, named, or on PATH; never "
      "one a script made), whatever Python state named it."},

@@ -156,8 +156,11 @@ def _permissions(prefs, policy):
            "action": "toggle", "value": "always_allow_scripts", "enabled": not locked}
     if locked:
         row["lock"] = shown(Text(managed_policy.AUTO_APPROVAL_OFF))
-    elif prefs.always_allow_scripts:
-        row["warning"] = iface_("On: scripts in Auto chats run without asking.")
+    elif prefs.always_allow_scripts:   # A consent from before 2.0.1 does not cover connected apps' chats yet.
+        from . import always_allow
+        row["warning"] = (iface_("On: scripts in Auto chats run without asking.") if always_allow.covers_external()
+                          else iface_("On for Angelo's own chats. Connected apps' chats still ask until you press "
+                                      "Always allow on one of their script cards."))
     rows.append(row)
     if policy.require_ask_for_edits:
         rows.append({"kind": "switch", "name": iface_("Auto · bounded edits"), "on": False, "enabled": False,
@@ -287,7 +290,7 @@ def build(ui, prefs):
     from . import fab_ui
     sections.append(fab_ui.preferences_section(prefs))
     from . import providers_page_external
-    sections.append(providers_page_external.external_apps(ui, prefs, policy))
+    sections.append(providers_page_external.section(ui, prefs, policy))
     hero = {"title": iface_("AI Providers"), "banner": banner_ready(),
             "purpose": iface_("The accounts Angelo's agent works with. Each chat uses the one you choose, never a fallback.")}
     if personal:

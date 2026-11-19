@@ -317,12 +317,12 @@ def runs_unasked(chat, label, consent):
 # Cases --------------------------------------------------------------------------------------------------------------
 
 def python_offered(chat):
-    from angelo_agent import external_clients, parallel_access, tool_specs
+    from angelo_agent import parallel_access, tool_specs, windowless_tools
     offered = parallel_access.for_chat(None, frozenset(tool_specs.TOOL_MAP), chat.controller)
     check("a_worker_runs_python_as_an_edit", SCRIPT in chat.executor.edits, sorted(chat.executor.edits))
     check("a_worker_chat_is_offered_python", SCRIPT in offered, sorted(offered))
     check("a_worker_chat_reads_its_scripts_back", "angelo_script" in offered, sorted(offered))
-    check("headless_stays_typed_only", SCRIPT not in external_clients.HEADLESS_TOOLS)
+    check("windowless_stays_typed_only", SCRIPT not in windowless_tools.TOOLS)
 
 
 ADD = '''import bpy, os

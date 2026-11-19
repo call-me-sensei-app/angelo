@@ -20,13 +20,13 @@ import time
 from pathlib import Path
 
 from . import change_clock, managed_policy, product_env
-from .external_apps import ExternalApps
-from .external_records import WindowRecords
+from .external_agent import AgentChannels, AgentUi
+from .external_visibility import VisibilityUi
 from .external_clients import AppRegistry
 from .display_text import Text, shown
 from .chat_settings import clean_options
-from .external_cli import LocalCliServer, TransportUnavailable
-from .external_requests import AuditLog, ClientRegistry, external_label, result_code  # noqa: F401 (re-exported)
+from .external_cli import LocalCliServer, TransportUnavailable, key_id
+from .external_requests import AuditLog, ClientRegistry, external_label  # noqa: F401 (re-exported)
 from .external_service import RequestService
 from .invocations import MAX_MUTATION_IDS, InvocationGuardError, document_digest
 from .sessions import SessionStore
@@ -45,7 +45,7 @@ DRAIN_SECONDS = 0.004
 RETRY_START_SECONDS = 5.0
 
 
-class UiEnvironment:
+class UiEnvironment(AgentUi, VisibilityUi):
     """The host's only view of ``ui``; tests substitute a bpy-free double."""
 
     def __init__(self, ui):
@@ -68,20 +68,6 @@ class UiEnvironment:
         prefs = self.ui.preferences()
         return bool(prefs is not None and getattr(prefs, "allow_local_cli", False))
 
-    def organization(self):
-        """The signed-in organization's app policy this window applies now (``managed_policy``'s organization source,
-        set by team_account_ui), or None for none. LookupError in a background Blender, which never restores a team
-        sign-in: what it would say is not what the window applies, so it records nothing."""
-        import bpy
-        if bpy.app.background:
-            raise LookupError("no window")
-        source = getattr(managed_policy, "_organization_source", None)
-        return source() if source is not None else None
-
-    def prepare_task(self, controller):
-        """Bind an app's External conversation to its connection before a task (``ui.prepare_controller``)."""
-        self.ui.prepare_controller(controller)
-
     def make_controller(self, session_id):
         self.sessions()
         controller = self.ui.Controller(self.state_directory(), session_id=session_id)
@@ -97,12 +83,6 @@ class UiEnvironment:
         version = import_module(__package__).bl_info["version"]
         return {"blender_version": bpy.app.version_string, "addon_version": ".".join(map(str, version))}
 
-    def open_file_digest(self):
-        """Which file the window has open, as a digest of its real path (headless_files.path_digest), or None."""
-        import bpy
-        from .headless_files import path_digest
-        return path_digest(bpy.data.filepath) if bpy.data.filepath else None
-
     def private_roots(self):
         import bpy
         roots = [(self.state_directory(), "<angelo-state>"), (self.ui.connection_directory(), "<angelo-connections>"),
@@ -112,7 +92,7 @@ class UiEnvironment:
         return roots
 
 
-class ExternalHost(ExternalApps, WindowRecords):
+class ExternalHost(AgentChannels):
     def __init__(self, environment, *, server_factory=LocalCliServer, environ=None, runtime_directory=None):
         self.env = environment
         self.server_factory = server_factory
@@ -122,16 +102,18 @@ class ExternalHost(ExternalApps, WindowRecords):
         self.status = "Off"
         self.closing = False
         self.failed = False  # After an internal error, stay off until the toggle is cycled.
+        self.holder = None   # (version, pid) of another Angelo build that has access; start retries until it's free.
         self.mapping = {}
-        self._open = {}  # session_id -> fence of an open External read request
         self._retry_after = 0.0
         self._snapshot = {}
-        # Connected MCP apps (external_clients): records and the listener's (levels, key) view, reloaded when the
-        # registry changes. Their open tool-call requests, tasks and task-status waiters (external_apps).
+        # Connected MCP apps (external_clients): records and the listener's key view, reloaded when the
+        # registry changes.
         self._apps, self._app_keys, self._apps_stamp = {}, {}, None
-        self._work, self._tasks, self._waiters, self._calls, self._closing = {}, {}, [], {}, []
-        self._unobserved = set()   # Conversations an app moved to that it has not read yet (external_apps.MOVED).
-        self._evicted = {}         # Answered call IDs forgotten past CALLS_KEPT (external_apps.EVICTED_KEPT).
+        # Apps working through Angelo's agent (external_agent): parked reads, recent sends, conversations each had.
+        self._agent_waiters, self._sends, self._owned, self._tasks = [], {}, {}, {}
+        self._goals = {}   # label -> conversation -> the goal the app's newest send carried (external_agent._state).
+        self._held = {}   # label -> task -> (its pending message, the task it joined): external_status.track.
+        self._looks, self._views = {}, {}   # Each app's last looks (throttle) and its viewport pictures (pruned).
 
     # Lifecycle ---------------------------------------------------------------
 
@@ -146,21 +128,17 @@ class ExternalHost(ExternalApps, WindowRecords):
         return True, ""
 
     def pump(self):
-        self.record_access()
-        self.record_organization()
         wanted, reason = self.wanted()
         if not wanted:
             if self.server is not None:
                 self.stop(reason)
-            self.finish_closing()
-            self.status, self._retry_after, self.failed = reason, 0.0, False
+            self.status, self._retry_after, self.failed, self.holder = reason, 0.0, False, None
             return
         if self.failed or self.server is None and not self.start():
             return
         self.publish()
         self.drain()
-        self.close_finished()
-        self.pump_apps()
+        self.pump_agents()
 
     def apps(self):
         """Connected MCP apps, name -> record (main thread)."""
@@ -178,7 +156,16 @@ class ExternalHost(ExternalApps, WindowRecords):
             except OSError:
                 stamps.append(None)
         if force or stamps != self._apps_stamp:
+            before, keys = set(self._apps), dict(self._app_keys)
             self._apps, self._app_keys, self._apps_stamp = registry.load(), registry.snapshot(), stamps
+            from . import external_access
+            ended = {label: "This app was disconnected in Angelo" for label in before - set(self._apps)}
+            ended.update({label: "This app was connected again with a new key in Angelo" for label in keys
+                          if label in self._app_keys and keys[label] != self._app_keys[label]})   # A reconnect too.
+            for label, why in sorted(ended.items()):   # Its work in flight and queued ends now.
+                if self.service is not None:
+                    self.service.work.fail_label(label, {"code": "unavailable", "message": why})
+                external_access.revoke(self, label, why)
 
     def start(self):
         if time.monotonic() < self._retry_after:
@@ -188,19 +175,21 @@ class ExternalHost(ExternalApps, WindowRecords):
         service = RequestService(lambda: self._snapshot, audit=AuditLog(Path(directory) / "cli" / "audit.jsonl"))
         self.reload_apps(force=True)
         server = self.server_factory(directory, service.handle, describe=service.describe,
-                                     runtime_directory=self.runtime_directory, apps=lambda: self._app_keys)
+                                     runtime_directory=self.runtime_directory, apps=lambda: self._app_keys,
+                                     reserved=lambda: frozenset(self._apps))
         try:
             server.start()
         except TransportUnavailable as error:
             self.status, self._retry_after = "Unavailable: " + str(error), time.monotonic() + RETRY_START_SECONDS
+            self.holder = error.holder
             return False
-        self.server, self.service, self.closing = server, service, False
+        self.server, self.service, self.closing, self.holder = server, service, False, None
         self.status = LISTENING
         self.publish()
         return True
 
     def stop(self, reason="Off"):
-        """Close the listener and end External reads; queued work reports unavailable."""
+        """Close the listener and end every app's access (``external_access``); queued work reports unavailable."""
         server, service = self.server, self.service
         self.server = self.service = None
         if service is not None:
@@ -208,12 +197,10 @@ class ExternalHost(ExternalApps, WindowRecords):
             service.work.fail_all({"code": "unavailable", "message": "Local CLI access was turned off"})
         self.closing = True
         try:
-            for identity in list(self._open):
-                controller = self.env.controllers().get(identity)
-                if controller is not None:
-                    controller.cancel_tools("Local CLI access was turned off; the read was not completed")
-            self.close_finished()
-            self.close_apps("Access for external apps was turned off")
+            from . import external_access
+            for label in sorted(set(self._apps) | set(self._owned)):
+                external_access.revoke(self, label, "Access for external apps was turned off")
+            self.close_agents("Access for external apps was turned off")
         finally:
             self.closing = False
             if server is not None:
@@ -232,8 +219,8 @@ class ExternalHost(ExternalApps, WindowRecords):
 
     def drain(self):
         deadline = time.monotonic() + DRAIN_SECONDS
-        handlers = {"status": self.handle_status, "call": self.handle_call, "session_new": self.handle_session_new,
-                    "app_call": self.handle_app_call, "task": self.handle_task}
+        handlers = {"status": self.handle_status, "session_new": self.handle_session_new,
+                    "agent": self.handle_agent}
         for index in range(DRAIN_ITEMS):
             # The first item runs even past the deadline, so a tick that starts late still serves a waiting request.
             if self.service is None or index and time.monotonic() >= deadline:
@@ -243,7 +230,14 @@ class ExternalHost(ExternalApps, WindowRecords):
                 return
             if not work.claim():
                 continue  # The waiter timed out first; abandoned work never runs.
-            self.finish_answers()   # Outside the handler's guard: an error there is the tick's, as in the loop.
+            client = getattr(work, "client", None)
+            if getattr(client, "app", False) and (client.label not in self._apps or
+                                                  client.key != key_id(self._app_keys.get(client.label))):
+                # Authorized again here, on the main thread: a command admitted before a Disconnect, or proved with a
+                # key a reconnect replaced, never runs after it.
+                work.complete({"code": "unavailable", "message": "This app was disconnected or connected again in "
+                               "Angelo; connect it and send again"})
+                continue
             try:
                 handlers[work.kind](work)
             except Exception as error:
@@ -253,19 +247,6 @@ class ExternalHost(ExternalApps, WindowRecords):
                 if not isinstance(error, (OSError, ValueError, RuntimeError, InvocationGuardError)):
                     raise
 
-    def finish_answers(self):
-        """Main thread, before each request is handled: answers this host holds back go out first (``HeadlessHost``
-        saves or reloads after each edit before answering), so nothing is admitted while an earlier call's answer,
-        and what it does to the file, is still queued. Here answers go out from the call's worker: none are held."""
-
-    def close_finished(self):
-        for identity, fence in list(self._open.items()):
-            controller = self.env.controllers().get(identity)
-            if controller is None or not controller.pending:
-                if controller is not None:
-                    controller.close_external_read(fence)
-                del self._open[identity]
-
     def conversation(self, label, *, create):
         directory = self.env.state_directory()
         controllers = self.env.controllers()
@@ -274,35 +255,52 @@ class ExternalHost(ExternalApps, WindowRecords):
             controller = controllers[identity]
         elif identity and SessionStore(directory, identity).path.is_file():
             controller = controllers[identity] = self.env.make_controller(identity)
-        elif create:
+        else:
+            controller = None
+        if controller is not None and controller.state.get("external_app") and label not in self._apps:
+            controller = None   # A disconnected app's conversation is never a keyless client's under its name.
+        if controller is None:
+            if not create:
+                return None
             identity = self.create_conversation(label)
             controller = controllers[identity] = self.env.make_controller(identity)
-        else:
-            return None
         controller.external_client = label
+        if create and label in self._apps:   # The app's own message on its connection now (external_access).
+            from .external_access import stamp
+            stamp(controller, self._apps[label])
         return controller
 
-    def create_conversation(self, label, previous=None):
+    def create_conversation(self, label, previous=None, approval=None):
+        """A fresh External conversation for ``label``. ``approval``: the mode of the conversation it replaces (a new
+        chat, a move after a load), which a fresh one never loosens (``external_settings.stricter``)."""
+        from .external_settings import stricter
         directory = self.env.state_directory()
         state = SessionStore(directory).new(EXTERNAL_PROVIDER)
         # The chat default (Approve for me: bounded typed edits run, scripts and other effects ask), as a new chat;
-        # RequireAskForEdits still makes it Ask. Scripts never run unasked here (trusted_scripts).
-        # A CLI label stays in Ask (external_cli.rst).
+        # RequireAskForEdits still makes it Ask. Angelo's agent's scripts take the person's standing consents as in any
+        # chat (trusted_scripts). A CLI label stays in Ask (external_cli.rst).
         state["options"] = clean_options({} if label in self.apps() else {"approval": "ASK"})
+        if label in self._apps:   # Stamped from its start (a new chat, a move too): revoked holds across a restart.
+            from .external_access import stamp_value
+            state["external_app"] = stamp_value(directory, label, self._apps[label])
+        for floor in (approval, self._apps.get(label, {}).get("approval")):   # The conversation it replaces, and the
+            if floor:   # mode the app's last conversation ended in (a delete too): the person's stricter choice holds.
+                state["options"]["approval"] = stricter(state["options"]["approval"], floor)
         # The first user row titles the switcher entry `External: <label>`,
         # also in builds that predate the CLI (they show it as an ordinary chat).
         state["messages"].append({"role": "user", "text": "External: " + label,
                                   "request_kind": "external_session", "client": label})
         if label in self.apps():
-            note = notice("MCP app '{label}'. Its edits, scripts and tasks run here: approve or decline them, press Stop "
-                          "to end its work and Undo or restore as in any chat. The app can never approve.", label=label)
+            note = notice("MCP app '{label}' works with Angelo's agent here. Approve or decline what the agent asks, "
+                          "press Stop to end its work and Undo or restore as in any chat. The app can never approve.",
+                          label=label)
         elif previous:
-            note = notice("Local CLI client '{label}'. Phase 1 is read-only: observations only; no scene, file, memory, "
-                          "billing or provider changes. Approvals and Stop only. Rotated from conversation {previous} "
-                          "by `angelo session new`.", label=label, previous=previous)
+            note = notice("Local CLI client '{label}'. It reads Angelo's status only and runs no tool: no scene, file, "
+                          "memory, billing or provider changes. Rotated from conversation {previous} by `angelo session "
+                          "new`.", label=label, previous=previous)
         else:
-            note = notice("Local CLI client '{label}'. Phase 1 is read-only: observations only; no scene, file, memory, "
-                          "billing or provider changes. Approvals and Stop only.", label=label)
+            note = notice("Local CLI client '{label}'. It reads Angelo's status only and runs no tool: no scene, file, "
+                          "memory, billing or provider changes.", label=label)
         state["messages"].append({"role": "system", **note})
         SessionStore(directory, state["id"]).save(state)
         sessions = self.env.sessions()
@@ -321,101 +319,31 @@ class ExternalHost(ExternalApps, WindowRecords):
             fields["projection_roots"] = tuple(self.env.private_roots())
         work.complete(dict(fields, code=code, message=message))
 
-    def handle_call(self, work):
-        payload = work.payload
-        controller = self.conversation(work.client.label, create=True)
-        document = self.env.document_key()
-        identity = controller.state["id"]
-        if payload["conversation"] and payload["conversation"] != identity:
-            return self._reply(work, controller, "stale", "This client's External conversation changed; "
-                               "observe again in the current conversation")
-        if controller.document_invalid or controller.document != document:
-            return self._reply(work, controller, "stale", "Angelo's window now shows another scene or file. Run "
-                               "`angelo session new` for a fresh External conversation, then observe again")
-        if payload["expect_document"] and payload["expect_document"] != document_digest(repr(document)):
-            return self._reply(work, controller, "stale", "The open document is not the expected one; observe again")
-        if len(controller.pending) >= controller.tools.maxsize:
-            return self._reply(work, controller, "busy", "Too many pending calls in this External conversation")
-        fence = self._open.get(identity)
-        if fence is not None and (not fence.matches(controller) or controller.cancelled) and not controller.pending:
-            controller.close_external_read(fence)  # A stopped/ended request with nothing left in flight.
-            del self._open[identity]
-            fence = None
-        if fence is None:
-            if controller.busy or controller.pending:
-                return self._reply(work, controller, "busy", "This External conversation is finishing earlier work")
-            fence = self._open[identity] = controller.open_external_read()
-        elif not fence.matches(controller) or controller.cancelled:
-            return self._reply(work, controller, "busy", "This External conversation was stopped; retry shortly")
-        admission = {"active": True}
-
-        def delivered(result):
-            replayed = bool(isinstance(result, dict) and result.get("replayed"))
-            if admission["active"] and not replayed:
-                code = "refused"  # Synchronous admission refusal: nothing was admitted.
-            elif self.closing:
-                code = "unavailable"
-            else:
-                code = result_code(result, cancelled=controller.cancelled,
-                                   document_changed=controller.document_invalid or controller.document != document)
-            message = "Completed" if code == "ok" else str(result.get("error") or code) if isinstance(result, dict) else code
-            self._reply(work, controller, code, message, result=result, conversation=identity,
-                        call={"replayed": replayed, "admitted": not admission["active"] or replayed})
-
-        controller.request_tool("external/" + payload["id"], payload["tool"], payload["arguments"], delivered,
-                                request_fence=fence)
-        admission["active"] = False
-        work.admitted = identity + "/external/" + payload["id"] in controller.pending
-
     def handle_status(self, work):
         controller = self.conversation(work.client.label, create=False)
         result = {"phase": 1, "read_only": True, "client": work.client.label, "conversation": None,
-                  "commands": ["status", "tools", "call", "session new"]}
+                  "commands": ["status", "session new"]}
         if controller is not None:
             identity, ledger = controller.state["id"], controller.state.get("invocations") or {}
             result["conversation"] = {
                 "id": identity, "title": "External: " + work.client.label,
                 "policy": clean_options(controller.state.get("options"))["approval"],
                 "document_valid": not controller.document_invalid and controller.document == self.env.document_key(),
-                "open_request": identity in self._open, "busy": controller.busy,
+                "busy": controller.busy,
                 "pending_calls": len(controller.pending),
                 "ledger": {"used": len(ledger.get("entries") or {}), "capacity": MAX_MUTATION_IDS,
                            "closed": bool(ledger.get("closed"))}}
-        call_id = work.payload.get("call")
-        if call_id is not None:
-            result["call"] = self.call_status(controller, call_id)
-        if work.client.levels is not None:   # A connected app: whether the window has the file it wants to open.
-            result["file"] = self.env.open_file_digest()
+        from . import headless_window_app   # A hidden-window session names itself (mcp_headless_window.rst).
+        if headless_window_app.session():
+            result["hidden_session"] = headless_window_app.session()
         self._reply(work, controller, "ok", "Local CLI access is on (read-only phase 1)", result=result)
-
-    @staticmethod
-    def call_status(controller, call_id):
-        if controller is None:
-            return {"id": call_id, "known": False, "state": "unknown"}
-        key = controller.state["id"] + "/external/" + call_id
-        record = controller.state["results"].get(key)
-        phase = record.get("phase") if isinstance(record, dict) else None
-        call = controller.pending.get(key)
-        if call is not None:
-            from .worker_consent import awaiting_person   # The card's own predicate (approval_wait.awaiting).
-            state = "executing" if call.executing else "approval" if awaiting_person(call) else "queued"
-            return {"id": call_id, "known": True, "state": state, "receipt_phase": phase}
-        if record is not None:
-            return {"id": call_id, "known": True, "state": "finished" if phase == "completed" else "interrupted",
-                    "receipt_phase": phase}
-        if key in (controller.state.get("invocations") or {}).get("entries", {}):
-            return {"id": call_id, "known": True, "state": "admitted_result_pruned", "receipt_phase": None}
-        return {"id": call_id, "known": False, "state": "unknown"}
 
     def handle_session_new(self, work):
         label = work.client.label
         old = self.conversation(label, create=False)
-        if old is not None:
-            self.settle(old, rotating=True)   # Answered work the tick has not closed yet is not "in flight".
         if old is not None and (old.pending or old.busy):
             return self._reply(work, old, "busy", "The current External conversation still has calls in flight")
         previous = old.state["id"] if old is not None else None
-        self._unobserved.discard(previous)
         identity = self.create_conversation(label, previous=previous)
         if old is not None:
             old.emit("message", {"role": "system", **notice("`angelo session new` moved client '{label}' to "
@@ -437,12 +365,16 @@ def pump(ui):
     try:
         _host.pump()
     except Exception as error:
+        from . import swallowed_errors
+        swallowed_errors.report("apps' access stopped after an internal error", error, quiet=True)   # Said below.
         try:
             _host.stop("Stopped after an internal error: " + type(error).__name__)
         except Exception:
             _host.server = _host.service = None
         _host.status = f"Stopped after an internal error ({type(error).__name__}: {error}); toggle access to retry"
         _host.failed = True
+    from . import session_page   # Apps' live session pages, apart: a page's defect never touches the listener.
+    session_page.pump_safely(_host)
     refresh_notice(ui)
 
 
@@ -464,6 +396,8 @@ def shutdown():
     if _host is not None:
         _host.stop()
     _host = None
+    from . import session_page   # Every live session page ends with the apps' access.
+    session_page.unregister()
 
 
 def kill_switch_reason(environ=None):
@@ -474,6 +408,11 @@ def kill_switch_reason(environ=None):
 
 def status_text():
     return kill_switch_reason() or (_host.status if _host is not None else "Off")
+
+
+def holder():
+    """``(version, pid)`` of another Angelo build that has access while this one waits for it, or None."""
+    return _host.holder if _host is not None and not kill_switch_reason() else None
 
 
 def draw_preferences(layout, prefs):

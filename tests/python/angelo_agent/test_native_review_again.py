@@ -141,8 +141,7 @@ class ReviewAgainTests(RevocationFixture):
         replies, call = self.awaiting_approval()
         self.executor.precondition.return_value = "changed"
         self.click(call)
-        for action in ("script_always_allow", "script_file_allow"):
-            self.assertIsNone(chat_cards.dispatch(None, self.controller, {}, action, call.id))
+        self.assertIsNone(chat_cards.dispatch(None, self.controller, {}, "script_always_allow", call.id))
         self.assertFalse(self.controller.always_allow_scripts)
 
 

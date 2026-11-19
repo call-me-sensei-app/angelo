@@ -233,9 +233,9 @@ Tool                           What it does                                     
 * **Deferral.** The family is in ``plan_kinds.DEFERRED_TOOLS``: a Claude plan names the two tools and reads their
   schemas and ``LIBRARY_GUIDANCE`` with ``angelo_agent_capabilities``; Codex threads on OpenAI connections declare
   them in the ``deferLoading`` namespace (``more__``) and their instructions name the Angelo Library among the
-  deferred families. Voice threads (``tool_specs.dynamic_tools``), collaborators and unkeyed phase-1 CLI clients
-  do not get them. Connected MCP apps and their tasks can use the public library and Blender Essentials with the
-  existing approval policy. Unlike the team family these sources need no sign-in. Toolset 52 adds source-aware
+  deferred families. Voice threads (``tool_specs.dynamic_tools``) and collaborators do not get
+  them, and a CLI client runs no tool. A connected MCP app's conversation with Angelo's agent can use the public
+  library and Blender Essentials with the existing approval policy. Unlike the team family these sources need no sign-in. Toolset 52 adds source-aware
   discovery and pagination.
 * **Refusals** (closed codes, ``scene_changed: false``): an unknown id, an argument the item's kind doesn't take
   (``resolution`` on a model or sprite, ``location`` on a texture set or HDRI, ``objects`` on anything but a texture
@@ -256,8 +256,8 @@ Blender Essentials
 The same agent tools also support ``source="blender"`` in search and the resulting native asset ids in import.
 See :doc:`blender_assets` for bundled/online discovery, native downloads, supported uses and validation boundaries.
 Omitting ``source`` preserves the public catalog behavior above. The feature guide describes both sources and
-the Asset Browser entry point. Connected MCP apps can search with read permission and import with edit permission;
-imports always require their card in Angelo's window. Legacy phase-1 CLI clients remain read-only and unchanged.
+the Asset Browser entry point. A connected MCP app's conversation with Angelo's agent can search and import
+the same way; imports always require their card in Angelo's window. A CLI client runs no tool.
 
 Fab implementation
 ------------------

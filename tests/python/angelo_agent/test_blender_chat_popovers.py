@@ -337,6 +337,15 @@ def tick():
             return 0.3
         if state["phase"] == "approval":
             capture("approval-picker.png")
+            # 2.0.1: above the approval chip that opened it, from its left edge, inside the region; never off to the
+            # right under the model chip. Its footer states this chat's script rule.
+            rect, anchor = source["popup_rect"], source["approval_anchor"]
+            width = area_region()[1].width / chat_view.ui_scale()
+            assert rect[1] >= anchor[1] + anchor[3], (rect, anchor)
+            assert rect[0] >= 8 and rect[0] + rect[2] <= width - 8 + 1, (rect, width)
+            assert rect[0] <= anchor[0] + anchor[2] / 2, ("opens from its own button", rect, anchor)
+            state["checks"]["approval_popover_opens_above_its_button"] = True
+            state["approval_geometry"] = {"rect": list(rect), "anchor": list(anchor)}
             click("popup_approval", "READ_ONLY")
             assert controller.state["options"]["approval"] == "READ_ONLY" and not source.get("popover")
             state["checks"]["approval_is_also_a_normal_click_popup"] = True

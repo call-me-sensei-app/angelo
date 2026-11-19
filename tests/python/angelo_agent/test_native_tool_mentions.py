@@ -75,8 +75,7 @@ class ToolMentions(unittest.TestCase):
         self.assertTrue({"lead/voice", "team/voice"} <= kinds["parallel off"])
         self.assertTrue({"worker_lanes/" + runtime for runtime in RUNTIMES} <= kinds["parallel on"])
         self.assertEqual(kinds["hosting worker"], {"worker_hosted/" + runtime for runtime in RUNTIMES})
-        apps = {"mcp_app/read", "mcp_app/read+edit", "mcp_app/read+edit+python+tasks"}
-        self.assertTrue(apps <= kinds["parallel off"])
+        self.assertIn("mcp_app", kinds["parallel off"])
         for found in self.surveys.values():
             for kind, entry in found["kinds"].items():
                 self.assertGreater(len(NAME.findall(entry["text"])), 3, kind + ": its text was read")

@@ -19,7 +19,10 @@ person presses Restart to Update, ``begin``:
    "Save modified asset catalogs" on for it whatever the quit dialog last left, and the restart
    stops if one is still unsaved (a library folder that can't be written); Don't Save discards
    them, as Blender's quit does;
-4. starts the installer (``update_install``), waits until it reports it is
+4. waits until the document reads settled (``update_restart_handoff.launch_when_settled``): after a save, until
+   Blender has marked it saved, whose notifier comes after the save call; the hand-over's document stamp is that,
+   and any edit since the person's decision stops it (the save notice, or the person is asked again);
+5. starts the installer (``update_install``), waits until it reports it is
    running, and quits. The installer replaces the app once Angelo has exited
    and opens it again with the same file.
 
@@ -131,14 +134,9 @@ def begin(offer, ready, host):
         live.consider(offer, manual=True)   # Prepared again, then offered again.
         host.redraw()
         return
-    images, catalogs = _dirty_images(), _catalogs_unsaved()
-    if bpy.data.is_dirty or images or catalogs:
-        name = Path(bpy.data.filepath).name
-        host.close("save")
-        card_host.request(SaveCard(name, len(images), lambda choice: _after_prompt(choice, offer, ready),
-                                   catalogs=catalogs, file_changed=bpy.data.is_dirty or bool(images)))
+    if handoff.ask_to_save(sys.modules[__name__], offer, ready, host):   # Unsaved changes: the save card.
         return
-    launch(offer, ready)
+    _launch_settled(offer, ready, saved=False)
 
 
 def _after_prompt(choice, offer, ready):
@@ -148,7 +146,7 @@ def _after_prompt(choice, offer, ready):
         update_ui.show_notice(offer)   # The update stays ready; its card comes back.
         return
     if choice == "dont_save":
-        launch(offer, ready)
+        _launch_settled(offer, ready, saved=False)
         return
     # Images first, as Blender's own quit-after-save does: a generated or packed image is packed into the file,
     # so the file must be written after it (a file that was not modified still is then).
@@ -171,7 +169,7 @@ def _after_prompt(choice, offer, ready):
         bpy.app.timers.register(_watch_save, first_interval=0.5)
         return
     if _save_file() and not _catalogs_left():
-        launch(offer, ready)
+        _launch_settled(offer, ready, saved=True)
 
 
 def _save_images():
@@ -282,7 +280,7 @@ def _watch_save():
         if _dirty_images():   # Saved before the File Browser opened; nothing may have changed meanwhile.
             _notice(SAVE_FAILED_TITLE, IMAGES_FAILED_BODY)
         elif not _catalogs_left():
-            launch(watch["offer"], watch["ready"])
+            _launch_settled(watch["offer"], watch["ready"], saved=True)
         return None
     if watch["failed"]:
         _watch = None
@@ -321,8 +319,7 @@ def _installer_document_changed(*_args):
 
 
 def _change_handlers():
-    return tuple(getattr(bpy.app.handlers, name) for name in
-                 ("depsgraph_update_post", "load_pre", "save_pre", "undo_pre", "redo_pre"))
+    return tuple(getattr(bpy.app.handlers, name) for name in handoff.CHANGE_KINDS)
 
 
 def _detach_change_handlers():
@@ -353,8 +350,14 @@ def _poll_installer():
 
 
 def launch(offer, ready):
-    """Start one revocable helper; only committed native exit grants installation."""
+    """Start one revocable helper; only committed native exit grants installation. Reached only through
+    ``_launch_settled``."""
     return handoff.launch(sys.modules[__name__], offer, ready)
+
+
+def _launch_settled(offer, ready, saved):
+    """``launch`` once the document reads settled (``handoff.launch_when_settled``): every way into the hand-over."""
+    handoff.launch_when_settled(sys.modules[__name__], offer, ready, saved)
 
 
 def _decide(choice, offer):

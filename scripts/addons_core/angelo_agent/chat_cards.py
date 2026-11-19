@@ -7,7 +7,8 @@ clicks on ``flow_*``, ``job_*`` and ``script_*`` hits back here. The card module
 keep their own pure layouts (``flow_chat.run_layout``, ``job_chat.card_layout``);
 hover, pressed, keyboard focus and disabled states are ``canvas_controls``' for
 every hit on the canvas. A script's approval card also gets its Always allow
-scripts part here (``always_allow_rows``, ``draw_always_allow``).
+scripts part here: its standing-consent note and buttons, Allow for this session and Always allow
+(``always_allow_rows``, ``always_allow_button``, ``draw_always_allow``).
 """
 
 import sys
@@ -84,62 +85,130 @@ def draw_attached(message, state, x, top, width, wrap, line_height):
             state["hits"].append(op[1:])
 
 
-# Headless runs load the person's preferences (doc/angelo/external_mcp.rst, "Preferences"), so their add-ons run too.
-HEADLESS_PREFERENCES = n_("Without Angelo's window, a file you always allow runs with your Angelo preferences: the "
-                          "add-ons, extensions and script folders you turned on.")
 
 
 def always_allow_rows(controller, call, wrap, width, size, font):
-    """The note a script card shows above its standing-consent button, else ().
+    """The note a script card shows above its standing-consent buttons, else ().
 
-    Always allow scripts in an Auto chat (``offers_always_allow``); in an External conversation, an app's script
-    file (``offers_script_file_allow``), with a line first when the file changed since the person allowed it."""
-    if controller.offers_always_allow(call):
-        return wrap(iface_("Always allow scripts runs this and future scripts in Auto chats without asking. Scripts "
-                           "have full access to files, the network and other apps on this computer. You can turn it "
-                           "off in Preferences."), width, size, font)
-    from .script_files import shown_path
+    Allow for this session (``offers_session_allow``) and Always allow (``offers_always_allow``), in every chat, an
+    External conversation's too."""
     rows = []
-    # The full path: approvals are per real path, and two files can share a name.
-    shown = shown_path(call.script_file.path) if getattr(call, "script_file", None) is not None else ""
-    changed = controller.script_file_changed(call)
-    if changed is not None:
-        rows += wrap(iface_("{file} changed since you allowed it on {date}: review its new text.",
-                            file=shown, date=changed.get("allowed_at", "")[:10]), width, size, font)
-    if controller.offers_script_file_allow(call):
-        rows += wrap(iface_("Always allow this file runs {file} for this app in this project without asking while its "
-                            "text stays exactly the same; any change asks again. Scripts have full access to files, "
-                            "the network and other apps on this computer. You can remove it in Preferences > AI "
-                            "Providers. Files it reads or imports aren't covered: a change to them doesn't ask again.",
-                            file=shown), width, size, font)
-        rows += wrap(iface_(HEADLESS_PREFERENCES), width, size, font)
+    if controller.offers_session_allow(call) or controller.offers_always_allow(call):
+        rows += wrap(iface_("Allow for this session runs this chat's scripts without asking until Angelo restarts. "
+                            "Always allow runs Angelo's agent's scripts in every Auto chat, connected apps' chats "
+                            "included, until you turn it off in Preferences. Scripts have full access to files, the "
+                            "network and other apps on this computer."), width, size, font)
     return tuple(rows)
 
 
 def always_allow_button(controller, call):
-    """``(action, label)`` of the card's standing-consent button, or None."""
+    """``((action, label), ...)``: the card's standing-consent buttons, in order, or () when it offers none."""
+    buttons = []
+    if controller.offers_session_allow(call):
+        buttons.append(("script_session_allow", iface_("Allow for this session")))
     if controller.offers_always_allow(call):
-        return "script_always_allow", iface_("Always allow scripts")
-    if controller.offers_script_file_allow(call):
-        return "script_file_allow", iface_("Always allow this file while it's unchanged")
-    return None
+        buttons.append(("script_always_allow", iface_("Always allow")))
+    return tuple(buttons)
+
+
+def button_width(label):
+    from . import chat_card_draw
+    return max(92, chat_card_draw._measure(label, 12) + 28)
+
+
+def standing_rows(buttons, width):
+    """The standing-consent buttons laid out in rows that fit ``width`` (the card's inner width from x = 32), top
+    row first: ``((button, x offset), ...)`` per row. A button wider than the row gets a row of its own."""
+    rows, row, x = [], [], 0
+    for button in buttons or ():
+        w = button_width(button[1])
+        if row and x + w > width:
+            rows.append(tuple(row))
+            row, x = [], 0
+        row.append((button, x))
+        x += w + 8
+    if row:
+        rows.append(tuple(row))
+    return tuple(rows)
 
 
 def draw_always_allow(call_id, state, x, y, button=None):
-    """The standing-consent button at (``x``, ``y``), on its own row above Approve and Decline.
+    """One standing-consent button at (``x``, ``y``), in its row above Run once and Decline; returns its right edge.
 
-    ``chat_card_draw`` draws the note above it and reserves the row, so a long
-    translation never pushes Approve or Decline off the card. ``button`` is
-    ``always_allow_button``'s ``(action, label)``; the default is Always allow
-    scripts (``script_always_allow``). Only its look follows the card.
+    ``chat_card_draw`` draws the note above the buttons and reserves their rows
+    (``standing_rows``), so a long translation never pushes Run once or Decline
+    off the card. ``button`` is one of ``always_allow_button``'s ``(action,
+    label)``; the default is Always allow (``script_always_allow``). Only its
+    look follows the card.
     """
-    from . import chat_card_draw, chat_view, ui_tokens as tk
-    action, label = button or ("script_always_allow", iface_("Always allow scripts"))
-    width = max(92, chat_card_draw._measure(label, 12) + 28)
+    from . import chat_view, ui_tokens as tk
+    action, label = button or ("script_always_allow", iface_("Always allow"))
+    width = button_width(label)
     chat_view.shape(x, y, width, 28, tk.LINE, 8)
     chat_view.shape(x + 1, y + 1, width - 2, 26, tk.PANEL_HOVER, 7)
     chat_view.text(label, x + 14, y + 9, 12, tk.TEXT)
     state["hits"].append(((x, y, width, 28), action, call_id))
+    return x + width
+
+
+def standing_line(controller):
+    """``(text, kind)`` of the chat's line while a standing consent runs its scripts without asking, else None:
+    the person always sees it, and its Turn off ends it (``script_standing_off``)."""
+    consent = controller.standing_script_consent() if hasattr(controller, "standing_script_consent") else None
+    if consent is None:
+        return None
+    kind = consent[0]
+    text = (iface_("Scripts in this chat run without asking for this session") if kind == "session"
+            else iface_("Scripts run without asking in Auto chats"))
+    return text, kind
+
+
+def script_rule(controller, approval):
+    """The rule this chat's scripts follow now, in one or two short sentences: the Approvals popover's footer. Says
+    the organization's lock, Ask and Read only first, then the standing consent that runs scripts unasked, if any."""
+    from . import managed_policy
+    if approval == "READ_ONLY":
+        return iface_("Read only: scripts and other changes don't run.")
+    if not managed_policy.current().allow_auto_approval:
+        return iface_("Your organization requires your review for every script.")
+    consent = controller.standing_script_consent() if hasattr(controller, "standing_script_consent") else None
+    if consent is not None and consent[0] == "session":   # Trust scripts for this chat: Ask and Auto alike.
+        return iface_("This chat's scripts run without asking for this session.")
+    if approval == "ASK":
+        return iface_("Every script asks for your review before it runs.")
+    if consent is not None:
+        return iface_("Scripts run without asking in Auto chats.")
+    return iface_("Each script asks: run it once, or allow it for this session or always.")
+
+
+def draw_rule(controller, approval, wrap, text, rect, busy, font):
+    """The Approvals popover's footer at the bottom of ``rect`` (x, y, width): this chat's real rule for scripts
+    (``script_rule``), up to two lines, and while a turn runs, when a change applies."""
+    from . import ui_tokens as tk
+    x, y, w = rect
+    footer = wrap(script_rule(controller, approval), w - 26, 11, font)[:2]
+    for i, (line, _) in enumerate(reversed(footer)):
+        text(line, x + 13, y + 19 + i * 15, 11, tk.MUTED)
+    if busy:
+        text(iface_("Applies to queued / future changes"), x + 13, y + 21 + len(footer) * 15, 11, tk.MUTED)
+
+
+def draw_standing_line(state, width, y, text, kind):
+    """The consent's line at ``y``, centred: what runs unasked, then its Turn off (a narrowing: no arming)."""
+    from . import chat_card_draw, chat_view, ui_tokens as tk
+    off = iface_("Turn off")
+    off_width = chat_card_draw._measure(off, 13)
+    room = max(40, width - 32 - 24 - off_width - 18)
+    shown = chat_view.elide(text, room, 13)
+    pill_width = min(width - 32, 12 + chat_card_draw._measure(shown, 13) + 18 + off_width + 14)
+    x = (width - pill_width) / 2
+    chat_view.shape(x, y, pill_width, 35, tk.LINE, 14)
+    chat_view.shape(x + 1, y + 1, pill_width - 2, 33, tk.PANEL, 13)
+    chat_view.text(shown, x + 12, y + 12, 13, tk.MUTED)
+    off_x = x + pill_width - 14 - off_width
+    chat_view.text(off, off_x, y + 12, 13, tk.TEXT)
+    state["standing_line"] = text   # For QA state asserts: the line as drawn.
+    state["hits"].append(((off_x - 8, y + 3, off_width + 16, 29), "script_standing_off", kind))
 
 
 def dispatch(context, controller, state, action, value):
@@ -153,14 +222,17 @@ def dispatch(context, controller, state, action, value):
         approval_wait.reveal(state, controller)
         return
     from .review_again import shielded
-    if action in {"script_always_allow", "script_file_allow"} and shielded(value):
+    if action in {"script_session_allow", "script_always_allow"} and shielded(value):
         return   # A card asked again a moment ago: never a consent the person has not seen (review_again).
+    if action == "script_standing_off":   # Narrowing: the chat's line's Turn off.
+        from .trusted_scripts_ui import turn_off_standing
+        return turn_off_standing(controller, value)
+    if action == "script_session_allow":
+        from .trusted_scripts_ui import session_allow_from_card
+        return bool(session_allow_from_card(context, controller, value))
     if action == "script_always_allow":
         from .trusted_scripts_ui import always_allow_from_card
         return bool(always_allow_from_card(context, controller, value))
-    if action == "script_file_allow":
-        from .trusted_scripts_ui import script_file_allow_from_card
-        return bool(script_file_allow_from_card(context, controller, value))
     if action.startswith("flow_"):
         from . import flow_chat
         return flow_chat.dispatch(context, controller, action, value)
@@ -197,10 +269,11 @@ REFUSED = {
     "job_cancel": n_("This background job couldn't be stopped. It may have ended already."),
     "job_open": n_("The file this job made couldn't be opened. It may have been moved or deleted."),
     "job_resume": n_("The missing frames weren't rendered. Check the job's card, then try again."),
+    "script_standing_off": n_("Scripts still run without asking: turning it off was refused. Try again in a moment."),
+    "script_session_allow": n_("Scripts weren't allowed: this script is no longer waiting, or a script is running "
+                               "right now."),
     "script_always_allow": n_("Scripts weren't allowed: this script is no longer waiting, or a script is running "
                               "right now."),
-    "script_file_allow": n_("This file wasn't allowed: its script is no longer waiting, or the approval couldn't be "
-                            "saved."),
 }
 NOTHING_HAPPENED = n_("That button couldn't do anything right now. Try again in a moment.")
 

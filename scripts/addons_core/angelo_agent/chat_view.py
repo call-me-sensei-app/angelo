@@ -242,8 +242,9 @@ def show_popover(context, kind="controls"):
 
 def draw_popover(state, controller, width, height):
     from . import ui
-    from .chat_popovers import (FOOTER_PAD, effort_choices, effective_effort, effort_name, model_name, model_rows,
-                               model_row_rect, popup_layout, slider_geometry, slider_motion, sparkles, supports_fast)
+    from .chat_popovers import (FOOTER_PAD, POPOVER_ANCHORS, effort_choices, effective_effort, effort_name, model_name,
+                               model_rows, model_row_rect, popup_layout, slider_geometry, slider_motion, sparkles,
+                               supports_fast)
     from .chat_settings import APPROVALS, clean_options, selected_model
     state["popup_hits"] = []
     popup = state.get("popover")
@@ -274,7 +275,8 @@ def draw_popover(state, controller, width, height):
     notice = error or (iface_("Loading connected models…") if loading else iface_("No models available. Refresh to retry.") if not choices else "")
     rows = model_rows(choices, options["model"], controller.selection_connection_id, popup.get("query", ""), popup.get("collapsed", ()))
     popup["cursor"] = max(0, min(popup.get("cursor", 0), len(rows) - 1))
-    anchor = state.get("picker_anchor", (width - 210, 28, 130, 28))
+    # Above the control that opened it (POPOVER_ANCHORS): the approval chip's its own, the model chip's the rest.
+    anchor = state.get(POPOVER_ANCHORS.get(kind, "picker_anchor")) or state.get("picker_anchor", (width - 210, 28, 130, 28))
     geometry = popup_layout(kind, width, height, anchor, len(choices), popup.get("scroll", 0),
                             controller.busy, bool(notice), claude, rows, search=True, floor=state.get("add_bottom"))
     popup["layout"] = geometry
@@ -429,10 +431,7 @@ def draw_popover(state, controller, width, height):
             if options["approval"] == mode:
                 icon("check", x + w - 21, rect[1] + 15, tk.TEXT)
             hit(rect, "popup_approval", mode)
-        footer = iface_("Scripts run without asking in Auto.") if controller.always_allow_scripts else iface_("General Python always requires review.")
-        text(elide(footer, w - 26, 11), x + 13, y + 19, 11, tk.MUTED)  # Always allow scripts (Preferences) in an Auto chat.
-        if busy_height:
-            text(iface_("Applies to queued / future changes"), x + 13, y + 36, 11, tk.MUTED)
+        chat_cards.draw_rule(controller, options["approval"], wrap, text, (x, y, w), busy_height, _font)
     gpu.state.scissor_set(*old_scissor)
     gpu.state.scissor_test_set(False)
     if kind == "controls" and fast_supported and popup.get("hover") == ("popup_fast", None) and time.monotonic() - popup.get("hover_time", 0) > 0.45:
@@ -499,7 +498,7 @@ def _draw_chat():
         composer_height += max(0, min(8, shown_rows) - 1) * (line_height - 22)   # A draft's rows, or its hint's.
         changed, added, removed = chat_guard.call("The change summary", change_counts, controller.state["messages"], default=(0, 0, 0))
         changed_files, written_files, deleted_files = chat_guard.call("The file summary", file_counts, controller.state["messages"], default=(0, 0, 0))
-        message_bottom = composer_bottom + composer_height + (66 if changed or changed_files else 28)
+        message_bottom = composer_bottom + composer_height + chat_card_draw.pills_room(changed or changed_files, consent := chat_cards.standing_line(controller))
         gpu.state.blend_set('ALPHA')
         shape(0, 0, width, height, tk.CANVAS)
         scroll_key = chat_history.prepare_scroll(state, _scroll, area, controller.state["id"])
@@ -602,7 +601,8 @@ def _draw_chat():
         if tray:   # The person's pending messages, pinned above the composer (chat_pending).
             chat_pending.draw_tray(controller, state, width, message_bottom - tray, size, line_height, room)
         chat_card_draw.draw_pills(state, width, composer_bottom + composer_height + 8, height - bar, changed,
-                                  changed_files, added + written_files, removed + deleted_files)
+                                  changed_files, added + written_files, removed + deleted_files,
+                                  consent=consent)
         if not waiting and state.pop("composer_hidden", False):
             state["focus_request"] = state["focused"] = True  # The field takes the keyboard once it can be used.
         if waiting:
@@ -988,7 +988,6 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
         window = context.window
         if not window or window.as_pointer() != self.window_pointer:
             return {'PASS_THROUGH'}
-        approval_arming.window_input(window.as_pointer(), event.type, event.value)  # Focus changes disarm grants.
         ui.team_account_ui.note_window_event(event.type)  # Focus coming back re-checks the team's providers.
         from . import marble_host
         marble_host.note_event(event.type, event.value)  # The marble wait pauses while the person navigates or drags.
@@ -1126,8 +1125,8 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             hits = state.get("hits", []) if state.get("hit_region") == (region.width, region.height) else []
             for rect, action, value in hits:
                 if inside(rect, x, y) and canvas_controls.live((rect, action, value)):   # A lapsed shield: no hit.
-                    if not approval_arming.press_lands(state, (rect, action, value)):
-                        return {'RUNNING_MODAL'}   # A grant not armed: the press lands on nothing.
+                    if not approval_arming.press_lands(state, (rect, action, value)):   # Not armed: on nothing.
+                        return approval_arming.refused(window, region, rect, {'RUNNING_MODAL'})
                     # Activate on RELEASE like an ordinary desktop button. A
                     # popup created on PRESS inherits Blender's held-button
                     # menu gesture and incorrectly closes/selects on release.
@@ -1141,7 +1140,7 @@ class ANGELO_OT_chat_input(bpy.types.Operator):
             self.pending_click = None
             canvas_controls.release(area.tag_redraw, state)
             if (pointer == area.as_pointer() and state.get("hit_region") == (region.width, region.height)
-                    and release_active((rect, action, value), state.get("hits", []), x, y)):
+                    and release_active((rect, action, value), state.get("hits", []), x, y, approval_arming.view(state).stayed((action, value)))):
                 with context.temp_override(window=window, area=area, region=region):
                     _clicked(controller, action, value)
                 if state.pop("focus_request", False):

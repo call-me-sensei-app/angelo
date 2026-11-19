@@ -16,6 +16,7 @@ import json
 import sys
 import tempfile
 import unittest
+from host_test_policy import environment_skip
 import uuid
 from pathlib import Path
 from unittest.mock import patch
@@ -38,7 +39,7 @@ migrate = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(migrate)
 
 
-@unittest.skipUnless(anchored_files_supported(), "descriptor- or handle-relative storage required")
+@unittest.skipUnless(anchored_files_supported(), environment_skip("descriptor- or handle-relative storage required"))
 class UserFolderMigrationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="angelo-user-folder-migration-")

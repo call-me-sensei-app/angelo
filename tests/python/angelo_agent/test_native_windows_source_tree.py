@@ -31,7 +31,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 import shipped_sources  # noqa: E402  (standard library only)
 sys.path.insert(0, str(HERE))
-from host_test_policy import environment_skip  # noqa: E402
+from host_test_policy import environment_skip, required_skip  # noqa: E402
 
 ENV = dict(os.environ, GIT_LFS_SKIP_SMUDGE="1", GIT_AUTHOR_NAME="Angelo Tests", GIT_AUTHOR_EMAIL="tests@angelo.invalid",
            GIT_COMMITTER_NAME="Angelo Tests", GIT_COMMITTER_EMAIL="tests@angelo.invalid", GIT_CONFIG_NOSYSTEM="1",
@@ -95,7 +95,7 @@ def commit_pack(repo, target):
     return target
 
 
-@unittest.skipUnless(shutil.which("git"), "needs git")
+@unittest.skipUnless(shutil.which("git"), required_skip("needs git"))
 class SourceTreeTests(unittest.TestCase):
     def setUp(self):
         self.folder = Path(tempfile.mkdtemp())
@@ -244,7 +244,8 @@ class SourceTreeTests(unittest.TestCase):
 
 
 @unittest.skipIf(os.name == "nt", environment_skip("the launcher's delta is bash and git, on the Mac"))
-@unittest.skipUnless(shutil.which("git") and shutil.which("bash"), "the launcher's delta is bash and git, on the Mac")
+@unittest.skipUnless(shutil.which("git") and shutil.which("bash"),
+                     environment_skip("the launcher's delta is bash and git, on the Mac"))
 class DeltaSendTests(unittest.TestCase):
     def test_a_delta_with_non_ascii_deletions_case_and_shape_changes_leaves_exactly_the_new_commit(self):
         with tempfile.TemporaryDirectory() as temporary:

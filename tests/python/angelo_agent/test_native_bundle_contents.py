@@ -30,6 +30,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 import unittest.mock
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -122,7 +123,7 @@ class RuleTests(unittest.TestCase):
         self.assertIn('PATTERN "config-${PYTHON_VERSION}-darwin/python.o" EXCLUDE', function)
 
 
-@unittest.skipUnless(shutil.which("cmake"), "CMake is required to run the install rule")
+@unittest.skipUnless(shutil.which("cmake"), required_skip("CMake is required to run the install rule"))
 class InstallTests(unittest.TestCase):
     def test_installing_through_the_rule_ships_only_the_runtime_commands(self):
         block = scripts_install_block(cmake_text()).replace("${FREESTYLE_EXCLUDE_CONDITIONAL}", "_freestyle/*")
@@ -402,7 +403,7 @@ class AgentRuntimeCheckTests(unittest.TestCase):
         self.assertIn("is missing", errors.getvalue())
 
 
-@unittest.skipUnless(shutil.which("cmake"), "CMake is required to run the install rule")
+@unittest.skipUnless(shutil.which("cmake"), required_skip("CMake is required to run the install rule"))
 class AgentRuntimeInstallTests(unittest.TestCase):
     """build_files/cmake/angelo_agent_runtime.cmake in a real configure and install."""
 

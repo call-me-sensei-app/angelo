@@ -21,6 +21,7 @@ import tempfile
 import threading
 import time
 import unittest
+from host_test_policy import environment_skip
 from unittest.mock import patch
 import machine_clock
 
@@ -86,7 +87,7 @@ class HostileError(Exception):
         raise AssertionError("Exception truthiness must not run")
 
 
-@unittest.skipUnless(anchored_files_supported(), "descriptor-anchored storage required")
+@unittest.skipUnless(anchored_files_supported(), environment_skip("descriptor-anchored storage required"))
 class CapturePinTests(unittest.TestCase):
     def move_held_folder(self, folder, moved):
         """Move the folder of a held pin: True when it moved. Windows refuses, since the pin's open file keeps its
@@ -355,7 +356,7 @@ class CapturePinTests(unittest.TestCase):
         try:
             self.pin_path.symlink_to(other)
         except (NotImplementedError, PermissionError):
-            self.skipTest("Host cannot create a symlink control")
+            self.skipTest(environment_skip("Host cannot create a symlink control"))
         with self.assertRaises((OSError, ValueError)):
             self.probe()
         self.pin_path.unlink()
@@ -399,7 +400,7 @@ class CapturePinTests(unittest.TestCase):
         try:
             (self.root / "checkpoint-captures").symlink_to(other, target_is_directory=True)
         except (NotImplementedError, PermissionError):
-            self.skipTest("Host cannot create a directory symlink control")
+            self.skipTest(environment_skip("Host cannot create a directory symlink control"))
         with _transaction(self.root), self.assertRaises((OSError, ValueError)):
             pins.acquire_capture_pin(self.root, SESSION, CAPTURE)
         self.assertEqual(list(other.iterdir()), [])

@@ -15,6 +15,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 import zlib
 from pathlib import Path
 from unittest import mock
@@ -60,7 +61,7 @@ def read_png(path):
     return size, [[tuple(row[3 * x:3 * x + 3]) for x in range(width)] for row in rows]
 
 
-@unittest.skipIf(numpy is None, "NumPy is installed in CI and bundled with Blender")
+@unittest.skipIf(numpy is None, required_skip("NumPy is installed in CI and bundled with Blender"))
 class ScoringTests(unittest.TestCase):
     def setUp(self):
         import scenario_scoring
@@ -160,7 +161,7 @@ class RayLayoutTests(unittest.TestCase):
         self.assertGreater(top_left.y, 0.0)
 
 
-@unittest.skipIf(numpy is None, "NumPy is installed in CI and bundled with Blender")
+@unittest.skipIf(numpy is None, required_skip("NumPy is installed in CI and bundled with Blender"))
 class ManifestTests(unittest.TestCase):
     def test_meta_is_plain_json(self):
         with tempfile.TemporaryDirectory() as folder:

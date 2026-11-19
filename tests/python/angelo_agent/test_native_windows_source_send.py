@@ -207,7 +207,8 @@ class LauncherFixture:
 
 @unittest.skipIf(os.name == "nt", environment_skip("the launcher (gcp_windows_*.sh) is bash, run from the macOS "
                                                    "workstation; the VM side is checked by contract below"))
-@unittest.skipUnless(git_lfs_works(), "the launcher is bash with git and Git LFS, run from the workstation")
+@unittest.skipUnless(git_lfs_works(),
+                     environment_skip("the launcher is bash with git and Git LFS, run from the workstation"))
 class ConfirmedCommitTests(LauncherFixture, unittest.TestCase):
     def test_one_send_is_one_commit_even_when_head_moves_during_it(self):
         # The 2026-10-20 11:18 send named bfcf73f4296 in send.json and the metadata but packed 4416202f87d: a commit

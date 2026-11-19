@@ -13,6 +13,7 @@ import suite_isolation  # noqa: F401  First: this test never sees a real provide
 
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from types import SimpleNamespace as NS
 
@@ -78,7 +79,7 @@ DEFAULTS = {"TEX_NOISE": {"Scale": 5.0, "Detail": 2.0, "Roughness": 0.5, "Lacuna
             "TEX_CHECKER": {"Scale": 5.0, "Color1": [0.8, 0.8, 0.8], "Color2": [0.2, 0.2, 0.2]}}
 
 
-@unittest.skipIf(numpy is None, "NumPy is not installed")
+@unittest.skipIf(numpy is None, required_skip("NumPy is not installed"))
 class TextureKernelTests(unittest.TestCase):
     def test_every_kernel_reproduces_what_cycles_rendered(self):
         for kind, settings, inputs, output, samples in GOLDEN:

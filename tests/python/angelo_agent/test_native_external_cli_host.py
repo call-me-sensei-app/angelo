@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""External conversations through the real Controller.request_tool path.
+"""The CLI host through the real listener and client: status, ``session new``, and no tool for any client (2.0.1).
 
 A real listener and client run against a bpy-free host environment: real
 ``Controller`` and ``SessionCollection`` in a fresh /tmp profile, a fake
@@ -12,6 +12,7 @@ import suite_isolation  # noqa: F401  First: this test never sees a real provide
 from host_waits import CAP_S  # noqa: E402  A completion wait's cap: only a hang reaches it.
 
 import itertools
+import json
 import shutil
 import sys
 import tempfile
@@ -27,7 +28,6 @@ from angelo_agent import cli_client
 from angelo_agent import external_host
 from angelo_agent.controller import Controller, ToolDispatchBudget
 from angelo_agent.external_host import ClientRegistry, ExternalHost, external_label
-from angelo_agent.invocations import document_digest
 from angelo_agent.sessions import SessionCollection
 from host_test_policy import environment_skip
 
@@ -154,113 +154,67 @@ class ExternalHostTests(unittest.TestCase):
         self.assertFalse(endpoint.exists())
         self.assertIn("ANGELO_DISABLE_LOCAL_CLI", self.host.status)
 
-    def test_read_runs_through_request_tool_and_is_recorded_in_the_external_transcript(self):
+    def raw(self, request, label="agent"):
+        """One wire request an older client may still send (``call``, ``tools``), through the real listener."""
+        self.host.pump()
+        result, done = {}, threading.Event()
+
+        def run():
+            result["value"] = cli_client.run(request, self.state, label, 20)
+            done.set()
+        threading.Thread(target=run, daemon=True).start()
+        deadline = time.monotonic() + CAP_S
+        while not done.is_set() and time.monotonic() < deadline:
+            self.tick()
+            time.sleep(0.005)
+        self.assertTrue(done.is_set(), "CLI request did not finish")
+        return result["value"]
+
+    def test_status_and_session_new_through_the_real_listener(self):
         status = self.cli("status")
         self.assertEqual((status["code"], status["result"]["conversation"]), ("ok", None))
-        envelope = self.cli("call", "angelo_scene_search", '{"limit": 5}', "--id", "read-1")
-        self.assertEqual((envelope["code"], envelope["exit"]), ("ok", 0))
-        self.assertEqual(envelope["document"], document_digest(repr(("doc-a", 1))))
-        self.assertEqual(envelope["result"]["path"], "<withheld>")
-        self.assertEqual(envelope["result"]["note"], "profile at <angelo-state>")
-        self.assertNotIn(self.state, str(envelope))
+        self.assertEqual(status["result"]["commands"], ["status", "session new"])
+        rotated = self.cli("session", "new")
+        self.assertEqual(rotated["code"], "ok")
         controller = self.conversation()
-        self.assertEqual(envelope["conversation"], controller.state["id"])
+        self.assertEqual(rotated["conversation"], controller.state["id"])
         self.assertEqual(controller.external_client, "agent")
         self.assertEqual(self.env._sessions.records[controller.state["id"]]["title"], "External: agent")
-        self.assertFalse(controller.busy)
-        self.assertEqual(controller.state["invocations"]["entries"], {})  # Reads never reserve mutation IDs.
-        activity = [m for m in controller.state["messages"] if m["role"] == "activity"]
-        self.assertEqual((activity[-1]["tool"], activity[-1]["status"]), ("angelo_scene_search", "completed"))
-        self.assertEqual(self.executor.calls, ["angelo_scene_search"])
         self.assertEqual(external_label(self.state, controller.state["id"]), "agent")
+        described = self.cli("status")["result"]["conversation"]
+        self.assertEqual((described["id"], described["busy"], described["pending_calls"]),
+                         (controller.state["id"], False, 0))
         with self.assertRaises(RuntimeError):
-            controller.send("hello")
-        replay = self.cli("call", "angelo_scene_search", '{"limit": 5}', "--id", "read-1")
-        self.assertTrue(replay["call"]["replayed"])
-        self.assertEqual(self.executor.calls, ["angelo_scene_search"])
-        changed = self.cli("call", "angelo_scene_search", '{"limit": 6}', "--id", "read-1")
-        self.assertEqual(changed["code"], "refused")
-        receipt = self.cli("status", "--call", "read-1")["result"]["call"]
-        self.assertEqual((receipt["state"], receipt["receipt_phase"]), ("finished", "completed"))
-        self.assertEqual(self.cli("status", "--call", "never")["result"]["call"]["state"], "unknown")
+            controller.send("hello")   # A CLI label's conversation never starts a model turn.
 
-    def test_mutations_never_reach_the_controller(self):
-        self.cli("call", "angelo_inspect_scene")
-        controller = self.conversation()
-        before = dict(controller.state["results"])
+    def test_no_client_runs_a_tool(self):
+        """2.0.1 (break-it review S5): ``call`` and the tool catalogue are refused for every client, before any
+        controller, and the refusal is audited."""
         with patch.object(Controller, "request_tool", side_effect=AssertionError("reached the controller")):
-            for tool, arguments in (("angelo_create_cube", '{"name":"X","size":1,"location":[0,0,0]}'),
-                                    ("angelo_execute_python", '{"description":"x","code":"pass"}'),
-                                    ("angelo_write_file", '{"path":"a.txt","content":"x"}'),
-                                    ("angelo_memory_update", '{}')):
-                self.assertEqual(self.cli("call", tool, arguments, "--id", "m-" + tool)["code"], "refused")
-        self.assertEqual(controller.state["results"], before)
-        self.assertEqual(self.executor.calls, ["angelo_inspect_scene"])
+            for request in ({"command": "call", "args": {"tool": "angelo_scene_search", "arguments": {}, "id": "r"}},
+                            {"command": "call", "args": {"tool": "angelo_memory_read", "arguments": {}}},
+                            {"command": "call", "args": {"tool": "angelo_execute_python",
+                                                         "arguments": {"description": "x", "code": "pass"}}},
+                            {"command": "tools", "args": {}}):
+                answer = self.raw(request)
+                self.assertEqual((answer["code"], answer["exit"]), ("refused", 4), request)
+                self.assertIn("through Angelo's own agent", answer["message"])
+        self.assertEqual(self.executor.calls, [])
+        audit = (Path(self.state) / "cli" / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertTrue(any(json.loads(line).get("command") == "call" and json.loads(line).get("code") == "refused"
+                            for line in audit))
 
-    def test_document_change_is_stale_until_explicit_session_new(self):
-        first = self.cli("call", "angelo_inspect_scene")
+    def test_a_document_change_shows_in_status_until_session_new(self):
+        self.cli("session", "new")
         old = self.conversation()
         self.env.document = ("doc-b", 1)
         old.set_document(self.env.document)  # What ui.document_load_pre does for every chat.
-        stale = self.cli("call", "angelo_inspect_scene")
-        self.assertEqual((stale["code"], stale["exit"], stale["retry"]), ("stale", 5, "after_observe"))
         self.assertFalse(self.cli("status")["result"]["conversation"]["document_valid"])
         rotated = self.cli("session", "new")
         self.assertEqual(rotated["result"]["previous"], old.state["id"])
         self.assertNotEqual(rotated["conversation"], old.state["id"])
         self.assertIn(old.state["id"], self.env._sessions.records)  # The old transcript stays readable.
-        fresh = self.cli("call", "angelo_inspect_scene")
-        self.assertEqual((fresh["code"], fresh["conversation"]), ("ok", rotated["conversation"]))
-        guard = self.cli("call", "angelo_inspect_scene", "--conversation", old.state["id"])
-        self.assertEqual(guard["code"], "stale")
-        expected = self.cli("call", "angelo_inspect_scene", "--expect-document", first["document"])
-        self.assertEqual(expected["code"], "stale")
-
-    def test_concurrent_reads_share_one_fenced_request(self):
-        self.cli("call", "angelo_inspect_scene")
-        controller = self.conversation()
-        results, threads = [], []
-        for index in range(3):
-            def run(index=index):
-                options = cli_client.parser().parse_args(["call", "angelo_inspect_scene", "--id", f"c-{index}"])
-                results.append(cli_client.run(cli_client.build_request(options), self.state, "agent", 20))
-            threads.append(threading.Thread(target=run, daemon=True))
-        for thread in threads:
-            thread.start()
-        deadline = time.monotonic() + CAP_S
-        while len(controller.pending) < 3 and time.monotonic() < deadline:
-            self.host.pump()  # Admit all three before dispatching any.
-            time.sleep(0.005)
-        self.assertEqual(len(controller.pending), 3)
-        self.assertEqual({call.generation for call in controller.pending.values()}, {controller._request_generation})
-        while any(t.is_alive() for t in threads) and time.monotonic() < deadline + 10:
-            self.tick()
-            time.sleep(0.005)
-        self.assertEqual([r["code"] for r in results], ["ok", "ok", "ok"])
-        self.tick()
-        self.assertFalse(controller.busy)
-
-    def test_turning_access_off_ends_queued_reads_as_unavailable(self):
-        self.cli("call", "angelo_inspect_scene")
-        controller = self.conversation()
-        result, done = {}, threading.Event()
-
-        def run():
-            options = cli_client.parser().parse_args(["call", "angelo_inspect_scene", "--id", "late"])
-            result["value"] = cli_client.run(cli_client.build_request(options), self.state, "agent", 20)
-            done.set()
-        threading.Thread(target=run, daemon=True).start()
-        deadline = time.monotonic() + CAP_S
-        while not controller.pending and time.monotonic() < deadline:
-            self.host.pump()  # Admit, but never dispatch the queued read.
-            time.sleep(0.005)
-        self.assertTrue(controller.pending)
-        self.env.requested = False
-        self.host.pump()
-        self.assertTrue(done.wait(CAP_S))
-        self.assertEqual(result["value"]["code"], "unavailable")
-        self.assertFalse(controller.busy or controller.pending)
-        self.assertEqual(self.executor.calls, ["angelo_inspect_scene"])
+        self.assertTrue(self.cli("status")["result"]["conversation"]["document_valid"])
 
     def test_internal_errors_latch_off_without_breaking_the_pump(self):
         class Broken(Environment):

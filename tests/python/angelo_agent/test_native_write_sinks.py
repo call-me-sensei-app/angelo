@@ -79,6 +79,9 @@ _CARRY_OVER = ("the carry-over from an earlier Blender base: runs once, in the a
 _OWN_DOCUMENT = ("saves the open document to its own path (Blender's: only a save changes it, and a script's save is "
                  "judged by the confinement), at the person's own request")
 ALLOWED = {
+    ("headless_window", "HiddenWindow.open"): "appends the hidden app's output to ANGELO_HIDDEN_APP_LOG, a log file the "
+                                               "launcher's own environment names (a proof or a support case), never a "
+                                               "path from the app or the agent",
     ("studio_assets_convert", "main"): "the converter child's entry (a Blender started with --python, where no "
                                        "script region begins, so C answers yes there): each .blend it writes is "
                                        "asked of C in the parent before the batch exists "
@@ -104,8 +107,13 @@ ALLOWED = {
     ("fab_browser_download_file", "CompletedFile.retire"): "unlinks one entry of the landing folder it opens itself and "
                                                            "checks by identity (owner token, device and inode), the "
                                                            "entry's own identity checked too",
-    ("headless_main", "main"): "the headless child's own private folder: made at its start from the parent's argument "
-                               "(before any script region) and held only in main's locals, removed as it ends",
+    ("external_look", "AgentLooks._prune_views"): "deletes an app's own older viewport pictures: files the conversation's "
+                                                  "reference store named when Angelo captured them for that app "
+                                                  "(attached_image, its canonical folder), never a name from state",
+    ("external_attach", "attach"): "a connected app's image attachments, decoded into a private folder this "
+                                          "call makes itself (private_roots.TemporaryDirectory, never a name from state) on the main "
+                                          "thread outside any script region, imported as the conversation's "
+                                          "references and removed before it returns",
     ("worker_main", "main"): "the worker child's own private folder: made at its start from the parent's argument "
                              "(before any script region) and held only in main's locals, removed as it ends",
     ("settings_import", "undo"): "Undo of a settings import, at the person's click: only paths its manifest lists "

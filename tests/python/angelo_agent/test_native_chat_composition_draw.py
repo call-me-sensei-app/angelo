@@ -29,13 +29,41 @@ def module(name, **fields):
 
 
 def definitions(name, wanted, namespace):
+    """``wanted`` production functions, and module-level constants assigned by name, of ``name`` into ``namespace``."""
     tree = ast.parse((ADDON / name).read_text())
-    selected = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in wanted]
-    if len(selected) != len(wanted):
-        raise AssertionError("Every requested production function must exist")
+    selected = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in wanted
+                or isinstance(node, ast.Assign) and _assigned(node) & wanted]
+    found = {node.name for node in selected if isinstance(node, ast.FunctionDef)}
+    found |= {target for node in selected if isinstance(node, ast.Assign) for target in _assigned(node)}
+    if not wanted <= found:
+        raise AssertionError("Every requested production function must exist: %s" % sorted(wanted - found))
     for imported, value in module_namespace.relative_imports(ADDON / name).items():
         namespace.setdefault(imported, value)   # What the module imports, unless the test stands in for it.
     exec(compile(ast.Module(body=selected, type_ignores=[]), str(ADDON / name), "exec"), namespace)
+
+
+def _assigned(node):
+    """The names an assignment binds (``A, B = ...`` included)."""
+    names = set()
+    for target in node.targets:
+        for item in (target.elts if isinstance(target, ast.Tuple) else [target]):
+            if isinstance(item, ast.Name):
+                names.add(item.id)
+    return names
+
+
+def missing_stand_ins(source_file, function, namespace):
+    """``name.attr`` reads in ``function`` of ``source_file`` on a stand-in of ``namespace`` that lacks ``attr``: a
+    new call in the draw is named here instead of failing the composed draw as a whole."""
+    tree = ast.parse((ADDON / source_file).read_text())
+    body = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == function)
+    missing = set()
+    for node in ast.walk(body):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            stand_in = namespace.get(node.value.id)
+            if isinstance(stand_in, types.SimpleNamespace) and not hasattr(stand_in, node.attr):
+                missing.add(node.value.id + "." + node.attr)
+    return sorted(missing)
 
 
 class ComposedDrawTests(unittest.TestCase):
@@ -60,6 +88,7 @@ class ComposedDrawTests(unittest.TestCase):
         guard = NS(begin_draw=noop, call=lambda label, fn, *args, **kwargs: fn(*args),
                    checked=lambda blocks, *args: blocks, saved_state=lambda: None,
                    draw_plain=lambda *args: fallback.append(args), shown_approvals=lambda c, hits: hits,
+                   draw_approval=noop,
                    errors=lambda: "")
         gpu_state = NS(blend_set=noop, scissor_get=lambda: (0, 0, 800, 600),
                        scissor_test_set=noop, scissor_set=noop)
@@ -76,6 +105,8 @@ class ComposedDrawTests(unittest.TestCase):
             "chat_usage": module("angelo_agent.chat_usage", bar_height=lambda *args: 0),
         }
         probe = module("composed_chat_draw", __package__="angelo_agent")
+        pills = NS(draw_pills=noop, draw=noop)   # The room the pills take is the real rule (chat_card_draw.pills_room).
+        definitions("chat_card_draw.py", {"pills_room", "PILL_TOP", "PILL_STEP", "PILL_H"}, vars(pills))
         tokens = NS(CANVAS=object(), BUBBLE=object(), MUTED=object())
         vars(probe).update(
             sys=sys, time=time, bpy=NS(context=NS(area=area, region=NS(width=800, height=600), window=None)),
@@ -92,14 +123,14 @@ class ComposedDrawTests(unittest.TestCase):
             restore_link=lambda width, label: (0, (0, 1)),
             tk=tokens, chat_history=history, chat_blocks=NS(build=build, cards=lambda *args: []),
             marble_draw=NS(with_hero=lambda blocks, c: blocks), _flow_wrap=noop,
-            chat_welcome=NS(draw_empty=noop, reconnect_height=lambda *args: 0),
-            chat_pending=NS(tray_height=lambda *args, **kwargs: 0,
+            chat_welcome=NS(draw_empty=noop, reconnect_height=lambda *args: 0, draw_reconnect_row=noop),
+            chat_pending=NS(tray_height=lambda *args, **kwargs: 0, draw_tray=noop,
                             steer_caption=lambda row: "Delivered while working" if steer else None),
             approval_wait=NS(place=lambda state, c, blocks, scroll, visible: scroll),
-            _scissor=lambda *args: args, chat_rows=NS(ROLES=set()),
+            _scissor=lambda *args: args, chat_rows=NS(ROLES=set(), draw=noop),
             chat_scrollbar=NS(draw=noop), clipped_hits=lambda hits, viewport: hits,
             clip_rect=lambda rect, viewport: rect, _this_module=lambda: probe,
-            chat_card_draw=NS(draw_pills=noop), chat_start_states=NS(draw_blocked=noop),
+            chat_card_draw=pills, chat_start_states=NS(draw_blocked=noop),
             chat_notices=NS(draw=noop), chat_replies=NS(draw=noop),
             canvas_controls=NS(draw_canvas=noop), draw_popover=noop,
             grant_guard=NS(canvas_regions=noop))   # C's consent regions: grant_guard's own tests.
@@ -109,6 +140,8 @@ class ComposedDrawTests(unittest.TestCase):
         injected = {"angelo_agent": package, "composed_chat_draw": probe}
         injected.update({"angelo_agent." + name: child for name, child in modules.items()})
         definitions("chat_view.py", {"_draw_chat"}, vars(probe))
+        self.assertEqual(missing_stand_ins("chat_view.py", "_draw_chat", vars(probe)), [],
+                         "every module the draw reads has a stand-in for each name it reads")
         with mock.patch.dict(sys.modules, injected):
             probe._draw_chat()
         self.assertIsNone(probe.last_error, "The actual composed draw must reach completion")

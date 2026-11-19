@@ -513,10 +513,12 @@ class StartupPathTests(unittest.TestCase):
                 mock.patch.object(studio_assets_host, "sync", side_effect=AssertionError("startup path")), \
                 mock.patch.object(studio_assets_host.threading, "Thread", side_effect=AssertionError("startup path")):
             studio_assets_host.register()
-            # The module register() imported (``from . import prefs_reload``): that import sets it on the package
-            # it resolved from sys.modules, whether or not an earlier test left it in sys.modules too (in a full run
-            # the submodule can come from the package attribute alone), so read it where register() did.
-            listeners = getattr(sys.modules[studio_assets_host.__package__], "prefs_reload").READ_LISTENERS
+            # The module register() used: ``from . import prefs_reload`` takes the package's attribute, and only
+            # without one the sys.modules entry. Which of the two exists depends on the files run before this one
+            # (alone, only the sys.modules entry), so resolve it the same way.
+            package = sys.modules[studio_assets_host.__package__]
+            listeners = (getattr(package, "prefs_reload", None)
+                         or sys.modules[package.__name__ + ".prefs_reload"]).READ_LISTENERS
             try:
                 check.assert_called_once_with()   # Before any shelf draws: a library added later crashed one.
                 self.assertTrue(studio_assets_host._state["registered"])

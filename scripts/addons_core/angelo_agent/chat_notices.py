@@ -27,7 +27,7 @@ never changed; everything here is display only.
 import re
 
 from . import canvas_controls, chat_resend, chat_welcome, document_offer, document_scene, drafts, first_run
-from . import notice_kinds, ui_kit_status
+from . import notice_kinds, session_page, ui_kit_status
 from .ui_text import display_notice, iface_, n_, plural_
 
 MARGIN = 16       # The card's inset from the transcript's edges.
@@ -36,10 +36,26 @@ _DETAILS = "notice_details"
 PUT_BACK = "notice_put_back"   # A failed turn's words and attachments back into the composer (``drafts.put_back``).
 RESEND = "notice_resend"   # The same request sent again, on the person's click only (``chat_resend.resend``).
 NEW_CHAT = "notice_new_chat"
+OPEN_PAGE = "notice_open_page"   # The app session's live page in the person's browser (their press only).
+STOP_SHARING = "notice_stop_sharing"   # An app session's live page ends (``session_page``, the person's press).
+SHARE_AGAIN = "notice_share_again"
+
+
+def _page_live(controller):
+    from . import session_page
+    return session_page.is_live(controller)
+
+
+def _page_stopped(controller):
+    from . import session_page
+    return session_page.is_stopped(controller)
 PUT_BACK_LABEL = n_("Put message back")
 # Angelo's own sentences that name a way out: template -> (mark, ((label, action), ...), whether it still stands).
 _OWN = {document_scene.CHANGED: ("warn", ((n_("New chat"), NEW_CHAT),),
-                                 lambda controller: getattr(controller, "document_invalid", False))}
+                                 lambda controller: getattr(controller, "document_invalid", False)),
+        session_page.SHARED: ("info", ((n_("Open live page"), OPEN_PAGE), (n_("Stop sharing"), STOP_SHARING)),
+                              _page_live),
+        session_page.STOPPED: ("info", ((n_("Share again"), SHARE_AGAIN),), _page_stopped)}
 # Exception names, stack lines, JSON, addresses, enum capitals, raw ids: such text goes under Details.
 _TECHNICAL = re.compile(r"Traceback|\b[A-Z]\w*(?:Error|Exception)\b|[{}\[\]<>]|\bline \d+|0x[0-9a-fA-F]+|\b[A-Z0-9_]{6,}\b"
                         r"|[0-9a-f]{8}-[0-9a-f]{4}-")
@@ -84,8 +100,8 @@ def _content(message):
         mark, title, sentence = _KNOWN[kind]
         return kind, mark, iface_(title), console.display_text(message) if own else iface_(sentence), None if own else raw
     if own:   # An offer (document_identity.OFFER) is a question, not an error; so is a state with a way out (_OWN).
-        warn = _offer(message) or _own_actions(message)[0] == "warn"
-        return kind, "warn" if warn else "error", console.display_text(message), "", None
+        mark = "warn" if _offer(message) else _own_actions(message)[0] or "error"
+        return kind, mark, console.display_text(message), "", None
     if not technical(raw):  # The provider's own plain sentence (never translated: it is not Angelo's text).
         return kind, "error", iface_("Something went wrong"), raw.strip(), None
     return kind, "error", iface_("Something went wrong"), iface_("This turn stopped before it finished. Try again."), raw
@@ -186,6 +202,14 @@ def dispatch(context, controller, state, action, value):
     own = isinstance(value, tuple) and bool(value) and id(rows[-1]) == value[-1]   # Still the card's own row.
     if action == NEW_CHAT:
         bpy.ops.angelo.new_chat()
+    elif action == OPEN_PAGE:   # This conversation's own page while it is live, through Angelo's URL opening.
+        from . import session_page
+        url = session_page.page_url(controller)
+        if url:
+            bpy.ops.wm.url_open(url=url)
+    elif action in (STOP_SHARING, SHARE_AGAIN):   # The live page of this conversation (session_page).
+        from . import session_page
+        (session_page.stop_sharing if action == STOP_SHARING else session_page.share_again)(controller)
     elif action == RESEND:
         if own:
             chat_resend.resend(controller, rows[-1])

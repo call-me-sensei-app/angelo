@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 import unittest
 
-from host_test_policy import environment_skip
+from host_test_policy import environment_skip, required_skip
 
 ROOT = Path(__file__).resolve().parents[3]
 HELPER = ROOT / "scripts/angelo/release_libdir_cache.sh"
@@ -28,7 +28,7 @@ TOOLCHAIN = ROOT / "scripts/angelo/windows_release_toolchain.ps1"
 
 @unittest.skipIf(os.name == "nt", environment_skip(
     "release_libdir_cache.sh is the macOS release build's bash helper; Windows' twin is pinned by WiredInTests"))
-@unittest.skipUnless(shutil.which("bash"), "needs bash")
+@unittest.skipUnless(shutil.which("bash"), required_skip("needs bash"))
 class LibdirCacheTests(unittest.TestCase):
     def setUp(self):
         folder = tempfile.TemporaryDirectory()

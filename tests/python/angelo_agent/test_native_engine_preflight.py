@@ -639,13 +639,10 @@ class FamilyTests(unittest.TestCase):
         self.assertTrue(TOOL_MAP[CHECK]["annotations"]["readOnlyHint"])
         self.assertFalse(TOOL_MAP[FIX]["annotations"]["readOnlyHint"])
 
-    def test_mcp_levels(self):
-        from angelo_agent.external_clients import EDIT, READ, tools_for
-        self.assertIn(CHECK, tools_for((READ,)))
-        self.assertIn(CHECK, tools_for((READ,), headless=True))
-        self.assertNotIn(FIX, tools_for((READ,)))
-        self.assertIn(FIX, tools_for((READ, EDIT)))
-        self.assertNotIn(FIX, tools_for((READ, EDIT), headless=True))   # Its card needs the window.
+    def test_a_blender_without_the_window_checks_but_never_fixes(self):
+        from angelo_agent import windowless_tools
+        self.assertIn(CHECK, windowless_tools.READS)
+        self.assertNotIn(FIX, windowless_tools.TOOLS)   # Its card needs the window.
 
     def test_every_fix_has_a_function_and_a_card_line(self):
         fixes = ast.parse((ADDON / "engine_fixes.py").read_text(encoding="utf-8"))

@@ -1,0 +1,55 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd. -->
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Angelo · Live session</title>
+<link rel="stylesheet" href="app.css">
+<script type="importmap">{"imports":{"three":"./preview/vendor/three/build/three.module.min.js","three/addons/":"./preview/vendor/three/examples/jsm/"}}</script>
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<main class="stage">
+  <canvas id="view" aria-label="3D scene"></canvas>
+  <p class="hint" id="scene-hint"></p>
+  <div class="loading" id="loading" aria-hidden="true"><span></span></div>
+  <section class="views" id="views-panel" hidden aria-labelledby="views-title">
+    <h2 id="views-title"></h2>
+    <p class="quiet" id="no-views"></p>
+    <ul id="views"></ul>
+  </section>
+</main>
+<aside class="panel" id="panel" aria-live="polite">
+  <header class="top">
+    <div class="mark"><!--WORDMARK--></div>
+    <span class="dot" id="dot" aria-hidden="true"></span>
+  </header>
+  <p class="eyebrow" id="app"></p>
+  <h1 id="status"></h1>
+  <p class="step" id="step" hidden><span id="step-label"></span> <code id="step-tool"></code></p>
+  <dl class="facts">
+    <div><dt id="l-elapsed"></dt><dd id="v-elapsed">–</dd></div>
+    <div id="usage-row" hidden><dt id="l-usage"></dt><dd id="v-usage">–</dd></div>
+  </dl>
+  <section class="goal" id="goal" hidden aria-labelledby="goal-title">
+    <h2 id="goal-title"></h2>
+    <p class="objective" id="goal-objective"></p>
+    <div class="meter" aria-hidden="true"><span id="goal-bar"></span><i id="goal-pass"></i></div>
+    <p class="goal-facts" id="goal-facts"></p>
+  </section>
+  <section class="result" id="result" hidden aria-labelledby="result-title">
+    <h2 id="result-title"></h2>
+    <div class="markdown" id="result-text"></div>
+  </section>
+  <section class="stream" aria-labelledby="stream-title">
+    <h2 id="stream-title"></h2>
+    <ol id="rows"></ol>
+  </section>
+  <p class="footnote" id="read-only"></p>
+</aside>
+<div class="ended" id="ended" hidden><p id="ended-text"></p></div>
+</body>
+</html>

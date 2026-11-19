@@ -16,6 +16,7 @@ import json
 import struct
 import sys
 import unittest
+from host_test_policy import required_skip
 import uuid
 import zlib
 from collections import deque
@@ -77,7 +78,7 @@ def png_rows(png):
     return raw[:, 1:].reshape(height, width, channels // width)
 
 
-@unittest.skipUnless(numpy is not None, "NumPy is not installed")
+@unittest.skipUnless(numpy is not None, required_skip("NumPy is not installed"))
 class OutlineTests(unittest.TestCase):
     def test_regions_and_holes_equal_a_plain_flood_fill(self):
         from angelo_agent.view_outline import fill_holes, largest_region
@@ -164,7 +165,7 @@ class OutlineTests(unittest.TestCase):
         self.assertTrue(ring.any() and not ring[20, 20] and (ring <= disc(40, (20, 20), 6)).all())
 
 
-@unittest.skipUnless(numpy is not None, "NumPy is not installed")
+@unittest.skipUnless(numpy is not None, required_skip("NumPy is not installed"))
 class GapTests(unittest.TestCase):
     """Where outlines differ, against an orthographic free camera's own matrices (view_framing.free_camera)."""
 
@@ -270,7 +271,7 @@ class GapTests(unittest.TestCase):
                                            atol=1e-4))
 
 
-@unittest.skipUnless(numpy is not None, "NumPy is not installed")
+@unittest.skipUnless(numpy is not None, required_skip("NumPy is not installed"))
 class EncoderTests(unittest.TestCase):
     def setUp(self):
         self.size = 64
@@ -344,7 +345,7 @@ class EncoderTests(unittest.TestCase):
         self.assertLess(len(encode_png(noise.tobytes(), width, height)), 5 * 1024 * 1024)   # Even incompressible.
 
 
-@unittest.skipUnless(numpy is not None, "NumPy is not installed")
+@unittest.skipUnless(numpy is not None, required_skip("NumPy is not installed"))
 class DepthTests(unittest.TestCase):
     """DEPTH's distances against free cameras' own matrices (view_framing.free_camera), both projections."""
 
@@ -395,7 +396,7 @@ class DepthTests(unittest.TestCase):
             views("FRONT", shading="DEPTH", targets=[HANDLE], frames=[1, 2])
 
 
-@unittest.skipUnless(numpy is not None, "NumPy is not installed")
+@unittest.skipUnless(numpy is not None, required_skip("NumPy is not installed"))
 class SymmetryTests(unittest.TestCase):
     """The same shape on both sides compares as the same, whatever its topology."""
 
@@ -532,7 +533,7 @@ class ContractTests(unittest.TestCase):
         self.assertLess(names.index("light"), names.index("studio_light"))   # The matcap list, not the studio one.
         self.assertIn(("show_cavity", True), SHADING["CURVATURE"])
 
-    @unittest.skipUnless(importlib.util.find_spec("jsonschema"), "jsonschema is not installed")
+    @unittest.skipUnless(importlib.util.find_spec("jsonschema"), required_skip("jsonschema is not installed"))
     def test_the_plan_schema_accepts_comparisons(self):
         import jsonschema
         jsonschema.validate({"operations": [{"tool": "angelo_view", "arguments": {

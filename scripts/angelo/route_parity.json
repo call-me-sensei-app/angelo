@@ -22,7 +22,6 @@
    "routes": [
     "codex",
     "claude.direct",
-    "mcp.*",
     "claude.plan.verify",
     "plan.handoff",
     "plan.handoff.certified"

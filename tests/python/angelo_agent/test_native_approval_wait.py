@@ -155,19 +155,6 @@ class CardIsTheOnlyWaitingSign(unittest.TestCase):
         self.controller.finish_tool(first, {"success": True})
         self.assertEqual(self.controller.status, STATUS_THINKING)
 
-    def test_a_connected_apps_status_says_it_waits_only_while_a_card_waits(self):
-        # Compatibility with 1.0.9's task replies (external_apps): the same words, derived from the card.
-        self.assertIn('"status": status_for_apps(controller)', source("external_apps.py"))
-        self.assertEqual(approval_wait.status_for_apps(self.controller), self.controller.status)
-        call, _ = self.ask()
-        self.assertEqual(approval_wait.status_for_apps(self.controller), "Approval required")
-        self.controller.decline_tool(call.id)
-        self.assertEqual(approval_wait.status_for_apps(self.controller), self.controller.status)
-        self.assertNotEqual(self.controller.status, "Approval required", "never after its card")
-        collaborator = SimpleNamespace(name="angelo_delegate", approval=True)
-        self.assertEqual(approval_wait.status_for_apps(SimpleNamespace(pending={"c": collaborator}, status="x")),
-                         "Approve collaborator usage")
-
     def test_ask_mode_needs_no_reason_line(self):
         self.controller.set_options(approval="ASK")
         call, _ = self.ask()
@@ -287,8 +274,6 @@ class AutoReasons(unittest.TestCase):
                  "Read only": (self.chat("READ_ONLY"), self.call("angelo_web_export")),
                  "an ordinary script before Always allow (its card offers it)": (self.chat(), self.call(
                      "angelo_execute_python", "x = 1")),
-                 "an app's script file (its card offers to allow the file)": (self.chat(), self.call(
-                     "angelo_run_script_file")),
                  "a chat without the controller's decision (a test double)": (SimpleNamespace(
                      state={"options": {"approval": "AUTO_BOUNDED"}}, explains_auto=True),
                      self.call("angelo_web_export")),
@@ -526,28 +511,27 @@ class Pointer(unittest.TestCase):
         self.assertIs(approval_wait.awaiting(self.controller), self.call)
         self.assertIn("approval_wait.awaiting(controller)", function("cards", "chat_blocks.py"))
         # The apps' own waiting signals read the same predicate (break-it round 3).
-        self.assertIn("unseen(controllers, active_id, chat_shown)", function("waiting", "external_apps.py"))
+        self.assertIn("unseen(controllers, active_id, chat_shown)", function("waiting", "external_agent.py"))
         self.assertIn("awaiting(controller) is not None", function("unseen", "approval_wait.py"))
-        self.assertIn("waiting = awaiting(controller) is not None", source("external_apps.py"))
-        self.assertIn('"approval" if awaiting_person(call) else "queued"', source("external_host.py"))
+        self.assertIn("call = awaiting(controller)", source("external_agent.py"))
+        self.assertIn("if awaiting_person(call)}", source("external_agent.py"))   # Rows an app reads (2.0.1).
 
-    def test_a_connected_apps_call_state_and_waiting_signal_follow_the_card(self):
-        from angelo_agent import external_apps
-        from angelo_agent.external_host import ExternalHost
-        call = SimpleNamespace(id="s/external/c1", approval=True, executing=False, name="angelo_write_file")
+    def test_a_connected_apps_waiting_signal_follows_the_card(self):
+        from angelo_agent import external_agent
+        from angelo_agent.worker_consent import awaiting_person
+        call = SimpleNamespace(id="s/c1", approval=True, executing=False, name="angelo_write_file")
         app = SimpleNamespace(state={"id": "s", "results": {}}, pending={call.id: call}, external_client="Claude")
-        self.assertEqual(ExternalHost.call_status(app, "c1")["state"], "approval")
-        self.assertEqual(external_apps.waiting([app], "other"), [("Claude", "s")])
-        self.assertEqual(external_apps.waiting([app], "s"), [], "the person is looking at it")
+        self.assertTrue(awaiting_person(call))
+        self.assertEqual(external_agent.waiting([app], "other"), [("Claude", "s")])
+        self.assertEqual(external_agent.waiting([app], "s"), [], "the person is looking at it")
         for flag in ("authorized", "approved", "automatic", "revoked", "consent_approved"):
             with self.subTest(flag=flag):   # Answered or never the person's: no card, so nothing says it waits.
                 setattr(call, flag, True)
-                self.assertEqual(ExternalHost.call_status(app, "c1")["state"], "queued")
-                self.assertEqual(external_apps.waiting([app], "other"), [])
+                self.assertFalse(awaiting_person(call))
+                self.assertEqual(external_agent.waiting([app], "other"), [])
                 setattr(call, flag, False)
         call.executing = True
-        self.assertEqual(ExternalHost.call_status(app, "c1")["state"], "executing")
-        self.assertEqual(external_apps.waiting([app], "other"), [])
+        self.assertEqual(external_agent.waiting([app], "other"), [])
 
     def test_only_the_persons_tile_click_scrolls_to_the_card(self):
         self.assertIn("if reveal:", function("switch", "session_rail_input.py"))

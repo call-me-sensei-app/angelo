@@ -1,17 +1,18 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""The headless child's transport: two anonymous pipes it inherits from the MCP launcher that started it.
+"""A child process's transport: two anonymous pipes it inherits from the Angelo process that started it (a worker
+Blender, ``worker_host``; a runtime child, ``runtime_child``). Until 2.0.1 the MCP launcher's headless child used it
+too; that child is gone (doc/angelo/external_mcp.rst, "What changed").
 
-There is no socket, no file-system name and no port: only the launcher holds the other ends, so nothing else can
-connect, and the child sees end-of-file (and exits) when the launcher closes them or dies. Frames are the CLI's
+There is no socket, no file-system name and no port: only the parent holds the other ends, so nothing else can
+connect, and the child sees end-of-file (and exits) when the parent closes them or dies. Frames are the CLI's
 (``external_cli_protocol``: a 4-byte big-endian length and one JSON object, finite numbers only), each carrying a
-sequence number so the launcher's concurrent MCP calls share the pair::
+sequence number so concurrent requests share the pair::
 
-    launcher -> child   {"seq": n, "request": <CLI request>}
-    child -> launcher   {"seq": n, "response": <CLI envelope>}     ({"seq": 0, "ready": {...}} once, first)
+    parent -> child   {"seq": n, "request": <request>}
+    child -> parent   {"seq": n, "response": <envelope>}     ({"seq": 0, "ready": {...}} once, first)
 
-Pure standard library and no ``bpy``: the launcher runs it in Angelo's bundled Python, the child inside Angelo
-(doc/angelo/external_mcp.rst, "Headless").
+Pure standard library and no ``bpy``: it runs in Angelo's bundled Python and inside Angelo alike.
 """
 
 import json

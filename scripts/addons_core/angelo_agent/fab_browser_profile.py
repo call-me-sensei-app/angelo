@@ -249,7 +249,6 @@ class ProfileLease:
             current=self.store._binding()
             if current is not None and current!=self._row:raise ProfileUnavailable('PROFILE_METADATA_CHANGED',self)
             import shutil
-            from . import owned_paths
             if not owned_paths.owned(self.path):   # Only the profile Angelo made (owned_paths).
                 raise ProfileUnavailable('PROFILE_METADATA_CHANGED',self)
             owned_paths.disown(self.path)

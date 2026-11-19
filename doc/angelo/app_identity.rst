@@ -242,9 +242,10 @@ install, and carries the person's state over on its own:
 * **Never while another Angelo is open** (it may be the earlier version, still writing into the old folder; this
   Angelo's own children, such as Cycles' GPU listing, do not count): that launch works on the earlier folder in place
   (``state_paths.session_redirect``, in this process only, so it never reaches a child or an updated app), the new
-  folder gains no state of its own, and the notice says so; the next launch with no other Angelo moves everything.
-  An unreadable process list counts as another Angelo. A move already under way is finished, with renames only. A
-  lock beside the record serializes two first launches.
+  folder gains no state of its own, and the notice says so; the next launch with no other Angelo moves everything. The
+  process list is read from the kernel (``process_identity``, Windows' Toolhelp snapshot), never by running ``ps``:
+  this runs at register. An unreadable process list counts as another Angelo. A move already under way is finished,
+  with renames only. A lock beside the record serializes two first launches.
 * **Links move as links** and are never followed: a linked state folder moves as its link (or, when this version
   already has state, its entries merge in through it); a link inside it moves as itself (a junction counts as a
   link). Before each rename the whole carry-over decides each relative link (``carry_over_links.py``): one whose target

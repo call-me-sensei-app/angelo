@@ -110,7 +110,10 @@ def python_sweep(package, installed_file):
     def owned(name):
         return name == package or name.startswith(prefix) or name in standard
 
+    stale = _stale_file_finders()
+
     def begin():
+        stale()
         angelo = {}
         for name, module in _list(modules.items()):
             if owned(name) and module is not None:
@@ -225,6 +228,7 @@ def python_sweep(package, installed_file):
                 stage(snapshot, findings)
             except _Exception:   # noqa: BLE001 - reported; the other stages still run.
                 findings.append(label + ": not restored")
+        stale()
         return findings
 
     return begin, end
@@ -234,6 +238,26 @@ def _finder_paths():
     """Each cached finder's ``path`` (a ``FileFinder`` reads its folder from it): changed in place, it goes back."""
     import sys
     return {key: getattr(finder, "path", None) for key, finder in list(sys.path_importer_cache.items())}
+
+
+def _stale_file_finders():
+    """``mark()``, run at a script's start and end: every cached ``FileFinder`` lists its folder again at its next
+    import, as ``importlib.invalidate_caches`` does for them. A finder lists a folder again only when its mtime moves;
+    where it does not (seen on Windows), a module made while Angelo runs stayed hidden from the script and from
+    Angelo's next import. No finder's method runs (a script may have patched one): only an exact ``FileFinder``'s
+    cached mtime is cleared, with functions bound now (test_native_sweep_new_modules)."""
+    import sys
+    from importlib.machinery import FileFinder
+    _type, _list, _values, _set = type, list, dict.values, object.__setattr__
+
+    def mark():
+        try:
+            for finder in _list(_values(sys.path_importer_cache)):
+                if _type(finder) is FileFinder:
+                    _set(finder, "_path_mtime", -1)
+        except TypeError:   # Not a dict: the import path's restore reports it.
+            pass
+    return mark
 
 
 def _importer_cache_restore(cache, before, installed_entry, paths=None):
@@ -304,7 +328,10 @@ def native_python_sweep(package, installed_file):
             found[0], found[1] = _len(modules), collected
         return found[1]
 
+    stale = _stale_file_finders()
+
     def begin():
+        stale()
         return {"path": _list(sys.path), "meta_path": _list(sys.meta_path), "path_hooks": _list(sys.path_hooks),
                 "importer_cache": _dict(sys.path_importer_cache), "importer_paths": _finder_paths(),
                 "environ": _dict(environ), "lists": [(value, _list(value)) for value in lists()]}
@@ -346,6 +373,7 @@ def native_python_sweep(package, installed_file):
                 findings.append("sys.path_importer_cache (" + _str(restored) + ")")
         except Exception:   # noqa: BLE001
             findings.append("import path: not restored")
+        stale()
         return findings
 
     return begin, end

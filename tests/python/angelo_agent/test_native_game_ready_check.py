@@ -173,10 +173,9 @@ class ArgumentTests(unittest.TestCase):
 class RegistrationTests(unittest.TestCase):
     def test_a_deferred_read_at_the_mcp_read_level(self):
         source = {name: (ADDON / name).read_text(encoding="utf-8") for name in (
-            "plan_kinds.py", "external_clients.py", "tool_specs.py", "blender_tools.py", "chat_titles.py",
+            "plan_kinds.py", "tool_specs.py", "blender_tools.py", "chat_titles.py",
             "activity_text.py", "codex_text.py")}
         self.assertIn("GAME_READY_NAMES", source["plan_kinds.py"])
-        self.assertRegex(source["external_clients.py"], r'READ_TOOLS = frozenset\(\{[^}]*"angelo_game_ready_check"')
         self.assertIn("TOOLS.extend(GAME_READY_TOOLS)", source["tool_specs.py"])
         self.assertIn('"angelo_game_ready_check"', source["chat_titles.py"])
         self.assertIn('"angelo_game_ready_check": "check"', source["activity_text.py"])

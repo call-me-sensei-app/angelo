@@ -64,6 +64,7 @@ import numbers
 import tempfile
 import types
 import unittest
+from host_test_policy import required_skip
 import uuid
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -593,7 +594,7 @@ class TheStoreSavesWhatItCan(unittest.TestCase):
         try:
             import numpy
         except ImportError:
-            self.skipTest("numpy is not installed here (Blender's Python has it)")
+            self.skipTest(required_skip("numpy is not installed here (Blender's Python has it)"))
         values = {"an integer": (numpy.int64(3), 3), "a float": (numpy.float32(0.5), 0.5),
                   "a boolean": (numpy.bool_(True), True), "not a number": (numpy.float64("nan"), None),
                   "a small float not a number": (numpy.float32("nan"), None),

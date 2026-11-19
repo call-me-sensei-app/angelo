@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from unittest import mock
 
@@ -348,7 +349,7 @@ class BuildConfigurationTests(unittest.TestCase):
         self.assertIn("angelo_map_generated_paths(_OSO_MAP_PATHS ${_OSO_FILE})", text)
         self.assertIn("${_OSO_MAP_PATHS}", text)
 
-    @unittest.skipUnless(shutil.which("cmake"), "cmake is not installed")
+    @unittest.skipUnless(shutil.which("cmake"), required_skip("cmake is not installed"))
     def test_the_rewriter_maps_the_longest_prefix_first(self):
         with tempfile.TemporaryDirectory() as folder:
             target = Path(folder, "x.oso")

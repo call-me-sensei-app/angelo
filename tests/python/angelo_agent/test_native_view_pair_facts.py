@@ -10,11 +10,12 @@ every pair that names targets, so the numbers reach the model whichever compare 
 import suite_isolation  # noqa: F401  First: this test never sees a real provider login (provider_isolation.py).
 
 import unittest
+from host_test_policy import required_skip
 
 from test_native_view_outline import FRONT, disc, numpy, png_rows
 
 
-@unittest.skipUnless(numpy is not None, "NumPy is not installed")
+@unittest.skipUnless(numpy is not None, required_skip("NumPy is not installed"))
 class PairFactsTests(unittest.TestCase):
     def setUp(self):
         self.size = 64

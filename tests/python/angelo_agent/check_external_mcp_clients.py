@@ -1,11 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Hyperbond Studio Pte. Ltd.
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Real AI apps calling Angelo over MCP: Claude Code and Codex, tool level and task level (LIVE, billed).
+"""Real AI apps working with Angelo's agent over MCP: Claude Code and Codex (LIVE, billed).
 
 Opt-in only (it runs real models on the accounts the given profiles are signed
-in to; nothing signs in). Angelo runs with private HOME, TMPDIR, user config and
-state; its task level uses the connections folder given (a test profile's) and
-the connection the person would pick in the app's External conversation. The
+in to; nothing signs in). Angelo runs with private TMPDIR, user config and
+state; its agent uses the connections folder given (a test profile's) and the
+connection the person would pick in the app's External conversation. An app
+never calls Angelo's tools: it sends Angelo's agent messages, steers and stops
+it, and reads what it sees (doc/angelo/external_mcp.rst). The
 apps get Angelo through their own MCP options (``--mcp-config`` for Claude Code,
 ``-c mcp_servers.angelo...`` for Codex), so no app settings file is written.
 
@@ -38,22 +40,31 @@ sys.path.insert(0, str(HERE))
 import provider_isolation as isolation  # noqa: E402  (each profile's account before it is billed)
 
 PROMPTS = {
-    "claude_tools": ("Use only the angelo MCP tools for this, never a shell. Look at the open Blender scene, then add "
-                     "a cube named MCPProbe of size 0.5 at x=0, y=0, z=2. Then take a view of the scene and tell me "
-                     "in one sentence what you see."),
-    "claude_task": ("Use the angelo_task tool to ask Angelo's own agent to do this: \"Add a UV sphere named MCPSphere "
-                    "with radius 0.4 at x=2, y=0, z=1.\" Keep checking with angelo_task_status until it is done, then "
-                    "tell me its final state in one sentence."),
-    "codex_tools": ("Use only the angelo MCP tools for this. Find the object named MCPProbe in the open Blender scene "
-                    "with angelo_scene_search, move it to x=1, y=0, z=2 with angelo_set_transform, and tell me its new "
-                    "location in one sentence."),
-    "codex_task": ("Use the angelo_task tool to ask Angelo's own agent: \"Add a cone named MCPCone at x=-2, y=0, z=0.\" "
-                   "Check angelo_task_status until it is done and tell me its final state in one sentence."),
+    "claude_agent": ("Use only the angelo MCP tools for this, never a shell. Ask Angelo's agent (angelo_send) to add a "
+                     "cube named MCPProbe of size 0.5 at x=0, y=0, z=2. Follow its progress with angelo_read, passing "
+                     "the cursor it returns and wait_seconds, until its turn is idle. Then look at the viewport with "
+                     "angelo_viewport and tell me in one sentence what you see."),
+    "claude_steer": ("Use only the angelo MCP tools. Ask Angelo's agent (angelo_send) to add five cubes named MCPRow "
+                     "in a row along x. As soon as it has started (read once with angelo_read), send it a second "
+                     "message with angelo_send saying the cubes must be 2 m apart, starting at x=0, y=5, z=0. Then "
+                     "read until its turn is idle and tell me in one sentence whether your second message was "
+                     "steered or queued, and where the cubes are."),
+    "codex_agent": ("Use only the angelo MCP tools. Ask Angelo's agent (angelo_send) to move the object named "
+                    "MCPProbe to x=1, y=0, z=2. Follow it with angelo_read (cursor, wait_seconds) until its turn is "
+                    "idle, then check the scene with angelo_scene and tell me MCPProbe's location in one sentence."),
+    "codex_stop": ("Use only the angelo MCP tools. Ask Angelo's agent (angelo_send) to build a spiral staircase of 40 "
+                   "separate steps named MCPStep. Read its progress once with angelo_read (wait_seconds 20), then stop "
+                   "it with angelo_stop, read again until its turn is idle, and tell me in one sentence what state it "
+                   "reports."),
 }
-EXPECT = {"claude_tools": lambda objects: "MCPProbe" in objects,
-          "claude_task": lambda objects: "MCPSphere" in objects or "Moon" in objects,
-          "codex_tools": lambda objects: [round(v, 3) for v in objects.get("MCPProbe", [None])[:3]] == [1, 0, 2],
-          "codex_task": lambda objects: "MCPCone" in objects}
+EXPECT = {"claude_agent": lambda objects, calls: "MCPProbe" in objects and "angelo_viewport" in calls,
+          "claude_steer": lambda objects, calls: sum(name.startswith("MCPRow") for name in objects) >= 5
+          and calls.count("angelo_send") >= 2,
+          "codex_agent": lambda objects, calls: [round(v, 3) for v in objects.get("MCPProbe", [None])[:3]] == [1, 0, 2],
+          "codex_stop": lambda objects, calls: "angelo_stop" in calls}
+# No app may call anything but these (external_mcp_tools.NAMES): a direct tool call is a failure of the contract.
+AGENT_TOOLS = frozenset({"angelo_send", "angelo_read", "angelo_stop", "angelo_image", "angelo_scene",
+                         "angelo_viewport"})
 
 
 def launcher_args(resources, state, client):
@@ -155,9 +166,9 @@ def main():
     import app_layout
     resources = app_layout.resources(binary)
     sys.path.insert(0, str(resources / "scripts/addons_core"))
-    from angelo_agent.external_clients import AppRegistry, DEFAULT_LEVELS
+    from angelo_agent.external_clients import AppRegistry
     for app in ("claude_code", "codex"):
-        AppRegistry(env["ANGELO_STATE_DIR"]).connect(app, levels=DEFAULT_LEVELS)
+        AppRegistry(env["ANGELO_STATE_DIR"]).connect(app)
     stop, scene = root / "stop", root / "scene.json"
     for path in (stop, scene, root / "ready"):
         path.unlink(missing_ok=True)
@@ -193,10 +204,12 @@ def main():
     final = json.loads(scene.read_text()) if scene.is_file() else {}
     report["scene"] = final
     for name, run in report["runs"].items():
-        run["scene_shows_it"] = bool(EXPECT[name](final.get("objects", {})))
-    report["success"] = all(run["exit"] == 0 and run["scene_shows_it"] for run in report["runs"].values())
+        run["scene_shows_it"] = bool(EXPECT[name](final.get("objects", {}), run["angelo_calls"]))
+        run["only_agent_tools"] = set(run["angelo_calls"]) <= AGENT_TOOLS
+    report["success"] = all(run["exit"] == 0 and run["scene_shows_it"] and run["only_agent_tools"]
+                            for run in report["runs"].values())
     (root / "report.json").write_text(json.dumps(report, indent=2))
-    print(json.dumps({name: {k: run[k] for k in ("exit", "seconds", "scene_shows_it", "final")}
+    print(json.dumps({name: {k: run[k] for k in ("exit", "seconds", "scene_shows_it", "only_agent_tools", "final")}
                       for name, run in report["runs"].items()}, indent=2))
     print("approvals:", final.get("approvals"))
     return 0 if report["success"] else 1

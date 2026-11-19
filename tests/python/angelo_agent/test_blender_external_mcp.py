@@ -11,19 +11,24 @@ It launches one window process with private HOME, TMPDIR, user config, state,
 accounts and runtime directories. Inside it, Connect (the card's own operator)
 writes Codex's MCP settings in the private HOME and turns access on; a worker thread then runs the bundled
 launcher (``scripts/angelo/angelo_mcp.py`` with the bundle's Python, ``-I``) and
-speaks MCP to it: initialize, tools/list, a search, a view (image content), a
-cube and a move under Approve for me, a script the fixture approves as the
-person would (review, then Approve), a script it declines, and a read after the
-decline. Checks: the scene changes exactly as approved, each edit is one Undo
-step (three Undos take back the script, the move and the cube in that order),
-a snapshot was taken before the first edit, the transcript names the app, no
-TCP listener exists, and the AI Providers page draws the card (screenshot).
+speaks MCP to it as an external agent does: initialize and the agent tools; a message with no connection
+(``needs_connection``, the conversation's connect signal); then, with a scripted stand-in for the model bound to the
+app's External conversation through the person's own send path (``console.submit``), a message that starts a turn
+(a cube under Approve for me, a script the fixture approves as the person would, a view), long-poll reads until the
+card waits and until the turn ends, the view's picture by id, the scene and the viewport (no row added), a second
+message that waits for a turn the stand-in holds, and Stop, after which it is never sent. Checks: the scene changes
+exactly as approved, the agent's text and tool rows reach the app, no Angelo tool is ever offered, the turn's first
+user row frames the app's words as untrusted, each edit is one Undo step (two Undos take back the script and the
+cube), and the AI Providers page draws the card (screenshot). Listeners (2.0.1, the live session page): none until a
+send shares the conversation's page; then exactly one, the session page's own server (``web_preview_server``, the port
+of the send's ``live_page``), on 127.0.0.1 only; none after the person's Stop sharing on the conversation's notice (and
+the next send carries no ``live_page``); one again on 127.0.0.1 after Share again; none once the app disconnects.
 Then Copy setup on the card's MCP app row, pressed as a person does (a script's call and the page's action run by a
 script are refused first): the clipboard's snippet names a client the launcher serves (initialize and tools/list
 through it), holds no key, and access is on; Disconnect revokes it (the same launcher answers "not connected" with
 no tools); the card shows the row (screenshot). ``--language ar`` runs it all with the interface in Arabic (right to
 left), the labels checked in that language.
-No provider, model, network or account is used. Contract: doc/angelo/external_mcp.rst.
+No real provider, model, network or account is used. Contract: doc/angelo/external_mcp.rst.
 """
 
 import os, sys  # noqa: E401  The suite's own folder, for its first import:
@@ -47,7 +52,6 @@ ROOT = HERE.parents[2]
 sys.path.insert(0, str(HERE))
 LOG_MARKERS = ("Traceback (most recent call last)", "Error: Not freed memory blocks", "BLI_assert failed", "Segmentation fault")
 SCRIPT_RUN = {"description": "Mark the scene", "code": "import bpy\nbpy.context.scene['mcp_fixture'] = 1\nresult = 1"}
-SCRIPT_DECLINED = {"description": "Must not run", "code": "import bpy\nbpy.context.scene['mcp_declined'] = 1\nresult = 1"}
 
 
 def run_host():
@@ -116,6 +120,7 @@ ModelCatalogs.refresh = lambda *args, **kwargs: None
 addon_utils.enable("angelo_agent", default_set=False, persistent=False)
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # qa_boot, inside the app.
 import qa_boot  # noqa: E402  (Angelo's start-up is over: the shared boot gate)
+import host_waits  # noqa: E402  (a wait on its own signal, capped)
 bpy.context.preferences.view.show_splash = False
 if ARGS.language != "en_US":   # Angelo's own text in that language (its catalogue), Blender's too.
     bpy.context.preferences.view.language = ARGS.language
@@ -163,23 +168,152 @@ def text_of(result):
     return " ".join(block.get("text", "") for block in result.get("content", []) if block.get("type") == "text")
 
 
+class StandIn:
+    """A scripted stand-in for the model behind the app's External conversation: a turn adds a cube (Auto runs it),
+    asks for a script (the person approves) and takes a view, then replies. A message that says "hold" keeps its
+    turn running until Stop."""
+    steer_ready = False
+
+    def __init__(self):
+        self.texts, self.count, self.release = [], 0, threading.Event()
+
+    def connect(self):
+        return "stand-in"
+
+    def call(self, context, name, arguments):
+        self.count += 1
+        done, out = threading.Event(), []
+        context.request_tool("stand-in-%d" % self.count, name, arguments, lambda result: (out.append(result), done.set()))
+        done.wait(120)
+        return out[0] if out else {}
+
+    def run_request(self, context, native_id, text, observation=None):
+        self.texts.append(text)
+        if "hold" in text:
+            self.release.wait(120)
+            return "interrupted" if context.cancelled else "completed"
+        self.call(context, "angelo_create_cube", {"name": "MCPCube", "size": 0.5, "location": [3, 0, 0]})
+        self.call(context, "angelo_execute_python", SCRIPT_RUN)
+        self.call(context, "angelo_view", {"views": ["ISO"]})
+        context.emit("message_complete", {"item": "reply", "text": "Made MCPCube and marked the scene."})
+        return "completed"
+
+    def stop_request(self, fence):
+        self.release.set()
+
+    def close(self):
+        pass
+
+
+def listeners():
+    """This process's listening sockets as lsof names them (``127.0.0.1:52345``, ``*:8080``, ``[::1]:80``)."""
+    text = subprocess.run(["lsof", "-nP", "-a", "-p", str(os.getpid()), "-i", "-FfnT"], capture_output=True,
+                          text=True, timeout=30).stdout
+    found, name, listening = [], None, False
+    for line in text.splitlines() + ["f"]:
+        if line.startswith("f"):
+            if listening and name:
+                found.append(name)
+            name, listening = None, False
+        elif line.startswith("n"):
+            name = line[1:]
+        elif line == "TST=LISTEN":
+            listening = True
+    return sorted(found)
+
+
+def until_closed():
+    """``listeners()`` once none is left (the server stops off the main thread), or as they are at the cap."""
+    try:
+        host_waits.until(lambda: not listeners(), what="the session page's listener closing")
+    except AssertionError:
+        pass
+    return listeners()
+
+
+def pages_server_address():
+    """The address Angelo's one local web server (``web_preview_server``, the session page's host) is bound to."""
+    from angelo_agent import web_preview_server
+    server = web_preview_server._host["server"]
+    return tuple(server.server_address[:2]) if server is not None else None
+
+
+def page_port(result):
+    """The port of a send's ``live_page`` (``http://127.0.0.1:<port>/s/<token>/``), or None without one."""
+    import re
+    match = re.match(r"^http://127\.0\.0\.1:(\d+)/s/[A-Za-z0-9_-]{32}/$", structured(result).get("live_page") or "")
+    return int(match.group(1)) if match else None
+
+
+def sharing(press):
+    """Ask the main thread for the person's press on the conversation's notice, and wait until it is done."""
+    state["sharing"] = press
+    while state.get("sharing_done") != press:
+        time.sleep(0.05)
+
+
+def share():
+    """The person's Stop sharing or Share again, pressed on the conversation's own notice (``chat_notices``)."""
+    asked = state.get("sharing")
+    if not asked or state.get("sharing_done") == asked:
+        return
+    from angelo_agent import chat_notices
+    action = chat_notices.STOP_SHARING if asked == "stop" else chat_notices.SHARE_AGAIN
+    chat_notices.dispatch(bpy.context, external()[0], None, action, None)
+    state["sharing_done"] = asked
+
+
+def structured(result):
+    return result.get("structuredContent") or {}
+
+
 def sequence(command):
     client = Client(command)
     out = {}
     try:
         out["init"] = client.request("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}})["result"]
         out["tools"] = [tool["name"] for tool in client.request("tools/list")["result"]["tools"]]
-        out["search"] = client.call("angelo_scene_search", {"query": "Cube", "coverage": "PAGE", "limit": 5})
-        handle = next(iter(__import__("re").findall(r'"(o[1-9][0-9]*)"', text_of(out["search"]))), "o1")
-        out["view"] = client.call("angelo_view", {"views": ["ISO"]})
-        out["cube"] = client.call("angelo_create_cube", {"name": "MCPCube", "size": 0.5, "location": [3, 0, 0]})
-        out["move"] = client.call("angelo_set_transform", {"object": handle, "location": [0, 2, 0]})
-        out["script"] = client.call("angelo_execute_python", SCRIPT_RUN)
-        out["declined"] = client.call("angelo_execute_python", SCRIPT_DECLINED)
-        out["after"] = client.call("angelo_inspect_scene", {})
-        lsof = subprocess.run(["lsof", "-nP", "-a", "-p", str(os.getpid()), "-i"], capture_output=True, text=True,
-                              timeout=30)
-        out["inet"] = lsof.stdout.strip()
+        out["no_connection"] = client.call("angelo_send", {"message": "Make a cube"})
+        out["listen_before"] = listeners()   # Access on and an app connected, no page shared: nothing listens.
+        state["bind"] = True   # The main thread binds the stand-in for the next send (phase "bind").
+        while not state.get("bound"):
+            time.sleep(0.05)
+        out["sent"] = client.call("angelo_send", {"message": "Make a cube named MCPCube"})
+        cursor = structured(out["sent"]).get("cursor")
+        out["waiting"] = client.call("angelo_read", {"cursor": cursor, "wait_seconds": 45})
+        state["card_read"] = True   # The person reads the card the app saw waiting, then approves it (decide).
+        # After the read that waits for the card (lsof takes a moment the turn would run on in): still shared.
+        out["listen_shared"], out["server_address"] = listeners(), pages_server_address()
+        cursor = structured(out["waiting"]).get("cursor") or cursor
+        reads = []
+        for _ in range(6):   # Until the turn is idle: each read returns once it settles.
+            reads.append(client.call("angelo_read", {"cursor": cursor, "wait_seconds": 45}))
+            cursor = structured(reads[-1]).get("cursor") or cursor
+            if structured(reads[-1]).get("turn") == "idle":
+                break
+        out["reads"] = reads
+        out["full"] = client.call("angelo_read", {"detail": "full"})
+        views = [image for row in structured(out["full"]).get("rows", []) if row.get("tool") == "angelo_view"
+                 for image in row.get("images", [])]
+        out["image"] = client.call("angelo_image", {"id": views[0]}) if views else {"isError": True}
+        out["rows_before_observing"] = len(structured(out["full"]).get("rows", []))
+        out["scene"] = client.call("angelo_scene", {})
+        out["viewport"] = client.call("angelo_viewport", {})
+        out["rows_after_observing"] = len(structured(client.call("angelo_read", {})).get("rows", []))
+        sharing("stop")   # The person's Stop sharing on the conversation's notice (main thread).
+        out["listen_after_stop"] = until_closed()
+        out["held"] = client.call("angelo_send", {"message": "hold this turn"})
+        # Returns once the held turn has changed the conversation (it started), never after a fixed sleep.
+        client.call("angelo_status", {"task": structured(out["held"]).get("task") or "", "wait_seconds": 10})
+        sharing("share")   # Share again: the app's next message brings a new link.
+        out["queued"] = client.call("angelo_send", {"message": "never sent"})
+        out["listen_again"], out["server_again"] = listeners(), pages_server_address()
+        out["stop"] = client.call("angelo_stop", {})
+        cursor = structured(out["stop"]).get("cursor")
+        out["after_stop"] = client.call("angelo_read", {"wait_seconds": 20})
+        out["listen_end"] = listeners()
+        out["inet"] = subprocess.run(["lsof", "-nP", "-a", "-p", str(os.getpid()), "-i"], capture_output=True,
+                                     text=True, timeout=30).stdout.strip()   # Every inet socket, for the report.
     finally:
         client.process.stdin.close()
         client.process.wait(15)
@@ -191,7 +325,12 @@ def external():
 
 
 def decide():
-    """The person at the approval card: approve the first script after reviewing it, decline the second."""
+    """The person at the approval card: approve each script after reviewing it, once the app's read that waits for
+    the card has returned. Approving on the first heartbeat after the card appeared answered it, under the GUI round's
+    load, before the app's next read reached Angelo: 12484412217 read ``idle`` with the turn done (a real person
+    needs at least a frame to see the card; a read that never returns on it still fails the check, at 45 s)."""
+    if not state.get("card_read"):
+        return
     for controller in external():
         for call in list(controller.pending.values()):
             if call.name != "angelo_execute_python" or not call.approval or call.executing or call.id in state["decided"]:
@@ -199,13 +338,27 @@ def decide():
             state["decided"].add(call.id)
             state["scripts"] += 1
             report.setdefault("approval_cards", []).append({"tool": call.name, "automatic": call.automatic})
-            if state["scripts"] == 1:
-                from angelo_agent import grant_guard   # The person's Review: the harness stands in.
-                grant_guard.harness(controller.review_script, call)
-                with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
-                    __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve(call_id=call.id, session_id=controller.state["id"])
-            else:
-                controller.decline_tool(call.id)
+            from angelo_agent import grant_guard   # The person's Review: the harness stands in.
+            grant_guard.harness(controller.review_script, call)
+            with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
+                __import__("angelo_agent.grant_guard").grant_guard.stand_in().approve(call_id=call.id, session_id=controller.state["id"])
+
+
+def bind():
+    """Once asked: the app's External conversation sends on the stand-in, through the person's own send path
+    (``console.submit`` calls ``ui.prepare_controller``, which here binds the stand-in instead of a connection)."""
+    if not state.get("bind") or state.get("bound"):
+        return
+    stand_in = state["stand_in"] = StandIn()
+    original = ui.prepare_controller
+
+    def prepare(controller=None):
+        if controller is not None and getattr(controller, "external_client", ""):
+            controller.provider = stand_in
+            return
+        return original(controller)
+    ui.prepare_controller = prepare
+    state["bound"] = True
 
 
 def capture(name):
@@ -254,7 +407,9 @@ def heartbeat():
             threading.Thread(target=work, daemon=True).start()
             state["phase"] = "running"
         elif phase == "running":
+            bind()
             decide()
+            share()
             if "mcp" in state["results"]:
                 state["phase"] = "checks"
         elif phase == "checks":
@@ -262,32 +417,75 @@ def heartbeat():
             if "error" in out:
                 raise RuntimeError(out["error"])
             check("initialize_names_angelos_own_server", out["init"]["serverInfo"]["name"] == "angelo"
-                  and "not Blender MCP" in out["init"]["instructions"])
-            check("tools_follow_the_apps_levels", {"angelo_task", "angelo_execute_python", "angelo_scene_program"}
-                  <= set(out["tools"]) and "angelo_write_file" not in out["tools"])
-            check("search_reads_the_live_scene", not out["search"]["isError"] and "Cube" in text_of(out["search"]))
-            images = [block for block in out["view"].get("content", []) if block.get("type") == "image"]
-            check("view_returns_image_content", not out["view"]["isError"] and images
+                  and "Blender MCP" not in out["init"]["instructions"])
+            from angelo_agent.external_mcp_tools import AGENT_NAMES
+            from angelo_agent.tool_specs import TOOL_MAP
+            check("only_the_agent_tools", set(out["tools"]) == AGENT_NAMES and not set(out["tools"]) & set(TOOL_MAP))
+            check("no_connection_says_what_to_do", out["no_connection"]["isError"]
+                  and structured(out["no_connection"]).get("code") == "needs_connection")
+            check("a_message_starts_a_turn", structured(out["sent"]).get("delivered") == "started")
+            waiting = structured(out["waiting"])
+            # What the read answered, kept: a failed check says what it saw (3b2b492bb4a's red said nothing).
+            report["waiting_read"] = {key: waiting.get(key) for key in ("turn", "approval", "needs", "code", "message",
+                                                                        "more", "live_page_ended", "conversation",
+                                                                        "cursor", "queued")}
+            report["waiting_read"]["rows"] = [(row.get("i"), row.get("role"), row.get("tool"), row.get("status"))
+                                              for row in waiting.get("rows") or ()]
+            report["sent_answer"] = {key: value for key, value in structured(out["sent"]).items() if key != "rows"}
+            check("a_read_returns_when_the_card_waits", waiting.get("turn") == "waiting_for_approval"
+                  and waiting.get("approval") == {"tool": "angelo_execute_python"} and "needs" in waiting)
+            from angelo_agent import swallowed_errors   # A defect a catch-all swallowed (a live page's) is a red.
+            report["swallowed"] = swallowed_errors.caught()
+            check("no_defect_was_swallowed", not report["swallowed"])
+            final = structured(out["reads"][-1]) if out["reads"] else {}
+            check("reads_follow_the_turn_to_its_end", final.get("turn") == "idle")
+            rows = structured(out["full"]).get("rows", [])
+            tools = {row.get("tool"): row.get("status") for row in rows if row.get("role") == "tool"}
+            check("the_agents_steps_reach_the_app", tools.get("angelo_create_cube") == "done"
+                  and tools.get("angelo_execute_python") == "done" and tools.get("angelo_view") == "done")
+            check("the_agents_reply_reaches_the_app", any(row.get("text") == "Made MCPCube and marked the scene."
+                                                          for row in rows if row.get("role") == "assistant"))
+            check("the_apps_words_read_back_as_sent", any(row.get("role") == "app"
+                                                          and row.get("text") == "Make a cube named MCPCube" for row in rows))
+            images = [block for block in out["image"].get("content", []) if block.get("type") == "image"]
+            check("a_view_the_agent_got_is_read_by_id", not out["image"].get("isError") and images
                   and base64.b64decode(images[0]["data"])[:8] == b"\x89PNG\r\n\x1a\n")
-            check("bounded_edits_run_under_approve_for_me", not out["cube"]["isError"] and not out["move"]["isError"]
-                  and "MCPCube" in bpy.data.objects
+            scene = structured(out["scene"]).get("scene") or {}
+            check("the_scene_as_the_agent_sees_it", "MCPCube" in json.dumps(scene))
+            viewport = [block for block in out["viewport"].get("content", []) if block.get("type") == "image"]
+            check("the_viewport_as_the_agent_sees_it", not out["viewport"].get("isError") and viewport
+                  and base64.b64decode(viewport[0]["data"])[:8] == b"\x89PNG\r\n\x1a\n")
+            check("observing_adds_no_row", out["rows_after_observing"] == out["rows_before_observing"])
+            check("a_message_during_a_turn_waits_for_it", structured(out["queued"]).get("delivered") == "queued")
+            check("stop_ends_the_turn_and_sends_nothing_queued", not out["stop"]["isError"]
+                  and structured(out["after_stop"]).get("turn") == "idle"
+                  and not any("never sent" in text for text in state["stand_in"].texts))
+            check("the_scene_changed_as_approved", "MCPCube" in bpy.data.objects
                   and tuple(round(v, 4) for v in bpy.data.objects["MCPCube"].location) == (3, 0, 0)
-                  and tuple(round(v, 4) for v in bpy.data.objects["Cube"].location) == (0, 2, 0))
+                  and bpy.context.scene.get("mcp_fixture") == 1)
             check("every_script_waited_for_the_persons_review", [c["automatic"] for c in report.get("approval_cards", [])]
-                  == [False, False])
-            check("approved_script_ran", not out["script"]["isError"] and bpy.context.scene.get("mcp_fixture") == 1)
-            check("declined_script_did_not_run_and_says_so", out["declined"]["isError"]
-                  and "declined" in text_of(out["declined"]).lower() and "mcp_declined" not in bpy.context.scene)
-            check("a_read_after_the_decline_works", not out["after"]["isError"])
-            check("no_tcp_listener", "LISTEN" not in out["inet"])
+                  == [False])
+            report["listeners"] = {key: out[key] for key in ("listen_before", "listen_shared", "listen_after_stop",
+                                                              "listen_again", "listen_end")}
+            report["inet"] = out["inet"]
+            check("no_listener_until_a_page_is_shared", out["listen_before"] == [])
+            first, again = page_port(out["sent"]), page_port(out["queued"])
+            check("the_only_listener_is_the_session_pages_server_on_loopback", first is not None
+                  and out["listen_shared"] == ["127.0.0.1:%d" % first] and out["server_address"] == ("127.0.0.1", first))
+            check("stop_sharing_closes_the_listener", out["listen_after_stop"] == []
+                  and "live_page" not in structured(out["held"]))
+            check("share_again_listens_on_loopback_only_for_a_new_link", again is not None
+                  and structured(out["queued"])["live_page"] != structured(out["sent"])["live_page"]
+                  and out["listen_again"] == ["127.0.0.1:%d" % again] and out["server_again"] == ("127.0.0.1", again)
+                  and out["listen_end"] == out["listen_again"])
             controllers = external()
             check("one_external_conversation", len(controllers) == 1)
             controller = controllers[0]
             rows = controller.state["messages"]
-            check("transcript_names_the_app", any(r.get("request_kind") == "external_request" for r in rows))
+            framed = [r.get("text", "") for r in rows if r.get("request_kind") == "external_task"]
+            check("the_agent_reads_the_apps_words_as_untrusted", framed and all("untrusted data" in t for t in framed))
             check("snapshot_before_the_first_edit", any(r.get("checkpoint") for r in rows if r.get("role") == "user")
                   or bool(controller.request_checkpoint))
-            check("no_provider_started", all(c.provider is None for c in ui._controllers.values()))
             report["external_rows"] = [{k: str(v)[:120] for k, v in r.items() if k in ("role", "tool", "status", "text",
                                         "request_kind", "checkpoint")} for r in rows]
             state["phase"] = "undo"
@@ -296,11 +494,8 @@ def heartbeat():
                 bpy.ops.ed.undo()
                 after_one = ("mcp_fixture" not in bpy.context.scene, "MCPCube" in bpy.data.objects)
                 bpy.ops.ed.undo()
-                after_two = (tuple(round(v, 4) for v in bpy.data.objects["Cube"].location) == (0, 0, 0),
-                             "MCPCube" in bpy.data.objects)
-                bpy.ops.ed.undo()
-                after_three = "MCPCube" not in bpy.data.objects
-            check("each_edit_is_one_undo_step", after_one == (True, True) and after_two == (True, True) and after_three)
+                after_two = "MCPCube" not in bpy.data.objects
+            check("each_edit_is_one_undo_step", after_one == (True, True) and after_two)
             with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
                 bpy.ops.angelo.settings()
             state["phase"] = "page"
@@ -368,6 +563,7 @@ def heartbeat():
                 (view_scroll.down if below else view_scroll.up)(target, area, region, distance)
                 return 0.3
             import qa_input   # The person's press (gui_launch's --enable-event-simulate).
+            # The page lays out in region pixels (unscaled, left to right): the rect's centre in window pixels.
             qa_input.press(target, region.x + rect[0] + rect[2] / 2, region.y + rect[1] + rect[3] / 2)
             state["copy_pressed"] = time.monotonic()
             state["phase"] = "copy_pressed"
@@ -427,6 +623,17 @@ def heartbeat():
             return 0.1
         elif phase == "copy_shot":
             capture("ai-providers-mcp-app.png")
+            with bpy.context.temp_override(window=bpy.context.window_manager.windows[0]):
+                bpy.ops.angelo.external_app_disconnect(app="codex")   # The app's session ends: its page with it.
+            state["disconnected"] = time.monotonic()
+            state["phase"] = "disconnected"
+            return 0.2
+        elif phase == "disconnected":
+            found = listeners()
+            if found and time.monotonic() - state["disconnected"] < host_waits.CAP_S:
+                return 0.2   # The pump ends the page on its next tick; the server stops off the main thread.
+            report["listeners"]["after_disconnect"] = found
+            check("the_listener_closes_when_the_app_disconnects", found == [])
             report["success"] = all(report["checks"].values())
             return finish()
         return 0.05

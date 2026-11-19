@@ -2,8 +2,7 @@ Agent scripts run confined
 ==========================
 
 While any agent script runs, Angelo enforces at run time, never by reading the script's text, that it can't change
-Angelo's private state or step outside Angelo. This covers every tool that runs a script (``angelo_execute_python``,
-``angelo_run_script_file``, a worker's or a headless session's script) and every review mode, Always allow scripts
+Angelo's private state or step outside Angelo. This covers every tool that runs a script (``angelo_execute_python``, a worker's script) and every review mode, Always allow scripts
 and Trust scripts for this chat included.
 
 The maintainer's rulings:
@@ -479,7 +478,10 @@ Work that outlives the script
     whatever kind of region it is (a run, or a step of a generator the script left, which has no sweep):
     ``sys.path``, ``sys.meta_path`` and ``sys.path_hooks`` hold what they held, in its order, then only installed
     entries added since; a replaced ``sys.path_importer_cache`` entry goes back and a new one stays only if it is an
-    installed kind; ``threading._threading_atexits`` keeps only trampolines and installed code added since; each loaded
+    installed kind, and every cached ``FileFinder`` lists its folder again at its next import (the sweep clears its
+    cached mtime at the script's start and end, calling no finder: a folder whose mtime did not move, seen on Windows,
+    hid a module made while Angelo runs; ``test_native_sweep_new_modules``); ``threading._threading_atexits`` keeps
+    only trampolines and installed code added since; each loaded
     package's ``__path__`` (or a namespace package's places) holds what it held (the packages, and any module whose
     namespace the journal doesn't watch, are found again only when ``sys.modules`` or a ``__path__`` changed, as the
     journal's dict watcher sees, so a region copies a few dozen lists rather than walking every loaded module);
@@ -1026,11 +1028,15 @@ Routes a script can use itself (closed in 2.1.0):
   app's settings (``~/.codex/config.toml``, Claude's or Cursor's MCP settings), an agent script can rewrite that
   file the same way, for example to add a server the app then starts. Disconnect, or check the file, if an agent
   ran scripts you did not review.
-* **Other files Angelo vouched for its own use, the same way.** The coding CLI Angelo found and runs (Codex,
-  Claude Code: ``cli_runtime.find_executable``) and an engine asset whose editor opened it in Angelo
-  (``engine_link_assets``) can be overwritten by a script's writers in the session that vouched them. (Before
-  running a program Angelo asks C, which refuses one its record shows a script wrote; that this record catches
-  every Blender writer a script steers is not yet shown, so this is listed rather than relied on.)
+* **Other files Angelo vouched for its own use, the same way.** An engine asset whose editor opened it in Angelo
+  (``engine_link_assets``) can be overwritten by a script's writers in the session that vouched it. The coding CLI
+  Angelo found and runs (Codex, Claude Code: ``cli_runtime.find_executable``) is not: it is recorded to start only
+  (``owned_paths.vouch_program``, C's ``Scope::Run``: its real file through any link, never a write vouch, never
+  dropped by narrowing or the oldest-first trim). By that record C starts it only while it is that very file,
+  unchanged since it was recorded (identity, size and its times), so a write that reached it some other way, and a
+  file a script made, is refused until Angelo restarts (the break-it reviews of 29b385a6645 and 4be92cfb84f). A
+  program in an installed folder or a folder on PATH starts by those rules, with no such check; gltfpack, for the
+  web export's KTX2 textures, is recorded the same way.
 
 Routes that need your later write:
 

@@ -17,6 +17,7 @@ import os
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from unittest import mock
 
@@ -161,7 +162,7 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual((output["cost_usd"], output["cost_unknown_messages"]), (0.5, 1))
 
 
-@unittest.skipIf(scorecard is None, "NumPy is installed in CI and bundled with Blender")
+@unittest.skipIf(scorecard is None, required_skip("NumPy is installed in CI and bundled with Blender"))
 class ScenarioTotalsTests(unittest.TestCase):
     def test_a_turn_without_its_time_or_usage_leaves_the_sides_total_unknown(self):
         turns = [turn["id"] for turn in specs.module("bridge").TURNS]

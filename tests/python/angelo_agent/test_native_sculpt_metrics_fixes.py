@@ -14,6 +14,7 @@ import math
 import random
 import sys
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -122,7 +123,7 @@ class RegionAnchorTests(unittest.TestCase):
         module.partial_edit.assert_not_called()
 
 
-@unittest.skipIf(np is None, 'NumPy is available in the bundled Angelo Python runtime')
+@unittest.skipIf(np is None, required_skip('NumPy is available in the bundled Angelo Python runtime'))
 class ExactOutlineTests(unittest.TestCase):
     @staticmethod
     def oracle(points, size):

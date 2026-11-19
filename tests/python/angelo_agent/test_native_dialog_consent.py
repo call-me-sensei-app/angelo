@@ -343,10 +343,6 @@ class OutsideWorkEndsHeldConsent(unittest.TestCase):
         self.assertTrue(noted, "an engine's request is not noted")
         self.assertTrue(min(noted) > status.end_lineno, "a status report must not end the person's held consent")
 
-    def test_an_external_apps_call_runs_through_the_chats_tool_pump(self):
-        handle = functions(ADDON / "external_host.py")["handle_call"]
-        self.assertIn("controller.request_tool", calls_in(handle))
-        self.assertFalse([c for c in calls_in(handle) if c.startswith("bpy.")], "never Blender directly")
 
 class ToolAnnotationsAreFrozen(unittest.TestCase):
     """Whether a tool writes decides approvals and the note above; agent code must not be able to mark a writing tool
@@ -423,7 +419,7 @@ class ToolAnnotationsAreFrozen(unittest.TestCase):
                          ("action_catalog.py", "catalog"), ("action_recipes.py", "_recipe_input_schema"),
                          ("action_recipes.py", "parameter_ranges"), ("action_recipes.py", "recipe_capabilities"),
                          ("capabilities_host.py", "agent_capabilities"), ("codex_reference.py", "_deferred_lines"),
-                         ("codex_reference.py", "job_arguments"), ("external_requests.py", "tools_catalog"),
+                         ("codex_reference.py", "job_arguments"),
                          ("feature_guide.py", "lookup"), ("flow_tool_spec.py", "declared_form"),
                          ("plan_schema.py", "_correction_schemas"), ("plan_schema.py", "_operation_items"),
                          ("plan_schema.py", "codex_arguments"), ("plan_schema.py", "core_operation"),

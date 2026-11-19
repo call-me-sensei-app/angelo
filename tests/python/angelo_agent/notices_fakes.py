@@ -40,6 +40,75 @@ class Timers:
         self.registered.pop(function, None)
 
 
+class Data(SimpleNamespace):
+    """``bpy.data`` with Blender's save timing: a save that succeeded leaves ``is_dirty`` True until Blender handles the
+    save's notifier, after the save call (``wm_event_system.cc``: ``wm->file_saved``); ``notifier_pass`` is that
+    handling, which a test runs where Blender's event loop would, before the next timers."""
+
+    def __init__(self, **fields):
+        super().__init__(**fields)
+        self.save_pending = False
+
+    def notifier_pass(self):
+        if self.save_pending:
+            self.save_pending, self.is_dirty = False, False
+
+
+class Wm(SimpleNamespace):
+    """``bpy.ops.wm``: a ``save_mainfile`` that finishes, the stand-in's or one a test puts in its place, marks the
+    file saved only at the next ``Data.notifier_pass``, as Blender does."""
+
+    def __init__(self, data, **operators):
+        object.__setattr__(self, "_data", data)
+        super().__init__(**operators)   # Fills the namespace directly, so the save is wrapped here:
+        if "save_mainfile" in operators:
+            self.save_mainfile = operators["save_mainfile"]
+
+    def __setattr__(self, name, value):
+        if name == "save_mainfile" and callable(value):
+            value = self._saving(value)
+        object.__setattr__(self, name, value)
+
+    def _saving(self, save):
+        data = self._data
+
+        def saving(*args, **kwargs):
+            result = save(*args, **kwargs)
+            if result == {'FINISHED'} and 'INVOKE_DEFAULT' not in args:
+                data.save_pending = True
+            return result
+        saving.__wrapped__ = save
+        return saving
+
+
+# Every list Blender's ``bpy.app.handlers`` carries (bpy_app_handlers.cc, in its order), so code that registers on
+# any of them runs here as in Blender; test_native_update_restart_settle_edits keeps it equal to the source.
+APP_HANDLER_LISTS = (
+    "frame_change_pre", "frame_change_post", "render_pre", "render_post", "render_write", "render_stats",
+    "render_init", "render_complete", "render_cancel", "load_pre", "load_post", "load_post_fail", "save_pre",
+    "save_post", "save_post_fail", "undo_pre", "undo_post", "redo_pre", "redo_post", "depsgraph_update_pre",
+    "depsgraph_update_post", "version_update", "load_factory_preferences_post", "load_factory_startup_post",
+    "xr_session_start_pre", "annotation_pre", "annotation_post", "object_bake_pre", "object_bake_complete",
+    "object_bake_cancel", "composite_pre", "composite_post", "composite_cancel", "animation_playback_pre",
+    "animation_playback_post", "translation_update_post", "_extension_repos_update_pre",
+    "_extension_repos_update_post", "_extension_repos_sync", "_extension_repos_files_clear", "blend_import_pre",
+    "blend_import_post", "exit_pre",
+)
+
+
+def settle(bpy, passes=4):
+    """Blender's event-loop passes until the update hand-over has its settled document (or gave up): each a notifier
+    pass, then the hand-over's settle timer (``update_restart_handoff.launch_when_settled``), as Blender runs them."""
+    for _ in range(passes):
+        bpy.data.notifier_pass()
+        for function in list(bpy.app.timers.registered):
+            if function.__qualname__.startswith("launch_when_settled."):
+                bpy.app.timers.registered.pop(function)
+                again = function()
+                if again is not None:
+                    bpy.app.timers.registered[function] = again
+
+
 class Header:
     """A Blender UI class that draw functions are appended to."""
 
@@ -137,7 +206,8 @@ def build():
                             is_job_running=lambda kind: False)
     handlers = types.ModuleType("bpy.app.handlers")
     handlers.persistent = lambda function: function
-    handlers.load_pre, handlers.save_post, handlers.save_post_fail = [], [], []
+    for name in APP_HANDLER_LISTS:
+        setattr(handlers, name, [])
     bpy.app.handlers = handlers
     bpy.utils = SimpleNamespace(register_class=record.classes.append,
                                 unregister_class=lambda cls: record.classes.remove(cls),
@@ -150,14 +220,15 @@ def build():
     def operator(name):
         return lambda *args, **kwargs: record.operators.append((name, args, kwargs)) or {'FINISHED'}
 
+    data = Data(filepath="", is_dirty=False, images=[], scenes=[])
     bpy.ops = SimpleNamespace(
         angelo=SimpleNamespace(card_host=operator("angelo.card_host"), crash_save_report=operator("angelo.crash_save_report"),
                                crash_consent_ask=operator("angelo.crash_consent_ask")),
-        wm=SimpleNamespace(url_open=lambda url: record.links.append(url) or {'FINISHED'},
-                           quit_blender=operator("wm.quit_blender"), save_mainfile=operator("wm.save_mainfile"),
-                           save_as_mainfile=operator("wm.save_as_mainfile")),
+        wm=Wm(data, url_open=lambda url: record.links.append(url) or {'FINISHED'},
+              quit_blender=operator("wm.quit_blender"), save_mainfile=operator("wm.save_mainfile"),
+              save_as_mainfile=operator("wm.save_as_mainfile")),
         image=SimpleNamespace(save_all_modified=operator("image.save_all_modified")))
-    bpy.data = SimpleNamespace(filepath="", is_dirty=False, images=[], scenes=[])
+    bpy.data = data
     blf = types.ModuleType("blf")
     blf.size = lambda font, size: None
     blf.dimensions = lambda font, text: (len(text) * 7.0, 12.0)

@@ -17,6 +17,7 @@ import os
 import sys
 import tempfile
 import unittest
+from host_test_policy import required_skip
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -157,7 +158,7 @@ class HeavyScenarioTests(unittest.TestCase):
                 self.assertIn("--angelo-always-allow-scripts", step["args"])   # "scripts allowed" (bench_integrity)
 
 
-@unittest.skipIf(numpy is None, "the heavy scene's geometry needs NumPy")
+@unittest.skipIf(numpy is None, required_skip("the heavy scene's geometry needs NumPy"))
 class HeavyPlanTests(unittest.TestCase):
     def test_scale_and_the_facts_the_tasks_ask_about(self):
         import heavy_plan as plan

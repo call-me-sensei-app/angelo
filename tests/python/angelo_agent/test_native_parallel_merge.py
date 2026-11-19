@@ -67,7 +67,10 @@ class MergeArgumentTests(unittest.TestCase):
 
     def test_the_merge_is_the_leads_never_a_connected_apps(self):
         from angelo_agent import external_clients
-        self.assertNotIn(MERGE, external_clients.EDIT_TOOLS)
+        from angelo_agent.tool_specs import TOOL_MAP
+        if MERGE in TOOL_MAP:   # Listed only in a build launched with parallel agents.
+            self.assertIn(MERGE, external_clients.NEVER_FOR_APPS)
+        self.assertTrue(MERGE.startswith("angelo_workers_"), "the prefix NEVER_FOR_APPS keeps out of an app's chat")
         self.assertIn(MERGE, worker_spec.WORKER_NAMES)
 
 
